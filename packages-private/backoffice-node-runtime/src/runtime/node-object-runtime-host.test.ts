@@ -91,6 +91,55 @@ test("separate listeners publish application readiness and isolate HTTP handlers
   await expect(fetch(`${host.internalOrigin}/internal`)).rejects.toThrow();
 });
 
+test.each(["application", "internal"] as const)(
+  "%s ingress preserves native Fetch globals and supplies copyable requests with intact bodies",
+  async (surface) => {
+    const originalRequest = globalThis.Request;
+    const originalResponse = globalThis.Response;
+    const application: NodeObjectRuntimeHostApplication = {
+      async fetch(request) {
+        const copy = new Request(request, { headers: new Headers(request.headers) });
+        return Response.json({
+          method: copy.method,
+          path: new URL(copy.url).pathname,
+          header: copy.headers.get("x-host-scenario"),
+          body: await copy.json(),
+        });
+      },
+      handleFetchFailure(error) {
+        return new Response(String(error), { status: 500 });
+      },
+    };
+    const options = createTestHostOptions(application);
+    const host = await startAuthorityBoundGraftNodeObjectHost({
+      ...options,
+      createApplications(context) {
+        return { ...options.createApplications(context), [surface]: application };
+      },
+    });
+    try {
+      expect(globalThis.Request).toBe(originalRequest);
+      expect(globalThis.Response).toBe(originalResponse);
+      const origin = surface === "application" ? host.applicationOrigin : host.internalOrigin;
+      const body = { message: "copy a real incoming body", nested: { preserved: true } };
+      const response = await fetch(`${origin}/native-fetch`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-host-scenario": "preserved" },
+        body: JSON.stringify(body),
+      });
+      expect(response.status, await response.clone().text()).toBe(200);
+      expect(await response.json()).toEqual({
+        method: "POST",
+        path: "/native-fetch",
+        header: "preserved",
+        body,
+      });
+    } finally {
+      await host.close({ maximumDrainDurationMs: 2_000 });
+    }
+  },
+);
+
 test.each(["application", "readiness"] as const)(
   "self-fencing rejects application admission but leaves internal inspection available (%s first)",
   async (firstCheck) => {

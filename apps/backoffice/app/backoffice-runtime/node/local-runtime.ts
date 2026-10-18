@@ -63,7 +63,7 @@ export type CreateLocalBackofficeRuntimeOptions = {
   sqliteDataDirectory?: string;
 };
 
-/** Creates the local object runtime used by Node production and in-process tests. */
+/** Creates the SQLite Node server runtime or an in-process Backoffice scenario runtime. */
 export async function createLocalBackofficeRuntime(
   options: CreateLocalBackofficeRuntimeOptions,
 ): Promise<LocalBackofficeRuntime> {

@@ -7,6 +7,9 @@
     "build:node": {
       "dependsOn": ["$TURBO_EXTENDS$", "static:generate"]
     },
+    "build:graft": {
+      "dependsOn": ["$TURBO_EXTENDS$", "static:generate", "build:node"]
+    },
     "static:generate": {
       "dependsOn": ["^build"],
       "outputs": [
@@ -16,6 +19,9 @@
         "content/static/codemode/sources/mcp.d.ts",
         "content/static/skills/generating-backoffice-uis/CATALOG.md"
       ]
+    },
+    "test": {
+      "dependsOn": ["build:graft"]
     },
     "types:generate": {
       "outputs": ["worker-configuration.d.ts", ".react-router/types/**", ".source/**"]

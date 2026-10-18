@@ -12,8 +12,8 @@ import { startNodeBackofficeAlarmScheduler } from "../../app/backoffice-runtime/
 import { createExternallyProcessedNodeBackofficeDurableHooks } from "../../app/backoffice-runtime/node/node-durable-hooks";
 import { shutdownNodeOpenTelemetry } from "../../app/backoffice-runtime/node/node-opentelemetry-lifecycle";
 import { createBackofficeRouterContextProvider } from "../../app/worker-runtime/router-context-provider.server";
+import { registerNodeBackofficeRequestObservability } from "../server/node-request-observability";
 import { createNodeBackofficeProcessConfig } from "./node-process-config";
-import { registerNodeBackofficeRequestObservability } from "./node-request-observability";
 import { registerNodeBackofficeHealthCheck } from "./node-server-health";
 import {
   formatNodeBackofficeListenUrls,

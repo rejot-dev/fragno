@@ -46,6 +46,7 @@ import {
   type NodeObjectPeerRouting,
 } from "./node-object-peer-routing";
 import type { NodeObjectWorkerControl, NodeObjectWorkerOptions } from "./node-object-worker";
+import { NodeObjectWorkerHost } from "./node-object-worker-host";
 import {
   readNodeRuntimeEpochMilliseconds,
   readNodeRuntimeMonotonicMilliseconds,
@@ -427,6 +428,7 @@ function createGraftObjectWorkerRuntime<TBindings extends NodeRuntimeObjectBindi
       name,
       moduleUrl: definition.moduleUrl,
       exportName: definition.exportName,
+      input: definition.input,
       clock: options.clock,
       persistence,
     };
@@ -443,7 +445,11 @@ function createGraftObjectWorkerRuntime<TBindings extends NodeRuntimeObjectBindi
     }
     const session = createNodeMessagePortRpcSession<NodeObjectWorkerControl>(
       port1,
-      undefined,
+      new NodeObjectWorkerHost(async (targetBinding, targetName) => {
+        const target = await resolveRoutedObject(targetBinding, targetName, null);
+        requireOpen();
+        return createNodePeerForwardingTarget(() => Promise.resolve(target), requireOpen);
+      }),
       () => {
         if (readNodeAuthorityStatus().state !== "serving") {
           throw new Error("NODE_OBJECT_RUNTIME_NODE_AUTHORITY_FENCED");
@@ -782,6 +788,14 @@ function createGraftObjectWorkerRuntime<TBindings extends NodeRuntimeObjectBindi
     name: string,
     outputScope: ReturnType<typeof createRuntimeOutputScope> | null,
   ): Promise<RpcTarget> {
+    if (
+      typeof binding !== "string" ||
+      !Object.hasOwn(options.objects, binding) ||
+      typeof name !== "string" ||
+      name.length === 0
+    ) {
+      throw new Error("NODE_OBJECT_RUNTIME_OBJECT_ADDRESS_INVALID");
+    }
     const objectId = `${binding}:${name}`;
     let provisioningAttempted = false;
     let routeAttempt = 0;

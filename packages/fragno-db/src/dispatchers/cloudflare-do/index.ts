@@ -2,6 +2,7 @@ import { getDurableHooksToken } from "../../hooks/durable-hooks-fragment";
 import {
   createDurableHooksProcessorGroup,
   type DurableHooksErrorObserver,
+  type DurableHooksProcessorExecution,
 } from "../../hooks/durable-hooks-processor";
 import { getDurableHooksRuntimeByToken } from "../../hooks/durable-hooks-runtime";
 import type { DurableHooksInstrumentation } from "../../hooks/hooks";
@@ -30,11 +31,16 @@ export type {
 export function createDurableHooksProcessor<TEnv>(
   fragments: readonly AnyFragnoInstantiatedDatabaseFragment[],
   options: DurableHooksProcessorOptions = {},
+  execution: DurableHooksProcessorExecution = "parallel",
 ): DurableHooksDispatcherDurableObjectFactory<TEnv> {
-  const processor = createDurableHooksProcessorGroup(fragments, {
-    onError: options.onProcessError,
-    instrumentation: options.instrumentation,
-  });
+  const processor = createDurableHooksProcessorGroup(
+    fragments,
+    {
+      onError: options.onProcessError,
+      instrumentation: options.instrumentation,
+    },
+    execution,
+  );
   const factory = createDurableHooksDispatcherDurableObject<TEnv>({
     createProcessor: () => processor,
     onProcessError: options.onProcessError,

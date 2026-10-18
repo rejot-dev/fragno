@@ -67,25 +67,118 @@ virtual modules and raw asset imports. The source configs, `wrangler.jsonc` and
 `wrangler.web.jsonc`, are sufficient when activating versions because activation does not rebuild
 the source.
 
-## Run on Node with file-backed SQLite
+## Node runtimes
 
-For a file-backed Node instance without Cloudflare bindings, create `apps/backoffice/.dev.vars` from
-`.dev.vars.example` if you do not already have one. Set `AUTH_ACCESS_TOKEN_SECRET` and
-`BACKOFFICE_INTERNAL_REQUEST_SECRET` there; replace the example secrets with strong values and keep
-them unchanged across restarts. Codemode and Cloudflare sandbox management require
-`apps/cf-sandbox-bridge`, which provides remote execution, TypeScript checking, and sandbox HTTP
-APIs. Set `CLOUDFLARE_BRIDGE_URL` to the bridge's `https://` origin and `CLOUDFLARE_BRIDGE_API_KEY`
-to its `SANDBOX_API_KEY`. Codemode derives `wss://` for WebSocket activations. For local Wrangler
-development, `http://127.0.0.1:8787` is allowed. Both Node processes use these same settings.
-Missing configuration fails startup; bridge unavailability fails the invocation without a local
-fallback or automatic immediate retry. Node no longer needs Deno. A disconnected activation has an
-unknown outcome: tool effects already performed are not rolled back. Workflow retries follow the
-existing Node-owned step policy and checkpoints. SQLite data defaults to `.backoffice-node/`; set
-`BACKOFFICE_SQLITE_DIR` in `.dev.vars` to use another path. The file and default data directory are
-ignored by git.
+Both Node runtimes serve the same React Router application and use the configured Cloudflare bridge
+for codemode and sandbox execution. Create `.dev.vars` from `.dev.vars.example` and set stable auth
+and internal-request secrets plus the bridge URL and API key.
+
+| Runtime     | Command         | Entrypoints             | Build output         | Storage                                              |
+| ----------- | --------------- | ----------------------- | -------------------- | ---------------------------------------------------- |
+| SQLite Node | `start:node`    | `scripts/node-server/`  | `build-node/`        | `.backoffice-node/`                                  |
+| Graft Node  | `start:graft`   | `scripts/graft-server/` | `build-graft/`       | `.backoffice-graft/` or explicit Graft configuration |
+| Cloudflare  | `dev` / `build` | Worker entrypoints      | `build/` and `dist/` | Cloudflare bindings                                  |
+
+Shared process supervision, proxy-origin policy, and request logging live in `scripts/server/`.
+Build jobs serialize shared React Router type generation; each runtime retains its own build output.
+The two Node servers use port 5173 by default. To run both simultaneously, give them different
+`PORT` values and matching public URLs; Graft also needs its private peer listener on a free port.
+
+### Run the SQLite Node server
 
 ```bash
 pnpm --dir apps/backoffice start:node
+# Optional local Cloudflare bridge:
+pnpm --dir apps/backoffice start:node -- --local-bridge
+```
+
+This restores the Express server and separate durable-hook processor. The supervisor starts and
+stops both together. `start:node:server` and `start:node:processor` remain available for independent
+launches. SQLite data stays in `.backoffice-node/`, or `BACKOFFICE_SQLITE_DIR` when configured. The
+SQLite runtime does not read Graft configuration, load the Graft extension, or require a control log
+ID. Existing SQLite data remains usable; neither runtime imports or overwrites the other's store.
+
+For SQLite containers, use `docker:build:node` / `docker:build:node:deployment` and
+`Dockerfile.node`. Mount a persistent volume at `/data` (`BACKOFFICE_SQLITE_DIR` in the image) and
+supply the same secrets and bridge settings through your environment file. Only the application port
+5173 is exposed.
+
+## Run on Node with Graft
+
+Node uses `@fragno-private/backoffice-node-runtime` with the existing `InMemory*Object`
+implementations. One entrypoint, `scripts/graft-server/backoffice-node.mts`, serves HTTP and
+schedules object alarms. Each object runs in its own worker, constructs its own services and bridge
+clients, and stores Fragment SQL, Auth SQL, Pi SQL, KV, and alarms on its Graft-managed object
+connection. Durable hooks run through the owning object's alarms; there is no separate
+hook-processor process.
+
+Create `apps/backoffice/.dev.vars` from `.dev.vars.example`. Set strong, stable
+`AUTH_ACCESS_TOKEN_SECRET` and `BACKOFFICE_INTERNAL_REQUEST_SECRET` values (the latter must contain
+at least 32 characters). Configure `CLOUDFLARE_BRIDGE_URL` and `CLOUDFLARE_BRIDGE_API_KEY` for the
+`cf-sandbox-bridge` deployment. Codemode derives WSS from the HTTPS origin; local development also
+allows `http://127.0.0.1:8787`. Missing bridge configuration fails startup; an unavailable bridge
+fails the invocation without a local fallback or automatic replay. Node does not need Deno.
+
+### Default local storage
+
+Leave `GRAFT_CONFIG` and `BACKOFFICE_GRAFT_CONTROL_REMOTE_LOG_ID` empty for `start:graft`.
+Development startup creates `.backoffice-graft/graft.toml`, a local cache, and a filesystem remote.
+It reserves a control-log ID, atomically persists it to `.backoffice-graft/control-log-id` before
+publishing any remote history, and reuses that identity on every restart. Interrupted first-run
+publication resumes with the persisted ID. Keep the ID file and remote together; the cache can be
+reconstructed. An explicit `BACKOFFICE_GRAFT_CONTROL_REMOTE_LOG_ID` overrides the local ID.
+
+Startup refuses to create a replacement if the local remote has history but its ID file is missing,
+or if that file is empty. Restore the original ID rather than deleting the remaining store. The
+generated config is owned by this local default; use explicit configuration if you want to edit it.
+
+### Bootstrap production or custom storage once
+
+Production, a nonempty `GRAFT_CONFIG`, or an existing `graft.toml` in the working directory require
+an explicitly published control-log ID. They never bootstrap a replacement automatically. If you
+copied an older `.dev.vars.example`, clear `GRAFT_CONFIG=./graft.toml` to enable the local default
+(provided no working-directory `graft.toml` exists).
+
+For custom storage, set `GRAFT_CONFIG=./graft.toml` and create `apps/backoffice/graft.toml`. For a
+filesystem remote, use absolute paths and create both directories before bootstrapping:
+
+```toml
+data_dir = "/absolute/path/to/fragno/apps/backoffice/.backoffice-graft/cache"
+make_default = false
+
+[remote]
+type = "fs"
+root = "/absolute/path/to/fragno/apps/backoffice/.backoffice-graft/remote"
+```
+
+Build the runtime and reserve the canonical control-log identity from the repository root:
+
+```bash
+pnpm exec turbo run build --filter=@fragno-private/backoffice-node-runtime --output-logs=errors-only
+pnpm --dir packages-private/backoffice-node-runtime cli bootstrap reserve \
+  --graft-config ../../apps/backoffice/graft.toml
+```
+
+Copy the reserved ID into `BACKOFFICE_GRAFT_CONTROL_REMOTE_LOG_ID` in `.dev.vars` **before**
+publishing it, then publish that exact identity:
+
+```bash
+pnpm --dir packages-private/backoffice-node-runtime cli bootstrap publish \
+  --graft-config ../../apps/backoffice/graft.toml \
+  --control-remote-log-id '<reserved-id>'
+```
+
+`publish` can be rerun with the same ID after interruption. Explicitly configured serving startup
+requires the config and published ID; it never creates a replacement control log. Set `GRAFT_CONFIG`
+to another config path if needed. Keep the remote and control ID across restarts; the local cache
+can be reconstructed. The local config and `.backoffice-graft/` directory are git-ignored.
+
+**Graft starts with a separate store.** Existing `.backoffice-node/` databases are not imported, and
+`BACKOFFICE_SQLITE_DIR` is not used by Graft. Continue using `start:node` for those databases, or
+perform a separate application-data import if you want to move them to Graft.
+
+```bash
+pnpm --dir apps/backoffice start:graft
 ```
 
 To run the local `cf-sandbox-bridge` under the same supervisor, configure its API key and pass
@@ -94,38 +187,39 @@ To run the local `cf-sandbox-bridge` under the same supervisor, configure its AP
 ```bash
 cp apps/cf-sandbox-bridge/.dev.vars.example apps/cf-sandbox-bridge/.dev.vars
 # Set SANDBOX_API_KEY in apps/cf-sandbox-bridge/.dev.vars.
-pnpm --dir apps/backoffice start:node -- --local-bridge
+pnpm --dir apps/backoffice start:graft -- --local-bridge
 ```
 
 The flag starts the bridge at `http://127.0.0.1:8787`, copies its `SANDBOX_API_KEY` into
 Backoffice's `CLOUDFLARE_BRIDGE_API_KEY`, and sets `CLOUDFLARE_BRIDGE_URL` in
 `apps/backoffice/.dev.vars`. If Backoffice's file does not exist, it is created from
-`.dev.vars.example`. The supervisor stops the bridge, web server, and processor together.
+`.dev.vars.example`. The supervisor stops the bridge and the single Backoffice host together.
 
-The local `start:node*` commands run with `NODE_ENV=development`. In this mode, the Node server
-serves the browser SQLite worker's source maps directly from the installed dependency for DevTools;
-they are never copied into build artifacts. Production Node launches use `NODE_ENV=production`, and
-neither they nor Cloudflare serve these maps.
+The local `start:node*` and `start:graft` commands run with `NODE_ENV=development`. In this mode,
+the Node server serves the browser SQLite worker's source maps directly from the installed
+dependency for DevTools; they are never copied into build artifacts. Production Node launches use
+`NODE_ENV=production`, and neither they nor Cloudflare serve these maps.
 
-### Run the Node version in Docker
+### Run the Graft version in Docker
 
 Build the production image for local use from the repository root:
 
 ```bash
-pnpm --dir apps/backoffice docker:build:node
+pnpm --dir apps/backoffice docker:build:graft
 ```
 
 The command prunes the workspace on the host before starting Docker, builds for the local machine's
 native architecture, and reuses persistent pnpm and Turbo BuildKit caches. The final image contains
-only the bundled Node build, its launcher, and the native SQLite runtime dependency. Codemode,
-TypeScript checking, and sandbox execution use the configured Cloudflare bridge; Deno is not
-bundled.
+the bundled Node build, its launcher, runtime worker modules, production dependencies, and the
+pinned native Graft extension. A build-time smoke check loads the extension in the final image,
+publishes a temporary control database, and verifies it through a fresh clone. Codemode, TypeScript
+checking, and sandbox execution use the configured Cloudflare bridge; Deno is not bundled.
 
 Deployment targets use AMD64 and require an explicit immutable image tag:
 
 ```bash
 BACKOFFICE_IMAGE_TAG="registry.example.com/backoffice:$(git rev-parse HEAD)" \
-  pnpm --dir apps/backoffice docker:build:node:deployment
+  pnpm --dir apps/backoffice docker:build:graft:deployment
 ```
 
 The deployment command loads the AMD64 image into the local Docker image store so it can be pushed
@@ -140,83 +234,63 @@ BACKOFFICE_INTERNAL_REQUEST_SECRET=<different-strong-random-secret>
 CLOUDFLARE_BRIDGE_URL=https://cf-sandbox-bridge.rejot.workers.dev/
 CLOUDFLARE_BRIDGE_API_KEY=<bridge-SANDBOX_API_KEY>
 DOCS_PUBLIC_BASE_URL=http://backoffice.localhost:5173
+GRAFT_CONFIG=/config/graft.toml
+BACKOFFICE_GRAFT_CONTROL_REMOTE_LOG_ID=<published-control-log-id>
+BACKOFFICE_NODE_APPLICATION_ORIGIN=http://backoffice.localhost:5173
+BACKOFFICE_NODE_INTERNAL_ORIGIN=http://backoffice-node:5174
 ```
 
-Run the web server and processor in one container, backed by a named SQLite volume:
+Mount a Graft config whose `data_dir` points under `/data`, and configure a durable remote. For a
+single-container local filesystem remote, also put its `root` under `/data` and bootstrap the
+control log against that volume before serving:
 
 ```bash
 docker run --rm \
-  --name fragno-backoffice-node \
+  --name backoffice-node \
   --publish 127.0.0.1:5173:5173 \
   --volume fragno-backoffice-data:/data \
+  --volume /absolute/path/to/graft-config:/config:ro \
   --env-file /absolute/path/to/backoffice-node.env \
-  fragno-backoffice-node
+  fragno-backoffice-graft
 ```
 
-The image binds `0.0.0.0:5173` inside the container, persists SQLite under `/data`, runs as the
-non-root `node` user, and includes Deno for sandboxed codemode execution. The default public URL is
-`http://backoffice.localhost:5173`; the dedicated `.localhost` name lets container traffic pass the
-same strict origin checks used outside Docker without treating the Docker bridge as a direct
-loopback connection. Set `DOCS_PUBLIC_BASE_URL` to the externally visible HTTPS URL and configure
-the trusted proxy settings described below when exposing the container through a reverse proxy. Pass
-optional integration credentials as additional environment variables; the image does not contain
-`.dev.vars` or other local environment files.
+The image runs as the non-root `node` user. Its public listener binds `0.0.0.0:5173`, and private
+peer ingress binds `0.0.0.0:5174`. **Do not publish the peer port to the public network.** Wildcard
+binds require explicit `BACKOFFICE_NODE_APPLICATION_ORIGIN` and `BACKOFFICE_NODE_INTERNAL_ORIGIN`.
+These are node addresses used for routing, not substitutes for `DOCS_PUBLIC_BASE_URL`; in a fleet,
+set them to addresses reachable by the gateway and peers. The image contains no `.dev.vars` or local
+secrets. It does not bundle Deno or run sandbox containers locally.
 
-`start:node` builds with Turbo once, then multiplexes the web server and runtime processor as two
-separate Node processes. This matches the production process topology while keeping one local
-command. Both processes load the **same `.dev.vars`** used for local Cloudflare development, and the
-command stops the remaining process if either process exits. Without an explicit `HOST`, the server
-claims both `127.0.0.1` and `::1` on `PORT` (default `5173`). Startup fails and releases both
-listeners if either loopback address is unavailable, preventing `localhost` and `127.0.0.1` from
-silently reaching different applications. Use `http://127.0.0.1:PORT` as the canonical local URL;
-`localhost` remains an alias. Set `DOCS_PUBLIC_BASE_URL` to the public URL for Backoffice links and
-proxy access, and set `PORT` too if the local port changes. Direct loopback access remains available
-only without proxy forwarding headers, including for `/api/auth/*`; it does not change the public
-URL used in generated links. Shell environment variables take precedence over the file. The Node
-build goes to `build-node/`, separate from the Worker build. Email verification and sign-up
-invitation requirements follow their settings in `.dev.vars`.
+`start:graft` builds with Turbo and starts one Backoffice process, optionally alongside the local
+bridge. The host preloads the Node OpenTelemetry SDK, and object workers inherit that preload. With
+no `HOST` override, the application binds `127.0.0.1:5173`; use that explicit address as the
+canonical local URL. Private ingress defaults to `127.0.0.1:5174` and can be configured with
+`BACKOFFICE_NODE_INTERNAL_HOST` and `BACKOFFICE_NODE_INTERNAL_PORT`. Shell environment variables
+take precedence over `.dev.vars`. Build output lives in `build-graft/`, separately from SQLite Node
+and Cloudflare builds. Invitation and email-verification requirements follow `.dev.vars`.
 
-To run or deploy either process independently, start them in separate terminals:
+The host owns renewable node authority, fenced object activation, durability-gated HTTP output, peer
+routing, cold alarm discovery, and idempotent shutdown. Hook processors for fragments sharing one
+object connection execute serially; no adapter starts its own SQLite transaction engine. New
+handlers wait for initialization and open transactions. Owning operation continuations use ordinary
+SQL, while unrelated operations cannot join their transaction. Application requests are not replayed
+on failure. Shutdown stops admission, closes worker-local resources (including Pi), drains pending
+work, proves storage durable, and closes connections. Authority cannot cancel an external effect
+already in flight; handlers and hooks still need idempotency.
 
-```bash
-pnpm --dir apps/backoffice start:node:processor
-pnpm --dir apps/backoffice start:node:server
-```
+Node OpenTelemetry starts only when `OTEL_EXPORTER_OTLP_ENDPOINT` is configured and identifies the
+host and workers as `rejot-backoffice-web`. Application responses emit the existing structured
+`backoffice.request.completed` log on wire completion or disconnect, including request ID, outcome,
+status, duration, and trace identifiers. Set `GOOGLE_CLOUD_PROJECT` for Cloud Logging trace resource
+names. Durable hooks retain W3C propagation context, not baggage. Worker shutdown flushes its
+telemetry after application cleanup; host shutdown flushes the process SDK. Without an exporter,
+trace instrumentation is a no-op and request completion logging remains enabled.
 
-Both commands construct the same file-backed runtime against `BACKOFFICE_SQLITE_DIR`. The web
-process only starts Express. The processor starts Fragno durable-hook polling and services
-object-owned alarms without opening a public HTTP listener. SQLite remains the authoritative object
-store. Ordinary requests and Fragment operations use SQLite transactions and Fragno OCC, without
-object-wide execution leases. Renewable claims are limited to `blockConcurrencyWhile` callbacks and
-alarm delivery. New events wait for active initialization; cross-process initialization waits have a
-30-second timeout. Existing requests are not stopped. Alarm claims prevent overlapping delivery,
-expire after a crashed owner, and acknowledge only the successfully handled generation. Claimed
-object-storage mutations fence expired owners, but claims cannot cancel JavaScript or external side
-effects: handlers must remain idempotent.
-
-Node OpenTelemetry is enabled only when `OTEL_EXPORTER_OTLP_ENDPOINT` is configured. Both child
-processes preload the Node SDK before application modules, export OTLP HTTP/protobuf traces, and
-identify themselves as `rejot-backoffice-web` and `rejot-backoffice-processor`. The web process also
-emits one structured `backoffice.request.completed` log when every HTTP request finishes or aborts,
-including its `backoffice.request_id`, outcome, status, duration, and active trace identifiers when
-present. The log includes Cloud Logging's native trace and span fields; set `GOOGLE_CLOUD_PROJECT`
-to format the trace as its full Google Cloud resource name. Search logs by the request ID first,
-then follow `trace_id` when the collector retained that trace. Durable-hook records persist only W3C
-`traceparent` and optional `tracestate`, allowing the processor to continue the enqueuing request
-trace without persisting baggage. Cloudflare and Node bind their tracing and Fragment-host
-operations through runtime-specific object implementations; the reusable `InMemory*` objects contain
-no instrumentation selection or Cloudflare fallback logic. Shutdown drains each runtime and then
-flushes its telemetry. For local collection, point the common endpoint at an OTLP HTTP receiver, for
-example `http://127.0.0.1:4318`; without an endpoint trace instrumentation remains a no-op while
-request completion logs continue to be emitted.
-
-Node objects must not treat mutable process-local fields as authoritative shared state.
-Config-backed Fragment hosts reload persisted configuration before events and processor discovery,
-reusing derived runtimes only while their source configuration is unchanged. Other shared state
-belongs in SQLite; read/await/write sequences need OCC, a transaction, or an explicit
-`blockConcurrencyWhile` boundary, not an assumed invocation lock. Run one web process and one
-processor process in production; `start:node` runs that same topology under one local process
-multiplexer.
+One worker owns each object's mutable local state. A replacement reconstructs it from that object's
+Graft log; do not share old local SQLite files between processes. Initialization and configuration
+refresh remain part of the existing object implementation. Keep persisted shared state in SQL/KV and
+use Fragno OCC or runtime transactions for read/await/write operations; handler interleaving is not
+an invocation lock.
 
 Codemode executes in a sealed dynamic Worker in `cf-sandbox-bridge`, with compilation performed
 directly inside that bridge. One authenticated WebSocket carries each expression, JavaScript module,
@@ -234,14 +308,13 @@ or CIDR and explicitly set `HOST` to the Node bind address. Set `BACKOFFICE_TRUS
 disable proxy trust. Keep the Node port inaccessible to untrusted clients when binding outside
 loopback.
 
-This stores auth, object key/value state and alarms, and Fragment databases in SQLite files under
-the selected data directory. Fragno's Node hook processor polls durable hooks, while the runtime
-processor services the remaining object-owned alarms. Do not run multiple processor replicas against
-the same directory. Cloudflare-specific account integrations and external upload storage are **not**
-provided by this mode. Sandbox lifecycle and command execution use the configured bridge without
-running containers locally. Verify the deployed bridge's resource limits and interruption behavior
-before rollout. Production still requires backups, TLS, trusted proxies, and a policy for the shared
-rate-limit bucket when a client IP cannot be determined.
+Graft persists Auth, Fragment, and Pi SQL together with each object's KV and alarms. Local caches
+must be node-local; a fleet shares the durable remote and canonical control log, not cache files.
+Cloudflare bindings such as external upload buckets and sandbox containers are not emulated.
+Cloudflare account integrations require their configured credentials, and sandbox lifecycle and
+commands use the bridge. Verify bridge limits and interruption behavior before rollout. Production
+still requires durable-remote backups, TLS, trusted proxies, private peer networking, and a policy
+for the rate-limit bucket when a client IP cannot be determined.
 
 ## Release
 

@@ -1,3 +1,5 @@
+import type { DODialectConfig } from "@fragno-dev/db/dialects/durable-object";
+
 import type { DatabaseAdapter } from "@fragno-dev/db";
 
 // The concrete Backoffice adapters use different UnitOfWork config types (Cloudflare SQL,
@@ -30,7 +32,7 @@ export type BackofficeDatabaseAdapterScope =
   | {
       type: "durableObject";
       id: string;
-      state: DurableObjectState;
+      state: DODialectConfig["ctx"];
     }
   | {
       type: "named";
@@ -38,7 +40,7 @@ export type BackofficeDatabaseAdapterScope =
     };
 
 export const createDurableObjectDatabaseAdapterScope = (
-  state: DurableObjectState,
+  state: DODialectConfig["ctx"],
 ): BackofficeDatabaseAdapterScope => ({
   type: "durableObject",
   id: state.id.toString(),

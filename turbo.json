@@ -21,6 +21,10 @@
       "dependsOn": ["^build"],
       "outputs": ["build-node/**"]
     },
+    "build:graft": {
+      "dependsOn": ["^build"],
+      "outputs": ["build-graft/**"]
+    },
     "types:check": {
       "dependsOn": ["^build"]
     },

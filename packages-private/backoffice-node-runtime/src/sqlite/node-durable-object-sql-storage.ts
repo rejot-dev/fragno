@@ -36,7 +36,8 @@ class NodeDurableObjectSqlCursorResult<
   #offset = 0;
 
   constructor(execution: NodeRuntimeSqlExecution) {
-    this.#rows = execution.rows as TRow[];
+    // node:sqlite returns null-prototype rows, which cannot cross the Cap'n Web object boundary.
+    this.#rows = execution.rows.map((row) => ({ ...row })) as TRow[];
     this.columnNames = execution.columnNames;
     this.rowsRead = execution.rowsRead;
     this.rowsWritten = execution.rowsWritten;

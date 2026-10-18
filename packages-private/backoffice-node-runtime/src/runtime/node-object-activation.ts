@@ -13,17 +13,19 @@ import { GraftObjectAlarmCoordinator } from "../graft/graft-object-alarm-coordin
 import type { GraftObjectAuthority } from "../graft/graft-object-authority";
 import type { GraftNodeRuntimeStorage } from "../graft/graft-runtime-storage";
 import { manageAuthorityBoundGraftObjectDatabase } from "../sqlite/managed-node-runtime-object-database";
+import type { NodeDurableObjectId } from "./node-durable-object-state";
 import {
   currentNodeObjectOutputBoundary,
   runWithNodeObjectOutputBoundary,
   type NodeObjectOutputBoundary,
 } from "./node-object-output-boundary";
+import { bindNodeObjectRpcValue } from "./node-object-worker-io";
 import {
   readNodeRuntimeEpochMilliseconds,
   readNodeRuntimeMonotonicMilliseconds,
   type NodeRuntimeClock,
 } from "./node-runtime-clock";
-import type { NodeRuntimeObjectFactory } from "./node-runtime-object";
+import type { NodeRuntimeObjectFactory, NodeRuntimeObjectResolver } from "./node-runtime-object";
 
 /** Identifies the sole object and fenced Graft database admitted into an object worker. */
 export type NodeObjectActivationOptions = {
@@ -31,6 +33,7 @@ export type NodeObjectActivationOptions = {
   name: string;
   moduleUrl: string;
   exportName: string;
+  input: unknown;
   clock: NodeRuntimeClock;
   persistence: {
     remoteLogId: string;
@@ -71,7 +74,10 @@ export type NodeObjectActivationIdleShutdownResult =
 export type NodeObjectActivation = Awaited<ReturnType<typeof createNodeObjectActivation>>;
 
 /** Initializes one fenced object; events may interleave, but shutdown waits for all admitted work. */
-export async function createNodeObjectActivation(options: NodeObjectActivationOptions) {
+export async function createNodeObjectActivation(
+  options: NodeObjectActivationOptions,
+  objects: NodeRuntimeObjectResolver,
+) {
   const module = (await import(options.moduleUrl)) as Record<string, unknown>;
   const exportedFactory = module[options.exportName];
   if (typeof exportedFactory !== "function") {
@@ -80,7 +86,7 @@ export async function createNodeObjectActivation(options: NodeObjectActivationOp
     );
   }
   const createObject = exportedFactory as NodeRuntimeObjectFactory;
-  const id = new NodeObjectId(options.binding, options.name) as unknown as DurableObjectId;
+  const id = new NodeObjectId(options.binding, options.name);
   const activity = new NodeObjectActivity(options.clock);
   const objectOperations = await loadGraftDatabaseOperations(options.persistence.operations);
   const preparedActivation = prepareGraftObjectActivation({
@@ -100,6 +106,20 @@ export async function createNodeObjectActivation(options: NodeObjectActivationOp
     options.clock,
   );
   let alarmCoordinator: GraftObjectAlarmCoordinator | null = null;
+  const shutdownCallbacks: Array<() => void | Promise<void>> = [];
+  async function cleanupApplication(): Promise<void> {
+    const failures: unknown[] = [];
+    for (const cleanup of shutdownCallbacks.splice(0).reverse()) {
+      try {
+        await cleanup();
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    if (failures.length > 0) {
+      throw new AggregateError(failures, "NODE_OBJECT_APPLICATION_CLEANUP_FAILED");
+    }
+  }
   try {
     const objectAlarmCoordinator = new GraftObjectAlarmCoordinator({
       database: objectDatabase,
@@ -109,12 +129,19 @@ export async function createNodeObjectActivation(options: NodeObjectActivationOp
     });
     alarmCoordinator = objectAlarmCoordinator;
     const state = new GraftDurableObjectState(id, objectDatabase, objectAlarmCoordinator);
-    const object = createObject({
-      id,
-      name: options.name,
-      state,
-      nowEpochMs: () => readNodeRuntimeEpochMilliseconds(options.clock),
-    });
+    const object = objectDatabase.runStorageOperation(() =>
+      createObject({
+        id,
+        name: options.name,
+        state,
+        input: options.input,
+        objects,
+        nowEpochMs: () => readNodeRuntimeEpochMilliseconds(options.clock),
+        onShutdown: (cleanup) => {
+          shutdownCallbacks.push(cleanup);
+        },
+      }),
+    );
     const objectProperties = object as unknown as Record<PropertyKey, unknown>;
     state.setPendingWorkSettledListener(() => {
       activity.recordCompletedActivity();
@@ -142,7 +169,7 @@ export async function createNodeObjectActivation(options: NodeObjectActivationOp
                 await state.runEvent(async () => {
                   const result = await (method as (...args: unknown[]) => unknown).apply(
                     object,
-                    args,
+                    args.map(bindNodeObjectRpcValue),
                   );
                   return gateReturnedRpcCapability(
                     result,
@@ -178,9 +205,23 @@ export async function createNodeObjectActivation(options: NodeObjectActivationOp
     function shutdownObject(): Promise<NodeObjectActivationShutdownResult> {
       shutdownOperation ??= (async () => {
         try {
+          // Cleanup cancels ongoing work before waiting for idle or transaction admission.
+          // Managed storage still fences any cleanup writes; durability is proven after activity drains.
+          let cleanupFailure: Error | null = null;
+          try {
+            await objectDatabase.runStorageMaintenance(cleanupApplication);
+          } catch (error) {
+            cleanupFailure =
+              error instanceof Error
+                ? error
+                : new Error("NODE_OBJECT_APPLICATION_CLEANUP_FAILED", { cause: error });
+          }
           await activity.waitForIdle();
           await drainPendingWork();
           objectDatabase.ensureDurableStoragePosition(objectDatabase.committedStoragePosition);
+          if (cleanupFailure !== null) {
+            throw cleanupFailure;
+          }
           const authority = preparedActivation.authority;
           return {
             kind: "with-object-authority",
@@ -216,14 +257,16 @@ export async function createNodeObjectActivation(options: NodeObjectActivationOp
         outputScopes.set(outputScopeId, { boundary, target: scopedTarget });
         return scopedTarget;
       },
-      releaseOutputScope(outputScopeId: string) {
-        const outputScope = outputScopes.get(outputScopeId);
-        if (!outputScope) {
-          throw new Error(`NODE_OBJECT_OUTPUT_SCOPE_MISSING:${outputScopeId}`);
-        }
-        outputScopes.delete(outputScopeId);
-        outputScope.boundary.release(state);
-        activity.recordCompletedActivity();
+      async releaseOutputScope(outputScopeId: string) {
+        await state.accessStorage(() => {
+          const outputScope = outputScopes.get(outputScopeId);
+          if (!outputScope) {
+            throw new Error(`NODE_OBJECT_OUTPUT_SCOPE_MISSING:${outputScopeId}`);
+          }
+          outputScopes.delete(outputScopeId);
+          outputScope.boundary.release(state);
+          activity.recordCompletedActivity();
+        });
       },
       advanceNodeAuthorityWindow(window: GraftNodeAuthorityWindow) {
         objectDatabase.advanceNodeAuthorityWindow(window);
@@ -239,20 +282,23 @@ export async function createNodeObjectActivation(options: NodeObjectActivationOp
         });
       },
       async deliverAlarm(expectedAlarm: NodeObjectAlarmDelivery, nowEpochMs: number) {
-        activity.assertAccepting();
-        const alarm = state.dueAlarm(nowEpochMs);
-        if (alarm?.installationId === expectedAlarm.installationId) {
-          await activity.run(async () => {
-            await state.runEvent(async () => {
-              await state.deliverAlarm(alarm, nowEpochMs, async () => {
-                const handler = objectProperties["alarm"];
-                if (typeof handler === "function") {
-                  await (handler as () => unknown).call(object);
-                }
+        await activity.runMaintenance(() =>
+          state.accessStorage(async () => {
+            const alarm = state.dueAlarm(nowEpochMs);
+            if (alarm?.installationId === expectedAlarm.installationId) {
+              await activity.run(async () => {
+                await state.runEvent(async () => {
+                  await state.deliverAlarm(alarm, nowEpochMs, async () => {
+                    const handler = objectProperties["alarm"];
+                    if (typeof handler === "function") {
+                      await (handler as () => unknown).call(object);
+                    }
+                  });
+                });
               });
-            });
-          });
-        }
+            }
+          }),
+        );
       },
       async drainWaitUntil() {
         await activity.runMaintenance(drainPendingWork);
@@ -275,14 +321,20 @@ export async function createNodeObjectActivation(options: NodeObjectActivationOp
       },
     };
   } catch (error) {
-    preparedActivation.abort();
-    alarmCoordinator?.close();
-    objectDatabase.close();
+    try {
+      await objectDatabase.runStorageMaintenance(cleanupApplication);
+    } catch (cleanupError) {
+      throw new AggregateError([error, cleanupError], "NODE_OBJECT_INITIALIZATION_CLEANUP_FAILED");
+    } finally {
+      preparedActivation.abort();
+      alarmCoordinator?.close();
+      objectDatabase.close();
+    }
     throw error;
   }
 }
 
-class NodeObjectId {
+class NodeObjectId implements NodeDurableObjectId {
   readonly namespace: string;
   readonly name: string;
 
@@ -295,8 +347,8 @@ class NodeObjectId {
     return `${this.namespace}:${this.name}`;
   }
 
-  equals(other: unknown) {
-    return other instanceof NodeObjectId && other.toString() === this.toString();
+  equals(other: { toString(): string }) {
+    return other.toString() === this.toString();
   }
 }
 
@@ -442,7 +494,7 @@ function gateReturnedRpcCapability(
               await state.runEvent(async () => {
                 const result = await (method as (...innerArgs: unknown[]) => unknown).apply(
                   value,
-                  args,
+                  args.map(bindNodeObjectRpcValue),
                 );
                 return gateReturnedRpcCapability(result, state, outputBoundary, activity);
               }),

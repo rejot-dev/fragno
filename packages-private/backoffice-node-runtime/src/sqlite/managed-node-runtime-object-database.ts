@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { DatabaseSync, type StatementResultingChanges } from "node:sqlite";
 
 import type { GraftDatabaseOperations } from "../graft/graft-database-operations";
@@ -7,6 +8,7 @@ import {
   type GraftObjectActivationAuthority,
 } from "../graft/graft-object-authority";
 import type { NodeDurableObjectSqlValue } from "../runtime/node-durable-object-storage";
+import { NodeObjectInputGate } from "../runtime/node-object-input-gate";
 import {
   readNodeRuntimeEpochMilliseconds,
   readNodeRuntimeMonotonicMilliseconds,
@@ -44,6 +46,20 @@ type ActiveDatabaseSession = {
   deactivate(): void;
 };
 
+type ObjectDatabaseTransaction = {
+  owner: symbol;
+  active: boolean;
+  rolledBack: boolean;
+  written: boolean;
+  settled: PromiseWithResolvers<void>;
+};
+
+/** Alarm discovery participates before local commit and publishes only after a successful commit. */
+export type NodeObjectTransactionCommitHooks = {
+  beforeCommit(): void;
+  afterCommit(): void;
+};
+
 /** Owns the SQLite connection and keeps Graft durability outside object author control. */
 export class ManagedNodeRuntimeObjectDatabase {
   readonly #database: DatabaseSync;
@@ -51,6 +67,10 @@ export class ManagedNodeRuntimeObjectDatabase {
   #committedStoragePosition = 0;
   #durableStoragePosition = 0;
   #failure: Error | null = null;
+  readonly inputGate = new NodeObjectInputGate();
+  readonly #transactionContext = new AsyncLocalStorage<ObjectDatabaseTransaction>();
+  #transaction: ObjectDatabaseTransaction | null = null;
+  readonly #pendingTransactions = new Set<Promise<void>>();
 
   constructor(database: DatabaseSync, durability: NodeRuntimeObjectDatabaseDurability) {
     this.#database = database;
@@ -58,7 +78,7 @@ export class ManagedNodeRuntimeObjectDatabase {
   }
 
   read<TResult>(operation: (database: NodeRuntimeObjectDatabaseSession) => TResult): TResult {
-    this.#requireUsable();
+    this.#requireStorageAccess();
     const active = this.#createSession("read");
     try {
       const result = operation(active.session);
@@ -70,7 +90,26 @@ export class ManagedNodeRuntimeObjectDatabase {
   }
 
   write<TResult>(operation: (database: NodeRuntimeObjectDatabaseSession) => TResult): TResult {
-    this.#requireUsable();
+    this.#requireStorageAccess();
+    const transaction = this.#ownedTransaction();
+    if (transaction) {
+      const active = this.#createSession("write");
+      this.#database.exec("SAVEPOINT node_runtime_write");
+      try {
+        const result = operation(active.session);
+        this.#assertSynchronousOperation(result);
+        this.#database.exec("RELEASE node_runtime_write");
+        transaction.written = true;
+        return result;
+      } catch (error) {
+        // A caught multi-statement storage failure must not leave partial writes in its outer transaction.
+        this.#database.exec("ROLLBACK TO node_runtime_write");
+        this.#database.exec("RELEASE node_runtime_write");
+        throw error;
+      } finally {
+        active.deactivate();
+      }
+    }
     const active = this.#createSession("write");
     this.#database.exec("BEGIN IMMEDIATE");
     let result: TResult;
@@ -90,11 +129,208 @@ export class ManagedNodeRuntimeObjectDatabase {
     return result;
   }
 
+  /** An object's operation and its continuations share transaction ownership, not other admitted events. */
+  runStorageOperation<TResult>(operation: () => TResult): TResult {
+    return this.inputGate.runOperation(operation);
+  }
+
+  /** Cleanup cancels application work without queuing its native I/O behind that work's gate. */
+  runStorageMaintenance<TResult>(operation: () => TResult): TResult {
+    return this.inputGate.runMaintenance(operation);
+  }
+
+  /** Queues asynchronous storage access behind another operation's transaction, never its own. */
+  async access<TResult>(operation: () => TResult | Promise<TResult>): Promise<TResult> {
+    while (true) {
+      this.#requireUsable();
+      if (this.#ownedTransaction()) {
+        this.#requireStorageAccess();
+        return await operation();
+      }
+      if (!this.#transaction) {
+        return await operation();
+      }
+      await this.#transaction.settled.promise;
+    }
+  }
+
+  /** Admission and output settlement cannot observe an open transaction, even from its owning operation. */
+  async accessOutsideTransaction<TResult>(
+    operation: () => TResult | Promise<TResult>,
+  ): Promise<TResult> {
+    while (true) {
+      this.#requireUsable();
+      const context = this.#transactionContext.getStore();
+      if (context) {
+        this.#requireStorageAccess();
+        throw new Error("NODE_RUNTIME_OBJECT_DATABASE_OUTPUT_DURING_TRANSACTION");
+      }
+      if (this.#pendingTransactions.size > 0) {
+        await Promise.all(this.#pendingTransactions);
+        continue;
+      }
+      if (!this.#transaction) {
+        return await operation();
+      }
+      await this.#transaction.settled.promise;
+    }
+  }
+
+  get isInTransaction(): boolean {
+    this.#requireStorageAccess();
+    return this.#ownedTransaction() !== null;
+  }
+
+  transactionSync<TResult>(
+    operation: () => TResult,
+    hooks: NodeObjectTransactionCommitHooks,
+  ): TResult {
+    const transaction = this.#beginTransaction();
+    try {
+      return this.#transactionContext.run(transaction, () => {
+        const result = operation();
+        this.#assertSynchronousOperation(result);
+        this.#commitTransaction(transaction, hooks);
+        return result;
+      });
+    } finally {
+      this.#finishTransaction(transaction);
+    }
+  }
+
+  async transaction<TResult>(
+    operation: () => TResult | Promise<TResult>,
+    hooks: NodeObjectTransactionCommitHooks,
+  ): Promise<TResult> {
+    if (this.#ownedTransaction()) {
+      this.#requireStorageAccess();
+      throw new Error("NODE_RUNTIME_OBJECT_DATABASE_NESTED_TRANSACTION");
+    }
+    // Reserving exclusive admission is already pending storage work. A handler that starts a
+    // transaction without awaiting it must not publish output before the deferred BEGIN runs.
+    const pending = Promise.withResolvers<void>();
+    this.#pendingTransactions.add(pending.promise);
+    try {
+      return await this.inputGate.runCriticalSection(() =>
+        this.access(async () => {
+          const transaction = this.#beginTransaction();
+          try {
+            return await this.#transactionContext.run(transaction, async () => {
+              const result = await operation();
+              this.#commitTransaction(transaction, hooks);
+              return result;
+            });
+          } finally {
+            this.#finishTransaction(transaction);
+          }
+        }),
+      );
+    } finally {
+      this.#pendingTransactions.delete(pending.promise);
+      pending.resolve();
+    }
+  }
+
+  /** Explicit transaction handles retain ownership across calls, but never outlive their transaction. */
+  captureTransactionRunner(): <TResult>(operation: () => TResult) => TResult {
+    this.#requireStorageAccess();
+    const transaction = this.#transactionContext.getStore();
+    if (!transaction) {
+      throw new Error("NODE_RUNTIME_OBJECT_DATABASE_NO_TRANSACTION");
+    }
+    return <TResult>(operation: () => TResult): TResult => {
+      if (!transaction.active) {
+        throw new Error("NODE_RUNTIME_OBJECT_DATABASE_TRANSACTION_HANDLE_CLOSED");
+      }
+      return this.#transactionContext.run(transaction, () => {
+        this.#requireStorageAccess();
+        return operation();
+      });
+    };
+  }
+
+  rollbackTransaction(): void {
+    this.#requireStorageAccess();
+    const transaction = this.#ownedTransaction();
+    if (!transaction) {
+      throw new Error("NODE_RUNTIME_OBJECT_DATABASE_NO_TRANSACTION");
+    }
+    transaction.rolledBack = true;
+  }
+
+  #beginTransaction(): ObjectDatabaseTransaction {
+    this.#requireStorageAccess();
+    if (this.#ownedTransaction()) {
+      throw new Error("NODE_RUNTIME_OBJECT_DATABASE_NESTED_TRANSACTION");
+    }
+    this.#database.exec("BEGIN IMMEDIATE");
+    const transaction: ObjectDatabaseTransaction = {
+      owner: this.inputGate.operationOwner ?? Symbol("node object storage transaction"),
+      active: true,
+      rolledBack: false,
+      written: false,
+      settled: Promise.withResolvers<void>(),
+    };
+    this.#transaction = transaction;
+    return transaction;
+  }
+
+  #commitTransaction(
+    transaction: ObjectDatabaseTransaction,
+    hooks: NodeObjectTransactionCommitHooks,
+  ): void {
+    this.#requireUsable();
+    if (transaction.rolledBack) {
+      this.#database.exec("ROLLBACK");
+      return;
+    }
+    hooks.beforeCommit();
+    this.#database.exec("COMMIT");
+    if (transaction.written) {
+      this.#committedStoragePosition += 1;
+    }
+    transaction.active = false;
+    this.#transaction = null;
+    // Publication is synchronous, so another queued transaction cannot start between commit and push.
+    this.#transactionContext.exit(() => {
+      hooks.afterCommit();
+    });
+  }
+
+  #finishTransaction(transaction: ObjectDatabaseTransaction): void {
+    try {
+      if (this.#database.isTransaction) {
+        this.#database.exec("ROLLBACK");
+      }
+    } finally {
+      transaction.active = false;
+      this.#transaction = null;
+      transaction.settled.resolve();
+    }
+  }
+
   executeSql(
     query: string,
     bindings: readonly NodeDurableObjectSqlValue[],
   ): NodeRuntimeSqlExecution {
     assertObjectAuthorSql(query);
+    const migrationPragma =
+      /^(?:\s|--[^\n]*(?:\n|$)|\/\*[\s\S]*?\*\/)*pragma\s+(foreign_keys|defer_foreign_keys)\s*=\s*(on|off|0|1)\s*;?\s*$/i.exec(
+        query,
+      );
+    if (migrationPragma) {
+      this.#requireStorageAccess();
+      if (bindings.length !== 0) {
+        throw new Error("NODE_RUNTIME_OBJECT_DATABASE_PRAGMA_BINDINGS_FORBIDDEN");
+      }
+      if (migrationPragma[1].toLowerCase() === "foreign_keys" && this.#database.isTransaction) {
+        throw new Error("NODE_RUNTIME_OBJECT_DATABASE_FOREIGN_KEYS_DURING_TRANSACTION");
+      }
+      // Connection settings are not persisted writes. foreign_keys must execute before BEGIN;
+      // defer_foreign_keys belongs to the active migration transaction and resets at its end.
+      this.#database.prepare(query).run();
+      return { rows: [], columnNames: [], rowsRead: 0, rowsWritten: 0 };
+    }
     const operation = applicationSqlOperation(query);
     const parameters = bindings.map(toNodeSqlValue);
     if (operation === "select") {
@@ -104,7 +340,7 @@ export class ManagedNodeRuntimeObjectDatabase {
   }
 
   get databaseSize(): number {
-    this.#requireUsable();
+    this.#requireStorageAccess();
     const pageCount = readPragmaNumber(this.#database, "PRAGMA page_count");
     const pageSize = readPragmaNumber(this.#database, "PRAGMA page_size");
     return pageCount * pageSize;
@@ -112,13 +348,16 @@ export class ManagedNodeRuntimeObjectDatabase {
 
   /** Returns the latest local commit position that an object output can reveal. */
   get committedStoragePosition(): number {
-    this.#requireUsable();
+    this.#requireStorageAccess();
     return this.#committedStoragePosition;
   }
 
   /** Proves the requested object storage position durable before external output is released. */
   ensureDurableStoragePosition(requiredPosition: number): void {
-    this.#requireUsable();
+    this.#requireStorageAccess();
+    if (this.#transaction) {
+      throw new Error("NODE_RUNTIME_OBJECT_DATABASE_OUTPUT_DURING_TRANSACTION");
+    }
     if (this.#durableStoragePosition >= requiredPosition) {
       return;
     }
@@ -162,6 +401,7 @@ export class ManagedNodeRuntimeObjectDatabase {
   }
 
   close(): void {
+    this.inputGate.close();
     this.#database.close();
   }
 
@@ -213,6 +453,7 @@ export class ManagedNodeRuntimeObjectDatabase {
       if (!active) {
         throw new Error("NODE_RUNTIME_OBJECT_DATABASE_SESSION_CLOSED");
       }
+      this.#requireStorageAccess();
       assertApplicationSql(sql, mode);
       return this.#database.prepare(sql);
     };
@@ -236,6 +477,31 @@ export class ManagedNodeRuntimeObjectDatabase {
     // Async callbacks cannot be cancelled, but their captured SQL session closes before resumption.
     void Promise.resolve(result).catch(() => {});
     throw new Error("NODE_RUNTIME_OBJECT_DATABASE_ASYNC_TRANSACTION");
+  }
+
+  #ownedTransaction(): ObjectDatabaseTransaction | null {
+    const context = this.#transactionContext.getStore();
+    if (context) {
+      return context;
+    }
+    const transaction = this.#transaction;
+    return transaction && transaction.owner === this.inputGate.operationOwner ? transaction : null;
+  }
+
+  #requireStorageAccess(): void {
+    this.#requireUsable();
+    const context = this.#ownedTransaction();
+    if (context && !context.active) {
+      throw new Error("NODE_RUNTIME_OBJECT_DATABASE_TRANSACTION_CLOSED");
+    }
+    if (context?.rolledBack) {
+      throw new Error("NODE_RUNTIME_OBJECT_DATABASE_TRANSACTION_ROLLED_BACK");
+    }
+    // Synchronous SQL cannot wait. Already-admitted handlers fail closed instead of joining
+    // another handler's transaction; asynchronous storage and new event admission can queue.
+    if (this.#transaction && context !== this.#transaction) {
+      throw new Error("NODE_RUNTIME_OBJECT_DATABASE_TRANSACTION_BUSY");
+    }
   }
 
   #requireUsable(): void {

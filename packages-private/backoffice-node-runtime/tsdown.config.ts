@@ -28,6 +28,7 @@ export default defineConfig({
     "./src/scheduling/node-alarm-scheduler.ts",
     "./src/scheduling/node-durable-hooks.ts",
     "./src/testing/node-runtime-scenario.ts",
+    "./src/testing/runtime-scenario.ts",
   ],
   dts: true,
   unbundle: true,

@@ -9,6 +9,7 @@ import {
 } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import type { AnyFragnoInstantiatedDatabaseFragment } from "@fragno-dev/db/durable-hooks";
 import type { DurableHooksInstrumentation } from "@fragno-dev/db/hooks";
+import type { NodeDurableObjectStorage } from "@fragno-private/backoffice-node-runtime/node-durable-object-storage";
 
 import type { FragnoRequestLifecycleContext } from "@fragno-dev/core";
 
@@ -99,10 +100,13 @@ export type BackofficeOutboxItem = {
   lastError?: string;
 };
 
-export type BackofficeObjectState = Pick<
-  DurableObjectState,
-  "id" | "storage" | "blockConcurrencyWhile"
->;
+/** Shared implementations need KV and alarms, not Cloudflare's entire storage/platform surface. */
+export type BackofficeObjectState = Pick<DurableObjectState, "id" | "blockConcurrencyWhile"> & {
+  readonly storage: Pick<
+    NodeDurableObjectStorage,
+    "get" | "put" | "delete" | "list" | "getAlarm" | "setAlarm" | "deleteAlarm"
+  >;
+};
 
 export type BackofficeFragmentDurableObjectCreateRuntimeContext<TEnv = CloudflareEnv> =
   FragmentDurableObjectHostContext<TEnv> & {

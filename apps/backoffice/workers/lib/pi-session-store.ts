@@ -1,3 +1,10 @@
+import {
+  SQLITE_MIGRATIONS,
+  SqliteStorage,
+  type SqliteDatabase,
+  type SqliteExecutor,
+  type SqliteValue,
+} from "@earendil-works/pi-durable/storage/sqlite";
 /*
  * Adapted from Cloudflare Agents: packages/agents/src/harness/pi/session-store.ts.
  * MIT License Copyright (c) 2025 Cloudflare, Inc.
@@ -20,13 +27,10 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-import {
-  SQLITE_MIGRATIONS,
-  SqliteStorage,
-  type SqliteDatabase,
-  type SqliteExecutor,
-  type SqliteValue,
-} from "@earendil-works/pi-durable/storage/sqlite";
+import type {
+  NodeDurableObjectSqlCursor,
+  NodeDurableObjectStorage,
+} from "@fragno-private/backoffice-node-runtime/node-durable-object-storage";
 
 /**
  * pi's session store on a Durable Object's SQLite database.
@@ -51,9 +55,23 @@ export type PiSessionStoreOptions = {
 
 const DEFAULT_PREFIX = "pi_";
 
-/** Open pi-durable's storage over this object's SQLite database. */
+type PiSessionSqlStorage = {
+  exec(
+    query: string,
+    ...bindings: SqlStorageValue[]
+  ): Pick<
+    NodeDurableObjectSqlCursor<Record<string, unknown>>,
+    "toArray" | "rowsWritten" | "columnNames"
+  >;
+};
+
+type PiSessionStoreStorage = Pick<NodeDurableObjectStorage, "transaction"> & {
+  sql: PiSessionSqlStorage;
+};
+
+/** Open pi-durable's storage over the object's transactional SQL, on Cloudflare or Node. */
 export function openPiSessionStore(
-  storage: DurableObjectStorage,
+  storage: PiSessionStoreStorage,
   options: PiSessionStoreOptions = {},
 ): Promise<SqliteStorage> {
   return SqliteStorage.open(new DurableObjectSqliteDatabase(storage, options));
@@ -127,11 +145,11 @@ function binding(value: SqliteValue): SqlStorageValue {
 }
 
 /** Blobs come back as ArrayBuffers; pi's contract reads Uint8Arrays. */
-function decodeSqliteRow(raw: Record<string, SqlStorageValue>): Record<string, unknown> {
+function decodeSqliteRow(raw: Record<string, unknown>): Record<string, unknown> {
   for (const key of Object.keys(raw)) {
     const value = raw[key];
     if (value instanceof ArrayBuffer) {
-      (raw as Record<string, unknown>)[key] = new Uint8Array(value);
+      raw[key] = new Uint8Array(value);
     }
   }
   return raw;
@@ -182,10 +200,10 @@ class OperationQueue {
 
 /** One statement on a Durable Object's synchronous SQL API. */
 class Statements {
-  readonly #sql: SqlStorage;
+  readonly #sql: PiSessionSqlStorage;
   readonly #prefixer: Prefixer;
 
-  constructor(sql: SqlStorage, prefixer: Prefixer) {
+  constructor(sql: PiSessionSqlStorage, prefixer: Prefixer) {
     this.#sql = sql;
     this.#prefixer = prefixer;
   }
@@ -199,8 +217,8 @@ class Statements {
   }
 
   get(sql: string, params: readonly SqliteValue[]): Record<string, unknown> | undefined {
-    const first = this.#sql.exec(this.#prefixer.rewrite(sql), ...params.map(binding)).next();
-    return first.done ? undefined : decodeSqliteRow(first.value);
+    const [first] = this.#sql.exec(this.#prefixer.rewrite(sql), ...params.map(binding)).toArray();
+    return first === undefined ? undefined : decodeSqliteRow(first);
   }
 
   all<T extends object>(sql: string, params: readonly SqliteValue[]): T[] {
@@ -272,11 +290,11 @@ class DurableObjectSqliteTransaction implements SqliteExecutor {
  * callback rejects and rejects with the same error.
  */
 export class DurableObjectSqliteDatabase implements SqliteDatabase {
-  readonly #storage: DurableObjectStorage;
+  readonly #storage: PiSessionStoreStorage;
   readonly #statements: Statements;
   readonly #queue = new OperationQueue();
 
-  constructor(storage: DurableObjectStorage, options: PiSessionStoreOptions = {}) {
+  constructor(storage: PiSessionStoreStorage, options: PiSessionStoreOptions = {}) {
     this.#storage = storage;
     this.#statements = new Statements(storage.sql, new Prefixer(options.prefix ?? DEFAULT_PREFIX));
   }

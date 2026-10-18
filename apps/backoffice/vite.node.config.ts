@@ -23,7 +23,7 @@ export default defineConfig({
   },
   plugins: [tailwindcss(), reactRouter(), emitWaSqliteWasmAssetPlugin()],
   ssr: {
-    external: ["better-sqlite3"],
+    external: ["better-sqlite3", "@fragno-private/backoffice-node-runtime"],
     noExternal: true,
   },
 });

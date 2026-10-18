@@ -5,7 +5,12 @@
 /.react-router/
 /build/
 /build-node/
+/build-graft/
+/.docker-node/
+/.docker-graft/
 /.backoffice-node/
+/.backoffice-graft/
+/graft.toml
 .source
 
 # Cloudflare

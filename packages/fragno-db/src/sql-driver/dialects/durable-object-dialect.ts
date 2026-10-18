@@ -29,11 +29,7 @@ interface SqlStorage {
     // oxlint-disable-next-line no-explicit-any
     ...bindings: any[]
   ): SqlStorageCursor<T>;
-  Cursor: typeof SqlStorageCursor;
-  Statement: typeof SqlStorageStatement;
 }
-
-declare abstract class SqlStorageStatement {}
 declare abstract class SqlStorageCursor<T extends Record<string, SqlStorageValue>> {
   next():
     | {
@@ -210,33 +206,24 @@ class DOConnection implements DatabaseConnection {
       throw new Error("Transaction already in progress");
     }
 
-    // Use a promise to wait for the transaction closure to actually start
-    let transactionReady: (() => void) | null = null;
-    const readyPromise = new Promise<void>((resolve) => {
-      transactionReady = resolve;
+    const ready = Promise.withResolvers<void>();
+    this.#transactionPromise = this.#config.ctx.storage.transaction(async (txn) => {
+      this.#txn = txn;
+      const control = Promise.withResolvers<void>();
+      this.#transactionControl = control;
+      ready.resolve();
+      await control.promise;
     });
-
-    // Start the transaction - all queries executed will be inside this closure
-    this.#transactionPromise = this.#config.ctx.storage
-      .transaction(async (txn) => {
-        this.#txn = txn;
-
-        // Wait for commit or rollback to be called
-        await new Promise<void>((resolve, reject) => {
-          this.#transactionControl = { resolve, reject };
-          // Signal that transaction is ready
-          if (transactionReady) {
-            transactionReady();
-          }
-        });
-      })
-      .catch((error: unknown) => {
-        // Don't clear state here - let commit/rollback handle it
-        throw error;
-      });
-
-    // Wait for the transaction closure to set up before returning
-    await readyPromise;
+    // Admission can fail before the callback starts. Reject begin instead of hanging its caller.
+    void this.#transactionPromise.catch(ready.reject);
+    try {
+      await ready.promise;
+    } catch (error) {
+      this.#transactionPromise = null;
+      this.#transactionControl = null;
+      this.#txn = null;
+      throw error;
+    }
   }
 
   async commitTransaction() {

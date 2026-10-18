@@ -30,7 +30,7 @@ RUN --mount=type=cache,id=backoffice-pnpm-store,target=/pnpm/store,sharing=locke
   --mount=type=cache,id=backoffice-pnpm-metadata,target=/root/.cache/pnpm,sharing=locked \
   pnpm --store-dir=/pnpm/store \
     --config.inject-workspace-packages=true \
-    --filter=@fragno-private/backoffice-node-runtime \
+    --filter=@fragno-apps/backoffice-rr \
     deploy \
     --prod \
     /runtime
@@ -47,6 +47,9 @@ COPY --from=builder --chown=node:node /workspace/apps/backoffice/build-node /app
 COPY --from=builder --chown=node:node \
   /workspace/apps/backoffice/scripts/node-server/start-node-processes.mjs \
   /app/scripts/node-server/start-node-processes.mjs
+COPY --from=builder --chown=node:node \
+  /workspace/apps/backoffice/scripts/server/node-process-supervisor.mjs \
+  /app/scripts/server/node-process-supervisor.mjs
 
 ENV NODE_ENV=production
 ENV HOST=0.0.0.0

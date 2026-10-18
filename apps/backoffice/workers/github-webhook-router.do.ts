@@ -7,6 +7,7 @@ import {
 import { bytesToHex } from "@/lib/crypto";
 
 import { maskSecret, resolveGitHubConfig, resolveWebhookUrl } from "./github.shared";
+import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
 
 type AdminConfigResponse = {
   configured: boolean;
@@ -147,7 +148,7 @@ type GitHubWebhookRouterSnapshot = {
   };
 };
 
-type GitHubWebhookRouterObjectState = Pick<DurableObjectState, "storage">;
+type GitHubWebhookRouterObjectState = Pick<BackofficeObjectState, "storage">;
 
 const githubWebhookTextEncoder = new TextEncoder();
 const githubWebhookTextDecoder = new TextDecoder();

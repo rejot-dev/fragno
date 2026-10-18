@@ -1,28 +1,36 @@
-import type { RpcStub } from "capnweb";
+import type { RpcCompatible, RpcStub } from "capnweb";
 
 import type { NodeDurableObjectState } from "./node-durable-object-state";
 
-/** Object handlers and alarms share this state inside their dedicated worker thread. */
-export type NodeRuntimeObjectContext = {
-  id: DurableObjectId;
-  name: string;
-  state: NodeDurableObjectState;
-  nowEpochMs(this: void): number;
+/** Resolves cross-object capabilities through the host; callers dispose handles with `using`. */
+export type NodeRuntimeObjectResolver = {
+  get<TObject extends RpcCompatible<TObject>>(binding: string, name: string): RpcStub<TObject>;
 };
 
-/** Object factories are imported in workers, never transferred as closures. */
-export type NodeRuntimeObjectFactory = (context: NodeRuntimeObjectContext) => {
-  fetch(request: Request): Response | Promise<Response>;
+/** Factories construct application dependencies locally from cloned input and host-backed object access. */
+export type NodeRuntimeObjectContext<TInput = null> = {
+  id: NodeDurableObjectState["id"];
+  name: string;
+  state: NodeDurableObjectState;
+  input: TInput;
+  objects: NodeRuntimeObjectResolver;
+  nowEpochMs(this: void): number;
+  /** Registers worker-local cleanup, run after admission stops and before storage closes. */
+  onShutdown(this: void, cleanup: () => void | Promise<void>): void;
 };
+
+/** Object factories are imported in workers, never transferred as closures; RPC-only objects are supported. */
+export type NodeRuntimeObjectFactory = (context: NodeRuntimeObjectContext<unknown>) => object;
 
 declare const nodeRuntimeObjectFactory: unique symbol;
 
 /** An importable object factory with its RPC signatures retained only in the type system. */
 export type NodeRuntimeObjectDefinition<
-  TFactory extends NodeRuntimeObjectFactory = NodeRuntimeObjectFactory,
+  TFactory extends (context: never) => object = (context: never) => object,
 > = {
   moduleUrl: string;
   exportName: string;
+  input: unknown;
   readonly [nodeRuntimeObjectFactory]: TFactory;
 };
 
@@ -46,15 +54,35 @@ export type NodeRuntimeObjectStub<TDefinition extends NodeRuntimeObjectDefinitio
   NodeRuntimePrivateObjectKeys<NodeRuntimeObjectFor<TDefinition>>
 >;
 
-/** Declares an object module without evaluating or serializing its factory in the calling thread. */
-export function defineNodeRuntimeObject<TFactory extends NodeRuntimeObjectFactory>(
+/** Declares an importable factory; input is cloned now and again at worker activation, never serialized code. */
+export function defineNodeRuntimeObject<TFactory extends (context: never) => object>(
   moduleUrl: URL,
   exportName: string,
-): NodeRuntimeObjectDefinition<TFactory> {
+  ...input: Parameters<TFactory>[0] extends { input: infer TInput }
+    ? null extends TInput
+      ? [input?: TInput]
+      : [input: TInput]
+    : []
+): NodeRuntimeObjectDefinition<TFactory>;
+export function defineNodeRuntimeObject(
+  moduleUrl: URL,
+  exportName: string,
+  input: unknown = null,
+): NodeRuntimeObjectDefinition {
   if (moduleUrl.protocol !== "file:" || exportName.length === 0) {
     throw new Error(
       "NODE_RUNTIME_OBJECT_INVALID_MODULE: expected a file URL and named factory export.",
     );
   }
-  return { moduleUrl: moduleUrl.href, exportName } as NodeRuntimeObjectDefinition<TFactory>;
+  let clonedInput: unknown;
+  try {
+    clonedInput = structuredClone(input);
+  } catch (cause) {
+    throw new Error("NODE_RUNTIME_OBJECT_INPUT_NOT_CLONEABLE", { cause });
+  }
+  return {
+    moduleUrl: moduleUrl.href,
+    exportName,
+    input: clonedInput,
+  } as NodeRuntimeObjectDefinition;
 }

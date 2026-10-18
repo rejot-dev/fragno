@@ -1,8 +1,18 @@
 # Canonical env template for local docs development.
 # This file is also used by `pnpm run types:generate` to keep worker types deterministic.
 
-# Optional Node runtime override; defaults to this git-ignored directory.
-BACKOFFICE_SQLITE_DIR=./.backoffice-node
+# SQLite start:node uses .backoffice-node/; override with BACKOFFICE_SQLITE_DIR if needed.
+# BACKOFFICE_SQLITE_DIR=./.backoffice-node
+
+# Graft start:graft only: leave these empty for automatic local storage under .backoffice-graft/.
+# Production and custom Graft configs require an explicitly bootstrapped, published control log.
+GRAFT_CONFIG=
+BACKOFFICE_GRAFT_CONTROL_REMOTE_LOG_ID=
+# Graft-only private peer listener. Advertised origins are required for wildcard binds.
+BACKOFFICE_NODE_INTERNAL_HOST=127.0.0.1
+BACKOFFICE_NODE_INTERNAL_PORT=5174
+# BACKOFFICE_NODE_APPLICATION_ORIGIN=http://127.0.0.1:5173
+# BACKOFFICE_NODE_INTERNAL_ORIGIN=http://127.0.0.1:5174
 
 # Node codemode, TypeScript checking, and sandbox management use one cf-sandbox-bridge deployment.
 # Use the HTTPS origin; codemode derives WSS for WebSocket activations.
@@ -16,7 +26,7 @@ CLOUDFLARE_BRIDGE_API_KEY=
 # OTEL_TRACES_SAMPLER=parentbased_traceidratio
 # OTEL_TRACES_SAMPLER_ARG=1
 
-# Node claims both 127.0.0.1 and ::1 by default so localhost cannot reach another process.
+# Both Node runtimes support 127.0.0.1; use the explicit canonical local URL.
 # Set HOST explicitly only when the proxy runs elsewhere. Trust only the proxy's IP/CIDR for
 # X-Forwarded-Proto; false disables proxy trust.
 BACKOFFICE_TRUST_PROXY=loopback

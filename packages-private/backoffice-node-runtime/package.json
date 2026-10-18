@@ -82,6 +82,10 @@
       "types": "./dist/scheduling/node-alarm-scheduler.d.ts",
       "default": "./dist/scheduling/node-alarm-scheduler.js"
     },
+    "./runtime-scenario": {
+      "types": "./dist/testing/runtime-scenario.d.ts",
+      "default": "./dist/testing/runtime-scenario.js"
+    },
     "./node-runtime-scenario": {
       "types": "./dist/testing/node-runtime-scenario.d.ts",
       "default": "./dist/testing/node-runtime-scenario.js"
@@ -117,6 +121,7 @@
     "@fragno-private/vitest-config": "workspace:*",
     "@types/node": "^24.10.9",
     "@types/ws": "8.18.1",
+    "kysely": "^0.28.17",
     "tsdown": "^0.22.4",
     "typescript": "catalog:",
     "vitest": "catalog:"

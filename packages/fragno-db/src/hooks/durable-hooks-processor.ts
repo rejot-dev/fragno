@@ -94,9 +94,13 @@ export function createDurableHooksProcessor(
   };
 }
 
+/** Serial execution keeps processors sharing one transactional SQLite connection isolated. */
+export type DurableHooksProcessorExecution = "parallel" | "serial";
+
 export function createDurableHooksProcessorGroup(
   fragments: readonly AnyFragnoInstantiatedDatabaseFragment[],
   options: DurableHooksProcessorGroupOptions = {},
+  execution: DurableHooksProcessorExecution = "parallel",
 ): DurableHooksProcessor {
   const configuredFragments = fragments.filter(hasDurableHooksConfigured);
   if (configuredFragments.length === 0) {
@@ -106,12 +110,13 @@ export function createDurableHooksProcessorGroup(
     createDurableHooksProcessor(fragment, { instrumentation: options.instrumentation }),
   );
 
-  return createDurableHooksProcessorGroupFromProcessors(processors, options);
+  return createDurableHooksProcessorGroupFromProcessors(processors, options, execution);
 }
 
 export function createDurableHooksProcessorGroupFromProcessors(
   processors: readonly DurableHooksProcessor[],
   options: DurableHooksProcessorGroupOptions = {},
+  execution: DurableHooksProcessorExecution = "parallel",
 ): DurableHooksProcessor {
   if (processors.length === 0) {
     throw new Error("[fragno-db] No processors provided for durable hooks processing.");
@@ -134,10 +139,33 @@ export function createDurableHooksProcessorGroupFromProcessors(
     }
   }
 
+  async function settleProcessors<TResult>(
+    operation: (processor: DurableHooksProcessor) => Promise<TResult>,
+  ): Promise<PromiseSettledResult<TResult>[]> {
+    if (execution === "parallel") {
+      return await Promise.allSettled(processors.map(operation));
+    }
+    const results: PromiseSettledResult<TResult>[] = [];
+    for (const processor of processors) {
+      try {
+        results.push({ status: "fulfilled", value: await operation(processor) });
+      } catch (reason) {
+        results.push({ status: "rejected", reason });
+      }
+    }
+    return results;
+  }
+
   const processDue = async (): Promise<DurableHooksRun> => {
-    const results = await Promise.allSettled(
-      processors.map(async (processor) => await processor.processDue()),
-    );
+    const results = await settleProcessors(async (processor) => {
+      const run = await processor.processDue();
+      if (execution === "serial") {
+        // Claiming the next processor must not overlap this processor's completion transaction.
+        // The aggregate completion below still owns error reporting for a failed run.
+        await run.completion.catch(() => {});
+      }
+      return run;
+    });
     const runs: DurableHooksRun[] = [];
     for (const result of results) {
       if (result.status === "fulfilled") {
@@ -169,11 +197,9 @@ export function createDurableHooksProcessorGroupFromProcessors(
     namespace,
     processDue,
     drain: async () => {
-      const results = await Promise.allSettled(
-        processors.map(async (processor) => {
-          await processor.drain();
-        }),
-      );
+      const results = await settleProcessors(async (processor) => {
+        await processor.drain();
+      });
       for (const result of results) {
         if (result.status === "rejected") {
           await reportProcessorGroupError(result.reason);
@@ -181,9 +207,7 @@ export function createDurableHooksProcessorGroupFromProcessors(
       }
     },
     getNextWakeAt: async () => {
-      const results = await Promise.allSettled(
-        processors.map(async (processor) => await processor.getNextWakeAt()),
-      );
+      const results = await settleProcessors(async (processor) => await processor.getNextWakeAt());
       let nextWakeAt: Date | null = null;
       for (const result of results) {
         if (result.status === "fulfilled") {

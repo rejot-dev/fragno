@@ -1,8 +1,10 @@
 # Backoffice Node runtime
 
 Reusable Durable Object execution in Node worker threads, authority-bound Graft persistence, Cap'n
-Web RPC, durable-hook processing, and alarm scheduling. Backoffice currently keeps its own runtime
-implementation; application integration with this package is deferred.
+Web RPC, durable-hook processing, and alarm scheduling. Backoffice's `backoffice-node.mts`
+entrypoint uses this host with its existing `InMemory*Object` implementations, worker-local
+services, and object-owned Fragment, Auth, and Pi databases. Backoffice's separate SQLite Node
+target uses its existing local-runtime composition; it does not load these Graft workers.
 
 ## Package layout
 
@@ -80,10 +82,63 @@ export function createCounterObject({ state, nowEpochMs }: NodeRuntimeObjectCont
 Construct the runtime using the Graft configuration and authority policy below. There is one storage
 implementation: development and scenarios use filesystem remotes, not a separate SQLite or in-memory
 runtime. The control log coordinates ownership and discovers due alarms across restarts without
-activating every persisted identity. Object names can contain colons; binding names must be nonempty
-and cannot contain colons. Object factories receive `id`, `name`, `state`, and `nowEpochMs()`.
-Synchronous and asynchronous methods both wait for `blockConcurrencyWhile` initialization. Factories
-may return object literals or class instances.
+activating every persisted identity. Object names must be nonempty and can contain colons; binding
+names must be nonempty and cannot contain colons. Object factories receive `id`, `name`, `state`,
+`input`, `objects`, `nowEpochMs()`, and `onShutdown(cleanup)`. Synchronous and asynchronous methods
+both wait for `blockConcurrencyWhile` initialization. Factories may return object literals or class
+instances, including RPC-only objects with no `fetch` handler. No runtime superclass or special
+constructor is required.
+
+Factories register worker-local resource cleanup with `context.onShutdown(callback)`. Callbacks run
+once in reverse registration order after event admission stops and before SQLite closes, including
+on initialization failure. They can cancel long-lived application work; successful shutdown then
+waits for admitted activity and registered background work and proves cleanup writes durable.
+Application cleanup failures still close storage and reject shutdown rather than release a healthy
+claim. Process death, terminal self-fencing, and forced worker termination do not guarantee
+callbacks. This is not a destructor protocol or a new runtime superclass.
+
+### Worker-local dependencies and cross-object access
+
+`defineNodeRuntimeObject` accepts an optional third argument for factory input. Factories typed as
+`NodeRuntimeObjectContext<Configuration>` require that configuration argument. The input is cloned
+when defined and transferred by structured clone at activation. Functions are rejected;
+routing-server closures and live clients are not transferred. Construct clients, services, and
+existing implementation classes inside the factory.
+
+`context.objects.get<TObject>(binding, name)` resolves a disposable Cap'n Web stub through the
+host's existing local/peer ownership routing, including during `blockConcurrencyWhile`
+initialization:
+
+```ts
+export function createLedgerObject({
+  state,
+  input,
+  objects,
+}: NodeRuntimeObjectContext<{
+  receiptBinding: string;
+}>) {
+  const services = {
+    async record(message: string) {
+      using receipt = objects.get<{ record(message: string): Promise<void> }>(
+        input.receiptBinding,
+        "receipts",
+      );
+      await receipt.record(message);
+    },
+  };
+  return new LedgerObject({ state, services });
+}
+
+const definition = defineNodeRuntimeObject<typeof createLedgerObject>(
+  new URL("./ledger-object.js", import.meta.url),
+  "createLedgerObject",
+  { receiptBinding: "RECEIPTS" },
+);
+```
+
+Worker-acquired handles are caller-owned: dispose them with `using`. Cross-object calls retain their
+own immediate durability boundaries; they do not join the calling object's transaction or external
+output scope. Dependencies remain worker-local rather than creating a second object runtime.
 
 Fetch and RPC cross real worker-thread boundaries through Cap'n Web sessions on Node MessagePorts.
 Cap'n Web owns serialization, callback capabilities, returned `RpcTarget` capabilities, promise
@@ -484,7 +539,7 @@ push, while a reader does not wait for a later storage position it did not obser
 
 The Node host places every application Fetch and its internal object RPCs inside one output gate.
 Namespace handles acquired during that Fetch are request-owned and automatically disposed. Object
-factories still receive no transaction or push controls:
+factories receive storage transactions but no commit, flush, or push controls:
 
 ```ts
 async function handleApplicationRequest(request: Request, runtime: CounterRuntime) {
@@ -528,22 +583,105 @@ return unconfirmed state, but their namespace handles remain caller-owned and mu
 Initialization and drained `waitUntil` work retain immediate worker-owned durability boundaries.
 Authority-bound alarm installation, deletion, and successful consumption are stronger immediate
 coordination barriers: they write a control reconciliation marker, push the object database, and
-publish the resulting alarm discovery state before the storage call returns. This can push earlier
-writes before the enclosing output gate closes. A namespace handle acquired inside an output scope
-is disposed when that scope closes. Returned `RpcTarget` capabilities inherit the output scope in
-which they were created and reject use after that scope closes, but applications still dispose those
-returned capabilities explicitly. This is not a general side-effect gate: outbound fetches, callback
-arguments, and response-stream work performed after the handler returns are not transactional or
-delayed. Detached unregistered work remains unsupported.
+publish the resulting alarm discovery state before the storage call returns. Inside a storage
+transaction, alarm edits stay private until commit; rollback publishes no speculative alarm state.
+Commit reconciles only the final installation, preserving re-arms made by an alarm handler. This can
+push earlier writes before the enclosing output gate closes. A namespace handle acquired inside an
+output scope is disposed when that scope closes. Returned `RpcTarget` capabilities inherit the
+output scope in which they were created and reject use after that scope closes, but applications
+still dispose those returned capabilities explicitly. Output gates are not general side-effect
+gates: outbound fetches and RPCs are not transactional and may leave the object before its local
+commit. Their application-facing completions use the separate input gates described below. Detached
+unregistered work remains unsupported.
+
+### Object storage transactions
+
+`state.storage.transaction(async (transaction) => ...)` and `transactionSync(() => ...)` own real
+SQLite transactions on the same worker-managed connection as SQL, KV, and alarms. Writes join the
+active transaction, a successful write transaction advances storage position once, and throwing or
+explicit `transaction.rollback()` discards its mutations. Synchronous callbacks must not return
+promises. Nested transactions are rejected.
+
+```ts
+await state.storage.transaction(async (transaction) => {
+  state.storage.sql.exec("UPDATE counters SET count = count + 1 WHERE id = 1");
+  await transaction.put("lastUpdated", nowEpochMs());
+  await transaction.setAlarm(nowEpochMs() + 100);
+});
+```
+
+New handlers and unrelated asynchronous storage accesses wait for an active transaction. An
+already-admitted foreign handler's managed I/O completion also waits **before its application
+continuation resumes**, so its ordinary synchronous SQL sees committed or rolled-back state. Foreign
+synchronous SQL that nevertheless reaches storage still fails closed with
+`NODE_RUNTIME_OBJECT_DATABASE_TRANSACTION_BUSY`; it never joins another operation's transaction.
+Other object workers remain independent. This is not whole-handler serialization or a cross-object
+transaction.
+
+Transaction ownership follows the originating object operation and its asynchronous continuations,
+not only the storage callback. The existing Fragno `DurableObjectDialect` uses ordinary
+`state.storage.sql` throughout Kysely's begin/query/commit protocol; SQL, KV, and alarm operations
+from that same operation join its open transaction without adapter-specific handles. Factory
+initialization and `blockConcurrencyWhile` work establish the same ownership boundary. SQL handles
+remain usable across transactions, while explicit transaction handles and continuations inherited
+from completed transaction callbacks reject further access.
+
+Admission and output settlement wait for transactions to close even when the owning handler returns
+before its registered transaction work finishes. An output gate is not transaction ownership:
+separate calls in the same gate remain separate operations. Graft pushes, authority checks, and
+alarm publication remain runtime-owned.
+
+### Object input turns and managed I/O
+
+`runtime/node-object-input-gate.ts` supplies the canonical operation identity and critical-section
+lineage used by admission, storage ownership, and I/O delivery. Async storage transactions and
+`blockConcurrencyWhile` reserve exclusive input admission, drain already-ready microtasks at a
+native turn boundary, and then enter their critical section. Normal handlers continue to overlap
+outside these sections. Nested concurrency blocks retain their parent scope; nested storage
+transactions remain invalid.
+
+Only completions captured in the owning critical section (or its descendants) can resume while it is
+open. Ordinary rollback releases the gate without poisoning it. Commit, transactional alarm
+reconciliation, and required Graft publication finish before foreign input resumes. RPC callback
+functions and callback targets exported from a permitted turn capture that runtime-owned scope;
+caller-supplied metadata cannot grant ownership. Queued and admitted asynchronous callback work
+counts toward activity and shutdown draining. Closing storage rejects queued input.
+
+`runtime/node-object-worker-io.ts` installs worker-only facades before importing application
+factories. CommonJS and ESM dependencies see the same wrapped Node exports. Managed delivery covers:
+
+- Cap'n Web result promises, received capabilities, and exported callback functions/targets;
+- asynchronous KV/alarm storage methods;
+- callback timers, timer promises/scheduler methods, and timer-promise interval iteration;
+- Node crypto callbacks (including Better Auth's unchanged native `scrypt`) and WebCrypto promises;
+- wrapped filesystem callback/promise operations, FileHandle methods, and filesystem watch
+  iteration;
+- fetch responses, Request/Response body methods, Web Stream reader/writer operations, readable
+  iteration, cancellation, and `pipeTo` completion;
+- abort listeners registered through `AbortSignal.addEventListener`.
+
+Native producers run outside application input scope. Shared RPC/socket parsers, authority updates,
+fencing, and cleanup I/O remain able to progress; an owning reply cannot be blocked behind a foreign
+reply on the same connection. Timer cancellation/disposal invalidates already-queued callbacks,
+refresh creates a new installation generation, and blocked intervals retain one pending tick rather
+than accumulating an unbounded callback backlog.
+
+This is a **managed I/O contract**, not transparent compatibility with arbitrary Node callbacks.
+Direct socket/EventEmitter listeners, native addons, child-process callbacks, custom stream-source
+callbacks, and other unwrapped APIs must not resume storage-using application code during another
+operation's critical section. `AbortSignal.onabort` and unwrapped directory-handle operations are
+not managed boundaries. New dependency I/O surfaces require a producer-side facade and concrete
+worker coverage; wrapping an await after application code already resumed is insufficient. SQL
+ownership and transaction-lifetime guards remain enforced independently of the input gate.
 
 The Graft runtime requires Node.js 24.11 or newer. `state.storage.sql.exec()` accepts one
-application statement and does not expose transaction control, `PRAGMA`, `ATTACH`, or tables whose
-names begin with `node_runtime_`. The Graft configuration must be established before the extension
-loads, use `make_default = false`, and use a distinct `data_dir` for each container cache. Graft
-0.2.1 is pinned; its VFS uses `journal_mode = MEMORY`, not WAL. The filesystem remote supports local
-scenarios, while deployment can supply Graft's S3-compatible configuration. See
-`docs/stateless-graft-runtime-plan.md` for the remaining control plane, fencing, routing, and
-scheduling work.
+application statement and does not expose transaction control, Graft/other management `PRAGMA`,
+`ATTACH`, or tables whose names begin with `node_runtime_`. The Graft configuration must be
+established before the extension loads, use `make_default = false`, and use a distinct `data_dir`
+for each container cache. Graft 0.2.1 is pinned; its VFS uses `journal_mode = MEMORY`, not WAL. The
+filesystem remote supports local scenarios, while deployment can supply Graft's S3-compatible
+configuration. See `docs/stateless-graft-runtime-plan.md` for the remaining control plane, fencing,
+routing, and scheduling work.
 
 ### Caller-coordinated cleanup
 

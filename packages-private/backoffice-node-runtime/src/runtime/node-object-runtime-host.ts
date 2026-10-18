@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Server as HttpServer } from "node:http";
 
-import { createAdaptorServer } from "@hono/node-server";
+import { createAdaptorServer, type HttpBindings, type Http2Bindings } from "@hono/node-server";
 
 import type { GraftNodeLeasePolicy, GraftRuntimeNodeIdentity } from "../graft/graft-node-authority";
 import type { GraftObjectProvisioningPolicy } from "../graft/graft-object-provisioning";
@@ -45,9 +45,22 @@ export type NodeObjectRuntimeHostAlarmPolling =
     }
   | { kind: "manual" };
 
+/** Socket provenance is authoritative; forwarded headers are application-owned untrusted input. */
+export type NodeObjectRuntimeHostConnection = {
+  remoteAddress: string | null;
+  localPort: number | null;
+  /** Observes wire completion or disconnect, including streaming responses. */
+  onResponseSettled(
+    listener: (outcome: "completed" | "aborted", status: number | null) => void,
+  ): void;
+};
+
 /** A Fetch handler and its failure mapper; only application ingress receives an automatic output gate. */
 export type NodeObjectRuntimeHostApplication = {
-  fetch(request: Request): Response | Promise<Response>;
+  fetch(
+    request: Request,
+    connection: NodeObjectRuntimeHostConnection,
+  ): Response | Promise<Response>;
   /** Builds a response without object RPC after application execution or durability fails. */
   handleFetchFailure(error: unknown, request: Request): Response | Promise<Response>;
 };
@@ -128,7 +141,10 @@ export async function startAuthorityBoundGraftNodeObjectHost<
   let alarmScheduler: NodeBackofficeAlarmScheduler | null = null;
 
   const applicationServer = createAdaptorServer({
-    async fetch(request) {
+    // Framework instanceof checks must recognize native Response.json() results.
+    overrideGlobalObjects: false,
+    async fetch(incomingRequest, bindings) {
+      const request = createNodeObjectRuntimeHostRequest(incomingRequest);
       const pathname = new URL(request.url).pathname;
       if (pathname === nodeRuntimeReadinessPath && request.method === "GET") {
         const authority = runtime?.readNodeAuthorityStatus();
@@ -165,20 +181,23 @@ export async function startAuthorityBoundGraftNodeObjectHost<
         application: activeApplication,
         runtime: activeRuntime,
         request,
+        connection: createNodeObjectRuntimeHostConnection(bindings),
       });
       return await trackRequest(operation);
     },
   }) as HttpServer;
   // No automatic authority admission or output gate here: fenced nodes must remain inspectable.
   const internalServer = createAdaptorServer({
-    async fetch(request) {
+    overrideGlobalObjects: false,
+    async fetch(incomingRequest, bindings) {
+      const request = createNodeObjectRuntimeHostRequest(incomingRequest);
       if (lifecycle !== "serving" || !applications) {
         return Response.json({ error: "NODE_OBJECT_RUNTIME_HOST_NOT_READY" }, { status: 503 });
       }
       const internal = applications.internal;
       return await trackRequest(
         Promise.resolve()
-          .then(() => internal.fetch(request))
+          .then(() => internal.fetch(request, createNodeObjectRuntimeHostConnection(bindings)))
           .catch((error: unknown) => internal.handleFetchFailure(error, request)),
       );
     },
@@ -352,16 +371,56 @@ function createNodeObjectRuntimeHostReadinessResponse(readiness: NodeRuntimeRead
   });
 }
 
+function createNodeObjectRuntimeHostRequest(incomingRequest: Request): Request {
+  // The adapter still supplies a lazy Request facade; native Request copy construction rejects it.
+  const init: RequestInit & { duplex: "half" } = {
+    method: incomingRequest.method,
+    headers: incomingRequest.headers,
+    body: incomingRequest.body,
+    signal: incomingRequest.signal,
+    duplex: "half",
+  };
+  return new Request(incomingRequest.url, init);
+}
+
+function createNodeObjectRuntimeHostConnection({
+  incoming,
+  outgoing,
+}: HttpBindings | Http2Bindings): NodeObjectRuntimeHostConnection {
+  return {
+    remoteAddress: incoming.socket.remoteAddress ?? null,
+    localPort: incoming.socket.localPort ?? null,
+    onResponseSettled(listener) {
+      let settled = false;
+      function completeResponse(): void {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        outgoing.off("finish", completeResponse);
+        outgoing.off("close", completeResponse);
+        listener(
+          outgoing.writableFinished ? "completed" : "aborted",
+          outgoing.headersSent ? outgoing.statusCode : null,
+        );
+      }
+      outgoing.once("finish", completeResponse);
+      outgoing.once("close", completeResponse);
+    },
+  };
+}
+
 async function runNodeObjectRuntimeHostApplicationFetch<
   TBindings extends NodeRuntimeObjectBindings,
 >(options: {
   application: NodeObjectRuntimeHostApplication;
   runtime: AuthorityBoundGraftNodeObjectRuntime<TBindings>;
   request: Request;
+  connection: NodeObjectRuntimeHostConnection;
 }): Promise<Response> {
   try {
     return await options.runtime.runWithOutputGate(() =>
-      options.application.fetch(options.request),
+      options.application.fetch(options.request, options.connection),
     );
   } catch (error) {
     return await options.application.handleFetchFailure(error, options.request);

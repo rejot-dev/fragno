@@ -1,9 +1,10 @@
 import { workerData, type MessagePort } from "node:worker_threads";
 
-import { RpcTarget } from "capnweb";
+import { RpcStub, RpcTarget } from "capnweb";
 
 import type { GraftNodeAuthorityWindow } from "../graft/graft-node-authority";
 import { createNodeMessagePortRpcSession } from "../rpc/node-message-port-rpc";
+import { createNodePeerForwardingTarget } from "../rpc/node-peer-object-forwarder";
 import {
   createNodeObjectActivation,
   type NodeObjectActivation,
@@ -13,6 +14,9 @@ import {
   type NodeObjectActivationShutdownResult,
   type NodeObjectAlarmDelivery,
 } from "./node-object-activation";
+import type { NodeObjectWorkerHost } from "./node-object-worker-host";
+import { installNodeObjectWorkerIO } from "./node-object-worker-io";
+import type { NodeRuntimeObjectResolver } from "./node-runtime-object";
 
 /** Bootstrap data carries module identity, persistence, and shared clock state, never application RPC values. */
 export type NodeObjectWorkerOptions = NodeObjectActivationOptions & { port: MessagePort };
@@ -49,7 +53,7 @@ class NodeObjectWorkerApi extends RpcTarget implements NodeObjectWorkerControl {
   }
 
   async releaseOutputScope(outputScopeId: string) {
-    (await this.#ready).releaseOutputScope(outputScopeId);
+    await (await this.#ready).releaseOutputScope(outputScopeId);
   }
 
   async advanceNodeAuthorityWindow(window: GraftNodeAuthorityWindow) {
@@ -87,7 +91,24 @@ class NodeObjectWorkerApi extends RpcTarget implements NodeObjectWorkerControl {
   }
 }
 
+installNodeObjectWorkerIO();
+
 const options = workerData as NodeObjectWorkerOptions;
-const ready = createNodeObjectActivation(options);
-void ready.catch(() => {});
-createNodeMessagePortRpcSession(options.port, new NodeObjectWorkerApi(ready), null);
+const ready = Promise.withResolvers<NodeObjectActivation>();
+void ready.promise.catch(() => {});
+const session = createNodeMessagePortRpcSession<NodeObjectWorkerHost>(
+  options.port,
+  new NodeObjectWorkerApi(ready.promise),
+  null,
+);
+const objects = {
+  get(binding: string, name: string) {
+    return new RpcStub(
+      createNodePeerForwardingTarget(
+        async () => await session.remote.getObject(binding, name),
+        () => {},
+      ),
+    );
+  },
+} as unknown as NodeRuntimeObjectResolver;
+void createNodeObjectActivation(options, objects).then(ready.resolve, ready.reject);

@@ -1,6 +1,6 @@
 # Stateless containers with Graft-backed object and control databases
 
-Status (October 4, 2026): one authority-bound Graft implementation, durable control commands,
+Status (October 6, 2026): one authority-bound Graft implementation, durable control commands,
 distributed lazy first-object provisioning, authority-bound activation/fencing, renewable node
 authority, terminal process self-fencing, authenticated peer routing, a runtime-owned Node HTTP/peer
 host with automatic Fetch output gates and namespace-handle disposal, conditional graceful release,
@@ -13,8 +13,11 @@ plain-SQLite, and unbound single-owner runtime alternatives have been removed. P
 control-store locking protects Graft 0.2.1's shared native cache during concurrent activation;
 object-log pushes do not take that lock.
 
-Scope: `packages-private/backoffice-node-runtime`. Backoffice application integration remains
-separate. This plan does not modify `apps/graft-poc` or port celld's execution engine.
+Scope: `packages-private/backoffice-node-runtime`. Backoffice's separate application composition now
+uses the runtime host and existing object implementations through `backoffice-node.mts`, including
+worker-local services, alarm-owned hooks, and Auth/Pi SQL on managed object connections. The cutover
+uses a fresh Graft store; existing local application files are not imported. This plan does not
+modify `apps/graft-poc` or port celld's execution engine.
 
 ## 1. Outcome and explicit limits
 
@@ -41,8 +44,10 @@ Do not implement:
 
 - Turns, microtask scheduling, a general JavaScript side-effect gate, or precise Cloudflare
   execution semantics.
-- A full `DurableObjectStorage` compatibility layer, implicit KV read-modify-write isolation,
-  asynchronous interactive transactions, or automatic transactional wrapping of entire handlers.
+- A full `DurableObjectStorage` compatibility layer, implicit KV read-modify-write isolation, or
+  automatic transactional wrapping of entire handlers. Explicit object storage transactions are
+  supported only over the runtime-managed connection; Fragment authors still use constrained queries
+  and two-phase OCC rather than interactive Fragment transactions.
 - Exactly-once requests or external side effects, transparent replay after ambiguous failures,
   durable RPC capabilities, WebSocket hibernation, follower acknowledgements, or automatic balancing
   in the first release.
@@ -64,12 +69,16 @@ owner can resume JS; it must not extend the successor's database history with st
   and alarm discovery. There is no separate local SQLite persistence or coordination path.
 - `src/testing/node-runtime-scenario.ts` provisions filesystem Graft storage and uses the production
   runtime with real leases. Manual clocks do not bypass expiry or output authority checks.
-- `NodeRuntimeObjectContext` exposes identity, a clock, and a narrow state API whose
-  `state.storage.sql` surface uses the worker-owned object connection. It exposes no transaction,
-  commit, flush, or push controls.
-- Backoffice's separate `node/sqlite-database-adapters.ts` opens additional databases for Fragment
-  data. Those adapters are outside this implementation; the new package must provide the primitive
-  they can eventually consume rather than declaring the application stateless prematurely.
+- `NodeRuntimeObjectContext` exposes identity, a clock, cloned factory input, host-backed
+  cross-object capabilities, and a narrow state API. SQL, KV, alarms, `storage.transaction`, and
+  `storage.transactionSync` use the worker-owned object connection. There are no author-controlled
+  commit, flush, or push operations; existing object classes need no runtime superclass.
+- Backoffice's Graft object factories use ordinary SQL adapters on each managed connection,
+  including Auth and Pi storage. Its old local database adapters remain only for application
+  scenarios. The serving entrypoint no longer launches a separate hook processor or opens those
+  local files.
+- Factories can register worker-local cleanup with `onShutdown`; shutdown stops admission, runs
+  cleanup before closing storage, drains admitted work, and proves cleanup writes durable.
 
 ### Graft baseline
 
@@ -321,9 +330,9 @@ hydration/fork costs that this stable-log design avoids.
 ### One object database, including real application data
 
 Expose object-scoped SQL through the author-facing `state.storage.sql` API and provide Fragment
-integration through a runtime-owned adapter over the same connection. Do not expose transaction,
-commit, flush, or push controls through `NodeRuntimeObjectContext`. The worker owns the SQLite
-connection and its close lifecycle. The same database contains:
+integration through a runtime-owned adapter over the same connection. Expose scoped async and
+synchronous storage transaction callbacks, but not direct commit, flush, or push controls. The
+worker owns the SQLite connection and its close lifecycle. The same database contains:
 
 - Fragment/application tables, with their existing schema namespacing;
 - the runtime identity/authority row;
@@ -332,13 +341,23 @@ connection and its close lifecycle. The same database contains:
 - durable hook/outbox tables belonging to the object's Fragments.
 
 Do not let object factories open arbitrary files that bypass replication and then advertise the
-object as durable. A future Backoffice integration must map its existing database scopes onto this
-primitive explicitly, including any genuinely shared databases. That migration is not part of this
-package-only plan.
+object as durable. Backoffice's serving factories now map Fragment, Auth, and Pi storage onto the
+owning object connection. Existing local application databases still need an explicit import if
+their data must be retained; serving startup does not infer or migrate those files.
 
 Replace the broad `DurableObjectStorage` cast with an honest narrow runtime storage type. Preserve
 needed `get`/`put`/`delete`/list/alarm behavior and V8 value encoding initially; do not implement
-unused Cloudflare KV options, transaction APIs, or implicit concurrency guarantees.
+unused Cloudflare KV options or implicit concurrency guarantees. Explicit storage transactions join
+SQL, KV, and alarm mutations, roll back on failure, and advance storage position once on commit.
+Transaction ownership follows the originating operation through its asynchronous continuations,
+including Kysely's begin/query/commit protocol. Ordinary `state.storage.sql`, KV, and alarms join
+that operation's active transaction without an adapter-specific SQL handle. Explicit transaction
+handles and callbacks inherited from completed transactions reject further access; SQL handles
+themselves remain usable across transactions. Unrelated async accesses and new events wait;
+already-admitted unrelated synchronous SQL fails busy. Admission and output settlement wait for
+every open transaction, including one still owned by the returning handler. Separate calls sharing
+an output gate do not share transaction ownership. Nested transactions and synchronous callbacks
+returning promises are rejected. Other object workers are not blocked.
 
 ### Commit and external output boundary
 
@@ -347,8 +366,8 @@ outside object-author control:
 
 1. Check captured object authority and the node's remaining authority window.
 2. Execute storage SQL and narrow KV/alarm mutations through the worker-owned connection. Each SQL
-   mutation commits locally and advances an activation-local storage position; no user-facing
-   transaction or flush API exists.
+   mutation commits locally and advances an activation-local storage position unless it belongs to
+   an explicit storage transaction, whose successful commit advances once. No flush API exists.
 3. Internal fetch/RPC and returned-capability calls inside one runtime output scope record the
    highest object storage position their results can reveal. They do not push between calls.
 4. Immediately before the enclosing external result or handler error is exposed, synchronously run
@@ -481,8 +500,10 @@ wake/discovery index. They cannot be updated atomically through an ordinary SQLi
 
 Use **write-ahead reconciliation intent**, not best-effort publication after an object write:
 
-1. Before an alarm-changing database unit, durably record a reconciliation token in the control
-   database for this object/epoch. Do this before opening the object SQL transaction.
+1. Before committing an alarm-changing database unit, durably record a reconciliation token in the
+   control database for this object/epoch. Standalone alarm operations do this before opening their
+   SQL transaction. Explicit storage transactions stage alarm edits privately and create the marker
+   in their before-commit hook only if the final installation changed.
 2. Change the object's alarm installation in its database and push it. Give every installation a
    distinct identity, including when the timestamp is unchanged.
 3. Publish the resulting alarm index state and clear exactly that reconciliation token in one
@@ -515,7 +536,9 @@ marker and scheduled discovery entry. Authority-bound alarm installation, deleti
 consumption are serialized and force an immediate object-log push before completing that row. This
 is deliberately less optimized than deferring publication to the enclosing Fetch output gate, but it
 closes the cross-database crash window with substantially less machinery. Each installation has a
-UUID, so completion of an old handler cannot remove a same-timestamp re-arm.
+UUID, so completion of an old handler cannot remove a same-timestamp re-arm. Explicit transactions
+publish only their final installation after commit; rolled-back callbacks do not publish staged
+edits. A failed local commit after marker creation leaves a recoverable reconciliation intent.
 
 Each host scans a bounded object-ID cursor page and services rows owned by its exact node generation
 or eligible for local claim/takeover. Live remote-owner rows are left for that owner's scanner.
@@ -784,7 +807,7 @@ control log may become the first scaling bottleneck, particularly with frequent 
 
 Keep these as explicit later work:
 
-- Backoffice composition/adapters/migrations and the mapping of existing shared database scopes.
+- Import of existing Backoffice local application data and broader integration qualification.
 - Capacity-aware placement, retained-capability and post-return stream lifetime accounting beyond
   active calls, and planned handoff.
 - Control-plane sharding if measured workload requires it.

@@ -4,7 +4,10 @@ import {
   readNodeRuntimeEpochMilliseconds,
   type NodeRuntimeClock,
 } from "../runtime/node-runtime-clock";
-import type { ManagedNodeRuntimeObjectDatabase } from "../sqlite/managed-node-runtime-object-database";
+import type {
+  ManagedNodeRuntimeObjectDatabase,
+  NodeObjectTransactionCommitHooks,
+} from "../sqlite/managed-node-runtime-object-database";
 import { GraftControlStore, type GraftObjectAlarmPublication } from "./graft-control-store";
 import type { GraftObjectAuthority } from "./graft-object-authority";
 
@@ -36,39 +39,89 @@ export class GraftObjectAlarmCoordinator {
   }
 
   setAlarm(timestamp: number): Promise<void> {
-    return this.#serializeAlarmMutation(async () => {
-      const reconciliationId = this.#beginAlarmChange();
-      const installationId = randomUUID();
-      this.#database.write((database) => {
-        database.run(
-          `INSERT INTO node_runtime_alarm
-            (singleton, timestamp, generation, installation_id)
-           VALUES (1, ?, 1, ?)
-           ON CONFLICT(singleton) DO UPDATE SET
-             timestamp = excluded.timestamp,
-             generation = node_runtime_alarm.generation + 1,
-             installation_id = excluded.installation_id`,
-          [timestamp, installationId],
+    return this.#database.access(() => {
+      const mutate = () => {
+        this.#database.write((database) => {
+          database.run(
+            `INSERT INTO node_runtime_alarm
+              (singleton, timestamp, generation, installation_id)
+             VALUES (1, ?, 1, ?)
+             ON CONFLICT(singleton) DO UPDATE SET
+               timestamp = excluded.timestamp,
+               generation = node_runtime_alarm.generation + 1,
+               installation_id = excluded.installation_id`,
+            [timestamp, randomUUID()],
+          );
+        });
+      };
+      if (this.#database.isInTransaction) {
+        mutate();
+        return Promise.resolve();
+      }
+      return this.#serializeAlarmMutation(async () => {
+        const reconciliationId = this.#beginAlarmChange();
+        mutate();
+        this.#pushObjectAlarmChange();
+        this.#completeAlarmChange(
+          reconciliationId,
+          alarmPublication(readGraftObjectAlarm(this.#database)),
         );
-      });
-      this.#pushObjectAlarmChange();
-      this.#completeAlarmChange(reconciliationId, {
-        kind: "scheduled",
-        installationId,
-        dueAtMs: timestamp,
       });
     });
   }
 
   deleteAlarm(): Promise<void> {
-    return this.#serializeAlarmMutation(async () => {
-      const reconciliationId = this.#beginAlarmChange();
-      this.#database.write((database) => {
-        database.run("DELETE FROM node_runtime_alarm WHERE singleton = 1", []);
+    return this.#database.access(() => {
+      const mutate = () => {
+        this.#database.write((database) => {
+          database.run("DELETE FROM node_runtime_alarm WHERE singleton = 1", []);
+        });
+      };
+      if (this.#database.isInTransaction) {
+        mutate();
+        return Promise.resolve();
+      }
+      return this.#serializeAlarmMutation(async () => {
+        const reconciliationId = this.#beginAlarmChange();
+        mutate();
+        this.#pushObjectAlarmChange();
+        this.#completeAlarmChange(reconciliationId, { kind: "none" });
       });
-      this.#pushObjectAlarmChange();
-      this.#completeAlarmChange(reconciliationId, { kind: "none" });
     });
+  }
+
+  transactionSync<TResult>(operation: () => TResult): TResult {
+    return this.#database.transactionSync(operation, this.#transactionAlarmCommitHooks());
+  }
+
+  transaction<TResult>(operation: () => TResult | Promise<TResult>): Promise<TResult> {
+    // Capture the original alarm after admission, not while another transaction owns the connection.
+    return this.#database.access(() =>
+      this.#database.transaction(operation, this.#transactionAlarmCommitHooks()),
+    );
+  }
+
+  #transactionAlarmCommitHooks(): NodeObjectTransactionCommitHooks {
+    const originalAlarm = readGraftObjectAlarm(this.#database);
+    let reconciliationId: string | null = null;
+    return {
+      beforeCommit: () => {
+        const alarm = readGraftObjectAlarm(this.#database);
+        if (alarm?.installationId !== originalAlarm?.installationId) {
+          // A crash before the object push repairs this marker from the last durable object state.
+          reconciliationId = this.#beginAlarmChange();
+        }
+      },
+      afterCommit: () => {
+        if (reconciliationId !== null) {
+          this.#pushObjectAlarmChange();
+          this.#completeAlarmChange(
+            reconciliationId,
+            alarmPublication(readGraftObjectAlarm(this.#database)),
+          );
+        }
+      },
+    };
   }
 
   consumeAlarm(expectedInstallationId: string): Promise<boolean> {
@@ -175,7 +228,8 @@ export class GraftObjectAlarmCoordinator {
   }
 
   #serializeAlarmMutation<TResult>(operation: () => Promise<TResult>): Promise<TResult> {
-    const result = this.#alarmMutationTail.then(operation, operation);
+    const admittedOperation = () => this.#database.access(operation);
+    const result = this.#alarmMutationTail.then(admittedOperation, admittedOperation);
     this.#alarmMutationTail = result.then(
       () => undefined,
       () => undefined,

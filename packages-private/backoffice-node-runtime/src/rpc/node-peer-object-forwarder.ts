@@ -1,5 +1,7 @@
 import { RpcTarget } from "capnweb";
 
+import { bindNodeObjectRpcValue } from "../runtime/node-object-worker-io";
+
 /** Creates a lazy peer object target and rechecks authority around every forwarded RPC result. */
 export function createNodePeerForwardingTarget(
   getObject: () => Promise<RpcTarget>,
@@ -67,7 +69,7 @@ export function createNodePeerForwardingTarget(
         assertAuthority();
         const objectStub = await resolveObjectStub();
         assertAuthority();
-        const result = await objectStub[property](...args);
+        const result = await objectStub[property](...args.map(bindNodeObjectRpcValue));
         assertAuthority();
         return result;
       };

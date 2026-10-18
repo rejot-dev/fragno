@@ -1,0 +1,97 @@
+# syntax=docker/dockerfile:1.7
+
+FROM node:26.10.0-bookworm-slim AS pnpm-base
+
+RUN npm install --global pnpm@11.1.3
+
+WORKDIR /workspace
+
+# Match the reviewed Graft native revision used by the runtime demo.
+FROM rust:1.94-bookworm AS graft-native
+ARG GRAFT_REPOSITORY=https://github.com/WilcoKruijer/graft.git
+ARG GRAFT_REVISION=7113044c90f810cbb5c25f2fa85d6d99976a655a
+RUN apt-get update \
+  && apt-get install --yes --no-install-recommends clang libclang-dev llvm-dev cmake libssl-dev pkg-config \
+  && rm -rf /var/lib/apt/lists/*
+WORKDIR /graft
+RUN git init \
+  && git remote add origin "$GRAFT_REPOSITORY" \
+  && git fetch --depth=1 origin "$GRAFT_REVISION" \
+  && git checkout --detach FETCH_HEAD \
+  && test "$(git rev-parse HEAD)" = "$GRAFT_REVISION"
+RUN --mount=type=cache,id=graft-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
+  --mount=type=cache,id=graft-cargo-git,target=/usr/local/cargo/git,sharing=locked \
+  --mount=type=cache,id=graft-target,target=/graft/target,sharing=locked \
+  cargo build --locked --release -p graft-ext \
+  && cp target/release/libgraft_ext.so /libgraft_ext.so
+
+FROM pnpm-base AS builder
+
+RUN apt-get update \
+  && apt-get install --yes --no-install-recommends build-essential python3 \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY json/ .
+RUN --mount=type=cache,id=backoffice-pnpm-store,target=/pnpm/store,sharing=locked \
+  --mount=type=cache,id=backoffice-pnpm-metadata,target=/root/.cache/pnpm,sharing=locked \
+  pnpm --store-dir=/pnpm/store install --frozen-lockfile
+
+COPY full/ .
+COPY .oxfmtrc.json .oxfmtrc.json
+RUN --mount=type=cache,id=backoffice-turbo-cache,target=/workspace/.turbo,sharing=locked \
+  pnpm exec turbo run build:graft \
+    --filter=@fragno-apps/backoffice-rr \
+    --output-logs=errors-only
+
+FROM builder AS runtime-dependencies
+
+RUN --mount=type=cache,id=backoffice-pnpm-store,target=/pnpm/store,sharing=locked \
+  --mount=type=cache,id=backoffice-pnpm-metadata,target=/root/.cache/pnpm,sharing=locked \
+  pnpm --store-dir=/pnpm/store \
+    --config.inject-workspace-packages=true \
+    --filter=@fragno-apps/backoffice-rr \
+    deploy \
+    --prod \
+    /runtime
+
+FROM node:26.10.0-bookworm-slim AS runtime
+
+RUN apt-get update \
+  && apt-get install --yes --no-install-recommends ca-certificates procps tini libssl3 \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY --from=runtime-dependencies --chown=node:node /runtime/package.json /app/package.json
+COPY --from=runtime-dependencies --chown=node:node /runtime/node_modules /app/node_modules
+COPY --from=builder --chown=node:node /workspace/apps/backoffice/build-graft /app/build-graft
+COPY --from=builder --chown=node:node \
+  /workspace/apps/backoffice/scripts/graft-server/start-graft-processes.mjs \
+  /app/scripts/graft-server/start-graft-processes.mjs
+COPY --from=builder --chown=node:node \
+  /workspace/apps/backoffice/scripts/server/node-process-supervisor.mjs \
+  /app/scripts/server/node-process-supervisor.mjs
+
+COPY --from=graft-native --chown=node:node /libgraft_ext.so /app/native/libgraft_ext.so
+RUN ln --symbolic /app/node_modules/@fragno-private/backoffice-node-runtime/bin/run.js /usr/local/bin/backoffice-node-runtime
+
+ENV FRAGNO_GRAFT_EXTENSION_PATH=/app/native/libgraft_ext.so
+ENV GRAFT_CONFIG=/config/graft.toml
+ENV NODE_ENV=production
+ENV HOST=0.0.0.0
+ENV PORT=5173
+ENV DOCS_PUBLIC_BASE_URL=http://backoffice.localhost:5173
+ENV BACKOFFICE_NODE_INTERNAL_HOST=0.0.0.0
+ENV BACKOFFICE_NODE_INTERNAL_PORT=5174
+
+RUN mkdir --parents /data /config && chown node:node /data /config
+
+WORKDIR /app
+USER node
+
+RUN node build-graft/node-graft-native-smoke.mjs
+
+# Peer ingress must remain private; EXPOSE does not enforce a network restriction.
+EXPOSE 5173 5174
+VOLUME ["/data", "/config"]
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["node", "scripts/graft-server/start-graft-processes.mjs"]

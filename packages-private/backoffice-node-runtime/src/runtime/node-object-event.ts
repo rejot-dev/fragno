@@ -1,7 +1,7 @@
 /** Settles an object's output dependency before exposing either its result or handler error. */
 export async function runNodeObjectEvent<TResult>(
   operation: () => TResult | Promise<TResult>,
-  settleOutputDependency: () => void,
+  settleOutputDependency: () => void | Promise<void>,
 ): Promise<TResult> {
   let outcome: { kind: "success"; value: TResult } | { kind: "failure"; error: unknown };
   try {
@@ -10,7 +10,7 @@ export async function runNodeObjectEvent<TResult>(
     outcome = { kind: "failure", error };
   }
 
-  settleOutputDependency();
+  await settleOutputDependency();
   if (outcome.kind === "failure") {
     throw outcome.error;
   }
