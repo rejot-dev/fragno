@@ -22,6 +22,7 @@ const options: BetterAuthOptions = {
     baseURL: "http://localhost",
     organizationHooks: null,
     isUserAdministrator: null,
+    listFirstPartyOAuthClientIds: null,
   }),
 };
 

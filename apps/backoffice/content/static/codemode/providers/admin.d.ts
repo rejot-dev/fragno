@@ -24,6 +24,8 @@ type AdminCodemodeProvider = {
   appsList(input: AdminAppsListInput): Promise<AdminAppsListOutput>;
   /** Replace a registered app's action declaration. A changed declaration gets a new revision; installations approve it before new or changed actions run, unless its changeApproval is automatic. */
   appsUpdateActions(input: AdminAppsUpdateActionsInput): Promise<AdminAppsUpdateActionsOutput>;
+  /** Set whether Backoffice operates a registered app. A first-party app is authorized without a consent screen and cannot be revoked by users, is linked to organizations without a permission review, and may call the provisioning operations it is granted. */
+  appsUpdateTrust(input: AdminAppsUpdateTrustInput): Promise<AdminAppsUpdateTrustOutput>;
   /** Create an Auth-owned authorization-code OAuth web or native client for the current System administrator. Confidential clients return an initial secret and may use client credentials; public clients use PKCE without a secret. Does not register or install a Backoffice app. */
   oauthClientsCreate(input: AdminOauthClientsCreateInput): Promise<AdminOauthClientsCreateOutput>;
   /** List the global Auth-owned OAuth client catalog, including other owners and the internal Codemode client, using cursor pagination. Never exposes credentials or credential hashes. */
@@ -309,6 +311,19 @@ type AppActionsDeclaration =
       changeApproval: "installation" | "automatic";
       actions: AppAction[];
     };
+type AppTrust =
+  | {
+      kind: "third-party";
+    }
+  | {
+      kind: "first-party";
+      provisioningPermissions: (
+        | "users.provision"
+        | "organizations.provision"
+        | "projects.provision"
+        | "organizations.members.sync"
+      )[];
+    };
 type AppAction = {
   id: string;
   label: string;
@@ -331,6 +346,7 @@ type BackofficeApp = {
   actions: AppActionsDeclaration;
   /** Increments whenever the app's action declaration changes. */
   actionsRevision: number;
+  trust: AppTrust;
   /** ISO 8601 datetime string. */
   createdAt: string;
 };
@@ -457,6 +473,7 @@ type AdminAppsCreateInput = {
   oauthClientId: string;
   requestedPermissions: BackofficePermissionRequirement[];
   actions?: AppActionsDeclaration;
+  trust?: AppTrust;
 };
 type AdminAppsCreateOutput = {
   appId: string;
@@ -477,6 +494,13 @@ type AdminAppsUpdateActionsInput = {
 };
 type AdminAppsUpdateActionsOutput = {
   actionsRevision: number;
+  changed: boolean;
+};
+type AdminAppsUpdateTrustInput = {
+  appId: string;
+  trust: AppTrust;
+};
+type AdminAppsUpdateTrustOutput = {
   changed: boolean;
 };
 type AdminOauthClientsCreateInput = BackofficeOAuthClientCreateInput;

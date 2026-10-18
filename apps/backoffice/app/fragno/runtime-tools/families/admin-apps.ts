@@ -1,4 +1,4 @@
-import { appActionsDeclarationSchema } from "@fragno-dev/backoffice-api/v0/apps";
+import { appActionsDeclarationSchema, appTrustSchema } from "@fragno-dev/backoffice-api/v0/apps";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 
 import {
@@ -8,6 +8,8 @@ import {
   backofficeAppPageSchema,
   backofficeAppRegistrationInputSchema,
   backofficeAppRegistrationResultSchema,
+  backofficeAppTrustUpdateInputSchema,
+  backofficeAppTrustUpdateResultSchema,
 } from "@/fragno/apps/contracts";
 import { defineCliArgsParser } from "@/fragno/runtime-tools/bash-cli";
 
@@ -27,6 +29,14 @@ const actionsOption = {
   valueName: "json",
   description:
     'Action declaration: {"kind":"none"}, or {"kind":"endpoint","endpointUrl":"https://...","changeApproval":"installation"|"automatic","actions":[{"id","label","description","inputSchema","outputSchema"}]}',
+};
+
+const trustOption = {
+  name: "trust-json",
+  valueRequired: true,
+  valueName: "json",
+  description:
+    'Trust: {"kind":"third-party"}, or {"kind":"first-party","provisioningPermissions":["users.provision","organizations.provision","projects.provision","organizations.members.sync"]} for an app Backoffice operates',
 };
 
 function requireAdminAppsRuntime(context: AdminAppsToolContext): AdminRuntime {
@@ -49,6 +59,7 @@ const createAppTool = defineBackofficeRuntimeTool({
   requiredPermissions: [BACKOFFICE_PERMISSION.admin.appsManage],
   inputSchema: backofficeAppRegistrationInputSchema.extend({
     actions: appActionsDeclarationSchema.default({ kind: "none" }),
+    trust: appTrustSchema.default({ kind: "third-party" }),
   }),
   outputSchema: backofficeAppRegistrationResultSchema,
   execute: async (input, context: AdminAppsToolContext) =>
@@ -82,6 +93,7 @@ const createAppTool = defineBackofficeRuntimeTool({
               "JSON array of canonical namespace/permission requirements; use [] for no capabilities",
           },
           { ...actionsOption, description: `${actionsOption.description} (default: none)` },
+          { ...trustOption, description: `${trustOption.description} (default: third-party)` },
         ],
         examples: [
           "admin.apps.create --slug accounting --oauth-client-id accounting-client --requested-permissions-json '[]'",
@@ -97,6 +109,7 @@ const createAppTool = defineBackofficeRuntimeTool({
           required: true,
         },
         actions: { kind: "json", option: "actions-json" },
+        trust: { kind: "json", option: "trust-json" },
       }),
       format: (result, options) =>
         options.format === "json" || options.print
@@ -153,6 +166,52 @@ const updateAppActionsTool = defineBackofficeRuntimeTool({
   },
 });
 
+const updateAppTrustTool = defineBackofficeRuntimeTool({
+  id: "admin.apps.update-trust",
+  namespace: "admin",
+  name: "appsUpdateTrust",
+  description:
+    "Set whether Backoffice operates a registered app. A first-party app is authorized without a consent screen and cannot be revoked by users, is linked to organizations without a permission review, and may call the provisioning operations it is granted.",
+  requiredPermissions: [BACKOFFICE_PERMISSION.admin.appsManage],
+  inputSchema: backofficeAppTrustUpdateInputSchema,
+  outputSchema: backofficeAppTrustUpdateResultSchema,
+  execute: async (input, context: AdminAppsToolContext) =>
+    await requireAdminAppsRuntime(context).updateAppTrust(input),
+  adapters: {
+    bash: {
+      command: "admin.apps.update-trust",
+      help: {
+        summary:
+          "admin.apps.update-trust sets whether Backoffice operates an app (System administrators only).",
+        options: [
+          {
+            name: "app-id",
+            required: true,
+            valueRequired: true,
+            valueName: "id",
+            description: "Registered Backoffice app ID",
+          },
+          { ...trustOption, required: true },
+        ],
+        examples: [
+          'admin.apps.update-trust --app-id APP_ID --trust-json \'{"kind":"first-party","provisioningPermissions":["users.provision"]}\'',
+        ],
+      },
+      parse: defineCliArgsParser("admin.apps.update-trust", {
+        appId: { kind: "string", required: true },
+        trust: { kind: "json", option: "trust-json", required: true },
+      }),
+      format: (result, options) =>
+        options.format === "json" || options.print
+          ? { data: result }
+          : {
+              data: result,
+              stdout: result.changed ? "Updated app trust.\n" : "App trust unchanged.\n",
+            },
+    },
+  },
+});
+
 const listAppsTool = defineBackofficeRuntimeTool({
   id: "admin.apps.list",
   namespace: "admin",
@@ -204,6 +263,7 @@ const listAppsTool = defineBackofficeRuntimeTool({
             `  OAuth client ID: ${app.oauthClientId}`,
             `  Requested permissions: ${app.requestedPermissions.map(({ namespace, permission }) => `${namespace}.${permission}`).join(", ") || "none"}`,
             `  Actions: ${app.actions.kind === "none" ? "none" : `${app.actions.actions.map(({ id }) => id).join(", ")} at ${app.actions.endpointUrl}`} (revision ${app.actionsRevision})`,
+            `  Trust: ${app.trust.kind === "third-party" ? "third-party" : `first-party, provisioning ${app.trust.provisioningPermissions.join(", ") || "none"}`}`,
             `  Created at: ${app.createdAt}`,
           ].join("\n"),
         );
@@ -225,4 +285,9 @@ const listAppsTool = defineBackofficeRuntimeTool({
 });
 
 /** App management tools inherit admin kernel authorization and additionally require System scope. */
-export const adminAppsRuntimeTools = [createAppTool, listAppsTool, updateAppActionsTool] as const;
+export const adminAppsRuntimeTools = [
+  createAppTool,
+  listAppsTool,
+  updateAppActionsTool,
+  updateAppTrustTool,
+] as const;

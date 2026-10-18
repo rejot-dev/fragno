@@ -55,6 +55,7 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
       requestedPermissions: describeAppPermissions(installRequest.app.requestedPermissions),
       actions: installRequest.app.actions,
       actionsRevision: installRequest.app.actionsRevision,
+      firstParty: installRequest.app.trust.kind === "first-party",
       returnOrigin: new URL(installRequest.redirectUri).origin,
       appRequest: {
         client_id: installRequest.client.clientId,
@@ -155,39 +156,49 @@ export default function BackofficeAppInstall({
         <Form method="post" className="space-y-4" key={install.selectedOwner.value}>
           <input type="hidden" name="owner" value={install.selectedOwner.value} />
           <input type="hidden" name="actionsRevision" value={install.actionsRevision} />
-          <fieldset className="space-y-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4">
-            <legend className="px-1 text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-              Permissions
-            </legend>
-            {install.requestedPermissions.length === 0 ? (
-              <p className="text-sm text-[var(--bo-muted)]">This app requests no permissions.</p>
-            ) : (
-              install.requestedPermissions.map(({ permission, operations }) => (
-                <div key={permission} className="space-y-1">
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      name="permission"
-                      value={permission}
-                      defaultChecked={grantedByDefault(permission)}
-                    />
-                    <span className="font-mono">{permission}</span>
-                  </label>
-                  {operations.length === 0 ? (
-                    <p className="pl-6 text-xs text-[var(--bo-muted)]">
-                      No API operation uses this permission yet.
-                    </p>
-                  ) : (
-                    <ul className="list-disc space-y-0.5 pl-10 text-xs leading-5 text-[var(--bo-muted)]">
-                      {operations.map((operation) => (
-                        <li key={operation}>{operation}</li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              ))
-            )}
-          </fieldset>
+          {install.firstParty ? (
+            <>
+              <input type="hidden" name="resources" value="owner" />
+              <p className="text-sm leading-6 text-pretty text-[var(--bo-muted)]">
+                {install.clientName} is part of Backoffice, so it gets everything it asks for in{" "}
+                {personal ? "your personal workspace" : "this organization"}, without a review.
+              </p>
+            </>
+          ) : (
+            <fieldset className="space-y-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4">
+              <legend className="px-1 text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+                Permissions
+              </legend>
+              {install.requestedPermissions.length === 0 ? (
+                <p className="text-sm text-[var(--bo-muted)]">This app requests no permissions.</p>
+              ) : (
+                install.requestedPermissions.map(({ permission, operations }) => (
+                  <div key={permission} className="space-y-1">
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        name="permission"
+                        value={permission}
+                        defaultChecked={grantedByDefault(permission)}
+                      />
+                      <span className="font-mono">{permission}</span>
+                    </label>
+                    {operations.length === 0 ? (
+                      <p className="pl-6 text-xs text-[var(--bo-muted)]">
+                        No API operation uses this permission yet.
+                      </p>
+                    ) : (
+                      <ul className="list-disc space-y-0.5 pl-10 text-xs leading-5 text-[var(--bo-muted)]">
+                        {operations.map((operation) => (
+                          <li key={operation}>{operation}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                ))
+              )}
+            </fieldset>
+          )}
           <ActionsSummary
             actions={install.actions}
             pendingApproval={
@@ -195,11 +206,13 @@ export default function BackofficeAppInstall({
             }
             personal={personal}
           />
-          <ResourceFields
-            projects={install.projects}
-            current={current?.resourceScope ?? null}
-            personal={personal}
-          />
+          {install.firstParty ? null : (
+            <ResourceFields
+              projects={install.projects}
+              current={current?.resourceScope ?? null}
+              personal={personal}
+            />
+          )}
           <p className="text-sm leading-6 text-pretty text-[var(--bo-muted)]">
             {personal
               ? `${install.clientName} can then act for you within the access above: as itself, and on your behalf when you authorize it.`

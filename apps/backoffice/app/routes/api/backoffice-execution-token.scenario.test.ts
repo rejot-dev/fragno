@@ -344,6 +344,7 @@ describe("Backoffice execution token SQLite scenarios", () => {
       const requestedPermissions = [{ namespace: "events" as const, permission: "emit" as const }];
       const registered = await ctx.runtime.objects.apps.singleton().commands.registerApp({
         actions: { kind: "none" },
+        trust: { kind: "third-party" },
         slug: "accounting",
         oauthClientId: client.client_id,
         requestedPermissions,
