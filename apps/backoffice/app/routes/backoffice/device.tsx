@@ -46,7 +46,7 @@ async function loadBackofficeDeviceAuthorization(
     throw new Response("A valid device user code is required.", { status: 400 });
   }
 
-  await requireBackofficeBrowserSession(request, context);
+  await requireBackofficeBrowserSession({ request, context, url });
 
   const config = await getAuthDurableObject(context).commands.getBackofficeCliOAuthConfig({
     requestUrl: request.url,

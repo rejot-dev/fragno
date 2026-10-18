@@ -32,7 +32,7 @@ const consentErrorSchema = z.object({
 });
 
 export async function loader({ request, context, url }: Route.LoaderArgs) {
-  await requireBackofficeBrowserSession(request, context);
+  await requireBackofficeBrowserSession({ request, context, url });
   const response = await callBetterAuth(request, context, "/backoffice/oauth/consent-details", {
     method: "POST",
     body: JSON.stringify({ oauth_query: url.search.slice(1) }),
@@ -53,7 +53,7 @@ export async function action({ request, context, url }: Route.ActionArgs) {
   if (!input.success) {
     return data({ message: "Choose whether to approve or deny this request." }, { status: 400 });
   }
-  await requireBackofficeBrowserSession(request, context);
+  await requireBackofficeBrowserSession({ request, context, url });
   const response = await callBetterAuth(request, context, "/oauth2/consent", {
     method: "POST",
     body: JSON.stringify({
