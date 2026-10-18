@@ -29,6 +29,7 @@ import {
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
 import { InMemoryApiObject } from "../../../workers/api.do";
+import { InMemoryAppsObject } from "../../../workers/apps.do";
 import { InMemoryAuthObject } from "../../../workers/auth.do";
 import { InMemoryAutomationsObject } from "../../../workers/automations.do";
 import { InMemoryFormsObject } from "../../../workers/forms.do";
@@ -45,6 +46,7 @@ import ConsentScreen, { loader, action } from "./oauth-consent";
 
 const scenarioObjects = {
   API: (input) => new InMemoryApiObject(input),
+  APPS: (input) => new InMemoryAppsObject(input),
   AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
   AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
   FORMS: (input) => new InMemoryFormsObject(input),
@@ -268,6 +270,7 @@ test("native consent review, approval, owned listing, opaque/refresh revocation 
     const cookie = String(ctx.vars.otherSession);
     const login = await consentRequest(ctx, client.clientId, cookie);
     const review = await loader(routeArgs(ctx, new Request(login.url, { headers: { cookie } })));
+    assert(!(review instanceof Response), "Only first-party clients skip the review.");
     expect(review.data).toMatchObject({
       clientId: client.clientId,
       clientName: "Consent Scenario Client",
@@ -375,6 +378,72 @@ test("native consent review, approval, owned listing, opaque/refresh revocation 
   });
 });
 
+test("first-party apps are authorized without a review, and their consent is neither listed nor revocable", async () => {
+  await runConsentScenario(async (ctx) => {
+    const client = await createClient(ctx);
+    const registered = await ctx.runtime.objects.apps.singleton().commands.registerApp({
+      slug: "ledger",
+      oauthClientId: client.clientId,
+      requestedPermissions: [],
+      actions: { kind: "none" },
+      trust: { kind: "first-party", provisioningPermissions: [] },
+    });
+    assert(registered.ok);
+    const cookie = String(ctx.vars.otherSession);
+
+    const login = await consentRequest(ctx, client.clientId, cookie);
+    const approved = await loader(routeArgs(ctx, new Request(login.url, { headers: { cookie } })));
+    assert(approved instanceof Response, "A first-party client returns to the app at once.");
+    const callback = new URL(approved.headers.get("location") ?? "");
+    assert.equal(callback.origin + callback.pathname, "http://127.0.0.1:8789/callback");
+    const code = callback.searchParams.get("code");
+    assert(code);
+    const exchanged = await exchangeCode(ctx, client.clientId, code, login.verifier);
+    assert(exchanged.ok, await exchanged.clone().text());
+
+    // With the consent recorded, Better Auth answers the authorization without the consent page.
+    const again = await authRequest(
+      ctx,
+      `/oauth2/authorize?${new URLSearchParams({
+        client_id: client.clientId,
+        redirect_uri: "http://127.0.0.1:8789/callback",
+        response_type: "code",
+        scope: "openid profile email offline_access",
+        state: "scenario-browser-state",
+        code_challenge_method: "S256",
+        code_challenge: createHash("sha256").update(login.verifier).digest("base64url"),
+      })}`,
+      cookie,
+    );
+    const answered = new URL(again.headers.get("location") ?? "", origin);
+    assert.equal(answered.origin + answered.pathname, "http://127.0.0.1:8789/callback");
+    assert(answered.searchParams.has("code"));
+
+    const appsUrl = `${origin}/backoffice/settings/authorized-applications`;
+    const listed = await applicationsLoader(
+      routeArgs(ctx, new Request(appsUrl, { headers: { cookie } })),
+    );
+    expect(listed.data.consents).toEqual([]);
+    const revoked = await revokeAction(
+      routeArgs(
+        ctx,
+        new Request(appsUrl, {
+          method: "POST",
+          headers: { cookie, origin },
+          body: new URLSearchParams({ clientId: client.clientId }),
+        }),
+      ),
+    );
+    assert(!(revoked instanceof Response), "Revoking a first-party client is refused.");
+    assert.equal(revoked.init?.status, 400);
+    const stillAuthorized = await consentRequest(ctx, client.clientId, cookie);
+    const reapproved = await loader(
+      routeArgs(ctx, new Request(stillAuthorized.url, { headers: { cookie } })),
+    );
+    assert(reapproved instanceof Response);
+  });
+});
+
 test("additional OIDC claims are disclosed, listed and constrained by the current consent", async () => {
   await runConsentScenario(async (ctx) => {
     const client = await createClient(ctx);
@@ -382,6 +451,7 @@ test("additional OIDC claims are disclosed, listed and constrained by the curren
     const claimsRequest = JSON.stringify({ userinfo: { email: null } });
     const login = await consentRequest(ctx, client.clientId, cookie, "openid", claimsRequest);
     const review = await loader(routeArgs(ctx, new Request(login.url, { headers: { cookie } })));
+    assert(!(review instanceof Response), "Only first-party clients skip the review.");
     assert.equal(review.data.claimsRequest, claimsRequest);
     expect(renderConsentScreen(review.data)).toContain("Additional OIDC claims request");
     const code = await approveConsent(ctx, login.url, cookie);
@@ -496,6 +566,7 @@ test("signed-out OAuth login resumes the original request through password login
     assert.equal(consentUrl.pathname, "/backoffice/oauth/consent");
     const cookie = sessionCookies(signedIn);
     const consent = await loader(routeArgs(ctx, new Request(consentUrl, { headers: { cookie } })));
+    assert(!(consent instanceof Response), "Only first-party clients skip the review.");
     assert.equal(consent.data.clientId, client.clientId);
     const code = await approveConsent(ctx, consentUrl, cookie);
     assert((await exchangeCode(ctx, client.clientId, code, started.verifier)).ok);
@@ -627,6 +698,7 @@ test.each(["http://localhost:5173", "http://127.0.0.1:5173"])(
       const nativeReview = await loader(
         routeArgs(ctx, new Request(login.url, { headers: { cookie } })),
       );
+      assert(!(nativeReview instanceof Response), "Only first-party clients skip the review.");
       expect(renderConsentScreen(nativeReview.data)).toContain(
         'href="/backoffice/settings/authorized-applications"',
       );

@@ -835,9 +835,12 @@ export class InMemoryAuthObject implements AuthObject {
     const secret = resolveLiveAccessTokenSecret(this.#env, import.meta.env.MODE === "development");
     // Follow the origin, not the build mode: `pnpm preview` serves a production build over HTTP.
     const secureCookies = new URL(baseURL).protocol === "https:";
+    const objects = runtime.objects;
     const schemaPlugins = createBackofficeBetterAuthSchemaPlugins({
       baseURL,
       isUserAdministrator: async (userId) => await this.#isUserAdministrator(userId),
+      listFirstPartyOAuthClientIds: async () =>
+        await objects.apps.singleton().commands.listFirstPartyOAuthClientIds(),
       organizationHooks: {
         async beforeCreateOrganization({ organization: nextOrganization, user }) {
           return {
@@ -1770,7 +1773,12 @@ export class InMemoryAuthObject implements AuthObject {
     input: { userId: string } & DirectoryPageInput,
   ): Promise<OAuthConsentPage> {
     const { adapter } = await this.#authContext();
-    return await listBackofficeOAuthConsentPage(adapter, input);
+    return await listBackofficeOAuthConsentPage(adapter, {
+      ...input,
+      firstPartyClientIds: await this.#runtime.objects.apps
+        .singleton()
+        .commands.listFirstPartyOAuthClientIds(),
+    });
   }
 
   async getOrganization(input: { organizationId: string }): Promise<OrganizationRecord | null> {

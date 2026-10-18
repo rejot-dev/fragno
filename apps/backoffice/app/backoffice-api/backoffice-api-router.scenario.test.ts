@@ -868,6 +868,7 @@ describe("Backoffice API v0 SQLite scenarios", () => {
           const permissions = [BACKOFFICE_PERMISSION.org.read, BACKOFFICE_PERMISSION.org.manage];
           const registered = await ctx.runtime.objects.apps.singleton().commands.registerApp({
             actions: { kind: "none" },
+            trust: { kind: "third-party" },
             slug: "accounting",
             oauthClientId: client.clientId,
             requestedPermissions: permissions,

@@ -7,6 +7,7 @@ import {
   appActionsDeclarationSchema,
   appPermissionsSchema,
   appSlugSchema,
+  appTrustSchema,
   backofficeAppLookupInputSchema,
 } from "@fragno-dev/backoffice-api/v0/apps";
 import { z } from "zod";
@@ -19,6 +20,7 @@ export const backofficeAppRegistrationInputSchema = z.strictObject({
   oauthClientId: z.string().min(1).max(191),
   requestedPermissions: appPermissionsSchema,
   actions: appActionsDeclarationSchema,
+  trust: appTrustSchema,
 });
 export type BackofficeAppRegistrationInput = z.infer<typeof backofficeAppRegistrationInputSchema>;
 
@@ -36,6 +38,15 @@ export const backofficeAppActionsUpdateResultSchema = z.strictObject({
 export type BackofficeAppActionsUpdateResult = z.infer<
   typeof backofficeAppActionsUpdateResultSchema
 >;
+
+/** Trust is the one registration fact an administrator changes in place, besides actions. */
+export const backofficeAppTrustUpdateInputSchema = z.lazy(() =>
+  backofficeAppLookupInputSchema._zod.innerType.extend({ trust: appTrustSchema }),
+);
+export type BackofficeAppTrustUpdateInput = z.infer<typeof backofficeAppTrustUpdateInputSchema>;
+
+export const backofficeAppTrustUpdateResultSchema = z.strictObject({ changed: z.boolean() });
+export type BackofficeAppTrustUpdateResult = z.infer<typeof backofficeAppTrustUpdateResultSchema>;
 
 /** Auth resolves the app behind a verified OAuth client; the client ID is never caller-chosen. */
 export const backofficeAppOAuthClientLookupInputSchema = z.strictObject({
@@ -79,6 +90,11 @@ export type BackofficeAppsCommands = {
   updateAppActions(
     input: BackofficeAppActionsUpdateInput,
   ): Promise<BackofficeAppOperationResult<BackofficeAppActionsUpdateResult>>;
+  updateAppTrust(
+    input: BackofficeAppTrustUpdateInput,
+  ): Promise<BackofficeAppOperationResult<BackofficeAppTrustUpdateResult>>;
+  /** Auth hides and protects the OAuth consents of these clients. */
+  listFirstPartyOAuthClientIds(): Promise<string[]>;
   getApp(input: BackofficeAppLookupInput): Promise<BackofficeApp | null>;
   getAppByOAuthClientId(input: BackofficeAppOAuthClientLookupInput): Promise<BackofficeApp | null>;
   getAppBySlug(input: BackofficeAppSlugLookupInput): Promise<BackofficeApp | null>;

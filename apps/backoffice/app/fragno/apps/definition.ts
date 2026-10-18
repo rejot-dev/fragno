@@ -2,9 +2,11 @@ import { isDeepStrictEqual } from "node:util";
 
 import type {
   AppActionsDeclaration,
+  AppTrust,
   BackofficeApp,
   BackofficeAppLookupInput,
 } from "@fragno-dev/backoffice-api/v0/apps";
+import type { BackofficeProvisioningPermission } from "@fragno-dev/backoffice-api/v0/provisioning";
 import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 
 import { defineFragment } from "@fragno-dev/core";
@@ -21,20 +23,54 @@ import type {
   BackofficeAppRegistrationInput,
   BackofficeAppRegistrationResult,
   BackofficeAppSlugLookupInput,
+  BackofficeAppTrustUpdateInput,
+  BackofficeAppTrustUpdateResult,
 } from "./contracts";
 import { BackofficeAppDomainError } from "./errors";
 import { appPermissionsEqual } from "./permissions";
 import { appsFragmentSchema } from "./schema";
 
-function toBackofficeApp(app: {
-  id: { externalId: string };
-  slug: string | null;
-  oauthClientId: string;
-  requestedPermissions: BackofficePermissionRequirement[];
-  actions: AppActionsDeclaration | null;
-  actionsRevision: number;
-  createdAt: Date;
-}): BackofficeApp {
+type StoredAppTrust = {
+  trust: AppTrust["kind"];
+  provisioningPermissions: BackofficeProvisioningPermission[] | null;
+};
+
+function toStoredAppTrust(trust: AppTrust): StoredAppTrust {
+  return trust.kind === "first-party"
+    ? { trust: "first-party", provisioningPermissions: trust.provisioningPermissions }
+    : { trust: "third-party", provisioningPermissions: null };
+}
+
+function toAppTrust(stored: StoredAppTrust): AppTrust {
+  return stored.trust === "first-party"
+    ? { kind: "first-party", provisioningPermissions: stored.provisioningPermissions ?? [] }
+    : { kind: "third-party" };
+}
+
+/** Provisioning permissions are a set, so their order does not matter. */
+function appTrustsEqual(left: AppTrust, right: AppTrust): boolean {
+  if (left.kind === "third-party" || right.kind === "third-party") {
+    return left.kind === right.kind;
+  }
+  return (
+    left.provisioningPermissions.length === right.provisioningPermissions.length &&
+    left.provisioningPermissions.every((permission) =>
+      right.provisioningPermissions.includes(permission),
+    )
+  );
+}
+
+function toBackofficeApp(
+  app: {
+    id: { externalId: string };
+    slug: string | null;
+    oauthClientId: string;
+    requestedPermissions: BackofficePermissionRequirement[];
+    actions: AppActionsDeclaration | null;
+    actionsRevision: number;
+    createdAt: Date;
+  } & StoredAppTrust,
+): BackofficeApp {
   return {
     id: app.id.externalId,
     slug: app.slug ?? app.id.externalId,
@@ -42,6 +78,7 @@ function toBackofficeApp(app: {
     requestedPermissions: knownBackofficePermissions(app.requestedPermissions),
     actions: app.actions ?? { kind: "none" },
     actionsRevision: app.actionsRevision,
+    trust: toAppTrust(app),
     createdAt: app.createdAt.toISOString(),
   };
 }
@@ -98,7 +135,8 @@ function decodeAppRegistryCursor(input: BackofficeAppPageInput) {
 
 /**
  * Requested permissions and slugs are immutable. Action declarations change only through
- * updateAppActions, which bumps the revision that installations approve.
+ * updateAppActions, which bumps the revision that installations approve, and trust only through
+ * updateAppTrust.
  */
 export const appsFragmentDefinition = defineFragment("apps")
   .extend(withDatabase(appsFragmentSchema))
@@ -145,6 +183,12 @@ export const appsFragmentDefinition = defineFragment("apps")
                     "Backoffice app OAuth client is already registered with different actions; change them with admin.apps.update-actions.",
                   );
                 }
+                if (!appTrustsEqual(toAppTrust(existing), input.trust)) {
+                  throw new BackofficeAppDomainError(
+                    "APP_REGISTRATION_CONFLICT",
+                    "Backoffice app OAuth client is already registered with a different trust; change it with admin.apps.update-trust.",
+                  );
+                }
                 if (existing.slug === null) {
                   // Naming an app registered before slugs is its one slug change.
                   assertSlugAvailable(input.slug, [bySlug, byId], existing);
@@ -158,12 +202,17 @@ export const appsFragmentDefinition = defineFragment("apps")
                 oauthClientId: input.oauthClientId,
               });
               uow.checkAbsent("app", "idx_app_slug", { slug: input.slug });
-              const id = uow.create("app", input, {
-                // A retry reads the concurrent registration and reports it.
-                retryOnUniqueConflict: ({ error }) =>
-                  error.columns?.length === 1 &&
-                  (error.columns[0] === "oauthClientId" || error.columns[0] === "slug"),
-              });
+              const { trust, ...registration } = input;
+              const id = uow.create(
+                "app",
+                { ...registration, ...toStoredAppTrust(trust) },
+                {
+                  // A retry reads the concurrent registration and reports it.
+                  retryOnUniqueConflict: ({ error }) =>
+                    error.columns?.length === 1 &&
+                    (error.columns[0] === "oauthClientId" || error.columns[0] === "slug"),
+                },
+              );
               return { appId: id.externalId, created: true };
             },
           )
@@ -190,6 +239,37 @@ export const appsFragmentDefinition = defineFragment("apps")
             );
             return { actionsRevision, changed: true };
           })
+          .build();
+      },
+
+      updateAppTrust: function (input: BackofficeAppTrustUpdateInput) {
+        return this.serviceTx(appsFragmentSchema)
+          .retrieve((uow) =>
+            uow.findFirst("app", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", input.appId)),
+            ),
+          )
+          .mutate(({ uow, retrieveResult: [app] }): BackofficeAppTrustUpdateResult => {
+            if (!app) {
+              throw new BackofficeAppDomainError("APP_NOT_FOUND", "Backoffice app was not found.");
+            }
+            if (appTrustsEqual(toAppTrust(app), input.trust)) {
+              return { changed: false };
+            }
+            uow.update("app", app.id, (b) => b.set(toStoredAppTrust(input.trust)).check());
+            return { changed: true };
+          })
+          .build();
+      },
+
+      listFirstPartyOAuthClientIds: function () {
+        return this.serviceTx(appsFragmentSchema)
+          .retrieve((uow) =>
+            uow.find("app", (b) =>
+              b.whereIndex("idx_app_trust", (eb) => eb("trust", "=", "first-party")),
+            ),
+          )
+          .transformRetrieve(([apps]): string[] => apps.map(({ oauthClientId }) => oauthClientId))
           .build();
       },
 

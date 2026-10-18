@@ -99,6 +99,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
                 oauthClientId: "accounting-client",
                 requestedPermissions,
                 actions: { kind: "none" } as const,
+                trust: { kind: "third-party" } as const,
               };
               const registered = appOperationValue(await registry.registerApp(input));
               assert(registered.created);
@@ -273,6 +274,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
             await expect(
               registry.registerApp({
                 actions: { kind: "none" },
+                trust: { kind: "third-party" },
                 slug: "accounting",
                 oauthClientId: "accounting-client",
                 requestedPermissions: [
@@ -284,6 +286,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
             const registered = appOperationValue(
               await registry.registerApp({
                 actions: { kind: "none" },
+                trust: { kind: "third-party" },
                 slug: "accounting",
                 oauthClientId: "accounting-client",
                 requestedPermissions,
@@ -445,6 +448,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
               const { appId } = appOperationValue(
                 await registry.registerApp({
                   actions: { kind: "none" },
+                  trust: { kind: "third-party" },
                   slug: oauthClientId.replace(/-client$/, ""),
                   oauthClientId,
                   requestedPermissions,
@@ -562,6 +566,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
               appId = appOperationValue(
                 await runtime.objects.apps.singleton().commands.registerApp({
                   actions: { kind: "none" },
+                  trust: { kind: "third-party" },
                   slug: "accounting",
                   oauthClientId: "accounting-client",
                   requestedPermissions,
@@ -616,6 +621,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
                   appOperationValue(
                     await registry.registerApp({
                       actions: { kind: "none" },
+                      trust: { kind: "third-party" },
                       slug: "accounting",
                       oauthClientId: "accounting-client",
                       requestedPermissions,
@@ -652,6 +658,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
             appId = appOperationValue(
               await runtime.objects.apps.singleton().commands.registerApp({
                 actions: { kind: "none" },
+                trust: { kind: "third-party" },
                 slug: "accounting",
                 oauthClientId: "accounting-client",
                 requestedPermissions,

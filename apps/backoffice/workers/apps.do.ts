@@ -13,6 +13,7 @@ import {
   backofficeAppSlugLookupInputSchema,
   backofficeAppPageInputSchema,
   backofficeAppRegistrationInputSchema,
+  backofficeAppTrustUpdateInputSchema,
   type BackofficeAppActionsUpdateInput,
   type BackofficeAppActionsUpdateResult,
   type BackofficeAppOAuthClientLookupInput,
@@ -22,6 +23,8 @@ import {
   type BackofficeAppRegistrationInput,
   type BackofficeAppRegistrationResult,
   type BackofficeAppsCommands,
+  type BackofficeAppTrustUpdateInput,
+  type BackofficeAppTrustUpdateResult,
 } from "@/fragno/apps/contracts";
 import { runBackofficeAppOperation, type BackofficeAppOperationResult } from "@/fragno/apps/errors";
 import type { AppsFragment } from "@/fragno/apps/fragment";
@@ -87,6 +90,21 @@ export class InMemoryAppsObject extends RpcTarget implements BackofficeAppsComma
     });
   }
 
+  async updateAppTrust(
+    input: BackofficeAppTrustUpdateInput,
+  ): Promise<BackofficeAppOperationResult<BackofficeAppTrustUpdateResult>> {
+    const update = backofficeAppTrustUpdateInputSchema.parse(input);
+    return await runBackofficeAppOperation(async () => {
+      const fragment = this.#getFragment();
+      return await fragment.callServices(() => fragment.services.updateAppTrust(update));
+    });
+  }
+
+  async listFirstPartyOAuthClientIds(): Promise<string[]> {
+    const fragment = this.#getFragment();
+    return await fragment.callServices(() => fragment.services.listFirstPartyOAuthClientIds());
+  }
+
   async getApp(input: BackofficeAppLookupInput): Promise<BackofficeApp | null> {
     const lookup = backofficeAppLookupInputSchema.parse(input);
     const fragment = this.#getFragment();
@@ -145,6 +163,16 @@ export class Apps extends DurableObject<CloudflareEnv> implements BackofficeApps
     input: BackofficeAppActionsUpdateInput,
   ): Promise<BackofficeAppOperationResult<BackofficeAppActionsUpdateResult>> {
     return this.#object.updateAppActions(input);
+  }
+
+  updateAppTrust(
+    input: BackofficeAppTrustUpdateInput,
+  ): Promise<BackofficeAppOperationResult<BackofficeAppTrustUpdateResult>> {
+    return this.#object.updateAppTrust(input);
+  }
+
+  listFirstPartyOAuthClientIds(): Promise<string[]> {
+    return this.#object.listFirstPartyOAuthClientIds();
   }
 
   getApp(input: BackofficeAppLookupInput): Promise<BackofficeApp | null> {
