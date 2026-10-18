@@ -18,7 +18,7 @@ import {
 import { betterAuthClient } from "@/fragno/auth/better-auth.client";
 import { issueBackofficeTokenResultSchema } from "@/fragno/auth/contracts";
 import { requestEmailVerificationResend } from "@/fragno/auth/email-verification.server";
-import { readPreferredOrganization } from "@/fragno/auth/preferred-organization.client";
+import { readPreferredOrganization } from "@/fragno/auth/preferred-organization";
 import { readBackofficeSessionExchangeErrorMessage } from "@/fragno/auth/session-exchange-error";
 import { getSetCookieHeaders } from "@/worker-runtime/http-headers";
 

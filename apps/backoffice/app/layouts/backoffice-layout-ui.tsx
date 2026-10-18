@@ -6,7 +6,7 @@ import { type ReactNode, useEffect } from "react";
 import { Outlet, isRouteErrorResponse, useRouteError, useRouteLoaderData } from "react-router";
 
 import { BackofficeShell } from "@/components/backoffice/shell";
-import { writePreferredOrganization } from "@/fragno/auth/preferred-organization.client";
+import { writePreferredOrganization } from "@/fragno/auth/preferred-organization";
 import { dashboardPath } from "@/routes/backoffice/dashboard/path";
 import {
   getBackofficeOrganizationNotFound,

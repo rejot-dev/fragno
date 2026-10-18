@@ -9,7 +9,7 @@ import { getBackofficeMe } from "@/fragno/auth/auth-server";
 import {
   readPreferredOrganization,
   writePreferredOrganization,
-} from "@/fragno/auth/preferred-organization.client";
+} from "@/fragno/auth/preferred-organization";
 import { BackofficeSessionExchangeError } from "@/fragno/auth/session-exchange.client";
 
 import type { Route } from "./+types/auth-bootstrap";
