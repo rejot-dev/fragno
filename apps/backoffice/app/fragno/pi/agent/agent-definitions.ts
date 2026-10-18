@@ -4,7 +4,7 @@ import {
 } from "@fragno-dev/backoffice-api/v0/pi";
 import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 
-import type { PiAvailableModel } from "./pi-agent-contract";
+import type { PiAgentTurn, PiAvailableModel } from "./pi-agent-contract";
 
 /** Defined by Backoffice in every scope; a scope cannot create, replace, or delete them. */
 export const BUILT_IN_PI_AGENT_DEFINITIONS: readonly PiAgentDefinition[] = [
@@ -24,14 +24,12 @@ export function builtInPiAgentDefinition(agentName: string): PiAgentDefinition |
 }
 
 /** Grants that no longer name a permission grant nothing, which only narrows the agent. */
-export function expandPiAgentPermissions(
-  grants: readonly string[],
-): BackofficePermissionRequirement[] {
+function expandPiAgentPermissions(grants: readonly string[]): BackofficePermissionRequirement[] {
   return [...new Set(grants.flatMap(piAgentPermissionGrantRequirements))];
 }
 
 /** A definition without a model uses the first available model, which is the preference order. */
-export function resolvePiAgentModel(
+function resolvePiAgentModel(
   definition: PiAgentDefinition,
   availableModels: readonly PiAvailableModel[],
 ): PiAvailableModel | null {
@@ -46,4 +44,52 @@ export function resolvePiAgentModel(
     availableModels.find((model) => model.provider === provider && model.modelId === modelId) ??
     null
   );
+}
+
+type PiAgentAdmission =
+  | { type: "turn"; turn: PiAgentTurn }
+  | {
+      type: "error";
+      status: 400 | 404;
+      code: "AGENT_NOT_FOUND" | "MODEL_UNAVAILABLE";
+      message: string;
+    };
+
+/** A turn runs with its agent's definition as it is when the turn is admitted. */
+export function admitPiAgentTurn(
+  definition: PiAgentDefinition | null,
+  agentName: string,
+  provenance: Pick<PiAgentTurn, "actors" | "scopeRestriction">,
+  availableModels: readonly PiAvailableModel[],
+): PiAgentAdmission {
+  if (!definition) {
+    return {
+      type: "error",
+      status: 404,
+      code: "AGENT_NOT_FOUND",
+      message: `Pi agent '${agentName}' is not defined.`,
+    };
+  }
+  const model = resolvePiAgentModel(definition, availableModels);
+  if (!model) {
+    return {
+      type: "error",
+      status: 400,
+      code: "MODEL_UNAVAILABLE",
+      message: definition.model
+        ? `Pi model ${definition.model} is not available.`
+        : "No configured Pi model is available.",
+    };
+  }
+  return {
+    type: "turn",
+    turn: {
+      ...provenance,
+      agent: {
+        model: { provider: model.provider, modelId: model.modelId },
+        instructions: definition.instructions,
+        permissions: expandPiAgentPermissions(definition.permissions),
+      },
+    },
+  };
 }
