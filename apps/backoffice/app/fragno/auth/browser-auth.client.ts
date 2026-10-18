@@ -3,10 +3,7 @@ import {
   BACKOFFICE_TOKEN_EXPIRED_CODE,
   type IssueBackofficeTokenResult,
 } from "./contracts";
-import {
-  readPreferredOrganization,
-  writePreferredOrganization,
-} from "./preferred-organization.client";
+import { readPreferredOrganization, writePreferredOrganization } from "./preferred-organization";
 import { exchangeBackofficeSessionForJwt } from "./session-exchange.client";
 
 const TOKEN_REFRESH_LEEWAY_MS = 60_000;

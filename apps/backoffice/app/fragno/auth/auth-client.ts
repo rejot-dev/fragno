@@ -7,7 +7,7 @@ import {
   issueBackofficeTokenResultSchema,
   type Role,
 } from "./contracts";
-import { writePreferredOrganization } from "./preferred-organization.client";
+import { writePreferredOrganization } from "./preferred-organization";
 
 async function unwrap<T>(
   request: Promise<{ data: T; error: { message?: string; code?: string; status?: number } | null }>,
