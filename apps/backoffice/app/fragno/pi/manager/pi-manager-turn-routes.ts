@@ -141,6 +141,7 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
               409,
             );
           }
+          config.queueChannel.publish(agentName, submitted.queue);
           await handOver(submitted.handover);
           return json({ requestId: prompt.requestId, status: submitted.status }, 202);
         },
@@ -174,6 +175,7 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
           if (submitted.type === "error") {
             return error({ code: submitted.code, message: submitted.message }, submitted.status);
           }
+          config.queueChannel.publish(agentName, submitted.queue);
           await handOver(submitted.handover);
           return empty(204);
         },
@@ -273,18 +275,25 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
         path: "/agents/:agentName/abort",
         errorCodes: ["AGENT_NOT_STARTED"],
         handler: async function ({ pathParams }, { empty, error }) {
-          const agent = await this.handlerTx()
+          const { agentName } = pathParams;
+          const { agent, dropped } = await this.handlerTx()
             .withServiceCalls(
               () =>
                 [
-                  services.getAgents([pathParams.agentName]),
-                  services.dropWaitingQueueItems(pathParams.agentName),
+                  services.getAgents([agentName]),
+                  services.dropWaitingQueueItems(agentName),
                 ] as const,
             )
-            .transform(({ serviceResult: [agents] }) => agents.get(pathParams.agentName))
+            .transform(({ serviceResult: [agents, emptied] }) => ({
+              agent: agents.get(agentName),
+              dropped: emptied,
+            }))
             .execute();
           if (!agent) {
             return error({ code: "AGENT_NOT_STARTED", message: "Pi agent has no turns yet." }, 404);
+          }
+          if (dropped) {
+            config.queueChannel.publish(agentName, dropped);
           }
           await config.agent(agent).abort(agent);
           return empty(204);

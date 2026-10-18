@@ -7,6 +7,7 @@ import { ComposerPrimitive, QueueItemPrimitive, ThreadPrimitive } from "@assista
 
 import type {
   PiCompactionMessageMetadata,
+  PiConversationQueueLabel,
   PiNotificationMessageMetadata,
   PiNotificationRequestMessageMetadata,
 } from "./assistant-runtime";
@@ -33,7 +34,7 @@ const CONTEXT_USAGE_WARNING_RATIO = 0.8;
 export function SessionThread({
   disabledReason,
   error,
-  queueModes,
+  queueLabels,
   modelLabel,
   needsNudge,
   onCompact,
@@ -59,8 +60,8 @@ export function SessionThread({
 }: {
   disabledReason: string | null;
   error: string | null;
-  /** Keyed by queue item id: steers join the running turn, follow-ups run after it. */
-  queueModes: ReadonlyMap<string, "steer" | "followUp">;
+  /** Keyed by queue item id: steers join the running turn, everything else waits for a turn. */
+  queueLabels: ReadonlyMap<string, PiConversationQueueLabel>;
   modelLabel: string | null;
   needsNudge: boolean;
   onCompact: () => unknown;
@@ -237,7 +238,7 @@ export function SessionThread({
               {({ queueItem }) => (
                 <div className="mx-1 mb-1 flex items-baseline gap-2 border-l-2 border-[color:var(--bo-accent)] bg-[var(--bo-panel)] px-3 py-2 text-xs">
                   <span className="shrink-0 text-[9px] font-semibold tracking-[0.12em] text-[var(--bo-accent-fg)] uppercase">
-                    {queueModes.get(queueItem.id) === "followUp" ? "Up next" : "Steering"}
+                    {queueLabels.get(queueItem.id)}
                   </span>
                   <QueueItemPrimitive.Text className="line-clamp-2 min-w-0 text-pretty whitespace-pre-wrap text-[var(--bo-fg)]" />
                 </div>

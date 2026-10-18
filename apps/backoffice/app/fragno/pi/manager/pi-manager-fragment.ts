@@ -151,18 +151,22 @@ export function createPiManagerFragment(
 /** Called for every turn an agent settles, so its queue hands it the next turn. */
 export async function reportPiAgentTurnSettled(
   fragment: ReturnType<typeof createPiManagerFragment>,
-  config: Pick<PiManagerConfig, "agent" | "supportedAvailableModels">,
+  config: Pick<PiManagerConfig, "agent" | "supportedAvailableModels" | "queueChannel">,
   input: { agentName: string; requestId: string },
 ): Promise<void> {
   const availableModels = await config.supportedAvailableModels();
-  const handover = await fragment.callServices(() =>
+  const advanced = await fragment.callServices(() =>
     fragment.services.advanceAgentQueue({
       agentName: input.agentName,
       settledRequestId: input.requestId,
       availableModels,
     }),
   );
-  if (handover) {
-    await handOverPiAgentWork(config.agent, handover);
+  if (!advanced) {
+    return;
+  }
+  config.queueChannel.publish(input.agentName, advanced.queue);
+  if (advanced.handover) {
+    await handOverPiAgentWork(config.agent, advanced.handover);
   }
 }

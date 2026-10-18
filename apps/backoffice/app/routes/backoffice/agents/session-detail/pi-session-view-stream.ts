@@ -5,6 +5,7 @@ import type { ConversationView } from "@earendil-works/pi-durable";
 
 import {
   piAgentViewStreamFrameSchema,
+  type PiAgentQueueEntry,
   type PiAgentViewStreamFrame,
 } from "@/fragno/pi/agent/pi-agent-contract";
 
@@ -14,7 +15,9 @@ const MAX_RECONNECT_DELAY_MS = 5_000;
 function parsePiSessionViewStreamLine(line: string): PiAgentViewStreamFrame {
   const parsed = piAgentViewStreamFrameSchema.parse(JSON.parse(line));
   // The manager deliberately transports the agent-owned structural view as opaque JSON.
-  return { type: parsed.type, view: parsed.view as ConversationView };
+  return parsed.type === "queue"
+    ? parsed
+    : { type: parsed.type, view: parsed.view as ConversationView };
 }
 
 /** Reads complete NDJSON frames even when the transport splits JSON across byte chunks. */
@@ -73,11 +76,17 @@ function waitForPiSessionViewReconnect(delayMs: number, signal: AbortSignal) {
   });
 }
 
-/** The selected agent's live conversation, as far as its view stream has delivered it. */
+/**
+ * The selected agent's live conversation and the items waiting in its queue, as far as its view
+ * stream has delivered them.
+ */
 type PiSessionViewStreamState =
   | { status: "connecting" }
-  | { status: "ready"; view: ConversationView }
+  | { status: "ready"; view: ConversationView; queue: PiAgentQueueState }
   | { status: "failed"; message: string };
+
+/** What waits in the agent's queue. */
+export type PiAgentQueueState = { items: PiAgentQueueEntry[] };
 
 async function readPiSessionViewStreamFailure(response: Response) {
   const body = z.object({ message: z.string() }).safeParse(await response.json().catch(() => null));
@@ -121,8 +130,15 @@ export function usePiSessionViewStream(streamUrl: string) {
             throw new Error(`Pi session view stream failed with status ${response.status}.`);
           }
           reconnectDelayMs = INITIAL_RECONNECT_DELAY_MS;
+          // Each connection starts with the queue, which waits here for the first view.
+          let queue: PiAgentQueueState = { items: [] };
           await consumePiSessionViewNdjson(response, (frame) => {
-            setState({ status: "ready", view: frame.view });
+            if (frame.type === "queue") {
+              queue = { items: frame.items };
+              setState((current) => (current.status === "ready" ? { ...current, queue } : current));
+              return;
+            }
+            setState({ status: "ready", view: frame.view, queue });
           });
         } catch (cause) {
           if (controller.signal.aborted) {

@@ -48,7 +48,10 @@ import {
 } from "./session-detail/assistant-runtime";
 import { estimatePiContextTokens } from "./session-detail/context-usage";
 import { SessionDisplayOptions } from "./session-detail/display-options";
-import { usePiSessionViewStream } from "./session-detail/pi-session-view-stream";
+import {
+  usePiSessionViewStream,
+  type PiAgentQueueState,
+} from "./session-detail/pi-session-view-stream";
 import { SessionThread } from "./session-detail/session-thread";
 import {
   SessionWorkspaceNavigationProvider,
@@ -430,15 +433,17 @@ function BackofficeOrganizationPiAgentStream({ agent }: { agent: PiManagerAgent 
       </AgentStatusPane>
     );
   }
-  return <BackofficeOrganizationPiAgent agent={agent} view={stream.view} />;
+  return <BackofficeOrganizationPiAgent agent={agent} view={stream.view} queue={stream.queue} />;
 }
 
 function BackofficeOrganizationPiAgent({
   agent,
   view,
+  queue: agentQueue,
 }: {
   agent: PiManagerAgent;
   view: ConversationView;
+  queue: PiAgentQueueState;
 }) {
   const posthog = usePostHog();
   const {
@@ -479,7 +484,10 @@ function BackofficeOrganizationPiAgent({
     [activeContextStart, transcript],
   );
   const draftAgentMessage = useMemo(() => piConversationDraftAgentMessage(view), [view]);
-  const conversationQueue = useMemo(() => piConversationQueue(view), [view]);
+  const conversationQueue = useMemo(
+    () => piConversationQueue(view, agentQueue.items),
+    [view, agentQueue.items],
+  );
   const contextTokens = useMemo(() => estimatePiContextTokens(view), [view]);
   const statusText = compacting ? "Compacting…" : running ? "Working…" : null;
   const { messages: assistantMessages, activeContextStartMessageId } = useMemo(
@@ -582,16 +590,17 @@ function BackofficeOrganizationPiAgent({
     [posthog, fetcher, initialPromptError, running, agent.agentName, setSearchParams],
   );
 
-  // Pi owns the queue in `pi.inbox`; this adapter keeps the composer usable during a run.
+  // The agent's queue and Pi's `pi.inbox` own what waits; this adapter keeps the composer usable
+  // during a run.
   const queue = useMemo<ExternalThreadQueueAdapter>(
     () => ({
       items: conversationQueue.items,
       enqueue: (message) => {
         void handleSend(message);
       },
-      // Pi decides each queued input's mode when it is admitted.
+      // The server decides whether a message steers or waits when it is submitted.
       steer: () => undefined,
-      // The thread renders no remove control; Pi exposes no withdrawal route yet.
+      // The thread renders no remove control; queued items cannot be withdrawn yet.
       remove: () => undefined,
       // Aborting the agent withdraws queued input on the server.
       clear: () => undefined,
@@ -732,7 +741,7 @@ function BackofficeOrganizationPiAgent({
               <SessionThread
                 disabledReason={null}
                 error={sendError}
-                queueModes={conversationQueue.modes}
+                queueLabels={conversationQueue.labels}
                 modelLabel={modelLabel}
                 needsNudge={false}
                 onCompact={handleCompact}

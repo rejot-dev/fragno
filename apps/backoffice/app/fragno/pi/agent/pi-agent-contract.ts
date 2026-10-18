@@ -154,15 +154,32 @@ export type PiAgentEntryPage = {
   cursor: Cursor | null;
 };
 
-/** NDJSON frames replace the browser's durable conversation view with one committed revision. */
-export const piAgentViewStreamFrameSchema = z.object({
-  type: z.enum(["snapshot", "update"]),
-  view: z.unknown(),
-});
-export type PiAgentViewStreamFrame = {
-  type: "snapshot" | "update";
-  view: ConversationView;
-};
+/** An item waiting in an agent's queue, as its conversation's readers see it. */
+const piAgentQueueEntrySchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("prompt"), requestId: z.string(), content: z.string() }),
+  z.object({
+    type: z.literal("notification"),
+    requestId: z.string(),
+    source: z.string(),
+    eventType: z.string(),
+  }),
+]);
+export type PiAgentQueueEntry = z.infer<typeof piAgentQueueEntrySchema>;
+
+/** An agent's waiting items in queue order, as of a revision of its queue. */
+export type PiAgentWaitingQueue = { revision: number; items: PiAgentQueueEntry[] };
+
+/**
+ * NDJSON frames: `snapshot` and `update` replace the browser's durable conversation view with one
+ * committed revision, and `queue` replaces the items waiting in the agent's queue.
+ */
+export const piAgentViewStreamFrameSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.enum(["snapshot", "update"]), view: z.unknown() }),
+  z.object({ type: z.literal("queue"), items: z.array(piAgentQueueEntrySchema) }),
+]);
+export type PiAgentViewStreamFrame =
+  | { type: "snapshot" | "update"; view: ConversationView }
+  | { type: "queue"; items: PiAgentQueueEntry[] };
 
 /** Agent operations shared by Cloudflare RPC and the local object runtime. */
 export type PiAgent = {

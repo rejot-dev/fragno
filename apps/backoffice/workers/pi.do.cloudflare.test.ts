@@ -25,7 +25,11 @@ import {
   encodeBackofficeObjectAddress,
 } from "@/backoffice-runtime/object-registry";
 import { createCloudflareDurableObjectRuntimeServices } from "@/backoffice-runtime/runtime-services";
-import { piAgentObjectName, type PiAgentTurn } from "@/fragno/pi/agent/pi-agent-contract";
+import {
+  piAgentObjectName,
+  type PiAgentTurn,
+  type PiAgentViewStreamFrame,
+} from "@/fragno/pi/agent/pi-agent-contract";
 import { recordPiAgentTurn } from "@/fragno/pi/agent/pi-agent-turns";
 
 import { openPiSessionStore } from "./lib/pi-session-store";
@@ -74,7 +78,7 @@ async function readPiViewStreamFrame(
     if (newlineIndex >= 0) {
       const line = state.buffer.slice(0, newlineIndex);
       state.buffer = state.buffer.slice(newlineIndex + 1);
-      return JSON.parse(line) as { type: "snapshot" | "update"; view: ConversationView };
+      return JSON.parse(line) as PiAgentViewStreamFrame;
     }
     const result = await reader.read();
     if (result.done) {
@@ -203,8 +207,14 @@ describe("Pi durable agent scenarios", () => {
     const response = await managerRequest(organizationId, "/agents/assistant/view-stream");
     expect(response.headers.get("content-type")).toContain("application/x-ndjson");
     const reader = response.body!.getReader();
+    const streamState = { buffer: "" };
 
-    expect(await readPiViewStreamFrame(reader, { buffer: "" })).toMatchObject({
+    // The manager leads with the agent's queue, empty since the prompt was dispatched.
+    expect(await readPiViewStreamFrame(reader, streamState)).toEqual({
+      type: "queue",
+      items: [],
+    });
+    expect(await readPiViewStreamFrame(reader, streamState)).toMatchObject({
       type: "snapshot",
     });
     await reader.cancel();

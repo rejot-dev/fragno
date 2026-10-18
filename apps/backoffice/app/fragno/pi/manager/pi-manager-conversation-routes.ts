@@ -7,9 +7,63 @@ import {
   piAgentCompactionStatusSchema,
   piAgentEntryPageRequestSchema,
   piAgentViewStreamFrameSchema,
+  type PiAgentViewStreamFrame,
+  type PiAgentWaitingQueue,
 } from "@/fragno/pi/agent/pi-agent-contract";
 
 import { piManagerDefinition } from "./pi-manager-definition";
+
+/**
+ * Interleaves `queue` frames with the agent's view frames. View frames pass through whole lines
+ * only, so a queue frame never lands inside one.
+ */
+function withQueueFrames(
+  views: ReadableStream<Uint8Array>,
+  watchQueue: (listener: (queue: PiAgentWaitingQueue) => void) => () => void,
+): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  const reader = views.getReader();
+  let partial = "";
+  let unwatch = () => {};
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      unwatch = watchQueue(({ items }) => {
+        const frame: PiAgentViewStreamFrame = { type: "queue", items };
+        controller.enqueue(encoder.encode(`${JSON.stringify(frame)}\n`));
+      });
+    },
+    // Reads until it can pass on a whole line, since a pull that enqueues nothing is not repeated.
+    async pull(controller) {
+      while (true) {
+        const { done, value } = await reader.read().catch((cause: unknown) => {
+          // A stream that errors is never cancelled, so it stops following the queue here.
+          unwatch();
+          throw cause;
+        });
+        if (done) {
+          unwatch();
+          if (partial) {
+            controller.enqueue(encoder.encode(partial));
+          }
+          controller.close();
+          return;
+        }
+        partial += decoder.decode(value, { stream: true });
+        const end = partial.lastIndexOf("\n") + 1;
+        if (end > 0) {
+          controller.enqueue(encoder.encode(partial.slice(0, end)));
+          partial = partial.slice(end);
+          return;
+        }
+      }
+    },
+    async cancel(reason) {
+      unwatch();
+      await reader.cancel(reason);
+    },
+  });
+}
 
 function damagedViewResponse<T>(
   cause: unknown,
@@ -57,15 +111,25 @@ export const piManagerConversationRoutes = defineRoutes(piManagerDefinition).cre
       outputSchema: z.array(piAgentViewStreamFrameSchema),
       errorCodes: ["AGENT_NOT_STARTED", PiConversationViewDamagedError.code],
       handler: async function ({ pathParams }, { error }) {
-        const agent = await this.handlerTx()
-          .withServiceCalls(() => [services.getAgents([pathParams.agentName])])
-          .transform(({ serviceResult: [agents] }) => agents.get(pathParams.agentName))
+        const { agentName } = pathParams;
+        const { agent, queue } = await this.handlerTx()
+          .withServiceCalls(
+            () => [services.getAgents([agentName]), services.getWaitingQueue(agentName)] as const,
+          )
+          .transform(({ serviceResult: [agents, waiting] }) => ({
+            agent: agents.get(agentName),
+            queue: waiting,
+          }))
           .execute();
         if (!agent) {
           return error({ code: "AGENT_NOT_STARTED", message: "Pi agent has no turns yet." }, 404);
         }
         try {
-          return new Response(await config.agent(agent).watchView(agent), {
+          const views = await config.agent(agent).watchView(agent);
+          const stream = withQueueFrames(views, (listener) =>
+            config.queueChannel.watch(agentName, queue, listener),
+          );
+          return new Response(stream, {
             headers: {
               "cache-control": "no-cache",
               "content-type": "application/x-ndjson; charset=utf-8",

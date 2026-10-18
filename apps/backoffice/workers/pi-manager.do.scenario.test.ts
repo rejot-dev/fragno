@@ -49,6 +49,7 @@ import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import { createRouteBackedAutomationRouterRuntime } from "@/fragno/automation/routing-route-runtime";
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
 import { piAgentActor } from "@/fragno/pi/agent/pi-agent-actor";
+import type { PiAgentViewStreamFrame } from "@/fragno/pi/agent/pi-agent-contract";
 import {
   PI_NOTIFICATION_ENTRY_KIND,
   renderPiNotificationRequest,
@@ -143,7 +144,7 @@ async function readPiViewStreamFrame(
     if (newlineIndex >= 0) {
       const line = state.buffer.slice(0, newlineIndex);
       state.buffer = state.buffer.slice(newlineIndex + 1);
-      return JSON.parse(line) as { type: "snapshot" | "update"; view: ConversationView };
+      return JSON.parse(line) as PiAgentViewStreamFrame;
     }
     const result = await reader.read();
     if (result.done) {
@@ -1399,6 +1400,11 @@ test("the local Pi view stream publishes durable generation partials before comp
           assert.equal(response.status, 200);
           const reader = response.body!.getReader();
           const streamState = { buffer: "" };
+          // The prompt is dispatched, so nothing waits in the agent's queue.
+          expect(await readPiViewStreamFrame(reader, streamState)).toEqual({
+            type: "queue",
+            items: [],
+          });
           expect(await readPiViewStreamFrame(reader, streamState)).toMatchObject({
             type: "snapshot",
           });
@@ -1414,6 +1420,9 @@ test("the local Pi view stream publishes durable generation partials before comp
           let completedView: ConversationView | null = null;
           while (!completedView) {
             const frame = await readPiViewStreamFrame(reader, streamState);
+            if (frame.type === "queue") {
+              continue;
+            }
             const live = frame.view.docs["pi.live"] as Readonly<LiveState> | undefined;
             if (
               live?.generation?.message !== undefined &&
