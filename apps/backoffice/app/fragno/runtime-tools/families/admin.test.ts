@@ -95,6 +95,9 @@ describe("admin runtime tools", () => {
         url: "https://backoffice.example/backoffice/sign-up?invitationId=invitation-1&code=ABC12345",
         ttlDays: input.ttlDays ?? 7,
       })),
+      verifyUserEmail: async () => {
+        throw new Error("Email verification is not configured in this fixture.");
+      },
       createOrganization: vi.fn(async (input) => ({
         organizationId: "org-1",
         name: input.name,

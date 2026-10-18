@@ -22,6 +22,7 @@ export const BACKOFFICE_PERMISSION = {
       permission: "sign-up-invitations.manage",
     },
     organizationsManage: { namespace: "admin", permission: "organizations.manage" },
+    usersManage: { namespace: "admin", permission: "users.manage" },
   },
   apps: {
     read: { namespace: "apps", permission: "read" },

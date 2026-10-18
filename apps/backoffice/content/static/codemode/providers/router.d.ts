@@ -328,6 +328,10 @@ type BackofficePermissionRequirement =
       permission: "organizations.manage";
     }
   | {
+      namespace: "admin";
+      permission: "users.manage";
+    }
+  | {
       namespace: "apps";
       permission: "read";
     }

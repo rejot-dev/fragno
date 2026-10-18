@@ -495,6 +495,37 @@
     ]
   },
   {
+    "command": "admin.users.verify-email",
+    "summary": "admin.users.verify-email marks a user's email address as verified without sending an email.",
+    "options": [
+      {
+        "name": "email",
+        "valueRequired": true,
+        "valueName": "email",
+        "description": "Email address of the existing user"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "admin.apps.create",
     "summary": "admin.apps.create registers an existing OAuth client as a Backoffice app (System administrators only).",
     "options": [
