@@ -24,6 +24,8 @@ export default mergeConfig(
         resolveConfig("./app/routes/backoffice/agents/session-detail/!(*.test).{ts,tsx}"),
         resolveConfig("./app/routes/backoffice/agents/organization-layout.tsx"),
         resolveConfig("./app/routes/backoffice/automations/script-view/workflow-graph.tsx"),
+        // Run as a subprocess by `scripts/run-worker-release.test.ts`.
+        resolveConfig("./scripts/run-worker-release.mjs"),
       ],
       coverage: {
         enabled: false,
