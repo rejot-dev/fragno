@@ -24,6 +24,7 @@ import {
   type PiAvailableModel,
 } from "@/fragno/pi/agent/pi-agent-contract";
 import { createPiModels, listAvailablePiModels } from "@/fragno/pi/agent/pi-models";
+import { createPiAgentQueueChannel } from "@/fragno/pi/manager/pi-agent-queue";
 import type { PiManagerConfig } from "@/fragno/pi/manager/pi-manager-definition";
 import {
   createPiManagerFragment,
@@ -46,7 +47,7 @@ export class InMemoryPiManagerObject extends RpcTarget implements PiManagerObjec
   readonly #scoped: ScopedFragmentDurableObjectRuntime<PiManagerFragment>;
   readonly #env: Pick<BackofficeRuntimeEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">;
   readonly #nowEpochMs: () => number;
-  readonly #config: Pick<PiManagerConfig, "agent" | "supportedAvailableModels">;
+  readonly #config: Pick<PiManagerConfig, "agent" | "supportedAvailableModels" | "queueChannel">;
 
   constructor({
     state,
@@ -68,17 +69,13 @@ export class InMemoryPiManagerObject extends RpcTarget implements PiManagerObjec
     super();
     this.#env = env;
     this.#nowEpochMs = nowEpochMs;
-    this.#config = { agent, supportedAvailableModels };
+    this.#config = { agent, supportedAvailableModels, queueChannel: createPiAgentQueueChannel() };
     const kernel = new BackofficeKernel(runtime);
     this.#host = implementation.createFragmentHost({
       name: "PiManager",
       createRuntime: (scope) =>
         createPiManagerFragment(
-          {
-            scope,
-            agent,
-            supportedAvailableModels,
-          },
+          { scope, ...this.#config },
           {
             databaseAdapter: implementation.fragmentDatabase.adapters.createAdapter({
               kind: "pi-manager",

@@ -128,6 +128,10 @@ prompt also waits for its dispatch, and `pi.runPrompt` fails with `PI_MANAGER_PR
 its turn is dispatched, a request's submission is its turn's, so every notification a turn handled
 answers with that turn's submission. Aborting drops the queued items and withdraws what Pi holds.
 
+Every change publishes the agent's waiting items, with the agent row's version as their revision, to
+the manager object's in-memory queue channel. The view stream leads with them and sends them again
+as a `queue` frame whenever they change; an older revision published late is ignored.
+
 ## Turn events
 
 Every answered prompt records one `pi` Automations event in the agent's scope, `turn.completed` with
@@ -198,7 +202,8 @@ All paths below are mounted at `/api/pi-manager` inside the manager object:
 - `GET /agents/:agentName/submissions/:requestId/wait?waitMs=...`: bounded, commit-driven wait for a
   queued prompt's dispatch and its submission's settlement.
 - `GET /agents/:agentName/view`: Pi's committed active structural conversation view.
-
+- `GET /agents/:agentName/view-stream`: NDJSON `snapshot` and `update` frames of that view,
+  interleaved with `queue` frames listing the items waiting in the agent's queue; see Queue.
 - `GET /agents/:agentName/entries?cursor=...&pageSize=...`: newest-first, fork-aware durable entry
   history (maximum 256 entries per page).
 - `GET /agents/:agentName/export`: streaming versioned JSONL export over every durable entry.
@@ -255,11 +260,12 @@ which codemode preserves for workflow recovery decisions.
 The agent route loaders and actions call the scoped manager through `http.fetchAuthorized` and the
 Fragno route contract. The UI lists defined agents and where each comes from, starts an agent's
 conversation with its first message (choosing the active organization as a personal agent's billing
-owner), steers the sender's own running turn and queues messages otherwise, shows the input Pi holds
-in `pi.inbox` in the composer as steering or up next, estimates the active context against the
-conversation's model, runs and monitors manual compaction, paginates inactive transcript history,
-downloads streaming JSONL exports, and aborts active work. A scoped resource route proxies the
-agent's `application/x-ndjson` conversation-view stream to the browser.
+owner), steers the sender's own running turn and queues messages otherwise, shows what waits in the
+composer (the input Pi holds in `pi.inbox` as steering or up next, then the agent's queue as queued
+prompts and notifications), estimates the active context against the conversation's model, runs and
+monitors manual compaction, paginates inactive transcript history, downloads streaming JSONL
+exports, and aborts active work. A scoped resource route proxies the agent's `application/x-ndjson`
+conversation-view stream to the browser.
 
 ## Recovery
 

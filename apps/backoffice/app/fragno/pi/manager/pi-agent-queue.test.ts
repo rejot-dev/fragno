@@ -18,6 +18,7 @@ import type {
 } from "@/fragno/pi/agent/pi-agent-contract";
 import { piNotificationRequestId } from "@/fragno/pi/agent/pi-agent-notification-entry";
 
+import { createPiAgentQueueChannel } from "./pi-agent-queue";
 import { piManagerConversationRoutes } from "./pi-manager-conversation-routes";
 import { piManagerDefinition } from "./pi-manager-definition";
 import { piManagerDirectoryRoutes } from "./pi-manager-directory-routes";
@@ -68,6 +69,7 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
   // Like Pi, the fake keeps the first submission of each request ID it receives.
   const submissions = new Map<string, SubmissionRecord>();
   const failing = { handovers: 0 };
+  const views: ReadableStreamDefaultController<Uint8Array>[] = [];
   function receive(handover: Handover) {
     if (failing.handovers > 0) {
       failing.handovers -= 1;
@@ -114,7 +116,14 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
     getSubmission: async (_config, requestId) => submissions.get(requestId) ?? null,
     waitForSubmission: async () => ({ status: "pending", submission: null }),
     getView: unused,
-    watchView: unused,
+    // One view frame, and the conversation stays open as a real agent's does.
+    watchView: async () =>
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          views.push(controller);
+          controller.enqueue(new TextEncoder().encode('{"type":"snapshot","view":{}}\n'));
+        },
+      }),
     listEntries: unused,
     exportEntries: unused,
     compact: unused,
@@ -125,6 +134,7 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
     scope,
     agent: () => agent,
     supportedAvailableModels: async () => AVAILABLE_MODELS,
+    queueChannel: createPiAgentQueueChannel(),
   };
   const { fragments, test: database } = await buildDatabaseFragmentsTest()
     .withTestAdapter({ type: "kysely-sqlite" })
@@ -197,6 +207,32 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
         pathParams: { agentName },
       });
       assert(response.type === "empty", JSON.stringify(response));
+    },
+    /** The agent's view stream, read one `queue` frame at a time as `<type> <requestId>` lines. */
+    async watchQueue(agentName = "assistant") {
+      const response = await fragment.callRoute("GET", "/agents/:agentName/view-stream", {
+        pathParams: { agentName },
+      });
+      assert(response.type === "jsonStream", JSON.stringify(response));
+      const frames = response.stream;
+      onTestFinished(async () => {
+        await frames.return(undefined);
+      });
+      return async function nextQueue() {
+        while (true) {
+          const { done, value } = await frames.next();
+          assert(!done, "The view stream ended.");
+          if (value.type === "queue") {
+            return value.items.map(({ type, requestId }) => `${type} ${requestId}`);
+          }
+        }
+      };
+    },
+    /** Fails the agent's open view streams, as a restarting agent object does. */
+    failViews() {
+      for (const view of views.splice(0)) {
+        view.error(new Error("The agent object restarted."));
+      }
     },
     async settle(requestId: string, agentName = "assistant") {
       await reportPiAgentTurnSettled(fragment, config, { agentName, requestId });
@@ -485,4 +521,34 @@ test("a notification never starts an agent", async () => {
   await queue.settle("first");
   await queue.delivered({ eventId: "early" });
   expect(queue.requestIds()).toEqual(["dispatch first", "dispatch route:orders:early (early)"]);
+});
+
+test("a view stream that fails stops following the queue without failing its changes", async () => {
+  const queue = await piManagerQueue();
+  await queue.receipt({ requestId: "first" });
+  const nextQueue = await queue.watchQueue();
+  expect(await nextQueue()).toEqual([]);
+  queue.failViews();
+  await expect(nextQueue()).rejects.toThrow("The agent object restarted.");
+
+  await queue.receipt({ requestId: "second" });
+  await queue.settle("first");
+  expect(queue.turns()).toEqual(["dispatch first", "dispatch second"]);
+});
+
+test("the view stream follows what waits in the agent's queue", async () => {
+  const queue = await piManagerQueue();
+  await queue.receipt({ requestId: "first" });
+  const nextQueue = await queue.watchQueue();
+  expect(await nextQueue()).toEqual([]);
+
+  await queue.receipt({ requestId: "second" });
+  expect(await nextQueue()).toEqual(["prompt second"]);
+  await queue.delivered({ eventId: "ada-1" });
+  expect(await nextQueue()).toEqual(["prompt second", "notification route:orders:ada-1"]);
+  await queue.settle("first");
+  expect(await nextQueue()).toEqual(["notification route:orders:ada-1"]);
+
+  await queue.abort();
+  expect(await nextQueue()).toEqual([]);
 });

@@ -8,7 +8,7 @@ import type {
   LiveState,
 } from "@earendil-works/pi-durable";
 
-import type { PiAgentNotification } from "@/fragno/pi/agent/pi-agent-contract";
+import type { PiAgentNotification, PiAgentQueueEntry } from "@/fragno/pi/agent/pi-agent-contract";
 import {
   parsePiNotificationRequest,
   PI_NOTIFICATION_ENTRY_KIND,
@@ -627,17 +627,26 @@ export function getAppendMessageText(message: AppendMessage) {
     .trim();
 }
 
+/** How the composer queue labels an item. */
+export type PiConversationQueueLabel = "Steering" | "Up next" | "Queued" | "Notification";
+
 export type PiConversationQueue = {
   items: QueueItemState[];
   /** Keyed by queue item id; Assistant UI's queue items carry only an id and a prompt. */
-  modes: ReadonlyMap<string, "steer" | "followUp">;
+  labels: ReadonlyMap<string, PiConversationQueueLabel>;
 };
 
-/** Projects Pi's queued inputs into Assistant UI's composer queue; placement removes them. */
-export function piConversationQueue(view: ConversationView): PiConversationQueue {
+/**
+ * Projects everything waiting for the agent into Assistant UI's composer queue: first the inputs Pi
+ * holds but has not placed, which placement removes, then the agent's queue in the order it runs.
+ */
+export function piConversationQueue(
+  view: ConversationView,
+  waiting: readonly PiAgentQueueEntry[],
+): PiConversationQueue {
   const inbox = view.docs["pi.inbox"] as Readonly<InboxState> | undefined;
   const items: QueueItemState[] = [];
-  const modes = new Map<string, "steer" | "followUp">();
+  const labels = new Map<string, PiConversationQueueLabel>();
   for (const item of inbox?.items ?? []) {
     if (item.mode === "write") {
       continue;
@@ -650,9 +659,19 @@ export function piConversationQueue(view: ConversationView): PiConversationQueue
     const notifications = parsePiNotificationRequest(text);
     const prompt = notifications ? notificationRequestLabel(notifications) : text;
     items.push({ id, prompt });
-    modes.set(id, item.mode);
+    labels.set(id, item.mode === "steer" ? "Steering" : "Up next");
   }
-  return { items, modes };
+  for (const entry of waiting) {
+    const id = `queue:${entry.requestId}`;
+    if (entry.type === "prompt") {
+      items.push({ id, prompt: entry.content });
+      labels.set(id, "Queued");
+    } else {
+      items.push({ id, prompt: `${entry.source} · ${entry.eventType}` });
+      labels.set(id, "Notification");
+    }
+  }
+  return { items, labels };
 }
 
 /** How the chat names a request to handle notifications. */
