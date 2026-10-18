@@ -98,6 +98,7 @@ async function createOrganizationFromPage(
       env: ctx.runtime.env as unknown as CloudflareEnv,
       ctx: {} as ExecutionContext,
     }),
+    url: new URL(request.url),
     params: {},
   } as never);
   assert(response instanceof Response);
