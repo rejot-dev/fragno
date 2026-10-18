@@ -262,6 +262,11 @@ export type AdminOrganizationRecord = {
   ownerUserId: string;
 };
 
+/** Invitations addressed to a user's email, listed only once they verified they own it. */
+export type AccountInvitationListing =
+  | { status: "email-unverified" }
+  | { status: "listed"; invitations: AccountInvitationRecord[] };
+
 /** A user whose email address an administrator marked as verified. */
 export type AdminUserEmailVerificationRecord = {
   userId: string;
@@ -362,7 +367,7 @@ export type AuthObject = DurableHookCommands & {
   getAccountProfile(input: { userId: string }): Promise<AccountProfile>;
   updateAccountProfile(input: { userId: string; name: string }): Promise<AccountProfile>;
   listAccountOrganizations(input: { userId: string }): Promise<OrganizationMembershipRecord[]>;
-  listAccountInvitations(input: { userId: string }): Promise<AccountInvitationRecord[]>;
+  listAccountInvitations(input: { userId: string }): Promise<AccountInvitationListing>;
   /** Accepts as the user, so Better Auth enforces the recipient email, expiry, and status. */
   acceptAccountInvitation(input: {
     userId: string;

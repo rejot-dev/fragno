@@ -90,18 +90,38 @@ export async function loadOrganizationInvitations(input: DirectoryRequest, slug:
   };
 }
 
+const emailVerificationRequiredSchema = z.object({
+  code: z.literal("EMAIL_VERIFICATION_REQUIRED_FOR_INVITATION"),
+});
+
+/**
+ * Lists invitations addressed to the session's email. Better Auth lists them only once the user has
+ * verified that they own the address, so an unverified user gets a state instead of an error.
+ */
 export async function loadUserInvitations({ request, context }: DirectoryRequest) {
   const response = await callBetterAuth(request, context, "/organization/list-user-invitations");
+  if (
+    response.status === 403 &&
+    emailVerificationRequiredSchema.safeParse(
+      await response
+        .clone()
+        .json()
+        .catch(() => null),
+    ).success
+  ) {
+    return { status: "email-unverified" } as const;
+  }
   if (!response.ok) {
     throw response;
   }
   const invitations = (await response.json()) as Array<Invitation & { organizationName: string }>;
   return {
+    status: "listed",
     invitations: invitations.map((invitation) => ({
       invitation: { ...invitation, roles: invitation.role?.split(",") ?? ["member"] },
       organization: { id: invitation.organizationId, name: invitation.organizationName },
     })),
-  };
+  } as const;
 }
 
 export async function loadSystemUsers({ request, context }: DirectoryRequest) {

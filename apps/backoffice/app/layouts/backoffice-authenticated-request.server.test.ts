@@ -27,7 +27,6 @@ const authenticatedMe: BackofficeMeData = {
   organizations: [],
   activeOrganizationId: null,
   activeOrganization: null,
-  invitations: [],
 };
 
 function createAuthenticationContext(
