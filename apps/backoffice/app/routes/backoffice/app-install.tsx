@@ -41,7 +41,7 @@ async function requireInstallRequest(context: Route.LoaderArgs["context"], url: 
 }
 
 export async function loader({ request, context, url }: Route.LoaderArgs) {
-  const user = await requireBackofficeBrowserSession(request, context);
+  const user = await requireBackofficeBrowserSession({ request, context, url });
   const installRequest = await requireInstallRequest(context, url);
   const choices = await loadAppInstallChoices(context, {
     userId: user.id,
@@ -68,7 +68,7 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
 }
 
 export async function action({ request, context, url }: Route.ActionArgs) {
-  const user = await requireBackofficeBrowserSession(request, context);
+  const user = await requireBackofficeBrowserSession({ request, context, url });
   const installRequest = await requireInstallRequest(context, url);
   const result = await decideAppInstallation(context, {
     userId: user.id,

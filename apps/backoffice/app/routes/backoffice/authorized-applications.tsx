@@ -11,7 +11,7 @@ import { backofficeOAuthConsentRevokeInputSchema } from "@/fragno/auth/oauth-con
 import type { Route } from "./+types/authorized-applications";
 
 export async function loader({ request, context, url }: Route.LoaderArgs) {
-  await requireBackofficeBrowserSession(request, context);
+  await requireBackofficeBrowserSession({ request, context, url });
   const query = new URLSearchParams();
   const cursor = url.searchParams.get("cursor");
   if (cursor !== null) {
@@ -26,8 +26,8 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
   });
 }
 
-export async function action({ request, context }: Route.ActionArgs) {
-  await requireBackofficeBrowserSession(request, context);
+export async function action({ request, context, url }: Route.ActionArgs) {
+  await requireBackofficeBrowserSession({ request, context, url });
   const input = backofficeOAuthConsentRevokeInputSchema.safeParse(
     Object.fromEntries(await request.formData()),
   );

@@ -47,8 +47,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 }
 
 /** Creates an organization owned by the signed-in user, then opens its dashboard. */
-export async function action({ request, context }: Route.ActionArgs) {
-  const user = await requireBackofficeBrowserSession(request, context);
+export async function action({ request, context, url }: Route.ActionArgs) {
+  const user = await requireBackofficeBrowserSession({ request, context, url });
   const input = z
     .object({ name: z.string().trim().min(1).max(100) })
     .safeParse(Object.fromEntries(await request.formData()));
