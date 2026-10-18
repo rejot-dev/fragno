@@ -262,6 +262,13 @@ export type AdminOrganizationRecord = {
   ownerUserId: string;
 };
 
+/** A user whose email address an administrator marked as verified. */
+export type AdminUserEmailVerificationRecord = {
+  userId: string;
+  email: string;
+  status: "verified" | "already_verified";
+};
+
 export type AdminOrganizationMemberRecord = {
   organizationId: string;
   userId: string;
@@ -339,6 +346,8 @@ export type AuthObject = DurableHookCommands & {
     userId: string;
     name: string;
   }): Promise<{ id: string; slug: string }>;
+  /** Marks an email address verified without the owner proving it, as an administrator. */
+  verifyAdminUserEmail(input: { email: string }): Promise<AdminUserEmailVerificationRecord>;
   addAdminOrganizationMember(input: {
     organizationId: string;
     userEmail: string;
