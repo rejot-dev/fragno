@@ -60,13 +60,14 @@ describe("Better Auth Durable Object SQLite", () => {
     const cookie = cookieHeader(signUpResponse);
     assert(cookie);
 
-    await runInDurableObject(stub, async (instance) => {
-      await instance.alarm();
+    const organizationResponse = await authRequest(stub, "/organization/create", {
+      cookie,
+      body: { name: "Lifecycle Workspace", slug: "lifecycle-workspace" },
     });
-    const organizations = await stub.getAllOrganizations();
-    expect(organizations).toHaveLength(1);
-    const organizationId = organizations[0]?.id;
-    assert(organizationId);
+    if (!organizationResponse.ok) {
+      assert.fail(await organizationResponse.text());
+    }
+    const organizationId = ((await organizationResponse.json()) as { id: string }).id;
 
     const tokenResponse = await authRequest(stub, "/backoffice-token", {
       cookie,
@@ -90,7 +91,7 @@ describe("Better Auth Durable Object SQLite", () => {
     assert(verification.ok);
     expect(verification.payload.organization).toMatchObject({
       id: organizationId,
-      slug: "sqlite-users-organization",
+      slug: "lifecycle-workspace",
     });
 
     const me = (await stub.getBackofficeMe({

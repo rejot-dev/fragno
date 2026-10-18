@@ -23,7 +23,7 @@ import { issueBackofficeJwt, issueInstalledAppJwt } from "@/fragno/auth/token-li
 
 import {
   BackofficeUserTokenGrantForbiddenError,
-  type BackofficeUserTokenGrantResolution,
+  type BackofficeUserTokenAuthority,
   type ResolveBackofficeUserTokenGrant,
 } from "./backoffice-user-token-grant";
 import { requireBackofficeOAuthConsent } from "./better-auth-oauth-consent";
@@ -150,26 +150,19 @@ export async function exchangeBackofficeExecutionToken(
   return await exchangeFirstPartyUserToken(authContext, input, userId, dependencies);
 }
 
-async function resolveReadyUserGrant(
+async function resolveUserAuthority(
   authContext: BetterAuthContext,
   input: Parameters<ResolveBackofficeUserTokenGrant>[1],
   dependencies: BackofficeExecutionTokenDependencies,
-): Promise<Extract<BackofficeUserTokenGrantResolution, { status: "ready" }>> {
-  let grant: BackofficeUserTokenGrantResolution;
+): Promise<BackofficeUserTokenAuthority> {
   try {
-    grant = await dependencies.resolveUserGrant(authContext.adapter, input);
+    return await dependencies.resolveUserGrant(authContext.adapter, input);
   } catch (error) {
     if (error instanceof BackofficeUserTokenGrantForbiddenError) {
       throw new BackofficeExecutionTokenScopeError(error.message, { cause: error });
     }
     throw error;
   }
-  if (grant.status === "organization_provisioning") {
-    throw new BackofficeExecutionTokenScopeError(
-      "The authenticated user does not have an available Backoffice organization.",
-    );
-  }
-  return grant;
 }
 
 async function exchangeFirstPartyUserToken(
@@ -178,7 +171,7 @@ async function exchangeFirstPartyUserToken(
   userId: string,
   dependencies: BackofficeExecutionTokenDependencies,
 ): Promise<BackofficeExecutionTokenResult> {
-  const grant = await resolveReadyUserGrant(
+  const authority = await resolveUserAuthority(
     authContext,
     {
       userId,
@@ -189,12 +182,12 @@ async function exchangeFirstPartyUserToken(
   );
   const issued = await issueBackofficeJwt(
     { context: authContext } as Parameters<typeof issueBackofficeJwt>[0],
-    { ...grant.authority, scopeRestriction: grant.authority.scope },
+    { ...authority, scopeRestriction: authority.scope },
   );
   return {
     accessToken: issued.token,
     expiresAt: issued.expiresAt.toISOString(),
-    scope: grant.authority.scope,
+    scope: authority.scope,
   };
 }
 
@@ -217,7 +210,7 @@ async function exchangeInstalledAppToken(
     );
   }
   if (identity.userId !== null) {
-    await resolveReadyUserGrant(
+    await resolveUserAuthority(
       authContext,
       { userId: identity.userId, scope, organizationSelection: "required" },
       dependencies,

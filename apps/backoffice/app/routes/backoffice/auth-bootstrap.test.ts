@@ -1,10 +1,7 @@
 import { afterEach, assert, describe, expect, test, vi } from "vitest";
 
 import { getBackofficeMe } from "@/fragno/auth/auth-server";
-import {
-  exchangeBackofficeSessionForJwt,
-  waitForPreferredBackofficeSessionForJwt,
-} from "@/fragno/auth/session-exchange.client";
+import { exchangeBackofficeSessionForJwt } from "@/fragno/auth/session-exchange.client";
 
 import { loader } from "./auth-bootstrap";
 import { bootstrapBackofficePreferredOrganization } from "./auth-bootstrap.client";
@@ -125,52 +122,6 @@ describe("Backoffice auth bootstrap", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ selection: "preferred", organizationId: "org-preferred" }),
     });
-  });
-
-  test("waits for initial organization provisioning", async () => {
-    const fetchImplementation = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(
-        Response.json({ status: "organization_provisioning", retryAfterMs: 250 }, { status: 202 }),
-      )
-      .mockResolvedValueOnce(
-        Response.json({ status: "organization_provisioning", retryAfterMs: 250 }, { status: 202 }),
-      )
-      .mockResolvedValueOnce(
-        Response.json({
-          expiresAt: "2026-08-21T12:15:00.000Z",
-          organization: { id: "org-created", slug: "created" },
-        }),
-      );
-    const sleep = vi.fn(async () => {});
-
-    await expect(
-      waitForPreferredBackofficeSessionForJwt(null, fetchImplementation, sleep),
-    ).resolves.toEqual({
-      expiresAt: "2026-08-21T12:15:00.000Z",
-      organization: { id: "org-created", slug: "created" },
-    });
-    expect(sleep).toHaveBeenCalledTimes(2);
-    expect(sleep).toHaveBeenCalledWith(250);
-  });
-
-  test("reports when initial organization provisioning times out", async () => {
-    const fetchImplementation = vi
-      .fn<typeof fetch>()
-      .mockResolvedValue(
-        Response.json({ status: "organization_provisioning", retryAfterMs: 250 }, { status: 202 }),
-      );
-    const now = vi.fn().mockReturnValueOnce(0).mockReturnValue(15_000);
-
-    await expect(
-      waitForPreferredBackofficeSessionForJwt(
-        null,
-        fetchImplementation,
-        async () => {},
-        15_000,
-        now,
-      ),
-    ).rejects.toThrow("Your organization could not be created in time");
   });
 
   test("accepts the server fallback for a preferred organization left by another account", async () => {

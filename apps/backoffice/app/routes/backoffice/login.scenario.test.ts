@@ -64,6 +64,11 @@ test.each([
             email: "login-navigation@example.test",
             captureSessionCookieAs: "session",
           }),
+          when.auth.createOrganization({
+            cookie: ({ vars }) => vars.session,
+            name: "Login Navigation",
+            slug: "login-navigation",
+          }),
           then.assert(
             "fresh login opens the original workspace with valid credentials",
             async (ctx) => {

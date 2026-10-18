@@ -52,9 +52,9 @@ export function createBackofficeTokenPlugin(input: {
           use: [sessionMiddleware],
         },
         async function issueOrganizationScopedBackofficeToken(context) {
-          let grant;
+          let authority;
           try {
-            grant = await input.resolveBackofficeUserTokenGrant(context.context.adapter, {
+            authority = await input.resolveBackofficeUserTokenGrant(context.context.adapter, {
               userId: context.context.session.user.id,
               scope: context.body.organizationId
                 ? { kind: "org", orgId: context.body.organizationId }
@@ -68,13 +68,8 @@ export function createBackofficeTokenPlugin(input: {
             throw error;
           }
 
-          if (grant.status === "organization_provisioning") {
-            context.setStatus(202);
-            return context.json(grant);
-          }
-
           const issued = await issueBackofficeJwt(context, {
-            ...grant.authority,
+            ...authority,
             scopeRestriction: null,
           });
           context.setCookie(backofficeAccessTokenCookieName(!input.secureCookies), "", {
@@ -89,10 +84,10 @@ export function createBackofficeTokenPlugin(input: {
 
           return context.json({
             expiresAt: issued.expiresAt.toISOString(),
-            organization: grant.authority.organization
+            organization: authority.organization
               ? {
-                  id: grant.authority.organization.id,
-                  slug: grant.authority.organization.slug,
+                  id: authority.organization.id,
+                  slug: authority.organization.slug,
                 }
               : null,
           });

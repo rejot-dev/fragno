@@ -95,12 +95,13 @@ test("an integrator watches an agent answer live through the API", async () => {
         vars: () => ({ ownerCookie: "", orgId: "", credential: "" }),
         steps: ({ when, then }) => [
           when.auth.signUp({ email: "owner@acme.test", captureSessionCookieAs: "ownerCookie" }),
+          when.auth.createOrganization({
+            cookie: ({ vars }) => vars.ownerCookie,
+            name: "Owner Workspace",
+            slug: "owner-workspace",
+            captureOrganizationIdAs: "orgId",
+          }),
           then.assert("the owner holds a user credential for their organization", async (ctx) => {
-            const [organization] = await ctx.runtime.objects.auth
-              .singleton()
-              .commands.getAllOrganizations();
-            assert(organization);
-            ctx.vars.orgId = organization.id;
             ctx.vars.credential = await userCredential(ctx);
           }),
           then.assert("an agent that never had a turn cannot be watched", async (ctx) => {

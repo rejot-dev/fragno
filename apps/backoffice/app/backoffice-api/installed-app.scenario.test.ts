@@ -452,22 +452,24 @@ async function runInstalledAppScenario(
             email: "member@bookkeeping.test",
             captureSessionCookieAs: "memberCookie",
           }),
+          when.auth.createOrganization({
+            cookie: ({ vars }) => vars.ownerCookie,
+            name: "Owner Workspace",
+            slug: "owner-workspace",
+            captureOrganizationIdAs: "orgId",
+          }),
+          when.auth.createOrganization({
+            cookie: ({ vars }) => vars.memberCookie,
+            name: "Member Workspace",
+            slug: "member-workspace",
+            captureOrganizationIdAs: "memberOrgId",
+          }),
           then.assert(
             "an administrator provisions Bookkeeping, and the owner approves only event emission",
             async (ctx) => {
               const auth = ctx.runtime.objects.auth.singleton().commands;
               ctx.vars.ownerId = await sessionUserId(ctx, ctx.vars.ownerCookie);
               ctx.vars.memberId = await sessionUserId(ctx, ctx.vars.memberCookie);
-              const organizations = await auth.getAllOrganizations();
-              const ownerOrganization = organizations.find(
-                ({ createdBy }) => createdBy === ctx.vars.ownerId,
-              );
-              const memberOrganization = organizations.find(
-                ({ createdBy }) => createdBy === ctx.vars.memberId,
-              );
-              assert(ownerOrganization && memberOrganization);
-              ctx.vars.orgId = ownerOrganization.id;
-              ctx.vars.memberOrgId = memberOrganization.id;
               await auth.applyScenarioFixture({
                 members: [
                   { organizationId: ctx.vars.orgId, userId: ctx.vars.memberId, roles: ["member"] },

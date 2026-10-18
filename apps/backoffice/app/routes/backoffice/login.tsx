@@ -83,11 +83,6 @@ const loginActionInputSchema = z.discriminatedUnion("intent", [
   }),
 ]);
 
-const organizationProvisioningResponseSchema = z.object({
-  status: z.literal("organization_provisioning"),
-  retryAfterMs: z.number().int().positive(),
-});
-
 const betterAuthErrorCodeSchema = z.enum([
   "invalid_callback_request",
   "invalid_code",
@@ -233,32 +228,18 @@ async function exchangeSignedInSessionForBackofficeJwt(
   const headers = new Headers(request.headers);
   headers.set("cookie", mergeRequestCookiesWithResponseCookies(request, signInResponse));
   const sessionRequest = new Request(request.url, { headers });
-  const startedAt = Date.now();
-
-  while (true) {
-    const response = await callBetterAuth(sessionRequest, context, "/backoffice-token", {
-      method: "POST",
-      body: JSON.stringify({
-        selection: "preferred",
-        organizationId: preferredOrganizationId,
-      }),
-    });
-    if (response.status !== 202) {
-      if (!response.ok) {
-        throw new Error(await readBackofficeSessionExchangeErrorMessage(response));
-      }
-      const result = issueBackofficeTokenResultSchema.parse(await response.clone().json());
-      return { response, organizationSlug: result.organization?.slug ?? null };
-    }
-
-    const provisioning = organizationProvisioningResponseSchema.parse(await response.json());
-    if (Date.now() - startedAt + provisioning.retryAfterMs > 15_000) {
-      throw new Error("Your organisation could not be created in time. Try signing in again.");
-    }
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, provisioning.retryAfterMs);
-    });
+  const response = await callBetterAuth(sessionRequest, context, "/backoffice-token", {
+    method: "POST",
+    body: JSON.stringify({
+      selection: "preferred",
+      organizationId: preferredOrganizationId,
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(await readBackofficeSessionExchangeErrorMessage(response));
   }
+  const result = issueBackofficeTokenResultSchema.parse(await response.clone().json());
+  return { response, organizationSlug: result.organization?.slug ?? null };
 }
 
 export async function loader({ request, context, url }: Route.LoaderArgs) {

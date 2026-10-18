@@ -128,7 +128,8 @@ for (const origin of ["http://localhost:5173", "http://127.0.0.1:5173"]) {
                 oauthAccessToken: oauth.access_token,
                 scope: null,
               });
-              assert.equal(token.scope.kind, "org");
+              // The user belongs to no organization, so the credential targets their own scope.
+              assert.equal(token.scope.kind, "user");
               const verified = await verifyBackofficeJwt(token.accessToken, origin, auth.http);
               assert(verified.ok);
               assert.equal(verified.payload.email, "local-oauth@example.com");

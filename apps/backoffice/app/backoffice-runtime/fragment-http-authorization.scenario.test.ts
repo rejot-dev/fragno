@@ -64,6 +64,12 @@ const scenarioObjects = {
 
 const origin = "https://backoffice.example";
 
+/** The signed-up user's session, captured by the scenario's sign-up step. */
+function sessionCookie({ vars }: BackofficeScenarioContext): string {
+  assert(typeof vars.session === "string");
+  return vars.session;
+}
+
 function routerContext(ctx: BackofficeScenarioContext, request: Request) {
   return createBackofficeRouterContextProvider(request, {
     runtime: ctx.runtime.services,
@@ -110,6 +116,7 @@ async function runHttpAuthorityScenario(check: (ctx: BackofficeScenarioContext) 
             email: "http-authority@example.test",
             captureSessionCookieAs: "session",
           }),
+          when.auth.createOrganization({ cookie: sessionCookie, name: "Acme", slug: "acme" }),
           then.assert("real HTTP routes enforce operation authority", async (ctx) => {
             try {
               await check(ctx);
