@@ -14,6 +14,8 @@ export const backofficeOAuthConsentDetailsSchema = z.object({
   redirectUri: z.string(),
   resources: z.array(z.string()),
   claimsRequest: z.string().nullable(),
+  /** Backoffice operates the client, so its consent is recorded without asking. */
+  firstParty: z.boolean(),
 });
 
 /** Consent listing cursors are bound to the signed-in user and page size. */

@@ -146,7 +146,7 @@ describe("admin app runtime tool SQLite scenarios", () => {
             assert.equal(listed.exitCode, 0, listed.stderr);
             assert.equal(
               listed.stdout,
-              `Backoffice apps (1):\nApp ID: ${app.id}\n  Slug: accounting\n  OAuth client ID: ${config.clientId}\n  Requested permissions: none\n  Actions: none (revision 1)\n  Created at: ${app.createdAt}\nMore results: no\nNext cursor: none\n`,
+              `Backoffice apps (1):\nApp ID: ${app.id}\n  Slug: accounting\n  OAuth client ID: ${config.clientId}\n  Requested permissions: none\n  Actions: none (revision 1)\n  Trust: third-party\n  Created at: ${app.createdAt}\nMore results: no\nNext cursor: none\n`,
             );
             const printed = await bash.exec(`${command} --print appId`);
             assert.equal(printed.exitCode, 0, printed.stderr);
@@ -154,6 +154,15 @@ describe("admin app runtime tool SQLite scenarios", () => {
             const printedList = await bash.exec("admin.apps.list --print apps.0.id");
             assert.equal(printedList.exitCode, 0, printedList.stderr);
             assert.equal(printedList.stdout, `${app.id}\n`);
+            const trusted = `admin.apps.update-trust --app-id ${app.id} --trust-json '{"kind":"first-party","provisioningPermissions":["users.provision"]}'`;
+            const updated = await bash.exec(trusted);
+            assert.equal(updated.exitCode, 0, updated.stderr);
+            assert.equal(updated.stdout, "Updated app trust.\n");
+            assert.equal((await bash.exec(trusted)).stdout, "App trust unchanged.\n");
+            const relisted = await bash.exec("admin.apps.list");
+            expect(relisted.stdout).toContain(
+              "  Trust: first-party, provisioning users.provision\n",
+            );
           }),
         ],
       }),
@@ -206,6 +215,7 @@ describe("admin app runtime tool SQLite scenarios", () => {
                 requestedPermissions: permissions,
                 actions: { kind: "none" },
                 actionsRevision: 1,
+                trust: { kind: "third-party" },
                 createdAt: expect.any(String),
               },
             ]);
@@ -507,6 +517,7 @@ describe("admin app runtime tool SQLite scenarios", () => {
             for (const oauthClientId of ["accounting", "reporting", "receipts"]) {
               const registered = await registry.registerApp({
                 actions: { kind: "none" },
+                trust: { kind: "third-party" },
                 slug: oauthClientId.replace(/-client$/, ""),
                 oauthClientId,
                 requestedPermissions: permissions,

@@ -272,17 +272,18 @@ or automatic consent backfill. Reauthorizing after revocation requires a new exp
 
 ## System admin app runtime tools
 
-`admin.appsCreate` / `admin.apps.create` and `admin.appsUpdateActions` / `admin.apps.update-actions`
-require the canonical `admin.apps.manage` permission. `admin.appsList` / `admin.apps.list` requires
-`admin.apps.read`. All use the existing authorization kernel and require System context; they are
-unavailable in organization, project, and user contexts. No grants are added to ordinary user or
-organization-member roles.
+`admin.appsCreate` / `admin.apps.create`, `admin.appsUpdateActions` / `admin.apps.update-actions`,
+and `admin.appsUpdateTrust` / `admin.apps.update-trust` require the canonical `admin.apps.manage`
+permission. `admin.appsList` / `admin.apps.list` requires `admin.apps.read`. All use the existing
+authorization kernel and require System context; they are unavailable in organization, project, and
+user contexts. No grants are added to ordinary user or organization-member roles.
 
 Creation registers an **existing** Better Auth OAuth client. It does not create credentials or
 install the app. Repeating the same declaration returns the same app ID with `created: false`;
 changing a declaration through repeated creation fails explicitly. Requested permissions and the
 slug never change; actions change only through `admin.apps.update-actions` (see
-[App actions](#app-actions)).
+[App actions](#app-actions)), and trust only through `admin.apps.update-trust` (see
+[First-party apps](#first-party-apps)). `--trust-json` defaults to `{"kind":"third-party"}`.
 
 The slug is the app's permanent, globally unique name: lowercase words separated by `-`, at most 63
 characters. Its integration connection is `app#<slug>`, so connection IDs, generated clients, and
@@ -369,6 +370,29 @@ Apps verify requests with `createAppActionVerifier` from
 `@fragno-dev/backoffice-api/v0/app-actions`, which checks the signature against Backoffice's JWKS,
 the audience, expiry, and body hash, and parses the body. Bookkeeping's
 `workers/backoffice-actions.ts` is a complete endpoint.
+
+## First-party apps
+
+An app's `trust` says whether Backoffice operates it. Every app is `{"kind":"third-party"}` until a
+system administrator says otherwise:
+
+```bash
+admin.apps.update-trust --app-id APP_ID --trust-json \
+  '{"kind":"first-party","provisioningPermissions":["users.provision","organizations.provision","projects.provision","organizations.members.sync"]}'
+```
+
+A first-party app is part of Backoffice, so:
+
+- **Users are not asked.** `/backoffice/oauth/consent` approves its authorization requests itself,
+  through Better Auth's consent endpoint, so the `oauthConsent` row its token endpoint and the
+  execution exchange require is recorded as for any approval. `skip_consent` is not used.
+- **Users cannot revoke it.** Its consents are not listed under Authorized applications, and
+  revoking one is refused.
+- **Owners link it without a review.** The install page only asks where to install; the installation
+  gets every requested permission over everything the owner has.
+
+Making an app third-party again ends all of this at once, except consents and installations already
+recorded.
 
 ## Installation runtime tools
 
@@ -510,15 +534,15 @@ const registry = runtime.objects.apps.singleton().commands;
 const installations = runtime.objects.appInstallations.for(owner).commands;
 ```
 
-| Object   | Command                                                                                          | Registry access                                           |
-| -------- | ------------------------------------------------------------------------------------------------ | --------------------------------------------------------- |
-| Registry | `registerApp`, `updateAppActions`, `getApp`, `getAppByOAuthClientId`, `getAppBySlug`, `listApps` | Own local database                                        |
-| Owner    | `installApp`                                                                                     | Resolve declaration and projects before local transaction |
-| Owner    | `updateInstallationAccess`                                                                       | Resolve declaration and projects before local transaction |
-| Owner    | `approveActions`, `getAppConnection`                                                             | Resolve declaration before local reads and writes         |
-| Owner    | `callAppEndpoint`                                                                                | Resolve declaration, then sign through Auth and send      |
-| Owner    | `claimInstallation`                                                                              | None                                                      |
-| Owner    | `getInstallation`, `listInstallations`, `uninstallApp`                                           | None                                                      |
+| Object   | Command                                                                                                                                            | Registry access                                           |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| Registry | `registerApp`, `updateAppActions`, `updateAppTrust`, `getApp`, `getAppByOAuthClientId`, `getAppBySlug`, `listApps`, `listFirstPartyOAuthClientIds` | Own local database                                        |
+| Owner    | `installApp`                                                                                                                                       | Resolve declaration and projects before local transaction |
+| Owner    | `updateInstallationAccess`                                                                                                                         | Resolve declaration and projects before local transaction |
+| Owner    | `approveActions`, `getAppConnection`                                                                                                               | Resolve declaration before local reads and writes         |
+| Owner    | `callAppEndpoint`                                                                                                                                  | Resolve declaration, then sign through Auth and send      |
+| Owner    | `claimInstallation`                                                                                                                                | None                                                      |
+| Owner    | `getInstallation`, `listInstallations`, `uninstallApp`                                                                                             | None                                                      |
 
 Requested permissions and slugs are immutable, and apps cannot be deleted in this scaffold. Action
 declarations change by revision; each installation stores the declaration it approved, so a registry

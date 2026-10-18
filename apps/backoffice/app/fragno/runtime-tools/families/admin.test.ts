@@ -86,6 +86,9 @@ describe("admin runtime tools", () => {
       updateAppActions: async () => {
         throw new Error("unexpected app action update");
       },
+      updateAppTrust: async () => {
+        throw new Error("unexpected app trust update");
+      },
       listApps: async () => {
         throw new Error("App listing is not configured in this legacy fixture.");
       },

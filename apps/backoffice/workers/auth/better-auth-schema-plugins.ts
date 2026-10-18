@@ -16,6 +16,7 @@ export function createBackofficeBetterAuthSchemaPlugins(input: {
   baseURL: string;
   organizationHooks: BetterAuthOrganizationHooks | null;
   isUserAdministrator: ((userId: string) => Promise<boolean>) | null;
+  listFirstPartyOAuthClientIds: (() => Promise<string[]>) | null;
 }): BetterAuthPlugin[] {
   const organizationOptions = {
     allowUserToCreateOrganization: true,
@@ -48,6 +49,8 @@ export function createBackofficeBetterAuthSchemaPlugins(input: {
       },
     }),
     ...createBackofficeOAuthPlugins({ isUserAdministrator: input.isUserAdministrator }),
-    createBackofficeOAuthConsentPlugin(),
+    createBackofficeOAuthConsentPlugin({
+      listFirstPartyOAuthClientIds: input.listFirstPartyOAuthClientIds,
+    }),
   ];
 }

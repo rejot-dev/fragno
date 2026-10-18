@@ -82,6 +82,7 @@ describe("Backoffice Better Auth SQL migrations", () => {
         baseURL: "http://localhost",
         organizationHooks: null,
         isUserAdministrator: null,
+        listFirstPartyOAuthClientIds: null,
       }),
     });
 

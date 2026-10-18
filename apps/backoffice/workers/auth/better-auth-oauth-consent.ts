@@ -107,12 +107,20 @@ export async function enforceBackofficeOAuthTokenResponseConsent(
   return {};
 }
 
-/** Lists one user's OAuth authorizations; cursors are bound to that user and the page size. */
+/**
+ * Lists one user's OAuth authorizations; cursors are bound to that user and the page size.
+ * First-party clients are part of Backoffice, so their consents are not listed.
+ */
 export async function listBackofficeOAuthConsentPage(
   adapter: AuthContext["adapter"],
-  input: { userId: string; pageSize: number; cursor: string | null },
+  input: {
+    userId: string;
+    pageSize: number;
+    cursor: string | null;
+    firstPartyClientIds: readonly string[];
+  },
 ): Promise<OAuthConsentPage> {
-  const { userId, pageSize, cursor } = input;
+  const { userId, pageSize, cursor, firstPartyClientIds } = input;
   let afterId: string | null = null;
   if (cursor !== null) {
     try {
@@ -149,6 +157,9 @@ export async function listBackofficeOAuthConsentPage(
     where: [
       { field: "userId", value: userId },
       ...(afterId === null ? [] : [{ field: "id", operator: "gt" as const, value: afterId }]),
+      ...(firstPartyClientIds.length === 0
+        ? []
+        : [{ field: "clientId", operator: "not_in" as const, value: [...firstPartyClientIds] }]),
     ],
     sortBy: { field: "id", direction: "asc" },
     limit: pageSize + 1,
@@ -193,8 +204,18 @@ export async function listBackofficeOAuthConsentPage(
   };
 }
 
-/** Better Auth owns consent storage; device approval is recorded in the same provider model. */
-export function createBackofficeOAuthConsentPlugin(): BetterAuthPlugin {
+/**
+ * Better Auth owns consent storage; device approval is recorded in the same provider model.
+ * `listFirstPartyOAuthClientIds` is null only where the plugin describes the schema.
+ */
+export function createBackofficeOAuthConsentPlugin(input: {
+  listFirstPartyOAuthClientIds: (() => Promise<string[]>) | null;
+}): BetterAuthPlugin {
+  async function listFirstPartyOAuthClientIds(): Promise<string[]> {
+    return input.listFirstPartyOAuthClientIds === null
+      ? []
+      : await input.listFirstPartyOAuthClientIds();
+  }
   return {
     id: "fragno-backoffice-oauth-consent",
     init(context) {
@@ -373,6 +394,7 @@ export function createBackofficeOAuthConsentPlugin(): BetterAuthPlugin {
             redirectUri,
             resources: query.getAll("resource"),
             claimsRequest: query.get("claims"),
+            firstParty: (await listFirstPartyOAuthClientIds()).includes(clientId),
           });
         },
       ),
@@ -388,6 +410,7 @@ export function createBackofficeOAuthConsentPlugin(): BetterAuthPlugin {
             await listBackofficeOAuthConsentPage(context.context.adapter, {
               userId: context.context.session.user.id,
               ...context.query,
+              firstPartyClientIds: await listFirstPartyOAuthClientIds(),
             }),
           );
         },
@@ -402,6 +425,12 @@ export function createBackofficeOAuthConsentPlugin(): BetterAuthPlugin {
         async function revokeUserOAuthConsent(context) {
           const userId = context.context.session.user.id;
           const { clientId } = context.body;
+          if ((await listFirstPartyOAuthClientIds()).includes(clientId)) {
+            throw new APIError("BAD_REQUEST", {
+              message:
+                "This application is part of Backoffice, so its authorization cannot be revoked.",
+            });
+          }
           await context.context.adapter.transaction(async (adapter) => {
             const where = [
               { field: "userId", value: userId },

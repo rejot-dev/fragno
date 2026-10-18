@@ -31,6 +31,8 @@ const consentErrorSchema = z.object({
     .default("This authorization request could not be completed. Start the login again."),
 });
 
+const noStoreHeaders = { "cache-control": "no-store", "referrer-policy": "no-referrer" };
+
 export async function loader({ request, context, url }: Route.LoaderArgs) {
   await requireBackofficeBrowserSession({ request, context, url });
   const response = await callBetterAuth(request, context, "/backoffice/oauth/consent-details", {
@@ -43,9 +45,17 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
       { status: response.status },
     );
   }
-  return data(backofficeOAuthConsentDetailsSchema.parse(await response.json()), {
-    headers: { "cache-control": "no-store", "referrer-policy": "no-referrer" },
-  });
+  const consent = backofficeOAuthConsentDetailsSchema.parse(await response.json());
+  if (consent.firstParty) {
+    // Backoffice operates the client, so there is nothing to ask: Better Auth records the consent
+    // its token endpoint requires and returns to the client, as an approval here would.
+    const decision = await submitConsentDecision(request, context, url, "approve");
+    if (!decision.ok) {
+      throw new Response(decision.message, { status: decision.status });
+    }
+    return redirect(decision.url, { headers: noStoreHeaders });
+  }
+  return data(consent, { headers: noStoreHeaders });
 }
 
 export async function action({ request, context, url }: Route.ActionArgs) {
@@ -54,25 +64,36 @@ export async function action({ request, context, url }: Route.ActionArgs) {
     return data({ message: "Choose whether to approve or deny this request." }, { status: 400 });
   }
   await requireBackofficeBrowserSession({ request, context, url });
+  const decision = await submitConsentDecision(request, context, url, input.data.intent);
+  if (!decision.ok) {
+    return data({ message: decision.message }, { status: decision.status });
+  }
+  return redirect(decision.url, { headers: noStoreHeaders });
+}
+
+/** Better Auth verifies the signed query and owns callback validation for both decisions. */
+async function submitConsentDecision(
+  request: Request,
+  context: Route.LoaderArgs["context"],
+  url: URL,
+  intent: "approve" | "deny",
+): Promise<{ ok: true; url: string } | { ok: false; status: number; message: string }> {
   const response = await callBetterAuth(request, context, "/oauth2/consent", {
     method: "POST",
-    body: JSON.stringify({
-      accept: input.data.intent === "approve",
-      oauth_query: url.search.slice(1),
-    }),
+    body: JSON.stringify({ accept: intent === "approve", oauth_query: url.search.slice(1) }),
   });
   if (!response.ok) {
-    return data(consentErrorSchema.parse(await response.json()), { status: response.status });
+    return {
+      ok: false,
+      status: response.status,
+      message: consentErrorSchema.parse(await response.json()).message,
+    };
   }
-  const result = consentRedirectSchema.parse(await response.json());
-  // Better Auth verifies the signed query and owns callback validation for both decisions.
-  return redirect(result.url, {
-    headers: { "cache-control": "no-store", "referrer-policy": "no-referrer" },
-  });
+  return { ok: true, url: consentRedirectSchema.parse(await response.json()).url };
 }
 
 export function headers() {
-  return { "cache-control": "no-store", "referrer-policy": "no-referrer" };
+  return noStoreHeaders;
 }
 
 export function meta() {

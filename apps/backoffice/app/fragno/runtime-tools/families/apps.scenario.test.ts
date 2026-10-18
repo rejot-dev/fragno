@@ -118,6 +118,7 @@ async function registerApp(ctx: BackofficeScenarioContext, name = "Accounting") 
   });
   const registered = await ctx.runtime.objects.apps.singleton().commands.registerApp({
     actions: { kind: "none" },
+    trust: { kind: "third-party" },
     slug: name.toLowerCase(),
     oauthClientId: client.clientId,
     requestedPermissions,

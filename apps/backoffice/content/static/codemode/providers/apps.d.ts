@@ -28,6 +28,7 @@ type BackofficeApp = {
   actions: AppActionsDeclaration;
   /** Increments whenever the app's action declaration changes. */
   actionsRevision: number;
+  trust: AppTrust;
   /** ISO 8601 datetime string. */
   createdAt: string;
 };
@@ -263,6 +264,19 @@ type AppActionsDeclaration =
       /** installation: each installation approves a changed declaration before new or changed actions run. automatic: changes apply immediately; only administrators register apps, so reserve it for apps they operate. */
       changeApproval: "installation" | "automatic";
       actions: AppAction[];
+    };
+type AppTrust =
+  | {
+      kind: "third-party";
+    }
+  | {
+      kind: "first-party";
+      provisioningPermissions: (
+        | "users.provision"
+        | "organizations.provision"
+        | "projects.provision"
+        | "organizations.members.sync"
+      )[];
     };
 type AppAction = {
   id: string;

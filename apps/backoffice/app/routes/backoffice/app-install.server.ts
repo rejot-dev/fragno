@@ -3,6 +3,7 @@ import { backofficeApiV0 } from "@fragno-dev/backoffice-api/v0";
 import type {
   AppActionsDeclaration,
   AppInstallationResourceScope,
+  AppTrust,
   BackofficeAppInstallation,
 } from "@fragno-dev/backoffice-api/v0/apps";
 import {
@@ -48,6 +49,7 @@ export type AppInstallRequest = {
     requestedPermissions: BackofficePermissionRequirement[];
     actions: AppActionsDeclaration;
     actionsRevision: number;
+    trust: AppTrust;
   };
   redirectUri: string;
   state: string;
@@ -95,6 +97,7 @@ export async function resolveAppInstallRequest(
       requestedPermissions: app.requestedPermissions,
       actions: app.actions,
       actionsRevision: app.actionsRevision,
+      trust: app.trust,
     },
     redirectUri: query.data.redirect_uri,
     state: query.data.state,
@@ -245,14 +248,23 @@ export async function decideAppInstallation(
     decision.data.resources === "owner"
       ? { kind: "owner" }
       : { kind: "projects", projectIds: [...new Set(projectIds)].sort() };
-  const access = {
-    appId: input.request.app.id,
-    grantedPermissions: readGrantedPermissions(
-      input.request.app.requestedPermissions,
-      decision.data.permissions,
-    ),
-    resourceScope,
-  };
+  // Backoffice operates a first-party app, so linking it reviews nothing: it gets what it asks
+  // for, everywhere the owner has.
+  const access =
+    input.request.app.trust.kind === "first-party"
+      ? {
+          appId: input.request.app.id,
+          grantedPermissions: input.request.app.requestedPermissions,
+          resourceScope: { kind: "owner" } as const,
+        }
+      : {
+          appId: input.request.app.id,
+          grantedPermissions: readGrantedPermissions(
+            input.request.app.requestedPermissions,
+            decision.data.permissions,
+          ),
+          resourceScope,
+        };
 
   const { runtime, kernel } = context.get(BackofficeWorkerContext);
   const installations = runtime.objects.appInstallations.for(owner).commands;

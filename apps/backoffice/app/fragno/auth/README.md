@@ -184,6 +184,10 @@ provider-signed authorization-code consent. Both require a live Better Auth brow
 explicit same-origin approval/denial. The OAuth login page preserves the signed query through
 password login rather than substituting a Backoffice JWT for the browser session.
 
+A [first-party app](../apps/README.md#first-party-apps) is not reviewed: the consent page approves
+its request through the same Better Auth consent endpoint as an approval, so the consent is recorded
+and enforced like any other. Auth leaves its consents out of listings and refuses to revoke them.
+
 Users manage their own authorizations at `/backoffice/settings/authorized-applications`, accessible
 from the account menu and Settings. Listing is credential-free and cursor-bound to the session user.
 Revocation derives the user ID from that session and transactionally removes that client's consents,

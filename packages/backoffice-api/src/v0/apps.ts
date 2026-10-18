@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { BackofficeApiOperation } from "../api";
+import { backofficeProvisioningPermissionSchema } from "./provisioning";
 import { BACKOFFICE_PERMISSION } from "./shared/permissions";
 import { backofficePermissionRequirementSchema } from "./shared/permissions";
 import { backofficeRootOwnerSchema } from "./shared/scope";
@@ -105,6 +106,29 @@ const appActionsRevisionSchema = z.lazy(() =>
   z.number().int().positive().describe("Increments whenever the app's action declaration changes."),
 );
 
+/**
+ * Whether Backoffice operates the app. A first-party app is part of Backoffice: users authorize it
+ * without a consent screen and cannot revoke it, owners link it without reviewing its permissions,
+ * and it may call the provisioning operations listed. Only system administrators set this.
+ */
+export const appTrustSchema = z
+  .lazy(() =>
+    z.discriminatedUnion("kind", [
+      z.strictObject({ kind: z.literal("third-party") }),
+      z.strictObject({
+        kind: z.literal("first-party"),
+        provisioningPermissions: z
+          .array(backofficeProvisioningPermissionSchema)
+          .refine(
+            (permissions) => new Set(permissions).size === permissions.length,
+            "Provisioning permissions must not contain duplicates.",
+          ),
+      }),
+    ]),
+  )
+  .meta({ id: "AppTrust" });
+export type AppTrust = z.infer<typeof appTrustSchema>;
+
 /** Backoffice-specific registration data; OAuth metadata remains authoritative in Auth. */
 export const backofficeAppSchema = z
   .lazy(() =>
@@ -115,6 +139,7 @@ export const backofficeAppSchema = z
       requestedPermissions: appPermissionsSchema,
       actions: appActionsDeclarationSchema,
       actionsRevision: appActionsRevisionSchema,
+      trust: appTrustSchema,
       createdAt: z.iso.datetime(),
     }),
   )

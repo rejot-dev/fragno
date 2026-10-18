@@ -490,6 +490,7 @@ async function runInstalledAppScenario(
               ctx.vars.clientSecret = client.clientSecret;
               const registered = await ctx.runtime.objects.apps.singleton().commands.registerApp({
                 actions: { kind: "none" },
+                trust: { kind: "third-party" },
                 slug: "accounting",
                 oauthClientId: client.clientId,
                 requestedPermissions: [emit, BACKOFFICE_PERMISSION.events.read],
