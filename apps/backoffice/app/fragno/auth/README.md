@@ -159,7 +159,11 @@ global administrator, and scoped runtime tools remain kernel-authorized.
 
 The browser `/api/auth/backoffice-token` session exchange reuses the same user-grant resolver and
 JWT issuer. It sets the credential as a cookie, selects an organization the same way, and does not
-restrict the credential's scope.
+restrict the credential's scope. Protected pages call it on the server: without a valid access
+token, or when the URL names another of the user's organizations, the page reopens itself with a new
+one (`app/fragno/auth/browser-credential.server.ts`). The Better Auth session's
+`activeOrganizationId` remembers the organization of the last token, so a replacement keeps it; a
+`preferred` exchange uses it and a `required` exchange moves it.
 
 ## Versioned HTTP API
 

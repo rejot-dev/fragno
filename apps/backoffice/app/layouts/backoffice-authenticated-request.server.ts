@@ -1,13 +1,8 @@
-import {
-  createContext,
-  redirect,
-  type RouterContext,
-  type RouterContextProvider,
-} from "react-router";
+import { createContext, type RouterContext, type RouterContextProvider } from "react-router";
 
 import { getBackofficeMe } from "@/fragno/auth/auth-server";
+import { reopenWithBackofficeCredential } from "@/fragno/auth/browser-credential.server";
 import type { BackofficeMeData } from "@/fragno/auth/contracts";
-import { buildBackofficeAuthBootstrapPath } from "@/routes/backoffice/auth-navigation";
 
 /** Contains the authenticated membership snapshot established before Backoffice route handlers. */
 export type BackofficeAuthenticatedRequest = {
@@ -27,13 +22,13 @@ export const BackofficeAuthenticatedRequestContext = ((globalThis as Record<symb
 
 /** Establishes Backoffice authentication before any protected descendant route handler runs. */
 export async function establishBackofficeAuthenticatedRequest(
-  { request, context }: { request: Request; context: Readonly<RouterContextProvider> },
+  args: { request: Request; context: Readonly<RouterContextProvider>; url: URL },
   next: () => Promise<Response>,
 ): Promise<Response> {
+  const { request, context } = args;
   const authentication = await getBackofficeMe(request, context);
   if (authentication.status !== "authenticated") {
-    const url = new URL(request.url);
-    throw redirect(buildBackofficeAuthBootstrapPath(`${url.pathname}${url.search}`));
+    throw await reopenWithBackofficeCredential(args, { selection: "preferred" });
   }
 
   context.set(BackofficeAuthenticatedRequestContext, {

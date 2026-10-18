@@ -47,6 +47,35 @@ function loginScenarioRouterContext(ctx: BackofficeScenarioContext, request: Req
   });
 }
 
+function setCookies(response: Response): string {
+  return response.headers
+    .getSetCookie()
+    .filter((value) => !value.includes("Max-Age=0"))
+    .map((value) => value.split(";", 1)[0])
+    .join("; ");
+}
+
+/** Opens a workspace page through both Backoffice middlewares and returns its shell. */
+async function openWorkspace(
+  ctx: BackofficeScenarioContext,
+  path: string,
+  cookie: string,
+  orgSlug: string,
+) {
+  const request = new Request(new URL(path, origin), { headers: { cookie } });
+  const context = loginScenarioRouterContext(ctx, request);
+  const args = {
+    request,
+    context,
+    url: new URL(request.url),
+    params: { scopeKind: "org", scopeId: orgSlug },
+  };
+  await establishBackofficeAuthenticatedRequest(args, () =>
+    establishBackofficeShellRequest(args, async () => new Response()),
+  );
+  return getBackofficeShellRequest(context);
+}
+
 test.each([
   "dashboard/org/{slug}?selection=route&selected=route-1",
   "integrations/org/{slug}/mcp?oauth=success&server=agensi",
@@ -76,7 +105,7 @@ test.each([
                 new Request(`${origin}/api/auth/backoffice-token`, {
                   method: "POST",
                   headers: { cookie: ctx.vars.session, origin, "content-type": "application/json" },
-                  body: JSON.stringify({ selection: "preferred", organizationId: null }),
+                  body: JSON.stringify({ selection: "preferred" }),
                 }),
               );
               assert(exchange.ok, await exchange.clone().text());
@@ -98,7 +127,7 @@ test.each([
                 url: loginUrl,
               });
               assert(!(loginPage instanceof Response));
-              expect(loginPage).toMatchObject({ authenticated: false, returnTo });
+              expect(loginPage).toMatchObject({ returnTo });
 
               const signInRequest = new Request(loginUrl, {
                 method: "POST",
@@ -120,36 +149,21 @@ test.each([
               assert.equal(response.status, 302);
               assert.equal(response.headers.get("location"), returnTo);
 
-              const cookie = response.headers
-                .getSetCookie()
-                .filter((value) => !value.includes("Max-Age=0"))
-                .map((value) => value.split(";", 1)[0])
-                .join("; ");
-              const destinationRequest = new Request(new URL(returnTo, origin), {
-                headers: { cookie },
-              });
-              const context = loginScenarioRouterContext(ctx, destinationRequest);
-              const opened = await establishBackofficeAuthenticatedRequest(
-                { request: destinationRequest, context },
-                () =>
-                  establishBackofficeShellRequest(
-                    {
-                      request: destinationRequest,
-                      context,
-                      params: { scopeKind: "org", scopeId: organization.slug },
-                    },
-                    async () => {
-                      const shell = getBackofficeShellRequest(context);
-                      expect(shell.route).toMatchObject({
-                        status: "resolved",
-                        execution: { scope: { kind: "org", orgId: organization.id } },
-                      });
-                      expect(shell.resolvedScope).toMatchObject({ kind: "org", organization });
-                      return new Response("Workspace opened");
-                    },
-                  ),
+              // The destination mints its access token from the session, then reopens itself.
+              let cookie = setCookies(response);
+              const minted = await openWorkspace(ctx, returnTo, cookie, organization.slug).catch(
+                (error: unknown) => error,
               );
-              assert.equal(opened.status, 200);
+              assert(minted instanceof Response, String(minted));
+              assert.equal(minted.headers.get("location"), returnTo);
+              cookie = `${cookie}; ${setCookies(minted)}`;
+
+              const opened = await openWorkspace(ctx, returnTo, cookie, organization.slug);
+              expect(opened.route).toMatchObject({
+                status: "resolved",
+                execution: { scope: { kind: "org", orgId: organization.id } },
+              });
+              expect(opened.resolvedScope).toMatchObject({ kind: "org", organization });
             },
           ),
         ],

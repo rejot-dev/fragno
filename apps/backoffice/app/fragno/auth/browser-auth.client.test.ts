@@ -4,33 +4,12 @@ import {
   backofficeTokenRefreshDelay,
   backofficeFetch,
   recordIssuedBackofficeToken,
-  refreshBackofficeAccessToken,
   scheduleBackofficeTokenRefresh,
 } from "./browser-auth.client";
 import { BACKOFFICE_AUTH_ERROR_HEADER, BACKOFFICE_TOKEN_EXPIRED_CODE } from "./contracts";
 
-const storage = () => {
-  const values = new Map<string, string>();
-  return {
-    getItem: (key: string) => values.get(key) ?? null,
-    setItem: (key: string, value: string) => values.set(key, value),
-    removeItem: (key: string) => values.delete(key),
-    values,
-  };
-};
-
 describe("Backoffice browser authentication", () => {
-  const localStorage = storage();
-
   beforeEach(() => {
-    localStorage.values.clear();
-    vi.stubGlobal("window", { localStorage, dispatchEvent: vi.fn() });
-    vi.stubGlobal(
-      "Event",
-      class Event {
-        constructor(readonly type: string) {}
-      },
-    );
     recordIssuedBackofficeToken({
       expiresAt: "2099-01-01T00:00:00.000Z",
       organization: null,
@@ -39,47 +18,6 @@ describe("Backoffice browser authentication", () => {
 
   afterEach(() => {
     vi.useRealTimers();
-    vi.unstubAllGlobals();
-  });
-
-  test("refresh preserves the validated preferred organization", async () => {
-    localStorage.setItem("fragno-backoffice-default-organization", "org-1");
-    const fetchImplementation = vi.fn<typeof fetch>().mockResolvedValue(
-      Response.json({
-        expiresAt: "2026-08-11T12:15:00.000Z",
-        organization: { id: "org-1", slug: "acme" },
-      }),
-    );
-
-    await refreshBackofficeAccessToken(fetchImplementation);
-
-    expect(fetchImplementation).toHaveBeenCalledWith("/api/auth/backoffice-token", {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ selection: "preferred", organizationId: "org-1" }),
-    });
-    assert(localStorage.getItem("fragno-backoffice-default-organization") === "org-1");
-  });
-
-  test("stores the server fallback for a stale preferred organization", async () => {
-    localStorage.setItem("fragno-backoffice-default-organization", "org-stale");
-    const fetchImplementation = vi.fn<typeof fetch>().mockResolvedValue(
-      Response.json({
-        expiresAt: "2026-08-11T12:15:00.000Z",
-        organization: { id: "org-current", slug: "current" },
-      }),
-    );
-
-    await refreshBackofficeAccessToken(fetchImplementation);
-
-    expect(fetchImplementation).toHaveBeenCalledWith("/api/auth/backoffice-token", {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ selection: "preferred", organizationId: "org-stale" }),
-    });
-    assert(localStorage.getItem("fragno-backoffice-default-organization") === "org-current");
   });
 
   test("retries an expired application request exactly once after refresh", async () => {
@@ -107,6 +45,13 @@ describe("Backoffice browser authentication", () => {
 
     assert(response.status === 200);
     expect(fetchImplementation).toHaveBeenCalledTimes(3);
+    // The session keeps the organization, so the refresh does not name one.
+    expect(fetchImplementation).toHaveBeenNthCalledWith(2, "/api/auth/backoffice-token", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ selection: "preferred" }),
+    });
   });
 
   test("shares one refresh across concurrent expired requests", async () => {

@@ -1,6 +1,6 @@
 import "@fragno-private/design-system/components.css";
 
-import { Button, ButtonLink } from "@fragno-private/design-system/button";
+import { Button } from "@fragno-private/design-system/button";
 import { Field } from "@fragno-private/design-system/field";
 import { FormContainer } from "@fragno-private/design-system/form-container";
 import { BackofficeFragmentMark } from "@fragno-private/design-system/fragment-mark";
@@ -16,19 +16,10 @@ import {
   getBackofficeMe,
 } from "@/fragno/auth/auth-server";
 import { betterAuthClient } from "@/fragno/auth/better-auth.client";
-import { issueBackofficeTokenResultSchema } from "@/fragno/auth/contracts";
 import { requestEmailVerificationResend } from "@/fragno/auth/email-verification.server";
-import { readPreferredOrganization } from "@/fragno/auth/preferred-organization";
-import { readBackofficeSessionExchangeErrorMessage } from "@/fragno/auth/session-exchange-error";
-import { getSetCookieHeaders } from "@/worker-runtime/http-headers";
 
 import type { Route } from "./+types/login";
-import {
-  buildBackofficeAuthBootstrapPath,
-  buildBackofficeSignUpPath,
-  readBackofficeReturnTo,
-  retargetBackofficeOrganizationReturnTo,
-} from "./auth-navigation";
+import { buildBackofficeSignUpPath, readBackofficeReturnTo } from "./auth-navigation";
 
 type BackofficeLoginAuthError = {
   title: string;
@@ -36,9 +27,7 @@ type BackofficeLoginAuthError = {
 };
 
 type BackofficeLoginLoaderData = {
-  authenticated: boolean;
   returnTo: string;
-  bootstrapError: string | null;
   authError: BackofficeLoginAuthError | null;
   oauthQuery: string | null;
 };
@@ -75,7 +64,6 @@ const loginActionInputSchema = z.discriminatedUnion("intent", [
     intent: z.literal("sign_in"),
     email: z.string().trim().toLowerCase().pipe(z.email().max(191)),
     password: z.string().min(1),
-    preferredOrganizationId: z.string().trim().default(""),
   }),
   z.object({
     intent: z.literal("resend"),
@@ -198,50 +186,6 @@ function readBackofficeLoginAuthError(url: URL): BackofficeLoginAuthError | null
   return betterAuthErrorContent[parsedErrorCode.data];
 }
 
-function mergeRequestCookiesWithResponseCookies(request: Request, response: Response): string {
-  const cookies = new Map<string, string>();
-  for (const cookie of request.headers.get("cookie")?.split(";") ?? []) {
-    const separator = cookie.indexOf("=");
-    if (separator > 0) {
-      cookies.set(cookie.slice(0, separator).trim(), cookie.slice(separator + 1).trim());
-    }
-  }
-  for (const setCookie of getSetCookieHeaders(response.headers)) {
-    const cookie = setCookie.split(";", 1)[0];
-    const separator = cookie.indexOf("=");
-    if (separator > 0) {
-      cookies.set(cookie.slice(0, separator).trim(), cookie.slice(separator + 1).trim());
-    }
-  }
-  return [...cookies].map(([name, value]) => `${name}=${value}`).join("; ");
-}
-
-async function exchangeSignedInSessionForBackofficeJwt(
-  request: Request,
-  context: Route.ActionArgs["context"],
-  signInResponse: Response,
-  preferredOrganizationId: string | null,
-): Promise<{
-  response: Response;
-  organizationSlug: string | null;
-}> {
-  const headers = new Headers(request.headers);
-  headers.set("cookie", mergeRequestCookiesWithResponseCookies(request, signInResponse));
-  const sessionRequest = new Request(request.url, { headers });
-  const response = await callBetterAuth(sessionRequest, context, "/backoffice-token", {
-    method: "POST",
-    body: JSON.stringify({
-      selection: "preferred",
-      organizationId: preferredOrganizationId,
-    }),
-  });
-  if (!response.ok) {
-    throw new Error(await readBackofficeSessionExchangeErrorMessage(response));
-  }
-  const result = issueBackofficeTokenResultSchema.parse(await response.clone().json());
-  return { response, organizationSlug: result.organization?.slug ?? null };
-}
-
 export async function loader({ request, context, url }: Route.LoaderArgs) {
   const oauthQuery = readOAuthLoginQuery(url);
   const returnTo =
@@ -254,9 +198,7 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
   }
 
   return {
-    authenticated: false,
     returnTo,
-    bootstrapError: null,
     authError: readBackofficeLoginAuthError(url),
     oauthQuery,
   } satisfies BackofficeLoginLoaderData;
@@ -322,19 +264,8 @@ export async function action({ request, context, url }: Route.ActionArgs) {
       const resumed = z.object({ url: z.string().min(1) }).parse(await response.json());
       return redirect(resumed.url, { headers: createBackofficeIdentityChangeHeaders(response) });
     }
-    const exchange = await exchangeSignedInSessionForBackofficeJwt(
-      request,
-      context,
-      response,
-      input.data.preferredOrganizationId || null,
-    );
-    const headers = createBackofficeIdentityChangeHeaders(response);
-    for (const setCookie of getSetCookieHeaders(exchange.response.headers)) {
-      headers.append("Set-Cookie", setCookie);
-    }
-    return redirect(retargetBackofficeOrganizationReturnTo(returnTo, exchange.organizationSlug), {
-      headers,
-    });
+    // The destination mints the access token from the new session.
+    return redirect(returnTo, { headers: createBackofficeIdentityChangeHeaders(response) });
   } catch (error) {
     return {
       state: "error",
@@ -351,8 +282,7 @@ export function meta() {
 }
 
 export default function BackofficeLogin() {
-  const { authenticated, returnTo, bootstrapError, authError, oauthQuery } =
-    useLoaderData<BackofficeLoginLoaderData>();
+  const { returnTo, authError, oauthQuery } = useLoaderData<BackofficeLoginLoaderData>();
   const [authErrorNotice, setAuthErrorNotice] = useState<BackofficeLoginAuthError | null>(
     authError,
   );
@@ -365,19 +295,12 @@ export default function BackofficeLogin() {
   const passwordPending = navigation.state === "submitting" && submittedIntent !== "resend";
   const resendPending = navigation.state === "submitting" && submittedIntent === "resend";
 
-  if (authenticated) {
-    return <BackofficeLoginBootstrap returnTo={returnTo} bootstrapError={bootstrapError} />;
-  }
-
   const handleGithubSignIn = async () => {
     setOauthPending(true);
     setAuthErrorNotice(null);
 
     try {
-      const callbackURL = new URL(
-        buildBackofficeAuthBootstrapPath(returnTo),
-        window.location.origin,
-      ).toString();
+      const callbackURL = new URL(returnTo, window.location.origin).toString();
       const socialSignIn = {
         provider: "github",
         callbackURL,
@@ -465,17 +388,7 @@ export default function BackofficeLogin() {
                   </p>
                 </div>
               ) : null}
-              <Form
-                method="post"
-                className="space-y-3"
-                onSubmit={(event) => {
-                  const input = event.currentTarget.elements.namedItem("preferredOrganizationId");
-                  if (input instanceof HTMLInputElement) {
-                    input.value = readPreferredOrganization() ?? "";
-                  }
-                }}
-              >
-                <input type="hidden" name="preferredOrganizationId" />
+              <Form method="post" className="space-y-3">
                 <div
                   className="flex items-center gap-3 pt-2 text-[10px] font-semibold tracking-[0.18em] text-[var(--bo-muted-2)] uppercase"
                   role="separator"
@@ -549,50 +462,6 @@ export default function BackofficeLogin() {
                 </Link>
                 .
               </p>
-            </div>
-          </FormContainer>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-const bootstrapMessageForReturnTo = (returnTo: string) => {
-  const pathname = new URL(returnTo, "http://localhost").pathname;
-  return pathname.endsWith("/terminal") ? "Opening the terminal…" : "Opening backoffice…";
-};
-
-function BackofficeLoginBootstrap({
-  returnTo,
-  bootstrapError,
-}: {
-  returnTo: string;
-  bootstrapError: string | null;
-}) {
-  return (
-    <div
-      data-backoffice-root
-      className="relative isolate min-h-screen bg-[var(--bo-bg)] text-[var(--bo-fg)]"
-    >
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(0deg,rgba(var(--bo-overlay),0.96),rgba(var(--bo-overlay),0.96)),linear-gradient(90deg,rgba(var(--bo-grid),0.45)_1px,transparent_1px),linear-gradient(0deg,rgba(var(--bo-grid),0.45)_1px,transparent_1px)] bg-[size:100%_100%,28px_28px,28px_28px]" />
-      <div className="relative mx-auto flex min-h-screen max-w-5xl items-center justify-center px-4 py-8">
-        <div className="w-full max-w-md">
-          <FormContainer
-            title="Preparing backoffice"
-            description="Checking your backoffice session before continuing."
-            eyebrow="Bootstrap"
-          >
-            <div className="space-y-3">
-              {bootstrapError ? (
-                <p className="text-sm text-red-400">{bootstrapError}</p>
-              ) : (
-                <p className="text-sm text-[var(--bo-muted)]">
-                  {bootstrapMessageForReturnTo(returnTo)}
-                </p>
-              )}
-              <ButtonLink variant="secondary" to={returnTo}>
-                Continue to backoffice
-              </ButtonLink>
             </div>
           </FormContainer>
         </div>

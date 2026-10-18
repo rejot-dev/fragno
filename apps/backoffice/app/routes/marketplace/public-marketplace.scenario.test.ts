@@ -32,7 +32,7 @@ import { InMemoryMarketplaceObject } from "../../../workers/marketplace.do";
 import { InMemoryOtpObject } from "../../../workers/otp.do";
 import { InMemoryTelegramObject } from "../../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../../workers/upload.do";
-import { buildBackofficeAuthBootstrapPath } from "../backoffice/auth-navigation";
+import { buildBackofficeLoginPath } from "../backoffice/auth-navigation";
 import { loadMarketplaceArtifactFile as artifactFileLoader } from "../backoffice/marketplace/artifact-file.server";
 import { loader as browseLoaderRaw } from "../backoffice/marketplace/browse";
 import { loader as browseAllLoader } from "../backoffice/marketplace/browse-all";
@@ -286,7 +286,7 @@ async function memberCookie(ctx: BackofficeScenarioContext): Promise<string> {
         origin: "https://backoffice.test",
         "content-type": "application/json",
       },
-      body: JSON.stringify({ selection: "preferred", organizationId: ORG_ID }),
+      body: JSON.stringify({ selection: "required", organizationId: ORG_ID }),
     }),
   );
   assert(exchange.ok, await exchange.clone().text());
@@ -559,7 +559,7 @@ describe("Marketplace browsing scenarios", () => {
             const response = await openInstallEntry(ctx, listingRef, "");
             assert(response.status === 302);
             expect(response.headers.get("location")).toBe(
-              buildBackofficeAuthBootstrapPath(marketplaceInstallEntryPath(listingRef)),
+              buildBackofficeLoginPath(marketplaceInstallEntryPath(listingRef)),
             );
           }),
           when.auth.signUp({
