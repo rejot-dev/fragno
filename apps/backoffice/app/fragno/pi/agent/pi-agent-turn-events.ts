@@ -11,7 +11,7 @@ import {
   type Storage,
 } from "@earendil-works/pi-durable";
 
-import type { AutomationsObject } from "@/backoffice-runtime/object-registry";
+import type { AutomationsObject, PiManagerObject } from "@/backoffice-runtime/object-registry";
 import {
   PI_AUTOMATION_EVENT_TURN_COMPLETED,
   PI_AUTOMATION_SOURCE,
@@ -63,10 +63,10 @@ function settlesRootSubmission(publication: CommitPublication) {
 }
 
 /**
- * Records each answered turn as a `pi` Automations event, then forgets every settled turn. Pi settles
- * submissions in commits Backoffice cannot join, so a report follows each commit that settles a
- * turn. That report dies with the object, so callers that must not lose one, like the agent
- * alarm, call the returned function again.
+ * Records each answered turn as a `pi` Automations event and tells the agent's manager every turn
+ * that settled, then forgets it. Pi settles submissions in commits Backoffice cannot join, so a
+ * report follows each commit that settles a turn. That report dies with the object, so callers
+ * that must not lose one, like the agent alarm, call the returned function again.
  */
 export function startReportingPiAgentTurns(input: {
   config: PiAgentConfig;
@@ -75,14 +75,15 @@ export function startReportingPiAgentTurns(input: {
   storage: Storage;
   /** Null when the runtime has no Automations, which leaves nowhere to record turn history. */
   automations: Pick<AutomationsObject, "ingestEvent"> | null;
+  manager: PiManagerObject;
   nowEpochMs: () => number;
   report: (error: unknown) => void;
 }): (context: Context) => Promise<void> {
-  const { config, agent, harness, storage, automations } = input;
+  const { config, agent, harness, storage, automations, manager } = input;
   let reporting = Promise.resolve();
 
-  async function reportSettledTurn(settled: SettledPiAgentTurn, context: Context) {
-    // Unanswered turns, such as aborted or withdrawn prompts, are forgotten without an event.
+  async function recordTurnEvent(settled: SettledPiAgentTurn) {
+    // Unanswered turns, such as aborted or withdrawn prompts, record no event.
     const { submission } = settled;
     if (submission.type === "input" && submission.status === "done") {
       // The settling commit carries no time; its listener reports right after it.
@@ -96,6 +97,19 @@ export function startReportingPiAgentTurns(input: {
         ),
         { propagationContext: null },
       );
+    }
+  }
+
+  async function reportSettledTurn(settled: SettledPiAgentTurn, context: Context) {
+    // Both reports are idempotent, and an unrecordable event must not stop the agent's queue.
+    const [recorded, advanced] = await Promise.allSettled([
+      recordTurnEvent(settled),
+      manager.reportSettledTurn({ agentName: config.agentName, requestId: settled.requestId }),
+    ]);
+    for (const report of [recorded, advanced]) {
+      if (report.status === "rejected") {
+        throw report.reason;
+      }
     }
     await forgetReportedPiAgentTurn(harness, settled.requestId, context);
   }

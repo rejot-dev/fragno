@@ -36,6 +36,10 @@ export class PiScenarioManager extends DurableObject<CloudflareEnv> {
     return await this.#object.fetch(request);
   }
 
+  async reportSettledTurn(input: { agentName: string; requestId: string }): Promise<void> {
+    await this.#object.reportSettledTurn(input);
+  }
+
   async alarm(): Promise<void> {
     await this.#object.alarm();
   }

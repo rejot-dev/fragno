@@ -1,10 +1,6 @@
 import { automationActorsSchema } from "@fragno-dev/backoffice-api/v0/automation";
 import { automationEventSchema } from "@fragno-dev/backoffice-api/v0/events";
-import {
-  piAgentModelSchema,
-  piPromptWhenBusySchema,
-  type PiAgentConfig,
-} from "@fragno-dev/backoffice-api/v0/pi";
+import { piAgentModelSchema, type PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
 import { jsonValueSchema } from "@fragno-dev/backoffice-api/v0/shared/json";
 import { backofficePermissionRequirementSchema } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { backofficeContextScopeSchema } from "@fragno-dev/backoffice-api/v0/shared/scope";
@@ -52,8 +48,8 @@ export class PiConversationViewDamagedError extends Error {
 export const piAgentPromptSchema = z.object({
   requestId: z.string().min(1),
   content: z.string().min(1),
-  whenBusy: piPromptWhenBusySchema.default("followUp"),
 });
+export type PiAgentPrompt = z.infer<typeof piAgentPromptSchema>;
 
 /**
  * An event delivered to an agent, by an Automations route or, with no route, addressed to the
@@ -94,6 +90,14 @@ export const piAgentCompactionSchema = z.object({
   instructions: z.string().trim().min(1).nullable().default(null),
 });
 
+/**
+ * A prompt's submission while its manager holds it: queued for a turn, which Pi knows nothing of
+ * until the queue dispatches it, or dropped before Pi ever received it.
+ */
+export type PiAgentQueueSubmission =
+  | { type: "input"; status: "queued"; requestId: string }
+  | { type: "input"; status: "dropped"; requestId: string; reason: string };
+
 export const PI_AGENT_SUBMISSION_WAIT_MAX_MS = 25_000;
 
 /** A bounded wait keeps infrastructure cancellation from leaving an unbounded agent waiter. */
@@ -106,7 +110,10 @@ export const piAgentSubmissionWaitSchema = z.discriminatedUnion("status", [
 ]);
 export type PiAgentSubmissionWait =
   | { status: "pending"; submission: null }
-  | { status: "settled"; submission: SubmissionRecord };
+  | {
+      status: "settled";
+      submission: SubmissionRecord | Extract<PiAgentQueueSubmission, { status: "dropped" }>;
+    };
 
 /** Public manual compaction state omits internal durable checkpoints and task inputs. */
 export const piAgentCompactionStatusSchema = z.object({
@@ -141,16 +148,6 @@ export type PiAgentViewStreamFrame = {
   view: ConversationView;
 };
 
-/** `busy` answers a `reject` prompt that reached a running agent; nothing was recorded or queued. */
-export type PiAgentSubmitResult =
-  | {
-      type: "admitted";
-      submissionId: number;
-      requestId: string;
-      whenBusy: z.infer<typeof piPromptWhenBusySchema>;
-    }
-  | { type: "busy" };
-
 /** Agent operations shared by Cloudflare RPC and the local object runtime. */
 export type PiAgent = {
   /**
@@ -158,19 +155,22 @@ export type PiAgent = {
    * provisioned has nothing to open, and warming does not provision it.
    */
   warm(): Promise<void>;
-  submit(
-    config: PiAgentConfig,
-    turn: PiAgentTurn,
-    prompt: z.infer<typeof piAgentPromptSchema>,
-  ): Promise<PiAgentSubmitResult>;
+  /**
+   * Joins the running turn at its next tool boundary. The manager steers only the turn it
+   * dispatched; if another turn runs by then, the prompt follows it instead of joining it.
+   */
+  steer(config: PiAgentConfig, turn: PiAgentTurn, prompt: PiAgentPrompt): Promise<void>;
+  /** Hands Pi the item the manager's queue dispatched; a request ID Pi already has is kept. */
+  dispatch(config: PiAgentConfig, turn: PiAgentTurn, prompt: PiAgentPrompt): Promise<void>;
   getView(config: PiAgentConfig): Promise<unknown>;
   watchView(config: PiAgentConfig): Promise<ReadableStream<Uint8Array>>;
-  getSubmission(config: PiAgentConfig, requestId: string): Promise<unknown>;
+  getSubmission(config: PiAgentConfig, requestId: string): Promise<SubmissionRecord | null>;
+  /** Waits for the request to be submitted, as a queued prompt is later, and then to settle. */
   waitForSubmission(
     config: PiAgentConfig,
     requestId: string,
     request: z.infer<typeof piAgentSubmissionWaitRequestSchema>,
-  ): Promise<PiAgentSubmissionWait | null>;
+  ): Promise<PiAgentSubmissionWait>;
   listEntries(
     config: PiAgentConfig,
     request: z.infer<typeof piAgentEntryPageRequestSchema>,

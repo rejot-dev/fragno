@@ -24,7 +24,11 @@ import {
   type PiAvailableModel,
 } from "@/fragno/pi/agent/pi-agent-contract";
 import { createPiModels, listAvailablePiModels } from "@/fragno/pi/agent/pi-models";
-import { createPiManagerFragment } from "@/fragno/pi/manager/pi-manager-fragment";
+import type { PiManagerConfig } from "@/fragno/pi/manager/pi-manager-definition";
+import {
+  createPiManagerFragment,
+  reportPiAgentTurnSettled,
+} from "@/fragno/pi/manager/pi-manager-fragment";
 
 import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
 import type { BackofficeObjectImplementation } from "./lib/backoffice-object-implementation";
@@ -42,7 +46,7 @@ export class InMemoryPiManagerObject extends RpcTarget implements PiManagerObjec
   readonly #scoped: ScopedFragmentDurableObjectRuntime<PiManagerFragment>;
   readonly #env: Pick<BackofficeRuntimeEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">;
   readonly #nowEpochMs: () => number;
-  readonly #agent: (address: PiAgentAddress) => PiAgent;
+  readonly #config: Pick<PiManagerConfig, "agent" | "supportedAvailableModels">;
 
   constructor({
     state,
@@ -64,7 +68,7 @@ export class InMemoryPiManagerObject extends RpcTarget implements PiManagerObjec
     super();
     this.#env = env;
     this.#nowEpochMs = nowEpochMs;
-    this.#agent = agent;
+    this.#config = { agent, supportedAvailableModels };
     const kernel = new BackofficeKernel(runtime);
     this.#host = implementation.createFragmentHost({
       name: "PiManager",
@@ -98,7 +102,9 @@ export class InMemoryPiManagerObject extends RpcTarget implements PiManagerObjec
 
   async warm(): Promise<void> {
     // Pages in a scope usually reach its built-in assistant, so it starts with its directory.
-    await this.#agent({ scope: this.#scoped.requireOwnerScope(), agentName: "assistant" }).warm();
+    await this.#config
+      .agent({ scope: this.#scoped.requireOwnerScope(), agentName: "assistant" })
+      .warm();
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -125,6 +131,10 @@ export class InMemoryPiManagerObject extends RpcTarget implements PiManagerObjec
       }
       throw cause;
     }
+  }
+
+  async reportSettledTurn(input: { agentName: string; requestId: string }): Promise<void> {
+    await reportPiAgentTurnSettled(await this.#scoped.getRuntime(), this.#config, input);
   }
 
   async alarm(): Promise<void> {
@@ -154,6 +164,10 @@ export class PiManager extends DurableObject<CloudflareEnv> implements PiManager
 
   async fetch(request: Request): Promise<Response> {
     return await this.#object.fetch(request);
+  }
+
+  async reportSettledTurn(input: { agentName: string; requestId: string }): Promise<void> {
+    await this.#object.reportSettledTurn(input);
   }
 
   async alarm(): Promise<void> {

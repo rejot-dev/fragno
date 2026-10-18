@@ -129,7 +129,11 @@ export const piManagerAgentDirectorySchema = z.lazy(() =>
 
 export type PiManagerAgentDirectory = z.infer<typeof piManagerAgentDirectorySchema>;
 
-/** `followUp` waits for the current turn; `steer` joins it at the next tool boundary. */
+/**
+ * `followUp` waits in the agent's queue for a turn of its own. `steer` joins the running turn at its
+ * next tool boundary when that turn has the same authority, and otherwise waits like `followUp`.
+ * `reject` is refused while the agent runs a turn or has queued work.
+ */
 export const piPromptWhenBusySchema = z.lazy(() => z.enum(["followUp", "steer", "reject"]));
 
 const piAgentDirectoryOutputSchema = z.lazy(() =>
@@ -140,10 +144,9 @@ const piAgentDirectoryOutputSchema = z.lazy(() =>
 
 export const piPromptReceiptOutputSchema = z.lazy(() =>
   z.object({
-    submissionId: z.number(),
     requestId: z.string(),
-    // What Pi applied: a steer from anyone but the running turn's submitter becomes a follow-up.
-    whenBusy: piPromptWhenBusySchema,
+    // `steered` joined the running turn; `queued` waits in the agent's queue for a turn of its own.
+    status: z.enum(["steered", "queued"]),
   }),
 );
 export type PiPromptReceipt = z.infer<typeof piPromptReceiptOutputSchema>;
@@ -223,7 +226,7 @@ export const piOperations = {
   },
   "pi.prompt.submit": {
     description:
-      "Durably admit a prompt to an agent and return its deduplicated submission receipt. The turn runs with the caller's current permissions, narrowed by the agent's definition. A user- or system-scoped agent's first turn sets its billing organization; omitting billingOrganizationId inherits the calling Pi agent or workflow's.",
+      "Durably queue a prompt for an agent, or steer its running turn, and return a receipt saying which. A request ID still queued is not queued twice. The turn runs with the caller's current permissions, narrowed by the agent's definition. A user- or system-scoped agent's first turn sets its billing organization; omitting billingOrganizationId inherits the calling Pi agent or workflow's.",
     permissions: [BACKOFFICE_PERMISSION.pi.modify],
     input: promptSubmitInputSchema,
     output: piPromptReceiptOutputSchema,
@@ -236,7 +239,7 @@ export const piOperations = {
   },
   "pi.prompt.run": {
     description:
-      "Durably admit a prompt to an agent, wait for settlement, and return its conversation view.",
+      "Durably queue a prompt for an agent, wait for its turn to settle, and return its conversation view.",
     permissions: [BACKOFFICE_PERMISSION.pi.modify],
     input: promptRunInputSchema,
     output: piPromptResultOutputSchema,

@@ -10,11 +10,11 @@ type PiCodemodeProvider = {
   updateAgent(input: PiUpdateAgentInput): Promise<PiUpdateAgentOutput>;
   /** Idempotently delete an agent's definition. Its stored conversation is kept and resumes if the name is defined again. */
   deleteAgent(input: PiDeleteAgentInput): Promise<PiDeleteAgentOutput>;
-  /** Durably admit a prompt to an agent and return its deduplicated submission receipt. The turn runs with the caller's current permissions, narrowed by the agent's definition. A user- or system-scoped agent's first turn sets its billing organization; omitting billingOrganizationId inherits the calling Pi agent or workflow's. */
+  /** Durably queue a prompt for an agent, or steer its running turn, and return a receipt saying which. A request ID still queued is not queued twice. The turn runs with the caller's current permissions, narrowed by the agent's definition. A user- or system-scoped agent's first turn sets its billing organization; omitting billingOrganizationId inherits the calling Pi agent or workflow's. */
   submitPrompt(input: PiSubmitPromptInput): Promise<PiSubmitPromptOutput>;
   /** Get the durable status of one prompt submission. */
   getSubmission(input: PiGetSubmissionInput): Promise<unknown>;
-  /** Durably admit a prompt to an agent, wait for settlement, and return its conversation view. */
+  /** Durably queue a prompt for an agent, wait for its turn to settle, and return its conversation view. */
   runPrompt(input: PiRunPromptInput): Promise<PiRunPromptOutput>;
   /** Abort an agent's active foreground and background work. */
   abortAgent(input: PiAbortAgentInput): Promise<PiAbortAgentOutput>;
@@ -116,9 +116,8 @@ type PiSubmitPromptInput = {
   billingOrganizationId?: string | null;
 };
 type PiSubmitPromptOutput = {
-  submissionId: number;
   requestId: string;
-  whenBusy: "followUp" | "steer" | "reject";
+  status: "steered" | "queued";
 };
 type PiGetSubmissionInput = {
   agentName: string;

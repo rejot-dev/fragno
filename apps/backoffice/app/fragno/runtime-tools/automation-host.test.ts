@@ -76,7 +76,7 @@ const createPiRuntime = (): PiManagerRuntime => {
     createAgent: async ({ managedBy, ...definition }) => ({ ...definition, managedBy }),
     updateAgent: async ({ managedBy, ...definition }) => ({ ...definition, managedBy }),
     deleteAgent: async () => undefined,
-    submitPrompt: async () => ({ submissionId: 1, requestId: "request-1", whenBusy: "followUp" }),
+    submitPrompt: async () => ({ requestId: "request-1", status: "queued" }),
     notifyAgent: async () => undefined,
     getSubmission: async () => submission,
     runPrompt: async ({ agentName, content }) => ({

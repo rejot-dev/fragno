@@ -132,7 +132,8 @@ describe("Pi durable agent scenarios", () => {
     };
     const submitted = await managerRequest(organizationId, "/agents/assistant/prompts", prompt);
     expect(submitted.status, await submitted.clone().text()).toBe(202);
-    const receipt = await submitted.json<{ submissionId: number }>();
+    const receipt = await submitted.json<{ requestId: string; status: string }>();
+    expect(receipt).toEqual({ requestId: "prompt-1", status: "queued" });
     const agent = (env as CloudflareEnv).PI.getByName(piAgentObjectName(config));
     const waiting = managerRequest(
       organizationId,
@@ -143,7 +144,7 @@ describe("Pi durable agent scenarios", () => {
     expect(waited.status, await waited.clone().text()).toBe(200);
     expect(await waited.json()).toMatchObject({
       status: "settled",
-      submission: { id: receipt.submissionId, status: "done" },
+      submission: { requestId: "prompt-1", status: "done" },
     });
 
     const after = await (
@@ -386,10 +387,9 @@ describe("Pi durable agent scenarios", () => {
           expect(reports).toEqual([startupError]);
           await expect(state.storage.get("pi-agent-config")).resolves.toEqual(config);
 
-          await object.submit(config, seededTurn(config), {
+          await object.dispatch(config, seededTurn(config), {
             requestId: "startup-recovered",
             content: "Finish the recovered turn.",
-            whenBusy: "followUp",
           });
           // The real object's alarm may already have consumed the one this submission scheduled;
           // running this object's alarm performs the turn either way.

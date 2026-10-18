@@ -111,8 +111,8 @@ export async function action(args: Route.ActionArgs): Promise<PiAgentActionData>
   }
 
   const { me } = getBackofficeShellRequest(context);
-  // An idle agent starts a turn. A busy one takes your message at its next tool boundary when the
-  // running turn is yours, and after it otherwise.
+  // Your message joins your own running turn at its next tool boundary; otherwise it waits in the
+  // agent's queue for a turn of its own.
   const result = await submitPiManagerPrompt(request, context, scope, agentName, {
     requestId: crypto.randomUUID(),
     content: content.trim(),
@@ -497,14 +497,6 @@ function BackofficeOrganizationPiAgent({
   const actionError = fetcher.data && !fetcher.data.ok ? fetcher.data.error : null;
   const sendError =
     fetcher.data?.intent === "compact" ? initialPromptError : (actionError ?? initialPromptError);
-  // The composer always asks to steer; Pi queues it instead behind someone else's running turn.
-  const sentReceipt =
-    fetcher.data?.ok && fetcher.data.intent === "send" ? fetcher.data.receipt : null;
-  const sendNotice =
-    sentReceipt?.whenBusy === "followUp" &&
-    conversationQueue.modes.has(String(sentReceipt.submissionId))
-      ? "Someone else's turn is running. Your message will run after it."
-      : null;
   const submitting = fetcher.state !== "idle";
 
   const workflowCollections = useSessionWorkflowCollections();
@@ -740,7 +732,6 @@ function BackofficeOrganizationPiAgent({
               <SessionThread
                 disabledReason={null}
                 error={sendError}
-                notice={sendNotice}
                 queueModes={conversationQueue.modes}
                 modelLabel={modelLabel}
                 needsNudge={false}
