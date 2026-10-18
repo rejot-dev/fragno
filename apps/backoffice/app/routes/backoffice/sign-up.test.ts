@@ -182,9 +182,7 @@ describe("backoffice sign-up route", () => {
     const result = await action(createActionArgs(validSignUpForm, signUpUrl.toString()));
 
     assert(result instanceof Response);
-    const destination = new URL(result.headers.get("Location") ?? "", "https://example.com");
-    assert(destination.pathname === "/backoffice/auth/bootstrap");
-    assert(destination.searchParams.get("returnTo") === returnTo);
+    assert(result.headers.get("Location") === returnTo);
     expect(callBetterAuth).toHaveBeenCalledWith(
       expect.any(Request),
       expect.anything(),
@@ -208,7 +206,7 @@ describe("backoffice sign-up route", () => {
 
     const result = await action(createActionArgs({ ...validSignUpForm, email: "admin@rejot.dev" }));
     assert(result instanceof Response);
-    assert(result.headers.get("Location") === "/backoffice/auth/bootstrap");
+    assert(result.headers.get("Location") === "/backoffice");
     expect(result.headers.getSetCookie()).toEqual([
       "better-auth.session_token=session; Path=/; HttpOnly",
       "fragno-backoffice.access_token=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax",

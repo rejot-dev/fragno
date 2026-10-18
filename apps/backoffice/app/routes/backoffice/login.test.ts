@@ -51,10 +51,8 @@ describe("backoffice login route", () => {
 
     await expect(loader(createLoaderArgs("https://example.com/backoffice/login"))).resolves.toEqual(
       {
-        authenticated: false,
         returnTo: "/backoffice",
         oauthQuery: null,
-        bootstrapError: null,
         authError: null,
       },
     );
@@ -68,10 +66,8 @@ describe("backoffice login route", () => {
         ),
       ),
     ).resolves.toEqual({
-      authenticated: false,
       returnTo: "/backoffice",
       oauthQuery: null,
-      bootstrapError: null,
       authError: {
         title: "Account creation is not available",
         message:
@@ -160,56 +156,39 @@ describe("backoffice login route", () => {
         ),
       ),
     ).resolves.toEqual({
-      authenticated: false,
       returnTo: "/backoffice/device?user_code=ME7L-5UAH",
       oauthQuery: null,
-      bootstrapError: null,
       authError: null,
     });
     expect(getBackofficeMe).not.toHaveBeenCalled();
   });
 
-  it("signs in, exchanges the session, and redirects with both credentials", async () => {
+  it("signs in and opens the destination with the new session", async () => {
     vi.stubEnv("MODE", "production");
-    vi.mocked(callBetterAuth)
-      .mockResolvedValueOnce(
-        Response.json(
-          { user: { id: "user_123" } },
-          { headers: { "set-cookie": "session=abc; Path=/api/auth; HttpOnly" } },
-        ),
-      )
-      .mockResolvedValueOnce(
-        Response.json(
-          {
-            expiresAt: "2026-08-11T12:15:00.000Z",
-            organization: { id: "org-1", slug: "acme" },
-          },
-          {
-            headers: {
-              "set-cookie": "fragno-backoffice.access_token=jwt; Path=/; HttpOnly; SameSite=Lax",
-            },
-          },
-        ),
-      );
+    vi.mocked(callBetterAuth).mockResolvedValueOnce(
+      Response.json(
+        { user: { id: "user_123" } },
+        { headers: { "set-cookie": "session=abc; Path=/api/auth; HttpOnly" } },
+      ),
+    );
 
     const response = requireResponse(
       await action(
         createActionArgs("https://example.com/backoffice/login?returnTo=%2Fbackoffice%2Fsettings", {
           email: "dev@fragno.test",
           password: "password123",
-          preferredOrganizationId: "org-1",
         }),
       ),
     );
     assert(response.headers.get("Location") === "/backoffice/settings");
+    // The destination mints its access token from the session; the old one is cleared.
     expect(response.headers.getSetCookie()).toEqual([
       "session=abc; Path=/api/auth; HttpOnly",
       "fragno-backoffice.access_token=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax",
       "__Host-fragno-backoffice.access_token=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax",
-      "fragno-backoffice.access_token=jwt; Path=/; HttpOnly; SameSite=Lax",
     ]);
-    expect(callBetterAuth).toHaveBeenNthCalledWith(
-      1,
+    expect(callBetterAuth).toHaveBeenCalledOnce();
+    expect(callBetterAuth).toHaveBeenCalledWith(
       expect.any(Request),
       expect.anything(),
       "/sign-in/email",
@@ -218,86 +197,6 @@ describe("backoffice login route", () => {
         body: JSON.stringify({ email: "dev@fragno.test", password: "password123" }),
       },
     );
-    expect(callBetterAuth).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({ headers: expect.any(Headers) }),
-      expect.anything(),
-      "/backoffice-token",
-      {
-        method: "POST",
-        body: JSON.stringify({ selection: "preferred", organizationId: "org-1" }),
-      },
-    );
-    assert(vi.mocked(callBetterAuth).mock.calls[1]?.[0].headers.get("cookie") === "session=abc");
-  });
-
-  it("accepts the server fallback for an unavailable preferred organization", async () => {
-    vi.stubEnv("MODE", "development");
-    vi.mocked(callBetterAuth)
-      .mockResolvedValueOnce(
-        Response.json(
-          { user: { id: "user_123" } },
-          { headers: { "set-cookie": "session=abc; Path=/api/auth; HttpOnly" } },
-        ),
-      )
-      .mockResolvedValueOnce(
-        Response.json(
-          {
-            expiresAt: "2026-08-11T12:15:00.000Z",
-            organization: { id: "org-current", slug: "current" },
-          },
-          {
-            headers: {
-              "set-cookie": "fragno-backoffice.access_token=jwt; Path=/; HttpOnly; SameSite=Lax",
-            },
-          },
-        ),
-      );
-
-    const response = requireResponse(
-      await action(
-        createActionArgs("https://example.com/backoffice/login", {
-          email: "dev@fragno.test",
-          password: "password123",
-          preferredOrganizationId: "org-stale",
-        }),
-      ),
-    );
-
-    assert(response.headers.get("Location") === "/backoffice");
-    expect(vi.mocked(callBetterAuth).mock.calls[1]?.[3]?.body).toBe(
-      JSON.stringify({ selection: "preferred", organizationId: "org-stale" }),
-    );
-  });
-
-  it("displays the token-exchange error message without serialized JSON", async () => {
-    vi.stubEnv("MODE", "development");
-    vi.mocked(callBetterAuth)
-      .mockResolvedValueOnce(
-        Response.json(
-          { user: { id: "user_123" } },
-          { headers: { "set-cookie": "session=abc; Path=/api/auth; HttpOnly" } },
-        ),
-      )
-      .mockResolvedValueOnce(
-        Response.json(
-          { message: "The requested Backoffice scope is unavailable." },
-          { status: 403 },
-        ),
-      );
-
-    await expect(
-      action(
-        createActionArgs("https://example.com/backoffice/login", {
-          email: "dev@fragno.test",
-          password: "password123",
-          preferredOrganizationId: "org-1",
-        }),
-      ),
-    ).resolves.toEqual({
-      state: "error",
-      message: "The requested Backoffice scope is unavailable.",
-    });
   });
 
   it("preserves Better Auth's verification-required response", async () => {

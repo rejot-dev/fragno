@@ -119,7 +119,6 @@ import {
   setUpScenarioAuthOrganization,
   setUpScenarioAuthUser,
   type ScenarioAuthMemberInput as AuthMemberInput,
-  type ScenarioAuthMemberRemoveInput as AuthMemberRemoveInput,
   type ScenarioAuthMemberRolesInput as AuthMemberRolesInput,
   type ScenarioAuthOrganizationInput as AuthOrganizationInput,
   type ScenarioAuthUserInput as AuthUserInput,
@@ -607,6 +606,10 @@ type AuthAcceptInvitationInput<TVars extends ScenarioVars> = {
 type AuthSessionInput<TVars extends ScenarioVars> = {
   cookie: ScenarioValue<TVars, string>;
 };
+type AuthMemberRemoveInput<TVars extends ScenarioVars> = {
+  orgId: ScenarioValue<TVars, string>;
+  userId: ScenarioValue<TVars, string>;
+};
 type WorkflowCreateInstanceInput<TVars extends ScenarioVars = ScenarioVars> = {
   orgId: string;
   workflowName?: string;
@@ -781,7 +784,7 @@ export type BackofficeScenarioStepBuilders<TVars extends ScenarioVars = Scenario
       setUserRole(input: AuthUserRoleInput): BackofficeScenarioStep;
       setUserStatus(input: AuthUserStatusInput): BackofficeScenarioStep;
       setMemberRoles(input: AuthMemberRolesInput): BackofficeScenarioStep;
-      removeMember(input: AuthMemberRemoveInput): BackofficeScenarioStep;
+      removeMember(input: AuthMemberRemoveInput<TVars>): BackofficeScenarioStep;
     };
     capability: {
       configured(input: CapabilityConfiguredInput): BackofficeScenarioStep;
@@ -2604,8 +2607,15 @@ const buildStepBuilders = <
         createStep(
           "when",
           "auth.removeMember",
-          `remove ${input.userId} from ${input.orgId}`,
-          (ctx) => removeScenarioAuthMember(ctx.runtime, input),
+          typeof input.userId === "string" && typeof input.orgId === "string"
+            ? `remove ${input.userId} from ${input.orgId}`
+            : "remove a member from an organization",
+          async (ctx) => {
+            await removeScenarioAuthMember(ctx.runtime, {
+              orgId: await resolveScenarioValue(ctx, input.orgId),
+              userId: await resolveScenarioValue(ctx, input.userId),
+            });
+          },
         ),
     },
     marketplace: {
@@ -3084,7 +3094,7 @@ const buildStepBuilders = <
           async (ctx) => {
             const response = await scenarioAuthRequest(ctx, "/backoffice-token", {
               cookie: await resolveScenarioValue(ctx, input.cookie),
-              body: { selection: "preferred", organizationId: null },
+              body: { selection: "preferred" },
             });
             if (!response.ok) {
               throw new Error(`Backoffice token exchange failed (${response.status}).`);

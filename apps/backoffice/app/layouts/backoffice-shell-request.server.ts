@@ -3,12 +3,7 @@ import {
   backofficeScopeRootOwner,
   mapBackofficeScopeNames,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import {
-  createContext,
-  redirect,
-  type RouterContext,
-  type RouterContextProvider,
-} from "react-router";
+import { createContext, type RouterContext, type RouterContextProvider } from "react-router";
 
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import { isBackofficeForbiddenError } from "@/backoffice-runtime/kernel";
@@ -22,16 +17,13 @@ import {
   type BackofficeScopeSelection,
 } from "@/backoffice-runtime/resolved-scope";
 import { createBackofficeExecutionForPrincipal } from "@/fragno/auth/backoffice-principal.server";
+import { reopenWithBackofficeCredential } from "@/fragno/auth/browser-credential.server";
 import type {
   BackofficeAuthPrincipal,
   BackofficeMeData,
   Organization,
 } from "@/fragno/auth/contracts";
 import { requireBackofficePrincipal } from "@/fragno/auth/request-auth.server";
-import {
-  buildBackofficeAuthBootstrapPath,
-  buildBackofficeOrganizationSwitchPath,
-} from "@/routes/backoffice/auth-navigation";
 import { lookupAutomationProject, toExternalId } from "@/routes/backoffice/automations/data.server";
 import {
   isBackofficeSystemAdministrator,
@@ -80,6 +72,7 @@ export const BackofficeShellRequestContext = ((globalThis as Record<symbol, unkn
 type BackofficeShellMiddlewareArgs = {
   request: Request;
   context: Readonly<RouterContextProvider>;
+  url: URL;
   params: {
     scopeKind?: string;
     scopeId?: string;
@@ -89,19 +82,19 @@ type BackofficeShellMiddlewareArgs = {
 
 /** Establishes the canonical authenticated scope before protected descendant route handlers run. */
 export async function establishBackofficeShellRequest(
-  { request, context, params }: BackofficeShellMiddlewareArgs,
+  args: BackofficeShellMiddlewareArgs,
   next: () => Promise<Response>,
 ): Promise<Response> {
+  const { request, context, params } = args;
   const authenticatedRequest = getBackofficeAuthenticatedRequest(context);
   const { me } = authenticatedRequest;
-  const returnToUrl = new URL(request.url);
-  const returnTo = `${returnToUrl.pathname}${returnToUrl.search}`;
   const activeOrganization = me.activeOrganization?.organization ?? null;
+  // The token names an organization the user has since left.
   if (
     me.activeOrganizationId &&
     (!activeOrganization || activeOrganization.id !== me.activeOrganizationId)
   ) {
-    throw redirect(buildBackofficeAuthBootstrapPath(returnTo));
+    throw await reopenWithBackofficeCredential(args, { selection: "preferred" });
   }
 
   const defaultScope: BackofficePageResolvedScope = activeOrganization
@@ -182,7 +175,10 @@ export async function establishBackofficeShellRequest(
     destinationOrganizationId !== me.activeOrganizationId &&
     me.organizations.some(({ organization }) => organization.id === destinationOrganizationId)
   ) {
-    throw redirect(buildBackofficeOrganizationSwitchPath(destinationOrganizationId, returnTo));
+    throw await reopenWithBackofficeCredential(args, {
+      selection: "required",
+      organizationId: destinationOrganizationId,
+    });
   }
 
   const principal = await requireBackofficePrincipal(request, context);

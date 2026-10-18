@@ -1,4 +1,4 @@
-import { assert, describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import type {
   BackofficeAuthPrincipal,
@@ -177,6 +177,7 @@ describe("Backoffice shell request middleware", () => {
         {
           request,
           context,
+          url: new URL(request.url),
           params: { scopeKind: "project", scopeId: "org:acme:website" },
         },
         next,
@@ -201,53 +202,11 @@ describe("Backoffice shell request middleware", () => {
       return new Response("descendant response");
     });
 
-    await establishBackofficeShellRequest({ request, context, params }, next);
+    await establishBackofficeShellRequest(
+      { request, context, url: new URL(request.url), params },
+      next,
+    );
     expect(next).toHaveBeenCalledOnce();
-  });
-
-  test("redirects organization changes before resolving execution authority", async () => {
-    const request = new Request(
-      "https://backoffice.example/backoffice/dashboard/org/beta?selection=route&selected=route-1",
-    );
-    const { context, getPrincipal } = createShellContext({ request });
-    const next = vi.fn(async () => new Response("descendant response"));
-
-    const result = await establishBackofficeShellRequest(
-      { request, context, params: { scopeKind: "org", scopeId: "beta" } },
-      next,
-    ).catch((error: unknown) => error);
-
-    assert(result instanceof Response);
-    assert.equal(result.status, 302);
-    assert.equal(
-      result.headers.get("location"),
-      "/backoffice/auth/bootstrap?organizationId=org-2&returnTo=%2Fbackoffice%2Fdashboard%2Forg%2Fbeta%3Fselection%3Droute%26selected%3Droute-1",
-    );
-    expect(next).not.toHaveBeenCalled();
-    expect(getPrincipal).not.toHaveBeenCalled();
-  });
-
-  test("redirects inconsistent active organization state before descendant work", async () => {
-    const request = new Request("https://backoffice.example/backoffice/settings");
-    const { context, getPrincipal } = createShellContext({
-      request,
-      me: { ...authenticatedMe, activeOrganization: null },
-    });
-    const next = vi.fn(async () => new Response("descendant response"));
-
-    const result = await establishBackofficeShellRequest(
-      { request, context, params: {} },
-      next,
-    ).catch((error: unknown) => error);
-
-    assert(result instanceof Response);
-    assert.equal(result.status, 302);
-    assert.equal(
-      result.headers.get("location"),
-      "/backoffice/auth/bootstrap?returnTo=%2Fbackoffice%2Fsettings",
-    );
-    expect(next).not.toHaveBeenCalled();
-    expect(getPrincipal).not.toHaveBeenCalled();
   });
 
   test("hides System scope from non-administrators so sections report it as not found", async () => {
@@ -262,7 +221,12 @@ describe("Backoffice shell request middleware", () => {
     });
 
     await establishBackofficeShellRequest(
-      { request, context, params: { scopeKind: "system", scopeId: "system" } },
+      {
+        request,
+        context,
+        url: new URL(request.url),
+        params: { scopeKind: "system", scopeId: "system" },
+      },
       next,
     );
     expect(next).toHaveBeenCalledOnce();

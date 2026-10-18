@@ -7,7 +7,6 @@ import { useLoaderData } from "react-router";
 
 import { authClient } from "@/fragno/auth/auth-client";
 import { callBetterAuth } from "@/fragno/auth/auth-server";
-import { buildBackofficeOrganizationSwitchPath } from "@/routes/backoffice/auth-navigation";
 
 import type { Route } from "./+types/invitation-accept";
 import { Notice } from "./organization-shared";
@@ -82,10 +81,7 @@ export default function BackofficeInvitationAccept() {
           <div className="flex flex-wrap gap-2">
             <ButtonLink
               variant="accent"
-              to={buildBackofficeOrganizationSwitchPath(
-                organization.id,
-                `/backoffice/organizations/${encodeURIComponent(organization.slug)}`,
-              )}
+              to={`/backoffice/organizations/${encodeURIComponent(organization.slug)}`}
             >
               Open organization
             </ButtonLink>

@@ -3,7 +3,6 @@ import {
   BACKOFFICE_TOKEN_EXPIRED_CODE,
   type IssueBackofficeTokenResult,
 } from "./contracts";
-import { readPreferredOrganization, writePreferredOrganization } from "./preferred-organization";
 import { exchangeBackofficeSessionForJwt } from "./session-exchange.client";
 
 const TOKEN_REFRESH_LEEWAY_MS = 60_000;
@@ -24,10 +23,9 @@ async function issueRefreshedBackofficeAccessToken(
   fetchImplementation: typeof fetch,
 ): Promise<IssueBackofficeTokenResult> {
   const result = await exchangeBackofficeSessionForJwt(
-    { selection: "preferred", organizationId: readPreferredOrganization() },
+    { selection: "preferred" },
     fetchImplementation,
   );
-  writePreferredOrganization(result.organization?.id ?? null);
   recordIssuedBackofficeToken(result);
   return result;
 }

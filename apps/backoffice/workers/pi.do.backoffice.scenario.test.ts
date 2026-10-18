@@ -1393,7 +1393,7 @@ test("Cloudflare backend analytics delivers verified outcomes and Pi usage witho
                 new Request(`${origin}/api/auth/backoffice-token`, {
                   method: "POST",
                   headers: { cookie: ctx.vars.session, origin, "content-type": "application/json" },
-                  body: JSON.stringify({ selection: "preferred", organizationId: null }),
+                  body: JSON.stringify({ selection: "preferred" }),
                 }),
               );
               assert(exchange.ok, await exchange.clone().text());

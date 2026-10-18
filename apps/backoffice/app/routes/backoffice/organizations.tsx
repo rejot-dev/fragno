@@ -19,12 +19,7 @@ import { authClient } from "@/fragno/auth/auth-client";
 import { loadUserInvitations } from "@/fragno/auth/auth-directory.server";
 import { requireBackofficeBrowserSession } from "@/fragno/auth/browser-session.server";
 import { organizationSlugFromName } from "@/fragno/auth/organization-slug";
-import {
-  usePreferredOrganization,
-  resolvePreferredOrganizationId,
-} from "@/fragno/auth/preferred-organization";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
-import { buildBackofficeOrganizationSwitchPath } from "@/routes/backoffice/auth-navigation";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { Route } from "./+types/organizations";
@@ -37,10 +32,7 @@ import {
   formatRoles,
   getErrorMessage,
 } from "./organization-utils";
-import {
-  getOrganizationPreferenceState,
-  sortOrganizationsByPreference,
-} from "./organizations-preference";
+import { sortOrganizationsByPreference } from "./organizations-preference";
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   return await loadUserInvitations({ request, context });
@@ -59,12 +51,7 @@ export async function action({ request, context, url }: Route.ActionArgs) {
   const organization = await runtime.objects.auth
     .singleton()
     .commands.createUserOrganization({ userId: user.id, name: input.data.name });
-  return redirect(
-    buildBackofficeOrganizationSwitchPath(
-      organization.id,
-      dashboardPath({ kind: "org", orgSlug: organization.slug }),
-    ),
-  );
+  return redirect(dashboardPath({ kind: "org", orgSlug: organization.slug }));
 }
 
 type UserInvitation = Extract<
@@ -81,21 +68,15 @@ export function meta() {
 
 export default function BackofficeOrganizations({ actionData }: Route.ComponentProps) {
   const { me: initialMe } = useOutletContext<BackofficeLayoutContext>();
-  const storedOrganizationId = usePreferredOrganization();
-  const { mutate: switchOrganization, loading: switchingOrganization } =
-    authClient.useSwitchOrganization();
   const revalidator = useRevalidator();
   const userInvitations = useLoaderData<typeof loader>();
   const { mutate: respondInvitation, loading: respondingInvitation } =
     authClient.useRespondOrganizationInvitation();
   const [invitationNotice, setInvitationNotice] = useState<ActionNotice>(null);
-  const [preferredOrganizationNotice, setPreferredOrganizationNotice] =
-    useState<ActionNotice>(null);
   const [activeInvitationId, setActiveInvitationId] = useState<string | null>(null);
   const me = initialMe;
   const organizations = me?.organizations ?? [];
-  const preferredOrganizationId = resolvePreferredOrganizationId(me, storedOrganizationId);
-  const sortedOrganizations = sortOrganizationsByPreference(organizations, preferredOrganizationId);
+  const sortedOrganizations = sortOrganizationsByPreference(organizations, me.activeOrganizationId);
 
   const handleInvitationAction = async (entry: UserInvitation, action: "accept" | "reject") => {
     if (action === "reject") {
@@ -127,35 +108,13 @@ export default function BackofficeOrganizations({ actionData }: Route.ComponentP
     }
   };
 
-  const handleSetPreferredOrganization = async (
-    organizationId: string,
-    organizationName: string,
-  ) => {
-    setPreferredOrganizationNotice(null);
-
-    try {
-      if (!me) {
-        throw new Error("Cannot switch organizations without an authenticated user.");
-      }
-
-      await switchOrganization({ body: { organizationId } });
-      await revalidator.revalidate();
-      setPreferredOrganizationNotice({
-        type: "success",
-        message: `${organizationName} is now the active and preferred organization for the docs backoffice.`,
-      });
-    } catch (error) {
-      setPreferredOrganizationNotice({ type: "error", message: getErrorMessage(error) });
-    }
-  };
-
   return (
     <div className="space-y-4">
       <BackofficePageHeader
         breadcrumbs={[{ label: "Backoffice", to: "/backoffice" }, { label: "Organizations" }]}
         eyebrow="Directory"
         title="Organization rosters and access levels."
-        description="Select an organization to manage settings, members, invitations, and the preferred Backoffice scope."
+        description="Select an organization to manage settings, members, and invitations. Backoffice opens in the organization you last worked in."
       />
 
       <CreateOrganizationForm error={actionData?.error ?? null} />
@@ -246,10 +205,6 @@ export default function BackofficeOrganizations({ actionData }: Route.ComponentP
       ) : (
         <section className="grid gap-3 md:grid-cols-2">
           {sortedOrganizations.map(({ organization, member }) => {
-            const preferenceState = getOrganizationPreferenceState(
-              organization.id,
-              preferredOrganizationId,
-            );
             return (
               <div
                 key={organization.id}
@@ -265,7 +220,7 @@ export default function BackofficeOrganizations({ actionData }: Route.ComponentP
                     </h2>
                   </div>
                   <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
-                    {preferenceState.badgeLabel}
+                    {organization.id === me.activeOrganizationId ? "Active" : "Available"}
                   </span>
                 </div>
                 <div className="mt-4 space-y-2 text-sm text-[var(--bo-muted)]">
@@ -285,32 +240,9 @@ export default function BackofficeOrganizations({ actionData }: Route.ComponentP
                   </p>
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
-                  {preferenceState.canSwitch ? (
-                    <Button
-                      variant="secondary"
-                      type="button"
-                      onClick={() =>
-                        void handleSetPreferredOrganization(organization.id, organization.name)
-                      }
-                      disabled={switchingOrganization}
-                    >
-                      {switchingOrganization ? "Updating..." : preferenceState.actionLabel}
-                    </Button>
-                  ) : (
-                    <span className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase">
-                      {preferenceState.actionLabel}
-                    </span>
-                  )}
                   <ButtonLink
                     variant="accent"
-                    to={
-                      organization.id === me.activeOrganizationId
-                        ? `/backoffice/organizations/${encodeURIComponent(organization.slug)}`
-                        : buildBackofficeOrganizationSwitchPath(
-                            organization.id,
-                            `/backoffice/organizations/${encodeURIComponent(organization.slug)}`,
-                          )
-                    }
+                    to={`/backoffice/organizations/${encodeURIComponent(organization.slug)}`}
                   >
                     Open
                   </ButtonLink>
@@ -320,7 +252,6 @@ export default function BackofficeOrganizations({ actionData }: Route.ComponentP
           })}
         </section>
       )}
-      <Notice notice={preferredOrganizationNotice} />
     </div>
   );
 }

@@ -130,7 +130,7 @@ async function authenticateOtpMember(ctx: BackofficeScenarioContext) {
         origin: "https://backoffice.example",
         "content-type": "application/json",
       },
-      body: JSON.stringify({ selection: "preferred", organizationId: null }),
+      body: JSON.stringify({ selection: "preferred" }),
     }),
   );
   assert(exchange.ok, await exchange.clone().text());

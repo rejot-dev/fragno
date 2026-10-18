@@ -4,11 +4,8 @@ import {
   BACKOFFICE_HOME_PATH,
   BACKOFFICE_LOGIN_PATH,
   buildBackofficeLoginPath,
-  buildBackofficeOrganizationSwitchPath,
   buildBackofficeSignUpPath,
-  readBackofficeOrganizationSwitchId,
   readBackofficeReturnTo,
-  retargetBackofficeOrganizationReturnTo,
   sanitizeBackofficeReturnTo,
 } from "./auth-navigation";
 
@@ -63,31 +60,6 @@ describe("backoffice auth navigation helpers", () => {
     const signUpPath = buildBackofficeSignUpPath(returnTo);
 
     assert(readBackofficeReturnTo(signUpPath) === returnTo);
-  });
-
-  test("builds organization switch paths with an explicit destination", () => {
-    const switchPath = buildBackofficeOrganizationSwitchPath(
-      "org-2",
-      "/backoffice/dashboard/org/org-2",
-    );
-    expect(switchPath).toBe(
-      "/backoffice/auth/bootstrap?organizationId=org-2&returnTo=%2Fbackoffice%2Fdashboard%2Forg%2Forg-2",
-    );
-    assert(readBackofficeOrganizationSwitchId(switchPath) === "org-2");
-  });
-
-  test("retargets an organization-scoped destination after changing identity", () => {
-    assert(
-      retargetBackofficeOrganizationReturnTo(
-        "/backoffice/dashboard/org/org-stale?selection=route&selected=route-1",
-        "org-current",
-      ) === "/backoffice/dashboard/org/org-current?selection=route&selected=route-1",
-    );
-  });
-
-  test("preserves unscoped invitation destinations after changing identity", () => {
-    const invitation = "/backoffice/invitations/invite-1?token=secret";
-    expect(retargetBackofficeOrganizationReturnTo(invitation, "org-current")).toBe(invitation);
   });
 
   test("reads the returnTo value with the same sanitization", () => {

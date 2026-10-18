@@ -15,7 +15,6 @@ import {
   type BackofficeResolvedScope,
 } from "@/backoffice-runtime/resolved-scope";
 import type { BackofficeMeData, Organization } from "@/fragno/auth/contracts";
-import { buildBackofficeOrganizationSwitchPath } from "@/routes/backoffice/auth-navigation";
 
 import { scopeSwitchPath } from "./scope-switch-path";
 
@@ -181,16 +180,10 @@ export function BackofficeScopeMenu({
           return (
             <SelectorMenuGroup key={group.kind} label={group.label}>
               {groupOptions.map((option) => {
-                const destinationOrganizationId =
-                  backofficeScopeOrganization(option.scope)?.organization.id ?? null;
-                const destination = scopeSwitchPath(
+                const switchPath = scopeSwitchPath(
                   location.pathname,
                   backofficeRouteScopeFromResolvedScope(option.scope),
                 );
-                const switchPath =
-                  destinationOrganizationId && destinationOrganizationId !== me.activeOrganizationId
-                    ? buildBackofficeOrganizationSwitchPath(destinationOrganizationId, destination)
-                    : destination;
 
                 return (
                   <SelectorMenuOption

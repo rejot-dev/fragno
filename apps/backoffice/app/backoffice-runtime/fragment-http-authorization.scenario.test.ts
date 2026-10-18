@@ -89,7 +89,9 @@ async function exchangeBrowserSession(
     new Request(`${origin}/api/auth/backoffice-token`, {
       method: "POST",
       headers: { cookie, origin, "content-type": "application/json" },
-      body: JSON.stringify({ selection: "preferred", organizationId }),
+      body: JSON.stringify(
+        organizationId ? { selection: "required", organizationId } : { selection: "preferred" },
+      ),
     }),
   );
   assert(response.ok, await response.clone().text());

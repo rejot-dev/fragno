@@ -67,10 +67,10 @@ export type BackofficeMeData = {
   activeOrganization: OrganizationMembership | null;
 };
 
+/** "preferred" keeps the Auth session's organization; "required" switches the session to one. */
 export type IssueBackofficeTokenInput =
   | {
       selection: "preferred";
-      organizationId: string | null;
     }
   | {
       selection: "required";
@@ -140,11 +140,10 @@ export const backofficeMeDataSchema = z.object({
 }) satisfies z.ZodType<BackofficeMeData>;
 
 export const issueBackofficeTokenInputSchema = z.discriminatedUnion("selection", [
-  z.object({
+  z.strictObject({
     selection: z.literal("preferred"),
-    organizationId: z.string().trim().min(1).nullable(),
   }),
-  z.object({
+  z.strictObject({
     selection: z.literal("required"),
     organizationId: z.string().trim().min(1),
   }),

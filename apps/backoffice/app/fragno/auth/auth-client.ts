@@ -1,13 +1,7 @@
 import { useCallback, useState } from "react";
 
 import { betterAuthClient } from "./better-auth.client";
-import { recordIssuedBackofficeToken } from "./browser-auth.client";
-import {
-  backofficeSignOutResultSchema,
-  issueBackofficeTokenResultSchema,
-  type Role,
-} from "./contracts";
-import { writePreferredOrganization } from "./preferred-organization";
+import { backofficeSignOutResultSchema, type Role } from "./contracts";
 
 async function unwrap<T>(
   request: Promise<{ data: T; error: { message?: string; code?: string; status?: number } | null }>,
@@ -57,23 +51,6 @@ export const authClient = {
         throw new Error((await response.text()) || "Unable to sign out.");
       }
       return backofficeSignOutResultSchema.parse(await response.json());
-    });
-  },
-  useSwitchOrganization() {
-    return useAsyncMutation(async (input: { body: { organizationId: string } }) => {
-      const response = await fetch("/api/auth/backoffice-token", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ selection: "required", organizationId: input.body.organizationId }),
-      });
-      if (!response.ok) {
-        throw new Error((await response.text()) || "Unable to switch organization.");
-      }
-      const result = issueBackofficeTokenResultSchema.parse(await response.json());
-      writePreferredOrganization(result.organization?.id ?? null);
-      recordIssuedBackofficeToken(result);
-      return result;
     });
   },
   useUpdateOrganization() {
