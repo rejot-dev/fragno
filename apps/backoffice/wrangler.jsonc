@@ -22,22 +22,6 @@
   },
   "workers_dev": false,
   "preview_urls": false,
-  "dev": {
-    "enable_containers": false,
-  },
-  // Each Sandbox Durable Object starts its own container and chooses the image and instance type
-  // at start time. The durable_object scheduling policy is immutable and cannot be rolled back to
-  // the Sandbox SDK 0.x application this replaced, so the application has a new name.
-  "containers": [
-    {
-      "class_name": "Sandbox",
-      "name": "rejot-backoffice-sandbox-v2",
-      "scheduling_policy": "durable_object",
-      "images": {
-        "workspace": { "dockerfile": "../cf-sandbox-bridge/Dockerfile" },
-      },
-    },
-  ],
   /**
    * Smart Placement
    * Docs: https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
@@ -158,9 +142,11 @@
         "name": "UPLOAD",
         "class_name": "Upload",
       },
+      // Sandbox containers belong to the bridge, which deploys their application and image.
       {
         "name": "SANDBOX",
         "class_name": "Sandbox",
+        "script_name": "cf-sandbox-bridge",
       },
       {
         "name": "SANDBOX_MANAGER",
@@ -228,6 +214,8 @@
     "ProjectConnectorDurableObject": { "type": "durable-object", "storage": "sqlite" },
     "Otp": { "type": "durable-object", "storage": "sqlite" },
     "Upload": { "type": "durable-object", "storage": "sqlite" },
+    // Retired: SANDBOX binds the bridge's class. Kept live until a separate `wrangler deploy` turns
+    // this into a `deleted` tombstone, which permanently drops the old sandboxes' namespace.
     "Sandbox": { "type": "durable-object", "storage": "sqlite" },
     "SandboxManager": { "type": "durable-object", "storage": "sqlite" },
     "GitHub": { "type": "durable-object", "storage": "sqlite" },

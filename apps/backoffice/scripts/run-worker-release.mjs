@@ -10,7 +10,7 @@ const workerVersionIdPattern =
 const workerCommands = {
   // New Durable Object classes must be provisioned on the object Worker before the web Worker can bind to them.
   bootstrap: [
-    ["deploy", "--config", "dist/rejot_backoffice/wrangler.json", "--containers-rollout=none"],
+    ["deploy", "--config", "dist/rejot_backoffice/wrangler.json"],
     ["deploy", "--config", "build/server/wrangler.json"],
   ],
   upload: [

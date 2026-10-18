@@ -95,7 +95,7 @@
       {
         "name": "SANDBOX",
         "class_name": "Sandbox",
-        "script_name": "rejot-backoffice",
+        "script_name": "cf-sandbox-bridge",
       },
       {
         "name": "SANDBOX_MANAGER",

@@ -325,10 +325,11 @@ rate-limit bucket when a client IP cannot be determined.
 
 ## Release
 
-Deploy `cf-sandbox-bridge` before releasing Backoffice versions that use its compiler entrypoint.
-Backoffice release scripts do not deploy the bridge or its containers. When migrating an existing
-installation, keep the former compiler service available until all callers have switched to the
-bridge.
+Deploy `cf-sandbox-bridge` before releasing Backoffice versions that use its compiler entrypoint or
+change its `Sandbox` interface. The object Worker binds the bridge's `Sandbox` class, so the bridge
+owns the Sandbox container application and image; Backoffice release scripts deploy neither. When
+migrating an existing installation, keep the former compiler service available until all callers
+have switched to the bridge.
 
 When a release adds a Durable Object class, an inactive upload cannot provision its namespace.
 Bootstrap that release instead:
@@ -338,9 +339,8 @@ pnpm --dir apps/backoffice run deploy:bootstrap
 ```
 
 Bootstrap builds and **activates** the object and web Workers in dependency order so the object
-Worker can provision its classes before the web Worker binds to them. It skips container image
-rollout (`--containers-rollout=none`); deploy container changes separately if the release requires
-them. This is a live release, not an inactive upload.
+Worker can provision its classes before the web Worker binds to them. This is a live release, not an
+inactive upload.
 
 For releases without new Durable Object classes, upload an inactive version of all Workers with one
 shared tag:

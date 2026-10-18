@@ -68,9 +68,10 @@ crosses this boundary on a staging Worker first.
 
 ## Sandbox containers
 
-`src/sandbox/sandbox.do.ts` is the only sandbox implementation in the repository. This bridge and
-the Cloudflare Backoffice Worker both export it, so Node Backoffice and Cloudflare Backoffice run
-the same container lifecycle:
+`src/sandbox/sandbox.do.ts` is the only sandbox implementation in the repository, and this bridge
+hosts its containers for both Backoffice runtimes. Node Backoffice reaches it through the bridge's
+HTTP API; Cloudflare Backoffice binds the bridge's `Sandbox` class directly. Deploy the bridge
+before a Backoffice release that depends on a changed `Sandbox` interface:
 
 - `start()` boots the `workspace` image, the Cloudflare-managed `cloudflare/debian-trixie` image
   (`debian`), or a saved snapshot, on the requested instance type. It is idempotent, so a manager

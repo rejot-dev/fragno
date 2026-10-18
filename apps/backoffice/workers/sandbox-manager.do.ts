@@ -1,3 +1,4 @@
+import type { Sandbox } from "@fragno-apps/cf-sandbox-bridge/sandbox/sandbox.do";
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import {
   type BackofficeContextScope,
@@ -202,13 +203,15 @@ export class SandboxManager extends DurableObject<CloudflareEnv> implements Sand
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
     const managerId = state.id.toString();
+    // Wrangler cannot type a binding to another Worker's class.
+    const sandboxes = env.SANDBOX as DurableObjectNamespace<Sandbox>;
     this.#object = new InMemorySandboxManagerObject({
       ...createCloudflareBackofficeObjectContext(state, env),
       sandboxProviders: {
         [CLOUDFLARE_SANDBOX_PROVIDER]: {
           provider: CLOUDFLARE_SANDBOX_PROVIDER,
           getHandle: async (id) =>
-            env.SANDBOX.getByName(await createCloudflareSandboxPhysicalId(managerId, id)),
+            sandboxes.getByName(await createCloudflareSandboxPhysicalId(managerId, id)),
         },
       },
     });

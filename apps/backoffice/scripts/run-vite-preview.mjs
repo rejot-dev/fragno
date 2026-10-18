@@ -9,7 +9,11 @@ const previewArgs = process.argv
   .slice(2)
   .filter((argument) => argument !== enableContainersFlag && argument !== enableSourceMapsFlag);
 const previewCommand = ["vite", "preview", "--strictPort=false", ...previewArgs];
-const containerWorkerConfigUrl = new URL("../dist/rejot_backoffice/wrangler.json", import.meta.url);
+// The bridge Worker hosts the Sandbox containers that the object Worker binds to.
+const containerWorkerConfigUrl = new URL(
+  "../dist/cf_sandbox_bridge/wrangler.json",
+  import.meta.url,
+);
 
 function runViteCommand(args) {
   return new Promise((resolve, reject) => {

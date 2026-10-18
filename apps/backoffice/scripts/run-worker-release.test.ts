@@ -63,13 +63,7 @@ describe("Backoffice Worker release orchestration", () => {
     const commands = await recordWorkerReleaseCommands("bootstrap", ["--", "--dry-run"]);
 
     assert.deepEqual(commands, [
-      [
-        "deploy",
-        "--config",
-        "dist/rejot_backoffice/wrangler.json",
-        "--containers-rollout=none",
-        "--dry-run",
-      ],
+      ["deploy", "--config", "dist/rejot_backoffice/wrangler.json", "--dry-run"],
       ["deploy", "--config", "build/server/wrangler.json", "--dry-run"],
     ]);
   });

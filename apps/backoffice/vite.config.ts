@@ -70,7 +70,7 @@ export default defineConfig(({ command }) => {
           { configPath: "./wrangler.jsonc" },
           {
             configPath: "../cf-sandbox-bridge/wrangler.jsonc",
-            // Compilation does not need the bridge's Sandbox containers.
+            // The bridge hosts Sandbox containers; `preview:containers` turns them on.
             config(workerConfig) {
               workerConfig.dev.enable_containers = false;
             },
