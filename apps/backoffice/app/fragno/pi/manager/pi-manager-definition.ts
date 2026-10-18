@@ -10,7 +10,7 @@ import type {
 } from "@/fragno/pi/agent/pi-agent-contract";
 
 import { piAgentDirectoryServices } from "./pi-agent-directory-services";
-import { piAgentQueueServices, type PiManagerHooks } from "./pi-agent-queue";
+import { handOverPiAgentWork, piAgentQueueServices, type PiManagerHooks } from "./pi-agent-queue";
 import { piAgentDirectorySchema } from "./pi-manager-schema";
 
 export type PiManagerConfig = {
@@ -28,18 +28,17 @@ export const piManagerDefinition = defineFragment<PiManagerConfig>("pi-manager")
   }))
   .provideHooks<PiManagerHooks>(({ defineHook, services, config }) => ({
     redispatchAgentQueue: defineHook(async function ({ agentName }): Promise<void> {
-      const { dispatched, steered } = await this.handlerTx()
-        .withServiceCalls(() => [services.getUnsettledQueueItems(agentName)] as const)
-        .transform(({ serviceResult: [items] }) => items)
+      const handovers = await this.handlerTx()
+        .withServiceCalls(() => [services.getUnsettledHandovers(agentName)] as const)
+        .transform(({ serviceResult: [unsettled] }) => unsettled)
         .execute();
       // Pi keeps the submission of a request ID it already has, so handing one over again is safe.
-      for (const { agent, turn, prompt } of steered) {
-        await config.agent(agent).steer(agent, turn, prompt);
+      for (const handover of handovers) {
+        await handOverPiAgentWork(config.agent, handover);
       }
-      if (dispatched) {
-        const { agent, turn, prompt } = dispatched;
-        await config.agent(agent).dispatch(agent, turn, prompt);
-      }
+    }),
+    writeNotificationCards: defineHook(async function ({ agent, notifications }): Promise<void> {
+      await handOverPiAgentWork(config.agent, { type: "write", agent, notifications });
     }),
   }))
   .build();

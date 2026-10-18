@@ -10,12 +10,10 @@ import {
   type Harness,
   type SettledSubmissionRecord,
   type Storage,
-  type SubmissionId,
   type SubmissionRecord,
 } from "@earendil-works/pi-durable";
 
 import type { PiAgentTurn } from "./pi-agent-contract";
-import type { PiNotificationReference } from "./pi-agent-notification-entry";
 
 // Turns are stored as JSON; this module writes every value, so reads cast them back.
 type PiAgentTurnsState = {
@@ -130,76 +128,6 @@ export async function recordPiAgentCompactionTurn(
   }, context);
 }
 
-/** A follow-up this agent posted, by request ID, and the notifications it asks the agent for. */
-type PiAgentNotificationFollowUp = { requestId: string; notifications: PiNotificationReference[] };
-
-// Follow-ups that may still be queued; ones Pi placed, withdrew, or never received are pruned.
-type PiAgentNotificationsState = { followUps: PiAgentNotificationFollowUp[] };
-
-const PiAgentNotificationsDoc = defineDoc<PiAgentNotificationsState>({
-  kind: "backoffice.pi.notifications",
-  version: 1,
-  scope: "session",
-  initial: () => ({ followUps: [] }),
-});
-
-/** A posted follow-up still in the inbox, with the turn it will run as. */
-export type QueuedPiAgentNotificationFollowUp = PiAgentNotificationFollowUp & {
-  submissionId: SubmissionId;
-  turn: PiAgentTurn;
-};
-
-export async function readQueuedPiAgentNotificationFollowUps(
-  read: DocumentReader,
-  storage: Pick<Storage, "submissionByRequest">,
-  context: Context,
-): Promise<QueuedPiAgentNotificationFollowUp[]> {
-  const [notifications, turns] = await Promise.all([
-    read.snapshot(PiAgentNotificationsDoc, context),
-    read.snapshot(PiAgentTurnsDoc, context),
-  ]);
-  const queued: QueuedPiAgentNotificationFollowUp[] = [];
-  for (const followUp of notifications?.followUps ?? []) {
-    const submission = await storage.submissionByRequest(
-      ROOT_CONVERSATION_ID,
-      followUp.requestId,
-      context,
-    );
-    const turn = turns?.pending[followUp.requestId] as PiAgentTurn | undefined;
-    if (submission?.status === "queued" && turn) {
-      queued.push({
-        requestId: followUp.requestId,
-        notifications: [...followUp.notifications],
-        submissionId: submission.id,
-        turn,
-      });
-    }
-  }
-  return queued;
-}
-
-/** Records a follow-up before it is submitted, so a restart between the two still finds it. */
-export async function recordPiAgentNotificationFollowUp(
-  harness: Harness,
-  followUp: PiAgentNotificationFollowUp,
-  context: Context,
-): Promise<void> {
-  await harness.commit(async (tx) => {
-    const notifications = await tx.doc(PiAgentNotificationsDoc);
-    const queued = [];
-    for (const recorded of notifications.followUps) {
-      if (
-        recorded.requestId !== followUp.requestId &&
-        (await tx.submissionByRequest(ROOT_CONVERSATION_ID, recorded.requestId))?.status ===
-          "queued"
-      ) {
-        queued.push(recorded);
-      }
-    }
-    notifications.followUps = [...queued, followUp];
-  }, context);
-}
-
 /** Resolves with the root conversation's submission for the request once there is one. */
 export async function waitForPiAgentSubmission(
   harness: Harness,
@@ -273,22 +201,4 @@ export async function readActivePiAgentTurn(
   }
   const turns = await read.snapshot(PiAgentTurnsDoc, context);
   return (turns?.latest ?? null) as PiAgentTurn | null;
-}
-
-function canonicalJson(value: unknown): string {
-  return JSON.stringify(value, (_key, nested: unknown) =>
-    nested !== null && typeof nested === "object" && !Array.isArray(nested)
-      ? Object.fromEntries(
-          Object.entries(nested).sort(([left], [right]) => left.localeCompare(right)),
-        )
-      : nested,
-  );
-}
-
-/** Steering joins the running turn, so only a submission with that turn's authority may steer. */
-export function mayJoinPiAgentTurn(running: PiAgentTurn, joining: PiAgentTurn): boolean {
-  return (
-    canonicalJson([running.actors, running.scopeRestriction]) ===
-    canonicalJson([joining.actors, joining.scopeRestriction])
-  );
 }

@@ -28,7 +28,7 @@ export type PiNotificationMessage = {
   notification: PiAgentNotification;
   timestamp: number;
 };
-/** The follow-up asking the agent to handle notifications, shown as a divider. */
+/** The input asking the agent to handle notifications, shown as a divider. */
 export type PiNotificationRequestMessage = {
   role: "notification-request";
   notifications: PiNotificationReference[];

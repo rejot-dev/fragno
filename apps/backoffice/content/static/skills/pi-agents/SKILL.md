@@ -73,4 +73,5 @@ one turn each, in arrival order (`whenBusy: "followUp"`, the default), under the
 as it is when their turn starts. `steer` joins the running turn at its next tool boundary only when
 the running turn has the same authority; otherwise it is queued, and the receipt's `status` says
 `queued` instead of `steered`. `reject` fails with `409 AGENT_BUSY` while the agent runs a turn or
-has queued work. Aborting an agent drops its queued prompts.
+has queued work. Event notifications wait in the same queue, and those from one sender share a turn.
+Aborting an agent drops everything queued.

@@ -158,6 +158,7 @@ test("precompiled workspace extensions open concurrently and after restart witho
         const views = await Promise.all([object.getView(config), object.getView(config)]);
         expect(views[0]).toEqual(views[1]);
         await object.dispatch(config, turn, {
+          type: "prompt",
           requestId,
           content: "Read the extension.",
         });

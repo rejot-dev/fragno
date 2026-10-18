@@ -388,6 +388,7 @@ describe("Pi durable agent scenarios", () => {
           await expect(state.storage.get("pi-agent-config")).resolves.toEqual(config);
 
           await object.dispatch(config, seededTurn(config), {
+            type: "prompt",
             requestId: "startup-recovered",
             content: "Finish the recovered turn.",
           });

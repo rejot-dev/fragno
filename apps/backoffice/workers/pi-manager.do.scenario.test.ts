@@ -1216,11 +1216,11 @@ test("a forwarded turn event reaches a same-named agent of another scope", async
   );
 });
 
-test("notifications to a busy agent queue one follow-up per authority", async () => {
+test("a busy agent sees events as they arrive and handles each sender's in a turn of its own", async () => {
   const scope: BackofficeContextScope = { kind: "org", orgId: "follow-up-org" };
   await runBackofficeScenario(
     defineBackofficeScenario({
-      name: "Pi notification follow-ups",
+      name: "Pi notifications in the queue",
       piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
       options: { drain: false },
       objects: {
@@ -1278,29 +1278,39 @@ test("notifications to a busy agent queue one follow-up per authority", async ()
           }
           await runtime.drain();
 
+          // The running turn places every card at its next boundary, so it can act on them; each
+          // sender's waiting requests then share a turn named by the oldest of them.
           const view = await readView(runtime, scope);
-          expect(notificationEntryTexts(view)).toHaveLength(4);
-          // Each later event replaces its authority's queued follow-up with one asking for both;
-          // Grace's authority needs a turn of its own.
-          expect(userEntryTexts(view)).toEqual([
-            "Start.",
-            renderPiNotificationRequest([
+          expect(
+            view.entries.flatMap((entry) =>
+              entry.kind === PI_NOTIFICATION_ENTRY_KIND
+                ? [`card ${(entry.data as { event: { id: string } }).event.id}`]
+                : entry.kind === "pi.user"
+                  ? [`input ${userEntryTexts({ ...view, entries: [entry] }).join("")}`]
+                  : [],
+            ),
+          ).toEqual([
+            "input Start.",
+            "card event-1",
+            "card event-2",
+            "card event-3",
+            "card event-4",
+            `input ${renderPiNotificationRequest([
               { routeId: "orders", eventId: "event-1" },
               { routeId: "orders", eventId: "event-2" },
-            ]),
-            renderPiNotificationRequest([
+            ])}`,
+            `input ${renderPiNotificationRequest([
               { routeId: "orders", eventId: "event-3" },
               { routeId: "orders", eventId: "event-4" },
-            ]),
+            ])}`,
           ]);
-          // The withdrawn follow-ups never answered, so they record no turn event.
           expect(
             (await piTurnEvents(runtime, scope))
               .map((event) => `${String(event.subject?.requestId)} ${event.eventType}`)
               .sort((left, right) => left.localeCompare(right)),
           ).toEqual([
-            "route:orders:event-2 turn.completed",
-            "route:orders:event-4 turn.completed",
+            "route:orders:event-1 turn.completed",
+            "route:orders:event-3 turn.completed",
             "start turn.completed",
           ]);
         }),

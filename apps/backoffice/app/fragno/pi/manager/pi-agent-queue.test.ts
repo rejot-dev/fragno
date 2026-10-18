@@ -6,8 +6,17 @@ import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/share
 import { instantiate } from "@fragno-dev/core";
 import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 
+import type { SubmissionRecord } from "@earendil-works/pi-durable";
+
 import { createBackofficeServiceExecution } from "@/backoffice-runtime/context";
-import type { PiAgent, PiAgentPrompt, PiAgentTurn } from "@/fragno/pi/agent/pi-agent-contract";
+import type {
+  PiAgent,
+  PiAgentNotification,
+  PiAgentPrompt,
+  PiAgentTurn,
+  PiAgentWork,
+} from "@/fragno/pi/agent/pi-agent-contract";
+import { piNotificationRequestId } from "@/fragno/pi/agent/pi-agent-notification-entry";
 
 import { piManagerConversationRoutes } from "./pi-manager-conversation-routes";
 import { piManagerDefinition } from "./pi-manager-definition";
@@ -28,11 +37,26 @@ type PromptInput = {
   billingOrganizationId?: string | null;
 };
 
-/** What the agent object received: how, which request, and the instructions it runs under. */
-type Handover = { via: "steer" | "dispatch"; requestId: string; instructions: string };
+type NotificationInput = {
+  eventId: string;
+  sender?: string;
+  routeId?: string | null;
+  agentName?: string;
+};
+
+/**
+ * What the agent object received: how, which request, and the events of the notifications it
+ * handles or writes. A write runs no turn, so it has no instructions.
+ */
+type Handover = {
+  via: "steer" | "dispatch" | "write";
+  requestId: string;
+  instructions: string | null;
+  events: string[];
+};
 
 function unused(): never {
-  throw new Error("The queue tests use only steer and dispatch.");
+  throw new Error("The queue tests use only the queue's operations.");
 }
 
 /**
@@ -41,28 +65,58 @@ function unused(): never {
  */
 async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
   const handovers: Handover[] = [];
+  // Like Pi, the fake keeps the first submission of each request ID it receives.
+  const submissions = new Map<string, SubmissionRecord>();
   const failing = { handovers: 0 };
-  function receive(via: Handover["via"]) {
-    return async (_config: PiAgentConfig, turn: PiAgentTurn, prompt: PiAgentPrompt) => {
-      if (failing.handovers > 0) {
-        failing.handovers -= 1;
-        throw new Error("The agent object is unavailable.");
-      }
-      handovers.push({ via, requestId: prompt.requestId, instructions: turn.agent.instructions });
-    };
+  function receive(handover: Handover) {
+    if (failing.handovers > 0) {
+      failing.handovers -= 1;
+      throw new Error("The agent object is unavailable.");
+    }
+    handovers.push(handover);
+    if (handover.via !== "write" && !submissions.has(handover.requestId)) {
+      submissions.set(handover.requestId, {
+        id: submissions.size + 1,
+        conversationId: 1,
+        requestId: handover.requestId,
+        type: "input",
+        status: "placed",
+      } as unknown as SubmissionRecord);
+    }
   }
   const agent: PiAgent = {
     warm: unused,
-    steer: receive("steer"),
-    dispatch: receive("dispatch"),
-    // Pi has no submissions of its own here, so lookups read the queue's records.
-    getSubmission: async () => null,
+    async steer(_config: PiAgentConfig, turn: PiAgentTurn, prompt: PiAgentPrompt) {
+      receive({
+        via: "steer",
+        requestId: prompt.requestId,
+        instructions: turn.agent.instructions,
+        events: [],
+      });
+    },
+    async dispatch(_config: PiAgentConfig, turn: PiAgentTurn, work: PiAgentWork) {
+      receive({
+        via: "dispatch",
+        requestId: work.requestId,
+        instructions: turn.agent.instructions,
+        events:
+          work.type === "notifications" ? work.notifications.map(({ event }) => event.id) : [],
+      });
+    },
+    async writeNotifications(_config: PiAgentConfig, notifications: PiAgentNotification[]) {
+      receive({
+        via: "write",
+        requestId: notifications.map(piNotificationRequestId).join(" "),
+        instructions: null,
+        events: notifications.map(({ event }) => event.id),
+      });
+    },
+    getSubmission: async (_config, requestId) => submissions.get(requestId) ?? null,
     waitForSubmission: async () => ({ status: "pending", submission: null }),
     getView: unused,
     watchView: unused,
     listEntries: unused,
     exportEntries: unused,
-    notify: unused,
     compact: unused,
     getCompaction: unused,
     abort: async () => undefined,
@@ -116,6 +170,34 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
       assert(response.type === "json", JSON.stringify(response));
       return response.data;
     },
+    async notify(input: NotificationInput) {
+      const { agentName = "assistant", sender = "ada", eventId } = input;
+      return await fragment.callRoute("POST", "/agents/:agentName/notifications", {
+        pathParams: { agentName },
+        body: {
+          routeId: input.routeId === undefined ? "orders" : input.routeId,
+          event: {
+            id: eventId,
+            source: "shop",
+            eventType: "order.placed",
+            occurredAt: "2026-01-01T00:00:00.000Z",
+            subject: null,
+            payload: {},
+          },
+          provenance: provenance(sender),
+        },
+      });
+    },
+    async delivered(input: NotificationInput) {
+      const response = await this.notify(input);
+      assert(response.type === "empty", JSON.stringify(response));
+    },
+    async abort(agentName = "assistant") {
+      const response = await fragment.callRoute("POST", "/agents/:agentName/abort", {
+        pathParams: { agentName },
+      });
+      assert(response.type === "empty", JSON.stringify(response));
+    },
     async settle(requestId: string, agentName = "assistant") {
       await reportPiAgentTurnSettled(fragment, config, { agentName, requestId });
     },
@@ -127,8 +209,15 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
       );
       return response.type === "json" ? response.data : response.type;
     },
+    /** Handovers that run turns, leaving out the cards written as notifications arrive. */
+    turns() {
+      return this.requestIds().filter((handover) => !handover.startsWith("write "));
+    },
     requestIds() {
-      return handovers.map(({ via, requestId }) => `${via} ${requestId}`);
+      return handovers.map(
+        ({ via, requestId, events }) =>
+          `${via} ${requestId}${events.length > 0 ? ` (${events.join(", ")})` : ""}`,
+      );
     },
   };
 }
@@ -270,22 +359,19 @@ test("aborting drops what waits and keeps the running turn", async () => {
   for (const requestId of ["running", "waiting"]) {
     await queue.receipt({ requestId });
   }
-  const aborted = await queue.fragment.callRoute("POST", "/agents/:agentName/abort", {
-    pathParams: { agentName: "assistant" },
-  });
-  assert(aborted.type === "empty");
+  await queue.abort();
   expect(await queue.submission("waiting")).toEqual({
     type: "input",
     status: "dropped",
     requestId: "waiting",
-    reason: "The agent was aborted before this prompt ran.",
+    reason: "The agent was aborted before this item ran.",
   });
 
   // The aborted turn settles unanswered; nothing is left to run after it.
   await queue.settle("running");
-  expect(queue.requestIds()).toEqual(["dispatch running"]);
+  expect(queue.turns()).toEqual(["dispatch running"]);
   await queue.receipt({ requestId: "after" });
-  expect(queue.requestIds()).toEqual(["dispatch running", "dispatch after"]);
+  expect(queue.turns()).toEqual(["dispatch running", "dispatch after"]);
 });
 
 test("a personal agent's first prompt needs a billing owner and records nothing without one", async () => {
@@ -313,13 +399,19 @@ test("the queue's hook hands over again what a failed request did not", async ()
   });
   await queue.settle("first");
   await queue.receipt({ requestId: "next" });
-  queue.failing.handovers = 0;
+  queue.failing.handovers = 1;
+  await queue.delivered({ eventId: "ada-1" });
   expect(queue.requestIds()).toEqual(["dispatch first"]);
 
   await drainDurableHooks(queue.fragment);
   // Every hook run hands over each unsettled item; the agent object keeps the first submission.
   expect(new Set(queue.requestIds())).toEqual(
-    new Set(["dispatch first", "steer steered", "dispatch next"]),
+    new Set([
+      "dispatch first",
+      "steer steered",
+      "dispatch next",
+      "write route:orders:ada-1 (ada-1)",
+    ]),
   );
 });
 
@@ -341,4 +433,56 @@ test("concurrent prompts to an idle agent dispatch exactly one of them", async (
   // The first prompts both provision the agent; later ones race on the queue's revision.
   await race(["left", "right"]);
   await race(["up", "down"]);
+});
+
+test("events are written as they arrive, and a sender's waiting requests share one turn", async () => {
+  const queue = await piManagerQueue();
+  await queue.receipt({ requestId: "first" });
+  await queue.delivered({ eventId: "ada-1" });
+  await queue.delivered({ eventId: "grace-1", sender: "grace" });
+  await queue.delivered({ eventId: "ada-2" });
+  await queue.receipt({ requestId: "second" });
+  // Redelivering a waiting event, through the same route, places and writes nothing new.
+  await queue.delivered({ eventId: "grace-1", sender: "grace" });
+  // The running turn gets each card at its next boundary; only the requests wait.
+  expect(queue.requestIds()).toEqual([
+    "dispatch first",
+    "write route:orders:ada-1 (ada-1)",
+    "write route:orders:grace-1 (grace-1)",
+    "write route:orders:ada-2 (ada-2)",
+  ]);
+
+  // Oldest first: Ada's first event leads the next turn, which takes her other waiting event
+  // along; Grace's event and Ada's prompt each need a turn of their own.
+  await queue.settle("first");
+  await queue.settle("route:orders:ada-1");
+  await queue.settle("route:orders:grace-1");
+  await queue.settle("second");
+  expect(queue.turns()).toEqual([
+    "dispatch first",
+    "dispatch route:orders:ada-1 (ada-1, ada-2)",
+    "dispatch route:orders:grace-1 (grace-1)",
+    "dispatch second",
+  ]);
+  // Each event's submission is the turn's that handled it.
+  expect(await queue.submission("route:orders:ada-2")).toMatchObject({
+    requestId: "route:orders:ada-1",
+  });
+
+  // An event handled before is not handled again; a workflow's reply has no route.
+  await queue.delivered({ eventId: "ada-2" });
+  await queue.delivered({ eventId: "run-1", routeId: null });
+  expect(queue.turns().slice(4)).toEqual(["dispatch reply:run-1 (run-1)"]);
+});
+
+test("a notification never starts an agent", async () => {
+  const queue = await piManagerQueue();
+  const refused = await queue.notify({ eventId: "early" });
+  assert(refused.type === "error");
+  assert(refused.error.code === "AGENT_NOT_STARTED");
+
+  await queue.receipt({ requestId: "first" });
+  await queue.settle("first");
+  await queue.delivered({ eventId: "early" });
+  expect(queue.requestIds()).toEqual(["dispatch first", "dispatch route:orders:early (early)"]);
 });

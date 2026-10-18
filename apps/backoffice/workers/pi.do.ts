@@ -3,7 +3,7 @@ import { PathError } from "@earendil-works/chord/delta";
 import { piAgentConfigSchema, type PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 import type { PostHog } from "posthog-node";
-import type { z } from "zod";
+import { z } from "zod";
 
 import { copyJson } from "@earendil-works/chord";
 import {
@@ -30,6 +30,7 @@ import {
   piAgentPromptSchema,
   piAgentSubmissionWaitRequestSchema,
   piAgentTurnSchema,
+  piAgentWorkSchema,
   PiConversationViewDamagedError,
   type PiAgent,
   type PiAgentCompactionStatus,
@@ -37,6 +38,7 @@ import {
   type PiAgentPrompt,
   type PiAgentSubmissionWait,
   type PiAgentTurn,
+  type PiAgentWork,
 } from "@/fragno/pi/agent/pi-agent-contract";
 import {
   createPiAgentDependencies,
@@ -46,14 +48,13 @@ import {
 } from "@/fragno/pi/agent/pi-agent-harness";
 import {
   PI_NOTIFICATION_ENTRY_KIND,
+  piNotificationRequestId,
   renderPiNotification,
   renderPiNotificationRequest,
 } from "@/fragno/pi/agent/pi-agent-notification-entry";
+import { mayJoinPiAgentTurn } from "@/fragno/pi/agent/pi-agent-queue-rules";
 import {
-  mayJoinPiAgentTurn,
   readPiAgentRun,
-  readQueuedPiAgentNotificationFollowUps,
-  recordPiAgentNotificationFollowUp,
   recordAdmittedPiAgentTurn,
   recordPiAgentCompactionTurn,
   recordPiAgentTurn,
@@ -84,7 +85,6 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
   #opened: OpenPiAgent | null = null;
   #opening: Promise<OpenPiAgent> | null = null;
   #admitting = 0;
-  #notifying = Promise.resolve();
 
   constructor({
     state,
@@ -251,99 +251,64 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
     await this.#admit(opened, turn, prompt, joins ? "steer" : "followUp");
   }
 
-  async dispatch(config: PiAgentConfig, rawTurn: PiAgentTurn, rawPrompt: PiAgentPrompt) {
-    const prompt = piAgentPromptSchema.parse(rawPrompt);
+  async dispatch(config: PiAgentConfig, rawTurn: PiAgentTurn, rawWork: PiAgentWork) {
+    const work = piAgentWorkSchema.parse(rawWork);
     const turn = piAgentTurnSchema.parse(rawTurn);
     const opened = await this.#requireAgent(config);
     const root = await opened.harness.root(BACKGROUND_CONTEXT);
-    // An item handed over again keeps the submission and turn Pi already has for it.
-    if (await opened.storage.submissionByRequest(root.id, prompt.requestId, BACKGROUND_CONTEXT)) {
+    // A turn handed over again keeps the submission and turn Pi already has for it.
+    if (await opened.storage.submissionByRequest(root.id, work.requestId, BACKGROUND_CONTEXT)) {
       return;
     }
-    // Only a steer that outlived its turn can still be running; Pi queues the item behind it.
-    await this.#admit(opened, turn, prompt, "followUp");
-  }
-
-  async notify(
-    config: PiAgentConfig,
-    rawTurn: PiAgentTurn,
-    rawNotification: PiAgentNotification,
-  ): Promise<void> {
-    const notification = piAgentNotificationSchema.parse(rawNotification);
-    const turn = piAgentTurnSchema.parse(rawTurn);
-    // One at a time, so two notifications never both replace, or both miss, a queued follow-up.
-    const notified = this.#notifying.then(async () => {
-      await this.#notify(config, turn, notification);
-    });
-    this.#notifying = notified.catch(() => undefined);
-    await notified;
-  }
-
-  async #notify(config: PiAgentConfig, turn: PiAgentTurn, notification: PiAgentNotification) {
-    const opened = await this.#requireAgent(config);
-    const { harness, storage } = opened;
-    const root = await harness.root(BACKGROUND_CONTEXT);
-    // Redelivering one event through one route, or to one agent directly, reuses its write and
-    // its follow-up.
-    const requestId =
-      notification.routeId === null
-        ? `reply:${notification.event.id}`
-        : `route:${notification.routeId}:${notification.event.id}`;
-    // A busy agent places the write at its next boundary, so a running turn may handle it first.
-    await root.submit(
-      {
-        type: "write",
-        requestId: `${requestId}:event`,
-        entry: {
-          kind: PI_NOTIFICATION_ENTRY_KIND,
-          data: copyJson(notification) as JsonObject,
-          model: [
-            {
-              role: "user",
-              content: renderPiNotification(notification),
-              timestamp: this.#nowEpochMs(),
-            },
-          ],
-        },
-      },
-      BACKGROUND_CONTEXT,
-    );
-    const reference = { routeId: notification.routeId, eventId: notification.event.id };
-    const queued = await readQueuedPiAgentNotificationFollowUps(
-      harness,
-      storage,
-      BACKGROUND_CONTEXT,
-    );
-    // A redelivered event that a queued follow-up already asks for needs nothing more.
-    if (
-      queued.some((followUp) =>
-        followUp.notifications.some(
-          ({ routeId, eventId }) => routeId === reference.routeId && eventId === reference.eventId,
-        ),
-      )
-    ) {
+    if (work.type === "prompt") {
+      // Only a steer that outlived its turn can still be running; Pi queues the prompt behind it.
+      await this.#admit(opened, turn, work, "followUp");
       return;
     }
-    // A queued input cannot change, so a follow-up with this authority is replaced by one that
-    // also asks for this notification. Pi may place it first; then it keeps its own list.
-    const replaced = queued.find((followUp) => mayJoinPiAgentTurn(followUp.turn, turn));
-    const carried =
-      replaced &&
-      (await harness.abortSubmission(replaced.submissionId, BACKGROUND_CONTEXT)) === "aborted"
-        ? replaced.notifications
-        : [];
-    const notifications = [...carried, reference];
-    await recordPiAgentNotificationFollowUp(
-      harness,
-      { requestId, notifications },
-      BACKGROUND_CONTEXT,
-    );
+    // Cards written when their notifications arrived are kept where they are.
+    await this.#writeNotifications(opened, work.notifications);
     await this.#admit(
       opened,
       turn,
-      { requestId, content: renderPiNotificationRequest(notifications) },
+      {
+        requestId: work.requestId,
+        content: renderPiNotificationRequest(
+          work.notifications.map(({ routeId, event }) => ({ routeId, eventId: event.id })),
+        ),
+      },
       "followUp",
     );
+  }
+
+  async writeNotifications(config: PiAgentConfig, rawNotifications: PiAgentNotification[]) {
+    const notifications = z.array(piAgentNotificationSchema).parse(rawNotifications);
+    await this.#writeNotifications(await this.#requireAgent(config), notifications);
+  }
+
+  // A busy conversation places a write at its next boundary, so a running turn sees the event.
+  // The write's request ID makes writing it again a no-op.
+  async #writeNotifications(opened: OpenPiAgent, notifications: readonly PiAgentNotification[]) {
+    const root = await opened.harness.root(BACKGROUND_CONTEXT);
+    for (const notification of notifications) {
+      await root.submit(
+        {
+          type: "write",
+          requestId: `${piNotificationRequestId(notification)}:event`,
+          entry: {
+            kind: PI_NOTIFICATION_ENTRY_KIND,
+            data: copyJson(notification) as JsonObject,
+            model: [
+              {
+                role: "user",
+                content: renderPiNotification(notification),
+                timestamp: this.#nowEpochMs(),
+              },
+            ],
+          },
+        },
+        BACKGROUND_CONTEXT,
+      );
+    }
   }
 
   async getSubmission(config: PiAgentConfig, requestId: string): Promise<SubmissionRecord | null> {
@@ -576,8 +541,11 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
   async steer(config: PiAgentConfig, turn: PiAgentTurn, prompt: PiAgentPrompt) {
     await this.#object.steer(config, turn, prompt);
   }
-  async dispatch(config: PiAgentConfig, turn: PiAgentTurn, prompt: PiAgentPrompt) {
-    await this.#object.dispatch(config, turn, prompt);
+  async dispatch(config: PiAgentConfig, turn: PiAgentTurn, work: PiAgentWork) {
+    await this.#object.dispatch(config, turn, work);
+  }
+  async writeNotifications(config: PiAgentConfig, notifications: PiAgentNotification[]) {
+    await this.#object.writeNotifications(config, notifications);
   }
   async getSubmission(config: PiAgentConfig, requestId: string): Promise<SubmissionRecord | null> {
     return await this.#object.getSubmission(config, requestId);
@@ -594,13 +562,6 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
   }
   async exportEntries(config: PiAgentConfig): Promise<ReadableStream<Uint8Array>> {
     return await this.#object.exportEntries(config);
-  }
-  async notify(
-    config: PiAgentConfig,
-    turn: PiAgentTurn,
-    notification: PiAgentNotification,
-  ): Promise<void> {
-    await this.#object.notify(config, turn, notification);
   }
   async compact(
     config: PiAgentConfig,
