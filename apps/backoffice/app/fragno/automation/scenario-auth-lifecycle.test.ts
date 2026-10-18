@@ -36,7 +36,6 @@ describe("Better Auth lifecycle scenarios", () => {
         vars: () => ({
           ownerCookie: "",
           memberCookie: "",
-          ownerPersonalOrganizationId: "",
           sharedOrganizationId: "",
           invitationId: "",
         }),
@@ -49,10 +48,7 @@ describe("Better Auth lifecycle scenarios", () => {
             email: "member@example.com",
             captureSessionCookieAs: "memberCookie",
           }),
-          then.auth.personalOrganization({
-            cookie: ({ vars }) => vars.ownerCookie,
-            captureOrganizationIdAs: "ownerPersonalOrganizationId",
-          }),
+          then.auth.sessionWithoutOrganization({ cookie: ({ vars }) => vars.ownerCookie }),
           when.auth.createOrganization({
             cookie: ({ vars }) => vars.ownerCookie,
             name: "Shared Workspace",

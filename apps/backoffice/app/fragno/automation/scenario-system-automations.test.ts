@@ -123,23 +123,31 @@ function createScopedTestFileSystem(
 }
 
 describe("system automation scenarios", () => {
-  test("sign-up reaches automation ingestion through transactional auth hooks", async () => {
+  test("sign-up and organization creation reach automation ingestion through transactional auth hooks", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         objects: scenarioObjects,
-        name: "sign-up provisions an organization through trigger-backed durable hooks",
+        name: "sign-up and organization creation run trigger-backed durable hooks",
         files: backofficeFiles.systemOnly(),
-        vars: () => ({ organizationId: "" }),
+        vars: () => ({ cookie: "", organizationId: "" }),
         steps: ({ when, then }) => [
-          when.auth.signUp({ email: "triggered-user@example.com" }),
+          when.auth.signUp({
+            email: "triggered-user@example.com",
+            captureSessionCookieAs: "cookie",
+          }),
+          when.auth.createOrganization({
+            cookie: ({ vars }) => vars.cookie,
+            name: "Triggered Workspace",
+            slug: "triggered-workspace",
+            captureOrganizationIdAs: "organizationId",
+          }),
           then.assert("user and organization hooks completed", async (ctx) => {
             const organizations = await ctx.runtime.objects.auth
               .singleton()
               .commands.getDevOrganizations();
             expect(organizations).toHaveLength(1);
             const organization = organizations[0];
-            assert(organization);
-            ctx.vars.organizationId = organization.id;
+            assert(organization?.id === ctx.vars.organizationId);
             ctx.rememberOrg(organization.id);
 
             const queue = await ctx.runtime.objects.auth

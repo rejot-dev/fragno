@@ -113,8 +113,14 @@ async function signUpUser(): Promise<SignedUpUser> {
   const sessionCookie = setCookieHeaders.map((header) => header.split(";", 1)[0]).join("; ");
   assert(sessionCookie);
   await runtime.drain();
-  const organizationId = (await auth.commands.getAllOrganizations())[0]?.id;
-  assert(organizationId);
+  const organizationResponse = await authRequest(auth, "/organization/create", {
+    cookie: sessionCookie,
+    json: { name: "OAuth Device Workspace", slug: "oauth-device-workspace" },
+  });
+  if (!organizationResponse.ok) {
+    assert.fail(await organizationResponse.text());
+  }
+  const organizationId = ((await organizationResponse.json()) as { id: string }).id;
   const config = await auth.commands.getBackofficeCliOAuthConfig({
     requestUrl: `${baseUrl}/api/config`,
   });

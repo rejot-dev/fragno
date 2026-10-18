@@ -742,50 +742,6 @@ describe("Auth Durable Object email verification delivery", () => {
   });
 });
 
-describe("Auth session organization bootstrap", () => {
-  test("sets the personal organization active after sign-up", async () => {
-    const runtime = await createInMemoryBackofficeRuntime({
-      objects: localObjects,
-      env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false" },
-    });
-    runtimes.push(runtime);
-    const auth = runtime.objects.auth.singleton();
-    const email = "new-user@example.com";
-    const invitation = await issueTestSignUpInvitation(runtime, email);
-
-    const signUpResponse = await auth.http.fetch(
-      new Request("https://backoffice.example/api/auth/sign-up/email", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          name: "New User",
-          email,
-          password: "password123",
-          ...invitation,
-        }),
-      }),
-    );
-    if (!signUpResponse.ok) {
-      assert.fail(await signUpResponse.text());
-    }
-    const cookie = signUpResponse.headers.get("set-cookie");
-    assert(cookie);
-    await runtime.drain();
-
-    const organizationId = (await auth.commands.getAllOrganizations())[0]?.id;
-    assert(organizationId);
-
-    const tokenResponse = await auth.http.fetch(
-      new Request("https://backoffice.example/api/auth/backoffice-token", {
-        method: "POST",
-        headers: { cookie, "content-type": "application/json" },
-        body: JSON.stringify({ selection: "required", organizationId }),
-      }),
-    );
-    assert(tokenResponse.status === 200);
-  });
-});
-
 describe("Auth organization automation hooks", () => {
   test("forwards the active hook propagation context to Automations RPC", async () => {
     const ingestEvent = vi.fn().mockResolvedValue({ accepted: true });

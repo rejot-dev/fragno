@@ -259,22 +259,24 @@ async function runApiScenario(
         steps: ({ when, then }) => [
           when.auth.signUp({ email: "owner@acme.test", captureSessionCookieAs: "ownerCookie" }),
           when.auth.signUp({ email: "member@acme.test", captureSessionCookieAs: "memberCookie" }),
+          when.auth.createOrganization({
+            cookie: ({ vars }) => vars.ownerCookie,
+            name: "Owner Workspace",
+            slug: "owner-workspace",
+            captureOrganizationIdAs: "orgId",
+          }),
+          when.auth.createOrganization({
+            cookie: ({ vars }) => vars.memberCookie,
+            name: "Member Workspace",
+            slug: "member-workspace",
+            captureOrganizationIdAs: "memberOrgId",
+          }),
           then.assert(
             "the owner's organization has the member, and both hold user credentials for it",
             async (ctx) => {
               const auth = ctx.runtime.objects.auth.singleton().commands;
               ctx.vars.ownerId = await sessionUserId(ctx, ctx.vars.ownerCookie);
               ctx.vars.memberId = await sessionUserId(ctx, ctx.vars.memberCookie);
-              const organizations = await auth.getAllOrganizations();
-              const ownerOrganization = organizations.find(
-                ({ createdBy }) => createdBy === ctx.vars.ownerId,
-              );
-              const memberOrganization = organizations.find(
-                ({ createdBy }) => createdBy === ctx.vars.memberId,
-              );
-              assert(ownerOrganization && memberOrganization);
-              ctx.vars.orgId = ownerOrganization.id;
-              ctx.vars.memberOrgId = memberOrganization.id;
               await auth.applyScenarioFixture({
                 members: [
                   { organizationId: ctx.vars.orgId, userId: ctx.vars.memberId, roles: ["member"] },

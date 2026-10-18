@@ -6,18 +6,13 @@ import type { Role } from "@/fragno/auth/contracts";
 type BetterAuthAdapter = Awaited<ReturnType<typeof betterAuth>["$context"]>["adapter"];
 
 /** User authority is shared by browser session and first-party OAuth token issuance. */
-export type BackofficeUserTokenGrantResolution =
-  | {
-      status: "ready";
-      authority: {
-        userId: string;
-        email: string;
-        globalRole: Role;
-        scope: BackofficeContextScope;
-        organization: { id: string; slug: string; roles: string[] } | null;
-      };
-    }
-  | { status: "organization_provisioning"; retryAfterMs: number };
+export type BackofficeUserTokenAuthority = {
+  userId: string;
+  email: string;
+  globalRole: Role;
+  scope: BackofficeContextScope;
+  organization: { id: string; slug: string; roles: string[] } | null;
+};
 
 /** Reports live user or membership state that forbids a requested token grant. */
 export class BackofficeUserTokenGrantForbiddenError extends Error {
@@ -32,4 +27,4 @@ export type ResolveBackofficeUserTokenGrant = (
     scope: BackofficeContextScope | null;
     organizationSelection: "preferred" | "required";
   },
-) => Promise<BackofficeUserTokenGrantResolution>;
+) => Promise<BackofficeUserTokenAuthority>;

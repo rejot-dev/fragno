@@ -594,7 +594,8 @@ test.each(["http://localhost:5173", "http://127.0.0.1:5173"])(
       const execution = await exchangeExecution(tokens.access_token);
       assert.equal(execution.status, 200, await execution.clone().text());
       const grant = backofficeExecutionTokenResultSchema.parse(await execution.json());
-      assert.equal(grant.scope.kind, "org");
+      // The signed-up user belongs to no organization, so the credential targets their own scope.
+      assert.equal(grant.scope.kind, "user");
       const refreshed = await authRequest(
         ctx,
         "/oauth2/token",

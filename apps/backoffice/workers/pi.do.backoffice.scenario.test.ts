@@ -1380,6 +1380,11 @@ test("Cloudflare backend analytics delivers verified outcomes and Pi usage witho
         vars: () => ({ session: "" }),
         steps: ({ when, then }) => [
           when.auth.signUp({ email: "analytics@example.test", captureSessionCookieAs: "session" }),
+          when.auth.createOrganization({
+            cookie: ({ vars }) => vars.session,
+            name: "Analytics",
+            slug: "analytics",
+          }),
           then.assert(
             "only successful operations reach the real ingestion endpoint",
             async (ctx) => {

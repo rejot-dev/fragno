@@ -50,6 +50,12 @@ const wholeOrganization = { kind: "owner" } as const;
 const origin = "https://backoffice.example";
 const deviceGrant = "urn:ietf:params:oauth:grant-type:device_code";
 
+/** The signed-up user's session, captured by the scenario's sign-up step. */
+function sessionCookie({ vars }: BackofficeScenarioContext): string {
+  assert(typeof vars.session === "string");
+  return vars.session;
+}
+
 function routerContext(ctx: BackofficeScenarioContext, request: Request) {
   return createBackofficeRouterContextProvider(request, {
     runtime: ctx.runtime.services,
@@ -161,6 +167,7 @@ async function runExecutionTokenScenario(check: (ctx: BackofficeScenarioContext)
             email: "execution-user@example.test",
             captureSessionCookieAs: "session",
           }),
+          when.auth.createOrganization({ cookie: sessionCookie, name: "Acme", slug: "acme" }),
           then.assert(
             "the real OAuth, Auth, route, and kernel boundaries enforce execution policy",
             check,
@@ -439,11 +446,17 @@ describe("Backoffice execution token SQLite scenarios", () => {
       await auth.applyScenarioFixture({
         removedMembers: [{ organizationId: organization.id, userId: user.id }],
       });
-      for (const scope of [{ kind: "org", orgId: organization.id }, null]) {
-        const response = await requestExecutionToken(ctx, exchangeRequest(token, scope));
-        assert.equal(response.status, 403);
-        expect(await response.json()).toMatchObject({ error: "scope_unavailable" });
-      }
+      const removed = await requestExecutionToken(
+        ctx,
+        exchangeRequest(token, { kind: "org", orgId: organization.id }),
+      );
+      assert.equal(removed.status, 403);
+      expect(await removed.json()).toMatchObject({ error: "scope_unavailable" });
+      const withoutOrganization = await requestExecutionToken(ctx, exchangeRequest(token, null));
+      assert.equal(withoutOrganization.status, 200);
+      expect(
+        backofficeExecutionTokenResultSchema.parse(await withoutOrganization.json()).scope,
+      ).toEqual({ kind: "user", userId: user.id });
       await auth.applyScenarioFixture({
         users: [{ id: user.id, email: user.email, role: "user", status: "banned" }],
       });
