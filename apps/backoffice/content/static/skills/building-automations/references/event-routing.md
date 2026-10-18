@@ -105,9 +105,10 @@ The event is written into the agent's conversation at once, and a busy agent see
 tool round. The request to handle it waits in the agent's queue with its prompts and runs in a turn
 with the route's authority, so grant `pi.modify` plus whatever the agent's work needs. Requests
 waiting from one route authority share that turn, whose prompt request ID is
-`route:<routeId>:<eventId>` for the oldest of them. Delivering one event through one route twice
-delivers it once. Only started agents receive notifications; prompt an agent once first. Events an
-agent's own turns produced, even reclassified or forwarded, are never delivered to it.
+`route:<routeId>:<eventId>` for the oldest of them. A stopped agent keeps them until someone resumes
+it. Delivering one event through one route twice delivers it once. Only started agents receive
+notifications; prompt an agent once first. Events an agent's own turns produced, even reclassified
+or forwarded, are never delivered to it.
 
 ## Catalog versus delivery
 

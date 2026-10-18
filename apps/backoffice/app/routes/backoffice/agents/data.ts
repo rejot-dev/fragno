@@ -214,6 +214,7 @@ export async function submitPiManagerPrompt(
     requestId: string;
     content: string;
     whenBusy: z.infer<typeof piPromptWhenBusySchema>;
+    whenPaused: "wait" | "resume";
     billingOrganizationId: string | null;
   },
 ): Promise<{ receipt: PiPromptReceipt; error: null } | { receipt: null; error: string }> {
@@ -372,6 +373,26 @@ export async function fetchPiManagerCompaction(
   throw new Response(`Failed to fetch Pi compaction (${response.status}).`, {
     status: response.status,
   });
+}
+
+export async function resumePiManagerAgent(
+  request: Request,
+  context: Readonly<RouterContextProvider>,
+  scope: BackofficeContextScope,
+  agentName: string,
+): Promise<string | null> {
+  const { callRoute } = await createPiManagerRouteCaller(request, context, scope);
+  const response = await callRoute("POST", "/agents/:agentName/resume", {
+    pathParams: { agentName },
+  });
+  if (response.type === "empty") {
+    return null;
+  }
+  if (response.type === "error") {
+    throwPiManagerAuthorizationFailure(response);
+    return response.error.message;
+  }
+  return `Failed to resume the agent (${response.status}).`;
 }
 
 export async function abortPiManagerAgent(

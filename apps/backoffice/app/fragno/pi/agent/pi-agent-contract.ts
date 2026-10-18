@@ -166,20 +166,27 @@ const piAgentQueueEntrySchema = z.discriminatedUnion("type", [
 ]);
 export type PiAgentQueueEntry = z.infer<typeof piAgentQueueEntrySchema>;
 
-/** An agent's waiting items in queue order, as of a revision of its queue. */
-export type PiAgentWaitingQueue = { revision: number; items: PiAgentQueueEntry[] };
+/**
+ * An agent's waiting items in queue order, and whether its queue is paused, as of a revision of
+ * its queue.
+ */
+export type PiAgentWaitingQueue = { revision: number; paused: boolean; items: PiAgentQueueEntry[] };
 
 /**
  * NDJSON frames: `snapshot` and `update` replace the browser's durable conversation view with one
- * committed revision, and `queue` replaces the items waiting in the agent's queue.
+ * committed revision, and `queue` replaces the items waiting in the agent's queue and its pause.
  */
 export const piAgentViewStreamFrameSchema = z.discriminatedUnion("type", [
   z.object({ type: z.enum(["snapshot", "update"]), view: z.unknown() }),
-  z.object({ type: z.literal("queue"), items: z.array(piAgentQueueEntrySchema) }),
+  z.object({
+    type: z.literal("queue"),
+    paused: z.boolean(),
+    items: z.array(piAgentQueueEntrySchema),
+  }),
 ]);
 export type PiAgentViewStreamFrame =
   | { type: "snapshot" | "update"; view: ConversationView }
-  | { type: "queue"; items: PiAgentQueueEntry[] };
+  | { type: "queue"; paused: boolean; items: PiAgentQueueEntry[] };
 
 /** Agent operations shared by Cloudflare RPC and the local object runtime. */
 export type PiAgent = {

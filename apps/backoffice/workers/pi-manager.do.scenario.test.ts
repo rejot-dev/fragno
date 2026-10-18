@@ -1403,6 +1403,7 @@ test("the local Pi view stream publishes durable generation partials before comp
           // The prompt is dispatched, so nothing waits in the agent's queue.
           expect(await readPiViewStreamFrame(reader, streamState)).toEqual({
             type: "queue",
+            paused: false,
             items: [],
           });
           expect(await readPiViewStreamFrame(reader, streamState)).toMatchObject({

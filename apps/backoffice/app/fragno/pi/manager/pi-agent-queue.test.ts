@@ -34,6 +34,7 @@ type PromptInput = {
   requestId: string;
   sender?: string;
   whenBusy?: "followUp" | "steer" | "reject";
+  whenPaused?: "wait" | "resume";
   agentName?: string;
   billingOrganizationId?: string | null;
 };
@@ -170,6 +171,7 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
           requestId: prompt.requestId,
           content: `Prompt ${prompt.requestId}.`,
           whenBusy: prompt.whenBusy ?? "followUp",
+          whenPaused: prompt.whenPaused ?? "wait",
           billingOrganizationId: prompt.billingOrganizationId ?? null,
           provenance: provenance(sender),
         },
@@ -202,13 +204,16 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
       const response = await this.notify(input);
       assert(response.type === "empty", JSON.stringify(response));
     },
-    async abort(agentName = "assistant") {
-      const response = await fragment.callRoute("POST", "/agents/:agentName/abort", {
+    async control(action: "abort" | "resume", agentName = "assistant") {
+      const response = await fragment.callRoute("POST", `/agents/:agentName/${action}`, {
         pathParams: { agentName },
       });
       assert(response.type === "empty", JSON.stringify(response));
     },
-    /** The agent's view stream, read one `queue` frame at a time as `<type> <requestId>` lines. */
+    /**
+     * The agent's view stream, read one `queue` frame at a time as `<type> <requestId>` lines,
+     * led by `paused` while the queue is paused.
+     */
     async watchQueue(agentName = "assistant") {
       const response = await fragment.callRoute("GET", "/agents/:agentName/view-stream", {
         pathParams: { agentName },
@@ -223,7 +228,10 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
           const { done, value } = await frames.next();
           assert(!done, "The view stream ended.");
           if (value.type === "queue") {
-            return value.items.map(({ type, requestId }) => `${type} ${requestId}`);
+            return [
+              ...(value.paused ? ["paused"] : []),
+              ...value.items.map(({ type, requestId }) => `${type} ${requestId}`),
+            ];
           }
         }
       };
@@ -390,24 +398,57 @@ test("waiting prompts run under the definition as it is when their turn starts, 
   });
 });
 
-test("aborting drops what waits and keeps the running turn", async () => {
+test("stopping pauses the queue until someone sends a message, which joins its end", async () => {
   const queue = await piManagerQueue();
   for (const requestId of ["running", "waiting"]) {
     await queue.receipt({ requestId });
   }
-  await queue.abort();
+  await queue.control("abort");
+  // The stopped turn settles unanswered, and nothing starts after it.
+  await queue.settle("running");
   expect(await queue.submission("waiting")).toEqual({
     type: "input",
-    status: "dropped",
+    status: "queued",
     requestId: "waiting",
-    reason: "The agent was aborted before this item ran.",
   });
+  // Nothing runs, but work waits, so a rejectable prompt is refused.
+  const rejected = await queue.prompt({ requestId: "impatient", whenBusy: "reject" });
+  assert(rejected.type === "error" && rejected.error.code === "AGENT_BUSY");
 
-  // The aborted turn settles unanswered; nothing is left to run after it.
-  await queue.settle("running");
-  expect(queue.turns()).toEqual(["dispatch running"]);
-  await queue.receipt({ requestId: "after" });
-  expect(queue.turns()).toEqual(["dispatch running", "dispatch after"]);
+  // While paused, automations wait even for an idle agent; an event's card is still written.
+  await queue.receipt({ requestId: "automated", sender: "grace" });
+  await queue.delivered({ eventId: "ada-1" });
+  expect(queue.requestIds()).toEqual(["dispatch running", "write route:orders:ada-1 (ada-1)"]);
+
+  // A message resumes the queue, which starts with its oldest item, not the message.
+  await queue.receipt({ requestId: "message", whenBusy: "steer", whenPaused: "resume" });
+  await queue.settle("waiting");
+  await queue.settle("automated");
+  await queue.settle("route:orders:ada-1");
+  expect(queue.turns()).toEqual([
+    "dispatch running",
+    "dispatch waiting",
+    "dispatch automated",
+    "dispatch route:orders:ada-1 (ada-1)",
+    "dispatch message",
+  ]);
+});
+
+test("resuming starts the next turn at once, or when the stopped turn settles", async () => {
+  const queue = await piManagerQueue();
+  for (const requestId of ["first", "second", "third"]) {
+    await queue.receipt({ requestId });
+  }
+  await queue.control("abort");
+  await queue.settle("first");
+  await queue.control("resume");
+  expect(queue.turns()).toEqual(["dispatch first", "dispatch second"]);
+
+  await queue.control("abort");
+  await queue.control("resume");
+  expect(queue.turns()).toHaveLength(2);
+  await queue.settle("second");
+  assert(queue.turns().at(-1) === "dispatch third");
 });
 
 test("a personal agent's first prompt needs a billing owner and records nothing without one", async () => {
@@ -549,6 +590,8 @@ test("the view stream follows what waits in the agent's queue", async () => {
   await queue.settle("first");
   expect(await nextQueue()).toEqual(["notification route:orders:ada-1"]);
 
-  await queue.abort();
-  expect(await nextQueue()).toEqual([]);
+  await queue.control("abort");
+  expect(await nextQueue()).toEqual(["paused", "notification route:orders:ada-1"]);
+  await queue.control("resume");
+  expect(await nextQueue()).toEqual(["notification route:orders:ada-1"]);
 });
