@@ -613,7 +613,8 @@ test("does not retry permanent sandbox provider startup failures", async () => {
             expect(instance).toMatchObject({
               id: sandboxId,
               status: "error",
-              lastError: "Sandbox startup failed after retries.",
+              lastError:
+                "Sandbox startup failed after retries. Cause: [unauthorized] Sandbox bridge authentication failed.",
             });
             expect(workflowStatus).toMatchObject({
               status: "errored",

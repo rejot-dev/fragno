@@ -38,7 +38,7 @@ export const defineSandboxLifecycleWorkflow = (config: SandboxLifecycleWorkflowC
       const provider = requireSandboxProvider(config, params.provider);
       const runsUntilStopped = params.keepAlive || params.sleepAfter === null;
 
-      function recordStartupFailure(ctx: HandlerTxContext<HooksMap>) {
+      function recordStartupFailure(ctx: HandlerTxContext<HooksMap>, cause: unknown) {
         recordSandboxLifecycleFailure(ctx, {
           sandboxId,
           params,
@@ -47,6 +47,7 @@ export const defineSandboxLifecycleWorkflow = (config: SandboxLifecycleWorkflowC
             params.source.kind === "snapshot"
               ? "Sandbox startup failed after retries. Its saved workspace is kept for the next start."
               : "Sandbox startup failed after retries.",
+          cause,
         });
       }
 
@@ -69,7 +70,11 @@ export const defineSandboxLifecycleWorkflow = (config: SandboxLifecycleWorkflowC
         "start sandbox runtime",
         { retries: { limit: 3, delay: "5 seconds", backoff: "exponential" } },
         async (tx) => {
-          tx.onTerminalError.mutate(recordStartupFailure);
+          // Terminal-error mutations run after the failed attempt, so they see its cause.
+          let cause: unknown = null;
+          tx.onTerminalError.mutate((ctx) => {
+            recordStartupFailure(ctx, cause);
+          });
 
           try {
             const sandbox = await provider.getHandle(sandboxId);
@@ -97,6 +102,7 @@ export const defineSandboxLifecycleWorkflow = (config: SandboxLifecycleWorkflowC
               );
             }
           } catch (error) {
+            cause = error;
             throwSandboxLifecycleOperationError(error);
           }
         },
@@ -107,7 +113,10 @@ export const defineSandboxLifecycleWorkflow = (config: SandboxLifecycleWorkflowC
         "run sandbox startup command",
         { retries: { limit: 3, delay: "5 seconds", backoff: "exponential" } },
         async (tx) => {
-          tx.onTerminalError.mutate(recordStartupFailure);
+          let cause: unknown = null;
+          tx.onTerminalError.mutate((ctx) => {
+            recordStartupFailure(ctx, cause);
+          });
           try {
             const sandbox = await provider.getHandle(sandboxId);
             const result = await executeSandboxCommand(sandbox, params.startupCommand, {
@@ -119,6 +128,7 @@ export const defineSandboxLifecycleWorkflow = (config: SandboxLifecycleWorkflowC
                 : new NonRetryableError(result.message);
             }
           } catch (error) {
+            cause = error;
             throwSandboxLifecycleOperationError(error);
           }
         },
@@ -196,19 +206,24 @@ export const defineSandboxLifecycleWorkflow = (config: SandboxLifecycleWorkflowC
         "save sandbox workspace",
         { retries: { limit: 3, delay: "10 seconds", backoff: "exponential" } },
         async (tx) => {
+          let cause: unknown = null;
           tx.onTerminalError.mutate((ctx) => {
             recordSandboxLifecycleFailure(ctx, {
               sandboxId,
               params,
               eventId: `${event.instanceId}:failed:save`,
               message: "Sandbox workspace could not be saved after retries.",
+              cause,
             });
           });
 
           const outcome = await provider
             .getHandle(sandboxId)
             .then(async (sandbox) => await sandbox.snapshot())
-            .catch(throwSandboxLifecycleOperationError);
+            .catch((error: unknown): never => {
+              cause = error;
+              throwSandboxLifecycleOperationError(error);
+            });
           if (outcome.status === "saved") {
             const fragment = requireSandboxManagerFragment(config);
             const expiresAt = sandboxWorkspaceSnapshotExpiresAt(new Date().toISOString());
@@ -229,18 +244,21 @@ export const defineSandboxLifecycleWorkflow = (config: SandboxLifecycleWorkflowC
         `stop sandbox runtime after ${stopReason}`,
         { retries: { limit: 10, delay: "30 seconds", backoff: "exponential" } },
         async (tx) => {
+          let cause: unknown = null;
           tx.onTerminalError.mutate((ctx) => {
             recordSandboxLifecycleFailure(ctx, {
               sandboxId,
               params,
               eventId: `${event.instanceId}:failed:stop`,
               message: "Sandbox stop reconciliation failed after retries.",
+              cause,
             });
           });
 
           try {
             await (await provider.getHandle(sandboxId)).stop();
           } catch (error) {
+            cause = error;
             throwSandboxLifecycleOperationError(error);
           }
         },
@@ -305,11 +323,17 @@ function recordSandboxLifecycleFailure(
     params: SandboxLifecycleWorkflowParams;
     eventId: string;
     message: string;
+    /** What the last attempt threw; null when the step failed outside the provider call. */
+    cause: unknown;
   },
 ) {
+  const message =
+    input.cause === null
+      ? input.message
+      : `${input.message} Cause: ${describeSandboxLifecycleCause(input.cause)}`;
   const uow = ctx.forSchema(sandboxManagerFragmentSchema);
   uow.update("sandbox_instance", input.sandboxId, (b) =>
-    b.set({ status: "error", lastError: input.message, updatedAt: uow.now() }),
+    b.set({ status: "error", lastError: message, updatedAt: uow.now() }),
   );
   uow.triggerHook(
     "deliverLifecycleEvent",
@@ -320,10 +344,17 @@ function recordSandboxLifecycleFailure(
       provider: input.params.provider,
       status: "error",
       reason: "terminal_error",
-      error: { message: input.message },
+      error: { message },
     },
     { id: input.eventId },
   );
+}
+
+function describeSandboxLifecycleCause(cause: unknown) {
+  if (cause instanceof SandboxRuntimeError) {
+    return `[${cause.code}] ${cause.message}`;
+  }
+  return cause instanceof Error ? cause.message : String(cause);
 }
 
 function throwSandboxLifecycleOperationError(error: unknown): never {
