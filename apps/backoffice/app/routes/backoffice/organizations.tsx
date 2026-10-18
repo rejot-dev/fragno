@@ -1,19 +1,34 @@
 import { Button, ButtonLink } from "@fragno-private/design-system/button";
+import { Field } from "@fragno-private/design-system/field";
 import { FormContainer } from "@fragno-private/design-system/form-container";
+import { Input } from "@fragno-private/design-system/input";
 import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
 import { useState } from "react";
-import { useLoaderData, useOutletContext, useRevalidator } from "react-router";
+import {
+  data,
+  Form,
+  redirect,
+  useLoaderData,
+  useNavigation,
+  useOutletContext,
+  useRevalidator,
+} from "react-router";
+import { z } from "zod";
 
 import { authClient } from "@/fragno/auth/auth-client";
 import { loadUserInvitations } from "@/fragno/auth/auth-directory.server";
+import { requireBackofficeBrowserSession } from "@/fragno/auth/browser-session.server";
+import { organizationSlugFromName } from "@/fragno/auth/organization-slug";
 import {
   usePreferredOrganization,
   resolvePreferredOrganizationId,
 } from "@/fragno/auth/preferred-organization";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
 import { buildBackofficeOrganizationSwitchPath } from "@/routes/backoffice/auth-navigation";
+import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { Route } from "./+types/organizations";
+import { dashboardPath } from "./dashboard/path";
 import { Notice } from "./organization-shared";
 import {
   type ActionNotice,
@@ -31,6 +46,27 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   return await loadUserInvitations({ request, context });
 }
 
+/** Creates an organization owned by the signed-in user, then opens its dashboard. */
+export async function action({ request, context }: Route.ActionArgs) {
+  const user = await requireBackofficeBrowserSession(request, context);
+  const input = z
+    .object({ name: z.string().trim().min(1).max(100) })
+    .safeParse(Object.fromEntries(await request.formData()));
+  if (!input.success) {
+    return data({ error: "Enter a name of at most 100 characters." }, { status: 400 });
+  }
+  const { runtime } = context.get(BackofficeWorkerContext);
+  const organization = await runtime.objects.auth
+    .singleton()
+    .commands.createUserOrganization({ userId: user.id, name: input.data.name });
+  return redirect(
+    buildBackofficeOrganizationSwitchPath(
+      organization.id,
+      dashboardPath({ kind: "org", orgSlug: organization.slug }),
+    ),
+  );
+}
+
 type UserInvitation = Awaited<ReturnType<typeof loader>>["invitations"][number];
 
 export function meta() {
@@ -40,7 +76,7 @@ export function meta() {
   ];
 }
 
-export default function BackofficeOrganizations() {
+export default function BackofficeOrganizations({ actionData }: Route.ComponentProps) {
   const { me: initialMe } = useOutletContext<BackofficeLayoutContext>();
   const storedOrganizationId = usePreferredOrganization();
   const { mutate: switchOrganization, loading: switchingOrganization } =
@@ -120,6 +156,8 @@ export default function BackofficeOrganizations() {
         description="Select an organization to manage settings, members, invitations, and the preferred Backoffice scope."
       />
 
+      <CreateOrganizationForm error={actionData?.error ?? null} />
+
       <FormContainer
         eyebrow="Invitations"
         title={`Open invitations (${openInvitations.length})`}
@@ -193,7 +231,7 @@ export default function BackofficeOrganizations() {
 
       {organizations.length === 0 ? (
         <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
-          No organizations found for this account yet.
+          You are not a member of any organization yet. Create one above or accept an invitation.
         </div>
       ) : (
         <section className="grid gap-3 md:grid-cols-2">
@@ -274,5 +312,48 @@ export default function BackofficeOrganizations() {
       )}
       <Notice notice={preferredOrganizationNotice} />
     </div>
+  );
+}
+
+function CreateOrganizationForm({ error }: { error: string | null }) {
+  const navigation = useNavigation();
+  const [name, setName] = useState("");
+  const creating = navigation.state !== "idle" && navigation.formMethod === "POST";
+
+  return (
+    <FormContainer
+      eyebrow="New"
+      title="Create an organization"
+      description="Organizations share projects, automations, and integrations with their members. You become its owner."
+    >
+      <Form method="post" className="space-y-3">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Name" required>
+            <Input
+              type="text"
+              name="name"
+              value={name}
+              onChange={(event) => {
+                setName(event.target.value);
+              }}
+              className="w-full"
+            />
+          </Field>
+          {/* Auth chooses the slug and appends a number when another organization has it. */}
+          <Field label="Slug">
+            <Input
+              type="text"
+              value={name.trim() ? organizationSlugFromName(name) : ""}
+              disabled
+              className="w-full"
+            />
+          </Field>
+        </div>
+        <Button variant="accent" type="submit" disabled={!name.trim() || creating}>
+          {creating ? "Creating..." : "Create organization"}
+        </Button>
+        <Notice notice={error ? { type: "error", message: error } : null} />
+      </Form>
+    </FormContainer>
   );
 }

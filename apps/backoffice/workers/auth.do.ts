@@ -83,6 +83,7 @@ import {
   type BackofficeOAuthClientUpdateInput,
   type BackofficeOAuthClientUpdateResult,
 } from "@/fragno/auth/oauth-client";
+import { organizationSlugFromName } from "@/fragno/auth/organization-slug";
 import {
   issueAppActionToken,
   issueAppInstallationCode,
@@ -563,6 +564,21 @@ function hasOrganizationAdminEndpoints(
     "addMember" in auth.api &&
     typeof auth.api.addMember === "function"
   );
+}
+
+const MAX_ORGANIZATION_SLUG_ATTEMPTS = 20;
+
+/** Better Auth reports a taken slug before inserting; the unique index catches a concurrent insert. */
+function isOrganizationSlugTaken(error: unknown): boolean {
+  if (
+    error instanceof Error &&
+    "body" in error &&
+    (error.body as { code?: unknown } | undefined)?.code === "ORGANIZATION_ALREADY_EXISTS"
+  ) {
+    return true;
+  }
+  const message = error instanceof Error ? error.message.toLowerCase() : "";
+  return message.includes("unique") && message.includes("slug");
 }
 
 function getOrganizationAdminEndpoints(auth: BetterAuthInstance): OrganizationAdminEndpoints {
@@ -1660,6 +1676,39 @@ export class InMemoryAuthObject implements AuthObject {
     };
   }
 
+  /** Creates an organization owned by the user, with the first free slug its name suggests. */
+  async createUserOrganization(input: {
+    userId: string;
+    name: string;
+  }): Promise<{ id: string; slug: string }> {
+    const { adapter } = await this.#authContext();
+    const createOrganization = getOrganizationAdminEndpoints(
+      this.#getAuth("http://localhost"),
+    ).createOrganization;
+    const base = organizationSlugFromName(input.name);
+    for (let attempt = 1; attempt <= MAX_ORGANIZATION_SLUG_ATTEMPTS; attempt += 1) {
+      const slug = attempt === 1 ? base : `${base}-${attempt}`;
+      const existing = await adapter.findOne<StoreOrganization>({
+        model: "organization",
+        where: [{ field: "slug", value: slug }],
+      });
+      if (existing) {
+        continue;
+      }
+      try {
+        const organization = await createOrganization({
+          body: { name: input.name, slug, userId: input.userId },
+        });
+        return { id: organization.id, slug: organization.slug };
+      } catch (error) {
+        if (!isOrganizationSlugTaken(error)) {
+          throw error;
+        }
+      }
+    }
+    throw new Error(`No free organization slug is left for '${base}'. Choose another name.`);
+  }
+
   async addAdminOrganizationMember(input: {
     organizationId: string;
     userEmail: string;
@@ -2294,6 +2343,10 @@ export class Auth extends DurableObject<CloudflareEnv> implements AuthObject {
 
   async createAdminOrganization(input: { name: string; slug: string; ownerEmail: string }) {
     return await this.#object.createAdminOrganization(input);
+  }
+
+  async createUserOrganization(input: { userId: string; name: string }) {
+    return await this.#object.createUserOrganization(input);
   }
 
   async addAdminOrganizationMember(input: {
