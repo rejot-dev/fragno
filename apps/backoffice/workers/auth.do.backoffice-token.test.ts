@@ -117,11 +117,28 @@ const signUp = async () => {
   return { runtime, auth, user: result.user, sessionCookie: cookieHeader(response) };
 };
 
+const createOrganization = async (
+  auth: Awaited<ReturnType<typeof signUp>>["auth"],
+  sessionCookie: string,
+  input: { name: string; slug: string },
+): Promise<string> => {
+  const response = await authRequest(auth, "/organization/create", {
+    cookie: sessionCookie,
+    body: input,
+  });
+  if (!response.ok) {
+    assert.fail(await response.text());
+  }
+  return ((await response.json()) as { id: string }).id;
+};
+
 describe("Backoffice token exchange", () => {
   test("exchanges a session for a scoped cookie and serves current-user data with only that cookie", async () => {
     const { runtime, auth, user, sessionCookie } = await signUp();
-    const organizationId = (await auth.commands.getAllOrganizations())[0]?.id;
-    assert(organizationId);
+    const organizationId = await createOrganization(auth, sessionCookie, {
+      name: "Token Workspace",
+      slug: "token-workspace",
+    });
 
     const tokenResponse = await authRequest(auth, "/backoffice-token", {
       cookie: sessionCookie,
@@ -132,7 +149,7 @@ describe("Backoffice token exchange", () => {
     }
     expect(await tokenResponse.clone().json()).toEqual({
       expiresAt: "2026-08-11T12:15:00.000Z",
-      organization: { id: organizationId, slug: "token-users-organization" },
+      organization: { id: organizationId, slug: "token-workspace" },
     });
 
     const setCookie = getSetCookieHeaders(tokenResponse.headers).find((header) =>
@@ -160,7 +177,7 @@ describe("Backoffice token exchange", () => {
       globalRole: "user",
       organization: {
         id: organizationId,
-        slug: "token-users-organization",
+        slug: "token-workspace",
         roles: ["owner"],
       },
     });
@@ -198,23 +215,23 @@ describe("Backoffice token exchange", () => {
 
   test("requires explicit organizations and falls back from unavailable preferences", async () => {
     const { auth, sessionCookie } = await signUp();
-    vi.advanceTimersByTime(1_000);
-    const createOrganizationResponse = await authRequest(auth, "/organization/create", {
-      cookie: sessionCookie,
-      body: { name: "Second Workspace", slug: `second-${crypto.randomUUID()}` },
+    const firstOrganizationId = await createOrganization(auth, sessionCookie, {
+      name: "First Workspace",
+      slug: "first-workspace",
     });
-    if (!createOrganizationResponse.ok) {
-      assert.fail(await createOrganizationResponse.text());
-    }
-    const secondOrganization = (await createOrganizationResponse.json()) as { id: string };
+    vi.advanceTimersByTime(1_000);
+    const secondOrganizationId = await createOrganization(auth, sessionCookie, {
+      name: "Second Workspace",
+      slug: "second-workspace",
+    });
 
     const requestedResponse = await authRequest(auth, "/backoffice-token", {
       cookie: sessionCookie,
-      body: { selection: "required", organizationId: secondOrganization.id },
+      body: { selection: "required", organizationId: secondOrganizationId },
     });
     assert(requestedResponse.status === 200);
     expect(await requestedResponse.json()).toMatchObject({
-      organization: { id: secondOrganization.id },
+      organization: { id: secondOrganizationId },
     });
 
     const rejectedResponse = await authRequest(auth, "/backoffice-token", {
@@ -223,40 +240,47 @@ describe("Backoffice token exchange", () => {
     });
     assert(rejectedResponse.status === 403);
 
-    const expectedFallback = (await auth.commands.getAllOrganizations()).sort(
-      (left, right) => left.createdAt.getTime() - right.createdAt.getTime(),
-    )[0]?.id;
-    assert(expectedFallback);
-
     const fallbackResponse = await authRequest(auth, "/backoffice-token", {
       cookie: sessionCookie,
       body: { selection: "preferred", organizationId: "unavailable-organization" },
     });
     assert(fallbackResponse.status === 200);
     expect(await fallbackResponse.json()).toMatchObject({
-      organization: { id: expectedFallback },
+      organization: { id: firstOrganizationId },
     });
   });
 
-  test("reports initial organization provisioning instead of issuing an unscoped token", async () => {
+  test("issues a personal-scope token to a user without organizations", async () => {
     const { auth, user, sessionCookie } = await signUp();
-    const organizationId = (await auth.commands.getAllOrganizations())[0]?.id;
-    assert(organizationId);
-    await auth.commands.applyScenarioFixture({
-      removedMembers: [{ organizationId, userId: user.id }],
-    });
+    expect(await auth.commands.getAllOrganizations()).toEqual([]);
 
     const response = await authRequest(auth, "/backoffice-token", {
       cookie: sessionCookie,
       body: { selection: "preferred", organizationId: null },
     });
-
-    assert(response.status === 202, `${response.status}: ${await response.clone().text()}`);
+    assert(response.status === 200, `${response.status}: ${await response.clone().text()}`);
     expect(await response.json()).toEqual({
-      status: "organization_provisioning",
-      retryAfterMs: 250,
+      expiresAt: "2026-08-11T12:15:00.000Z",
+      organization: null,
     });
-    expect(getSetCookieHeaders(response.headers)).toEqual([]);
+    const accessTokenCookie = getSetCookieHeaders(response.headers)
+      .find((header) => header.startsWith(`${backofficeAccessTokenCookieName(true)}=`))
+      ?.split(";", 1)[0];
+    assert(accessTokenCookie);
+    const verification = await verifyBackofficeJwtRequest(
+      new Request("https://backoffice.example/api/backoffice/me", {
+        headers: { cookie: accessTokenCookie },
+      }),
+      auth.http,
+    );
+    assert(verification.ok);
+    expect(verification.payload).toMatchObject({ sub: user.id, organization: null });
+
+    const requiredResponse = await authRequest(auth, "/backoffice-token", {
+      cookie: sessionCookie,
+      body: { selection: "required", organizationId: "unavailable-organization" },
+    });
+    assert(requiredResponse.status === 403);
   });
 
   test("disables default JWT issuance and clears both credentials on sign-out", async () => {

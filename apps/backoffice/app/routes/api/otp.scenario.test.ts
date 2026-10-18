@@ -74,6 +74,12 @@ const identity = {
   id: "attacker-chat",
 } as const satisfies AutomationExternalEntityRef;
 
+/** The signed-up user's session, captured by the scenario's sign-up step. */
+function sessionCookie({ vars }: BackofficeScenarioContext): string {
+  assert(typeof vars.session === "string");
+  return vars.session;
+}
+
 function externalClaimExecution(orgId: string) {
   return {
     kind: "deferred" as const,
@@ -212,6 +218,7 @@ describe("OTP public boundary security scenarios", () => {
       ],
       steps: ({ when, then }) => [
         when.auth.signUp({ email: "attacker@example.test", captureSessionCookieAs: "session" }),
+        when.auth.createOrganization({ cookie: sessionCookie, name: "Acme", slug: "acme" }),
         then.assert("all reserved operations reject attacker-selected identities", async (ctx) => {
           const member = await authenticateOtpMember(ctx);
           for (const entryPoint of ["public", "object"] as const) {
@@ -259,6 +266,7 @@ describe("OTP public boundary security scenarios", () => {
       ],
       steps: ({ when, then }) => [
         when.auth.signUp({ email: "member@example.test", captureSessionCookieAs: "session" }),
+        when.auth.createOrganization({ cookie: sessionCookie, name: "Acme", slug: "acme" }),
         then.assert("only the trusted completion flow consumes the claim", async (ctx) => {
           const member = await authenticateOtpMember(ctx);
           const otp = ctx.runtime.objects.otp.forOrg(member.organization.id);
@@ -384,6 +392,7 @@ describe("OTP public boundary security scenarios", () => {
       name: "generic public OTP operations cannot produce identity claim effects",
       steps: ({ when, then }) => [
         when.auth.signUp({ email: "custom-otp@example.test", captureSessionCookieAs: "session" }),
+        when.auth.createOrganization({ cookie: sessionCookie, name: "Acme", slug: "acme" }),
         then.assert("generic OTPs work through both HTTP entry points", async (ctx) => {
           const member = await authenticateOtpMember(ctx);
           for (const entryPoint of ["public", "object"] as const) {

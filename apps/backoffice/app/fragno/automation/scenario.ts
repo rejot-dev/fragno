@@ -607,9 +607,6 @@ type AuthAcceptInvitationInput<TVars extends ScenarioVars> = {
 type AuthSessionInput<TVars extends ScenarioVars> = {
   cookie: ScenarioValue<TVars, string>;
 };
-type AuthPersonalOrganizationAssertionInput<TVars extends ScenarioVars> =
-  AuthSessionInput<TVars> & { captureOrganizationIdAs?: string };
-
 type WorkflowCreateInstanceInput<TVars extends ScenarioVars = ScenarioVars> = {
   orgId: string;
   workflowName?: string;
@@ -831,9 +828,7 @@ export type BackofficeScenarioStepBuilders<TVars extends ScenarioVars = Scenario
       authority(input: AuthAuthorityAssertionInput): BackofficeScenarioStep;
       member(input: AuthMemberAssertionInput): BackofficeScenarioStep;
       permissions(input: AuthPermissionsAssertionInput): BackofficeScenarioStep;
-      personalOrganization(
-        input: AuthPersonalOrganizationAssertionInput<TVars>,
-      ): BackofficeScenarioStep;
+      sessionWithoutOrganization(input: AuthSessionInput<TVars>): BackofficeScenarioStep;
       sessionHasOrganization(input: AuthOrganizationSessionInput<TVars>): BackofficeScenarioStep;
       signedOut(input: AuthSessionInput<TVars>): BackofficeScenarioStep;
     };
@@ -3081,11 +3076,11 @@ const buildStepBuilders = <
             }
           },
         ),
-      personalOrganization: (input) =>
+      sessionWithoutOrganization: (input) =>
         createStep(
           "then",
-          "auth.personalOrganization",
-          "assert personal auth organization",
+          "auth.sessionWithoutOrganization",
+          "assert auth session has no organization",
           async (ctx) => {
             const response = await scenarioAuthRequest(ctx, "/backoffice-token", {
               cookie: await resolveScenarioValue(ctx, input.cookie),
@@ -3095,12 +3090,10 @@ const buildStepBuilders = <
               throw new Error(`Backoffice token exchange failed (${response.status}).`);
             }
             const result = issueBackofficeTokenResultSchema.parse(await response.json());
-            const organizationId = result.organization?.id;
-            if (typeof organizationId !== "string") {
-              throw new Error("Personal Auth organization returned no id.");
-            }
-            if (input.captureOrganizationIdAs) {
-              ctx.vars[input.captureOrganizationIdAs] = organizationId;
+            if (result.organization !== null) {
+              throw new Error(
+                `Expected no organization, got ${JSON.stringify(result.organization)}.`,
+              );
             }
           },
         ),

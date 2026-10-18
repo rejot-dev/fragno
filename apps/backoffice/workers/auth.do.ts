@@ -20,7 +20,6 @@ import {
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { DurableObjectDialect } from "@fragno-dev/db/dialects/durable-object";
 import { betterAuth, type BetterAuthOptions } from "better-auth";
-import { APIError } from "better-auth/api";
 import { DurableObject } from "cloudflare:workers";
 import { Kysely } from "kysely";
 import { z } from "zod";
@@ -104,16 +103,12 @@ import { BACKOFFICE_LOGIN_PATH } from "@/routes/backoffice/auth-navigation";
 import { buildUserEmailVerificationEmail } from "@/transactional-emails/user-email-verification";
 
 import {
-  ensureUserHasOrganization,
-  type UserOrganizationDependencies,
-} from "./auth-user-organization";
-import {
   authenticateInstalledAppClient,
   exchangeBackofficeExecutionToken,
 } from "./auth/backoffice-execution-token";
 import {
   BackofficeUserTokenGrantForbiddenError,
-  type BackofficeUserTokenGrantResolution,
+  type BackofficeUserTokenAuthority,
 } from "./auth/backoffice-user-token-grant";
 import {
   applyBackofficeBetterAuthSchemaMigrations,
@@ -593,76 +588,6 @@ const getAuthContext = async (auth: BetterAuthInstance): Promise<BetterAuthConte
 
 type BetterAuthAdapter = BetterAuthContext["adapter"];
 
-const isOrganizationSlugConflict = (error: unknown): boolean => {
-  if (
-    error instanceof APIError &&
-    error.status === "BAD_REQUEST" &&
-    (error.body?.code === "ORGANIZATION_ALREADY_EXISTS" ||
-      error.body?.message === "Organization already exists")
-  ) {
-    return true;
-  }
-  if (!(error instanceof Error) || !error.message.toLowerCase().includes("unique")) {
-    return false;
-  }
-  const message = error.message.toLowerCase();
-  return message.includes("organization.slug") || message.includes("organization_slug");
-};
-
-const createBetterAuthUserOrganizationDependencies = (
-  adapter: BetterAuthAdapter,
-  createOrganization: CreateOrganizationEndpoint,
-): UserOrganizationDependencies => ({
-  async findFirstByUserId(userId) {
-    const memberships = await adapter.findMany<StoreMember>({
-      model: "member",
-      where: [{ field: "userId", value: userId }],
-    });
-    memberships.sort((left, right) => {
-      const createdAtDifference =
-        toDate(left.createdAt).getTime() - toDate(right.createdAt).getTime();
-      return createdAtDifference || left.id.localeCompare(right.id);
-    });
-    const membership = memberships[0];
-    if (!membership) {
-      return null;
-    }
-    const organization = await adapter.findOne<StoreOrganization>({
-      model: "organization",
-      where: [{ field: "id", value: membership.organizationId }],
-    });
-    if (!organization) {
-      throw new Error(
-        `Stored organization membership '${membership.id}' references missing organization '${membership.organizationId}'.`,
-      );
-    }
-    return { id: organization.id, slug: organization.slug };
-  },
-  async findBySlug(slug) {
-    const organization = await adapter.findOne<StoreOrganization>({
-      model: "organization",
-      where: [{ field: "slug", value: slug }],
-    });
-    return organization ? { id: organization.id, slug: organization.slug } : null;
-  },
-  async create(input) {
-    try {
-      const organization = await createOrganization({
-        body: { name: input.name, slug: input.slug, userId: input.userId },
-      });
-      return {
-        status: "created",
-        organization: { id: organization.id, slug: organization.slug },
-      };
-    } catch (error) {
-      if (isOrganizationSlugConflict(error)) {
-        return { status: "slug_conflict" };
-      }
-      throw error;
-    }
-  },
-});
-
 const findStoreUser = async (
   adapter: BetterAuthAdapter,
   userId: string,
@@ -688,7 +613,7 @@ async function resolveBackofficeUserTokenGrant(
     scope: BackofficeContextScope | null;
     organizationSelection: "preferred" | "required";
   },
-): Promise<BackofficeUserTokenGrantResolution> {
+): Promise<BackofficeUserTokenAuthority> {
   const storedUser = await findStoreUser(adapter, input.userId);
   if (!storedUser || normalizeBoolean(storedUser.banned)) {
     throw new BackofficeUserTokenGrantForbiddenError(
@@ -704,14 +629,11 @@ async function resolveBackofficeUserTokenGrant(
       );
     }
     return {
-      status: "ready",
-      authority: {
-        userId: storedUser.id,
-        email: storedUser.email,
-        globalRole,
-        scope: input.scope,
-        organization: null,
-      },
+      userId: storedUser.id,
+      email: storedUser.email,
+      globalRole,
+      scope: input.scope,
+      organization: null,
     };
   }
 
@@ -724,14 +646,11 @@ async function resolveBackofficeUserTokenGrant(
       );
     }
     return {
-      status: "ready",
-      authority: {
-        userId: storedUser.id,
-        email: storedUser.email,
-        globalRole,
-        scope: input.scope,
-        organization: null,
-      },
+      userId: storedUser.id,
+      email: storedUser.email,
+      globalRole,
+      scope: input.scope,
+      organization: null,
     };
   }
 
@@ -755,7 +674,14 @@ async function resolveBackofficeUserTokenGrant(
         "The requested Backoffice scope is not available to this user.",
       );
     }
-    return { status: "organization_provisioning", retryAfterMs: 250 };
+    // Organizations are created by their users; until then a user works in their own scope.
+    return {
+      userId: storedUser.id,
+      email: storedUser.email,
+      globalRole,
+      scope: { kind: "user", userId: storedUser.id },
+      organization: null,
+    };
   }
 
   const requestedMembership = requestedOrganizationId
@@ -787,17 +713,14 @@ async function resolveBackofficeUserTokenGrant(
   }
 
   return {
-    status: "ready",
-    authority: {
-      userId: storedUser.id,
-      email: storedUser.email,
-      globalRole,
-      scope: selectedScope,
-      organization: {
-        id: selectedOrganization.id,
-        slug: selectedOrganization.slug,
-        roles: splitOrganizationRoles(selectedMembership.role),
-      },
+    userId: storedUser.id,
+    email: storedUser.email,
+    globalRole,
+    scope: selectedScope,
+    organization: {
+      id: selectedOrganization.id,
+      slug: selectedOrganization.slug,
+      roles: splitOrganizationRoles(selectedMembership.role),
     },
   };
 }
@@ -1207,15 +1130,6 @@ export class InMemoryAuthObject implements AuthObject {
       capturePropagationContext: () => record.propagationContext,
     };
     if (record.hookName === "onUserCreated") {
-      const auth = this.#getAuth("http://localhost");
-      const authContext = await getAuthContext(auth);
-      await ensureUserHasOrganization(
-        record.payload.user,
-        createBetterAuthUserOrganizationDependencies(
-          authContext.adapter,
-          getOrganizationAdminEndpoints(auth).createOrganization,
-        ),
-      );
       if (this.#runtime.config.authEmailVerification.enabled) {
         const verificationHookId = `email-verification-${record.payload.user.id}`;
         const existingVerificationHook = await getBetterAuthDurableHook(

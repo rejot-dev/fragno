@@ -23,9 +23,10 @@ OAuth access token
 ```
 
 It returns `{ accessToken, expiresAt, scope }`. The credential lifetime remains 15 minutes. A
-`scope: null` request selects the user's preferred available organization; explicit scopes must be
-available to that user. An unavailable organization does not silently fall back to a personal scope.
-Responses use `cache-control: no-store`.
+`scope: null` request selects the user's earliest organization, or the user's own scope when they
+belong to none. Users create their organizations themselves; sign-up creates none. Explicit scopes
+must be available to that user. An unavailable organization does not silently fall back to a
+personal scope. Responses use `cache-control: no-store`.
 
 - Malformed request bodies return `400` with `invalid_request`.
 - Invalid OAuth credentials, ineligible clients, or revoked consent return `401` with
@@ -157,8 +158,8 @@ Codemode HTTP entry points authorize like every other scoped entry point: system
 global administrator, and scoped runtime tools remain kernel-authorized.
 
 The browser `/api/auth/backoffice-token` session exchange reuses the same user-grant resolver and
-JWT issuer. Its cookie transport, organization selection/provisioning response, and unrestricted
-credential-scope behavior are unchanged.
+JWT issuer. It sets the credential as a cookie, selects an organization the same way, and does not
+restrict the credential's scope.
 
 ## Versioned HTTP API
 

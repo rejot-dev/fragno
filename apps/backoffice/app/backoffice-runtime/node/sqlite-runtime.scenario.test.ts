@@ -49,8 +49,14 @@ describe("file-backed SQLite Backoffice scenario", () => {
           objects: scenarioObjects,
           name: "register account on SQLite",
           options,
+          vars: () => ({ session: "" }),
           steps: ({ when, then }) => [
-            when.auth.signUp({ email: "persisted@example.com" }),
+            when.auth.signUp({ email: "persisted@example.com", captureSessionCookieAs: "session" }),
+            when.auth.createOrganization({
+              cookie: ({ vars }) => vars.session,
+              name: "Persisted",
+              slug: "persisted",
+            }),
             then.assert("auth and Fragment databases exist on disk", async () => {
               const files = await readdir(directory);
               assert(files.includes("auth.sqlite"));
