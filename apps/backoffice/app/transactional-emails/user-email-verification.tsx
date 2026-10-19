@@ -26,7 +26,7 @@ export default function UserEmailVerificationEmail({
     <TransactionalEmail
       preview="Confirm this email address before signing in."
       heading="Verify your email"
-      homeUrl={publicBaseUrl}
+      brand={{ kind: "backoffice", homeUrl: publicBaseUrl }}
       reason="You received this email because this address was used to create a Backoffice account. If that was not you, you can ignore it."
     >
       <EmailParagraph>Confirm this email address before signing in.</EmailParagraph>

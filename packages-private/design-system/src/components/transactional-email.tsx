@@ -35,20 +35,29 @@ const PALETTE = {
 const FONT_SANS =
   '"Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
 
-// A Backoffice-branded message: the brand header, one heading and the body on a panel like a
-// FormContainer, and the brand footer. `preview` is the inbox snippet shown next to the subject;
-// `reason` tells the recipient why they received the email, and the footer links to `homeUrl`.
+/**
+ * Whose message it is: Backoffice's, or an app's that Backoffice sends in its name. An app's email
+ * names only the app, plus a small "Secured by ReJot" line, because its recipients may not know
+ * Backoffice.
+ */
+export type TransactionalEmailBrand =
+  | { kind: "backoffice"; homeUrl: string }
+  | { kind: "app"; name: string; homeUrl: string; accentColor: string };
+
+// A branded message: the brand header, one heading and the body on a panel like a FormContainer,
+// and the brand footer. `preview` is the inbox snippet shown next to the subject; `reason` tells the
+// recipient why they received the email, and the footer links to the brand's home.
 export function TransactionalEmail({
   preview,
   heading,
   reason,
-  homeUrl,
+  brand,
   children,
 }: {
   preview: string;
   heading: string;
   reason: string;
-  homeUrl: string;
+  brand: TransactionalEmailBrand;
   children: ReactNode;
 }) {
   return (
@@ -69,7 +78,7 @@ export function TransactionalEmail({
       >
         <Preview>{preview}</Preview>
         <Container style={{ maxWidth: "560px" }}>
-          <EmailHeader />
+          {brand.kind === "backoffice" ? <EmailHeader /> : <AppEmailHeader brand={brand} />}
           <Section
             style={{
               border: `1px solid ${PALETTE.border}`,
@@ -92,7 +101,11 @@ export function TransactionalEmail({
             </Heading>
             {children}
           </Section>
-          <EmailFooter reason={reason} homeUrl={homeUrl} />
+          {brand.kind === "backoffice" ? (
+            <EmailFooter reason={reason} homeUrl={brand.homeUrl} />
+          ) : (
+            <AppEmailFooter reason={reason} brand={brand} />
+          )}
         </Container>
       </Body>
     </Html>
@@ -126,6 +139,25 @@ function EmailHeader() {
           </tr>
         </tbody>
       </table>
+    </Section>
+  );
+}
+
+// The app's name in its accent color. Text, not the app's logo: many clients block images.
+function AppEmailHeader({ brand }: { brand: Extract<TransactionalEmailBrand, { kind: "app" }> }) {
+  return (
+    <Section style={{ paddingBottom: "20px" }}>
+      <Text
+        style={{
+          margin: 0,
+          fontSize: "18px",
+          lineHeight: "24px",
+          fontWeight: 700,
+          color: brand.accentColor,
+        }}
+      >
+        {brand.name}
+      </Text>
     </Section>
   );
 }
@@ -202,6 +234,55 @@ function EmailFooter({ reason, homeUrl }: { reason: string; homeUrl: string }) {
         </Link>
       </Text>
     </Section>
+  );
+}
+
+function AppEmailFooter({
+  reason,
+  brand,
+}: {
+  reason: string;
+  brand: Extract<TransactionalEmailBrand, { kind: "app" }>;
+}) {
+  return (
+    <Section style={{ paddingTop: "24px" }}>
+      <Text
+        style={{ margin: "0 0 16px", fontSize: "12px", lineHeight: "20px", color: PALETTE.muted }}
+      >
+        {reason}
+      </Text>
+      <Text style={{ margin: 0, fontSize: "11px", lineHeight: "20px" }}>
+        <Link href={brand.homeUrl} style={{ color: brand.accentColor }}>
+          {new URL(brand.homeUrl).host}
+        </Link>
+      </Text>
+      <Text style={{ margin: 0, fontSize: "11px", lineHeight: "20px", color: PALETTE.muted2 }}>
+        Secured by ReJot
+      </Text>
+    </Section>
+  );
+}
+
+// A one-time code, large and spaced so it reads at a glance and copies as one word.
+export function EmailCode({ code }: { code: string }) {
+  return (
+    <Text
+      style={{
+        margin: "0 0 24px",
+        borderRadius: "6px",
+        backgroundColor: PALETTE.background,
+        padding: "16px",
+        textAlign: "center",
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace',
+        fontSize: "32px",
+        lineHeight: "40px",
+        fontWeight: 700,
+        letterSpacing: "0.3em",
+        color: PALETTE.foreground,
+      }}
+    >
+      {code}
+    </Text>
   );
 }
 

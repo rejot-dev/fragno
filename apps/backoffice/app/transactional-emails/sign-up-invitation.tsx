@@ -27,7 +27,7 @@ export default function SignUpInvitationEmail({
     <TransactionalEmail
       preview="Create your Backoffice account to get started."
       heading="You're invited"
-      homeUrl={publicBaseUrl}
+      brand={{ kind: "backoffice", homeUrl: publicBaseUrl }}
       reason="You received this email because someone invited you to Backoffice. If you were not expecting it, you can ignore it."
     >
       <EmailParagraph>Create your Backoffice account to get started.</EmailParagraph>
