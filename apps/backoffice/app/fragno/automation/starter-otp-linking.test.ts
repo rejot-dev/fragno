@@ -96,6 +96,7 @@ const telegramMessageEvent = ({
       delegation: [],
     },
     subject: { orgId: "org-1" },
+    causation: { kind: "origin" },
   };
 };
 
@@ -137,6 +138,7 @@ const identityClaimCompletedEvent = ({
       delegation: [],
     },
     subject: { userId: subjectUserId },
+    causation: { kind: "origin" },
   };
 };
 

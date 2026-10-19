@@ -106,6 +106,7 @@ const triggerProjectEvent = ({
       ...(rootOwner.kind === "org" ? { orgId: rootOwner.orgId } : { userId: rootOwner.userId }),
       projectId,
     },
+    causation: { kind: "origin" },
   };
 
   uow.triggerHook(

@@ -1933,6 +1933,7 @@ const buildOrganizationCreatedEvent = (input: OrganizationCreatedInput): Automat
       delegation: [],
     },
     subject: { orgId: input.id },
+    causation: { kind: "origin" },
   };
 };
 
@@ -1954,6 +1955,7 @@ const buildCapabilityConfiguredEvent = (input: CapabilityConfiguredInput): Autom
     delegation: [],
   },
   subject: { orgId: input.orgId, capabilityId: input.capabilityId },
+  causation: { kind: "origin" },
 });
 
 const buildIdentityClaimCompletedEvent = (input: ConfirmClaimInput): AutomationEvent => {
@@ -1984,6 +1986,7 @@ const buildIdentityClaimCompletedEvent = (input: ConfirmClaimInput): AutomationE
     subject: {
       userId: input.subjectUserId,
     },
+    causation: { kind: "origin" },
   };
 };
 

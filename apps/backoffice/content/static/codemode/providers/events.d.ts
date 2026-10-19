@@ -312,6 +312,27 @@ type EventsListOutput = {
       userId?: string;
       [key: string]: unknown;
     } | null;
+    causation:
+      | {
+          kind: "origin";
+        }
+      | {
+          kind: "route";
+          routeId: string;
+          parent: {
+            eventId: string;
+            rootEventId: string;
+          };
+        }
+      | {
+          kind: "workflow";
+          workflowName: string;
+          instanceId: string;
+          parent: {
+            eventId: string;
+            rootEventId: string;
+          } | null;
+        };
     /** ISO 8601 datetime string. */
     createdAt?: string;
   }[];
@@ -497,6 +518,27 @@ type EventsGetOutput = {
     userId?: string;
     [key: string]: unknown;
   } | null;
+  causation:
+    | {
+        kind: "origin";
+      }
+    | {
+        kind: "route";
+        routeId: string;
+        parent: {
+          eventId: string;
+          rootEventId: string;
+        };
+      }
+    | {
+        kind: "workflow";
+        workflowName: string;
+        instanceId: string;
+        parent: {
+          eventId: string;
+          rootEventId: string;
+        } | null;
+      };
   /** ISO 8601 datetime string. */
   createdAt?: string;
 } | null;

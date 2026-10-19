@@ -69,6 +69,7 @@ test("stored event commands read scoped SQLite records with text, JSON, and curs
               payload: { thingId: "thing-1" },
               actors,
               subject: { userId: "user-1" },
+              causation: { kind: "origin" as const },
             };
             const newer = {
               ...older,

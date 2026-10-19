@@ -229,6 +229,7 @@ export class InMemoryApiObject extends RpcTarget implements ApiObject {
               endpointId: payload.endpointId,
               deliveryId: payload.deliveryId,
             }),
+            causation: { kind: "origin" },
           },
           { propagationContext: context.capturePropagationContext() },
         );

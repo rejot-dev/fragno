@@ -76,6 +76,7 @@ const buildScheduledRouteEvent = ({
       ...(owner.kind === "org" ? { orgId: owner.orgId } : { userId: owner.userId }),
       ...(scope.kind === "project" ? { projectId: scope.projectId } : {}),
     },
+    causation: { kind: "origin" },
   };
 };
 

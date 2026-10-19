@@ -132,6 +132,7 @@ const scopedEvent = (orgId: string): AutomationEvent => ({
     delegation: [],
   },
   subject: { orgId },
+  causation: { kind: "origin" },
 });
 
 describe("readBackofficeAutomationSource", () => {
@@ -225,6 +226,7 @@ describe("Automations authorized HTTP context", () => {
             delegation: [],
           },
           subject: { userId: scope.userId },
+          causation: { kind: "origin" },
         },
       });
       const automations = runtime.objects.automations.forUser({

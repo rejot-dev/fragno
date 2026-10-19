@@ -1,7 +1,9 @@
 import type { AutomationActors } from "@fragno-dev/backoffice-api/v0/automation";
 import {
   type AutomationEvent,
+  type AutomationEventCausation,
   automationEventListResultSchema,
+  automationEventParentOf,
 } from "@fragno-dev/backoffice-api/v0/events";
 import {
   backofficeContextScopesEqual,
@@ -26,9 +28,24 @@ import type { EventRuntime } from "./event";
 
 export type { EventRuntime };
 
+/**
+ * Who fires events through the runtime. Events a workflow fires inherit the source and subject of
+ * the event it runs with, and record the workflow as their cause.
+ */
+export type EventEmitter =
+  | { kind: "caller" }
+  | {
+      kind: "workflow";
+      workflowName: string;
+      instanceId: string;
+      /** A manual start synthesizes this event; it was never recorded, so it cannot be a parent. */
+      startedBy: "event" | "manual";
+      event: AutomationEvent;
+    };
+
 export type CreateEventRuntimeOptions = {
   objects: BackofficeObjectRegistry;
-  parentEvent?: AutomationEvent;
+  emitter: EventEmitter;
   kernel: BackofficeKernel;
   execution: BackofficeExecutionContext;
   emittedEventActors?: AutomationActors;
@@ -38,6 +55,18 @@ export type CreateEventRuntimeOptions = {
 
 const normalizeEventPayload = (payload: Record<string, unknown> | undefined) =>
   payload !== null && !Array.isArray(payload) && typeof payload === "object" ? payload : {};
+
+function emittedEventCausation(emitter: EventEmitter): AutomationEventCausation {
+  if (emitter.kind === "caller") {
+    return { kind: "origin" };
+  }
+  return {
+    kind: "workflow",
+    workflowName: emitter.workflowName,
+    instanceId: emitter.instanceId,
+    parent: emitter.startedBy === "event" ? automationEventParentOf(emitter.event) : null,
+  };
+}
 
 /** Builds an event runtime whose reads authorize against the same scope as emission. */
 export function createEventRuntime(options: CreateEventRuntimeOptions): EventRuntime {
@@ -83,7 +112,8 @@ export function createEventRuntime(options: CreateEventRuntimeOptions): EventRun
       );
     },
     emitEvent: async ({ eventType, source, subjectUserId, payload, targetScope }) => {
-      const { parentEvent } = options;
+      const { emitter } = options;
+      const parentEvent = emitter.kind === "workflow" ? emitter.event : undefined;
       const currentScope = options.execution.scope;
       if (parentEvent && !backofficeContextScopesEqual(parentEvent.scope, currentScope)) {
         throw new Error("Parent automation event scope must match the execution scope.");
@@ -154,6 +184,7 @@ export function createEventRuntime(options: CreateEventRuntimeOptions): EventRun
             : subjectUserId
               ? { userId: subjectUserId }
               : (parentEvent?.subject ?? null),
+        causation: emittedEventCausation(emitter),
       };
 
       const targetObject = options.kernel.scoped(

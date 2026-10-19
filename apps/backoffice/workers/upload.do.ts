@@ -265,6 +265,7 @@ export class InMemoryUploadObject implements UploadObject {
                 orgId: stored.namespace.orgId,
                 capabilityId: "upload",
               },
+              causation: { kind: "origin" },
             });
         },
       },

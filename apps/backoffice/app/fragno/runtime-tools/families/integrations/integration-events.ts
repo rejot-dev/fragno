@@ -164,6 +164,7 @@ export async function recordIntegrationConnectionState(
         service: change.service,
         connectionId: change.connectionId,
       },
+      causation: { kind: "origin" },
     },
     context,
   );

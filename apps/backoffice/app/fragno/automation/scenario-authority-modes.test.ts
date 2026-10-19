@@ -80,6 +80,7 @@ const authorityEvent = ({
     delegation: [],
   },
   subject: { orgId: "org-1" },
+  causation: { kind: "origin" },
 });
 
 const workflowSource = `defineWorkflow(

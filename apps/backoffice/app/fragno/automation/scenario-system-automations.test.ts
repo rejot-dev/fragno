@@ -106,6 +106,7 @@ const systemUnrelatedEvent = {
     delegation: [],
   },
   subject: { orgId: "org-1" },
+  causation: { kind: "origin" },
 } satisfies AutomationEvent;
 
 function createScopedTestFileSystem(
@@ -253,6 +254,7 @@ describe("system automation scenarios", () => {
           delegation: [],
         },
         subject: { orgId },
+        causation: { kind: "origin" },
       } satisfies AutomationEvent);
 
       await runtime.drain();
@@ -660,6 +662,7 @@ describe("system automation scenarios", () => {
                   delegation: [],
                 },
                 subject: { orgId: "org-1" },
+                causation: { kind: "origin" },
               });
             },
           ),
@@ -698,6 +701,7 @@ describe("system automation scenarios", () => {
                 delegation: [],
               },
               subject: { orgId: "org-1" },
+              causation: { kind: "origin" },
             });
           }),
 

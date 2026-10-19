@@ -18,7 +18,7 @@ import {
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import { createAutomationFragment, type AutomationWorkflowsService } from "@/fragno/automation";
 
-import { createEventRuntime } from "./event-runtime";
+import { createEventRuntime, type EventEmitter } from "./event-runtime";
 
 const TEST_KERNEL_RUNTIME = {
   authorityResolver: unavailableBackofficeAuthorityResolver,
@@ -73,7 +73,16 @@ const createEvent = (overrides: Partial<AutomationEvent> = {}): AutomationEvent 
     delegation: [],
   },
   subject: null,
+  causation: { kind: "origin" },
   ...overrides,
+});
+
+const workflowEmitter = (event: AutomationEvent): EventEmitter => ({
+  kind: "workflow",
+  workflowName: "codemode-script",
+  instanceId: "instance-1",
+  startedBy: "event",
+  event,
 });
 
 const createAutomationFragmentForEventRuntimeTest = (idSeed: string) =>
@@ -106,6 +115,7 @@ describe("createEventRuntime.emitEvent", () => {
       }),
     } as unknown as BackofficeObjectRegistry;
     const runtime = createEventRuntime({
+      emitter: { kind: "caller" },
       objects,
       kernel: new BackofficeKernel(TEST_KERNEL_RUNTIME),
       execution: createBackofficeUserExecution({
@@ -160,6 +170,7 @@ describe("createEventRuntime.emitEvent", () => {
       userId: "marketplace-installer",
     }).actors;
     const runtime = createEventRuntime({
+      emitter: { kind: "caller" },
       objects,
       kernel: new BackofficeKernel(TEST_KERNEL_RUNTIME),
       execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
@@ -180,6 +191,7 @@ describe("createEventRuntime.emitEvent", () => {
       }),
     } as unknown as BackofficeObjectRegistry;
     const runtime = createEventRuntime({
+      emitter: { kind: "caller" },
       objects,
       kernel: new BackofficeKernel(TEST_KERNEL_RUNTIME),
       execution: userExecution({ kind: "org", orgId: "org-1" }),
@@ -203,7 +215,7 @@ describe("createEventRuntime.emitEvent", () => {
       objects,
       kernel: new BackofficeKernel(TEST_KERNEL_RUNTIME),
       execution: automationExecution(event.scope),
-      parentEvent: event,
+      emitter: workflowEmitter(event),
     });
 
     await expect(
@@ -270,7 +282,7 @@ describe("createEventRuntime.emitEvent", () => {
         scope: parentEvent.scope,
         actors: parentEvent.actors,
       },
-      parentEvent,
+      emitter: workflowEmitter(parentEvent),
     });
 
     await runtime.emitEvent({ eventType: "child.created", payload: { ok: true } });
@@ -294,7 +306,7 @@ describe("createEventRuntime.emitEvent", () => {
       objects,
       kernel,
       execution: automationExecution({ kind: "org", orgId: "org-1" }),
-      parentEvent: createEvent({ scope: { kind: "org", orgId: "org-1" } }),
+      emitter: workflowEmitter(createEvent({ scope: { kind: "org", orgId: "org-1" } })),
     });
 
     await expect(
@@ -332,7 +344,7 @@ describe("createEventRuntime.emitEvent", () => {
       objects,
       kernel: new BackofficeKernel(TEST_KERNEL_RUNTIME),
       execution: automationExecution({ kind: "org", orgId: "org-1" }),
-      parentEvent: createEvent({ scope: { kind: "org", orgId: "org-1" } }),
+      emitter: workflowEmitter(createEvent({ scope: { kind: "org", orgId: "org-1" } })),
     });
 
     await expect(
@@ -372,7 +384,7 @@ describe("createEventRuntime.emitEvent", () => {
       objects,
       kernel: new BackofficeKernel(TEST_KERNEL_RUNTIME),
       execution: automationExecution({ kind: "org", orgId: "org-1" }),
-      parentEvent: createEvent({ scope: { kind: "org", orgId: "org-1" } }),
+      emitter: workflowEmitter(createEvent({ scope: { kind: "org", orgId: "org-1" } })),
     });
 
     await expect(
@@ -400,7 +412,7 @@ describe("createEventRuntime.emitEvent", () => {
       objects,
       kernel: new BackofficeKernel(TEST_KERNEL_RUNTIME),
       execution: automationExecution({ kind: "org", orgId: "org-1" }),
-      parentEvent: createEvent({ scope: { kind: "org", orgId: "org-1" } }),
+      emitter: workflowEmitter(createEvent({ scope: { kind: "org", orgId: "org-1" } })),
     });
 
     await expect(
@@ -442,6 +454,7 @@ describe("createEventRuntime.emitEvent", () => {
       }),
     } as unknown as BackofficeObjectRegistry;
     const runtime = createEventRuntime({
+      emitter: { kind: "caller" },
       objects,
       kernel: new BackofficeKernel(TEST_KERNEL_RUNTIME),
       execution: userExecution({ kind: "org", orgId: "org-1" }),
@@ -485,7 +498,7 @@ describe("createEventRuntime.emitEvent", () => {
       objects,
       kernel: new BackofficeKernel(TEST_KERNEL_RUNTIME),
       execution: automationExecution(event.scope),
-      parentEvent: event,
+      emitter: workflowEmitter(event),
     });
 
     await runtime.emitEvent({

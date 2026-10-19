@@ -44,6 +44,7 @@ describe("buildTelegramAutomationEvent", () => {
         principal: null,
         delegation: [],
       },
+      causation: { kind: "origin" },
     });
   });
 

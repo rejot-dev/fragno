@@ -1,4 +1,6 @@
 import {
+  type AutomationEvent,
+  type AutomationEventRecord,
   automationEventListInputSchema,
   automationEventListResultSchema,
 } from "@fragno-dev/backoffice-api/v0/events";
@@ -7,6 +9,30 @@ import { defineRoutes } from "@fragno-dev/core";
 import { decodeCursor } from "@fragno-dev/db";
 
 import { automationFragmentDefinition } from "./definition";
+
+type AutomationEventRow = Omit<AutomationEvent, "id" | "occurredAt" | "causation"> & {
+  id: { valueOf(): string };
+  occurredAt: Date;
+  causation: AutomationEvent["causation"] | null;
+  createdAt: Date;
+};
+
+function automationEventRecord(event: AutomationEventRow): AutomationEventRecord {
+  return {
+    id: event.id.valueOf(),
+    scope: event.scope,
+    scopeRestriction: event.scopeRestriction,
+    source: event.source,
+    eventType: event.eventType,
+    occurredAt: event.occurredAt.toISOString(),
+    payload: event.payload,
+    actors: event.actors,
+    subject: event.subject ?? null,
+    // Events recorded before causation was tracked read as origins.
+    causation: event.causation ?? { kind: "origin" },
+    createdAt: event.createdAt.toISOString(),
+  };
+}
 
 export const automationEventRoutes = defineRoutes(automationFragmentDefinition).create(
   ({ defineRoute, services }) => [
@@ -24,18 +50,7 @@ export const automationEventRoutes = defineRoutes(automationFragmentDefinition).
           return error({ message: "Automation event not found.", code: "EVENT_NOT_FOUND" }, 404);
         }
 
-        return json({
-          id: event.id.valueOf(),
-          scope: event.scope,
-          scopeRestriction: event.scopeRestriction,
-          source: event.source,
-          eventType: event.eventType,
-          occurredAt: event.occurredAt.toISOString(),
-          payload: event.payload,
-          actors: event.actors,
-          subject: event.subject ?? null,
-          createdAt: event.createdAt.toISOString(),
-        });
+        return json(automationEventRecord(event));
       },
     }),
     defineRoute({
@@ -100,18 +115,7 @@ export const automationEventRoutes = defineRoutes(automationFragmentDefinition).
           .execute();
 
         return json({
-          events: result.events.map((event) => ({
-            id: event.id.valueOf(),
-            scope: event.scope,
-            scopeRestriction: event.scopeRestriction,
-            source: event.source,
-            eventType: event.eventType,
-            occurredAt: event.occurredAt.toISOString(),
-            payload: event.payload,
-            actors: event.actors,
-            subject: event.subject ?? null,
-            createdAt: event.createdAt.toISOString(),
-          })),
+          events: result.events.map(automationEventRecord),
           nextCursor: result.cursor?.encode(),
           hasNextPage: result.hasNextPage,
         });

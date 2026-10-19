@@ -95,6 +95,7 @@ const telegramMessageEvent = ({
       delegation: [],
     },
     subject: { orgId: "org-1" },
+    causation: { kind: "origin" },
   };
 };
 

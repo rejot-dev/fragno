@@ -365,6 +365,7 @@ describe("automation routes /routes", () => {
         delegation: [],
       },
       subject: { orgId: "org_123" },
+      causation: { kind: "origin" },
     };
 
     await systemFragment.callServices(() => systemFragment.services.ingestEvent(event));
@@ -431,6 +432,7 @@ describe("automation routes /routes", () => {
           delegation: [],
         },
         subject: { orgId: "org_123" },
+        causation: { kind: "origin" },
       }),
     );
     await drainDurableHooks(fragment);
@@ -506,6 +508,7 @@ describe("automation routes /routes", () => {
           delegation: [],
         },
         subject: null,
+        causation: { kind: "origin" },
       }),
     );
 
@@ -585,6 +588,7 @@ describe("automation routes /routes", () => {
         delegation: [],
       },
       subject: { orgId: "org_123" },
+      causation: { kind: "origin" },
     };
 
     await fragment.callServices(() => fragment.services.ingestEvent(event));
@@ -663,6 +667,7 @@ describe("automation routes /routes", () => {
         delegation: [],
       },
       subject: { orgId: "org_123" },
+      causation: { kind: "origin" },
     };
 
     await fragment.callServices(() => fragment.services.ingestEvent(event));
@@ -697,6 +702,7 @@ describe("automation routes /events", () => {
           delegation: [],
         },
         subject: { orgId: "org_123" },
+        causation: { kind: "origin" },
       }),
     );
 
@@ -744,6 +750,7 @@ describe("automation routes /events", () => {
             delegation: [],
           },
           subject: { orgId: "org_123" },
+          causation: { kind: "origin" },
         }),
       );
     }
@@ -792,6 +799,7 @@ describe("automation routes /events", () => {
             delegation: [],
           },
           subject: { orgId: "org_123" },
+          causation: { kind: "origin" },
         }),
       ),
     ).rejects.toThrow(/invalid occurredAt timestamp/);

@@ -38,6 +38,7 @@ describe("executeWorkflowCodemodeAutomation", () => {
         principal: null,
         delegation: [],
       },
+      causation: { kind: "origin" },
     };
     const Workflow = defineRemoteWorkflow(
       { name: "codemode-workflow-capabilities-test" },
@@ -157,6 +158,7 @@ describe("executeWorkflowCodemodeAutomation", () => {
         principal: null,
         delegation: [],
       },
+      causation: { kind: "origin" },
     };
     const Workflow = defineRemoteWorkflow(
       { name: "codemode-workflow-egress-test" },

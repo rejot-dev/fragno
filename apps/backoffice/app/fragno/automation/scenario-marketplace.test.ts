@@ -272,6 +272,7 @@ function githubPullRequestWebhookEvent(action: "opened" | "synchronize"): Automa
       repositoryFullName: repository.full_name,
       pullRequestNumber: "17",
     },
+    causation: { kind: "origin" },
   };
 }
 

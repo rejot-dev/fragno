@@ -463,6 +463,7 @@ const dispatchOrganizationEvent = async (
         delegation: [],
       },
       subject: { orgId: organization.id },
+      causation: { kind: "origin" },
     },
     { propagationContext: context.capturePropagationContext() },
   );

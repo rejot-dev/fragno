@@ -137,6 +137,7 @@ function event(
     payload,
     actors: createBackofficeSystemExecution(scope).actors,
     subject,
+    causation: { kind: "origin" },
   };
 }
 
