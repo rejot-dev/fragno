@@ -239,14 +239,17 @@ function ScriptRunTimeline({
           setSelectedStepId(stepId);
           onSelectStep(stepId);
         }}
-        meta={<span className="font-mono">{run.instanceId}</span>}
-        actions={
-          <ButtonLink variant="secondary" to={runPath}>
-            <Icon name="external-link" className="size-3.5" />
-            Open run
-          </ButtonLink>
-        }
-        surface="card"
+        presentation={{
+          kind: "standalone",
+          meta: <span className="font-mono">{run.instanceId}</span>,
+          actions: (
+            <ButtonLink variant="secondary" to={runPath}>
+              <Icon name="external-link" className="size-3.5" />
+              Open run
+            </ButtonLink>
+          ),
+          surface: "card",
+        }}
       />
     </div>
   );

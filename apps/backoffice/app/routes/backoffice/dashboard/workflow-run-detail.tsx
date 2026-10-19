@@ -1,5 +1,5 @@
 import { WorkflowRunTimeline } from "@fragno-private/design-system/workflow-run-timeline";
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 import { formatTimestamp } from "../automations/formatting";
 import type { WorkflowRunCollections } from "../automations/script-view/use-script-workflow-runs";
@@ -11,18 +11,41 @@ import type {
 import { useWorkflowRunTimeline } from "../automations/script-view/workflow-run-timeline-presentation";
 
 /**
+ * How the run sits on its page. On its own it keeps its own step selection and draws its own time
+ * axis. Embedded in an event trace, the trace's flame graph draws the run's time, owns the replay
+ * cursor, and shares the selection, which it names by step record id because only recorded steps
+ * appear in the trace.
+ */
+export type WorkflowRunDetailPresentation =
+  | { kind: "standalone" }
+  | {
+      kind: "embedded";
+      cursor: number | null;
+      selectedStepRecordId: string | null;
+      onSelectStepRecord: (stepRecordId: string | null) => void;
+      onHoverStepRecord: (stepRecordId: string | null) => void;
+    };
+
+/**
  * One workflow run as a step timeline, with the selected step's record or the run's outcome. It
  * draws no frame of its own because it fills a dashboard section.
  */
 export function WorkflowRunDetail({
   collections,
   reference,
+  presentation,
 }: {
   collections: WorkflowRunCollections;
   reference: WorkflowRunReference;
+  presentation: WorkflowRunDetailPresentation;
 }) {
   const run = useWorkflowRunTimeline({ collections, reference });
-  const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
+  const [ownSelectedStepId, setOwnSelectedStepId] = useState<string | null>(null);
+  const stepRecordsByStepId = run.timeline?.stepRecordsByStepId;
+  const stepIdsByRecordId = useMemo(
+    () => new Map([...(stepRecordsByStepId ?? [])].map(([stepId, record]) => [record.id, stepId])),
+    [stepRecordsByStepId],
+  );
 
   if (run.error) {
     return <p className="py-5 text-sm text-[var(--bo-failed)]">{run.error}</p>;
@@ -38,11 +61,29 @@ export function WorkflowRunDetail({
   }
 
   const { instance, timeline } = run;
+  const selectedStepId =
+    presentation.kind === "standalone"
+      ? ownSelectedStepId
+      : presentation.selectedStepRecordId === null
+        ? null
+        : (stepIdsByRecordId.get(presentation.selectedStepRecordId) ?? null);
   const selectedRecord =
     selectedStepId === null ? null : (timeline.stepRecordsByStepId.get(selectedStepId) ?? null);
+  const unmatchedSteps =
+    timeline.unmappedStepCount === 0 ? null : (
+      <span
+        className="text-[var(--bo-waiting)]"
+        title="Recorded steps that the run's program does not account for."
+      >
+        {timeline.unmappedStepCount} unmatched {timeline.unmappedStepCount === 1 ? "step" : "steps"}
+      </span>
+    );
 
   return (
     <div className="flex flex-col">
+      {presentation.kind === "embedded" && unmatchedSteps !== null ? (
+        <p className="pt-2 text-xs">{unmatchedSteps}</p>
+      ) : null}
       <WorkflowRunTimeline
         title={timeline.title}
         status={timeline.status}
@@ -54,24 +95,39 @@ export function WorkflowRunDetail({
         events={timeline.events}
         selectedStepId={selectedStepId}
         onSelectStep={(stepId) => {
-          setSelectedStepId((current) => (current === stepId ? null : stepId));
+          if (presentation.kind === "standalone") {
+            setOwnSelectedStepId((current) => (current === stepId ? null : stepId));
+            return;
+          }
+          // Steps the run has not recorded yet have nothing to show, so they select the run.
+          const recordId = timeline.stepRecordsByStepId.get(stepId)?.id ?? null;
+          presentation.onSelectStepRecord(
+            recordId === presentation.selectedStepRecordId ? null : recordId,
+          );
         }}
-        meta={
-          <>
-            <span className="font-mono">{instance.instanceId}</span>
-            {timeline.unmappedStepCount === 0 ? null : (
-              <span
-                className="text-[var(--bo-waiting)]"
-                title="Recorded steps that the run's program does not account for."
-              >
-                {timeline.unmappedStepCount} unmatched{" "}
-                {timeline.unmappedStepCount === 1 ? "step" : "steps"}
-              </span>
-            )}
-          </>
+        presentation={
+          presentation.kind === "standalone"
+            ? {
+                kind: "standalone",
+                meta: (
+                  <>
+                    <span className="font-mono">{instance.instanceId}</span>
+                    {unmatchedSteps}
+                  </>
+                ),
+                actions: null,
+                surface: "flush",
+              }
+            : {
+                kind: "embedded",
+                cursor: presentation.cursor,
+                onHoverStep: (stepId) => {
+                  presentation.onHoverStepRecord(
+                    stepId === null ? null : (timeline.stepRecordsByStepId.get(stepId)?.id ?? null),
+                  );
+                },
+              }
         }
-        actions={null}
-        surface="flush"
       />
       {selectedRecord ? (
         <StepRecordPanel step={selectedRecord} />

@@ -372,7 +372,12 @@ function WorkflowHealthPanel({
           back={dashboardPath(backofficeRouteScopeFromResolvedScope(selectedScope))}
           footer={null}
         >
-          <WorkflowRunDetail key={openedRunKey} collections={collections} reference={openedRun} />
+          <WorkflowRunDetail
+            key={openedRunKey}
+            collections={collections}
+            reference={openedRun}
+            presentation={{ kind: "standalone" }}
+          />
         </Panel>
       </div>
     );
