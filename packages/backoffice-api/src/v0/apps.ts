@@ -40,6 +40,22 @@ export const appSlugSchema = z.lazy(() =>
 
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
+/** Whether a URL addresses this machine, where development servers run. */
+export function isLoopbackUrl(url: string): boolean {
+  return LOOPBACK_HOSTNAMES.has(new URL(url).hostname);
+}
+
+/** Development servers run on loopback, where plain HTTP stays on the machine. */
+function appUrlSchema(description: string) {
+  return z
+    .url({ protocol: /^https?$/ })
+    .refine(
+      (url) => url.startsWith("https:") || isLoopbackUrl(url),
+      "App URLs use HTTPS; plain HTTP is allowed only on loopback for development.",
+    )
+    .describe(description);
+}
+
 /** One operation an app serves on its own server, called through the app's integration connection. */
 export const appActionSchema = z
   .lazy(() =>
@@ -74,15 +90,9 @@ export const appActionsDeclarationSchema = z
       z.strictObject({ kind: z.literal("none") }),
       z.strictObject({
         kind: z.literal("endpoint"),
-        endpointUrl: z
-          .url({ protocol: /^https?$/ })
-          .refine(
-            (url) => url.startsWith("https:") || LOOPBACK_HOSTNAMES.has(new URL(url).hostname),
-            "App action endpoints use HTTPS; plain HTTP is allowed only on loopback for development.",
-          )
-          .describe(
-            "Receives each signed action request as a POST; the request token's audience is this URL.",
-          ),
+        endpointUrl: appUrlSchema(
+          "Receives each signed action request as a POST; the request token's audience is this URL.",
+        ),
         changeApproval: z
           .enum(["installation", "automatic"])
           .describe(
