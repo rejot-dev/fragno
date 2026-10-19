@@ -137,6 +137,7 @@ export class InMemoryMcpObject extends RpcTarget implements McpObject {
               delegation: [],
             },
             subject: serverSubject(scope, payload.serverId),
+            causation: { kind: "origin" },
           },
           { propagationContext: context.capturePropagationContext() },
         );

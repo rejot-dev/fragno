@@ -19,11 +19,7 @@ import type {
 import type { AutomationStoreRuntime } from "../../runtime-tools/families/automations-bindings";
 import type { AutomationRouterRuntime } from "../../runtime-tools/families/automations-routing";
 import type {} from "../../runtime-tools/families/event";
-import {
-  createUnavailableEventRuntime,
-  createEventRuntime,
-  type EventRuntime,
-} from "../../runtime-tools/families/event-runtime";
+import type { EventRuntime } from "../../runtime-tools/families/event-runtime";
 import type {} from "../../runtime-tools/families/otp";
 import type { OtpRuntime } from "../../runtime-tools/families/otp-runtime";
 
@@ -46,61 +42,6 @@ export type AutomationRuntimeHostContext = Omit<
   };
   otp: {
     runtime: OtpRuntime;
-  };
-};
-
-export const createAutomationRuntime = ({
-  runtime,
-  event,
-  execution,
-}: {
-  runtime?: BackofficeRuntimeServices;
-  event: AutomationEvent;
-  execution?: BackofficeExecutionContext;
-}): AutomationRuntime => {
-  const requireRouteBackend = (toolName: string) => {
-    if (!runtime) {
-      throw new Error(`${toolName} is not configured`);
-    }
-    throw new Error(`${toolName} is not available in ${event.scope.kind} automation scope`);
-  };
-
-  if (runtime) {
-    if (!execution) {
-      throw new Error("Configured automation runtimes require trusted execution.");
-    }
-    const kernel = new BackofficeKernel(runtime);
-    const routeBacked = createRouteBackedRuntimeContext({
-      runtime,
-      kernel,
-      execution,
-      billingOrganizationId: null,
-    });
-    return {
-      ...routeBacked.automations.runtime,
-      ...routeBacked.otp.runtime,
-      ...createEventRuntime({
-        objects: runtime.objects,
-        parentEvent: event,
-        kernel,
-        execution,
-      }),
-    };
-  }
-
-  return {
-    get: async () => requireRouteBackend("store.get"),
-    set: async () => requireRouteBackend("store.set"),
-    delete: async () => requireRouteBackend("store.delete"),
-    list: async () => requireRouteBackend("store.list"),
-    listRoutes: async () => requireRouteBackend("router.list"),
-    getRoute: async () => requireRouteBackend("router.get"),
-    createRoute: async () => requireRouteBackend("router.create"),
-    updateRoute: async () => requireRouteBackend("router.update"),
-    deleteRoute: async () => requireRouteBackend("router.delete"),
-    triggerScheduledRouteNow: async () => requireRouteBackend("router.trigger-now"),
-    createClaim: async () => requireRouteBackend("otp.identity.create-claim"),
-    ...createUnavailableEventRuntime(),
   };
 };
 

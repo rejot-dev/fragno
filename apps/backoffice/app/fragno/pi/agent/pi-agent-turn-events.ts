@@ -50,6 +50,7 @@ function piAgentTurnCompletedEvent(
       agentName: config.agentName,
       requestId,
     },
+    causation: { kind: "origin" },
   };
 }
 

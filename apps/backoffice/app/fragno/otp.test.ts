@@ -161,6 +161,7 @@ describe("otp identity claim helpers", () => {
       subject: {
         userId: "user_123",
       },
+      causation: { kind: "origin" },
     });
   });
 });

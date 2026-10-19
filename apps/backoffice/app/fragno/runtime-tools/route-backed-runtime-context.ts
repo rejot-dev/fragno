@@ -335,6 +335,7 @@ export const createRouteBackedRuntimeContext = ({
     event: {
       runtime: createEventRuntime({
         objects: runtime.objects,
+        emitter: { kind: "caller" },
         kernel,
         execution,
         emittedEventActors,

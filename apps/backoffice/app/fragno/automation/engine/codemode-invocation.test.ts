@@ -28,6 +28,7 @@ const event: AutomationEvent = {
   payload: { requestId: "request-1" },
   actors: execution.actors,
   subject: { orgId: "org-1" },
+  causation: { kind: "origin" },
 };
 
 describe("codemode invocation preparation", () => {

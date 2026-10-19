@@ -208,6 +208,7 @@ function codemodeRunEvent(
       ...(scope.kind === "project" ? { projectId: scope.projectId } : {}),
       runId: run.runId,
     },
+    causation: { kind: "origin" },
   };
 }
 

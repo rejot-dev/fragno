@@ -40,6 +40,7 @@ const event: AutomationEvent = {
   payload: { value: "ready" },
   actors,
   subject: { orgId: "org_123" },
+  causation: { kind: "origin" },
 };
 
 function reclassificationRoute({

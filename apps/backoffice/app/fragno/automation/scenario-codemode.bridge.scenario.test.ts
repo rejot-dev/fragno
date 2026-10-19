@@ -166,6 +166,7 @@ test("scenario TanStack DB exposes an in-flight step.do lifecycle", async () => 
             payload: {},
             actors: execution.actors,
             subject: { orgId: "org-1" },
+            causation: { kind: "origin" },
           };
           const prepared = prepareCodemodeWorkflowInstance({
             modules: {},

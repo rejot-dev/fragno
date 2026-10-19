@@ -131,6 +131,7 @@ const customAutomationEvent = ({
     delegation: [],
   },
   subject: { orgId: "org-1" },
+  causation: { kind: "origin" },
 });
 
 const telegramMessageEvent = ({
@@ -169,6 +170,7 @@ const telegramMessageEvent = ({
       delegation: [],
     },
     subject: { orgId: "org-1" },
+    causation: { kind: "origin" },
   };
 };
 

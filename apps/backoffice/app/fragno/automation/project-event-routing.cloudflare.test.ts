@@ -182,6 +182,7 @@ describe("project automation event routing", () => {
         delegation: [],
       },
       subject: { orgId },
+      causation: { kind: "origin" },
     };
 
     const events = createEventRuntime({
@@ -197,7 +198,13 @@ describe("project automation event routing", () => {
           automationId: "automation-route:project-event",
         },
       }),
-      parentEvent: event,
+      emitter: {
+        kind: "workflow",
+        workflowName: "codemode-script",
+        instanceId: "instance-1",
+        startedBy: "event",
+        event,
+      },
     });
 
     await expect(
@@ -336,6 +343,7 @@ describe("project automation event routing", () => {
         delegation: [],
       },
       subject: { orgId },
+      causation: { kind: "origin" },
     };
     const events = createEventRuntime({
       objects: runtime.objects,
@@ -350,7 +358,13 @@ describe("project automation event routing", () => {
           automationId: "automation-route:project-event",
         },
       }),
-      parentEvent: event,
+      emitter: {
+        kind: "workflow",
+        workflowName: "codemode-script",
+        instanceId: "instance-1",
+        startedBy: "event",
+        event,
+      },
     });
 
     await expect(

@@ -111,6 +111,7 @@ export const buildIdentityClaimCompletedAutomationEvent = (input: {
   subject: {
     userId: input.userId,
   },
+  causation: { kind: "origin" },
 });
 
 function isInternalOtpType(type: string): boolean {

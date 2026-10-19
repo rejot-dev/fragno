@@ -13,6 +13,27 @@ export type AutomationEventSubject = {
   [key: string]: unknown;
 };
 
+/** The event that led to another event, and the origin event its causal tree grows from. */
+export type AutomationEventParent = {
+  eventId: string;
+  rootEventId: string;
+};
+
+/**
+ * Why an event exists. Origins enter from outside automations, such as a webhook or a user
+ * action. Routes derive events by forwarding or reclassifying their parent. Workflows fire events
+ * while they run; a manually started workflow has no parent event.
+ */
+export type AutomationEventCausation =
+  | { kind: "origin" }
+  | { kind: "route"; routeId: string; parent: AutomationEventParent }
+  | {
+      kind: "workflow";
+      workflowName: string;
+      instanceId: string;
+      parent: AutomationEventParent | null;
+    };
+
 export type AutomationEvent = {
   id: string;
   scope: BackofficeContextScope;
@@ -23,7 +44,23 @@ export type AutomationEvent = {
   payload: AutomationEventPayload;
   actors: AutomationActors;
   subject?: AutomationEventSubject | null;
+  causation: AutomationEventCausation;
 };
+
+/** Origin events, and events of manually started workflows, root their own causal tree. */
+export function automationEventRootId(event: Pick<AutomationEvent, "id" | "causation">): string {
+  const { causation } = event;
+  return causation.kind === "origin" || causation.parent === null
+    ? event.id
+    : causation.parent.rootEventId;
+}
+
+/** The parent link for events derived from `event`. */
+export function automationEventParentOf(
+  event: Pick<AutomationEvent, "id" | "causation">,
+): AutomationEventParent {
+  return { eventId: event.id, rootEventId: automationEventRootId(event) };
+}
 
 export const idSchema = z.lazy(() =>
   z.preprocess((value) => {
@@ -49,6 +86,30 @@ const automationEventSubjectSchema: z.ZodType<AutomationEventSubject> = z.lazy((
     .catchall(z.unknown()),
 );
 
+const automationEventParentSchema = z.lazy(() =>
+  z.strictObject({
+    eventId: z.string().trim().min(1),
+    rootEventId: z.string().trim().min(1),
+  }),
+);
+
+export const automationEventCausationSchema: z.ZodType<AutomationEventCausation> = z.lazy(() =>
+  z.discriminatedUnion("kind", [
+    z.strictObject({ kind: z.literal("origin") }),
+    z.strictObject({
+      kind: z.literal("route"),
+      routeId: z.string().trim().min(1),
+      parent: automationEventParentSchema,
+    }),
+    z.strictObject({
+      kind: z.literal("workflow"),
+      workflowName: z.string().trim().min(1),
+      instanceId: z.string().trim().min(1),
+      parent: automationEventParentSchema.nullable(),
+    }),
+  ]),
+);
+
 export const automationEventSchema = z.lazy(() =>
   z.object({
     id: idSchema,
@@ -60,6 +121,8 @@ export const automationEventSchema = z.lazy(() =>
     payload: z.record(z.string(), z.unknown()),
     actors: automationActorsSchema,
     subject: z.preprocess((value) => value ?? null, automationEventSubjectSchema.nullable()),
+    // Events recorded before causation was tracked read as origins.
+    causation: z.preprocess((value) => value ?? { kind: "origin" }, automationEventCausationSchema),
   }),
 ) satisfies z.ZodType<AutomationEvent>;
 

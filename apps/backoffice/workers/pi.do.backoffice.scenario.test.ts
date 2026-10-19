@@ -495,6 +495,7 @@ for (const revocation of ["restricted", "disabled", "deleted"] as const) {
         delegation: [],
       },
       subject: { orgId: "org-1" },
+      causation: { kind: "origin" as const },
     });
     await runBackofficeScenario(
       defineBackofficeScenario({

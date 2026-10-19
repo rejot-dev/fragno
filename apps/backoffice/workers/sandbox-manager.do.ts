@@ -58,6 +58,7 @@ function buildSandboxAutomationEvent(
       ...(scope.kind === "project" ? { projectId: scope.projectId } : {}),
       sandboxId: event.sandboxId,
     },
+    causation: { kind: "origin" },
   };
 }
 

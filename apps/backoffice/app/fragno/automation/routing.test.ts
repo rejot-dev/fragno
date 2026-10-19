@@ -62,6 +62,7 @@ describe("automation event reclassification", () => {
           delegation: [],
         },
         subject: { orgId: "org-1" },
+        causation: { kind: "origin" },
       },
       {
         kind: "projection",
@@ -128,6 +129,7 @@ const event = {
     ],
   },
   subject: { orgId: "org-1" },
+  causation: { kind: "origin" },
 } satisfies AutomationEvent;
 
 describe("evaluateAutomationEventMatcher", () => {

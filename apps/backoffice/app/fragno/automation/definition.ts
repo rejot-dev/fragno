@@ -9,9 +9,11 @@ import {
   type AutomationSendWorkflowEventAction,
   type AutomationStartWorkflowAction,
 } from "@fragno-dev/backoffice-api/v0/automation";
-import type {
-  AutomationEvent,
-  AutomationEventDefinition,
+import {
+  type AutomationEvent,
+  type AutomationEventDefinition,
+  automationEventParentOf,
+  automationEventRootId,
 } from "@fragno-dev/backoffice-api/v0/events";
 import {
   type BackofficeContextScope,
@@ -58,6 +60,10 @@ import { buildExternalIdentityBindingId, canLinkExternalIdentity } from "./exter
 import { createExternalIdentityBindingServices } from "./external-identity-bindings-storage-runtime";
 import type { AutomationEventIngestionPayload, AutomationHookUnitOfWork } from "./internal-hooks";
 import { createAutomationProjectServices } from "./projects-storage-runtime";
+import {
+  type AutomationRouteDispatchOutcome,
+  createAutomationRouteDispatchServices,
+} from "./route-dispatches-storage-runtime";
 import { dispatchAutomationRouteSchedule } from "./route-scheduling-runtime";
 import {
   buildWorkflowEventPayload,
@@ -166,6 +172,8 @@ const ingestAutomationEvent = (
     payload: validatedEvent.payload,
     actors: validatedEvent.actors,
     subject: validatedEvent.subject ?? null,
+    causation: validatedEvent.causation,
+    rootEventId: automationEventRootId(validatedEvent),
     createdAt: now,
   });
 
@@ -181,8 +189,13 @@ const toWorkflowIdentifier = (value: string) => value.replaceAll(":", "--");
 export const buildAutomationWorkflowInstanceId = (eventId: string, bindingId: string) =>
   `${toWorkflowIdentifier(eventId)}--${toWorkflowIdentifier(bindingId)}`;
 
-type RunWorkflowServiceCall = <TResult, TRetrieveSuccessResult = TResult>(
-  call: () => readonly [TxResult<TResult, TRetrieveSuccessResult>],
+/**
+ * Commits what a route did together with the service calls that did it, so a dispatch is only
+ * recorded when its effect is.
+ */
+type CommitRouteDispatch = <TResult, TRetrieveSuccessResult = TResult>(
+  outcome: AutomationRouteDispatchOutcome,
+  effect: (() => TxResult<TResult, TRetrieveSuccessResult>) | null,
 ) => Promise<void>;
 
 type AutomationStoreSnapshot = ReadonlyMap<string, string>;
@@ -192,7 +205,7 @@ type RouteExecutionContext = {
   route: AutomationRouteDefinition;
   routingKey: string;
   workflows: AutomationWorkflowsService;
-  runWorkflowServiceCall: RunWorkflowServiceCall;
+  commitDispatch: CommitRouteDispatch;
   store: AutomationStoreSnapshot;
   linkedUserId: string | null;
 };
@@ -244,7 +257,7 @@ const handleStartWorkflowRouteAction = async ({
   route,
   routingKey,
   workflows,
-  runWorkflowServiceCall,
+  commitDispatch,
   config,
   linkedUserId,
 }: RouteExecutionContext & {
@@ -258,6 +271,7 @@ const handleStartWorkflowRouteAction = async ({
     linkedUserId,
   });
   if (!acting) {
+    await commitDispatch({ kind: "skipped", reason: "no_linked_external_sender" }, null);
     return;
   }
   const { event: workflowEvent, execution } = acting;
@@ -298,15 +312,18 @@ const handleStartWorkflowRouteAction = async ({
     replyTo: null,
   });
 
-  await runWorkflowServiceCall(
+  await commitDispatch(
+    {
+      kind: "workflow_started",
+      workflowName: workflowInput.workflowName,
+      instanceId: workflowInput.instanceId,
+    },
     () =>
-      [
-        workflows.createInstance(workflowInput.workflowName, {
-          id: workflowInput.instanceId,
-          params: workflowInput.params,
-          remoteWorkflowName: workflowInput.remoteWorkflowName,
-        }),
-      ] as const,
+      workflows.createInstance(workflowInput.workflowName, {
+        id: workflowInput.instanceId,
+        params: workflowInput.params,
+        remoteWorkflowName: workflowInput.remoteWorkflowName,
+      }),
   );
 };
 
@@ -315,6 +332,7 @@ const handleForwardEventRouteAction = async ({
   event,
   route,
   routingKey,
+  commitDispatch,
   ownerScope,
   runtime,
 }: RouteExecutionContext & {
@@ -347,6 +365,7 @@ const handleForwardEventRouteAction = async ({
       ? renderAutomationRawTemplateValue(action.idTemplate, event, route.id, routingKey)
       : event.id,
     scope,
+    causation: { kind: "route", routeId: route.id, parent: automationEventParentOf(event) },
   } satisfies AutomationEvent;
 
   const targetAutomations = runtime.objects.automations.for(scope);
@@ -354,6 +373,9 @@ const handleForwardEventRouteAction = async ({
     await targetAutomations.commands.seedStarterAutomationRoutes();
   }
   await targetAutomations.commands.ingestEvent(forwardedEvent);
+  // The forwarded event lives in another scope's object, so this commit cannot include it. A
+  // failure here replays the forward, which the target ignores once it holds the event.
+  await commitDispatch({ kind: "event_forwarded", eventId: forwardedEvent.id, scope }, null);
 };
 
 const handleNotifyAgentRouteAction = async ({
@@ -435,6 +457,7 @@ function buildReclassifiedAutomationEvent({
     source: action.source,
     eventType: action.eventType,
     payload: projectAutomationEventPayload(event, action.payload),
+    causation: { kind: "route", routeId, parent: automationEventParentOf(event) },
   };
 }
 
@@ -444,7 +467,7 @@ const handleSendWorkflowEventRouteAction = async ({
   route,
   routingKey,
   workflows,
-  runWorkflowServiceCall,
+  commitDispatch,
   store,
 }: RouteExecutionContext & { action: AutomationSendWorkflowEventAction }) => {
   let instanceId = "";
@@ -471,18 +494,23 @@ const handleSendWorkflowEventRouteAction = async ({
   }
 
   if (!instanceId) {
+    await commitDispatch({ kind: "skipped", reason: "workflow_instance_unresolved" }, null);
     return;
   }
 
-  await runWorkflowServiceCall(
+  await commitDispatch(
+    {
+      kind: "workflow_event_sent",
+      workflowName: CODEMODE_WORKFLOW,
+      instanceId,
+      eventType: action.eventType,
+    },
     () =>
-      [
-        workflows.sendEvent(CODEMODE_WORKFLOW, instanceId, {
-          id: `${route.id}:${event.id}`,
-          type: action.eventType,
-          payload: buildWorkflowEventPayload({ action, event }),
-        }),
-      ] as const,
+      workflows.sendEvent(CODEMODE_WORKFLOW, instanceId, {
+        id: `${route.id}:${event.id}`,
+        type: action.eventType,
+        payload: buildWorkflowEventPayload({ action, event }),
+      }),
   );
 };
 
@@ -505,6 +533,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
     const eventSourceServices = createAutomationEventSourceServices(defineService);
     const eventDefinitionServices = createAutomationEventDefinitionServices(defineService);
     const externalIdentityBindingServices = createExternalIdentityBindingServices(defineService);
+    const routeDispatchServices = createAutomationRouteDispatchServices(defineService);
 
     return defineService({
       ...storeServices,
@@ -514,6 +543,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
       ...eventSourceServices,
       ...eventDefinitionServices,
       ...externalIdentityBindingServices,
+      ...routeDispatchServices,
       seedStarterAutomationRoutes: function () {
         return this.serviceTx(automationFragmentSchema)
           .retrieve((uow) =>
@@ -688,17 +718,22 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
                 (route.trigger.eventType === event.eventType || route.trigger.eventType === "*") &&
                 evaluateAutomationEventMatcher(route.trigger.matcher, event),
             );
-        const runWorkflowServiceCall: RunWorkflowServiceCall = async (call) => {
-          await this.handlerTx().withServiceCalls(call).execute();
-        };
         const results = await Promise.allSettled(
           routesToExecute.map(async (route) => {
+            const commitDispatch: CommitRouteDispatch = async (outcome, effect) => {
+              const record = () => services.recordRouteDispatch({ event, route, outcome });
+              await (
+                effect === null
+                  ? this.handlerTx().withServiceCalls(() => [record()] as const)
+                  : this.handlerTx().withServiceCalls(() => [effect(), record()] as const)
+              ).execute();
+            };
             const context = {
               event,
               route,
               routingKey: routeRoutingKey(event, route),
               workflows: serviceDeps.workflows,
-              runWorkflowServiceCall,
+              commitDispatch,
               store,
               linkedUserId,
             };
@@ -739,11 +774,10 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
                   payload.reclassificationChain,
                   getAutomationEventIdentity(reclassifiedEvent),
                 );
-                await this.handlerTx()
-                  .withServiceCalls(
-                    () => [services.ingestEvent(reclassifiedEvent, reclassificationChain)] as const,
-                  )
-                  .execute();
+                await commitDispatch(
+                  { kind: "event_reclassified", eventId: reclassifiedEvent.id },
+                  () => services.ingestEvent(reclassifiedEvent, reclassificationChain),
+                );
                 break;
               }
             }

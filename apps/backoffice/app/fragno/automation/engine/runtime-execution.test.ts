@@ -29,6 +29,7 @@ const event = {
     principal: null,
     delegation: [],
   },
+  causation: { kind: "origin" },
 } as const satisfies AutomationEvent;
 
 const organizationAuthority = automationRouteAuthority({

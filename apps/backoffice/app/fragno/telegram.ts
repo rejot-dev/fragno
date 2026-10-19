@@ -84,6 +84,7 @@ export const buildTelegramAutomationEvent = (
     principal: null,
     delegation: [],
   },
+  causation: { kind: "origin" },
 });
 
 export function createTelegramServer(

@@ -10,174 +10,208 @@ import type {
 import { column, idColumn, schema, type Column } from "@fragno-dev/db/schema";
 
 import type { AutomationEventSource } from "./event-sources";
+import type { AutomationRouteDispatchOutcome } from "./route-dispatches-storage-runtime";
 
 const jsonColumn = <T>() => column("json") as Column<"json", T, T>;
 
 export const automationFragmentSchema = schema("automations", (s) => {
-  return s
-    .addTable("kv_store", (t) => {
-      return t
-        .addColumn("id", idColumn())
-        .addColumn("key", column("string"))
-        .addColumn("value", column("string"))
-        .addColumn("description", column("string").nullable())
-        .addColumn("category", jsonColumn<string[]>().nullable())
-        .addColumn(
-          "createdAt",
-          column("timestamp").defaultTo((b) => b.now()),
-        )
-        .addColumn(
-          "updatedAt",
-          column("timestamp").defaultTo((b) => b.now()),
-        )
-        .createIndex("idx_kv_store_key", ["key"], {
-          unique: true,
-        });
-    })
-    .addTable("project", (t) => {
-      return t
-        .addColumn("id", idColumn())
-        .addColumn("slug", column("string"))
-        .addColumn("name", column("string"))
-        .addColumn("description", column("text").nullable())
-        .addColumn("archivedAt", column("timestamp").nullable())
-        .addColumn("createdByUserId", column("string"))
-        .addColumn(
-          "createdAt",
-          column("timestamp").defaultTo((b) => b.now()),
-        )
-        .addColumn(
-          "updatedAt",
-          column("timestamp").defaultTo((b) => b.now()),
-        )
-        .createIndex("idx_project_slug", ["slug"], { unique: true });
-    })
-    .noOp("Removed sandbox_instance table")
-    .addTable("automation_route", (t) => {
-      return t
-        .addColumn("id", idColumn())
-        .addColumn("name", column("string"))
-        .addColumn("enabled", column("bool"))
-        .addColumn("priority", column("integer"))
-        .addColumn("trigger", jsonColumn<AutomationRouteTrigger>())
-        .addColumn("action", jsonColumn<AutomationRouteAction>())
-        .addColumn("description", column("text").nullable())
-        .addColumn(
-          "createdAt",
-          column("timestamp").defaultTo((b) => b.now()),
-        )
-        .addColumn(
-          "updatedAt",
-          column("timestamp").defaultTo((b) => b.now()),
-        )
-        .createIndex("idx_automation_route_priority_id", ["priority", "id"]);
-    })
-    .addTable("automation_route_schedule_state", (t) => {
-      return t
-        .addColumn("id", idColumn())
-        .addColumn("initializationAt", column("timestamp").nullable())
-        .addColumn("nextOccurrenceAt", column("timestamp").nullable())
-        .createIndex("idx_automation_route_schedule_state_nextOccurrenceAt", [
-          "nextOccurrenceAt",
-          "id",
-        ]);
-    })
-    .addTable("automation_event", (t) => {
-      return t
-        .addColumn("id", idColumn())
-        .addColumn("scope", jsonColumn<AutomationEvent["scope"]>())
-        .addColumn("source", column("string"))
-        .addColumn("eventType", column("string"))
-        .addColumn("occurredAt", column("timestamp"))
-        .addColumn("payload", jsonColumn<AutomationEvent["payload"]>())
-        .addColumn("actors", jsonColumn<AutomationEvent["actors"]>())
-        .addColumn("subject", jsonColumn<AutomationEvent["subject"]>().nullable())
-        .addColumn(
-          "createdAt",
-          column("timestamp").defaultTo((b) => b.now()),
-        )
-        .createIndex("idx_automation_event_source_type_occurredAt", [
-          "source",
-          "eventType",
-          "occurredAt",
-          "id",
-        ])
-        .createIndex("idx_automation_event_occurredAt_id", ["occurredAt", "id"]);
-    })
-    .addTable("automation_event_definition", (t) => {
-      return t
-        .addColumn("id", idColumn())
-        .addColumn("source", column("string"))
-        .addColumn("eventType", column("string"))
-        .addColumn("label", column("string"))
-        .addColumn("description", column("text").nullable())
-        .addColumn(
-          "payloadSchema",
-          jsonColumn<AutomationEventDefinition["payloadSchema"]>().nullable(),
-        )
-        .addColumn("actorSchema", jsonColumn<AutomationEventDefinition["actorSchema"]>().nullable())
-        .addColumn(
-          "subjectSchema",
-          jsonColumn<AutomationEventDefinition["subjectSchema"]>().nullable(),
-        )
-        .addColumn("example", column("json").nullable())
-        .addColumn("enabled", column("bool"))
-        .addColumn(
-          "createdAt",
-          column("timestamp").defaultTo((b) => b.now()),
-        )
-        .addColumn(
-          "updatedAt",
-          column("timestamp").defaultTo((b) => b.now()),
-        )
-        .createIndex("idx_automation_event_definition_source_type", ["source", "eventType"], {
-          unique: true,
-        });
-    })
-    .noOp("Removed marketplace_ingestion table; installations use marketplace-lock.json")
-    .addTable("external_identity_binding", (t) => {
-      return t
-        .addColumn("id", idColumn())
-        .addColumn("source", column("string"))
-        .addColumn("externalType", column("string"))
-        .addColumn("externalId", column("string"))
-        .addColumn("userId", column("string"))
-        .addColumn("verifiedByClaimId", column("string"))
-        .addColumn("boundAt", column("timestamp"))
-        .addColumn("revokedAt", column("timestamp").nullable());
-    })
-    .addTable("external_identity_claim_consumption", (t) => {
-      return t
-        .addColumn("id", idColumn())
-        .addColumn("bindingId", column("string"))
-        .addColumn("userId", column("string"))
-        .addColumn("acceptedBindingVersion", column("integer"))
-        .addColumn("acceptedAt", column("timestamp"))
-        .createIndex("idx_external_identity_claim_consumption_binding", ["bindingId"]);
-    })
-    .alterTable("automation_route", (t) => {
-      return t.addColumn("metadata", jsonColumn<AutomationRouteMetadata>().nullable());
-    })
-    .addTable("automation_event_source", (t) => {
-      return t
-        .addColumn("id", idColumn())
-        .addColumn("source", column("string"))
-        .addColumn("label", column("string"))
-        .addColumn("description", column("text"))
-        .addColumn("category", jsonColumn<AutomationEventSource["category"]>())
-        .addColumn(
-          "createdAt",
-          column("timestamp").defaultTo((b) => b.now()),
-        )
-        .addColumn(
-          "updatedAt",
-          column("timestamp").defaultTo((b) => b.now()),
-        )
-        .createIndex("idx_automation_event_source_source", ["source"], {
-          unique: true,
-        });
-    })
-    .alterTable("automation_event", (t) =>
-      t.addColumn("scopeRestriction", jsonColumn<AutomationEvent["scope"]>().nullable()),
-    );
+  return (
+    s
+      .addTable("kv_store", (t) => {
+        return t
+          .addColumn("id", idColumn())
+          .addColumn("key", column("string"))
+          .addColumn("value", column("string"))
+          .addColumn("description", column("string").nullable())
+          .addColumn("category", jsonColumn<string[]>().nullable())
+          .addColumn(
+            "createdAt",
+            column("timestamp").defaultTo((b) => b.now()),
+          )
+          .addColumn(
+            "updatedAt",
+            column("timestamp").defaultTo((b) => b.now()),
+          )
+          .createIndex("idx_kv_store_key", ["key"], {
+            unique: true,
+          });
+      })
+      .addTable("project", (t) => {
+        return t
+          .addColumn("id", idColumn())
+          .addColumn("slug", column("string"))
+          .addColumn("name", column("string"))
+          .addColumn("description", column("text").nullable())
+          .addColumn("archivedAt", column("timestamp").nullable())
+          .addColumn("createdByUserId", column("string"))
+          .addColumn(
+            "createdAt",
+            column("timestamp").defaultTo((b) => b.now()),
+          )
+          .addColumn(
+            "updatedAt",
+            column("timestamp").defaultTo((b) => b.now()),
+          )
+          .createIndex("idx_project_slug", ["slug"], { unique: true });
+      })
+      .noOp("Removed sandbox_instance table")
+      .addTable("automation_route", (t) => {
+        return t
+          .addColumn("id", idColumn())
+          .addColumn("name", column("string"))
+          .addColumn("enabled", column("bool"))
+          .addColumn("priority", column("integer"))
+          .addColumn("trigger", jsonColumn<AutomationRouteTrigger>())
+          .addColumn("action", jsonColumn<AutomationRouteAction>())
+          .addColumn("description", column("text").nullable())
+          .addColumn(
+            "createdAt",
+            column("timestamp").defaultTo((b) => b.now()),
+          )
+          .addColumn(
+            "updatedAt",
+            column("timestamp").defaultTo((b) => b.now()),
+          )
+          .createIndex("idx_automation_route_priority_id", ["priority", "id"]);
+      })
+      .addTable("automation_route_schedule_state", (t) => {
+        return t
+          .addColumn("id", idColumn())
+          .addColumn("initializationAt", column("timestamp").nullable())
+          .addColumn("nextOccurrenceAt", column("timestamp").nullable())
+          .createIndex("idx_automation_route_schedule_state_nextOccurrenceAt", [
+            "nextOccurrenceAt",
+            "id",
+          ]);
+      })
+      .addTable("automation_event", (t) => {
+        return t
+          .addColumn("id", idColumn())
+          .addColumn("scope", jsonColumn<AutomationEvent["scope"]>())
+          .addColumn("source", column("string"))
+          .addColumn("eventType", column("string"))
+          .addColumn("occurredAt", column("timestamp"))
+          .addColumn("payload", jsonColumn<AutomationEvent["payload"]>())
+          .addColumn("actors", jsonColumn<AutomationEvent["actors"]>())
+          .addColumn("subject", jsonColumn<AutomationEvent["subject"]>().nullable())
+          .addColumn(
+            "createdAt",
+            column("timestamp").defaultTo((b) => b.now()),
+          )
+          .createIndex("idx_automation_event_source_type_occurredAt", [
+            "source",
+            "eventType",
+            "occurredAt",
+            "id",
+          ])
+          .createIndex("idx_automation_event_occurredAt_id", ["occurredAt", "id"]);
+      })
+      .addTable("automation_event_definition", (t) => {
+        return t
+          .addColumn("id", idColumn())
+          .addColumn("source", column("string"))
+          .addColumn("eventType", column("string"))
+          .addColumn("label", column("string"))
+          .addColumn("description", column("text").nullable())
+          .addColumn(
+            "payloadSchema",
+            jsonColumn<AutomationEventDefinition["payloadSchema"]>().nullable(),
+          )
+          .addColumn(
+            "actorSchema",
+            jsonColumn<AutomationEventDefinition["actorSchema"]>().nullable(),
+          )
+          .addColumn(
+            "subjectSchema",
+            jsonColumn<AutomationEventDefinition["subjectSchema"]>().nullable(),
+          )
+          .addColumn("example", column("json").nullable())
+          .addColumn("enabled", column("bool"))
+          .addColumn(
+            "createdAt",
+            column("timestamp").defaultTo((b) => b.now()),
+          )
+          .addColumn(
+            "updatedAt",
+            column("timestamp").defaultTo((b) => b.now()),
+          )
+          .createIndex("idx_automation_event_definition_source_type", ["source", "eventType"], {
+            unique: true,
+          });
+      })
+      .noOp("Removed marketplace_ingestion table; installations use marketplace-lock.json")
+      .addTable("external_identity_binding", (t) => {
+        return t
+          .addColumn("id", idColumn())
+          .addColumn("source", column("string"))
+          .addColumn("externalType", column("string"))
+          .addColumn("externalId", column("string"))
+          .addColumn("userId", column("string"))
+          .addColumn("verifiedByClaimId", column("string"))
+          .addColumn("boundAt", column("timestamp"))
+          .addColumn("revokedAt", column("timestamp").nullable());
+      })
+      .addTable("external_identity_claim_consumption", (t) => {
+        return t
+          .addColumn("id", idColumn())
+          .addColumn("bindingId", column("string"))
+          .addColumn("userId", column("string"))
+          .addColumn("acceptedBindingVersion", column("integer"))
+          .addColumn("acceptedAt", column("timestamp"))
+          .createIndex("idx_external_identity_claim_consumption_binding", ["bindingId"]);
+      })
+      .alterTable("automation_route", (t) => {
+        return t.addColumn("metadata", jsonColumn<AutomationRouteMetadata>().nullable());
+      })
+      .addTable("automation_event_source", (t) => {
+        return t
+          .addColumn("id", idColumn())
+          .addColumn("source", column("string"))
+          .addColumn("label", column("string"))
+          .addColumn("description", column("text"))
+          .addColumn("category", jsonColumn<AutomationEventSource["category"]>())
+          .addColumn(
+            "createdAt",
+            column("timestamp").defaultTo((b) => b.now()),
+          )
+          .addColumn(
+            "updatedAt",
+            column("timestamp").defaultTo((b) => b.now()),
+          )
+          .createIndex("idx_automation_event_source_source", ["source"], {
+            unique: true,
+          });
+      })
+      .alterTable("automation_event", (t) =>
+        t.addColumn("scopeRestriction", jsonColumn<AutomationEvent["scope"]>().nullable()),
+      )
+      // Null for events recorded before causation was tracked. `rootEventId` duplicates the root
+      // that causation implies, so one indexed read can load a whole causal tree.
+      .alterTable("automation_event", (t) =>
+        t
+          .addColumn("causation", jsonColumn<AutomationEvent["causation"]>().nullable())
+          .addColumn("rootEventId", column("string").nullable())
+          .createIndex("idx_automation_event_rootEventId_occurredAt", [
+            "rootEventId",
+            "occurredAt",
+            "id",
+          ]),
+      )
+      .addTable("automation_route_dispatch", (t) =>
+        t
+          .addColumn("id", idColumn())
+          .addColumn("eventId", column("string"))
+          .addColumn("rootEventId", column("string"))
+          .addColumn("routeId", column("string"))
+          // Routes can be renamed or deleted after they act.
+          .addColumn("routeName", column("string"))
+          .addColumn("outcome", jsonColumn<AutomationRouteDispatchOutcome>())
+          .addColumn("dispatchedAt", column("timestamp"))
+          .createIndex("idx_automation_route_dispatch_rootEventId_dispatchedAt", [
+            "rootEventId",
+            "dispatchedAt",
+            "id",
+          ]),
+      )
+  );
 });

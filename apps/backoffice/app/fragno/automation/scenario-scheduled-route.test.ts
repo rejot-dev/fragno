@@ -283,7 +283,7 @@ describe("scheduled automation route scenario", () => {
                   try {
                     const tables = database
                       .prepare(
-                        "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'automation_route%' AND name NOT LIKE 'automation_route_schedule_state%'",
+                        "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'automation_route%' AND name NOT LIKE 'automation_route_schedule_state%' AND name NOT LIKE 'automation_route_dispatch%'",
                       )
                       .all() as { name: string }[];
                     for (const table of tables) {

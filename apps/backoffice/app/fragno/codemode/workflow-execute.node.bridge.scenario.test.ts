@@ -73,6 +73,7 @@ test("Node checkpoints and replays workflow codemode across fresh Worker WebSock
             occurredAt: "2026-09-29T00:00:00.000Z",
             payload: {},
             actors: execution.actors,
+            causation: { kind: "origin" },
           },
         }),
         then.workflow.instance({
@@ -139,6 +140,7 @@ test("remote event consumption and sleep resume with Date values intact", async 
             occurredAt: "2026-09-29T00:00:00Z",
             payload: {},
             actors: execution.actors,
+            causation: { kind: "origin" },
           },
         }),
         then.workflow.instance({
@@ -209,6 +211,7 @@ test("interruption preserves host retry scheduling without falsely committing to
             occurredAt: "2026-09-29T00:00:00Z",
             payload: {},
             actors: execution.actors,
+            causation: { kind: "origin" },
           },
         }),
         then.store.entry({ orgId: "org-1", key: "interrupted-effects", value: "1" }),
@@ -265,6 +268,7 @@ test("permanent guest failures bypass the real Node runner's configured retry po
             occurredAt: "2026-10-05T00:00:00Z",
             payload: {},
             actors: execution.actors,
+            causation: { kind: "origin" },
           },
         }),
         then.workflow.instance({

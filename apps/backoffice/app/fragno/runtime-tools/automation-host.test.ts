@@ -109,6 +109,7 @@ const createAutomationContext = () => ({
       principal: null,
       delegation: [],
     },
+    causation: { kind: "origin" as const },
   },
   orgId: "org-1",
   binding: {

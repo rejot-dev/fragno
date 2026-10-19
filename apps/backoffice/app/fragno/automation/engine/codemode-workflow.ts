@@ -10,7 +10,10 @@ import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { BackofficeCodemodeEnv } from "@/fragno/codemode/execute";
-import { createEventRuntime } from "@/fragno/runtime-tools/families/event-runtime";
+import {
+  createEventRuntime,
+  type EventEmitter,
+} from "@/fragno/runtime-tools/families/event-runtime";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
 import type { AutomationSourceReader } from "../automation-source";
@@ -52,16 +55,15 @@ const runtimeWithCapabilityGrants = ({
 const createCodemodeWorkflowContext = async ({
   runtime,
   params,
-  automationEvent,
-  workflowInstanceId,
+  emitter,
   sourceReader,
 }: {
   runtime: BackofficeRuntimeServices;
   params: CodemodeWorkflowParams;
-  automationEvent: AutomationEvent;
-  workflowInstanceId: string;
+  emitter: Extract<EventEmitter, { kind: "workflow" }>;
   sourceReader?: AutomationSourceReader;
 }): Promise<AutomationRuntimeHostContext> => {
+  const { event: automationEvent, instanceId: workflowInstanceId } = emitter;
   const execution: BackofficeExecutionContext = {
     kind: "deferred",
     scope: params.execution.scope,
@@ -79,7 +81,7 @@ const createCodemodeWorkflowContext = async ({
   });
   const eventRuntime = createEventRuntime({
     objects: runtime.objects,
-    parentEvent: automationEvent,
+    emitter,
     kernel,
     execution,
     emittedEventActors: execution.actors,
@@ -164,6 +166,7 @@ export const defineCodemodeWorkflow = (config: CodemodeWorkflowConfig) =>
                 (executionOwner.kind === "org"
                   ? { orgId: executionOwner.orgId }
                   : { userId: executionOwner.userId }),
+              causation: { kind: "origin" },
             };
       const sourceReader = config.readAutomationSource;
 
@@ -171,8 +174,13 @@ export const defineCodemodeWorkflow = (config: CodemodeWorkflowConfig) =>
         createCodemodeWorkflowContext({
           runtime,
           params,
-          automationEvent,
-          workflowInstanceId: event.instanceId,
+          emitter: {
+            kind: "workflow",
+            workflowName: CODEMODE_WORKFLOW,
+            instanceId: event.instanceId,
+            startedBy: params.trigger.type === "event" ? "event" : "manual",
+            event: automationEvent,
+          },
           sourceReader,
         }),
         import("./codemode"),

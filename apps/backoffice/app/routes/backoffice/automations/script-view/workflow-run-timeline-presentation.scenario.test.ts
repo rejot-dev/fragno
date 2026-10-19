@@ -81,6 +81,7 @@ const orderPlaced: AutomationEvent = {
   payload: { total: 42 },
   actors: createBackofficeSystemExecution(scope).actors,
   subject: { orgId: "org-1" },
+  causation: { kind: "origin" },
 };
 
 /** Reads the run the way the run page does and flattens the laid-out rows. */

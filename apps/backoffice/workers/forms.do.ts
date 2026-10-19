@@ -65,6 +65,7 @@ export class InMemoryFormsObject extends RpcTarget implements FormsObject {
                     delegation: [],
                   },
                   subject: { formId: payload.id },
+                  causation: { kind: "origin" },
                 },
                 { propagationContext: context.capturePropagationContext() },
               );
@@ -85,6 +86,7 @@ export class InMemoryFormsObject extends RpcTarget implements FormsObject {
                     delegation: [],
                   },
                   subject: { formId: payload.id },
+                  causation: { kind: "origin" },
                 },
                 { propagationContext: context.capturePropagationContext() },
               );
@@ -106,6 +108,7 @@ export class InMemoryFormsObject extends RpcTarget implements FormsObject {
                     delegation: [],
                   },
                   subject: { formId: payload.id },
+                  causation: { kind: "origin" },
                 },
                 { propagationContext: context.capturePropagationContext() },
               );
@@ -126,6 +129,7 @@ export class InMemoryFormsObject extends RpcTarget implements FormsObject {
                     delegation: [],
                   },
                   subject: { formId: payload.formId, responseId: payload.id },
+                  causation: { kind: "origin" },
                 },
                 { propagationContext: context.capturePropagationContext() },
               );

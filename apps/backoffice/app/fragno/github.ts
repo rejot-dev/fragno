@@ -199,5 +199,6 @@ export const buildGitHubAutomationEvent = ({
       delegation: [],
     },
     subject: githubSubject(orgId, payload, meta),
+    causation: { kind: "origin" },
   };
 };
