@@ -36,19 +36,6 @@ function targetLabel(target: BackofficeTarget): string {
   }
 }
 
-async function hasLinkedBackofficeAccount(request: Request): Promise<boolean> {
-  const response = await env.AUTH.getByName("auth").fetch(
-    new Request(new URL("/api/auth/list-accounts", env.BOOKKEEPING_BASE_URL), {
-      headers: { cookie: request.headers.get("cookie") ?? "" },
-    }),
-  );
-  if (!response.ok) {
-    throw new Response("Could not load your connections. Please try again.", { status: 503 });
-  }
-  const accounts = (await response.json()) as { providerId: string }[];
-  return accounts.some(({ providerId }) => providerId === "backoffice");
-}
-
 export async function loader({ request, url }: Route.LoaderArgs) {
   await requireSession(request);
   const auth = env.AUTH.getByName("auth");
@@ -68,7 +55,6 @@ export async function loader({ request, url }: Route.LoaderArgs) {
           })),
         }
       : null,
-    accountLinked: await hasLinkedBackofficeAccount(request),
     outcome: {
       link: url.searchParams.get("link"),
       message: url.searchParams.get("message"),
@@ -125,7 +111,8 @@ export function headers() {
   return { "Cache-Control": "private, no-store" };
 }
 
-function AuthorizeBackofficeButton({ linked }: { linked: boolean }) {
+/** Signing in again renews the Backoffice authorization Bookkeeping holds for you. */
+function ReauthorizeBackofficeButton() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   return (
@@ -137,20 +124,12 @@ function AuthorizeBackofficeButton({ linked }: { linked: boolean }) {
         onClick={async () => {
           setPending(true);
           setError(null);
-          const callbackURL = "/dashboard/backoffice";
           try {
-            // Signing in again refreshes an existing link's tokens and consent; linking adds one.
-            const result = linked
-              ? await authClient.signIn.social({
-                  provider: "backoffice",
-                  callbackURL,
-                  errorCallbackURL: callbackURL,
-                })
-              : await authClient.linkSocial({
-                  provider: "backoffice",
-                  callbackURL,
-                  errorCallbackURL: callbackURL,
-                });
+            const result = await authClient.signIn.social({
+              provider: "backoffice",
+              callbackURL: "/dashboard/backoffice",
+              errorCallbackURL: "/dashboard/backoffice",
+            });
             if (result.error) {
               setError("Could not open Backoffice. Please try again.");
               setPending(false);
@@ -161,11 +140,7 @@ function AuthorizeBackofficeButton({ linked }: { linked: boolean }) {
           }
         }}
       >
-        {pending
-          ? "Opening Backoffice…"
-          : linked
-            ? "Reauthorize your Backoffice account"
-            : "Connect your Backoffice account"}
+        {pending ? "Opening Backoffice…" : "Reauthorize your Backoffice account"}
       </Button>
       {error && (
         <p role="alert" className="text-sm text-[var(--bo-failed)]">
@@ -307,18 +282,12 @@ export default function BackofficeConnection({ loaderData, actionData }: Route.C
                   name="intent"
                   value="send-as-user"
                   variant="secondary"
-                  disabled={sending || !loaderData.accountLinked}
+                  disabled={sending}
                 >
                   Send as you
                 </Button>
               </div>
             </fetcher.Form>
-            {!loaderData.accountLinked ? (
-              <div className="space-y-2 text-sm text-[var(--bo-muted)]">
-                <p>To send as yourself, connect your own Backoffice account.</p>
-                <AuthorizeBackofficeButton linked={false} />
-              </div>
-            ) : null}
             {!sending && result ? <ConnectionTestOutcome result={result} /> : null}
           </FormContainer>
         ) : null}
@@ -355,7 +324,7 @@ function ConnectionTestOutcome({
           <p className="text-[var(--bo-failed)]">
             {result.message} Reauthorize Backoffice, then try again.
           </p>
-          <AuthorizeBackofficeButton linked />
+          <ReauthorizeBackofficeButton />
         </>
       ) : result.status === "unconfirmed" ? (
         <p className="text-[var(--bo-failed)]">
