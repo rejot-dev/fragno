@@ -1,5 +1,6 @@
 import { createOAuthAccountIssuer } from "@better-auth/core/db";
 import type { AccountProfile, OAuthConsentPage } from "@fragno-dev/backoffice-api/v0/account";
+import { isLoopbackUrl } from "@fragno-dev/backoffice-api/v0/apps";
 import {
   type OrganizationRole,
   organizationRoleSchema,
@@ -114,6 +115,7 @@ import type {
 } from "@/fragno/durable-hooks";
 import { nextNumberedSlug } from "@/lib/numbered-slug";
 import { BACKOFFICE_LOGIN_PATH } from "@/routes/backoffice/auth-navigation";
+import { buildAppSignInCodeEmail } from "@/transactional-emails/app-sign-in-code";
 import { buildUserEmailVerificationEmail } from "@/transactional-emails/user-email-verification";
 
 import {
@@ -124,6 +126,10 @@ import {
   BackofficeUserTokenGrantForbiddenError,
   type BackofficeUserTokenAuthority,
 } from "./auth/backoffice-user-token-grant";
+import {
+  createBackofficeAppSignInPlugins,
+  UNUSED_EMAIL_CODE_PATHS,
+} from "./auth/better-auth-app-sign-in";
 import {
   applyBackofficeBetterAuthSchemaMigrations,
   BACKOFFICE_BETTER_AUTH_SCHEMA_VERSION,
@@ -894,6 +900,36 @@ export class InMemoryAuthObject implements AuthObject {
           }),
         ]
       : [];
+    const appSignInPlugins = createBackofficeAppSignInPlugins({
+      findFirstPartyBranding: async (clientId) => {
+        const app = await runtime.objects.apps
+          .singleton()
+          .commands.getAppByOAuthClientId({ oauthClientId: clientId });
+        return app?.trust.kind === "first-party" ? app.trust.branding : null;
+      },
+      sendSignInCode: async (input) => {
+        const queueEmail = async () => {
+          await runtime.objects.resend
+            .singleton()
+            .commands.queueEmail(await buildAppSignInCodeEmail(input), {
+              idempotencyKey: `auth:app-sign-in-code:${crypto.randomUUID()}`,
+            });
+        };
+        // A Backoffice served on loopback is local, in development or preview, and usually has no
+        // Resend configured, so its terminal shows the code first. Deployed ones never log codes.
+        if (!isLoopbackUrl(baseURL)) {
+          await queueEmail();
+          return;
+        }
+        console.info(`Sign-in code for ${input.email}: ${input.code}`);
+        await queueEmail().catch((error: unknown) => {
+          console.info(
+            "The sign-in code email was not sent:",
+            error instanceof Error ? error.message : error,
+          );
+        });
+      },
+    });
 
     const options = {
       appName: "Fragno Backoffice",
@@ -982,7 +1018,7 @@ export class InMemoryAuthObject implements AuthObject {
           },
         },
       },
-      disabledPaths: ["/token"],
+      disabledPaths: ["/token", ...UNUSED_EMAIL_CODE_PATHS],
       advanced: {
         useSecureCookies: secureCookies,
         defaultCookieAttributes: { path: "/api/auth" },
@@ -1009,7 +1045,13 @@ export class InMemoryAuthObject implements AuthObject {
           },
         },
       },
-      plugins: [...schemaPlugins, backofficeTokenPlugin, ...signUpInvitationPlugins],
+      plugins: [
+        ...schemaPlugins,
+        backofficeTokenPlugin,
+        ...signUpInvitationPlugins,
+        // After the OAuth Provider, which verifies the app's request this needs.
+        ...appSignInPlugins,
+      ],
     } satisfies BetterAuthOptions;
 
     return options;

@@ -553,7 +553,7 @@ test("signed-out OAuth login resumes the original request through password login
     assert.equal(started.url.pathname, "/backoffice/login");
     const request = new Request(started.url);
     const page = await loginLoader(routeArgs(ctx, request));
-    assert(!(page instanceof Response));
+    assert(!(page instanceof Response) && page.kind === "backoffice");
     expect(page.oauthQuery).not.toBeNull();
     const signedIn = await loginAction(
       routeArgs(
