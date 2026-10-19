@@ -6,7 +6,7 @@ import { Input } from "@fragno-private/design-system/input";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { BackofficeTabHeader } from "@fragno-private/design-system/tab-header";
 import { TextArea } from "@fragno-private/design-system/text-area";
-import { Suspense, use, useEffect, useMemo, useState } from "react";
+import { Suspense, use, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import {
   Form,
   redirect,
@@ -28,6 +28,8 @@ import { backofficePageBodyClassName } from "@/components/backoffice/page-body";
 import {
   describeAutomationCollectionSource,
   getAutomationBrowserDatabase,
+  getAutomationCatchUpProgress,
+  subscribeAutomationCatchUpProgress,
   type AutomationBrowserCollections,
 } from "@/fragno/automation/tanstack/browser-database";
 import { useAutomationRoutes } from "@/fragno/automation/tanstack/use-automation-routes";
@@ -45,6 +47,7 @@ import {
   workflowRunRecordsQuery,
 } from "../automations/script-view/use-script-workflow-runs";
 import type { Route } from "./+types/dashboard";
+import { AutomationBrowserPersistenceDiagnosticPanel } from "./browser-persistence-diagnostics";
 import { DashboardSections, type DashboardLoaderData } from "./dashboard-sections";
 import {
   dashboardBucketStarts,
@@ -195,13 +198,7 @@ export default function BackofficeDashboard({ loaderData }: Route.ComponentProps
     );
   }
 
-  const loading = (
-    <BackofficeSystemState
-      tone="loading"
-      label="Synchronizing"
-      title="Synchronizing automation activity…"
-    />
-  );
+  const loading = <DashboardSynchronizationLoading />;
 
   return (
     <>
@@ -272,6 +269,37 @@ function CreateProjectPanel({ cancelPath }: { cancelPath: string }) {
         </Button>
       </Form>
     </section>
+  );
+}
+
+function DashboardSynchronizationLoading() {
+  const { automationCollectionSource } = useCurrentBackofficeContext();
+  const resourceKey =
+    automationCollectionSource.status === "ready"
+      ? describeAutomationCollectionSource(automationCollectionSource.source).resourceKey
+      : null;
+  const progress = useSyncExternalStore(
+    (listener) =>
+      resourceKey ? subscribeAutomationCatchUpProgress(resourceKey, listener) : () => {},
+    () => (resourceKey ? getAutomationCatchUpProgress(resourceKey) : null),
+    () => null,
+  );
+
+  return (
+    <BackofficeSystemState
+      tone="loading"
+      label="Synchronizing"
+      title="Synchronizing automation activity…"
+      description={
+        progress
+          ? `${progress.percent}%`
+          : "Connecting routes, workflows, scripts, and runtime state for this scope."
+      }
+    >
+      {import.meta.env.DEV && resourceKey ? (
+        <AutomationBrowserPersistenceDiagnosticPanel resourceKey={resourceKey} />
+      ) : null}
+    </BackofficeSystemState>
   );
 }
 
