@@ -307,27 +307,16 @@ function DashboardWorkspace({
   const now = useClock(CLOCK_TICK_MS);
   // The window start only moves when a new bucket begins, so the event query restarts rarely.
   const windowStart = dashboardBucketStarts(now)[0] ?? now;
-  const runsQuery = useLiveQuery(
-    (query) => dashboardRunsQuery(query, collections),
-    [collections.workflowInstances],
-  );
-  const waitingRunsQuery = useLiveQuery(
-    (query) => workflowRunRecordsQuery(query, collections, { type: "waiting" }),
-    [
-      collections.workflowEvents,
-      collections.workflowInstances,
-      collections.workflowStepEmissions,
-      collections.workflowSteps,
-    ],
-  );
-  const eventsQuery = useLiveQuery(
-    (query) => dashboardEventsQuery(query, collections, new Date(windowStart)),
-    [collections.events, windowStart],
-  );
-  const connectionEventsQuery = useLiveQuery(
-    (query) => dashboardConnectionEventsQuery(query, collections),
-    [collections.events],
-  );
+  const runsQuery = useLiveQuery({ query: (query) => dashboardRunsQuery(query, collections) });
+  const waitingRunsQuery = useLiveQuery({
+    query: (query) => workflowRunRecordsQuery(query, collections, { type: "waiting" }),
+  });
+  const eventsQuery = useLiveQuery({
+    query: (query) => dashboardEventsQuery(query, collections, new Date(windowStart)),
+  });
+  const connectionEventsQuery = useLiveQuery({
+    query: (query) => dashboardConnectionEventsQuery(query, collections),
+  });
   const routesState = useAutomationRoutes(collections);
   const waitingRuns = useMemo(
     () => automationWorkflowRunsFromRecords(waitingRunsQuery.data ?? []),

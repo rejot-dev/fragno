@@ -18,8 +18,8 @@ type AutomationProjectsLiveState =
 export function useAutomationProjects(
   collections: AutomationBrowserCollections,
 ): AutomationProjectsLiveState {
-  const projectsQuery = useLiveQuery(
-    (query) =>
+  const projectsQuery = useLiveQuery({
+    query: (query) =>
       query
         .from({ project: collections.projects })
         .orderBy(({ project }) => project.slug, "asc")
@@ -29,8 +29,7 @@ export function useAutomationProjects(
           name: project.name,
           archivedAt: project.archivedAt,
         })),
-    [collections.projects],
-  );
+  });
   const projects = (projectsQuery.data ?? []).filter((project) => project.archivedAt === null);
 
   if (projectsQuery.isError) {

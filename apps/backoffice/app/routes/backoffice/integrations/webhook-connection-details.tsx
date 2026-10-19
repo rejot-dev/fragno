@@ -67,8 +67,8 @@ function RecentDeliveries({
   endpointId: string;
   collections: IntegrationsLayoutContext["collections"];
 }) {
-  const eventsQuery = useLiveQuery(
-    (query) =>
+  const eventsQuery = useLiveQuery({
+    query: (query) =>
       query
         .from({ event: collections.events })
         .where(({ event }) => or(eq(event.source, "api"), eq(event.source, endpointId)))
@@ -79,8 +79,7 @@ function RecentDeliveries({
           subject: event.subject,
           occurredAt: event.occurredAt,
         })),
-    [collections.events, endpointId],
-  );
+  });
   const deliveries = (eventsQuery.data ?? [])
     .filter(
       (event) =>

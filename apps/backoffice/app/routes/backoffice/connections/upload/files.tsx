@@ -702,11 +702,10 @@ function UploadFilesLoading() {
 function SynchronizedUploadFiles({ source }: { source: UploadCollectionSource }) {
   const database = use(getUploadBrowserDatabase());
   const collections = use(database.readyCollectionsFor(source));
-  const filesQuery = useLiveQuery(
-    (query) =>
+  const filesQuery = useLiveQuery({
+    query: (query) =>
       query.from({ file: collections.files }).where(({ file }) => eq(file.status, "ready")),
-    [collections.files],
-  );
+  });
   const files = useMemo<UploadFileRecord[]>(() => {
     const synchronizedFiles: UploadFileRecord[] = [];
 

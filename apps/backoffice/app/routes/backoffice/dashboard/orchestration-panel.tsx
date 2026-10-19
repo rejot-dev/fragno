@@ -67,29 +67,26 @@ export function OrchestrationPanel({
   workflowSource: AutomationScriptSourceRecord;
   runtimeToolCatalog: readonly RuntimeToolWorkflowDescriptor[];
 }) {
-  const eventSourcesQuery = useLiveQuery(
-    (query) =>
+  const eventSourcesQuery = useLiveQuery({
+    query: (query) =>
       query.from({ source: collections.eventSources }).select(({ source }) => ({
         id: source.source,
         label: source.label,
         description: source.description,
       })),
-    [collections.eventSources],
-  );
-  const eventDefinitionsQuery = useLiveQuery(
-    (query) =>
+  });
+  const eventDefinitionsQuery = useLiveQuery({
+    query: (query) =>
       query.from({ definition: collections.eventDefinitions }).select(({ definition }) => ({
         source: definition.source,
         eventType: definition.eventType,
         label: definition.label,
         payloadSchema: definition.payloadSchema,
       })),
-    [collections.eventDefinitions],
-  );
-  const activeWorkflowsQuery = useLiveQuery(
-    (query) => orchestrationActiveWorkflowsQuery(query, collections),
-    [collections.workflowInstances],
-  );
+  });
+  const activeWorkflowsQuery = useLiveQuery({
+    query: (query) => orchestrationActiveWorkflowsQuery(query, collections),
+  });
 
   // Registered capabilities describe what every scope can receive; a scope's own definitions add
   // to them and take precedence.

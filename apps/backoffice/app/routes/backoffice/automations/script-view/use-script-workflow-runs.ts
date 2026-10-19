@@ -181,19 +181,10 @@ export function useWorkflowRunRecords({
   collections?: WorkflowRunCollections;
   selector: WorkflowRunRecordSelector | null;
 }) {
-  const runsQuery = useLiveQuery(
-    (query) =>
+  const runsQuery = useLiveQuery({
+    query: (query) =>
       selector && collections ? workflowRunRecordsQuery(query, collections, selector) : undefined,
-    [
-      collections?.workflowEvents,
-      collections?.workflowInstances,
-      collections?.workflowStepEmissions,
-      collections?.workflowSteps,
-      selector?.type,
-      selector?.type === "instance" ? selector.instanceId : null,
-      selector?.type === "instance" ? selector.workflowName : null,
-    ],
-  );
+  });
   const error = selector && runsQuery.isError ? "Workflow synchronization failed." : null;
   const instances = useMemo(
     () => automationWorkflowRunsFromRecords(runsQuery.data ?? []),

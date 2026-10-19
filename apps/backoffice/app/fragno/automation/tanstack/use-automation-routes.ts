@@ -50,10 +50,7 @@ export function automationRoutesFromRecords(
 export function useAutomationRoutes(
   collections: AutomationBrowserCollections,
 ): AutomationRoutesLiveState {
-  const routesQuery = useLiveQuery(
-    (query) => automationRoutesQuery(query, collections),
-    [collections.routeScheduleStates, collections.routes],
-  );
+  const routesQuery = useLiveQuery({ query: (query) => automationRoutesQuery(query, collections) });
   const routes = automationRoutesFromRecords(routesQuery.data ?? []);
 
   if (routesQuery.isError) {

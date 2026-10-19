@@ -167,8 +167,8 @@ function IntegrationsWorkspace({
 }: WorkspaceProps & Pick<IntegrationsLayoutContext, "collections">) {
   const { connectionId: selectedConnectionId } = useParams();
   const [showDisconnected, setShowDisconnected] = useState(false);
-  const eventsQuery = useLiveQuery(
-    (query) =>
+  const eventsQuery = useLiveQuery({
+    query: (query) =>
       query
         .from({ event: collections.events })
         .where(({ event }) => eq(event.source, INTEGRATIONS_EVENT_SOURCE))
@@ -180,8 +180,7 @@ function IntegrationsWorkspace({
           subject: event.subject,
           occurredAt: event.occurredAt,
         })),
-    [collections.events],
-  );
+  });
   const changes = useMemo(
     () => integrationConnectionStateChanges(eventsQuery.data ?? []),
     [eventsQuery.data],

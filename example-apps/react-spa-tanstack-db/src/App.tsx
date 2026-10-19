@@ -31,8 +31,8 @@ export default function App({ database }: AppProps) {
   const online = useOnlineStatus();
   const [mutationState, setMutationState] = useState<RequestState>({ state: "idle" });
 
-  const commentFeedQuery = useLiveQuery(
-    (query) =>
+  const commentFeedQuery = useLiveQuery({
+    query: (query) =>
       query
         .from({ comment: commentCollection })
         .leftJoin({ total: ratingTotalCollection }, ({ comment, total }) =>
@@ -48,23 +48,20 @@ export default function App({ database }: AppProps) {
           ratingTotal: coalesce(total?.total, 0),
         }))
         .orderBy(({ $selected }) => $selected.createdAt, "desc"),
-    [],
-  );
+  });
 
-  const recentVotesQuery = useLiveQuery(
-    (query) =>
+  const recentVotesQuery = useLiveQuery({
+    query: (query) =>
       query
         .from({ upvote: upvoteCollection })
         .orderBy(({ upvote: vote }) => vote.createdAt, "desc")
         .limit(8),
-    [],
-  );
+  });
 
-  const totalsQuery = useLiveQuery(
-    (query) =>
+  const totalsQuery = useLiveQuery({
+    query: (query) =>
       query.from({ total: ratingTotalCollection }).orderBy(({ total }) => total.total, "desc"),
-    [],
-  );
+  });
 
   const submitComment = (event: SyntheticEvent<HTMLFormElement>) => {
     event.preventDefault();

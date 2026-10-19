@@ -301,8 +301,8 @@ function useStartedWorkflowRunIds(
   collections: AutomationBrowserCollections | null,
   sessionWorkflowRunIds: string[],
 ): ReadonlySet<string> {
-  const query = useLiveQuery(
-    (builder) => {
+  const query = useLiveQuery({
+    query: (builder) => {
       if (!collections || sessionWorkflowRunIds.length === 0) {
         return undefined;
       }
@@ -315,8 +315,7 @@ function useStartedWorkflowRunIds(
         .where(({ instance }) => inArray(instance.instanceId, sessionWorkflowRunIds))
         .select(({ instance }) => ({ instanceId: instance.instanceId }));
     },
-    [collections?.workflowInstances, collections?.workflowSteps, sessionWorkflowRunIds],
-  );
+  });
   return useMemo(
     () => new Set((query.data ?? []).map(({ instanceId }) => instanceId)),
     [query.data],

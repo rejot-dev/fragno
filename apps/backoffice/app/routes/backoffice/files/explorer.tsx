@@ -141,8 +141,8 @@ function SynchronizedFilesExplorer({
 }) {
   const database = use(getUploadBrowserDatabase());
   const collections = use(database.readyCollectionsFor(synchronizedSource.synchronization.source));
-  const filesQuery = useLiveQuery(
-    (query) =>
+  const filesQuery = useLiveQuery({
+    query: (query) =>
       query
         .from({ file: collections.files })
         .where(({ file }) =>
@@ -151,8 +151,7 @@ function SynchronizedFilesExplorer({
             eq(file.provider, synchronizedSource.synchronization.provider),
           ),
         ),
-    [collections.files, synchronizedSource.synchronization.provider],
-  );
+  });
   const files = useMemo<UploadFileRecord[]>(
     () => (filesQuery.data ?? []).map(toUploadFileRecord),
     [filesQuery.data],

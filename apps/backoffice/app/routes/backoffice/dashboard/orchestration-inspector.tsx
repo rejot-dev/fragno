@@ -230,8 +230,8 @@ function RecentEventInspector({
   eventDefinition: OrchestrationCatalogEvent;
   collections: Pick<AutomationCollections, "events">;
 }) {
-  const recentEventsQuery = useLiveQuery(
-    (query) =>
+  const recentEventsQuery = useLiveQuery({
+    query: (query) =>
       query
         .from({ event: collections.events })
         .where(({ event }) => eq(event.source, eventDefinition.source))
@@ -245,8 +245,7 @@ function RecentEventInspector({
           subject: event.subject,
           payload: event.payload,
         })),
-    [collections.events, eventDefinition.eventType, eventDefinition.source],
-  );
+  });
   const recentEvents = recentEventsQuery.data ?? [];
 
   return (

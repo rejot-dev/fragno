@@ -272,12 +272,11 @@ function GlobalWorkflowDrawerData({
 
 function RecentAutomationEvents({ database }: { database: AutomationBrowserDatabase }) {
   const { collections, coordinator } = database;
-  const statusQuery = useLiveQuery(
-    (builder) => builder.from({ status: coordinator.internal.collection }),
-    [coordinator.internal.collection],
-  );
-  const query = useLiveQuery(
-    (builder) =>
+  const statusQuery = useLiveQuery({
+    query: (builder) => builder.from({ status: coordinator.internal.collection }),
+  });
+  const query = useLiveQuery({
+    query: (builder) =>
       builder
         .from({ event: collections.events })
         .orderBy(({ event }) => event.occurredAt, "desc")
@@ -291,8 +290,7 @@ function RecentAutomationEvents({ database }: { database: AutomationBrowserDatab
           subject: event.subject,
           payload: event.payload,
         })),
-    [collections.events],
-  );
+  });
   const events = query.data ?? [];
 
   if (query.isLoading && events.length === 0) {
@@ -367,12 +365,11 @@ function RecentWorkflowRuns({
   source: AutomationCollectionSource;
 }) {
   const { collections, coordinator } = database;
-  const statusQuery = useLiveQuery(
-    (builder) => builder.from({ status: coordinator.internal.collection }),
-    [coordinator.internal.collection],
-  );
-  const query = useLiveQuery(
-    (builder) =>
+  const statusQuery = useLiveQuery({
+    query: (builder) => builder.from({ status: coordinator.internal.collection }),
+  });
+  const query = useLiveQuery({
+    query: (builder) =>
       builder
         .from({ instance: collections.workflowInstances })
         .orderBy(({ instance }) => instance.updatedAt, "desc")
@@ -428,8 +425,7 @@ function RecentWorkflowRuns({
               })),
           ),
         })),
-    [collections.workflowEvents, collections.workflowInstances, collections.workflowSteps],
-  );
+  });
   const runs: RecentWorkflowRun[] = query.data ?? [];
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selectedRun = runs.find((run) => run.id === selectedId) ?? null;
