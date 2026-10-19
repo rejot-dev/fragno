@@ -3,6 +3,8 @@ import type { AnySchema } from "@fragno-dev/db/schema";
 
 import type { OutboxOperation } from "@fragno-dev/db";
 
+import type { SyncAppliedReceipt } from "@tanstack/db";
+
 import type { FragnoOutboxCheckpoint } from "../checkpoint";
 import { consumeNdjsonOutboxStream, FragnoOutboxProtocolError } from "../outbox-stream";
 import {
@@ -41,9 +43,9 @@ export type FragnoOutboxDelivery = {
 export type FragnoOutboxSubscriber = {
   target: FragnoOutboxTarget;
   prepareCatchUp?(): Promise<void>;
-  apply(delivery: FragnoOutboxDelivery): void;
-  applyBatch(deliveries: readonly FragnoOutboxDelivery[]): void;
-  truncate(): void;
+  apply(delivery: FragnoOutboxDelivery): SyncAppliedReceipt;
+  applyBatch(deliveries: readonly FragnoOutboxDelivery[]): SyncAppliedReceipt;
+  truncate(): SyncAppliedReceipt;
   markReady(): void;
 };
 
@@ -124,12 +126,12 @@ export class FragnoOutboxSynchronizer {
     return this.#sessionPromise;
   }
 
-  applyChanges(targetKey: string, delivery: FragnoOutboxDelivery): void {
-    this.#requireSubscriber(targetKey).apply(delivery);
+  applyChanges(targetKey: string, delivery: FragnoOutboxDelivery): SyncAppliedReceipt {
+    return this.#requireSubscriber(targetKey).apply(delivery);
   }
 
-  truncate(targetKey: string): void {
-    this.#requireSubscriber(targetKey).truncate();
+  truncate(targetKey: string): SyncAppliedReceipt {
+    return this.#requireSubscriber(targetKey).truncate();
   }
 
   markReady(): void {
@@ -172,9 +174,10 @@ export class FragnoOutboxSynchronizer {
     let caughtUp = false;
     let entries: FragnoOutboxEntry[] = [];
     let completedBatches = 0;
-    const flushCatchUpBatch = () => {
-      this.#applyAndAdvancePage(entries);
+    const flushCatchUpBatch = async () => {
+      const page = entries;
       entries = [];
+      await this.#applyAndAdvancePage(page);
       completedBatches += 1;
       this.#onCatchUpPage?.(this.#checkpointStore.getCheckpoint());
     };
@@ -185,7 +188,7 @@ export class FragnoOutboxSynchronizer {
     await consumeNdjsonOutboxStream(body, {
       signal: this.#abortController.signal,
       afterVersionstamp,
-      onFrame: (frame) => {
+      onFrame: async (frame) => {
         switch (frame.type) {
           case "started":
             if (frame.adapterIdentity !== this.#adapterIdentity) {
@@ -206,17 +209,17 @@ export class FragnoOutboxSynchronizer {
             break;
           case "entry":
             if (caughtUp) {
-              this.#applyAndAdvanceEntry(frame.entry);
+              await this.#applyAndAdvanceEntry(frame.entry);
             } else {
               entries.push(frame.entry);
               if (entries.length === FRAGNO_OUTBOX_PAGE_SIZE) {
-                flushCatchUpBatch();
+                await flushCatchUpBatch();
               }
             }
             break;
           case "caught-up":
             if (entries.length > 0 || completedBatches === 0) {
-              flushCatchUpBatch();
+              await flushCatchUpBatch();
             }
             caughtUp = true;
             if (!this.#ready) {
@@ -228,7 +231,7 @@ export class FragnoOutboxSynchronizer {
           case "rotate":
             // A planned boundary is safe to commit; an interrupted partial batch is discarded.
             if (!caughtUp && entries.length > 0) {
-              flushCatchUpBatch();
+              await flushCatchUpBatch();
             }
             break;
           case "heartbeat":
@@ -238,7 +241,11 @@ export class FragnoOutboxSynchronizer {
     });
   }
 
-  #applyAndAdvancePage(entries: readonly FragnoOutboxEntry[]): void {
+  // A persisted TanStack commit publishes asynchronously, and its receipt resolves once the write is
+  // durable. Awaiting table receipts keeps "caught up" meaning "visible" and surfaces failed
+  // commits. The shared checkpoint is not awaited so the coordinator can go live before it is
+  // durable; a failed checkpoint write still fails every later table write in the ordered queue.
+  async #applyAndAdvancePage(entries: readonly FragnoOutboxEntry[]): Promise<void> {
     const lastEntry = entries.at(-1);
     if (!lastEntry) {
       return;
@@ -249,22 +256,26 @@ export class FragnoOutboxSynchronizer {
       this.#planEntryDeliveries(entry, deliveriesByTarget);
     }
 
-    for (const [targetKey, deliveries] of deliveriesByTarget) {
-      this.#requireSubscriber(targetKey).applyBatch(deliveries);
-    }
+    await Promise.all(
+      [...deliveriesByTarget].map(([targetKey, deliveries]) =>
+        Promise.resolve(this.#requireSubscriber(targetKey).applyBatch(deliveries)),
+      ),
+    );
     this.#checkpointStore.setCheckpoint({
       versionstamp: lastEntry.versionstamp,
       uowId: lastEntry.uowId,
     });
   }
 
-  #applyAndAdvanceEntry(entry: FragnoOutboxEntry): void {
+  async #applyAndAdvanceEntry(entry: FragnoOutboxEntry): Promise<void> {
     const deliveriesByTarget = new Map<string, FragnoOutboxDelivery[]>();
     this.#planEntryDeliveries(entry, deliveriesByTarget);
 
-    for (const [targetKey, deliveries] of deliveriesByTarget) {
-      this.#requireSubscriber(targetKey).apply(deliveries[0]);
-    }
+    await Promise.all(
+      [...deliveriesByTarget].map(([targetKey, deliveries]) =>
+        Promise.resolve(this.#requireSubscriber(targetKey).apply(deliveries[0])),
+      ),
+    );
     // Collection checkpoints make partial cross-collection commits safe to retry.
     this.#checkpointStore.setCheckpoint({ versionstamp: entry.versionstamp, uowId: entry.uowId });
   }

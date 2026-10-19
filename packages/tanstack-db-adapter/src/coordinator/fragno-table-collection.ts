@@ -1,5 +1,12 @@
-import { BTreeIndex, createCollection, type Collection, type SyncConfig } from "@tanstack/db";
 import {
+  BTreeIndex,
+  createCollection,
+  type Collection,
+  type SyncAppliedReceipt,
+  type SyncConfig,
+} from "@tanstack/db";
+import {
+  eagerStorageTarget,
   persistedCollectionOptions,
   type PersistedCollectionPersistence,
 } from "@tanstack/db-sqlite-persistence-core";
@@ -70,7 +77,9 @@ export class FragnoTableCollection {
                             `Persistence for ${options.id} cannot retrieve keys required to skip missing truncate deletes.`,
                           );
                         }
-                        const persistedRows = await persistence.adapter.scanRows(options.id);
+                        const persistedRows = await persistence.adapter.scanRows(
+                          eagerStorageTarget(options.id),
+                        );
                         presentKeys = new Set(persistedRows.map(({ key }) => String(key)));
                       })();
                       return preparation;
@@ -78,16 +87,17 @@ export class FragnoTableCollection {
                   }
                 : {}),
               apply(delivery) {
-                applyDeliveries(controls, [delivery], presentKeys, "live");
+                return applyDeliveries(controls, [delivery], presentKeys, "live");
               },
               applyBatch(deliveries) {
-                applyDeliveries(controls, deliveries, presentKeys, "catch-up");
+                return applyDeliveries(controls, deliveries, presentKeys, "catch-up");
               },
               truncate() {
                 controls.begin();
                 controls.truncate();
-                controls.commit();
+                const visible = controls.commit();
                 presentKeys?.clear();
+                return visible;
               },
               markReady() {
                 controls.markReady();
@@ -105,7 +115,7 @@ function applyDeliveries(
   deliveries: readonly FragnoOutboxDelivery[],
   presentKeys: Set<string> | undefined,
   deliveryMode: "live" | "catch-up",
-): void {
+): SyncAppliedReceipt {
   let appliedCheckpoint = controls.metadata!.collection.get(
     FRAGNO_OUTBOX_COLLECTION_CHECKPOINT_METADATA_KEY,
   ) as FragnoOutboxCheckpoint | undefined;
@@ -141,15 +151,14 @@ function applyDeliveries(
   }
 
   if (!nextCheckpoint) {
-    controls.commit();
-    return;
+    return controls.commit();
   }
 
   controls.metadata!.collection.set(
     FRAGNO_OUTBOX_COLLECTION_CHECKPOINT_METADATA_KEY,
     nextCheckpoint,
   );
-  controls.commit();
+  const visible = controls.commit();
   if (presentKeys) {
     for (const [key, present] of keyChanges) {
       if (present) {
@@ -159,6 +168,7 @@ function applyDeliveries(
       }
     }
   }
+  return visible;
 }
 
 function resolveCollectionPersistence(

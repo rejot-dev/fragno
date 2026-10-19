@@ -1002,9 +1002,13 @@ describe("coordinator stream recovery", () => {
         },
         async run(scenario) {
           const states: string[] = [];
-          const subscription = scenario.coordinator.internal.collection.subscribeChanges(() => {
-            states.push(scenario.coordinator.state);
-          });
+          const subscription = scenario.coordinator.internal.collection.subscribeChanges(
+            (changes) => {
+              for (const change of changes) {
+                states.push(change.value.state);
+              }
+            },
+          );
           try {
             await scenario.coordinator.preload();
             await requested.promise;

@@ -119,6 +119,7 @@ function delayPersistenceWrites(
         });
         await adapter.applyCommittedTx(...args);
       },
+      loadResumeSnapshot: (...args) => adapter.loadResumeSnapshot(...args),
       ensureIndex: (...args) => adapter.ensureIndex(...args),
     };
     if (adapter.loadCollectionMetadata) {
@@ -725,7 +726,10 @@ describe("Fragno TanStack adapter from scratch end-to-end", () => {
         ]);
       } finally {
         const cleanup = coordinator.cleanup();
-        expect(coordinatorStatus.get("coordinator")).toMatchObject({ state: "disposed" });
+        await waitForCollection(
+          coordinatorStatus,
+          () => coordinatorStatus.get("coordinator")?.state === "disposed",
+        );
         assert.equal(observedStates.at(-1), "disposed");
         statusSubscription?.unsubscribe();
         await coordinatorStatus.cleanup();

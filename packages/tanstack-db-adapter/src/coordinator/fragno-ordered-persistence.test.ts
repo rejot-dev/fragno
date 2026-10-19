@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import type {
-  PersistedCollectionPersistence,
-  PersistenceAdapter,
+import {
+  eagerStorageTarget,
+  type PersistedCollectionPersistence,
+  type PersistedStorageTarget,
+  type PersistenceAdapter,
 } from "@tanstack/db-sqlite-persistence-core";
 
 import { orderFragnoPersistenceWrites } from "./fragno-ordered-persistence";
 
+const usersTarget = eagerStorageTarget("users");
+const internalTarget = eagerStorageTarget("fragno.outbox.internal.v1");
 const persistedTransaction = {} as Parameters<PersistenceAdapter["applyCommittedTx"]>[1];
 
 function persistenceWithAdapter(adapter: PersistenceAdapter): PersistedCollectionPersistence {
@@ -18,6 +22,14 @@ function persistenceAdapter(
 ): PersistenceAdapter {
   return {
     loadSubset: async () => [],
+    loadResumeSnapshot: async () => ({
+      rows: [],
+      collectionMetadata: [],
+      latestTerm: 0,
+      latestSeq: 0,
+      latestRowVersion: 0,
+      resetEpoch: 0,
+    }),
     applyCommittedTx,
     ensureIndex: async () => {},
   };
@@ -25,49 +37,49 @@ function persistenceAdapter(
 
 describe("orderFragnoPersistenceWrites", () => {
   it("allows the shared checkpoint to overtake a failed collection write without ordering", async () => {
-    const durableWrites: string[] = [];
+    const durableWrites: PersistedStorageTarget[] = [];
     let releaseTableWrite: (() => void) | undefined;
     const tableWriteBlocked = new Promise<void>((resolve) => {
       releaseTableWrite = resolve;
     });
     const tablePersistence = persistenceWithAdapter(
-      persistenceAdapter(async (collectionId) => {
+      persistenceAdapter(async (target) => {
         await tableWriteBlocked;
-        durableWrites.push(collectionId);
+        durableWrites.push(target);
         throw new Error("table persistence failed");
       }),
     );
     const internalPersistence = persistenceWithAdapter(
-      persistenceAdapter(async (collectionId) => {
-        durableWrites.push(collectionId);
+      persistenceAdapter(async (target) => {
+        durableWrites.push(target);
       }),
     );
 
-    const tableWrite = tablePersistence.adapter.applyCommittedTx("users", persistedTransaction);
+    const tableWrite = tablePersistence.adapter.applyCommittedTx(usersTarget, persistedTransaction);
     const checkpointWrite = internalPersistence.adapter.applyCommittedTx(
-      "fragno.outbox.internal.v1",
+      internalTarget,
       persistedTransaction,
     );
 
     await checkpointWrite;
-    expect(durableWrites).toEqual(["fragno.outbox.internal.v1"]);
+    expect(durableWrites).toEqual([internalTarget]);
 
     releaseTableWrite?.();
     await expect(tableWrite).rejects.toThrow("table persistence failed");
-    expect(durableWrites).toEqual(["fragno.outbox.internal.v1", "users"]);
+    expect(durableWrites).toEqual([internalTarget, usersTarget]);
   });
 
   it("prevents a shared checkpoint write after an earlier collection write fails", async () => {
-    const durableWrites: string[] = [];
+    const durableWrites: PersistedStorageTarget[] = [];
     const tablePersistence = persistenceWithAdapter(
-      persistenceAdapter(async (collectionId) => {
-        durableWrites.push(collectionId);
+      persistenceAdapter(async (target) => {
+        durableWrites.push(target);
         throw new Error("table persistence failed");
       }),
     );
     const internalPersistence = persistenceWithAdapter(
-      persistenceAdapter(async (collectionId) => {
-        durableWrites.push(collectionId);
+      persistenceAdapter(async (target) => {
+        durableWrites.push(target);
       }),
     );
     const rootPersistence: PersistedCollectionPersistence = {
@@ -86,16 +98,16 @@ describe("orderFragnoPersistenceWrites", () => {
     });
 
     const tableWrite = orderedTablePersistence.adapter.applyCommittedTx(
-      "users",
+      usersTarget,
       persistedTransaction,
     );
     const checkpointWrite = orderedInternalPersistence.adapter.applyCommittedTx(
-      "fragno.outbox.internal.v1",
+      internalTarget,
       persistedTransaction,
     );
 
     await expect(tableWrite).rejects.toThrow("table persistence failed");
     await expect(checkpointWrite).rejects.toThrow("table persistence failed");
-    expect(durableWrites).toEqual(["users"]);
+    expect(durableWrites).toEqual([usersTarget]);
   });
 });

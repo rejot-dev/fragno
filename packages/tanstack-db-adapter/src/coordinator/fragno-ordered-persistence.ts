@@ -1,7 +1,20 @@
 import type {
   PersistedCollectionPersistence,
+  PersistedStorageTarget,
+  PersistedTx,
   PersistenceAdapter,
 } from "@tanstack/db-sqlite-persistence-core";
+
+/**
+ * A hydration scope hands TanStack an unscheduled inner adapter whose writes would bypass the
+ * queue, and queueing them would wait on writes blocked behind that same scope. Hiding the scope
+ * makes TanStack run hydration through the wrapped adapter.
+ */
+const HIDDEN_ADAPTER_PROPERTIES: ReadonlySet<PropertyKey> = new Set([
+  "runInHydrationScope",
+  "runInRegularScope",
+  "isHydrationScopeScheduled",
+]);
 
 export type OrderedFragnoPersistence = PersistedCollectionPersistence & {
   drain(): Promise<void>;
@@ -32,47 +45,46 @@ export function orderFragnoPersistenceWrites(
       return cached;
     }
 
-    const wrapped: PersistenceAdapter = {
-      loadSubset: (...args) => adapter.loadSubset(...args),
-      applyCommittedTx: (...args) => {
-        const [collectionId, transaction] = args;
-        const matchingWaiters = metadataWaiters.filter(
-          (waiter) =>
-            waiter.collectionId === collectionId &&
-            transaction.collectionMetadataMutations?.some(
-              (mutation) =>
-                mutation.type === "set" &&
-                mutation.key === waiter.key &&
-                mutation.value === waiter.value,
-            ),
+    const enqueueTransaction = <TResult>(
+      target: PersistedStorageTarget,
+      transaction: PersistedTx,
+      write: () => Promise<TResult>,
+    ): Promise<TResult> => {
+      const matchingWaiters = metadataWaiters.filter(
+        (waiter) =>
+          target.kind === "eager" &&
+          waiter.collectionId === target.collectionId &&
+          transaction.collectionMetadataMutations?.some(
+            (mutation) =>
+              mutation.type === "set" &&
+              mutation.key === waiter.key &&
+              mutation.value === waiter.value,
+          ),
+      );
+      const queuedWrite = queue.enqueue(write);
+      for (const waiter of matchingWaiters) {
+        metadataWaiters.splice(metadataWaiters.indexOf(waiter), 1);
+        void queuedWrite.then(
+          () => {
+            waiter.resolve();
+          },
+          (error: unknown) => {
+            waiter.reject(error);
+          },
         );
-        const queuedWrite = queue.enqueue(() => adapter.applyCommittedTx(...args));
-        for (const waiter of matchingWaiters) {
-          metadataWaiters.splice(metadataWaiters.indexOf(waiter), 1);
-          void queuedWrite.then(
-            () => {
-              waiter.resolve();
-            },
-            (error: unknown) => {
-              waiter.reject(error);
-            },
-          );
-        }
-        return queuedWrite;
-      },
-      ensureIndex: (...args) => adapter.ensureIndex(...args),
+      }
+      return queuedWrite;
     };
-    if (adapter.loadCollectionMetadata) {
-      wrapped.loadCollectionMetadata = (...args) => adapter.loadCollectionMetadata!(...args);
-    }
-    if (adapter.scanRows) {
-      wrapped.scanRows = (...args) => adapter.scanRows!(...args);
-    }
-    if (adapter.markIndexRemoved) {
-      wrapped.markIndexRemoved = (...args) => adapter.markIndexRemoved!(...args);
-    }
-    if (adapter.getStreamPosition) {
-      wrapped.getStreamPosition = (...args) => adapter.getStreamPosition!(...args);
+
+    const wrapped = forwardAdapterCapabilities(adapter);
+    wrapped.applyCommittedTx = (target, transaction) =>
+      enqueueTransaction(target, transaction, () => adapter.applyCommittedTx(target, transaction));
+    const { reconcileCommittedTx } = adapter;
+    if (reconcileCommittedTx) {
+      wrapped.reconcileCommittedTx = (target, transaction, anchor) =>
+        enqueueTransaction(target, transaction, () =>
+          reconcileCommittedTx.call(adapter, target, transaction, anchor),
+        );
     }
 
     adapterCache.set(adapter, wrapped);
@@ -117,10 +129,38 @@ export function orderFragnoPersistenceWrites(
   });
 }
 
-class FragnoPersistenceWriteQueue {
-  #tail: Promise<void> = Promise.resolve();
+/**
+ * Binds every adapter method, including class methods, so coordinators keep the capabilities they
+ * require, such as the browser coordinator's `reserveLeadershipTerm`.
+ */
+function forwardAdapterCapabilities(adapter: PersistenceAdapter): PersistenceAdapter {
+  const forwarded: Record<PropertyKey, unknown> = {};
+  for (
+    let source: object | null = adapter;
+    source && source !== Object.prototype;
+    source = Object.getPrototypeOf(source) as object | null
+  ) {
+    for (const property of Reflect.ownKeys(source)) {
+      if (
+        property === "constructor" ||
+        HIDDEN_ADAPTER_PROPERTIES.has(property) ||
+        Object.hasOwn(forwarded, property)
+      ) {
+        continue;
+      }
+      const value: unknown = Object.getOwnPropertyDescriptor(source, property)?.value;
+      if (typeof value === "function") {
+        forwarded[property] = value.bind(adapter);
+      }
+    }
+  }
+  return forwarded as unknown as PersistenceAdapter;
+}
 
-  enqueue(write: () => Promise<void>): Promise<void> {
+class FragnoPersistenceWriteQueue {
+  #tail: Promise<unknown> = Promise.resolve();
+
+  enqueue<TResult>(write: () => Promise<TResult>): Promise<TResult> {
     const queuedWrite = this.#tail.then(write);
     // Keep a rejection in the chain so a later shared checkpoint can never pass a failed table
     // write and become the durable resume position.
@@ -128,7 +168,7 @@ class FragnoPersistenceWriteQueue {
     return queuedWrite;
   }
 
-  drain(): Promise<void> {
-    return this.#tail;
+  async drain(): Promise<void> {
+    await this.#tail;
   }
 }

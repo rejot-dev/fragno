@@ -59,7 +59,7 @@ export function saveWorkflowUiDraft({
           submittedEventType: null,
           updatedAt,
         });
-    await transaction.isPersisted.promise;
+    await transaction.when("settled");
   });
 }
 
@@ -94,7 +94,7 @@ export function getOrCreateWorkflowUiDraftEventId({
           submittedEventType: null,
           updatedAt,
         });
-    await transaction.isPersisted.promise;
+    await transaction.when("settled");
     return fallbackEventId;
   });
 }
@@ -122,14 +122,14 @@ export function markWorkflowUiDraftSubmitted({
           submittedEventType: eventType,
           updatedAt,
         });
-    await transaction.isPersisted.promise;
+    await transaction.when("settled");
   });
 }
 
 export function deleteWorkflowUiDraft(id: string) {
   void queueWorkflowUiDraftMutation(id, async () => {
     if (workflowUiDrafts.has(id)) {
-      await workflowUiDrafts.delete(id).isPersisted.promise;
+      await workflowUiDrafts.delete(id).when("settled");
     }
   });
 }

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import Database from "better-sqlite3";
 
+import { eagerStorageTarget } from "@tanstack/db-sqlite-persistence-core";
 import {
   createNodeSQLitePersistence,
   type PersistedCollectionPersistence,
@@ -103,8 +104,8 @@ describe("FragnoInternalCollection", () => {
         checkpoint: null,
         error: null,
       });
-      first.setState("live");
-      first.setCheckpoint({ versionstamp: "0000000000000002", uowId: "uow-2" });
+      await first.setState("live");
+      await first.setCheckpoint({ versionstamp: "0000000000000002", uowId: "uow-2" });
       expect(first.collection.get(FRAGNO_INTERNAL_STATUS_ID)).toMatchObject({
         state: "live",
         checkpoint: { versionstamp: "0000000000000002", uowId: "uow-2" },
@@ -112,7 +113,7 @@ describe("FragnoInternalCollection", () => {
       });
       await vi.waitFor(async () => {
         const metadata = await persistence.adapter.loadCollectionMetadata?.(
-          FRAGNO_INTERNAL_COLLECTION_ID,
+          eagerStorageTarget(FRAGNO_INTERNAL_COLLECTION_ID),
         );
         expect(metadata).toContainEqual({
           key: FRAGNO_INTERNAL_CHECKPOINT_METADATA_KEY,
@@ -150,13 +151,13 @@ describe("FragnoInternalCollection", () => {
 
     try {
       deferredWrite.arm();
-      internal.setCheckpoint(checkpoint);
+      void internal.setCheckpoint(checkpoint);
 
       expect(internal.getCheckpoint()).toEqual(checkpoint);
       await deferredWrite.writeStarted;
 
       const metadataBeforePersistence = await persistence.adapter.loadCollectionMetadata?.(
-        FRAGNO_INTERNAL_COLLECTION_ID,
+        eagerStorageTarget(FRAGNO_INTERNAL_COLLECTION_ID),
       );
       expect(metadataBeforePersistence).not.toContainEqual({
         key: FRAGNO_INTERNAL_CHECKPOINT_METADATA_KEY,
@@ -169,7 +170,7 @@ describe("FragnoInternalCollection", () => {
       await deferredWrite.writeFinished;
 
       const metadataAfterPersistence = await persistence.adapter.loadCollectionMetadata?.(
-        FRAGNO_INTERNAL_COLLECTION_ID,
+        eagerStorageTarget(FRAGNO_INTERNAL_COLLECTION_ID),
       );
       expect(metadataAfterPersistence).toContainEqual({
         key: FRAGNO_INTERNAL_CHECKPOINT_METADATA_KEY,

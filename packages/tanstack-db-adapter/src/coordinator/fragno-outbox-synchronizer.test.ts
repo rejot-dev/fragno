@@ -79,11 +79,13 @@ function createScenario(
     target: usersTarget,
     apply(delivery) {
       applied.push(...delivery.changes.map((change) => change.key));
+      return true;
     },
     applyBatch(deliveries) {
       batches.push(deliveries.flatMap((delivery) => delivery.changes.map((change) => change.key)));
+      return true;
     },
-    truncate() {},
+    truncate: () => true,
     markReady() {
       readyCalls++;
     },
@@ -146,13 +148,13 @@ describe("FragnoOutboxSynchronizer stream sessions", () => {
           if (phase === "batch") {
             throw failure;
           }
-          scenario.subscriber.applyBatch(deliveries);
+          return scenario.subscriber.applyBatch(deliveries);
         },
         apply(delivery) {
           if (phase === "live") {
             throw failure;
           }
-          scenario.subscriber.apply(delivery);
+          return scenario.subscriber.apply(delivery);
         },
         markReady() {
           if (phase === "ready") {
@@ -336,6 +338,7 @@ describe("FragnoOutboxSynchronizer stream sessions", () => {
             usersCheckpoint = delivery.checkpoint;
           }
         }
+        return true;
       },
     });
     const posts: string[] = [];
@@ -349,6 +352,7 @@ describe("FragnoOutboxSynchronizer stream sessions", () => {
         posts.push(
           ...deliveries.flatMap((delivery) => delivery.changes.map((change) => change.key)),
         );
+        return true;
       },
     });
     await expect(scenario.run()).rejects.toThrow("posts failed");
@@ -391,10 +395,11 @@ describe("FragnoOutboxSynchronizer stream sessions", () => {
       ...scenario.subscriber,
       apply() {
         calls++;
+        return true;
       },
     });
     unregister();
-    scenario.synchronizer.applyChanges(usersTarget.key, {
+    void scenario.synchronizer.applyChanges(usersTarget.key, {
       checkpoint: checkpointFor(outboxEntry(0)),
       changes: [],
     });

@@ -6,9 +6,11 @@ import Database from "better-sqlite3";
 import superjson from "superjson";
 
 import { BTreeIndex } from "@tanstack/db";
-import type {
-  PersistedCollectionPersistence,
-  PersistedTx,
+import {
+  eagerStorageTarget,
+  type PersistedCollectionPersistence,
+  type PersistedStorageTarget,
+  type PersistedTx,
 } from "@tanstack/db-sqlite-persistence-core";
 import { createNodeSQLitePersistence } from "@tanstack/node-db-sqlite-persistence";
 
@@ -81,7 +83,7 @@ async function createKeyTrackingScenario(rowUpdateMode: "partial" | "full" = "pa
   const database = new Database(":memory:");
   const persistence = orderFragnoPersistenceWrites(createNodeSQLitePersistence({ database }));
   const collectionId = "fragno.outbox.table.v1:4:blog5:users";
-  const scannedCollections: string[] = [];
+  const scannedCollections: PersistedStorageTarget[] = [];
   const transactions: PersistedTx[] = [];
   const trackedPersistence: PersistedCollectionPersistence = {
     ...persistence,
@@ -152,7 +154,7 @@ async function createKeyTrackingScenario(rowUpdateMode: "partial" | "full" = "pa
       await frontend.ready;
     },
     truncate() {
-      frontend.outbox.truncate(usersTarget.key);
+      return frontend.outbox.truncate(usersTarget.key);
     },
     async reopen() {
       await frontend.table.collection.cleanup();
@@ -162,11 +164,13 @@ async function createKeyTrackingScenario(rowUpdateMode: "partial" | "full" = "pa
       await frontend.outbox.waitUntilRegistered([usersTarget.key]);
     },
     async persistedRows() {
-      return await persistence.adapter.scanRows!(collectionId);
+      return await persistence.adapter.scanRows!(eagerStorageTarget(collectionId));
     },
     async flush() {
       await vi.waitFor(async () => {
-        const metadata = await persistence.adapter.loadCollectionMetadata!(collectionId);
+        const metadata = await persistence.adapter.loadCollectionMetadata!(
+          eagerStorageTarget(collectionId),
+        );
         expect(metadata).toContainEqual({
           key: FRAGNO_OUTBOX_COLLECTION_CHECKPOINT_METADATA_KEY,
           value: checkpoint,
@@ -265,10 +269,8 @@ describe("FragnoTableCollection", () => {
       expect(
         scenario.transactions.flatMap((tx) => tx.mutations.map((mutation) => mutation.key)),
       ).toEqual(["remaining"]);
-      scenario.truncate();
-      await vi.waitFor(() => {
-        assert(scenario.transactions.some((tx) => tx.truncate));
-      });
+      await scenario.truncate();
+      assert(scenario.transactions.some((tx) => tx.truncate));
       scenario.transactions.length = 0;
       await scenario.session([history, updated, truncatedLive, catchUp, afterClear]);
       await scenario.flush();
@@ -356,7 +358,7 @@ describe("FragnoTableCollection", () => {
       assert.equal(tableCollection.collection.config.sync.rowUpdateMode, "partial");
 
       const checkpoint = { versionstamp: "0000000000000001", uowId: "uow-1" };
-      outbox.applyChanges(usersTarget.key, {
+      await outbox.applyChanges(usersTarget.key, {
         checkpoint,
         changes: [
           {
@@ -374,9 +376,11 @@ describe("FragnoTableCollection", () => {
       outbox.markReady();
       await preload;
       await vi.waitFor(async () => {
-        const rows = await persistence.adapter.scanRows?.(tableCollection.collection.id);
+        const rows = await persistence.adapter.scanRows?.(
+          eagerStorageTarget(tableCollection.collection.id),
+        );
         const metadata = await persistence.adapter.loadCollectionMetadata?.(
-          tableCollection.collection.id,
+          eagerStorageTarget(tableCollection.collection.id),
         );
         assert(rows?.some((row) => row.key === "user-1"));
         expect(metadata).toContainEqual({
@@ -411,7 +415,7 @@ describe("FragnoTableCollection", () => {
     try {
       const seedPreload = seedCollection.collection.preload();
       await seedOutbox.waitUntilRegistered([usersTarget.key]);
-      seedOutbox.applyChanges(usersTarget.key, {
+      await seedOutbox.applyChanges(usersTarget.key, {
         checkpoint: { versionstamp: "000000000000000000000001", uowId: "uow-1" },
         changes: [
           {
@@ -424,7 +428,7 @@ describe("FragnoTableCollection", () => {
       seedOutbox.markReady();
       await seedPreload;
       await vi.waitFor(async () => {
-        const rows = await persistence.adapter.scanRows?.(collectionId);
+        const rows = await persistence.adapter.scanRows?.(eagerStorageTarget(collectionId));
         assert(rows?.some(({ key }) => key === "persisted-user"));
       });
       await seedCollection.collection.cleanup();
@@ -449,7 +453,7 @@ describe("FragnoTableCollection", () => {
       };
       const catchUpOutbox = createOutboxSynchronizer([truncateEntry]);
       const appliedTransactions: PersistedTx[] = [];
-      const scannedCollections: string[] = [];
+      const scannedCollections: PersistedStorageTarget[] = [];
       const trackedPersistence: PersistedCollectionPersistence = {
         ...persistence,
         resolvePersistenceForCollection(options) {
@@ -483,7 +487,7 @@ describe("FragnoTableCollection", () => {
       await catchUpOutbox.streamSession({ onStarted() {}, onCaughtUp() {} });
       await catchUpPreload;
 
-      expect(scannedCollections).toContain(collectionId);
+      expect(scannedCollections).toContainEqual(eagerStorageTarget(collectionId));
       await vi.waitFor(() => {
         expect(
           appliedTransactions.flatMap(({ mutations }) => mutations.map(({ key }) => key)),
@@ -523,7 +527,7 @@ describe("FragnoTableCollection", () => {
       const preload = tableCollection.collection.preload();
       await outbox.waitUntilRegistered([usersTarget.key]);
 
-      outbox.applyChanges(usersTarget.key, {
+      await outbox.applyChanges(usersTarget.key, {
         checkpoint,
         changes: [
           {
@@ -536,7 +540,7 @@ describe("FragnoTableCollection", () => {
       expect(tableCollection.collection.get("user-1")).toMatchObject({ name: "Ada" });
       await vi.waitFor(async () => {
         const metadata = await persistence.adapter.loadCollectionMetadata?.(
-          tableCollection.collection.id,
+          eagerStorageTarget(tableCollection.collection.id),
         );
         expect(metadata).toContainEqual({
           key: FRAGNO_OUTBOX_COLLECTION_CHECKPOINT_METADATA_KEY,
@@ -544,10 +548,10 @@ describe("FragnoTableCollection", () => {
         });
       });
       const streamPositionBeforeReplay = await persistence.adapter.getStreamPosition?.(
-        tableCollection.collection.id,
+        eagerStorageTarget(tableCollection.collection.id),
       );
 
-      outbox.applyChanges(usersTarget.key, {
+      await outbox.applyChanges(usersTarget.key, {
         checkpoint,
         changes: [
           {
@@ -557,7 +561,7 @@ describe("FragnoTableCollection", () => {
           },
         ],
       });
-      outbox.applyChanges(usersTarget.key, {
+      await outbox.applyChanges(usersTarget.key, {
         checkpoint: { versionstamp: "0000000000000001", uowId: "uow-1" },
         changes: [
           {
@@ -572,9 +576,11 @@ describe("FragnoTableCollection", () => {
       await new Promise<void>((resolve) => {
         setTimeout(resolve, 0);
       });
-      expect(await persistence.adapter.getStreamPosition?.(tableCollection.collection.id)).toEqual(
-        streamPositionBeforeReplay,
-      );
+      expect(
+        await persistence.adapter.getStreamPosition?.(
+          eagerStorageTarget(tableCollection.collection.id),
+        ),
+      ).toEqual(streamPositionBeforeReplay);
       expect(() =>
         outbox.applyChanges(usersTarget.key, {
           checkpoint: { versionstamp: checkpoint.versionstamp, uowId: "replacement-uow" },
@@ -587,7 +593,7 @@ describe("FragnoTableCollection", () => {
       await preload;
       await vi.waitFor(async () => {
         const metadata = await persistence.adapter.loadCollectionMetadata?.(
-          tableCollection.collection.id,
+          eagerStorageTarget(tableCollection.collection.id),
         );
         expect(metadata).toContainEqual({
           key: FRAGNO_OUTBOX_COLLECTION_CHECKPOINT_METADATA_KEY,

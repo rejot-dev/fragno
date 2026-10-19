@@ -270,7 +270,9 @@ export async function createFragnoOutboxCoordinator<const TSchemas extends reado
 
   const transitionTo = (nextState: FragnoOutboxCoordinatorState, error: unknown = null) => {
     state = nextState;
-    initializedInternalCollection.setState(nextState, error);
+    // The status row only reports state, so its receipt is not awaited. A persistence failure in
+    // the internal collection also fails the next checkpoint commit, which fails the stream.
+    void initializedInternalCollection.setState(nextState, error);
   };
 
   const transitionToFailed = (error: unknown) => {
@@ -288,7 +290,8 @@ export async function createFragnoOutboxCoordinator<const TSchemas extends reado
       FRAGNO_INTERNAL_FLUSH_MARKER_METADATA_KEY,
       marker,
     );
-    initializedInternalCollection.setFlushMarker(marker);
+    // `persisted` settles with the marker's durable write, including its failure.
+    void initializedInternalCollection.setFlushMarker(marker);
     return persisted;
   };
 

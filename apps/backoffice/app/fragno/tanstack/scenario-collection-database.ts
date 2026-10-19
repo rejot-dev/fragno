@@ -8,10 +8,12 @@ import {
   type FragnoOutboxCoordinator,
 } from "@fragno-dev/tanstack-db-adapter";
 
-import type {
-  PersistedCollectionPersistence,
-  PersistenceAdapter,
-  PersistedTx,
+import {
+  resolvePersistedStorageTarget,
+  type PersistedCollectionPersistence,
+  type PersistedStorageTarget,
+  type PersistenceAdapter,
+  type PersistedTx,
 } from "@tanstack/db-sqlite-persistence-core";
 
 type ScenarioCollections = Record<string, { cleanup(): Promise<void> }>;
@@ -160,14 +162,41 @@ function createInMemoryPersistence(): PersistedCollectionPersistence {
     { latestTerm: number; latestSeq: number; latestRowVersion: number }
   >();
 
+  const storedRows = (target: PersistedStorageTarget) => {
+    const rows =
+      rowsByCollection.get(resolvePersistedStorageTarget(target).collectionId) ??
+      new Map<string | number, { value: Record<string, unknown>; metadata?: unknown }>();
+    return [...rows.entries()].map(([key, row]) => ({ key, ...row }));
+  };
+  const storedMetadata = (target: PersistedStorageTarget) => {
+    const metadata =
+      metadataByCollection.get(resolvePersistedStorageTarget(target).collectionId) ??
+      new Map<string, unknown>();
+    return [...metadata.entries()].map(([key, value]) => ({ key, value }));
+  };
+  const streamPosition = (target: PersistedStorageTarget) =>
+    streamPositions.get(resolvePersistedStorageTarget(target).collectionId) ?? {
+      latestTerm: 0,
+      latestSeq: 0,
+      latestRowVersion: 0,
+    };
+
   const adapter: PersistenceAdapter = {
-    async loadSubset(collectionId) {
-      const rows =
-        rowsByCollection.get(collectionId) ??
-        new Map<string | number, { value: Record<string, unknown>; metadata?: unknown }>();
-      return [...rows.entries()].map(([key, row]) => ({ key, ...row }));
+    async loadSubset(target) {
+      return storedRows(target);
     },
-    async applyCommittedTx(collectionId, transaction) {
+    async loadResumeSnapshot(target, ctx) {
+      return {
+        rows: ctx?.includeRows === false ? [] : storedRows(target),
+        // Rows, metadata, and stream positions change together in memory.
+        keySet: { status: "consistent" },
+        collectionMetadata: storedMetadata(target),
+        ...streamPosition(target),
+        resetEpoch: 0,
+      };
+    },
+    async applyCommittedTx(target, transaction) {
+      const { collectionId } = resolvePersistedStorageTarget(target);
       applyTransaction(rowsByCollection, metadataByCollection, collectionId, transaction);
       streamPositions.set(collectionId, {
         latestTerm: transaction.term,
@@ -175,25 +204,15 @@ function createInMemoryPersistence(): PersistedCollectionPersistence {
         latestRowVersion: transaction.rowVersion,
       });
     },
-    async loadCollectionMetadata(collectionId) {
-      const metadata = metadataByCollection.get(collectionId) ?? new Map<string, unknown>();
-      return [...metadata.entries()].map(([key, value]) => ({ key, value }));
+    async loadCollectionMetadata(target) {
+      return storedMetadata(target);
     },
-    async scanRows(collectionId) {
-      const rows =
-        rowsByCollection.get(collectionId) ??
-        new Map<string | number, { value: Record<string, unknown>; metadata?: unknown }>();
-      return [...rows.entries()].map(([key, row]) => ({ key, ...row }));
+    async scanRows(target) {
+      return storedRows(target);
     },
     async ensureIndex() {},
-    async getStreamPosition(collectionId) {
-      return (
-        streamPositions.get(collectionId) ?? {
-          latestTerm: 0,
-          latestSeq: 0,
-          latestRowVersion: 0,
-        }
-      );
+    async getStreamPosition(target) {
+      return streamPosition(target);
     },
   };
 

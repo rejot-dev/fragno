@@ -1,4 +1,9 @@
-import { createCollection, type Collection, type SyncConfig } from "@tanstack/db";
+import {
+  createCollection,
+  type Collection,
+  type SyncAppliedReceipt,
+  type SyncConfig,
+} from "@tanstack/db";
 import {
   persistedCollectionOptions,
   type PersistedCollectionPersistence,
@@ -102,8 +107,8 @@ export class FragnoInternalCollection {
     if (this.#preloadPromise) {
       return this.#preloadPromise;
     }
-    this.#preloadPromise = this.collection.preload().then(() => {
-      this.#publishStatus();
+    this.#preloadPromise = this.collection.preload().then(async () => {
+      await this.#publishStatus();
     });
     return this.#preloadPromise;
   }
@@ -112,7 +117,7 @@ export class FragnoInternalCollection {
     return this.#checkpoint;
   }
 
-  setCheckpoint(checkpoint: FragnoOutboxCheckpoint): void {
+  setCheckpoint(checkpoint: FragnoOutboxCheckpoint): SyncAppliedReceipt {
     this.#checkpoint = checkpoint;
     this.#status = { ...this.#status, checkpoint };
 
@@ -120,17 +125,17 @@ export class FragnoInternalCollection {
     controls.begin();
     controls.metadata!.collection.set(FRAGNO_INTERNAL_CHECKPOINT_METADATA_KEY, checkpoint);
     controls.write({ type: "update", value: this.#status });
-    controls.commit();
+    return controls.commit();
   }
 
-  setFlushMarker(marker: string): void {
+  setFlushMarker(marker: string): SyncAppliedReceipt {
     const controls = this.#requireControls();
     controls.begin();
     controls.metadata!.collection.set(FRAGNO_INTERNAL_FLUSH_MARKER_METADATA_KEY, marker);
-    controls.commit();
+    return controls.commit();
   }
 
-  clearCheckpoint(): void {
+  clearCheckpoint(): SyncAppliedReceipt {
     this.#checkpoint = undefined;
     this.#status = { ...this.#status, checkpoint: null };
 
@@ -138,27 +143,27 @@ export class FragnoInternalCollection {
     controls.begin();
     controls.metadata!.collection.delete(FRAGNO_INTERNAL_CHECKPOINT_METADATA_KEY);
     controls.write({ type: "update", value: this.#status });
-    controls.commit();
+    return controls.commit();
   }
 
-  setState(state: FragnoOutboxCoordinatorState, error: unknown = null): void {
+  setState(state: FragnoOutboxCoordinatorState, error: unknown = null): SyncAppliedReceipt {
     this.#status = {
       ...this.#status,
       state,
       error: state === "failed" ? coordinatorError(error) : null,
     };
-    this.#publishStatus();
+    return this.#publishStatus();
   }
 
   cleanup(): Promise<void> {
     return this.collection.cleanup().then(() => {});
   }
 
-  #publishStatus(): void {
+  #publishStatus(): SyncAppliedReceipt {
     const controls = this.#requireControls();
     controls.begin();
     controls.write({ type: "update", value: this.#status });
-    controls.commit();
+    return controls.commit();
   }
 
   #requireControls(): FragnoInternalSyncControls {
