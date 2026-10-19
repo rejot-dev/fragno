@@ -115,13 +115,18 @@ async function openSignIn(ctx: Ctx, clientId: string) {
   return url;
 }
 
-async function submit(ctx: Ctx, url: URL, fields: Record<string, string>) {
+/** Submits the sign-in page from a browser at `ip`, as Cloudflare reports it. */
+async function submit(ctx: Ctx, url: URL, fields: Record<string, string>, ip = "203.0.113.10") {
   return await loginAction(
     routeArgs(
       ctx,
       new Request(url, {
         method: "POST",
-        headers: { origin, "content-type": "application/x-www-form-urlencoded" },
+        headers: {
+          origin,
+          "content-type": "application/x-www-form-urlencoded",
+          "cf-connecting-ip": ip,
+        },
         body: new URLSearchParams(fields),
       }),
     ),
@@ -294,6 +299,48 @@ test("only a first-party app's request can ask for a sign-in code", async () => 
           assert.equal((await requestCode({ oauth_query: signIn.search.slice(1) })).status, 403);
           assert.equal((await requestCode({})).status, 403);
           expect(sentCodes(ctx, "grace@example.test")).toEqual([]);
+        }),
+      ],
+    }),
+  );
+});
+
+test("each visitor has their own limit on sign-in codes", async () => {
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      objects: scenarioObjects,
+      name: "sign-in code limits per visitor",
+      env: { AUTH_EMAIL_VERIFICATION_ENABLED: "true", SIGN_UP_INVITATIONS_ENABLED: "true" },
+      fakes: ({ fake }) => ({ resend: fake.resend() }),
+      setup: ({ given }) => [given.auth.user({ id: "platform-admin", role: "admin" })],
+      steps: ({ then }) => [
+        then.assert("one busy visitor waits, and others still get codes", async (ctx) => {
+          const signIn = await openSignIn(
+            ctx,
+            await registerApp(ctx, "bookkeeping", "first-party"),
+          );
+          const busy = "203.0.113.20";
+          for (const email of ["a@example.test", "b@example.test", "c@example.test"]) {
+            expect(await submit(ctx, signIn, { intent: "send_code", email }, busy)).toMatchObject({
+              step: "code",
+              outcome: { kind: "sent" },
+            });
+          }
+          expect(
+            await submit(ctx, signIn, { intent: "send_code", email: "d@example.test" }, busy),
+          ).toEqual({
+            step: "email",
+            email: "d@example.test",
+            error: "Please wait a minute before trying again.",
+          });
+          expect(
+            await submit(
+              ctx,
+              signIn,
+              { intent: "send_code", email: "d@example.test" },
+              "198.51.100.7",
+            ),
+          ).toMatchObject({ step: "code", outcome: { kind: "sent" } });
         }),
       ],
     }),

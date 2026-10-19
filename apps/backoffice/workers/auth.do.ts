@@ -74,6 +74,7 @@ import {
   type UserSummary,
   type VerifyUserEmailInput,
   type VerifyUserEmailResult,
+  CLIENT_IP_HEADER,
 } from "@/fragno/auth/contracts";
 import type { OrganizationInvitationPage, OrganizationPage } from "@/fragno/auth/directory-records";
 import {
@@ -1020,6 +1021,8 @@ export class InMemoryAuthObject implements AuthObject {
       },
       disabledPaths: ["/token", ...UNUSED_EMAIL_CODE_PATHS],
       advanced: {
+        // Only Cloudflare's header is trusted; clients can write X-Forwarded-For themselves.
+        ipAddress: { ipAddressHeaders: [CLIENT_IP_HEADER] },
         useSecureCookies: secureCookies,
         defaultCookieAttributes: { path: "/api/auth" },
         cookies: {
