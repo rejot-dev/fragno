@@ -1,6 +1,7 @@
 {
   "name": "@fragno-dev/summary-candidates",
   "version": "0.0.0",
+  "private": true,
   "description": "Generate diverse extractive summary candidates for external scoring.",
   "homepage": "https://fragno.dev",
   "license": "MIT",
