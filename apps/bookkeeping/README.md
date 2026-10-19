@@ -147,9 +147,9 @@ approved target (the owner, or one of the approved projects):
 - **Send as the organization** uses a client-credentials token, so it needs no Backoffice account.
   Backoffice attributes the event to the Bookkeeping organization and limits it to the
   installation's approved permissions and resources.
-- **Send as you** uses your own linked Backoffice account. Backoffice additionally requires that you
-  are currently a member there and may emit events yourself; where a user installed Bookkeeping for
-  themselves, only that user can.
+- **Send as you** uses the Backoffice account you signed in with. Backoffice additionally requires
+  that you are currently a member there and may emit events yourself; where a user installed
+  Bookkeeping for themselves, only that user can.
 
 Either way, Bookkeeping's server exchanges its OAuth token at `POST /api/backoffice/execution-token`
 for a 15-minute credential bound to that target, then calls the `events.fire` operation of the

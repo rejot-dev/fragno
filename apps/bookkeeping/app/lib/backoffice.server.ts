@@ -206,13 +206,11 @@ export async function sendConnectionTestEvent(
   } else {
     const token = await auth().getBackofficeAccessToken(request.headers.get("cookie") ?? "");
     switch (token.status) {
-      case "not-linked":
-        return token;
       case "reauthorization-required":
         return { ...token, message: "Your Backoffice authorization has expired or was revoked." };
       case "backoffice-unavailable":
         return { status: "unavailable", message: BACKOFFICE_UNAVAILABLE_MESSAGE };
-      case "linked":
+      case "authorized":
         oauthAccessToken = token.accessToken;
     }
   }

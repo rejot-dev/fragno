@@ -26,10 +26,9 @@ const ACCESS_TOKEN_REFRESH_MARGIN_MS = 5_000;
 // OAuth errors meaning the grant itself is gone (revoked, expired, or consent withdrawn).
 const REVOKED_GRANT_ERRORS = new Set(["invalid_grant", "access_denied"]);
 
-/** The linked Backoffice account's OAuth state, as seen by Bookkeeping's server. */
+/** The user's Backoffice account's OAuth state, as seen by Bookkeeping's server. */
 export type BackofficeAccessToken =
-  | { status: "linked"; accessToken: string }
-  | { status: "not-linked" }
+  | { status: "authorized"; accessToken: string }
   | { status: "reauthorization-required" }
   | { status: "backoffice-unavailable" };
 
@@ -175,7 +174,7 @@ export class Auth extends DurableObject<CloudflareEnv> {
   }
 
   /**
-   * Returns a valid Backoffice access token for the session's own linked account, refreshing it if
+   * Returns a valid Backoffice access token for the session's Backoffice account, refreshing it if
    * needed. Bookkeeping refreshes itself because Better Auth reports every refresh failure the same
    * way, which would make a Backoffice outage look like revoked authorization.
    */
@@ -188,8 +187,9 @@ export class Auth extends DurableObject<CloudflareEnv> {
     const account = (await context.internalAdapter.findAccounts(session.user.id)).find(
       ({ providerId }) => providerId === BACKOFFICE_PROVIDER_ID,
     );
+    // Users sign up and sign in only through Backoffice, so each has its account.
     if (!account) {
-      return { status: "not-linked" };
+      throw new Error(`Bookkeeping user ${session.user.id} has no Backoffice account.`);
     }
     const expiresAt = account.accessTokenExpiresAt
       ? new Date(account.accessTokenExpiresAt).getTime()
@@ -197,7 +197,7 @@ export class Auth extends DurableObject<CloudflareEnv> {
     if (expiresAt === null || expiresAt - Date.now() > ACCESS_TOKEN_REFRESH_MARGIN_MS) {
       const accessToken = await this.readStoredToken(account.accessToken);
       if (accessToken) {
-        return { status: "linked", accessToken };
+        return { status: "authorized", accessToken };
       }
     }
     let refresh = this.refreshes.get(account.id);
@@ -265,7 +265,7 @@ export class Auth extends DurableObject<CloudflareEnv> {
       accessTokenExpiresAt: new Date(Date.now() + tokens.expires_in * 1000),
       ...(tokens.refresh_token ? { refreshToken: await encrypt(tokens.refresh_token) } : {}),
     });
-    return { status: "linked", accessToken: tokens.access_token };
+    return { status: "authorized", accessToken: tokens.access_token };
   }
 
   /** Tokens that cannot be decrypted (for example, stored before encryption) need a new grant. */
