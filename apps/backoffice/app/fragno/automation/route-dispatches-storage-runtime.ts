@@ -8,22 +8,26 @@ import { automationFragmentSchema } from "./schema";
 
 /**
  * What a matched route did with an event. Derived events also record the route in their own
- * causation; workflow runs, deliveries, and skips are only recorded here.
+ * causation; workflow runs, deliveries, agent notifications, and skips are only recorded here.
  */
 export type AutomationRouteDispatchOutcome =
   | { kind: "workflow_started"; workflowName: string; instanceId: string }
   | { kind: "workflow_event_sent"; workflowName: string; instanceId: string; eventType: string }
   | { kind: "event_forwarded"; eventId: string; scope: BackofficeContextScope }
   | { kind: "event_reclassified"; eventId: string }
+  | { kind: "agent_notified"; agentName: string }
   | { kind: "skipped"; reason: AutomationRouteDispatchSkipReason };
 
 /**
  * `no_linked_external_sender`: a linked-user route only acts for an external sender linked to a
- * user, and the event had none. `workflow_instance_unresolved`: the route's target instance id rendered empty.
+ * user, and the event had none. `workflow_instance_unresolved`: the route's target instance id
+ * rendered empty. `caused_by_notified_agent`: the agent's own turns produced the event, and
+ * notifying it would let the agent wake itself.
  */
 export type AutomationRouteDispatchSkipReason =
   | "no_linked_external_sender"
-  | "workflow_instance_unresolved";
+  | "workflow_instance_unresolved"
+  | "caused_by_notified_agent";
 
 type AutomationRouteDispatchServiceContext = DatabaseServiceContext<Record<string, never>>;
 
