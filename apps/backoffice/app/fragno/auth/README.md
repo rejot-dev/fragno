@@ -188,6 +188,24 @@ A [first-party app](../apps/README.md#first-party-apps) is not reviewed: the con
 its request through the same Better Auth consent endpoint as an approval, so the consent is recorded
 and enforced like any other. Auth leaves its consents out of listings and refuses to revoke them.
 
+### Signing in through a first-party app
+
+People a first-party app sends here may not know Backoffice, so when `/backoffice/login` receives a
+signed authorization request from a first-party app, it shows the app's sign-in instead
+(`app/routes/backoffice/app-sign-in*`): the app's branding, an email field, then a 6-digit code.
+
+- **Codes come from Better Auth's `emailOTP`** (`workers/auth/better-auth-app-sign-in.ts`), and
+  Backoffice queues them through Resend in the app's name. On a loopback origin (development or
+  preview), Auth prints each code first, since a local Backoffice rarely has Resend configured.
+- **Only first-party apps' requests get codes.** A hook after the OAuth Provider, which verifies the
+  request's signature, refuses code requests and sign-ins whose request names no first-party client,
+  so codes are no way around invitation-only sign-up. The other `emailOTP` endpoints are disabled.
+- **A correct code signs up a new address,** already verified, even where Backoffice's own sign-up
+  needs an invitation. An existing unverified account is taken over by whoever proves the address,
+  as Better Auth does.
+- **The authorization continues at once.** The new session lets the OAuth Provider resume the app's
+  request, and the consent page approves first-party apps, so people land back in the app.
+
 Users manage their own authorizations at `/backoffice/settings/authorized-applications`, accessible
 from the account menu and Settings. Listing is credential-free and cursor-bound to the session user.
 Revocation derives the user ID from that session and transactionally removes that client's consents,

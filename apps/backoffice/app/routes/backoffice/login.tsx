@@ -19,6 +19,13 @@ import { betterAuthClient } from "@/fragno/auth/better-auth.client";
 import { requestEmailVerificationResend } from "@/fragno/auth/email-verification.server";
 
 import type { Route } from "./+types/login";
+import { AppSignIn } from "./app-sign-in";
+import {
+  appSignInAction,
+  findAppSignInPage,
+  type AppSignInActionData,
+  type AppSignInPage,
+} from "./app-sign-in.server";
 import { buildBackofficeSignUpPath, readBackofficeReturnTo } from "./auth-navigation";
 
 type BackofficeLoginAuthError = {
@@ -27,6 +34,7 @@ type BackofficeLoginAuthError = {
 };
 
 type BackofficeLoginLoaderData = {
+  kind: "backoffice";
   returnTo: string;
   authError: BackofficeLoginAuthError | null;
   oauthQuery: string | null;
@@ -186,8 +194,16 @@ function readBackofficeLoginAuthError(url: URL): BackofficeLoginAuthError | null
   return betterAuthErrorContent[parsedErrorCode.data];
 }
 
-export async function loader({ request, context, url }: Route.LoaderArgs) {
+export async function loader({
+  request,
+  context,
+  url,
+}: Route.LoaderArgs): Promise<BackofficeLoginLoaderData | AppSignInPage | Response> {
   const oauthQuery = readOAuthLoginQuery(url);
+  const appPage = oauthQuery === null ? null : await findAppSignInPage(context, oauthQuery);
+  if (appPage !== null) {
+    return appPage;
+  }
   const returnTo =
     oauthQuery === null ? readBackofficeReturnTo(url) : `/backoffice/oauth/consent?${oauthQuery}`;
   if (!requiresBetterAuthBrowserSession(returnTo)) {
@@ -198,6 +214,7 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
   }
 
   return {
+    kind: "backoffice",
     returnTo,
     authError: readBackofficeLoginAuthError(url),
     oauthQuery,
@@ -206,6 +223,11 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
 
 export async function action({ request, context, url }: Route.ActionArgs) {
   const formData = await request.formData();
+  const oauthQuery = readOAuthLoginQuery(url);
+  const appPage = oauthQuery === null ? null : await findAppSignInPage(context, oauthQuery);
+  if (oauthQuery !== null && appPage !== null) {
+    return await appSignInAction({ request, context, page: appPage, oauthQuery, formData });
+  }
   const returnTo = readBackofficeReturnTo(url);
   const input = loginActionInputSchema.safeParse(Object.fromEntries(formData));
   if (!input.success) {
@@ -281,13 +303,29 @@ export function meta() {
   ];
 }
 
-export default function BackofficeLogin() {
-  const { returnTo, authError, oauthQuery } = useLoaderData<BackofficeLoginLoaderData>();
+export default function LoginPage() {
+  const page = useLoaderData<BackofficeLoginLoaderData | AppSignInPage>();
+  const actionData = useActionData<BackofficeLoginActionData | AppSignInActionData>();
+  // The page's kind decides which action answers it: the loader and action check the same app.
+  return page.kind === "app" ? (
+    <AppSignIn page={page} actionData={actionData as AppSignInActionData | undefined} />
+  ) : (
+    <BackofficeLogin page={page} actionData={actionData as BackofficeLoginActionData | undefined} />
+  );
+}
+
+function BackofficeLogin({
+  page,
+  actionData,
+}: {
+  page: BackofficeLoginLoaderData;
+  actionData: BackofficeLoginActionData | undefined;
+}) {
+  const { returnTo, authError, oauthQuery } = page;
   const [authErrorNotice, setAuthErrorNotice] = useState<BackofficeLoginAuthError | null>(
     authError,
   );
   const [oauthPending, setOauthPending] = useState(false);
-  const actionData = useActionData<BackofficeLoginActionData>();
   const navigation = useNavigation();
   const passwordError = actionData?.message ?? null;
   const verificationRequired = actionData?.state === "verification_required" ? actionData : null;
