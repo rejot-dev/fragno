@@ -1,4 +1,8 @@
-import type { AppActionsDeclaration, AppTrust } from "@fragno-dev/backoffice-api/v0/apps";
+import type {
+  AppActionsDeclaration,
+  AppBranding,
+  AppTrust,
+} from "@fragno-dev/backoffice-api/v0/apps";
 import type { BackofficeProvisioningPermission } from "@fragno-dev/backoffice-api/v0/provisioning";
 import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { column, idColumn, schema, type Column } from "@fragno-dev/db/schema";
@@ -66,5 +70,12 @@ export const appsFragmentSchema = schema("apps", (s) =>
           >,
         )
         .createIndex("idx_app_trust", ["trust"]),
+    )
+    .alterTable("app", (t) =>
+      // Null unless the app is first-party.
+      t.addColumn(
+        "branding",
+        column("json").nullable() as Column<"json", AppBranding | null, AppBranding | null>,
+      ),
     ),
 );

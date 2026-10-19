@@ -154,14 +154,14 @@ describe("admin app runtime tool SQLite scenarios", () => {
             const printedList = await bash.exec("admin.apps.list --print apps.0.id");
             assert.equal(printedList.exitCode, 0, printedList.stderr);
             assert.equal(printedList.stdout, `${app.id}\n`);
-            const trusted = `admin.apps.update-trust --app-id ${app.id} --trust-json '{"kind":"first-party","provisioningPermissions":["users.provision"]}'`;
+            const trusted = `admin.apps.update-trust --app-id ${app.id} --trust-json '{"kind":"first-party","provisioningPermissions":["users.provision"],"branding":{"displayName":"Bookkeeping","logoUrl":"https://bookkeeping.example/logo.svg","accentColor":"#2f6f4e","homeUrl":"https://bookkeeping.example","supportUrl":"https://bookkeeping.example/help"}}'`;
             const updated = await bash.exec(trusted);
             assert.equal(updated.exitCode, 0, updated.stderr);
             assert.equal(updated.stdout, "Updated app trust.\n");
             assert.equal((await bash.exec(trusted)).stdout, "App trust unchanged.\n");
             const relisted = await bash.exec("admin.apps.list");
             expect(relisted.stdout).toContain(
-              "  Trust: first-party, provisioning users.provision\n",
+              "  Trust: first-party as Bookkeeping, provisioning users.provision\n",
             );
           }),
         ],
