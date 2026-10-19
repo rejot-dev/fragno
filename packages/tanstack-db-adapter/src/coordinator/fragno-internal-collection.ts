@@ -14,7 +14,7 @@ import type { FragnoOutboxCheckpoint } from "../checkpoint";
 export const FRAGNO_INTERNAL_COLLECTION_ID = "fragno.outbox.internal.v1";
 export const FRAGNO_INTERNAL_STATUS_ID = "coordinator" as const;
 export const FRAGNO_INTERNAL_CHECKPOINT_METADATA_KEY = "fragno.outbox.checkpoint.v1";
-export const FRAGNO_INTERNAL_FLUSH_MARKER_METADATA_KEY = "fragno.outbox.flush-marker.v1";
+const FRAGNO_INTERNAL_FLUSH_MARKER_METADATA_KEY = "fragno.outbox.flush-marker.v1";
 
 export type FragnoOutboxCoordinatorState =
   | "opening"
@@ -128,10 +128,18 @@ export class FragnoInternalCollection {
     return controls.commit();
   }
 
-  setFlushMarker(marker: string): SyncAppliedReceipt {
+  /**
+   * Settles once every earlier write in the shared persistence database is durable: a persisted
+   * commit's receipt settles with its durable write, and writes persist in order.
+   */
+  flushPersistence(): SyncAppliedReceipt {
     const controls = this.#requireControls();
     controls.begin();
-    controls.metadata!.collection.set(FRAGNO_INTERNAL_FLUSH_MARKER_METADATA_KEY, marker);
+    // A fresh marker gives the commit a change to persist.
+    controls.metadata!.collection.set(
+      FRAGNO_INTERNAL_FLUSH_MARKER_METADATA_KEY,
+      globalThis.crypto.randomUUID(),
+    );
     return controls.commit();
   }
 

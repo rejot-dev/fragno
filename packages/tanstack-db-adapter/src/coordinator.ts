@@ -11,8 +11,6 @@ import {
 } from "./coordinator/fragno-browser-persistence-startup";
 import { FragnoCollectionRegistry } from "./coordinator/fragno-collection-registry";
 import {
-  FRAGNO_INTERNAL_COLLECTION_ID,
-  FRAGNO_INTERNAL_FLUSH_MARKER_METADATA_KEY,
   FragnoInternalCollection,
   type FragnoOutboxCoordinatorState,
 } from "./coordinator/fragno-internal-collection";
@@ -283,16 +281,8 @@ export async function createFragnoOutboxCoordinator<const TSchemas extends reado
 
   transitionTo("idle");
 
-  const flushPersistence = () => {
-    const marker = globalThis.crypto.randomUUID();
-    const persisted = persistence.waitForCollectionMetadata(
-      FRAGNO_INTERNAL_COLLECTION_ID,
-      FRAGNO_INTERNAL_FLUSH_MARKER_METADATA_KEY,
-      marker,
-    );
-    // `persisted` settles with the marker's durable write, including its failure.
-    void initializedInternalCollection.setFlushMarker(marker);
-    return persisted;
+  const flushPersistence = async () => {
+    await initializedInternalCollection.flushPersistence();
   };
 
   const isDisposed = () => state === "disposed";

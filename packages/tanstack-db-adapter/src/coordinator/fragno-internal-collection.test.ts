@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import Database from "better-sqlite3";
 
@@ -111,14 +111,13 @@ describe("FragnoInternalCollection", () => {
         checkpoint: { versionstamp: "0000000000000002", uowId: "uow-2" },
         error: null,
       });
-      await vi.waitFor(async () => {
-        const metadata = await persistence.adapter.loadCollectionMetadata?.(
+      expect(
+        await persistence.adapter.loadCollectionMetadata?.(
           eagerStorageTarget(FRAGNO_INTERNAL_COLLECTION_ID),
-        );
-        expect(metadata).toContainEqual({
-          key: FRAGNO_INTERNAL_CHECKPOINT_METADATA_KEY,
-          value: { versionstamp: "0000000000000002", uowId: "uow-2" },
-        });
+        ),
+      ).toContainEqual({
+        key: FRAGNO_INTERNAL_CHECKPOINT_METADATA_KEY,
+        value: { versionstamp: "0000000000000002", uowId: "uow-2" },
       });
       await first.cleanup();
 

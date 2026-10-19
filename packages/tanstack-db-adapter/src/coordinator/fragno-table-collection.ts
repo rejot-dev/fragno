@@ -6,7 +6,6 @@ import {
   type SyncConfig,
 } from "@tanstack/db";
 import {
-  eagerStorageTarget,
   persistedCollectionOptions,
   type PersistedCollectionPersistence,
 } from "@tanstack/db-sqlite-persistence-core";
@@ -45,6 +44,13 @@ export class FragnoTableCollection {
       options.id,
       options.schemaVersion,
     );
+    // TanStack scans persisted rows through `scanRows` and reports none without it, which would
+    // skip deletes of rows that exist.
+    if (options.skipMissingTruncateDeletes && !persistence.adapter.scanRows) {
+      throw new Error(
+        `Persistence for ${options.id} cannot retrieve keys required to skip missing truncate deletes.`,
+      );
+    }
 
     this.collection = createCollection(
       persistedCollectionOptions<FragnoTableRow, string>({
@@ -59,9 +65,10 @@ export class FragnoTableCollection {
         sync: {
           rowUpdateMode: options.rowUpdateMode,
           sync: (controls) => {
-            if (!controls.metadata) {
-              throw new Error("Fragno table collections require TanStack sync metadata.");
+            if (!controls.metadata?.persistence) {
+              throw new Error("Fragno table collections require TanStack persistence metadata.");
             }
+            const syncPersistence = controls.metadata.persistence;
 
             // A new registration owns a fresh key index; rotating its transport does not.
             let presentKeys: Set<string> | undefined;
@@ -72,15 +79,8 @@ export class FragnoTableCollection {
                 ? {
                     prepareCatchUp() {
                       preparation ??= (async () => {
-                        if (!persistence.adapter.scanRows) {
-                          throw new Error(
-                            `Persistence for ${options.id} cannot retrieve keys required to skip missing truncate deletes.`,
-                          );
-                        }
-                        const persistedRows = await persistence.adapter.scanRows(
-                          eagerStorageTarget(options.id),
-                        );
-                        presentKeys = new Set(persistedRows.map(({ key }) => String(key)));
+                        const persistedRows = await syncPersistence.scanPersistedRows();
+                        presentKeys = new Set(persistedRows.map(({ key }) => key));
                       })();
                       return preparation;
                     },

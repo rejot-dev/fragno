@@ -1,4 +1,4 @@
-import { assert, describe, expect, it, vi } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 
 import { encodeVersionstamp, versionstampToHex, type OutboxOperation } from "@fragno-dev/db/outbox";
 import { column, idColumn, schema } from "@fragno-dev/db/schema";
@@ -166,15 +166,12 @@ async function createKeyTrackingScenario(rowUpdateMode: "partial" | "full" = "pa
     async persistedRows() {
       return await persistence.adapter.scanRows!(eagerStorageTarget(collectionId));
     },
-    async flush() {
-      await vi.waitFor(async () => {
-        const metadata = await persistence.adapter.loadCollectionMetadata!(
-          eagerStorageTarget(collectionId),
-        );
-        expect(metadata).toContainEqual({
-          key: FRAGNO_OUTBOX_COLLECTION_CHECKPOINT_METADATA_KEY,
-          value: checkpoint,
-        });
+    async expectPersistedCheckpoint() {
+      expect(
+        await persistence.adapter.loadCollectionMetadata!(eagerStorageTarget(collectionId)),
+      ).toContainEqual({
+        key: FRAGNO_OUTBOX_COLLECTION_CHECKPOINT_METADATA_KEY,
+        value: checkpoint,
       });
     },
     async close() {
@@ -201,7 +198,7 @@ describe("FragnoTableCollection", () => {
       const absent = userOutboxEntry(4, { type: "truncate", ids: ["live", "missing"] });
       try {
         await scenario.session([history], [live]);
-        await scenario.flush();
+        await scenario.expectPersistedCheckpoint();
         expect(
           (await scenario.persistedRows())
             .map((row) => row.key)
@@ -211,10 +208,10 @@ describe("FragnoTableCollection", () => {
         await expect(
           scenario.session([history, live], [deleted], "interrupt"),
         ).rejects.toBeInstanceOf(FragnoOutboxTransportError);
-        await scenario.flush();
+        await scenario.expectPersistedCheckpoint();
         scenario.transactions.length = 0;
         await scenario.session([history, live, deleted, truncated]);
-        await scenario.flush();
+        await scenario.expectPersistedCheckpoint();
         expect(
           scenario.transactions.flatMap((tx) => tx.mutations.map((mutation) => mutation.key)),
         ).toEqual(["live"]);
@@ -222,7 +219,7 @@ describe("FragnoTableCollection", () => {
         assert(scenario.collection.size === 0);
         scenario.transactions.length = 0;
         await scenario.session([history, live, deleted, truncated, absent]);
-        await scenario.flush();
+        await scenario.expectPersistedCheckpoint();
         expect(scenario.transactions.flatMap((tx) => tx.mutations)).toEqual([]);
         expect(scenario.checkpoint).toEqual({
           versionstamp: absent.versionstamp,
@@ -254,7 +251,7 @@ describe("FragnoTableCollection", () => {
     const afterClear = userOutboxEntry(4, { type: "truncate", ids: ["remaining"] });
     try {
       await scenario.session([history]);
-      await scenario.flush();
+      await scenario.expectPersistedCheckpoint();
       expect((await scenario.persistedRows()).map((row) => row.key)).toEqual(["history"]);
       expect(
         scenario.transactions
@@ -262,10 +259,10 @@ describe("FragnoTableCollection", () => {
           .filter((mutation) => mutation.key === "temporary" && mutation.type === "delete"),
       ).toHaveLength(1);
       await scenario.session([history], [updated, truncatedLive]);
-      await scenario.flush();
+      await scenario.expectPersistedCheckpoint();
       scenario.transactions.length = 0;
       await scenario.session([history, updated, truncatedLive, catchUp]);
-      await scenario.flush();
+      await scenario.expectPersistedCheckpoint();
       expect(
         scenario.transactions.flatMap((tx) => tx.mutations.map((mutation) => mutation.key)),
       ).toEqual(["remaining"]);
@@ -273,7 +270,7 @@ describe("FragnoTableCollection", () => {
       assert(scenario.transactions.some((tx) => tx.truncate));
       scenario.transactions.length = 0;
       await scenario.session([history, updated, truncatedLive, catchUp, afterClear]);
-      await scenario.flush();
+      await scenario.expectPersistedCheckpoint();
       expect(scenario.transactions.flatMap((tx) => tx.mutations)).toEqual([]);
       expect(await scenario.persistedRows()).toEqual([]);
       expect(scenario.scannedCollections).toHaveLength(1);
@@ -292,13 +289,13 @@ describe("FragnoTableCollection", () => {
     );
     try {
       await scenario.session([], [live]);
-      await scenario.flush();
+      await scenario.expectPersistedCheckpoint();
       expect(
         scenario.transactions.flatMap((tx) => tx.mutations.map((mutation) => mutation.key)),
       ).toEqual(["missing-live"]);
       scenario.transactions.length = 0;
       await scenario.session([live, catchUp]);
-      await scenario.flush();
+      await scenario.expectPersistedCheckpoint();
       expect(
         scenario.transactions.flatMap((tx) => tx.mutations.map((mutation) => mutation.key)),
       ).toEqual(["missing-ordinary"]);
@@ -315,11 +312,11 @@ describe("FragnoTableCollection", () => {
     const truncated = userOutboxEntry(1, { type: "truncate", ids: ["persisted", "missing"] });
     try {
       await scenario.session([original]);
-      await scenario.flush();
+      await scenario.expectPersistedCheckpoint();
       await scenario.reopen();
       scenario.transactions.length = 0;
       await scenario.session([original, truncated]);
-      await scenario.flush();
+      await scenario.expectPersistedCheckpoint();
       expect(scenario.scannedCollections).toHaveLength(2);
       expect(
         scenario.transactions.flatMap((tx) => tx.mutations.map((mutation) => mutation.key)),
@@ -375,18 +372,12 @@ describe("FragnoTableCollection", () => {
 
       outbox.markReady();
       await preload;
-      await vi.waitFor(async () => {
-        const rows = await persistence.adapter.scanRows?.(
-          eagerStorageTarget(tableCollection.collection.id),
-        );
-        const metadata = await persistence.adapter.loadCollectionMetadata?.(
-          eagerStorageTarget(tableCollection.collection.id),
-        );
-        assert(rows?.some((row) => row.key === "user-1"));
-        expect(metadata).toContainEqual({
-          key: FRAGNO_OUTBOX_COLLECTION_CHECKPOINT_METADATA_KEY,
-          value: checkpoint,
-        });
+      const storageTarget = eagerStorageTarget(tableCollection.collection.id);
+      const rows = await persistence.adapter.scanRows?.(storageTarget);
+      assert(rows?.some((row) => row.key === "user-1"));
+      expect(await persistence.adapter.loadCollectionMetadata?.(storageTarget)).toContainEqual({
+        key: FRAGNO_OUTBOX_COLLECTION_CHECKPOINT_METADATA_KEY,
+        value: checkpoint,
       });
     } finally {
       await tableCollection.collection.cleanup();
@@ -427,10 +418,8 @@ describe("FragnoTableCollection", () => {
       });
       seedOutbox.markReady();
       await seedPreload;
-      await vi.waitFor(async () => {
-        const rows = await persistence.adapter.scanRows?.(eagerStorageTarget(collectionId));
-        assert(rows?.some(({ key }) => key === "persisted-user"));
-      });
+      const seededRows = await persistence.adapter.scanRows?.(eagerStorageTarget(collectionId));
+      assert(seededRows?.some(({ key }) => key === "persisted-user"));
       await seedCollection.collection.cleanup();
       seedOutbox.dispose();
 
@@ -488,14 +477,11 @@ describe("FragnoTableCollection", () => {
       await catchUpPreload;
 
       expect(scannedCollections).toContainEqual(eagerStorageTarget(collectionId));
-      await vi.waitFor(() => {
-        expect(
-          appliedTransactions.flatMap(({ mutations }) => mutations.map(({ key }) => key)),
-        ).toContain("persisted-user");
-      });
-      expect(
-        appliedTransactions.flatMap(({ mutations }) => mutations.map(({ key }) => key)),
-      ).not.toContain("missing-user");
+      const appliedKeys = appliedTransactions.flatMap(({ mutations }) =>
+        mutations.map(({ key }) => key),
+      );
+      expect(appliedKeys).toContain("persisted-user");
+      expect(appliedKeys).not.toContain("missing-user");
 
       await catchUpCollection.collection.cleanup();
       catchUpOutbox.dispose();
@@ -538,18 +524,13 @@ describe("FragnoTableCollection", () => {
         ],
       });
       expect(tableCollection.collection.get("user-1")).toMatchObject({ name: "Ada" });
-      await vi.waitFor(async () => {
-        const metadata = await persistence.adapter.loadCollectionMetadata?.(
-          eagerStorageTarget(tableCollection.collection.id),
-        );
-        expect(metadata).toContainEqual({
-          key: FRAGNO_OUTBOX_COLLECTION_CHECKPOINT_METADATA_KEY,
-          value: checkpoint,
-        });
+      const storageTarget = eagerStorageTarget(tableCollection.collection.id);
+      expect(await persistence.adapter.loadCollectionMetadata?.(storageTarget)).toContainEqual({
+        key: FRAGNO_OUTBOX_COLLECTION_CHECKPOINT_METADATA_KEY,
+        value: checkpoint,
       });
-      const streamPositionBeforeReplay = await persistence.adapter.getStreamPosition?.(
-        eagerStorageTarget(tableCollection.collection.id),
-      );
+      const streamPositionBeforeReplay =
+        await persistence.adapter.getStreamPosition?.(storageTarget);
 
       await outbox.applyChanges(usersTarget.key, {
         checkpoint,
@@ -573,14 +554,9 @@ describe("FragnoTableCollection", () => {
       });
 
       expect(tableCollection.collection.get("user-1")).toMatchObject({ name: "Ada" });
-      await new Promise<void>((resolve) => {
-        setTimeout(resolve, 0);
-      });
-      expect(
-        await persistence.adapter.getStreamPosition?.(
-          eagerStorageTarget(tableCollection.collection.id),
-        ),
-      ).toEqual(streamPositionBeforeReplay);
+      expect(await persistence.adapter.getStreamPosition?.(storageTarget)).toEqual(
+        streamPositionBeforeReplay,
+      );
       expect(() =>
         outbox.applyChanges(usersTarget.key, {
           checkpoint: { versionstamp: checkpoint.versionstamp, uowId: "replacement-uow" },
@@ -591,14 +567,9 @@ describe("FragnoTableCollection", () => {
 
       outbox.markReady();
       await preload;
-      await vi.waitFor(async () => {
-        const metadata = await persistence.adapter.loadCollectionMetadata?.(
-          eagerStorageTarget(tableCollection.collection.id),
-        );
-        expect(metadata).toContainEqual({
-          key: FRAGNO_OUTBOX_COLLECTION_CHECKPOINT_METADATA_KEY,
-          value: checkpoint,
-        });
+      expect(await persistence.adapter.loadCollectionMetadata?.(storageTarget)).toContainEqual({
+        key: FRAGNO_OUTBOX_COLLECTION_CHECKPOINT_METADATA_KEY,
+        value: checkpoint,
       });
     } finally {
       await tableCollection.collection.cleanup();

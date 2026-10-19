@@ -1,7 +1,5 @@
 import type {
   PersistedCollectionPersistence,
-  PersistedStorageTarget,
-  PersistedTx,
   PersistenceAdapter,
 } from "@tanstack/db-sqlite-persistence-core";
 
@@ -18,7 +16,6 @@ const HIDDEN_ADAPTER_PROPERTIES: ReadonlySet<PropertyKey> = new Set([
 
 export type OrderedFragnoPersistence = PersistedCollectionPersistence & {
   drain(): Promise<void>;
-  waitForCollectionMetadata(collectionId: string, key: string, value: unknown): Promise<void>;
 };
 
 /** Orders every collection write before later writes to the shared Fragno persistence database. */
@@ -31,13 +28,6 @@ export function orderFragnoPersistenceWrites(
     PersistedCollectionPersistence
   >();
   const adapterCache = new WeakMap<PersistenceAdapter, PersistenceAdapter>();
-  const metadataWaiters: Array<{
-    collectionId: string;
-    key: string;
-    value: unknown;
-    resolve(): void;
-    reject(error: unknown): void;
-  }> = [];
 
   const wrapAdapter = (adapter: PersistenceAdapter): PersistenceAdapter => {
     const cached = adapterCache.get(adapter);
@@ -45,46 +35,13 @@ export function orderFragnoPersistenceWrites(
       return cached;
     }
 
-    const enqueueTransaction = <TResult>(
-      target: PersistedStorageTarget,
-      transaction: PersistedTx,
-      write: () => Promise<TResult>,
-    ): Promise<TResult> => {
-      const matchingWaiters = metadataWaiters.filter(
-        (waiter) =>
-          target.kind === "eager" &&
-          waiter.collectionId === target.collectionId &&
-          transaction.collectionMetadataMutations?.some(
-            (mutation) =>
-              mutation.type === "set" &&
-              mutation.key === waiter.key &&
-              mutation.value === waiter.value,
-          ),
-      );
-      const queuedWrite = queue.enqueue(write);
-      for (const waiter of matchingWaiters) {
-        metadataWaiters.splice(metadataWaiters.indexOf(waiter), 1);
-        void queuedWrite.then(
-          () => {
-            waiter.resolve();
-          },
-          (error: unknown) => {
-            waiter.reject(error);
-          },
-        );
-      }
-      return queuedWrite;
-    };
-
     const wrapped = forwardAdapterCapabilities(adapter);
     wrapped.applyCommittedTx = (target, transaction) =>
-      enqueueTransaction(target, transaction, () => adapter.applyCommittedTx(target, transaction));
+      queue.enqueue(() => adapter.applyCommittedTx(target, transaction));
     const { reconcileCommittedTx } = adapter;
     if (reconcileCommittedTx) {
       wrapped.reconcileCommittedTx = (target, transaction, anchor) =>
-        enqueueTransaction(target, transaction, () =>
-          reconcileCommittedTx.call(adapter, target, transaction, anchor),
-        );
+        queue.enqueue(() => reconcileCommittedTx.call(adapter, target, transaction, anchor));
     }
 
     adapterCache.set(adapter, wrapped);
@@ -121,11 +78,6 @@ export function orderFragnoPersistenceWrites(
 
   return Object.assign(wrapPersistence(persistence), {
     drain: () => queue.drain(),
-    waitForCollectionMetadata(collectionId: string, key: string, value: unknown) {
-      return new Promise<void>((resolve, reject) => {
-        metadataWaiters.push({ collectionId, key, value, resolve, reject });
-      });
-    },
   });
 }
 
