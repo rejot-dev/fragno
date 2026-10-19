@@ -44,7 +44,13 @@ jobs:
         run: pnpm exec turbo run build --filter='./packages/*' --filter='./apps/*' --filter='!./apps/docs/*'
 
       - name: Publish Canary Packages
-        run: pnpm run ci:canary
+        # `changeset version` fails when there are no changesets to release.
+        run: |
+          if ! find .changeset -maxdepth 1 -name '*.md' ! -name README.md | grep -q .; then
+            echo "No changesets, skipping canary publish."
+            exit 0
+          fi
+          pnpm run ci:canary
         env:
           CANARY_SUFFIX: canary-${{ github.run_id }}-${{ github.run_attempt }}
           NPM_CONFIG_PROVENANCE: false
@@ -79,10 +85,9 @@ jobs:
 
       - name: Create Release Pull Request or Publish to npm
         id: changesets
-        uses: changesets/action@v1
+        uses: changesets/action@v2
         with:
-          version: pnpm run ci:version
-          publish: pnpm run ci:publish
+          version-script: pnpm run ci:version
+          publish-script: pnpm run ci:publish
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_CONFIG_PROVENANCE: true

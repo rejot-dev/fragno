@@ -45,13 +45,13 @@
     "fallow:dupes": "fallow dupes --root . --config .fallowrc.jsonc --summary",
     "fallow:health": "fallow health --root . --config .fallowrc.jsonc --summary",
     "ci:version": "changeset version && pnpm update && pnpm install && pnpm exec oxfmt pnpm-workspace.yaml",
-    "ci:publish": "changeset publish && changeset tag && pnpm exec oxfmt pnpm-workspace.yaml",
+    "ci:publish": "changeset publish && changeset git-tag && pnpm exec oxfmt pnpm-workspace.yaml",
     "ci:canary": "changeset version --snapshot ${CANARY_SUFFIX:-canary} && changeset publish --tag canary --no-git-tag",
     "diff:lockfile": "git -c core.attributesfile=/dev/null --no-pager diff --text pnpm-lock.yaml",
     "link:global": "pnpm -r --workspace-concurrency=1 --filter \"./packages/**\" exec -- node ../../scripts/link-global.mjs"
   },
   "devDependencies": {
-    "@changesets/cli": "^2.30.0",
+    "@changesets/cli": "^3.0.3",
     "@nanostores/query": "^0.3.4",
     "fallow": "^2.75.0",
     "lefthook": "^1.13.6",
