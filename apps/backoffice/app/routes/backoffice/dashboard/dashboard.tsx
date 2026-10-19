@@ -4,7 +4,6 @@ import { ClientOnly } from "@fragno-private/design-system/client-only";
 import { Field } from "@fragno-private/design-system/field";
 import { Input } from "@fragno-private/design-system/input";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
-import { BackofficeTabHeader } from "@fragno-private/design-system/tab-header";
 import { TextArea } from "@fragno-private/design-system/text-area";
 import { Suspense, use, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import {
@@ -49,6 +48,7 @@ import {
 import type { Route } from "./+types/dashboard";
 import { AutomationBrowserPersistenceDiagnosticPanel } from "./browser-persistence-diagnostics";
 import { DashboardSections, type DashboardLoaderData } from "./dashboard-sections";
+import { DashboardTabs } from "./dashboard-tabs";
 import {
   dashboardBucketStarts,
   dashboardConnectionEventsQuery,
@@ -180,13 +180,7 @@ export default function BackofficeDashboard({ loaderData }: Route.ComponentProps
   const overviewPath = dashboardPath(
     backofficeRouteScopeFromResolvedScope(loaderData.selectedScope),
   );
-  const header = (
-    <BackofficeTabHeader
-      items={[{ id: "overview", label: "Overview", to: overviewPath, active: true }]}
-      ariaLabel="Dashboard"
-      options={null}
-    />
-  );
+  const header = <DashboardTabs selectedScope={loaderData.selectedScope} active="overview" />;
   if (searchParams.get(CREATE_PROJECT_PARAM) === "1") {
     return (
       <>

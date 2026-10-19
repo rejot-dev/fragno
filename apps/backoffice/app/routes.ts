@@ -22,6 +22,7 @@ export default [
       route("organizations", "routes/backoffice/organizations.tsx"),
       route("dashboard", "routes/backoffice/dashboard/index.tsx"),
       route("dashboard/:scopeKind/:scopeId", "routes/backoffice/dashboard/dashboard.tsx"),
+      route("dashboard/:scopeKind/:scopeId/events", "routes/backoffice/dashboard/events.tsx"),
       route("invitations/:invitationId", "routes/backoffice/invitation-accept.tsx"),
       route("organizations/:orgSlug", "routes/backoffice/organization-layout.tsx", [
         index("routes/backoffice/organization-overview.tsx"),

@@ -33,6 +33,48 @@ export function dashboardPath(scope: BackofficeRouteScope): string {
   return `/backoffice/dashboard/${backofficeRouteScopePath(scope)}`;
 }
 
+// The open trace and the node selected in it live in the URL, so both can be linked to and survive
+// a reload.
+const TRACE_PARAM = "trace";
+const TRACE_NODE_PARAM = "node";
+
+export function dashboardEventsPath(
+  scope: BackofficeRouteScope,
+  rootEventId: string | null,
+): string {
+  const path = `${dashboardPath(scope)}/events`;
+  return rootEventId === null
+    ? path
+    : `${path}?${new URLSearchParams({ [TRACE_PARAM]: rootEventId }).toString()}`;
+}
+
+export function dashboardOpenedTrace(searchParams: URLSearchParams): string | null {
+  return searchParams.get(TRACE_PARAM);
+}
+
+export function dashboardSelectedTraceNode(searchParams: URLSearchParams): string | null {
+  return searchParams.get(TRACE_NODE_PARAM);
+}
+
+/**
+ * Pins the trace along with the selection, because without it the page opens the newest trace,
+ * which a selection link would outlive. `null` clears the selection, which shows the origin.
+ */
+export function withSelectedTraceNode(
+  searchParams: URLSearchParams,
+  rootEventId: string,
+  nodeId: string | null,
+): URLSearchParams {
+  const next = new URLSearchParams(searchParams);
+  next.set(TRACE_PARAM, rootEventId);
+  if (nodeId === null) {
+    next.delete(TRACE_NODE_PARAM);
+  } else {
+    next.set(TRACE_NODE_PARAM, nodeId);
+  }
+  return next;
+}
+
 export function dashboardRunPath(
   scope: BackofficeResolvedScope,
   run: WorkflowRunReference,
