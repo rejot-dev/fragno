@@ -386,7 +386,17 @@ test("first-party apps are authorized without a review, and their consent is nei
       oauthClientId: client.clientId,
       requestedPermissions: [],
       actions: { kind: "none" },
-      trust: { kind: "first-party", provisioningPermissions: [] },
+      trust: {
+        kind: "first-party",
+        provisioningPermissions: [],
+        branding: {
+          displayName: "Ledger",
+          logoUrl: "https://ledger.example/logo.svg",
+          accentColor: "#2f6f4e",
+          homeUrl: "https://ledger.example",
+          supportUrl: "https://ledger.example/help",
+        },
+      },
     });
     assert(registered.ok);
     const cookie = String(ctx.vars.otherSession);

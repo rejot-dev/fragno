@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from "node:util";
 
 import type {
   AppActionsDeclaration,
+  AppBranding,
   AppTrust,
   BackofficeApp,
   BackofficeAppLookupInput,
@@ -33,17 +34,30 @@ import { appsFragmentSchema } from "./schema";
 type StoredAppTrust = {
   trust: AppTrust["kind"];
   provisioningPermissions: BackofficeProvisioningPermission[] | null;
+  branding: AppBranding | null;
 };
 
 function toStoredAppTrust(trust: AppTrust): StoredAppTrust {
   return trust.kind === "first-party"
-    ? { trust: "first-party", provisioningPermissions: trust.provisioningPermissions }
-    : { trust: "third-party", provisioningPermissions: null };
+    ? {
+        trust: "first-party",
+        provisioningPermissions: trust.provisioningPermissions,
+        branding: trust.branding,
+      }
+    : { trust: "third-party", provisioningPermissions: null, branding: null };
 }
 
+/**
+ * An app made first-party before branding existed has none, and stays third-party until an
+ * administrator sets its trust again: Backoffice's sign-in cannot speak in an unnamed app's name.
+ */
 function toAppTrust(stored: StoredAppTrust): AppTrust {
-  return stored.trust === "first-party"
-    ? { kind: "first-party", provisioningPermissions: stored.provisioningPermissions ?? [] }
+  return stored.trust === "first-party" && stored.branding !== null
+    ? {
+        kind: "first-party",
+        provisioningPermissions: stored.provisioningPermissions ?? [],
+        branding: stored.branding,
+      }
     : { kind: "third-party" };
 }
 
@@ -56,7 +70,8 @@ function appTrustsEqual(left: AppTrust, right: AppTrust): boolean {
     left.provisioningPermissions.length === right.provisioningPermissions.length &&
     left.provisioningPermissions.every((permission) =>
       right.provisioningPermissions.includes(permission),
-    )
+    ) &&
+    isDeepStrictEqual(left.branding, right.branding)
   );
 }
 
@@ -269,7 +284,11 @@ export const appsFragmentDefinition = defineFragment("apps")
               b.whereIndex("idx_app_trust", (eb) => eb("trust", "=", "first-party")),
             ),
           )
-          .transformRetrieve(([apps]): string[] => apps.map(({ oauthClientId }) => oauthClientId))
+          .transformRetrieve(([apps]): string[] =>
+            apps
+              .filter((app) => toAppTrust(app).kind === "first-party")
+              .map(({ oauthClientId }) => oauthClientId),
+          )
           .build();
       },
 

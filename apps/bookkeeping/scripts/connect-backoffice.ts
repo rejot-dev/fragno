@@ -33,16 +33,6 @@ const cliEntry = resolve(repositoryRoot, "apps/backoffice-cli/bin/run.js");
 
 const OAUTH_SCOPES = ["openid", "profile", "email", "offline_access", "backoffice"];
 const REQUESTED_PERMISSIONS = [{ namespace: "events", permission: "emit" }];
-// Backoffice operates Bookkeeping, so it may provision Bookkeeping's tenants there.
-const TRUST = {
-  kind: "first-party",
-  provisioningPermissions: [
-    "users.provision",
-    "organizations.provision",
-    "projects.provision",
-    "organizations.members.sync",
-  ],
-};
 
 function readDevVars(): Map<string, string> {
   const values = new Map<string, string>();
@@ -149,6 +139,24 @@ const bookkeepingUrl = origin(
   "--bookkeeping-url",
 );
 const callbackUrl = `${bookkeepingUrl}/api/auth/callback/backoffice`;
+// Backoffice operates Bookkeeping: it may provision Bookkeeping's tenants there, and Backoffice's
+// sign-in looks like Bookkeeping to people Bookkeeping sends there.
+const TRUST = {
+  kind: "first-party",
+  provisioningPermissions: [
+    "users.provision",
+    "organizations.provision",
+    "projects.provision",
+    "organizations.members.sync",
+  ],
+  branding: {
+    displayName: "Bookkeeping",
+    logoUrl: `${bookkeepingUrl}/logo.svg`,
+    accentColor: "#1e2fb0",
+    homeUrl: bookkeepingUrl,
+    supportUrl: `${bookkeepingUrl}/help`,
+  },
+};
 const actions = {
   kind: "endpoint",
   endpointUrl: `${bookkeepingUrl}${BACKOFFICE_ACTIONS_PATH}`,

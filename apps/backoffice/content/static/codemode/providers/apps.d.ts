@@ -277,6 +277,7 @@ type AppTrust =
         | "projects.provision"
         | "organizations.members.sync"
       )[];
+      branding: AppBranding;
     };
 type AppAction = {
   id: string;
@@ -290,6 +291,17 @@ type AppAction = {
   outputSchema: {
     [key: string]: unknown;
   };
+};
+type AppBranding = {
+  displayName: string;
+  /** A square image shown above the app's sign-in form. */
+  logoUrl: string;
+  /** Colors the sign-in page's primary button and links. */
+  accentColor: string;
+  /** Where people return to when they leave the app's sign-in. */
+  homeUrl: string;
+  /** Where people ask for help signing in. */
+  supportUrl: string;
 };
 type AppInstallationResourceScope =
   | {

@@ -57,6 +57,13 @@ const scenarioObjects = {
 const origin = "https://backoffice.example";
 const redirectUri = "https://bookkeeping.example/api/auth/oauth2/callback/backoffice";
 const emit = BACKOFFICE_PERMISSION.events.emit;
+const branding = {
+  displayName: "Bookkeeping",
+  logoUrl: "https://bookkeeping.example/logo.svg",
+  accentColor: "#2f6f4e",
+  homeUrl: "https://bookkeeping.example",
+  supportUrl: "https://bookkeeping.example/help",
+};
 const everyProvisioningPermission = [
   "users.provision",
   "organizations.provision",
@@ -216,6 +223,7 @@ async function runFirstPartyScenario(
                 trust: {
                   kind: "first-party",
                   provisioningPermissions: [...everyProvisioningPermission],
+                  branding,
                 },
               });
               assert(registered.ok);
@@ -419,7 +427,11 @@ test("Bookkeeping provisions its users, organization, project, and members, once
           (
             await apps.updateAppTrust({
               appId: ctx.vars.appId,
-              trust: { kind: "first-party", provisioningPermissions: ["users.provision"] },
+              trust: {
+                kind: "first-party",
+                provisioningPermissions: ["users.provision"],
+                branding,
+              },
             })
           ).ok,
         );
