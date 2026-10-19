@@ -3,6 +3,7 @@ import type { RouterContextProvider } from "react-router";
 import {
   BACKOFFICE_AUTH_ERROR_HEADER,
   BACKOFFICE_TOKEN_EXPIRED_CODE,
+  CLIENT_IP_HEADER,
   type BackofficeMeData,
 } from "@/fragno/auth/contracts";
 import { expiredBackofficeAccessTokenCookieHeaders } from "@/fragno/auth/token-lifecycle";
@@ -22,6 +23,8 @@ export const callBetterAuth = async (
   const cookie = request.headers.get("cookie");
   const authorization = request.headers.get("authorization");
   const origin = request.headers.get("origin") ?? new URL(request.url).origin;
+  // Better Auth rate-limits by client IP; without it, every visitor shares one limit.
+  const clientIp = request.headers.get(CLIENT_IP_HEADER);
   if (cookie) {
     headers.set("cookie", cookie);
   }
@@ -30,6 +33,9 @@ export const callBetterAuth = async (
   }
   if (origin) {
     headers.set("origin", origin);
+  }
+  if (clientIp) {
+    headers.set(CLIENT_IP_HEADER, clientIp);
   }
   if (init.body && !headers.has("content-type")) {
     headers.set("content-type", "application/json");
