@@ -2,16 +2,14 @@ import { type CSSProperties, type ReactNode, useEffect, useId, useMemo, useState
 
 import { cn } from "../cn";
 import { Icon } from "./icon";
+import { TimelineReplayControls, useTimelineReplay } from "./timeline-replay";
 import {
   formatWorkflowDuration,
   layoutWorkflowRun,
   newestWorkflowMoment,
   reachedWorkflowEndIds,
-  replayTimeAfter,
-  WORKFLOW_REPLAY_SPEED,
   workflowStepMarkAt,
   positionOnScale,
-  timeAtScalePosition,
   workflowStepStatusAt,
   workflowTimeScale,
   type WorkflowRunEnd,
@@ -67,6 +65,27 @@ const STEP_STATUS_COLOR: Record<WorkflowRunStepStatus, string> = {
   skipped: "var(--bo-muted-2)",
 };
 
+/**
+ * How the timeline sits on its page. On its own, it draws a header, its own time axis, and replay
+ * controls. Embedded in a view that already draws the run on a time axis, such as a causal flame
+ * graph, it is a list of steps that follows that view's replay cursor.
+ */
+export type WorkflowRunTimelinePresentation =
+  | {
+      kind: "standalone";
+      /** Secondary run facts shown beside the status, such as the run id or parser notes. */
+      meta: ReactNode;
+      actions: ReactNode;
+      /** A padded card, or flush against the edges of a surface that already frames it. */
+      surface: "card" | "flush";
+    }
+  | {
+      kind: "embedded";
+      /** `null` follows the run live. */
+      cursor: number | null;
+      onHoverStep: (stepId: string | null) => void;
+    };
+
 export function WorkflowRunTimeline({
   title,
   status,
@@ -78,9 +97,7 @@ export function WorkflowRunTimeline({
   events,
   selectedStepId,
   onSelectStep,
-  meta,
-  actions,
-  surface,
+  presentation,
 }: {
   title: string;
   status: WorkflowRunStatus;
@@ -97,11 +114,7 @@ export function WorkflowRunTimeline({
   events: readonly WorkflowRunEvent[];
   selectedStepId: string | null;
   onSelectStep: (stepId: string) => void;
-  /** Secondary run facts shown beside the status, such as the run id or parser notes. */
-  meta: ReactNode;
-  actions: ReactNode;
-  /** A standalone padded card, or flush against the edges of a surface that already frames it. */
-  surface: "card" | "flush";
+  presentation: WorkflowRunTimelinePresentation;
 }) {
   const [expandedStepIds, setExpandedStepIds] = useState<ReadonlySet<string>>(new Set());
   const layout = useMemo(
@@ -114,21 +127,20 @@ export function WorkflowRunTimeline({
     () => workflowTimeScale(createdAt, end, startedAt, nodes, events),
     [createdAt, end, startedAt, nodes, events],
   );
-  const replay = useReplay(scale);
-  const horizon = replay.cursor ?? end;
+  const [ownCursor, setOwnCursor] = useState<number | null>(null);
+  const replay = useTimelineReplay({ scale, cursor: ownCursor, onCursorChange: setOwnCursor });
+  const cursor = presentation.kind === "embedded" ? presentation.cursor : ownCursor;
+  const timed = presentation.kind === "standalone";
+  const horizon = cursor ?? end;
   const railWidth = RAIL_INSET * 2 + (layout.laneCount - 1) * LANE_GAP;
   // Events are oldest first.
   const latestEvent = events.filter((event) => event.at <= horizon).at(-1) ?? null;
   const queued = startedAt === null || horizon < startedAt;
-  const runStatus: RunDisplayStatus = queued
-    ? "queued"
-    : replay.cursor === null
-      ? status
-      : "active";
+  const runStatus: RunDisplayStatus = queued ? "queued" : cursor === null ? status : "active";
   // Replay never shows exits as reached: they are only known once the run has finished.
   const reachedEndIds = useMemo(
-    () => (replay.cursor === null ? reachedWorkflowEndIds(layout, status) : new Set<string>()),
-    [layout, status, replay.cursor],
+    () => (cursor === null ? reachedWorkflowEndIds(layout, status) : new Set<string>()),
+    [layout, status, cursor],
   );
 
   function toggleExpanded(stepId: string) {
@@ -145,40 +157,62 @@ export function WorkflowRunTimeline({
     <section
       aria-label={`Workflow run ${title}`}
       className={
-        surface === "card"
+        presentation.kind === "standalone" && presentation.surface === "card"
           ? "overflow-hidden rounded-[6px] border border-[color:var(--bo-border)] bg-[var(--bo-panel)] text-[var(--bo-fg)] shadow-[var(--bo-panel-shadow)]"
           : "overflow-hidden text-[var(--bo-fg)]"
       }
     >
-      <header
-        className={cn(
-          "flex flex-wrap items-center gap-x-3 gap-y-2 pt-3 pb-1 text-xs",
-          surface === "card" && "px-4",
-        )}
-      >
-        <h3 className="truncate text-base font-semibold tracking-tight">{title}</h3>
-        <RunStatusLabel status={runStatus} />
-        <div className="flex min-w-0 items-center gap-3 text-[var(--bo-muted)]">{meta}</div>
-        <div className="ml-auto flex items-center gap-3">
-          <ReplayControls replay={replay} scale={scale} horizon={horizon} />
-          {actions}
-        </div>
-      </header>
+      {presentation.kind === "standalone" ? (
+        <header
+          className={cn(
+            "flex flex-wrap items-center gap-x-3 gap-y-2 pt-3 pb-1 text-xs",
+            presentation.surface === "card" && "px-4",
+          )}
+        >
+          <h3 className="truncate text-base font-semibold tracking-tight">{title}</h3>
+          <RunStatusLabel status={runStatus} />
+          <div className="flex min-w-0 items-center gap-3 text-[var(--bo-muted)]">
+            {presentation.meta}
+          </div>
+          <div className="ml-auto flex items-center gap-3">
+            <TimelineReplayControls replay={replay} scale={scale} horizon={horizon} subject="run" />
+            {presentation.actions}
+          </div>
+        </header>
+      ) : null}
 
       <div
         role="table"
         aria-label="Workflow steps"
-        className={cn("overflow-x-auto pb-2", surface === "card" && "px-2")}
-        style={{ "--wf-rail": `${railWidth}px` } as CSSProperties}
+        className={cn(
+          "overflow-x-auto pb-2",
+          presentation.kind === "standalone" && presentation.surface === "card" && "px-2",
+        )}
+        style={
+          {
+            "--wf-rail": `${railWidth}px`,
+            "--wf-columns": timed ? TIMED_COLUMNS : UNTIMED_COLUMNS,
+          } as CSSProperties
+        }
       >
-        <div className="min-w-[44rem]">
-          <TimelineHeader scale={scale} />
-          <div role="rowgroup" className="relative">
+        <div className={timed ? "min-w-[44rem]" : "min-w-[28rem]"}>
+          <TimelineHeader scale={scale} timed={timed} />
+          <div
+            role="rowgroup"
+            className="relative"
+            onMouseLeave={
+              presentation.kind === "embedded"
+                ? () => {
+                    presentation.onHoverStep(null);
+                  }
+                : undefined
+            }
+          >
             <RailGraph
               rows={layout.rows}
               rails={layout.rails}
               width={railWidth}
-              cursor={replay.cursor}
+              cursor={cursor}
               queued={queued}
               reachedEndIds={reachedEndIds}
               selectedStepId={selectedStepId}
@@ -192,25 +226,33 @@ export function WorkflowRunTimeline({
                   startedAt={startedAt}
                   scale={scale}
                   horizon={horizon}
+                  timed={timed}
                 />
               ) : row.kind === "end" ? (
                 <EndRow
                   key={row.id}
                   row={row}
                   reached={reachedEndIds.has(row.id)}
-                  finished={replay.cursor === null && endedAt !== null}
+                  finished={cursor === null && endedAt !== null}
+                  timed={timed}
                 />
               ) : (
                 <StepRow
                   key={row.id}
                   row={row}
-                  status={workflowStepStatusAt(row.step, replay.cursor)}
+                  status={workflowStepStatusAt(row.step, cursor)}
                   expanded={expandedStepIds.has(row.step.id)}
                   selected={row.step.id === selectedStepId}
                   scale={scale}
                   horizon={horizon}
+                  timed={timed}
                   onSelect={() => {
                     onSelectStep(row.step.id);
+                  }}
+                  onHover={() => {
+                    if (presentation.kind === "embedded") {
+                      presentation.onHoverStep(row.step.id);
+                    }
                   }}
                   onToggleExpanded={() => {
                     toggleExpanded(row.step.id);
@@ -224,66 +266,6 @@ export function WorkflowRunTimeline({
 
       <LatestEvent event={latestEvent} createdAt={createdAt} />
     </section>
-  );
-}
-
-const SLIDER_STEPS = 1000;
-
-function ReplayControls({
-  replay,
-  scale,
-  horizon,
-}: {
-  replay: Replay;
-  scale: WorkflowTimeScale;
-  horizon: number;
-}) {
-  return (
-    <div className="flex items-center gap-2">
-      <button
-        type="button"
-        aria-label={replay.playing ? "Pause replay" : "Replay run"}
-        title={replay.playing ? "Pause replay" : "Replay run"}
-        onClick={replay.playing ? replay.pause : replay.play}
-        className={cn(
-          "inline-flex size-7 items-center justify-center rounded-[4px] transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none",
-          replay.playing
-            ? "bg-[var(--bo-waiting-bg)] text-[var(--bo-waiting)]"
-            : "text-[var(--bo-fg)] hover:bg-[var(--bo-panel-2)]",
-        )}
-      >
-        <Icon name={replay.playing ? "pause" : "play"} className="size-3.5" />
-      </button>
-      {/* Hidden rather than removed while live, so the slider does not shift when playback starts. */}
-      <span
-        aria-hidden={!replay.playing}
-        title={`Replays at ${WORKFLOW_REPLAY_SPEED}× the recorded speed; idle gaps pass in a moment`}
-        className={cn(
-          "rounded-[3px] border border-[color:var(--bo-waiting)]/40 px-1 text-[10px] leading-4 font-semibold text-[var(--bo-waiting)] tabular-nums transition-opacity duration-150",
-          replay.playing ? "opacity-100" : "invisible opacity-0",
-        )}
-      >
-        {WORKFLOW_REPLAY_SPEED}×
-      </span>
-      <label className="flex items-center">
-        <span className="sr-only">Replay position</span>
-        <input
-          type="range"
-          aria-valuetext={formatWorkflowDuration(horizon - scale.startedAt, "fine")}
-          min={0}
-          max={SLIDER_STEPS}
-          step="any"
-          value={positionOnScale(scale, horizon) * SLIDER_STEPS}
-          onChange={(event) => {
-            replay.seek(timeAtScalePosition(scale, Number(event.target.value) / SLIDER_STEPS));
-          }}
-          className="w-28 accent-[color:var(--bo-accent)]"
-        />
-      </label>
-      <span className="min-w-12 text-right whitespace-nowrap text-[var(--bo-fg)] tabular-nums">
-        {formatWorkflowDuration(horizon - scale.startedAt, "fine")}
-      </span>
-    </div>
   );
 }
 
@@ -311,10 +293,12 @@ function RunStatusLabel({ status }: { status: RunDisplayStatus }) {
   );
 }
 
-const ROW_GRID =
-  "grid grid-cols-[var(--wf-rail)_minmax(10rem,1.5fr)_6rem_5rem_minmax(10rem,1.6fr)_4rem] items-center gap-x-3";
+// Embedded timelines leave the time axis to the view around them and only keep each step's span.
+const TIMED_COLUMNS = "var(--wf-rail) minmax(10rem,1.5fr) 6rem 5rem minmax(10rem,1.6fr) 4rem";
+const UNTIMED_COLUMNS = "var(--wf-rail) minmax(10rem,1fr) 6rem 5rem 4rem";
+const ROW_GRID = "grid grid-cols-[var(--wf-columns)] items-center gap-x-3";
 
-function TimelineHeader({ scale }: { scale: WorkflowTimeScale }) {
+function TimelineHeader({ scale, timed }: { scale: WorkflowTimeScale; timed: boolean }) {
   return (
     <div
       role="row"
@@ -327,9 +311,11 @@ function TimelineHeader({ scale }: { scale: WorkflowTimeScale }) {
       <span role="columnheader">Step</span>
       <span role="columnheader">State</span>
       <span role="columnheader">Attempt</span>
-      <span role="columnheader" className="relative h-full">
-        <AxisLabels scale={scale} />
-      </span>
+      {timed ? (
+        <span role="columnheader" className="relative h-full">
+          <AxisLabels scale={scale} />
+        </span>
+      ) : null}
       <span role="columnheader" className="text-right">
         Span
       </span>
@@ -378,12 +364,14 @@ function StartRow({
   startedAt,
   scale,
   horizon,
+  timed,
 }: {
   row: StartRowModel;
   createdAt: number;
   startedAt: number | null;
   scale: WorkflowTimeScale;
   horizon: number;
+  timed: boolean;
 }) {
   const queuedUntil = Math.min(startedAt ?? horizon, horizon);
   const queued = startedAt === null || horizon < startedAt;
@@ -401,14 +389,16 @@ function StartRow({
         {queued ? "Queued" : "Started"}
       </span>
       <span role="cell" />
-      <span role="cell" className="relative h-full">
-        <TimelineTrack
-          mark={{ kind: "bar", startedAt: createdAt, endedAt: queuedUntil }}
-          color="var(--bo-muted-2)"
-          scale={scale}
-          horizon={horizon}
-        />
-      </span>
+      {timed ? (
+        <span role="cell" className="relative h-full">
+          <TimelineTrack
+            mark={{ kind: "bar", startedAt: createdAt, endedAt: queuedUntil }}
+            color="var(--bo-muted-2)"
+            scale={scale}
+            horizon={horizon}
+          />
+        </span>
+      ) : null}
       <span role="cell" className="text-right text-xs text-[var(--bo-muted)] tabular-nums">
         {formatWorkflowDuration(queuedUntil - createdAt, "coarse")}
       </span>
@@ -427,10 +417,12 @@ function EndRow({
   row,
   reached,
   finished,
+  timed,
 }: {
   row: EndRowModel;
   reached: boolean;
   finished: boolean;
+  timed: boolean;
 }) {
   const labels = END_LABEL[row.end.reason];
   const tone = reached
@@ -452,7 +444,7 @@ function EndRow({
         {reached ? labels.reached : labels.pending}
       </span>
       <span role="cell" />
-      <span role="cell" />
+      {timed ? <span role="cell" /> : null}
       <span role="cell" />
     </div>
   );
@@ -477,7 +469,9 @@ function StepRow({
   selected,
   scale,
   horizon,
+  timed,
   onSelect,
+  onHover,
   onToggleExpanded,
 }: {
   row: StepRowModel;
@@ -486,7 +480,9 @@ function StepRow({
   selected: boolean;
   scale: WorkflowTimeScale;
   horizon: number;
+  timed: boolean;
   onSelect: () => void;
+  onHover: () => void;
   onToggleExpanded: () => void;
 }) {
   const step = row.step;
@@ -499,6 +495,7 @@ function StepRow({
       role="row"
       aria-selected={selected}
       onClick={onSelect}
+      onMouseEnter={onHover}
       className={cn(
         ROW_GRID,
         "cursor-pointer rounded-[4px] pr-2 text-sm transition-colors duration-150",
@@ -559,14 +556,16 @@ function StepRow({
           <span className="text-xs text-[var(--bo-muted-2)]">—</span>
         )}
       </span>
-      <span role="cell" className="relative h-full">
-        <TimelineTrack
-          mark={mark}
-          color={STEP_STATUS_COLOR[status]}
-          scale={scale}
-          horizon={horizon}
-        />
-      </span>
+      {timed ? (
+        <span role="cell" className="relative h-full">
+          <TimelineTrack
+            mark={mark}
+            color={STEP_STATUS_COLOR[status]}
+            scale={scale}
+            horizon={horizon}
+          />
+        </span>
+      ) : null}
       <span role="cell" className="text-right text-xs text-[var(--bo-muted)] tabular-nums">
         {mark.kind === "bar"
           ? formatWorkflowDuration(mark.endedAt - mark.startedAt, "coarse")
@@ -977,60 +976,6 @@ function LatestEvent({ event, createdAt }: { event: WorkflowRunEvent | null; cre
       </pre>
     </details>
   );
-}
-
-type Replay = {
-  /** `null` follows the run live. */
-  cursor: number | null;
-  playing: boolean;
-  play: () => void;
-  pause: () => void;
-  seek: (at: number) => void;
-};
-
-/** `from` is the run time playback resumed at. */
-type Playback = { scale: WorkflowTimeScale; from: number };
-
-function useReplay(scale: WorkflowTimeScale): Replay {
-  const [cursor, setCursor] = useState<number | null>(null);
-  // Captures the scale at play time, so a live run's moving end does not restart playback.
-  const [playback, setPlayback] = useState<Playback | null>(null);
-
-  useEffect(() => {
-    if (playback === null) {
-      return undefined;
-    }
-    const wallStart = performance.now();
-    let frame = requestAnimationFrame(function advance(timestamp) {
-      const at = replayTimeAfter(playback.scale, playback.from, timestamp - wallStart);
-      if (at === null) {
-        setCursor(null);
-        setPlayback(null);
-        return;
-      }
-      setCursor(at);
-      frame = requestAnimationFrame(advance);
-    });
-    return () => {
-      cancelAnimationFrame(frame);
-    };
-  }, [playback]);
-
-  return {
-    cursor,
-    playing: playback !== null,
-    play() {
-      setPlayback({ scale, from: cursor ?? scale.startedAt });
-    },
-    pause() {
-      setPlayback(null);
-    },
-    seek(at) {
-      setPlayback(null);
-      // Snapping to the end returns to the live view, which also shows reconciled final states.
-      setCursor(at >= scale.endedAt ? null : at);
-    },
-  };
 }
 
 /**

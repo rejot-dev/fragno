@@ -452,16 +452,21 @@ export function workflowTimeScale(
   nodes: readonly WorkflowRunNode[],
   events: readonly WorkflowRunEvent[],
 ): WorkflowTimeScale {
+  return timeScaleOverMoments(startedAt, endedAt, [
+    ...(runStartedAt === null ? [] : [runStartedAt]),
+    ...recordedMoments(nodes),
+    ...events.map((event) => event.at),
+  ]);
+}
+
+/** Gaps between consecutive recorded moments are the candidates for squeezing into idle segments. */
+export function timeScaleOverMoments(
+  startedAt: number,
+  endedAt: number,
+  recorded: readonly number[],
+): WorkflowTimeScale {
   const moments = [
-    ...new Set(
-      [
-        startedAt,
-        endedAt,
-        ...(runStartedAt === null ? [] : [runStartedAt]),
-        ...recordedMoments(nodes),
-        ...events.map((event) => event.at),
-      ].filter((at) => at >= startedAt && at <= endedAt),
-    ),
+    ...new Set([startedAt, endedAt, ...recorded].filter((at) => at >= startedAt && at <= endedAt)),
   ].sort((left, right) => left - right);
   const gaps = moments.slice(1).map((to, index) => ({ from: moments[index] ?? to, to }));
 
@@ -510,8 +515,8 @@ export function workflowTimeScale(
   return { startedAt, endedAt, segments, ticks: scaleTicks(startedAt, segments, scaledDuration) };
 }
 
-/** Run time passes at twice the recorded pace during replay. */
-export const WORKFLOW_REPLAY_SPEED = 2;
+/** How many times faster than recorded a replay plays the time drawn to scale. */
+export type WorkflowReplaySpeed = 1 | 2 | 3;
 /** Idle gaps are squeezed on the scale, so replay crosses each one in a fixed wall-clock time. */
 const IDLE_GAP_REPLAY_MS = 500;
 
@@ -523,6 +528,7 @@ export function replayTimeAfter(
   scale: WorkflowTimeScale,
   from: number,
   wallElapsedMs: number,
+  speed: WorkflowReplaySpeed,
 ): number | null {
   let remaining = wallElapsedMs;
   for (const segment of scale.segments) {
@@ -531,9 +537,7 @@ export function replayTimeAfter(
     }
     const start = Math.max(from, segment.from);
     const length = segment.to - segment.from;
-    const wallPerRunMs = segment.idle
-      ? IDLE_GAP_REPLAY_MS / Math.max(length, 1)
-      : 1 / WORKFLOW_REPLAY_SPEED;
+    const wallPerRunMs = segment.idle ? IDLE_GAP_REPLAY_MS / Math.max(length, 1) : 1 / speed;
     const needed = (segment.to - start) * wallPerRunMs;
     if (remaining < needed) {
       return start + remaining / wallPerRunMs;

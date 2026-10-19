@@ -431,18 +431,19 @@ describe("workflow replay clock", () => {
     [],
   );
 
-  test("replays work at twice the recorded speed", () => {
-    assert.equal(replayTimeAfter(scale, 0, 5_000), 10_000);
-    assert.equal(replayTimeAfter(scale, 10_000, 5_000), 20_000);
+  test("replays work at the chosen multiple of the recorded speed", () => {
+    assert.equal(replayTimeAfter(scale, 0, 5_000, 2), 10_000);
+    assert.equal(replayTimeAfter(scale, 10_000, 5_000, 2), 20_000);
+    assert.equal(replayTimeAfter(scale, 0, 5_000, 3), 15_000);
   });
 
   test("crosses a day of waiting in half a second", () => {
-    assert.equal(replayTimeAfter(scale, 0, 15_000), 30_000);
-    assert.equal(replayTimeAfter(scale, 0, 15_250), 30_000 + DAY / 2);
-    assert.equal(replayTimeAfter(scale, 0, 15_500 + 5_000), DAY + 40_000);
+    assert.equal(replayTimeAfter(scale, 0, 15_000, 2), 30_000);
+    assert.equal(replayTimeAfter(scale, 0, 15_250, 2), 30_000 + DAY / 2);
+    assert.equal(replayTimeAfter(scale, 0, 15_500 + 5_000, 2), DAY + 40_000);
   });
 
   test("finishes after the last recorded moment", () => {
-    assert.isNull(replayTimeAfter(scale, 0, 30_501));
+    assert.isNull(replayTimeAfter(scale, 0, 30_501, 2));
   });
 });

@@ -76,18 +76,21 @@ function Frame({
         events={events}
         selectedStepId={selectedStepId}
         onSelectStep={setSelectedStepId}
-        meta={
-          <>
-            <span className="font-mono">n296bqwlo6pm</span>
-            {diagnostics === 0 ? null : (
-              <span className="text-[var(--bo-waiting)]">
-                {diagnostics} parser {diagnostics === 1 ? "note" : "notes"}
-              </span>
-            )}
-          </>
-        }
-        actions={null}
-        surface="card"
+        presentation={{
+          kind: "standalone",
+          meta: (
+            <>
+              <span className="font-mono">n296bqwlo6pm</span>
+              {diagnostics === 0 ? null : (
+                <span className="text-[var(--bo-waiting)]">
+                  {diagnostics} parser {diagnostics === 1 ? "note" : "notes"}
+                </span>
+              )}
+            </>
+          ),
+          actions: null,
+          surface: "card",
+        }}
       />
     </div>
   );
