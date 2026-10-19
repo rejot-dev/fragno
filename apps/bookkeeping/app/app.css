@@ -155,18 +155,17 @@ a {
   color: var(--bo-accent);
   text-decoration: underline;
 }
+.sign-in {
+  margin: 28px 0;
+}
 .auth form {
   display: grid;
   gap: 20px;
 }
-.backoffice-login {
-  margin: 28px 0;
-}
-.backoffice-login > p:last-child {
-  margin-top: 16px;
-  text-align: center;
-  font-size: 14px;
-  color: var(--bo-muted);
+.auth > h2 {
+  margin-top: 28px;
+  font-size: 18px;
+  font-weight: 600;
 }
 .error {
   color: var(--bo-failed);

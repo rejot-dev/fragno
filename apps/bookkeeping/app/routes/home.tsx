@@ -20,16 +20,11 @@ export default function Home() {
             will have a place to grow.
           </p>
           <div className="flex flex-wrap items-center gap-3">
-            <ButtonLink variant="solid" to={user ? "/dashboard" : "/signup"}>
-              {user ? "Open your dashboard" : "Create your workspace"}
+            <ButtonLink variant="solid" to={user ? "/dashboard" : "/login"}>
+              {user ? "Open your dashboard" : "Get started"}
             </ButtonLink>
-            {!user && (
-              <ButtonLink variant="ghost" to="/login">
-                Already have an account?
-              </ButtonLink>
-            )}
           </div>
-          <p className="hero-note">Sign in with Backoffice or use your email and password.</p>
+          <p className="hero-note">No password needed: we email you a code to sign in.</p>
         </div>
         <div className="workspace-preview">
           <div className="flex items-center justify-between border-b border-[var(--bo-border)] pb-4">
@@ -60,8 +55,8 @@ export default function Home() {
         </div>
         <div>
           <Icon name="log-in" className="mb-4 size-5 text-[var(--bo-accent)]" />
-          <h2 className="text-base font-semibold">Use your Backoffice account</h2>
-          <p>Continue with the account you already use, or sign up with email.</p>
+          <h2 className="text-base font-semibold">No passwords</h2>
+          <p>Enter your email and we send you a code. Your account is ready in a minute.</p>
         </div>
         <div>
           <Icon name="book" className="mb-4 size-5 text-[var(--bo-accent)]" />

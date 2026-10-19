@@ -43,10 +43,7 @@ export default function Account() {
             </div>
           </dl>
         </FormContainer>
-        <FormContainer
-          title="Session"
-          description="Log out of Bookkeeping on this browser. This does not log you out of Backoffice."
-        >
+        <FormContainer title="Session" description="Log out of Bookkeeping on this browser.">
           <Button
             variant="secondary"
             disabled={pending}
