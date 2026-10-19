@@ -4,6 +4,12 @@ import { z } from "zod";
 import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
 
 export const BACKOFFICE_AUTH_ERROR_HEADER = "x-backoffice-auth-error";
+
+/**
+ * The visitor's IP, which Cloudflare sets at its edge, replacing any value a client sends. Auth's
+ * rate limits read only this header.
+ */
+export const CLIENT_IP_HEADER = "cf-connecting-ip";
 export const BACKOFFICE_TOKEN_EXPIRED_CODE = "backoffice_token_expired";
 
 export type Role = "user" | "admin";
