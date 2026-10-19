@@ -17,6 +17,7 @@
     "./underline-tab-class-name": "./src/components/underline-tab-class-name.ts",
     "./units": "./src/components/units.ts",
     "./orchestration-graph-model": "./src/components/orchestration-graph-model.ts",
+    "./causal-flame-graph-model": "./src/components/causal-flame-graph-model.ts",
     "./workflow-run-timeline-model": "./src/components/workflow-run-timeline-model.ts",
     "./workflow-run-timeline-graph": "./src/components/workflow-run-timeline-graph.ts",
     "./forms/*": "./src/components/forms/*.tsx",
