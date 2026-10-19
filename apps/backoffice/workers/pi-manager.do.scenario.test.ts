@@ -35,6 +35,7 @@ import {
   type ConversationView,
   type LiveState,
 } from "@earendil-works/pi-durable";
+import { queryOnce } from "@tanstack/react-db";
 
 import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import {
@@ -54,6 +55,10 @@ import {
   PI_NOTIFICATION_ENTRY_KIND,
   renderPiNotificationRequest,
 } from "@/fragno/pi/agent/pi-agent-notification-entry";
+import {
+  eventTraceDispatchesQuery,
+  type EventTraceDispatch,
+} from "@/routes/backoffice/dashboard/event-traces";
 
 import {
   createPiScenarioDependencies,
@@ -1054,7 +1059,7 @@ test("a notify_agent route delivers events as turns but never the agent's own wo
         }),
       ],
       steps: ({ then }) => [
-        then.assert("a started agent answers a delivered event", async ({ runtime }) => {
+        then.assert("a started agent answers a delivered event", async ({ runtime, tanstack }) => {
           const started = await prompt(runtime, scope, { requestId: "start", content: "Start." });
           assert.equal(started.status, 202, await started.clone().text());
           await runtime.drain();
@@ -1112,6 +1117,33 @@ test("a notify_agent route delivers events as turns but never the agent's own wo
           ).toEqual([
             "reclassified:reclassify-turn:pi:assistant:route:notify-on-order:order-1",
             "reclassified:reclassify-turn:pi:assistant:start",
+          ]);
+
+          // Event traces show the notification, and the notifications the guard held back.
+          const database = tanstack.automations.forOrg(orgId);
+          await database.sync();
+          const dispatches = (await queryOnce((query) =>
+            eventTraceDispatchesQuery(query, database.collections),
+          )) as EventTraceDispatch[];
+          expect(
+            dispatches
+              .filter((dispatch) => dispatch.routeId.startsWith("notify-"))
+              .map(({ routeId, eventId, outcome }) => {
+                const done =
+                  outcome.kind === "agent_notified"
+                    ? `notified ${outcome.agentName}`
+                    : outcome.kind === "skipped"
+                      ? `skipped: ${outcome.reason}`
+                      : outcome.kind;
+                return `${routeId} ${eventId}: ${done}`;
+              })
+              .sort((left, right) => left.localeCompare(right)),
+          ).toEqual([
+            "notify-on-answer reclassified:reclassify-turn:pi:assistant:route:notify-on-order:order-1: skipped: caused_by_notified_agent",
+            "notify-on-answer reclassified:reclassify-turn:pi:assistant:start: skipped: caused_by_notified_agent",
+            "notify-on-order order-1: notified assistant",
+            "notify-on-turn pi:assistant:route:notify-on-order:order-1: skipped: caused_by_notified_agent",
+            "notify-on-turn pi:assistant:start: skipped: caused_by_notified_agent",
           ]);
         }),
       ],

@@ -239,6 +239,7 @@ const RUN_STATUS: Record<WorkflowInstanceStatus, CausalFlameStatus> = {
 const SKIP_REASON_LABEL: Record<AutomationRouteDispatchSkipReason, string> = {
   no_linked_external_sender: "No external sender linked to a user",
   workflow_instance_unresolved: "No workflow run matched the route's target",
+  caused_by_notified_agent: "The agent's own turns caused the event",
 };
 
 export function describeRouteDispatchSkipReason(reason: AutomationRouteDispatchSkipReason): string {
@@ -310,16 +311,22 @@ function distinct(values: readonly string[]): string[] {
 }
 
 /**
- * Workflows say the most about what an event did. Without any, the derived events say it, and
- * without those, what the routes did instead.
+ * The workflows and agents an event set to work say the most about what it did. Without any, the
+ * derived events say it, and without those, what the routes did instead.
  */
 function traceEffects(
   dispatches: readonly EventTraceDispatch[],
   runs: readonly EventTraceRun[],
   derivedEvents: readonly EventTraceEvent[],
 ): string[] {
-  if (runs.length > 0) {
-    return distinct(runs.map((run) => run.remoteWorkflowName ?? run.workflowName));
+  const workers = [
+    ...runs.map((run) => run.remoteWorkflowName ?? run.workflowName),
+    ...dispatches.flatMap(({ outcome }) =>
+      outcome.kind === "agent_notified" ? [`${outcome.agentName} agent`] : [],
+    ),
+  ];
+  if (workers.length > 0) {
+    return distinct(workers);
   }
   if (derivedEvents.length > 0) {
     return distinct(derivedEvents.map((event) => event.eventType));
@@ -335,6 +342,7 @@ function traceEffects(
           return [`${routeName} forwarded`];
         case "workflow_started":
         case "event_reclassified":
+        case "agent_notified":
           return [];
       }
       throw new Error("Unsupported automation route dispatch outcome.");
@@ -511,6 +519,16 @@ export function projectEventTrace({
         return [
           routeNode(id, `${dispatch.routeName} forwarded the event`, {
             detail: `To ${backofficeScopePathSegment(outcome.scope)}`,
+            status: "ok",
+            at,
+          }),
+        ];
+      case "agent_notified":
+        records.set(id, { kind: "dispatch", dispatch });
+        return [
+          routeNode(id, `${dispatch.routeName} notified ${outcome.agentName}`, {
+            // Turns are queued and answered later, so an answer roots a trace of its own.
+            detail: "The agent's answer starts its own trace",
             status: "ok",
             at,
           }),

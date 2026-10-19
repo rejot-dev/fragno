@@ -382,6 +382,7 @@ const handleNotifyAgentRouteAction = async ({
   action,
   event,
   route,
+  commitDispatch,
   linkedUserId,
   runtime,
 }: RouteExecutionContext & {
@@ -398,6 +399,7 @@ const handleNotifyAgentRouteAction = async ({
     linkedUserId,
   });
   if (!acting) {
+    await commitDispatch({ kind: "skipped", reason: "no_linked_external_sender" }, null);
     return;
   }
   // Everything an agent's turns produce, reclassified or forwarded too, keeps the agent as a
@@ -405,6 +407,7 @@ const handleNotifyAgentRouteAction = async ({
   // itself forever.
   const agent = piAgentActor(acting.execution.scope, action.agentName);
   if (event.actors.delegation.some((actor) => automationEntityRefsEqual(actor, agent))) {
+    await commitDispatch({ kind: "skipped", reason: "caused_by_notified_agent" }, null);
     return;
   }
   const { id, source, eventType, occurredAt, subject, payload } = acting.event;
@@ -417,6 +420,9 @@ const handleNotifyAgentRouteAction = async ({
     routeId: route.id,
     event: { id, source, eventType, occurredAt, subject: subject ?? null, payload },
   });
+  // The agent's queue lives in the Pi manager's object, so this commit cannot include the
+  // notification. A failure here replays the notification, as any failed route does.
+  await commitDispatch({ kind: "agent_notified", agentName: action.agentName }, null);
 };
 
 const MAX_AUTOMATION_EVENT_RECLASSIFICATION_CHAIN_LENGTH = 32;
