@@ -35,14 +35,9 @@ export default function PublicLayout({ loaderData }: Route.ComponentProps) {
               Open dashboard
             </ButtonLink>
           ) : (
-            <>
-              <ButtonLink variant="ghost" to="/login">
-                Log in
-              </ButtonLink>
-              <ButtonLink variant="solid" to="/signup">
-                Sign up
-              </ButtonLink>
-            </>
+            <ButtonLink variant="solid" to="/login">
+              Get started
+            </ButtonLink>
           )}
         </nav>
       </header>

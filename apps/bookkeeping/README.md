@@ -1,10 +1,11 @@
 # Bookkeeping
 
-Minimal React Router framework app deployed to Cloudflare Workers. Better Auth handles
-email/password authentication in one SQLite Durable Object named `auth`. No D1 database or external
-auth service is required. UI components, theme tokens, and the self-hosted brand font come from
-`@fragno-private/design-system`, shared with Backoffice. Tailwind processes the shared package's
-styles; Bookkeeping's own stylesheet only handles its page layout.
+Minimal React Router framework app deployed to Cloudflare Workers. Better Auth keeps sessions and
+accounts in one SQLite Durable Object named `auth`; people sign up and sign in with their Backoffice
+account only. No D1 database or external auth service is required. UI components, theme tokens, and
+the self-hosted brand font come from `@fragno-private/design-system`, shared with Backoffice.
+Tailwind processes the shared package's styles; Bookkeeping's own stylesheet only handles its page
+layout.
 
 ## Local development
 
@@ -25,23 +26,28 @@ credentials as described below.
 pnpm dev
 ```
 
-Routes: `/` (public frontpage), `/signup`, `/login`, `/dashboard` (workspace overview),
-`/dashboard/organizations` (create and switch organizations), `/dashboard/backoffice` (organization
-connection and test events), `/dashboard/backoffice/callback` (return from Backoffice installation),
-`/dashboard/account` (profile and logout), and Better Auth's `/api/auth/*` endpoints. The public
-layout includes a header and footer; the workspace uses a collapsible desktop sidebar and mobile
-navigation. Dashboard routes require a valid server-side session and redirect anonymous requests to
-login. Login and signup send successful sign-ins to the dashboard. Signed-in visitors are redirected
-away from auth pages. Personalized route responses are marked private and non-cacheable.
+Routes: `/` (public frontpage), `/login` (get started), `/help` (help signing in), `/signup`
+(redirects to `/login`), `/dashboard` (workspace overview), `/dashboard/organizations` (create and
+switch organizations), `/dashboard/backoffice` (organization connection and test events),
+`/dashboard/backoffice/callback` (return from Backoffice installation), `/dashboard/account`
+(profile and logout), and Better Auth's `/api/auth/*` endpoints. The public layout includes a header
+and footer; the workspace uses a collapsible desktop sidebar and mobile navigation. Dashboard routes
+require a valid server-side session and redirect anonymous requests to login. Signing in sends
+people to the dashboard. Signed-in visitors are redirected away from auth pages. Personalized route
+responses are marked private and non-cacheable.
 
-Authentication forms require JavaScript. The dashboard is an honest empty workspace; transaction,
-accounting, and reporting functionality, email verification, and password reset delivery are not
-implemented.
+Signing in requires JavaScript. The dashboard is an honest empty workspace; transaction, accounting,
+and reporting functionality are not implemented.
 
 ## Backoffice login
 
-The login and signup pages offer **Continue with Backoffice**. New Backoffice users get a local
-Bookkeeping account on their first successful login. The same authorization also lets Bookkeeping's
+Bookkeeping has no passwords and never names Backoffice to people signing in: its users need not
+know it exists. **Get started** sends them to Backoffice's sign-in, which Bookkeeping's
+[first-party branding](../backoffice/app/fragno/apps/README.md#first-party-apps) makes look like
+Bookkeeping. They enter their email and the 6-digit code Backoffice emails them in Bookkeeping's
+name; a new address gets an account. They then return here signed in, and get a local Bookkeeping
+account on their first sign-in. `backoffice:connect` registers the branding, with `/logo.svg` and
+`/help` from `public/` and `app/routes/help.tsx`. The same authorization also lets Bookkeeping's
 server act for that user wherever Bookkeeping is installed in Backoffice (see
 [Organizations and Backoffice](#organizations-and-backoffice)).
 
@@ -203,6 +209,6 @@ commits atomically with its version. It uses Fragno's Kysely Durable Object dial
 support Better Auth migration introspection, so schema changes are new migration files rather than
 edits to existing ones.
 
-- `workers/auth-schema.sql`: Better Auth 1.7.1's default schema for email/password and accounts.
+- `workers/auth-schema.sql`: Better Auth 1.7.1's default schema for users, sessions, and accounts.
 - `workers/auth-schema-0002-organizations.sql`: the organization plugin's tables (without teams or
   dynamic roles), plus Backoffice link requests and links.

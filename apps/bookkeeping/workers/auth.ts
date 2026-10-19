@@ -95,7 +95,8 @@ export class Auth extends DurableObject<CloudflareEnv> {
       database: { db: database, type: "sqlite" as const, transaction: true },
       secret: env.BETTER_AUTH_SECRET,
       baseURL: env.BOOKKEEPING_BASE_URL,
-      emailAndPassword: { enabled: true },
+      // Every account is a Backoffice account: people sign up and sign in through Backoffice.
+      emailAndPassword: { enabled: false },
       // Provider tokens are used only by Bookkeeping's server; never return them to browsers.
       account: { encryptOAuthTokens: true },
       disabledPaths: ["/get-access-token", "/refresh-token"],
