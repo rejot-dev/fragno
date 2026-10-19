@@ -1,17 +1,21 @@
 import { Button } from "@fragno-private/design-system/button";
-import { BackofficeFragmentMark } from "@fragno-private/design-system/fragment-mark";
 import { useState } from "react";
 import { useSearchParams } from "react-router";
 
 import { authClient } from "../lib/auth-client";
 
-export function BackofficeLogin() {
+/**
+ * Starts signing in. Backoffice holds every Bookkeeping account; its sign-in page looks like
+ * Bookkeeping, asks for an email, and creates the account for a new address, so this one button
+ * serves new and returning people alike.
+ */
+export function SignInButton() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [params] = useSearchParams();
 
   return (
-    <div className="backoffice-login">
+    <div className="sign-in space-y-3">
       <Button
         variant="solid"
         className="w-full"
@@ -27,24 +31,22 @@ export function BackofficeLogin() {
               errorCallbackURL: "/login",
             });
             if (result.error) {
-              setError("Could not start Backoffice login. Please try again.");
+              setError("We couldn't start signing in. Please try again.");
               setPending(false);
             }
           } catch {
-            setError("Could not connect. Please try again.");
+            setError("We couldn't connect. Check your internet connection and try again.");
             setPending(false);
           }
         }}
       >
-        <BackofficeFragmentMark size="md" className="[&>span]:bg-current!" />
-        {pending ? "Opening Backoffice…" : "Continue with Backoffice"}
+        {pending ? "One moment…" : "Continue with email"}
       </Button>
       {(error || params.has("error")) && (
         <p role="alert" className="error">
-          {error ?? "Backoffice login did not complete. Please try again."}
+          {error ?? "Signing in didn't finish. Please try again."}
         </p>
       )}
-      <p>Or use your email and password below.</p>
     </div>
   );
 }
