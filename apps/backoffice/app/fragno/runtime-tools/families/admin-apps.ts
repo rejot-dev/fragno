@@ -36,7 +36,7 @@ const trustOption = {
   valueRequired: true,
   valueName: "json",
   description:
-    'Trust: {"kind":"third-party"}, or {"kind":"first-party","provisioningPermissions":["users.provision","organizations.provision","projects.provision","organizations.members.sync"]} for an app Backoffice operates',
+    'Trust: {"kind":"third-party"}, or {"kind":"first-party","provisioningPermissions":["users.provision","organizations.provision","projects.provision","organizations.members.sync"],"branding":{"displayName","logoUrl","accentColor":"#rrggbb","homeUrl","supportUrl"}} for an app Backoffice operates',
 };
 
 function requireAdminAppsRuntime(context: AdminAppsToolContext): AdminRuntime {
@@ -171,7 +171,7 @@ const updateAppTrustTool = defineBackofficeRuntimeTool({
   namespace: "admin",
   name: "appsUpdateTrust",
   description:
-    "Set whether Backoffice operates a registered app. A first-party app is authorized without a consent screen and cannot be revoked by users, is linked to organizations without a permission review, and may call the provisioning operations it is granted.",
+    "Set whether Backoffice operates a registered app. A first-party app is authorized without a consent screen and cannot be revoked by users, is linked to organizations without a permission review, lets anyone sign up through it, has Backoffice's sign-in speak in its name (its branding), and may call the provisioning operations it is granted.",
   requiredPermissions: [BACKOFFICE_PERMISSION.admin.appsManage],
   inputSchema: backofficeAppTrustUpdateInputSchema,
   outputSchema: backofficeAppTrustUpdateResultSchema,
@@ -194,7 +194,7 @@ const updateAppTrustTool = defineBackofficeRuntimeTool({
           { ...trustOption, required: true },
         ],
         examples: [
-          'admin.apps.update-trust --app-id APP_ID --trust-json \'{"kind":"first-party","provisioningPermissions":["users.provision"]}\'',
+          'admin.apps.update-trust --app-id APP_ID --trust-json \'{"kind":"first-party","provisioningPermissions":["users.provision"],"branding":{"displayName":"Bookkeeping","logoUrl":"https://bookkeeping.example/logo.svg","accentColor":"#2f6f4e","homeUrl":"https://bookkeeping.example","supportUrl":"https://bookkeeping.example/help"}}\'',
         ],
       },
       parse: defineCliArgsParser("admin.apps.update-trust", {
@@ -263,7 +263,7 @@ const listAppsTool = defineBackofficeRuntimeTool({
             `  OAuth client ID: ${app.oauthClientId}`,
             `  Requested permissions: ${app.requestedPermissions.map(({ namespace, permission }) => `${namespace}.${permission}`).join(", ") || "none"}`,
             `  Actions: ${app.actions.kind === "none" ? "none" : `${app.actions.actions.map(({ id }) => id).join(", ")} at ${app.actions.endpointUrl}`} (revision ${app.actionsRevision})`,
-            `  Trust: ${app.trust.kind === "third-party" ? "third-party" : `first-party, provisioning ${app.trust.provisioningPermissions.join(", ") || "none"}`}`,
+            `  Trust: ${app.trust.kind === "third-party" ? "third-party" : `first-party as ${app.trust.branding.displayName}, provisioning ${app.trust.provisioningPermissions.join(", ") || "none"}`}`,
             `  Created at: ${app.createdAt}`,
           ].join("\n"),
         );

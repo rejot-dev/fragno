@@ -378,7 +378,9 @@ system administrator says otherwise:
 
 ```bash
 admin.apps.update-trust --app-id APP_ID --trust-json \
-  '{"kind":"first-party","provisioningPermissions":["users.provision","organizations.provision","projects.provision","organizations.members.sync"]}'
+  '{"kind":"first-party","provisioningPermissions":["users.provision","organizations.provision","projects.provision","organizations.members.sync"],
+    "branding":{"displayName":"Bookkeeping","logoUrl":"https://bookkeeping.example/logo.svg","accentColor":"#2f6f4e",
+      "homeUrl":"https://bookkeeping.example","supportUrl":"https://bookkeeping.example/help"}}'
 ```
 
 A first-party app is part of Backoffice, so:

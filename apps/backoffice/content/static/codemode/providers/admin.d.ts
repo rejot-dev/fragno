@@ -24,7 +24,7 @@ type AdminCodemodeProvider = {
   appsList(input: AdminAppsListInput): Promise<AdminAppsListOutput>;
   /** Replace a registered app's action declaration. A changed declaration gets a new revision; installations approve it before new or changed actions run, unless its changeApproval is automatic. */
   appsUpdateActions(input: AdminAppsUpdateActionsInput): Promise<AdminAppsUpdateActionsOutput>;
-  /** Set whether Backoffice operates a registered app. A first-party app is authorized without a consent screen and cannot be revoked by users, is linked to organizations without a permission review, and may call the provisioning operations it is granted. */
+  /** Set whether Backoffice operates a registered app. A first-party app is authorized without a consent screen and cannot be revoked by users, is linked to organizations without a permission review, lets anyone sign up through it, has Backoffice's sign-in speak in its name (its branding), and may call the provisioning operations it is granted. */
   appsUpdateTrust(input: AdminAppsUpdateTrustInput): Promise<AdminAppsUpdateTrustOutput>;
   /** Create an Auth-owned authorization-code OAuth web or native client for the current System administrator. Confidential clients return an initial secret and may use client credentials; public clients use PKCE without a secret. Does not register or install a Backoffice app. */
   oauthClientsCreate(input: AdminOauthClientsCreateInput): Promise<AdminOauthClientsCreateOutput>;
@@ -323,6 +323,7 @@ type AppTrust =
         | "projects.provision"
         | "organizations.members.sync"
       )[];
+      branding: AppBranding;
     };
 type AppAction = {
   id: string;
@@ -336,6 +337,17 @@ type AppAction = {
   outputSchema: {
     [key: string]: unknown;
   };
+};
+type AppBranding = {
+  displayName: string;
+  /** A square image shown above the app's sign-in form. */
+  logoUrl: string;
+  /** Colors the sign-in page's primary button and links. */
+  accentColor: string;
+  /** Where people return to when they leave the app's sign-in. */
+  homeUrl: string;
+  /** Where people ask for help signing in. */
+  supportUrl: string;
 };
 type BackofficeApp = {
   id: string;

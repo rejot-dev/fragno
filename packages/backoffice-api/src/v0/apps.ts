@@ -117,9 +117,30 @@ const appActionsRevisionSchema = z.lazy(() =>
 );
 
 /**
+ * How a first-party app looks to its users. Backoffice's sign-in pages and emails speak in its name
+ * when the app sends people there, so people who do not know Backoffice stay oriented.
+ */
+export const appBrandingSchema = z
+  .lazy(() =>
+    z.strictObject({
+      displayName: z.string().trim().min(1).max(60),
+      logoUrl: appUrlSchema("A square image shown above the app's sign-in form."),
+      accentColor: z
+        .string()
+        .regex(/^#[0-9a-f]{6}$/u, "Accent colors are lowercase hex colors, e.g. #2f6f4e.")
+        .describe("Colors the sign-in page's primary button and links."),
+      homeUrl: appUrlSchema("Where people return to when they leave the app's sign-in."),
+      supportUrl: appUrlSchema("Where people ask for help signing in."),
+    }),
+  )
+  .meta({ id: "AppBranding" });
+export type AppBranding = z.infer<typeof appBrandingSchema>;
+
+/**
  * Whether Backoffice operates the app. A first-party app is part of Backoffice: users authorize it
  * without a consent screen and cannot revoke it, owners link it without reviewing its permissions,
- * and it may call the provisioning operations listed. Only system administrators set this.
+ * anyone may sign up through it, Backoffice's sign-in speaks in its name, and it may call the
+ * provisioning operations listed. Only system administrators set this.
  */
 export const appTrustSchema = z
   .lazy(() =>
@@ -133,6 +154,7 @@ export const appTrustSchema = z
             (permissions) => new Set(permissions).size === permissions.length,
             "Provisioning permissions must not contain duplicates.",
           ),
+        branding: appBrandingSchema,
       }),
     ]),
   )
