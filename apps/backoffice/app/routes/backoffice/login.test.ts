@@ -51,6 +51,7 @@ describe("backoffice login route", () => {
 
     await expect(loader(createLoaderArgs("https://example.com/backoffice/login"))).resolves.toEqual(
       {
+        kind: "backoffice",
         returnTo: "/backoffice",
         oauthQuery: null,
         authError: null,
@@ -66,6 +67,7 @@ describe("backoffice login route", () => {
         ),
       ),
     ).resolves.toEqual({
+      kind: "backoffice",
       returnTo: "/backoffice",
       oauthQuery: null,
       authError: {
@@ -117,7 +119,7 @@ describe("backoffice login route", () => {
       const url = new URL("https://example.com/backoffice/login");
       url.searchParams.set("error", errorCode);
       const result = await loader(createLoaderArgs(url.toString()));
-      assert(!(result instanceof Response));
+      assert(!(result instanceof Response) && result.kind === "backoffice");
       assert(result.authError);
       expect(result.authError.title).not.toMatch(/github|sign-?in/i);
       expect(result.authError.message).not.toMatch(/github|sign-?in/i);
@@ -156,6 +158,7 @@ describe("backoffice login route", () => {
         ),
       ),
     ).resolves.toEqual({
+      kind: "backoffice",
       returnTo: "/backoffice/device?user_code=ME7L-5UAH",
       oauthQuery: null,
       authError: null,
