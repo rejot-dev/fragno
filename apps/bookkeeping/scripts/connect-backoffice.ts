@@ -13,6 +13,8 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
+import { isLoopbackUrl } from "@fragno-dev/backoffice-api/v0/apps";
+
 import {
   BACKOFFICE_ACTIONS_PATH,
   BOOKKEEPING_BACKOFFICE_ACTIONS,
@@ -41,7 +43,6 @@ const TRUST = {
     "organizations.members.sync",
   ],
 };
-const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
 function readDevVars(): Map<string, string> {
   const values = new Map<string, string>();
@@ -194,7 +195,7 @@ const client = execSystem<{
       name: flags.name,
       redirectUris: [callbackUrl],
       scopes: OAUTH_SCOPES,
-      applicationType: LOOPBACK_HOSTNAMES.has(new URL(bookkeepingUrl).hostname) ? "native" : "web",
+      applicationType: isLoopbackUrl(bookkeepingUrl) ? "native" : "web",
     })};
     const listClients = async () => {
       const clients = [];
