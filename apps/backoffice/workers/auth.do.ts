@@ -507,13 +507,16 @@ function resolveAuthBaseUrl(request: Request): string {
 
 function listTrustedAuthOrigins(baseURL: string): string[] {
   const baseUrl = new URL(baseURL);
-  if (baseUrl.protocol !== "http:" || baseUrl.hostname !== "127.0.0.1") {
+  if (
+    baseUrl.protocol !== "http:" ||
+    (baseUrl.hostname !== "127.0.0.1" && baseUrl.hostname !== "localhost")
+  ) {
     return [baseUrl.origin];
   }
 
-  const localhostUrl = new URL(baseUrl);
-  localhostUrl.hostname = "localhost";
-  return [baseUrl.origin, localhostUrl.origin];
+  const loopbackAlias = new URL(baseUrl);
+  loopbackAlias.hostname = baseUrl.hostname === "localhost" ? "127.0.0.1" : "localhost";
+  return [baseUrl.origin, loopbackAlias.origin];
 }
 
 type BetterAuthInstance = Pick<ReturnType<typeof betterAuth>, "handler" | "options" | "$context">;
@@ -1018,6 +1021,8 @@ export class InMemoryAuthObject implements AuthObject {
       advanced: {
         // Only Cloudflare's header is trusted; clients can write X-Forwarded-For themselves.
         ipAddress: { ipAddressHeaders: [CLIENT_IP_HEADER] },
+        // Better Auth otherwise skips origin validation under test, hiding callback mismatches.
+        disableOriginCheck: false,
         useSecureCookies: secureCookies,
         defaultCookieAttributes: { path: "/api/auth" },
         cookies: {
