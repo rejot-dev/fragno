@@ -154,6 +154,7 @@ async function createNativeTestClient(
     .commands.grantBackofficeAdminByEmail({ email: "oauth-local@example.com" });
   assert(grant.status === "granted");
   const context = createRouteBackedRuntimeContext({
+    emitter: { kind: "caller" },
     runtime: ctx.runtime.services,
     kernel: new BackofficeKernel(ctx.runtime.services),
     execution: createBackofficeUserExecution({ scope: { kind: "system" }, userId: grant.userId }),

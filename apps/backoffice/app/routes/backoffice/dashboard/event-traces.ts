@@ -227,6 +227,10 @@ function runKey(workflowName: string, instanceId: string): string {
   return `${workflowName}\u0000${instanceId}`;
 }
 
+function dispatchKey(routeId: string, eventId: string): string {
+  return `${routeId}\u0000${eventId}`;
+}
+
 const RUN_STATUS: Record<WorkflowInstanceStatus, CausalFlameStatus> = {
   active: "running",
   waiting: "waiting",
@@ -452,7 +456,12 @@ export function projectEventTrace({
   }
   const traceDispatches = dispatches.filter((dispatch) => dispatch.rootEventId === rootEventId);
   const runsByKey = new Map(runs.map((run) => [runKey(run.workflowName, run.instanceId), run]));
-  const routeNames = new Map(traceDispatches.map((dispatch) => [dispatch.id, dispatch.routeName]));
+  const routeNames = new Map(
+    traceDispatches.map((dispatch) => [
+      dispatchKey(dispatch.routeId, dispatch.eventId),
+      dispatch.routeName,
+    ]),
+  );
   const startedRunKeys = new Set(
     traceDispatches.flatMap(({ outcome }) =>
       outcome.kind === "workflow_started" ? [runKey(outcome.workflowName, outcome.instanceId)] : [],
@@ -468,7 +477,7 @@ export function projectEventTrace({
         ? [
             eventNode(
               child,
-              `via ${routeNames.get(`${child.causation.routeId}:${event.id}`) ?? child.causation.routeId}`,
+              `via ${routeNames.get(dispatchKey(child.causation.routeId, event.id)) ?? child.causation.routeId}`,
             ),
           ]
         : [],
@@ -553,28 +562,30 @@ export function projectEventTrace({
     const run = runsByKey.get(runKey(outcome.workflowName, outcome.instanceId)) ?? null;
     const id = `run:${outcome.workflowName}:${outcome.instanceId}`;
     records.set(id, { kind: "run", nodeId: id, run, dispatch });
-    if (run === null) {
-      return {
-        id,
-        kind: "workflow",
-        label: outcome.instanceId,
-        detail: `via ${dispatch.routeName}; the run is no longer recorded`,
-        status: "pending",
-        timing: { kind: "instant", at: dispatch.dispatchedAt.getTime() },
-        children: [],
-      };
-    }
+    const label = run === null ? outcome.instanceId : (run.remoteWorkflowName ?? run.workflowName);
+    // The events a run fired still belong under it when its row is gone, or not synchronized yet.
     const firedEvents = traceEvents.flatMap((event) =>
       event.causation?.kind === "workflow" &&
       event.causation.workflowName === outcome.workflowName &&
       event.causation.instanceId === outcome.instanceId
-        ? [eventNode(event, `fired by ${run.remoteWorkflowName ?? run.workflowName}`)]
+        ? [eventNode(event, `fired by ${label}`)]
         : [],
     );
+    if (run === null) {
+      return {
+        id,
+        kind: "workflow",
+        label,
+        detail: `via ${dispatch.routeName}; the run is no longer recorded`,
+        status: "pending",
+        timing: { kind: "instant", at: dispatch.dispatchedAt.getTime() },
+        children: firedEvents,
+      };
+    }
     return {
       id,
       kind: "workflow",
-      label: run.remoteWorkflowName ?? run.workflowName,
+      label,
       detail: run.errorMessage ?? `via ${dispatch.routeName}`,
       status: RUN_STATUS[run.status],
       // The runner stamps `startedAt` when a run's first tick commits, not when it begins, so it

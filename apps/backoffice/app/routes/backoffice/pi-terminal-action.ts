@@ -232,6 +232,7 @@ const resolveHelpCommandSpecs = async ({
       orgId: activeOrg.id,
     });
     const runtimeContext = createRouteBackedRuntimeContext({
+      emitter: { kind: "caller" },
       runtime,
       kernel,
       execution: execution,
@@ -334,6 +335,7 @@ const handleRunCommand = async ({
     });
     const { bash } = await createInteractiveBashHost({
       context: createCodemodeRouteBackedRuntimeContext({
+        emitter: { kind: "caller" },
         runtime,
         kernel,
         execution: execution,

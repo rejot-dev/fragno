@@ -50,7 +50,8 @@ export const createAutomationRouteDispatchServices = (
       route: Pick<AutomationRouteDefinition, "id" | "name">;
       outcome: AutomationRouteDispatchOutcome;
     }) {
-      const id = `${route.id}:${event.id}`;
+      // Both ids may contain colons; the route id's length says where it ends.
+      const id = `${route.id.length}:${route.id}:${event.id}`;
       return this.serviceTx(automationFragmentSchema)
         .retrieve((uow) =>
           uow.findFirst("automation_route_dispatch", (b) =>

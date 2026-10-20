@@ -169,6 +169,7 @@ async function createIntegrationScenarioTerminal(
   kernel: BackofficeKernel,
 ) {
   const context = createRouteBackedRuntimeContext({
+    emitter: { kind: "caller" },
     runtime,
     execution,
     kernel,
@@ -775,6 +776,7 @@ test("connection IDs cannot select an owner or replace umbrella and service auth
             ),
           ).toMatchObject({ exitCode: 1, stderr: expect.stringContaining("not configured") });
           const host = createRouteBackedRuntimeContext({
+            emitter: { kind: "caller" },
             runtime: ctx.runtime.services,
             kernel,
             execution: createBackofficeSystemExecution(scope),
@@ -979,6 +981,7 @@ test.each([
                 }),
               });
               const host = createRouteBackedRuntimeContext({
+                emitter: { kind: "caller" },
                 runtime: ctx.runtime.services,
                 kernel,
                 execution,

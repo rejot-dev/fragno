@@ -131,6 +131,7 @@ async function publisherShell(
   execution: BackofficeExecutionContext,
 ) {
   const context = createRouteBackedRuntimeContext({
+    emitter: { kind: "caller" },
     runtime: ctx.runtime.services,
     kernel: new BackofficeKernel(ctx.runtime.services),
     execution,
@@ -146,6 +147,7 @@ async function systemPublisher(ctx: BackofficeScenarioContext, state: Backoffice
   const execution = createBackofficeSystemExecution({ kind: "system" });
   const kernel = new BackofficeKernel(ctx.runtime.services);
   const context = createRouteBackedRuntimeContext({
+    emitter: { kind: "caller" },
     runtime: ctx.runtime.services,
     kernel,
     execution,

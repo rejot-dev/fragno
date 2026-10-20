@@ -89,6 +89,7 @@ test("stored event commands read scoped SQLite records with text, JSON, and curs
               });
 
             const context = createRouteBackedRuntimeContext({
+              emitter: { kind: "caller" },
               runtime: ctx.runtime.services,
               kernel: new BackofficeKernel(ctx.runtime.services),
               execution: createBackofficeSystemExecution(scope),
@@ -156,6 +157,7 @@ test("stored event commands read scoped SQLite records with text, JSON, and curs
             });
 
             const emptyContext = createRouteBackedRuntimeContext({
+              emitter: { kind: "caller" },
               runtime: ctx.runtime.services,
               kernel: new BackofficeKernel(ctx.runtime.services),
               execution: createBackofficeSystemExecution({ kind: "user", userId: "empty-user" }),

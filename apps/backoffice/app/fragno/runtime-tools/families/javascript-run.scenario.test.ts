@@ -93,6 +93,7 @@ test("js.run executes bundled top-level statements and dependencies with the com
           "Bash and codemode execute the captured bundle, not source",
           async ({ runtime }) => {
             const context = createCodemodeRouteBackedRuntimeContext({
+              emitter: { kind: "caller" },
               runtime: runtime.services,
               kernel: new BackofficeKernel(runtime.services),
               execution: createBackofficeServiceExecution({
@@ -151,6 +152,7 @@ test("js.run executes bundled top-level statements and dependencies with the com
             expect(repeated).not.toHaveProperty("runId", parsed.runId);
             assert.equal(compiler.compilations, before);
             const deniedContext = createCodemodeRouteBackedRuntimeContext({
+              emitter: { kind: "caller" },
               runtime: runtime.services,
               kernel: new BackofficeKernel(runtime.services),
               execution: createBackofficeUserExecution({ scope, userId: "outsider" }),
@@ -196,6 +198,7 @@ for (const invalid of [
         steps: ({ then }) => [
           then.assert("startup failure is returned by the CLI", async ({ runtime }) => {
             const context = createCodemodeRouteBackedRuntimeContext({
+              emitter: { kind: "caller" },
               runtime: runtime.services,
               kernel: new BackofficeKernel(runtime.services),
               execution: createBackofficeServiceExecution({
@@ -247,6 +250,7 @@ test("js.run validates artifact format, entrypoint, runtime, JSON and scope befo
           "bad artifacts are rejected without running their code",
           async ({ runtime }) => {
             const context = createCodemodeRouteBackedRuntimeContext({
+              emitter: { kind: "caller" },
               runtime: runtime.services,
               kernel: new BackofficeKernel(runtime.services),
               execution: createBackofficeServiceExecution({
@@ -291,6 +295,7 @@ test("js.run validates artifact format, entrypoint, runtime, JSON and scope befo
               });
             }
             const other = createCodemodeRouteBackedRuntimeContext({
+              emitter: { kind: "caller" },
               runtime: runtime.services,
               kernel: new BackofficeKernel(runtime.services),
               execution: createBackofficeServiceExecution({

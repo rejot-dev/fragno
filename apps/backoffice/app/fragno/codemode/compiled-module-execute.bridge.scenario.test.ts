@@ -56,6 +56,7 @@ for (const interruption of ["parent cancellation", "activation deadline"] as con
             "cancellation finishes before the provider is released",
             async ({ runtime }) => {
               const context = createCodemodeRouteBackedRuntimeContext({
+                emitter: { kind: "caller" },
                 runtime: runtime.services,
                 kernel: new BackofficeKernel(runtime.services),
                 execution: createBackofficeServiceExecution({
@@ -226,6 +227,7 @@ test("remote compiled execution keeps its full guest timeout after a delayed Web
             "two seconds connecting plus nine seconds of guest work completes",
             async ({ runtime }) => {
               const context = createCodemodeRouteBackedRuntimeContext({
+                emitter: { kind: "caller" },
                 runtime: runtime.services,
                 kernel: new BackofficeKernel(runtime.services),
                 execution: createBackofficeServiceExecution({

@@ -39,6 +39,7 @@ async function createSystemTerminalBash(ctx: BackofficeScenarioContext) {
   return (
     await createInteractiveBashHost({
       context: createCodemodeRouteBackedRuntimeContext({
+        emitter: { kind: "caller" },
         runtime: ctx.runtime.services,
         kernel,
         execution,

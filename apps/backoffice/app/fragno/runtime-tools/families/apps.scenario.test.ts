@@ -93,6 +93,7 @@ function appContext(
       })
     : createBackofficeUserExecution({ scope, userId });
   return createRouteBackedRuntimeContext({
+    emitter: { kind: "caller" },
     runtime: ctx.runtime.services,
     kernel: new BackofficeKernel(ctx.runtime.services),
     execution,

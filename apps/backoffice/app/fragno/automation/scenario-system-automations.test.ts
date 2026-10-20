@@ -554,6 +554,7 @@ describe("system automation scenarios", () => {
               const fs = createScopedTestFileSystem(ctx.runtime, execution);
               const { bash } = await createInteractiveBashHost({
                 context: createCodemodeRouteBackedRuntimeContext({
+                  emitter: { kind: "caller" },
                   runtime: ctx.runtime.services,
                   kernel,
                   execution,

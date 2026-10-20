@@ -62,6 +62,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   const { runtime, kernel } = context.get(BackofficeWorkerContext);
   const { bash, commandCallsResult } = await createInteractiveBashHost({
     context: createCodemodeRouteBackedRuntimeContext({
+      emitter: { kind: "caller" },
       runtime,
       kernel,
       execution: execution,

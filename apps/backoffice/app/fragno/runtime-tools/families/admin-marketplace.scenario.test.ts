@@ -103,6 +103,7 @@ describe("static Marketplace publication scenarios", () => {
               });
             }
             const context = createRouteBackedRuntimeContext({
+              emitter: { kind: "caller" },
               runtime: ctx.runtime.services,
               kernel: new BackofficeKernel(ctx.runtime.services),
               execution: createBackofficeUserExecution({
@@ -186,6 +187,7 @@ describe("static Marketplace publication scenarios", () => {
               ).rejects.toThrow("Unknown scoped tool: admin.marketplacePushStatic");
               const execution = createBackofficeSystemExecution(scope);
               const context = createRouteBackedRuntimeContext({
+                emitter: { kind: "caller" },
                 runtime: ctx.runtime.services,
                 kernel: new BackofficeKernel(ctx.runtime.services),
                 execution,
@@ -293,6 +295,7 @@ describe("static Marketplace publication scenarios", () => {
         steps: ({ then }) => [
           then.assert("an unprivileged System user cannot publish", async (ctx) => {
             const context = createRouteBackedRuntimeContext({
+              emitter: { kind: "caller" },
               runtime: ctx.runtime.services,
               kernel: new BackofficeKernel(ctx.runtime.services),
               execution: createBackofficeUserExecution({

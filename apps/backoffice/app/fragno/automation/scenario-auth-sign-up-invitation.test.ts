@@ -127,6 +127,7 @@ function createSignUpInvitation(input: CreateSignUpInvitationStepInput): Backoff
       const kernel = new BackofficeKernel(ctx.runtime.services);
       const { bash } = await createInteractiveBashHost({
         context: createCodemodeRouteBackedRuntimeContext({
+          emitter: { kind: "caller" },
           runtime: ctx.runtime.services,
           kernel,
           execution,

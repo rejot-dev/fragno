@@ -50,7 +50,10 @@ import { createAppsRuntime } from "@/fragno/runtime-tools/families/apps-runtime"
 import { createBackofficeCapabilitiesRuntime } from "@/fragno/runtime-tools/families/backoffice-capabilities";
 import { createCloudflareRuntime } from "@/fragno/runtime-tools/families/cloudflare-runtime";
 import { createEventCatalogRuntime } from "@/fragno/runtime-tools/families/event-catalog";
-import { createEventRuntime } from "@/fragno/runtime-tools/families/event-runtime";
+import {
+  createEventRuntime,
+  type EventEmitter,
+} from "@/fragno/runtime-tools/families/event-runtime";
 import { createFormsRuntime } from "@/fragno/runtime-tools/families/forms-runtime";
 import { createIntegrationsRuntime } from "@/fragno/runtime-tools/families/integrations/integrations-runtime";
 import { createInternalRuntime } from "@/fragno/runtime-tools/families/internal";
@@ -79,6 +82,8 @@ export type RouteBackedRuntimeContextOptions = {
   kernel: BackofficeKernel;
   execution: BackofficeExecutionContext;
   billingOrganizationId: string | null;
+  /** Who the events emitted here, and in its scoped contexts, record as their cause. */
+  emitter: EventEmitter;
   emittedEventActors?: AutomationActors;
   /** Fixes the source of events emitted here; see `CreateEventRuntimeOptions`. */
   emittedEventSource?: string;
@@ -161,6 +166,7 @@ export const createRouteBackedRuntimeContext = ({
   kernel,
   execution,
   billingOrganizationId,
+  emitter,
   emittedEventActors,
   emittedEventSource,
   pi,
@@ -267,6 +273,7 @@ export const createRouteBackedRuntimeContext = ({
           scope,
         },
         billingOrganizationId,
+        emitter,
         emittedEventActors,
         emittedEventSource,
         pi,
@@ -335,7 +342,7 @@ export const createRouteBackedRuntimeContext = ({
     event: {
       runtime: createEventRuntime({
         objects: runtime.objects,
-        emitter: { kind: "caller" },
+        emitter,
         kernel,
         execution,
         emittedEventActors,

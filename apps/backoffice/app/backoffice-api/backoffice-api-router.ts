@@ -190,6 +190,7 @@ function createVersionRouter<TApi extends BackofficeApi>(
         input,
         createBackofficeToolContext(
           createRouteBackedRuntimeContext({
+            emitter: { kind: "caller" },
             runtime,
             kernel,
             execution: authorization.execution,

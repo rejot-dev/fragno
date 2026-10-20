@@ -1820,6 +1820,7 @@ const runScenarioCodemode = async (
   const kernel = new BackofficeKernel(ctx.runtime.services);
   const execution = createBackofficeSystemExecution(input.scope);
   const runtimeContext = createCodemodeRouteBackedRuntimeContext({
+    emitter: { kind: "caller" },
     runtime: ctx.runtime.services,
     kernel,
     execution,

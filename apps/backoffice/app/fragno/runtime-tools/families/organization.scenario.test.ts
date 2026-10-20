@@ -50,6 +50,7 @@ async function terminal(
   scope: BackofficeContextScope,
 ) {
   const context = createRouteBackedRuntimeContext({
+    emitter: { kind: "caller" },
     runtime: ctx.runtime.services,
     kernel: new BackofficeKernel(ctx.runtime.services),
     execution: createBackofficeUserExecution({ scope, userId }),

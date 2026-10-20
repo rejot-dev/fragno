@@ -131,6 +131,7 @@ export function createBackofficeAgentContext(input: {
       let promptIndex = 0;
       const createPromptRequestId = () => `${invocationId}:${promptIndex++}`;
       return createRouteBackedRuntimeContext({
+        emitter: { kind: "caller" },
         runtime,
         kernel,
         execution,

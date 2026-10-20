@@ -79,6 +79,12 @@ test("events record the routes and workflows that caused them back to their orig
         eventType: "issue.triaged",
         payload: { issueNumber: event.payload.issue.number },
       });
+      // A scoped context emits on the workflow's behalf too.
+      await context.current.events.fire({
+        source: "github",
+        eventType: "issue.labeled",
+        payload: { issueNumber: event.payload.issue.number },
+      });
     });
   },
 );`,
@@ -188,6 +194,18 @@ test("events record the routes and workflows that caused them back to their orig
             },
           },
         }),
+        then.automation.event({
+          scope,
+          where: { source: "github", eventType: "issue.labeled" },
+          expected: {
+            causation: {
+              kind: "workflow",
+              workflowName: CODEMODE_WORKFLOW,
+              instanceId: "triage-issue-42",
+              parent: { eventId: issueOpenedEventId, rootEventId: webhookEventId },
+            },
+          },
+        }),
         then.assert("the synchronized trace shows the whole chain", async (ctx) => {
           const database = ctx.tanstack.automations.forOrg(scope.orgId);
           await database.sync();
@@ -216,7 +234,25 @@ test("events record the routes and workflows that caused them back to their orig
             "    route Assist the sender skipped [skipped] (No external sender linked to a user)",
             "    workflow triage-issue [ok] (via Triage issues)",
             "      step announce triage [ok]",
+            "      event github · issue.labeled [ok] (fired by triage-issue)",
             "      event github · issue.triaged [ok] (fired by triage-issue)",
+          ]);
+
+          // Live, a dispatch can synchronize before the run it started.
+          const runless = projectEventTrace({
+            rootEventId: webhookEventId,
+            events,
+            dispatches,
+            runs: [],
+            steps: [],
+          });
+          expect(runless && outline(runless.root)).toEqual([
+            "event github · webhook.received [ok]",
+            "  event github · issues.opened [ok] (via Promote opened issues)",
+            "    route Assist the sender skipped [skipped] (No external sender linked to a user)",
+            "    workflow triage-issue-42 [pending] (via Triage issues; the run is no longer recorded)",
+            "      event github · issue.labeled [ok] (fired by triage-issue-42)",
+            "      event github · issue.triaged [ok] (fired by triage-issue-42)",
           ]);
 
           const [summary] = projectEventTraceSummaries({ events, dispatches, runs, limit: 10 });

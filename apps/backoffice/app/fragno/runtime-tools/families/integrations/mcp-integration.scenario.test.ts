@@ -255,6 +255,7 @@ async function createIntegrationScenarioTerminal(
   kernel: BackofficeKernel,
 ) {
   const context = createRouteBackedRuntimeContext({
+    emitter: { kind: "caller" },
     runtime,
     execution,
     kernel,
