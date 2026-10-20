@@ -273,17 +273,25 @@ or automatic consent backfill. Reauthorizing after revocation requires a new exp
 ## System admin app runtime tools
 
 `admin.appsCreate` / `admin.apps.create`, `admin.appsUpdateActions` / `admin.apps.update-actions`,
-and `admin.appsUpdateTrust` / `admin.apps.update-trust` require the canonical `admin.apps.manage`
-permission. `admin.appsList` / `admin.apps.list` requires `admin.apps.read`. All use the existing
-authorization kernel and require System context; they are unavailable in organization, project, and
-user contexts. No grants are added to ordinary user or organization-member roles.
+`admin.appsUpdatePermissions` / `admin.apps.update-permissions`, and `admin.appsUpdateTrust` /
+`admin.apps.update-trust` require the canonical `admin.apps.manage` permission. `admin.appsList` /
+`admin.apps.list` requires `admin.apps.read`. All use the existing authorization kernel and require
+System context; they are unavailable in organization, project, and user contexts. No grants are
+added to ordinary user or organization-member roles.
 
 Creation registers an **existing** Better Auth OAuth client. It does not create credentials or
 install the app. Repeating the same declaration returns the same app ID with `created: false`;
-changing a declaration through repeated creation fails explicitly. Requested permissions and the
-slug never change; actions change only through `admin.apps.update-actions` (see
-[App actions](#app-actions)), and trust only through `admin.apps.update-trust` (see
-[First-party apps](#first-party-apps)). `--trust-json` defaults to `{"kind":"third-party"}`.
+changing a declaration through repeated creation fails explicitly. The slug never changes; actions
+change only through `admin.apps.update-actions` (see [App actions](#app-actions)), requested
+permissions only through `admin.apps.update-permissions`, and trust only through
+`admin.apps.update-trust` (see [First-party apps](#first-party-apps)). `--trust-json` defaults to
+`{"kind":"third-party"}`.
+
+Installations keep the grants their owner approved, so changing an app's requested permissions never
+changes what an installation may do. A permission the app adds applies to an installation once an
+owner grants it, through `apps.installations.update` or the install page. A permission the app
+removes stays granted until an owner changes the installation's access, which can then grant only
+what the app requests.
 
 The slug is the app's permanent, globally unique name: lowercase words separated by `-`, at most 63
 characters. Its integration connection is `app#<slug>`, so connection IDs, generated clients, and
@@ -594,23 +602,23 @@ const registry = runtime.objects.apps.singleton().commands;
 const installations = runtime.objects.appInstallations.for(owner).commands;
 ```
 
-| Object   | Command                                                                                                                                            | Registry access                                           |
-| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| Registry | `registerApp`, `updateAppActions`, `updateAppTrust`, `getApp`, `getAppByOAuthClientId`, `getAppBySlug`, `listApps`, `listFirstPartyOAuthClientIds` | Own local database                                        |
-| Owner    | `installApp`                                                                                                                                       | Resolve declaration and projects before local transaction |
-| Owner    | `updateInstallationAccess`                                                                                                                         | Resolve declaration and projects before local transaction |
-| Owner    | `approveActions`, `getAppConnection`                                                                                                               | Resolve declaration before local reads and writes         |
-| Owner    | `callAppEndpoint`                                                                                                                                  | Resolve declaration, then sign through Auth and send      |
-| Owner    | `claimInstallation`                                                                                                                                | None                                                      |
-| Owner    | `getInstallation`, `listInstallations`, `uninstallApp`                                                                                             | None                                                      |
+| Object   | Command                                                                                                                                                                    | Registry access                                           |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| Registry | `registerApp`, `updateAppActions`, `updateAppPermissions`, `updateAppTrust`, `getApp`, `getAppByOAuthClientId`, `getAppBySlug`, `listApps`, `listFirstPartyOAuthClientIds` | Own local database                                        |
+| Owner    | `installApp`                                                                                                                                                               | Resolve declaration and projects before local transaction |
+| Owner    | `updateInstallationAccess`                                                                                                                                                 | Resolve declaration and projects before local transaction |
+| Owner    | `approveActions`, `getAppConnection`                                                                                                                                       | Resolve declaration before local reads and writes         |
+| Owner    | `callAppEndpoint`                                                                                                                                                          | Resolve declaration, then sign through Auth and send      |
+| Owner    | `claimInstallation`                                                                                                                                                        | None                                                      |
+| Owner    | `getInstallation`, `listInstallations`, `uninstallApp`                                                                                                                     | None                                                      |
 
-Requested permissions and slugs are immutable, and apps cannot be deleted in this scaffold. Action
-declarations change by revision; each installation stores the declaration it approved, so a registry
-change never widens what an installation calls without approval (except
-`changeApproval: "automatic"`). Installation setup, grant updates, and action approval fetch the
-authoritative declaration before opening the owner's transaction. There is **no cross-object
-transaction or foreign key**. Global app disablement requires an explicit coordination policy before
-being added.
+Slugs are immutable, and apps cannot be deleted in this scaffold. Requested permissions change in
+place, and each installation stores the grants its owner approved. Action declarations change by
+revision; each installation stores the declaration it approved, so a registry change never widens
+what an installation calls without approval (except `changeApproval: "automatic"`). Installation
+setup, grant updates, and action approval fetch the authoritative declaration before opening the
+owner's transaction. There is **no cross-object transaction or foreign key**. Global app disablement
+requires an explicit coordination policy before being added.
 
 Routine authority reads, installation lists, and revocation remain local to the customer object.
 They do not depend on registry availability. This is command-level independence; the single-process

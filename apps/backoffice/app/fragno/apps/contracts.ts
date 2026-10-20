@@ -39,7 +39,26 @@ export type BackofficeAppActionsUpdateResult = z.infer<
   typeof backofficeAppActionsUpdateResultSchema
 >;
 
-/** Trust is the one registration fact an administrator changes in place, besides actions. */
+/**
+ * Replaces what an app asks installations for. Installations keep the grants their owner approved:
+ * an added permission applies once an owner grants it, and a removed one stays granted until an
+ * owner changes the installation's access.
+ */
+export const backofficeAppPermissionsUpdateInputSchema = z.lazy(() =>
+  backofficeAppLookupInputSchema._zod.innerType.extend({
+    requestedPermissions: appPermissionsSchema,
+  }),
+);
+export type BackofficeAppPermissionsUpdateInput = z.infer<
+  typeof backofficeAppPermissionsUpdateInputSchema
+>;
+
+export const backofficeAppPermissionsUpdateResultSchema = z.strictObject({ changed: z.boolean() });
+export type BackofficeAppPermissionsUpdateResult = z.infer<
+  typeof backofficeAppPermissionsUpdateResultSchema
+>;
+
+/** Trust is set in place, like actions and requested permissions. */
 export const backofficeAppTrustUpdateInputSchema = z.lazy(() =>
   backofficeAppLookupInputSchema._zod.innerType.extend({ trust: appTrustSchema }),
 );
@@ -90,6 +109,9 @@ export type BackofficeAppsCommands = {
   updateAppActions(
     input: BackofficeAppActionsUpdateInput,
   ): Promise<BackofficeAppOperationResult<BackofficeAppActionsUpdateResult>>;
+  updateAppPermissions(
+    input: BackofficeAppPermissionsUpdateInput,
+  ): Promise<BackofficeAppOperationResult<BackofficeAppPermissionsUpdateResult>>;
   updateAppTrust(
     input: BackofficeAppTrustUpdateInput,
   ): Promise<BackofficeAppOperationResult<BackofficeAppTrustUpdateResult>>;

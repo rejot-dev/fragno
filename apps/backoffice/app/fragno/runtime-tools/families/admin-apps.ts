@@ -6,6 +6,8 @@ import {
   backofficeAppActionsUpdateResultSchema,
   backofficeAppPageInputSchema,
   backofficeAppPageSchema,
+  backofficeAppPermissionsUpdateInputSchema,
+  backofficeAppPermissionsUpdateResultSchema,
   backofficeAppRegistrationInputSchema,
   backofficeAppRegistrationResultSchema,
   backofficeAppTrustUpdateInputSchema,
@@ -166,6 +168,65 @@ const updateAppActionsTool = defineBackofficeRuntimeTool({
   },
 });
 
+const updateAppPermissionsTool = defineBackofficeRuntimeTool({
+  id: "admin.apps.update-permissions",
+  namespace: "admin",
+  name: "appsUpdatePermissions",
+  description:
+    "Replace the permissions a registered app requests. Installations keep the grants their owner approved: an added permission applies once an owner grants it (apps.installations.update or the install page), and a removed one stays granted until an owner changes the installation's access.",
+  requiredPermissions: [BACKOFFICE_PERMISSION.admin.appsManage],
+  inputSchema: backofficeAppPermissionsUpdateInputSchema,
+  outputSchema: backofficeAppPermissionsUpdateResultSchema,
+  execute: async (input, context: AdminAppsToolContext) =>
+    await requireAdminAppsRuntime(context).updateAppPermissions(input),
+  adapters: {
+    bash: {
+      command: "admin.apps.update-permissions",
+      help: {
+        summary:
+          "admin.apps.update-permissions replaces the permissions an app requests (System administrators only).",
+        options: [
+          {
+            name: "app-id",
+            required: true,
+            valueRequired: true,
+            valueName: "id",
+            description: "Registered Backoffice app ID",
+          },
+          {
+            name: "requested-permissions-json",
+            required: true,
+            valueRequired: true,
+            valueName: "json",
+            description:
+              "JSON array of canonical namespace/permission requirements; use [] for no capabilities",
+          },
+        ],
+        examples: [
+          'admin.apps.update-permissions --app-id APP_ID --requested-permissions-json \'[{"namespace":"org","permission":"read"}]\'',
+        ],
+      },
+      parse: defineCliArgsParser("admin.apps.update-permissions", {
+        appId: { kind: "string", required: true },
+        requestedPermissions: {
+          kind: "json",
+          option: "requested-permissions-json",
+          required: true,
+        },
+      }),
+      format: (result, options) =>
+        options.format === "json" || options.print
+          ? { data: result }
+          : {
+              data: result,
+              stdout: result.changed
+                ? "Updated app permissions.\n"
+                : "App permissions unchanged.\n",
+            },
+    },
+  },
+});
+
 const updateAppTrustTool = defineBackofficeRuntimeTool({
   id: "admin.apps.update-trust",
   namespace: "admin",
@@ -289,5 +350,6 @@ export const adminAppsRuntimeTools = [
   createAppTool,
   listAppsTool,
   updateAppActionsTool,
+  updateAppPermissionsTool,
   updateAppTrustTool,
 ] as const;
