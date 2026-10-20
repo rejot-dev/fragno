@@ -191,32 +191,46 @@
   line-height: 1;
 }
 
-.bo-status-light {
+/* Resolves a BackofficeStatusTone in [data-tone] to a color, background, and border, so every
+   toned component reads from one palette. */
+.bo-status-tone {
   --bo-status-color: var(--bo-accent);
   --bo-status-bg: var(--bo-accent-bg);
-  color: var(--bo-status-color);
-  background: var(--bo-status-bg);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bo-status-color) 42%, transparent);
+  --bo-status-border: color-mix(in srgb, var(--bo-status-color) 42%, transparent);
 }
 
-.bo-status-light[data-tone="live"] {
+.bo-status-tone[data-tone="live"] {
   --bo-status-color: var(--bo-live);
   --bo-status-bg: var(--bo-live-bg);
 }
 
-.bo-status-light[data-tone="waiting"] {
+.bo-status-tone[data-tone="waiting"] {
   --bo-status-color: var(--bo-waiting);
   --bo-status-bg: var(--bo-waiting-bg);
 }
 
-.bo-status-light[data-tone="failed"] {
+.bo-status-tone[data-tone="failed"] {
   --bo-status-color: var(--bo-failed);
   --bo-status-bg: var(--bo-failed-bg);
 }
 
-.bo-status-light[data-tone="muted"] {
+.bo-status-tone[data-tone="muted"] {
   --bo-status-color: var(--bo-muted-2);
   --bo-status-bg: var(--bo-panel-2);
+}
+
+/* Unlayered, so the tone wins over Tailwind border color utilities; border width stays with the
+   caller. */
+.bo-status-surface {
+  color: var(--bo-status-color);
+  background: var(--bo-status-bg);
+  border-color: var(--bo-status-border);
+}
+
+.bo-status-light {
+  color: var(--bo-status-color);
+  background: var(--bo-status-bg);
+  box-shadow: inset 0 0 0 1px var(--bo-status-border);
 }
 
 .bo-status-light-dot {
