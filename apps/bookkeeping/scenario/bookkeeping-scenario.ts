@@ -10,6 +10,7 @@ import {
 
 import routeConfig from "../app/routes";
 import { Auth } from "../workers/auth/auth";
+import { Books } from "../workers/books/books";
 import { Workflows } from "../workers/workflows/workflows";
 import { Workspaces } from "../workers/workspaces/workspaces";
 import { env as workerEnv } from "./cloudflare-workers";
@@ -205,6 +206,7 @@ export class BookkeepingScenario {
       AUTH: new FakeDurableObjectNamespace(Auth, env),
       WORKSPACES: new FakeDurableObjectNamespace(Workspaces, env),
       WORKFLOWS: new FakeDurableObjectNamespace(Workflows, env),
+      BOOKS: new FakeDurableObjectNamespace(Books, env),
     };
     this.#namespaces = Object.values(bindings);
     // The fakes serve the same calls as Cloudflare's namespaces; their types differ.

@@ -14,7 +14,7 @@ import { assertSameOrigin } from "../auth/session.server";
 import type { Route } from "./+types/members";
 import {
   callBackoffice,
-  canInvite,
+  canManage,
   connectAsUser,
   parseRoles,
   requireWorkspace,
@@ -91,7 +91,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
       invitedBy: invitation.invitedBy,
       link: invitationLink(invitation.id),
     })),
-    canInvite: canInvite(membership.roles),
+    canInvite: canManage(membership.roles),
     canInviteOwners: membership.roles.includes("owner"),
   };
 }

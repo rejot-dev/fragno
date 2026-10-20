@@ -23,6 +23,8 @@ type Organization = {
   createdAt: string;
   members: Map<string, { roles: Role[]; joinedAt: string }>;
   installation: "active" | "uninstalled";
+  /** Projects Bookkeeping provisioned, by its identifier for them. */
+  projects: Map<string, { id: string; slug: string; name: string }>;
 };
 type Invitation = {
   id: string;
@@ -124,14 +126,17 @@ export class FakeBackoffice {
   }
 
   /** The organization Backoffice holds for one of Bookkeeping's workspaces. */
-  organization(slug: string): { id: string; name: string; members: Map<string, Role[]> } {
-    const organization = [...this.#organizations.values()].find((org) => org.slug === slug);
-    if (!organization) {
-      throw new Error(`Backoffice has no organization ${slug}.`);
-    }
+  organization(slug: string): {
+    id: string;
+    name: string;
+    members: Map<string, Role[]>;
+    projects: string[];
+  } {
+    const organization = this.#organizationBySlug(slug);
     return {
       id: organization.id,
       name: organization.name,
+      projects: [...organization.projects.values()].map(({ name }) => name),
       members: new Map(
         [...organization.members].map(([userId, { roles }]) => [
           this.#users.get(userId)!.email,
@@ -390,10 +395,14 @@ export class FakeBackoffice {
           id: crypto.randomUUID(),
           externalId: input.externalOrganizationId,
           name: input.name,
-          slug: this.#nextSlug(input.name),
+          slug: nextSlug(
+            input.name,
+            [...this.#organizations.values()].map(({ slug }) => slug),
+          ),
           createdAt: now,
           members: new Map([[input.ownerUserId, { roles: ["owner"], joinedAt: now }]]),
           installation: "active",
+          projects: new Map(),
         };
         this.#organizations.set(organization.id, organization);
         return Response.json(
@@ -401,6 +410,40 @@ export class FakeBackoffice {
             organizationId: organization.id,
             slug: organization.slug,
             created: true,
+          }),
+        );
+      }
+      case "projects.provision": {
+        const input = backofficeProvisioningOperations[operationId].input.parse(body);
+        const organization = this.#organizations.get(input.organizationId);
+        if (organization?.installation !== "active") {
+          throw new ApiError("not_found", "This app is not installed in the organization.");
+        }
+        if (
+          !organization.members.has(input.createdByUserId) ||
+          !this.#consents.has(input.createdByUserId)
+        ) {
+          throw new ApiError(
+            "forbidden",
+            `User '${input.createdByUserId}' is not a member who authorized this app.`,
+          );
+        }
+        const existing = organization.projects.get(input.externalProjectId);
+        const project = existing ?? {
+          id: crypto.randomUUID(),
+          slug: nextSlug(
+            input.name,
+            [...organization.projects.values()].map(({ slug }) => slug),
+          ),
+          name: input.name,
+        };
+        organization.projects.set(input.externalProjectId, project);
+        return Response.json(
+          backofficeProvisioningOperations[operationId].output.parse({
+            organizationId: organization.id,
+            projectId: project.id,
+            slug: project.slug,
+            created: existing === undefined,
           }),
         );
       }
@@ -469,16 +512,16 @@ export class FakeBackoffice {
     }
     return organization;
   }
+}
 
-  #nextSlug(name: string): string {
-    const base = slugify(name) || "organization";
-    const taken = new Set([...this.#organizations.values()].map(({ slug }) => slug));
-    let slug = base;
-    for (let number = 2; taken.has(slug); number++) {
-      slug = `${base}-${number}`;
-    }
-    return slug;
+/** Backoffice numbers a slug that is taken in the same place. */
+function nextSlug(name: string, taken: string[]): string {
+  const base = slugify(name) || "untitled";
+  let slug = base;
+  for (let number = 2; taken.includes(slug); number++) {
+    slug = `${base}-${number}`;
   }
+  return slug;
 }
 
 type Operations = typeof backofficeApiV0.operations;

@@ -1,13 +1,16 @@
 # Bookkeeping
 
 Minimal React Router framework app deployed to Cloudflare Workers, built on Backoffice: people sign
-in with Backoffice accounts, and each workspace is a Backoffice organization. Three SQLite Durable
-Objects hold Bookkeeping's state; no D1 database or external auth service is required:
+in with Backoffice accounts, each workspace is a Backoffice organization, and each administration in
+it, the books of one business, is a Backoffice project. SQLite Durable Objects hold Bookkeeping's
+state; no D1 database or external auth service is required:
 
 - `Auth` (`auth`): Better Auth's users, sessions, and Backoffice accounts.
-- `Workspaces` (`workspaces`): the read-only copy of Bookkeeping's Backoffice organizations, their
-  members, and the invitations Bookkeeping created.
+- `Workspaces` (`workspaces`): each workspace's administrations, and the read-only copy of
+  Bookkeeping's Backoffice organizations, their members, and the invitations Bookkeeping created.
 - `Workflows` (`workflows`): the Fragno workflows fragment, which runs the sign-up wizard.
+- `Books` (one per administration, named by its Backoffice project's ID): the administration's
+  books.
 
 UI components, theme tokens, and the self-hosted brand font come from
 `@fragno-private/design-system`, shared with Backoffice. Tailwind processes the shared package's
@@ -34,15 +37,16 @@ pnpm dev
 
 Routes: `/` (public frontpage), `/login` (get started), `/help` (help signing in), `/signup`
 (redirects to `/login`), `/start` (where signing in lands), `/welcome` (the sign-up wizard),
-`/invitations/:invitationId` (join a workspace), `/w/:slug` (workspace overview), `/w/:slug/members`
-(members and invitations), `/w/:slug/account` (profile and logout), and Better Auth's `/api/auth/*`
-endpoints. The workspace uses a collapsible desktop sidebar, mobile navigation, and a workspace
-switcher. Workspace routes require a session and the person's membership; others redirect to login.
-Signed-in visitors are redirected away from auth pages. Personalized route responses are marked
-private and non-cacheable.
+`/invitations/:invitationId` (join a workspace), `/w/:slug` (workspace overview and its
+administrations), `/w/:slug/administrations/new` (create one), `/w/:slug/a/:administration` (an
+administration's books), `/w/:slug/members` (members and invitations), `/w/:slug/account` (profile
+and logout), and Better Auth's `/api/auth/*` endpoints. The workspace uses a collapsible desktop
+sidebar, mobile navigation, and a workspace switcher. Workspace routes require a session and the
+person's membership; others redirect to login. Signed-in visitors are redirected away from auth
+pages. Personalized route responses are marked private and non-cacheable.
 
-Signing in requires JavaScript. A workspace is an honest empty overview; transaction, accounting,
-and reporting functionality are not implemented.
+Signing in requires JavaScript. An administration's books open empty; transaction, accounting, and
+reporting functionality are not implemented.
 
 ## Backoffice login
 
@@ -162,10 +166,23 @@ or through a client from `integrations.generateClient`. `workers/backoffice/acti
 `createAppActionVerifier`, then describes the workspace of the organization the request was signed
 for.
 
-## Books
+## Administrations
 
-The SQLite schema for an administration's books lives in `workers/books`; see its README. No route
-or Durable Object uses it yet.
+An administration is the books of one business. A workspace can have several, e.g. for a holding and
+its subsidiaries; everyone in the workspace opens them, and owners and admins create them at
+`/w/:slug/administrations/new` with a name and the currency the books are kept in. Creating one:
+
+1. creates its Backoffice project with `projects.provision`, as the person creating it, so
+   Backoffice agents can work on the administration in that project;
+2. opens its books in a new `Books` object named by the project's ID (`workers/books`; see its
+   README);
+3. records it in the `Workspaces` object, which lists a workspace's administrations.
+
+The form carries an identifier chosen when it was shown, and each step is idempotent, so submitting
+it again after a failure, such as Backoffice being unreachable, finishes the steps left instead of
+creating a second administration. Bookkeeping owns which projects are administrations: projects made
+in Backoffice itself are not, and renaming or deleting a project there does not change the
+administration.
 
 ## Layout
 
@@ -173,20 +190,21 @@ or Durable Object uses it yet.
 feature: a page sits with its server code and scenario tests, and each Durable Object has its own
 folder with its migrations.
 
-| Path                 | Holds                                                                |
-| -------------------- | -------------------------------------------------------------------- |
-| `app/auth`           | the session, the auth client, and the sign-in button every area uses |
-| `app/public`         | signed-out pages: home, login, signup, help                          |
-| `app/welcome`        | the sign-up wizard                                                   |
-| `app/invitations`    | joining a workspace                                                  |
-| `app/workspace`      | `/start` and `/w/:slug`; `access.server.ts` checks membership        |
-| `workers/worker.ts`  | the Worker's `fetch` entry, which exports the Durable Objects        |
-| `workers/auth`       | the `Auth` object                                                    |
-| `workers/workspaces` | the `Workspaces` object                                              |
-| `workers/workflows`  | the `Workflows` object and the `create-workspace` workflow           |
-| `workers/backoffice` | Backoffice's API client and the actions Backoffice calls             |
-| `workers/books`      | an administration's books schema                                     |
-| `scenario/`          | the scenario test harness                                            |
+| Path                  | Holds                                                                |
+| --------------------- | -------------------------------------------------------------------- |
+| `app/auth`            | the session, the auth client, and the sign-in button every area uses |
+| `app/public`          | signed-out pages: home, login, signup, help                          |
+| `app/welcome`         | the sign-up wizard                                                   |
+| `app/invitations`     | joining a workspace                                                  |
+| `app/administrations` | creating and opening an administration                               |
+| `app/workspace`       | `/start` and `/w/:slug`; `access.server.ts` checks membership        |
+| `workers/worker.ts`   | the Worker's `fetch` entry, which exports the Durable Objects        |
+| `workers/auth`        | the `Auth` object                                                    |
+| `workers/workspaces`  | the `Workspaces` object                                              |
+| `workers/workflows`   | the `Workflows` object and the `create-workspace` workflow           |
+| `workers/backoffice`  | Backoffice's API client and the actions Backoffice calls             |
+| `workers/books`       | the `Books` object and its schema                                    |
+| `scenario/`           | the scenario test harness                                            |
 
 ## Checks
 
@@ -241,4 +259,6 @@ it has applied, not their names.
   sessions, and accounts.
 - `0002-organizations.sql` and `0003-backoffice-owner.sql`: Bookkeeping's former organizations and
   their links to Backoffice, which `0004-drop-organizations.sql` drops.
-- `workers/workspaces/migrations/0001-workspaces.sql`: the `Workspaces` object's copy.
+- `workers/workspaces/migrations/0001-workspaces.sql`: the `Workspaces` object's copy, and
+  `0002-administrations.sql` its administrations.
+- `Books` applies `bookkeepingSchema` from `workers/books/schema.ts` as its first migration.
