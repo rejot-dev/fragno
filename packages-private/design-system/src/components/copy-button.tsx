@@ -26,9 +26,14 @@ export function CopyButton({ value, label }: { value: string; label: string }) {
       aria-label={copied ? "Copied" : label}
       title={copied ? "Copied" : label}
       onClick={() => {
-        void navigator.clipboard.writeText(value).then(() => {
-          setCopied(true);
-        });
+        navigator.clipboard
+          .writeText(value)
+          .then(() => {
+            setCopied(true);
+          })
+          .catch(() => {
+            // Denied clipboard access leaves the button unconfirmed; there is nothing to recover.
+          });
       }}
       className="relative inline-flex size-6 shrink-0 items-center justify-center rounded-[4px] text-[var(--bo-muted)] transition-[color,background-color,scale] duration-150 ease-out after:absolute after:-inset-1.5 hover:bg-[var(--bo-panel-2)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none active:scale-[0.96]"
     >
