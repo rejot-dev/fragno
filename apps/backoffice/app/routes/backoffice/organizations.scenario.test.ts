@@ -68,6 +68,7 @@ async function runInUserTerminal(ctx: BackofficeScenarioContext, cookie: string,
   const userId = z.object({ user: z.object({ id: z.string() }) }).parse(await session.json())
     .user.id;
   const context = createRouteBackedRuntimeContext({
+    emitter: { kind: "caller" },
     runtime: ctx.runtime.services,
     kernel: new BackofficeKernel(ctx.runtime.services),
     execution: createBackofficeUserExecution({ scope: { kind: "user", userId }, userId }),
@@ -108,6 +109,7 @@ async function createOrganizationFromPage(
 async function runInSystemTerminal(ctx: BackofficeScenarioContext, command: string) {
   const { bash } = await createInteractiveBashHost({
     context: createCodemodeRouteBackedRuntimeContext({
+      emitter: { kind: "caller" },
       runtime: ctx.runtime.services,
       kernel: new BackofficeKernel(ctx.runtime.services),
       execution: createBackofficeSystemExecution({ kind: "system" }),
