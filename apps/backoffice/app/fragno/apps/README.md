@@ -287,11 +287,12 @@ permissions only through `admin.apps.update-permissions`, and trust only through
 `admin.apps.update-trust` (see [First-party apps](#first-party-apps)). `--trust-json` defaults to
 `{"kind":"third-party"}`.
 
-Installations keep the grants their owner approved, so changing an app's requested permissions never
-changes what an installation may do. A permission the app adds applies to an installation once an
-owner grants it, through `apps.installations.update` or the install page. A permission the app
-removes stays granted until an owner changes the installation's access, which can then grant only
-what the app requests.
+A third-party app's installations keep the grants their owner approved, so changing its requested
+permissions never changes what an installation may do. A permission the app adds applies to an
+installation once an owner grants it, through `apps.installations.update` or the install page. A
+permission the app removes stays granted until an owner changes the installation's access, which can
+then grant only what the app requests. A first-party app's installations follow its request instead
+(see [First-party apps](#first-party-apps)).
 
 The slug is the app's permanent, globally unique name: lowercase words separated by `-`, at most 63
 characters. Its integration connection is `app#<slug>`, so connection IDs, generated clients, and
@@ -400,6 +401,10 @@ A first-party app is part of Backoffice, so:
   revoking one is refused.
 - **Owners link it without a review.** The install page only asks where to install; the installation
   gets every requested permission over everything the owner has.
+- **Its installations follow its request.** Nobody reviewed their grants, so when an administrator
+  changes what the app requests, every installation has the new permissions within a minute: the
+  installation object reuses the app's registration for at most that long. Installations made before
+  this rule keep their stored grants until the app is linked again.
 - **Sign-in speaks in its name.** When it sends people to Backoffice, they see its name, logo, and
   color, sign in with a code sent to their email, and get emails in its name; see
   [Auth's README](../auth/README.md#signing-in-through-a-first-party-app). Anyone may sign up this
@@ -407,7 +412,7 @@ A first-party app is part of Backoffice, so:
 - **It may provision**, with the [provisioning permissions](#provisioning-api) it is granted.
 
 Making an app third-party again ends all of this at once, except consents and installations already
-recorded.
+recorded; those installations fall back to the grants stored when they were made.
 
 ## Provisioning API
 
@@ -621,9 +626,10 @@ owner's transaction. There is **no cross-object transaction or foreign key**. Gl
 requires an explicit coordination policy before being added.
 
 Routine authority reads, installation lists, and revocation remain local to the customer object.
-They do not depend on registry availability. This is command-level independence; the single-process
-Node host still restores known objects at startup, and its startup failure policy is not changed by
-this split.
+They do not depend on registry availability, except that a first-party installation's grants come
+from its app's registration, read at most once a minute. This is command-level independence; the
+single-process Node host still restores known objects at startup, and its startup failure policy is
+not changed by this split.
 
 ## Persistence invariants
 

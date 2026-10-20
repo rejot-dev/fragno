@@ -27,6 +27,7 @@ import type {
   BackofficeAppInstallationInput,
   BackofficeAppInstallationStatus,
   AppInstallationTargetScope,
+  StoredAppInstallation,
 } from "./contracts";
 import { appInstallationsFragmentSchema } from "./schema";
 
@@ -119,21 +120,24 @@ function toResourceScope(resourceProjectIds: string[] | null): AppInstallationRe
     : { kind: "projects", projectIds: resourceProjectIds };
 }
 
+type AppInstallationRow = {
+  id: { externalId: string };
+  appId: string;
+  grantedPermissions: BackofficePermissionRequirement[];
+  resourceProjectIds: string[] | null;
+  externalAccount: AppInstallationExternalAccount | null;
+  installedByUserId: string;
+  status: BackofficeAppInstallationStatus;
+  activation: number;
+  approvedActions: AppApprovedActions | null;
+  grantsFollowApp: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 function toBackofficeAppInstallation(
   owner: AppInstallationOwner,
-  installation: {
-    id: { externalId: string };
-    appId: string;
-    grantedPermissions: BackofficePermissionRequirement[];
-    resourceProjectIds: string[] | null;
-    externalAccount: AppInstallationExternalAccount | null;
-    installedByUserId: string;
-    status: BackofficeAppInstallationStatus;
-    activation: number;
-    approvedActions: AppApprovedActions | null;
-    createdAt: Date;
-    updatedAt: Date;
-  },
+  installation: AppInstallationRow,
 ): BackofficeAppInstallation {
   return {
     id: installation.id.externalId,
@@ -148,6 +152,16 @@ function toBackofficeAppInstallation(
     approvedActionsRevision: installation.approvedActions?.revision ?? 0,
     createdAt: installation.createdAt.toISOString(),
     updatedAt: installation.updatedAt.toISOString(),
+  };
+}
+
+function toStoredAppInstallation(
+  owner: AppInstallationOwner,
+  installation: AppInstallationRow,
+): StoredAppInstallation {
+  return {
+    installation: toBackofficeAppInstallation(owner, installation),
+    grantsFollowApp: installation.grantsFollowApp,
   };
 }
 
@@ -230,6 +244,7 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
                       status: "active",
                       activation: installation.activation + 1,
                       approvedActions,
+                      grantsFollowApp: app.trust.kind === "first-party",
                       updatedAt: uow.now(),
                     })
                     .check(),
@@ -256,6 +271,7 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
                   ownerId,
                   externalAccount: null,
                   approvedActions,
+                  grantsFollowApp: app.trust.kind === "first-party",
                   status: "active",
                 },
                 {
@@ -282,8 +298,8 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
               b.whereIndex("idx_app_installation_appId", (eb) => eb("appId", "=", input.appId)),
             ),
           )
-          .transformRetrieve(([installation]): BackofficeAppInstallation | null =>
-            installation ? toBackofficeAppInstallation(config.owner, installation) : null,
+          .transformRetrieve(([installation]): StoredAppInstallation | null =>
+            installation ? toStoredAppInstallation(config.owner, installation) : null,
           )
           .build();
       },
@@ -299,7 +315,7 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
           .transformRetrieve(([installation]) =>
             installation
               ? {
-                  installation: toBackofficeAppInstallation(config.owner, installation),
+                  ...toStoredAppInstallation(config.owner, installation),
                   approvedActions: installation.approvedActions,
                 }
               : null,
@@ -361,9 +377,11 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
             }),
           )
           .transformRetrieve(
-            ([page]): BackofficeAppInstallationPage => ({
+            ([page]): Omit<BackofficeAppInstallationPage, "installations"> & {
+              installations: StoredAppInstallation[];
+            } => ({
               installations: page.items.map((installation) =>
-                toBackofficeAppInstallation(config.owner, installation),
+                toStoredAppInstallation(config.owner, installation),
               ),
               nextCursor: page.cursor?.encode() ?? null,
               hasNextPage: page.hasNextPage,
@@ -374,7 +392,7 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
 
       updateInstallationAccess: function (
         input: BackofficeAppInstallationAccessInput,
-        requestedPermissions: readonly BackofficePermissionRequirement[],
+        app: BackofficeApp,
       ) {
         return this.serviceTx(appInstallationsFragmentSchema)
           .retrieve((uow) =>
@@ -396,13 +414,15 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
                   "Backoffice app installation is uninstalled.",
                 );
               }
-              assertAppGrantsWereRequested(requestedPermissions, input.grantedPermissions);
+              assertAppGrantsWereRequested(app.requestedPermissions, input.grantedPermissions);
+              const grantsFollowApp = app.trust.kind === "first-party";
               if (
                 appPermissionsEqual(installation.grantedPermissions, input.grantedPermissions) &&
                 resourceScopesEqual(
                   toResourceScope(installation.resourceProjectIds),
                   input.resourceScope,
-                )
+                ) &&
+                installation.grantsFollowApp === grantsFollowApp
               ) {
                 return { installationId: installation.id.externalId, changed: false };
               }
@@ -411,6 +431,7 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
                   .set({
                     grantedPermissions: input.grantedPermissions,
                     resourceProjectIds: toResourceProjectIds(input.resourceScope),
+                    grantsFollowApp,
                     updatedAt: uow.now(),
                   })
                   .check(),
@@ -440,7 +461,10 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
             ),
           )
           .mutate(
-            ({ uow, retrieveResult: [installation] }): BackofficeAppInstallationClaimResult => {
+            ({
+              uow,
+              retrieveResult: [installation],
+            }): { claimed: BackofficeAppInstallationClaimResult; grantsFollowApp: boolean } => {
               if (installation?.status !== "active") {
                 throw new BackofficeAppDomainError(
                   "APP_INSTALLATION_INACTIVE",
@@ -470,13 +494,16 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
                 scopes: connectionScopesOf(config.owner, [installation.resourceProjectIds]),
               });
               return {
-                id: installation.id.externalId,
-                appId: installation.appId,
-                owner: config.owner,
-                grantedPermissions: installation.grantedPermissions,
-                resourceScope: toResourceScope(installation.resourceProjectIds),
-                externalAccount: input.externalAccount,
-                activation: installation.activation,
+                claimed: {
+                  id: installation.id.externalId,
+                  appId: installation.appId,
+                  owner: config.owner,
+                  grantedPermissions: installation.grantedPermissions,
+                  resourceScope: toResourceScope(installation.resourceProjectIds),
+                  externalAccount: input.externalAccount,
+                  activation: installation.activation,
+                },
+                grantsFollowApp: installation.grantsFollowApp,
               };
             },
           )

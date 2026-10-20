@@ -760,6 +760,8 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
                 { actionsRevision: 1, appId, grantedPermissions: requestedPermissions },
                 tools,
               );
+              // Past the minute an installation may reuse its app's registration.
+              ctx.runtime.advanceTime(61_000);
               assert(registryAdapter);
               await registryAdapter.close();
               await expect(

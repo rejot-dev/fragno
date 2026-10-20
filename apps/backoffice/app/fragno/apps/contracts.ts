@@ -40,9 +40,8 @@ export type BackofficeAppActionsUpdateResult = z.infer<
 >;
 
 /**
- * Replaces what an app asks installations for. Installations keep the grants their owner approved:
- * an added permission applies once an owner grants it, and a removed one stays granted until an
- * owner changes the installation's access.
+ * Replaces what an app asks installations for. A first-party app's installations follow it; a
+ * third-party app's keep the grants their owner approved.
  */
 export const backofficeAppPermissionsUpdateInputSchema = z.lazy(() =>
   backofficeAppLookupInputSchema._zod.innerType.extend({

@@ -21,6 +21,7 @@ import {
   type BackofficeAppLookupInput,
 } from "@fragno-dev/backoffice-api/v0/apps";
 import type { JsonValue } from "@fragno-dev/backoffice-api/v0/shared/json";
+import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import type {
   BackofficeContextScope,
   BackofficeRootOwner,
@@ -107,6 +108,24 @@ export const backofficeAppInstallationClaimResultSchema = z.lazy(() =>
 export type BackofficeAppInstallationClaimResult = z.infer<
   typeof backofficeAppInstallationClaimResultSchema
 >;
+
+/**
+ * What an active installation of a first-party app may do: Backoffice operates the app, so no owner
+ * reviews its access, and it follows what the app requests now. An app demoted to third-party falls
+ * back to the grants stored when it was installed.
+ */
+export function effectiveGrantedPermissions(
+  app: Pick<BackofficeApp, "trust" | "requestedPermissions">,
+  granted: BackofficePermissionRequirement[],
+): BackofficePermissionRequirement[] {
+  return app.trust.kind === "first-party" ? app.requestedPermissions : granted;
+}
+
+/** An installation as stored, before a first-party app's current request replaces its grants. */
+export type StoredAppInstallation = {
+  installation: BackofficeAppInstallation;
+  grantsFollowApp: boolean;
+};
 
 /** One approved revision of an app's action declaration, kept on the installation. */
 export type AppApprovedActions = { revision: number; declaration: AppActionsDeclaration };
