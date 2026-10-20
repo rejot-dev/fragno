@@ -40,7 +40,8 @@ export function parseRoles(roles: string[]): WorkspaceRole[] {
   return organizationRoleSchema.array().min(1).parse(roles);
 }
 
-export function canInvite(roles: WorkspaceRole[]): boolean {
+/** Owners and admins invite people and create administrations. */
+export function canManage(roles: WorkspaceRole[]): boolean {
   return roles.includes("owner") || roles.includes("admin");
 }
 

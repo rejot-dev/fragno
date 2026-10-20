@@ -3,6 +3,7 @@ import { DurableObject } from "cloudflare:workers";
 
 import { applyMigrations } from "../migrations";
 import workspacesMigration from "./migrations/0001-workspaces.sql?raw";
+import administrationsMigration from "./migrations/0002-administrations.sql?raw";
 
 export type WorkspaceRole = OrganizationRole;
 
@@ -23,6 +24,9 @@ export type WorkspaceMembership = {
   roles: WorkspaceRole[];
   confirmedAt: number;
 };
+
+/** The books of one business in a workspace; `id` is its Backoffice project's, which names its books. */
+export type Administration = { id: string; workspaceId: string; slug: string; name: string };
 
 export type WorkspaceInvitation = {
   /** The Backoffice invitation's ID. */
@@ -79,7 +83,7 @@ export class Workspaces extends DurableObject<CloudflareEnv> {
   constructor(ctx: DurableObjectState, env: CloudflareEnv) {
     super(ctx, env);
     void ctx.blockConcurrencyWhile(async () => {
-      applyMigrations(ctx, [workspacesMigration]);
+      applyMigrations(ctx, [workspacesMigration, administrationsMigration]);
     });
   }
 
@@ -181,6 +185,41 @@ export class Workspaces extends DurableObject<CloudflareEnv> {
       )
       .toArray()
       .map((row) => ({ ...row, roles: parseRoles(row.roles) }));
+  }
+
+  /** Records an administration once its books are open; recording it again changes nothing. */
+  recordAdministration(administration: Administration): void {
+    this.ctx.storage.sql.exec(
+      `INSERT INTO "administration" ("id", "workspaceId", "slug", "name") VALUES (?, ?, ?, ?)
+       ON CONFLICT ("id") DO NOTHING`,
+      administration.id,
+      administration.workspaceId,
+      administration.slug,
+      administration.name,
+    );
+  }
+
+  /** The workspace's administrations, by name. */
+  listAdministrations(workspaceId: string): Administration[] {
+    return this.ctx.storage.sql
+      .exec<Administration>(
+        `SELECT "id", "workspaceId", "slug", "name" FROM "administration"
+         WHERE "workspaceId" = ? ORDER BY "name", "slug"`,
+        workspaceId,
+      )
+      .toArray();
+  }
+
+  findAdministration(input: { workspaceId: string; slug: string }): Administration | null {
+    const [row] = this.ctx.storage.sql
+      .exec<Administration>(
+        `SELECT "id", "workspaceId", "slug", "name" FROM "administration"
+         WHERE "workspaceId" = ? AND "slug" = ?`,
+        input.workspaceId,
+        input.slug,
+      )
+      .toArray();
+    return row ?? null;
   }
 
   addInvitation(input: Omit<WorkspaceInvitation, "workspace"> & { workspaceId: string }): void {

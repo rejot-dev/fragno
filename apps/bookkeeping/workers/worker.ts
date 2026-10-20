@@ -4,6 +4,7 @@ import * as serverBuild from "virtual:react-router/server-build";
 import { BACKOFFICE_ACTIONS_PATH, handleBackofficeAction } from "./backoffice/actions";
 
 export { Auth } from "./auth/auth";
+export { Books } from "./books/books";
 export { Workflows } from "./workflows/workflows";
 export { Workspaces } from "./workspaces/workspaces";
 

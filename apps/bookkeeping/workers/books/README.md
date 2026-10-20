@@ -1,9 +1,11 @@
-# Bookkeeping schema
+# Books
 
-One SQLite database (a Durable Object) per administration holds its books. Isolation, backup, export
-and deletion are per database, so no table carries an administration column. `schema.ts` exports the
-full schema as `bookkeepingSchema`, the SQL files concatenated in dependency order, for a single
-`sql.exec`.
+One SQLite database, the `Books` Durable Object in `books.ts`, per administration holds its books.
+Isolation, backup, export and deletion are per database, so no table carries an administration
+column. `schema.ts` exports the full schema as `bookkeepingSchema`, the SQL files concatenated in
+dependency order, for a single `sql.exec`; it is the object's first migration, so later changes are
+new migrations. Opening an administration's books writes its `administration` row and functional
+currency (`currencies.ts`).
 
 | Directory        | Owns                                                                                                                                              |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
