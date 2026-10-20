@@ -179,7 +179,7 @@ export class InMemoryPiManagerObject extends RpcTarget implements PiManagerObjec
     if (billed && payer !== null && hasPiBillingUsage(counters)) {
       const fragment = await this.#scoped.getRuntime();
       await fragment.callServices(() =>
-        fragment.services.recordClassificationUsage({
+        fragment.services.recordModelUsage({
           organizationId: payer,
           event: {
             id: `models-classify:${crypto.randomUUID()}`,

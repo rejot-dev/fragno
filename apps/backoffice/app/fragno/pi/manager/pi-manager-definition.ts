@@ -17,8 +17,8 @@ import {
   type PiAgentQueueChannel,
   type PiManagerHooks,
 } from "./pi-agent-queue";
-import { piClassificationUsageServices } from "./pi-classification-usage";
 import { piAgentDirectorySchema } from "./pi-manager-schema";
+import { piModelUsageServices } from "./pi-model-usage";
 
 export type PiManagerConfig = {
   scope: BackofficeContextScope;
@@ -26,7 +26,7 @@ export type PiManagerConfig = {
   supportedAvailableModels: () => Promise<readonly PiAvailableModel[]>;
   /** One per manager object, which runs every request that changes its agents' queues. */
   queueChannel: PiAgentQueueChannel;
-  /** The Billing object of an organization that pays for classifications. */
+  /** The Billing object of an organization that pays for model calls. */
   billing: (organizationId: string) => Pick<BillingObject, "recordEvent">;
 };
 
@@ -36,7 +36,7 @@ export const piManagerDefinition = defineFragment<PiManagerConfig>("pi-manager")
   .providesBaseService(({ defineService, config }) => ({
     ...piAgentDirectoryServices(defineService, config),
     ...piAgentQueueServices(defineService, config),
-    ...piClassificationUsageServices(defineService),
+    ...piModelUsageServices(defineService),
   }))
   .provideHooks<PiManagerHooks>(({ defineHook, services, config }) => ({
     redispatchAgentQueue: defineHook(async function ({ agentName }): Promise<void> {
@@ -52,10 +52,7 @@ export const piManagerDefinition = defineFragment<PiManagerConfig>("pi-manager")
     writeNotificationCards: defineHook(async function ({ agent, notifications }): Promise<void> {
       await handOverPiAgentWork(config.agent, { type: "write", agent, notifications });
     }),
-    deliverClassificationUsage: defineHook(async function ({
-      organizationId,
-      event,
-    }): Promise<void> {
+    deliverModelUsage: defineHook(async function ({ organizationId, event }): Promise<void> {
       await config.billing(organizationId).recordEvent(event, {
         propagationContext: this.capturePropagationContext(),
       });
