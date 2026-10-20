@@ -173,7 +173,7 @@ const updateAppPermissionsTool = defineBackofficeRuntimeTool({
   namespace: "admin",
   name: "appsUpdatePermissions",
   description:
-    "Replace the permissions a registered app requests. Installations keep the grants their owner approved: an added permission applies once an owner grants it (apps.installations.update or the install page), and a removed one stays granted until an owner changes the installation's access.",
+    "Replace the permissions a registered app requests. A first-party app's installations follow the new request within a minute. A third-party app's installations keep the grants their owner approved: an added permission applies once an owner grants it (apps.installations.update or the install page), and a removed one stays granted until an owner changes the installation's access.",
   requiredPermissions: [BACKOFFICE_PERMISSION.admin.appsManage],
   inputSchema: backofficeAppPermissionsUpdateInputSchema,
   outputSchema: backofficeAppPermissionsUpdateResultSchema,

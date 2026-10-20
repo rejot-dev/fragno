@@ -276,7 +276,7 @@ export const appsFragmentDefinition = defineFragment("apps")
           .build();
       },
 
-      /** Installations store their own grants, so changing the request never widens one. */
+      /** A third-party installation stores its own grants, so changing the request never widens one. */
       updateAppPermissions: function (input: BackofficeAppPermissionsUpdateInput) {
         return this.serviceTx(appsFragmentSchema)
           .retrieve((uow) =>

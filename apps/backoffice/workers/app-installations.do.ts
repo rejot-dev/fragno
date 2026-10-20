@@ -7,6 +7,7 @@ import {
   backofficeAppInstallationActionsApprovalInputSchema,
   backofficeAppInstallationPageInputSchema,
   type AppInstallationResourceScope,
+  type BackofficeApp,
   type BackofficeAppInstallation,
   type BackofficeAppInstallationAccessInput,
   type BackofficeAppInstallationActionsApprovalInput,
@@ -34,6 +35,7 @@ import {
   backofficeAppInstallationClaimInputSchema,
   backofficeAppInstallationInputSchema,
   effectiveAppActions,
+  effectiveGrantedPermissions,
   type AppEndpointCallInput,
   type AppEndpointResponse,
   type BackofficeAppConnection,
@@ -41,6 +43,7 @@ import {
   type BackofficeAppInstallationClaimResult,
   type BackofficeAppInstallationInput,
   type BackofficeAppInstallationsCommands,
+  type StoredAppInstallation,
 } from "@/fragno/app-installations/contracts";
 import type { AppInstallationChangedPayload } from "@/fragno/app-installations/definition";
 import type { AppInstallationsFragment } from "@/fragno/app-installations/fragment";
@@ -61,6 +64,12 @@ import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-ob
 import type { BackofficeObjectImplementation } from "./lib/backoffice-object-implementation";
 import { createCloudflareBackofficeObjectContext } from "./lib/cloudflare-backoffice-object-implementation";
 
+/**
+ * How long a first-party installation reuses its app's registration. Authority reads the
+ * installation on every check the app makes, so a changed request takes effect within this long.
+ */
+const REGISTERED_APP_REUSE_MS = 60_000;
+
 /** Owner-scoped behavior shared by Cloudflare and file-backed SQLite. */
 export class InMemoryAppInstallationsObject
   extends RpcTarget
@@ -70,6 +79,8 @@ export class InMemoryAppInstallationsObject
   readonly #runtime: BackofficeRuntimeServices;
   readonly #owner: AppInstallationOwner;
   readonly #fetch: typeof fetch;
+  readonly #nowEpochMs: () => number;
+  readonly #registeredApps = new Map<string, { app: BackofficeApp; readAtEpochMs: number }>();
   #fragment: AppInstallationsFragment | null = null;
 
   constructor({
@@ -77,14 +88,17 @@ export class InMemoryAppInstallationsObject
     runtime,
     implementation,
     fetch: fetchImpl = fetch,
+    nowEpochMs = Date.now,
   }: {
     state: BackofficeObjectState;
     runtime: BackofficeRuntimeServices;
     implementation: BackofficeObjectImplementation;
     /** Reaches app action endpoints; tests substitute an in-process app. */
     fetch?: typeof fetch;
+    nowEpochMs?: () => number;
   }) {
     super();
+    this.#nowEpochMs = nowEpochMs;
     // workerd rejects the global fetch when it is invoked as a method of this object.
     this.#fetch = (input, init) => fetchImpl(input, init);
     const scope = requireBackofficeContextScopeFromDurableObjectId(state.id, "APP_INSTALLATIONS");
@@ -152,12 +166,36 @@ export class InMemoryAppInstallationsObject
     }
   }
 
-  async #getRegisteredApp(appId: string) {
+  /** Changes to an installation review the registration as it is now. */
+  async #getRegisteredApp(appId: string): Promise<BackofficeApp> {
     const app = await this.#runtime.objects.apps.singleton().commands.getApp({ appId });
     if (!app) {
       throw new BackofficeAppDomainError("APP_NOT_FOUND", "Backoffice app was not found.");
     }
+    this.#registeredApps.set(appId, { app, readAtEpochMs: this.#nowEpochMs() });
     return app;
+  }
+
+  async #getRecentlyRegisteredApp(appId: string): Promise<BackofficeApp> {
+    const reused = this.#registeredApps.get(appId);
+    return reused && this.#nowEpochMs() - reused.readAtEpochMs < REGISTERED_APP_REUSE_MS
+      ? reused.app
+      : await this.#getRegisteredApp(appId);
+  }
+
+  /** Only first-party installations read the registry; other grants resolve locally. */
+  async #resolveGrants({
+    installation,
+    grantsFollowApp,
+  }: StoredAppInstallation): Promise<BackofficeAppInstallation> {
+    if (!grantsFollowApp || installation.status !== "active") {
+      return installation;
+    }
+    const app = await this.#getRecentlyRegisteredApp(installation.appId);
+    return {
+      ...installation,
+      grantedPermissions: effectiveGrantedPermissions(app, installation.grantedPermissions),
+    };
   }
 
   /** Projects live in the owner's automations object; approve only current projects. */
@@ -198,7 +236,10 @@ export class InMemoryAppInstallationsObject
   ): Promise<BackofficeAppInstallation | null> {
     const lookup = backofficeAppLookupInputSchema.parse(input);
     const fragment = this.#getFragment();
-    return await fragment.callServices(() => fragment.services.getInstallation(lookup));
+    const installation = await fragment.callServices(() =>
+      fragment.services.getInstallation(lookup),
+    );
+    return installation ? await this.#resolveGrants(installation) : null;
   }
 
   async listInstallations(
@@ -207,7 +248,13 @@ export class InMemoryAppInstallationsObject
     const page = backofficeAppInstallationPageInputSchema.parse(input);
     return await runBackofficeAppOperation(async () => {
       const fragment = this.#getFragment();
-      return await fragment.callServices(() => fragment.services.listInstallations(page));
+      const listed = await fragment.callServices(() => fragment.services.listInstallations(page));
+      return {
+        ...listed,
+        installations: await Promise.all(
+          listed.installations.map((installation) => this.#resolveGrants(installation)),
+        ),
+      };
     });
   }
 
@@ -220,7 +267,7 @@ export class InMemoryAppInstallationsObject
       await this.#assertProjectsAvailable(access.resourceScope);
       const fragment = this.#getFragment();
       return await fragment.callServices(() =>
-        fragment.services.updateInstallationAccess(access, app.requestedPermissions),
+        fragment.services.updateInstallationAccess(access, app),
       );
     });
   }
@@ -231,7 +278,17 @@ export class InMemoryAppInstallationsObject
     const claim = backofficeAppInstallationClaimInputSchema.parse(input);
     return await runBackofficeAppOperation(async () => {
       const fragment = this.#getFragment();
-      return await fragment.callServices(() => fragment.services.claimInstallation(claim));
+      const { claimed, grantsFollowApp } = await fragment.callServices(() =>
+        fragment.services.claimInstallation(claim),
+      );
+      if (!grantsFollowApp) {
+        return claimed;
+      }
+      const app = await this.#getRecentlyRegisteredApp(claimed.appId);
+      return {
+        ...claimed,
+        grantedPermissions: effectiveGrantedPermissions(app, claimed.grantedPermissions),
+      };
     });
   }
 
@@ -259,7 +316,15 @@ export class InMemoryAppInstallationsObject
     return {
       status: "installed",
       app,
-      installation: record.installation,
+      installation: record.grantsFollowApp
+        ? {
+            ...record.installation,
+            grantedPermissions: effectiveGrantedPermissions(
+              app,
+              record.installation.grantedPermissions,
+            ),
+          }
+        : record.installation,
       ...effectiveAppActions(app, record.approvedActions),
     };
   }
@@ -360,7 +425,10 @@ export class InMemoryAppInstallationsObject
   }
 }
 
-/** Customer installation grants are resolved and revoked without a registry read. */
+/**
+ * Customer installation grants are resolved and revoked without a registry read, except that a
+ * first-party installation reads its app's registration at most once a minute.
+ */
 export class AppInstallations
   extends DurableObject<CloudflareEnv>
   implements BackofficeAppInstallationsCommands
