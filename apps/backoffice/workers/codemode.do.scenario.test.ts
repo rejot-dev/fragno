@@ -34,6 +34,11 @@ import { codemodeRunnerFor } from "@/fragno/codemode/codemode-object-execute";
 import { runBackofficeCodemode } from "@/fragno/codemode/execute";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
+import {
+  createTrustedSystemBackofficeToolContext,
+  defineBackofficeRuntimeTool,
+  defineBackofficeRuntimeToolFamily,
+} from "@/fragno/runtime-tools/runtime-tools";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
@@ -608,3 +613,82 @@ test("each workflow tick is a billed run that publishes no run events", async ()
     }),
   );
 });
+
+test("a scope's eleventh concurrent run waits for a guest slot instead of failing", async () => {
+  let entered = 0;
+  let active = 0;
+  let maxActive = 0;
+  let openGate = () => {};
+  const gateOpened = new Promise<void>((resolve) => {
+    openGate = resolve;
+  });
+  const gate = defineBackofficeRuntimeToolFamily({
+    namespace: "gate",
+    tools: [
+      defineBackofficeRuntimeTool({
+        id: "gate.wait",
+        namespace: "gate",
+        name: "wait",
+        description: "Wait until the test opens the gate.",
+        requiredPermissions: [],
+        inputSchema: z.object({}),
+        outputSchema: z.object({}),
+        execute: async () => {
+          entered += 1;
+          active += 1;
+          maxActive = Math.max(maxActive, active);
+          await gateOpened;
+          active -= 1;
+          return {};
+        },
+      }),
+    ],
+  });
+
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "codemode guest slots",
+      objects: scenarioObjects,
+      env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
+      setup: ({ given }) => [given.organization.exists({ id: "org-1" })],
+      steps: ({ then }) => [
+        then.assert("ten guests run while the eleventh run waits", async (ctx) => {
+          const object = ctx.runtime.objects.codemode.forOrg("org-1").commands;
+          const codemode = codemodeRunnerFor(object, execution);
+          const run = () =>
+            runBackofficeCodemode({
+              code: "async () => await gate.wait({})",
+              codemode,
+              families: [gate],
+              toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
+            });
+          // Guests compile when they start, and the bridge compiles only a few at once.
+          const runs: ReturnType<typeof run>[] = [];
+          try {
+            for (let started = 1; started <= 10; started++) {
+              runs.push(run());
+              await vi.waitFor(() => expect(entered).toBe(started), { timeout: 5_000 });
+            }
+            runs.push(run());
+            await vi.waitFor(
+              async () => {
+                const page = await object.listRuns({ page: "first", pageSize: 20 });
+                expect(page.runs.map((run) => run.status)).toEqual(Array(11).fill("running"));
+              },
+              { timeout: 5_000 },
+            );
+            // Without the limit, the eleventh guest would reach the gate well within this window.
+            await new Promise((resolve) => setTimeout(resolve, 200));
+            expect(entered).toBe(10);
+          } finally {
+            // A failed assertion must not leave the admitted guests blocked during cleanup.
+            openGate();
+          }
+          const results = await Promise.all(runs);
+          expect(results.map((result) => result.error)).toEqual(Array(11).fill(undefined));
+          expect({ entered, maxActive }).toEqual({ entered: 11, maxActive: 10 });
+        }),
+      ],
+    }),
+  );
+}, 30_000);
