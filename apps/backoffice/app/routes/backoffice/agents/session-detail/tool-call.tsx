@@ -1,4 +1,9 @@
+import { ActivityDisclosure } from "@fragno-private/design-system/activity-disclosure";
 import { Button } from "@fragno-private/design-system/button";
+import { ChatToolCallRow } from "@fragno-private/design-system/chat-message";
+import { LabeledSection } from "@fragno-private/design-system/labeled-section";
+import { ScrollablePre } from "@fragno-private/design-system/scrollable-pre";
+import { SectionDisclosure } from "@fragno-private/design-system/section-disclosure";
 import { useState } from "react";
 
 import { useAuiState, type ToolCallMessagePartProps } from "@assistant-ui/react";
@@ -7,13 +12,10 @@ import { parseBackofficeUiResult, type BackofficeUiParseResult } from "@/backoff
 
 import { type PiDraftTool, type PiToolCallArtifact } from "./assistant-runtime";
 import { getExecCodeModeResultDetails } from "./exec-code-mode";
-import { ScrollablePre } from "./message-content";
 import { formatJson, getLoadedSkillName, getReadPath } from "./tool-arguments";
-import { ToolCallDetails, ToolResultSection } from "./tool-call-layout";
 import { ToolResultContent } from "./tool-result-content";
-import { ToolArgumentsBlock, ToolResultDisclosure } from "./tool-result-details";
+import { ToolArgumentsBlock } from "./tool-result-details";
 import { ToolWorkspaceSelector, type ToolWorkspaceSelectorOption } from "./tool-workspace-selector";
-import { formatEventTimestamp } from "./ui";
 import { useSessionWorkspaceNavigation } from "./workspace-context";
 import { generatedUiWorkspaceId, workflowGraphWorkspaceId } from "./workspace-model";
 
@@ -71,7 +73,7 @@ export function ToolCallBlock(props: ToolCallMessagePartProps) {
   const displayDetail = loadedSkillName ?? readPath ?? status;
 
   const completedResultSection = completedToolResult ? (
-    <ToolResultSection
+    <LabeledSection
       label={completedToolResult.isError ? "Error" : "Result"}
       action={
         canExpandOrdinaryResult ? (
@@ -94,7 +96,7 @@ export function ToolCallBlock(props: ToolCallMessagePartProps) {
         result={completedToolResult}
         useExecCodeModeFormatting={execCodeModeDetails !== null}
       />
-    </ToolResultSection>
+    </LabeledSection>
   ) : null;
 
   const partialResult =
@@ -107,58 +109,41 @@ export function ToolCallBlock(props: ToolCallMessagePartProps) {
     ) : null;
 
   return (
-    <div className="flex items-start gap-2">
-      <ToolCallDetails
+    <ChatToolCallRow
+      actions={<ToolWorkspaceSelector options={workspaceOptions} toolLabel={displayLabel} />}
+    >
+      <ActivityDisclosure
+        key={props.toolCallId}
+        marker={running ? "progress" : completedToolResult?.isError ? "failed" : "live"}
+        outline={loadedSkillName ? "live" : completedToolResult?.isError ? "failed" : "default"}
+        title={displayLabel}
+        detail={displayDetail}
+        time={createdAt ?? null}
         autoOpen={hasTaggedGeneratedUi}
-        resetKey={props.toolCallId}
-        className={`group/tool min-w-0 flex-1 overflow-hidden border bg-[var(--bo-panel)] ${loadedSkillName ? "border-[color:var(--bo-live)]" : completedToolResult?.isError ? "border-[color:var(--bo-failed)]" : "border-[color:var(--bo-border)]"}`}
       >
-        <summary className="grid min-h-11 cursor-pointer list-none grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 marker:hidden sm:grid-cols-[6.5rem_minmax(0,1fr)_auto]">
-          <span
-            className={`inline-flex min-w-0 items-center gap-2 text-xs font-medium ${loadedSkillName ? "text-[var(--bo-live)]" : "text-[var(--bo-fg)]"}`}
-          >
-            <span
-              className={`size-1.5 flex-none rounded-full ${running ? "animate-pulse bg-[var(--bo-accent)]" : completedToolResult?.isError ? "bg-[var(--bo-failed)]" : "bg-[var(--bo-live)]"}`}
-            />
-            <span className="truncate">{displayLabel}</span>
-          </span>
-          <code className="hidden truncate font-mono text-[10px] text-[var(--bo-muted-2)] sm:block">
-            {displayDetail}
-          </code>
-          <span className="grid min-h-10 grid-cols-1 items-center text-right text-[10px] text-[var(--bo-muted-2)] transition-colors duration-150 group-hover/tool:text-[var(--bo-fg)] sm:w-[10.5rem] sm:grid-cols-[7rem_3.5rem]">
-            <time className="hidden tabular-nums sm:block">{formatEventTimestamp(createdAt)}</time>
-            <span className="font-medium tracking-[0.1em] uppercase">
-              <span className="group-open/tool:hidden">View</span>
-              <span className="hidden group-open/tool:inline">Close</span>
-            </span>
-          </span>
-        </summary>
-        <div className="space-y-3 border-t border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3">
-          {hasTaggedGeneratedUi && completedToolResult ? (
-            <>
-              {completedResultSection}
-              <ToolResultDisclosure label="Code">
-                <ToolArgumentsBlock rawText={props.argsText} value={props.args} />
-              </ToolResultDisclosure>
-              {partialResult ? (
-                <ToolResultDisclosure label="Live result">{partialResult}</ToolResultDisclosure>
-              ) : null}
-              {logs ? <ToolResultDisclosure label="Logs">{logs}</ToolResultDisclosure> : null}
-            </>
-          ) : (
-            <>
+        {hasTaggedGeneratedUi && completedToolResult ? (
+          <>
+            {completedResultSection}
+            <SectionDisclosure label="Code">
               <ToolArgumentsBlock rawText={props.argsText} value={props.args} />
-              {partialResult ? (
-                <ToolResultSection label="Live result">{partialResult}</ToolResultSection>
-              ) : null}
-              {logs ? <ToolResultSection label="Logs">{logs}</ToolResultSection> : null}
-              {completedResultSection}
-            </>
-          )}
-        </div>
-      </ToolCallDetails>
-      <ToolWorkspaceSelector options={workspaceOptions} toolLabel={displayLabel} />
-    </div>
+            </SectionDisclosure>
+            {partialResult ? (
+              <SectionDisclosure label="Live result">{partialResult}</SectionDisclosure>
+            ) : null}
+            {logs ? <SectionDisclosure label="Logs">{logs}</SectionDisclosure> : null}
+          </>
+        ) : (
+          <>
+            <ToolArgumentsBlock rawText={props.argsText} value={props.args} />
+            {partialResult ? (
+              <LabeledSection label="Live result">{partialResult}</LabeledSection>
+            ) : null}
+            {logs ? <LabeledSection label="Logs">{logs}</LabeledSection> : null}
+            {completedResultSection}
+          </>
+        )}
+      </ActivityDisclosure>
+    </ChatToolCallRow>
   );
 }
 

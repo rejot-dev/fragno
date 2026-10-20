@@ -159,7 +159,7 @@ describe("SessionWorkspacePanel", () => {
     expect(screen.getByRole("alert").textContent).toContain(
       "Workflow synchronization failed: Failed to load workflow synchronization.",
     );
-    expect(document.querySelector('[data-session-workflow-sync-state="error"]')).toBeDefined();
+    expect(document.querySelector('[data-workspace-status="failed"]')).not.toBeNull();
     expect(screen.queryByText(/Live execution/)).toBeNull();
   });
 

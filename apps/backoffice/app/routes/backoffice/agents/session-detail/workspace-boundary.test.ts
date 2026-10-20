@@ -8,7 +8,6 @@ const workspaceFiles = [
   "workspace-model.ts",
   "workspace-panel.tsx",
   "workspace-projection.ts",
-  "workspace-split.tsx",
   "workflow-graph-projection.ts",
 ];
 
@@ -29,8 +28,12 @@ describe("session workspace dependency boundary", () => {
       new URL("../organization-layout.tsx", import.meta.url),
       "utf8",
     );
-    const threadSource = readFileSync(new URL("session-thread.tsx", import.meta.url), "utf8");
-    const panelSource = readFileSync(new URL("workspace-panel.tsx", import.meta.url), "utf8");
+    const resolve = createRequire(import.meta.url).resolve;
+    const threadSource = readFileSync(resolve("@fragno-private/design-system/chat-thread"), "utf8");
+    const panelSource = readFileSync(
+      resolve("@fragno-private/design-system/chat-workspace-panel"),
+      "utf8",
+    );
     const graphSource = readFileSync(
       new URL("../../automations/script-view/workflow-graph.tsx", import.meta.url),
       "utf8",

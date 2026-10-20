@@ -37,19 +37,3 @@ export function MarkdownText({ text, className = "" }: { text: string; className
 export function MessageImage({ image }: { image: string }) {
   return <ImagePreview src={image} alt="Message attachment" />;
 }
-
-export function ScrollablePre({
-  children,
-  expanded = false,
-}: {
-  children: string;
-  expanded?: boolean;
-}) {
-  return (
-    <pre
-      className={`${expanded ? "max-h-[70vh] min-h-64" : "max-h-72"} backoffice-scroll max-w-full overflow-auto border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3 font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-[var(--bo-fg)]`}
-    >
-      {children}
-    </pre>
-  );
-}

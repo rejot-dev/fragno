@@ -1,5 +1,18 @@
-import { Button } from "@fragno-private/design-system/button";
-import { useState, type ReactNode } from "react";
+import { ActivityDisclosure } from "@fragno-private/design-system/activity-disclosure";
+import { ChatEventDivider } from "@fragno-private/design-system/chat-divider";
+import {
+  ChatAssistantMessage,
+  ChatEventMessage,
+  ChatMessageActions,
+  ChatReasoningTrace,
+  ChatStoppedNotice,
+  ChatTokenUsage,
+  ChatUserMessage,
+} from "@fragno-private/design-system/chat-message";
+import { CopyButton } from "@fragno-private/design-system/copy-button";
+import { InlineAlert } from "@fragno-private/design-system/inline-alert";
+import { WorkingIndicator } from "@fragno-private/design-system/working-indicator";
+import type { ReactNode } from "react";
 
 import { MessagePrimitive, groupPartByType, useAuiState } from "@assistant-ui/react";
 
@@ -12,7 +25,6 @@ import {
 } from "./assistant-runtime";
 import { MarkdownText, MessageImage } from "./message-content";
 import { ToolCallBlock } from "./tool-call";
-import { formatEventTimestamp, formatMessageTimestamp } from "./ui";
 
 const reasoningGrouping = groupPartByType({
   reasoning: ["group-reasoning"],
@@ -22,13 +34,10 @@ export function UserMessage() {
   const createdAt = useAuiState((state) => state.message.createdAt);
 
   return (
-    <MessagePrimitive.Root className="group relative mb-7 flex justify-end pl-6 sm:pl-24">
-      <div className="max-w-[92%] border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-4 py-3 text-sm leading-6 text-[var(--bo-fg)] sm:max-w-[88%]">
+    <MessagePrimitive.Root asChild>
+      <ChatUserMessage time={createdAt ?? null}>
         <MessagePrimitive.Parts components={{ Text: MarkdownText, Image: MessageImage }} />
-        <time className="mt-1 block text-right text-[10px] text-[var(--bo-muted-2)] tabular-nums">
-          {formatMessageTimestamp(createdAt)}
-        </time>
-      </div>
+      </ChatUserMessage>
     </MessagePrimitive.Root>
   );
 }
@@ -58,34 +67,38 @@ export function AssistantMessage({
   const isRunning = useAuiState((state) => state.message.status?.type === "running");
   const isFinalOutput = outputText.length > 0 && !hasToolCalls;
   const isToolCallOnly = hasToolCalls && outputText.length === 0;
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(outputText);
-      setCopied(true);
-      window.setTimeout(() => {
-        setCopied(false);
-      }, 2000);
-    } catch {
-      // Ignore clipboard failures.
-    }
-  };
+  const stopped = metadata.stopReason === "aborted";
+  const failure = stopped ? null : (metadata.errorMessage ?? null);
+  const usage = showUsage ? (metadata.usage ?? null) : null;
+  const copyable = isFinalOutput && !isRunning;
+  const footer =
+    stopped || failure !== null || usage !== null || copyable ? (
+      <>
+        {stopped ? <ChatStoppedNotice /> : null}
+        {failure === null ? null : <InlineAlert>{failure}</InlineAlert>}
+        {usage === null ? null : (
+          <ChatTokenUsage
+            input={usage.input}
+            output={usage.output}
+            total={usage.totalTokens}
+            cost={usage.cost.total}
+          />
+        )}
+        {copyable ? (
+          <ChatMessageActions>
+            <CopyButton value={outputText} label="Copy response" />
+          </ChatMessageActions>
+        ) : null}
+      </>
+    ) : null;
 
   return (
-    <MessagePrimitive.Root className={`group relative min-w-0 ${isToolCallOnly ? "mb-3" : "mb-9"}`}>
-      {isFinalOutput ? (
-        <div className="mb-2 flex items-center gap-2">
-          <span className="text-[10px] font-semibold tracking-[0.12em] text-[var(--bo-fg)] uppercase">
-            Pi
-          </span>
-          <time className="text-[10px] text-[var(--bo-muted-2)] tabular-nums">
-            {formatMessageTimestamp(createdAt)}
-          </time>
-        </div>
-      ) : null}
-
-      <div className="space-y-3 text-sm leading-7 text-[var(--bo-muted)]">
+    <MessagePrimitive.Root asChild>
+      <ChatAssistantMessage
+        spacing={isToolCallOnly ? "tight" : "normal"}
+        author={isFinalOutput ? { name: "Pi", time: createdAt ?? null } : null}
+        footer={footer}
+      >
         <MessagePrimitive.GroupedParts groupBy={reasoningGrouping} indicator="no-text">
           {({ part, children }) => {
             switch (part.type) {
@@ -104,7 +117,7 @@ export function AssistantMessage({
               case "image":
                 return <MessageImage image={part.image} />;
               case "indicator":
-                return <AssistantIndicator label={metadata.statusText} />;
+                return <WorkingIndicator>{metadata.statusText ?? "Working…"}</WorkingIndicator>;
               case "audio":
               case "data":
               case "file":
@@ -116,28 +129,7 @@ export function AssistantMessage({
             }
           }}
         </MessagePrimitive.GroupedParts>
-      </div>
-
-      {metadata.stopReason === "aborted" ? (
-        <p className="mt-3 inline-flex items-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-xs text-[var(--bo-muted-2)]">
-          <span className="size-1.5 rounded-full bg-[var(--bo-muted-2)]" />
-          Response stopped
-        </p>
-      ) : metadata.errorMessage ? (
-        <p className="mt-3 border border-[color:var(--bo-failed)] bg-[var(--bo-failed-bg)] px-3 py-2 text-xs text-pretty text-[var(--bo-failed)]">
-          {metadata.errorMessage}
-        </p>
-      ) : null}
-
-      {showUsage && metadata.usage ? <UsageSummary usage={metadata.usage} /> : null}
-
-      {isFinalOutput && !isRunning ? (
-        <div className="mt-3 flex min-h-10 justify-end">
-          <Button variant="ghost" onClick={() => void handleCopy()}>
-            {copied ? "Copied" : "Copy"}
-          </Button>
-        </div>
-      ) : null}
+      </ChatAssistantMessage>
     </MessagePrimitive.Root>
   );
 }
@@ -159,31 +151,22 @@ export function CompactionMessage() {
   );
 
   return (
-    <MessagePrimitive.Root className="mb-7 min-w-0">
-      <details className="group/compaction overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)]">
-        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 text-xs font-medium text-[var(--bo-muted)] transition-colors marker:hidden hover:text-[var(--bo-fg)]">
-          <span className="flex min-w-0 items-center gap-2">
-            <span className="size-1.5 shrink-0 bg-[var(--bo-accent)]" />
-            <span>Context compacted</span>
-            <span className="truncate text-[10px] font-normal text-[var(--bo-muted-2)]">
-              {compactionReasonLabels[metadata.reason]}
-            </span>
-          </span>
-          <span className="grid w-[10.5rem] shrink-0 grid-cols-[7rem_3.5rem] items-center text-right text-[10px] text-[var(--bo-muted-2)]">
-            <time className="tabular-nums">{formatEventTimestamp(createdAt)}</time>
-            <span className="font-medium tracking-[0.1em] uppercase">
-              <span className="group-open/compaction:hidden">View</span>
-              <span className="hidden group-open/compaction:inline">Close</span>
-            </span>
-          </span>
-        </summary>
-        <div className="border-t border-[color:var(--bo-border)] px-4 py-3 text-sm leading-7 text-[var(--bo-muted)]">
-          <p className="mb-2 text-[10px] text-[var(--bo-muted-2)]">
-            Pi continues from this summary instead of the history before it.
-          </p>
-          <MarkdownText text={summary} className="[&_h2]:text-sm [&_h3]:text-xs" />
-        </div>
-      </details>
+    <MessagePrimitive.Root asChild>
+      <ChatEventMessage>
+        <ActivityDisclosure
+          marker="accent"
+          title="Context compacted"
+          note={compactionReasonLabels[metadata.reason]}
+          time={createdAt ?? null}
+        >
+          <div className="text-sm leading-7 text-[var(--bo-muted)]">
+            <p className="mb-2 text-[10px] text-[var(--bo-muted-2)]">
+              Pi continues from this summary instead of the history before it.
+            </p>
+            <MarkdownText text={summary} className="[&_h2]:text-sm [&_h3]:text-xs" />
+          </div>
+        </ActivityDisclosure>
+      </ChatEventMessage>
     </MessagePrimitive.Root>
   );
 }
@@ -199,29 +182,14 @@ export function NotificationMessage() {
   );
 
   return (
-    <MessagePrimitive.Root className="mb-7 min-w-0">
-      <details className="group/notification overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)]">
-        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 text-xs font-medium text-[var(--bo-muted)] transition-colors marker:hidden hover:text-[var(--bo-fg)]">
-          <span className="flex min-w-0 items-center gap-2">
-            <span className="size-1.5 shrink-0 bg-amber-500" />
-            <span className="truncate">
-              {notification.event.source} · {notification.event.eventType}
-            </span>
-            {notification.routeId === null ? null : (
-              <span className="truncate text-[10px] font-normal text-[var(--bo-muted-2)]">
-                via {notification.routeId}
-              </span>
-            )}
-          </span>
-          <span className="grid w-[10.5rem] shrink-0 grid-cols-[7rem_3.5rem] items-center text-right text-[10px] text-[var(--bo-muted-2)]">
-            <time className="tabular-nums">{formatEventTimestamp(createdAt)}</time>
-            <span className="font-medium tracking-[0.1em] uppercase">
-              <span className="group-open/notification:hidden">View</span>
-              <span className="hidden group-open/notification:inline">Close</span>
-            </span>
-          </span>
-        </summary>
-        <div className="border-t border-[color:var(--bo-border)] px-4 py-3">
+    <MessagePrimitive.Root asChild>
+      <ChatEventMessage>
+        <ActivityDisclosure
+          marker="notification"
+          title={`${notification.event.source} · ${notification.event.eventType}`}
+          note={notification.routeId === null ? undefined : `via ${notification.routeId}`}
+          time={createdAt ?? null}
+        >
           <p className="mb-2 text-[10px] text-[var(--bo-muted-2)]">
             Event {notification.event.id},{" "}
             {notification.routeId === null
@@ -231,8 +199,8 @@ export function NotificationMessage() {
           <pre className="overflow-x-auto text-xs leading-5 whitespace-pre-wrap text-[var(--bo-muted)]">
             {data}
           </pre>
-        </div>
-      </details>
+        </ActivityDisclosure>
+      </ChatEventMessage>
     </MessagePrimitive.Root>
   );
 }
@@ -245,29 +213,17 @@ export function NotificationRequestMessage() {
   );
 
   return (
-    <MessagePrimitive.Root className="mb-7 flex min-w-0 items-center gap-3 text-[10px] text-[var(--bo-muted-2)]">
-      <span className="h-px flex-1 bg-[var(--bo-border)]" />
-      <span
-        className="flex items-center gap-2 font-medium"
+    <MessagePrimitive.Root asChild>
+      <ChatEventDivider
+        marker="notification"
+        time={createdAt ?? null}
         title={notifications
           .map(({ routeId, eventId }) => (routeId === null ? eventId : `${eventId} via ${routeId}`))
           .join("\n")}
       >
-        <span className="size-1.5 shrink-0 bg-amber-500" />
         {notificationRequestLabel(notifications)}
-      </span>
-      <span className="h-px flex-1 bg-[var(--bo-border)]" />
-      <time className="tabular-nums">{formatEventTimestamp(createdAt)}</time>
+      </ChatEventDivider>
     </MessagePrimitive.Root>
-  );
-}
-
-function AssistantIndicator({ label }: { label?: string | null }) {
-  return (
-    <div className="flex items-center gap-2 py-1 text-xs text-[var(--bo-muted-2)]">
-      <span className="size-1.5 animate-pulse rounded-full bg-[var(--bo-accent)]" />
-      <span>{label ?? "Working…"}</span>
-    </div>
   );
 }
 
@@ -282,42 +238,24 @@ function ReasoningBlock({
 }) {
   const running = status === "running";
   return (
-    <details
-      open={running}
-      className="group/thought overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)]"
+    <ActivityDisclosure
+      marker={running ? "progress" : null}
+      title={running ? "Working" : "Reasoning"}
+      time={createdAt ?? null}
+      autoOpen={running}
     >
-      <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 text-xs font-medium text-[var(--bo-muted)] marker:hidden">
-        <span>{running ? "Working" : "Reasoning"}</span>
-        <span className="grid w-[10.5rem] grid-cols-[7rem_3.5rem] items-center text-right text-[10px] text-[var(--bo-muted-2)]">
-          <time className="tabular-nums">{formatEventTimestamp(createdAt)}</time>
-          <span className="font-medium tracking-[0.1em] uppercase">
-            {running ? "Live" : "View"}
-          </span>
-        </span>
-      </summary>
-      <div className="space-y-2 border-t border-[color:var(--bo-border)] px-3 py-3">{children}</div>
-    </details>
+      {children}
+    </ActivityDisclosure>
   );
 }
 
 function ReasoningText({ text }: { text: string }) {
   return (
-    <div className="relative pl-5 text-[var(--bo-muted)] before:absolute before:top-2 before:bottom-2 before:left-1 before:w-px before:bg-[var(--bo-border-strong)]">
+    <ChatReasoningTrace>
       <MarkdownText
         text={text}
         className="text-xs leading-6 [&_h1]:text-sm [&_h2]:text-[13px] [&_h3]:text-xs [&_h4]:text-xs"
       />
-    </div>
-  );
-}
-
-function UsageSummary({ usage }: { usage: NonNullable<PiAssistantMessageMetadata["usage"]> }) {
-  return (
-    <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-[var(--bo-muted-2)] tabular-nums">
-      <span>{usage.input.toLocaleString()} input</span>
-      <span>{usage.output.toLocaleString()} output</span>
-      <span>{usage.totalTokens.toLocaleString()} total</span>
-      <span>${usage.cost.total.toFixed(4)}</span>
-    </div>
+    </ChatReasoningTrace>
   );
 }

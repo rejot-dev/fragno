@@ -1,4 +1,3 @@
-import { VerticalResizeHandle } from "@fragno-private/design-system/vertical-resize-handle";
 import {
   useCallback,
   useEffect,
@@ -9,18 +8,26 @@ import {
   type ReactNode,
 } from "react";
 
+import { VerticalResizeHandle } from "./vertical-resize-handle";
+
 const DEFAULT_THREAD_WIDTH = 54;
 const MIN_THREAD_WIDTH = 32;
 const MIN_WORKSPACE_WIDTH = 34;
 const RESIZE_STEP = 2;
 
-export function SessionWorkspaceSplit({
-  left,
-  right,
+/**
+ * The conversation beside a workspace for what it produced. The reader resizes the split, which
+ * is remembered under `storageKey`; on narrow screens the workspace covers the conversation.
+ * The conversation stays mounted while the workspace opens and closes.
+ */
+export function ChatWorkspaceSplit({
+  conversation,
+  workspace,
   storageKey,
 }: {
-  left: ReactNode;
-  right?: ReactNode | null;
+  conversation: ReactNode;
+  /** Null while the workspace is closed. */
+  workspace: ReactNode | null;
   storageKey: string;
 }) {
   const clampThreadWidth = useCallback(
@@ -32,7 +39,7 @@ export function SessionWorkspaceSplit({
   );
   const containerRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
-  const hasWorkspace = right !== null && right !== undefined;
+  const hasWorkspace = workspace !== null;
 
   useEffect(() => {
     try {
@@ -120,7 +127,7 @@ export function SessionWorkspaceSplit({
             : "bo-session-thread-pane flex h-full min-h-0 w-full min-w-0 flex-col"
         }
       >
-        {left}
+        {conversation}
       </div>
 
       {hasWorkspace ? (
@@ -142,7 +149,7 @@ export function SessionWorkspaceSplit({
             }}
           />
           <div className="bo-session-workspace-drawer absolute inset-0 z-40 h-full min-h-0 min-w-0 overflow-hidden bg-[var(--bo-panel)] shadow-[var(--bo-popover-shadow)] md:static md:z-auto md:flex-1 md:shadow-none">
-            {right}
+            {workspace}
           </div>
         </>
       ) : null}
