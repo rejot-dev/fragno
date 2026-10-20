@@ -124,8 +124,8 @@ function Question({
   );
 }
 
-/** Checks again shortly while the workspace is being set up. */
-function SettingUp() {
+/** Checks again shortly while the workflow works. */
+function Working({ title, description }: { title: string; description: string }) {
   const { revalidate, state } = useRevalidator();
   useEffect(() => {
     if (state !== "idle") {
@@ -140,8 +140,8 @@ function SettingUp() {
   }, [revalidate, state]);
   return (
     <div className="space-y-2" role="status">
-      <h1>Setting up your workspace…</h1>
-      <p>This takes a few seconds.</p>
+      <h1>{title}</h1>
+      <p>{description}</p>
     </div>
   );
 }
@@ -171,7 +171,12 @@ export default function Welcome({ loaderData, actionData }: Route.ComponentProps
           error={error}
         />
       )}
-      {wizard.step === "setting-up" && <SettingUp />}
+      {wizard.step === "next-question" && (
+        <Working title="One moment…" description="Your next question is on its way." />
+      )}
+      {wizard.step === "setting-up" && (
+        <Working title="Setting up your workspace…" description="This takes a few seconds." />
+      )}
       {wizard.step === "failed" && (
         <Form method="post" className="space-y-4">
           <h1>We couldn't set up your workspace</h1>
