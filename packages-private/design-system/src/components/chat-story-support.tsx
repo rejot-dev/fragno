@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { ActivityDisclosure } from "./activity-disclosure";
+import { ChatActivity, ChatActivityStep, ChatArtifactToggle } from "./chat-activity";
 import {
   ChatComposer,
   ChatComposerButton,
@@ -11,20 +11,16 @@ import {
   ChatComposerToolbar,
   chatComposerInputClassName,
 } from "./chat-composer";
-import { ChatBoundaryDivider, ChatEventDivider } from "./chat-divider";
+import { ChatBoundaryDivider, ChatEventDisclosure, ChatEventDivider } from "./chat-divider";
 import {
   ChatAssistantMessage,
-  ChatEventMessage,
   ChatMessageActions,
-  ChatReasoningTrace,
   ChatTokenUsage,
-  ChatToolCallRow,
   ChatUserMessage,
 } from "./chat-message";
 import { ContextUsageMeter } from "./context-usage-meter";
 import { CopyButton } from "./copy-button";
 import { LabeledSection } from "./labeled-section";
-import { PanelToggleButton } from "./panel-toggle-button";
 import { RadioMenu, type RadioMenuOption } from "./radio-menu";
 import { ScrollablePre } from "./scrollable-pre";
 
@@ -68,64 +64,33 @@ export function SampleConversation({
   return (
     <>
       <ChatBoundaryDivider>{OUT_OF_CONTEXT}</ChatBoundaryDivider>
-      <ChatEventMessage>
-        <ActivityDisclosure
-          marker="accent"
-          title="Context compacted"
-          note="Automatic"
-          time={SAMPLE_TIME}
-        >
-          <p className="text-sm leading-7 text-[var(--bo-muted)]">
-            Pi continues from this summary instead of the history before it.
-          </p>
-        </ActivityDisclosure>
-      </ChatEventMessage>
-      <ChatEventMessage>
-        <ActivityDisclosure
-          marker="notification"
-          title="stripe · invoice.overdue"
-          note="via billing-route"
-          time={SAMPLE_TIME}
-        >
-          <pre className="text-xs leading-5 whitespace-pre-wrap text-[var(--bo-muted)]">
-            {`{ "invoice": "INV-4182", "daysOverdue": 32 }`}
-          </pre>
-        </ActivityDisclosure>
-      </ChatEventMessage>
+      <ChatEventDisclosure
+        marker="accent"
+        title="Context compacted"
+        note="Automatic"
+        time={SAMPLE_TIME}
+      >
+        <p className="text-sm leading-7 text-[var(--bo-muted)]">
+          Pi continues from this summary instead of the history before it.
+        </p>
+      </ChatEventDisclosure>
+      <ChatEventDisclosure
+        marker="notification"
+        title="stripe · invoice.overdue"
+        note="via billing-route"
+        time={SAMPLE_TIME}
+      >
+        <pre className="text-xs leading-5 whitespace-pre-wrap text-[var(--bo-muted)]">
+          {`{ "invoice": "INV-4182", "daysOverdue": 32 }`}
+        </pre>
+      </ChatEventDisclosure>
       <ChatEventDivider marker="notification" time={SAMPLE_TIME}>
         Asked to handle 1 notification
       </ChatEventDivider>
       <ChatUserMessage time={SAMPLE_TIME}>
         <p>Which invoices are still unpaid? Draft reminders for them.</p>
       </ChatUserMessage>
-      <ChatAssistantMessage spacing="tight" author={null} footer={null}>
-        <ActivityDisclosure marker={null} title="Reasoning" time={SAMPLE_TIME}>
-          <ChatReasoningTrace>
-            <p className="text-xs leading-6">
-              Load the unpaid invoices first, then draft one reminder per customer.
-            </p>
-          </ChatReasoningTrace>
-        </ActivityDisclosure>
-        <ChatToolCallRow
-          actions={
-            <PanelToggleButton
-              icon="share-2"
-              label="Workflow graph"
-              pressed={workflowShown}
-              onClick={onToggleWorkflow}
-            />
-          }
-        >
-          <ActivityDisclosure marker="live" title="execCodeMode" detail="Done" time={SAMPLE_TIME}>
-            <ScrollablePre>{"return await invoices.unpaid();"}</ScrollablePre>
-            <LabeledSection label="Result">
-              <ScrollablePre>{`[\n  "INV-4182",\n  "INV-4190",\n  "INV-4203"\n]`}</ScrollablePre>
-            </LabeledSection>
-          </ActivityDisclosure>
-        </ChatToolCallRow>
-      </ChatAssistantMessage>
       <ChatAssistantMessage
-        spacing="normal"
         author={{ name: "Pi", time: SAMPLE_TIME }}
         footer={
           <>
@@ -136,6 +101,52 @@ export function SampleConversation({
           </>
         }
       >
+        <ChatActivity
+          status={{
+            kind: "settled",
+            outcome: "done",
+            durationMs: 8_400,
+            note: "1 tool · 1 thought",
+            failedSteps: 0,
+          }}
+          artifacts={
+            <ChatArtifactToggle
+              icon="share-2"
+              label="Workflow graph"
+              labelled
+              pressed={workflowShown}
+              onClick={onToggleWorkflow}
+            />
+          }
+        >
+          <ChatActivityStep
+            icon={null}
+            state="done"
+            title="Loading the unpaid invoices"
+            detail={null}
+            durationMs={2_100}
+            outlined={false}
+            actions={null}
+          >
+            <p className="text-xs leading-6">
+              Load the unpaid invoices first, then draft one reminder per customer.
+            </p>
+          </ChatActivityStep>
+          <ChatActivityStep
+            icon="code"
+            state="done"
+            title="execCodeMode"
+            detail="invoices.unpaid()"
+            durationMs={1_240}
+            outlined={false}
+            actions={null}
+          >
+            <ScrollablePre>{"return await invoices.unpaid();"}</ScrollablePre>
+            <LabeledSection label="Result">
+              <ScrollablePre>{`[\n  "INV-4182",\n  "INV-4190",\n  "INV-4203"\n]`}</ScrollablePre>
+            </LabeledSection>
+          </ChatActivityStep>
+        </ChatActivity>
         <p>
           Three invoices are still unpaid. The oldest, <strong>INV-4182</strong> from Acme, is 32
           days overdue. I drafted a reminder for each in <code>/workspace/drafts/</code>.

@@ -27,7 +27,7 @@ export function ChatUserMessage({
     <div
       {...props}
       data-chat-turn-start
-      className="group relative mb-7 flex justify-end pl-6 sm:pl-24"
+      className="bo-chat-enter group relative mb-7 flex justify-end pl-6 sm:pl-24"
     >
       <div className="max-w-[92%] border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-4 py-3 text-sm leading-6 text-[var(--bo-fg)] sm:max-w-[88%]">
         {children}
@@ -43,50 +43,31 @@ export function ChatUserMessage({
 }
 
 /**
- * What the agent did and said in one turn. Turns made only of tool calls sit tight against the
- * next one, so a run of tool calls reads as one block.
+ * What the agent did and said in one turn: a ChatActivity card for its work, then its answer.
+ * The footer's actions appear on hover where the reader has a pointer.
  */
 export function ChatAssistantMessage({
-  spacing,
   author,
   footer,
   children,
   ...props
 }: ElementProps & {
-  spacing: "tight" | "normal";
-  /** Shown over a final answer, not over intermediate tool work. */
-  author: { name: string; time: Date | null } | null;
+  author: { name: string; time: Date | null };
   footer: ReactNode | null;
   children: ReactNode;
 }) {
   return (
-    <div {...props} className={cn("group relative min-w-0", spacing === "tight" ? "mb-3" : "mb-9")}>
-      {author === null ? null : (
-        <div className="mb-2 flex items-center gap-2">
-          <span className="text-[10px] font-semibold tracking-[0.12em] text-[var(--bo-fg)] uppercase">
-            {author.name}
-          </span>
-          {author.time === null ? null : (
-            <MessageTime time={author.time} className="text-[10px] text-[var(--bo-muted-2)]" />
-          )}
-        </div>
-      )}
+    <div {...props} className="bo-chat-enter group relative mb-9 min-w-0">
+      <div className="mb-2 flex items-center gap-2">
+        <span className="text-[10px] font-semibold tracking-[0.12em] text-[var(--bo-fg)] uppercase">
+          {author.name}
+        </span>
+        {author.time === null ? null : (
+          <MessageTime time={author.time} className="text-[10px] text-[var(--bo-muted-2)]" />
+        )}
+      </div>
       <div className="space-y-3 text-sm leading-7 text-[var(--bo-muted)]">{children}</div>
       {footer === null ? null : <div className="mt-3 space-y-3">{footer}</div>}
-    </div>
-  );
-}
-
-/** Something that happened to the conversation rather than in it, such as a compaction. */
-export function ChatEventMessage(props: ElementProps) {
-  return <div {...props} className="mb-7 min-w-0" />;
-}
-
-/** The agent's reasoning, set off by a rule so it reads as an aside. */
-export function ChatReasoningTrace({ children }: { children: ReactNode }) {
-  return (
-    <div className="relative pl-5 text-[var(--bo-muted)] before:absolute before:top-2 before:bottom-2 before:left-1 before:w-px before:bg-[var(--bo-border-strong)]">
-      {children}
     </div>
   );
 }
@@ -123,22 +104,11 @@ export function ChatTokenUsage({
   );
 }
 
+/** Revealed on hover where the reader has a pointer, and always shown on touch screens. */
 export function ChatMessageActions({ children }: { children: ReactNode }) {
-  return <div className="flex min-h-10 items-center justify-end">{children}</div>;
-}
-
-/** A tool call's card, with controls for what it produced beside it. */
-export function ChatToolCallRow({
-  actions,
-  children,
-}: {
-  actions: ReactNode;
-  children: ReactNode;
-}) {
   return (
-    <div className="flex items-start gap-2">
-      <div className="min-w-0 flex-1">{children}</div>
-      {actions}
+    <div className="flex min-h-10 items-center justify-end transition-opacity duration-150 focus-within:opacity-100 pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100">
+      {children}
     </div>
   );
 }

@@ -99,7 +99,7 @@ describe("piConversationMessages", () => {
 });
 
 describe("createAssistantUiMessages", () => {
-  test("renders the durable live generation as a separate streaming assistant message", () => {
+  test("joins the durable live generation to the turn it continues", () => {
     const view = {
       conversation: { id: 1 },
       entries: [
@@ -149,14 +149,15 @@ describe("createAssistantUiMessages", () => {
       messages: piConversationMessages(view, null).messages,
     });
 
-    expect(converted).toHaveLength(2);
+    // The turn keeps the first response's id while the live generation streams onto it.
+    expect(converted).toHaveLength(1);
     expect(converted[0]).toMatchObject({
+      id: "pi-turn-2",
       role: "assistant",
-      status: { type: "complete", reason: "stop" },
-    });
-    expect(converted[1]).toMatchObject({
-      role: "assistant",
-      content: [{ type: "text", text: "The final answer is being written" }],
+      content: [
+        { type: "tool-call", toolCallId: "tool-read" },
+        { type: "text", text: "The final answer is being written" },
+      ],
       status: { type: "running" },
     });
   });
@@ -302,7 +303,7 @@ describe("createAssistantUiMessages", () => {
       metadata: {
         custom: {
           stopReason: "aborted",
-          errorMessage: undefined,
+          errorMessage: null,
         },
       },
     });

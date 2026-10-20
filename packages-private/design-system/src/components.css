@@ -356,3 +356,63 @@
 .backoffice-scroll::-webkit-scrollbar-thumb:hover {
   background-color: rgba(var(--bo-grid), 0.65);
 }
+
+/* Chat: new messages and activity steps rise into place. */
+@keyframes bo-chat-enter {
+  from {
+    opacity: 0;
+    transform: translateY(0.25rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.bo-chat-enter {
+  animation: bo-chat-enter 260ms cubic-bezier(0.2, 0, 0, 1) both;
+}
+
+/* Chat: a live headline replaces the previous one from below. */
+@keyframes bo-headline-enter {
+  from {
+    opacity: 0;
+    transform: translateY(70%);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.bo-headline-enter {
+  animation: bo-headline-enter 320ms cubic-bezier(0.2, 0, 0, 1) both;
+}
+
+/* Chat: a sheen passes over text that is still being worked on. */
+@keyframes bo-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+
+  to {
+    background-position: 0% 0;
+  }
+}
+
+.bo-shimmer-text {
+  background-image: linear-gradient(
+    90deg,
+    var(--bo-muted) 0%,
+    var(--bo-muted) 35%,
+    var(--bo-fg) 50%,
+    var(--bo-muted) 65%,
+    var(--bo-muted) 100%
+  );
+  background-size: 300% 100%;
+  background-clip: text;
+  color: transparent;
+  animation: bo-shimmer 2.4s linear infinite;
+}
