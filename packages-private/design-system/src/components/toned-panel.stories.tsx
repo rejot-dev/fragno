@@ -1,5 +1,5 @@
 import { KeyValueList } from "./key-value-list";
-import { BACKOFFICE_STATUS_TONES } from "./status-light";
+import { BACKOFFICE_STATUS_TONES } from "./status-tone";
 import { TonedPanel } from "./toned-panel";
 
 export default { title: "Layout/Toned panel" };

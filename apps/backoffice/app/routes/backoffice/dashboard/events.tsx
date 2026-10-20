@@ -10,10 +10,8 @@ import { ClientOnly } from "@fragno-private/design-system/client-only";
 import { cn } from "@fragno-private/design-system/cn";
 import { CopyButton } from "@fragno-private/design-system/copy-button";
 import { Icon } from "@fragno-private/design-system/icon";
-import {
-  BackofficeStatusLight,
-  type BackofficeStatusTone,
-} from "@fragno-private/design-system/status-light";
+import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
+import type { BackofficeStatusTone } from "@fragno-private/design-system/status-tone";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { formatWorkflowDuration } from "@fragno-private/design-system/workflow-run-timeline-model";
 import { Fragment, Suspense, use, useEffect, useMemo, useState, type ReactNode } from "react";

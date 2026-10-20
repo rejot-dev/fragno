@@ -1,14 +1,14 @@
 import { z } from "zod";
 
 import { BACKOFFICE_UI_DATA_LIMITS } from "./data-limits";
-import { backofficeUiVariantSchema } from "./variants";
+import { backofficeUiToneSchema } from "./tone";
 
 const listItemSchema = z.strictObject({
   key: z.string().min(1).max(200),
   title: z.string().min(1).max(200),
   detail: z.string().max(1_000).optional(),
   status: z.string().min(1).max(80).optional(),
-  variant: backofficeUiVariantSchema.optional(),
+  tone: backofficeUiToneSchema.optional(),
 });
 
 export const listDefinition = {
@@ -24,7 +24,7 @@ export const listDefinition = {
         title: "Daily synchronization",
         detail: "Completed 24 records.",
         status: "Live",
-        variant: "live",
+        tone: "live",
       },
     ],
   },

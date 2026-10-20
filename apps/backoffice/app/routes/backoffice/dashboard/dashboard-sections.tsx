@@ -3,10 +3,8 @@ import type { WorkflowInstanceStatus } from "@fragno-dev/workflows/workflow";
 import { Icon, type IconName } from "@fragno-private/design-system/icon";
 import { SparkBars } from "@fragno-private/design-system/spark-bars";
 import { StackedBarChart } from "@fragno-private/design-system/stacked-bar-chart";
-import {
-  BackofficeStatusLight,
-  type BackofficeStatusTone,
-} from "@fragno-private/design-system/status-light";
+import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
+import type { BackofficeStatusTone } from "@fragno-private/design-system/status-tone";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router";
 

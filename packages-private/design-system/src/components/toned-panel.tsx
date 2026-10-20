@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import type { BackofficeStatusTone } from "./status-light";
+import type { BackofficeStatusTone } from "./status-tone";
 
 /** A square-edged group of related content, tinted by the state it reports on. */
 export function TonedPanel({

@@ -1,4 +1,4 @@
-import type { BackofficeStatusTone } from "./status-light";
+import type { BackofficeStatusTone } from "./status-tone";
 
 /** Completion of a bounded job, such as an import, as a percentage. */
 export function ProgressMeter({

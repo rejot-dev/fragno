@@ -1,10 +1,8 @@
 import type { ApiAuthStatus } from "@fragno-dev/api-fragment/types";
 import type { IntegrationAuthMethod } from "@fragno-dev/backoffice-api/v0/integrations";
 import type { McpAuthStatus } from "@fragno-dev/mcp-fragment/types";
-import {
-  BackofficeStatusLight,
-  type BackofficeStatusTone,
-} from "@fragno-private/design-system/status-light";
+import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
+import type { BackofficeStatusTone } from "@fragno-private/design-system/status-tone";
 import type { ReactNode } from "react";
 
 import { formatTimestamp } from "../automations/formatting";

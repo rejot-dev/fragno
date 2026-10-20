@@ -26,3 +26,13 @@ export function WithoutDot() {
     </div>
   );
 }
+
+export function Wrapping() {
+  return (
+    <div className="flex w-64 flex-col gap-4">
+      <BackofficeStatusLight tone="waiting" dot={false} wrap>
+        Waiting for all external provider synchronizations to finish before retrying
+      </BackofficeStatusLight>
+    </div>
+  );
+}
