@@ -1657,14 +1657,30 @@ export class InMemoryAuthObject implements AuthObject {
     return consent !== null;
   }
 
-  async findAppOrganization(input: {
-    appId: string;
-    externalOrganizationId: string;
-  }): Promise<{ organizationId: string; createdByUserId: string } | null> {
-    const organization = await this.#findAppOrganizationRecord(input);
-    return organization
-      ? { organizationId: organization.id, createdByUserId: organization.createdBy }
-      : null;
+  async confirmAppOrganizationMember(input: {
+    oauthClientId: string;
+    organizationId: string;
+    userId: string;
+  }): Promise<AppProvisioningResult<null>> {
+    const { adapter } = await this.#authContext();
+    const member = await adapter.findOne<{ id: string }>({
+      model: "member",
+      select: ["id"],
+      where: [
+        { field: "organizationId", value: input.organizationId },
+        { field: "userId", value: input.userId },
+      ],
+    });
+    if (!member || !(await this.#hasAuthorizedApp(input.oauthClientId, input.userId))) {
+      return {
+        ok: false,
+        error: {
+          code: "forbidden",
+          message: `User '${input.userId}' is not a member of the organization who authorized this app.`,
+        },
+      };
+    }
+    return { ok: true, value: null };
   }
 
   async #findAppOrganizationRecord(input: {
@@ -2502,8 +2518,12 @@ export class Auth extends DurableObject<CloudflareEnv> implements AuthObject {
     return await this.#object.provisionAppOrganization(input);
   }
 
-  async findAppOrganization(input: { appId: string; externalOrganizationId: string }) {
-    return await this.#object.findAppOrganization(input);
+  async confirmAppOrganizationMember(input: {
+    oauthClientId: string;
+    organizationId: string;
+    userId: string;
+  }): Promise<AppProvisioningResult<null>> {
+    return await this.#object.confirmAppOrganizationMember(input);
   }
 
   async findInvitationOrganization(input: { invitationId: string }) {

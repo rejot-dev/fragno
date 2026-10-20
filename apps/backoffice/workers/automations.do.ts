@@ -1064,10 +1064,12 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
   }): Promise<{ projectId: string; slug: string; created: boolean }> {
     await this.#ensureConfigured({ scope: this.#requireScope() });
     const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+    // Scoped to this object's owner, so the same identifier in another organization names another
+    // project.
     const projectId = provisionedResourceId({
       appId: input.appId,
       kind: "project",
-      externalId: input.externalProjectId,
+      externalId: `${backofficeScopePathSegment(this.#requireScope())}/${input.externalProjectId}`,
     });
     return await runtime.automationFragment.callServices(() =>
       runtime.automationFragment.services.provisionAppProject({

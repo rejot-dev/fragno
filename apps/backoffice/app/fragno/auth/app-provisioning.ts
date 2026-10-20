@@ -25,11 +25,12 @@ export type AuthAppProvisioningCommands = {
   provisionAppOrganization(
     input: ProvisioningApp & ProvisionOrganizationInput,
   ): Promise<AppProvisioningResult<ProvisionOrganizationResult>>;
-  /** The organization the app provisioned for one of its own, and who it was made for. */
-  findAppOrganization(input: {
-    appId: string;
-    externalOrganizationId: string;
-  }): Promise<{ organizationId: string; createdByUserId: string } | null>;
+  /** Whether the user authorized the app and is a member of the organization. */
+  confirmAppOrganizationMember(input: {
+    oauthClientId: string;
+    organizationId: string;
+    userId: string;
+  }): Promise<AppProvisioningResult<null>>;
   findInvitationOrganization(input: { invitationId: string }): Promise<string | null>;
   acceptAppInvitation(
     input: Pick<ProvisioningApp, "oauthClientId"> & AcceptInvitationInput,
