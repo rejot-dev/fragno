@@ -40,6 +40,8 @@
    * Environment Variables
    * https://developers.cloudflare.com/workers/wrangler/configuration/#environment-variables
    */
+  // With `secrets` set, Cloudflare dev and preview load a .dev.vars key only when it is declared here
+  // or in `secrets.required`. Settings belong in `vars`, so .dev.vars can override their defaults.
   "vars": {
     "TURNSTILE_SITEKEY": "0x4AAAAAACEAKTUMl498hZ6v",
     "AUTH_EMAIL_VERIFICATION_ENABLED": "true",
@@ -47,6 +49,13 @@
     "DOCS_PUBLIC_BASE_URL": "https://backoffice.rejot.dev/",
     "POSTHOG_HOST": "https://eu.i.posthog.com",
     "OOMOL_CONNECTOR_BASE_URL": "https://connector.oomol.com/v1",
+    // Empty uses the GitHub App fragment's defaults.
+    "GITHUB_APP_API_BASE_URL": "",
+    "GITHUB_APP_API_VERSION": "",
+    "GITHUB_APP_WEB_BASE_URL": "",
+    "GITHUB_APP_DEFAULT_LINK_KEY": "",
+    "GITHUB_APP_TOKEN_CACHE_TTL_SECONDS": "",
+    "GITHUB_APP_WEBHOOK_DEBUG": "",
   },
   "secrets": {
     "required": [

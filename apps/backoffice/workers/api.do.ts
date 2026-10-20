@@ -7,6 +7,7 @@ import {
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 
+import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
 import { createBackofficeFragmentHttpTransport } from "@/backoffice-runtime/fragment-http-transport";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import {
@@ -94,7 +95,7 @@ export class InMemoryApiObject extends RpcTarget implements ApiObject {
     fetch: fetchImpl = fetch,
   }: {
     state: BackofficeObjectState;
-    env: Pick<CloudflareEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">;
+    env: Pick<BackofficeRuntimeEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">;
     nowEpochMs: () => number;
     runtime: BackofficeRuntimeServices;
     implementation: BackofficeObjectImplementation;

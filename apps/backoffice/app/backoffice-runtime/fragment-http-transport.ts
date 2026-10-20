@@ -1,3 +1,4 @@
+import type { BackofficeRuntimeEnv } from "./backoffice-runtime-env";
 import {
   BACKOFFICE_INTERNAL_CONTEXT_HEADER,
   BackofficeInternalRequestError,
@@ -14,7 +15,7 @@ export function createBackofficeFragmentHttpTransport({
   nowEpochMs,
 }: {
   address: BackofficeObjectAddress;
-  env: Pick<CloudflareEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">;
+  env: Pick<BackofficeRuntimeEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">;
   nowEpochMs: () => number;
 }) {
   return async function forwardVerifiedFragmentRequest(

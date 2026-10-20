@@ -9,7 +9,7 @@
     "scripts/node-server/**/*",
     "scripts/test-oauth-client.scenario.test.ts",
     "worker-configuration.d.ts",
-    "secrets.d.ts"
+    "optional-secrets.d.ts"
   ],
   "compilerOptions": {
     "composite": true,

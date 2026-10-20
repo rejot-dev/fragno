@@ -8,6 +8,7 @@ import {
   type GitHubRepositoryLinkStatus,
 } from "@fragno-dev/github-app-fragment";
 
+import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
 import { createBackofficeFragmentHttpTransport } from "@/backoffice-runtime/fragment-http-transport";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import {
@@ -74,7 +75,7 @@ export class InMemoryGitHubObject implements GitHubObject {
   }: {
     state: BackofficeObjectState;
     env: Parameters<typeof resolveGitHubConfig>[0] &
-      Pick<CloudflareEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">;
+      Pick<BackofficeRuntimeEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">;
     nowEpochMs: () => number;
     runtime: BackofficeRuntimeServices;
     implementation: BackofficeObjectImplementation;

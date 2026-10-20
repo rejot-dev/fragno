@@ -74,7 +74,6 @@ export const resolveGitHubConfig = (
       | "GITHUB_APP_DEFAULT_LINK_KEY"
       | "GITHUB_APP_ID"
       | "GITHUB_APP_PRIVATE_KEY"
-      | "GITHUB_APP_PRIVATE_KEY_FILE"
       | "GITHUB_APP_SLUG"
       | "GITHUB_APP_TOKEN_CACHE_TTL_SECONDS"
       | "GITHUB_APP_WEBHOOK_DEBUG"
@@ -126,21 +125,12 @@ export const resolveGitHubConfig = (
   }
 
   const privateKeyRaw = env.GITHUB_APP_PRIVATE_KEY?.trim() ?? "";
-  const privateKeyFile = env.GITHUB_APP_PRIVATE_KEY_FILE?.trim() ?? "";
   let privateKeyPem = "";
   let privateKeySource: RuntimeGitHubConfig["privateKeySource"] | null = null;
 
   if (privateKeyRaw) {
     privateKeyPem = normalizePem(privateKeyRaw);
     privateKeySource = "env";
-  } else if (privateKeyFile) {
-    return {
-      ok: false,
-      missing: [...missing, "GITHUB_APP_PRIVATE_KEY"],
-      error:
-        "GITHUB_APP_PRIVATE_KEY_FILE is not supported in Cloudflare Workers runtime. " +
-        "Set GITHUB_APP_PRIVATE_KEY directly (recommended: `wrangler secret put GITHUB_APP_PRIVATE_KEY < private-key.pem`).",
-    };
   } else {
     missing.push("GITHUB_APP_PRIVATE_KEY");
   }

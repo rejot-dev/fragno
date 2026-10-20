@@ -7,6 +7,7 @@ import { z } from "zod";
 import { isUniqueConstraintError } from "@fragno-dev/db";
 import type { ResendFragmentConfig, ResendSendEmailInput } from "@fragno-dev/resend-fragment";
 
+import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
 import { createBackofficeFragmentHttpTransport } from "@/backoffice-runtime/fragment-http-transport";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import {
@@ -340,7 +341,7 @@ export class InMemoryResendObject implements ResendObject {
     runtimeMode = import.meta.env.MODE,
   }: {
     state: BackofficeObjectState;
-    env: Pick<CloudflareEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">;
+    env: Pick<BackofficeRuntimeEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">;
     nowEpochMs: () => number;
     runtime: BackofficeRuntimeServices;
     implementation: BackofficeObjectImplementation;

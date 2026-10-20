@@ -1,6 +1,7 @@
 import { backofficeContextScopesEqual } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
+import type { BackofficeRuntimeEnv } from "./backoffice-runtime-env";
 import { backofficeExecutionContextSchema, type BackofficeExecutionContext } from "./context";
 import {
   encodeBackofficeObjectAddress,
@@ -73,7 +74,7 @@ function base64UrlDecode(value: string): Uint8Array {
 }
 
 function resolveInternalContextSecret(
-  env: Pick<CloudflareEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">,
+  env: Pick<BackofficeRuntimeEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">,
 ): string {
   const configuredSecret = env.BACKOFFICE_INTERNAL_REQUEST_SECRET?.trim();
   if (configuredSecret) {
@@ -89,7 +90,7 @@ function resolveInternalContextSecret(
 }
 
 async function importInternalContextSigningKey(
-  env: Pick<CloudflareEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">,
+  env: Pick<BackofficeRuntimeEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">,
 ): Promise<CryptoKey> {
   return await crypto.subtle.importKey(
     "raw",
@@ -107,7 +108,7 @@ function internalContextSigningInput(encodedPayload: string): ArrayBuffer {
 }
 
 async function signInternalContextPayload(
-  env: Pick<CloudflareEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">,
+  env: Pick<BackofficeRuntimeEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">,
   encodedPayload: string,
 ): Promise<string> {
   const key = await importInternalContextSigningKey(env);
@@ -120,7 +121,7 @@ async function signInternalContextPayload(
 }
 
 async function verifyInternalContextSignature(
-  env: Pick<CloudflareEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">,
+  env: Pick<BackofficeRuntimeEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">,
   encodedPayload: string,
   encodedSignature: string,
 ): Promise<boolean> {
@@ -170,7 +171,7 @@ export async function createAuthorizedBackofficeObjectRequest({
   request: Request;
   address: BackofficeObjectAddress;
   context: BackofficeAuthorizedRequestContext;
-  env: Pick<CloudflareEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">;
+  env: Pick<BackofficeRuntimeEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">;
   nowEpochMs?: number;
   requestId?: string;
 }): Promise<Request> {
@@ -207,7 +208,7 @@ export async function verifyAuthorizedBackofficeObjectRequest({
 }: {
   request: Request;
   address: BackofficeObjectAddress;
-  env: Pick<CloudflareEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">;
+  env: Pick<BackofficeRuntimeEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">;
   nowEpochMs?: number;
 }): Promise<VerifiedBackofficeInternalRequest> {
   const envelope = request.headers.get(BACKOFFICE_INTERNAL_CONTEXT_HEADER);

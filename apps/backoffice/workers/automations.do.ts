@@ -23,6 +23,7 @@ import { DurableObject, RpcTarget } from "cloudflare:workers";
 
 import { decodeCursor, type Cursor } from "@fragno-dev/db";
 
+import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
 import {
   createBackofficeServiceExecution,
   createBackofficeSystemExecution,
@@ -235,7 +236,10 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
   readonly #env: AutomationFragmentConfig["env"] | undefined;
   readonly #state: BackofficeObjectState;
   readonly #runtimeServices: BackofficeRuntimeServices;
-  readonly #internalRequestEnv: Pick<CloudflareEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET"> | null;
+  readonly #internalRequestEnv: Pick<
+    BackofficeRuntimeEnv,
+    "BACKOFFICE_INTERNAL_REQUEST_SECRET"
+  > | null;
   readonly #nowEpochMs: () => number;
   readonly #kernel: BackofficeKernel;
   readonly #host: BackofficeFragmentDurableObject<
@@ -265,7 +269,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     super();
     this.#env = env as AutomationFragmentConfig["env"];
     this.#internalRequestEnv = env
-      ? (env as Pick<CloudflareEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">)
+      ? (env as Pick<BackofficeRuntimeEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">)
       : null;
     this.#state = state;
     this.#runtimeServices = {

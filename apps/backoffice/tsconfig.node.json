@@ -6,6 +6,7 @@
     "react-router.config.ts",
     "source.config.ts",
     "vitest*.ts",
+    "dev-vars.test.ts",
     "scripts/**/*.ts"
   ],
   "exclude": [

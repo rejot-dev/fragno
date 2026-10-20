@@ -6,6 +6,7 @@ import {
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 
+import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
 import { createBackofficeFragmentHttpTransport } from "@/backoffice-runtime/fragment-http-transport";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import {
@@ -38,7 +39,7 @@ import {
   type ScopedFragmentDurableObjectRuntime,
 } from "./lib/scoped-fragment-durable-object";
 
-type McpObjectEnv = Pick<CloudflareEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">;
+type McpObjectEnv = Pick<BackofficeRuntimeEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">;
 
 function serverSubject(scope: BackofficeRoutableScope, serverId: string) {
   const organization = backofficeScopeOrganization(scope);

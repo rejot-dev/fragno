@@ -30,6 +30,11 @@ export default mergeConfig(
         ),
         // Run as a subprocess by `scripts/run-worker-release.test.ts`.
         resolveConfig("./scripts/run-worker-release.mjs"),
+        // Read by `dev-vars.test.ts`.
+        resolveConfig("./.dev.vars.example"),
+        resolveConfig("./optional-secrets.d.ts"),
+        resolveConfig("./wrangler.jsonc"),
+        resolveConfig("./wrangler.web.jsonc"),
       ],
       coverage: {
         enabled: false,

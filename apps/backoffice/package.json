@@ -35,7 +35,7 @@
     "preview:containers": "node scripts/run-vite-preview.mjs --containers",
     "types:check": "tsc -b --noEmit",
     "types:check:watch": "tsc -b --noEmit --watch",
-    "types:generate": "wrangler types --config wrangler.jsonc --env-interface CloudflareEnv --env-file .dev.vars.example && react-router typegen",
+    "types:generate": "wrangler types --config wrangler.jsonc --env-interface CloudflareEnv --env-file .dev.vars.example --strict-vars=false && react-router typegen",
     "test": "vitest run",
     "test:changed": "node ../../scripts/run-changed-tests.mjs --full-project=cloudflare",
     "test:bridge": "vitest run --config vitest.bridge.config.ts",
