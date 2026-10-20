@@ -93,7 +93,7 @@ export const USER_AUTHORITY_ROLE_PERMISSION_DECISIONS = {
     internal: { manage: "grant" },
     org: { read: "grant", manage: "grant" },
     marketplace: { read: "grant", publish: "grant", feature: "grant" },
-    models: { classify: "grant" },
+    models: { classify: "grant", generateImage: "grant" },
     packages: { read: "grant", install: "grant" },
     otp: { create: "grant" },
     pi: { manage: "grant", modify: "grant", read: "grant" },
@@ -128,7 +128,7 @@ export const USER_AUTHORITY_ROLE_PERMISSION_DECISIONS = {
     org: { read: "deny", manage: "deny" },
     // Curating the public Marketplace stays with system administrators.
     marketplace: { read: "grant", publish: "grant", feature: "deny" },
-    models: { classify: "grant" },
+    models: { classify: "grant", generateImage: "grant" },
     packages: { read: "grant", install: "grant" },
     otp: { create: "grant" },
     pi: { manage: "grant", modify: "grant", read: "grant" },
@@ -168,7 +168,7 @@ export const USER_AUTHORITY_ROLE_PERMISSION_DECISIONS = {
     org: { read: "deny", manage: "deny" },
     // Organization Marketplaces are curated through org.manage from live membership.
     marketplace: { read: "grant", publish: "grant", feature: "deny" },
-    models: { classify: "grant" },
+    models: { classify: "grant", generateImage: "grant" },
     packages: { read: "grant", install: "grant" },
     otp: { create: "grant" },
     pi: { manage: "grant", modify: "grant", read: "grant" },
@@ -204,8 +204,8 @@ export const USER_AUTHORITY_ROLE_PERMISSION_DECISIONS = {
     internal: { manage: "deny" },
     org: { read: "deny", manage: "deny" },
     marketplace: { read: "grant", publish: "deny", feature: "deny" },
-    // Every classification is billed to the workspace's organization.
-    models: { classify: "deny" },
+    // Every model call is billed to the workspace's organization.
+    models: { classify: "deny", generateImage: "deny" },
     packages: { read: "grant", install: "deny" },
     otp: { create: "deny" },
     pi: { manage: "deny", modify: "deny", read: "grant" },

@@ -1,12 +1,23 @@
-import { createModels, type Models } from "@earendil-works/pi-ai/models";
+import {
+  createModels,
+  type Models,
+  type ModelsImagesOptions,
+  type MutableModels,
+} from "@earendil-works/pi-ai/models";
 import { anthropicProvider } from "@earendil-works/pi-ai/providers/anthropic";
 import { googleProvider } from "@earendil-works/pi-ai/providers/google";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 
-import type { ClassifierContext, ClassifierResult } from "@earendil-works/pi-ai";
+import type {
+  AssistantImages,
+  ClassifierContext,
+  ClassifierResult,
+  FetchFunction,
+} from "@earendil-works/pi-ai";
 
 import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
 
+import { openAIImagesProvider, type OpenAIImageOptions } from "./openai-images";
 import type { PiAvailableModel } from "./pi-agent-contract";
 
 /** Models intentionally offered by Backoffice, in default-selection order. */
@@ -53,18 +64,49 @@ export function createPiClassifier(
   if (!env.OPENAI_API_KEY) {
     return null;
   }
-  const models = createModels({
-    authContext: {
-      env: async (name) => (name === "OPENAI_API_KEY" ? env.OPENAI_API_KEY : undefined),
-      fileExists: async () => false,
-    },
-  });
+  const models = createOpenAIModels(env.OPENAI_API_KEY);
   models.setProvider(openaiProvider());
   const model = models.getModelOfType("classifier", "openai", "gpt-6-luna");
   if (!model) {
     throw new Error("pi-ai no longer lists OpenAI's gpt-6-luna classifier.");
   }
   return async (context) => await models.classify(model, context);
+}
+
+/** Generates an image from a prompt; resolves to an error result instead of rejecting. */
+export type PiImageGenerator = (request: PiImageGenerationRequest) => Promise<AssistantImages>;
+
+/** A caller's image: the prompt and the Images API settings it is rendered with. */
+export type PiImageGenerationRequest = OpenAIImageOptions & { prompt: string };
+
+/** Generates images with OpenAI's GPT Image 2.5 Flare, which requires an OpenAI API key. */
+export function createPiImageGenerator(
+  env: Pick<BackofficeRuntimeEnv, "OPENAI_API_KEY">,
+  fetch: FetchFunction,
+): PiImageGenerator | null {
+  if (!env.OPENAI_API_KEY) {
+    return null;
+  }
+  const models = createOpenAIModels(env.OPENAI_API_KEY);
+  const provider = openAIImagesProvider();
+  models.setProvider(provider);
+  const model = models.getModelOfType("image", provider.id, "gpt-image-2.5-flare");
+  if (!model) {
+    throw new Error("The OpenAI Images provider no longer lists gpt-image-2.5-flare.");
+  }
+  return async ({ prompt, ...settings }) => {
+    const options: ModelsImagesOptions & OpenAIImageOptions = { ...settings, fetch };
+    return await models.generateImages(model, { input: [{ type: "text", text: prompt }] }, options);
+  };
+}
+
+function createOpenAIModels(apiKey: string): MutableModels {
+  return createModels({
+    authContext: {
+      env: async (name) => (name === "OPENAI_API_KEY" ? apiKey : undefined),
+      fileExists: async () => false,
+    },
+  });
 }
 
 /** Lists supported chat models whose provider credentials are available to durable Pi. */

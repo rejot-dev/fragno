@@ -160,7 +160,10 @@ import type {
   MarketplacePublishReleaseResult,
   MarketplacePackagePublishRequest,
 } from "@/fragno/marketplace/package-publishing";
-import type { PiClassificationRequest } from "@/fragno/pi/agent/pi-models";
+import type {
+  PiClassificationRequest,
+  PiImageGenerationRequest,
+} from "@/fragno/pi/agent/pi-models";
 import type {
   SandboxInstanceRecord,
   SandboxInstanceRequestInput,
@@ -451,6 +454,11 @@ export type PiManagerObject = WarmableObject & {
     | { type: "classified"; answers: ClassifierResult["answers"] }
     | { type: "billing-owner-required" }
   >;
+  /** Generates one image, billed and refused like `classify`. */
+  generateImage(input: {
+    request: PiImageGenerationRequest;
+    billingOrganizationId: string | null;
+  }): Promise<{ type: "generated"; bytes: Uint8Array } | { type: "billing-owner-required" }>;
 };
 
 export type BillingObject = {

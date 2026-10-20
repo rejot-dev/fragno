@@ -78,6 +78,35 @@ const modelsClassifyOutputSchema = z.lazy(() =>
   }),
 );
 
+const modelsGenerateImageInputSchema = z.lazy(() =>
+  z.strictObject({
+    prompt: z.string().trim().min(1).max(32_000).describe("What the image shows and how."),
+    out: z
+      .string()
+      .trim()
+      .regex(/\.(png|jpe?g|webp)$/iu, {
+        message: "The image path ends in .png, .jpg, .jpeg, or .webp.",
+      })
+      .describe(
+        "Absolute path of the image to write under /workspace. Its extension picks the format.",
+      ),
+    size: z
+      .enum(["auto", "1024x1024", "1536x1024", "1024x1536"])
+      .default("auto")
+      .describe("Square, landscape, or portrait; `auto` lets the model choose from the prompt."),
+    quality: z
+      .enum(["auto", "low", "medium", "high", "xhigh", "max"])
+      .default("auto")
+      .describe("Higher quality takes longer and costs more; `low` suits drafts."),
+  }),
+);
+
+const modelsGenerateImageOutputSchema = z.lazy(() =>
+  z.object({
+    path: z.string().describe("Where the image was written."),
+  }),
+);
+
 export const modelsOperations = {
   "models.classify": {
     description:
@@ -89,5 +118,15 @@ export const modelsOperations = {
     permissions: [BACKOFFICE_PERMISSION.models.classify],
     input: modelsClassifyInputSchema,
     output: modelsClassifyOutputSchema,
+  },
+  "models.generateImage": {
+    description:
+      "Generate an image from a prompt and write it to the workspace. Generation can take up to " +
+      "two minutes, longer than an immediate codemode run is allowed, so call it inside a " +
+      "workflow step. Each call is billed by input and output tokens, which grow with size and " +
+      "quality.",
+    permissions: [BACKOFFICE_PERMISSION.models.generateImage, BACKOFFICE_PERMISSION.upload.modify],
+    input: modelsGenerateImageInputSchema,
+    output: modelsGenerateImageOutputSchema,
   },
 } satisfies Record<string, BackofficeApiOperation>;

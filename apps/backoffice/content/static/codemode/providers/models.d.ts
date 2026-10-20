@@ -2,6 +2,8 @@
 type ModelsCodemodeProvider = {
   /** Answer typed questions about JSON state with a fast classifier model. A `choice` question picks one option with probabilities, a `score` question rates against ordered levels, and a `bool` question returns the probability that a condition holds. Use it for routing, triage, and filtering; it does not generate text. Independent questions about the same state belong in one call. Each call is billed by input tokens. */
   classify(input: ModelsClassifyInput): Promise<ModelsClassifyOutput>;
+  /** Generate an image from a prompt and write it to the workspace. Generation can take up to two minutes, longer than an immediate codemode run is allowed, so call it inside a workflow step. Each call is billed by input and output tokens, which grow with size and quality. */
+  generateImage(input: ModelsGenerateImageInput): Promise<ModelsGenerateImageOutput>;
 };
 declare const models: ModelsCodemodeProvider;
 
@@ -69,4 +71,18 @@ type ModelsClassifyOutput = {
           probability: number;
         };
   };
+};
+type ModelsGenerateImageInput = {
+  /** What the image shows and how. */
+  prompt: string;
+  /** Absolute path of the image to write under /workspace. Its extension picks the format. */
+  out: string;
+  /** Square, landscape, or portrait; `auto` lets the model choose from the prompt. */
+  size?: "auto" | "1024x1024" | "1536x1024" | "1024x1536";
+  /** Higher quality takes longer and costs more; `low` suits drafts. */
+  quality?: "auto" | "low" | "medium" | "high" | "xhigh" | "max";
+};
+type ModelsGenerateImageOutput = {
+  /** Where the image was written. */
+  path: string;
 };

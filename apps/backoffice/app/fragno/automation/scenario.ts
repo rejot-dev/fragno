@@ -29,7 +29,7 @@ import { InMemoryFs, type IFileSystem } from "just-bash";
 import type { ResendSendEmailInput } from "@fragno-dev/resend-fragment";
 import type { TelegramApi, TelegramMessage } from "@fragno-dev/telegram-fragment";
 
-import type { ClassifierContext, ClassifierResult } from "@earendil-works/pi-ai";
+import type { ClassifierContext, ClassifierResult, FetchFunction } from "@earendil-works/pi-ai";
 import type { SubmissionRecord } from "@earendil-works/pi-durable";
 
 import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
@@ -87,7 +87,7 @@ import {
   type PiAvailableModel,
 } from "@/fragno/pi/agent/pi-agent-contract";
 import { renderPiNotificationRequest } from "@/fragno/pi/agent/pi-agent-notification-entry";
-import type { PiClassifier } from "@/fragno/pi/agent/pi-models";
+import { createPiImageGenerator, type PiClassifier } from "@/fragno/pi/agent/pi-models";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import type { BackofficeRuntimeToolCall } from "@/fragno/runtime-tools/runtime-tools";
 import { createStateShellFileSystem } from "@/fragno/runtime-tools/state-shell-file-system";
@@ -97,6 +97,7 @@ import {
   createScenarioCollectionDatabase,
   type ScenarioCollectionDatabase,
 } from "@/fragno/tanstack/scenario-collection-database";
+import { bytesToBase64 } from "@/lib/base64";
 import type { CreateSandboxRuntimeProviders } from "@/sandbox/contracts";
 
 import type { InMemoryTelegramObject } from "../../../workers/telegram.do";
@@ -288,11 +289,18 @@ export type FakeClassifierApi = {
   classify: PiClassifier;
 };
 
+export type FakeOpenAIImagesApi = {
+  /** Every request to OpenAI's Images API, in order. */
+  requests: { url: string; body: unknown }[];
+  fetch: FetchFunction;
+};
+
 export type ScenarioFakes = {
   telegram?: FakeTelegramApi;
   pi?: FakePiManagerApi;
   resend?: FakeResendApi;
   classifier?: FakeClassifierApi;
+  openaiImages?: FakeOpenAIImagesApi;
 };
 
 type ScenarioFakeFactory = {
@@ -306,6 +314,12 @@ type ScenarioFakeFactory = {
     answer: (context: ClassifierContext) => ClassifierResult["answers"];
     inputTokens: number;
   }): FakeClassifierApi;
+  /** Answers every Images API generation with `image` in the requested format and this usage. */
+  openaiImages(input: {
+    image: Uint8Array;
+    inputTokens: number;
+    outputTokens: number;
+  }): FakeOpenAIImagesApi;
 };
 
 type FileDiffStatus = "added" | "changed" | "removed";
@@ -909,6 +923,7 @@ export type BackofficeScenarioStepBuilders<TVars extends ScenarioVars = Scenario
       exists(input: FileAssertionInput): BackofficeScenarioStep;
       missing(input: FileAssertionInput): BackofficeScenarioStep;
       contains(input: FileContainsInput): BackofficeScenarioStep;
+      bytes(input: FileAssertionInput & { content: Uint8Array }): BackofficeScenarioStep;
       jsonEquals(input: FileJsonEqualsInput): BackofficeScenarioStep;
       diff(input: FileDiffInput): BackofficeScenarioStep;
     };
@@ -1441,11 +1456,39 @@ const createFakeClassifierApi: ScenarioFakeFactory["classifier"] = ({ answer, in
   };
 };
 
+const createFakeOpenAIImagesApi: ScenarioFakeFactory["openaiImages"] = ({
+  image,
+  inputTokens,
+  outputTokens,
+}) => {
+  const requests: FakeOpenAIImagesApi["requests"] = [];
+  return {
+    requests,
+    fetch: async (input, init) => {
+      const request = new Request(input, init);
+      const body = (await request.json()) as { output_format: string };
+      requests.push({ url: request.url, body });
+      return Response.json({
+        created: 1_792_486_800,
+        data: [{ b64_json: bytesToBase64(image) }],
+        output_format: body.output_format,
+        usage: {
+          input_tokens: inputTokens,
+          input_tokens_details: { text_tokens: inputTokens, image_tokens: 0 },
+          output_tokens: outputTokens,
+          total_tokens: inputTokens + outputTokens,
+        },
+      });
+    },
+  };
+};
+
 const createScenarioFakeFactory = (): ScenarioFakeFactory => ({
   telegram: createFakeTelegramApi,
   pi: createFakePiManagerApi,
   resend: createFakeResendApi,
   classifier: createFakeClassifierApi,
+  openaiImages: createFakeOpenAIImagesApi,
 });
 
 const readSnapshotContent = async (fs: IFileSystem, path: string): Promise<string | null> => {
@@ -4042,6 +4085,28 @@ const buildStepBuilders = <
             }
           },
         ),
+      bytes: (input) =>
+        createStep(
+          "then",
+          "files.bytes",
+          `assert file bytes ${input.orgId}:${input.path}`,
+          async (ctx) => {
+            ctx.rememberOrg(input.orgId);
+            const fs = await getReadableScenarioFileSystem(ctx, input.orgId, input.path);
+            if (!fs) {
+              throw new Error(`Expected file ${input.path} to exist.`);
+            }
+            const content = new Uint8Array(await fs.readFileBuffer(input.path));
+            if (
+              content.byteLength !== input.content.byteLength ||
+              content.some((byte, index) => byte !== input.content[index])
+            ) {
+              throw new Error(
+                `Expected file ${input.path} to hold ${input.content.byteLength} given bytes, got ${content.byteLength} other bytes.`,
+              );
+            }
+          },
+        ),
       jsonEquals: (input) =>
         createStep(
           "then",
@@ -4181,7 +4246,7 @@ const createFakeObjectOverrides = async (fakes: ScenarioFakes): Promise<LocalBac
     };
   }
 
-  if (fakes.pi || fakes.classifier) {
+  if (fakes.pi || fakes.classifier || fakes.openaiImages) {
     const { InMemoryPiManagerObject } = await import("../../../workers/pi-manager.do");
     overrides.PI_MANAGER = ({
       state,
@@ -4230,6 +4295,12 @@ const createFakeObjectOverrides = async (fakes: ScenarioFakes): Promise<LocalBac
             ]
           : async () => piAvailableModels ?? [],
         classifier: fakes.classifier?.classify ?? null,
+        imageGenerator: fakes.openaiImages
+          ? createPiImageGenerator(
+              { OPENAI_API_KEY: "scenario-openai-api-key" },
+              fakes.openaiImages.fetch,
+            )
+          : null,
         nowEpochMs,
       });
     };
