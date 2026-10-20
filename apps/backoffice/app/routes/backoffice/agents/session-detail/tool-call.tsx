@@ -94,9 +94,22 @@ export function toolWorkspaceOptions(
 
 const SUMMARY_ARGUMENTS = ["query", "pattern", "command", "url", "path", "name"];
 
+/** The terms a search looked for, and where when it was narrowed. */
+function searchSummary(args: Record<string, unknown>) {
+  const { keywords, glob } = args;
+  if (!Array.isArray(keywords) || keywords.length === 0) {
+    return undefined;
+  }
+  const terms = keywords
+    .filter((keyword): keyword is string => typeof keyword === "string")
+    .map((keyword) => JSON.stringify(keyword))
+    .join(" ");
+  return typeof glob === "string" ? `${terms} in ${glob}` : terms;
+}
+
 /**
- * A hint of what a tool call did: the first line of the code it ran, or its main argument, such
- * as a search query.
+ * A hint of what a tool call did: the first line of the code it ran, the terms it searched for,
+ * or its main argument, such as a path.
  */
 function argumentSummary(args: Record<string, unknown>) {
   const code = getCodeArgument(args)
@@ -105,6 +118,7 @@ function argumentSummary(args: Record<string, unknown>) {
     .find((codeLine) => codeLine.length > 0 && !/^(?:\/\/|async\b.*=>\s*\{?$)/.test(codeLine));
   const argument =
     code ??
+    searchSummary(args) ??
     SUMMARY_ARGUMENTS.map((key) => args[key]).find(
       (value): value is string => typeof value === "string" && value.length > 0,
     );
