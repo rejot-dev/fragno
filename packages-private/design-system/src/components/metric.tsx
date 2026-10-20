@@ -1,4 +1,4 @@
-import type { BackofficeStatusTone } from "./status-light";
+import type { BackofficeStatusTone } from "./status-tone";
 
 /** One labeled figure, such as an order count, with optional context below it. */
 export function Metric({

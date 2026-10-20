@@ -205,7 +205,7 @@ describe("WorkflowStepCard", () => {
                 elements: {
                   summary: {
                     type: "Section",
-                    props: { label: "Summary", variant: "live" },
+                    props: { label: "Summary", tone: "live" },
                     children: ["orders"],
                   },
                   orders: {

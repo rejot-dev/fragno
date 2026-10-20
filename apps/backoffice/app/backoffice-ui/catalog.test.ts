@@ -15,7 +15,7 @@ const componentFixtures = [
   },
   {
     component: "Section",
-    validProps: { label: "Operations", variant: "neutral" },
+    validProps: { label: "Operations", tone: "muted" },
     invalidProps: { label: "Operations", className: "rounded-xl" },
   },
   {
@@ -40,18 +40,18 @@ const componentFixtures = [
   },
   {
     component: "Callout",
-    validProps: { title: "Sync delayed", text: "Still processing.", variant: "warning" },
-    invalidProps: { title: "Sync delayed", text: "Still processing.", variant: "info" },
+    validProps: { title: "Sync delayed", text: "Still processing.", tone: "waiting" },
+    invalidProps: { title: "Sync delayed", text: "Still processing.", tone: "warning" },
   },
   {
     component: "Metric",
-    validProps: { label: "Orders", value: "24", variant: "live" },
+    validProps: { label: "Orders", value: "24", tone: "live" },
     invalidProps: { label: "", value: "24" },
   },
   {
     component: "Badge",
-    validProps: { label: "Live", variant: "live" },
-    invalidProps: { label: "Live", variant: "success" },
+    validProps: { label: "Live", tone: "live" },
+    invalidProps: { label: "Live", tone: "success" },
   },
   {
     component: "KeyValue",
@@ -72,7 +72,7 @@ const componentFixtures = [
           key: "daily-synchronization",
           title: "Daily synchronization",
           status: "Live",
-          variant: "live",
+          tone: "live",
         },
       ],
     },
@@ -100,8 +100,8 @@ const componentFixtures = [
   },
   {
     component: "Progress",
-    validProps: { label: "Import progress", value: 72, variant: "accent" },
-    invalidProps: { label: "Import progress", value: 101, variant: "accent" },
+    validProps: { label: "Import progress", value: 72, tone: "info" },
+    invalidProps: { label: "Import progress", value: 101, tone: "info" },
   },
   {
     component: "TextInput",

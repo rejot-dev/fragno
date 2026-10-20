@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import type { BackofficeStatusTone } from "./status-light";
+import type { BackofficeStatusTone } from "./status-tone";
 
 /** A short note set apart from the content around it, such as a sync that is still running. */
 export function Callout({

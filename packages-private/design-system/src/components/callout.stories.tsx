@@ -1,5 +1,5 @@
 import { Callout } from "./callout";
-import { BACKOFFICE_STATUS_TONES } from "./status-light";
+import { BACKOFFICE_STATUS_TONES } from "./status-tone";
 
 export default { title: "Feedback/Callout" };
 

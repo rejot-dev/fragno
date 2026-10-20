@@ -51,8 +51,7 @@ test("server-renders the minimal Backoffice generated interface", () => {
   expect(markup).toContain("Current fulfilled order count.");
   expect(markup).toContain('aria-label="Orders"');
   expect(markup).toContain(">24</p>");
-  expect(markup).toContain("--bo-panel");
-  expect(markup).not.toContain("border-l-2 border-[color:var(--bo-accent)]");
+  expect(markup).toContain('data-tone="muted"');
 });
 
 test("resolves state, template, and conditional props while rendering", () => {
@@ -169,17 +168,17 @@ const representativeReport = parseBackofficeUiResult({
         },
         deliveries: {
           type: "Metric",
-          props: { label: "Deliveries", value: "1,284", detail: "+12%", variant: "accent" },
+          props: { label: "Deliveries", value: "1,284", detail: "+12%", tone: "info" },
           children: [],
         },
         "success-rate": {
           type: "Metric",
-          props: { label: "Success rate", value: "99.8%", variant: "live" },
+          props: { label: "Success rate", value: "99.8%", tone: "live" },
           children: [],
         },
         health: {
           type: "Badge",
-          props: { label: "All systems live", variant: "live" },
+          props: { label: "All systems live", tone: "live" },
           children: [],
         },
         "details-divider": {
@@ -189,7 +188,7 @@ const representativeReport = parseBackofficeUiResult({
         },
         details: {
           type: "Section",
-          props: { label: "Connection", variant: "neutral" },
+          props: { label: "Connection", tone: "muted" },
           children: ["facts", "orders"],
         },
         facts: {
@@ -221,7 +220,7 @@ const representativeReport = parseBackofficeUiResult({
         },
         activity: {
           type: "Section",
-          props: { label: "Activity", variant: "accent" },
+          props: { label: "Activity", tone: "info" },
           children: ["progress", "activity-list", "notice", "sample"],
         },
         progress: {
@@ -230,7 +229,7 @@ const representativeReport = parseBackofficeUiResult({
             label: "Replay completion",
             value: 72,
             detail: "72 of 100 events",
-            variant: "accent",
+            tone: "info",
           },
           children: [],
         },
@@ -243,7 +242,7 @@ const representativeReport = parseBackofficeUiResult({
                 title: "Webhook delivery",
                 detail: "Completed without retries.",
                 status: "Live",
-                variant: "live",
+                tone: "live",
               },
             ],
           },
@@ -254,7 +253,7 @@ const representativeReport = parseBackofficeUiResult({
           props: {
             title: "One replay remains",
             text: "The final event is waiting for its scheduled retry.",
-            variant: "warning",
+            tone: "waiting",
           },
           children: [],
         },
@@ -289,7 +288,7 @@ test("server-renders a representative Backoffice operations report", () => {
   expect(markup).toContain("Latest handler result");
   expect(markup).toContain("backoffice-scroll");
   expect(markup).toContain("--bo-panel-2");
-  expect(markup).toContain("--bo-live");
+  expect(markup).toContain('data-tone="live"');
 });
 
 test("renders semantic headings, lists, tables, progress, and status text", () => {

@@ -1,13 +1,13 @@
 import { z } from "zod";
 
-import { backofficeUiVariantSchema } from "./variants";
+import { backofficeUiToneSchema } from "./tone";
 
 export const sectionDefinition = {
   props: z.strictObject({
     label: z.string().min(1).max(80).optional(),
-    variant: backofficeUiVariantSchema.optional(),
+    tone: backofficeUiToneSchema.optional(),
   }),
   slots: ["default"],
   description: "Groups related report content in a square-edged Backoffice panel.",
-  example: { label: "Operations", variant: "neutral" },
+  example: { label: "Operations", tone: "muted" },
 };

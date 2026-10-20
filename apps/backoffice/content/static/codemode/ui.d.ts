@@ -72,7 +72,7 @@ declare const ui: {
     props: BackofficeUiProps<{
       /** 1-80 characters */
       label?: string;
-      variant?: "neutral" | "accent" | "live" | "warning" | "failed";
+      tone?: "info" | "live" | "waiting" | "failed" | "muted";
     }>,
     children: BackofficeUiElement[],
   ): BackofficeUiElement;
@@ -119,17 +119,17 @@ declare const ui: {
       alt: string;
     }>,
   ): BackofficeUiElement;
-  /** Builds Callout. Highlights a concise operational note with a semantic status variant. */
+  /** Builds Callout. Highlights a concise operational note with a semantic status tone. */
   callout(
     props: BackofficeUiProps<{
       /** 1-120 characters */
       title: string;
       /** 1-2000 characters */
       text: string;
-      variant: "neutral" | "accent" | "live" | "warning" | "failed";
+      tone: "info" | "live" | "waiting" | "failed" | "muted";
     }>,
   ): BackofficeUiElement;
-  /** Builds Metric. Displays one labeled operational metric with optional context and status emphasis. */
+  /** Builds Metric. Displays one labeled operational metric with optional context and status tone. */
   metric(
     props: BackofficeUiProps<{
       /** 1-120 characters */
@@ -138,7 +138,7 @@ declare const ui: {
       value: string;
       /** at most 240 characters */
       detail?: string;
-      variant?: "neutral" | "accent" | "live" | "warning" | "failed";
+      tone?: "info" | "live" | "waiting" | "failed" | "muted";
     }>,
   ): BackofficeUiElement;
   /** Builds Badge. Displays a compact semantic status label. */
@@ -146,7 +146,7 @@ declare const ui: {
     props: BackofficeUiProps<{
       /** 1-80 characters */
       label: string;
-      variant: "neutral" | "accent" | "live" | "warning" | "failed";
+      tone: "info" | "live" | "waiting" | "failed" | "muted";
     }>,
   ): BackofficeUiElement;
   /** Builds KeyValue. Displays compact label-value facts in a one- or two-column definition list. */
@@ -177,7 +177,7 @@ declare const ui: {
         detail?: string;
         /** 1-80 characters */
         status?: string;
-        variant?: "neutral" | "accent" | "live" | "warning" | "failed";
+        tone?: "info" | "live" | "waiting" | "failed" | "muted";
       }[];
     }>,
   ): BackofficeUiElement;
@@ -200,7 +200,7 @@ declare const ui: {
       }[];
     }>,
   ): BackofficeUiElement;
-  /** Builds Progress. Displays completion from zero to one hundred percent with semantic status styling. */
+  /** Builds Progress. Displays completion from zero to one hundred percent with a semantic status tone. */
   progress(
     props: BackofficeUiProps<{
       /** 1-120 characters */
@@ -209,7 +209,7 @@ declare const ui: {
       value: number;
       /** at most 240 characters */
       detail?: string;
-      variant: "neutral" | "accent" | "live" | "warning" | "failed";
+      tone: "info" | "live" | "waiting" | "failed" | "muted";
     }>,
   ): BackofficeUiElement;
   /** Builds TextInput. Collects a short text value. Bind value with form.bind(field) so edits update the form response. Set secret to true for sensitive values such as API keys. */

@@ -48,17 +48,17 @@ const componentDemoInputs: ComponentDemoInput[] = [
     children: {
       "grid-one": {
         type: "Badge",
-        props: { label: "One", variant: "neutral" },
+        props: { label: "One", tone: "muted" },
         children: [],
       },
       "grid-two": {
         type: "Badge",
-        props: { label: "Two", variant: "accent" },
+        props: { label: "Two", tone: "info" },
         children: [],
       },
       "grid-three": {
         type: "Badge",
-        props: { label: "Three", variant: "live" },
+        props: { label: "Three", tone: "live" },
         children: [],
       },
     },
@@ -66,7 +66,7 @@ const componentDemoInputs: ComponentDemoInput[] = [
   {
     component: "Section",
     category: "Layout",
-    props: { label: "Operations", variant: "neutral" },
+    props: { label: "Operations", tone: "muted" },
     children: {
       "section-copy": {
         type: "Text",
@@ -113,7 +113,7 @@ const componentDemoInputs: ComponentDemoInput[] = [
     props: {
       title: "Sync delayed",
       text: "The latest provider update is still being processed.",
-      variant: "warning",
+      tone: "waiting",
     },
   },
   {
@@ -123,13 +123,13 @@ const componentDemoInputs: ComponentDemoInput[] = [
       label: "Success rate",
       value: "99.8%",
       detail: "Past 24 hours",
-      variant: "live",
+      tone: "live",
     },
   },
   {
     component: "Badge",
     category: "Data",
-    props: { label: "Live", variant: "live" },
+    props: { label: "Live", tone: "live" },
   },
   {
     component: "KeyValue",
@@ -152,14 +152,14 @@ const componentDemoInputs: ComponentDemoInput[] = [
           title: "Provider catalog synchronized",
           detail: "All capability declarations were refreshed.",
           status: "Live",
-          variant: "live",
+          tone: "live",
         },
         {
           key: "workflow-replay-scheduled",
           title: "Workflow replay scheduled",
           detail: "Seven instances remain queued.",
           status: "Waiting",
-          variant: "warning",
+          tone: "waiting",
         },
       ],
     },
@@ -187,7 +187,7 @@ const componentDemoInputs: ComponentDemoInput[] = [
       label: "Replay completion",
       value: 72,
       detail: "72 of 100 events",
-      variant: "accent",
+      tone: "info",
     },
   },
   {

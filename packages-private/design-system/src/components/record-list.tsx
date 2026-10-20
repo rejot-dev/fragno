@@ -1,4 +1,5 @@
-import { BackofficeStatusLight, type BackofficeStatusTone } from "./status-light";
+import { BackofficeStatusLight } from "./status-light";
+import type { BackofficeStatusTone } from "./status-tone";
 
 export type RecordListItem = {
   key: string;
@@ -32,7 +33,7 @@ export function RecordList({
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <p className="text-xs leading-5 font-semibold text-[var(--bo-fg)]">{item.title}</p>
                 {item.status ? (
-                  <BackofficeStatusLight tone={item.tone} dot={false}>
+                  <BackofficeStatusLight tone={item.tone} dot={false} wrap role="status">
                     {item.status}
                   </BackofficeStatusLight>
                 ) : null}
