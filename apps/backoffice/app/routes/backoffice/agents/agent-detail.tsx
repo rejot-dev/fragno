@@ -1,5 +1,7 @@
 import type { PiManagerAgent, PiPromptReceipt } from "@fragno-dev/backoffice-api/v0/pi";
 import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import { ChatWorkspaceSplit } from "@fragno-private/design-system/chat-workspace-split";
+import { PaneMessage } from "@fragno-private/design-system/pane-message";
 import { usePostHog } from "@posthog/react/slim";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFetcher, useOutletContext, useSearchParams } from "react-router";
@@ -69,7 +71,6 @@ import {
   getSessionWorkflowRunIds,
   projectSessionWorkspaceItems,
 } from "./session-detail/workspace-projection";
-import { SessionWorkspaceSplit } from "./session-detail/workspace-split";
 
 const PI_ENTRY_HISTORY_PAGE_SIZE = 100;
 const PI_COMPACTION_POLL_MS = 250;
@@ -405,16 +406,7 @@ function AgentStatusPane({
         selectedAgentName={selectedAgentName}
         options={null}
       />
-      <div className="flex min-h-0 flex-1 items-center justify-center px-4">
-        <p
-          role={tone === "failed" ? "alert" : "status"}
-          className={`max-w-md text-sm text-pretty ${
-            tone === "failed" ? "text-[var(--bo-failed)]" : "text-[var(--bo-muted)]"
-          }`}
-        >
-          {children}
-        </p>
-      </div>
+      <PaneMessage tone={tone}>{children}</PaneMessage>
     </div>
   );
 }
@@ -750,9 +742,9 @@ function BackofficeOrganizationPiAgent({
         />
 
         <SessionWorkspaceNavigationProvider value={workspaceNavigation}>
-          <SessionWorkspaceSplit
+          <ChatWorkspaceSplit
             storageKey={`backoffice:pi-agent-workspace:${basePath}`}
-            left={
+            conversation={
               <SessionThread
                 dictation={dictation !== undefined}
                 disabledReason={null}
@@ -791,7 +783,7 @@ function BackofficeOrganizationPiAgent({
                 onLoadMoreHistory={history.loadMore}
               />
             }
-            right={
+            workspace={
               workspaceState.open && selectedWorkspaceItem ? (
                 <SessionWorkspacePanel
                   key={selectedWorkspaceItem.id}

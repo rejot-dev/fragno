@@ -9,51 +9,11 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { parseBackofficeUiResult } from "@/backoffice-ui/result";
 
 import { ResultContent } from "./result-content";
-import { ToolCallDetails } from "./tool-call-layout";
 import { ToolResultContent } from "./tool-result-content";
 
 afterEach(cleanup);
 
-describe("ToolCallDetails", () => {
-  test("keeps ordinary tool cards closed by default", () => {
-    const { container } = render(
-      createElement(
-        ToolCallDetails,
-        { autoOpen: false, className: "tool-card", resetKey: "ordinary" },
-        createElement("summary", null, "Ordinary result"),
-        createElement("p", null, "Result body"),
-      ),
-    );
-
-    const details = container.querySelector("details");
-    assert(details);
-    assert(!details.open);
-  });
-
-  test("automatically opens when a completed result becomes tagged generated UI", async () => {
-    const { container, rerender } = render(
-      createElement(
-        ToolCallDetails,
-        { autoOpen: false, className: "tool-card", resetKey: "generated" },
-        createElement("summary", null, "Generated result"),
-        createElement("p", null, "Result body"),
-      ),
-    );
-
-    rerender(
-      createElement(
-        ToolCallDetails,
-        { autoOpen: true, className: "tool-card", resetKey: "generated" },
-        createElement("summary", null, "Generated result"),
-        createElement("p", null, "Result body"),
-      ),
-    );
-
-    await waitFor(() => {
-      assert(container.querySelector("details")?.open);
-    });
-  });
-
+describe("tool results", () => {
   test("keeps a valid generated result out of the tool card", () => {
     const value = {
       $ui: {

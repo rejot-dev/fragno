@@ -6,7 +6,7 @@ import { useEffect } from "react";
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
-import { SessionWorkspaceSplit } from "./workspace-split";
+import { ChatWorkspaceSplit } from "./chat-workspace-split";
 
 const bodyCursor = () => document.body.style.cursor;
 const bodyUserSelect = () => document.body.style.userSelect;
@@ -17,7 +17,7 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
-describe("SessionWorkspaceSplit", () => {
+describe("ChatWorkspaceSplit", () => {
   test("keeps the conversation mounted while the workspace opens and closes", () => {
     let mountCount = 0;
     let unmountCount = 0;
@@ -33,14 +33,18 @@ describe("SessionWorkspaceSplit", () => {
     }
 
     const { container, rerender } = render(
-      <SessionWorkspaceSplit storageKey="workspace-test" left={<Conversation />} right={null} />,
+      <ChatWorkspaceSplit
+        storageKey="workspace-test"
+        conversation={<Conversation />}
+        workspace={null}
+      />,
     );
 
     rerender(
-      <SessionWorkspaceSplit
+      <ChatWorkspaceSplit
         storageKey="workspace-test"
-        left={<Conversation />}
-        right={<div>Workspace</div>}
+        conversation={<Conversation />}
+        workspace={<div>Workspace</div>}
       />,
     );
     const split = container.querySelector("[data-session-workspace-split]");
@@ -59,13 +63,17 @@ describe("SessionWorkspaceSplit", () => {
     assert(firstDrawer.classList.contains("overflow-hidden"));
 
     rerender(
-      <SessionWorkspaceSplit storageKey="workspace-test" left={<Conversation />} right={null} />,
+      <ChatWorkspaceSplit
+        storageKey="workspace-test"
+        conversation={<Conversation />}
+        workspace={null}
+      />,
     );
     rerender(
-      <SessionWorkspaceSplit
+      <ChatWorkspaceSplit
         storageKey="workspace-test"
-        left={<Conversation />}
-        right={<div>Workspace</div>}
+        conversation={<Conversation />}
+        workspace={<div>Workspace</div>}
       />,
     );
 
@@ -84,10 +92,10 @@ describe("SessionWorkspaceSplit", () => {
 
     expect(() =>
       render(
-        <SessionWorkspaceSplit
+        <ChatWorkspaceSplit
           storageKey="workspace-storage-test"
-          left={<div>Conversation</div>}
-          right={<div>Workspace</div>}
+          conversation={<div>Conversation</div>}
+          workspace={<div>Workspace</div>}
         />,
       ),
     ).not.toThrow();
@@ -95,10 +103,10 @@ describe("SessionWorkspaceSplit", () => {
 
   test("clears drag state when pointer interaction is cancelled or focus is lost", () => {
     render(
-      <SessionWorkspaceSplit
+      <ChatWorkspaceSplit
         storageKey="workspace-drag-test"
-        left={<div>Conversation</div>}
-        right={<div>Workspace</div>}
+        conversation={<div>Conversation</div>}
+        workspace={<div>Workspace</div>}
       />,
     );
     const separator = screen.getByRole("separator", { name: "Resize session workspace" });
@@ -119,10 +127,10 @@ describe("SessionWorkspaceSplit", () => {
 
   test("supports keyboard resizing and exposes the current split", () => {
     render(
-      <SessionWorkspaceSplit
+      <ChatWorkspaceSplit
         storageKey="workspace-keyboard-test"
-        left={<div>Conversation</div>}
-        right={<div>Workspace</div>}
+        conversation={<div>Conversation</div>}
+        workspace={<div>Workspace</div>}
       />,
     );
 

@@ -1,7 +1,9 @@
+import { ScrollablePre } from "@fragno-private/design-system/scrollable-pre";
+
 import type { BackofficeUiParseResult } from "@/backoffice-ui/result";
 
 import { normalizePiContent, type ToolResultMessage } from "./assistant-runtime";
-import { MessageImage, ScrollablePre } from "./message-content";
+import { MessageImage } from "./message-content";
 import { RawValueDisclosure, ResultContent } from "./result-content";
 import { formatResultValue } from "./tool-arguments";
 

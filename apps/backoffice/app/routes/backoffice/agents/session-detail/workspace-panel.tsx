@@ -1,10 +1,14 @@
-import { Menu } from "@base-ui/react/menu";
-import { IconButton } from "@fragno-private/design-system/button";
+import {
+  ChatWorkspacePanel,
+  ChatWorkspaceScroll,
+  ChatWorkspaceStatus,
+} from "@fragno-private/design-system/chat-workspace-panel";
 import { Icon } from "@fragno-private/design-system/icon";
 import {
   ProgressiveOverflowControls,
   type ProgressiveOverflowControlGroup,
 } from "@fragno-private/design-system/progressive-overflow-controls";
+import { RadioMenu } from "@fragno-private/design-system/radio-menu";
 import { UnderlineToggleButton } from "@fragno-private/design-system/underline-tabs";
 import { useCallback, useEffect, useState } from "react";
 
@@ -31,7 +35,6 @@ import { ScriptWorkflowGraph } from "@/routes/backoffice/automations/script-view
 import type { WorkflowRunReference } from "@/routes/backoffice/automations/script-view/workflow-run-presentation";
 
 import { ResultContent } from "./result-content";
-import { tapScale } from "./ui";
 import type { WorkflowGraphProjection } from "./workflow-graph-projection";
 import type { SessionWorkspaceItem } from "./workspace-model";
 
@@ -66,77 +69,72 @@ export function SessionWorkspacePanel({
   }, []);
 
   return (
-    <aside
-      aria-label="Session workspace"
-      className="flex h-full min-h-0 min-w-0 flex-col border-l border-[color:var(--bo-border)] bg-[var(--bo-panel)]"
-    >
-      <header
-        ref={setToolbarElement}
-        data-session-workspace-toolbar
-        className="flex h-16 items-stretch justify-between gap-3 border-b border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3"
-      >
-        <div
-          data-session-workspace-actions
-          className="ml-auto flex min-w-0 shrink-0 items-center gap-2"
-        >
-          {item.view.type === "workflow-graph" ? (
-            <ProgressiveOverflowControls
-              measurementBoundary={toolbarElement}
-              reservedWidth={56}
-              groups={
-                [
-                  {
-                    id: "display" as const,
-                    collapsePriority: 0,
-                    content: (
-                      <WorkflowDisplayButtons display={display} onDisplayChange={setDisplay} />
-                    ),
-                  },
-                ] satisfies ProgressiveOverflowControlGroup<"display">[]
-              }
-              renderOverflow={(hiddenGroupIds) =>
-                hiddenGroupIds.has("display") ? (
-                  <WorkflowDisplayMenu display={display} onDisplayChange={setDisplay} />
-                ) : null
-              }
-            />
-          ) : null}
-
-          <IconButton label="Close session workspace" title="Close workspace" onClick={onClose}>
-            <Icon name="x" className="size-4" />
-          </IconButton>
-        </div>
-      </header>
-
-      <section
-        key={item.id}
-        aria-label={`${item.label} workspace`}
-        className="min-h-0 min-w-0 flex-1 overflow-hidden"
-      >
-        {item.view.type === "generated-ui" ? (
-          <div className="backoffice-scroll h-full overflow-auto overscroll-contain p-4 sm:p-5">
-            <ResultContent
-              parsedValue={{ kind: "valid", value: item.view.result }}
-              showRawValue={false}
-              value={item.view.rawValue}
-            >
-              {null}
-            </ResultContent>
-          </div>
-        ) : (
-          <SessionWorkflowWorkspace
-            projection={item.view.projection}
-            viewMode={display === "code" ? "code" : "graph"}
-            detailMode={display === "simple" ? "simple" : "ui"}
-            runReference={item.view.run}
-            workflowCollections={workflowCollections}
-            workflowCollectionsError={workflowCollectionsError}
-            resolvedScope={resolvedScope}
-            onGeneratedUiAvailable={showGeneratedUi}
+    <ChatWorkspacePanel
+      label={item.label}
+      toolbarRef={setToolbarElement}
+      onClose={onClose}
+      actions={
+        item.view.type === "workflow-graph" ? (
+          <ProgressiveOverflowControls
+            measurementBoundary={toolbarElement}
+            reservedWidth={56}
+            groups={
+              [
+                {
+                  id: "display" as const,
+                  collapsePriority: 0,
+                  content: (
+                    <WorkflowDisplayButtons display={display} onDisplayChange={setDisplay} />
+                  ),
+                },
+              ] satisfies ProgressiveOverflowControlGroup<"display">[]
+            }
+            renderOverflow={(hiddenGroupIds) =>
+              hiddenGroupIds.has("display") ? (
+                <RadioMenu
+                  label="Workflow display options"
+                  heading={null}
+                  trigger={{ kind: "control", icon: "more-horizontal" }}
+                  side="bottom"
+                  value={display}
+                  options={WORKFLOW_DISPLAY_OPTIONS.map(({ mode, label, icon }) => ({
+                    value: mode,
+                    label,
+                    description: null,
+                    icon,
+                    disabled: false,
+                  }))}
+                  onValueChange={setDisplay}
+                />
+              ) : null
+            }
           />
-        )}
-      </section>
-    </aside>
+        ) : null
+      }
+    >
+      {item.view.type === "generated-ui" ? (
+        <ChatWorkspaceScroll>
+          <ResultContent
+            parsedValue={{ kind: "valid", value: item.view.result }}
+            showRawValue={false}
+            value={item.view.rawValue}
+          >
+            {null}
+          </ResultContent>
+        </ChatWorkspaceScroll>
+      ) : (
+        <SessionWorkflowWorkspace
+          projection={item.view.projection}
+          viewMode={display === "code" ? "code" : "graph"}
+          detailMode={display === "simple" ? "simple" : "ui"}
+          runReference={item.view.run}
+          workflowCollections={workflowCollections}
+          workflowCollectionsError={workflowCollectionsError}
+          resolvedScope={resolvedScope}
+          onGeneratedUiAvailable={showGeneratedUi}
+        />
+      )}
+    </ChatWorkspacePanel>
   );
 }
 
@@ -162,60 +160,6 @@ function WorkflowDisplayButtons({
         </UnderlineToggleButton>
       ))}
     </div>
-  );
-}
-
-function WorkflowDisplayMenu({
-  display,
-  onDisplayChange,
-}: {
-  display: WorkflowDisplay;
-  onDisplayChange: (display: WorkflowDisplay) => void;
-}) {
-  return (
-    <Menu.Root modal={false}>
-      <Menu.Trigger
-        type="button"
-        aria-label="Workflow display options"
-        title="Workflow display options"
-        className={`bo-control-surface inline-flex size-10 shrink-0 items-center justify-center bg-[var(--bo-panel)] text-[var(--bo-muted)] transition-[background-color,color,scale,box-shadow] duration-150 ease-out outline-none hover:bg-[var(--bo-panel-2)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 data-[popup-open]:bg-[var(--bo-accent-bg)] data-[popup-open]:text-[var(--bo-accent-fg)] ${tapScale}`}
-      >
-        <Icon name="more-horizontal" className="size-4" />
-      </Menu.Trigger>
-      <Menu.Portal>
-        <Menu.Positioner side="bottom" align="end" sideOffset={8} className="z-50">
-          <Menu.Popup
-            data-backoffice-root
-            className="bo-popover-surface w-44 origin-top-right bg-[var(--bo-panel)] p-2 text-[var(--bo-fg)] outline-none"
-          >
-            <Menu.RadioGroup
-              value={display}
-              onValueChange={(value) => {
-                const option = WORKFLOW_DISPLAY_OPTIONS.find(({ mode }) => mode === value);
-                if (option) {
-                  onDisplayChange(option.mode);
-                }
-              }}
-              className="space-y-1"
-            >
-              {WORKFLOW_DISPLAY_OPTIONS.map(({ mode, label, icon }) => (
-                <Menu.RadioItem
-                  key={mode}
-                  value={mode}
-                  className="flex min-h-10 items-center gap-2 px-2.5 text-xs text-[var(--bo-muted)] outline-none data-[highlighted]:bg-[var(--bo-panel-2)] data-[highlighted]:text-[var(--bo-fg)]"
-                >
-                  <Icon name={icon} className="size-4" />
-                  <span className="flex-1">{label}</span>
-                  <Menu.RadioItemIndicator className="text-[var(--bo-accent-fg)]">
-                    <Icon name="check" className="size-4" />
-                  </Menu.RadioItemIndicator>
-                </Menu.RadioItem>
-              ))}
-            </Menu.RadioGroup>
-          </Menu.Popup>
-        </Menu.Positioner>
-      </Menu.Portal>
-    </Menu.Root>
   );
 }
 
@@ -268,25 +212,11 @@ function SessionWorkflowWorkspace({
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--bo-panel)]">
       {synchronizationError ? (
-        <div
-          data-session-workflow-sync-state="error"
-          role="alert"
-          className="flex min-h-8 shrink-0 items-center gap-2 border-b border-[color:var(--bo-failed)] bg-[var(--bo-failed-bg)] px-3 text-xs text-[var(--bo-failed)]"
-        >
-          <span className="size-1.5 shrink-0 rounded-full bg-[var(--bo-failed)]" />
-          <span className="truncate" title={synchronizationError}>
-            Workflow synchronization failed: {synchronizationError}
-          </span>
-        </div>
+        <ChatWorkspaceStatus tone="failed">
+          {`Workflow synchronization failed: ${synchronizationError}`}
+        </ChatWorkspaceStatus>
       ) : workflowRun.isLoading ? (
-        <div
-          data-session-workflow-sync-state="loading"
-          role="status"
-          className="flex min-h-8 shrink-0 items-center gap-2 border-b border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 text-xs text-[var(--bo-muted)]"
-        >
-          <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-[var(--bo-accent)]" />
-          Synchronizing workflow…
-        </div>
+        <ChatWorkspaceStatus tone="loading">Synchronizing workflow…</ChatWorkspaceStatus>
       ) : null}
       <div
         className={
