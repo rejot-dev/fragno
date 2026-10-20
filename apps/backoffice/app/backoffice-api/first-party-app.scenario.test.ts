@@ -72,6 +72,7 @@ const branding = {
 const everyProvisioningPermission = [
   "organizations.provision",
   "projects.provision",
+  "invitations.send",
   "invitations.accept",
 ] as const;
 
@@ -267,6 +268,7 @@ async function runFirstPartyScenario(
         objects: scenarioObjects,
         options: { sqliteDataDirectory: directory },
         env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_INVITATIONS_ENABLED: "false" },
+        fakes: ({ fake }) => ({ resend: fake.resend() }),
         vars: () => ({
           existingCookie: "",
           existingUserId: "",
@@ -474,6 +476,29 @@ test("Bookkeeping provisions its organization and project, and brings invited pe
         ctx.vars.colleagueId = await sessionUserId(ctx, ctx.vars.colleagueCookie);
         const accept = { invitationId, userId: ctx.vars.colleagueId };
 
+        // Bookkeeping has Backoffice email the invitation in its name, linking to its own page.
+        const send = { invitationId, url: `${branding.homeUrl}/invitations/${invitationId}` };
+        expect(await client.call("invitations.send", send)).toEqual({
+          email: "colleague@bookkeeping.test",
+        });
+        await client.call("invitations.send", send);
+        const sent = ctx.fakes.resend?.queueEmailCalls ?? [];
+        expect(sent).toHaveLength(2);
+        expect(sent[0]).toMatchObject({
+          input: {
+            to: "colleague@bookkeeping.test",
+            subject: expect.stringMatching(/ invited you to Acme Books on Bookkeeping$/u),
+            text: expect.stringContaining(send.url),
+          },
+          options: { senderName: "Bookkeeping" },
+        });
+        // Asking again queues the same email, which Resend sends once.
+        assert.equal(sent[1]?.options.idempotencyKey, sent[0]?.options.idempotencyKey);
+        await expectApiError(
+          client.call("invitations.send", { ...send, url: "https://elsewhere.example/join" }),
+          "invalid_request",
+        );
+
         await authorizeBookkeeping(ctx, ctx.vars.colleagueCookie);
         // Until they join, Bookkeeping cannot create projects there as them.
         await expectApiError(
@@ -495,6 +520,7 @@ test("Bookkeeping provisions its organization and project, and brings invited pe
           roles: ["member"],
         });
         expect(await client.call("invitations.accept", accept)).toEqual(membership);
+        await expectApiError(client.call("invitations.send", send), "conflict");
       },
     ),
     then(
@@ -549,6 +575,13 @@ test("Bookkeeping provisions its organization and project, and brings invited pe
           client.call("invitations.accept", {
             invitationId: elsewhere.invitationId,
             userId: ctx.vars.colleagueId,
+          }),
+          "not_found",
+        );
+        await expectApiError(
+          client.call("invitations.send", {
+            invitationId: elsewhere.invitationId,
+            url: `${branding.homeUrl}/invitations/${elsewhere.invitationId}`,
           }),
           "not_found",
         );
@@ -610,6 +643,7 @@ test("Bookkeeping provisions its organization and project, and brings invited pe
       expect(counts).toEqual({
         "organization.provisioned": 3,
         "project.provisioned": 3,
+        "invitation.sent": 2,
         "invitation.accepted": 2,
       });
       expect(
