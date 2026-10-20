@@ -427,14 +427,17 @@ is unknown can therefore be retried. The contract and a client live in
 | Operation                 | Does                                                                                                                                                          |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `organizations.provision` | Creates an organization owned by a user who authorized the app, installs the app there with every requested permission, owner-wide, and claims it for the app |
-| `projects.provision`      | Creates a project in an organization the app provisioned                                                                                                      |
+| `projects.provision`      | Creates a project in an organization where the app is installed, as a member who authorized the app                                                           |
 | `invitations.accept`      | Accepts an invitation for the user it is addressed to, in an organization where the app is installed                                                          |
 
 - **The app's users.** An app names only Backoffice users who authorized its OAuth client, which
   everyone who signs in to it has. It cannot reach other Backoffice users.
 - **The app's identifiers.** Organizations and projects get IDs derived from the app and its
   identifier (`app/fragno/apps/provisioned-id.ts`), so a repeated call finds them by primary key.
-  Nothing else records them.
+  Nothing else records them. A project's ID also derives from its organization, so the same
+  identifier in two organizations makes two projects.
+- **Only where it is installed.** Projects and invitations are only in organizations where the app
+  has an active installation, however it got there.
 - **Invitations stay Backoffice's.** Owners and admins invite with `org.invitations.create`, as in
   Backoffice. `invitations.accept` only does what the invited person could do themselves: the
   invitation must be pending and addressed to the user's verified email, and an invitation they
@@ -449,8 +452,8 @@ is unknown can therefore be retried. The contract and a client live in
 
 Errors use the API's envelope: `401` for a missing or invalid token, `403` for a third-party app, a
 missing provisioning permission, or a user who has not authorized the app or was not invited, `404`
-for an unknown organization or an invitation outside the app's organizations, and `409` for a
-conflict, such as an invitation that is no longer pending.
+for an organization or invitation where the app is not installed, and `409` for a conflict, such as
+an invitation that is no longer pending.
 
 ### Rotating the app's secret
 

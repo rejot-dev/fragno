@@ -408,9 +408,10 @@ test("Bookkeeping provisions its organization and project, and brings invited pe
     then("an administration's project is provisioned once in its organization", async (ctx) => {
       const client = provisioning(ctx);
       const input = {
-        externalOrganizationId: "bk-org-1",
+        organizationId: ctx.vars.orgId,
         externalProjectId: "bk-administration-1",
         name: "Acme Books",
+        createdByUserId: ctx.vars.ownerId,
       };
       const project = await client.call("projects.provision", input);
       expect(project).toEqual({
@@ -428,10 +429,24 @@ test("Bookkeeping provisions its organization and project, and brings invited pe
           .forOrg(ctx.vars.orgId)
           .commands.resolveProjectForExecution({ projectId: project.projectId }),
       ).toMatchObject({ slug: "acme-books", name: "Acme Books" });
+      // Bookkeeping is not installed in the existing workspace.
       await expectApiError(
-        client.call("projects.provision", { ...input, externalOrganizationId: "bk-org-unknown" }),
+        client.call("projects.provision", {
+          ...input,
+          organizationId: ctx.vars.existingOrgId,
+          createdByUserId: ctx.vars.existingUserId,
+        }),
         "not_found",
       );
+      // The same identifier in another of Bookkeeping's organizations is another project.
+      const other = await client.call("organizations.provision", {
+        externalOrganizationId: "bk-org-other",
+        name: "Other Books",
+        ownerUserId: ctx.vars.ownerId,
+      });
+      expect(
+        await client.call("projects.provision", { ...input, organizationId: other.organizationId }),
+      ).toMatchObject({ created: true, projectId: expect.not.stringMatching(project.projectId) });
     }),
     then(
       "an invited colleague joins once they sign in to Bookkeeping with the invited address",
@@ -460,6 +475,16 @@ test("Bookkeeping provisions its organization and project, and brings invited pe
         const accept = { invitationId, userId: ctx.vars.colleagueId };
 
         await authorizeBookkeeping(ctx, ctx.vars.colleagueCookie);
+        // Until they join, Bookkeeping cannot create projects there as them.
+        await expectApiError(
+          client.call("projects.provision", {
+            organizationId: ctx.vars.orgId,
+            externalProjectId: "bk-administration-colleague",
+            name: "Colleague's",
+            createdByUserId: ctx.vars.colleagueId,
+          }),
+          "forbidden",
+        );
         // Signing in with a code proves the address; a password sign-up has not.
         await expectApiError(client.call("invitations.accept", accept), "forbidden");
         await auth.verifyAdminUserEmail({ email: "colleague@bookkeeping.test" });
@@ -496,6 +521,20 @@ test("Bookkeeping provisions its organization and project, and brings invited pe
           client.call("invitations.accept", {
             invitationId: forSomeoneElse.invitationId,
             userId: ctx.vars.existingUserId,
+          }),
+          "forbidden",
+        );
+        // Joining in Backoffice makes them a member, but Bookkeeping still cannot act for them.
+        await auth.acceptAccountInvitation({
+          userId: ctx.vars.existingUserId,
+          invitationId: forSomeoneElse.invitationId,
+        });
+        await expectApiError(
+          client.call("projects.provision", {
+            organizationId: ctx.vars.orgId,
+            externalProjectId: "bk-administration-existing",
+            name: "Theirs",
+            createdByUserId: ctx.vars.existingUserId,
           }),
           "forbidden",
         );
@@ -540,9 +579,10 @@ test("Bookkeeping provisions its organization and project, and brings invited pe
         );
         await expectApiError(
           client.call("projects.provision", {
-            externalOrganizationId: "bk-org-1",
+            organizationId: ctx.vars.orgId,
             externalProjectId: "bk-administration-2",
             name: "Second",
+            createdByUserId: ctx.vars.ownerId,
           }),
           "forbidden",
         );
@@ -568,8 +608,8 @@ test("Bookkeeping provisions its organization and project, and brings invited pe
         counts[eventType] = (counts[eventType] ?? 0) + 1;
       }
       expect(counts).toEqual({
-        "organization.provisioned": 2,
-        "project.provisioned": 2,
+        "organization.provisioned": 3,
+        "project.provisioned": 3,
         "invitation.accepted": 2,
       });
       expect(

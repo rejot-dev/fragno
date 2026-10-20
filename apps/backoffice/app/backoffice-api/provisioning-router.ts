@@ -87,36 +87,51 @@ async function provisionOrganization(
   return provisioned;
 }
 
+/** Apps reach only organizations where they are installed. */
+async function isInstalledIn(
+  runtime: BackofficeRuntimeServices,
+  app: ProvisioningApp,
+  organizationId: string,
+): Promise<boolean> {
+  const installation = await runtime.objects.appInstallations
+    .for({ kind: "org", orgId: organizationId })
+    .commands.getInstallation({ appId: app.id });
+  return installation?.status === "active";
+}
+
 async function provisionProject(
   runtime: BackofficeRuntimeServices,
   app: ProvisioningApp,
   input: ProvisionProjectInput,
 ): Promise<AppProvisioningResult<ProvisionProjectResult>> {
-  const organization = await runtime.objects.auth.singleton().commands.findAppOrganization({
-    appId: app.id,
-    externalOrganizationId: input.externalOrganizationId,
-  });
-  if (!organization) {
+  if (!(await isInstalledIn(runtime, app, input.organizationId))) {
     return {
       ok: false,
       error: {
         code: "not_found",
-        message: `This app has not provisioned organization '${input.externalOrganizationId}'.`,
+        message: `This app is not installed in organization '${input.organizationId}'.`,
       },
     };
   }
+  const creator = await runtime.objects.auth.singleton().commands.confirmAppOrganizationMember({
+    oauthClientId: app.oauthClientId,
+    organizationId: input.organizationId,
+    userId: input.createdByUserId,
+  });
+  if (!creator.ok) {
+    return creator;
+  }
   const project = await runtime.objects.automations
-    .for({ kind: "org", orgId: organization.organizationId })
+    .for({ kind: "org", orgId: input.organizationId })
     .commands.provisionAppProject({
       appId: app.id,
       externalProjectId: input.externalProjectId,
       name: input.name,
-      createdByUserId: organization.createdByUserId,
+      createdByUserId: input.createdByUserId,
     });
-  return { ok: true, value: { organizationId: organization.organizationId, ...project } };
+  return { ok: true, value: { organizationId: input.organizationId, ...project } };
 }
 
-/** Only into an organization where the app is installed, so an app cannot reach any other. */
 async function acceptInvitation(
   runtime: BackofficeRuntimeServices,
   app: ProvisioningApp,
@@ -126,13 +141,7 @@ async function acceptInvitation(
   const organizationId = await auth.findInvitationOrganization({
     invitationId: input.invitationId,
   });
-  const installation =
-    organizationId === null
-      ? null
-      : await runtime.objects.appInstallations
-          .for({ kind: "org", orgId: organizationId })
-          .commands.getInstallation({ appId: app.id });
-  if (installation?.status !== "active") {
+  if (organizationId === null || !(await isInstalledIn(runtime, app, organizationId))) {
     return {
       ok: false,
       error: {
