@@ -54,7 +54,9 @@ export function bookkeepingScenario(steps: (books: Books) => void): void {
   try {
     database.exec(bookkeepingSchema);
     const books = new Books(database);
-    books.operation(() => seedAdministration(books));
+    books.operation(() => {
+      seedAdministration(books);
+    });
     steps(books);
   } finally {
     database.close();
@@ -99,7 +101,9 @@ export class Books {
   }
 
   rejects(step: () => void, message: string): void {
-    expect(() => this.operation(step)).toThrow(message);
+    expect(() => {
+      this.operation(step);
+    }).toThrow(message);
   }
 
   source(kind: string, date = "2026-01-10"): string {

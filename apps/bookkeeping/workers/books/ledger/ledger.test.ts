@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { assert, describe, expect, test } from "vitest";
 
 import { bookkeepingScenario, credit, debit, timestamp, type Books } from "../books.test-support";
 
@@ -196,14 +196,14 @@ describe("ledger", () => {
         "Allocation exceeds the outstanding amount",
       );
       books.allocate({ id: "a2", ...settle, amount: 2100 });
-      expect(books.outstanding("invoice", 1)).toBe(0);
+      assert.equal(books.outstanding("invoice", 1), 0);
 
       books.rejects(
         () => books.sql("DELETE FROM settlement_allocation WHERE id = 'a1'"),
         "Allocations are append-only",
       );
       books.allocate({ id: "a1-undo", ...settle, amount: 10000, reverses: "a1" });
-      expect(books.outstanding("invoice", 1)).toBe(10000);
+      assert.equal(books.outstanding("invoice", 1), 10000);
       books.rejects(
         () => books.allocate({ id: "x", ...settle, amount: 10000, reverses: "a1-undo" }),
         "A reversing allocation must mirror an active allocation",
@@ -217,7 +217,7 @@ describe("ledger", () => {
         "Allocations settle a posted debit open item against a posted credit one",
       );
 
-      expect(books.outstanding("receipt", 2)).toBe(10000);
+      assert.equal(books.outstanding("receipt", 2), 10000);
     }));
 
   test("periods only move forward to locked and bound the entries posted in them", () =>
