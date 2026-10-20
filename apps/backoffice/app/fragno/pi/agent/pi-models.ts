@@ -51,11 +51,13 @@ export function createPiModels(
   return models;
 }
 
-/** Answers typed questions about JSON state; resolves to an error result instead of rejecting. */
-export type PiClassifier = (context: ClassifierContext) => Promise<ClassifierResult>;
+/** Answers typed questions about state and images; resolves to an error result instead of rejecting. */
+export type PiClassifier = (context: PiClassificationRequest) => Promise<ClassifierResult>;
 
-/** A caller's classification: the evidence and the questions asked about it. */
-export type PiClassificationRequest = Pick<ClassifierContext, "state" | "questions">;
+/** Resolved evidence: image bytes, never workspace paths, and the questions asked about it. */
+export type PiClassificationRequest = Required<
+  Pick<ClassifierContext, "state" | "images" | "questions">
+>;
 
 /** Classifies with OpenAI's Decisions API, which requires an OpenAI API key. */
 export function createPiClassifier(

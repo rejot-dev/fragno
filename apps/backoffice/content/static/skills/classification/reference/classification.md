@@ -63,8 +63,53 @@ Keep the needed answers available. Include a no-match option such as `other` whe
 and ask a separate `bool` about presence when that is independently useful. When selecting among
 candidate values, check that the candidates cover the intended one.
 
-Keep the state to the evidence the questions need: it is billed by input tokens, accepts no images,
-and requests above roughly 600K input tokens time out.
+Keep the state to the evidence the questions need: it is billed by input tokens, and requests above
+roughly 600K input tokens time out.
+
+## Image evidence
+
+Pass an ordered `images` array of absolute workspace paths alongside `state`. The classifier sees
+those images together with the JSON evidence. Describe each image's role in the state or question
+instructions using its position, such as "the first image is the reference, the second is the
+draft". Putting a path in `state` alone does not attach an image.
+
+Use PNG, JPEG, or WebP files already stored under `/workspace/`, including paths returned by
+`models.generateImage`. File reads require `upload.read`; text-only calls need only
+`models.classify`. The generated models declaration lists image count and byte limits. Image bytes
+contribute to billed input tokens. URLs, traversal paths, SVG, and GIF are not accepted.
+
+To judge generated work, keep generation and review in separate workflow steps, so a review failure
+does not repeat a completed generation:
+
+```js
+const { path } = await step.do(
+  "generate draft",
+  async () =>
+    await models.generateImage({ prompt: event.payload.brief, out: "/workspace/images/draft.png" }),
+);
+const review = await step.do(
+  "review draft",
+  async () =>
+    await models.classify({
+      state: { brief: event.payload.brief },
+      images: [path],
+      questions: {
+        matchesBrief: {
+          type: "bool",
+          instructions: "Does the image satisfy the brief?",
+          criteria: {
+            true: "The requested elements are present",
+            false: "An element is missing or wrong",
+          },
+        },
+      },
+    }),
+);
+```
+
+Treat this as model evidence, not proof of visual correctness: route uncertain judgments to a
+person. Correct unreadable, unsupported, or oversized files before retrying; those failures happen
+before a provider call.
 
 ## Compose and verify
 
