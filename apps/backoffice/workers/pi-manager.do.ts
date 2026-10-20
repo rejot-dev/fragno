@@ -1,6 +1,7 @@
 import {
   type BackofficeContextScope,
   backofficeContextScopeSchema,
+  backofficeScopeOrganization,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
@@ -23,7 +24,17 @@ import {
   type PiAgentAddress,
   type PiAvailableModel,
 } from "@/fragno/pi/agent/pi-agent-contract";
-import { createPiModels, listAvailablePiModels } from "@/fragno/pi/agent/pi-models";
+import {
+  createPiClassifier,
+  createPiModels,
+  listAvailablePiModels,
+  type PiClassifier,
+} from "@/fragno/pi/agent/pi-models";
+import {
+  createPiBillingMeasurements,
+  hasPiBillingUsage,
+  piBillingCountersFromUsage,
+} from "@/fragno/pi/extensions/billing/usage-counters";
 import { createPiAgentQueueChannel } from "@/fragno/pi/manager/pi-agent-queue";
 import type { PiManagerConfig } from "@/fragno/pi/manager/pi-manager-definition";
 import {
@@ -47,7 +58,12 @@ export class InMemoryPiManagerObject extends RpcTarget implements PiManagerObjec
   readonly #scoped: ScopedFragmentDurableObjectRuntime<PiManagerFragment>;
   readonly #env: Pick<BackofficeRuntimeEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">;
   readonly #nowEpochMs: () => number;
-  readonly #config: Pick<PiManagerConfig, "agent" | "supportedAvailableModels" | "queueChannel">;
+  readonly #config: Pick<
+    PiManagerConfig,
+    "agent" | "supportedAvailableModels" | "queueChannel" | "billing"
+  >;
+  readonly #runtime: BackofficeRuntimeServices;
+  readonly #classifier: PiClassifier | null;
 
   constructor({
     state,
@@ -56,6 +72,7 @@ export class InMemoryPiManagerObject extends RpcTarget implements PiManagerObjec
     implementation,
     agent,
     supportedAvailableModels,
+    classifier,
     nowEpochMs,
   }: {
     state: BackofficeObjectState;
@@ -64,12 +81,21 @@ export class InMemoryPiManagerObject extends RpcTarget implements PiManagerObjec
     implementation: BackofficeObjectImplementation;
     agent: (address: PiAgentAddress) => PiAgent;
     supportedAvailableModels: () => Promise<readonly PiAvailableModel[]>;
+    /** Null without classifier credentials, so `classify` rejects. */
+    classifier: PiClassifier | null;
     nowEpochMs: () => number;
   }) {
     super();
     this.#env = env;
     this.#nowEpochMs = nowEpochMs;
-    this.#config = { agent, supportedAvailableModels, queueChannel: createPiAgentQueueChannel() };
+    this.#runtime = runtime;
+    this.#classifier = classifier;
+    this.#config = {
+      agent,
+      supportedAvailableModels,
+      queueChannel: createPiAgentQueueChannel(),
+      billing: (organizationId) => runtime.objects.billing.forOrg(organizationId).commands,
+    };
     const kernel = new BackofficeKernel(runtime);
     this.#host = implementation.createFragmentHost({
       name: "PiManager",
@@ -134,6 +160,45 @@ export class InMemoryPiManagerObject extends RpcTarget implements PiManagerObjec
     await reportPiAgentTurnSettled(await this.#scoped.getRuntime(), this.#config, input);
   }
 
+  async classify({
+    request,
+    billingOrganizationId,
+  }: Parameters<PiManagerObject["classify"]>[0]): ReturnType<PiManagerObject["classify"]> {
+    if (!this.#classifier) {
+      throw new Error("MODELS_CLASSIFY_UNAVAILABLE: no classifier is configured.");
+    }
+    const scope = this.#scoped.requireOwnerScope();
+    const billed = this.#runtime.config.bindings.billing;
+    const payer = backofficeScopeOrganization(scope)?.orgId ?? billingOrganizationId;
+    if (billed && payer === null) {
+      return { type: "billing-owner-required" };
+    }
+    const result = await this.#classifier(request);
+    // A failed classification can still report the tokens the provider charged for.
+    const counters = piBillingCountersFromUsage(result.usage ? [result.usage] : []);
+    if (billed && payer !== null && hasPiBillingUsage(counters)) {
+      const fragment = await this.#scoped.getRuntime();
+      await fragment.callServices(() =>
+        fragment.services.recordClassificationUsage({
+          organizationId: payer,
+          event: {
+            id: `models-classify:${crypto.randomUUID()}`,
+            scope,
+            source: "models",
+            eventType: "classify.completed",
+            occurredAt: new Date(this.#nowEpochMs()).toISOString(),
+            measurements: createPiBillingMeasurements(counters),
+            metadata: { provider: result.provider, model: result.model },
+          },
+        }),
+      );
+    }
+    if (result.stopReason !== "stop") {
+      throw new Error(`MODELS_CLASSIFY_FAILED: ${result.errorMessage ?? result.stopReason}`);
+    }
+    return { type: "classified", answers: result.answers };
+  }
+
   async alarm(): Promise<void> {
     await this.#scoped.alarm();
   }
@@ -151,6 +216,7 @@ export class PiManager extends DurableObject<CloudflareEnv> implements PiManager
       agent: (config): PiAgent =>
         env.PI.get(env.PI.idFromName(piAgentObjectName(config))) as unknown as PiAgent,
       supportedAvailableModels: async () => await listAvailablePiModels(models),
+      classifier: createPiClassifier(env),
       nowEpochMs: Date.now,
     });
   }
@@ -165,6 +231,12 @@ export class PiManager extends DurableObject<CloudflareEnv> implements PiManager
 
   async reportSettledTurn(input: { agentName: string; requestId: string }): Promise<void> {
     await this.#object.reportSettledTurn(input);
+  }
+
+  async classify(
+    input: Parameters<PiManagerObject["classify"]>[0],
+  ): ReturnType<PiManagerObject["classify"]> {
+    return await this.#object.classify(input);
   }
 
   async alarm(): Promise<void> {

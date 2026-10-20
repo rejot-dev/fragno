@@ -49,6 +49,7 @@ import {
 import type { JavaScriptRuntime } from "./families/javascript-runtime";
 import { marketplaceToolFamily } from "./families/marketplace";
 import type { MarketplaceRuntime } from "./families/marketplace-runtime";
+import { modelsToolFamily, type ModelsRuntime } from "./families/models";
 import { organizationToolFamily, type OrganizationRuntime } from "./families/organization";
 import { otpToolFamily, type OtpRuntime } from "./families/otp";
 import { packagesToolFamily } from "./families/packages";
@@ -91,6 +92,7 @@ export type CoreBackofficeRuntimeMap = {
   javascript?: JavaScriptRuntime;
   upload?: UploadRuntime;
   web?: WebRuntime;
+  models?: ModelsRuntime;
 };
 
 export type CoreBackofficeToolContext = BackofficeToolContext<Partial<CoreBackofficeRuntimeMap>>;
@@ -116,6 +118,7 @@ export const runtimeToolFamilies = [
   formsToolFamily,
   cloudflareToolFamily,
   webToolFamily,
+  modelsToolFamily,
   otpToolFamily,
   piToolFamily,
   reson8ToolFamily,

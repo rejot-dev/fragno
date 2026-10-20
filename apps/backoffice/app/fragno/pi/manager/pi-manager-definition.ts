@@ -3,6 +3,7 @@ import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/share
 import { defineFragment } from "@fragno-dev/core";
 import { withDatabase } from "@fragno-dev/db";
 
+import type { BillingObject } from "@/backoffice-runtime/object-registry";
 import type {
   PiAgent,
   PiAgentAddress,
@@ -16,6 +17,7 @@ import {
   type PiAgentQueueChannel,
   type PiManagerHooks,
 } from "./pi-agent-queue";
+import { piClassificationUsageServices } from "./pi-classification-usage";
 import { piAgentDirectorySchema } from "./pi-manager-schema";
 
 export type PiManagerConfig = {
@@ -24,6 +26,8 @@ export type PiManagerConfig = {
   supportedAvailableModels: () => Promise<readonly PiAvailableModel[]>;
   /** One per manager object, which runs every request that changes its agents' queues. */
   queueChannel: PiAgentQueueChannel;
+  /** The Billing object of an organization that pays for classifications. */
+  billing: (organizationId: string) => Pick<BillingObject, "recordEvent">;
 };
 
 /** Execution scope is supplied by the object address, never by a request body. */
@@ -32,6 +36,7 @@ export const piManagerDefinition = defineFragment<PiManagerConfig>("pi-manager")
   .providesBaseService(({ defineService, config }) => ({
     ...piAgentDirectoryServices(defineService, config),
     ...piAgentQueueServices(defineService, config),
+    ...piClassificationUsageServices(defineService),
   }))
   .provideHooks<PiManagerHooks>(({ defineHook, services, config }) => ({
     redispatchAgentQueue: defineHook(async function ({ agentName }): Promise<void> {
@@ -46,6 +51,14 @@ export const piManagerDefinition = defineFragment<PiManagerConfig>("pi-manager")
     }),
     writeNotificationCards: defineHook(async function ({ agent, notifications }): Promise<void> {
       await handOverPiAgentWork(config.agent, { type: "write", agent, notifications });
+    }),
+    deliverClassificationUsage: defineHook(async function ({
+      organizationId,
+      event,
+    }): Promise<void> {
+      await config.billing(organizationId).recordEvent(event, {
+        propagationContext: this.capturePropagationContext(),
+      });
     }),
   }))
   .build();

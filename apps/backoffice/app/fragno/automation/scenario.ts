@@ -29,6 +29,7 @@ import { InMemoryFs, type IFileSystem } from "just-bash";
 import type { ResendSendEmailInput } from "@fragno-dev/resend-fragment";
 import type { TelegramApi, TelegramMessage } from "@fragno-dev/telegram-fragment";
 
+import type { ClassifierContext, ClassifierResult } from "@earendil-works/pi-ai";
 import type { SubmissionRecord } from "@earendil-works/pi-durable";
 
 import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
@@ -86,6 +87,7 @@ import {
   type PiAvailableModel,
 } from "@/fragno/pi/agent/pi-agent-contract";
 import { renderPiNotificationRequest } from "@/fragno/pi/agent/pi-agent-notification-entry";
+import type { PiClassifier } from "@/fragno/pi/agent/pi-models";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import type { BackofficeRuntimeToolCall } from "@/fragno/runtime-tools/runtime-tools";
 import { createStateShellFileSystem } from "@/fragno/runtime-tools/state-shell-file-system";
@@ -280,10 +282,17 @@ export type FakeResendApi = {
   fetch(request: Request): Promise<Response>;
 };
 
+export type FakeClassifierApi = {
+  /** Every classification requested, in order. */
+  calls: ClassifierContext[];
+  classify: PiClassifier;
+};
+
 export type ScenarioFakes = {
   telegram?: FakeTelegramApi;
   pi?: FakePiManagerApi;
   resend?: FakeResendApi;
+  classifier?: FakeClassifierApi;
 };
 
 type ScenarioFakeFactory = {
@@ -292,6 +301,11 @@ type ScenarioFakeFactory = {
     assistantText?: (input: { agentName: string; content: string }) => string;
   }): FakePiManagerApi;
   resend(input?: { threads?: FakeResendThreadSeed[] }): FakeResendApi;
+  /** Answers every classification with `answer`, reporting `inputTokens` of usage. */
+  classifier(input: {
+    answer: (context: ClassifierContext) => ClassifierResult["answers"];
+    inputTokens: number;
+  }): FakeClassifierApi;
 };
 
 type FileDiffStatus = "added" | "changed" | "removed";
@@ -1397,10 +1411,41 @@ const createFakeResendApi = (input: { threads?: FakeResendThreadSeed[] } = {}): 
   };
 };
 
+// OpenAI's Decisions price for gpt-6-luna input tokens.
+const FAKE_CLASSIFIER_USD_PER_INPUT_TOKEN = 0.1 / 1_000_000;
+
+const createFakeClassifierApi: ScenarioFakeFactory["classifier"] = ({ answer, inputTokens }) => {
+  const calls: ClassifierContext[] = [];
+  const cost = inputTokens * FAKE_CLASSIFIER_USD_PER_INPUT_TOKEN;
+  return {
+    calls,
+    classify: async (context) => {
+      calls.push(context);
+      return {
+        api: "openai-decisions",
+        provider: "openai",
+        model: "gpt-6-luna",
+        answers: answer(context),
+        usage: {
+          input: inputTokens,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: inputTokens,
+          cost: { input: cost, output: 0, cacheRead: 0, cacheWrite: 0, total: cost },
+        },
+        stopReason: "stop",
+        timestamp: Date.now(),
+      };
+    },
+  };
+};
+
 const createScenarioFakeFactory = (): ScenarioFakeFactory => ({
   telegram: createFakeTelegramApi,
   pi: createFakePiManagerApi,
   resend: createFakeResendApi,
+  classifier: createFakeClassifierApi,
 });
 
 const readSnapshotContent = async (fs: IFileSystem, path: string): Promise<string | null> => {
@@ -4136,42 +4181,55 @@ const createFakeObjectOverrides = async (fakes: ScenarioFakes): Promise<LocalBac
     };
   }
 
-  if (fakes.pi) {
+  if (fakes.pi || fakes.classifier) {
     const { InMemoryPiManagerObject } = await import("../../../workers/pi-manager.do");
-    overrides.PI_MANAGER = ({ state, env, runtime, implementation, nowEpochMs }) => {
-      const fakePi = fakes.pi!;
+    overrides.PI_MANAGER = ({
+      state,
+      env,
+      runtime,
+      implementation,
+      nowEpochMs,
+      getPiAgent,
+      piAvailableModels,
+    }) => {
+      const fakePi = fakes.pi;
       return new InMemoryPiManagerObject({
         state,
         env,
         runtime,
         implementation,
-        // Like a real agent, the fake reports each turn it settles, which it does on receipt.
-        agent: () => {
-          async function settled(config: PiAgentConfig, requestId: string) {
-            await runtime.objects.piManager
-              .for(config.scope)
-              .commands.reportSettledTurn({ agentName: config.agentName, requestId });
-          }
-          return {
-            ...fakePi.agent,
-            async steer(config, turn, prompt) {
-              await fakePi.agent.steer(config, turn, prompt);
-              await settled(config, prompt.requestId);
-            },
-            async dispatch(config, turn, work) {
-              await fakePi.agent.dispatch(config, turn, work);
-              await settled(config, work.requestId);
-            },
-          };
-        },
-        supportedAvailableModels: async () => [
-          {
-            provider: "openai",
-            modelId: "gpt-5.6-luna",
-            label: "GPT-5.6 Luna",
-            contextWindow: 400_000,
-          },
-        ],
+        agent: fakePi
+          ? // Like a real agent, the fake reports each turn it settles, which it does on receipt.
+            () => {
+              async function settled(config: PiAgentConfig, requestId: string) {
+                await runtime.objects.piManager
+                  .for(config.scope)
+                  .commands.reportSettledTurn({ agentName: config.agentName, requestId });
+              }
+              return {
+                ...fakePi.agent,
+                async steer(config, turn, prompt) {
+                  await fakePi.agent.steer(config, turn, prompt);
+                  await settled(config, prompt.requestId);
+                },
+                async dispatch(config, turn, work) {
+                  await fakePi.agent.dispatch(config, turn, work);
+                  await settled(config, work.requestId);
+                },
+              };
+            }
+          : getPiAgent,
+        supportedAvailableModels: fakePi
+          ? async () => [
+              {
+                provider: "openai",
+                modelId: "gpt-5.6-luna",
+                label: "GPT-5.6 Luna",
+                contextWindow: 400_000,
+              },
+            ]
+          : async () => piAvailableModels ?? [],
+        classifier: fakes.classifier?.classify ?? null,
         nowEpochMs,
       });
     };

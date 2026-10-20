@@ -26,6 +26,7 @@ import type {
 import { piNotificationRequestId } from "@/fragno/pi/agent/pi-agent-notification-entry";
 import { mayJoinPiAgentTurn, nextPiAgentQueueTurn } from "@/fragno/pi/agent/pi-agent-queue-rules";
 
+import type { PiClassificationUsage } from "./pi-classification-usage";
 import {
   AGENT_QUEUE_REQUEST_INDEX,
   AGENT_QUEUE_STATUS_INDEX,
@@ -36,12 +37,14 @@ import {
   type PiAgentTurnProvenance,
 } from "./pi-manager-schema";
 
-/** Each hook repeats a handover, in case the request that made it failed. */
+/** Work the manager's requests leave for durable delivery. */
 export type PiManagerHooks = {
-  /** Hands the agent its unsettled items again. */
+  /** Hands the agent its unsettled items again, in case the request that did failed. */
   redispatchAgentQueue: HookFn<{ agentName: string }>;
-  /** Writes notifications that arrived into the conversation again. */
+  /** Writes notifications that arrived into the conversation again, as above. */
   writeNotificationCards: HookFn<{ agent: PiAgentConfig; notifications: PiAgentNotification[] }>;
+  /** Bills a classification; the event's id makes repeated deliveries idempotent. */
+  deliverClassificationUsage: HookFn<PiClassificationUsage>;
 };
 
 /**

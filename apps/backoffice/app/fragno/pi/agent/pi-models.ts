@@ -3,6 +3,8 @@ import { anthropicProvider } from "@earendil-works/pi-ai/providers/anthropic";
 import { googleProvider } from "@earendil-works/pi-ai/providers/google";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 
+import type { ClassifierContext, ClassifierResult } from "@earendil-works/pi-ai";
+
 import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
 
 import type { PiAvailableModel } from "./pi-agent-contract";
@@ -36,6 +38,33 @@ export function createPiModels(
   models.setProvider(anthropicProvider());
   models.setProvider(googleProvider());
   return models;
+}
+
+/** Answers typed questions about JSON state; resolves to an error result instead of rejecting. */
+export type PiClassifier = (context: ClassifierContext) => Promise<ClassifierResult>;
+
+/** A caller's classification: the evidence and the questions asked about it. */
+export type PiClassificationRequest = Pick<ClassifierContext, "state" | "questions">;
+
+/** Classifies with OpenAI's Decisions API, which requires an OpenAI API key. */
+export function createPiClassifier(
+  env: Pick<BackofficeRuntimeEnv, "OPENAI_API_KEY">,
+): PiClassifier | null {
+  if (!env.OPENAI_API_KEY) {
+    return null;
+  }
+  const models = createModels({
+    authContext: {
+      env: async (name) => (name === "OPENAI_API_KEY" ? env.OPENAI_API_KEY : undefined),
+      fileExists: async () => false,
+    },
+  });
+  models.setProvider(openaiProvider());
+  const model = models.getModelOfType("classifier", "openai", "gpt-6-luna");
+  if (!model) {
+    throw new Error("pi-ai no longer lists OpenAI's gpt-6-luna classifier.");
+  }
+  return async (context) => await models.classify(model, context);
 }
 
 /** Lists supported chat models whose provider credentials are available to durable Pi. */

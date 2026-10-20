@@ -71,6 +71,9 @@ export const BACKOFFICE_PERMISSION = {
     read: { namespace: "org", permission: "read" },
     manage: { namespace: "org", permission: "manage" },
   },
+  models: {
+    classify: { namespace: "models", permission: "classify" },
+  },
   marketplace: {
     read: { namespace: "marketplace", permission: "read" },
     publish: { namespace: "marketplace", permission: "publish" },
