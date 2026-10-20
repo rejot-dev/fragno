@@ -4,6 +4,7 @@ import { RouterContextProvider } from "react-router";
 
 import type { BackofficeMeData } from "@/fragno/auth/contracts";
 import { provideBackofficeShellRequest } from "@/layouts/backoffice-layout.test-support";
+import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 const { fetchPiManagerAvailableModelsMock } = vi.hoisted(() => ({
   fetchPiManagerAvailableModelsMock: vi.fn(),
@@ -33,6 +34,7 @@ function layoutContext(
   routeScope: { kind: "system" } | { kind: "org"; organization: typeof organization },
 ) {
   const context = new RouterContextProvider();
+  context.set(BackofficeWorkerContext, { runtime: { reson8: null } } as never);
   provideBackofficeShellRequest(context, {
     me: { user: { id: "user-1" }, ...me } as BackofficeMeData,
     routeScope: routeScope as never,

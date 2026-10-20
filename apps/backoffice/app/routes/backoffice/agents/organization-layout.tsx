@@ -1,4 +1,7 @@
-import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  backofficeScopeOrganization,
+  backofficeScopePathSegment,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { Outlet, type ShouldRevalidateFunctionArgs } from "react-router";
 
 import { backofficeContextScopeLabel } from "@/backoffice-runtime/context";
@@ -7,12 +10,13 @@ import {
   getBackofficeShellRequest,
   requireRouteScope,
 } from "@/layouts/backoffice-shell-request.server";
+import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { Route } from "./+types/organization-layout";
 import { isPiConversationSubmission } from "./agent-conversation-submission";
 import { fetchPiManagerAvailableModels } from "./data";
 import { isPiAgentsPath } from "./path";
-import { PiErrorBoundary } from "./shared";
+import { PiErrorBoundary, type PiLayoutContext } from "./shared";
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { me } = getBackofficeShellRequest(context);
@@ -34,6 +38,9 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     scopeLabel: backofficeContextScopeLabel(execution.scope),
     billingOrganization,
     availableModelOptions,
+    dictationMountRoute: context.get(BackofficeWorkerContext).runtime.reson8
+      ? `/api/reson8/${backofficeScopePathSegment(execution.scope)}`
+      : null,
   };
 }
 
@@ -53,7 +60,13 @@ export function ErrorBoundary({ error, params }: Route.ErrorBoundaryProps) {
 }
 
 export default function BackofficeScopedPiLayout({ loaderData, matches }: Route.ComponentProps) {
-  const { resolvedScope, scopeLabel, billingOrganization, availableModelOptions } = loaderData;
+  const {
+    resolvedScope,
+    scopeLabel,
+    billingOrganization,
+    availableModelOptions,
+    dictationMountRoute,
+  } = loaderData;
   const currentPath = matches[matches.length - 1]?.pathname ?? "";
   const isAgents = isPiAgentsPath(
     backofficeRouteScopeFromResolvedScope(resolvedScope),
@@ -70,7 +83,16 @@ export default function BackofficeScopedPiLayout({ loaderData, matches }: Route.
     >
       <h1 className="sr-only">Agents for {scopeLabel}</h1>
       <div className={isAgents ? "flex min-h-0 flex-1 flex-col" : undefined}>
-        <Outlet context={{ resolvedScope, billingOrganization, availableModelOptions }} />
+        <Outlet
+          context={
+            {
+              resolvedScope,
+              billingOrganization,
+              availableModelOptions,
+              dictationMountRoute,
+            } satisfies PiLayoutContext
+          }
+        />
       </div>
     </div>
   );

@@ -13,6 +13,7 @@ export type PiAgentsOutletContext = PiManagerAgentDirectory & {
   basePath: string;
   billingOrganization: { id: string; name: string } | null;
   availableModelOptions: PiAvailableModel[];
+  dictationMountRoute: string | null;
   agentsError: string | null;
   workspaceStates: SessionWorkspaceStateBySession;
   updateWorkspaceState: (agentName: string, update: SessionWorkspaceStateUpdate) => void;

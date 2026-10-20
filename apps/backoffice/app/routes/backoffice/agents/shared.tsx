@@ -10,6 +10,8 @@ export type PiLayoutContext = {
   resolvedScope: BackofficeResolvedScope;
   billingOrganization: { id: string; name: string } | null;
   availableModelOptions: PiAvailableModel[];
+  /** Where dictation mints Reson8 tokens; null when the deployment has no Reson8 key. */
+  dictationMountRoute: string | null;
 };
 
 export function PiErrorBoundary({ error }: { error: unknown; params: unknown }) {

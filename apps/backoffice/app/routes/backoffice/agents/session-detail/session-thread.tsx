@@ -68,6 +68,39 @@ function SendOrResume({
   );
 }
 
+const DICTATION_BUTTON_CLASS = `inline-flex min-h-10 w-10 items-center justify-center border transition-[border-color,color,scale] duration-150 ease-out disabled:cursor-not-allowed disabled:opacity-35 ${tapScale}`;
+
+/** Speech lands in the composer as the user talks; nothing is sent until they send it. */
+function DictationButton({ disabled }: { disabled: boolean }) {
+  const dictation = useAuiState((state) => state.composer.dictation?.status.type ?? null);
+  if (dictation === null) {
+    return (
+      <ComposerPrimitive.Dictate
+        disabled={disabled}
+        aria-label="Dictate"
+        title="Dictate"
+        className={`${DICTATION_BUTTON_CLASS} border-[color:var(--bo-border-strong)] bg-[var(--bo-panel)] text-[var(--bo-muted)] hover:border-[color:var(--bo-accent)] hover:text-[var(--bo-fg)]`}
+      >
+        <Icon name="mic" className="size-4" />
+      </ComposerPrimitive.Dictate>
+    );
+  }
+  return (
+    <ComposerPrimitive.StopDictation
+      aria-label="Stop dictation"
+      title="Stop dictation"
+      className={`${DICTATION_BUTTON_CLASS} border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]`}
+    >
+      {/* The microphone stays until Reson8 is listening, then turns into a stop control. */}
+      {dictation === "running" ? (
+        <span className="size-2.5 animate-pulse bg-[var(--bo-accent)]" />
+      ) : (
+        <Icon name="mic" className="size-4" />
+      )}
+    </ComposerPrimitive.StopDictation>
+  );
+}
+
 export function SessionThread({
   disabledReason,
   error,
@@ -96,6 +129,7 @@ export function SessionThread({
   historyError,
   onComposerActionChange,
   onLoadMoreHistory,
+  dictation,
 }: {
   disabledReason: string | null;
   error: string | null;
@@ -128,6 +162,8 @@ export function SessionThread({
   historyError: string | null;
   onComposerActionChange: (value: "message" | "compact") => void;
   onLoadMoreHistory: () => Promise<void>;
+  /** Whether the runtime has a dictation adapter to drive the microphone button. */
+  dictation: boolean;
 }) {
   const disabled = disabledReason !== null;
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -319,6 +355,7 @@ export function SessionThread({
                 ) : null}
               </div>
               <div className="flex items-center gap-1">
+                {dictation ? <DictationButton disabled={disabled} /> : null}
                 {needsNudge ? (
                   <Button variant="ghost" onClick={() => void onContinue()}>
                     Continue

@@ -53,6 +53,7 @@ import {
   usePiSessionViewStream,
   type PiAgentQueueState,
 } from "./session-detail/pi-session-view-stream";
+import { createReson8DictationAdapter } from "./session-detail/reson8-dictation";
 import { SessionThread } from "./session-detail/session-thread";
 import {
   SessionWorkspaceNavigationProvider,
@@ -455,6 +456,7 @@ function BackofficeOrganizationPiAgent({
     agents,
     availableModelOptions,
     basePath,
+    dictationMountRoute,
     resolvedScope,
     updateWorkspaceState,
     workspaceStates,
@@ -613,6 +615,10 @@ function BackofficeOrganizationPiAgent({
     [handleSend, conversationQueue.items],
   );
 
+  const dictation = useMemo(
+    () => (dictationMountRoute ? createReson8DictationAdapter(dictationMountRoute) : undefined),
+    [dictationMountRoute],
+  );
   const runtime = useExternalStoreRuntime({
     messages: assistantMessages,
     convertMessage: (message) => message,
@@ -620,6 +626,7 @@ function BackofficeOrganizationPiAgent({
     isSendDisabled: submitting,
     onNew: handleSend,
     queue,
+    adapters: { dictation },
   });
 
   useEffect(() => {
@@ -747,6 +754,7 @@ function BackofficeOrganizationPiAgent({
             storageKey={`backoffice:pi-agent-workspace:${basePath}`}
             left={
               <SessionThread
+                dictation={dictation !== undefined}
                 disabledReason={null}
                 error={sendError}
                 queueLabels={conversationQueue.labels}
