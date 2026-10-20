@@ -9,14 +9,11 @@ export async function loader({ context }: Route.LoaderArgs) {
   const { me } = getBackofficeShellRequest(context);
 
   const activeOrganization = me.activeOrganization?.organization;
-  if (!activeOrganization) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
-  const scopePath = backofficeRouteScopePath({
-    kind: "org",
-    orgSlug: activeOrganization.slug,
-  });
+  const scopePath = backofficeRouteScopePath(
+    activeOrganization
+      ? { kind: "org", orgSlug: activeOrganization.slug }
+      : { kind: "user", userId: me.user.id },
+  );
   return redirect(`/backoffice/agents/${scopePath}/agents`);
 }
 

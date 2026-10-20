@@ -101,6 +101,9 @@ export function BackofficeAccountMenu({ me, currentScope, isLoading }: Backoffic
           <SelectorMenuLink to="/backoffice/organizations" icon="users">
             Manage organizations
           </SelectorMenuLink>
+          <SelectorMenuLink to="/backoffice/usage" icon="credit-card">
+            Personal usage
+          </SelectorMenuLink>
           <SelectorMenuLink to="/backoffice/settings" icon="settings">
             Settings
           </SelectorMenuLink>

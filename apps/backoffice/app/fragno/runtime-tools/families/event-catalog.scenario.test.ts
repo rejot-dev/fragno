@@ -69,7 +69,6 @@ test("event catalog commands combine built-in descriptors with scoped dynamic de
               runtime: ctx.runtime.services,
               kernel,
               execution: createBackofficeSystemExecution({ kind: "user", userId: "user-1" }),
-              billingOrganizationId: null,
             });
             assert(context.stateBackend);
             const { bash } = await createInteractiveBashHost({
@@ -129,7 +128,6 @@ test("event catalog commands combine built-in descriptors with scoped dynamic de
               runtime: ctx.runtime.services,
               kernel,
               execution: createBackofficeSystemExecution({ kind: "user", userId: "user-2" }),
-              billingOrganizationId: null,
             });
             assert(otherContext.stateBackend);
             const otherBash = (

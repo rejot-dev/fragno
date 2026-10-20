@@ -61,7 +61,6 @@ const workflowParams = (orgId: string, instanceId: string, actors: unknown) => (
     scopeRestriction: null,
     scope: { kind: "org", orgId },
     actors,
-    billingOrganizationId: "caller-billing-org",
     capabilityGrants: [],
   },
 });
@@ -172,7 +171,6 @@ describe("scenario workflow ownership", () => {
                   execution: {
                     scope: unknown;
                     actors: unknown;
-                    billingOrganizationId: string | null;
                   };
                 };
               };
@@ -182,14 +180,14 @@ describe("scenario workflow ownership", () => {
             expect(instance.meta.params.trigger.event.actors).toEqual(ownerExecution.actors);
             expect(instance.meta.params.execution.scope).toEqual(scope);
             expect(instance.meta.params.execution.actors).toEqual(ownerExecution.actors);
-            assert.equal(instance.meta.params.execution.billingOrganizationId, "org-1");
+            expect(instance.meta.params.execution).not.toHaveProperty("billingOrganizationId");
           }),
         ],
       }),
     );
   });
 
-  test("authorizes user-scoped billing selections before single, batch, and restart-or-create persistence", async () => {
+  test("ignores forged billing selections in user-scoped single, batch, and restart-or-create requests", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         objects: scenarioObjects,
@@ -203,7 +201,7 @@ describe("scenario workflow ownership", () => {
         ],
         steps: ({ then }) => [
           then.assert(
-            "only an authorized billing selection is persisted with trusted provenance",
+            "ownership and provenance come from execution, not a billing selection",
             async ({ runtime }) => {
               const scope = { kind: "user", userId: "member" } as const;
               const execution = createBackofficeUserExecution({ scope, userId: "member" });
@@ -211,11 +209,11 @@ describe("scenario workflow ownership", () => {
               const forgedActors = createBackofficeUserExecution({ scope, userId: "owner" }).actors;
               for (const shape of ["single", "batch", "restart-or-create"]) {
                 for (const [billingOrganizationId, expectedStatus] of [
-                  ["foreign-org", 403],
-                  ["", 400],
+                  ["foreign-org", 200],
+                  ["", 200],
                   ["org-1", 200],
                 ] as const) {
-                  const instanceId = `${shape}-${expectedStatus}`;
+                  const instanceId = `${shape}-${billingOrganizationId || "empty"}`;
                   const params = {
                     ...workflowParams("forged-org", instanceId, forgedActors),
                     trigger: { type: "manual", payload: {} },
@@ -276,7 +274,6 @@ describe("scenario workflow ownership", () => {
                     scope,
                     actors: execution.actors,
                     capabilityGrants: [],
-                    billingOrganizationId: "org-1",
                   });
                 }
               }

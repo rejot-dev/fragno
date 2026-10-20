@@ -128,7 +128,6 @@ function workspace(
       scope: selectedScope,
       service: { type: "automation", id: "extension-builder" },
     }),
-    billingOrganizationId: null,
   });
 }
 
@@ -178,7 +177,6 @@ async function runPrompt(
     {
       requestId,
       content: "Use workspace guidance.",
-      billingOrganizationId: selectedScope.kind === "system" ? null : "org-1",
     },
     selectedScope,
   );
@@ -236,7 +234,6 @@ test("js.build publishes ordinary ES modules without executing or inspecting the
             const codemode = codemodeRunnerFor(
               runtime.objects.codemode.for(scope).commands,
               createBackofficeSystemExecution(scope),
-              null,
             );
             assert.equal(
               await runBackofficeCompiledModule({
@@ -1216,7 +1213,6 @@ test("js.build validates CLI inputs and scoped modification authority before com
             runtime: runtime.services,
             kernel: new BackofficeKernel(runtime.services),
             execution: createBackofficeUserExecution({ scope, userId: "outsider" }),
-            billingOrganizationId: null,
           });
           const denied = await (
             await createInteractiveBashHost({ context: deniedContext })

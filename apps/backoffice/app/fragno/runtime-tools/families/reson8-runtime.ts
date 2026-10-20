@@ -9,7 +9,7 @@ import {
   type Reson8PrerecordedTranscription,
 } from "@fragno-dev/reson8-fragment";
 
-import type { BillingEventInput, BillingRecordEventResult } from "@/fragno/billing/contracts";
+import type { UsageBilling } from "@/fragno/billing/usage-billing";
 import type { Reson8Fragment } from "@/fragno/reson8";
 
 import { isSuccessStatus, throwOnRouteRuntimeError } from "../runtime-errors";
@@ -25,19 +25,18 @@ export type Reson8Runtime = {
 };
 
 /**
- * Reson8 under the platform key. Prerecorded transcriptions are billed to the paying organization;
+ * Reson8 under the platform key. Prerecorded transcriptions are attributed to their scope's root owner;
  * realtime audio streams to Reson8 directly, so realtime tokens are not.
  */
 export function createReson8Runtime({
   reson8,
   scope,
-  recordBillingEvent,
+  billing,
   nowEpochMs,
 }: {
   reson8: Reson8Fragment;
   scope: BackofficeContextScope;
-  /** Null when no organization pays for this caller's usage. */
-  recordBillingEvent: ((event: BillingEventInput) => Promise<BillingRecordEventResult>) | null;
+  billing: UsageBilling;
   nowEpochMs: () => number;
 }): Reson8Runtime {
   // In-process, so the request carries no caller headers for the fragment to prefer over its key.
@@ -61,26 +60,31 @@ export function createReson8Runtime({
         });
       }
       const transcription = reson8PrerecordedTranscriptionSchema.parse(response.data);
-      await recordBillingEvent?.({
-        id: `reson8-prerecorded:${crypto.randomUUID()}`,
-        scope,
-        source: "reson8",
-        eventType: "prerecorded.transcribed",
-        occurredAt: new Date(nowEpochMs()).toISOString(),
-        measurements: [
-          { meter: "transcription.requests", unit: "request", quantity: 1 },
-          // Reson8 reports the duration it transcribed; requests are still counted without it.
-          ...(transcription.duration_ms === undefined
-            ? []
-            : [
-                {
-                  meter: "transcription.audio",
-                  unit: "millisecond",
-                  quantity: Math.round(transcription.duration_ms),
-                },
-              ]),
-        ],
-      });
+      if (billing.kind === "customer") {
+        await billing.recordEvent(
+          {
+            id: `reson8-prerecorded:${crypto.randomUUID()}`,
+            scope,
+            source: "reson8",
+            eventType: "prerecorded.transcribed",
+            occurredAt: new Date(nowEpochMs()).toISOString(),
+            measurements: [
+              { meter: "transcription.requests", unit: "request", quantity: 1 },
+              // Reson8 reports the duration it transcribed; requests are still counted without it.
+              ...(transcription.duration_ms === undefined
+                ? []
+                : [
+                    {
+                      meter: "transcription.audio",
+                      unit: "millisecond",
+                      quantity: Math.round(transcription.duration_ms),
+                    },
+                  ]),
+            ],
+          },
+          { propagationContext: null },
+        );
+      }
       return transcription;
     },
     async createRealtimeToken() {

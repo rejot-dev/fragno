@@ -199,7 +199,6 @@ async function createTerminal(
     runtime,
     execution,
     kernel: new BackofficeKernel(runtime),
-    billingOrganizationId: null,
   });
   assert(context.stateBackend);
   const { bash } = await createInteractiveBashHost({

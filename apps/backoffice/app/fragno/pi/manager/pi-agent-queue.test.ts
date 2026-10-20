@@ -36,7 +36,6 @@ type PromptInput = {
   whenBusy?: "followUp" | "steer" | "reject";
   whenPaused?: "wait" | "resume";
   agentName?: string;
-  billingOrganizationId?: string | null;
 };
 
 type NotificationInput = {
@@ -172,7 +171,7 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
           content: `Prompt ${prompt.requestId}.`,
           whenBusy: prompt.whenBusy ?? "followUp",
           whenPaused: prompt.whenPaused ?? "wait",
-          billingOrganizationId: prompt.billingOrganizationId ?? null,
+
           provenance: provenance(sender),
         },
       });
@@ -449,20 +448,6 @@ test("resuming starts the next turn at once, or when the stopped turn settles", 
   expect(queue.turns()).toHaveLength(2);
   await queue.settle("second");
   assert(queue.turns().at(-1) === "dispatch third");
-});
-
-test("a personal agent's first prompt needs a billing owner and records nothing without one", async () => {
-  const queue = await piManagerQueue({ kind: "user", userId: "user-1" });
-  const refused = await queue.prompt({ requestId: "first" });
-  assert(refused.type === "error");
-  assert(refused.error.code === "PI_BILLING_OWNER_REQUIRED");
-  assert((await queue.submission("first")) === "error");
-
-  expect(await queue.receipt({ requestId: "first", billingOrganizationId: "org-1" })).toEqual({
-    requestId: "first",
-    status: "queued",
-  });
-  expect(queue.requestIds()).toEqual(["dispatch first"]);
 });
 
 test("the queue's hook hands over again what a failed request did not", async () => {

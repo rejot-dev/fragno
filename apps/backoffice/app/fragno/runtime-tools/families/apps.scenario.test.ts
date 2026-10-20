@@ -97,7 +97,6 @@ function appContext(
     runtime: ctx.runtime.services,
     kernel: new BackofficeKernel(ctx.runtime.services),
     execution,
-    billingOrganizationId: null,
   });
 }
 
@@ -278,7 +277,6 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
                 codemode: codemodeRunnerFor(
                   ctx.runtime.objects.codemode.for(ownerContext.execution.scope).commands,
                   ownerContext.execution,
-                  null,
                 ),
                 families: runtimeToolFamilies,
                 toolContext: createBackofficeToolContext(ownerContext),
@@ -362,7 +360,6 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
                 codemode: codemodeRunnerFor(
                   ctx.runtime.objects.codemode.for(adminTools.execution.scope).commands,
                   adminTools.execution,
-                  null,
                 ),
                 families: runtimeToolFamilies,
                 toolContext: adminTools,
@@ -507,7 +504,6 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
               codemode: codemodeRunnerFor(
                 ctx.runtime.objects.codemode.for(memberTools.execution.scope).commands,
                 memberTools.execution,
-                null,
               ),
               families: runtimeToolFamilies,
               toolContext: memberTools,

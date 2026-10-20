@@ -110,7 +110,6 @@ describe("static Marketplace publication scenarios", () => {
                 scope: { kind: "system" },
                 userId: "admin-1",
               }),
-              billingOrganizationId: null,
             });
             assert(context.stateBackend);
             const { bash } = await createInteractiveBashHost({
@@ -191,7 +190,6 @@ describe("static Marketplace publication scenarios", () => {
                 runtime: ctx.runtime.services,
                 kernel: new BackofficeKernel(ctx.runtime.services),
                 execution,
-                billingOrganizationId: null,
               });
               assert(context.stateBackend);
               const { bash } = await createInteractiveBashHost({
@@ -302,7 +300,6 @@ describe("static Marketplace publication scenarios", () => {
                 scope: { kind: "system" },
                 userId: "user-1",
               }),
-              billingOrganizationId: null,
             });
             assert(context.stateBackend);
             const { bash } = await createInteractiveBashHost({

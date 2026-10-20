@@ -90,7 +90,6 @@ async function curate(
     runtime: ctx.runtime.services,
     kernel: new BackofficeKernel(ctx.runtime.services),
     execution,
-    billingOrganizationId: null,
   });
   assert(context.stateBackend);
   return await (

@@ -57,7 +57,7 @@ function AgentCard({ agent, to }: { agent: PiManagerAgent; to: string }) {
         <h3 className="min-w-0 text-xl font-semibold tracking-[-0.02em] text-balance text-[var(--bo-fg)] transition-colors duration-150 ease-out group-hover:text-[var(--bo-accent-fg)]">
           {formatPiAgentName(agent.agentName)}
         </h3>
-        {agent.provisioning ? (
+        {agent.provisioned ? (
           <BackofficeStatusLight tone="live">Active</BackofficeStatusLight>
         ) : (
           <BackofficeStatusLight tone="muted">Not started</BackofficeStatusLight>

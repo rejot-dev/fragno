@@ -82,7 +82,6 @@ test("identity.external.list pages through active and revoked bindings", async (
               runtime: ctx.runtime.services,
               kernel: new BackofficeKernel(ctx.runtime.services),
               execution,
-              billingOrganizationId: null,
             });
             assert(context.stateBackend);
             const { bash } = await createInteractiveBashHost({

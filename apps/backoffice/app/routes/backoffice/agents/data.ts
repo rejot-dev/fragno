@@ -156,7 +156,7 @@ export async function fetchPiManagerAgentDetail(
       },
     };
   }
-  if (!agentResponse.data.provisioning) {
+  if (!agentResponse.data.provisioned) {
     return { detail: { agent: agentResponse.data, view: null }, agentError: null };
   }
 
@@ -215,7 +215,6 @@ export async function submitPiManagerPrompt(
     content: string;
     whenBusy: z.infer<typeof piPromptWhenBusySchema>;
     whenPaused: "wait" | "resume";
-    billingOrganizationId: string | null;
   },
 ): Promise<{ receipt: PiPromptReceipt; error: null } | { receipt: null; error: string }> {
   const { callRoute, execution } = await createPiManagerRouteCaller(request, context, scope);

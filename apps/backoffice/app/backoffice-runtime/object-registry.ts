@@ -794,7 +794,7 @@ export const backofficeObjectScopePolicy = {
   // An installed app's workspace keeps its data: store, files, events, routes, and workflows.
   AUTOMATIONS: ["singleton", "org", "user", "app", "project"],
   PI_MANAGER: ["singleton", "org", "user", "project"],
-  BILLING: ["org"],
+  BILLING: ["org", "user"],
   CODEMODE: ["singleton", "org", "user", "app", "project"],
   MARKETPLACE: ["singleton", "org"],
 

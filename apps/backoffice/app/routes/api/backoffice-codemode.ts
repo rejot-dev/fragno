@@ -39,7 +39,6 @@ export async function action({ request, context, params }: Route.ActionArgs) {
     runtime,
     kernel,
     execution: execution,
-    billingOrganizationId: null,
   });
   const toolContext = createBackofficeToolContext(routeRuntimeContext);
 
@@ -49,7 +48,6 @@ export async function action({ request, context, params }: Route.ActionArgs) {
     codemode: codemodeRunnerFor(
       kernel.scoped("CODEMODE", execution.scope, runtime.objects.codemode).commands,
       execution,
-      null,
     ),
     timeout: body.timeout,
     toolContext: toolContext,

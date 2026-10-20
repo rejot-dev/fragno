@@ -19,6 +19,7 @@ export default [
     ...prefix("backoffice", [
       index("routes/backoffice/index.tsx"),
       route("organizations", "routes/backoffice/organizations.tsx"),
+      route("usage", "routes/backoffice/organization-billing.tsx", { id: "personal-usage" }),
       route("dashboard", "routes/backoffice/dashboard/index.tsx"),
       route("dashboard/:scopeKind/:scopeId", "routes/backoffice/dashboard/dashboard.tsx"),
       route("dashboard/:scopeKind/:scopeId/events", "routes/backoffice/dashboard/events.tsx"),

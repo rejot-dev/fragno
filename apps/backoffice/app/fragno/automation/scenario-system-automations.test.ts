@@ -566,7 +566,6 @@ describe("system automation scenarios", () => {
                   runtime: ctx.runtime.services,
                   kernel,
                   execution,
-                  billingOrganizationId: null,
                 }),
               });
 

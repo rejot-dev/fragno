@@ -78,7 +78,6 @@ describe("codemode invocation preparation", () => {
         prepared,
         trigger: { type: "event", event },
         execution,
-        billingOrganizationId: null,
         replyTo: null,
       }),
     ).toEqual({
@@ -92,7 +91,6 @@ describe("codemode invocation preparation", () => {
           scopeRestriction: null,
           scope: execution.scope,
           actors: execution.actors,
-          billingOrganizationId: "org-1",
           capabilityGrants: [],
         },
         replyTo: null,
@@ -130,7 +128,6 @@ describe("codemode invocation preparation", () => {
           event: { ...event, scope: { kind: "org", orgId: "org-2" } },
         },
         execution,
-        billingOrganizationId: null,
         replyTo: null,
       }),
     ).toThrow("Codemode event and execution scopes must match.");

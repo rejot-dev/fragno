@@ -683,7 +683,7 @@ function AgentsPanel({
                 {formatPiAgentName(agent.agentName)}
               </span>
               <span className="shrink-0 text-xs text-[var(--bo-muted-2)]">
-                {agent.provisioning ? "Active" : "Not started"}
+                {agent.provisioned ? "Active" : "Not started"}
               </span>
             </Link>
           </li>

@@ -165,7 +165,6 @@ describe("Marketplace discovery runtime scenarios", () => {
                 runtime: ctx.runtime.services,
                 kernel: new BackofficeKernel(ctx.runtime.services),
                 execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
-                billingOrganizationId: null,
               }),
             });
             const search = await bash.exec(

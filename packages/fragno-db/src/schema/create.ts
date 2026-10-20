@@ -909,6 +909,27 @@ export class TableBuilder<
     >;
   }
 
+  /** Drop an existing regular column. Drop its indexes first; references and IDs cannot be dropped. */
+  dropColumn<TName extends NonIdColumnName<TColumns> & string>(
+    name: TName,
+  ): TableBuilder<Omit<TColumns, TName>, TIndexes> {
+    const column = this.#columns[name];
+    if (!column || !this.#existingColumnNames.has(name)) {
+      throw new Error(`Unknown column name ${name}; only existing columns can be dropped.`);
+    }
+    if (column.role !== "regular") {
+      throw new Error(`Column ${this.#name}.${name} cannot be dropped: only regular columns can.`);
+    }
+    if (Object.values(this.#indexes).some((index) => index.columnNames.includes(name))) {
+      throw new Error(`Drop indexes on ${this.#name}.${name} before dropping the column.`);
+    }
+    const { [name]: _dropped, ...remaining } = this.#columns;
+    this.#columns = remaining as TColumns;
+    this.#existingColumnNames.delete(name);
+    this.#alterations.push({ type: "drop-column", name });
+    return this as unknown as TableBuilder<Omit<TColumns, TName>, TIndexes>;
+  }
+
   /**
    * Drop an existing index. Its name can be used again, e.g. to recreate the index on other
    * columns. Only available in `alterTable()`.
@@ -1099,7 +1120,10 @@ type UpdateColumn<
   TUpdatedColumn extends AnyColumn,
 > = Prettify<Omit<TColumns, TColumnName> & Record<TColumnName, TUpdatedColumn>>;
 
-type TableAlteration = Extract<TableSubOperation, { type: "rename-column" | "drop-index" }>;
+type TableAlteration = Extract<
+  TableSubOperation,
+  { type: "rename-column" | "drop-index" | "drop-column" }
+>;
 
 type RenameColumn<
   TColumns extends Record<string, AnyColumn>,
@@ -1407,8 +1431,14 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
             currentColumnNames.set(original, alteration.to);
           }
         }
-      } else {
+      } else if (alteration.type === "drop-index") {
         droppedIndexes.add(alteration.name);
+      } else {
+        for (const [original, current] of currentColumnNames) {
+          if (current === alteration.name) {
+            currentColumnNames.delete(original);
+          }
+        }
       }
     }
     const existingColumns = new Set(currentColumnNames.values());

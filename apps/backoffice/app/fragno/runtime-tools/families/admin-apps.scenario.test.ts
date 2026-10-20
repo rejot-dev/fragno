@@ -76,7 +76,6 @@ function appAdminContext(
     runtime: ctx.runtime.services,
     kernel: new BackofficeKernel(ctx.runtime.services),
     execution: createBackofficeUserExecution({ scope, userId }),
-    billingOrganizationId: null,
   });
 }
 
@@ -263,7 +262,6 @@ describe("admin app runtime tool SQLite scenarios", () => {
               codemode: codemodeRunnerFor(
                 ctx.runtime.objects.codemode.for(toolContext.execution.scope).commands,
                 toolContext.execution,
-                null,
               ),
               families: runtimeToolFamilies,
               toolContext,
@@ -383,7 +381,6 @@ describe("admin app runtime tool SQLite scenarios", () => {
               codemode: codemodeRunnerFor(
                 ctx.runtime.objects.codemode.for(userTools.execution.scope).commands,
                 userTools.execution,
-                null,
               ),
               families: runtimeToolFamilies,
               toolContext: userTools,

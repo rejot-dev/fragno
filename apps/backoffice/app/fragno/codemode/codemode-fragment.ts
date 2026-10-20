@@ -49,8 +49,6 @@ export type CodemodeRunContext = {
   origin: CodemodeRunOrigin;
   actors: AutomationActors;
   scopeRestriction: BackofficeContextScope | null;
-  /** Pays for the run's guest; null bills nobody. */
-  billingOrganizationId: string | null;
 };
 
 export type CodemodeRunStartedHookPayload = CodemodeRunContext & {
@@ -129,7 +127,8 @@ const codemodeSchema = schema("codemode", (s) =>
     .alterTable("run", (t) =>
       // Runs started before billing were billed to nobody.
       t.addColumn("billingOrganizationId", column("string").nullable()),
-    ),
+    )
+    .alterTable("run", (t) => t.dropColumn("billingOrganizationId")),
 );
 
 function codemodeRunFromRecord(record: {
@@ -138,7 +137,6 @@ function codemodeRunFromRecord(record: {
   origin: CodemodeRunOrigin;
   actors: AutomationActors;
   scopeRestriction: BackofficeContextScope | null;
-  billingOrganizationId: string | null;
   outcome: CodemodeRunOutcome | null;
   createdAt: Date;
 }): CodemodeRun {
@@ -148,7 +146,6 @@ function codemodeRunFromRecord(record: {
     origin: record.origin,
     actors: record.actors,
     scopeRestriction: record.scopeRestriction,
-    billingOrganizationId: record.billingOrganizationId,
     createdAt: record.createdAt.toISOString(),
   };
   return record.outcome === null ? { ...run, status: "running" } : { ...run, ...record.outcome };
@@ -221,7 +218,6 @@ const codemodeFragmentDefinition = defineFragment<CodemodeFragmentConfig>("codem
               origin: run.origin,
               actors: run.actors,
               scopeRestriction: run.scopeRestriction,
-              billingOrganizationId: run.billingOrganizationId,
               runId,
               activationKind: run.activationKind,
               startedAt: run.createdAt.toISOString(),

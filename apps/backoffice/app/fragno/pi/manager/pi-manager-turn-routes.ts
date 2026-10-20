@@ -1,5 +1,4 @@
 import {
-  piBillingOrganizationIdSchema,
   piPromptReceiptOutputSchema,
   piPromptWhenBusySchema,
   type PiAgentDefinition,
@@ -32,12 +31,10 @@ export const promptRequestSchema = z.object({
   content: piAgentPromptSchema.shape.content,
   whenBusy: piPromptWhenBusySchema.default("followUp"),
   whenPaused: promptWhenPausedSchema.default("wait"),
-  billingOrganizationId: piBillingOrganizationIdSchema.default(null),
 });
 const promptSchema = piAgentPromptSchema.extend({
   whenBusy: piPromptWhenBusySchema,
   whenPaused: promptWhenPausedSchema,
-  billingOrganizationId: piBillingOrganizationIdSchema,
   provenance: turnProvenanceSchema,
 });
 const compactionSchema = piAgentCompactionSchema.extend({ provenance: turnProvenanceSchema });
@@ -98,15 +95,9 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
         path: "/agents/:agentName/prompts",
         inputSchema: promptSchema,
         outputSchema: piPromptReceiptOutputSchema,
-        errorCodes: [
-          "AGENT_NOT_FOUND",
-          "MODEL_UNAVAILABLE",
-          "PI_BILLING_OWNER_REQUIRED",
-          "AGENT_BUSY",
-        ],
+        errorCodes: ["AGENT_NOT_FOUND", "MODEL_UNAVAILABLE", "AGENT_BUSY"],
         handler: async function ({ pathParams, input }, { json, error }) {
-          const { provenance, billingOrganizationId, whenBusy, whenPaused, ...prompt } =
-            await input.valid();
+          const { provenance, whenBusy, whenPaused, ...prompt } = await input.valid();
           const { agentName } = pathParams;
           const availableModels = await config.supportedAvailableModels();
           const submitted = await this.handlerTx()
@@ -119,7 +110,6 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
                     whenBusy,
                     whenPaused,
                     provenance,
-                    billingOrganizationId,
                     availableModels,
                   }),
                 ] as const,
@@ -128,15 +118,6 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
             .execute();
           if (submitted.type === "error") {
             return error({ code: submitted.code, message: submitted.message }, submitted.status);
-          }
-          if (submitted.type === "billing-owner-required") {
-            return error(
-              {
-                code: "PI_BILLING_OWNER_REQUIRED",
-                message: "A user-scoped Pi agent's first turn requires a billing organization.",
-              },
-              400,
-            );
           }
           if (submitted.type === "busy") {
             return error(

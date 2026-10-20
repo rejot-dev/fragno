@@ -1,6 +1,10 @@
 import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
 import { PathError } from "@earendil-works/chord/delta";
 import { piAgentConfigSchema, type PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
+import {
+  backofficeContextScopeSchema,
+  type BackofficeContextScope,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 import type { PostHog } from "posthog-node";
 import { z } from "zod";
@@ -68,6 +72,7 @@ import { createCloudflarePostHog, shutdownCloudflarePostHog } from "./lib/cloudf
 import { openPiSessionStore } from "./lib/pi-session-store";
 
 const AGENT_CONFIG_KEY = "pi-agent-config";
+const LEGACY_BILLING_SCOPE_KEY = "pi-legacy-billing-scope";
 const WAKE_HEARTBEAT_MS = 30_000;
 const WAKE_BUDGET_MS = 10 * 60_000;
 
@@ -82,6 +87,7 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
   readonly #idFromConfig: (config: PiAgentConfig) => DurableObjectId;
   readonly #nowEpochMs: () => number;
   #config: PiAgentConfig | null = null;
+  #legacyBillingScope: BackofficeContextScope | null = null;
   #opened: OpenPiAgent | null = null;
   #opening: Promise<OpenPiAgent> | null = null;
   #admitting = 0;
@@ -109,11 +115,24 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
     this.#idFromConfig = idFromConfig;
     this.#nowEpochMs = nowEpochMs;
     this.#ready = state.blockConcurrencyWhile(async () => {
-      const config = await state.storage.get<PiAgentConfig>(AGENT_CONFIG_KEY);
-      if (!config) {
+      const stored = await state.storage.get<Record<string, unknown>>(AGENT_CONFIG_KEY);
+      if (!stored) {
         return;
       }
+      const config = piAgentConfigSchema.parse(stored);
       this.#assertObjectIdentity(config);
+      // A delivery queued before this upgrade may already have reached its old organization.
+      // Keep that destination across restarts so retrying cannot also charge the user's ledger.
+      if ("billingOrganizationId" in stored) {
+        const organizationId = z.string().nullable().parse(stored.billingOrganizationId);
+        this.#legacyBillingScope =
+          organizationId === null ? { kind: "system" } : { kind: "org", orgId: organizationId };
+        await state.storage.put(LEGACY_BILLING_SCOPE_KEY, this.#legacyBillingScope);
+        await state.storage.put(AGENT_CONFIG_KEY, config);
+      } else {
+        const legacy = await state.storage.get(LEGACY_BILLING_SCOPE_KEY);
+        this.#legacyBillingScope = backofficeContextScopeSchema.parse(legacy);
+      }
       this.#config = config;
     });
     // Startup failures must not poison configuration readiness or prevent a later open from retrying.
@@ -151,8 +170,12 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
       return await this.#opening;
     }
     // Once external work leaves the input gate, concurrent requests must still share one storage owner.
+    if (this.#legacyBillingScope === null) {
+      throw new Error("Pi billing attribution has not been initialized.");
+    }
     const opening = openPiAgentHarness({
       config,
+      legacyBillingScope: this.#legacyBillingScope,
       runtime: this.#runtime,
       dependencies: this.#dependencies,
       openStorage: this.#openStorage,
@@ -168,9 +191,7 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
   }
 
   async #ensureBillingDelivery(opened: OpenPiAgent) {
-    return (
-      (await opened.billing?.ensure(opened.harness, this.#nowEpochMs(), BACKGROUND_CONTEXT)) ?? null
-    );
+    return await opened.billing.ensure(opened.harness, this.#nowEpochMs(), BACKGROUND_CONTEXT);
   }
 
   async #requireAgent(rawConfig: PiAgentConfig) {
@@ -184,9 +205,11 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
         }
         return;
       }
-      // Persist provisioning before opening Pi so a cold start can finish initialization.
+      // Persist attribution before provisioning so a cold start cannot omit a delivery destination.
+      await this.#state.storage.put(LEGACY_BILLING_SCOPE_KEY, config.scope);
       await this.#state.storage.put(AGENT_CONFIG_KEY, config);
       this.#config = config;
+      this.#legacyBillingScope = config.scope;
     });
     return await this.#open(config);
   }
@@ -460,7 +483,7 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
       await harness.waitForIdle(alarmContext);
       // A throw keeps the heartbeat alarm, which retries reports a restart or failure left behind.
       await opened.reportSettledTurns(alarmContext);
-      await opened.billing?.flush(harness, this.#nowEpochMs, alarmContext);
+      await opened.billing.flush(harness, this.#nowEpochMs, alarmContext);
     } catch (error) {
       if (!controller.signal.aborted) {
         throw error;

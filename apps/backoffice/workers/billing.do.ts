@@ -23,7 +23,7 @@ import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-ob
 import type { BackofficeObjectImplementation } from "./lib/backoffice-object-implementation";
 import { createCloudflareBackofficeObjectContext } from "./lib/cloudflare-backoffice-object-implementation";
 
-type BillingOwnerScope = Extract<BackofficeContextScope, { kind: "org" }>;
+type BillingOwnerScope = Extract<BackofficeContextScope, { kind: "org" | "user" }>;
 
 export class InMemoryBillingObject extends RpcTarget implements BillingObject {
   readonly #host: FragmentDurableObjectHost<void, BillingFragment>;
@@ -41,8 +41,8 @@ export class InMemoryBillingObject extends RpcTarget implements BillingObject {
   }) {
     super();
     const ownerScope = requireBackofficeContextScopeFromDurableObjectId(state.id, "BILLING");
-    if (ownerScope.kind !== "org") {
-      throw new Error("Billing objects require an organization scope.");
+    if (ownerScope.kind !== "org" && ownerScope.kind !== "user") {
+      throw new Error("Billing objects require an organization or user scope.");
     }
     this.#ownerScope = ownerScope;
     this.#host = implementation.createFragmentHost({

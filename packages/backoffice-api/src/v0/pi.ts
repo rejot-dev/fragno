@@ -17,15 +17,11 @@ export const piAgentModelSchema = z.lazy(() =>
   }),
 );
 
-/** Organization and project agents bill their organization; user and system agents choose once. */
-export const piBillingOrganizationIdSchema = z.lazy(() => z.string().trim().min(1).nullable());
-
-/** One agent object's immutable provisioning: its address and the billing owner chosen once. */
+/** One agent object's immutable address; usage belongs to its scope's root owner. */
 export const piAgentConfigSchema = z.lazy(() =>
   z.object({
     scope: backofficeContextScopeSchema,
     agentName: piAgentNameSchema,
-    billingOrganizationId: piBillingOrganizationIdSchema,
   }),
 );
 
@@ -112,10 +108,10 @@ export const piAgentDefinitionCreateSchema = z.lazy(() =>
 
 export type PiAgentDefinitionCreate = z.infer<typeof piAgentDefinitionCreateSchema>;
 
-/** A defined agent; `provisioning` is null until its durable conversation receives a first turn. */
+/** A defined agent; its durable conversation is provisioned by its first turn. */
 export const piManagerAgentSchema = z.lazy(() =>
   piAgentDefinitionSchema._zod.innerType.extend({
-    provisioning: z.object({ billingOrganizationId: piBillingOrganizationIdSchema }).nullable(),
+    provisioned: z.boolean(),
   }),
 );
 
@@ -174,7 +170,6 @@ const promptSubmitInputSchema = z.lazy(() =>
     content: z.string().trim().min(1),
     requestId: z.string().trim().min(1).optional(),
     whenBusy: piPromptWhenBusySchema.optional(),
-    billingOrganizationId: piBillingOrganizationIdSchema.optional(),
   }),
 );
 
@@ -226,7 +221,7 @@ export const piOperations = {
   },
   "pi.prompt.submit": {
     description:
-      "Durably queue a prompt for an agent, or steer its running turn, and return a receipt saying which. A request ID still queued is not queued twice. The turn runs with the caller's current permissions, narrowed by the agent's definition. A user- or system-scoped agent's first turn sets its billing organization; omitting billingOrganizationId inherits the calling Pi agent or workflow's.",
+      "Durably queue a prompt for an agent, or steer its running turn, and return a receipt saying which. A request ID still queued is not queued twice. The turn runs with the caller's current permissions, narrowed by the agent's definition. Usage belongs to the agent scope's root owner, independently of the caller or their active organization.",
     permissions: [BACKOFFICE_PERMISSION.pi.modify],
     input: promptSubmitInputSchema,
     output: piPromptReceiptOutputSchema,

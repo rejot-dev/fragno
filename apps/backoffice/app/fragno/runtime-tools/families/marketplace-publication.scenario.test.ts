@@ -135,7 +135,6 @@ async function publisherShell(
     runtime: ctx.runtime.services,
     kernel: new BackofficeKernel(ctx.runtime.services),
     execution,
-    billingOrganizationId: null,
   });
   assert(context.stateBackend);
   return (
@@ -151,7 +150,6 @@ async function systemPublisher(ctx: BackofficeScenarioContext, state: Backoffice
     runtime: ctx.runtime.services,
     kernel,
     execution,
-    billingOrganizationId: null,
   });
   // The trusted System shell supplies a concrete readable source; flags never select a source scope.
   context.marketplace = {

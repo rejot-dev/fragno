@@ -60,16 +60,12 @@ const formatTimestamp = (value: string) => BILLING_TIMESTAMP_FORMATTER.format(ne
 const billingPagePath = (period: string) => `?${new URLSearchParams({ period }).toString()}`;
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
-  if (!params.orgSlug) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
   const { me } = getBackofficeShellRequest(context);
 
   const organization = me.organizations.find(
     (entry) => entry.organization.slug === params.orgSlug,
   )?.organization;
-  if (!organization) {
+  if (params.orgSlug && !organization) {
     throwBackofficeOrganizationNotFound(params.orgSlug);
   }
 
@@ -85,18 +81,20 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   const period = periodResult.data;
   const billing = context
     .get(BackofficeWorkerContext)
-    .runtime.objects.billing.forOrg(organization.id).commands;
+    .runtime.objects.billing.for(
+      organization ? { kind: "org", orgId: organization.id } : { kind: "user", userId: me.user.id },
+    ).commands;
   const statement = await billing.getStatement({ period });
 
-  return { period, trackers: statement.trackers };
+  return { period, trackers: statement.trackers, ownerName: organization?.name ?? "Personal" };
 }
 
-export function meta() {
-  return [{ title: "Organization Billing" }];
+export function meta({ loaderData }: Route.MetaArgs) {
+  return [{ title: `${loaderData?.ownerName ?? "Personal"} usage` }];
 }
 
 export default function BackofficeOrganizationBilling({ loaderData }: Route.ComponentProps) {
-  const { period, trackers } = loaderData;
+  const { period, trackers, ownerName } = loaderData;
   const totalCost = trackers.find((tracker) => tracker.meter === TOTAL_COST_METER)?.quantity;
   const previousPeriod = shiftPeriod(period, -1);
   const nextPeriod = shiftPeriod(period, 1);
@@ -105,9 +103,9 @@ export default function BackofficeOrganizationBilling({ loaderData }: Route.Comp
   return (
     <div className="space-y-4">
       <FormContainer
-        eyebrow="Statement period"
+        eyebrow={`${ownerName} usage`}
         title={formatPeriod(period)}
-        description="Usage is assigned to the UTC month in which each model operation completed."
+        description="Recorded usage by UTC month. These measurements are not an invoice."
         actions={
           <Form method="get" className="flex gap-2">
             <Input
@@ -126,7 +124,7 @@ export default function BackofficeOrganizationBilling({ loaderData }: Route.Comp
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-[10px] font-semibold tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
-              Estimated total
+              Recorded model cost
             </p>
             <p className="mt-2 text-4xl font-semibold tracking-[-0.04em] text-[var(--bo-fg)]">
               {formatUsd(totalCost)}
@@ -142,8 +140,8 @@ export default function BackofficeOrganizationBilling({ loaderData }: Route.Comp
 
       <FormContainer
         eyebrow="Recorded measurements"
-        title="Statement ledger"
-        description="Monthly counters maintained by this organization's Billing object, ordered by meter."
+        title="Usage ledger"
+        description="Monthly usage counters, ordered by meter."
       >
         {trackers.length === 0 ? (
           <div className="border border-dashed border-[color:var(--bo-border-strong)] bg-[var(--bo-panel-2)] px-5 py-8 text-center">

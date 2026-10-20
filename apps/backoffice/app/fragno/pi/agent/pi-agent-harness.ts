@@ -1,6 +1,7 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Models } from "@earendil-works/pi-ai/models";
 import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import type { Context } from "@earendil-works/chord";
 import {
@@ -13,6 +14,8 @@ import {
 
 import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
+import type { BillingEventInput } from "@/fragno/billing/contracts";
+import { usageBillingForScope, type UsageBilling } from "@/fragno/billing/usage-billing";
 import { createBackofficeExtension } from "@/fragno/pi/extensions/backoffice/backoffice-extension";
 import {
   calculatePiDurableBillingRetryDelayMs,
@@ -46,7 +49,7 @@ export type PiAgentDependencies = {
 export type OpenPiAgent = {
   harness: Harness;
   storage: Storage;
-  billing: PiBilling | null;
+  billing: PiBilling;
   /** Installs the workspace's current extensions with the authority of the given turn. */
   refreshWorkspaceExtensions: (turn: PiAgentTurn) => Promise<void>;
   /** Reports every settled turn not yet reported to Automations and the agent's manager. */
@@ -70,6 +73,7 @@ export function createPiAgentDependencies(
 /** Rebuilds an agent's registry and opens its root conversation; authority comes from its turns. */
 export async function openPiAgentHarness(input: {
   config: PiAgentConfig;
+  legacyBillingScope: BackofficeContextScope;
   runtime: BackofficeRuntimeServices;
   dependencies: PiAgentDependencies;
   openStorage: () => Promise<Storage>;
@@ -83,23 +87,25 @@ export async function openPiAgentHarness(input: {
     readActiveTurn: async (context) =>
       opened ? await readActivePiAgentTurn(opened.harness, opened.storage, context) : null,
   });
-  const billingOrganizationId = config.billingOrganizationId;
-  // Usage remains in pi.usage and is backfilled when an optional Billing binding is later configured.
-  const billing =
-    billingOrganizationId && runtime.config.bindings.billing
-      ? createPiBilling({
-          config,
-          recordEvent: async (event) =>
-            await runtime.objects.billing.forOrg(billingOrganizationId).commands.recordEvent(event),
-          retryDelayMs: calculatePiDurableBillingRetryDelayMs,
-        })
-      : null;
+  const usageBilling = usageBillingForScope(runtime, config.scope);
+  const legacyBilling = usageBillingForScope(runtime, input.legacyBillingScope);
+  async function record(billing: UsageBilling, event: BillingEventInput) {
+    return billing.kind === "system"
+      ? { eventId: event.id, accepted: false }
+      : await billing.recordEvent(event, { propagationContext: null });
+  }
+  const billing = createPiBilling({
+    config,
+    recordEvent: (event) => record(usageBilling, event),
+    recordLegacyEvent: (event) => record(legacyBilling, event),
+    retryDelayMs: calculatePiDurableBillingRetryDelayMs,
+  });
 
   const registry = createRegistry();
   for (const extension of [
     ...dependencies.extensions(config, agent),
     createBackofficeExtension(agent),
-    ...(billing ? [billing.extension] : []),
+    billing.extension,
   ]) {
     registry.install(extension);
   }

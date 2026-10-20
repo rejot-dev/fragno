@@ -1415,7 +1415,7 @@ describe("starter automation router scenarios", () => {
             from: { id: 1_001, firstName: "Ada", username: "ada_lovelace" },
           }),
 
-          then.pi.provisionedAgent({ agentName: "telegram", billingOrganizationId: "org-1" }),
+          then.pi.provisionedAgent({ agentName: "telegram" }),
           then.assert("assert every message continues one telegram agent conversation", (ctx) => {
             const provisioned = ctx.fakes.pi?.provisionedAgents ?? [];
             const turns = ctx.fakes.pi?.runPromptCalls ?? [];
