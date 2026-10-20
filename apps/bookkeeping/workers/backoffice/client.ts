@@ -21,7 +21,7 @@ export class BackofficeUnavailableError extends Error {
 }
 
 /** Whether an error, possibly one that crossed Durable Object RPC, is Backoffice being down. */
-export function isBackofficeUnavailable(error: unknown): boolean {
+export function isBackofficeUnavailable(error: unknown): error is Error {
   return error instanceof Error && error.name === "BackofficeUnavailableError";
 }
 

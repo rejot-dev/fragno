@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 
 import { runBookkeepingScenario } from "../../scenario/bookkeeping-scenario";
 
-test("an owner invites a colleague, who signs in with the invited address and joins", async () => {
+test("an owner invites a colleague, who follows the emailed link, signs in with the invited address, and joins", async () => {
   await runBookkeepingScenario(async (scenario) => {
     const ada = await scenario.signUp({
       email: "ada@example.test",
@@ -17,8 +17,13 @@ test("an owner invites a colleague, who signs in with the invited address and jo
       status: "invited",
       email: "charles@example.test",
       link: expect.stringMatching(/^https:\/\/bookkeeping\.test\/invitations\/.+$/u),
+      emailed: true,
     });
+    // Backoffice emailed Charles the link in Bookkeeping's name.
     const { link } = invited.actionData as { link: string };
+    expect(scenario.backoffice.sentInvitations).toEqual([
+      { to: "charles@example.test", url: link },
+    ]);
     const invitationPath = new URL(link).pathname;
 
     const charles = scenario.browser();
@@ -105,6 +110,30 @@ test("an invitation works only for its address, and only owners and admins invit
       }),
     ).toMatchObject({
       actionData: { status: "rejected", message: "Only owners and admins invite." },
+    });
+  });
+});
+
+test("when Backoffice cannot email, the owner sends the invitation link themselves", async () => {
+  await runBookkeepingScenario(async (scenario) => {
+    const ada = await scenario.signUp({
+      email: "ada@example.test",
+      name: "Ada Lovelace",
+      businessName: "Analytical Engines",
+    });
+    scenario.backoffice.setEmailConfigured(false);
+    const invited = await ada.submit("/w/analytical-engines/members", {
+      email: "charles@example.test",
+      role: "member",
+    });
+    expect(invited.actionData).toMatchObject({ status: "invited", emailed: false });
+    expect(scenario.backoffice.sentInvitations).toEqual([]);
+
+    const charles = scenario.browser();
+    const invitationPath = new URL((invited.actionData as { link: string }).link).pathname;
+    await charles.signIn("charles@example.test", invitationPath);
+    expect(await charles.submit(invitationPath, {})).toMatchObject({
+      path: "/w/analytical-engines",
     });
   });
 });

@@ -1,4 +1,7 @@
-import { BackofficeApiRequestError } from "@fragno-dev/backoffice-api/v0/client";
+import {
+  BackofficeApiRequestError,
+  BackofficeApiUnreachableError,
+} from "@fragno-dev/backoffice-api/v0/client";
 import { Button } from "@fragno-private/design-system/button";
 import { Field } from "@fragno-private/design-system/field";
 import { FormContainer } from "@fragno-private/design-system/form-container";
@@ -9,6 +12,7 @@ import { env } from "cloudflare:workers";
 import { Form, useNavigation, useOutletContext } from "react-router";
 import { z } from "zod";
 
+import { createProvisioningClient, isBackofficeUnavailable } from "../../workers/backoffice/client";
 import type { WorkspaceMember, WorkspaceRole } from "../../workers/workspaces/workspaces";
 import { assertSameOrigin } from "../auth/session.server";
 import type { Route } from "./+types/members";
@@ -42,6 +46,31 @@ function workspaces() {
 
 function invitationLink(invitationId: string): string {
   return new URL(`/invitations/${invitationId}`, env.BOOKKEEPING_BASE_URL).toString();
+}
+
+/**
+ * Has Backoffice email the invitation in Bookkeeping's name. The invitation exists either way,
+ * and the page shows its link, so a failure only means the inviter sends the link themselves.
+ */
+async function emailInvitation(invitationId: string): Promise<boolean> {
+  try {
+    const provisioning = await createProvisioningClient(env);
+    await provisioning.call("invitations.send", {
+      invitationId,
+      url: invitationLink(invitationId),
+    });
+    return true;
+  } catch (error) {
+    if (
+      error instanceof BackofficeApiRequestError ||
+      error instanceof BackofficeApiUnreachableError ||
+      isBackofficeUnavailable(error)
+    ) {
+      console.warn("The invitation email was not sent:", error.message);
+      return false;
+    }
+    throw error;
+  }
 }
 
 async function backofficeFor(request: Request, slug: string) {
@@ -133,6 +162,7 @@ export async function action({ request, params }: Route.ActionArgs) {
     status: "invited",
     email: invitation.email,
     link: invitationLink(invitation.invitationId),
+    emailed: await emailInvitation(invitation.invitationId),
   } as const;
 }
 
@@ -181,7 +211,7 @@ export default function Members({ loaderData, actionData }: Route.ComponentProps
         {loaderData.canInvite && (
           <FormContainer
             title="Invite someone"
-            description="Send them the link we give you. They sign in with the invited email to join."
+            description="We email them an invitation. They sign in with the invited email to join."
           >
             <Form method="post" className="space-y-4">
               <Field label="Email">
@@ -197,7 +227,11 @@ export default function Members({ loaderData, actionData }: Route.ComponentProps
               )}
               {actionData?.status === "invited" && (
                 <div role="status" className="space-y-1 text-sm">
-                  <p>Send {actionData.email} this link:</p>
+                  <p>
+                    {actionData.emailed
+                      ? `We emailed ${actionData.email} an invitation. You can also send them this link:`
+                      : `We couldn't email ${actionData.email}. Send them this link:`}
+                  </p>
                   <Input
                     className="w-full"
                     readOnly
