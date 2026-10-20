@@ -3,6 +3,7 @@ import { sql, type Kysely } from "kysely";
 export type BetterAuthDurableHookName =
   | "onUserCreated"
   | "onUserEmailVerificationRequested"
+  | "onUserPasswordResetRequested"
   | "onOrganizationCreated"
   | "onOrganizationUpdated";
 
@@ -87,6 +88,29 @@ const CREATE_USER_TRIGGER_SQL = sql`
   END
 `;
 
+// Store only the verification row's identity: hook inspection must never disclose a reset token.
+const CREATE_PASSWORD_RESET_TRIGGER_SQL = sql`
+  CREATE TRIGGER IF NOT EXISTS better_auth_password_reset_hook
+  AFTER INSERT ON verification
+  WHEN NEW.identifier LIKE 'reset-password:%'
+  BEGIN
+    INSERT INTO better_auth_hooks (
+      id, hookName, payload, nextRetryAt, createdAt
+    )
+    SELECT
+      'password-reset:' || NEW.id,
+      'onUserPasswordResetRequested',
+      json_object(
+        'verificationId', NEW.id,
+        'user', json_object('id', user.id, 'email', user.email)
+      ),
+      unixepoch() * 1000,
+      unixepoch() * 1000
+    FROM user
+    WHERE user.id = NEW.value;
+  END
+`;
+
 const CREATE_ORGANIZATION_TRIGGER_SQL = sql`
   CREATE TRIGGER IF NOT EXISTS better_auth_organization_created_hook
   AFTER INSERT ON organization
@@ -157,6 +181,7 @@ export async function removeBetterAuthDurableHookTriggers<
   Database extends BetterAuthDurableHooksDatabase,
 >(database: Kysely<Database>): Promise<void> {
   await sql`DROP TRIGGER IF EXISTS better_auth_user_created_hook`.execute(database);
+  await sql`DROP TRIGGER IF EXISTS better_auth_password_reset_hook`.execute(database);
   await sql`DROP TRIGGER IF EXISTS better_auth_organization_created_hook`.execute(database);
   await sql`DROP TRIGGER IF EXISTS better_auth_organization_updated_hook`.execute(database);
 }
@@ -172,6 +197,7 @@ export async function installBetterAuthDurableHooks<
   await CREATE_CREATED_INDEX_SQL.execute(database);
   await RECOVER_INTERRUPTED_HOOKS_SQL.execute(database);
   await CREATE_USER_TRIGGER_SQL.execute(database);
+  await CREATE_PASSWORD_RESET_TRIGGER_SQL.execute(database);
   await CREATE_ORGANIZATION_TRIGGER_SQL.execute(database);
   await UPDATE_ORGANIZATION_TRIGGER_SQL.execute(database);
 }
@@ -276,7 +302,7 @@ export async function deleteBetterAuthDurableHooksForFixture<
   await sql`
     DELETE FROM better_auth_hooks
     WHERE
-      (hookName = 'onUserCreated' AND json_extract(payload, '$.user.id') IN (
+      (hookName IN ('onUserCreated', 'onUserPasswordResetRequested') AND json_extract(payload, '$.user.id') IN (
         SELECT value FROM json_each(${JSON.stringify(input.userIds)})
       ))
       OR

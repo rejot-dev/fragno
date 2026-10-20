@@ -107,6 +107,6 @@ describe("Backoffice Better Auth SQL migrations", () => {
     ).rejects.toThrow(
       "Backoffice Better Auth schema version 'better-auth-unknown' has no migration path.",
     );
-    expect(BACKOFFICE_BETTER_AUTH_SCHEMA_VERSION).toBe("better-auth-v1");
+    expect(BACKOFFICE_BETTER_AUTH_SCHEMA_VERSION).toBe("better-auth-v2");
   });
 });

@@ -7,7 +7,15 @@ import { BackofficeFragmentMark } from "@fragno-private/design-system/fragment-m
 import { Icon } from "@fragno-private/design-system/icon";
 import { Input } from "@fragno-private/design-system/input";
 import { useState } from "react";
-import { Form, Link, redirect, useActionData, useLoaderData, useNavigation } from "react-router";
+import {
+  Form,
+  Link,
+  redirect,
+  useActionData,
+  useLoaderData,
+  useNavigation,
+  useSearchParams,
+} from "react-router";
 import { z } from "zod";
 
 import {
@@ -327,6 +335,7 @@ function BackofficeLogin({
   );
   const [oauthPending, setOauthPending] = useState(false);
   const navigation = useNavigation();
+  const [searchParams] = useSearchParams();
   const passwordError = actionData?.message ?? null;
   const verificationRequired = actionData?.state === "verification_required" ? actionData : null;
   const submittedIntent = navigation.formData?.get("intent");
@@ -405,6 +414,11 @@ function BackofficeLogin({
             description="Continue with GitHub or use your email and password."
           >
             <div className="space-y-3">
+              {searchParams.get("passwordReset") === "success" ? (
+                <p role="status" className="text-sm leading-6 text-[var(--bo-accent)]">
+                  Your password has been reset. Sign in with your new password.
+                </p>
+              ) : null}
               <Button
                 variant="accent"
                 onClick={() => void handleGithubSignIn()}
@@ -456,6 +470,12 @@ function BackofficeLogin({
                     className="w-full"
                   />
                 </Field>
+                <Link
+                  to="/backoffice/forgot-password"
+                  className="inline-flex min-h-10 items-center text-xs font-semibold text-[var(--bo-accent)] hover:underline"
+                >
+                  Forgot password?
+                </Link>
                 {passwordError ? (
                   <p
                     className={

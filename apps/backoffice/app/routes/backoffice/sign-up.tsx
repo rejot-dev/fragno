@@ -13,6 +13,10 @@ import {
   getBackofficeMe,
 } from "@/fragno/auth/auth-server";
 import { requestEmailVerificationResend } from "@/fragno/auth/email-verification.server";
+import {
+  BACKOFFICE_PASSWORD_MIN_LENGTH,
+  BACKOFFICE_PASSWORD_MAX_LENGTH,
+} from "@/fragno/auth/password-policy";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { Route } from "./+types/sign-up";
@@ -47,7 +51,7 @@ type BackofficeSignUpActionData =
 const passwordSignUpFields = {
   intent: z.literal("sign_up"),
   email: z.string().trim().toLowerCase().pipe(z.email().max(191)),
-  password: z.string().min(8).max(100),
+  password: z.string().min(BACKOFFICE_PASSWORD_MIN_LENGTH).max(BACKOFFICE_PASSWORD_MAX_LENGTH),
   confirmPassword: z.string().min(1),
 };
 

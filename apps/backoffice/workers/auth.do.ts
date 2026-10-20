@@ -97,6 +97,11 @@ import {
 } from "@/fragno/auth/oauth-client";
 import { organizationSlugFromName } from "@/fragno/auth/organization-slug";
 import {
+  BACKOFFICE_PASSWORD_MIN_LENGTH,
+  BACKOFFICE_PASSWORD_MAX_LENGTH,
+  PASSWORD_RESET_TOKEN_LIFETIME_SECONDS,
+} from "@/fragno/auth/password-policy";
+import {
   issueAppActionToken,
   issueAppInstallationCode,
   type AppActionTokenInput,
@@ -116,6 +121,7 @@ import { nextNumberedSlug } from "@/lib/numbered-slug";
 import { BACKOFFICE_LOGIN_PATH } from "@/routes/backoffice/auth-navigation";
 import { buildAppSignInCodeEmail } from "@/transactional-emails/app-sign-in-code";
 import { buildUserEmailVerificationEmail } from "@/transactional-emails/user-email-verification";
+import { buildUserPasswordResetEmail } from "@/transactional-emails/user-password-reset";
 
 import {
   authenticateInstalledAppClient,
@@ -145,6 +151,7 @@ import {
   updateBackofficeAdminOAuthClient,
 } from "./auth/better-auth-oauth";
 import { listBackofficeOAuthConsentPage } from "./auth/better-auth-oauth-consent";
+import { createBackofficePasswordResetPlugin } from "./auth/better-auth-password-reset";
 import { createBackofficeTokenPlugin } from "./auth/better-auth-plugin";
 import {
   BACKOFFICE_ORGANIZATION_OWNER_ROLE,
@@ -250,6 +257,7 @@ type StoreInvitation = AuthDatabase["invitation"];
 type AuthHookPayloads = {
   onUserCreated: { user: { id: string; email: string; name: string } };
   onUserEmailVerificationRequested: { user: { id: string; email: string } };
+  onUserPasswordResetRequested: { verificationId: string; user: { id: string; email: string } };
   onOrganizationCreated: OrganizationHookPayload;
   onOrganizationUpdated: OrganizationHookPayload;
 };
@@ -392,6 +400,14 @@ function deserializeBetterAuthDurableHook(row: BetterAuthDurableHookRow): Stored
     };
   }
 
+  if (row.hookName === "onUserPasswordResetRequested") {
+    return {
+      ...common,
+      hookName: row.hookName,
+      payload: JSON.parse(row.payload) as AuthHookPayloads["onUserPasswordResetRequested"],
+    };
+  }
+
   const stored = JSON.parse(row.payload) as StoredOrganizationHookPayload;
   return {
     ...common,
@@ -504,18 +520,22 @@ function resolveAuthBaseUrl(request: Request): string {
   return requestUrl.origin;
 }
 
-function listTrustedAuthOrigins(baseURL: string): string[] {
+function listTrustedAuthOrigins(baseURL: string, publicOrigin: string | null): string[] {
   const baseUrl = new URL(baseURL);
-  if (
-    baseUrl.protocol !== "http:" ||
-    (baseUrl.hostname !== "127.0.0.1" && baseUrl.hostname !== "localhost")
-  ) {
-    return [baseUrl.origin];
+  const origins = new Set([baseUrl.origin]);
+  // Email links can use the configured public origin while requests arrive over a local proxy.
+  if (publicOrigin !== null) {
+    origins.add(publicOrigin);
   }
-
-  const loopbackAlias = new URL(baseUrl);
-  loopbackAlias.hostname = baseUrl.hostname === "localhost" ? "127.0.0.1" : "localhost";
-  return [baseUrl.origin, loopbackAlias.origin];
+  if (
+    baseUrl.protocol === "http:" &&
+    (baseUrl.hostname === "127.0.0.1" || baseUrl.hostname === "localhost")
+  ) {
+    const loopbackAlias = new URL(baseUrl);
+    loopbackAlias.hostname = baseUrl.hostname === "localhost" ? "127.0.0.1" : "localhost";
+    origins.add(loopbackAlias.origin);
+  }
+  return [...origins];
 }
 
 type BetterAuthInstance = Pick<ReturnType<typeof betterAuth>, "handler" | "options" | "$context">;
@@ -772,6 +792,7 @@ export class InMemoryAuthObject implements AuthObject {
   readonly #env: InMemoryAuthObjectEnv;
   readonly #state: BackofficeObjectState;
   readonly #runtime: BackofficeRuntimeServices;
+  readonly #passwordResetPublicBaseUrl: string | null;
   readonly #database: Kysely<AuthDatabase>;
   readonly #ready: Promise<void>;
   readonly #authByBaseUrl = new Map<string, BetterAuthInstance>();
@@ -796,6 +817,13 @@ export class InMemoryAuthObject implements AuthObject {
     this.#env = env;
     this.#state = state;
     this.#runtime = runtime;
+    const passwordResetPublicBaseUrl = z
+      .url({ protocol: /^https?$/ })
+      .safeParse(runtime.config.docsPublicBaseUrl);
+    // Recovery needs a public origin, but missing mail configuration must not disable sign-in.
+    this.#passwordResetPublicBaseUrl = passwordResetPublicBaseUrl.success
+      ? new URL(passwordResetPublicBaseUrl.data).origin
+      : null;
 
     if (!database && !(state.storage as DurableObjectStorage & { sql?: unknown }).sql) {
       throw new Error("Better Auth requires a SQLite database.");
@@ -849,6 +877,24 @@ export class InMemoryAuthObject implements AuthObject {
     return (
       user !== undefined && normalizeRole(user.role) === "admin" && !normalizeBoolean(user.banned)
     );
+  }
+
+  #consumeRateLimit(key: string, rule: { window: number; max: number }) {
+    const now = Date.now();
+    const windowInMilliseconds = rule.window * 1_000;
+    const current = this.#rateLimits.get(key);
+    if (!current || now - current.windowStartedAt >= windowInMilliseconds) {
+      this.#rateLimits.set(key, { key, count: 1, windowStartedAt: now });
+      return { allowed: true, retryAfter: null };
+    }
+    if (current.count >= rule.max) {
+      return {
+        allowed: false,
+        retryAfter: Math.ceil((current.windowStartedAt + windowInMilliseconds - now) / 1_000),
+      };
+    }
+    this.#rateLimits.set(key, { ...current, count: current.count + 1 });
+    return { allowed: true, retryAfter: null };
   }
 
   #createOptions(baseURL: string): BetterAuthOptions {
@@ -919,16 +965,22 @@ export class InMemoryAuthObject implements AuthObject {
       baseURL,
       basePath: "/api/auth",
       secret,
-      trustedOrigins: listTrustedAuthOrigins(baseURL),
+      trustedOrigins: listTrustedAuthOrigins(baseURL, this.#passwordResetPublicBaseUrl),
       onAPIError: {
         errorURL: `${baseURL}${BACKOFFICE_LOGIN_PATH}`,
       },
       database: { db: this.#database, type: "sqlite" as const, transaction: true },
       emailAndPassword: {
         enabled: true,
-        minPasswordLength: 8,
-        maxPasswordLength: 100,
+        minPasswordLength: BACKOFFICE_PASSWORD_MIN_LENGTH,
+        maxPasswordLength: BACKOFFICE_PASSWORD_MAX_LENGTH,
         requireEmailVerification: emailVerification.enabled,
+        resetPasswordTokenExpiresIn: PASSWORD_RESET_TOKEN_LIFETIME_SECONDS,
+        revokeSessionsOnPasswordReset: true,
+        sendResetPassword: async function passwordResetDeliveryRecordedByTrigger() {
+          // Better Auth requires this callback to enable recovery. The verification INSERT trigger
+          // records delivery atomically; a callback enqueue would leave a crash window after issuance.
+        },
       },
       emailVerification: {
         // User creation is observed transactionally by the SQLite trigger. The resulting durable
@@ -974,31 +1026,8 @@ export class InMemoryAuthObject implements AuthObject {
         // burst of concurrent route loaders.
         customRules: { "/jwks": false },
         customStorage: {
-          consume: async (key: string, rule: { window: number; max: number }) => {
-            const now = Date.now();
-            const windowInMilliseconds = rule.window * 1_000;
-            const current = this.#rateLimits.get(key);
-
-            if (!current || now - current.windowStartedAt >= windowInMilliseconds) {
-              this.#rateLimits.set(key, { key, count: 1, windowStartedAt: now });
-              return { allowed: true, retryAfter: null };
-            }
-
-            if (current.count >= rule.max) {
-              return {
-                allowed: false,
-                retryAfter: Math.ceil(
-                  (current.windowStartedAt + windowInMilliseconds - now) / 1_000,
-                ),
-              };
-            }
-
-            this.#rateLimits.set(key, {
-              ...current,
-              count: current.count + 1,
-            });
-            return { allowed: true, retryAfter: null };
-          },
+          consume: async (key: string, rule: { window: number; max: number }) =>
+            this.#consumeRateLimit(key, rule),
         },
       },
       disabledPaths: ["/token", ...UNUSED_EMAIL_CODE_PATHS],
@@ -1038,6 +1067,11 @@ export class InMemoryAuthObject implements AuthObject {
         ...signUpInvitationPlugins,
         // After the OAuth Provider, which verifies the app's request this needs.
         ...appSignInPlugins,
+        createBackofficePasswordResetPlugin({
+          publicBaseUrl: this.#passwordResetPublicBaseUrl,
+          acceptRequest: (email) =>
+            this.#consumeRateLimit(`password-reset-email:${email}`, { window: 60, max: 1 }).allowed,
+        }),
       ],
     } satisfies BetterAuthOptions;
 
@@ -1155,6 +1189,40 @@ export class InMemoryAuthObject implements AuthObject {
           });
         }
       }
+      return;
+    }
+    if (record.hookName === "onUserPasswordResetRequested") {
+      const { adapter, internalAdapter } = await this.#authContext();
+      const verification = await adapter.findOne<{
+        identifier: string;
+        value: string;
+        expiresAt: Date;
+      }>({
+        model: "verification",
+        where: [{ field: "id", value: record.payload.verificationId }],
+      });
+      // A delayed retry must not deliver a link that was already consumed or expired.
+      if (!verification || verification.expiresAt <= new Date()) {
+        return;
+      }
+      const user = await internalAdapter.findUserById(verification.value);
+      if (!user || user.email !== record.payload.user.email) {
+        return;
+      }
+      const publicBaseUrl = this.#passwordResetPublicBaseUrl;
+      if (!publicBaseUrl) {
+        throw new Error("Password reset requires DOCS_PUBLIC_BASE_URL.");
+      }
+      const resetUrl = new URL("/backoffice/reset-password", publicBaseUrl);
+      resetUrl.searchParams.set("token", verification.identifier.slice("reset-password:".length));
+      await this.#runtime.objects.resend.singleton().commands.queueEmail(
+        await buildUserPasswordResetEmail({
+          email: user.email,
+          resetUrl: resetUrl.href,
+          publicBaseUrl,
+        }),
+        { idempotencyKey: `auth:password-reset:${record.id}`, senderName: null },
+      );
       return;
     }
     if (record.hookName === "onUserEmailVerificationRequested") {

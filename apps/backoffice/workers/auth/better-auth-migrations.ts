@@ -3,7 +3,7 @@ import { sql, type Kysely } from "kysely";
 import betterAuthSchemaSql from "./migrations/better-auth.sql?raw";
 
 /** Current application-owned Better Auth schema version stored by the Auth Durable Object. */
-export const BACKOFFICE_BETTER_AUTH_SCHEMA_VERSION = "better-auth-v1";
+export const BACKOFFICE_BETTER_AUTH_SCHEMA_VERSION = "better-auth-v2";
 
 function readBetterAuthGeneratedMigrationStatements(migrationSql: string): string[] {
   const trimmedMigration = migrationSql.trim();
@@ -24,6 +24,11 @@ export async function applyBackofficeBetterAuthSchemaMigrations<Database>(
   installedVersion: string | null,
 ): Promise<void> {
   if (installedVersion === BACKOFFICE_BETTER_AUTH_SCHEMA_VERSION) {
+    return;
+  }
+  // v2 adds the password-reset outbox trigger, installed by installBetterAuthDurableHooks
+  // in the same migration transaction. The Better Auth tables themselves are unchanged.
+  if (installedVersion === "better-auth-v1") {
     return;
   }
   if (installedVersion !== null) {

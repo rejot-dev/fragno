@@ -9,6 +9,8 @@ export default [
   route("marketplace/:publisher/:packageSlug", "routes/marketplace/listing.tsx"),
 
   route("backoffice/login", "routes/backoffice/login.tsx"),
+  route("backoffice/forgot-password", "routes/backoffice/forgot-password.tsx"),
+  route("backoffice/reset-password", "routes/backoffice/reset-password.tsx"),
   route("backoffice/device", "routes/backoffice/device.tsx"),
   route("backoffice/oauth/consent", "routes/backoffice/oauth-consent.tsx"),
   route("backoffice/apps/install", "routes/backoffice/app-install.tsx"),
