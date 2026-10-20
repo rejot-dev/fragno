@@ -303,6 +303,7 @@ export const backofficeProvisioningRouter = new Hono<{
       delegation: [],
     },
     subject: null,
+    causation: { kind: "origin" },
   });
   return c.json(output, 200, { "cache-control": "no-store" });
 });
