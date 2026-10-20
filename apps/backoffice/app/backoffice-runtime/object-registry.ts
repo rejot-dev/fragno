@@ -8,6 +8,7 @@ import type {
   AutomationEvent,
   AutomationEventDefinition,
   AutomationEventDefinitionUpdateInput,
+  AutomationEventRecord,
 } from "@fragno-dev/backoffice-api/v0/events";
 import type {
   MarketplaceIngestionRequestInput,
@@ -546,6 +547,12 @@ export type AutomationsObject = {
     input: ListExternalIdentityBindingsInput,
     context: BackofficeActionRpcContext,
   ): Promise<ExternalIdentityBindingPage>;
+  /** One source's events of one type in this scope, newest first; a null cursor is the last page. */
+  listEventsOfType(input: {
+    source: string;
+    eventType: string;
+    cursor: string | null;
+  }): Promise<{ events: (AutomationEventRecord & { createdAt: string })[]; cursor: string | null }>;
   listEventSources(): Promise<AutomationEventSource[]>;
   getEventSource(input: { source: string }): Promise<AutomationEventSource | null>;
   ensureEventSource(input: AutomationEventSourceInput): Promise<AutomationEventSource>;

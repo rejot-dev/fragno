@@ -12,7 +12,7 @@ type IntegrationsCodemodeProvider = {
   reconfigure(input: IntegrationsReconfigureInput): Promise<IntegrationsReconfigureOutput>;
   /** Remove a connection's source-owned configuration and credentials in the selected scope. The address stays valid for a later setup. Requires confirm to repeat the connection ID. */
   disconnect(input: IntegrationsDisconnectInput): Promise<IntegrationsDisconnectOutput>;
-  /** Record every configured connection's current state in the selected scope as an integrations.connection.ready or connection.unavailable event, for connections that existed before those events were recorded. Routes on those events run for each new event. Events carry each connection's name and auth method. A rerun records a connection again only when its state, name, or auth method differs from every earlier backfill of it, so a rerun adds names to connections recorded before events carried them. */
+  /** Record every configured connection's current state in the selected scope as an integrations.connection.ready or connection.unavailable event, for connections that existed before those events were recorded. Routes on those events run for each new event. Events carry each connection's name and auth method. A rerun records a connection again only when its state, name, or auth method differs from every earlier backfill of it, so a rerun adds names to connections recorded before events carried them. A connection last recorded ready or unavailable at an address no source owns anymore, because its integration was removed, is recorded as connection.disconnected, once. */
   backfillConnectionEvents(): Promise<IntegrationsBackfillConnectionEventsOutput>;
   /** Discover the selected connection's supported actions and authoritative input/output contracts without executing them. Never infer schemas from action IDs. */
   actions(input: IntegrationsActionsInput): Promise<IntegrationsActionsOutput>;
@@ -191,7 +191,7 @@ type IntegrationConnectionEventsBackfillResult = {
   connections: {
     connectionId: IntegrationConnectionId;
     service: IntegrationId;
-    state: "ready" | "unavailable";
+    state: "ready" | "unavailable" | "disconnected";
   }[];
 };
 type IntegrationAction = {

@@ -48,7 +48,11 @@ ownership, and configuration controls.
   Each source answers through `state()`, the same state its own events report; a disabled webhook
   endpoint, for example, is unavailable although its configuration is complete. Event IDs are stable
   per connection, state, and label, so a rerun records nothing for unchanged connections but records
-  a renamed connection, or one recorded before events carried labels.
+  a renamed connection, or one recorded before events carried labels. A removed source records
+  nothing as it goes, so its connections' last `ready` or `unavailable` events would stand
+  indefinitely. The backfill also reads each connection's latest recorded state, and records
+  `connection.disconnected` for one at an address no registered source claims. That event's ID names
+  the state it closes, so a rerun records it once.
 
 Ready and unavailable events carry the connection's label, its `name` and `authMethod` as `list()`
 reports them, so the Integrations and Dashboard pages read connections from local events without

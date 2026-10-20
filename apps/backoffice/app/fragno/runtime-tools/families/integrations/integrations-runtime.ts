@@ -9,7 +9,11 @@ import { createApiIntegration } from "./api-integration";
 import { createAppIntegration } from "./app-integration";
 import { createConnectorIntegration } from "./connector-integration";
 import { createGitHubIntegration } from "./github-integration";
-import { recordIntegrationConnectionState } from "./integration-events";
+import {
+  readRecordedConnectionStates,
+  recordIntegrationConnectionState,
+  type IntegrationConnectionState,
+} from "./integration-events";
 import { createIntegrationRegistry } from "./integration-registry";
 import type { IntegrationsRuntime } from "./integration-tools";
 import { createMcpIntegration } from "./mcp-integration";
@@ -51,7 +55,11 @@ export function createIntegrationsRuntime({
     disconnect: ({ connectionId }) => registry.disconnect(context, connectionId),
     async backfillConnectionEvents() {
       const automations = runtime.objects.automations.for(execution.scope).commands;
-      const connections = [];
+      const connections: {
+        connectionId: string;
+        service: string;
+        state: IntegrationConnectionState | "disconnected";
+      }[] = [];
       let cursor: string | null = null;
       do {
         const page = await registry.list(context, cursor);
@@ -85,6 +93,27 @@ export function createIntegrationsRuntime({
         }
         cursor = page.cursor;
       } while (cursor !== null);
+      // A removed source records nothing when it goes, so its connections would stay ready or
+      // unavailable in views and to routes indefinitely.
+      for (const [connectionId, recorded] of await readRecordedConnectionStates(automations)) {
+        if (recorded.state === "disconnected" || registry.claims(connectionId)) {
+          continue;
+        }
+        await recordIntegrationConnectionState(
+          automations,
+          {
+            // Keyed by the state it closes, so a rerun records nothing new.
+            id: `integrations-backfill:${connectionId}:${recorded.eventId}`,
+            scope: execution.scope,
+            service: recorded.service,
+            connectionId,
+            state: "disconnected",
+            occurredAt: new Date(nowEpochMs()),
+          },
+          { propagationContext: null },
+        );
+        connections.push({ connectionId, service: recorded.service, state: "disconnected" });
+      }
       return { connections };
     },
     async get({ connectionId }) {

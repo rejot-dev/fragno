@@ -108,6 +108,10 @@ export function createIntegrationRegistry(implementations: readonly IntegrationI
   }
 
   return {
+    /** Whether a registered source owns the address, configured or not. */
+    claims(connectionId: string) {
+      return findConnectionOwner(connectionId) !== undefined;
+    },
     async discover(context: IntegrationContext) {
       return (
         await Promise.all(entries.map(({ implementation }) => implementation.discover(context)))

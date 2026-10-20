@@ -2,6 +2,7 @@ import type {
   AutomationEvent,
   AutomationEventDefinition,
   AutomationEventDefinitionUpdateInput,
+  AutomationEventRecord,
 } from "@fragno-dev/backoffice-api/v0/events";
 import type {
   MarketplaceIngestionRequestInput,
@@ -58,6 +59,7 @@ import {
 } from "@/fragno/automation/authority";
 import type { AutomationSourceReader } from "@/fragno/automation/automation-source";
 import { createAutomationsRuntime, type AutomationsRuntime } from "@/fragno/automation/automations";
+import { automationEventRecord } from "@/fragno/automation/event-routes";
 import type {
   AutomationEventSource,
   AutomationEventSourceInput,
@@ -912,6 +914,22 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     return await this.triggerIngestEvent(event, context);
   }
 
+  async listEventsOfType(input: {
+    source: string;
+    eventType: string;
+    cursor: string | null;
+  }): Promise<{
+    events: (AutomationEventRecord & { createdAt: string })[];
+    cursor: string | null;
+  }> {
+    await this.#ensureConfigured({ scope: this.#requireScope() });
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+    const page = await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.listEventsOfType(input),
+    );
+    return { events: page.events.map(automationEventRecord), cursor: page.cursor };
+  }
+
   async listEventSources(): Promise<AutomationEventSource[]> {
     await this.#ensureConfigured({ scope: this.#requireScope() });
     const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
@@ -1178,6 +1196,10 @@ export class Automations extends DurableObject<CloudflareEnv> implements Automat
     context: BackofficeActionRpcContext,
   ) {
     return await this.#object.listExternalIdentityBindings(input, context);
+  }
+
+  async listEventsOfType(input: { source: string; eventType: string; cursor: string | null }) {
+    return await this.#object.listEventsOfType(input);
   }
 
   async listEventSources() {

@@ -1,5 +1,6 @@
 import {
   integrationAuthMethodSchema,
+  integrationConnectionIdSchema,
   type IntegrationConnection,
   type IntegrationInspection,
 } from "@fragno-dev/backoffice-api/v0/integrations";
@@ -52,10 +53,10 @@ const integrationConnectionSubjectSchema = z.object({
   scope: z.looseObject({ kind: z.string().min(1) }),
   orgId: z.string().min(1).optional(),
   service: z.string().min(1).describe("Service ID from integrations.discover, e.g. api."),
-  connectionId: z
-    .string()
-    .min(1)
-    .describe("Integration address, e.g. api#billing; it resolves in the event's scope."),
+  // Any principal may fire this source, so a stored address is parsed, not trusted.
+  connectionId: integrationConnectionIdSchema.describe(
+    "Integration address, e.g. api#billing; it resolves in the event's scope.",
+  ),
 });
 
 const connectionEventStates = {
@@ -90,6 +91,53 @@ export function readIntegrationConnectionEvent(event: {
     // Disconnections carry none, and neither do events recorded before state events carried labels.
     label: label.success ? label.data : null,
   };
+}
+
+type RecordedConnectionState = {
+  state: IntegrationConnectionState | "disconnected";
+  service: string;
+  /** The event that recorded this state. */
+  eventId: string;
+};
+
+/** Each connection's latest state in one scope's recorded connection events. */
+export async function readRecordedConnectionStates(
+  automations: Pick<AutomationsObject, "listEventsOfType">,
+): Promise<Map<string, RecordedConnectionState>> {
+  const latest = new Map<string, RecordedConnectionState & { at: [number, number] }>();
+  for (const eventType of Object.keys(connectionEventStates)) {
+    let cursor: string | null = null;
+    do {
+      const page = await automations.listEventsOfType({
+        source: INTEGRATIONS_EVENT_SOURCE,
+        eventType,
+        cursor,
+      });
+      for (const event of page.events) {
+        const change = readIntegrationConnectionEvent(event);
+        if (!change) {
+          continue;
+        }
+        // Changes made in the same instant are ordered by when they were stored.
+        const at: [number, number] = [Date.parse(event.occurredAt), Date.parse(event.createdAt)];
+        const current = latest.get(change.connectionId);
+        if (
+          !current ||
+          at[0] > current.at[0] ||
+          (at[0] === current.at[0] && at[1] > current.at[1])
+        ) {
+          latest.set(change.connectionId, {
+            state: change.state,
+            service: change.service,
+            eventId: event.id,
+            at,
+          });
+        }
+      }
+      cursor = page.cursor;
+    } while (cursor !== null);
+  }
+  return latest;
 }
 
 // Every change that leaves the state fires, so consumers must tolerate repeats.

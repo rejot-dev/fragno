@@ -33,6 +33,7 @@ import { InMemoryProjectConnectorObject } from "../../../../../workers/project-c
 import { InMemoryResendObject } from "../../../../../workers/resend.do";
 import { InMemoryTelegramObject } from "../../../../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../../../../workers/upload.do";
+import { recordIntegrationConnectionState } from "./integration-events";
 
 const scenarioObjects = {
   API: (input) => new InMemoryApiObject(input),
@@ -168,6 +169,73 @@ test("a backfill records each connection's current state once", async () => {
             ]);
           },
         ),
+        then.hooks.noFailed({ orgId, fragments: ["api", "automations"] }),
+      ],
+    }),
+  );
+});
+
+test("a backfill disconnects connections whose integration was removed", async () => {
+  const removedReadyEventId = "reson8-slot:connection.ready";
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      objects: scenarioObjects,
+      name: "Integration connection events backfill after a source is removed",
+      setup: ({ given }) => [given.organization.exists({ id: orgId, slug: "ada", name: "Ada" })],
+      steps: ({ when, then, runner }) => [
+        when.codemode.run({
+          scope,
+          label: "set up an API connection",
+          code: `async () => await integrations.setup({ connectionId: "api#billing", kind: "input", input: {
+            baseUrl: "https://billing.example.com", type: "bearer", token: "scenario-token",
+          } })`,
+          assertToolCalls: ["integrations.setup"],
+        }),
+        then.assert("a removed integration's last report is still on record", async (ctx) => {
+          // As the Reson8 object's outbox reported it before Reson8 stopped being an integration.
+          await recordIntegrationConnectionState(
+            ctx.runtime.objects.automations.for(scope).commands,
+            {
+              id: "reson8-slot",
+              scope,
+              service: "reson8",
+              connectionId: "backoffice#reson8",
+              state: "ready",
+              label: { name: "Reson8", authMethod: "api-key" },
+              occurredAt: new Date("2026-01-01T00:00:00.000Z"),
+            },
+            { propagationContext: null },
+          );
+        }),
+        runner.drain(),
+        then.assert("the backfill disconnects only the unowned address", async (ctx) => {
+          expect(await backfill(ctx)).toEqual({
+            connections: [
+              { connectionId: "api#billing", service: "api", state: "ready" },
+              { connectionId: "backoffice#reson8", service: "reson8", state: "disconnected" },
+            ],
+          });
+        }),
+        runner.drain(),
+        then.automation.event({
+          scope,
+          where: {
+            source: "integrations",
+            eventType: "connection.disconnected",
+            id: `integrations-backfill:backoffice#reson8:${removedReadyEventId}:connection.disconnected`,
+          },
+          expected: { subject: { service: "reson8", connectionId: "backoffice#reson8" } },
+        }),
+        then.assert("a rerun leaves the disconnected address alone", async (ctx) => {
+          expect(await backfill(ctx)).toEqual({
+            connections: [{ connectionId: "api#billing", service: "api", state: "ready" }],
+          });
+          await ctx.drain();
+          expect(await backfilledEventIds(ctx)).toEqual([
+            'integrations-backfill:api#billing:["billing","bearer"]:connection.ready',
+            `integrations-backfill:backoffice#reson8:${removedReadyEventId}:connection.disconnected`,
+          ]);
+        }),
         then.hooks.noFailed({ orgId, fragments: ["api", "automations"] }),
       ],
     }),

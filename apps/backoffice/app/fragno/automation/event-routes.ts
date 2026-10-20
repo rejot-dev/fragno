@@ -17,7 +17,10 @@ type AutomationEventRow = Omit<AutomationEvent, "id" | "occurredAt" | "causation
   createdAt: Date;
 };
 
-function automationEventRecord(event: AutomationEventRow): AutomationEventRecord {
+/** Stored events always have a creation time; the public record leaves it optional. */
+export function automationEventRecord(
+  event: AutomationEventRow,
+): AutomationEventRecord & { createdAt: string } {
   return {
     id: event.id.valueOf(),
     scope: event.scope,
