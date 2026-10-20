@@ -7,7 +7,12 @@ import { organizationMembershipRecordSchema } from "./organization";
  * only the operations it needs.
  */
 export const backofficeProvisioningPermissionSchema = z.lazy(() =>
-  z.enum(["organizations.provision", "projects.provision", "invitations.accept"]),
+  z.enum([
+    "organizations.provision",
+    "projects.provision",
+    "invitations.send",
+    "invitations.accept",
+  ]),
 );
 export type BackofficeProvisioningPermission = z.output<
   typeof backofficeProvisioningPermissionSchema
@@ -72,16 +77,39 @@ export const provisionProjectResultSchema = z
   .meta({ id: "ProvisionProjectResult" });
 export type ProvisionProjectResult = z.output<typeof provisionProjectResultSchema>;
 
+const invitationIdSchema = z.lazy(() => z.string().trim().min(1));
+
+export const sendInvitationInputSchema = z
+  .lazy(() =>
+    z.strictObject({
+      invitationId: invitationIdSchema.describe(
+        "A pending invitation to an organization where the app is installed.",
+      ),
+      url: z
+        .url({ protocol: /^https?$/ })
+        .describe(
+          "The app's page where the invited person accepts it, on the origin of the app's home URL.",
+        ),
+    }),
+  )
+  .meta({ id: "SendInvitationInput" });
+export type SendInvitationInput = z.output<typeof sendInvitationInputSchema>;
+
+export const sendInvitationResultSchema = z
+  .lazy(() =>
+    z.strictObject({
+      email: z.string().min(1).describe("The address the invitation was sent to."),
+    }),
+  )
+  .meta({ id: "SendInvitationResult" });
+export type SendInvitationResult = z.output<typeof sendInvitationResultSchema>;
+
 export const acceptInvitationInputSchema = z
   .lazy(() =>
     z.strictObject({
-      invitationId: z
-        .string()
-        .trim()
-        .min(1)
-        .describe(
-          "A pending invitation to an organization where the app is installed, addressed to the user's verified email.",
-        ),
+      invitationId: invitationIdSchema.describe(
+        "A pending invitation to an organization where the app is installed, addressed to the user's verified email.",
+      ),
       userId: userIdSchema,
     }),
   )
@@ -118,6 +146,13 @@ export const backofficeProvisioningOperations = {
     permission: "projects.provision",
     input: provisionProjectInputSchema,
     output: provisionProjectResultSchema,
+  },
+  "invitations.send": {
+    description:
+      "Email a pending invitation to the address it is for, in the app's name, with a link to the app's page for accepting it. Sending it again sends nothing.",
+    permission: "invitations.send",
+    input: sendInvitationInputSchema,
+    output: sendInvitationResultSchema,
   },
   "invitations.accept": {
     description:

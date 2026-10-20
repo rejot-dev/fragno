@@ -12,13 +12,27 @@ export type AppProvisioningResult<T> =
   | {
       ok: false;
       error: {
-        code: Extract<BackofficeApiErrorCode, "not_found" | "forbidden" | "conflict">;
+        code: Extract<
+          BackofficeApiErrorCode,
+          "invalid_request" | "not_found" | "forbidden" | "conflict"
+        >;
         message: string;
       };
     };
 
 /** The calling app, as the provisioning route authenticated it. */
 export type ProvisioningApp = { appId: string; oauthClientId: string };
+
+/** An invitation as an app's invitation email describes it. */
+export type AppInvitation = {
+  organizationId: string;
+  organizationName: string;
+  email: string;
+  inviterName: string;
+  /** Not yet accepted, declined, canceled, or expired. */
+  pending: boolean;
+  expiresAt: string;
+};
 
 /** Auth's side of provisioning: organizations, and the app's users joining them. */
 export type AuthAppProvisioningCommands = {
@@ -31,7 +45,7 @@ export type AuthAppProvisioningCommands = {
     organizationId: string;
     userId: string;
   }): Promise<AppProvisioningResult<null>>;
-  findInvitationOrganization(input: { invitationId: string }): Promise<string | null>;
+  findInvitation(input: { invitationId: string }): Promise<AppInvitation | null>;
   acceptAppInvitation(
     input: Pick<ProvisioningApp, "oauthClientId"> & AcceptInvitationInput,
   ): Promise<AppProvisioningResult<OrganizationMembershipRecord>>;

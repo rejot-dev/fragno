@@ -38,7 +38,7 @@ const trustOption = {
   valueRequired: true,
   valueName: "json",
   description:
-    'Trust: {"kind":"third-party"}, or {"kind":"first-party","provisioningPermissions":["organizations.provision","projects.provision","invitations.accept"],"branding":{"displayName","logoUrl","accentColor":"#rrggbb","homeUrl","supportUrl"}} for an app Backoffice operates',
+    'Trust: {"kind":"third-party"}, or {"kind":"first-party","provisioningPermissions":["organizations.provision","projects.provision","invitations.send","invitations.accept"],"branding":{"displayName","logoUrl","accentColor":"#rrggbb","homeUrl","supportUrl"}} for an app Backoffice operates',
 };
 
 function requireAdminAppsRuntime(context: AdminAppsToolContext): AdminRuntime {

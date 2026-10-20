@@ -1,4 +1,4 @@
-import type { BackofficeApp } from "@fragno-dev/backoffice-api/v0/apps";
+import type { AppBranding, BackofficeApp } from "@fragno-dev/backoffice-api/v0/apps";
 import type { OrganizationMembershipRecord } from "@fragno-dev/backoffice-api/v0/organization";
 import {
   type AcceptInvitationInput,
@@ -8,6 +8,8 @@ import {
   type ProvisionOrganizationResult,
   type ProvisionProjectInput,
   type ProvisionProjectResult,
+  type SendInvitationInput,
+  type SendInvitationResult,
 } from "@fragno-dev/backoffice-api/v0/provisioning";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -19,13 +21,16 @@ import {
   PROVISIONING_AUTOMATION_EVENTS,
   PROVISIONING_AUTOMATION_SOURCE,
 } from "@/fragno/backoffice-capabilities/capabilities/auth";
+import { buildAppInvitationEmail } from "@/transactional-emails/app-invitation";
 
 import { apiError } from "./api-error";
 
 type ProvisioningApp = Pick<
   BackofficeApp,
   "id" | "oauthClientId" | "requestedPermissions" | "actionsRevision"
->;
+> & { branding: AppBranding };
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Creates the organization, then installs the app there with everything it requests and links the
@@ -132,23 +137,74 @@ async function provisionProject(
   return { ok: true, value: { organizationId: input.organizationId, ...project } };
 }
 
+function invitationNotFound(invitationId: string): AppProvisioningResult<never> {
+  return {
+    ok: false,
+    error: {
+      code: "not_found",
+      message: `Invitation '${invitationId}' is not to an organization this app is installed in.`,
+    },
+  };
+}
+
+/** Emails the invitation in the app's name. The link goes to the app, never anywhere else. */
+async function sendInvitation(
+  runtime: BackofficeRuntimeServices,
+  app: ProvisioningApp,
+  input: SendInvitationInput,
+): Promise<AppProvisioningResult<SendInvitationResult>> {
+  const invitation = await runtime.objects.auth.singleton().commands.findInvitation({
+    invitationId: input.invitationId,
+  });
+  if (invitation === null || !(await isInstalledIn(runtime, app, invitation.organizationId))) {
+    return invitationNotFound(input.invitationId);
+  }
+  const appOrigin = new URL(app.branding.homeUrl).origin;
+  if (new URL(input.url).origin !== appOrigin) {
+    return {
+      ok: false,
+      error: {
+        code: "invalid_request",
+        message: `Invitation links go to the app's own origin, ${appOrigin}.`,
+      },
+    };
+  }
+  if (!invitation.pending) {
+    return {
+      ok: false,
+      error: { code: "conflict", message: "The invitation is no longer pending." },
+    };
+  }
+  await runtime.objects.resend.singleton().commands.queueEmail(
+    await buildAppInvitationEmail({
+      email: invitation.email,
+      organizationName: invitation.organizationName,
+      inviterName: invitation.inviterName,
+      invitationUrl: input.url,
+      expiresInDays: Math.max(
+        1,
+        Math.ceil((Date.parse(invitation.expiresAt) - Date.now()) / DAY_MS),
+      ),
+      branding: app.branding,
+    }),
+    // One email per invitation, however often the app asks.
+    {
+      idempotencyKey: `provisioning:invitation-email:${input.invitationId}`,
+      senderName: app.branding.displayName,
+    },
+  );
+  return { ok: true, value: { email: invitation.email } };
+}
+
 async function acceptInvitation(
   runtime: BackofficeRuntimeServices,
   app: ProvisioningApp,
   input: AcceptInvitationInput,
 ): Promise<AppProvisioningResult<OrganizationMembershipRecord>> {
   const auth = runtime.objects.auth.singleton().commands;
-  const organizationId = await auth.findInvitationOrganization({
-    invitationId: input.invitationId,
-  });
-  if (organizationId === null || !(await isInstalledIn(runtime, app, organizationId))) {
-    return {
-      ok: false,
-      error: {
-        code: "not_found",
-        message: `Invitation '${input.invitationId}' is not to an organization this app is installed in.`,
-      },
-    };
+  const invitation = await auth.findInvitation({ invitationId: input.invitationId });
+  if (invitation === null || !(await isInstalledIn(runtime, app, invitation.organizationId))) {
+    return invitationNotFound(input.invitationId);
   }
   return await auth.acceptAppInvitation({ oauthClientId: app.oauthClientId, ...input });
 }
@@ -165,6 +221,7 @@ const provisioningHandlers: {
 } = {
   "organizations.provision": provisionOrganization,
   "projects.provision": provisionProject,
+  "invitations.send": sendInvitation,
   "invitations.accept": acceptInvitation,
 };
 
@@ -226,7 +283,7 @@ export const backofficeProvisioningRouter = new Hono<{
     app: ProvisioningApp,
     input: unknown,
   ) => Promise<AppProvisioningResult<unknown>>;
-  const result = await handle(runtime, app, input.data);
+  const result = await handle(runtime, { ...app, branding: app.trust.branding }, input.data);
   if (!result.ok) {
     return apiError(result.error.code, result.error.message);
   }
