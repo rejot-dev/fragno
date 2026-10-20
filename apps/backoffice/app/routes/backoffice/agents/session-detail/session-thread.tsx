@@ -24,13 +24,14 @@ import {
 import { ContextUsageMeter } from "@fragno-private/design-system/context-usage-meter";
 import { OperationNotice } from "@fragno-private/design-system/operation-notice";
 import { RadioMenu, type RadioMenuOption } from "@fragno-private/design-system/radio-menu";
-import { useEffect, useRef, useState, type UIEvent } from "react";
+import { useEffect, useRef } from "react";
 
 import {
   ComposerPrimitive,
   QueueItemPrimitive,
   ThreadPrimitive,
   useAuiState,
+  useThreadViewport,
 } from "@assistant-ui/react";
 
 import type {
@@ -69,6 +70,23 @@ function composerActionOptions(readyForInput: boolean): RadioMenuOption<Composer
       disabled: !readyForInput,
     },
   ];
+}
+
+/**
+ * The runtime scrolls to the newest message and keeps chasing it while a reply streams, then
+ * follows the reply; a scroll of its own would stop short and leave the thread unfollowed. The
+ * jump is instant because each streamed chunk would restart a smooth scroll.
+ */
+function ScrollToLatest() {
+  const atBottom = useThreadViewport((viewport) => viewport.isAtBottom);
+  if (atBottom) {
+    return null;
+  }
+  return (
+    <ThreadPrimitive.ScrollToBottom behavior="instant" asChild>
+      <ChatScrollToLatestButton />
+    </ThreadPrimitive.ScrollToBottom>
+  );
 }
 
 /** A paused queue resumes with an empty composer; a message resumes it too, at the queue's end. */
@@ -222,31 +240,10 @@ export function SessionThread({
       });
     }
   };
-  const [showScrollToLatest, setShowScrollToLatest] = useState(false);
-
-  const handleViewportScroll = (event: UIEvent<HTMLDivElement>) => {
-    const viewport = event.currentTarget;
-    const distanceFromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
-    setShowScrollToLatest(distanceFromBottom > 32);
-  };
-
-  const scrollToLatest = () => {
-    const viewport = viewportRef.current;
-    if (!viewport) {
-      return;
-    }
-    viewport.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" });
-  };
-
   return (
     <ThreadPrimitive.Root asChild>
       <ChatThread>
-        <ThreadPrimitive.Viewport
-          ref={viewportRef}
-          autoScroll
-          onScroll={handleViewportScroll}
-          asChild
-        >
+        <ThreadPrimitive.Viewport ref={viewportRef} autoScroll asChild>
           <ChatViewport>
             <ChatColumn ref={contentRef}>
               {hasMoreHistory || historyError ? (
@@ -321,6 +318,7 @@ export function SessionThread({
 
             <ThreadPrimitive.ViewportFooter asChild>
               <ChatViewportFooter alert={error}>
+                <ScrollToLatest />
                 <ComposerPrimitive.Root
                   onSubmit={(event) => {
                     if (composerAction !== "compact") {
@@ -441,8 +439,6 @@ export function SessionThread({
             </ThreadPrimitive.ViewportFooter>
           </ChatViewport>
         </ThreadPrimitive.Viewport>
-
-        {showScrollToLatest ? <ChatScrollToLatestButton onClick={scrollToLatest} /> : null}
       </ChatThread>
     </ThreadPrimitive.Root>
   );

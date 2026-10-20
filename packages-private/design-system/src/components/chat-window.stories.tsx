@@ -116,6 +116,7 @@ export function Running() {
             <ChatTurnSpacer />
           </ChatColumn>
           <ChatViewportFooter alert={null}>
+            <ChatScrollToLatestButton onClick={() => undefined} />
             <SampleComposer
               running
               disabledReason={null}
@@ -126,7 +127,6 @@ export function Running() {
             />
           </ChatViewportFooter>
         </ChatViewport>
-        <ChatScrollToLatestButton onClick={() => undefined} />
       </ChatThread>
     </Frame>
   );

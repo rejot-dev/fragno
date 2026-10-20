@@ -188,13 +188,18 @@ export function ChatHistoryControls({
   );
 }
 
-/** Floats above the composer once the reader has scrolled away from the newest message. */
-export function ChatScrollToLatestButton({ onClick }: { onClick: () => void }) {
+/**
+ * Floats above the composer once the reader has scrolled away from the newest message. Place it
+ * inside the ChatViewportFooter; it spreads its props so a chat runtime can supply the scroll.
+ */
+export function ChatScrollToLatestButton(
+  props: Omit<ComponentProps<"button">, "className" | "children">,
+) {
   return (
     <Button
       variant="secondary"
-      onClick={onClick}
-      className="absolute bottom-[10.5rem] left-1/2 z-30 -translate-x-1/2 shadow-[var(--bo-popover-shadow)]"
+      {...props}
+      className="absolute bottom-full left-1/2 z-30 mb-3 -translate-x-1/2 shadow-[var(--bo-popover-shadow)]"
     >
       Scroll to latest
     </Button>
