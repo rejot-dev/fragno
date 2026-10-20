@@ -110,7 +110,7 @@ declare const ui: {
       language?: string;
     }>,
   ): BackofficeUiElement;
-  /** Builds Image. Displays a PNG, JPEG, GIF, or WebP file from the current Backoffice scope. Use an absolute virtual file path (for example /workspace/screenshots/dashboard.png), not a URL or base64. Files remain private and are fetched with the viewer's authorization. */
+  /** Builds Image. Displays a PNG, JPEG, GIF, WebP, or SVG file from the current Backoffice scope. Use an absolute virtual file path (for example /workspace/screenshots/dashboard.png), not a URL or base64. Files remain private and are fetched with the viewer's authorization. */
   image(
     props: BackofficeUiProps<{
       /** at most 2048 characters */

@@ -9,6 +9,6 @@ export const imageDefinition = {
   }),
   slots: [],
   description:
-    "Displays a PNG, JPEG, GIF, or WebP file from the current Backoffice scope. Use an absolute virtual file path (for example /workspace/screenshots/dashboard.png), not a URL or base64. Files remain private and are fetched with the viewer's authorization.",
+    "Displays a PNG, JPEG, GIF, WebP, or SVG file from the current Backoffice scope. Use an absolute virtual file path (for example /workspace/screenshots/dashboard.png), not a URL or base64. Files remain private and are fetched with the viewer's authorization.",
   example: { path: "/workspace/screenshots/dashboard.png", alt: "Dashboard preview" },
 };
