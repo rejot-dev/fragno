@@ -81,6 +81,7 @@ test("precompiled workspace extensions open concurrently and after restart witho
     );
 
     const buildContext = createCodemodeRouteBackedRuntimeContext({
+      emitter: { kind: "caller" },
       runtime,
       kernel: new BackofficeKernel(runtime),
       execution: createBackofficeSystemExecution(scope),
@@ -97,6 +98,7 @@ test("precompiled workspace extensions open concurrently and after restart witho
     expect(build).toMatchObject({ status: "success" });
     const executionRuntime = { ...runtime, codemodeEnv: { LOADER: testEnv.LOADER } };
     const runContext = createCodemodeRouteBackedRuntimeContext({
+      emitter: { kind: "caller" },
       runtime: executionRuntime,
       kernel: new BackofficeKernel(executionRuntime),
       execution: createBackofficeSystemExecution(scope),

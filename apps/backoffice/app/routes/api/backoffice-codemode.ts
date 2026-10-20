@@ -35,6 +35,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   const { runtime, kernel } = context.get(BackofficeWorkerContext);
 
   const routeRuntimeContext = createCodemodeRouteBackedRuntimeContext({
+    emitter: { kind: "caller" },
     runtime,
     kernel,
     execution: execution,

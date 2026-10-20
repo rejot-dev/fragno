@@ -65,6 +65,7 @@ test("event catalog commands combine built-in descriptors with scoped dynamic de
             };
             const kernel = new BackofficeKernel(ctx.runtime.services);
             const context = createRouteBackedRuntimeContext({
+              emitter: { kind: "caller" },
               runtime: ctx.runtime.services,
               kernel,
               execution: createBackofficeSystemExecution({ kind: "user", userId: "user-1" }),
@@ -124,6 +125,7 @@ test("event catalog commands combine built-in descriptors with scoped dynamic de
             });
 
             const otherContext = createRouteBackedRuntimeContext({
+              emitter: { kind: "caller" },
               runtime: ctx.runtime.services,
               kernel,
               execution: createBackofficeSystemExecution({ kind: "user", userId: "user-2" }),

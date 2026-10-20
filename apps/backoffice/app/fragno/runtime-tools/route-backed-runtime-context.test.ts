@@ -77,6 +77,7 @@ describe("createRouteBackedRuntimeContext", () => {
     const runtime = createRuntime();
     const piRuntime = {} as PiManagerRuntime;
     const context = createRouteBackedRuntimeContext({
+      emitter: { kind: "caller" },
       runtime,
       kernel: new BackofficeKernel(runtime),
       execution: createBackofficeSystemExecution({ kind: "system" }),
@@ -102,6 +103,7 @@ describe("createRouteBackedRuntimeContext", () => {
     readBackofficeAutomationSourceMock.mockImplementation(childReadSource);
 
     const context = createRouteBackedRuntimeContext({
+      emitter: { kind: "caller" },
       runtime,
       kernel: new BackofficeKernel(runtime),
       execution: createBackofficeSystemExecution({ kind: "system" }),
@@ -143,6 +145,7 @@ describe("createRouteBackedRuntimeContext", () => {
     const readSource = vi.fn(sourceReader);
     const scope = { kind: "system" as const };
     const context = createRouteBackedRuntimeContext({
+      emitter: { kind: "caller" },
       runtime,
       kernel: new BackofficeKernel(runtime),
       execution: createBackofficeSystemExecution(scope),
@@ -169,6 +172,7 @@ describe("createRouteBackedRuntimeContext", () => {
   test("keeps the context available when the Cloudflare singleton cannot be resolved", () => {
     const runtime = createRuntime();
     const context = createRouteBackedRuntimeContext({
+      emitter: { kind: "caller" },
       runtime,
       kernel: new BackofficeKernel(runtime),
       execution: createBackofficeSystemExecution({ kind: "system" }),

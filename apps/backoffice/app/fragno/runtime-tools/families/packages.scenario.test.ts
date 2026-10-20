@@ -85,6 +85,7 @@ async function createScenarioShell(ctx: BackofficeScenarioContext, scope: Backof
   return (
     await createInteractiveBashHost({
       context: createCodemodeRouteBackedRuntimeContext({
+        emitter: { kind: "caller" },
         runtime: ctx.runtime.services,
         kernel: new BackofficeKernel(ctx.runtime.services),
         execution: createBackofficeSystemExecution(scope),
@@ -247,6 +248,7 @@ describe("Workspace package runtime scenarios", () => {
             "personal installation selects the active organization and keeps its user destination",
             async (ctx) => {
               const context = createCodemodeRouteBackedRuntimeContext({
+                emitter: { kind: "caller" },
                 runtime: ctx.runtime.services,
                 kernel: new BackofficeKernel(ctx.runtime.services),
                 execution: createBackofficeUserExecution({
@@ -331,6 +333,7 @@ describe("Workspace package runtime scenarios", () => {
               },
             };
             const context = createCodemodeRouteBackedRuntimeContext({
+              emitter: { kind: "caller" },
               runtime: ctx.runtime.services,
               kernel: new BackofficeKernel(ctx.runtime.services),
               execution: createBackofficeExecutionForPrincipal(principal, {
@@ -488,6 +491,7 @@ describe("Workspace package runtime scenarios", () => {
             "denied contexts cannot discover, install or read workspace packages",
             async (ctx) => {
               const agentContext = createCodemodeRouteBackedRuntimeContext({
+                emitter: { kind: "caller" },
                 runtime: ctx.runtime.services,
                 kernel: new BackofficeKernel(ctx.runtime.services),
                 execution: createBackofficeServiceExecution({
@@ -514,6 +518,7 @@ describe("Workspace package runtime scenarios", () => {
               expect(unavailable.exitCode).not.toBe(0);
               expect(unavailable.stderr).toContain("Backoffice command unavailable");
               const personalContext = createCodemodeRouteBackedRuntimeContext({
+                emitter: { kind: "caller" },
                 runtime: ctx.runtime.services,
                 kernel: new BackofficeKernel(ctx.runtime.services),
                 execution: createBackofficeUserExecution({
@@ -530,6 +535,7 @@ describe("Workspace package runtime scenarios", () => {
               expect(membership.exitCode).not.toBe(0);
               expect(membership.stderr).toContain("Join an organization");
               const deniedContext = createCodemodeRouteBackedRuntimeContext({
+                emitter: { kind: "caller" },
                 runtime: ctx.runtime.services,
                 kernel: new BackofficeKernel(ctx.runtime.services),
                 execution: createBackofficeUserExecution({

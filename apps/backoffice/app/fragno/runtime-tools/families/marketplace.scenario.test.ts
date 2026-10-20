@@ -161,6 +161,7 @@ describe("Marketplace discovery runtime scenarios", () => {
           then.assert("terminal discovery shares registry data with codemode", async (ctx) => {
             const { bash } = await createInteractiveBashHost({
               context: createCodemodeRouteBackedRuntimeContext({
+                emitter: { kind: "caller" },
                 runtime: ctx.runtime.services,
                 kernel: new BackofficeKernel(ctx.runtime.services),
                 execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),

@@ -43,6 +43,7 @@ afterAll(async () => {
 
 async function terminal(ctx: BackofficeScenarioContext) {
   const context = createCodemodeRouteBackedRuntimeContext({
+    emitter: { kind: "caller" },
     runtime: ctx.runtime.services,
     kernel: new BackofficeKernel(ctx.runtime.services),
     execution: createBackofficeSystemExecution(scope),

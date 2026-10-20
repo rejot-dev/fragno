@@ -370,6 +370,7 @@ async function claim(ctx: Ctx, bearer: string, body: unknown) {
 /** Inspects events the way an organization member does, through the authorized Bash tools. */
 async function getEventAsOwner(ctx: Ctx, eventId: string): Promise<unknown> {
   const ownerContext = createRouteBackedRuntimeContext({
+    emitter: { kind: "caller" },
     runtime: ctx.runtime.services,
     kernel: new BackofficeKernel(ctx.runtime.services),
     execution: createBackofficeUserExecution({
@@ -1302,6 +1303,7 @@ describe("installed-app event delivery SQLite scenarios", () => {
 
           const manage = async (userId: string, command: string) => {
             const context = createRouteBackedRuntimeContext({
+              emitter: { kind: "caller" },
               runtime: ctx.runtime.services,
               kernel: new BackofficeKernel(ctx.runtime.services),
               execution: createBackofficeUserExecution({ scope: personal, userId }),

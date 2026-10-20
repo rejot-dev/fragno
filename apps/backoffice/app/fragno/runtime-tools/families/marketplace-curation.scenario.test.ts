@@ -86,6 +86,7 @@ async function curate(
   command: string,
 ) {
   const context = createRouteBackedRuntimeContext({
+    emitter: { kind: "caller" },
     runtime: ctx.runtime.services,
     kernel: new BackofficeKernel(ctx.runtime.services),
     execution,

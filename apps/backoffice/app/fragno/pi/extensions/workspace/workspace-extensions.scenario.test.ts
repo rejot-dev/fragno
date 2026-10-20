@@ -121,6 +121,7 @@ function workspace(
   selectedScope: BackofficeContextScope = scope,
 ) {
   return createCodemodeRouteBackedRuntimeContext({
+    emitter: { kind: "caller" },
     runtime: runtime.services,
     kernel: new BackofficeKernel(runtime.services),
     execution: createBackofficeServiceExecution({
@@ -1211,6 +1212,7 @@ test("js.build validates CLI inputs and scoped modification authority before com
             expect(result.exitCode, command).not.toBe(0);
           }
           const deniedContext = createCodemodeRouteBackedRuntimeContext({
+            emitter: { kind: "caller" },
             runtime: runtime.services,
             kernel: new BackofficeKernel(runtime.services),
             execution: createBackofficeUserExecution({ scope, userId: "outsider" }),

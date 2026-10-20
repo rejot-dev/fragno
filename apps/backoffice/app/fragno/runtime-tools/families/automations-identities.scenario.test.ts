@@ -78,6 +78,7 @@ test("identity.external.list pages through active and revoked bindings", async (
             );
 
             const context = createRouteBackedRuntimeContext({
+              emitter: { kind: "caller" },
               runtime: ctx.runtime.services,
               kernel: new BackofficeKernel(ctx.runtime.services),
               execution,

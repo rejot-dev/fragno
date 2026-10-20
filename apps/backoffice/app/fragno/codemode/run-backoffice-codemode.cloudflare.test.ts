@@ -542,6 +542,7 @@ describe("runBackofficeCodemode", () => {
     const runtime = createScopedMcpRuntimeServices(calls);
     const kernel = new BackofficeKernel(runtime);
     const routeContext = createRouteBackedRuntimeContext({
+      emitter: { kind: "caller" },
       runtime,
       kernel,
       billingOrganizationId: null,
@@ -591,6 +592,7 @@ describe("runBackofficeCodemode", () => {
     });
     try {
       const routeContext = createRouteBackedRuntimeContext({
+        emitter: { kind: "caller" },
         runtime: runtime.services,
         kernel: new BackofficeKernel(runtime.services),
         billingOrganizationId: null,
@@ -645,6 +647,7 @@ describe("runBackofficeCodemode", () => {
     try {
       const kernel = new BackofficeKernel(runtime.services);
       const routeContext = createRouteBackedRuntimeContext({
+        emitter: { kind: "caller" },
         runtime: runtime.services,
         kernel,
         execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),

@@ -197,6 +197,7 @@ async function createTerminal(
 ) {
   const runtime: BackofficeRuntimeServices = ctx.runtime.services;
   const context = createRouteBackedRuntimeContext({
+    emitter: { kind: "caller" },
     runtime,
     execution,
     kernel: new BackofficeKernel(runtime),

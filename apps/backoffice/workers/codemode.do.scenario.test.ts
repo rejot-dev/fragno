@@ -98,6 +98,7 @@ async function bash(
   return (
     await createInteractiveBashHost({
       context: createCodemodeRouteBackedRuntimeContext({
+        emitter: { kind: "caller" },
         runtime: runtime.services,
         kernel: new BackofficeKernel(runtime.services),
         execution: as,
@@ -406,6 +407,7 @@ test("codemode runs that load a guest bill their scope's organization, or else t
       families: runtimeToolFamilies,
       toolContext: createBackofficeToolContext(
         createCodemodeRouteBackedRuntimeContext({
+          emitter: { kind: "caller" },
           runtime: runtime.services,
           kernel: new BackofficeKernel(runtime.services),
           execution: userExecution,

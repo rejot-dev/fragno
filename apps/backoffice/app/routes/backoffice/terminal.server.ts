@@ -180,6 +180,7 @@ export const runBackofficeTerminalAction = async ({
   try {
     const { bash } = await createInteractiveBashHost({
       context: createCodemodeRouteBackedRuntimeContext({
+        emitter: { kind: "caller" },
         runtime,
         kernel,
         execution: execution,

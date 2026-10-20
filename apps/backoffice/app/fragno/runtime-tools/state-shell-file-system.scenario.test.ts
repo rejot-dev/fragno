@@ -43,6 +43,7 @@ const scenarioObjects = {
 
 async function createScenarioShell(ctx: BackofficeScenarioContext) {
   const context = createCodemodeRouteBackedRuntimeContext({
+    emitter: { kind: "caller" },
     runtime: ctx.runtime.services,
     kernel: new BackofficeKernel(ctx.runtime.services),
     execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),

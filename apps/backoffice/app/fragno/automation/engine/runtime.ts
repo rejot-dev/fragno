@@ -73,6 +73,7 @@ export const createAutomationRuntimeHostContext = ({
 
   const routeBacked = runtimeServices
     ? createRouteBackedRuntimeContext({
+        emitter: { kind: "caller" },
         runtime: runtimeServices,
         kernel: backofficeKernel,
         execution,

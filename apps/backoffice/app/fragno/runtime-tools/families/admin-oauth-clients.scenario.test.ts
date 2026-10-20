@@ -75,6 +75,7 @@ function oauthAdminContext(
   scope: BackofficeContextScope = { kind: "system" },
 ) {
   return createRouteBackedRuntimeContext({
+    emitter: { kind: "caller" },
     runtime: ctx.runtime.services,
     kernel: new BackofficeKernel(ctx.runtime.services),
     execution: createBackofficeUserExecution({ scope, userId }),
