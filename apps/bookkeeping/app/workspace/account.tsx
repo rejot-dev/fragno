@@ -4,8 +4,8 @@ import { BackofficePageHeader } from "@fragno-private/design-system/page-header"
 import { useState } from "react";
 import { useOutletContext } from "react-router";
 
-import { authClient } from "../lib/auth-client";
-import type { WorkspaceOutletContext } from "./workspace-layout";
+import { authClient } from "../auth/auth-client";
+import type { WorkspaceOutletContext } from "./layout";
 
 export function meta() {
   return [{ title: "Account · Bookkeeping" }];

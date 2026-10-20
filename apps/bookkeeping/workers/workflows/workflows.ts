@@ -10,14 +10,14 @@ import { DurableObject } from "cloudflare:workers";
 import { defaultFragnoRuntime } from "@fragno-dev/core";
 import { createWorkflowsFragment } from "@fragno-dev/workflows";
 
-import type { SessionUser } from "./auth";
-import { createProvisioningClient } from "./backoffice-client";
+import type { SessionUser } from "../auth/auth";
+import { createProvisioningClient } from "../backoffice/client";
 import {
   CREATE_WORKSPACE_WORKFLOW,
   defineCreateWorkspaceWorkflow,
   type CreateWorkspaceParams,
   type WizardAnswer,
-} from "./create-workspace-workflow";
+} from "./create-workspace";
 
 /** Where a person is in the sign-up wizard. */
 export type WizardState =

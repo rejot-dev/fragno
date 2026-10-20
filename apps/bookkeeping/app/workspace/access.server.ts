@@ -7,10 +7,14 @@ import { organizationRoleSchema } from "@fragno-dev/backoffice-api/v0/organizati
 import { env } from "cloudflare:workers";
 import { redirect } from "react-router";
 
-import type { SessionUser } from "../../workers/auth";
-import { exchangeForOrganization, isBackofficeUnavailable } from "../../workers/backoffice-client";
-import type { Workspace, WorkspaceMembership, WorkspaceRole } from "../../workers/workspaces";
-import { requireSessionUser } from "./session.server";
+import type { SessionUser } from "../../workers/auth/auth";
+import { exchangeForOrganization, isBackofficeUnavailable } from "../../workers/backoffice/client";
+import type {
+  Workspace,
+  WorkspaceMembership,
+  WorkspaceRole,
+} from "../../workers/workspaces/workspaces";
+import { requireSessionUser } from "../auth/session.server";
 
 /**
  * How long Bookkeeping trusts a membership Backoffice confirmed. Someone removed in Backoffice

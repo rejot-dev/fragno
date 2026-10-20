@@ -6,8 +6,8 @@ import { useEffect } from "react";
 import { Form, redirect, useNavigation, useRevalidator } from "react-router";
 import { z } from "zod";
 
-import type { WizardAnswer } from "../../workers/create-workspace-workflow";
-import { assertSameOrigin, requireSessionUser } from "../lib/session.server";
+import type { WizardAnswer } from "../../workers/workflows/create-workspace";
+import { assertSameOrigin, requireSessionUser } from "../auth/session.server";
 import type { Route } from "./+types/welcome";
 
 export function meta() {

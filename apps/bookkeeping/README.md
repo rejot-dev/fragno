@@ -52,7 +52,7 @@ know it exists. **Get started** sends them to Backoffice's sign-in, which Bookke
 Bookkeeping. They enter their email and the 6-digit code Backoffice emails them in Bookkeeping's
 name; a new address gets an account. They then return here signed in, and get a local Bookkeeping
 account on their first sign-in. `backoffice:connect` registers the branding, with `/logo.svg` and
-`/help` from `public/` and `app/routes/help.tsx`. The same authorization also lets Bookkeeping's
+`/help` from `public/` and `app/public/help.tsx`. The same authorization also lets Bookkeeping's
 server act for that person in their workspaces (see [Workspaces](#workspaces)).
 
 `pnpm --dir apps/bookkeeping backoffice:connect` sets all of these up (see
@@ -110,7 +110,7 @@ pnpm --dir apps/bookkeeping backoffice:connect
 
 The script signs in through the Backoffice CLI, creates Bookkeeping's OAuth client (or repairs the
 one in `.dev.vars`: callback URL, scopes, and client credentials), registers the app with `org.read`
-and `org.manage` and the actions declared in `workers/backoffice-actions.ts`, and writes the client
+and `org.manage` and the actions declared in `workers/backoffice/actions.ts`, and writes the client
 ID, secret, and both origins to `.dev.vars`. Bookkeeping is registered as a first-party app with
 every provisioning permission: Backoffice skips its consent screen and permission review, and
 Bookkeeping may create organizations and administrations in Backoffice and accept invitations for
@@ -130,7 +130,7 @@ members, and their roles (owner, admin, member); Bookkeeping keeps a read-only c
 `Workspaces` object and never changes membership itself. Everyone in a workspace can open its books.
 
 **Creating one.** Someone without a workspace lands in the sign-up wizard at `/welcome`, a
-`create-workspace` workflow (`workers/create-workspace-workflow.ts`). It asks their name when
+`create-workspace` workflow (`workers/workflows/create-workspace.ts`). It asks their name when
 Backoffice has none, which is the case after an email-code sign-up, then their business's name. It
 then creates the Backoffice organization with `organizations.provision`, which installs Bookkeeping
 there for them as its owner, and records the workspace. Answers wait durably, so people can leave
@@ -157,15 +157,36 @@ itself finds the workspace once they open it.
 Backoffice calls Bookkeeping too: a workspace's members and agents run `organization.get` through
 the `app#bookkeeping` integration connection, e.g.
 `integrations.execute --connection-id 'app#bookkeeping' --action-id organization.get --input-json '{}'`,
-or through a client from `integrations.generateClient`. `workers/backoffice-actions.ts` serves
+or through a client from `integrations.generateClient`. `workers/backoffice/actions.ts` serves
 `POST /api/backoffice/actions`: it verifies Backoffice's per-request token with
 `createAppActionVerifier`, then describes the workspace of the organization the request was signed
 for.
 
-## Bookkeeping schema
+## Books
 
-The SQLite schema for an administration's books lives in `workers/schema`; see its README. No route
+The SQLite schema for an administration's books lives in `workers/books`; see its README. No route
 or Durable Object uses it yet.
+
+## Layout
+
+`app/` holds the React Router pages and `workers/` the Cloudflare Worker. Both are organized by
+feature: a page sits with its server code and scenario tests, and each Durable Object has its own
+folder with its migrations.
+
+| Path                 | Holds                                                                |
+| -------------------- | -------------------------------------------------------------------- |
+| `app/auth`           | the session, the auth client, and the sign-in button every area uses |
+| `app/public`         | signed-out pages: home, login, signup, help                          |
+| `app/welcome`        | the sign-up wizard                                                   |
+| `app/invitations`    | joining a workspace                                                  |
+| `app/workspace`      | `/start` and `/w/:slug`; `access.server.ts` checks membership        |
+| `workers/worker.ts`  | the Worker's `fetch` entry, which exports the Durable Objects        |
+| `workers/auth`       | the `Auth` object                                                    |
+| `workers/workspaces` | the `Workspaces` object                                              |
+| `workers/workflows`  | the `Workflows` object and the `create-workspace` workflow           |
+| `workers/backoffice` | Backoffice's API client and the actions Backoffice calls             |
+| `workers/books`      | an administration's books schema                                     |
+| `scenario/`          | the scenario test harness                                            |
 
 ## Checks
 
@@ -213,8 +234,11 @@ commits atomically with its version. They use Fragno's Kysely Durable Object dia
 support Better Auth migration introspection, so schema changes are new migration files rather than
 edits to existing ones. The workflows fragment migrates its own tables.
 
-- `workers/auth-schema.sql`: Better Auth 1.7.1's default schema for users, sessions, and accounts.
-- `workers/auth-schema-0002-organizations.sql` and `workers/auth-schema-0003-backoffice-owner.sql`:
-  Bookkeeping's former organizations and their links to Backoffice, which
-  `workers/auth-schema-0004-backoffice-workspaces.sql` drops.
-- `workers/workspaces-schema.sql`: the `Workspaces` object's copy.
+Each object's migrations are numbered files in its `migrations/` folder. An object records how many
+it has applied, not their names.
+
+- `workers/auth/migrations/0001-better-auth.sql`: Better Auth 1.7.1's default schema for users,
+  sessions, and accounts.
+- `0002-organizations.sql` and `0003-backoffice-owner.sql`: Bookkeeping's former organizations and
+  their links to Backoffice, which `0004-drop-organizations.sql` drops.
+- `workers/workspaces/migrations/0001-workspaces.sql`: the `Workspaces` object's copy.

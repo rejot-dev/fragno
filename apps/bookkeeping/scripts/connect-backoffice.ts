@@ -18,7 +18,7 @@ import { isLoopbackUrl } from "@fragno-dev/backoffice-api/v0/apps";
 import {
   BACKOFFICE_ACTIONS_PATH,
   BOOKKEEPING_BACKOFFICE_ACTIONS,
-} from "../workers/backoffice-actions";
+} from "../workers/backoffice/actions";
 
 // Failures are user-facing messages, not crashes.
 process.on("uncaughtException", (error) => {

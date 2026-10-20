@@ -6,17 +6,17 @@ import { DurableObject } from "cloudflare:workers";
 import { Kysely } from "kysely";
 import { z } from "zod";
 
-import organizationsSchema from "./auth-schema-0002-organizations.sql?raw";
-import backofficeOwnerSchema from "./auth-schema-0003-backoffice-owner.sql?raw";
-import backofficeWorkspacesSchema from "./auth-schema-0004-backoffice-workspaces.sql?raw";
-import initialSchema from "./auth-schema.sql?raw";
-import { applyMigrations } from "./migrations";
+import { applyMigrations } from "../migrations";
+import betterAuthMigration from "./migrations/0001-better-auth.sql?raw";
+import organizationsMigration from "./migrations/0002-organizations.sql?raw";
+import backofficeOwnerMigration from "./migrations/0003-backoffice-owner.sql?raw";
+import dropOrganizationsMigration from "./migrations/0004-drop-organizations.sql?raw";
 
 const migrations = [
-  initialSchema,
-  organizationsSchema,
-  backofficeOwnerSchema,
-  backofficeWorkspacesSchema,
+  betterAuthMigration,
+  organizationsMigration,
+  backofficeOwnerMigration,
+  dropOrganizationsMigration,
 ];
 
 const BACKOFFICE_PROVIDER_ID = "backoffice";

@@ -4,7 +4,7 @@ import {
 } from "@fragno-dev/backoffice-api/v0/client";
 import { defineWorkflow, NonRetryableError } from "@fragno-dev/workflows/workflow";
 
-import type { Workspace, WorkspaceMember } from "./workspaces";
+import type { Workspace, WorkspaceMember } from "../workspaces/workspaces";
 
 export const CREATE_WORKSPACE_WORKFLOW = "create-workspace";
 
