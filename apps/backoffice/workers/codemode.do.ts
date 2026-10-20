@@ -180,6 +180,58 @@ async function executeCodemodeRunActivation(
     : completion;
 }
 
+// Cloudflare runs at most 10 Dynamic Workers at once for one Durable Object.
+const CODEMODE_OBJECT_MAX_ACTIVATIONS = 10;
+
+/**
+ * Admits guests first come, first served. Callers wait rather than fail: a workflow tick that
+ * fails outside a step errors its whole instance.
+ */
+class CodemodeActivationSlots {
+  #available: number;
+  readonly #waiting: (() => void)[] = [];
+
+  constructor(size: number) {
+    this.#available = size;
+  }
+
+  /** Resolves with the slot's release, or null when none opened within timeoutMs. */
+  acquire(timeoutMs: number): Promise<(() => void) | null> {
+    if (this.#available > 0) {
+      this.#available -= 1;
+      return Promise.resolve(this.#release());
+    }
+    return new Promise((resolve) => {
+      const admit = () => {
+        clearTimeout(timer);
+        resolve(this.#release());
+      };
+      const timer = setTimeout(() => {
+        this.#waiting.splice(this.#waiting.indexOf(admit), 1);
+        resolve(null);
+      }, timeoutMs);
+      this.#waiting.push(admit);
+    });
+  }
+
+  #release() {
+    let released = false;
+    return () => {
+      if (released) {
+        return;
+      }
+      released = true;
+      // A released slot passes straight to the next waiter, so a newcomer cannot overtake it.
+      const next = this.#waiting.shift();
+      if (next) {
+        next();
+      } else {
+        this.#available += 1;
+      }
+    };
+  }
+}
+
 /**
  * A run's actors become the event's actors, so automations attribute it to whoever started the run.
  * The hook id is the event id: a retried delivery ingests the same event again.
@@ -230,6 +282,7 @@ export class InMemoryCodemodeObject extends RpcTarget implements CodemodeObject 
   readonly #host: FragmentDurableObjectHost<void, CodemodeFragment>;
   readonly #env: BackofficeCodemodeEnv | null;
   readonly #nowEpochMs: () => number;
+  readonly #slots = new CodemodeActivationSlots(CODEMODE_OBJECT_MAX_ACTIVATIONS);
   #fragment: CodemodeFragment | null = null;
 
   constructor({
@@ -344,7 +397,22 @@ export class InMemoryCodemodeObject extends RpcTarget implements CodemodeObject 
     const runId = await fragment.callServices(() =>
       fragment.services.startRun(activation, context, new Date(this.#nowEpochMs())),
     );
-    const completion = await executeCodemodeRunActivation(env, activation, host);
+    // The run is recorded first, so history shows it running while it waits for a slot.
+    const release = await this.#slots.acquire(codemodeActivationDeadlineMs(activation));
+    let completion: CodemodeCompletion;
+    if (release === null) {
+      await host.close();
+      completion = failedCodemodeCompletion(
+        new CodemodeInterruptedError("CODEMODE_ACTIVATION_SLOT_TIMED_OUT"),
+        [],
+      );
+    } else {
+      try {
+        completion = await executeCodemodeRunActivation(env, activation, host);
+      } finally {
+        release();
+      }
+    }
     await fragment.callServices(() =>
       fragment.services.finishRun(runId, completion, new Date(this.#nowEpochMs())),
     );
