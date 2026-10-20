@@ -195,8 +195,9 @@ signed authorization request from a first-party app, it shows the app's sign-in 
 (`app/routes/backoffice/app-sign-in*`): the app's branding, an email field, then a 6-digit code.
 
 - **Codes come from Better Auth's `emailOTP`** (`workers/auth/better-auth-app-sign-in.ts`), and
-  Backoffice queues them through Resend in the app's name. On a loopback origin (development or
-  preview), Auth prints each code first, since a local Backoffice rarely has Resend configured.
+  Backoffice queues them through Resend in the app's name: its branding, and the configured sending
+  address under the app's display name. On a loopback origin (development or preview), Auth prints
+  each code first, since a local Backoffice rarely has Resend configured.
 - **Only first-party apps' requests get codes.** A hook after the OAuth Provider, which verifies the
   request's signature, refuses code requests and sign-ins whose request names no first-party client,
   so codes are no way around invitation-only sign-up. The other `emailOTP` endpoints are disabled.

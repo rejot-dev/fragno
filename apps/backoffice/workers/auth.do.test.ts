@@ -61,7 +61,10 @@ class RecordingResendObject {
   }> = [];
   readonly queuedEmails = new Map<string, ResendSendEmailInput>();
 
-  async queueEmail(input: ResendSendEmailInput, options: { idempotencyKey: string }) {
+  async queueEmail(
+    input: ResendSendEmailInput,
+    options: { idempotencyKey: string; senderName: string | null },
+  ) {
     this.attempts.push({ input, idempotencyKey: options.idempotencyKey });
     this.queuedEmails.set(options.idempotencyKey, input);
 
