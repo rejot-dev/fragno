@@ -658,6 +658,45 @@
     ]
   },
   {
+    "command": "admin.apps.update-permissions",
+    "summary": "admin.apps.update-permissions replaces the permissions an app requests (System administrators only).",
+    "options": [
+      {
+        "name": "app-id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Registered Backoffice app ID"
+      },
+      {
+        "name": "requested-permissions-json",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "JSON array of canonical namespace/permission requirements; use [] for no capabilities"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "admin.apps.update-trust",
     "summary": "admin.apps.update-trust sets whether Backoffice operates an app (System administrators only).",
     "options": [

@@ -122,6 +122,12 @@ export function createAdminRuntime({
       assertAppActionContractsEnforceable(input.actions);
       return requireBackofficeAppOperationValue(await apps.updateAppActions(input));
     },
+    updateAppPermissions: async (input) => {
+      if (!apps) {
+        throw new Error("Admin app permission updates require the APPS binding.");
+      }
+      return requireBackofficeAppOperationValue(await apps.updateAppPermissions(input));
+    },
     updateAppTrust: async (input) => {
       if (!apps) {
         throw new Error("Admin app trust updates require the APPS binding.");

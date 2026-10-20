@@ -86,6 +86,9 @@ describe("admin runtime tools", () => {
       updateAppActions: async () => {
         throw new Error("unexpected app action update");
       },
+      updateAppPermissions: async () => {
+        throw new Error("unexpected app permission update");
+      },
       updateAppTrust: async () => {
         throw new Error("unexpected app trust update");
       },

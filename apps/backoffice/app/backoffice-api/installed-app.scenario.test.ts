@@ -410,6 +410,26 @@ async function updateGrants(ctx: Ctx, grantedPermissions: BackofficePermissionRe
   assert(updated.ok);
 }
 
+/** Runs a Bash command as Backoffice's global administrator, in System context. */
+async function execAsAdministrator(ctx: Ctx, command: string): Promise<string> {
+  const context = createRouteBackedRuntimeContext({
+    runtime: ctx.runtime.services,
+    kernel: new BackofficeKernel(ctx.runtime.services),
+    execution: createBackofficeUserExecution({
+      scope: { kind: "system" },
+      userId: "platform-admin",
+    }),
+    billingOrganizationId: null,
+  });
+  assert(context.stateBackend);
+  const { bash } = await createInteractiveBashHost({
+    context: { ...context, stateBackend: context.stateBackend },
+  });
+  const result = await bash.exec(command);
+  assert.equal(result.exitCode, 0, result.stderr);
+  return result.stdout;
+}
+
 async function runInstalledAppScenario(
   name: string,
   steps: (
@@ -795,6 +815,42 @@ describe("installed-app event delivery SQLite scenarios", () => {
           401,
           "authentication_failed",
         );
+      }),
+    ]);
+  });
+  test("an administrator changes what Bookkeeping requests, and installations keep what their owner granted", async () => {
+    await runInstalledAppScenario("requested permissions change in place", (then) => [
+      then(
+        "Bookkeeping stops requesting emission, and the owner's emission grant stays until they change access",
+        async (ctx) => {
+          const update = `admin.apps.update-permissions --app-id ${ctx.vars.appId} --requested-permissions-json '[{"namespace":"events","permission":"read"}]'`;
+          assert.equal(await execAsAdministrator(ctx, update), "Updated app permissions.\n");
+          assert.equal(await execAsAdministrator(ctx, update), "App permissions unchanged.\n");
+          expect(
+            await ctx.runtime.objects.apps.singleton().commands.getApp({ appId: ctx.vars.appId }),
+          ).toMatchObject({ requestedPermissions: [BACKOFFICE_PERMISSION.events.read] });
+
+          expect(await sendEvent(ctx, { credential: ctx.vars.credential })).toMatchObject({
+            accepted: true,
+          });
+          const installations = ctx.runtime.objects.appInstallations.forOrg(
+            ctx.vars.orgId,
+          ).commands;
+          expect(
+            await installations.updateInstallationAccess({
+              appId: ctx.vars.appId,
+              grantedPermissions: [emit],
+              resourceScope: wholeOrganization,
+            }),
+          ).toMatchObject({ ok: false, error: { code: "APP_GRANTS_NOT_REQUESTED" } });
+        },
+      ),
+      then("reading events applies once the owner grants it, which drops emission", async (ctx) => {
+        const scope = orgScope(ctx.vars.orgId);
+        await expectApiError(listEventIds(ctx, ctx.vars.credential, scope), "forbidden");
+        await updateGrants(ctx, [BACKOFFICE_PERMISSION.events.read]);
+        expect(await listEventIds(ctx, ctx.vars.credential, scope)).toHaveLength(1);
+        await expectApiError(sendEvent(ctx, { credential: ctx.vars.credential }), "forbidden");
       }),
     ]);
   });
