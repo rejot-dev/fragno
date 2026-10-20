@@ -45,11 +45,16 @@ export type ProvisionOrganizationResult = z.output<typeof provisionOrganizationR
 export const provisionProjectInputSchema = z
   .lazy(() =>
     z.strictObject({
-      externalOrganizationId: externalIdSchema.describe(
-        "An organization this app provisioned; the project is created there.",
-      ),
+      organizationId: z
+        .string()
+        .trim()
+        .min(1)
+        .describe("An organization where the app is installed; the project is created there."),
       externalProjectId: externalIdSchema,
       name: z.string().trim().min(1).max(160),
+      createdByUserId: userIdSchema.describe(
+        "A member of the organization who authorized the app; the project is created as theirs.",
+      ),
     }),
   )
   .meta({ id: "ProvisionProjectInput" });
@@ -108,7 +113,8 @@ export const backofficeProvisioningOperations = {
     output: provisionOrganizationResultSchema,
   },
   "projects.provision": {
-    description: "Create a project in an organization the app provisioned.",
+    description:
+      "Create a project in an organization where the app is installed, on behalf of a member who authorized the app.",
     permission: "projects.provision",
     input: provisionProjectInputSchema,
     output: provisionProjectResultSchema,
