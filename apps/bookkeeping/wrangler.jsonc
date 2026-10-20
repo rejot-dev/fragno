@@ -9,11 +9,13 @@
       { "name": "AUTH", "class_name": "Auth" },
       { "name": "WORKSPACES", "class_name": "Workspaces" },
       { "name": "WORKFLOWS", "class_name": "Workflows" },
+      { "name": "BOOKS", "class_name": "Books" },
     ],
   },
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["Auth"] },
     { "tag": "v2", "new_sqlite_classes": ["Workspaces", "Workflows"] },
+    { "tag": "v3", "new_sqlite_classes": ["Books"] },
   ],
   "observability": { "enabled": true },
 }

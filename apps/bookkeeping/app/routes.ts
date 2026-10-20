@@ -12,6 +12,8 @@ export default [
   route("start", "workspace/start.tsx"),
   route("w/:slug", "workspace/layout.tsx", [
     index("workspace/overview.tsx"),
+    route("administrations/new", "administrations/new.tsx"),
+    route("a/:administration", "administrations/administration.tsx"),
     route("members", "workspace/members.tsx"),
     route("account", "workspace/account.tsx"),
   ]),
