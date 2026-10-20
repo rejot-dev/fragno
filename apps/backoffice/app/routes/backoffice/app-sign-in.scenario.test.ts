@@ -236,9 +236,13 @@ test("people an app sends to Backoffice sign up with a code in the app's name, e
           });
           // The code proved the address, so no verification email follows.
           await ctx.runtime.drain();
-          expect(ctx.fakes.resend?.queueEmailCalls.map(({ input }) => input.subject)).toEqual([
-            `Your Bookkeeping code: ${code}`,
-          ]);
+          // In the app's name, from Backoffice's sending address.
+          expect(
+            ctx.fakes.resend?.queueEmailCalls.map(({ input, options }) => [
+              input.subject,
+              options.senderName,
+            ]),
+          ).toEqual([[`Your Bookkeeping code: ${code}`, "Bookkeeping"]]);
         }),
         then.assert("an existing account signs in with a code as itself", async (ctx) => {
           const auth = ctx.runtime.objects.auth.singleton();

@@ -164,7 +164,7 @@ export function createAdminRuntime({
           ttlDays: invitation.ttlDays,
           publicBaseUrl,
         }),
-        { idempotencyKey: `admin:sign-up-invitation:${invitation.issuanceId}` },
+        { idempotencyKey: `admin:sign-up-invitation:${invitation.issuanceId}`, senderName: null },
       );
       return {
         invitationId: invitation.invitationId,

@@ -34,8 +34,9 @@ import { createCloudflareBackofficeObjectContext } from "./lib/cloudflare-backof
 
 type ResendConfigScope = Extract<BackofficeContextScope, { kind: "system" | "org" }>;
 
-type StoredResendConfig = Omit<ResendConfig, "webhookSecret"> & {
+type StoredResendConfig = Omit<ResendConfig, "webhookSecret" | "defaultFrom"> & {
   scope: ResendConfigScope;
+  defaultFrom: string;
   webhookBaseUrl?: string;
   webhookId?: string;
   webhookSecret?: string;
@@ -95,6 +96,13 @@ const prefixDevelopmentEmailSubject = (
     subject: `${DEVELOPMENT_SUBJECT_PREFIX} ${input.subject}`,
   };
 };
+
+/** The configured sender's address under another name, e.g. a first-party app's. */
+function fromAs(senderName: string, defaultFrom: string): string {
+  const address = /<([^<>]+)>\s*$/u.exec(defaultFrom)?.[1] ?? defaultFrom;
+  // Quoted, the name cannot break out of the header; quotes and line breaks in it are dropped.
+  return `"${senderName.replace(/["\\\r\n]/gu, "")}" <${address.trim()}>`;
+}
 
 const maskSecret = (value: string) => {
   if (!value) {
@@ -492,17 +500,22 @@ export class InMemoryResendObject implements ResendObject {
     });
   }
 
+  /** `senderName` sends from the configured address under that name instead of its own. */
   async queueEmail(
     input: ResendSendEmailInput,
-    options: { idempotencyKey: string },
+    options: { idempotencyKey: string; senderName: string | null },
   ): Promise<void> {
-    const { runtime: fragment } = this.#host.requireConfigured(
+    const { runtime: fragment, stored } = this.#host.requireConfigured(
       "Resend is not configured for email delivery.",
     );
+    const email =
+      options.senderName === null
+        ? input
+        : { ...input, from: fromAs(options.senderName, stored.defaultFrom) };
 
     try {
       await fragment.callServices(() =>
-        fragment.services.queueEmail(prefixDevelopmentEmailSubject(input, this.#runtimeMode), {
+        fragment.services.queueEmail(prefixDevelopmentEmailSubject(email, this.#runtimeMode), {
           idempotencyKey: options.idempotencyKey,
         }),
       );
@@ -594,7 +607,7 @@ export class Resend extends DurableObject<CloudflareEnv> implements ResendObject
 
   async queueEmail(
     input: ResendSendEmailInput,
-    options: { idempotencyKey: string },
+    options: { idempotencyKey: string; senderName: string | null },
   ): Promise<void> {
     await this.#object.queueEmail(input, options);
   }
