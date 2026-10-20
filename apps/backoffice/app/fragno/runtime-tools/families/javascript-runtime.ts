@@ -39,7 +39,8 @@ export type JavaScriptRunFileOutput =
 export type JavaScriptRunLogsOutput =
   | { runId: string; status: "running" }
   | { runId: string; status: "completed"; logs: CodemodeLogLine[] }
-  | { runId: string; status: "failed"; logs: CodemodeLogLine[]; error: string };
+  | { runId: string; status: "failed"; logs: CodemodeLogLine[]; error: string }
+  | { runId: string; status: "suspended"; logs: CodemodeLogLine[] };
 
 export type JavaScriptBuildFileInput = { path: string; out: string };
 

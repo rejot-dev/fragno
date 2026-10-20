@@ -3,6 +3,7 @@ import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/share
 import type {
   CodemodeActivation,
   CodemodeCompletion,
+  CodemodeSuspensionReason,
 } from "@fragno-dev/codemode/execution/codemode-activation-contract";
 import type { CodemodeWireError } from "@fragno-dev/codemode/execution/codemode-error-contract";
 import type { CodemodeLogLine } from "@fragno-dev/codemode/runtime-api";
@@ -17,24 +18,37 @@ import {
   type HookFn,
 } from "@fragno-dev/db";
 
-/** Activations whose complete host lifecycle the Codemode object owns; workflows suspend through their runner. */
-export type CodemodeRunActivation = Extract<
-  CodemodeActivation,
-  { kind: "immediate" | "module" | "module-build" | "compiled" }
->;
+/** The Codemode object owns every activation's guest; a workflow activation is one runner tick. */
+export type CodemodeRunActivation = CodemodeActivation;
 
-/** These activations cannot suspend, so a finished run either completed or failed. */
-export type CodemodeRunCompletion = Exclude<CodemodeCompletion, { status: "suspended" }>;
+/** Only a workflow tick suspends; the object fails any other activation that tries. */
+export type CodemodeRunCompletion<
+  TActivation extends CodemodeRunActivation = CodemodeRunActivation,
+> = TActivation extends { kind: "workflow" }
+  ? CodemodeCompletion
+  : Exclude<CodemodeCompletion, { status: "suspended" }>;
 
 /** The run identity links a caller's result to its retained history. */
-export type CodemodeExecution = {
+export type CodemodeExecution<TActivation extends CodemodeRunActivation = CodemodeRunActivation> = {
   runId: string;
-  completion: CodemodeRunCompletion;
+  completion: CodemodeRunCompletion<TActivation>;
 };
+
+/** History and durable hooks use ISO timestamps; live completions retain the runner's Dates. */
+type CodemodeRunSuspensionReason = ReturnType<typeof serializeCodemodeRunSuspensionReason>;
+
+function serializeCodemodeRunSuspensionReason(reason: CodemodeSuspensionReason) {
+  if (reason.type === "sleep" || reason.type === "waitForEvent") {
+    const { runAt, ...details } = reason;
+    return { ...details, ...(runAt === undefined ? {} : { runAt: runAt.toISOString() }) };
+  }
+  return reason;
+}
 
 type CodemodeRunOutcome =
   | { status: "completed"; logs: CodemodeLogLine[] }
-  | { status: "failed"; error: CodemodeWireError; logs: CodemodeLogLine[] };
+  | { status: "failed"; error: CodemodeWireError; logs: CodemodeLogLine[] }
+  | { status: "suspended"; reason: CodemodeRunSuspensionReason; logs: CodemodeLogLine[] };
 
 type CodemodeActivationKind = CodemodeRunActivation["kind"];
 
@@ -60,7 +74,11 @@ export type CodemodeRunStartedHookPayload = CodemodeRunContext & {
 /** Logs stay with the run record; hook payloads are copied into the hook queue and run events. */
 export type CodemodeRunFinishedHookPayload = CodemodeRunStartedHookPayload & {
   finishedAt: string;
-} & ({ status: "completed" } | { status: "failed"; error: CodemodeWireError });
+} & (
+    | { status: "completed" }
+    | { status: "failed"; error: CodemodeWireError }
+    | { status: "suspended"; reason: CodemodeRunSuspensionReason }
+  );
 
 /** Hooks fire after their run transition commits and retry until the handler succeeds. */
 export type CodemodeFragmentConfig = {
@@ -204,7 +222,13 @@ const codemodeFragmentDefinition = defineFragment<CodemodeFragmentConfig>("codem
         const outcome: CodemodeRunOutcome =
           completion.status === "completed"
             ? { status: "completed", logs: completion.logs }
-            : { status: "failed", error: completion.error, logs: completion.logs };
+            : completion.status === "failed"
+              ? { status: "failed", error: completion.error, logs: completion.logs }
+              : {
+                  status: "suspended",
+                  reason: serializeCodemodeRunSuspensionReason(completion.reason),
+                  logs: completion.logs,
+                };
         return this.serviceTx(codemodeSchema)
           .retrieve((uow) =>
             uow.findFirst("run", (b) => b.whereIndex("primary", (eb) => eb("id", "=", runId))),
@@ -225,9 +249,11 @@ const codemodeFragmentDefinition = defineFragment<CodemodeFragmentConfig>("codem
             };
             uow.triggerHook(
               "onRunFinished",
-              completion.status === "completed"
+              outcome.status === "completed"
                 ? { ...finished, status: "completed" }
-                : { ...finished, status: "failed", error: completion.error },
+                : outcome.status === "failed"
+                  ? { ...finished, status: "failed", error: outcome.error }
+                  : { ...finished, status: "suspended", reason: outcome.reason },
             );
           })
           .build();

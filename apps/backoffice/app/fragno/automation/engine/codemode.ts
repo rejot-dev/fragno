@@ -2,10 +2,9 @@ import type { RemoteWorkflowStepHost } from "@fragno-dev/workflows/remote-workfl
 import type { WorkflowEvent } from "@fragno-dev/workflows/workflow";
 
 import type { NpmDependencyMap } from "@/backoffice-runtime/dynamic-workers/npm-dependencies";
-import type {
-  BackofficeCodemodeEnv,
-  BackofficeCodemodeWorkflowDefinition,
-} from "@/fragno/codemode/execute";
+import type { CodemodeRunOrigin } from "@/fragno/codemode/codemode-fragment";
+import type { CodemodeRunner } from "@/fragno/codemode/codemode-object-execute";
+import type { BackofficeCodemodeWorkflowDefinition } from "@/fragno/codemode/execute";
 import { runBackofficeCodemodeWorkflow } from "@/fragno/codemode/workflow-execute";
 import type { AutomationScriptHostContext } from "@/fragno/runtime-tools/automation-host";
 import type { BackofficeRuntimeToolCall } from "@/fragno/runtime-tools/runtime-tools";
@@ -44,7 +43,8 @@ export const executeWorkflowCodemodeAutomation = async ({
   modules,
   dependencies,
   context,
-  env,
+  codemode,
+  origin,
   workflowEvent,
   remote,
 }: {
@@ -52,7 +52,8 @@ export const executeWorkflowCodemodeAutomation = async ({
   modules: Record<string, string>;
   dependencies?: NpmDependencyMap;
   context: AutomationScriptHostContext;
-  env: BackofficeCodemodeEnv;
+  codemode: CodemodeRunner;
+  origin: CodemodeRunOrigin;
   workflowEvent: WorkflowEvent<unknown>;
   remote: RemoteWorkflowStepHost;
 }): Promise<AutomationRunResult<"codemode">> => {
@@ -63,7 +64,8 @@ export const executeWorkflowCodemodeAutomation = async ({
     dependencies,
     event: { ...workflowEvent, id: context.automation.event.id },
     remote,
-    env,
+    codemode,
+    origin,
     allowedHooks: [],
     families: runtimeToolFamilies,
     toolContext,

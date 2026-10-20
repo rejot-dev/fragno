@@ -74,7 +74,7 @@ const codemodeRunPageInputSchema = z.discriminatedUnion("page", [
 /** Workers RPC delivers the caller's host methods as stubs whose calls return promises. */
 type CodemodeExecutionHost = Omit<CodemodeHost, "close"> & { close(): void | Promise<void> };
 
-function failedCodemodeCompletion(error: unknown, logs: CodemodeLogLine[]): CodemodeRunCompletion {
+function failedCodemodeCompletion(error: unknown, logs: CodemodeLogLine[]): CodemodeCompletion {
   return { status: "failed", error: encodeCodemodeError(error), logs };
 }
 
@@ -134,19 +134,23 @@ async function executeCodemodeActivationOnLoader(
   // Revocation cannot stop an already-running tool. Bound the wait instead of holding the run open.
   let drainTimer: ReturnType<typeof setTimeout> | null = null;
   try {
-    const drained = await Promise.race([
-      host.settle().then(() => true),
-      new Promise<boolean>((resolve) => {
+    const settled = await Promise.race([
+      host.settle().then((suspension) => ({ suspension })),
+      new Promise<null>((resolve) => {
         drainTimer = setTimeout(() => {
-          resolve(false);
+          resolve(null);
         }, CODEMODE_LIMITS.hostDrainTimeoutMs);
       }),
     ]);
-    if (!drained) {
+    if (settled === null) {
       return failedCodemodeCompletion(
         new CodemodeInterruptedError("CODEMODE_HOST_DRAIN_TIMED_OUT"),
         completion.logs,
       );
+    }
+    // The host's retry or wake decision survives a guest RPC response that was lost or overridden.
+    if (settled.suspension !== null) {
+      return { status: "suspended", reason: settled.suspension, logs: completion.logs };
     }
   } finally {
     if (drainTimer !== null) {
@@ -161,7 +165,7 @@ async function executeCodemodeRunActivation(
   env: BackofficeCodemodeEnv,
   activation: CodemodeRunActivation,
   host: CodemodeExecutionHost,
-): Promise<CodemodeRunCompletion> {
+): Promise<CodemodeCompletion> {
   let completion: CodemodeCompletion;
   try {
     completion =
@@ -171,7 +175,7 @@ async function executeCodemodeRunActivation(
   } catch (error) {
     return failedCodemodeCompletion(error, []);
   }
-  return completion.status === "suspended"
+  return completion.status === "suspended" && activation.kind !== "workflow"
     ? failedCodemodeCompletion(new Error("CODEMODE_ACTIVATION_CANNOT_SUSPEND"), completion.logs)
     : completion;
 }
@@ -280,6 +284,10 @@ export class InMemoryCodemodeObject extends RpcTarget implements CodemodeObject 
       if (!runtime.config.bindings.automations) {
         return;
       }
+      // A tick is an internal step of its workflow, and run events that start workflows would loop.
+      if (run.activationKind === "workflow") {
+        return;
+      }
       await runtime.objects.automations
         .for(scope)
         .commands.triggerIngestEvent(codemodeRunEvent(scope, hook, run), {
@@ -320,11 +328,11 @@ export class InMemoryCodemodeObject extends RpcTarget implements CodemodeObject 
     return this.#fragment;
   }
 
-  async execute(
-    activation: CodemodeRunActivation,
+  async execute<TActivation extends CodemodeRunActivation>(
+    activation: TActivation,
     context: CodemodeRunContext,
     host: CodemodeExecutionHost,
-  ): Promise<CodemodeExecution> {
+  ): Promise<CodemodeExecution<TActivation>> {
     const env = this.#env;
     if (!env) {
       throw new Error("CODEMODE_UNAVAILABLE: this runtime has no codemode executor.");
@@ -337,7 +345,8 @@ export class InMemoryCodemodeObject extends RpcTarget implements CodemodeObject 
     await fragment.callServices(() =>
       fragment.services.finishRun(runId, completion, new Date(this.#nowEpochMs())),
     );
-    return { runId, completion };
+    // executeCodemodeRunActivation fails every suspension except a workflow tick's.
+    return { runId, completion: completion as CodemodeRunCompletion<TActivation> };
   }
 
   async getRun(runId: string): Promise<CodemodeRun | null> {
@@ -391,11 +400,11 @@ export class Codemode extends DurableObject<CloudflareEnv> implements CodemodeOb
     this.#object = new InMemoryCodemodeObject(createCloudflareBackofficeObjectContext(state, env));
   }
 
-  execute(
-    activation: CodemodeRunActivation,
+  execute<TActivation extends CodemodeRunActivation>(
+    activation: TActivation,
     context: CodemodeRunContext,
     host: CodemodeHost,
-  ): Promise<CodemodeExecution> {
+  ): Promise<CodemodeExecution<TActivation>> {
     return this.#object.execute(activation, context, host);
   }
 

@@ -20,6 +20,8 @@ import { createEventRuntime } from "@/fragno/runtime-tools/families/event-runtim
 import { createStateShellFileSystem } from "@/fragno/runtime-tools/state-shell-file-system";
 
 import { InMemoryAutomationsObject } from "../../../workers/automations.do";
+import { InMemoryBillingObject } from "../../../workers/billing.do";
+import { InMemoryCodemodeObject } from "../../../workers/codemode.do";
 import { InMemoryMcpObject } from "../../../workers/mcp.do";
 import { InMemoryUploadObject } from "../../../workers/upload.do";
 import { AUTOMATION_SYSTEM_INITIATOR } from "./actors";
@@ -28,6 +30,8 @@ import { createAutomationsRouteCaller } from "./route-callers";
 
 const localObjects = {
   AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  BILLING: (input) => new InMemoryBillingObject(input),
+  CODEMODE: (input) => new InMemoryCodemodeObject(input),
   MCP: (input) => new InMemoryMcpObject(input),
   UPLOAD: (input) => new InMemoryUploadObject(input),
 } satisfies LocalBackofficeObjects;
@@ -85,7 +89,10 @@ describe("project automation event routing", () => {
   test("forwards org events into active project automation routes", async () => {
     const orgId = "org-1";
 
-    runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
+    runtime = await createInMemoryBackofficeRuntime({
+      objects: localObjects,
+      env: { codemode: env },
+    });
 
     const orgAutomations = runtime.objects.automations.forOrg(orgId);
     const orgRoutes = createAutomationsRouteCaller({

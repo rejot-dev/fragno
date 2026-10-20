@@ -1,3 +1,4 @@
+import { runInDurableObject } from "cloudflare:test";
 import { describe, expect, test, assert } from "vitest";
 
 import { schema } from "@fragno-dev/db/schema";
@@ -15,6 +16,9 @@ import { defineFragment, instantiate } from "@fragno-dev/core";
 import { getDurableHooksService, withDatabase } from "@fragno-dev/db";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
+import { createCloudflareBackofficeObjectRegistry } from "@/backoffice-runtime/cloudflare-durable-object-factory";
+import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
+import { codemodeRunnerFor, type CodemodeRunner } from "@/fragno/codemode/codemode-object-execute";
 import {
   createTrustedSystemBackofficeToolContext,
   defineBackofficeRuntimeTool,
@@ -23,6 +27,32 @@ import {
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
 import { defineCodemodeWorkflowRun, runBackofficeCodemodeWorkflow } from "./workflow-execute";
+
+const codemode = codemodeRunnerFor(
+  createCloudflareBackofficeObjectRegistry(env as CloudflareEnv).codemode.singleton().commands,
+  createBackofficeSystemExecution({ kind: "system" }),
+);
+
+/** Runs a test body with a Codemode runner created where its workflow runner lives. */
+async function runInWorkflowRunner(
+  runner: "test worker" | "Durable Object",
+  body: (codemode: CodemodeRunner) => Promise<void>,
+) {
+  const createRunner = () =>
+    codemodeRunnerFor(
+      createCloudflareBackofficeObjectRegistry(env as CloudflareEnv).codemode.singleton().commands,
+      createBackofficeSystemExecution({ kind: "system" }),
+    );
+  if (runner === "test worker") {
+    await body(createRunner());
+    return;
+  }
+  const namespace = (env as typeof env & { WORKFLOWS_HARNESS: DurableObjectNamespace })
+    .WORKFLOWS_HARNESS;
+  await runInDurableObject(namespace.get(namespace.newUniqueId()), async () => {
+    await body(createRunner());
+  });
+}
 
 const createHarness = async <TRegistry extends WorkflowsRegistry>(workflows: TRegistry) =>
   await createWorkflowsTestHarness({
@@ -34,6 +64,7 @@ const createHarness = async <TRegistry extends WorkflowsRegistry>(workflows: TRe
 
 const createSystemWorkflowOptions = () => ({
   allowedHooks: [],
+  origin: { kind: "inline" } as const,
   families: runtimeToolFamilies,
   toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
   modules: {},
@@ -53,7 +84,7 @@ describe("codemode workflow execution", () => {
             await step.do("first", async () => first + 1));
           return await step.do("third", async () => second + 1);
         }`,
-        env,
+        codemode,
         createSystemWorkflowOptions(),
       ),
     );
@@ -127,7 +158,7 @@ describe("codemode workflow execution", () => {
 
           return { nested };
         }`,
-        env,
+        codemode,
         createSystemWorkflowOptions(),
       ),
     );
@@ -181,7 +212,7 @@ describe("codemode workflow execution", () => {
           const doubled = await step.do("double", async () => value * 2);
           return { value, doubled };
         });`,
-        env,
+        codemode,
         createSystemWorkflowOptions(),
       ),
     );
@@ -229,7 +260,7 @@ describe("codemode workflow execution", () => {
             return await res.text();
           });
         }`,
-        env,
+        codemode,
         createSystemWorkflowOptions(),
       ),
     );
@@ -263,8 +294,9 @@ describe("codemode workflow execution", () => {
         }`,
           event,
           remote,
-          env,
+          codemode,
           allowedHooks: [],
+          origin: { kind: "inline" } as const,
           modules: {},
           families: runtimeToolFamilies,
           toolContext: createTrustedSystemBackofficeToolContext({
@@ -314,7 +346,7 @@ describe("codemode workflow execution", () => {
           await step.sleep("pause", "3 seconds");
           return await step.do("after-sleep", async () => "done");
         }`,
-        env,
+        codemode,
         createSystemWorkflowOptions(),
       ),
     );
@@ -385,7 +417,7 @@ describe("codemode workflow execution", () => {
             },
           );
         }`,
-        env,
+        codemode,
         createSystemWorkflowOptions(),
       ),
     );
@@ -436,9 +468,10 @@ describe("codemode workflow execution", () => {
             return await math.twice({ value: event.payload.value });
           });
         }`,
-        env,
+        codemode,
         {
           allowedHooks: [],
+          origin: { kind: "inline" } as const,
           modules: {},
           families: [
             defineBackofficeRuntimeToolFamily({
@@ -493,7 +526,7 @@ describe("codemode workflow execution", () => {
 
           return { before, after };
         }`,
-        env,
+        codemode,
         createSystemWorkflowOptions(),
       ),
     );
@@ -560,11 +593,15 @@ describe("codemode workflow execution", () => {
     );
   });
 
-  test("consumes events with Date values intact and resumes after a durable sleep", async () => {
-    const Workflow = defineRemoteWorkflow(
-      { name: "codemode-e2e-wait" },
-      defineCodemodeWorkflowRun<unknown, { approved: boolean; preservedDate: boolean }>(
-        `async (event, step) => {
+  // Production runners are Durable Objects, so step capabilities reach the guest from one too.
+  test.each(["test worker", "Durable Object"] as const)(
+    "consumes events with Date values intact and resumes after a durable sleep from a %s",
+    async (runner) => {
+      await runInWorkflowRunner(runner, async (codemode) => {
+        const Workflow = defineRemoteWorkflow(
+          { name: "codemode-e2e-wait" },
+          defineCodemodeWorkflowRun<unknown, { approved: boolean; preservedDate: boolean }>(
+            `async (event, step) => {
           const approval = await step.waitForEvent("approval", {
             type: "approval",
             onConsume: async (tx, received) => {
@@ -577,92 +614,178 @@ describe("codemode workflow execution", () => {
             preservedDate: approval.timestamp instanceof Date,
           }));
         }`,
-        env,
-        createSystemWorkflowOptions(),
-      ),
-    );
-    const harness = await createHarness({ WORKFLOW: Workflow });
+            codemode,
+            createSystemWorkflowOptions(),
+          ),
+        );
+        const harness = await createHarness({ WORKFLOW: Workflow });
 
-    try {
-      const instanceId = await harness.createInstance("WORKFLOW", {
-        id: "codemode-e2e-wait-1",
-        remoteWorkflowName: "codemode-e2e-wait-body",
-      });
-      await harness.runUntilIdle({
-        workflowName: "codemode-e2e-wait",
-        instanceId,
-        reason: "create",
-      });
+        try {
+          const instanceId = await harness.createInstance("WORKFLOW", {
+            id: "codemode-e2e-wait-1",
+            remoteWorkflowName: "codemode-e2e-wait-body",
+          });
+          await harness.runUntilIdle({
+            workflowName: "codemode-e2e-wait",
+            instanceId,
+            reason: "create",
+          });
 
-      await expect(harness.getStatus("WORKFLOW", instanceId)).resolves.toMatchObject({
-        status: "waiting",
-      });
-      expect((await harness.getHistory("WORKFLOW", instanceId)).steps).toEqual([
-        expect.objectContaining({
-          stepKey: "waitForEvent:approval",
-          status: "waiting",
-          waitEventType: "approval",
-        }),
-      ]);
+          await expect(harness.getStatus("WORKFLOW", instanceId)).resolves.toMatchObject({
+            status: "waiting",
+          });
+          expect((await harness.getHistory("WORKFLOW", instanceId)).steps).toEqual([
+            expect.objectContaining({
+              stepKey: "waitForEvent:approval",
+              status: "waiting",
+              waitEventType: "approval",
+            }),
+          ]);
 
-      const receivedAt = harness.clock.now().toISOString();
-      await harness.sendEvent("WORKFLOW", instanceId, {
-        type: "approval",
-        payload: { approved: true },
-      });
-      await harness.runUntilIdle({
-        workflowName: "codemode-e2e-wait",
-        instanceId,
-        reason: "event",
-      });
-      await expect(harness.getStatus("WORKFLOW", instanceId)).resolves.toMatchObject({
-        status: "waiting",
-      });
-      const waitingHistory = await harness.getHistory("WORKFLOW", instanceId);
-      expect(waitingHistory.steps).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ stepKey: "waitForEvent:approval", status: "completed" }),
-          expect.objectContaining({ stepKey: "sleep:cooldown", status: "waiting" }),
-        ]),
-      );
-      expect(waitingHistory.emissions).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ actor: "user", payload: { timestamp: receivedAt } }),
-        ]),
-      );
-
-      harness.clock.advanceBy("2 seconds");
-      await harness.restart();
-      await harness.runUntilIdle({
-        workflowName: "codemode-e2e-wait",
-        instanceId,
-        reason: "wake",
-      });
-
-      await expect(harness.getStatus("WORKFLOW", instanceId)).resolves.toMatchObject({
-        status: "complete",
-        output: { approved: true, preservedDate: true },
-      });
-      const history = await harness.getHistory("WORKFLOW", instanceId);
-      expect(history.events).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
+          const receivedAt = harness.clock.now().toISOString();
+          await harness.sendEvent("WORKFLOW", instanceId, {
             type: "approval",
             payload: { approved: true },
-            consumedByStepKey: "waitForEvent:approval",
-          }),
-        ]),
-      );
-      expect(history.steps).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ stepKey: "sleep:cooldown", status: "completed" }),
-          expect.objectContaining({ stepKey: "do:save approval", status: "completed" }),
-        ]),
-      );
-    } finally {
-      await harness.test.cleanup();
-    }
-  });
+          });
+          await harness.runUntilIdle({
+            workflowName: "codemode-e2e-wait",
+            instanceId,
+            reason: "event",
+          });
+          await expect(harness.getStatus("WORKFLOW", instanceId)).resolves.toMatchObject({
+            status: "waiting",
+          });
+          const waitingHistory = await harness.getHistory("WORKFLOW", instanceId);
+          expect(waitingHistory.steps).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({ stepKey: "waitForEvent:approval", status: "completed" }),
+              expect.objectContaining({ stepKey: "sleep:cooldown", status: "waiting" }),
+            ]),
+          );
+          expect(waitingHistory.emissions).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({ actor: "user", payload: { timestamp: receivedAt } }),
+            ]),
+          );
+
+          harness.clock.advanceBy("2 seconds");
+          await harness.restart();
+          await harness.runUntilIdle({
+            workflowName: "codemode-e2e-wait",
+            instanceId,
+            reason: "wake",
+          });
+
+          await expect(harness.getStatus("WORKFLOW", instanceId)).resolves.toMatchObject({
+            status: "complete",
+            output: { approved: true, preservedDate: true },
+          });
+          const history = await harness.getHistory("WORKFLOW", instanceId);
+          expect(history.events).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({
+                type: "approval",
+                payload: { approved: true },
+                consumedByStepKey: "waitForEvent:approval",
+              }),
+            ]),
+          );
+          expect(history.steps).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({ stepKey: "sleep:cooldown", status: "completed" }),
+              expect.objectContaining({ stepKey: "do:save approval", status: "completed" }),
+            ]),
+          );
+        } finally {
+          await harness.test.cleanup();
+        }
+      });
+    },
+  );
+
+  // The host keeps a guest's onEvent handler past the call that registered it.
+  test.each(["test worker", "Durable Object"] as const)(
+    "delivers events to a running step's onEvent handler from a %s",
+    async (runner) => {
+      await runInWorkflowRunner(runner, async (codemode) => {
+        const instanceId = "codemode-on-event-1";
+        let sendCommand: (input: { n: number }) => Promise<void> = async () => {
+          throw new Error("The workflow is not running yet.");
+        };
+        const sendTool = defineBackofficeRuntimeTool({
+          id: "probe.send",
+          namespace: "probe",
+          name: "send",
+          description: "Send the running workflow a command.",
+          requiredPermissions: [],
+          inputSchema: z.object({ n: z.number() }),
+          outputSchema: z.object({ sent: z.boolean() }),
+          execute: async (input) => {
+            await sendCommand(input);
+            return { sent: true };
+          },
+        });
+        const Workflow = defineRemoteWorkflow(
+          { name: "codemode-on-event" },
+          defineCodemodeWorkflowRun<unknown, unknown[]>(
+            `async (_event, step) => {
+              return await step.do("interactive", async (tx) => {
+                const received = [];
+                let delivered;
+                const firstDelivery = new Promise((resolve) => {
+                  delivered = resolve;
+                });
+                tx.onEvent("command", (event) => {
+                  received.push(event.payload);
+                  event.consume();
+                  delivered();
+                });
+                await probe.send({ n: 1 });
+                await firstDelivery;
+                return received;
+              });
+            }`,
+            codemode,
+            {
+              allowedHooks: [],
+              origin: { kind: "inline" },
+              modules: {},
+              families: [
+                defineBackofficeRuntimeToolFamily({ namespace: "probe", tools: [sendTool] }),
+              ],
+              toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
+            },
+          ),
+        );
+        const harness = await createHarness({ WORKFLOW: Workflow });
+        sendCommand = async (input) => {
+          await harness.sendEvent("WORKFLOW", instanceId, { type: "command", payload: input });
+        };
+
+        try {
+          await harness.createInstance("WORKFLOW", {
+            id: instanceId,
+            remoteWorkflowName: "codemode-on-event-body",
+          });
+          await harness.runUntilIdle({
+            workflowName: "codemode-on-event",
+            instanceId,
+            reason: "create",
+          });
+
+          await expect(harness.getStatus("WORKFLOW", instanceId)).resolves.toMatchObject({
+            status: "complete",
+            output: [{ n: 1 }],
+          });
+          expect((await harness.getHistory("WORKFLOW", instanceId)).events).toEqual([
+            expect.objectContaining({ type: "command", consumedByStepKey: "do:interactive" }),
+          ]);
+        } finally {
+          await harness.test.cleanup();
+        }
+      });
+    },
+  );
 
   test("codemode workflow step tx can create another workflow instance", async () => {
     const ChildWorkflow = defineWorkflow<
@@ -688,7 +811,7 @@ describe("codemode workflow execution", () => {
           });
           return { childId: "codemode-child-created-1" };
         }`,
-        env,
+        codemode,
         createSystemWorkflowOptions(),
       ),
     );
@@ -773,7 +896,7 @@ describe("codemode workflow execution", () => {
 
           return { all, raceReturn, anyReturn, settled };
         }`,
-        env,
+        codemode,
         createSystemWorkflowOptions(),
       ),
     );
@@ -901,7 +1024,7 @@ describe("codemode workflow execution", () => {
     const allowedHooks: RemoteWorkflowAllowedHook[] = [];
     const Workflow = defineRemoteWorkflow<"codemode-remote-hook", { fail: boolean }>(
       { name: "codemode-remote-hook" },
-      defineCodemodeWorkflowRun<{ fail: boolean }, string>(hookCode, env, {
+      defineCodemodeWorkflowRun<{ fail: boolean }, string>(hookCode, codemode, {
         ...createSystemWorkflowOptions(),
         allowedHooks,
       }),
@@ -910,7 +1033,7 @@ describe("codemode workflow execution", () => {
       { name: "codemode-remote-hook-denied" },
       defineCodemodeWorkflowRun<{ fail: boolean }, string>(
         hookCode,
-        env,
+        codemode,
         createSystemWorkflowOptions(),
       ),
     );
@@ -1015,9 +1138,10 @@ describe("codemode workflow execution", () => {
             return "unreachable";
           });
         }`,
-        env,
+        codemode,
         {
           allowedHooks: [],
+          origin: { kind: "inline" } as const,
           modules: {},
           families: runtimeToolFamilies,
           toolContext: createTrustedSystemBackofficeToolContext({

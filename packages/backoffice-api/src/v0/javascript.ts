@@ -114,6 +114,12 @@ const javaScriptLogsOutputSchema = z.lazy(() =>
       logs: z.array(javaScriptLogLineSchema),
       error: z.string(),
     }),
+    // A workflow tick ends suspended when its workflow waits; the runner resumes it in a new run.
+    z.object({
+      runId: z.string(),
+      status: z.literal("suspended"),
+      logs: z.array(javaScriptLogLineSchema),
+    }),
   ]),
 );
 

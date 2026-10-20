@@ -1,20 +1,10 @@
 import { CODEMODE_LIMITS } from "@fragno-dev/codemode/codemode-limits";
-import {
-  sourceModuleFiles,
-  type CodemodeStepCapability,
-} from "@fragno-dev/codemode/execution/codemode-activation-contract";
 import { decodeCodemodeError } from "@fragno-dev/codemode/execution/codemode-errors";
-import {
-  DynamicWorkerExecutor,
-  type DynamicWorkerRpcCall,
-} from "@fragno-dev/codemode/guest/codemode-worker-executor";
-import { createCodemodeWorkflowSource } from "@fragno-dev/codemode/guest/codemode-workflow-source";
 import { createCodemodeHost } from "@fragno-dev/codemode/host/codemode-host-capabilities";
 import {
   RemoteWorkflowSuspendedError,
   type RemoteWorkflowAllowedHook,
   type RemoteWorkflowStepHost,
-  type RemoteWorkflowSuspension,
 } from "@fragno-dev/workflows/remote-workflow";
 import type { RemoteWorkflowRunFn, WorkflowEvent } from "@fragno-dev/workflows/workflow";
 
@@ -25,29 +15,16 @@ import type {
   BackofficeToolContext,
 } from "@/fragno/runtime-tools/runtime-tools";
 
-import {
-  createBackofficeCodemodeResolvedProviders,
-  resolveBackofficeWorkerCompiler,
-  type BackofficeCodemodeEnv,
-} from "./execute";
-import { createBackofficeCodemodeRemoteHost } from "./remote-execution-host";
+import type { CodemodeRunOrigin } from "./codemode-fragment";
+import { codemodeProviderManifest, type CodemodeRunner } from "./codemode-object-execute";
+import { createBackofficeCodemodeResolvedProviders } from "./execute";
 import { BackofficeWorkflowStepHost } from "./workflow-host";
 
 export type BackofficeCodemodeWorkflowResult<TOutput = unknown> = {
   result?: TOutput;
   error?: string;
 };
-type WorkflowWorkerResult<TOutput> =
-  | { ok: true; result: TOutput }
-  | { ok: false; suspension: RemoteWorkflowSuspension };
 type CodemodeWorkflowEvent<TParams> = WorkflowEvent<TParams> & { id?: string };
-type WorkflowWorkerEntrypoint<TParams, TOutput> = {
-  run(
-    event: CodemodeWorkflowEvent<TParams>,
-    stepTarget: CodemodeStepCapability,
-    dispatchers: Record<string, unknown>,
-  ): DynamicWorkerRpcCall<WorkflowWorkerResult<TOutput>>;
-};
 
 export type BackofficeCodemodeWorkflowOptions = {
   families: readonly BackofficeRuntimeToolFamily[];
@@ -57,105 +34,53 @@ export type BackofficeCodemodeWorkflowOptions = {
   dependencies?: NpmDependencyMap;
   /** Saved modules the program imports, pinned when its instance was created. */
   modules: Record<string, string>;
+  /** Names the program in each tick's run history. */
+  origin: CodemodeRunOrigin;
 };
 
 type WorkflowExecutionInput<TParams> = {
   code: string;
   event: CodemodeWorkflowEvent<TParams>;
   remote: RemoteWorkflowStepHost;
-  env: BackofficeCodemodeEnv;
+  codemode: CodemodeRunner;
 } & BackofficeCodemodeWorkflowOptions;
 
-// TODO(codemode): run workflow activations through the scope's Codemode object, like every other
-// activation, so workflow runs get recorded history. Required first:
-// - replace this Cloudflare path's own guest build and DynamicWorkerExecutor call with
-//   executeCodemodeActivation;
-// - let the object return host.settle() suspensions (its loader path currently discards them) and
-//   record `suspended` runs with their reason and workflow instance id, since each tick is a new run;
-// - prove in a Cloudflare scenario that step callbacks, onConsume, and tx.onEvent subscriptions
-//   (duplicated stubs) survive the extra Automations -> Codemode -> guest RPC hop.
+/** Runs one runner tick as a Codemode run; the step host stays here and only its capabilities travel. */
 async function executeBackofficeCodemodeWorkflow<TParams, TOutput>(
   input: WorkflowExecutionInput<TParams>,
 ): Promise<TOutput> {
-  const { modules, event, remote, env, families, toolContext, dependencies, allowedHooks } = input;
-  const code = withBackofficeUiBuilder(input.code);
+  const { modules, event, remote, codemode, origin, families, toolContext, dependencies } = input;
   const providers = createBackofficeCodemodeResolvedProviders({ families, toolContext });
-  const stepTarget = new BackofficeWorkflowStepHost(remote, allowedHooks);
-  if ("remoteExecutor" in env) {
-    const { host, manifest } = createBackofficeCodemodeRemoteHost(providers, {
-      step: stepTarget,
-    });
-    try {
-      const completion = await env.remoteExecutor(
-        {
-          kind: "workflow",
-          code,
-          modules,
-          dependencies: dependencies ?? {},
-          providers: manifest,
-          timeoutMs: CODEMODE_LIMITS.activationTimeoutMs,
-          event: { ...event, id: event.id ?? event.instanceId },
-        },
-        host,
-      );
-      if (completion.status === "suspended") {
-        throw new RemoteWorkflowSuspendedError(completion.reason);
-      }
-      if (completion.status === "failed") {
-        throw decodeCodemodeError(completion.error);
-      }
-      // Workflow output remains opaque until the runner's registered output schema validates it.
-      return completion.value as TOutput;
-    } finally {
-      host.close();
-    }
-  }
-  const host = createCodemodeHost(providers, stepTarget);
-  const executor = new DynamicWorkerExecutor({ loader: env.LOADER });
-  const compiled = await resolveBackofficeWorkerCompiler(env)({
-    files: {
-      ...sourceModuleFiles(modules),
-      "remote-workflow.js": createCodemodeWorkflowSource({ code, providers }),
-    },
-    entryPoint: "remote-workflow.js",
-    dependencies: dependencies ?? {},
-    runtime: { compatibilityDate: "2026-05-07", compatibilityFlags: ["nodejs_als"] },
-  });
-  let outcome:
-    | { type: "completed"; output: WorkflowWorkerResult<TOutput> }
-    | { type: "failed"; error: unknown };
-  let suspension: Awaited<ReturnType<typeof host.settle>>;
+  const host = createCodemodeHost(
+    providers,
+    new BackofficeWorkflowStepHost(remote, input.allowedHooks),
+  );
+  let completion;
   try {
-    outcome = await executor
-      .runEntrypoint<WorkflowWorkerEntrypoint<TParams, TOutput>, WorkflowWorkerResult<TOutput>>({
-        bundle: compiled.bundle,
-        rpcTargets: host.capabilities,
-        run: (entrypoint, targets) =>
-          entrypoint.run(
-            { ...event, id: event.id ?? event.instanceId },
-            targets.stepTarget as CodemodeStepCapability,
-            targets.dispatchers as Record<string, unknown>,
-          ),
-      })
-      .then(
-        (output) => ({ type: "completed", output }) as const,
-        (error: unknown) => ({ type: "failed", error }) as const,
-      );
+    ({ completion } = await codemode.run(
+      {
+        kind: "workflow",
+        code: withBackofficeUiBuilder(input.code),
+        modules,
+        dependencies: dependencies ?? {},
+        providers: codemodeProviderManifest(providers),
+        timeoutMs: CODEMODE_LIMITS.activationTimeoutMs,
+        event: { ...event, id: event.id ?? event.instanceId },
+      },
+      origin,
+      host,
+    ));
   } finally {
     host.close();
-    suspension = await host.settle();
   }
-  // Host retry and wake decisions survive even when their native RPC response is lost.
-  if (suspension !== null) {
-    throw new RemoteWorkflowSuspendedError(suspension);
+  if (completion.status === "suspended") {
+    throw new RemoteWorkflowSuspendedError(completion.reason);
   }
-  if (outcome.type === "failed") {
-    throw outcome.error;
+  if (completion.status === "failed") {
+    throw decodeCodemodeError(completion.error);
   }
-  if (!outcome.output.ok) {
-    throw new RemoteWorkflowSuspendedError(outcome.output.suspension.reason);
-  }
-  return outcome.output.result;
+  // Workflow output remains opaque until the runner's registered output schema validates it.
+  return completion.value as TOutput;
 }
 
 /** Runs one activation; suspension stays visible to the workflow runner rather than becoming an error string. */
@@ -175,7 +100,7 @@ export async function runBackofficeCodemodeWorkflow<TParams = unknown, TOutput =
 /** Re-evaluates workflow source on each runner tick using Node-owned checkpoints. */
 export function defineCodemodeWorkflowRun<TParams = unknown, TOutput = unknown>(
   code: string,
-  env: BackofficeCodemodeEnv,
+  codemode: CodemodeRunner,
   options: BackofficeCodemodeWorkflowOptions,
 ): RemoteWorkflowRunFn<TParams, TOutput> {
   return async (event, remote) =>
@@ -183,7 +108,7 @@ export function defineCodemodeWorkflowRun<TParams = unknown, TOutput = unknown>(
       code,
       event,
       remote,
-      env,
+      codemode,
       ...options,
     });
 }

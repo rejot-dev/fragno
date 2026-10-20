@@ -9,7 +9,7 @@ import { withBackofficeActorCapabilityGrants } from "@/backoffice-runtime/author
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
-import type { BackofficeCodemodeEnv } from "@/fragno/codemode/execute";
+import { codemodeRunnerFor } from "@/fragno/codemode/codemode-object-execute";
 import {
   createEventRuntime,
   type EventEmitter,
@@ -27,7 +27,6 @@ import type { AutomationRuntimeHostContext } from "./runtime";
 
 export type CodemodeWorkflowConfig = {
   readAutomationSource?: AutomationSourceReader;
-  env?: BackofficeCodemodeEnv;
   runtime?: BackofficeRuntimeServices;
 };
 
@@ -128,9 +127,6 @@ export const defineCodemodeWorkflow = (config: CodemodeWorkflowConfig) =>
       checkpoint: "step",
     },
     async function executeCodemodeWorkflow(event, remote) {
-      if (!config.env) {
-        throw new Error("Codemode workflows require a configured executor.");
-      }
       if (!config.runtime) {
         throw new Error("Codemode workflows require Backoffice runtime services.");
       }
@@ -190,7 +186,16 @@ export const defineCodemodeWorkflow = (config: CodemodeWorkflowConfig) =>
         modules: params.program.modules,
         dependencies: params.program.dependencies,
         context,
-        env: config.env,
+        // Each tick is a run of the workflow's scope, billed like any other run there.
+        codemode: codemodeRunnerFor(
+          new BackofficeKernel(runtime).scoped(
+            "CODEMODE",
+            execution.scope,
+            runtime.objects.codemode,
+          ).commands,
+          execution,
+        ),
+        origin: { kind: "file", path: params.program.filename },
         workflowEvent: {
           ...automationEvent,
           instanceId: event.instanceId,

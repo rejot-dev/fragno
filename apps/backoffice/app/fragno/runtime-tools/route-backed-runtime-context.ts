@@ -541,9 +541,9 @@ export const createRouteBackedRuntimeContext = ({
                     if (run.status === "running") {
                       return { runId, status: "running" };
                     }
-                    return run.status === "completed"
-                      ? { runId, status: "completed", logs: run.logs }
-                      : { runId, status: "failed", logs: run.logs, error: run.error.message };
+                    return run.status === "failed"
+                      ? { runId, status: "failed", logs: run.logs, error: run.error.message }
+                      : { runId, status: run.status, logs: run.logs };
                   }
                 : null,
               buildFile:

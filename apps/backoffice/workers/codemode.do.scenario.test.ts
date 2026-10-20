@@ -9,7 +9,10 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 
 import { fileURLToPath } from "node:url";
 
-import { automationEventListResultSchema } from "@fragno-dev/backoffice-api/v0/events";
+import {
+  automationEventListResultSchema,
+  type AutomationEvent,
+} from "@fragno-dev/backoffice-api/v0/events";
 import { createCodemodeNodeExecutor } from "@fragno-dev/codemode/remote/codemode-node-executor";
 import { createCodemodeTestServer } from "@fragno-dev/codemode/testing/codemode-test-server";
 import { z } from "zod";
@@ -22,7 +25,11 @@ import {
 import type { InMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
-import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
+import {
+  backofficeFiles,
+  defineBackofficeScenario,
+  runBackofficeScenario,
+} from "@/fragno/automation/scenario";
 import { codemodeRunnerFor } from "@/fragno/codemode/codemode-object-execute";
 import { runBackofficeCodemode } from "@/fragno/codemode/execute";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
@@ -106,6 +113,20 @@ async function bash(
       }),
     })
   ).bash;
+}
+
+async function executions(
+  runtime: InMemoryBackofficeRuntime,
+  owner: { kind: "org"; orgId: string } | { kind: "user"; userId: string },
+  scope: BackofficeExecutionContext["scope"],
+) {
+  const page = await runtime.objects.billing.for(owner).commands.getTrackers({
+    scope,
+    period: new Date(runtime.now()).toISOString().slice(0, 7),
+    pageSize: 100,
+  });
+  const tracker = page.trackers.find((tracker) => tracker.meter === "codemode.executions");
+  return tracker ? { quantity: tracker.quantity, eventCount: tracker.eventCount } : null;
 }
 
 test("codemode runs are retained with their outcome until a later run expires them", async () => {
@@ -378,20 +399,6 @@ test("codemode runs are retained with their outcome until a later run expires th
 test("codemode guests are attributed to their scope owner and builds remain unmetered", async () => {
   const userScope = { kind: "user", userId: "user-1" } as const;
 
-  async function executions(
-    runtime: InMemoryBackofficeRuntime,
-    owner: { kind: "org"; orgId: string } | { kind: "user"; userId: string },
-    scope: BackofficeExecutionContext["scope"],
-  ) {
-    const page = await runtime.objects.billing.for(owner).commands.getTrackers({
-      scope,
-      period: new Date(runtime.now()).toISOString().slice(0, 7),
-      pageSize: 100,
-    });
-    const tracker = page.trackers.find((tracker) => tracker.meter === "codemode.executions");
-    return tracker ? { quantity: tracker.quantity, eventCount: tracker.eventCount } : null;
-  }
-
   async function runInScope(
     runtime: InMemoryBackofficeRuntime,
     scope: BackofficeExecutionContext["scope"],
@@ -505,6 +512,95 @@ test("codemode guests are attributed to their scope owner and builds remain unme
         then.assert("system work has an explicit non-customer attribution", async ({ runtime }) => {
           await runInScope(runtime, { kind: "system" });
           await runtime.drain();
+        }),
+      ],
+    }),
+  );
+});
+
+test("each workflow tick is a billed run that publishes no run events", async () => {
+  const path = "/workspace/automations/cool-down.workflow.js";
+  const started: AutomationEvent = {
+    id: "cool-down-started",
+    scopeRestriction: null,
+    scope: execution.scope,
+    source: "custom",
+    eventType: "cool-down.requested",
+    occurredAt: "2026-01-01T00:00:00.000Z",
+    payload: {},
+    actors: execution.actors,
+    subject: { orgId: "org-1" },
+    causation: { kind: "origin" },
+  };
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "a workflow that sleeps once runs twice",
+      objects: scenarioObjects,
+      env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
+      files: backofficeFiles.custom({
+        workspace: {
+          "automations/cool-down.workflow.js": `defineWorkflow({ name: "cool-down" }, async (_event, step) => {
+  console.log("cooling down");
+  await step.sleep("cool down", "5 seconds");
+  console.log("cooled down");
+  return "done";
+});`,
+        },
+      }),
+      setup: ({ given }) => [given.organization.exists({ id: "org-1" })],
+      steps: ({ when, then }) => [
+        when.workflow.createInstance({
+          orgId: "org-1",
+          instanceId: "cool-down-1",
+          execution,
+          path,
+          event: started,
+        }),
+        when.time.advance("10 seconds"),
+        then.assert("the sleep's tick is suspended and the resumed tick completes", async (ctx) => {
+          await ctx.drain();
+          const codemode = ctx.runtime.objects.codemode.forOrg("org-1").commands;
+          const { runs } = await codemode.listRuns({ page: "first", pageSize: 20 });
+          expect(runs).toEqual([
+            expect.objectContaining({
+              activationKind: "workflow",
+              origin: { kind: "file", path },
+              actors: execution.actors,
+              status: "completed",
+              logs: [
+                { at: expect.any(Number), channel: "log", text: "cooling down" },
+                { at: expect.any(Number), channel: "log", text: "cooled down" },
+              ],
+            }),
+            expect.objectContaining({
+              activationKind: "workflow",
+              status: "suspended",
+              reason: expect.objectContaining({ type: "sleep", stepKey: "sleep:cool down" }),
+              logs: [{ at: expect.any(Number), channel: "log", text: "cooling down" }],
+            }),
+          ]);
+
+          const logs = await (await bash(ctx.runtime)).exec(`js.logs ${runs[1].id} --format json`);
+          assert.equal(logs.exitCode, 0, logs.stderr);
+          expect(JSON.parse(logs.stdout)).toMatchObject({ runId: runs[1].id, status: "suspended" });
+
+          expect(
+            await executions(ctx.runtime, { kind: "org", orgId: "org-1" }, execution.scope),
+          ).toEqual({
+            quantity: "2",
+            eventCount: "2",
+          });
+
+          // Ticks are internal to their workflow; a run event could start the workflow again.
+          const listed = await (
+            await bash(ctx.runtime)
+          ).exec("events.list --limit 100 --format json");
+          assert.equal(listed.exitCode, 0, listed.stderr);
+          expect(
+            automationEventListResultSchema
+              .parse(JSON.parse(listed.stdout))
+              .events.filter((event) => event.source === "codemode"),
+          ).toEqual([]);
         }),
       ],
     }),
