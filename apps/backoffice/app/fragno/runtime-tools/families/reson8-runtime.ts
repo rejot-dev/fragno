@@ -1,7 +1,10 @@
+import type { reson8Operations } from "@fragno-dev/backoffice-api/v0/reson8";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { createRouteCaller } from "@fragno-dev/core/api";
+import { z } from "zod";
 
 import {
+  buildReson8RealtimeUrl,
   reson8PrerecordedTranscriptionSchema,
   type Reson8PrerecordedTranscription,
 } from "@fragno-dev/reson8-fragment";
@@ -16,9 +19,15 @@ export type Reson8Runtime = {
     audio: ArrayBuffer | ArrayBufferView;
     query: Record<string, string>;
   }): Promise<Reson8PrerecordedTranscription>;
+  createRealtimeToken(): Promise<
+    z.output<(typeof reson8Operations)["reson8.realtime.token"]["output"]>
+  >;
 };
 
-/** Transcribes under the platform key and bills each transcription to the paying organization. */
+/**
+ * Reson8 under the platform key. Prerecorded transcriptions are billed to the paying organization;
+ * realtime audio streams to Reson8 directly, so realtime tokens are not.
+ */
 export function createReson8Runtime({
   reson8,
   scope,
@@ -73,6 +82,23 @@ export function createReson8Runtime({
         ],
       });
       return transcription;
+    },
+    async createRealtimeToken() {
+      const response = await callRoute("POST", "/auth/token");
+      if (response.type !== "json" || !isSuccessStatus(response.status)) {
+        return throwOnRouteRuntimeError(response, {
+          runtimeLabel: "Reson8",
+          label: "reson8.realtime.token",
+        });
+      }
+      const token = z
+        .object({ access_token: z.string(), expires_in: z.number() })
+        .parse(response.data);
+      return {
+        accessToken: token.access_token,
+        expiresIn: token.expires_in,
+        url: buildReson8RealtimeUrl(),
+      };
     },
   };
 }

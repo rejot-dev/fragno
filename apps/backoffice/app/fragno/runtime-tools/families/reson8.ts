@@ -4,6 +4,7 @@ import type { z } from "zod";
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 import {
   defineCliArgsParser,
+  defineNoInputArgsParser,
   formatCommandStdout,
   parseCliTokens,
   readOutputOptions,
@@ -177,8 +178,27 @@ const transcribePrerecordedTool = defineBackofficeRuntimeTool({
   },
 });
 
+const createRealtimeTokenTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("reson8.realtime.token"),
+  namespace: "reson8",
+  name: "createRealtimeToken",
+  execute: async (_input, context: Reson8ToolContext) =>
+    await getReson8Runtime(context.runtimes.reson8).createRealtimeToken(),
+  adapters: {
+    bash: {
+      command: "reson8.realtime.token",
+      help: {
+        summary: "Mint a short-lived token for streaming audio to Reson8 directly.",
+        options: [],
+        examples: ["reson8.realtime.token --format json", "reson8.realtime.token --print url"],
+      },
+      parse: defineNoInputArgsParser("reson8.realtime.token"),
+    },
+  },
+});
+
 export const reson8ToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "reson8",
-  tools: [transcribePrerecordedTool],
+  tools: [transcribePrerecordedTool, createRealtimeTokenTool],
   isAvailable: (context: Reson8ToolContext) => !!context.runtimes.reson8,
 });

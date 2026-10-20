@@ -3560,6 +3560,31 @@
     ]
   },
   {
+    "command": "reson8.realtime.token",
+    "summary": "Mint a short-lived token for streaming audio to Reson8 directly.",
+    "options": [
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "sandbox.start",
     "summary": "sandbox.start starts a Cloudflare sandbox, resuming its saved workspace if it has one.",
     "options": [

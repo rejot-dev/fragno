@@ -40,21 +40,32 @@ const platformApiKey = "platform-reson8-key";
 // The provider must receive the file's bytes unchanged; their content does not matter.
 const recording = "raw pcm samples";
 
-/** Reson8's prerecorded endpoint, recording what each request carried. */
+/** Reson8's token and prerecorded endpoints, recording what each request carried. */
 function createReson8Provider() {
-  const requests: { authorization: string | null; bytes: number[]; query: object }[] = [];
+  const requests: {
+    endpoint: string;
+    authorization: string | null;
+    bytes: number[];
+    query: object;
+  }[] = [];
   const fetch: typeof globalThis.fetch = async (input, init) => {
     const request = new Request(input, init);
     const url = new URL(request.url);
-    assert(
-      `${request.method} ${url.origin}${url.pathname}` ===
-        "POST https://api.reson8.dev/v1/speech-to-text/prerecorded",
-    );
+    const endpoint = `${request.method} ${url.origin}${url.pathname}`;
     requests.push({
+      endpoint,
       authorization: request.headers.get("authorization"),
       bytes: [...new Uint8Array(await request.arrayBuffer())],
       query: Object.fromEntries(url.searchParams),
     });
+    if (endpoint === "POST https://api.reson8.dev/v1/auth/token") {
+      return Response.json({
+        access_token: "realtime-token",
+        token_type: "Bearer",
+        expires_in: 60,
+      });
+    }
+    assert(endpoint === "POST https://api.reson8.dev/v1/speech-to-text/prerecorded");
     return Response.json({ text: "Hello from Reson8", start_ms: 0, duration_ms: 1500 });
   };
   return { requests, fetch };
@@ -77,7 +88,7 @@ async function terminal(runtime: InMemoryBackofficeRuntime, reson8Fetch: typeof 
   return bash;
 }
 
-test("an agent transcribes a recording under the platform key and its organization is billed", async () => {
+test("an organization is billed for prerecorded transcription but not for realtime tokens", async () => {
   const provider = createReson8Provider();
   const period = new Date().toISOString().slice(0, 7);
   await runBackofficeScenario(
@@ -99,12 +110,28 @@ test("an agent transcribes a recording under the platform key and its organizati
           expect(result).toMatchObject({ exitCode: 0, stdout: "Hello from Reson8\n" });
           expect(provider.requests).toEqual([
             {
+              endpoint: "POST https://api.reson8.dev/v1/speech-to-text/prerecorded",
               authorization: `ApiKey ${platformApiKey}`,
               bytes: [...new TextEncoder().encode(recording)],
               query: { encoding: "pcm_s16le", sample_rate: "16000", channels: "1" },
             },
           ]);
         }),
+        then.assert("a realtime token is minted under the platform key", async ({ runtime }) => {
+          const bash = await terminal(runtime, provider.fetch);
+          const result = await bash.exec("reson8.realtime.token --format json");
+          assert(result.exitCode === 0, result.stderr);
+          expect(JSON.parse(result.stdout)).toEqual({
+            accessToken: "realtime-token",
+            expiresIn: 60,
+            url: "wss://api.reson8.dev/v1/speech-to-text/realtime",
+          });
+          expect(provider.requests.at(-1)).toMatchObject({
+            endpoint: "POST https://api.reson8.dev/v1/auth/token",
+            authorization: `ApiKey ${platformApiKey}`,
+          });
+        }),
+        // The token is unmetered, so only the transcription counts.
         then.billing.tracker({
           organizationId: orgId,
           scope,

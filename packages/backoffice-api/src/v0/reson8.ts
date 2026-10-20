@@ -32,11 +32,28 @@ const reson8TranscriptionSchema = z.object({
   words: z.array(reson8WordSchema).optional(),
 });
 
+const reson8RealtimeTokenSchema = z.object({
+  accessToken: z.string().describe("Short-lived Reson8 token; it is not a Backoffice credential"),
+  expiresIn: z.number().describe("Seconds until the token expires"),
+  url: z
+    .string()
+    .describe(
+      "Realtime WebSocket endpoint; append query options such as encoding, sample_rate, or include_interim",
+    ),
+});
+
 export const reson8Operations = {
   "reson8.prerecorded.transcribe": {
     description: "Transcribe a prerecorded audio file from the workspace with Reson8.",
     permissions: [BACKOFFICE_PERMISSION.reson8.transcribe, BACKOFFICE_PERMISSION.upload.read],
     input: reson8TranscribeInputSchema,
     output: reson8TranscriptionSchema,
+  },
+  "reson8.realtime.token": {
+    description:
+      "Mint a short-lived Reson8 token for streaming audio to Reson8 directly. Open a WebSocket to url with the subprotocols bearer and the access token, send audio as binary frames, and read transcript messages. The audio does not pass through Backoffice, so realtime transcription is not billed.",
+    permissions: [BACKOFFICE_PERMISSION.reson8.transcribe],
+    input: z.void(),
+    output: reson8RealtimeTokenSchema,
   },
 } satisfies Record<string, BackofficeApiOperation>;
