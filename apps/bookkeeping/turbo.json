@@ -1,0 +1,14 @@
+{
+  "extends": ["//"],
+  "tasks": {
+    "types:generate": {
+      "outputs": ["worker-configuration.d.ts", ".react-router/types/**"]
+    },
+    "lint:package": {
+      "dependsOn": ["$TURBO_EXTENDS$", "types:generate"]
+    },
+    "lint:fix:package": {
+      "dependsOn": ["$TURBO_EXTENDS$", "types:generate"]
+    }
+  }
+}
