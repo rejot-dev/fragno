@@ -5,21 +5,23 @@ import { useState } from "react";
 import { useOutletContext } from "react-router";
 
 import { authClient } from "../lib/auth-client";
+import type { WorkspaceOutletContext } from "./workspace-layout";
 
 export function meta() {
   return [{ title: "Account · Bookkeeping" }];
 }
 
 export default function Account() {
-  const { user } = useOutletContext<{ user: typeof authClient.$Infer.Session.user }>();
+  const { user, workspace } = useOutletContext<WorkspaceOutletContext>();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
   return (
     <div className="space-y-6">
       <BackofficePageHeader
         title="Your account"
         description="Your profile and current session."
-        breadcrumbs={[{ label: "Bookkeeping", to: "/dashboard" }, { label: "Account" }]}
+        breadcrumbs={[{ label: workspace.name, to: `/w/${workspace.slug}` }, { label: "Account" }]}
       />
       <div className="max-w-2xl space-y-6">
         <FormContainer
@@ -34,12 +36,6 @@ export default function Account() {
             <div>
               <dt className="text-xs text-[var(--bo-muted)]">Email</dt>
               <dd className="mt-1 text-sm font-medium break-all">{user.email}</dd>
-            </div>
-            <div>
-              <dt className="text-xs text-[var(--bo-muted)]">Email status</dt>
-              <dd className="mt-1 text-sm font-medium">
-                {user.emailVerified ? "Verified" : "Not verified"}
-              </dd>
             </div>
           </dl>
         </FormContainer>

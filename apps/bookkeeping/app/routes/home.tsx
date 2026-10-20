@@ -2,14 +2,14 @@ import { ButtonLink } from "@fragno-private/design-system/button";
 import { Icon } from "@fragno-private/design-system/icon";
 import { useOutletContext } from "react-router";
 
-import type { authClient } from "../lib/auth-client";
+import type { SessionUser } from "../../workers/auth";
 
 export function meta() {
   return [{ title: "Bookkeeping · A clearer place for your books" }];
 }
 
 export default function Home() {
-  const { user } = useOutletContext<{ user: typeof authClient.$Infer.Session.user | null }>();
+  const { user } = useOutletContext<{ user: SessionUser | null }>();
   return (
     <div className="frontpage">
       <section className="frontpage-hero">
@@ -20,8 +20,8 @@ export default function Home() {
             will have a place to grow.
           </p>
           <div className="flex flex-wrap items-center gap-3">
-            <ButtonLink variant="solid" to={user ? "/dashboard" : "/login"}>
-              {user ? "Open your dashboard" : "Get started"}
+            <ButtonLink variant="solid" to={user ? "/start" : "/login"}>
+              {user ? "Open Bookkeeping" : "Get started"}
             </ButtonLink>
           </div>
           <p className="hero-note">No password needed: we email you a code to sign in.</p>

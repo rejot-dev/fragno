@@ -32,7 +32,12 @@ const devVarsPath = resolve(bookkeepingDir, ".dev.vars");
 const cliEntry = resolve(repositoryRoot, "apps/backoffice-cli/bin/run.js");
 
 const OAUTH_SCOPES = ["openid", "profile", "email", "offline_access", "backoffice"];
-const REQUESTED_PERMISSIONS = [{ namespace: "events", permission: "emit" }];
+// Workspaces are Backoffice organizations: Bookkeeping reads them and their members, and owners
+// and admins invite people through it.
+const REQUESTED_PERMISSIONS = [
+  { namespace: "org", permission: "read" },
+  { namespace: "org", permission: "manage" },
+];
 
 function readDevVars(): Map<string, string> {
   const values = new Map<string, string>();
@@ -341,7 +346,7 @@ console.log(`\nUpdated ${devVarsPath}.
 
 Next:
   1. Restart Bookkeeping so it reads the new .dev.vars, and open ${bookkeepingUrl}.
-  2. Dashboard → Backoffice → Connect to Backoffice, and install into your organization.
+  2. Get started: sign in, and name your business to create its workspace.
   3. In that organization's Backoffice terminal:
        integrations.verify --connection-id 'app#${app.slug}'${
          app.actionsChanged && changeApproval === "installation"

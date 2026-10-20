@@ -1,11 +1,17 @@
 # Bookkeeping
 
-Minimal React Router framework app deployed to Cloudflare Workers. Better Auth keeps sessions and
-accounts in one SQLite Durable Object named `auth`; people sign up and sign in with their Backoffice
-account only. No D1 database or external auth service is required. UI components, theme tokens, and
-the self-hosted brand font come from `@fragno-private/design-system`, shared with Backoffice.
-Tailwind processes the shared package's styles; Bookkeeping's own stylesheet only handles its page
-layout.
+Minimal React Router framework app deployed to Cloudflare Workers, built on Backoffice: people sign
+in with Backoffice accounts, and each workspace is a Backoffice organization. Three SQLite Durable
+Objects hold Bookkeeping's state; no D1 database or external auth service is required:
+
+- `Auth` (`auth`): Better Auth's users, sessions, and Backoffice accounts.
+- `Workspaces` (`workspaces`): the read-only copy of Bookkeeping's Backoffice organizations, their
+  members, and the invitations Bookkeeping created.
+- `Workflows` (`workflows`): the Fragno workflows fragment, which runs the sign-up wizard.
+
+UI components, theme tokens, and the self-hosted brand font come from
+`@fragno-private/design-system`, shared with Backoffice. Tailwind processes the shared package's
+styles; Bookkeeping's own stylesheet only handles its page layout.
 
 ## Local development
 
@@ -27,16 +33,15 @@ pnpm dev
 ```
 
 Routes: `/` (public frontpage), `/login` (get started), `/help` (help signing in), `/signup`
-(redirects to `/login`), `/dashboard` (workspace overview), `/dashboard/organizations` (create and
-switch organizations), `/dashboard/backoffice` (organization connection and test events),
-`/dashboard/backoffice/callback` (return from Backoffice installation), `/dashboard/account`
-(profile and logout), and Better Auth's `/api/auth/*` endpoints. The public layout includes a header
-and footer; the workspace uses a collapsible desktop sidebar and mobile navigation. Dashboard routes
-require a valid server-side session and redirect anonymous requests to login. Signing in sends
-people to the dashboard. Signed-in visitors are redirected away from auth pages. Personalized route
-responses are marked private and non-cacheable.
+(redirects to `/login`), `/start` (where signing in lands), `/welcome` (the sign-up wizard),
+`/invitations/:invitationId` (join a workspace), `/w/:slug` (workspace overview), `/w/:slug/members`
+(members and invitations), `/w/:slug/account` (profile and logout), and Better Auth's `/api/auth/*`
+endpoints. The workspace uses a collapsible desktop sidebar, mobile navigation, and a workspace
+switcher. Workspace routes require a session and the person's membership; others redirect to login.
+Signed-in visitors are redirected away from auth pages. Personalized route responses are marked
+private and non-cacheable.
 
-Signing in requires JavaScript. The dashboard is an honest empty workspace; transaction, accounting,
+Signing in requires JavaScript. A workspace is an honest empty overview; transaction, accounting,
 and reporting functionality are not implemented.
 
 ## Backoffice login
@@ -48,11 +53,10 @@ Bookkeeping. They enter their email and the 6-digit code Backoffice emails them 
 name; a new address gets an account. They then return here signed in, and get a local Bookkeeping
 account on their first sign-in. `backoffice:connect` registers the branding, with `/logo.svg` and
 `/help` from `public/` and `app/routes/help.tsx`. The same authorization also lets Bookkeeping's
-server act for that user wherever Bookkeeping is installed in Backoffice (see
-[Organizations and Backoffice](#organizations-and-backoffice)).
+server act for that person in their workspaces (see [Workspaces](#workspaces)).
 
 `pnpm --dir apps/bookkeeping backoffice:connect` sets all of these up (see
-[Organizations and Backoffice](#organizations-and-backoffice)). To configure them by hand, set these
+[Registering with Backoffice](#registering-with-backoffice)). To configure them by hand, set these
 values in `.dev.vars` (never commit credentials):
 
 - `BACKOFFICE_BASE_URL`: the exact Backoffice origin used in your browser, e.g.
@@ -96,83 +100,67 @@ Provider tokens are encrypted at rest. Better Auth's `/api/auth/get-access-token
 `/api/auth/refresh-token` HTTP endpoints are disabled, so browsers never receive Backoffice tokens;
 only Bookkeeping's server reads them through the Auth Durable Object.
 
-## Organizations and Backoffice
+## Registering with Backoffice
 
-Bookkeeping uses Better Auth's organization plugin. Create an organization at
-`/dashboard/organizations`; you become its owner and it becomes your active organization.
-
-An organization connects to one Backoffice owner (and vice versa): a Backoffice organization, or a
-Backoffice user who installed Bookkeeping for themselves. One-time setup, as a Backoffice global
-administrator, from the repository root:
+One-time setup, as a Backoffice global administrator, from the repository root:
 
 ```sh
 pnpm --dir apps/bookkeeping backoffice:connect
 ```
 
 The script signs in through the Backoffice CLI, creates Bookkeeping's OAuth client (or repairs the
-one in `.dev.vars`: callback URL, scopes, and client credentials), registers the app with
-`events.emit` and the actions declared in `workers/backoffice-actions.ts`, and writes the client ID,
-secret, and both origins to `.dev.vars`. Bookkeeping is registered as a first-party app with every
-provisioning permission: Backoffice skips its consent screen and permission review, and Bookkeeping
-may create organizations and administrations in Backoffice and accept invitations for its users (see
-Backoffice's `app/fragno/apps/README.md`). It reads both origins from `.dev.vars` and defaults to
-`http://127.0.0.1:5173` and `http://127.0.0.1:6174`; pass `--backoffice-url` or `--bookkeeping-url`
-to change them, which also moves the callback and the action endpoint. The app is registered as
-`app#bookkeeping`; pass `--slug` to choose another permanent name. Rerunning converges on the same
-client and app, updating its requested permissions and actions in place; as a first-party app,
-Bookkeeping has new permissions in every workspace within a minute. Action changes apply
-automatically to existing installations; pass `--change-approval installation` to make each
+one in `.dev.vars`: callback URL, scopes, and client credentials), registers the app with `org.read`
+and `org.manage` and the actions declared in `workers/backoffice-actions.ts`, and writes the client
+ID, secret, and both origins to `.dev.vars`. Bookkeeping is registered as a first-party app with
+every provisioning permission: Backoffice skips its consent screen and permission review, and
+Bookkeeping may create organizations and administrations in Backoffice and accept invitations for
+its users (see Backoffice's `app/fragno/apps/README.md`). It reads both origins from `.dev.vars` and
+defaults to `http://127.0.0.1:5173` and `http://127.0.0.1:6174`; pass `--backoffice-url` or
+`--bookkeeping-url` to change them, which also moves the callback and the action endpoint. The app
+is registered as `app#bookkeeping`; pass `--slug` to choose another permanent name. Rerunning
+converges on the same client and app, updating its requested permissions and actions in place; as a
+first-party app, Bookkeeping has new permissions in every workspace within a minute. Action changes
+apply automatically to existing installations; pass `--change-approval installation` to make each
 installation's owner approve them. Production requires HTTPS.
 
-Then an owner or admin of the Bookkeeping organization opens **Backoffice → Connect to Backoffice**:
+## Workspaces
 
-1. Bookkeeping records a single-use, 10-minute state bound to that user and organization, and
-   redirects to Backoffice's install page.
-2. In Backoffice, the user chooses where to install: an organization they own or administer, or
-   themselves. Bookkeeping is first-party, so there is no permission review: it gets every
-   permission it requests, over everything the owner has.
-3. Backoffice returns to `/dashboard/backoffice/callback` with a short-lived code. Bookkeeping
-   consumes the state, authenticates with client credentials, and claims the installation for its
-   organization at `POST /api/backoffice/app-installations/claim`. The Backoffice installation
-   records the Bookkeeping organization; Bookkeeping records the Backoffice owner and the approved
-   access.
+A workspace is a Backoffice organization with Bookkeeping installed. Backoffice owns it, its
+members, and their roles (owner, admin, member); Bookkeeping keeps a read-only copy in the
+`Workspaces` object and never changes membership itself. Everyone in a workspace can open its books.
 
-To link a different Bookkeeping organization, uninstall Bookkeeping in Backoffice first.
-**Disconnect** only forgets the link in Bookkeeping; revoking access is Backoffice's decision.
+**Creating one.** Someone without a workspace lands in the sign-up wizard at `/welcome`, a
+`create-workspace` workflow (`workers/create-workspace-workflow.ts`). It asks their name when
+Backoffice has none, which is the case after an email-code sign-up, then their business's name. It
+then creates the Backoffice organization with `organizations.provision`, which installs Bookkeeping
+there for them as its owner, and records the workspace. Answers wait durably, so people can leave
+and come back. Creating the organization retries while Backoffice is unreachable; if it still fails,
+**Try again** retries that step with the answers given.
 
-### Sending events
+**Access.** Each workspace request checks the person's membership. A membership Backoffice confirmed
+in the last minute is trusted; otherwise Bookkeeping exchanges the person's Backoffice token for a
+credential in that organization (`POST /api/backoffice/execution-token`) and reads their roles with
+`org.get`. When Backoffice refuses, because they were removed or Bookkeeping was uninstalled,
+Bookkeeping forgets their membership and answers 404; nothing is deleted. While Backoffice is
+unreachable, unconfirmed access answers 503. Members pages list members with `org.members.list` as
+the viewer and refresh the copy, showing the names people gave Bookkeeping.
 
-Any member of a connected organization can send one `bookkeeping.connection.tested` event to an
-approved target (the owner, or one of the approved projects):
-
-- **Send as the organization** uses a client-credentials token, so it needs no Backoffice account.
-  Backoffice attributes the event to the Bookkeeping organization and limits it to the
-  installation's approved permissions and resources.
-- **Send as you** uses the Backoffice account you signed in with. Backoffice additionally requires
-  that you are currently a member there and may emit events yourself; where a user installed
-  Bookkeeping for themselves, only that user can.
-
-Either way, Bookkeeping's server exchanges its OAuth token at `POST /api/backoffice/execution-token`
-for a 15-minute credential bound to that target, then calls the `events.fire` operation of the
-Backoffice API with the typed client from `@fragno-dev/backoffice-api/v0/client`. The page shows the
-accepted event ID, which organization members can inspect in Backoffice with
-`events.get --id EVENT_ID`. If Backoffice rejects your own token (for example after revoking
-Bookkeeping, or for a sign-in made before the `backoffice` scope was configured), the page asks you
-to reauthorize. A delivery that cannot be confirmed is reported, not retried, to avoid duplicates.
-
-Uninstalling Bookkeeping, narrowing its permissions or projects, or removing a member in Backoffice
-takes effect immediately, including for credentials already issued.
+**Inviting.** Owners and admins invite on the members page: Bookkeeping creates the invitation with
+`org.invitations.create` as the inviter, so Backoffice's rules apply (only owners invite owners),
+and shows a link to `/invitations/:invitationId` to send. The invited person signs in there and
+joins: Bookkeeping calls `invitations.accept`, and Backoffice checks that the invitation is for
+their verified address. Invitations are sent only from Bookkeeping; someone invited in Backoffice
+itself finds the workspace once they open it.
 
 ### Backoffice actions
 
-Backoffice calls Bookkeeping too: a connected organization's members and agents run
-`organization.get` through the `app#bookkeeping` integration connection, e.g.
+Backoffice calls Bookkeeping too: a workspace's members and agents run `organization.get` through
+the `app#bookkeeping` integration connection, e.g.
 `integrations.execute --connection-id 'app#bookkeeping' --action-id organization.get --input-json '{}'`,
 or through a client from `integrations.generateClient`. `workers/backoffice-actions.ts` serves
 `POST /api/backoffice/actions`: it verifies Backoffice's per-request token with
-`createAppActionVerifier`, then answers only for the Bookkeeping organization the installation
-claimed, and only while that organization is still linked to the Backoffice organization the request
-names.
+`createAppActionVerifier`, then describes the workspace of the organization the request was signed
+for.
 
 ## Bookkeeping schema
 
@@ -186,6 +174,21 @@ pnpm types:check
 pnpm test
 pnpm build
 ```
+
+Scenario tests (`*.scenario.test.ts`) run Bookkeeping's pages, Durable Objects, and workflows in
+Node with `scenario/bookkeeping-scenario.ts`:
+
+- Durable Objects run their Cloudflare code unchanged on `FakeDurableObjectState`: `storage.sql` on
+  in-memory SQLite, KV, transactions, alarms, and `blockConcurrencyWhile`. Calls cross a fake RPC
+  boundary that copies arguments and results and keeps only errors' names and messages.
+- `cloudflare:workers` resolves to `scenario/cloudflare-workers.ts`, whose `env` holds the running
+  scenario's bindings.
+- `FakeBackoffice` serves the Backoffice HTTP calls Bookkeeping makes, parsed with
+  `@fragno-dev/backoffice-api`'s schemas; requests to any other origin fail.
+- Browsers keep cookies and run Bookkeeping's routes through React Router's static handler, so
+  layout loaders, actions, and redirects behave as in production.
+- `drain()` fires due alarms, which run workflows and durable hooks; `advanceTime()` moves the
+  clock.
 
 ## Deployment
 
@@ -201,15 +204,17 @@ pnpm deploy
 ```
 
 Set `BOOKKEEPING_BASE_URL` to the final HTTPS origin (your Workers URL or custom domain). Do not use
-the example secret in production. The first deployment creates the SQLite Durable Object namespace.
+the example secret in production. Deployments create the SQLite Durable Object namespaces.
 
 ## Schema
 
-The Durable Object applies versioned SQL migrations in order before serving requests; each one
-commits atomically with its version. It uses Fragno's Kysely Durable Object dialect, which does not
+Each Durable Object applies versioned SQL migrations in order before serving requests; each one
+commits atomically with its version. They use Fragno's Kysely Durable Object dialect, which does not
 support Better Auth migration introspection, so schema changes are new migration files rather than
-edits to existing ones.
+edits to existing ones. The workflows fragment migrates its own tables.
 
 - `workers/auth-schema.sql`: Better Auth 1.7.1's default schema for users, sessions, and accounts.
-- `workers/auth-schema-0002-organizations.sql`: the organization plugin's tables (without teams or
-  dynamic roles), plus Backoffice link requests and links.
+- `workers/auth-schema-0002-organizations.sql` and `workers/auth-schema-0003-backoffice-owner.sql`:
+  Bookkeeping's former organizations and their links to Backoffice, which
+  `workers/auth-schema-0004-backoffice-workspaces.sql` drops.
+- `workers/workspaces-schema.sql`: the `Workspaces` object's copy.

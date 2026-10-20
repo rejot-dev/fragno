@@ -1,25 +1,24 @@
-import {
-  backofficeScopePathSegment,
-  parseBackofficeScopePathSegment,
-  type BackofficeRootOwner,
-  type BackofficeScopeIdNames,
-} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { DurableObjectDialect } from "@fragno-dev/db/dialects/durable-object";
 import { betterAuth } from "better-auth";
 import { symmetricDecrypt, symmetricEncrypt } from "better-auth/crypto";
-import { genericOAuth, organization } from "better-auth/plugins";
+import { genericOAuth } from "better-auth/plugins";
 import { DurableObject } from "cloudflare:workers";
 import { Kysely } from "kysely";
 import { z } from "zod";
 
 import organizationsSchema from "./auth-schema-0002-organizations.sql?raw";
 import backofficeOwnerSchema from "./auth-schema-0003-backoffice-owner.sql?raw";
+import backofficeWorkspacesSchema from "./auth-schema-0004-backoffice-workspaces.sql?raw";
 import initialSchema from "./auth-schema.sql?raw";
+import { applyMigrations } from "./migrations";
 
-/** Applied in order; the stored version is the number of migrations already applied. */
-const migrations = [initialSchema, organizationsSchema, backofficeOwnerSchema];
+const migrations = [
+  initialSchema,
+  organizationsSchema,
+  backofficeOwnerSchema,
+  backofficeWorkspacesSchema,
+];
 
-const LINK_REQUEST_LIFETIME_MS = 10 * 60 * 1000;
 const BACKOFFICE_PROVIDER_ID = "backoffice";
 // Refresh slightly early so a token does not expire between this check and its use.
 const ACCESS_TOKEN_REFRESH_MARGIN_MS = 5_000;
@@ -32,40 +31,13 @@ export type BackofficeAccessToken =
   | { status: "reauthorization-required" }
   | { status: "backoffice-unavailable" };
 
-export type BackofficeLinkRequest =
-  | { status: "ready"; organizationId: string; organizationName: string; userId: string }
-  | { status: "expired" }
-  | { status: "forbidden" };
-
-/** Who installed Bookkeeping in Backoffice: an organization, or a user for themselves. */
-export type BackofficeOwner = BackofficeRootOwner<BackofficeScopeIdNames>;
-
-/** Resources the Backoffice owner approved, as reported when Bookkeeping claimed it. */
-export type BackofficeResourceScope =
-  | { kind: "owner" }
-  | { kind: "projects"; projectIds: string[] };
-
-export type BackofficeLink = {
-  organizationId: string;
-  backofficeOwner: BackofficeOwner;
-  resourceScope: BackofficeResourceScope;
-  linkedAt: string;
-};
-
-/** What Bookkeeping shares about a linked organization with Backoffice. */
-export type LinkedOrganization = {
+/** A signed-in person, with the Backoffice account they signed in with. */
+export type SessionUser = {
   id: string;
   name: string;
-  slug: string;
-  memberCount: number;
-  linkedAt: string;
-};
-
-export type ActiveOrganization = {
-  organization: { id: string; name: string };
-  /** Owners and admins may connect and disconnect Backoffice. */
-  canManage: boolean;
-  userId: string;
+  email: string;
+  /** Their Backoffice user ID: Backoffice's member lists, roles, and invitations name this. */
+  backofficeUserId: string;
 };
 
 type StoredBackofficeAccount = {
@@ -76,8 +48,9 @@ type StoredBackofficeAccount = {
 };
 
 /**
- * Bookkeeping's accounts, organizations, and Backoffice links in one SQLite Durable Object.
- * Methods other than `fetch` are server-only RPC; browsers reach Better Auth through `fetch`.
+ * Bookkeeping's accounts and sessions in one SQLite Durable Object; every account is a Backoffice
+ * account. Methods other than `fetch` are server-only RPC; browsers reach Better Auth through
+ * `fetch`.
  */
 export class Auth extends DurableObject<CloudflareEnv> {
   private readonly auth;
@@ -100,7 +73,6 @@ export class Auth extends DurableObject<CloudflareEnv> {
       account: { encryptOAuthTokens: true },
       disabledPaths: ["/get-access-token", "/refresh-token"],
       plugins: [
-        organization(),
         genericOAuth({
           config: [
             {
@@ -154,23 +126,64 @@ export class Auth extends DurableObject<CloudflareEnv> {
       ],
     };
     this.auth = betterAuth(options);
-    // This dialect cannot introspect tables; apply versioned SQL migrations instead. Each one
-    // commits atomically with its version so a failed deploy never half-applies a migration.
+    // This dialect cannot introspect tables; apply versioned SQL migrations instead.
     void ctx.blockConcurrencyWhile(async () => {
-      const applied = ctx.storage.kv.get<number>("schemaVersion") ?? 0;
-      for (const [index, migration] of migrations.entries()) {
-        if (index >= applied) {
-          ctx.storage.transactionSync(() => {
-            ctx.storage.sql.exec(migration);
-            ctx.storage.kv.put("schemaVersion", index + 1);
-          });
-        }
-      }
+      applyMigrations(ctx, migrations);
     });
   }
 
   fetch(request: Request) {
     return this.auth.handler(request);
+  }
+
+  /** The session's user, or null without a valid session. */
+  async getSessionUser(cookie: string): Promise<SessionUser | null> {
+    const session = await this.auth.api.getSession({ headers: new Headers({ cookie }) });
+    if (!session) {
+      return null;
+    }
+    const account = await this.findBackofficeAccount(session.user.id);
+    return {
+      id: session.user.id,
+      name: session.user.name,
+      email: session.user.email,
+      backofficeUserId: account.accountId,
+    };
+  }
+
+  /**
+   * The names Bookkeeping's users gave it, by Backoffice user ID. Backoffice's member lists have
+   * no name for people who signed up with an email code.
+   */
+  findNames(backofficeUserIds: string[]): Record<string, string> {
+    // One JSON parameter: Durable Object SQLite binds at most 100 values per statement.
+    const rows = this.ctx.storage.sql
+      .exec<{ accountId: string; name: string }>(
+        `SELECT a."accountId", u."name" FROM "account" a JOIN "user" u ON u."id" = a."userId"
+         WHERE a."providerId" = ? AND a."accountId" IN (SELECT "value" FROM json_each(?))`,
+        BACKOFFICE_PROVIDER_ID,
+        JSON.stringify(backofficeUserIds),
+      )
+      .toArray();
+    return Object.fromEntries(rows.map(({ accountId, name }) => [accountId, name]));
+  }
+
+  /** Bookkeeping keeps the name people give it; Backoffice's sign-up asks only for an email. */
+  async setUserName(input: { userId: string; name: string }): Promise<void> {
+    const context = await this.auth.$context;
+    await context.internalAdapter.updateUser(input.userId, { name: input.name });
+  }
+
+  // Users sign up and sign in only through Backoffice, so each has its account.
+  private async findBackofficeAccount(userId: string) {
+    const context = await this.auth.$context;
+    const account = (await context.internalAdapter.findAccounts(userId)).find(
+      ({ providerId }) => providerId === BACKOFFICE_PROVIDER_ID,
+    );
+    if (!account) {
+      throw new Error(`Bookkeeping user ${userId} has no Backoffice account.`);
+    }
+    return account;
   }
 
   /**
@@ -183,14 +196,7 @@ export class Auth extends DurableObject<CloudflareEnv> {
     if (!session) {
       throw new Error("Backoffice access requires a signed-in Bookkeeping session.");
     }
-    const context = await this.auth.$context;
-    const account = (await context.internalAdapter.findAccounts(session.user.id)).find(
-      ({ providerId }) => providerId === BACKOFFICE_PROVIDER_ID,
-    );
-    // Users sign up and sign in only through Backoffice, so each has its account.
-    if (!account) {
-      throw new Error(`Bookkeeping user ${session.user.id} has no Backoffice account.`);
-    }
+    const account = await this.findBackofficeAccount(session.user.id);
     const expiresAt = account.accessTokenExpiresAt
       ? new Date(account.accessTokenExpiresAt).getTime()
       : null;
@@ -275,201 +281,5 @@ export class Auth extends DurableObject<CloudflareEnv> {
     }
     const context = await this.auth.$context;
     return await symmetricDecrypt({ key: context.secretConfig, data: token }).catch(() => null);
-  }
-
-  /** Owners and admins of an organization may connect and disconnect Backoffice for it. */
-  private canManageOrganization(organizationId: string, userId: string): boolean {
-    const [member] = this.ctx.storage.sql
-      .exec<{ role: string }>(
-        `SELECT "role" FROM "member" WHERE "organizationId" = ? AND "userId" = ?`,
-        organizationId,
-        userId,
-      )
-      .toArray();
-    return (
-      member !== undefined &&
-      member.role.split(",").some((role) => role === "owner" || role === "admin")
-    );
-  }
-
-  /** The signed-in user's active organization and whether they may manage it. */
-  async getActiveOrganization(cookie: string): Promise<ActiveOrganization | null> {
-    const session = await this.auth.api.getSession({ headers: new Headers({ cookie }) });
-    if (!session) {
-      return null;
-    }
-    const [row] = this.ctx.storage.sql
-      .exec<{ id: string; name: string }>(
-        `SELECT "organization"."id", "organization"."name"
-         FROM "session"
-         JOIN "member" ON "member"."organizationId" = "session"."activeOrganizationId"
-           AND "member"."userId" = "session"."userId"
-         JOIN "organization" ON "organization"."id" = "member"."organizationId"
-         WHERE "session"."id" = ?`,
-        session.session.id,
-      )
-      .toArray();
-    return row
-      ? {
-          organization: { id: row.id, name: row.name },
-          canManage: this.canManageOrganization(row.id, session.user.id),
-          userId: session.user.id,
-        }
-      : null;
-  }
-
-  /** Starts linking the active organization; only its owners and admins may do this. */
-  async startBackofficeLink(cookie: string): Promise<{ state: string } | null> {
-    const active = await this.getActiveOrganization(cookie);
-    if (!active?.canManage) {
-      return null;
-    }
-    const state = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))))
-      .replaceAll("+", "-")
-      .replaceAll("/", "_")
-      .replace(/=+$/u, "");
-    const now = Date.now();
-    this.ctx.storage.sql.exec(`DELETE FROM "backoffice_link_request" WHERE "expiresAt" <= ?`, now);
-    this.ctx.storage.sql.exec(
-      `INSERT INTO "backoffice_link_request" ("state", "organizationId", "userId", "expiresAt")
-       VALUES (?, ?, ?, ?)`,
-      state,
-      active.organization.id,
-      active.userId,
-      now + LINK_REQUEST_LIFETIME_MS,
-    );
-    return { state };
-  }
-
-  /**
-   * Consumes a link request exactly once, for the same signed-in user who started it, so a
-   * callback cannot be replayed or completed from another browser session. Authority is checked
-   * again: the user may have lost it since starting.
-   */
-  async consumeBackofficeLinkRequest(
-    cookie: string,
-    state: string,
-  ): Promise<BackofficeLinkRequest> {
-    const session = await this.auth.api.getSession({ headers: new Headers({ cookie }) });
-    if (!session) {
-      return { status: "expired" };
-    }
-    const [request] = this.ctx.storage.sql
-      .exec<{ organizationId: string; userId: string; expiresAt: number; name: string }>(
-        `DELETE FROM "backoffice_link_request" WHERE "state" = ?
-         RETURNING "organizationId", "userId", "expiresAt",
-           (SELECT "name" FROM "organization" WHERE "id" = "organizationId") AS "name"`,
-        state,
-      )
-      .toArray();
-    if (!request || request.userId !== session.user.id || request.expiresAt <= Date.now()) {
-      return { status: "expired" };
-    }
-    if (!this.canManageOrganization(request.organizationId, request.userId)) {
-      return { status: "forbidden" };
-    }
-    return {
-      status: "ready",
-      organizationId: request.organizationId,
-      organizationName: request.name,
-      userId: request.userId,
-    };
-  }
-
-  /**
-   * Records the link Backoffice confirmed, if the linking user still manages the organization.
-   * The check shares the write's transaction because claiming in Backoffice happens in between.
-   * Backoffice is authoritative: a stale local link from another organization to the same
-   * Backoffice owner is replaced.
-   */
-  async saveBackofficeLink(input: {
-    organizationId: string;
-    backofficeOwner: BackofficeOwner;
-    resourceScope: BackofficeResourceScope;
-    linkedByUserId: string;
-  }): Promise<boolean> {
-    const backofficeOwner = backofficeScopePathSegment(input.backofficeOwner);
-    return this.ctx.storage.transactionSync(() => {
-      if (!this.canManageOrganization(input.organizationId, input.linkedByUserId)) {
-        return false;
-      }
-      this.ctx.storage.sql.exec(
-        `DELETE FROM "backoffice_link" WHERE "organizationId" = ? OR "backofficeOwner" = ?`,
-        input.organizationId,
-        backofficeOwner,
-      );
-      this.ctx.storage.sql.exec(
-        `INSERT INTO "backoffice_link"
-           ("organizationId", "backofficeOwner", "resourceScope", "linkedByUserId", "linkedAt")
-         VALUES (?, ?, ?, ?, ?)`,
-        input.organizationId,
-        backofficeOwner,
-        JSON.stringify(input.resourceScope),
-        input.linkedByUserId,
-        Date.now(),
-      );
-      return true;
-    });
-  }
-
-  async getBackofficeLink(organizationId: string): Promise<BackofficeLink | null> {
-    const [row] = this.ctx.storage.sql
-      .exec<{ backofficeOwner: string; resourceScope: string; linkedAt: number }>(
-        `SELECT "backofficeOwner", "resourceScope", "linkedAt"
-         FROM "backoffice_link" WHERE "organizationId" = ?`,
-        organizationId,
-      )
-      .toArray();
-    return row
-      ? {
-          organizationId,
-          // Both are written only by saveBackofficeLink from a validated Backoffice response.
-          backofficeOwner: parseBackofficeScopePathSegment(row.backofficeOwner) as BackofficeOwner,
-          resourceScope: JSON.parse(row.resourceScope) as BackofficeResourceScope,
-          linkedAt: new Date(row.linkedAt).toISOString(),
-        }
-      : null;
-  }
-
-  /**
-   * The organization a Backoffice action addresses, only while it is linked to the Backoffice
-   * organization the request was signed for.
-   */
-  async describeLinkedOrganization(input: {
-    organizationId: string;
-    backofficeOwner: BackofficeOwner;
-  }): Promise<LinkedOrganization | null> {
-    const [row] = this.ctx.storage.sql
-      .exec<{ name: string; slug: string; memberCount: number; linkedAt: number }>(
-        `SELECT o."name", o."slug", l."linkedAt",
-           (SELECT COUNT(*) FROM "member" m WHERE m."organizationId" = o."id") AS "memberCount"
-         FROM "backoffice_link" l JOIN "organization" o ON o."id" = l."organizationId"
-         WHERE l."organizationId" = ? AND l."backofficeOwner" = ?`,
-        input.organizationId,
-        backofficeScopePathSegment(input.backofficeOwner),
-      )
-      .toArray();
-    return row
-      ? {
-          id: input.organizationId,
-          name: row.name,
-          slug: row.slug,
-          memberCount: row.memberCount,
-          linkedAt: new Date(row.linkedAt).toISOString(),
-        }
-      : null;
-  }
-
-  /** Forgets the active organization's link; uninstalling remains a Backoffice decision. */
-  async removeBackofficeLink(cookie: string): Promise<boolean> {
-    const active = await this.getActiveOrganization(cookie);
-    if (!active?.canManage) {
-      return false;
-    }
-    this.ctx.storage.sql.exec(
-      `DELETE FROM "backoffice_link" WHERE "organizationId" = ?`,
-      active.organization.id,
-    );
-    return true;
   }
 }

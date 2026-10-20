@@ -1,18 +1,19 @@
 import { Button } from "@fragno-private/design-system/button";
 import { useState } from "react";
-import { useSearchParams } from "react-router";
+import { useLocation, useSearchParams } from "react-router";
 
 import { authClient } from "../lib/auth-client";
 
 /**
- * Starts signing in. Backoffice holds every Bookkeeping account; its sign-in page looks like
- * Bookkeeping, asks for an email, and creates the account for a new address, so this one button
- * serves new and returning people alike.
+ * Starts signing in, returning to `returnTo` afterwards, or to this page if it fails. Backoffice
+ * holds every Bookkeeping account; its sign-in page looks like Bookkeeping, asks for an email, and
+ * creates the account for a new address, so this one button serves new and returning people alike.
  */
-export function SignInButton() {
+export function SignInButton({ returnTo }: { returnTo: string }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [params] = useSearchParams();
+  const { pathname } = useLocation();
 
   return (
     <div className="sign-in space-y-3">
@@ -27,8 +28,8 @@ export function SignInButton() {
           try {
             const result = await authClient.signIn.social({
               provider: "backoffice",
-              callbackURL: "/dashboard",
-              errorCallbackURL: "/login",
+              callbackURL: returnTo,
+              errorCallbackURL: pathname,
             });
             if (result.error) {
               setError("We couldn't start signing in. Please try again.");

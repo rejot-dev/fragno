@@ -2,16 +2,16 @@ import { ButtonLink } from "@fragno-private/design-system/button";
 import { Icon } from "@fragno-private/design-system/icon";
 import { Link, Outlet, redirect } from "react-router";
 
-import { getSession } from "../lib/session.server";
+import { getSessionUser } from "../lib/session.server";
 import type { Route } from "./+types/public-layout";
 
 export async function loader({ request }: Route.LoaderArgs) {
-  const session = await getSession(request);
+  const user = await getSessionUser(request);
   const pathname = new URL(request.url).pathname;
-  if (session && (pathname === "/login" || pathname === "/signup")) {
-    throw redirect("/dashboard");
+  if (user && (pathname === "/login" || pathname === "/signup")) {
+    throw redirect("/start");
   }
-  return { user: session?.user ?? null };
+  return { user };
 }
 
 export function headers() {
@@ -31,8 +31,8 @@ export default function PublicLayout({ loaderData }: Route.ComponentProps) {
         </Link>
         <nav aria-label="Main navigation" className="flex items-center gap-2">
           {loaderData.user ? (
-            <ButtonLink variant="solid" to="/dashboard">
-              Open dashboard
+            <ButtonLink variant="solid" to="/start">
+              Open Bookkeeping
             </ButtonLink>
           ) : (
             <ButtonLink variant="solid" to="/login">
