@@ -11,6 +11,9 @@
     "global_fetch_strictly_public",
     "enable_request_signal",
     "request_signal_passthrough",
+    // Pi keeps cache-eviction timers only where `unref()` exists; nodejs_compat's global timers
+    // expose a no-op `unref()`, so those timers would keep Pi's Durable Object from being evicted.
+    "no_nodejs_global_timers",
   ],
   "main": "./workers/objects.ts",
   "observability": {

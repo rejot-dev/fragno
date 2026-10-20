@@ -52,7 +52,7 @@ export function createReadTool(agent: BackofficeAgentContext) {
       const path = normalizeReadPath(params.path);
       const text = applyLineRange(await state.readFile(path), params.offset, params.limit);
       return {
-        content: [{ type: "text", text }],
+        output: [{ type: "text", text }],
         details: {
           path,
           offset: params.offset ?? null,

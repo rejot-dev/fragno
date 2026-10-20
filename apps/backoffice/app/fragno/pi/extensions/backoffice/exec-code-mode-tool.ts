@@ -207,7 +207,7 @@ export function createExecCodeModeTool(agent: BackofficeAgentContext) {
       }
 
       return {
-        content: [{ type: "text", text }],
+        output: [{ type: "text", text }],
         isError: Boolean(result.error || scheduleError || generatedUiError),
         details: copyJson(
           {

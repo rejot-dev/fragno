@@ -38,7 +38,7 @@ export const piWorkspaceExtensionDiagnosticSchema = z.strictObject({
 
 /** Results are data, not guest capabilities; unsupported result members fail at this boundary. */
 export const piWorkspaceExtensionToolResultSchema = z.strictObject({
-  content: content.optional(),
+  output: content.optional(),
   isError: z.boolean().optional(),
   details: jsonValueSchema.optional(),
   diagnostics: z.array(piWorkspaceExtensionDiagnosticSchema).max(128).optional(),

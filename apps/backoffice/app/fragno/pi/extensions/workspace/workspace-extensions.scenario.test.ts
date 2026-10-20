@@ -433,7 +433,7 @@ test("native workspace tools and built-in hooks run through sealed codemode with
           }
         },
         afterTool: (call, result) => call.name === "workspace_summary"
-          ? { ...result, content: [{ type: "text", text: "Hook processed: " + (result.content[0]?.text ?? JSON.stringify(result.diagnostics)) }] }
+          ? { ...result, output: [{ type: "text", text: "Hook processed: " + (result.output[0]?.text ?? JSON.stringify(result.diagnostics)) }] }
           : undefined,
       }),
     ],
@@ -1078,7 +1078,7 @@ for (const invalid of [
   },
   {
     name: "invalid tool result",
-    execute: 'async () => ({ content: [{ type: "text", text: 42 }] })',
+    execute: 'async () => ({ output: [{ type: "text", text: 42 }] })',
     error: "Invalid input",
   },
 ]) {

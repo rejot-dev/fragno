@@ -247,7 +247,7 @@ export function createSearchTool(agent: BackofficeAgentContext) {
           : undefined;
 
       return {
-        content: [
+        output: [
           {
             type: "text",
             text: formatSearchResult(params.keywords, glob, matches, nextCursor),

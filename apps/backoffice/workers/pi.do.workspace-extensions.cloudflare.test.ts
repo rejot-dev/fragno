@@ -75,7 +75,7 @@ test("precompiled workspace extensions open concurrently and after restart witho
         },
       }],
       hooks: [{ task: "pi.tool", handlers: {
-        afterTool: (_call, result) => ({ ...result, content: [{ type: "text", text: "Native hook: " + result.content[0].text }] }),
+        afterTool: (_call, result) => ({ ...result, output: [{ type: "text", text: "Native hook: " + result.output[0].text }] }),
       } }],
     };`,
     );

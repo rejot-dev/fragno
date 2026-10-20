@@ -148,7 +148,7 @@ describe("Pi execCodeMode tool", () => {
       result: "hello from pi",
       logs: [],
     });
-    const content = result.content[0];
+    const content = result.output[0];
     assert(content?.type === "text");
     if (content?.type !== "text") {
       throw new Error("Expected text content from execCodeMode.");
@@ -312,7 +312,7 @@ describe("Pi execCodeMode tool", () => {
     );
 
     assert(result.isError);
-    const content = result.content[0];
+    const content = result.output[0];
     assert(content?.type === "text");
     expect(content.text).toContain(
       'Generated UI is invalid: Element "grid" has invalid props for Grid: columns: expected one of 1|2|3|4. Element "metric" has invalid props for Metric: value: Invalid input: expected string, received number.',
@@ -360,7 +360,7 @@ describe("Pi execCodeMode tool", () => {
       workflowDefinition: { name: "pi-session-workflow", options: { name: "pi-session-workflow" } },
       result: { instanceId: "12zjsps1wxc2bo" },
     });
-    const content = result.content[0];
+    const content = result.output[0];
     assert(content?.type === "text");
     if (content?.type !== "text") {
       throw new Error("Expected text content from execCodeMode.");
@@ -655,7 +655,7 @@ describe("Pi execCodeMode tool", () => {
         },
       ],
     });
-    const content = result.content[0];
+    const content = result.output[0];
     assert(content?.type === "text");
     if (content?.type !== "text") {
       throw new Error("Expected text content from execCodeMode.");
@@ -755,11 +755,11 @@ const createExecCodeModeTool = async ({
       context: Parameters<typeof tool.execute>[2],
     ) {
       const result = await tool.execute(args, api, context);
-      if (!result.content || result.details === undefined) {
-        throw new Error("Expected execCodeMode to return persisted content and details.");
+      if (!result.output || result.details === undefined) {
+        throw new Error("Expected execCodeMode to return persisted output and details.");
       }
       return {
-        content: result.content,
+        output: result.output,
         details: result.details,
         isError: result.isError === true,
       };
