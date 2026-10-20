@@ -80,5 +80,10 @@ export const appInstallationsFragmentSchema = schema("app-installations", (s) =>
         .renameColumn("organizationId", "ownerId")
         .dropIndex("idx_app_installation_organizationId_id")
         .createIndex("idx_app_installation_ownerId_id", ["ownerId", "id"]),
+    )
+    .alterTable("app_installation", (t) =>
+      // Set when a first-party app is installed: no owner reviewed its grants, so it has what the
+      // app requests now. Earlier and third-party installations have their stored grants.
+      t.addColumn("grantsFollowApp", column("bool").defaultTo(false)),
     ),
 );

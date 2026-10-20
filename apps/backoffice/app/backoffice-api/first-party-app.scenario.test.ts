@@ -6,7 +6,10 @@ import os from "node:os";
 import path from "node:path";
 
 import type { BackofficeApiErrorCode } from "@fragno-dev/backoffice-api/errors";
-import { createBackofficeProvisioningClient } from "@fragno-dev/backoffice-api/v0/client";
+import {
+  createBackofficeApiClient,
+  createBackofficeProvisioningClient,
+} from "@fragno-dev/backoffice-api/v0/client";
 import { automationEventListResultSchema } from "@fragno-dev/backoffice-api/v0/events";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { z } from "zod";
@@ -173,6 +176,61 @@ async function sessionUserId(ctx: Ctx, cookie: string) {
     .singleton()
     .http.fetch(new Request(`${origin}/api/auth/get-session`, { headers: { cookie, origin } }));
   return z.object({ user: z.object({ id: z.string() }) }).parse(await response.json()).user.id;
+}
+
+/** Runs a Bash command as Backoffice's global administrator, in System context. */
+async function execAsAdministrator(ctx: Ctx, command: string): Promise<string> {
+  const context = createRouteBackedRuntimeContext({
+    runtime: ctx.runtime.services,
+    kernel: new BackofficeKernel(ctx.runtime.services),
+    execution: createBackofficeUserExecution({
+      scope: { kind: "system" },
+      userId: "platform-admin",
+    }),
+    billingOrganizationId: null,
+  });
+  assert(context.stateBackend);
+  const { bash } = await createInteractiveBashHost({
+    context: { ...context, stateBackend: context.stateBackend },
+  });
+  const result = await bash.exec(command);
+  assert.equal(result.exitCode, 0, result.stderr);
+  return result.stdout;
+}
+
+/** Plays Bookkeeping's server acting as its installation in the organization. */
+async function callAsInstallation(ctx: Ctx) {
+  const request = new Request(`${origin}/api/backoffice/execution-token`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${ctx.vars.token}` },
+    body: JSON.stringify({ scope: { kind: "org", orgId: ctx.vars.orgId } }),
+  });
+  const exchanged = await exchangeAction({
+    request,
+    context: routerContext(ctx, request),
+    params: {},
+    url: new URL(request.url),
+    pattern: "/api/backoffice/execution-token",
+  });
+  assert.equal(exchanged.status, 200, await exchanged.clone().text());
+  const client = createBackofficeApiClient({
+    origin,
+    accessToken: backofficeExecutionTokenResultSchema.parse(await exchanged.json()).accessToken,
+    fetch: async (url, init) =>
+      await backofficeApiRouter.fetch(new Request(url, init), {
+        runtime: ctx.runtime.services,
+        kernel: new BackofficeKernel(ctx.runtime.services),
+      }),
+  });
+  const scope = { kind: "org", orgId: ctx.vars.orgId } as const;
+  return {
+    fire: () =>
+      client.call(scope, "events.fire", {
+        eventType: "bookkeeping.connection.tested",
+        payload: { message: "Hello from Bookkeeping" },
+      }),
+    list: () => client.call(scope, "events.list", {}),
+  };
 }
 
 /** The System events a global administrator sees with events.list. */
@@ -344,23 +402,7 @@ test("Bookkeeping provisions its organization and project, and brings invited pe
         );
 
         // Bookkeeping then acts as its installation there.
-        const request = new Request(`${origin}/api/backoffice/execution-token`, {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            authorization: `Bearer ${ctx.vars.token}`,
-          },
-          body: JSON.stringify({ scope: { kind: "org", orgId: ctx.vars.orgId } }),
-        });
-        const exchanged = await exchangeAction({
-          request,
-          context: routerContext(ctx, request),
-          params: {},
-          url: new URL(request.url),
-          pattern: "/api/backoffice/execution-token",
-        });
-        assert.equal(exchanged.status, 200, await exchanged.clone().text());
-        backofficeExecutionTokenResultSchema.parse(await exchanged.json());
+        expect(await (await callAsInstallation(ctx)).fire()).toMatchObject({ accepted: true });
       },
     ),
     then("an administration's project is provisioned once in its organization", async (ctx) => {
@@ -541,6 +583,50 @@ test("Bookkeeping provisions its organization and project, and brings invited pe
           result: { organization: { organizationId: ctx.vars.orgId } },
         },
       });
+    }),
+  ]);
+});
+
+test("a provisioned organization follows what Bookkeeping requests, within a minute of a change", async () => {
+  await runFirstPartyScenario("first-party grants follow the app", (then) => [
+    then("Bookkeeping's organization is provisioned with the emission it requests", async (ctx) => {
+      await authorizeBookkeeping(ctx, ctx.vars.existingCookie);
+      const organization = await provisioning(ctx).call("organizations.provision", {
+        externalOrganizationId: "bk-org-1",
+        name: "Acme Books",
+        ownerUserId: ctx.vars.existingUserId,
+      });
+      ctx.vars.orgId = organization.organizationId;
+      const bookkeeping = await callAsInstallation(ctx);
+      expect(await bookkeeping.fire()).toMatchObject({ accepted: true });
+      await expectApiError(bookkeeping.list(), "forbidden");
+    }),
+    then(
+      "Bookkeeping starts requesting to read events, and reads them without anyone approving it",
+      async (ctx) => {
+        await execAsAdministrator(
+          ctx,
+          `admin.apps.update-permissions --app-id ${ctx.vars.appId} --requested-permissions-json '[{"namespace":"events","permission":"emit"},{"namespace":"events","permission":"read"}]'`,
+        );
+        ctx.runtime.advanceTime(61_000);
+        const { events } = await (await callAsInstallation(ctx)).list();
+        expect(events).toHaveLength(1);
+        expect(
+          await ctx.runtime.objects.appInstallations
+            .forOrg(ctx.vars.orgId)
+            .commands.getInstallation({ appId: ctx.vars.appId }),
+        ).toMatchObject({ grantedPermissions: [emit, BACKOFFICE_PERMISSION.events.read] });
+      },
+    ),
+    then("Bookkeeping stops requesting emission, and loses it", async (ctx) => {
+      await execAsAdministrator(
+        ctx,
+        `admin.apps.update-permissions --app-id ${ctx.vars.appId} --requested-permissions-json '[{"namespace":"events","permission":"read"}]'`,
+      );
+      ctx.runtime.advanceTime(61_000);
+      const bookkeeping = await callAsInstallation(ctx);
+      await expectApiError(bookkeeping.fire(), "forbidden");
+      expect((await bookkeeping.list()).events).toHaveLength(1);
     }),
   ]);
 });
