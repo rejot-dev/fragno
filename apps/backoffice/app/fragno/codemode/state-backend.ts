@@ -208,13 +208,21 @@ export const createBackofficeSystemStateBackend = (input: {
     static: { mountPoint: STATIC_MOUNT_POINT, collection: input.staticFileCollection },
   });
 
+/** A bounded read refused the file, whether its size was known or discovered while streaming. */
+export class StateFileReadLimitError extends Error {
+  constructor(maxBytes: number) {
+    super(`State file exceeds its ${maxBytes} byte read limit.`);
+    this.name = "StateFileReadLimitError";
+  }
+}
+
 async function readStateFileBytes(content: FileContent, maxBytes: number): Promise<Uint8Array> {
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) {
     throw new Error("State file byte limit must be a nonnegative safe integer.");
   }
   if (content.sizeBytes !== null && content.sizeBytes > maxBytes) {
     await content.body.cancel();
-    throw new Error(`State file exceeds its ${maxBytes} byte read limit.`);
+    throw new StateFileReadLimitError(maxBytes);
   }
   const reader = content.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -228,7 +236,7 @@ async function readStateFileBytes(content: FileContent, maxBytes: number): Promi
       size += chunk.value.length;
       if (size > maxBytes) {
         await reader.cancel();
-        throw new Error(`State file exceeds its ${maxBytes} byte read limit.`);
+        throw new StateFileReadLimitError(maxBytes);
       }
       chunks.push(chunk.value);
     }
