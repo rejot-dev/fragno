@@ -38,7 +38,11 @@ export default defineProject({
     // Native output ignores `silent`; `vitest-console-setup.ts` applies it inside workerd.
     disableConsoleIntercept: true,
     globals: true,
-    setupFiles: ["./workers/vitest-console-setup.ts", "./workers/vitest-compiler-setup.ts"],
+    setupFiles: [
+      "./workers/vitest-console-setup.ts",
+      "./workers/vitest-compiler-setup.ts",
+      "./workers/vitest-codemode-setup.ts",
+    ],
     testTimeout: 15_000,
     include: ["app/**/*.cloudflare.test.ts", "workers/**/*.cloudflare.test.ts"],
     deps: {
