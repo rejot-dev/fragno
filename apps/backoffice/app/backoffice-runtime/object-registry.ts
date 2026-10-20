@@ -645,7 +645,10 @@ export type OtpObject = DurableHookCommands & {
 
 export type ResendObject = DurableHookCommands &
   AdminConfigurableObject<AwaitedMethodReturn<Resend, "getAdminConfig">> & {
-    queueEmail(input: ResendSendEmailInput, options: { idempotencyKey: string }): Promise<void>;
+    queueEmail(
+      input: ResendSendEmailInput,
+      options: { idempotencyKey: string; senderName: string | null },
+    ): Promise<void>;
     /** Throws when Resend is not configured. */
     checkWebhook(): Promise<WebhookRegistrationCheck>;
   };

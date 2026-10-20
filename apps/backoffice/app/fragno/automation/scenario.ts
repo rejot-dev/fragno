@@ -241,7 +241,7 @@ type FakeResendReplyCall = {
 
 type FakeResendQueueEmailCall = {
   input: ResendSendEmailInput;
-  options: { idempotencyKey: string };
+  options: { idempotencyKey: string; senderName: string | null };
 };
 
 type TelegramAdminApi = NonNullable<
@@ -273,7 +273,10 @@ export type FakePiManagerApi = {
 export type FakeResendApi = {
   replyCalls: FakeResendReplyCall[];
   queueEmailCalls: FakeResendQueueEmailCall[];
-  queueEmail(input: ResendSendEmailInput, options: { idempotencyKey: string }): Promise<void>;
+  queueEmail(
+    input: ResendSendEmailInput,
+    options: { idempotencyKey: string; senderName: string | null },
+  ): Promise<void>;
   fetch(request: Request): Promise<Response>;
 };
 
@@ -4176,8 +4179,10 @@ const createFakeObjectOverrides = async (fakes: ScenarioFakes): Promise<LocalBac
 
   if (fakes.resend) {
     overrides.RESEND = () => ({
-      queueEmail: (input: ResendSendEmailInput, options: { idempotencyKey: string }) =>
-        fakes.resend!.queueEmail(input, options),
+      queueEmail: (
+        input: ResendSendEmailInput,
+        options: { idempotencyKey: string; senderName: string | null },
+      ) => fakes.resend!.queueEmail(input, options),
       fetch: (request: Request) => fakes.resend!.fetch(request),
       alarm: async () => undefined,
       getAdminConfig: async () => ({ configured: true }),

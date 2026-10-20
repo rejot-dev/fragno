@@ -75,8 +75,14 @@ describe("Resend Durable Object", () => {
       subject: "Welcome",
       text: "Welcome",
     };
-    await resend.commands.queueEmail(email, { idempotencyKey: "auth:user-created:user-1:tx-1" });
-    await resend.commands.queueEmail(email, { idempotencyKey: "auth:user-created:user-1:tx-1" });
+    const options = { idempotencyKey: "auth:user-created:user-1:tx-1", senderName: null };
+    await resend.commands.queueEmail(email, options);
+    await resend.commands.queueEmail(email, options);
+    // A first-party app's email keeps the configured address under the app's name.
+    await resend.commands.queueEmail(
+      { ...email, subject: "Your code" },
+      { idempotencyKey: "auth:app-sign-in-code:1", senderName: 'Book"keeping\r\n' },
+    );
 
     const response = await resend.http.fetchAuthorized(
       new Request("https://resend.do/api/resend/emails"),
@@ -84,9 +90,14 @@ describe("Resend Durable Object", () => {
     );
     assert(response.status === 200);
     const body = (await response.json()) as {
-      emails: Array<{ subject: string | null }>;
+      emails: Array<{ subject: string | null; from: string | null }>;
     };
-    expect(body.emails).toHaveLength(1);
-    assert(body.emails[0]?.subject === "[DEVELOPMENT] Welcome");
+    expect(body.emails.map(({ subject, from }) => ({ subject, from }))).toEqual(
+      expect.arrayContaining([
+        { subject: "[DEVELOPMENT] Welcome", from: "Fragno <hello@example.com>" },
+        { subject: "[DEVELOPMENT] Your code", from: '"Bookkeeping" <hello@example.com>' },
+      ]),
+    );
+    expect(body.emails).toHaveLength(2);
   });
 });

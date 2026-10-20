@@ -904,6 +904,7 @@ export class InMemoryAuthObject implements AuthObject {
             .singleton()
             .commands.queueEmail(await buildAppSignInCodeEmail(input), {
               idempotencyKey: `auth:app-sign-in-code:${crypto.randomUUID()}`,
+              senderName: input.branding.displayName,
             });
         };
         // A Backoffice served on loopback is local, in development or preview, and usually has no
@@ -1187,7 +1188,7 @@ export class InMemoryAuthObject implements AuthObject {
           expiresInHours: verification.expiresInHours,
           publicBaseUrl: emailVerification.publicBaseUrl,
         }),
-        { idempotencyKey: `auth:email-verification:${record.id}` },
+        { idempotencyKey: `auth:email-verification:${record.id}`, senderName: null },
       );
       return;
     }
