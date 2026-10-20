@@ -36,7 +36,7 @@ const trustOption = {
   valueRequired: true,
   valueName: "json",
   description:
-    'Trust: {"kind":"third-party"}, or {"kind":"first-party","provisioningPermissions":["users.provision","organizations.provision","projects.provision","organizations.members.sync"],"branding":{"displayName","logoUrl","accentColor":"#rrggbb","homeUrl","supportUrl"}} for an app Backoffice operates',
+    'Trust: {"kind":"third-party"}, or {"kind":"first-party","provisioningPermissions":["organizations.provision","projects.provision","invitations.accept"],"branding":{"displayName","logoUrl","accentColor":"#rrggbb","homeUrl","supportUrl"}} for an app Backoffice operates',
 };
 
 function requireAdminAppsRuntime(context: AdminAppsToolContext): AdminRuntime {
@@ -194,7 +194,7 @@ const updateAppTrustTool = defineBackofficeRuntimeTool({
           { ...trustOption, required: true },
         ],
         examples: [
-          'admin.apps.update-trust --app-id APP_ID --trust-json \'{"kind":"first-party","provisioningPermissions":["users.provision"],"branding":{"displayName":"Bookkeeping","logoUrl":"https://bookkeeping.example/logo.svg","accentColor":"#2f6f4e","homeUrl":"https://bookkeeping.example","supportUrl":"https://bookkeeping.example/help"}}\'',
+          'admin.apps.update-trust --app-id APP_ID --trust-json \'{"kind":"first-party","provisioningPermissions":["organizations.provision"],"branding":{"displayName":"Bookkeeping","logoUrl":"https://bookkeeping.example/logo.svg","accentColor":"#2f6f4e","homeUrl":"https://bookkeeping.example","supportUrl":"https://bookkeeping.example/help"}}\'',
         ],
       },
       parse: defineCliArgsParser("admin.apps.update-trust", {

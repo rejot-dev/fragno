@@ -14,16 +14,12 @@ export const AUTH_AUTOMATION_EVENT_ORGANIZATION_UPDATED = "organization.updated"
 /** First-party apps' provisioning, recorded in the System scope as its audit trail. */
 export const PROVISIONING_AUTOMATION_SOURCE = "provisioning" as const;
 export const PROVISIONING_AUTOMATION_EVENTS = {
-  "users.provision": { eventType: "user.provisioned", label: "User provisioned" },
   "organizations.provision": {
     eventType: "organization.provisioned",
     label: "Organization provisioned",
   },
   "projects.provision": { eventType: "project.provisioned", label: "Project provisioned" },
-  "organizations.members.sync": {
-    eventType: "organization.members.synced",
-    label: "Organization members synced",
-  },
+  "invitations.accept": { eventType: "invitation.accepted", label: "Invitation accepted" },
 } as const satisfies Record<
   BackofficeProvisioningOperationId,
   { eventType: string; label: string }
@@ -85,7 +81,7 @@ export const authCapability: BackofficeCapability = {
         source: PROVISIONING_AUTOMATION_SOURCE,
         label: "Provisioning",
         description:
-          "First-party apps provisioning users, organizations, projects, and memberships.",
+          "First-party apps provisioning organizations and projects, and accepting invitations.",
       },
     ],
     actionProviders: [],

@@ -143,12 +143,7 @@ const callbackUrl = `${bookkeepingUrl}/api/auth/callback/backoffice`;
 // sign-in looks like Bookkeeping to people Bookkeeping sends there.
 const TRUST = {
   kind: "first-party",
-  provisioningPermissions: [
-    "users.provision",
-    "organizations.provision",
-    "projects.provision",
-    "organizations.members.sync",
-  ],
+  provisioningPermissions: ["organizations.provision", "projects.provision", "invitations.accept"],
   branding: {
     displayName: "Bookkeeping",
     logoUrl: `${bookkeepingUrl}/logo.svg`,

@@ -1,5 +1,6 @@
 import { assert, expect, test, vi } from "vitest";
 
+import { createHash, randomBytes } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -31,6 +32,7 @@ import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-hos
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import { action as exchangeAction } from "@/routes/api/backoffice-execution-token";
 import { action as installAction, loader as installLoader } from "@/routes/backoffice/app-install";
+import { loader as consentLoader } from "@/routes/backoffice/oauth-consent";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
 import { InMemoryApiObject } from "../../workers/api.do";
@@ -65,10 +67,9 @@ const branding = {
   supportUrl: "https://bookkeeping.example/help",
 };
 const everyProvisioningPermission = [
-  "users.provision",
   "organizations.provision",
   "projects.provision",
-  "organizations.members.sync",
+  "invitations.accept",
 ] as const;
 
 type Vars = {
@@ -79,8 +80,10 @@ type Vars = {
   clientSecret: string;
   appId: string;
   token: string;
+  ownerCookie: string;
   ownerId: string;
-  memberId: string;
+  colleagueCookie: string;
+  colleagueId: string;
   orgId: string;
   projectId: string;
 };
@@ -129,6 +132,40 @@ async function requestClientCredentialsToken(ctx: Ctx): Promise<string> {
   );
   assert.equal(response.status, 200, await response.clone().text());
   return z.object({ access_token: z.string() }).parse(await response.json()).access_token;
+}
+
+/** The user signs in to Bookkeeping, and Backoffice records their consent without asking. */
+async function authorizeBookkeeping(ctx: Ctx, cookie: string) {
+  const authorization = await ctx.runtime.objects.auth.singleton().http.fetch(
+    new Request(
+      `${origin}/api/auth/oauth2/authorize?${new URLSearchParams({
+        client_id: ctx.vars.clientId,
+        redirect_uri: redirectUri,
+        response_type: "code",
+        scope: "openid profile email offline_access backoffice",
+        state: "bookkeeping-state",
+        code_challenge_method: "S256",
+        code_challenge: createHash("sha256")
+          .update(randomBytes(32).toString("base64url"))
+          .digest("base64url"),
+      })}`,
+      { headers: { cookie, accept: "text/html" } },
+    ),
+  );
+  assert.equal(authorization.status, 302, await authorization.clone().text());
+  const url = new URL(authorization.headers.get("location") ?? "", origin);
+  assert.equal(url.pathname, "/backoffice/oauth/consent");
+  const request = new Request(url, { headers: { cookie } });
+  const approved = await consentLoader({
+    request,
+    context: routerContext(ctx, request),
+    params: {},
+    url,
+    pattern: url.pathname,
+  });
+  assert(approved instanceof Response, "First-party apps are approved without a review.");
+  const callback = new URL(approved.headers.get("location") ?? "");
+  assert.equal(callback.origin + callback.pathname, redirectUri);
 }
 
 async function sessionUserId(ctx: Ctx, cookie: string) {
@@ -180,8 +217,10 @@ async function runFirstPartyScenario(
           clientSecret: "",
           appId: "",
           token: "",
+          ownerCookie: "",
           ownerId: "",
-          memberId: "",
+          colleagueCookie: "",
+          colleagueId: "",
           orgId: "",
           projectId: "",
         }),
@@ -240,35 +279,27 @@ async function runFirstPartyScenario(
   }
 }
 
-test("Bookkeeping provisions its users, organization, project, and members, once each", async () => {
+test("Bookkeeping provisions its organization and project, and brings invited people in", async () => {
   await runFirstPartyScenario("first-party provisioning", (then) => [
-    then("users are provisioned once, and an address someone holds needs linking", async (ctx) => {
-      const client = provisioning(ctx);
-      const owner = await client.call("users.provision", {
-        externalUserId: "bk-user-1",
-        email: "Owner@Bookkeeping.test",
-        name: "Owner",
-      });
-      assert(owner.status === "provisioned" && owner.created);
-      ctx.vars.ownerId = owner.userId;
-      expect(
-        await client.call("users.provision", {
-          externalUserId: "bk-user-1",
-          email: "owner@bookkeeping.test",
-          name: "Owner",
-        }),
-      ).toEqual({ status: "provisioned", userId: owner.userId, created: false });
-      expect(
-        await client.call("users.provision", {
-          externalUserId: "bk-user-2",
-          email: "existing@backoffice.test",
-          name: "Someone else",
-        }),
-      ).toEqual({ status: "requires_link" });
-    }),
     then(
-      "an organization is provisioned once for a linked owner, with Bookkeeping installed and linked to it",
+      "an organization is provisioned once for a user who signed in to Bookkeeping, with Bookkeeping installed and linked to it",
       async (ctx) => {
+        const owner = await ctx.runtime.objects.auth.singleton().http.fetch(
+          new Request(`${origin}/api/auth/sign-up/email`, {
+            method: "POST",
+            headers: { origin, "content-type": "application/json" },
+            body: JSON.stringify({
+              email: "owner@bookkeeping.test",
+              password: "password123",
+              name: "Owner",
+            }),
+          }),
+        );
+        assert.equal(owner.status, 200, await owner.clone().text());
+        ctx.vars.ownerCookie = owner.headers.getSetCookie()[0]?.split(";", 1)[0] ?? "";
+        ctx.vars.ownerId = await sessionUserId(ctx, ctx.vars.ownerCookie);
+        await authorizeBookkeeping(ctx, ctx.vars.ownerCookie);
+
         const client = provisioning(ctx);
         const input = {
           externalOrganizationId: "bk-org-1",
@@ -302,7 +333,7 @@ test("Bookkeeping provisions its users, organization, project, and members, once
           resourceScope: { kind: "owner" },
           externalAccount: { id: "bk-org-1", label: "Acme Books" },
         });
-        // A user who never authorized Bookkeeping cannot be made an owner through it.
+        // A user who never signed in to Bookkeeping cannot be made an owner through it.
         await expectApiError(
           client.call("organizations.provision", {
             externalOrganizationId: "bk-org-2",
@@ -360,64 +391,94 @@ test("Bookkeeping provisions its users, organization, project, and members, once
         "not_found",
       );
     }),
-    then("member sync changes only Bookkeeping's members, and keeps an owner", async (ctx) => {
-      const client = provisioning(ctx);
-      const member = await client.call("users.provision", {
-        externalUserId: "bk-user-3",
-        email: "member@bookkeeping.test",
-        name: "Member",
-      });
-      assert(member.status === "provisioned");
-      ctx.vars.memberId = member.userId;
-      // Someone added in Backoffice itself, whom Bookkeeping does not know.
-      await ctx.runtime.objects.auth.singleton().commands.applyScenarioFixture({
-        members: [
-          { organizationId: ctx.vars.orgId, userId: ctx.vars.existingUserId, roles: ["admin"] },
-        ],
-      });
-      const owner = { userId: ctx.vars.ownerId, role: "owner" } as const;
-
-      expect(
-        await client.call("organizations.members.sync", {
-          externalOrganizationId: "bk-org-1",
-          members: [owner, { userId: ctx.vars.memberId, role: "member" }],
-        }),
-      ).toEqual({ added: [ctx.vars.memberId], updated: [], removed: [] });
-      expect(
-        await client.call("organizations.members.sync", {
-          externalOrganizationId: "bk-org-1",
-          members: [owner, { userId: ctx.vars.memberId, role: "admin" }],
-        }),
-      ).toEqual({ added: [], updated: [ctx.vars.memberId], removed: [] });
-      expect(
-        await client.call("organizations.members.sync", {
-          externalOrganizationId: "bk-org-1",
-          members: [owner],
-        }),
-      ).toEqual({ added: [], updated: [], removed: [ctx.vars.memberId] });
-      const auth = ctx.runtime.objects.auth.singleton().commands;
-      expect(
-        await auth.getScenarioMemberRoles({
+    then(
+      "an invited colleague joins once they sign in to Bookkeeping with the invited address",
+      async (ctx) => {
+        const auth = ctx.runtime.objects.auth.singleton().commands;
+        const client = provisioning(ctx);
+        const { invitationId } = await auth.createOrganizationInvitation({
           organizationId: ctx.vars.orgId,
-          userId: ctx.vars.existingUserId,
-        }),
-      ).toEqual(["admin"]);
+          inviterUserId: ctx.vars.ownerId,
+          email: "colleague@bookkeeping.test",
+          roles: ["member"],
+        });
+        const colleague = await ctx.runtime.objects.auth.singleton().http.fetch(
+          new Request(`${origin}/api/auth/sign-up/email`, {
+            method: "POST",
+            headers: { origin, "content-type": "application/json" },
+            body: JSON.stringify({
+              email: "colleague@bookkeeping.test",
+              password: "password123",
+              name: "Colleague",
+            }),
+          }),
+        );
+        ctx.vars.colleagueCookie = colleague.headers.getSetCookie()[0]?.split(";", 1)[0] ?? "";
+        ctx.vars.colleagueId = await sessionUserId(ctx, ctx.vars.colleagueCookie);
+        const accept = { invitationId, userId: ctx.vars.colleagueId };
 
-      await expectApiError(
-        client.call("organizations.members.sync", {
-          externalOrganizationId: "bk-org-1",
-          members: [],
-        }),
-        "conflict",
-      );
-      await expectApiError(
-        client.call("organizations.members.sync", {
-          externalOrganizationId: "bk-org-1",
-          members: [owner, { userId: ctx.vars.existingUserId, role: "member" }],
-        }),
-        "forbidden",
-      );
-    }),
+        await authorizeBookkeeping(ctx, ctx.vars.colleagueCookie);
+        // Signing in with a code proves the address; a password sign-up has not.
+        await expectApiError(client.call("invitations.accept", accept), "forbidden");
+        await auth.verifyAdminUserEmail({ email: "colleague@bookkeeping.test" });
+
+        const membership = await client.call("invitations.accept", accept);
+        expect(membership).toMatchObject({
+          organization: { organizationId: ctx.vars.orgId, name: "Acme Books" },
+          roles: ["member"],
+        });
+        expect(await client.call("invitations.accept", accept)).toEqual(membership);
+      },
+    ),
+    then(
+      "Bookkeeping cannot use an invitation for someone else, for someone who never signed in to it, or outside its organizations",
+      async (ctx) => {
+        const auth = ctx.runtime.objects.auth.singleton().commands;
+        const client = provisioning(ctx);
+        const forSomeoneElse = await auth.createOrganizationInvitation({
+          organizationId: ctx.vars.orgId,
+          inviterUserId: ctx.vars.ownerId,
+          email: "existing@backoffice.test",
+          roles: ["admin"],
+        });
+        await expectApiError(
+          client.call("invitations.accept", {
+            invitationId: forSomeoneElse.invitationId,
+            userId: ctx.vars.colleagueId,
+          }),
+          "forbidden",
+        );
+        // The invited person themselves, but they never signed in to Bookkeeping.
+        await auth.verifyAdminUserEmail({ email: "existing@backoffice.test" });
+        await expectApiError(
+          client.call("invitations.accept", {
+            invitationId: forSomeoneElse.invitationId,
+            userId: ctx.vars.existingUserId,
+          }),
+          "forbidden",
+        );
+        // Bookkeeping is not installed in the existing workspace.
+        const elsewhere = await auth.createOrganizationInvitation({
+          organizationId: ctx.vars.existingOrgId,
+          inviterUserId: ctx.vars.existingUserId,
+          email: "colleague@bookkeeping.test",
+          roles: ["member"],
+        });
+        await expectApiError(
+          client.call("invitations.accept", {
+            invitationId: elsewhere.invitationId,
+            userId: ctx.vars.colleagueId,
+          }),
+          "not_found",
+        );
+        expect(
+          await auth.getScenarioMemberRoles({
+            organizationId: ctx.vars.existingOrgId,
+            userId: ctx.vars.colleagueId,
+          }),
+        ).toBeNull();
+      },
+    ),
     then(
       "each operation needs its own permission, and only first-party apps have any",
       async (ctx) => {
@@ -429,7 +490,7 @@ test("Bookkeeping provisions its users, organization, project, and members, once
               appId: ctx.vars.appId,
               trust: {
                 kind: "first-party",
-                provisioningPermissions: ["users.provision"],
+                provisioningPermissions: ["organizations.provision"],
                 branding,
               },
             })
@@ -447,10 +508,10 @@ test("Bookkeeping provisions its users, organization, project, and members, once
           (await apps.updateAppTrust({ appId: ctx.vars.appId, trust: { kind: "third-party" } })).ok,
         );
         await expectApiError(
-          client.call("users.provision", {
-            externalUserId: "bk-user-1",
-            email: "owner@bookkeeping.test",
-            name: "Owner",
+          client.call("organizations.provision", {
+            externalOrganizationId: "bk-org-1",
+            name: "Acme Books",
+            ownerUserId: ctx.vars.ownerId,
           }),
           "forbidden",
         );
@@ -465,20 +526,19 @@ test("Bookkeeping provisions its users, organization, project, and members, once
         counts[eventType] = (counts[eventType] ?? 0) + 1;
       }
       expect(counts).toEqual({
-        "user.provisioned": 4,
         "organization.provisioned": 2,
         "project.provisioned": 2,
-        "organization.members.synced": 3,
+        "invitation.accepted": 2,
       });
       expect(
-        provisioned.find(({ eventType }) => eventType === "project.provisioned"),
+        provisioned.find(({ eventType }) => eventType === "invitation.accepted"),
       ).toMatchObject({
         scope: { kind: "system" },
         actors: { initiator: { scope: "internal", type: "app", id: ctx.vars.appId } },
         payload: {
           appId: ctx.vars.appId,
-          input: { externalProjectId: "bk-administration-1" },
-          result: { organizationId: ctx.vars.orgId },
+          input: { userId: ctx.vars.colleagueId },
+          result: { organization: { organizationId: ctx.vars.orgId } },
         },
       });
     }),

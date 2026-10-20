@@ -7,7 +7,10 @@ import type {
   BackofficeApp,
   BackofficeAppLookupInput,
 } from "@fragno-dev/backoffice-api/v0/apps";
-import type { BackofficeProvisioningPermission } from "@fragno-dev/backoffice-api/v0/provisioning";
+import {
+  backofficeProvisioningPermissionSchema,
+  type BackofficeProvisioningPermission,
+} from "@fragno-dev/backoffice-api/v0/provisioning";
 import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 
 import { defineFragment } from "@fragno-dev/core";
@@ -33,9 +36,23 @@ import { appsFragmentSchema } from "./schema";
 
 type StoredAppTrust = {
   trust: AppTrust["kind"];
+  /** Trust set before a provisioning permission was removed still names it. */
   provisioningPermissions: BackofficeProvisioningPermission[] | null;
   branding: AppBranding | null;
 };
+
+/**
+ * Removed provisioning permissions allow nothing, so reading stored trust drops them instead of
+ * failing, as `knownBackofficePermissions` does for stored grants.
+ */
+function knownProvisioningPermissions(
+  permissions: readonly string[],
+): BackofficeProvisioningPermission[] {
+  return permissions.filter(
+    (permission): permission is BackofficeProvisioningPermission =>
+      backofficeProvisioningPermissionSchema.safeParse(permission).success,
+  );
+}
 
 function toStoredAppTrust(trust: AppTrust): StoredAppTrust {
   return trust.kind === "first-party"
@@ -55,7 +72,7 @@ function toAppTrust(stored: StoredAppTrust): AppTrust {
   return stored.trust === "first-party" && stored.branding !== null
     ? {
         kind: "first-party",
-        provisioningPermissions: stored.provisioningPermissions ?? [],
+        provisioningPermissions: knownProvisioningPermissions(stored.provisioningPermissions ?? []),
         branding: stored.branding,
       }
     : { kind: "third-party" };

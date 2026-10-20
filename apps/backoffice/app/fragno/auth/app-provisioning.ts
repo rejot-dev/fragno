@@ -1,11 +1,9 @@
 import type { BackofficeApiErrorCode } from "@fragno-dev/backoffice-api/errors";
+import type { OrganizationMembershipRecord } from "@fragno-dev/backoffice-api/v0/organization";
 import type {
+  AcceptInvitationInput,
   ProvisionOrganizationInput,
   ProvisionOrganizationResult,
-  ProvisionUserInput,
-  ProvisionUserResult,
-  SyncOrganizationMembersInput,
-  SyncOrganizationMembersResult,
 } from "@fragno-dev/backoffice-api/v0/provisioning";
 
 /** Failures cross Durable Object RPC as values, coded as the provisioning API reports them. */
@@ -19,15 +17,11 @@ export type AppProvisioningResult<T> =
       };
     };
 
-/**
- * The calling app, as the provisioning route authenticated it. Users who authorized its OAuth
- * client are linked to it as well as those it provisioned.
- */
+/** The calling app, as the provisioning route authenticated it. */
 export type ProvisioningApp = { appId: string; oauthClientId: string };
 
-/** Auth's side of provisioning: users, organizations, and their memberships. */
+/** Auth's side of provisioning: organizations, and the app's users joining them. */
 export type AuthAppProvisioningCommands = {
-  provisionAppUser(input: { appId: string } & ProvisionUserInput): Promise<ProvisionUserResult>;
   provisionAppOrganization(
     input: ProvisioningApp & ProvisionOrganizationInput,
   ): Promise<AppProvisioningResult<ProvisionOrganizationResult>>;
@@ -36,7 +30,8 @@ export type AuthAppProvisioningCommands = {
     appId: string;
     externalOrganizationId: string;
   }): Promise<{ organizationId: string; createdByUserId: string } | null>;
-  syncAppOrganizationMembers(
-    input: ProvisioningApp & SyncOrganizationMembersInput,
-  ): Promise<AppProvisioningResult<SyncOrganizationMembersResult>>;
+  findInvitationOrganization(input: { invitationId: string }): Promise<string | null>;
+  acceptAppInvitation(
+    input: Pick<ProvisioningApp, "oauthClientId"> & AcceptInvitationInput,
+  ): Promise<AppProvisioningResult<OrganizationMembershipRecord>>;
 };
