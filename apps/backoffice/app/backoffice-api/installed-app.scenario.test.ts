@@ -413,6 +413,7 @@ async function updateGrants(ctx: Ctx, grantedPermissions: BackofficePermissionRe
 /** Runs a Bash command as Backoffice's global administrator, in System context. */
 async function execAsAdministrator(ctx: Ctx, command: string): Promise<string> {
   const context = createRouteBackedRuntimeContext({
+    emitter: { kind: "caller" },
     runtime: ctx.runtime.services,
     kernel: new BackofficeKernel(ctx.runtime.services),
     execution: createBackofficeUserExecution({
