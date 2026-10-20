@@ -23,6 +23,8 @@ import type {
   BackofficeAppPageInput,
   BackofficeAppActionsUpdateInput,
   BackofficeAppActionsUpdateResult,
+  BackofficeAppPermissionsUpdateInput,
+  BackofficeAppPermissionsUpdateResult,
   BackofficeAppTrustUpdateInput,
   BackofficeAppTrustUpdateResult,
   BackofficeAppRegistrationInput,
@@ -82,6 +84,9 @@ export type AdminRuntime = {
   updateAppActions(
     input: BackofficeAppActionsUpdateInput,
   ): Promise<BackofficeAppActionsUpdateResult>;
+  updateAppPermissions(
+    input: BackofficeAppPermissionsUpdateInput,
+  ): Promise<BackofficeAppPermissionsUpdateResult>;
   updateAppTrust(input: BackofficeAppTrustUpdateInput): Promise<BackofficeAppTrustUpdateResult>;
   listApps(input: BackofficeAppPageInput): Promise<BackofficeAppPage>;
   createSignUpInvitation(input: {

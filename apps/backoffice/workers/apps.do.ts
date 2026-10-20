@@ -12,6 +12,7 @@ import {
   backofficeAppOAuthClientLookupInputSchema,
   backofficeAppSlugLookupInputSchema,
   backofficeAppPageInputSchema,
+  backofficeAppPermissionsUpdateInputSchema,
   backofficeAppRegistrationInputSchema,
   backofficeAppTrustUpdateInputSchema,
   type BackofficeAppActionsUpdateInput,
@@ -20,6 +21,8 @@ import {
   type BackofficeAppSlugLookupInput,
   type BackofficeAppPage,
   type BackofficeAppPageInput,
+  type BackofficeAppPermissionsUpdateInput,
+  type BackofficeAppPermissionsUpdateResult,
   type BackofficeAppRegistrationInput,
   type BackofficeAppRegistrationResult,
   type BackofficeAppsCommands,
@@ -87,6 +90,16 @@ export class InMemoryAppsObject extends RpcTarget implements BackofficeAppsComma
     return await runBackofficeAppOperation(async () => {
       const fragment = this.#getFragment();
       return await fragment.callServices(() => fragment.services.updateAppActions(update));
+    });
+  }
+
+  async updateAppPermissions(
+    input: BackofficeAppPermissionsUpdateInput,
+  ): Promise<BackofficeAppOperationResult<BackofficeAppPermissionsUpdateResult>> {
+    const update = backofficeAppPermissionsUpdateInputSchema.parse(input);
+    return await runBackofficeAppOperation(async () => {
+      const fragment = this.#getFragment();
+      return await fragment.callServices(() => fragment.services.updateAppPermissions(update));
     });
   }
 
@@ -163,6 +176,12 @@ export class Apps extends DurableObject<CloudflareEnv> implements BackofficeApps
     input: BackofficeAppActionsUpdateInput,
   ): Promise<BackofficeAppOperationResult<BackofficeAppActionsUpdateResult>> {
     return this.#object.updateAppActions(input);
+  }
+
+  updateAppPermissions(
+    input: BackofficeAppPermissionsUpdateInput,
+  ): Promise<BackofficeAppOperationResult<BackofficeAppPermissionsUpdateResult>> {
+    return this.#object.updateAppPermissions(input);
   }
 
   updateAppTrust(

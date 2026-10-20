@@ -119,9 +119,9 @@ Backoffice's `app/fragno/apps/README.md`). It reads both origins from `.dev.vars
 `http://127.0.0.1:5173` and `http://127.0.0.1:6174`; pass `--backoffice-url` or `--bookkeeping-url`
 to change them, which also moves the callback and the action endpoint. The app is registered as
 `app#bookkeeping`; pass `--slug` to choose another permanent name. Rerunning converges on the same
-client and app. Action changes apply automatically to existing installations; pass
-`--change-approval installation` to make each installation's owner approve them. Production requires
-HTTPS.
+client and app, updating its requested permissions and actions in place. Action changes apply
+automatically to existing installations; pass `--change-approval installation` to make each
+installation's owner approve them. Production requires HTTPS.
 
 Then an owner or admin of the Bookkeeping organization opens **Backoffice → Connect to Backoffice**:
 

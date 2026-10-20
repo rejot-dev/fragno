@@ -269,6 +269,7 @@ const app = execSystem<{
   created: boolean;
   actionsRevision: number;
   actionsChanged: boolean;
+  permissionsChanged: boolean;
   problems: string[];
 }>(
   backofficeUrl,
@@ -293,11 +294,13 @@ const app = execSystem<{
     let app = await findApp();
     let created = false;
     let actionsChanged = false;
+    let permissionsChanged = false;
     if (!app) {
       await admin.appsCreate(want);
       created = true;
     } else {
       actionsChanged = (await admin.appsUpdateActions({ appId: app.id, actions: want.actions })).changed;
+      permissionsChanged = (await admin.appsUpdatePermissions({ appId: app.id, requestedPermissions: want.requestedPermissions })).changed;
       await admin.appsUpdateTrust({ appId: app.id, trust: want.trust });
       // An app registered before slugs answers to its ID; registering it again names it.
       if (app.slug === app.id) await admin.appsCreate(want);
@@ -309,19 +312,18 @@ const app = execSystem<{
       if (app.slug !== want.slug) problems.push("it is registered as app#" + app.slug + "; slugs never change, so pass --slug " + app.slug);
       if (JSON.stringify(app.actions) !== JSON.stringify(want.actions)) problems.push("the stored actions differ from Bookkeeping's");
       if (JSON.stringify(app.trust) !== JSON.stringify(want.trust)) problems.push("it is not registered as a first-party app with every provisioning permission");
-      const granted = app.requestedPermissions.map((p) => p.namespace + "." + p.permission);
-      for (const p of want.requestedPermissions) {
-        if (!granted.includes(p.namespace + "." + p.permission)) problems.push("permission " + p.namespace + "." + p.permission + " is not requested; registered permissions never change, so register a new client");
-      }
+      const requested = app.requestedPermissions.map((p) => p.namespace + "." + p.permission).sort();
+      const wanted = want.requestedPermissions.map((p) => p.namespace + "." + p.permission).sort();
+      if (JSON.stringify(requested) !== JSON.stringify(wanted)) problems.push("it requests " + requested.join(", ") + " instead of " + wanted.join(", "));
     }
-    return { appId: app?.id ?? "", slug: app?.slug ?? "", created, actionsRevision: app?.actionsRevision ?? 0, actionsChanged, problems };
+    return { appId: app?.id ?? "", slug: app?.slug ?? "", created, actionsRevision: app?.actionsRevision ?? 0, actionsChanged, permissionsChanged, problems };
   }`,
 );
 if (app.problems.length > 0) {
   throw new Error(`App ${app.appId} is not usable: ${app.problems.join("; ")}.`);
 }
 console.log(
-  `${app.created ? "Registered" : "Verified"} app#${app.slug} (app ID ${app.appId}, actions revision ${app.actionsRevision}${app.actionsChanged ? ", updated" : ""})`,
+  `${app.created ? "Registered" : "Verified"} app#${app.slug} (app ID ${app.appId}, actions revision ${app.actionsRevision}${app.actionsChanged ? ", updated" : ""}${app.permissionsChanged ? ", requested permissions updated" : ""})`,
 );
 
 const betterAuthSecret = devVars.get("BETTER_AUTH_SECRET") ?? "";

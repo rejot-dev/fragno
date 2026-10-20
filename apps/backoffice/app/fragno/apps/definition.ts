@@ -24,6 +24,8 @@ import type {
   BackofficeAppOAuthClientLookupInput,
   BackofficeAppPage,
   BackofficeAppPageInput,
+  BackofficeAppPermissionsUpdateInput,
+  BackofficeAppPermissionsUpdateResult,
   BackofficeAppRegistrationInput,
   BackofficeAppRegistrationResult,
   BackofficeAppSlugLookupInput,
@@ -166,9 +168,9 @@ function decodeAppRegistryCursor(input: BackofficeAppPageInput) {
 }
 
 /**
- * Requested permissions and slugs are immutable. Action declarations change only through
- * updateAppActions, which bumps the revision that installations approve, and trust only through
- * updateAppTrust.
+ * Slugs are immutable. Action declarations change only through updateAppActions, which bumps the
+ * revision that installations approve, requested permissions only through updateAppPermissions,
+ * and trust only through updateAppTrust.
  */
 export const appsFragmentDefinition = defineFragment("apps")
   .extend(withDatabase(appsFragmentSchema))
@@ -206,7 +208,7 @@ export const appsFragmentDefinition = defineFragment("apps")
                 ) {
                   throw new BackofficeAppDomainError(
                     "APP_REGISTRATION_CONFLICT",
-                    "Backoffice app OAuth client is already registered with different requested permissions.",
+                    "Backoffice app OAuth client is already registered with different requested permissions; change them with admin.apps.update-permissions.",
                   );
                 }
                 if (!isDeepStrictEqual(existing.actions ?? { kind: "none" }, input.actions)) {
@@ -270,6 +272,29 @@ export const appsFragmentDefinition = defineFragment("apps")
               b.set({ actions: input.actions, actionsRevision }).check(),
             );
             return { actionsRevision, changed: true };
+          })
+          .build();
+      },
+
+      /** Installations store their own grants, so changing the request never widens one. */
+      updateAppPermissions: function (input: BackofficeAppPermissionsUpdateInput) {
+        return this.serviceTx(appsFragmentSchema)
+          .retrieve((uow) =>
+            uow.findFirst("app", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", input.appId)),
+            ),
+          )
+          .mutate(({ uow, retrieveResult: [app] }): BackofficeAppPermissionsUpdateResult => {
+            if (!app) {
+              throw new BackofficeAppDomainError("APP_NOT_FOUND", "Backoffice app was not found.");
+            }
+            if (appPermissionsEqual(app.requestedPermissions, input.requestedPermissions)) {
+              return { changed: false };
+            }
+            uow.update("app", app.id, (b) =>
+              b.set({ requestedPermissions: input.requestedPermissions }).check(),
+            );
+            return { changed: true };
           })
           .build();
       },
