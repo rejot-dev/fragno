@@ -6,12 +6,13 @@ export default [
     route("signup", "routes/signup.tsx"),
     route("login", "routes/login.tsx"),
     route("help", "routes/help.tsx"),
+    route("welcome", "routes/welcome.tsx"),
+    route("invitations/:invitationId", "routes/invitation.tsx"),
   ]),
-  route("dashboard", "routes/dashboard-layout.tsx", [
-    index("routes/dashboard.tsx"),
-    route("organizations", "routes/organizations.tsx"),
-    route("backoffice", "routes/backoffice.tsx"),
-    route("backoffice/callback", "routes/backoffice-callback.tsx"),
+  route("start", "routes/start.tsx"),
+  route("w/:slug", "routes/workspace-layout.tsx", [
+    index("routes/workspace.tsx"),
+    route("members", "routes/members.tsx"),
     route("account", "routes/account.tsx"),
   ]),
 ] satisfies RouteConfig;
