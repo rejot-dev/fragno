@@ -344,6 +344,14 @@ export const createRouteBackedRuntimeContext = ({
           return object ? { runtime: createWebRuntime({ object: object.http }) } : null;
         })()
       : null,
+    models: {
+      runtime: {
+        classify: async (request) =>
+          await kernel
+            .scoped("PI_MANAGER", execution.scope, runtime.objects.piManager)
+            .commands.classify({ request, billingOrganizationId }),
+      },
+    },
     event: {
       runtime: createEventRuntime({
         objects: runtime.objects,

@@ -47,6 +47,8 @@ import type { Upload } from "workers/upload.do";
 import type { FragnoExecutionContext } from "@fragno-dev/core";
 import type { ResendSendEmailInput } from "@fragno-dev/resend-fragment";
 
+import type { ClassifierResult } from "@earendil-works/pi-ai";
+
 import type { TelegramAutomationFileMetadata } from "@/backoffice-runtime/telegram-file-response";
 import type {
   AppInstallationOwner,
@@ -158,6 +160,7 @@ import type {
   MarketplacePublishReleaseResult,
   MarketplacePackagePublishRequest,
 } from "@/fragno/marketplace/package-publishing";
+import type { PiClassificationRequest } from "@/fragno/pi/agent/pi-models";
 import type {
   SandboxInstanceRecord,
   SandboxInstanceRequestInput,
@@ -436,6 +439,18 @@ export type ApiObject = WarmableObject & DurableHookCommands;
 export type PiManagerObject = WarmableObject & {
   /** An agent reports each settled turn, so its queue can hand the agent its next item. */
   reportSettledTurn(input: { agentName: string; requestId: string }): Promise<void>;
+  /**
+   * Classifies and bills the usage: the scope's organization pays, and scopes without one bill
+   * `billingOrganizationId`, as codemode runs do. With billing enabled and nobody to pay, nothing
+   * is classified.
+   */
+  classify(input: {
+    request: PiClassificationRequest;
+    billingOrganizationId: string | null;
+  }): Promise<
+    | { type: "classified"; answers: ClassifierResult["answers"] }
+    | { type: "billing-owner-required" }
+  >;
 };
 
 export type BillingObject = {

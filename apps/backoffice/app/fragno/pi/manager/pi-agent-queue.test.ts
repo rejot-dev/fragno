@@ -136,6 +136,9 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
     agent: () => agent,
     supportedAvailableModels: async () => AVAILABLE_MODELS,
     queueChannel: createPiAgentQueueChannel(),
+    billing: () => {
+      throw new Error("Queue tests classify nothing.");
+    },
   };
   const { fragments, test: database } = await buildDatabaseFragmentsTest()
     .withTestAdapter({ type: "kysely-sqlite" })

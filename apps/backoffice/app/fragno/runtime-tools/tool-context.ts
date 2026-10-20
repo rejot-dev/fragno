@@ -31,6 +31,7 @@ export const createBackofficeToolContext = (
     javascript: context.javascript?.runtime,
     upload: context.upload?.runtime,
     web: context.web?.runtime,
+    models: context.models?.runtime,
   };
 
   return {

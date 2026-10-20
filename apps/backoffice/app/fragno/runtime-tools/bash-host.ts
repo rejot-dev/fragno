@@ -31,6 +31,7 @@ import type { IntegrationsRuntime } from "./families/integrations/integration-to
 import type { InternalRuntime } from "./families/internal";
 import type { JavaScriptRuntime } from "./families/javascript-runtime";
 import type { MarketplaceRuntime } from "./families/marketplace-runtime";
+import type { ModelsRuntime } from "./families/models";
 import type { OrganizationRuntime } from "./families/organization";
 import type { RegisteredOtpCommandContext } from "./families/otp-runtime";
 import type { PackagesRuntime } from "./families/packages-runtime";
@@ -80,6 +81,7 @@ export type BashHostContext = {
   javascript?: { runtime: JavaScriptRuntime } | null;
   upload?: { runtime: UploadRuntime } | null;
   web?: { runtime: WebRuntime } | null;
+  models?: { runtime: ModelsRuntime } | null;
 };
 
 export type InteractiveRuntimeToolContext = Omit<BashHostContext, "automation"> & {

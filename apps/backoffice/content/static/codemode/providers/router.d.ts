@@ -432,6 +432,10 @@ type BackofficePermissionRequirement =
       permission: "manage";
     }
   | {
+      namespace: "models";
+      permission: "classify";
+    }
+  | {
       namespace: "marketplace";
       permission: "read";
     }

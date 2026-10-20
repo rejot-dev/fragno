@@ -28,6 +28,7 @@ export class PiScenarioManager extends DurableObject<CloudflareEnv> {
       supportedAvailableModels: async () => [
         { provider: "faux", modelId: "faux-1", label: "Faux 1", contextWindow: 128_000 },
       ],
+      classifier: null,
       nowEpochMs: Date.now,
     });
   }
