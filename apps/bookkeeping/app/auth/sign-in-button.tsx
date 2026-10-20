@@ -15,6 +15,25 @@ export function SignInButton({ returnTo }: { returnTo: string }) {
   const [params] = useSearchParams();
   const { pathname } = useLocation();
 
+  async function signIn() {
+    setPending(true);
+    setError(null);
+    try {
+      const result = await authClient.signIn.social({
+        provider: "backoffice",
+        callbackURL: returnTo,
+        errorCallbackURL: pathname,
+      });
+      if (result.error) {
+        setError("We couldn't start signing in. Please try again.");
+        setPending(false);
+      }
+    } catch {
+      setError("We couldn't connect. Check your internet connection and try again.");
+      setPending(false);
+    }
+  }
+
   return (
     <div className="sign-in space-y-3">
       <Button
@@ -22,23 +41,8 @@ export function SignInButton({ returnTo }: { returnTo: string }) {
         className="w-full"
         type="button"
         disabled={pending}
-        onClick={async () => {
-          setPending(true);
-          setError(null);
-          try {
-            const result = await authClient.signIn.social({
-              provider: "backoffice",
-              callbackURL: returnTo,
-              errorCallbackURL: pathname,
-            });
-            if (result.error) {
-              setError("We couldn't start signing in. Please try again.");
-              setPending(false);
-            }
-          } catch {
-            setError("We couldn't connect. Check your internet connection and try again.");
-            setPending(false);
-          }
+        onClick={() => {
+          void signIn();
         }}
       >
         {pending ? "One moment…" : "Continue with email"}

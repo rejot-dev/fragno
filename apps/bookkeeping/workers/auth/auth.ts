@@ -208,9 +208,9 @@ export class Auth extends DurableObject<CloudflareEnv> {
     }
     let refresh = this.refreshes.get(account.id);
     if (!refresh) {
-      refresh = this.refreshBackofficeAccessToken(account).finally(() =>
-        this.refreshes.delete(account.id),
-      );
+      refresh = this.refreshBackofficeAccessToken(account).finally(() => {
+        this.refreshes.delete(account.id);
+      });
       this.refreshes.set(account.id, refresh);
     }
     return await refresh;
