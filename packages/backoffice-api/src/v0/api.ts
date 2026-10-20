@@ -13,7 +13,7 @@ import { marketplaceOperations } from "./marketplace";
 import { packagesOperations } from "./marketplace";
 import { organizationOperations } from "./organization";
 import { otpOperations } from "./otp";
-import { piOperations } from "./pi";
+import { piOperations, piStreams } from "./pi";
 import { reson8Operations } from "./reson8";
 import { sandboxOperations } from "./sandbox";
 import { stateOperations } from "./state";
@@ -48,5 +48,8 @@ export const backofficeApiV0 = {
     ...uploadOperations,
     ...webOperations,
     ...workflowOperations,
+  },
+  streams: {
+    ...piStreams,
   },
 } satisfies BackofficeApi;

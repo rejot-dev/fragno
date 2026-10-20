@@ -1,4 +1,5 @@
 import type { PiAgentConfig, PiAgentDefinition } from "@fragno-dev/backoffice-api/v0/pi";
+import type { PiAgentQueueEntry } from "@fragno-dev/backoffice-api/v0/pi";
 import {
   type BackofficeContextScope,
   backofficeScopeRootOwner,
@@ -16,7 +17,6 @@ import type {
   PiAgent,
   PiAgentNotification,
   PiAgentPrompt,
-  PiAgentQueueEntry,
   PiAgentQueueSubmission,
   PiAgentTurn,
   PiAgentWaitingQueue,

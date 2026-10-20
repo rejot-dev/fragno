@@ -1,19 +1,16 @@
+import { piAgentWatchFrameSchema, type PiAgentQueueEntry } from "@fragno-dev/backoffice-api/v0/pi";
 import { useEffect, useState } from "react";
 import { z } from "zod";
 
 import type { ConversationView } from "@earendil-works/pi-durable";
 
-import {
-  piAgentViewStreamFrameSchema,
-  type PiAgentQueueEntry,
-  type PiAgentViewStreamFrame,
-} from "@/fragno/pi/agent/pi-agent-contract";
+import type { PiAgentViewStreamFrame } from "@/fragno/pi/agent/pi-agent-contract";
 
 const INITIAL_RECONNECT_DELAY_MS = 250;
 const MAX_RECONNECT_DELAY_MS = 5_000;
 
 function parsePiSessionViewStreamLine(line: string): PiAgentViewStreamFrame {
-  const parsed = piAgentViewStreamFrameSchema.parse(JSON.parse(line));
+  const parsed = piAgentWatchFrameSchema.parse(JSON.parse(line));
   // The manager deliberately transports the agent-owned structural view as opaque JSON.
   return parsed.type === "queue"
     ? parsed

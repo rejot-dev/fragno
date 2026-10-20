@@ -1,6 +1,10 @@
 import { automationActorsSchema } from "@fragno-dev/backoffice-api/v0/automation";
 import { automationEventSchema } from "@fragno-dev/backoffice-api/v0/events";
-import { piAgentModelSchema, type PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
+import {
+  piAgentModelSchema,
+  type PiAgentConfig,
+  type PiAgentQueueEntry,
+} from "@fragno-dev/backoffice-api/v0/pi";
 import { jsonValueSchema } from "@fragno-dev/backoffice-api/v0/shared/json";
 import { backofficePermissionRequirementSchema } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { backofficeContextScopeSchema } from "@fragno-dev/backoffice-api/v0/shared/scope";
@@ -154,18 +158,6 @@ export type PiAgentEntryPage = {
   cursor: Cursor | null;
 };
 
-/** An item waiting in an agent's queue, as its conversation's readers see it. */
-const piAgentQueueEntrySchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("prompt"), requestId: z.string(), content: z.string() }),
-  z.object({
-    type: z.literal("notification"),
-    requestId: z.string(),
-    source: z.string(),
-    eventType: z.string(),
-  }),
-]);
-export type PiAgentQueueEntry = z.infer<typeof piAgentQueueEntrySchema>;
-
 /**
  * An agent's waiting items in queue order, and whether its queue is paused, as of a revision of
  * its queue.
@@ -173,17 +165,9 @@ export type PiAgentQueueEntry = z.infer<typeof piAgentQueueEntrySchema>;
 export type PiAgentWaitingQueue = { revision: number; paused: boolean; items: PiAgentQueueEntry[] };
 
 /**
- * NDJSON frames: `snapshot` and `update` replace the browser's durable conversation view with one
- * committed revision, and `queue` replaces the items waiting in the agent's queue and its pause.
+ * A `pi.agent.watch` frame (`piAgentWatchFrameSchema`) whose view is the agent's structural view,
+ * which the contract keeps opaque.
  */
-export const piAgentViewStreamFrameSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.enum(["snapshot", "update"]), view: z.unknown() }),
-  z.object({
-    type: z.literal("queue"),
-    paused: z.boolean(),
-    items: z.array(piAgentQueueEntrySchema),
-  }),
-]);
 export type PiAgentViewStreamFrame =
   | { type: "snapshot" | "update"; view: ConversationView }
   | { type: "queue"; paused: boolean; items: PiAgentQueueEntry[] };

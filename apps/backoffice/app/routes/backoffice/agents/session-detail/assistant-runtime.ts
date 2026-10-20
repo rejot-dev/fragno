@@ -1,3 +1,5 @@
+import type { PiAgentQueueEntry } from "@fragno-dev/backoffice-api/v0/pi";
+
 import type { AppendMessage, QueueItemState, ThreadMessageLike } from "@assistant-ui/react";
 import type { Message as PiDurableMessage } from "@earendil-works/pi-ai";
 import type {
@@ -8,7 +10,7 @@ import type {
   LiveState,
 } from "@earendil-works/pi-durable";
 
-import type { PiAgentNotification, PiAgentQueueEntry } from "@/fragno/pi/agent/pi-agent-contract";
+import type { PiAgentNotification } from "@/fragno/pi/agent/pi-agent-contract";
 import {
   parsePiNotificationRequest,
   PI_NOTIFICATION_ENTRY_KIND,

@@ -97,6 +97,35 @@ function piManagerRuntimeRequestError(status: number, responseText: string) {
 }
 
 /** Durable Pi operations map directly to the scoped manager and agent contracts. */
+/**
+ * Opens a started agent's view stream (see `pi.agent.watch`) for the execution, which needs
+ * `pi.read`. Aborting `signal` closes it.
+ */
+export async function watchPiManagerAgent(input: {
+  runtime: BackofficeRuntimeServices;
+  kernel: BackofficeKernel;
+  execution: BackofficeExecutionContext;
+  agentName: string;
+  signal: AbortSignal;
+}): Promise<ReadableStream<Uint8Array>> {
+  const manager = input.kernel.scoped(
+    "PI_MANAGER",
+    input.execution.scope,
+    input.runtime.objects.piManager,
+  );
+  const response = await manager.http.fetchAuthorized(
+    new Request(
+      `https://pi-manager.do/api/pi-manager/agents/${encodeURIComponent(input.agentName)}/view-stream`,
+      { method: "GET", headers: { accept: "application/x-ndjson" }, signal: input.signal },
+    ),
+    { execution: input.execution, propagationContext: null },
+  );
+  if (!response.ok || !response.body) {
+    throw piManagerRuntimeRequestError(response.status, await response.text());
+  }
+  return response.body;
+}
+
 export type PiManagerRuntime = {
   listAgents(): Promise<PiManagerAgentDirectory>;
   getAgent(input: PiManagerAgentInput): Promise<PiManagerAgentDetail>;

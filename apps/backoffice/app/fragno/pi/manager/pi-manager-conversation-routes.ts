@@ -1,3 +1,4 @@
+import { piAgentWatchFrameSchema } from "@fragno-dev/backoffice-api/v0/pi";
 import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
@@ -6,7 +7,6 @@ import {
   PiConversationViewDamagedError,
   piAgentCompactionStatusSchema,
   piAgentEntryPageRequestSchema,
-  piAgentViewStreamFrameSchema,
   type PiAgentViewStreamFrame,
   type PiAgentWaitingQueue,
 } from "@/fragno/pi/agent/pi-agent-contract";
@@ -108,7 +108,7 @@ export const piManagerConversationRoutes = defineRoutes(piManagerDefinition).cre
     defineRoute({
       method: "GET",
       path: "/agents/:agentName/view-stream",
-      outputSchema: z.array(piAgentViewStreamFrameSchema),
+      outputSchema: z.array(piAgentWatchFrameSchema),
       errorCodes: ["AGENT_NOT_STARTED", PiConversationViewDamagedError.code],
       handler: async function ({ pathParams }, { error }) {
         const { agentName } = pathParams;

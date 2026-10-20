@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { BackofficeApiOperation } from "../api";
+import type { BackofficeApiOperation, BackofficeApiStream } from "../api";
 import { automationRouteManagedBySchema } from "./automation";
 import {
   allBackofficePermissionRequirements,
@@ -190,6 +190,34 @@ const submissionGetInputSchema = z.lazy(() =>
   }),
 );
 
+const piAgentQueueEntrySchema = z.lazy(() =>
+  z.discriminatedUnion("type", [
+    z.object({ type: z.literal("prompt"), requestId: z.string(), content: z.string() }),
+    z.object({
+      type: z.literal("notification"),
+      requestId: z.string(),
+      source: z.string(),
+      eventType: z.string(),
+    }),
+  ]),
+);
+export type PiAgentQueueEntry = z.infer<typeof piAgentQueueEntrySchema>;
+
+/**
+ * `snapshot` and `update` replace the agent's whole durable conversation view with one committed
+ * revision, and `queue` replaces the items waiting in its queue and whether the queue is paused.
+ */
+export const piAgentWatchFrameSchema = z.lazy(() =>
+  z.discriminatedUnion("type", [
+    z.object({ type: z.enum(["snapshot", "update"]), view: z.unknown() }),
+    z.object({
+      type: z.literal("queue"),
+      paused: z.boolean(),
+      items: z.array(piAgentQueueEntrySchema),
+    }),
+  ]),
+);
+
 export const piOperations = {
   "pi.agent.list": {
     description: "List the built-in agents and the agents defined in the current scope.",
@@ -251,3 +279,13 @@ export const piOperations = {
     output: z.lazy(() => z.object({ aborted: z.literal(true) })),
   },
 } satisfies Record<string, BackofficeApiOperation>;
+
+export const piStreams = {
+  "pi.agent.watch": {
+    description:
+      "Watch an agent's conversation live. The stream opens with a queue frame and a snapshot of the conversation view, then sends an update with the whole view whenever it commits, including partial answers while the agent generates, and a queue frame whenever its queue changes. Reconnecting starts again from a snapshot. An agent that has never had a turn answers 404.",
+    permissions: [BACKOFFICE_PERMISSION.pi.read],
+    input: agentInputSchema,
+    frame: piAgentWatchFrameSchema,
+  },
+} satisfies Record<string, BackofficeApiStream>;

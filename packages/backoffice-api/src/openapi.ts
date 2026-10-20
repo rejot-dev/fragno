@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   type BackofficeApi,
   type BackofficeApiOperation,
+  type BackofficeApiStream,
   backofficeApiOperationSummary,
 } from "./api";
 import {
@@ -49,7 +50,8 @@ const DEFINITION_REF_PREFIX = "#/$defs/";
 /**
  * Describes an API version as OpenAPI 3.1. Every operation is `POST
  * /api/<version>/scopes/{scope}/<operationId>` with its input as the JSON body. Void inputs take no
- * body and void outputs answer `204`; every error response carries `BackofficeApiError`.
+ * body and void outputs answer `204`; every error response carries `BackofficeApiError`. Streams use
+ * the same path and answer newline-delimited JSON, described by the schema of one frame.
  *
  * Schemas with a zod `.meta({ id })` become shared components. A schema whose request form differs
  * from its response form (defaults, transforms) gets a separate `<id>Input` component, but only
@@ -111,6 +113,13 @@ export function createOpenApiDocument(
         ? null
         : convert(operation.output, "output", `${operationId}.output`),
   }));
+  const streams = Object.entries(api.streams).map(([streamId, stream]) => ({
+    streamId,
+    stream,
+    input:
+      stream.input.def.type === "void" ? null : convert(stream.input, "input", `${streamId}.input`),
+    frame: convert(stream.frame, "output", `${streamId}.frame`),
+  }));
   const errorSchema = convert(backofficeApiErrorSchema, "output", "error");
 
   const inputFormDiffers = new Map<string, boolean>();
@@ -163,17 +172,21 @@ export function createOpenApiDocument(
     ]),
   );
 
-  const paths: OpenApiDocument["paths"] = {};
-  for (const { operationId, operation, input, output } of operations) {
-    paths[`/api/${api.version}/scopes/{scope}/${operationId}`] = {
+  function post(
+    id: string,
+    entry: BackofficeApiOperation | BackofficeApiStream,
+    input: JsonSchema | null,
+    success: JsonSchema,
+  ): { post: JsonSchema } {
+    return {
       post: {
-        operationId,
-        ...summarize(operation),
-        tags: [operationId.split(".")[0]],
+        operationId: id,
+        ...summarize(entry),
+        tags: [id.split(".")[0]],
         // OpenAPI 3.1 lets non-OAuth schemes list the roles a requirement needs.
         security: [
           {
-            bearer: operation.permissions.map(
+            bearer: entry.permissions.map(
               ({ namespace, permission }) => `${namespace}.${permission}`,
             ),
           },
@@ -185,19 +198,34 @@ export function createOpenApiDocument(
             content: { "application/json": { schema: toComponentRefs(input, "input") } },
           },
         }),
-        responses: {
-          ...(output
-            ? {
-                "200": {
-                  description: "The operation's result.",
-                  content: { "application/json": { schema: toComponentRefs(output, "output") } },
-                },
-              }
-            : { "204": { description: "The operation succeeded." } }),
-          ...errorResponses,
-        },
+        responses: { ...success, ...errorResponses },
       },
     };
+  }
+
+  const paths: OpenApiDocument["paths"] = {};
+  for (const { operationId, operation, input, output } of operations) {
+    paths[`/api/${api.version}/scopes/{scope}/${operationId}`] = post(
+      operationId,
+      operation,
+      input,
+      output
+        ? {
+            "200": {
+              description: "The operation's result.",
+              content: { "application/json": { schema: toComponentRefs(output, "output") } },
+            },
+          }
+        : { "204": { description: "The operation succeeded." } },
+    );
+  }
+  for (const { streamId, stream, input, frame } of streams) {
+    paths[`/api/${api.version}/scopes/{scope}/${streamId}`] = post(streamId, stream, input, {
+      "200": {
+        description: "Newline-delimited JSON; each line is one frame matching this schema.",
+        content: { "application/x-ndjson": { schema: toComponentRefs(frame, "output") } },
+      },
+    });
   }
 
   return {
@@ -220,12 +248,10 @@ export function createOpenApiDocument(
 
 /** The description repeats the summary only when there is more to say. */
 function summarize(
-  operation: BackofficeApiOperation,
+  entry: BackofficeApiOperation | BackofficeApiStream,
 ): { summary: string } | { summary: string; description: string } {
-  const summary = backofficeApiOperationSummary(operation);
-  return summary === operation.description
-    ? { summary }
-    : { summary, description: operation.description };
+  const summary = backofficeApiOperationSummary(entry);
+  return summary === entry.description ? { summary } : { summary, description: entry.description };
 }
 
 /**

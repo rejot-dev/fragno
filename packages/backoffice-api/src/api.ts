@@ -20,21 +20,40 @@ export type BackofficeApiOperation<
   output: TOutput;
 };
 
+/**
+ * One stream: a long-lived response of newline-delimited JSON frames, each accepted by `frame`. It is
+ * requested and authorized like an operation, and runs until the caller disconnects or Backoffice
+ * ends it.
+ */
+export type BackofficeApiStream<
+  TInput extends z.ZodType = z.ZodType,
+  TFrame extends z.ZodType = z.ZodType,
+> = {
+  description: string;
+  permissions: readonly BackofficeApiPermission[];
+  input: TInput;
+  frame: TFrame;
+};
+
 /** The first sentence of an operation's description: a one-line answer to what it does. */
-export function backofficeApiOperationSummary(operation: BackofficeApiOperation): string {
+export function backofficeApiOperationSummary(
+  operation: BackofficeApiOperation | BackofficeApiStream,
+): string {
   const [summary = operation.description] = operation.description.split(/(?<=\.)\s+(?=[A-Z])/u, 1);
   return summary;
 }
 
-/** One version of the API, served under `/api/<version>`. */
+/** One version of the API, served under `/api/<version>`. Operation and stream ids are disjoint. */
 export type BackofficeApi<
   TOperations extends Record<string, BackofficeApiOperation> = Record<
     string,
     BackofficeApiOperation
   >,
+  TStreams extends Record<string, BackofficeApiStream> = Record<string, BackofficeApiStream>,
 > = {
   version: `v${number}`;
   operations: TOperations;
+  streams: TStreams;
 };
 
 /**
@@ -46,4 +65,15 @@ export type BackofficeApiImplementation<TApi extends BackofficeApi, TContext> = 
     input: z.output<TApi["operations"][TId]["input"]>,
     context: TContext,
   ) => Promise<z.input<TApi["operations"][TId]["output"]>>;
+};
+
+/**
+ * A server's handler for every stream of an API version. Handlers receive input already validated
+ * by the stream and return its frames as newline-delimited JSON bytes.
+ */
+export type BackofficeApiStreamImplementation<TApi extends BackofficeApi, TContext> = {
+  [TId in keyof TApi["streams"]]: (
+    input: z.output<TApi["streams"][TId]["input"]>,
+    context: TContext,
+  ) => Promise<ReadableStream<Uint8Array>>;
 };

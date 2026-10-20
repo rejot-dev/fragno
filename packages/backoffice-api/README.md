@@ -53,6 +53,15 @@ transfer APIs will replace it for large files. Errors return `{ error: { code, m
 `operation_failed` 422. `not_found` also covers things the request names, such as an unknown id, and
 `operation_failed` is reserved for failures no other code describes.
 
+## Watching a stream
+
+Streams (`streams` in a version, beside `operations`) are requested like operations, at
+`POST /api/<version>/scopes/<scope>/<streamId>` with the same credential, input, permissions, and
+errors. A successful response is `200` with `application/x-ndjson`: one JSON frame per line, each
+matching the stream's `frame` schema, until the caller disconnects or Backoffice ends the stream.
+`pi.agent.watch` follows an agent's conversation live; reconnecting starts again from a snapshot, so
+a dropped connection needs no cursor to resume.
+
 ## Client
 
 ```ts
@@ -75,6 +84,20 @@ envelope's code, or `null` when the response was not an API error (for example a
 the outcome is unknown. Network failures reject with `BackofficeApiUnreachableError`, whose outcome
 is also unknown. Anything else, such as a success body that does not match the client's contract, is
 a bug and rejects unchanged.
+
+`watch` opens a stream and yields its frames, parsed by the stream's frame schema. Leaving the loop
+closes the connection. A stream that cannot open rejects like `call`, and a connection lost
+mid-stream rejects with `BackofficeApiUnreachableError`:
+
+```ts
+for await (const frame of backoffice.watch({ kind: "org", orgId }, "pi.agent.watch", {
+  agentName: "assistant",
+})) {
+  if (frame.type !== "queue") {
+    render(frame.view);
+  }
+}
+```
 
 ## OpenAPI
 

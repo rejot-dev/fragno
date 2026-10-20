@@ -1,4 +1,8 @@
-import type { BackofficeApi, BackofficeApiImplementation } from "@fragno-dev/backoffice-api/api";
+import type {
+  BackofficeApi,
+  BackofficeApiImplementation,
+  BackofficeApiStreamImplementation,
+} from "@fragno-dev/backoffice-api/api";
 import {
   BACKOFFICE_API_ERROR_STATUS,
   type BackofficeApiError,
@@ -39,6 +43,7 @@ import { principalFromBackofficeJwt } from "@/worker-runtime/request-state.serve
 
 import { createRuntimeToolHandlers } from "./runtime-tool-handlers";
 import { backofficeApiV0Adapters } from "./v0-adapters";
+import { backofficeApiV0Streams, type BackofficeApiStreamContext } from "./v0-streams";
 
 /** Per-request services; both hosts create them before dispatching here. */
 type BackofficeApiBindings = { runtime: BackofficeRuntimeServices; kernel: BackofficeKernel };
@@ -133,10 +138,34 @@ async function authorizeApiRequest(
   };
 }
 
+/** A handler's failure as an API error. */
+function failedOperationResponse(error: unknown): Response {
+  // Kernel denials can cross object RPC, which keeps their name but not their class.
+  if (isBackofficeForbiddenError(error)) {
+    return apiError("forbidden", error.message);
+  }
+  if (error instanceof BackofficeOperationError) {
+    return apiError(error.kind, error.message);
+  }
+  // Untyped failures still carry user-facing messages, as in Bash and Codemode.
+  return apiError(
+    "operation_failed",
+    error instanceof Error ? error.message : "The operation failed.",
+  );
+}
+
 function createVersionRouter<TApi extends BackofficeApi>(
   api: TApi,
   handlers: BackofficeApiImplementation<TApi, BackofficeToolContext>,
+  streamHandlers: BackofficeApiStreamImplementation<TApi, BackofficeApiStreamContext>,
 ) {
+  // Both share one path, so an id that is both would make the operation unreachable.
+  const ambiguous = Object.keys(api.streams).filter((id) => Object.hasOwn(api.operations, id));
+  if (ambiguous.length > 0) {
+    throw new Error(
+      `API ${api.version} ids are both operations and streams: ${ambiguous.join(", ")}.`,
+    );
+  }
   const router = new Hono<{ Bindings: BackofficeApiBindings }>();
 
   router.get("/openapi.json", (c) =>
@@ -145,10 +174,13 @@ function createVersionRouter<TApi extends BackofficeApi>(
 
   router.post("/scopes/:scope/:operationId", async (c) => {
     const operationId = c.req.param("operationId");
-    if (!Object.hasOwn(api.operations, operationId)) {
+    const isStream = Object.hasOwn(api.streams, operationId);
+    if (!isStream && !Object.hasOwn(api.operations, operationId)) {
       return apiError("not_found", `Unknown operation '${operationId}'.`);
     }
-    const operation = api.operations[operationId];
+    const { input: inputSchema } = isStream
+      ? api.streams[operationId]
+      : api.operations[operationId];
 
     let scope: BackofficeContextScope;
     try {
@@ -167,9 +199,9 @@ function createVersionRouter<TApi extends BackofficeApi>(
     }
 
     let input: unknown;
-    if (operation.input.def.type !== "void") {
+    if (inputSchema.def.type !== "void") {
       const body: unknown = await c.req.json().catch(() => undefined);
-      const parsed = operation.input.safeParse(body);
+      const parsed = inputSchema.safeParse(body);
       if (!parsed.success) {
         return apiError(
           "invalid_request",
@@ -179,6 +211,32 @@ function createVersionRouter<TApi extends BackofficeApi>(
       input = parsed.data;
     }
 
+    if (isStream) {
+      // The handler was matched to this stream, and `input` was parsed by its schema.
+      const handleStream = streamHandlers[operationId] as (
+        input: unknown,
+        context: BackofficeApiStreamContext,
+      ) => Promise<ReadableStream<Uint8Array>>;
+      let frames: ReadableStream<Uint8Array>;
+      try {
+        frames = await handleStream(input, {
+          runtime,
+          kernel,
+          execution: authorization.execution,
+          signal: c.req.raw.signal,
+        });
+      } catch (error) {
+        return failedOperationResponse(error);
+      }
+      return new Response(frames, {
+        headers: {
+          "content-type": "application/x-ndjson; charset=utf-8",
+          "cache-control": "no-store",
+        },
+      });
+    }
+
+    const operation = api.operations[operationId];
     // The handler was matched to this operation, and `input` was parsed by its schema.
     const handle = handlers[operationId] as (
       input: unknown,
@@ -200,18 +258,7 @@ function createVersionRouter<TApi extends BackofficeApi>(
         ),
       );
     } catch (error) {
-      // Kernel denials can cross object RPC, which keeps their name but not their class.
-      if (isBackofficeForbiddenError(error)) {
-        return apiError("forbidden", error.message);
-      }
-      if (error instanceof BackofficeOperationError) {
-        return apiError(error.kind, error.message);
-      }
-      // Untyped failures still carry user-facing messages, as in Bash and Codemode.
-      return apiError(
-        "operation_failed",
-        error instanceof Error ? error.message : "The operation failed.",
-      );
+      return failedOperationResponse(error);
     }
     // Output that breaks the contract is a server bug, not a caller error.
     const response = operation.output.parse(output);
@@ -230,6 +277,7 @@ export const backofficeApiRouter = new Hono<{ Bindings: BackofficeApiBindings }>
     createVersionRouter(
       backofficeApiV0,
       createRuntimeToolHandlers(backofficeApiV0, backofficeApiV0Adapters),
+      backofficeApiV0Streams,
     ),
   )
   .notFound(() => apiError("not_found", "Not found."));
