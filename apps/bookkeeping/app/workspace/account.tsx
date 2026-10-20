@@ -16,6 +16,23 @@ export default function Account() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  async function logOut() {
+    setPending(true);
+    setError(null);
+    try {
+      const result = await authClient.signOut();
+      if (result.error) {
+        setError("Could not log out. Please try again.");
+        setPending(false);
+      } else {
+        window.location.assign("/login");
+      }
+    } catch {
+      setError("Could not connect. Please try again.");
+      setPending(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <BackofficePageHeader
@@ -43,21 +60,8 @@ export default function Account() {
           <Button
             variant="secondary"
             disabled={pending}
-            onClick={async () => {
-              setPending(true);
-              setError(null);
-              try {
-                const result = await authClient.signOut();
-                if (result.error) {
-                  setError("Could not log out. Please try again.");
-                  setPending(false);
-                } else {
-                  window.location.assign("/login");
-                }
-              } catch {
-                setError("Could not connect. Please try again.");
-                setPending(false);
-              }
+            onClick={() => {
+              void logOut();
             }}
           >
             {pending ? "Logging out…" : "Log out"}

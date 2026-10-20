@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 import { isLoopbackUrl } from "@fragno-dev/backoffice-api/v0/apps";
+import { z } from "zod";
 
 import {
   BACKOFFICE_ACTIONS_PATH,
@@ -47,7 +48,7 @@ function readDevVars(): Map<string, string> {
   for (const line of readFileSync(devVarsPath, "utf8").split("\n")) {
     const match = /^([A-Z0-9_]+)=(.*)$/.exec(line);
     if (match) {
-      values.set(match[1]!, match[2]!);
+      values.set(match[1], match[2]);
     }
   }
   return values;
@@ -97,9 +98,9 @@ function runCli(args: string[], output: "inherit" | "capture") {
 }
 
 /** Runs codemode in System scope; the CLI exits non-zero when the code throws. */
-function execSystem<T>(baseUrl: string, code: string): T {
+function execSystem<T>(baseUrl: string, code: string, result: z.ZodType<T>): T {
   const stdout = runCli(["exec", "system", code, "--base-url", baseUrl], "capture");
-  return (JSON.parse(stdout) as { result: T }).result;
+  return z.object({ result }).parse(JSON.parse(stdout)).result;
 }
 
 const { values: flags } = parseArgs({
@@ -189,12 +190,7 @@ runCli(["login", "--base-url", backofficeUrl], "inherit");
 
 console.log("\n3/4 Creating or repairing the OAuth client");
 // A stored client from another Backoffice server is not found here, so a new one is created.
-const client = execSystem<{
-  clientId: string;
-  clientSecret: string | null;
-  created: boolean;
-  problems: string[];
-}>(
+const client = execSystem(
   backofficeUrl,
   `async () => {
     const want = ${JSON.stringify({
@@ -259,6 +255,12 @@ const client = execSystem<{
     }
     return { clientId, clientSecret, created, problems };
   }`,
+  z.object({
+    clientId: z.string(),
+    clientSecret: z.string().nullable(),
+    created: z.boolean(),
+    problems: z.array(z.string()),
+  }),
 );
 if (client.problems.length > 0) {
   throw new Error(`OAuth client ${client.clientId} is not usable: ${client.problems.join("; ")}.`);
@@ -268,15 +270,7 @@ console.log(
 );
 
 console.log("\n4/4 Registering the app and its actions");
-const app = execSystem<{
-  appId: string;
-  slug: string;
-  created: boolean;
-  actionsRevision: number;
-  actionsChanged: boolean;
-  permissionsChanged: boolean;
-  problems: string[];
-}>(
+const app = execSystem(
   backofficeUrl,
   `async () => {
     const want = ${JSON.stringify({
@@ -323,6 +317,15 @@ const app = execSystem<{
     }
     return { appId: app?.id ?? "", slug: app?.slug ?? "", created, actionsRevision: app?.actionsRevision ?? 0, actionsChanged, permissionsChanged, problems };
   }`,
+  z.object({
+    appId: z.string(),
+    slug: z.string(),
+    created: z.boolean(),
+    actionsRevision: z.number(),
+    actionsChanged: z.boolean(),
+    permissionsChanged: z.boolean(),
+    problems: z.array(z.string()),
+  }),
 );
 if (app.problems.length > 0) {
   throw new Error(`App ${app.appId} is not usable: ${app.problems.join("; ")}.`);
