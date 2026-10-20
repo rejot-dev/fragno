@@ -37,11 +37,43 @@ const classifierQuestionSchema = z.lazy(() =>
   ]),
 );
 
+/** Raw image budgets, before base64 expansion and provider request serialization. */
+export const MODELS_CLASSIFY_IMAGE_LIMITS = {
+  count: 128,
+  perImageBytes: 10 * 1024 * 1024,
+  totalBytes: 20 * 1024 * 1024,
+} as const;
+
+const classificationImagePathSchema = z
+  .string()
+  .trim()
+  .refine(
+    (path) =>
+      path.startsWith("/workspace/") &&
+      !path.includes("\\") &&
+      !path.includes("\0") &&
+      path
+        .slice(1)
+        .split("/")
+        .every((part) => part !== "" && part !== "." && part !== ".."),
+    { message: "Images use absolute file paths under /workspace without traversal segments." },
+  );
+
 const modelsClassifyInputSchema = z.lazy(() =>
   z.strictObject({
     state: z
       .record(z.string(), jsonValueSchema)
       .describe("The evidence every question is answered about."),
+    images: z
+      .array(classificationImagePathSchema)
+      .max(MODELS_CLASSIFY_IMAGE_LIMITS.count)
+      .default([])
+      .describe(
+        "Ordered workspace image paths judged together with state; requires upload.read for each " +
+          `file. Up to ${MODELS_CLASSIFY_IMAGE_LIMITS.count} PNG, JPEG, or WebP images; at most ` +
+          `${MODELS_CLASSIFY_IMAGE_LIMITS.perImageBytes / 1024 ** 2} MiB ` +
+          `per image and ${MODELS_CLASSIFY_IMAGE_LIMITS.totalBytes / 1024 ** 2} MiB total.`,
+      ),
     questions: z
       .record(questionNameSchema, classifierQuestionSchema)
       .refine((questions) => Object.keys(questions).length > 0, {
@@ -110,11 +142,12 @@ const modelsGenerateImageOutputSchema = z.lazy(() =>
 export const modelsOperations = {
   "models.classify": {
     description:
-      "Answer typed questions about JSON state with a fast classifier model. A `choice` question " +
+      "Answer typed questions about JSON state and workspace images with a fast classifier model. A `choice` question " +
       "picks one option with probabilities, a `score` question rates against ordered levels, and " +
       "a `bool` question returns the probability that a condition holds. Use it for routing, " +
       "triage, and filtering; it does not generate text. Independent questions about the same " +
-      "state belong in one call. Each call is billed by input tokens.",
+      "state and images belong in one call. Image paths require upload.read; text-only calls do not. " +
+      "Each call is billed by input tokens, including image tokens.",
     permissions: [BACKOFFICE_PERMISSION.models.classify],
     input: modelsClassifyInputSchema,
     output: modelsClassifyOutputSchema,

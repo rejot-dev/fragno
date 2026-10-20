@@ -1,3 +1,5 @@
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+
 import type { PiManagerObject } from "@/backoffice-runtime/object-registry";
 import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
@@ -12,6 +14,7 @@ import {
   defineBackofficeRuntimeToolFamily,
   type BackofficeToolContext,
 } from "../runtime-tools";
+import { readClassificationImages } from "./models-classification-images";
 
 export type ModelsRuntime = {
   classify(request: PiClassificationRequest): ReturnType<PiManagerObject["classify"]>;
@@ -54,8 +57,23 @@ const classifyTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("models.classify"),
   namespace: "models",
   name: "classify",
-  execute: async (input, context: ModelsToolContext) => {
-    const classified = await requireModelsRuntime(context.runtimes.models).classify(input);
+  execute: async ({ state, images: paths, questions }, context: ModelsToolContext) => {
+    const models = requireModelsRuntime(context.runtimes.models);
+    let images: PiClassificationRequest["images"] = [];
+    if (paths.length > 0) {
+      await context.kernel.assertAuthorizedAll({
+        execution: context.execution,
+        requirements: paths.map((path) => ({
+          operation: BACKOFFICE_PERMISSION.upload.read,
+          resource: { path },
+        })),
+      });
+      if (!context.runtimes.state) {
+        throw new Error("Classifying images requires the workspace filesystem.");
+      }
+      images = await readClassificationImages(context.runtimes.state, paths);
+    }
+    const classified = await models.classify({ state, images, questions });
     if (classified.type === "billing-owner-required") {
       throw billingOwnerRequired("classifying");
     }

@@ -87,7 +87,11 @@ import {
   type PiAvailableModel,
 } from "@/fragno/pi/agent/pi-agent-contract";
 import { renderPiNotificationRequest } from "@/fragno/pi/agent/pi-agent-notification-entry";
-import { createPiImageGenerator, type PiClassifier } from "@/fragno/pi/agent/pi-models";
+import {
+  createPiClassifier,
+  createPiImageGenerator,
+  type PiClassifier,
+} from "@/fragno/pi/agent/pi-models";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import type { BackofficeRuntimeToolCall } from "@/fragno/runtime-tools/runtime-tools";
 import { createStateShellFileSystem } from "@/fragno/runtime-tools/state-shell-file-system";
@@ -289,8 +293,8 @@ export type FakeClassifierApi = {
   classify: PiClassifier;
 };
 
-export type FakeOpenAIImagesApi = {
-  /** Every request to OpenAI's Images API, in order. */
+export type FakeOpenAIModelApi = {
+  /** Every request to the provider's HTTP API, in order. */
   requests: { url: string; body: unknown }[];
   fetch: FetchFunction;
 };
@@ -300,7 +304,8 @@ export type ScenarioFakes = {
   pi?: FakePiManagerApi;
   resend?: FakeResendApi;
   classifier?: FakeClassifierApi;
-  openaiImages?: FakeOpenAIImagesApi;
+  openaiImages?: FakeOpenAIModelApi;
+  openaiDecisions?: FakeOpenAIModelApi;
 };
 
 type ScenarioFakeFactory = {
@@ -319,7 +324,12 @@ type ScenarioFakeFactory = {
     image: Uint8Array;
     inputTokens: number;
     outputTokens: number;
-  }): FakeOpenAIImagesApi;
+  }): FakeOpenAIModelApi;
+  /** Serves Decisions answers over HTTP so scenarios exercise the real Pi adapter. */
+  openaiDecisions(input: {
+    answers: ClassifierResult["answers"];
+    inputTokens: number;
+  }): FakeOpenAIModelApi;
 };
 
 type FileDiffStatus = "added" | "changed" | "removed";
@@ -1461,7 +1471,7 @@ const createFakeOpenAIImagesApi: ScenarioFakeFactory["openaiImages"] = ({
   inputTokens,
   outputTokens,
 }) => {
-  const requests: FakeOpenAIImagesApi["requests"] = [];
+  const requests: FakeOpenAIModelApi["requests"] = [];
   return {
     requests,
     fetch: async (input, init) => {
@@ -1483,12 +1493,46 @@ const createFakeOpenAIImagesApi: ScenarioFakeFactory["openaiImages"] = ({
   };
 };
 
+function createFakeOpenAIDecisionsApi({
+  answers,
+  inputTokens,
+}: Parameters<ScenarioFakeFactory["openaiDecisions"]>[0]): FakeOpenAIModelApi {
+  const requests: FakeOpenAIModelApi["requests"] = [];
+  return {
+    requests,
+    fetch: async (input, init) => {
+      const request = new Request(input, init);
+      requests.push({ url: request.url, body: await request.json() });
+      return Response.json({
+        answers: Object.entries(answers).map(([name, answer]) => {
+          if (answer.type === "bool") {
+            return { name, type: "predicate", probability: answer.probability };
+          }
+          if (answer.type === "choice") {
+            return {
+              ...answer,
+              name,
+              probabilities: Object.entries(answer.probabilities).map(([value, probability]) => ({
+                value,
+                probability,
+              })),
+            };
+          }
+          return { ...answer, name };
+        }),
+        usage: { input_tokens: inputTokens, output_tokens: 0 },
+      });
+    },
+  };
+}
+
 const createScenarioFakeFactory = (): ScenarioFakeFactory => ({
   telegram: createFakeTelegramApi,
   pi: createFakePiManagerApi,
   resend: createFakeResendApi,
   classifier: createFakeClassifierApi,
   openaiImages: createFakeOpenAIImagesApi,
+  openaiDecisions: createFakeOpenAIDecisionsApi,
 });
 
 const readSnapshotContent = async (fs: IFileSystem, path: string): Promise<string | null> => {
@@ -4246,7 +4290,7 @@ const createFakeObjectOverrides = async (fakes: ScenarioFakes): Promise<LocalBac
     };
   }
 
-  if (fakes.pi || fakes.classifier || fakes.openaiImages) {
+  if (fakes.pi || fakes.classifier || fakes.openaiImages || fakes.openaiDecisions) {
     const { InMemoryPiManagerObject } = await import("../../../workers/pi-manager.do");
     overrides.PI_MANAGER = ({
       state,
@@ -4294,7 +4338,12 @@ const createFakeObjectOverrides = async (fakes: ScenarioFakes): Promise<LocalBac
               },
             ]
           : async () => piAvailableModels ?? [],
-        classifier: fakes.classifier?.classify ?? null,
+        classifier: fakes.openaiDecisions
+          ? createPiClassifier(
+              { OPENAI_API_KEY: "scenario-openai-api-key" },
+              fakes.openaiDecisions.fetch,
+            )
+          : (fakes.classifier?.classify ?? null),
         imageGenerator: fakes.openaiImages
           ? createPiImageGenerator(
               { OPENAI_API_KEY: "scenario-openai-api-key" },

@@ -1,5 +1,7 @@
 import { assert, expect, test, vi } from "vitest";
 
+import { MODELS_CLASSIFY_IMAGE_LIMITS } from "@fragno-dev/backoffice-api/v0/models";
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
@@ -10,14 +12,24 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
 import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
-import { createBackofficeUserExecution } from "@/backoffice-runtime/context";
+import { withBackofficeActorCapabilityGrants } from "@/backoffice-runtime/authority-resolver";
+import {
+  createBackofficeSystemExecution,
+  createBackofficeUserExecution,
+} from "@/backoffice-runtime/context";
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import {
   backofficeFiles,
   defineBackofficeScenario,
   runBackofficeScenario,
 } from "@/fragno/automation/scenario";
+import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
+import { executeBackofficeRuntimeTool } from "@/fragno/runtime-tools/runtime-tools";
+import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
+import { base64ToBytes } from "@/lib/base64";
 
 import { InMemoryBillingObject } from "../../../../workers/billing.do";
+import { modelsToolFamily } from "./models";
 
 const scope: BackofficeContextScope = { kind: "org", orgId: "org-1" };
 const member = createBackofficeUserExecution({ scope, userId: "member-1" });
@@ -103,6 +115,7 @@ test("a workflow routes a ticket by the classifier's answers and bills its organ
           expect(fakes.classifier.calls).toEqual([
             {
               state: { subject: "Charged twice", body: "I was charged twice for my order." },
+              images: [],
               questions: {
                 department: {
                   type: "choice",
@@ -238,6 +251,366 @@ test("a personal-scope classification without a billing organization never reach
             }),
           ).rejects.toThrow("MODELS_BILLING_OWNER_REQUIRED");
           expect(ctx.fakes.classifier?.calls).toEqual([]);
+        }),
+      ],
+    }),
+  );
+});
+
+const reviewQuestion = {
+  matchesBrief: {
+    type: "bool",
+    instructions: "Does the image match the brief?",
+    criteria: { true: "The image matches", false: "The image does not match" },
+  },
+} as const;
+const reviewAnswers = { matchesBrief: { type: "bool", probability: 0.95 } } as const;
+const pngBase64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aXioAAAAASUVORK5CYII=";
+
+const reviewedImageWorkflow = `defineWorkflow({ name: "reviewed-image" }, async (event, step) => {
+  const { path } = await step.do("generate image", async () =>
+    await models.generateImage({ prompt: event.payload.brief, out: "/workspace/images/review.png" }),
+  );
+  const { answers } = await step.do("review image", async () =>
+    await models.classify({
+      state: { brief: event.payload.brief },
+      images: [path],
+      questions: ${JSON.stringify(reviewQuestion)},
+    }),
+  );
+  return { path, disposition: answers.matchesBrief.probability > 0.9 ? "accepted" : "needs-review" };
+});`;
+
+test("a workflow generates an image, judges its bytes through Decisions, and bills both calls", async () => {
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "review a generated workspace image",
+      objects: allLocalObjects,
+      files: backofficeFiles.workspaceStarter({
+        "automations/reviewed-image.workflow.js": reviewedImageWorkflow,
+      }),
+      fakes: ({ fake }) => ({
+        openaiImages: fake.openaiImages({
+          image: base64ToBytes(pngBase64),
+          inputTokens: 40,
+          outputTokens: 4160,
+        }),
+        openaiDecisions: fake.openaiDecisions({ answers: reviewAnswers, inputTokens: 1200 }),
+      }),
+      setup: ({ given }) => [
+        given.organization.exists({ id: scope.orgId, name: "Ada Labs" }),
+        given.auth.user({ id: "member-1" }),
+        given.auth.member({ orgId: scope.orgId, userId: "member-1", roles: ["member"] }),
+      ],
+      steps: ({ when, then }) => [
+        when.workflow.createInstance({
+          orgId: scope.orgId,
+          path: "/workspace/automations/reviewed-image.workflow.js",
+          remoteWorkflowName: "reviewed-image",
+          instanceId: "reviewed-image-1",
+          execution: member,
+          event: { ...ticketOpened, payload: { brief: "A brass desk lamp on white" } },
+        }),
+        then.workflow.instance({
+          remoteWorkflowName: "reviewed-image",
+          status: "complete",
+          output: { path: "/workspace/images/review.png", disposition: "accepted" },
+        }),
+        then.files.bytes({
+          orgId: scope.orgId,
+          path: "/workspace/images/review.png",
+          content: base64ToBytes(pngBase64),
+        }),
+        then.assert(
+          "Decisions receives the saved image, not its path as text",
+          ({ fakes, kernelActions }) => {
+            expect(fakes.openaiImages?.requests).toHaveLength(1);
+            expect(fakes.openaiDecisions?.requests).toEqual([
+              {
+                url: "https://api.openai.com/v1/decisions",
+                body: {
+                  model: "gpt-6-luna",
+                  input: [
+                    {
+                      role: "user",
+                      content: [
+                        {
+                          type: "input_text",
+                          text: JSON.stringify({ brief: "A brass desk lamp on white" }),
+                        },
+                        { type: "input_image", image_url: `data:image/png;base64,${pngBase64}` },
+                      ],
+                    },
+                  ],
+                  questions: [
+                    {
+                      name: "matchesBrief",
+                      type: "predicate",
+                      instructions:
+                        "Does the image match the brief?\n\nTrue means: The image matches\nFalse means: The image does not match",
+                    },
+                  ],
+                },
+              },
+            ]);
+            expect(kernelActions).toEqual(
+              expect.arrayContaining([
+                expect.objectContaining({
+                  operation: BACKOFFICE_PERMISSION.upload.read,
+                  resource: { path: "/workspace/images/review.png" },
+                }),
+              ]),
+            );
+          },
+        ),
+        then.billing.tracker({
+          organizationId: scope.orgId,
+          scope,
+          period,
+          meter: "models.images",
+          quantity: "1",
+          eventCount: "1",
+        }),
+        then.billing.tracker({
+          organizationId: scope.orgId,
+          scope,
+          period,
+          meter: "models.classifications",
+          quantity: "1",
+          eventCount: "1",
+        }),
+        then.billing.tracker({
+          organizationId: scope.orgId,
+          scope,
+          period,
+          meter: "ai.tokens.input",
+          quantity: "1240",
+          eventCount: "2",
+        }),
+        then.billing.tracker({
+          organizationId: scope.orgId,
+          scope,
+          period,
+          meter: "ai.cost.total",
+          quantity: "125120000",
+          eventCount: "2",
+        }),
+      ],
+    }),
+  );
+});
+
+test("image read permission is checked before accessing files without restricting text-only decisions", async () => {
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "classification and file read authority are independent",
+      objects: allLocalObjects,
+      fakes: ({ fake }) => ({
+        openaiDecisions: fake.openaiDecisions({ answers: reviewAnswers, inputTokens: 12 }),
+      }),
+      setup: ({ given }) => [given.organization.exists({ id: scope.orgId, name: "Ada Labs" })],
+      steps: ({ then }) => [
+        then.assert(
+          "a classifier-only delegate can judge text but cannot read image evidence",
+          async (ctx) => {
+            const actor = {
+              scope: "internal",
+              type: "agent",
+              id: "text-reviewer",
+              role: "assistant",
+            } as const;
+            const system = createBackofficeSystemExecution(scope);
+            const execution = { ...system, actors: { ...system.actors, delegation: [actor] } };
+            const kernel = new BackofficeKernel({
+              ...ctx.runtime.services,
+              authorityResolver: withBackofficeActorCapabilityGrants({
+                resolver: ctx.runtime.services.authorityResolver,
+                actor,
+                grants: [BACKOFFICE_PERMISSION.models.classify],
+              }),
+            });
+            const context = createBackofficeToolContext(
+              createRouteBackedRuntimeContext({
+                runtime: ctx.runtime.services,
+                execution,
+                kernel,
+                billingOrganizationId: null,
+                emitter: { kind: "caller" },
+              }),
+            );
+            const input = { state: { brief: "A lamp" }, questions: reviewQuestion };
+            await expect(
+              executeBackofficeRuntimeTool(
+                modelsToolFamily.tools[0],
+                {
+                  ...input,
+                  images: ["/workspace/missing.png"],
+                },
+                context,
+              ),
+            ).rejects.toThrow("upload.read");
+            expect(ctx.fakes.openaiDecisions?.requests).toEqual([]);
+            await expect(
+              executeBackofficeRuntimeTool(modelsToolFamily.tools[0], input, context),
+            ).resolves.toEqual({ answers: reviewAnswers });
+            expect(ctx.fakes.openaiDecisions?.requests).toHaveLength(1);
+            expect(ctx.fakes.openaiDecisions?.requests[0].body).toMatchObject({
+              input: JSON.stringify(input.state),
+            });
+          },
+        ),
+        then.billing.tracker({
+          organizationId: scope.orgId,
+          scope,
+          period,
+          meter: "models.classifications",
+          quantity: "1",
+          eventCount: "1",
+        }),
+      ],
+    }),
+  );
+});
+
+test("invalid image evidence never reaches Decisions and corrected files preserve input order", async () => {
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "classification validates workspace image evidence before billing",
+      objects: allLocalObjects,
+      fakes: ({ fake }) => ({
+        openaiDecisions: fake.openaiDecisions({ answers: reviewAnswers, inputTokens: 20 }),
+      }),
+      setup: ({ given }) => [given.organization.exists({ id: scope.orgId, name: "Ada Labs" })],
+      steps: ({ then }) => [
+        then.assert(
+          "reject missing files, unsupported content, unsafe paths, and image budgets",
+          async (ctx) => {
+            await ctx.runtime.objects.upload.for(scope).commands.setAdminConfig(
+              {
+                provider: "database",
+                maxSingleUploadBytes: MODELS_CLASSIFY_IMAGE_LIMITS.perImageBytes + 1,
+              },
+              scope.orgId,
+            );
+            const execution = createBackofficeSystemExecution(scope);
+            const context = createBackofficeToolContext(
+              createRouteBackedRuntimeContext({
+                runtime: ctx.runtime.services,
+                execution,
+                kernel: new BackofficeKernel(ctx.runtime.services),
+                billingOrganizationId: null,
+                emitter: { kind: "caller" },
+              }),
+            );
+            const input = { state: { brief: "A lamp" }, questions: reviewQuestion };
+            const classify = (images: string[]) =>
+              executeBackofficeRuntimeTool(
+                modelsToolFamily.tools[0],
+                { ...input, images },
+                context,
+              );
+            assert(context.runtimes.state);
+            await context.runtimes.state.writeFile(
+              "/workspace/images/disguised.jpg",
+              '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
+            );
+            await context.runtimes.state.writeFileBytes(
+              "/workspace/images/reference.jpg",
+              base64ToBytes(pngBase64),
+            );
+            await expect(classify(["/workspace/missing.png"])).rejects.toThrow("ENOENT");
+            await expect(classify(["/workspace/images/disguised.jpg"])).rejects.toThrow(
+              "MODELS_CLASSIFY_INVALID_IMAGE",
+            );
+            for (const path of [
+              "https://example.test/image.png",
+              "/static/image.png",
+              "/workspace/../static/image.png",
+              "/workspace/images/../../secret.png",
+            ]) {
+              await expect(classify([path])).rejects.toThrow(
+                "absolute file paths under /workspace",
+              );
+            }
+            await expect(
+              classify(
+                Array.from(
+                  { length: MODELS_CLASSIFY_IMAGE_LIMITS.count + 1 },
+                  () => "/workspace/images/reference.jpg",
+                ),
+              ),
+            ).rejects.toThrow();
+            const oversized = new Uint8Array(MODELS_CLASSIFY_IMAGE_LIMITS.perImageBytes + 1);
+            oversized.set(base64ToBytes(pngBase64));
+            await context.runtimes.state.writeFileBytes("/workspace/images/large.png", oversized);
+            await expect(classify(["/workspace/images/large.png"])).rejects.toMatchObject({
+              kind: "invalid_request",
+              message: expect.stringContaining("MODELS_CLASSIFY_IMAGE_TOO_LARGE"),
+            });
+            await context.runtimes.state.writeFileBytes(
+              "/workspace/images/large.png",
+              oversized.subarray(0, MODELS_CLASSIFY_IMAGE_LIMITS.perImageBytes),
+            );
+            await expect(
+              classify([
+                "/workspace/images/large.png",
+                "/workspace/images/large.png",
+                "/workspace/images/reference.jpg",
+              ]),
+            ).rejects.toMatchObject({
+              kind: "invalid_request",
+              message: expect.stringContaining("MODELS_CLASSIFY_IMAGE_TOO_LARGE"),
+            });
+            expect(ctx.fakes.openaiDecisions?.requests).toEqual([]);
+            const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46]);
+            const webp = new Uint8Array([82, 73, 70, 70, 4, 0, 0, 0, 87, 69, 66, 80]);
+            await context.runtimes.state.writeFileBytes("/workspace/images/disguised.jpg", jpeg);
+            await context.runtimes.state.writeFileBytes("/workspace/images/third.webp", webp);
+            await expect(
+              classify([
+                "/workspace/images/disguised.jpg",
+                "/workspace/images/reference.jpg",
+                "/workspace/images/third.webp",
+              ]),
+            ).resolves.toEqual({ answers: reviewAnswers });
+            expect(ctx.fakes.openaiDecisions?.requests).toHaveLength(1);
+            expect(ctx.fakes.openaiDecisions?.requests[0].body).toMatchObject({
+              input: [
+                {
+                  role: "user",
+                  content: [
+                    { type: "input_text", text: JSON.stringify(input.state) },
+                    { type: "input_image", image_url: "data:image/jpeg;base64,/9j/4AAQSkY=" },
+                    { type: "input_image", image_url: `data:image/png;base64,${pngBase64}` },
+                    { type: "input_image", image_url: "data:image/webp;base64,UklGRgQAAABXRUJQ" },
+                  ],
+                },
+              ],
+            });
+            for (const path of [
+              "/workspace/images/disguised.jpg",
+              "/workspace/images/reference.jpg",
+              "/workspace/images/third.webp",
+            ]) {
+              expect(ctx.kernelActions).toEqual(
+                expect.arrayContaining([
+                  expect.objectContaining({
+                    operation: BACKOFFICE_PERMISSION.upload.read,
+                    resource: { path },
+                  }),
+                ]),
+              );
+            }
+          },
+        ),
+        then.billing.tracker({
+          organizationId: scope.orgId,
+          scope,
+          period,
+          meter: "models.classifications",
+          quantity: "1",
+          eventCount: "1",
         }),
       ],
     }),
