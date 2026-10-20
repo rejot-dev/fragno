@@ -24,7 +24,11 @@ export function ChatUserMessage({
   ...props
 }: ElementProps & { time: Date | null; children: ReactNode }) {
   return (
-    <div {...props} className="group relative mb-7 flex justify-end pl-6 sm:pl-24">
+    <div
+      {...props}
+      data-chat-turn-start
+      className="group relative mb-7 flex justify-end pl-6 sm:pl-24"
+    >
       <div className="max-w-[92%] border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-4 py-3 text-sm leading-6 text-[var(--bo-fg)] sm:max-w-[88%]">
         {children}
         {time === null ? null : (

@@ -16,6 +16,7 @@ import {
   ChatHistoryControls,
   ChatScrollToLatestButton,
   ChatThreadNotice,
+  ChatTurnSpacer,
   ChatThread,
   ChatViewport,
   ChatViewportFooter,
@@ -243,7 +244,6 @@ export function SessionThread({
         <ThreadPrimitive.Viewport
           ref={viewportRef}
           autoScroll
-          turnAnchor="top"
           onScroll={handleViewportScroll}
           asChild
         >
@@ -316,6 +316,7 @@ export function SessionThread({
                   />
                 </ChatThreadNotice>
               ) : null}
+              <ChatTurnSpacer />
             </ChatColumn>
 
             <ThreadPrimitive.ViewportFooter asChild>
