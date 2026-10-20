@@ -78,6 +78,7 @@ const USER_WORKSPACE_INGESTION_TEST_VERSION = "1.0.0";
 const config: BackofficeRuntimeConfig = {
   authEmailVerification: { enabled: false },
   signUpInvitationsEnabled: true,
+  localEmailLog: false,
   bindings: {
     api: false,
     auth: false,

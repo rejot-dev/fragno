@@ -821,6 +821,7 @@ const createScopedMcpRuntimeServices = (
     config: {
       authEmailVerification: { enabled: false },
       signUpInvitationsEnabled: true,
+      localEmailLog: false,
       bindings: {
         api: false,
         auth: false,

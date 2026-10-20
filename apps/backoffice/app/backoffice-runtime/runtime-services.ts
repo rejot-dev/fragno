@@ -35,6 +35,8 @@ export type BackofficeRuntimeConfig = {
   docsPublicBaseUrl?: string;
   authEmailVerification: AuthEmailVerificationRuntimeConfig;
   signUpInvitationsEnabled: boolean;
+  /** Print outgoing email to the terminal, and skip delivery while Resend is unconfigured. */
+  localEmailLog: boolean;
   bindings: {
     api: boolean;
     auth: boolean;
@@ -147,6 +149,7 @@ const createCloudflareBackofficeRuntimeConfig = (env: CloudflareEnv): Backoffice
     publicBaseUrl: env.DOCS_PUBLIC_BASE_URL,
     accountCreationAvailable: Boolean(env.AUTH),
   }),
+  localEmailLog: parseBooleanEnv("LOCAL_EMAIL_LOG", env.LOCAL_EMAIL_LOG),
   bindings: {
     api: Boolean(env.API),
     auth: Boolean(env.AUTH),

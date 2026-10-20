@@ -45,6 +45,7 @@ const unusedObjects = {} as BackofficeObjectRegistry;
 const testRuntimeConfig: BackofficeRuntimeConfig = {
   authEmailVerification: { enabled: false },
   signUpInvitationsEnabled: true,
+  localEmailLog: false,
   bindings: {
     api: false,
     auth: false,

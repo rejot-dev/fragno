@@ -12,6 +12,7 @@ export type BackofficeRuntimeEnv = {
   AUTH_ADMIN_GRANT_TOKEN?: string;
   AUTH_EMAIL_VERIFICATION_ENABLED?: string;
   SIGN_UP_INVITATIONS_ENABLED?: string;
+  LOCAL_EMAIL_LOG?: string;
   GITHUB_APP_ID?: string;
   GITHUB_APP_SLUG?: string;
   GITHUB_APP_CLIENT_ID?: string;

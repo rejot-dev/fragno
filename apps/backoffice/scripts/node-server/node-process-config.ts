@@ -56,6 +56,7 @@ export async function createNodeBackofficeProcessConfig(): Promise<NodeBackoffic
       AUTH_ADMIN_GRANT_TOKEN: process.env.AUTH_ADMIN_GRANT_TOKEN,
       AUTH_EMAIL_VERIFICATION_ENABLED: process.env.AUTH_EMAIL_VERIFICATION_ENABLED ?? "false",
       SIGN_UP_INVITATIONS_ENABLED: process.env.SIGN_UP_INVITATIONS_ENABLED ?? "false",
+      LOCAL_EMAIL_LOG: process.env.LOCAL_EMAIL_LOG,
       DOCS_PUBLIC_BASE_URL: publicBaseUrl,
       TURNSTILE_SITEKEY: process.env.TURNSTILE_SITEKEY,
       GITHUB_CLIENT_ID: process.env.GITHUB_CLIENT_ID,

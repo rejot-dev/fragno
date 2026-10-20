@@ -1,5 +1,4 @@
 import type { AccountProfile, OAuthConsentPage } from "@fragno-dev/backoffice-api/v0/account";
-import { isLoopbackUrl } from "@fragno-dev/backoffice-api/v0/apps";
 import {
   type OrganizationRole,
   organizationRoleSchema,
@@ -906,27 +905,12 @@ export class InMemoryAuthObject implements AuthObject {
         return app?.trust.kind === "first-party" ? app.trust.branding : null;
       },
       sendSignInCode: async (input) => {
-        const queueEmail = async () => {
-          await runtime.objects.resend
-            .singleton()
-            .commands.queueEmail(await buildAppSignInCodeEmail(input), {
-              idempotencyKey: `auth:app-sign-in-code:${crypto.randomUUID()}`,
-              senderName: input.branding.displayName,
-            });
-        };
-        // A Backoffice served on loopback is local, in development or preview, and usually has no
-        // Resend configured, so its terminal shows the code first. Deployed ones never log codes.
-        if (!isLoopbackUrl(baseURL)) {
-          await queueEmail();
-          return;
-        }
-        console.info(`Sign-in code for ${input.email}: ${input.code}`);
-        await queueEmail().catch((error: unknown) => {
-          console.info(
-            "The sign-in code email was not sent:",
-            error instanceof Error ? error.message : error,
-          );
-        });
+        await runtime.objects.resend
+          .singleton()
+          .commands.queueEmail(await buildAppSignInCodeEmail(input), {
+            idempotencyKey: `auth:app-sign-in-code:${crypto.randomUUID()}`,
+            senderName: input.branding.displayName,
+          });
       },
     });
 

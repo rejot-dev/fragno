@@ -53,6 +53,7 @@ import { assertBackofficeObjectAddressAllowed } from "./object-registry";
 import { encodeBackofficeObjectAddress } from "./object-registry";
 import {
   parseAuthEmailVerificationRuntimeConfig,
+  parseBooleanEnv,
   parseSignUpInvitationsEnabled,
   type BackofficeRuntimeConfig,
   type BackofficeRuntimeServices,
@@ -375,6 +376,7 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
         publicBaseUrl: this.env.DOCS_PUBLIC_BASE_URL,
         accountCreationAvailable: this.#isConfigured("AUTH"),
       }),
+      localEmailLog: parseBooleanEnv("LOCAL_EMAIL_LOG", this.env.LOCAL_EMAIL_LOG),
       bindings: {
         api: this.#isConfigured("API"),
         auth: this.#isConfigured("AUTH"),

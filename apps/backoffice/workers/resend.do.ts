@@ -506,9 +506,20 @@ export class InMemoryResendObject implements ResendObject {
     input: ResendSendEmailInput,
     options: { idempotencyKey: string; senderName: string | null },
   ): Promise<void> {
-    const { runtime: fragment, stored } = this.#host.requireConfigured(
-      "Resend is not configured for email delivery.",
-    );
+    const configured = this.#host.getConfigured();
+    if (this.#runtimeServices.config.localEmailLog) {
+      // Prints secrets such as reset links, so the setting exists only in local .dev.vars.
+      console.info(
+        `Email to ${[input.to].flat().join(", ")}: ${input.subject}\n\n${input.text ?? input.html}`,
+      );
+      if (!configured) {
+        return;
+      }
+    }
+    if (!configured) {
+      throw new Error("Resend is not configured for email delivery.");
+    }
+    const { runtime: fragment, stored } = configured;
     const email =
       options.senderName === null
         ? input
