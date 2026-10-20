@@ -18,6 +18,7 @@
 /// <reference path="/static/codemode/providers/web.d.ts" />
 /// <reference path="/static/codemode/providers/otp.d.ts" />
 /// <reference path="/static/codemode/providers/pi.d.ts" />
+/// <reference path="/static/codemode/providers/reson8.d.ts" />
 /// <reference path="/static/codemode/providers/sandbox.d.ts" />
 /// <reference path="/static/codemode/providers/js.d.ts" />
 /// <reference path="/static/codemode/providers/upload.d.ts" />
@@ -61,6 +62,7 @@ interface BackofficeCodemodeScopedProviders {
   web: WebCodemodeProvider;
   otp: OtpCodemodeProvider;
   pi: PiCodemodeProvider;
+  reson8: Reson8CodemodeProvider;
   sandbox: SandboxCodemodeProvider;
   js: JsCodemodeProvider;
   upload: UploadCodemodeProvider;

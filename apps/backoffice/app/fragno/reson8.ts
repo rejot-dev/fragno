@@ -1,42 +1,15 @@
-import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
-
 import { createReson8Fragment } from "@fragno-dev/reson8-fragment";
 
-import {
-  authorizeBackofficeFragmentRequest,
-  type BackofficeFragmentHttpAccess,
-} from "@/backoffice-runtime/fragment-http-authorization";
-import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
-
-export type Reson8Config = {
-  apiKey: string;
-};
-
+/**
+ * Reson8 under the platform's API key. Callers authorize before reaching it and call routes
+ * in-process: the fragment prefers an incoming Authorization header over the key, so forwarding a
+ * browser request would send the caller's credentials to Reson8.
+ */
 export function createReson8Server(
-  config: Reson8Config,
-  kernel: BackofficeKernel,
+  apiKey: string,
   fetchImpl: typeof fetch = fetch,
 ): ReturnType<typeof createReson8Fragment> {
-  return createReson8Fragment(
-    { ...config, fetch: fetchImpl },
-    {
-      mountRoute: "/api/reson8",
-    },
-  ).withMiddleware(async function authorizeReson8Routes({ ifMatchesRoute, requestContext }) {
-    let access: BackofficeFragmentHttpAccess = null;
-    for (const path of ["/custom-model", "/custom-model/:id"] as const) {
-      // Listing custom models is the read-only access check integrations.verify runs.
-      await ifMatchesRoute("GET", path, () => {
-        access = BACKOFFICE_PERMISSION.connections.read;
-      });
-    }
-    for (const path of ["/auth/token", "/custom-model", "/speech-to-text/prerecorded"] as const) {
-      await ifMatchesRoute("POST", path, () => {
-        access = BACKOFFICE_PERMISSION.integrations.execute;
-      });
-    }
-    return await authorizeBackofficeFragmentRequest(kernel, requestContext, access, null);
-  });
+  return createReson8Fragment({ apiKey, fetch: fetchImpl }, { mountRoute: "/api/reson8" });
 }
 
 export type Reson8Fragment = ReturnType<typeof createReson8Server>;

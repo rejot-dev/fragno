@@ -87,7 +87,8 @@ const integrationConnectionOption = {
   name: "connection-id",
   required: true,
   valueRequired: true,
-  description: "Deterministic connection address in the selected scope, such as backoffice#reson8",
+  description:
+    "Deterministic connection address in the selected scope, such as backoffice#telegram",
 };
 const integrationConnectionCliFields = {
   connectionId: { required: true, read: readOpaqueStringOption },
@@ -218,7 +219,7 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
           help: {
             summary: "Inspect saved connection configuration without a live health check.",
             options: [integrationConnectionOption],
-            examples: ["integrations.get --connection-id 'backoffice#reson8' --format json"],
+            examples: ["integrations.get --connection-id 'backoffice#telegram' --format json"],
           },
           parse: defineCliArgsParser<z.input<typeof integrationConnectionInputSchema>>(
             "integrations.get",
@@ -251,8 +252,8 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
               },
             ],
             examples: [
-              "integrations.setup --connection-id 'backoffice#reson8' --format json",
-              "integrations.setup --connection-id 'backoffice#reson8' --input-json '{\"apiKey\":\"...\"}' --format json",
+              "integrations.setup --connection-id 'backoffice#telegram' --format json",
+              "integrations.setup --connection-id 'backoffice#telegram' --input-json '{\"botToken\":\"...\"}' --format json",
             ],
           },
           parse: parseIntegrationProgressFields("integrations.setup"),
@@ -363,7 +364,7 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
             summary:
               "Discover a connection's authoritative action contracts without executing them.",
             options: [integrationConnectionOption],
-            examples: ["integrations.actions --connection-id 'backoffice#reson8' --format json"],
+            examples: ["integrations.actions --connection-id 'backoffice#telegram' --format json"],
           },
           parse: defineCliArgsParser<z.input<typeof integrationConnectionInputSchema>>(
             "integrations.actions",
@@ -408,7 +409,7 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
               },
             ],
             examples: [
-              'integrations.execute --connection-id \'backoffice#reson8\' --action-id prerecorded.transcribe --input-json \'{"audio":{"bytes":[0,127,255]},"query":null}\' --format json',
+              'integrations.execute --connection-id \'backoffice#telegram\' --action-id messages.send --input-json \'{"chatId":"123","text":"Hello","parseMode":null,"disableWebPagePreview":false,"replyToMessageId":null}\' --format json',
             ],
           },
           parse: defineCliArgsParser<z.input<typeof integrationExecuteInputSchema>>(
@@ -494,7 +495,7 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
             summary:
               "Perform explicit live checks without running service actions or retaining a health cache.",
             options: [integrationConnectionOption],
-            examples: ["integrations.verify --connection-id 'backoffice#reson8' --format json"],
+            examples: ["integrations.verify --connection-id 'backoffice#telegram' --format json"],
           },
           parse: defineCliArgsParser<z.input<typeof integrationConnectionInputSchema>>(
             "integrations.verify",

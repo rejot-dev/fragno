@@ -7,6 +7,7 @@ import type { FragnoRuntime } from "@fragno-dev/core";
 import { createAppInstallationAuthorityResolver } from "@/fragno/app-installations/authority";
 import { createAutomationRouteAuthorityResolver } from "@/fragno/automation/authority";
 import type { BackofficeCodemodeEnv } from "@/fragno/codemode/execute";
+import { createReson8Server, type Reson8Fragment } from "@/fragno/reson8";
 
 import {
   createBackofficeAuthorityResolver,
@@ -43,7 +44,6 @@ export type BackofficeRuntimeConfig = {
     telegram: boolean;
     otp: boolean;
     resend: boolean;
-    reson8: boolean;
     mcp: boolean;
     projectConnector: boolean;
     upload: boolean;
@@ -64,6 +64,8 @@ export type BackofficeRuntimeServices = {
   kernelObserver: BackofficeKernelObserver;
   codemodeEnv: BackofficeCodemodeEnv | null;
   workerTypeChecker: WorkerTypeChecker | null;
+  /** Speech-to-text under the platform key; null when the deployment has none. */
+  reson8: Reson8Fragment | null;
   fragnoRuntime?: FragnoRuntime;
 };
 
@@ -154,7 +156,6 @@ const createCloudflareBackofficeRuntimeConfig = (env: CloudflareEnv): Backoffice
     telegram: Boolean(env.TELEGRAM),
     otp: Boolean(env.OTP),
     resend: Boolean(env.RESEND),
-    reson8: Boolean(env.RESON8),
     mcp: Boolean(env.MCP),
     projectConnector: Boolean(env.PROJECT_CONNECTOR),
     upload: Boolean(env.UPLOAD),
@@ -201,6 +202,7 @@ export const createCloudflareBackofficeRuntimeServices = (
     workerTypeChecker: env.CODEMODE_COMPILER
       ? createWorkerTypeCheckerServiceClient(env.CODEMODE_COMPILER)
       : null,
+    reson8: env.RESON8_API_KEY ? createReson8Server(env.RESON8_API_KEY) : null,
   };
 };
 

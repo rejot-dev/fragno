@@ -26,4 +26,5 @@ export type BackofficeRuntimeEnv = {
   OPENAI_API_KEY?: string;
   ANTHROPIC_API_KEY?: string;
   GEMINI_API_KEY?: string;
+  RESON8_API_KEY?: string;
 };

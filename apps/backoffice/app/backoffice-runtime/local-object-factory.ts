@@ -384,7 +384,6 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
         telegram: this.#isConfigured("TELEGRAM"),
         otp: this.#isConfigured("OTP"),
         resend: this.#isConfigured("RESEND"),
-        reson8: this.#isConfigured("RESON8"),
         mcp: this.#isConfigured("MCP"),
         projectConnector: this.#isConfigured("PROJECT_CONNECTOR"),
         upload: this.#isConfigured("UPLOAD"),

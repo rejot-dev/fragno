@@ -24,7 +24,6 @@ export type BackofficeDatabaseAdapterKind =
   | "pi"
   | "pi-manager"
   | "resend"
-  | "reson8"
   | "telegram"
   | "upload"
   | "workflows";

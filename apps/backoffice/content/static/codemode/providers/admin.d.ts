@@ -244,6 +244,10 @@ type BackofficePermissionRequirement =
       permission: "read";
     }
   | {
+      namespace: "reson8";
+      permission: "transcribe";
+    }
+  | {
       namespace: "router";
       permission: "modify";
     }

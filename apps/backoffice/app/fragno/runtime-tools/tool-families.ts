@@ -54,6 +54,7 @@ import { otpToolFamily, type OtpRuntime } from "./families/otp";
 import { packagesToolFamily } from "./families/packages";
 import type { PackagesRuntime } from "./families/packages-runtime";
 import { piToolFamily } from "./families/pi";
+import { reson8ToolFamily, type Reson8Runtime } from "./families/reson8";
 import { sandboxToolFamily, type SandboxRuntime } from "./families/sandbox";
 import { uploadToolFamily } from "./families/upload";
 import type { UploadRuntime } from "./families/upload-runtime";
@@ -85,6 +86,7 @@ export type CoreBackofficeRuntimeMap = {
   packages: PackagesRuntime | undefined;
   otp?: OtpRuntime;
   pi?: PiManagerRuntime;
+  reson8?: Reson8Runtime;
   sandbox?: SandboxRuntime;
   javascript?: JavaScriptRuntime;
   upload?: UploadRuntime;
@@ -116,6 +118,7 @@ export const runtimeToolFamilies = [
   webToolFamily,
   otpToolFamily,
   piToolFamily,
+  reson8ToolFamily,
   sandboxToolFamily,
   javaScriptCheckToolFamily,
   javaScriptRunToolFamily,

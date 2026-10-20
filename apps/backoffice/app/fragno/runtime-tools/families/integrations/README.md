@@ -4,7 +4,7 @@ The registered `integrations` tools provide scope-bound discovery, setup, and ex
 existing service-owned configuration. They do not own credentials, binding records, or setup-attempt
 history.
 
-API, inbound webhooks, MCP, GitHub, Reson8, Telegram, Resend, and Connector are implemented sources.
+API, inbound webhooks, MCP, GitHub, Telegram, Resend, and Connector are implemented sources.
 Codemode and terminal commands use the same contracts, runtime, and permissions. Every source's
 connections are exposed only through `integrations.*`; the former standalone tool families and the
 generated `mcp_<server>` codemode providers have been removed. Typed access is a generated client
@@ -68,11 +68,11 @@ An ID has the form `namespace#local-id`. The namespace routes to its registered 
 preserved as source identity, including case and additional `#` characters. It is never slugified or
 interpreted as a scope selector. These are scoped addresses, not global identities or bearer tokens.
 
-`backoffice#reson8` names the selected organization's existing singleton configuration slot. It
-works before setup, survives object/runtime recreation and credential replacement, and remains a
-valid slot address after existing configuration controls reset its credentials. It is not an
-independently named or revocable binding. Another organization's use of the same address names that
-other organization's configuration, not the first organization's credentials.
+`backoffice#telegram` names the selected scope's existing singleton configuration slot. It works
+before setup, survives object/runtime recreation and credential replacement, and remains a valid
+slot address after existing configuration controls reset its credentials. It is not an independently
+named or revocable binding. Another scope's use of the same address names that other scope's
+configuration, not the first scope's credentials.
 
 Implementations declare exact ID claims or whole namespace claims. Registration rejects duplicate
 claims and overlapping exact/namespace claims before exposing any operation. Sources may publish
@@ -120,14 +120,14 @@ unconfirmed and resolve only by address.
 
 ### Telegram and Resend addresses
 
-`backoffice#telegram` and `backoffice#resend` name the selected scope's existing configuration slot,
-like `backoffice#reson8`. Telegram has a bot in every scope, including system. Resend has an account
-per organization, and in system scope the same address names the platform account Backoffice sends
-its own email through, such as email verification. Each keeps its native configuration page.
+`backoffice#telegram` and `backoffice#resend` name the selected scope's existing configuration slot.
+Telegram has a bot in every scope, including system. Resend has an account per organization, and in
+system scope the same address names the platform account Backoffice sends its own email through,
+such as email verification. Each keeps its native configuration page.
 
-Reson8, Telegram, and Resend have no permissions of their own. Their object routes, which serve both
-the integration actions and the native pages, require `integrations.execute`; configuration reads
-and the read-only live checks require `connections.read`.
+Telegram and Resend have no permissions of their own. Their object routes, which serve both the
+integration actions and the native pages, require `integrations.execute`; configuration reads and
+the read-only live checks require `connections.read`.
 
 ### Connector addresses
 
@@ -193,19 +193,19 @@ installation change.
 
 ## Service-owned setup
 
-Reson8 setup with `{ kind: "check" }` reads current configuration without contacting the provider or
-writing credentials. Missing credentials return `needs-input`, an authoritative input schema, and
-`secretFields: ["apiKey"]`. Requested input is validated and saved through the existing
+Telegram setup with `{ kind: "check" }` reads current configuration without contacting the provider
+or writing credentials. Missing credentials return `needs-input`, an authoritative input schema, and
+`secretFields: ["botToken"]`. Requested input is validated and saved through the existing
 configuration command. If already configured, setup returns `ready` without replacing the existing
-key, even if new input was supplied.
+token, even if new input was supplied.
 
 In the terminal, omitting `--input-json` checks current requirements; providing it submits the JSON
 value directly, without a `response` or `values` wrapper. JSON `null` is a submission, not a check
-sentinel. Sources validate submissions against their current requirements; Reson8 requires an object
-containing `apiKey`, so null, scalars, and arrays are rejected when configuration is missing. Empty
-or malformed flag values fail rather than silently becoming checks. `--response-json` is not an
-alias. Codemode uses explicit `kind: "check"` / `kind: "input"` variants to preserve the same
-distinction.
+sentinel. Sources validate submissions against their current requirements; Telegram requires an
+object containing `botToken`, so null, scalars, and arrays are rejected when configuration is
+missing. Empty or malformed flag values fail rather than silently becoming checks. `--response-json`
+is not an alias. Codemode uses explicit `kind: "check"` / `kind: "input"` variants to preserve the
+same distinction.
 
 There is no private continuation state in the shared interface. Setup can resume across requests or
 object restarts by reading the source again. Resetting configuration makes the same address request
@@ -282,10 +282,10 @@ webhook origin is the deployment's public base URL, so setup is `blocked` withou
 is set through the native page. Verify asks each provider where it delivers events and fails unless
 that is this deployment.
 
-Reson8, Telegram, and Resend reconfigure replace the stored configuration through the same command
-setup uses, and disconnect resets that configuration. Connector declares both unsupported: the
-gateway owns credentials, and the source has no account removal. Consenting again uses a fresh
-connection name.
+Telegram and Resend reconfigure replace the stored configuration through the same command setup
+uses, and disconnect resets that configuration. Connector declares both unsupported: the gateway
+owns credentials, and the source has no account removal. Consenting again uses a fresh connection
+name.
 
 MCP setup follows API setup with the MCP Fragment's auth modes: `type` selects `none`, `bearer`,
 `client_credentials`, or `oauth` beside `endpointUrl` and an optional `name`, and `secretFields`
@@ -333,8 +333,6 @@ in a public token, or add an integrations-owned attempt store to fit it into nam
   request-local connection operations. No binding/setup generics or shared private state schemas.
 - `integration-registry.ts`: claim ownership, source dispatch, and composite cursor pagination.
 - `integrations-runtime.ts`: production source assembly and public operation dispatch.
-- `reson8-integration.ts`: existing organization configuration, authorized Fragno routes, and action
-  validation, with injected provider fetch for scenarios.
 - `telegram-integration.ts`, `resend-integration.ts`: existing scope configuration, webhook checks,
   and actions over internal clients.
 - `connector-connection-id.ts`: canonical, lossless base64url encoding of native Connector
@@ -399,36 +397,42 @@ and unsupported dynamic-reference/vocabulary semantics fail before actions are p
 Self-contained ordinary references are supported; no remote schema fetch or inferred output contract
 is introduced.
 
-The registry reads sources in registration order (API, MCP, GitHub, Reson8, Telegram, Resend, then
-Connector in user scope) and combines every source that finishes into the same page. A page ends
-only at a source that returns its own next cursor, so each source's page size still bounds the
-result and nothing is materialized beyond those pages. The opaque cursor identifies that source and
-its unchanged cursor. An unknown source or malformed cursor fails rather than silently restarting.
+The registry reads sources in registration order (API, MCP, GitHub, Telegram, Resend, then Connector
+in user scope) and combines every source that finishes into the same page. A page ends only at a
+source that returns its own next cursor, so each source's page size still bounds the result and
+nothing is materialized beyond those pages. The opaque cursor identifies that source and its
+unchanged cursor. An unknown source or malformed cursor fails rather than silently restarting.
 Pagination never changes execution scope or grants access.
 
 ## Codemode usage
 
-In an organization-scoped provider, supply a requested API key and valid audio bytes:
+In an organization-scoped provider, supply a requested bot token and message a reachable chat:
 
 ```ts
-const target = { connectionId: "backoffice#reson8" };
+const target = { connectionId: "backoffice#telegram" };
 let setup = await integrations.setup({ ...target, kind: "check" });
 if (setup.status === "needs-input") {
   setup = await integrations.setup({
     ...target,
     kind: "input",
-    input: { apiKey },
+    input: { botToken },
   });
 }
-if (setup.status !== "ready") throw new Error("Reson8 setup is not ready.");
+if (setup.status !== "ready") throw new Error("Telegram setup is not ready.");
 
 const connectionId = setup.connectionId;
 const actions = await integrations.actions({ connectionId });
 const checked = await integrations.verify({ connectionId });
-const transcript = await integrations.execute({
+const sent = await integrations.execute({
   connectionId,
-  actionId: "prerecorded.transcribe",
-  input: { audio: { bytes: audioBytes }, query: null },
+  actionId: "messages.send",
+  input: {
+    chatId,
+    text: "Hello",
+    parseMode: null,
+    disableWebPagePreview: false,
+    replyToMessageId: null,
+  },
 });
 ```
 
@@ -488,25 +492,24 @@ variables from earlier submissions. In an organization scope:
 
 ```sh
 integrations.discover
-integrations.setup --connection-id 'backoffice#reson8' --format json
+integrations.setup --connection-id 'backoffice#telegram' --format json
 
-# If needs-input, replace the placeholder with the requested API key.
-integrations.setup --connection-id 'backoffice#reson8' \
-  --input-json '{"apiKey":"YOUR_RESON8_API_KEY"}' \
+# If needs-input, replace the placeholder with the requested bot token.
+integrations.setup --connection-id 'backoffice#telegram' \
+  --input-json '{"botToken":"YOUR_TELEGRAM_BOT_TOKEN"}' \
   --format json
 
 integrations.list --print connections.0.connectionId
-integrations.get --connection-id 'backoffice#reson8'
-integrations.actions --connection-id 'backoffice#reson8' --format json
-integrations.verify --connection-id 'backoffice#reson8' --format json
-integrations.execute --connection-id 'backoffice#reson8' \
-  --action-id prerecorded.transcribe \
-  --input-json "$(cat /workspace/transcription-input.json)" \
+integrations.get --connection-id 'backoffice#telegram'
+integrations.actions --connection-id 'backoffice#telegram' --format json
+integrations.verify --connection-id 'backoffice#telegram' --format json
+integrations.execute --connection-id 'backoffice#telegram' \
+  --action-id messages.send \
+  --input-json "$(cat /workspace/message-input.json)" \
   --format json
 ```
 
-The input file contains real audio integer bytes and `query: null` (or the discovered explicit query
-shape). Illustrative bytes are not a valid audio recording for a live provider.
+The input file contains a chat ID the bot can reach and the message fields `actions` reports.
 
 In a user scope, first discover and copy the real project/provider target. The illustrative token
 below encodes `project-1`, `gmail-provider`, and `backoffice`; replace it with the discovered
@@ -541,12 +544,6 @@ Resolution reads the connection, so execution also needs `connections.read`; Con
 account and provider contract before invoking an action. Request and tool resources carry the slug
 and path or tool name for caller-side policy and audit.
 
-Reson8 verify performs a read-only custom-model listing. It neither transcribes, mints tokens,
-persists health, nor publishes provider credential echoes. A subsequent get remains `not-checked`.
-Receiving-object authorization denials, including unavailable authority resolution, propagate as
-execution errors rather than failed provider checks. Provider HTTP errors still return sanitized
-check evidence.
-
 Connector verify performs a read-only provider profile request. Success proves that request, not
 message access, action scopes, or provider-wide health. Evidence is timestamped and sanitized;
 profile data and server credentials are not included, and subsequent inspection remains not-checked.
@@ -563,11 +560,10 @@ operation, so verification makes no provider request, acquires no token, and per
 provider-specific check would need a separately justified source capability.
 
 Concrete scenarios use real temporary SQLite, runtime/kernel authority, registered Codemode and Bash
-tools, object restarts, authorized object HTTP, and real route handlers. External transport is an
-injected fetch for Reson8, a stateful local HTTP gateway for Connector, a local HTTP and OAuth
-provider for API, in-process MCP servers from `@fragno-dev/mcp-fragment/testing` for MCP, and signed
-requests to the public receive route for webhooks. Scenarios cover claim conflicts, deterministic
-and exact addressing, both permission layers, owner isolation, setup without handles, in-place
-replacement, reauthorization, confirmed disconnects, retained OAuth history, ambiguity, source
-pagination, binary/query transport, live contracts, output failures without retries, and sanitized
-verification evidence.
+tools, object restarts, authorized object HTTP, and real route handlers. External transport is a
+stateful local HTTP gateway for Connector, a local HTTP and OAuth provider for API, in-process MCP
+servers from `@fragno-dev/mcp-fragment/testing` for MCP, and signed requests to the public receive
+route for webhooks. Scenarios cover claim conflicts, deterministic and exact addressing, both
+permission layers, owner isolation, setup without handles, in-place replacement, reauthorization,
+confirmed disconnects, retained OAuth history, ambiguity, source pagination, binary/query transport,
+live contracts, output failures without retries, and sanitized verification evidence.

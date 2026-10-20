@@ -20,7 +20,6 @@ import { InMemoryPiObject } from "../../workers/pi.do";
 import { InMemoryPresenceObject } from "../../workers/presence.do";
 import { InMemoryProjectConnectorObject } from "../../workers/project-connector.do";
 import { InMemoryResendObject } from "../../workers/resend.do";
-import { InMemoryReson8Object } from "../../workers/reson8.do";
 import { InMemorySandboxManagerObject } from "../../workers/sandbox-manager.do";
 import { InMemoryTelegramObject } from "../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../workers/upload.do";
@@ -156,7 +155,6 @@ export const allLocalObjects = {
   AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
   TELEGRAM: (input) => new InMemoryTelegramObject(input),
   RESEND: (input) => new InMemoryResendObject(input),
-  RESON8: (input) => new InMemoryReson8Object(input),
   MCP: (input) => new InMemoryMcpObject(input),
   PROJECT_CONNECTOR: (input) => new InMemoryProjectConnectorObject(input),
   OTP: (input) => new InMemoryOtpObject(input),

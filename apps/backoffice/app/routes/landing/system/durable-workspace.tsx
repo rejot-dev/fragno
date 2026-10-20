@@ -30,11 +30,11 @@ const WORKSPACE_FILE_CONTENT = new Map<string, string>([
 
 ## Current objective
 
-Configure and maintain the organisation's speech-to-text integrations.
+Configure and maintain the organisation's messaging integrations.
 
 ## Decisions
 
-- Reson8 is the default transcription provider.
+- Telegram is the team's chat channel.
 - Connection changes require verification before activation.`,
   ],
   [

@@ -74,6 +74,7 @@ export async function createNodeBackofficeProcessConfig(): Promise<NodeBackoffic
       OPENAI_API_KEY: process.env.OPENAI_API_KEY,
       ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
       GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+      RESON8_API_KEY: process.env.RESON8_API_KEY,
     },
   });
 

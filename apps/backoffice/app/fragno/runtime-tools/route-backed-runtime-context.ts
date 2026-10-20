@@ -5,6 +5,7 @@ import {
 import {
   backofficeContextScopesEqual,
   backofficeScopeContains,
+  backofficeScopeOrganization,
   isBackofficeRoutableScope,
   backofficeWorkspaceOrganization,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
@@ -65,6 +66,7 @@ import {
   createUnavailableOtpRuntime,
 } from "@/fragno/runtime-tools/families/otp-runtime";
 import { createPackagesRuntime } from "@/fragno/runtime-tools/families/packages-runtime";
+import { createReson8Runtime } from "@/fragno/runtime-tools/families/reson8-runtime";
 import { createSandboxRouteRuntime } from "@/fragno/runtime-tools/families/sandbox-route-runtime";
 import {
   createUploadRuntime,
@@ -178,6 +180,9 @@ export const createRouteBackedRuntimeContext = ({
   const installationOwner =
     execution.scope.kind === "org" || execution.scope.kind === "user" ? execution.scope : null;
   const userId = userPrincipalId(execution);
+  // Work in an organization's scope bills that organization, as Codemode runs do.
+  const usageBillingOrganizationId =
+    backofficeScopeOrganization(execution.scope)?.orgId ?? billingOrganizationId;
   const stateBackend =
     execution.scope.kind === "system" || runtime.config.bindings.upload
       ? createRuntimeStateBackend({ runtime, kernel, execution })
@@ -462,6 +467,22 @@ export const createRouteBackedRuntimeContext = ({
     integrations: {
       runtime: createIntegrationsRuntime({ runtime, kernel, execution, nowEpochMs: Date.now }),
     },
+    reson8: runtime.reson8
+      ? {
+          runtime: createReson8Runtime({
+            reson8: runtime.reson8,
+            scope: execution.scope,
+            recordBillingEvent:
+              usageBillingOrganizationId && runtime.config.bindings.billing
+                ? async (event) =>
+                    await runtime.objects.billing
+                      .forOrg(usageBillingOrganizationId)
+                      .commands.recordEvent(event)
+                : null,
+            nowEpochMs: Date.now,
+          }),
+        }
+      : null,
     sandbox:
       runtime.config.bindings.sandbox && runtime.config.bindings.automations
         ? {

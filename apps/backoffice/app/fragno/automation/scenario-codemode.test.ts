@@ -33,7 +33,6 @@ import { InMemoryMcpObject } from "../../../workers/mcp.do";
 import { InMemoryOtpObject } from "../../../workers/otp.do";
 import { InMemoryProjectConnectorObject } from "../../../workers/project-connector.do";
 import { InMemoryResendObject } from "../../../workers/resend.do";
-import { InMemoryReson8Object } from "../../../workers/reson8.do";
 import { InMemoryTelegramObject } from "../../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../../workers/upload.do";
 import { backofficeFiles, defineBackofficeScenario, runBackofficeScenario } from "./scenario";
@@ -54,7 +53,6 @@ const scenarioObjects = {
   GITHUB: (input) => new InMemoryGitHubObject(input),
   GITHUB_WEBHOOK_ROUTER: (input) => new InMemoryGitHubWebhookRouterObject(input),
   PROJECT_CONNECTOR: (input) => new InMemoryProjectConnectorObject(input),
-  RESON8: (input) => new InMemoryReson8Object(input),
 } satisfies LocalBackofficeObjects;
 
 describe("Backoffice codemode scenarios", () => {

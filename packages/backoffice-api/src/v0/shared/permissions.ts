@@ -87,6 +87,9 @@ export const BACKOFFICE_PERMISSION = {
     modify: { namespace: "pi", permission: "modify" },
     read: { namespace: "pi", permission: "read" },
   },
+  reson8: {
+    transcribe: { namespace: "reson8", permission: "transcribe" },
+  },
   router: {
     modify: { namespace: "router", permission: "modify" },
     read: { namespace: "router", permission: "read" },

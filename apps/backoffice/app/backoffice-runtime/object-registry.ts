@@ -40,7 +40,6 @@ import type { GitHubWebhookRouter } from "workers/github-webhook-router.do";
 import type { GitHub } from "workers/github.do";
 import type { IssueIdentityClaimInput, IssueIdentityClaimResult, Otp } from "workers/otp.do";
 import type { Resend } from "workers/resend.do";
-import type { Reson8 } from "workers/reson8.do";
 import type { TelegramAdminConfigResponse } from "workers/telegram.do";
 import type { Upload } from "workers/upload.do";
 
@@ -612,13 +611,6 @@ export type ResendObject = DurableHookCommands &
     /** Throws when Resend is not configured. */
     checkWebhook(): Promise<WebhookRegistrationCheck>;
   };
-export type Reson8Object = AdminConfigurableObject<
-  AwaitedMethodReturn<Reson8, "getAdminConfig">
-> & {
-  getRealtimeOriginDiagnostic(
-    origin: string,
-  ): Promise<AwaitedMethodReturn<Reson8, "getRealtimeOriginDiagnostic">>;
-};
 export type McpObject = DurableHookCommands;
 /** Connector has HTTP operations only; provider tokens stay upstream. */
 export type ProjectConnectorObject = Record<never, never>;
@@ -725,7 +717,6 @@ export type BackofficeObjectBindingName =
   | "TELEGRAM"
   | "OTP"
   | "RESEND"
-  | "RESON8"
   | "MCP"
   | "PROJECT_CONNECTOR"
   | "UPLOAD"
@@ -769,7 +760,6 @@ export const backofficeObjectScopePolicy = {
   TELEGRAM: ["singleton", "org", "user", "project"],
   OTP: ["singleton", "org"],
   RESEND: ["singleton", "org"],
-  RESON8: ["org"],
   MCP: ["org", "user", "project"],
   PROJECT_CONNECTOR: ["user"],
   UPLOAD: ["org", "named", "user", "app", "project"],
@@ -992,7 +982,6 @@ export const createBackofficeObjectRegistry = (factory: BackofficeObjectFactory)
   telegram: scoped(factory, binding<TelegramObject>("TELEGRAM")),
   otp: scoped(factory, binding<OtpObject>("OTP")),
   resend: scoped(factory, binding<ResendObject>("RESEND")),
-  reson8: scoped(factory, binding<Reson8Object>("RESON8")),
   mcp: scoped(factory, binding<McpObject>("MCP")),
   projectConnector: scoped(factory, binding<ProjectConnectorObject>("PROJECT_CONNECTOR")),
   upload: scoped(factory, binding<UploadObject>("UPLOAD")),

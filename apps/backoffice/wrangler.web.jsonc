@@ -25,7 +25,7 @@
     "POSTHOG_HOST": "https://eu.i.posthog.com",
   },
   "secrets": {
-    "required": ["BACKOFFICE_INTERNAL_REQUEST_SECRET"],
+    "required": ["BACKOFFICE_INTERNAL_REQUEST_SECRET", "RESON8_API_KEY"],
   },
   "routes": [
     {
@@ -65,11 +65,6 @@
       {
         "name": "RESEND",
         "class_name": "Resend",
-        "script_name": "rejot-backoffice",
-      },
-      {
-        "name": "RESON8",
-        "class_name": "Reson8",
         "script_name": "rejot-backoffice",
       },
       {

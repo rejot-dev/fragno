@@ -75,7 +75,7 @@ export const integrationConnectionIdSchema = z
       .string()
       .regex(/^[a-z][a-z0-9-]*#[\s\S]+$/, "Integration connection ID must be namespace#local-id.")
       .describe(
-        "Deterministic scoped address such as backoffice#reson8, not a credential or a separately revocable binding. The suffix preserves the source's identity.",
+        "Deterministic scoped address such as backoffice#telegram, not a credential or a separately revocable binding. The suffix preserves the source's identity.",
       ),
   )
   .meta({ id: "IntegrationConnectionId" });

@@ -35,6 +35,7 @@ import type { OrganizationRuntime } from "./families/organization";
 import type { RegisteredOtpCommandContext } from "./families/otp-runtime";
 import type { PackagesRuntime } from "./families/packages-runtime";
 import type { RegisteredPiCommandContext } from "./families/pi";
+import type { Reson8Runtime } from "./families/reson8-runtime";
 import type { SandboxRuntime } from "./families/sandbox-runtime";
 import type { UploadRuntime } from "./families/upload-runtime";
 import type { WebRuntime } from "./families/web-runtime";
@@ -74,6 +75,7 @@ export type BashHostContext = {
   packages: { runtime: PackagesRuntime } | null;
   otp: RegisteredOtpCommandContext | null;
   pi: RegisteredPiCommandContext | null;
+  reson8?: { runtime: Reson8Runtime } | null;
   sandbox?: { runtime: SandboxRuntime } | null;
   javascript?: { runtime: JavaScriptRuntime } | null;
   upload?: { runtime: UploadRuntime } | null;

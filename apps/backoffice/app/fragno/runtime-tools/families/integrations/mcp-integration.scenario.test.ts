@@ -53,7 +53,6 @@ import { InMemoryMcpObject } from "../../../../../workers/mcp.do";
 import { InMemoryOtpObject } from "../../../../../workers/otp.do";
 import { InMemoryProjectConnectorObject } from "../../../../../workers/project-connector.do";
 import { InMemoryResendObject } from "../../../../../workers/resend.do";
-import { InMemoryReson8Object } from "../../../../../workers/reson8.do";
 import { InMemoryTelegramObject } from "../../../../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../../../../workers/upload.do";
 import { createMcpIntegration } from "./mcp-integration";
@@ -68,7 +67,6 @@ const scenarioObjects = {
   FORMS: (input) => new InMemoryFormsObject(input),
   PROJECT_CONNECTOR: (input) => new InMemoryProjectConnectorObject(input),
   RESEND: (input) => new InMemoryResendObject(input),
-  RESON8: (input) => new InMemoryReson8Object(input),
   TELEGRAM: (input) => new InMemoryTelegramObject(input),
   UPLOAD: (input) => new InMemoryUploadObject(input),
   GITHUB: (input) => new InMemoryGitHubObject(input),

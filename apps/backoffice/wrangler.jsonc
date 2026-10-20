@@ -66,6 +66,7 @@
       "OOMOL_CONNECTOR_CATALOG_API_KEY",
       "CLOUDFLARE_WORKERS_ACCOUNT_ID",
       "CLOUDFLARE_WORKERS_API_TOKEN",
+      "RESON8_API_KEY",
     ],
   },
   "r2_buckets": [
@@ -124,10 +125,6 @@
       {
         "name": "RESEND",
         "class_name": "Resend",
-      },
-      {
-        "name": "RESON8",
-        "class_name": "Reson8",
       },
       {
         "name": "MCP",
@@ -212,7 +209,8 @@
     "AppInstallations": { "type": "durable-object", "storage": "sqlite" },
     "Telegram": { "type": "durable-object", "storage": "sqlite" },
     "Resend": { "type": "durable-object", "storage": "sqlite" },
-    "Reson8": { "type": "durable-object", "storage": "sqlite" },
+    // Reson8 runs statelessly under the platform key; its per-organization keys are gone.
+    "Reson8": { "type": "durable-object", "state": "deleted" },
     "Mcp": { "type": "durable-object", "storage": "sqlite" },
     "ProjectConnectorDurableObject": { "type": "durable-object", "storage": "sqlite" },
     "Otp": { "type": "durable-object", "storage": "sqlite" },

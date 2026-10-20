@@ -18,7 +18,6 @@ import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automa
 
 import { InMemoryAuthObject } from "../../../workers/auth.do";
 import { InMemoryAutomationsObject } from "../../../workers/automations.do";
-import { InMemoryReson8Object } from "../../../workers/reson8.do";
 import { InMemoryUploadObject } from "../../../workers/upload.do";
 import { createInMemoryBackofficeRuntime } from "../in-memory-runtime";
 import type { LocalBackofficeObjects } from "../local-object-factory";
@@ -26,7 +25,6 @@ import type { LocalBackofficeObjects } from "../local-object-factory";
 const scenarioObjects = {
   AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
   AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
-  RESON8: (input) => new InMemoryReson8Object(input),
   UPLOAD: (input) => new InMemoryUploadObject(input),
 } satisfies LocalBackofficeObjects;
 
@@ -491,15 +489,21 @@ test("a warm Node object reloads configured and cleared Fragment runtimes from s
       defineBackofficeScenario({
         objects: scenarioObjects,
         name: "derived runtime configuration follows SQLite",
+        fakes: ({ fake }) => ({ telegram: fake.telegram() }),
         options: { drain: false, sqliteDataDirectory: directory },
         steps: ({ then }) => [
           then.assert(
             "configuration changes are visible without reconstructing the object",
             async ({ runtime }) => {
-              const reader = other.objects.reson8.forOrg("org-1");
+              const reader = other.objects.telegram.forOrg("org-1");
               assert.equal((await reader.http.fetch(objectRequest("unknown-route"))).status, 400);
-              const writer = runtime.objects.reson8.forOrg("org-1");
-              await writer.commands.setAdminConfig({ apiKey: "scenario-reson8-key" }, "org-1");
+              const writer = runtime.objects.telegram.forOrg("org-1");
+              await writer.commands.setAdminConfig({
+                botToken: "123456:scenario-telegram-token",
+                webhookSecretToken: "scenario-telegram-webhook-secret",
+                botUsername: "scenario_bot",
+                apiBaseUrl: "https://telegram.test",
+              });
               await other.discoverPersistedObjects();
               assert.equal((await reader.http.fetch(objectRequest("unknown-route"))).status, 404);
               await writer.commands.resetAdminConfig();

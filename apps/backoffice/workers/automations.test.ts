@@ -87,7 +87,6 @@ const config: BackofficeRuntimeConfig = {
     telegram: false,
     otp: false,
     resend: false,
-    reson8: false,
     mcp: false,
     projectConnector: false,
     upload: false,

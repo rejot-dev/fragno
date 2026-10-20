@@ -817,6 +817,7 @@ const createScopedMcpRuntimeServices = (
     kernelObserver: noopBackofficeKernelObserver,
     codemodeEnv: null,
     workerTypeChecker: null,
+    reson8: null,
     config: {
       authEmailVerification: { enabled: false },
       signUpInvitationsEnabled: true,
@@ -829,7 +830,6 @@ const createScopedMcpRuntimeServices = (
         telegram: false,
         otp: false,
         resend: false,
-        reson8: false,
         mcp: true,
         projectConnector: false,
         upload: false,

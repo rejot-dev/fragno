@@ -45,14 +45,9 @@ import { InMemoryAutomationsObject } from "../../workers/automations.do";
 import { InMemoryFormsObject } from "../../workers/forms.do";
 import { InMemoryMcpObject } from "../../workers/mcp.do";
 import { InMemoryOtpObject } from "../../workers/otp.do";
-import { InMemoryReson8Object } from "../../workers/reson8.do";
 import { InMemoryUploadObject } from "../../workers/upload.do";
 import { authorizedBackofficeObjectHttp } from "./authorized-object-http";
-import {
-  createBackofficeServiceExecution,
-  createBackofficeSystemExecution,
-  createBackofficeUserExecution,
-} from "./context";
+import { createBackofficeSystemExecution, createBackofficeUserExecution } from "./context";
 import { deferBackofficeExecution } from "./context";
 import { BackofficeKernel } from "./kernel";
 import { backofficeObjectScopeFromContextScope } from "./object-registry";
@@ -64,7 +59,6 @@ const scenarioObjects = {
   FORMS: (input) => new InMemoryFormsObject(input),
   MCP: (input) => new InMemoryMcpObject(input),
   OTP: (input) => new InMemoryOtpObject(input),
-  RESON8: (input) => new InMemoryReson8Object(input),
   UPLOAD: (input) => new InMemoryUploadObject(input),
 } satisfies LocalBackofficeObjects;
 
@@ -189,23 +183,6 @@ describe("fragment HTTP authority scenarios", () => {
       const internal = await forms.http.fetch(new Request(`${origin}/api/forms/_internal/schema`));
       assert(internal.status === 404);
       expect(await internal.json()).toMatchObject({ code: "ROUTE_NOT_FOUND" });
-
-      const reson8 = ctx.runtime.objects.reson8.forOrg(scope.orgId);
-      await reson8.commands.setAdminConfig({ apiKey: "test-key" }, scope.orgId);
-      const url = `${origin}/api/reson8/custom-model`;
-      assert((await reson8.http.fetch(new Request(url))).status === 401);
-      const forbidden = await reson8.http.fetchAuthorized(new Request(url), {
-        execution: createBackofficeServiceExecution({
-          scope,
-          service: { type: "agent", id: "reson8-reader" },
-        }),
-      });
-      assert(forbidden.status === 403);
-      const unexposed = await reson8.http.fetchAuthorized(
-        new Request(`${origin}/api/reson8/_internal`),
-        { execution },
-      );
-      assert(unexposed.status === 404);
     });
   });
 

@@ -63,6 +63,9 @@ OPENAI_API_KEY=
 ANTHROPIC_API_KEY=
 GEMINI_API_KEY=
 
+# Platform Reson8 key for speech-to-text: chat dictation and the reson8 runtime tools
+RESON8_API_KEY=
+
 # For the singleton Cloudflare fragment and Browser Run Quick Actions
 CLOUDFLARE_WORKERS_ACCOUNT_ID=example-account-id
 CLOUDFLARE_WORKERS_API_TOKEN=example-api-token

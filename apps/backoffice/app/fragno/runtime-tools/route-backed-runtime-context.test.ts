@@ -42,6 +42,7 @@ const createRuntime = (): BackofficeRuntimeServices => {
     kernelObserver: noopBackofficeKernelObserver,
     codemodeEnv: null,
     workerTypeChecker: null,
+    reson8: null,
     adapters: {} as BackofficeRuntimeServices["adapters"],
     config: {
       authEmailVerification: { enabled: false },
@@ -55,7 +56,6 @@ const createRuntime = (): BackofficeRuntimeServices => {
         telegram: false,
         otp: false,
         resend: false,
-        reson8: false,
         mcp: false,
         projectConnector: false,
         upload: false,

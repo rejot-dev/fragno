@@ -17,54 +17,55 @@ import type {
   WorkflowStepRunState,
 } from "@/routes/backoffice/automations/script-view/workflow-run-presentation";
 
-import configureReson8WorkflowSource from "../../../content/landing/configure-reson8.workflow.js?raw";
+import configureTelegramWorkflowSource from "../../../content/landing/configure-telegram.workflow.js?raw";
 
 const EMPTY_WORKFLOW_RUNTIME_TOOL_CALLS: ReadonlyMap<
   string,
   readonly ResolvedWorkflowRuntimeToolCall[]
 > = new Map();
 
-type ConfigureReson8WorkflowPresentation = {
+type ConfigureTelegramWorkflowPresentation = {
   visualization: ReturnType<typeof visualizeWorkflowSource>;
-  requestApiKeyStepId: string;
+  requestBotTokenStepId: string;
   waitForCredentialsStepId: string;
-  configureReson8StepId: string;
-  verifyReson8StepId: string;
+  configureTelegramStepId: string;
+  verifyTelegramStepId: string;
 };
 
-let cachedConfigureReson8WorkflowPresentation: ConfigureReson8WorkflowPresentation | null = null;
+let cachedConfigureTelegramWorkflowPresentation: ConfigureTelegramWorkflowPresentation | null =
+  null;
 
-const RESON8_SETUP_RESULT = {
+const TELEGRAM_SETUP_RESULT = {
   $ui: {
     version: 1,
-    state: { response: { apiKey: "" } },
+    state: { response: { botToken: "" } },
     spec: {
       root: "form",
       elements: {
         form: {
           type: "Stack",
           props: { gap: "md" },
-          children: ["heading", "description", "apiKey", "submit"],
+          children: ["heading", "description", "botToken", "submit"],
         },
         heading: {
           type: "Heading",
-          props: { text: "Set up Reson8", level: 2 },
+          props: { text: "Set up Telegram", level: 2 },
           children: [],
         },
         description: {
           type: "Text",
           props: {
-            text: "Enter your Reson8 API key to enable speech-to-text for this organisation.",
+            text: "Enter your Telegram bot token so automations can message your team.",
             tone: "muted",
           },
           children: [],
         },
-        apiKey: {
+        botToken: {
           type: "TextInput",
           props: {
-            label: "Reson8 API key",
-            value: { $bindState: "/response/apiKey" },
-            description: "Your key is handled as a secret and is not shown in the setup result.",
+            label: "Telegram bot token",
+            value: { $bindState: "/response/botToken" },
+            description: "Your token is handled as a secret and is not shown in the setup result.",
             required: true,
             secret: true,
           },
@@ -73,8 +74,8 @@ const RESON8_SETUP_RESULT = {
         submit: {
           type: "WorkflowEventButton",
           props: {
-            label: "Configure Reson8",
-            eventType: "reson8-credentials",
+            label: "Configure Telegram",
+            eventType: "telegram-credentials",
             payload: { $state: "/response" },
             variant: "primary",
           },
@@ -87,9 +88,8 @@ const RESON8_SETUP_RESULT = {
 
 const ACTIVITY_ITEMS = [
   { action: "Skill loaded", detail: "configuring-integrations" },
-  { action: "Skill loaded", detail: "reson8-integration" },
   { action: "read", detail: "/static/codemode/providers/integrations.d.ts" },
-  { action: "write", detail: "automations/configure-reson8.workflow.js" },
+  { action: "write", detail: "automations/configure-telegram.workflow.js" },
 ] as const;
 
 const DISPLAY_OPTIONS = [
@@ -107,46 +107,46 @@ type DemoExecutionPhase =
   | "verifying"
   | "complete";
 
-function getConfigureReson8WorkflowPresentation(): ConfigureReson8WorkflowPresentation {
-  if (cachedConfigureReson8WorkflowPresentation) {
-    return cachedConfigureReson8WorkflowPresentation;
+function getConfigureTelegramWorkflowPresentation(): ConfigureTelegramWorkflowPresentation {
+  if (cachedConfigureTelegramWorkflowPresentation) {
+    return cachedConfigureTelegramWorkflowPresentation;
   }
 
   const visualization = visualizeWorkflowSource(
-    "configure-reson8.workflow.js",
-    configureReson8WorkflowSource,
-    { fallbackName: "configure-reson8" },
+    "configure-telegram.workflow.js",
+    configureTelegramWorkflowSource,
+    { fallbackName: "configure-telegram" },
   );
   function findStepNodeId(matches: (step: StepNode) => boolean, description: string): string {
     const step = visualization.graph.nodes.find(
       (node): node is StepNode => node.kind === "step" && matches(node),
     );
     if (!step) {
-      throw new Error(`Configure Reson8 workflow is missing the ${description} step.`);
+      throw new Error(`Configure Telegram workflow is missing the ${description} step.`);
     }
     return step.id;
   }
 
-  cachedConfigureReson8WorkflowPresentation = {
+  cachedConfigureTelegramWorkflowPresentation = {
     visualization,
-    requestApiKeyStepId: findStepNodeId(
-      (step) => step.stepType === "do" && step.label === "request Reson8 API key",
-      "request Reson8 API key",
+    requestBotTokenStepId: findStepNodeId(
+      (step) => step.stepType === "do" && step.label === "request Telegram bot token",
+      "request Telegram bot token",
     ),
     waitForCredentialsStepId: findStepNodeId(
-      (step) => step.stepType === "waitForEvent" && step.meta.eventType === "reson8-credentials",
-      "wait for reson8-credentials",
+      (step) => step.stepType === "waitForEvent" && step.meta.eventType === "telegram-credentials",
+      "wait for telegram-credentials",
     ),
-    configureReson8StepId: findStepNodeId(
-      (step) => step.stepType === "do" && step.label === "configure Reson8",
-      "configure Reson8",
+    configureTelegramStepId: findStepNodeId(
+      (step) => step.stepType === "do" && step.label === "configure Telegram",
+      "configure Telegram",
     ),
-    verifyReson8StepId: findStepNodeId(
-      (step) => step.stepType === "do" && step.label === "verify Reson8",
-      "verify Reson8",
+    verifyTelegramStepId: findStepNodeId(
+      (step) => step.stepType === "do" && step.label === "verify Telegram",
+      "verify Telegram",
     ),
   };
-  return cachedConfigureReson8WorkflowPresentation;
+  return cachedConfigureTelegramWorkflowPresentation;
 }
 
 function completedStepState(result: unknown): WorkflowStepRunState {
@@ -169,53 +169,53 @@ function activeStepState(): WorkflowStepRunState {
   };
 }
 
-function createConfigureReson8Run(
+function createConfigureTelegramRun(
   phase: DemoExecutionPhase,
-  presentation: ConfigureReson8WorkflowPresentation,
+  presentation: ConfigureTelegramWorkflowPresentation,
 ): ScriptWorkflowRun {
   const {
-    requestApiKeyStepId,
+    requestBotTokenStepId,
     waitForCredentialsStepId,
-    configureReson8StepId,
-    verifyReson8StepId,
+    configureTelegramStepId,
+    verifyTelegramStepId,
   } = presentation;
   const stepStatesByNodeId = new Map<string, WorkflowStepRunState>([
-    [requestApiKeyStepId, completedStepState(RESON8_SETUP_RESULT)],
+    [requestBotTokenStepId, completedStepState(TELEGRAM_SETUP_RESULT)],
   ]);
 
   if (phase === "waiting" || phase === "submitted") {
     stepStatesByNodeId.set(waitForCredentialsStepId, {
       status: "waiting",
       attempts: 1,
-      waitEventType: "reson8-credentials",
+      waitEventType: "telegram-credentials",
       emissionCount: 0,
       current: true,
     });
   } else {
     stepStatesByNodeId.set(
       waitForCredentialsStepId,
-      completedStepState({ eventType: "reson8-credentials" }),
+      completedStepState({ eventType: "telegram-credentials" }),
     );
   }
 
   if (phase === "configuring") {
-    stepStatesByNodeId.set(configureReson8StepId, activeStepState());
+    stepStatesByNodeId.set(configureTelegramStepId, activeStepState());
   }
   if (phase === "verifying" || phase === "complete") {
-    stepStatesByNodeId.set(configureReson8StepId, completedStepState(undefined));
+    stepStatesByNodeId.set(configureTelegramStepId, completedStepState(undefined));
   }
   if (phase === "verifying") {
-    stepStatesByNodeId.set(verifyReson8StepId, activeStepState());
+    stepStatesByNodeId.set(verifyTelegramStepId, activeStepState());
   }
   if (phase === "complete") {
-    stepStatesByNodeId.set(verifyReson8StepId, completedStepState(undefined));
+    stepStatesByNodeId.set(verifyTelegramStepId, completedStepState(undefined));
   }
 
   return {
-    id: "landing-configure-reson8-run",
-    instanceId: "landing-configure-reson8-instance",
-    workflowName: "configure-reson8",
-    instanceWorkflowName: "configure-reson8",
+    id: "landing-configure-telegram-run",
+    instanceId: "landing-configure-telegram-instance",
+    workflowName: "configure-telegram",
+    instanceWorkflowName: "configure-telegram",
     status:
       phase === "waiting" || phase === "submitted"
         ? "waiting"
@@ -224,10 +224,10 @@ function createConfigureReson8Run(
           : phase === "complete"
             ? "complete"
             : "active",
-    output: phase === "complete" ? { connection: "reson8", status: "ready" } : null,
+    output: phase === "complete" ? { connection: "telegram", status: "ready" } : null,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:04.000Z",
-    waitingEventTypes: phase === "waiting" || phase === "submitted" ? ["reson8-credentials"] : [],
+    waitingEventTypes: phase === "waiting" || phase === "submitted" ? ["telegram-credentials"] : [],
     workflowEvents: [],
     stepStatesByNodeId,
     stepExecutionsByNodeId: new Map(),
@@ -239,11 +239,12 @@ function createConfigureReson8Run(
 /** Shows how a request becomes inspectable UI, flow, and executable workflow source. */
 export function LandingWorkflow() {
   const [display, setDisplay] = useState<LandingWorkflowDisplay>("ui");
-  const [apiKey, setApiKey] = useState("");
+  const [botToken, setBotToken] = useState("");
   const [executionPhase, setExecutionPhase] = useState<DemoExecutionPhase>("waiting");
   const executionTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const flowPanelRef = useRef<HTMLDivElement>(null);
-  const workflowPresentation = display === "flow" ? getConfigureReson8WorkflowPresentation() : null;
+  const workflowPresentation =
+    display === "flow" ? getConfigureTelegramWorkflowPresentation() : null;
 
   function clearExecutionTimers() {
     for (const timer of executionTimers.current) {
@@ -260,13 +261,13 @@ export function LandingWorkflow() {
     );
   }
 
-  function submitApiKey(event: SyntheticEvent<HTMLFormElement, SubmitEvent>) {
+  function submitBotToken(event: SyntheticEvent<HTMLFormElement, SubmitEvent>) {
     event.preventDefault();
     clearExecutionTimers();
     setExecutionPhase("submitted");
     setDisplay("flow");
 
-    if (!apiKey.trim()) {
+    if (!botToken.trim()) {
       scheduleExecutionPhase("empty-error", 500);
       return;
     }
@@ -279,7 +280,7 @@ export function LandingWorkflow() {
   function selectDisplay(nextDisplay: LandingWorkflowDisplay) {
     if (nextDisplay === "ui" && executionPhase !== "waiting") {
       clearExecutionTimers();
-      setApiKey("");
+      setBotToken("");
       setExecutionPhase("waiting");
     }
     setDisplay(nextDisplay);
@@ -311,7 +312,7 @@ export function LandingWorkflow() {
           <div className="flex flex-1 flex-col gap-4 p-4 sm:p-5">
             <div className="ml-auto max-w-[88%] border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-4 py-3">
               <p className="text-sm leading-6 text-[var(--bo-fg)]">
-                Help me set up Reson8 for speech-to-text.
+                Help me connect our Telegram bot.
               </p>
             </div>
 
@@ -346,7 +347,7 @@ export function LandingWorkflow() {
 
             <div className="max-w-[92%] py-2">
               <p className="text-sm leading-6 text-[var(--bo-fg)]">
-                I generated a UI-based workflow that requests the API key, configures the Reson8
+                I generated a UI-based workflow that requests the bot token, configures the Telegram
                 connection, and verifies the result before completing.
               </p>
             </div>
@@ -358,7 +359,7 @@ export function LandingWorkflow() {
             <div className="flex min-w-0 items-center gap-2.5">
               <Icon name="file-text" className="size-3.5 shrink-0 text-[var(--bo-accent)]" />
               <span className="truncate font-mono text-[9px] font-semibold tracking-[0.06em] text-[var(--bo-muted)]">
-                configure-reson8.workflow.js
+                configure-telegram.workflow.js
               </span>
             </div>
 
@@ -390,17 +391,17 @@ export function LandingWorkflow() {
           <div className="min-h-0 flex-1">
             {display === "ui" ? (
               <LandingGeneratedUi
-                apiKey={apiKey}
+                botToken={botToken}
                 disabled={executionPhase !== "waiting"}
-                onApiKeyChange={setApiKey}
-                onSubmit={submitApiKey}
+                onBotTokenChange={setBotToken}
+                onSubmit={submitBotToken}
               />
             ) : null}
             {workflowPresentation ? (
               <LandingWorkflowGraph
                 executionPhase={executionPhase}
                 panelRef={flowPanelRef}
-                selectedRun={createConfigureReson8Run(executionPhase, workflowPresentation)}
+                selectedRun={createConfigureTelegramRun(executionPhase, workflowPresentation)}
                 visualization={workflowPresentation.visualization}
               />
             ) : null}
@@ -413,14 +414,14 @@ export function LandingWorkflow() {
 }
 
 function LandingGeneratedUi({
-  apiKey,
+  botToken,
   disabled,
-  onApiKeyChange,
+  onBotTokenChange,
   onSubmit,
 }: {
-  apiKey: string;
+  botToken: string;
   disabled: boolean;
-  onApiKeyChange: (apiKey: string) => void;
+  onBotTokenChange: (botToken: string) => void;
   onSubmit: (event: SyntheticEvent<HTMLFormElement, SubmitEvent>) => void;
 }) {
   return (
@@ -431,14 +432,14 @@ function LandingGeneratedUi({
       className="backoffice-scroll h-full overflow-auto bg-[var(--bo-panel-2)] p-4"
     >
       <h3 className="mb-3 px-1 text-[10px] font-semibold tracking-[0.16em] text-[var(--bo-muted-2)] uppercase">
-        configure-reson8
+        configure-telegram
       </h3>
       <form
         onSubmit={onSubmit}
         className="border border-[color:var(--bo-waiting)] bg-[var(--bo-panel)] p-3"
       >
         <div className="flex flex-wrap items-start justify-between gap-2 border-b border-[color:var(--bo-border)] pb-3">
-          <p className="text-sm font-medium text-[var(--bo-fg)]">request Reson8 API key</p>
+          <p className="text-sm font-medium text-[var(--bo-fg)]">request Telegram bot token</p>
           <span className="flex items-center gap-1.5 border border-[color:var(--bo-waiting)] bg-[var(--bo-waiting-bg)] px-1.5 py-0.5 text-[8px] font-semibold tracking-[0.14em] text-[var(--bo-waiting)] uppercase">
             <span className="size-1.5 rounded-full bg-[var(--bo-waiting)]" aria-hidden="true" />
             Waiting
@@ -447,31 +448,31 @@ function LandingGeneratedUi({
 
         <div className="mt-4 space-y-4">
           <h2 className="text-2xl font-semibold tracking-[-0.035em] text-[var(--bo-fg)]">
-            Set up Reson8
+            Set up Telegram
           </h2>
           <p className="text-sm leading-6 text-[var(--bo-muted)]">
-            Enter your Reson8 API key to enable speech-to-text for this organisation.
+            Enter your Telegram bot token so automations can message your team.
           </p>
           <Field
             density="compact"
-            label="Reson8 API key"
-            description="Your key is handled as a secret and is not shown in the setup result."
+            label="Telegram bot token"
+            description="Your token is handled as a secret and is not shown in the setup result."
             required
           >
             <Input
               density="compact"
               type="password"
-              value={apiKey}
+              value={botToken}
               autoComplete="off"
               disabled={disabled}
               onChange={(event) => {
-                onApiKeyChange(event.target.value);
+                onBotTokenChange(event.target.value);
               }}
               className="w-full"
             />
           </Field>
           <Button type="submit" variant="solid" disabled={disabled}>
-            Configure Reson8
+            Configure Telegram
           </Button>
         </div>
       </form>
@@ -488,7 +489,7 @@ function LandingWorkflowGraph({
   executionPhase: DemoExecutionPhase;
   panelRef: RefObject<HTMLDivElement | null>;
   selectedRun: ScriptWorkflowRun;
-  visualization: ConfigureReson8WorkflowPresentation["visualization"];
+  visualization: ConfigureTelegramWorkflowPresentation["visualization"];
 }) {
   const collapseRequestUi = !["waiting", "submitted"].includes(executionPhase);
   const hasCollapsedRequestUi = useRef(false);
@@ -553,7 +554,7 @@ function LandingWorkflowGraph({
           className="flex shrink-0 animate-[pulse_600ms_ease-out_1] items-center gap-2 border-b border-[color:var(--bo-failed)] bg-[var(--bo-failed-bg)] px-4 py-3 text-xs font-semibold text-[var(--bo-failed)]"
         >
           <Icon name="x-octagon" className="size-4 shrink-0" />
-          Workflow stopped: a Reson8 API key is required.
+          Workflow stopped: a Telegram bot token is required.
         </div>
       ) : null}
       <div className="min-h-0 flex-1">
@@ -562,7 +563,7 @@ function LandingWorkflowGraph({
           detailMode="simple"
           runtimeToolCallsByStepId={EMPTY_WORKFLOW_RUNTIME_TOOL_CALLS}
           selectedRun={selectedRun}
-          sourceCode={configureReson8WorkflowSource}
+          sourceCode={configureTelegramWorkflowSource}
           fillHeight
         />
       </div>
@@ -580,7 +581,7 @@ function LandingWorkflowCode() {
       className="backoffice-scroll h-full overflow-auto focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--bo-accent)]"
     >
       <pre className="min-h-full p-4 font-mono text-[11px] leading-5 whitespace-pre-wrap text-[var(--bo-fg)] sm:p-5">
-        <code>{configureReson8WorkflowSource}</code>
+        <code>{configureTelegramWorkflowSource}</code>
       </pre>
     </div>
   );

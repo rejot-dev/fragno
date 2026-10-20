@@ -70,7 +70,6 @@ const SOURCE_ICONS: Record<string, IconName> = {
   scheduler: "calendar",
   api: "code",
   resend: "mail",
-  reson8: "mic",
   sandbox: "cloud",
   automations: "zap",
   mcp: "disc",

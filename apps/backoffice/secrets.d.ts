@@ -29,6 +29,7 @@ interface CloudflareEnv {
   OPENAI_API_KEY?: string;
   ANTHROPIC_API_KEY?: string;
   GEMINI_API_KEY?: string;
+  RESON8_API_KEY?: string;
   TURNSTILE_SECRET_KEY: string;
   CLOUDFLARE_WORKERS_ACCOUNT_ID: string;
   CLOUDFLARE_WORKERS_API_TOKEN: string;

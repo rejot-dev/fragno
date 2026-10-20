@@ -34,7 +34,6 @@ import { otpCapability } from "./capabilities/otp";
 import { piCapability } from "./capabilities/pi";
 import { connectorCapability } from "./capabilities/project-connector";
 import { resendCapability } from "./capabilities/resend";
-import { reson8Capability } from "./capabilities/reson8";
 import { sandboxCapability } from "./capabilities/sandbox";
 import { telegramCapability } from "./capabilities/telegram";
 import { uploadCapability } from "./capabilities/upload";
@@ -54,7 +53,6 @@ export type BackofficeCapabilityId =
   | "otp"
   | "pi"
   | "resend"
-  | "reson8"
   | "sandbox"
   | "telegram"
   | "upload";
@@ -141,7 +139,6 @@ export const backofficeCapabilities: readonly BackofficeCapability[] = [
   mcpCapability,
   connectorCapability,
   resendCapability,
-  reson8Capability,
   uploadCapability,
   piCapability,
   sandboxCapability,
@@ -187,14 +184,6 @@ export const backofficeConnectionCatalog: readonly BackofficeConnectionCatalogEn
     configurable: true,
     description: "Configure org-scoped storage, inspect files, and run manual upload actions.",
     routeSegment: "upload",
-  },
-  {
-    id: "reson8",
-    label: "Reson8",
-    kind: "connection",
-    configurable: true,
-    description: "Transcribe recorded audio, capture realtime speech, and manage custom models.",
-    routeSegment: "reson8",
   },
   {
     id: "sandbox",

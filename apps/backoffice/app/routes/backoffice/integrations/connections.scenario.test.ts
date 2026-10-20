@@ -34,7 +34,6 @@ import { InMemoryMcpObject } from "../../../../workers/mcp.do";
 import { InMemoryOtpObject } from "../../../../workers/otp.do";
 import { InMemoryProjectConnectorObject } from "../../../../workers/project-connector.do";
 import { InMemoryResendObject } from "../../../../workers/resend.do";
-import { InMemoryReson8Object } from "../../../../workers/reson8.do";
 import { InMemoryTelegramObject } from "../../../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../../../workers/upload.do";
 import { integrationConnectionName } from "./connection-display";
@@ -58,7 +57,6 @@ const scenarioObjects = {
   OTP: (input) => new InMemoryOtpObject(input),
   PROJECT_CONNECTOR: (input) => new InMemoryProjectConnectorObject(input),
   RESEND: (input) => new InMemoryResendObject(input),
-  RESON8: (input) => new InMemoryReson8Object(input),
   TELEGRAM: (input) => new InMemoryTelegramObject(input),
   UPLOAD: (input) => new InMemoryUploadObject(input),
 } satisfies LocalBackofficeObjects;
@@ -68,7 +66,7 @@ const scope = { kind: "org", orgId } as const;
 const secrets = {
   token: "scenario-billing-token",
   signing: "scenario-signing-secret",
-  reson8: "scenario-reson8-key",
+  telegram: "123456:scenario-telegram-token",
 };
 
 /** Reads the details the connection panel's loader shows. */
@@ -86,11 +84,12 @@ test("the integrations section shows each connection's reported state and source
     defineBackofficeScenario({
       objects: scenarioObjects,
       name: "Integrations overview and connection details",
+      fakes: ({ fake }) => ({ telegram: fake.telegram() }),
       setup: ({ given }) => [given.organization.exists({ id: orgId, slug: "ada", name: "Ada" })],
       steps: ({ when, then, runner }) => [
         when.codemode.run({
           scope,
-          label: "connect an API, a signed webhook, and Reson8, and remove a legacy API",
+          label: "connect an API, a signed webhook, and Telegram, and remove a legacy API",
           code: `async () => {
             const setup = (connectionId, input) => integrations.setup({ connectionId, kind: "input", input });
             await setup("api#billing", { baseUrl: "https://billing.example.com", type: "bearer", token: ${JSON.stringify(secrets.token)} });
@@ -108,7 +107,7 @@ test("the integrations section shows each connection's reported state and source
                 signedPayload: { type: "rawBody" },
               },
             });
-            await setup("backoffice#reson8", { apiKey: ${JSON.stringify(secrets.reson8)} });
+            await setup("backoffice#telegram", { botToken: ${JSON.stringify(secrets.telegram)}, botUsername: null });
           }`,
           assertToolCalls: ["integrations.setup", "integrations.disconnect"],
         }),
@@ -173,10 +172,10 @@ test("the integrations section shows each connection's reported state and source
               authMethod: null,
             },
             {
-              connectionId: "backoffice#reson8",
+              connectionId: "backoffice#telegram",
               kind: "native",
               state: "ready",
-              name: "Reson8",
+              name: "Telegram",
               authMethod: "api-key",
             },
             {
@@ -193,7 +192,7 @@ test("the integrations section shows each connection's reported state and source
             api: await describeConnection(ctx, "api#billing"),
             legacy: await describeConnection(ctx, "api#legacy"),
             webhook: await describeConnection(ctx, "webhook#acme"),
-            reson8: await describeConnection(ctx, "backoffice#reson8"),
+            telegram: await describeConnection(ctx, "backoffice#telegram"),
           };
           expect(described).toMatchObject({
             api: {
@@ -224,7 +223,7 @@ test("the integrations section shows each connection's reported state and source
                 },
               },
             },
-            reson8: {
+            telegram: {
               connection: { authMethod: "api-key", configuration: { status: "configured" } },
               details: { kind: "native" },
             },

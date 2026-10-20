@@ -208,22 +208,6 @@ export default [
         ],
       ),
       route(
-        "integrations/:scopeKind/:scopeId/reson8",
-        "routes/backoffice/connections/reson8/organization-layout.tsx",
-        { id: "scoped-integrations/reson8/layout" },
-        [
-          route("configuration", "routes/backoffice/connections/reson8/configuration.tsx", {
-            id: "scoped-integrations/reson8/configuration",
-          }),
-          route("custom-models", "routes/backoffice/connections/reson8/custom-models.tsx", {
-            id: "scoped-integrations/reson8/custom-models",
-          }),
-          route("transcribe", "routes/backoffice/connections/reson8/transcribe.tsx", {
-            id: "scoped-integrations/reson8/transcribe",
-          }),
-        ],
-      ),
-      route(
         "integrations/:scopeKind/:scopeId/github",
         "routes/backoffice/connections/github/organization-layout.tsx",
         { id: "scoped-integrations/github/layout" },
@@ -314,7 +298,6 @@ export default [
     route("cloudflare/*", "routes/api/cloudflare.ts"),
     route("forms/*", "routes/api/forms.ts"),
     route("resend/:scopeSegment/*", "routes/api/resend.ts"),
-    route("reson8/:orgSlug/*", "routes/api/reson8.ts"),
     route("mcp/:scopeSegment/servers/:serverSlug/auth/start", "routes/api/mcp-oauth-start.ts"),
     route("mcp/:scopeSegment/*", "routes/api/mcp.ts"),
     route("connector/:scopeSegment/*", "routes/api/project-connector.ts"),

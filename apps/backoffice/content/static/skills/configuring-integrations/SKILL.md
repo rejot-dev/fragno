@@ -2,9 +2,9 @@
 name: configuring-integrations
 description: >
   Integrations: any service the user names, whether an MCP server, an HTTP API, an inbound webhook,
-  an Open Connector account, or Telegram, Resend, Reson8, or GitHub. Use to connect one, change its
-  auth, credentials, or endpoint, verify, disconnect, call it, generate a typed client for it, or
-  react to its connection changes.
+  an Open Connector account, or Telegram, Resend, or GitHub. Use to connect one, change its auth,
+  credentials, or endpoint, verify, disconnect, call it, generate a typed client for it, or react to
+  its connection changes.
 ---
 
 # Configuring Integrations
@@ -24,7 +24,6 @@ These are all the native Backoffice integrations:
 
 | Service  | Address               | Owning scope                                       | Provides                              |
 | -------- | --------------------- | -------------------------------------------------- | ------------------------------------- |
-| Reson8   | `backoffice#reson8`   | organization                                       | speech-to-text                        |
 | Telegram | `backoffice#telegram` | every scope, each with its own bot                 | bot messages, `message.received`      |
 | Resend   | `backoffice#resend`   | organization; system is the platform email account | email threads and replies             |
 | GitHub   | `github#owner/repo`   | organization, one connection per repository        | repository API through the GitHub App |
@@ -202,9 +201,9 @@ the next check rather than the browser consent, and revocation is never reported
 `integrations.actions({ connectionId })` returns each action's authoritative input and output
 schemas; build input from the selected `inputSchema`.
 
-Binary inputs, such as audio for `backoffice#reson8`'s `prerecorded.transcribe`, are byte arrays of
-real file content: read the file with `state.readFileBytes({ path })` and pass `Array.from(bytes)`.
-Action inputs list every field; pass `null` for a default.
+Binary inputs are byte arrays of real file content: read the file with
+`state.readFileBytes({ path })` and pass `Array.from(bytes)`. Action inputs list every field; pass
+`null` for a default.
 
 Obtain the user's instruction before any action that writes or sends. `integrations.execute` runs
 once; an output failure arrives after the action has run, so report it rather than repeating the

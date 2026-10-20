@@ -1459,7 +1459,7 @@
         "name": "connection-id",
         "required": true,
         "valueRequired": true,
-        "description": "Deterministic connection address in the selected scope, such as backoffice#reson8"
+        "description": "Deterministic connection address in the selected scope, such as backoffice#telegram"
       },
       {
         "name": "help",
@@ -1490,7 +1490,7 @@
         "name": "connection-id",
         "required": true,
         "valueRequired": true,
-        "description": "Deterministic connection address in the selected scope, such as backoffice#reson8"
+        "description": "Deterministic connection address in the selected scope, such as backoffice#telegram"
       },
       {
         "name": "input-json",
@@ -1526,7 +1526,7 @@
         "name": "connection-id",
         "required": true,
         "valueRequired": true,
-        "description": "Deterministic connection address in the selected scope, such as backoffice#reson8"
+        "description": "Deterministic connection address in the selected scope, such as backoffice#telegram"
       },
       {
         "name": "input-json",
@@ -1562,7 +1562,7 @@
         "name": "connection-id",
         "required": true,
         "valueRequired": true,
-        "description": "Deterministic connection address in the selected scope, such as backoffice#reson8"
+        "description": "Deterministic connection address in the selected scope, such as backoffice#telegram"
       },
       {
         "name": "confirm",
@@ -1624,7 +1624,7 @@
         "name": "connection-id",
         "required": true,
         "valueRequired": true,
-        "description": "Deterministic connection address in the selected scope, such as backoffice#reson8"
+        "description": "Deterministic connection address in the selected scope, such as backoffice#telegram"
       },
       {
         "name": "help",
@@ -1655,7 +1655,7 @@
         "name": "connection-id",
         "required": true,
         "valueRequired": true,
-        "description": "Deterministic connection address in the selected scope, such as backoffice#reson8"
+        "description": "Deterministic connection address in the selected scope, such as backoffice#telegram"
       },
       {
         "name": "action-id",
@@ -1702,7 +1702,7 @@
         "name": "connection-id",
         "required": true,
         "valueRequired": true,
-        "description": "Deterministic connection address in the selected scope, such as backoffice#reson8"
+        "description": "Deterministic connection address in the selected scope, such as backoffice#telegram"
       },
       {
         "name": "out",
@@ -1740,7 +1740,7 @@
         "name": "connection-id",
         "required": true,
         "valueRequired": true,
-        "description": "Deterministic connection address in the selected scope, such as backoffice#reson8"
+        "description": "Deterministic connection address in the selected scope, such as backoffice#telegram"
       },
       {
         "name": "help",
@@ -3466,6 +3466,77 @@
         "valueRequired": true,
         "valueName": "agent-name",
         "description": "Agent name"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "reson8.prerecorded.transcribe",
+    "summary": "Transcribe a prerecorded audio file with Reson8.",
+    "options": [
+      {
+        "name": "input",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "path",
+        "description": "Path to the audio file inside the bash filesystem"
+      },
+      {
+        "name": "encoding",
+        "valueRequired": true,
+        "valueName": "encoding",
+        "description": "Audio encoding (\"auto\" or \"pcm_s16le\")"
+      },
+      {
+        "name": "sample-rate",
+        "valueRequired": true,
+        "valueName": "hz",
+        "description": "Sample rate of raw PCM audio (e.g. 16000)"
+      },
+      {
+        "name": "channels",
+        "valueRequired": true,
+        "valueName": "channels",
+        "description": "Channel count of raw PCM audio (e.g. 1)"
+      },
+      {
+        "name": "custom-model-id",
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Reson8 custom model id"
+      },
+      {
+        "name": "include-timestamps",
+        "valueRequired": false,
+        "description": "Include segment timestamps"
+      },
+      {
+        "name": "include-words",
+        "valueRequired": false,
+        "description": "Include word-level details"
+      },
+      {
+        "name": "include-confidence",
+        "valueRequired": false,
+        "description": "Include confidence values"
       },
       {
         "name": "help",

@@ -13,7 +13,6 @@ import type {
   McpObject,
   OtpObject,
   ResendObject,
-  Reson8Object,
   TelegramObject,
   UploadObject,
 } from "@/backoffice-runtime/object-registry";
@@ -68,11 +67,6 @@ export const getResendDurableObject = (
   context: Readonly<RouterContextProvider>,
   orgId: string,
 ): BackofficeObjectHandle<ResendObject> => getBackofficeObjects(context).resend.forOrg(orgId);
-
-export const getReson8DurableObject = (
-  context: Readonly<RouterContextProvider>,
-  orgId: string,
-): BackofficeObjectHandle<Reson8Object> => getBackofficeObjects(context).reson8.forOrg(orgId);
 
 export const getUploadDurableObject = (
   context: Readonly<RouterContextProvider>,

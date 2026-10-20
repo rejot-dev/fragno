@@ -7,6 +7,7 @@ import { createAppInstallationAuthorityResolver } from "@/fragno/app-installatio
 import { createAutomationRouteAuthorityResolver } from "@/fragno/automation/authority";
 import type { AutomationSourceReader } from "@/fragno/automation/automation-source";
 import type { PiAvailableModel } from "@/fragno/pi/agent/pi-agent-contract";
+import { createReson8Server } from "@/fragno/reson8";
 import type { CreateSandboxRuntimeProviders } from "@/sandbox/contracts";
 
 import {
@@ -134,6 +135,9 @@ export async function createLocalBackofficeRuntime(
     kernelObserver: options.kernelObserver ?? noopBackofficeKernelObserver,
     codemodeEnv: options.runtimeEnv.codemode,
     workerTypeChecker: options.workerTypeChecker ?? null,
+    reson8: options.runtimeEnv.RESON8_API_KEY
+      ? createReson8Server(options.runtimeEnv.RESON8_API_KEY)
+      : null,
     fragnoRuntime: {
       ...defaultFragnoRuntime,
       time: {

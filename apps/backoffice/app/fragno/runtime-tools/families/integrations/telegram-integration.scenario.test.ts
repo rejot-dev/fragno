@@ -24,7 +24,6 @@ import { InMemoryMcpObject } from "../../../../../workers/mcp.do";
 import { InMemoryOtpObject } from "../../../../../workers/otp.do";
 import { InMemoryProjectConnectorObject } from "../../../../../workers/project-connector.do";
 import { InMemoryResendObject } from "../../../../../workers/resend.do";
-import { InMemoryReson8Object } from "../../../../../workers/reson8.do";
 import { InMemoryUploadObject } from "../../../../../workers/upload.do";
 
 const scenarioObjects = {
@@ -42,7 +41,6 @@ const scenarioObjects = {
   OTP: (input) => new InMemoryOtpObject(input),
   PROJECT_CONNECTOR: (input) => new InMemoryProjectConnectorObject(input),
   RESEND: (input) => new InMemoryResendObject(input),
-  RESON8: (input) => new InMemoryReson8Object(input),
   UPLOAD: (input) => new InMemoryUploadObject(input),
 } satisfies LocalBackofficeObjects;
 
