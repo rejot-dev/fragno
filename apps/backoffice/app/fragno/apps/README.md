@@ -387,7 +387,7 @@ system administrator says otherwise:
 
 ```bash
 admin.apps.update-trust --app-id APP_ID --trust-json \
-  '{"kind":"first-party","provisioningPermissions":["organizations.provision","projects.provision","invitations.accept"],
+  '{"kind":"first-party","provisioningPermissions":["organizations.provision","projects.provision","invitations.send","invitations.accept"],
     "branding":{"displayName":"Bookkeeping","logoUrl":"https://bookkeeping.example/logo.svg","accentColor":"#2f6f4e",
       "homeUrl":"https://bookkeeping.example","supportUrl":"https://bookkeeping.example/help"}}'
 ```
@@ -428,6 +428,7 @@ is unknown can therefore be retried. The contract and a client live in
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `organizations.provision` | Creates an organization owned by a user who authorized the app, installs the app there with every requested permission, owner-wide, and claims it for the app |
 | `projects.provision`      | Creates a project in an organization where the app is installed, as a member who authorized the app                                                           |
+| `invitations.send`        | Emails a pending invitation in the app's name, linking to the app's page for accepting it                                                                     |
 | `invitations.accept`      | Accepts an invitation for the user it is addressed to, in an organization where the app is installed                                                          |
 
 - **The app's users.** An app names only Backoffice users who authorized its OAuth client, which
@@ -439,21 +440,24 @@ is unknown can therefore be retried. The contract and a client live in
 - **Only where it is installed.** Projects and invitations are only in organizations where the app
   has an active installation, however it got there.
 - **Invitations stay Backoffice's.** Owners and admins invite with `org.invitations.create`, as in
-  Backoffice. `invitations.accept` only does what the invited person could do themselves: the
-  invitation must be pending and addressed to the user's verified email, and an invitation they
-  already accepted returns their membership. It never adds anyone else.
+  Backoffice. `invitations.send` emails one to the address it is for, branded as the app and from
+  the configured sending address under the app's name, with a link that must be on the origin of the
+  app's home URL; it sends each invitation once, however often the app asks. `invitations.accept`
+  only does what the invited person could do themselves: the invitation must be pending and
+  addressed to the user's verified email, and an invitation they already accepted returns their
+  membership. It never adds anyone else.
 - **Uninstalling wins.** If the organization's owners uninstalled the app, provisioning that
   organization again answers `409` instead of installing it again.
 - **Audit.** Every completed call is recorded as a System event from source `provisioning`
-  (`organization.provisioned`, `project.provisioned`, `invitation.accepted`), with the app as
-  initiator and the input and result as payload. Administrators read them with `events.list` in
-  System context. The event is recorded after the operation, so a retry after a failure in between
-  records it again.
+  (`organization.provisioned`, `project.provisioned`, `invitation.sent`, `invitation.accepted`),
+  with the app as initiator and the input and result as payload. Administrators read them with
+  `events.list` in System context. The event is recorded after the operation, so a retry after a
+  failure in between records it again.
 
-Errors use the API's envelope: `401` for a missing or invalid token, `403` for a third-party app, a
-missing provisioning permission, or a user who has not authorized the app or was not invited, `404`
-for an organization or invitation where the app is not installed, and `409` for a conflict, such as
-an invitation that is no longer pending.
+Errors use the API's envelope: `400` for an invitation link outside the app, `401` for a missing or
+invalid token, `403` for a third-party app, a missing provisioning permission, or a user who has not
+authorized the app or was not invited, `404` for an organization or invitation where the app is not
+installed, and `409` for a conflict, such as an invitation that is no longer pending.
 
 ### Rotating the app's secret
 

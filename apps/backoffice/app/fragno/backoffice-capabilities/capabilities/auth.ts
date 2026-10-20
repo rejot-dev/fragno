@@ -19,6 +19,7 @@ export const PROVISIONING_AUTOMATION_EVENTS = {
     label: "Organization provisioned",
   },
   "projects.provision": { eventType: "project.provisioned", label: "Project provisioned" },
+  "invitations.send": { eventType: "invitation.sent", label: "Invitation sent" },
   "invitations.accept": { eventType: "invitation.accepted", label: "Invitation accepted" },
 } as const satisfies Record<
   BackofficeProvisioningOperationId,

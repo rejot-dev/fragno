@@ -47,7 +47,11 @@ import {
 } from "@/backoffice-runtime/runtime-services";
 import type { AppInstallationOwner } from "@/fragno/app-installations/contracts";
 import { provisionedResourceId } from "@/fragno/apps/provisioned-id";
-import type { AppProvisioningResult, ProvisioningApp } from "@/fragno/auth/app-provisioning";
+import type {
+  AppInvitation,
+  AppProvisioningResult,
+  ProvisioningApp,
+} from "@/fragno/auth/app-provisioning";
 import {
   type AuthHookContext,
   type AuthUser,
@@ -1767,13 +1771,34 @@ export class InMemoryAuthObject implements AuthObject {
   }
 
   /** The organization an invitation is to, in any status; the app's installation there decides. */
-  async findInvitationOrganization(input: { invitationId: string }): Promise<string | null> {
+  async findInvitation(input: { invitationId: string }): Promise<AppInvitation | null> {
     const { adapter } = await this.#authContext();
     const invitation = await adapter.findOne<StoreInvitation>({
       model: "invitation",
       where: [{ field: "id", value: input.invitationId }],
     });
-    return invitation?.organizationId ?? null;
+    if (!invitation) {
+      return null;
+    }
+    const [organization, inviter] = await Promise.all([
+      adapter.findOne<StoreOrganization>({
+        model: "organization",
+        where: [{ field: "id", value: invitation.organizationId }],
+      }),
+      findStoreUser(adapter, invitation.inviterId),
+    ]);
+    if (!organization || !inviter) {
+      throw new Error(`Invitation '${invitation.id}' names a missing organization or inviter.`);
+    }
+    const expiresAt = toDate(invitation.expiresAt);
+    return {
+      organizationId: organization.id,
+      organizationName: organization.name,
+      email: invitation.email,
+      inviterName: inviter.name || inviter.email,
+      pending: invitation.status === "pending" && expiresAt > new Date(),
+      expiresAt: toIsoString(expiresAt),
+    };
   }
 
   /**
@@ -2527,8 +2552,8 @@ export class Auth extends DurableObject<CloudflareEnv> implements AuthObject {
     return await this.#object.confirmAppOrganizationMember(input);
   }
 
-  async findInvitationOrganization(input: { invitationId: string }) {
-    return await this.#object.findInvitationOrganization(input);
+  async findInvitation(input: { invitationId: string }): Promise<AppInvitation | null> {
+    return await this.#object.findInvitation(input);
   }
 
   async acceptAppInvitation(

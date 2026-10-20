@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { createContext, use, type ReactNode } from "react";
 import {
   Body,
   Button,
@@ -43,6 +43,9 @@ const FONT_SANS =
 export type TransactionalEmailBrand =
   | { kind: "backoffice"; homeUrl: string }
   | { kind: "app"; name: string; homeUrl: string; accentColor: string };
+
+// The brand's color for calls to action: an app's accent, or Backoffice's primary.
+const AccentColor = createContext(PALETTE.primary);
 
 // A branded message: the brand header, one heading and the body on a panel like a FormContainer,
 // and the brand footer. `preview` is the inbox snippet shown next to the subject; `reason` tells the
@@ -99,7 +102,9 @@ export function TransactionalEmail({
             >
               {heading}
             </Heading>
-            {children}
+            <AccentColor value={brand.kind === "app" ? brand.accentColor : PALETTE.primary}>
+              {children}
+            </AccentColor>
           </Section>
           {brand.kind === "backoffice" ? (
             <EmailFooter reason={reason} homeUrl={brand.homeUrl} />
@@ -296,7 +301,7 @@ export function EmailParagraph({ children }: { children: ReactNode }) {
   );
 }
 
-// The solid Button variant: the email's single call to action.
+// The solid Button variant, in the brand's color: the email's single call to action.
 export function EmailButton({ href, children }: { href: string; children: ReactNode }) {
   return (
     <Button
@@ -304,7 +309,7 @@ export function EmailButton({ href, children }: { href: string; children: ReactN
       style={{
         boxSizing: "border-box",
         borderRadius: "4px",
-        backgroundColor: PALETTE.primary,
+        backgroundColor: use(AccentColor),
         padding: "12px 16px",
         fontSize: "14px",
         lineHeight: "20px",
@@ -321,6 +326,7 @@ export function EmailButton({ href, children }: { href: string; children: ReactN
 // Fine print below the call to action. Repeats `href` as plain text for clients that break the
 // button, and puts it on its own line so the plain-text rendering does too.
 export function EmailFootnote({ href, children }: { href: string; children: ReactNode }) {
+  const accentColor = use(AccentColor);
   return (
     <Section
       style={{ marginTop: "32px", borderTop: `1px solid ${PALETTE.border}`, paddingTop: "16px" }}
@@ -333,7 +339,7 @@ export function EmailFootnote({ href, children }: { href: string; children: Reac
       <Text style={{ margin: 0, fontSize: "13px", lineHeight: "20px", color: PALETTE.muted2 }}>
         If the button does not work, paste this link into your browser:
         <br />
-        <Link href={href} style={{ color: PALETTE.primary, wordBreak: "break-all" }}>
+        <Link href={href} style={{ color: accentColor, wordBreak: "break-all" }}>
           {href}
         </Link>
       </Text>
