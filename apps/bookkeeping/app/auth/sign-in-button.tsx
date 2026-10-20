@@ -2,7 +2,7 @@ import { Button } from "@fragno-private/design-system/button";
 import { useState } from "react";
 import { useLocation, useSearchParams } from "react-router";
 
-import { authClient } from "../lib/auth-client";
+import { authClient } from "./auth-client";
 
 /**
  * Starts signing in, returning to `returnTo` afterwards, or to this page if it fails. Backoffice

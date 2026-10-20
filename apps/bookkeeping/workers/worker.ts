@@ -1,11 +1,11 @@
 import { createRequestHandler } from "react-router";
 import * as serverBuild from "virtual:react-router/server-build";
 
-import { BACKOFFICE_ACTIONS_PATH, handleBackofficeAction } from "./backoffice-actions";
+import { BACKOFFICE_ACTIONS_PATH, handleBackofficeAction } from "./backoffice/actions";
 
-export { Auth } from "./auth";
-export { Workflows } from "./workflows";
-export { Workspaces } from "./workspaces";
+export { Auth } from "./auth/auth";
+export { Workflows } from "./workflows/workflows";
+export { Workspaces } from "./workspaces/workspaces";
 
 const handleRequest = createRequestHandler(serverBuild, import.meta.env.MODE);
 

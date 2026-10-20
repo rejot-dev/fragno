@@ -1,18 +1,18 @@
 import { index, layout, route, type RouteConfig } from "@react-router/dev/routes";
 
 export default [
-  layout("routes/public-layout.tsx", [
-    index("routes/home.tsx"),
-    route("signup", "routes/signup.tsx"),
-    route("login", "routes/login.tsx"),
-    route("help", "routes/help.tsx"),
-    route("welcome", "routes/welcome.tsx"),
-    route("invitations/:invitationId", "routes/invitation.tsx"),
+  layout("public/layout.tsx", [
+    index("public/home.tsx"),
+    route("signup", "public/signup.tsx"),
+    route("login", "public/login.tsx"),
+    route("help", "public/help.tsx"),
+    route("welcome", "welcome/welcome.tsx"),
+    route("invitations/:invitationId", "invitations/invitation.tsx"),
   ]),
-  route("start", "routes/start.tsx"),
-  route("w/:slug", "routes/workspace-layout.tsx", [
-    index("routes/workspace.tsx"),
-    route("members", "routes/members.tsx"),
-    route("account", "routes/account.tsx"),
+  route("start", "workspace/start.tsx"),
+  route("w/:slug", "workspace/layout.tsx", [
+    index("workspace/overview.tsx"),
+    route("members", "workspace/members.tsx"),
+    route("account", "workspace/account.tsx"),
   ]),
 ] satisfies RouteConfig;

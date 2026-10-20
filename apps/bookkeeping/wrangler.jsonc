@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "fragno-bookkeeping",
-  "main": "workers/app.ts",
+  "main": "workers/worker.ts",
   "compatibility_date": "2026-10-07",
   "compatibility_flags": ["nodejs_compat"],
   "durable_objects": {

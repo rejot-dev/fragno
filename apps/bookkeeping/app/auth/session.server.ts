@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { redirect } from "react-router";
 
-import type { SessionUser } from "../../workers/auth";
+import type { SessionUser } from "../../workers/auth/auth";
 
 export async function getSessionUser(request: Request): Promise<SessionUser | null> {
   return await env.AUTH.getByName("auth").getSessionUser(request.headers.get("cookie") ?? "");

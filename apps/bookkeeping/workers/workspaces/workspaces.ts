@@ -1,8 +1,8 @@
 import type { OrganizationRole } from "@fragno-dev/backoffice-api/v0/organization";
 import { DurableObject } from "cloudflare:workers";
 
-import { applyMigrations } from "./migrations";
-import schema from "./workspaces-schema.sql?raw";
+import { applyMigrations } from "../migrations";
+import workspacesMigration from "./migrations/0001-workspaces.sql?raw";
 
 export type WorkspaceRole = OrganizationRole;
 
@@ -79,7 +79,7 @@ export class Workspaces extends DurableObject<CloudflareEnv> {
   constructor(ctx: DurableObjectState, env: CloudflareEnv) {
     super(ctx, env);
     void ctx.blockConcurrencyWhile(async () => {
-      applyMigrations(ctx, [schema]);
+      applyMigrations(ctx, [workspacesMigration]);
     });
   }
 

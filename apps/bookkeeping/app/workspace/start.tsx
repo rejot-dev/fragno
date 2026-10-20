@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { redirect } from "react-router";
 
-import { requireSessionUser } from "../lib/session.server";
+import { requireSessionUser } from "../auth/session.server";
 import type { Route } from "./+types/start";
 
 /** Where signing in lands: the wizard for someone without a workspace, else their first one. */

@@ -9,9 +9,9 @@ import {
 } from "react-router";
 
 import routeConfig from "../app/routes";
-import { Auth } from "../workers/auth";
-import { Workflows } from "../workers/workflows";
-import { Workspaces } from "../workers/workspaces";
+import { Auth } from "../workers/auth/auth";
+import { Workflows } from "../workers/workflows/workflows";
+import { Workspaces } from "../workers/workspaces/workspaces";
 import { env as workerEnv } from "./cloudflare-workers";
 import { FakeBackoffice } from "./fake-backoffice";
 import { FakeDurableObjectNamespace } from "./fake-durable-objects";
@@ -54,7 +54,7 @@ const routes: StaticHandler = createStaticHandler([
 export type ScenarioPage = {
   path: string;
   status: number;
-  /** Each matched route's loader data, by route ID, e.g. `routes/welcome`. */
+  /** Each matched route's loader data, by route ID, e.g. `welcome/welcome`. */
   loaderData: Record<string, unknown>;
   /** The submitted route's action data, when the action answered without redirecting. */
   actionData: unknown;

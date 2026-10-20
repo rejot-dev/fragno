@@ -24,7 +24,7 @@ test("an owner invites a colleague, who signs in with the invited address and jo
     const charles = scenario.browser();
     expect(await charles.navigate(invitationPath)).toMatchObject({
       loaderData: {
-        "routes/invitation": {
+        "invitations/invitation": {
           status: "open",
           workspaceName: "Analytical Engines",
           invitedBy: "Ada Lovelace",
@@ -35,11 +35,11 @@ test("an owner invites a colleague, who signs in with the invited address and jo
     });
     expect(await charles.signIn("charles@example.test", invitationPath)).toMatchObject({
       path: invitationPath,
-      loaderData: { "routes/invitation": { signedInAs: "charles@example.test" } },
+      loaderData: { "invitations/invitation": { signedInAs: "charles@example.test" } },
     });
     expect(await charles.submit(invitationPath, {})).toMatchObject({
       path: "/w/analytical-engines",
-      loaderData: { "routes/workspace-layout": { roles: ["member"] } },
+      loaderData: { "workspace/layout": { roles: ["member"] } },
     });
     expect(scenario.backoffice.organization("analytical-engines").members).toEqual(
       new Map([
@@ -50,11 +50,11 @@ test("an owner invites a colleague, who signs in with the invited address and jo
 
     // The link is used up, and Ada sees Charles among the members.
     expect(await charles.navigate(invitationPath)).toMatchObject({
-      loaderData: { "routes/invitation": { status: "invalid" } },
+      loaderData: { "invitations/invitation": { status: "invalid" } },
     });
     expect(await ada.navigate("/w/analytical-engines/members")).toMatchObject({
       loaderData: {
-        "routes/members": {
+        "workspace/members": {
           members: [
             { name: "Ada Lovelace", email: "ada@example.test", roles: ["owner"] },
             { name: "", email: "charles@example.test", roles: ["member"] },
@@ -96,7 +96,7 @@ test("an invitation works only for its address, and only owners and admins invit
     await dora.signIn("dora@example.test", invitationPath);
     await dora.submit(invitationPath, {});
     expect(await dora.navigate("/w/analytical-engines/members")).toMatchObject({
-      loaderData: { "routes/members": { canInvite: false } },
+      loaderData: { "workspace/members": { canInvite: false } },
     });
     expect(
       await dora.submit("/w/analytical-engines/members", {
