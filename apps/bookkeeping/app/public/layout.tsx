@@ -2,8 +2,8 @@ import { ButtonLink } from "@fragno-private/design-system/button";
 import { Icon } from "@fragno-private/design-system/icon";
 import { Link, Outlet, redirect } from "react-router";
 
-import { getSessionUser } from "../lib/session.server";
-import type { Route } from "./+types/public-layout";
+import { getSessionUser } from "../auth/session.server";
+import type { Route } from "./+types/layout";
 
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await getSessionUser(request);

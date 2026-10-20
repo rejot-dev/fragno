@@ -3,7 +3,7 @@ import { BackofficePageHeader } from "@fragno-private/design-system/page-header"
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { useOutletContext } from "react-router";
 
-import type { WorkspaceOutletContext } from "./workspace-layout";
+import type { WorkspaceOutletContext } from "./layout";
 
 export function meta() {
   return [{ title: "Overview · Bookkeeping" }];

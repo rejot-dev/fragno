@@ -7,10 +7,10 @@ import { env } from "cloudflare:workers";
 import { useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
 
-import type { SessionUser } from "../../workers/auth";
-import type { Workspace, WorkspaceRole } from "../../workers/workspaces";
-import { requireWorkspace } from "../lib/workspace.server";
-import type { Route } from "./+types/workspace-layout";
+import type { SessionUser } from "../../workers/auth/auth";
+import type { Workspace, WorkspaceRole } from "../../workers/workspaces/workspaces";
+import type { Route } from "./+types/layout";
+import { requireWorkspace } from "./access.server";
 
 /** What every workspace page receives from the layout. */
 export type WorkspaceOutletContext = {

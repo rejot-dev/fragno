@@ -3,10 +3,10 @@ import { Button } from "@fragno-private/design-system/button";
 import { env } from "cloudflare:workers";
 import { Form, Link, redirect, useNavigation } from "react-router";
 
-import { createProvisioningClient } from "../../workers/backoffice-client";
-import { SignInButton } from "../components/sign-in-button";
-import { assertSameOrigin, getSessionUser, requireSessionUser } from "../lib/session.server";
-import { callBackoffice } from "../lib/workspace.server";
+import { createProvisioningClient } from "../../workers/backoffice/client";
+import { assertSameOrigin, getSessionUser, requireSessionUser } from "../auth/session.server";
+import { SignInButton } from "../auth/sign-in-button";
+import { callBackoffice } from "../workspace/access.server";
 import type { Route } from "./+types/invitation";
 
 export function meta() {

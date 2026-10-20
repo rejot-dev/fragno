@@ -2,7 +2,7 @@ import { ButtonLink } from "@fragno-private/design-system/button";
 import { Icon } from "@fragno-private/design-system/icon";
 import { useOutletContext } from "react-router";
 
-import type { SessionUser } from "../../workers/auth";
+import type { SessionUser } from "../../workers/auth/auth";
 
 export function meta() {
   return [{ title: "Bookkeeping · A clearer place for your books" }];

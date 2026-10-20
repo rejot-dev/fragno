@@ -1,6 +1,6 @@
 import { Link } from "react-router";
 
-import { SignInButton } from "../components/sign-in-button";
+import { SignInButton } from "../auth/sign-in-button";
 
 export function meta() {
   return [{ title: "Get started · Bookkeeping" }];

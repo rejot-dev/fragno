@@ -9,17 +9,17 @@ import { env } from "cloudflare:workers";
 import { Form, useNavigation, useOutletContext } from "react-router";
 import { z } from "zod";
 
-import type { WorkspaceMember, WorkspaceRole } from "../../workers/workspaces";
-import { assertSameOrigin } from "../lib/session.server";
+import type { WorkspaceMember, WorkspaceRole } from "../../workers/workspaces/workspaces";
+import { assertSameOrigin } from "../auth/session.server";
+import type { Route } from "./+types/members";
 import {
   callBackoffice,
   canInvite,
   connectAsUser,
   parseRoles,
   requireWorkspace,
-} from "../lib/workspace.server";
-import type { Route } from "./+types/members";
-import type { WorkspaceOutletContext } from "./workspace-layout";
+} from "./access.server";
+import type { WorkspaceOutletContext } from "./layout";
 
 export function meta() {
   return [{ title: "Members · Bookkeeping" }];

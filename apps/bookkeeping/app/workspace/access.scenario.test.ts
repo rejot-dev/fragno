@@ -33,12 +33,12 @@ test("Backoffice's membership and roles reach Bookkeeping within a minute", asyn
     scenario.backoffice.admin.rename("analytical-engines", "Difference Engines");
     // A confirmed membership is trusted for a minute.
     expect(await charles.navigate("/w/analytical-engines")).toMatchObject({
-      loaderData: { "routes/workspace-layout": { roles: ["member"] } },
+      loaderData: { "workspace/layout": { roles: ["member"] } },
     });
     scenario.advanceTime(CONFIRMATION_EXPIRED_MS);
     expect(await charles.navigate("/w/analytical-engines")).toMatchObject({
       loaderData: {
-        "routes/workspace-layout": {
+        "workspace/layout": {
           roles: ["admin"],
           workspace: { name: "Difference Engines" },
         },
