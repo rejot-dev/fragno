@@ -11,7 +11,7 @@ test("a new person names themselves and their business, and lands in its workspa
     const welcome = await ada.signIn("ada@example.test");
     expect(welcome).toMatchObject({
       path: "/welcome",
-      loaderData: { "welcome/welcome": { wizard: { step: "setting-up" } } },
+      loaderData: { "welcome/welcome": { wizard: { step: "next-question" } } },
     });
 
     await scenario.drain();
@@ -23,7 +23,7 @@ test("a new person names themselves and their business, and lands in its workspa
     });
     // The page reloads before the workflow consumes an answer, and must not ask again.
     expect(await ada.submit("/welcome", { intent: "name", name: "Ada Lovelace" })).toMatchObject({
-      loaderData: { "welcome/welcome": { wizard: { step: "setting-up" } } },
+      loaderData: { "welcome/welcome": { wizard: { step: "next-question" } } },
     });
     await scenario.drain();
     expect(await ada.navigate("/welcome")).toMatchObject({

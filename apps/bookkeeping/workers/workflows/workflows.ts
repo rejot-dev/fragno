@@ -23,6 +23,9 @@ import {
 export type WizardState =
   | { step: "name" }
   | { step: "business-name" }
+  /** Between questions, until the workflow asks the next one. */
+  | { step: "next-question" }
+  /** The business name is in; the workspace is being created. */
   | { step: "setting-up" }
   | { step: "done"; slug: string }
   | { step: "failed"; message: string };
@@ -124,30 +127,34 @@ export class Workflows extends DurableObject<CloudflareEnv> {
       case "errored":
       case "terminated":
         return { step: "failed", message: status.error?.message ?? "Setting up failed." };
-      case "waiting": {
-        const current = await fragment.callServices(() =>
-          fragment.services.getInstanceCurrentStep(CREATE_WORKSPACE_WORKFLOW, instanceId),
-        );
-        const question = current?.waitEventType;
-        if (question !== "name" && question !== "business-name") {
-          return { step: "setting-up" };
-        }
-        // An answer is stored when it is sent, but the workflow takes it on its next run; the page
-        // reloads before that, and must not ask the question again.
-        const { events } = await fragment.callServices(() =>
-          fragment.services.listHistory({ workflowName: CREATE_WORKSPACE_WORKFLOW, instanceId }),
-        );
-        const answered = events.some(
-          (event) => event.type === question && event.consumedByStepKey === null,
-        );
-        return answered ? { step: "setting-up" } : { step: question };
-      }
+      case "waiting":
       case "active":
       case "paused":
-        return { step: "setting-up" };
+        break;
       default:
         throw new Error(`Unknown workflow status ${String(status.status satisfies never)}.`);
     }
+    // Restarting a wizard deletes its answers, so these are this run's.
+    const { events } = await fragment.callServices(() =>
+      fragment.services.listHistory({ workflowName: CREATE_WORKSPACE_WORKFLOW, instanceId }),
+    );
+    if (status.status === "waiting") {
+      const current = await fragment.callServices(() =>
+        fragment.services.getInstanceCurrentStep(CREATE_WORKSPACE_WORKFLOW, instanceId),
+      );
+      const question = current?.waitEventType;
+      // An answer is stored when it is sent, but the workflow takes it on its next run; the page
+      // reloads before that, and must not ask the question again.
+      if (
+        (question === "name" || question === "business-name") &&
+        !events.some((event) => event.type === question && event.consumedByStepKey === null)
+      ) {
+        return { step: question };
+      }
+    }
+    return events.some((event) => event.type === "business-name")
+      ? { step: "setting-up" }
+      : { step: "next-question" };
   }
 
   async answerWizard(input: { userId: string; answer: WizardAnswer }): Promise<void> {
