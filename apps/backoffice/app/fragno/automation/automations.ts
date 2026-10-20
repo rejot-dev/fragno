@@ -173,10 +173,7 @@ export const createAutomationsRuntime = (
   const workflowsFragment = createWorkflowsFragment<BackofficeExecutionContext>(
     {
       workflows: {
-        CODEMODE_SCRIPT: defineCodemodeWorkflow({
-          ...config,
-          env: config.runtime?.codemodeEnv ?? undefined,
-        }),
+        CODEMODE_SCRIPT: defineCodemodeWorkflow(config),
         MARKETPLACE_PACKAGE_PUBLISH: defineMarketplacePackagePublishWorkflow({
           ownerScope: config.ownerScope,
           runtime: config.runtime,

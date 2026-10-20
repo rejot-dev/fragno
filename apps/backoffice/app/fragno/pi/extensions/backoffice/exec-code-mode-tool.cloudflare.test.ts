@@ -41,6 +41,11 @@ import {
   execCodeModeParametersSchema,
 } from "./exec-code-mode-tool";
 
+const codemode = codemodeRunnerFor(
+  createCloudflareBackofficeObjectRegistry(env as CloudflareEnv).codemode.singleton().commands,
+  createBackofficeSystemExecution({ kind: "system" }),
+);
+
 const unusedObjects = {} as BackofficeObjectRegistry;
 const testRuntimeConfig: BackofficeRuntimeConfig = {
   authEmailVerification: { enabled: false },
@@ -426,8 +431,9 @@ describe("Pi execCodeMode tool", () => {
           timestamp: event.timestamp,
         },
         remote,
-        env,
+        codemode,
         allowedHooks: [],
+        origin: { kind: "inline" } as const,
         families: runtimeToolFamilies,
         toolContext: createTrustedSystemBackofficeToolContext({
           runtimes: { state: stateBackend },

@@ -22,6 +22,8 @@ import {
 import { InMemoryApiObject } from "../../../../../workers/api.do";
 import { InMemoryAuthObject } from "../../../../../workers/auth.do";
 import { InMemoryAutomationsObject } from "../../../../../workers/automations.do";
+import { InMemoryBillingObject } from "../../../../../workers/billing.do";
+import { InMemoryCodemodeObject } from "../../../../../workers/codemode.do";
 import { InMemoryFormsObject } from "../../../../../workers/forms.do";
 import {
   automationWorkflowRunsFromRecords,
@@ -48,6 +50,8 @@ const scenarioObjects = {
   API: (input) => new InMemoryApiObject(input),
   AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
   AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  BILLING: (input) => new InMemoryBillingObject(input),
+  CODEMODE: (input) => new InMemoryCodemodeObject(input),
   FORMS: (input) => new InMemoryFormsObject(input),
   MCP: null,
   TELEGRAM: null,

@@ -1,15 +1,28 @@
-import { assert, expect, test } from "vitest";
+import { assert, expect, expectTypeOf, test } from "vitest";
 
 import { defineScenario, runScenario } from "@fragno-dev/workflows/scenario";
+import { createWorkflowsTestRuntime } from "@fragno-dev/workflows/test";
 import { defineRemoteWorkflow } from "@fragno-dev/workflows/workflow";
 import { env } from "cloudflare:workers";
 
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
+import { createCloudflareBackofficeObjectRegistry } from "@/backoffice-runtime/cloudflare-durable-object-factory";
+import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { parseBackofficeUiResult } from "@/backoffice-ui/result";
+import type {
+  CodemodeExecution,
+  CodemodeRunFinishedHookPayload,
+} from "@/fragno/codemode/codemode-fragment";
+import { codemodeRunnerFor, type CodemodeRunner } from "@/fragno/codemode/codemode-object-execute";
 import { createTrustedSystemBackofficeToolContext } from "@/fragno/runtime-tools/runtime-tools";
 
 import { defineCodemodeWorkflowRun, runBackofficeCodemodeWorkflow } from "./workflow-execute";
+
+const codemode = codemodeRunnerFor(
+  createCloudflareBackofficeObjectRegistry(env as CloudflareEnv).codemode.singleton().commands,
+  createBackofficeSystemExecution({ kind: "system" }),
+);
 
 for (const caller of ["runner", "wrapper"] as const) {
   test(`native ${caller} preserves the host retry after the guest RPC throws`, async () => {
@@ -28,6 +41,7 @@ for (const caller of ["runner", "wrapper"] as const) {
     }`;
     const options = {
       allowedHooks: [],
+      origin: { kind: "inline" } as const,
       modules: {},
       families: [],
       toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
@@ -35,13 +49,13 @@ for (const caller of ["runner", "wrapper"] as const) {
     const Workflow = defineRemoteWorkflow(
       { name: workflowName },
       caller === "runner"
-        ? defineCodemodeWorkflowRun(code, env, options)
+        ? defineCodemodeWorkflowRun(code, codemode, options)
         : async (event, remote) => {
             const output = await runBackofficeCodemodeWorkflow({
               code,
               event,
               remote,
-              env,
+              codemode,
               ...options,
             });
             if (output.error) {
@@ -134,9 +148,10 @@ test.each(["throw", "return"] as const)(
       }
       return "awake";
     }`,
-        env,
+        codemode,
         {
           allowedHooks: [],
+          origin: { kind: "inline" } as const,
           modules: {},
           families: [],
           toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
@@ -196,6 +211,137 @@ test.each(["throw", "return"] as const)(
   },
 );
 
+test("suspension history uses ISO timestamps while the live runner sleeps and resumes", async () => {
+  const scope = { kind: "user", userId: "suspension-history" } as const;
+  const object = createCloudflareBackofficeObjectRegistry(env as CloudflareEnv).codemode.for(
+    scope,
+  ).commands;
+  const executor = codemodeRunnerFor(object, createBackofficeSystemExecution(scope));
+  const executions: CodemodeExecution[] = [];
+  const recordingRunner: CodemodeRunner = {
+    async run(activation, origin, host) {
+      const execution = await executor.run(activation, origin, host);
+      executions.push(execution);
+      return execution;
+    },
+  };
+  const startAt = new Date("2030-01-01T00:00:00.000Z");
+  const wakeAt = new Date("2030-01-01T00:00:03.000Z");
+  const workflowName = "suspension-history";
+  const instanceId = `${workflowName}-1`;
+  const Workflow = defineRemoteWorkflow(
+    { name: workflowName },
+    defineCodemodeWorkflowRun(
+      `async (event, step) => {
+        await step.sleepUntil("scheduled", new Date(event.payload.wakeAt));
+        const approval = await step.waitForEvent("approval", { type: "approved", timeout: "1 hour" });
+        return approval.payload;
+      }`,
+      recordingRunner,
+      {
+        allowedHooks: [],
+        origin: { kind: "inline" },
+        modules: {},
+        families: [],
+        toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
+      },
+    ),
+  );
+  await runScenario(
+    defineScenario({
+      name: "sleepUntil history survives a runner restart and event resumption",
+      workflows: { WORKFLOW: Workflow },
+      harness: {
+        adapter: { type: "in-memory" },
+        testBuilder: buildDatabaseFragmentsTest(),
+        runtime: createWorkflowsTestRuntime({ startAt, seed: 42 }),
+        autoTickHooks: false,
+      },
+      steps: ({ workflow, runner }) => [
+        workflow.create({
+          workflow: "WORKFLOW",
+          id: instanceId,
+          params: { wakeAt: wakeAt.toISOString() },
+          remoteWorkflowName: workflowName,
+        }),
+        runner.tick({ workflow: "WORKFLOW", instanceId, reason: "create" }),
+        workflow.read({
+          read: async () => {
+            expect(executions).toHaveLength(1);
+            const { runId, completion } = executions[0];
+            assert(completion.status === "suspended" && completion.reason.type === "sleep");
+            expect(completion.reason.runAt).toBeInstanceOf(Date);
+            expect(completion.reason.runAt?.toISOString()).toBe(wakeAt.toISOString());
+            const run = await object.getRun(runId);
+            assert(run?.status === "suspended" && run.reason.type === "sleep");
+            expectTypeOf(run.reason.runAt).toEqualTypeOf<string | undefined>();
+            expect(run.reason).toEqual({
+              type: "sleep",
+              stepKey: "sleep:scheduled",
+              runAt: wakeAt.toISOString(),
+            });
+            const page = await object.listRuns({ page: "first", pageSize: 10 });
+            expect(page.runs).toEqual([run]);
+            const hooks = await object.getDurableHookQueue();
+            const finishedHook = hooks.items.find((hook) => hook.hookName === "onRunFinished");
+            assert(finishedHook);
+            const finished = finishedHook.payload as CodemodeRunFinishedHookPayload;
+            assert(finished.status === "suspended" && finished.reason.type === "sleep");
+            expectTypeOf(finished.reason.runAt).toEqualTypeOf<string | undefined>();
+            expect(finished.reason).toEqual(run.reason);
+          },
+        }),
+        runner.restart(),
+        runner.advanceTimeAndRunUntilIdle({
+          workflow: "WORKFLOW",
+          instanceId,
+          setTo: wakeAt,
+          maxTicks: 1,
+        }),
+        workflow.read({
+          read: async () => {
+            expect(executions).toHaveLength(2);
+            const run = await object.getRun(executions[1].runId);
+            assert(run?.status === "suspended" && run.reason.type === "waitForEvent");
+            expectTypeOf(run.reason.runAt).toEqualTypeOf<string | undefined>();
+            expect(run.reason).toEqual({
+              type: "waitForEvent",
+              stepKey: "waitForEvent:approval",
+              eventType: "approved",
+              delayMs: 3_600_000,
+            });
+            expect(run.reason).not.toHaveProperty("runAt");
+          },
+        }),
+        runner.eventAndRunUntilIdle({
+          workflow: "WORKFLOW",
+          instanceId,
+          event: { type: "approved", payload: { approved: true } },
+        }),
+        workflow.read({
+          read: (ctx) => ctx.state.getStatus("WORKFLOW", instanceId),
+          assert: (status) => {
+            expect(status).toMatchObject({ status: "complete", output: { approved: true } });
+          },
+        }),
+        workflow.read({
+          read: async () => {
+            const page = await object.listRuns({ page: "first", pageSize: 10 });
+            expect(page.runs).toHaveLength(3);
+            expect(page.runs.find((run) => run.id === executions[0].runId)).toMatchObject({
+              status: "suspended",
+              reason: { type: "sleep", runAt: wakeAt.toISOString() },
+            });
+            expect(page.runs.find((run) => run.id === executions[2].runId)).toMatchObject({
+              status: "completed",
+            });
+          },
+        }),
+      ],
+    }),
+  );
+});
+
 test("native RPC errors without host suspension still reach the runner", async () => {
   const workflowName = "native-rpc-error-without-suspension";
   const instanceId = `${workflowName}-1`;
@@ -203,9 +349,10 @@ test("native RPC errors without host suspension still reach the runner", async (
     { name: workflowName },
     defineCodemodeWorkflowRun(
       `async (_event, _step) => { throw new Error("NATIVE_WORKFLOW_RPC_FAILURE_WITHOUT_SUSPENSION"); }`,
-      env,
+      codemode,
       {
         allowedHooks: [],
+        origin: { kind: "inline" } as const,
         modules: {},
         families: [],
         toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
@@ -271,9 +418,10 @@ test("a ui.form step collects workflow input that the paired waitForEvent consum
         const { payload } = await step.waitForEvent("approval", { type: approval.eventType });
         return payload;
       }`,
-      env,
+      codemode,
       {
         allowedHooks: [],
+        origin: { kind: "inline" } as const,
         families: [],
         modules: {},
         toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
@@ -390,9 +538,10 @@ test("a step returning an invalid generated UI fails without spending its retrie
           },
         }));
       }`,
-      env,
+      codemode,
       {
         allowedHooks: [],
+        origin: { kind: "inline" } as const,
         families: [],
         modules: {},
         toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),

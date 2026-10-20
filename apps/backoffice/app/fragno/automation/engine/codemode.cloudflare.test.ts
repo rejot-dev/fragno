@@ -8,11 +8,13 @@ import { env } from "cloudflare:workers";
 
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
+import { createCloudflareBackofficeObjectRegistry } from "@/backoffice-runtime/cloudflare-durable-object-factory";
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { AutomationRuntimeHostContext, AutomationRuntime } from "@/fragno/automation";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import { CODEMODE_CAPABILITY_ACTOR } from "@/fragno/automation/engine/codemode-invocation";
+import { codemodeRunnerFor } from "@/fragno/codemode/codemode-object-execute";
 import { createTestStateBackend } from "@/fragno/codemode/state-backend.test-utils";
 import { EMPTY_BASH_HOST_CONTEXT } from "@/fragno/runtime-tools/bash-host.test-utils";
 import { createUnavailableAutomationRouterRuntime } from "@/fragno/runtime-tools/families/automations-routing";
@@ -21,6 +23,11 @@ import { createUnavailableEventRuntime } from "@/fragno/runtime-tools/families/e
 
 import { executeWorkflowCodemodeAutomation } from "./codemode";
 import { defineCodemodeWorkflow } from "./codemode-workflow";
+
+const codemode = codemodeRunnerFor(
+  createCloudflareBackofficeObjectRegistry(env as CloudflareEnv).codemode.singleton().commands,
+  createBackofficeSystemExecution({ kind: "system" }),
+);
 
 describe("executeWorkflowCodemodeAutomation", () => {
   test("exposes Backoffice capability tools to workflow codemode automations", async () => {
@@ -45,7 +52,8 @@ describe("executeWorkflowCodemodeAutomation", () => {
       async (workflowEvent, remote) =>
         await executeWorkflowCodemodeAutomation({
           modules: {},
-          env,
+          codemode,
+          origin: { kind: "inline" },
           workflowEvent,
           remote,
           context: createAutomationContext(event, {
@@ -96,7 +104,6 @@ describe("executeWorkflowCodemodeAutomation", () => {
   test("rejects persisted capability grants outside the execution actor chain", async () => {
     const execution = createBackofficeSystemExecution({ kind: "org", orgId: "org-1" });
     const Workflow = defineCodemodeWorkflow({
-      env: env as Parameters<typeof defineCodemodeWorkflow>[0]["env"],
       runtime: {} as BackofficeRuntimeServices,
     });
     const harness = await createWorkflowsTestHarness({
@@ -165,7 +172,8 @@ describe("executeWorkflowCodemodeAutomation", () => {
       async (workflowEvent, remote) =>
         await executeWorkflowCodemodeAutomation({
           modules: {},
-          env,
+          codemode,
+          origin: { kind: "inline" },
           workflowEvent,
           remote,
           context: createAutomationContext(event),

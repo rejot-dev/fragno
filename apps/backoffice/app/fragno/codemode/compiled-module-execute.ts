@@ -5,7 +5,11 @@ import { codemodeWorkerBundleSchema } from "@fragno-dev/codemode/execution/codem
 import type { ResolvedProvider } from "@fragno-dev/codemode/runtime-api";
 import { z } from "zod";
 
-import type { CodemodeExecution, CodemodeRunOrigin } from "./codemode-fragment";
+import type {
+  CodemodeExecution,
+  CodemodeRunActivation,
+  CodemodeRunOrigin,
+} from "./codemode-fragment";
 import {
   codemodeProviderManifest,
   executeCodemodeInObject,
@@ -67,7 +71,7 @@ export async function runBackofficeCompiledModule(
 /** Executes a precompiled module with fresh capabilities and logs; null invocation runs top-level code only. */
 export async function executeBackofficeCompiledModule(
   input: CompiledModuleExecutionInput,
-): Promise<CodemodeExecution> {
+): Promise<CodemodeExecution<Extract<CodemodeRunActivation, { kind: "compiled" }>>> {
   return await executeCodemodeInObject(
     input.codemode,
     {

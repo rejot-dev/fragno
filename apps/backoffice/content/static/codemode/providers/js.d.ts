@@ -81,6 +81,15 @@ type JsLogsOutput =
         text: string;
       }[];
       error: string;
+    }
+  | {
+      runId: string;
+      status: "suspended";
+      logs: {
+        at: number;
+        channel: "log" | "info" | "debug" | "warn" | "error" | "codemode";
+        text: string;
+      }[];
     };
 type JsBuildInput = {
   path: string;

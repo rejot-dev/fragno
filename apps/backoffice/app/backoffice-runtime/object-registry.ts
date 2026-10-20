@@ -465,11 +465,11 @@ export type BillingObject = {
  */
 export type CodemodeObject = WarmableObject &
   DurableHookCommands & {
-    execute(
-      activation: CodemodeRunActivation,
+    execute<TActivation extends CodemodeRunActivation>(
+      activation: TActivation,
       context: CodemodeRunContext,
       host: CodemodeHost,
-    ): Promise<CodemodeExecution>;
+    ): Promise<CodemodeExecution<TActivation>>;
     getRun(runId: string): Promise<CodemodeRun | null>;
     listRuns(input: CodemodeRunPageInput): Promise<CodemodeRunPage>;
   };

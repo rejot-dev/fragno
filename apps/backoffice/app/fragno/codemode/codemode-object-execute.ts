@@ -16,11 +16,11 @@ import type {
 
 /** Runs code on behalf of one execution; callers name only what they run. */
 export type CodemodeRunner = {
-  run(
-    activation: CodemodeRunActivation,
+  run<TActivation extends CodemodeRunActivation>(
+    activation: TActivation,
     origin: CodemodeRunOrigin,
     host: CodemodeHost,
-  ): Promise<CodemodeExecution>;
+  ): Promise<CodemodeExecution<TActivation>>;
 };
 
 /**
@@ -49,13 +49,16 @@ export function codemodeProviderManifest(providers: readonly ResolvedProvider[])
 }
 
 /** The Codemode object owns the guest and host lifecycle; a cancelled caller only revokes its host. */
-export async function executeCodemodeInObject(
+export async function executeCodemodeInObject<
+  // Its host has no step capability; workflow ticks run through their own runner instead.
+  TActivation extends Exclude<CodemodeRunActivation, { kind: "workflow" }>,
+>(
   codemode: CodemodeRunner,
-  activation: CodemodeRunActivation,
+  activation: TActivation,
   origin: CodemodeRunOrigin,
   providers: ResolvedProvider[],
   signal: AbortSignal | null,
-): Promise<CodemodeExecution> {
+): Promise<CodemodeExecution<TActivation>> {
   signal?.throwIfAborted();
   const host = createCodemodeHost(providers, null);
   const execution = codemode.run(activation, origin, host);

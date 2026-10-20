@@ -34,8 +34,11 @@ import { InMemoryAppInstallationsObject } from "../../../workers/app-installatio
 import { InMemoryAppsObject } from "../../../workers/apps.do";
 import { InMemoryAuthObject } from "../../../workers/auth.do";
 import { InMemoryAutomationsObject } from "../../../workers/automations.do";
+import { InMemoryBillingObject } from "../../../workers/billing.do";
+import { InMemoryCodemodeObject } from "../../../workers/codemode.do";
 import { InMemoryFormsObject } from "../../../workers/forms.do";
 import { InMemoryMcpObject } from "../../../workers/mcp.do";
+import { InMemoryResendObject } from "../../../workers/resend.do";
 import { InMemoryTelegramObject } from "../../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../../workers/upload.do";
 import { CODEMODE_WORKFLOW, codemodeWorkflowParamsSchema } from "./engine/codemode-invocation";
@@ -48,8 +51,11 @@ const scenarioObjects = {
   APP_INSTALLATIONS: (input) => new InMemoryAppInstallationsObject(input),
   AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
   AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  BILLING: (input) => new InMemoryBillingObject(input),
+  CODEMODE: (input) => new InMemoryCodemodeObject(input),
   FORMS: (input) => new InMemoryFormsObject(input),
   MCP: (input) => new InMemoryMcpObject(input),
+  RESEND: (input) => new InMemoryResendObject(input),
   TELEGRAM: (input) => new InMemoryTelegramObject(input),
   UPLOAD: (input) => new InMemoryUploadObject(input),
 } satisfies LocalBackofficeObjects;
