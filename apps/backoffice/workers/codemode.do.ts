@@ -271,7 +271,10 @@ export class InMemoryCodemodeObject extends RpcTarget implements CodemodeObject 
           eventType: "run.started",
           occurredAt: run.startedAt,
           measurements: [{ meter: "codemode.executions", unit: "execution", quantity: 1 }],
-          metadata: { runId: run.runId },
+          metadata:
+            run.activationKind === "workflow"
+              ? { runId: run.runId, workflowInstanceId: run.workflowInstanceId }
+              : { runId: run.runId },
         },
         { propagationContext: hook.capturePropagationContext() },
       );
@@ -339,7 +342,7 @@ export class InMemoryCodemodeObject extends RpcTarget implements CodemodeObject 
     }
     const fragment = this.#getFragment();
     const runId = await fragment.callServices(() =>
-      fragment.services.startRun(activation.kind, context, new Date(this.#nowEpochMs())),
+      fragment.services.startRun(activation, context, new Date(this.#nowEpochMs())),
     );
     const completion = await executeCodemodeRunActivation(env, activation, host);
     await fragment.callServices(() =>

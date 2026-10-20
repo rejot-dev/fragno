@@ -52,6 +52,11 @@ type CodemodeRunOutcome =
 
 type CodemodeActivationKind = CodemodeRunActivation["kind"];
 
+/** A workflow run is one tick of its instance, so it always names that instance. */
+type CodemodeRunActivationIdentity =
+  | { activationKind: Exclude<CodemodeActivationKind, "workflow"> }
+  | { activationKind: "workflow"; workflowInstanceId: string };
+
 /** What a run executes, as named by its caller; the object never inspects guest code. */
 export type CodemodeRunOrigin = { kind: "inline" } | { kind: "file"; path: string };
 
@@ -65,11 +70,11 @@ export type CodemodeRunContext = {
   scopeRestriction: BackofficeContextScope | null;
 };
 
-export type CodemodeRunStartedHookPayload = CodemodeRunContext & {
-  runId: string;
-  activationKind: CodemodeActivationKind;
-  startedAt: string;
-};
+export type CodemodeRunStartedHookPayload = CodemodeRunContext &
+  CodemodeRunActivationIdentity & {
+    runId: string;
+    startedAt: string;
+  };
 
 /** Logs stay with the run record; hook payloads are copied into the hook queue and run events. */
 export type CodemodeRunFinishedHookPayload = CodemodeRunStartedHookPayload & {
@@ -92,11 +97,11 @@ type CodemodeHooksMap = {
 };
 
 /** A run is persisted before its guest starts; a run without an outcome never reported finishing. */
-export type CodemodeRun = CodemodeRunContext & {
-  id: string;
-  activationKind: CodemodeActivationKind;
-  createdAt: string;
-} & ({ status: "running" } | CodemodeRunOutcome);
+export type CodemodeRun = CodemodeRunContext &
+  CodemodeRunActivationIdentity & {
+    id: string;
+    createdAt: string;
+  } & ({ status: "running" } | CodemodeRunOutcome);
 
 /** A continuation cursor already fixes its page size. */
 export type CodemodeRunPageInput =
@@ -146,8 +151,20 @@ const codemodeSchema = schema("codemode", (s) =>
       // Runs started before billing were billed to nobody.
       t.addColumn("billingOrganizationId", column("string").nullable()),
     )
-    .alterTable("run", (t) => t.dropColumn("billingOrganizationId")),
+    .alterTable("run", (t) => t.dropColumn("billingOrganizationId"))
+
+    .alterTable("run", (t) => t.addColumn("workflowInstanceId", column("string").nullable())),
 );
+
+function codemodeRunActivationIdentity(record: {
+  activationKind: CodemodeActivationKind;
+  workflowInstanceId: string | null;
+}): CodemodeRunActivationIdentity {
+  return record.activationKind === "workflow"
+    ? // startRun stores the instance with every workflow run.
+      { activationKind: "workflow", workflowInstanceId: record.workflowInstanceId! }
+    : { activationKind: record.activationKind };
+}
 
 function codemodeRunFromRecord(record: {
   id: FragnoId;
@@ -155,12 +172,13 @@ function codemodeRunFromRecord(record: {
   origin: CodemodeRunOrigin;
   actors: AutomationActors;
   scopeRestriction: BackofficeContextScope | null;
+  workflowInstanceId: string | null;
   outcome: CodemodeRunOutcome | null;
   createdAt: Date;
 }): CodemodeRun {
   const run = {
     id: record.id.valueOf(),
-    activationKind: record.activationKind,
+    ...codemodeRunActivationIdentity(record),
     origin: record.origin,
     actors: record.actors,
     scopeRestriction: record.scopeRestriction,
@@ -182,10 +200,14 @@ const codemodeFragmentDefinition = defineFragment<CodemodeFragmentConfig>("codem
   .providesBaseService(({ defineService }) =>
     defineService({
       startRun: function (
-        activationKind: CodemodeActivationKind,
+        activation: CodemodeRunActivation,
         context: CodemodeRunContext,
         startedAt: Date,
       ) {
+        const identity: CodemodeRunActivationIdentity =
+          activation.kind === "workflow"
+            ? { activationKind: "workflow", workflowInstanceId: activation.event.instanceId }
+            : { activationKind: activation.kind };
         return this.serviceTx(codemodeSchema)
           .retrieve((uow) =>
             uow.find("run", (b) =>
@@ -205,12 +227,19 @@ const codemodeFragmentDefinition = defineFragment<CodemodeFragmentConfig>("codem
               );
             }
             const runId = uow
-              .create("run", { activationKind, ...context, outcome: null, createdAt: startedAt })
+              .create("run", {
+                activationKind: identity.activationKind,
+                workflowInstanceId:
+                  identity.activationKind === "workflow" ? identity.workflowInstanceId : null,
+                ...context,
+                outcome: null,
+                createdAt: startedAt,
+              })
               .valueOf();
             uow.triggerHook("onRunStarted", {
               ...context,
+              ...identity,
               runId,
-              activationKind,
               startedAt: startedAt.toISOString(),
             });
             return runId;
@@ -243,7 +272,7 @@ const codemodeFragmentDefinition = defineFragment<CodemodeFragmentConfig>("codem
               actors: run.actors,
               scopeRestriction: run.scopeRestriction,
               runId,
-              activationKind: run.activationKind,
+              ...codemodeRunActivationIdentity(run),
               startedAt: run.createdAt.toISOString(),
               finishedAt: finishedAt.toISOString(),
             };

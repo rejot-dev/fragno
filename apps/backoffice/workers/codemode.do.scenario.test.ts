@@ -564,6 +564,7 @@ test("each workflow tick is a billed run that publishes no run events", async ()
           expect(runs).toEqual([
             expect.objectContaining({
               activationKind: "workflow",
+              workflowInstanceId: "cool-down-1",
               origin: { kind: "file", path },
               actors: execution.actors,
               status: "completed",
@@ -574,6 +575,7 @@ test("each workflow tick is a billed run that publishes no run events", async ()
             }),
             expect.objectContaining({
               activationKind: "workflow",
+              workflowInstanceId: "cool-down-1",
               status: "suspended",
               reason: expect.objectContaining({ type: "sleep", stepKey: "sleep:cool down" }),
               logs: [{ at: expect.any(Number), channel: "log", text: "cooling down" }],
