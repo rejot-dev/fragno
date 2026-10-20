@@ -1,11 +1,10 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
-import { ActivityDisclosure } from "./activity-disclosure";
-import { ChatBoundaryDivider, ChatEventDivider } from "./chat-divider";
+import { ChatActivity, ChatActivityStep } from "./chat-activity";
+import { ChatBoundaryDivider, ChatEventDisclosure, ChatEventDivider } from "./chat-divider";
 import {
   ChatAssistantMessage,
   ChatMessageActions,
-  ChatReasoningTrace,
   ChatStoppedNotice,
   ChatTokenUsage,
   ChatUserMessage,
@@ -13,7 +12,6 @@ import {
 import { OUT_OF_CONTEXT, SAMPLE_TIME } from "./chat-story-support";
 import { CopyButton } from "./copy-button";
 import { InlineAlert } from "./inline-alert";
-import { WorkingIndicator } from "./working-indicator";
 
 export default { title: "Agents/Chat messages" };
 
@@ -28,7 +26,6 @@ export function UserAndAnswer() {
         <p>How much revenue did we book last week?</p>
       </ChatUserMessage>
       <ChatAssistantMessage
-        spacing="normal"
         author={{ name: "Pi", time: SAMPLE_TIME }}
         footer={
           <>
@@ -46,15 +43,26 @@ export function UserAndAnswer() {
 }
 
 export function Working() {
+  const [startedAt] = useState(() => new Date(Date.now() - 4_000));
   return (
     <Column>
-      <ChatAssistantMessage spacing="normal" author={null} footer={null}>
-        <ActivityDisclosure marker="progress" title="Working" time={SAMPLE_TIME} autoOpen>
-          <ChatReasoningTrace>
+      <ChatAssistantMessage author={{ name: "Pi", time: SAMPLE_TIME }} footer={null}>
+        <ChatActivity
+          status={{ kind: "running", headline: "Grouping invoices by week", startedAt }}
+          artifacts={null}
+        >
+          <ChatActivityStep
+            icon={null}
+            state="running"
+            title="Grouping invoices by week"
+            detail={null}
+            durationMs={null}
+            outlined={false}
+            actions={null}
+          >
             <p className="text-xs leading-6">Grouping invoices by the week they were issued.</p>
-          </ChatReasoningTrace>
-        </ActivityDisclosure>
-        <WorkingIndicator>Working…</WorkingIndicator>
+          </ChatActivityStep>
+        </ChatActivity>
       </ChatAssistantMessage>
     </Column>
   );
@@ -63,12 +71,11 @@ export function Working() {
 export function StoppedAndFailed() {
   return (
     <Column>
-      <ChatAssistantMessage spacing="normal" author={null} footer={<ChatStoppedNotice />}>
+      <ChatAssistantMessage author={{ name: "Pi", time: null }} footer={<ChatStoppedNotice />}>
         <p>Looking up the overdue invoices…</p>
       </ChatAssistantMessage>
       <ChatAssistantMessage
-        spacing="normal"
-        author={null}
+        author={{ name: "Pi", time: null }}
         footer={<InlineAlert>The model provider returned an overloaded error.</InlineAlert>}
       >
         <p>Drafting the reminders now.</p>
@@ -84,6 +91,9 @@ export function Dividers() {
       <ChatEventDivider marker="notification" time={SAMPLE_TIME} title="evt_42 via billing-route">
         Asked to handle 1 notification
       </ChatEventDivider>
+      <ChatEventDisclosure marker="accent" title="Context compacted" note="Requested" time={null}>
+        <p className="text-xs leading-6 text-[var(--bo-muted)]">The summary Pi continues from.</p>
+      </ChatEventDisclosure>
     </Column>
   );
 }

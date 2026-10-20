@@ -1,5 +1,5 @@
+import { ChatArtifactToggle } from "@fragno-private/design-system/chat-activity";
 import type { IconName } from "@fragno-private/design-system/icon";
-import { PanelToggleButton } from "@fragno-private/design-system/panel-toggle-button";
 
 import { useSessionWorkspaceNavigation } from "./workspace-context";
 
@@ -17,9 +17,12 @@ const workspaceIcons: Record<ToolWorkspaceSelectorOption["kind"], IconName> = {
 export function ToolWorkspaceSelector({
   options,
   toolLabel,
+  labelled,
 }: {
   options: readonly ToolWorkspaceSelectorOption[];
   toolLabel: string;
+  /** Whether each toggle names its view, as the turn's header does; steps show icons only. */
+  labelled: boolean;
 }) {
   const navigation = useSessionWorkspaceNavigation();
   if (!navigation || options.length === 0) {
@@ -33,10 +36,11 @@ export function ToolWorkspaceSelector({
       className="flex shrink-0 items-center gap-1"
     >
       {options.map((option) => (
-        <PanelToggleButton
+        <ChatArtifactToggle
           key={option.id}
           icon={workspaceIcons[option.kind]}
           label={option.label}
+          labelled={labelled}
           pressed={navigation.isItemSelected(option.id)}
           onClick={() => {
             navigation.toggleItem(option.id);

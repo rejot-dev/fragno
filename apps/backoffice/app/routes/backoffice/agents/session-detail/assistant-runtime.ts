@@ -93,12 +93,27 @@ export type PiNotificationRequestMessageMetadata = {
   notifications: PiNotificationReference[];
 };
 
+/** Tokens and cost added up over every model response in a turn. */
+export type PiTurnUsage = {
+  input: number;
+  output: number;
+  totalTokens: number;
+  /** In US dollars. */
+  cost: number;
+};
+
+/** One agent turn: every model response between two inputs, joined into one message. */
 export type PiAssistantMessageMetadata = {
-  kind?: "assistant";
-  errorMessage?: string;
-  statusText?: string | null;
-  stopReason?: Extract<PiConversationMessage, { role: "assistant" }>["stopReason"];
-  usage?: Extract<PiConversationMessage, { role: "assistant" }>["usage"];
+  kind: "assistant";
+  /** From the turn's newest response; earlier errors were retried past. */
+  errorMessage: string | null;
+  statusText: string | null;
+  /** Null while the newest response is still streaming. */
+  stopReason: Extract<PiConversationMessage, { role: "assistant" }>["stopReason"] | null;
+  /** Null when no response in the turn reported usage. */
+  usage: PiTurnUsage | null;
+  /** When the newest response ended; null while it streams or when Pi did not time it. */
+  finishedAt: Date | null;
 };
 
 type AssistantContentBlock = ThreadMessageLike["content"] extends string | readonly (infer Block)[]
@@ -561,10 +576,14 @@ export function createAssistantUiMessages({
       metadata: {
         custom: {
           kind: "assistant",
-          errorMessage: visibleErrorMessage,
+          errorMessage: visibleErrorMessage ?? null,
           statusText: shouldStream ? statusText : null,
           stopReason: message.stopReason,
-          usage: message.usage,
+          usage: message.usage ? turnUsage(message.usage) : null,
+          finishedAt:
+            shouldStream || message.durationMs === undefined
+              ? null
+              : new Date(message.timestamp + message.durationMs),
         } satisfies PiAssistantMessageMetadata,
       },
     });
@@ -608,17 +627,93 @@ export function createAssistantUiMessages({
       createdAt: messageDate(draftAgentMessage?.startedAt, messages.length),
       status: { type: "running" },
       metadata: {
-        custom: { statusText } satisfies PiAssistantMessageMetadata,
+        custom: {
+          kind: "assistant",
+          errorMessage: null,
+          statusText,
+          stopReason: null,
+          usage: null,
+          finishedAt: null,
+        } satisfies PiAssistantMessageMetadata,
       },
     });
   }
 
+  return joinAgentTurns(converted, activeContextStartPosition);
+}
+
+function turnUsage(usage: Extract<PiConversationMessage, { role: "assistant" }>["usage"]) {
   return {
-    messages: converted,
-    activeContextStartMessageId:
-      activeContextStartPosition === null
-        ? null
-        : (converted[activeContextStartPosition]?.id ?? null),
+    input: usage.input,
+    output: usage.output,
+    totalTokens: usage.totalTokens,
+    cost: usage.cost.total,
+  } satisfies PiTurnUsage;
+}
+
+/**
+ * Joins each run of assistant messages, one per model response, into one message for the agent's
+ * whole turn, so its thoughts and tool calls read as one piece of work. A turn is keyed by its
+ * first response's start, which the live draft shares with the response it is persisted as, so
+ * the turn keeps its identity while it streams. A run is split where the active context starts,
+ * so the divider can sit between its halves.
+ */
+function joinAgentTurns(
+  messages: readonly ThreadMessageLike[],
+  activeContextStartPosition: number | null,
+): { messages: ThreadMessageLike[]; activeContextStartMessageId: string | null } {
+  const joined: ThreadMessageLike[] = [];
+  let activeContextStartMessageId: string | null = null;
+  messages.forEach((message, index) => {
+    const previous = joined.at(-1);
+    if (
+      message.role === "assistant" &&
+      previous?.role === "assistant" &&
+      index !== activeContextStartPosition
+    ) {
+      joined[joined.length - 1] = joinResponses(previous, message);
+    } else {
+      joined.push(
+        message.role === "assistant"
+          ? { ...message, id: `pi-turn-${message.createdAt?.getTime()}` }
+          : message,
+      );
+    }
+    if (index === activeContextStartPosition) {
+      activeContextStartMessageId = joined.at(-1)?.id ?? null;
+    }
+  });
+  return { messages: joined, activeContextStartMessageId };
+}
+
+function joinResponses(turn: ThreadMessageLike, response: ThreadMessageLike): ThreadMessageLike {
+  const turnMetadata = turn.metadata?.custom as PiAssistantMessageMetadata;
+  const responseMetadata = response.metadata?.custom as PiAssistantMessageMetadata;
+  const usages = [turnMetadata.usage, responseMetadata.usage].filter(
+    (usage): usage is PiTurnUsage => usage !== null,
+  );
+  return {
+    ...response,
+    id: turn.id,
+    createdAt: turn.createdAt,
+    content: [
+      ...(turn.content as readonly AssistantContentBlock[]),
+      ...(response.content as readonly AssistantContentBlock[]),
+    ],
+    metadata: {
+      custom: {
+        ...responseMetadata,
+        usage:
+          usages.length === 0
+            ? null
+            : {
+                input: usages.reduce((sum, usage) => sum + usage.input, 0),
+                output: usages.reduce((sum, usage) => sum + usage.output, 0),
+                totalTokens: usages.reduce((sum, usage) => sum + usage.totalTokens, 0),
+                cost: usages.reduce((sum, usage) => sum + usage.cost, 0),
+              },
+      } satisfies PiAssistantMessageMetadata,
+    },
   };
 }
 
