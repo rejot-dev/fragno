@@ -1,11 +1,12 @@
 import { assert, describe, expect, test, vi } from "vitest";
 
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import Database from "better-sqlite3";
 import { z } from "zod";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
@@ -105,6 +106,74 @@ async function runAppAdminSqliteScenario<TVars extends Record<string, unknown>>(
 }
 
 describe("admin app runtime tool SQLite scenarios", () => {
+  test("apps whose trust names a since-removed provisioning permission stay listable", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "backoffice-removed-provisioning-"));
+    try {
+      await runBackofficeScenario(
+        defineBackofficeScenario({
+          objects: scenarioObjects,
+          name: "stored trust outlives a removed provisioning permission",
+          options: { sqliteDataDirectory: directory },
+          setup: ({ given }) => [given.auth.user({ id: "admin-1", role: "admin" })],
+          steps: ({ then }) => [
+            then.assert("listing drops the removed permission and keeps the rest", async (ctx) => {
+              const config = await createAppClient(ctx, "admin-1");
+              const context = appAdminContext(ctx, "admin-1");
+              assert(context.stateBackend);
+              const { bash } = await createInteractiveBashHost({
+                context: { ...context, stateBackend: context.stateBackend },
+              });
+              const created = await bash.exec(
+                `admin.apps.create --slug bookkeeping --oauth-client-id '${config.clientId}' --requested-permissions-json '[]' --print appId`,
+              );
+              assert.equal(created.exitCode, 0, created.stderr);
+              const trusted = await bash.exec(
+                `admin.apps.update-trust --app-id ${created.stdout.trim()} --trust-json '{"kind":"first-party","provisioningPermissions":["organizations.provision"],"branding":{"displayName":"Bookkeeping","logoUrl":"https://bookkeeping.example/logo.svg","accentColor":"#2f6f4e","homeUrl":"https://bookkeeping.example","supportUrl":"https://bookkeeping.example/help"}}'`,
+              );
+              assert.equal(trusted.exitCode, 0, trusted.stderr);
+
+              let changed = 0;
+              for (const file of await readdir(directory)) {
+                if (!file.endsWith(".sqlite")) {
+                  continue;
+                }
+                const database = new Database(path.join(directory, file));
+                try {
+                  const tables = database
+                    .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+                    .all() as { name: string }[];
+                  for (const { name } of tables) {
+                    const columns = (
+                      database.prepare(`PRAGMA table_info("${name}")`).all() as { name: string }[]
+                    ).map((column) => column.name);
+                    // Trust set before `users.provision` was removed still names it.
+                    if (columns.includes("provisioningPermissions")) {
+                      changed += database
+                        .prepare(`UPDATE "${name}" SET provisioningPermissions = ?`)
+                        .run(
+                          JSON.stringify(["users.provision", "organizations.provision"]),
+                        ).changes;
+                    }
+                  }
+                } finally {
+                  database.close();
+                }
+              }
+              assert.equal(changed, 1);
+
+              const listed = await bash.exec("admin.apps.list");
+              assert.equal(listed.exitCode, 0, listed.stderr);
+              expect(listed.stdout).toContain(
+                "  Trust: first-party as Bookkeeping, provisioning organizations.provision\n",
+              );
+            }),
+          ],
+        }),
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
   test("Bash renders empty catalogs, registration outcomes, and app metadata as text without breaking print selectors", async () => {
     await runAppAdminSqliteScenario(
       defineBackofficeScenario({
@@ -154,14 +223,14 @@ describe("admin app runtime tool SQLite scenarios", () => {
             const printedList = await bash.exec("admin.apps.list --print apps.0.id");
             assert.equal(printedList.exitCode, 0, printedList.stderr);
             assert.equal(printedList.stdout, `${app.id}\n`);
-            const trusted = `admin.apps.update-trust --app-id ${app.id} --trust-json '{"kind":"first-party","provisioningPermissions":["users.provision"],"branding":{"displayName":"Bookkeeping","logoUrl":"https://bookkeeping.example/logo.svg","accentColor":"#2f6f4e","homeUrl":"https://bookkeeping.example","supportUrl":"https://bookkeeping.example/help"}}'`;
+            const trusted = `admin.apps.update-trust --app-id ${app.id} --trust-json '{"kind":"first-party","provisioningPermissions":["organizations.provision"],"branding":{"displayName":"Bookkeeping","logoUrl":"https://bookkeeping.example/logo.svg","accentColor":"#2f6f4e","homeUrl":"https://bookkeeping.example","supportUrl":"https://bookkeeping.example/help"}}'`;
             const updated = await bash.exec(trusted);
             assert.equal(updated.exitCode, 0, updated.stderr);
             assert.equal(updated.stdout, "Updated app trust.\n");
             assert.equal((await bash.exec(trusted)).stdout, "App trust unchanged.\n");
             const relisted = await bash.exec("admin.apps.list");
             expect(relisted.stdout).toContain(
-              "  Trust: first-party as Bookkeeping, provisioning users.provision\n",
+              "  Trust: first-party as Bookkeeping, provisioning organizations.provision\n",
             );
           }),
         ],

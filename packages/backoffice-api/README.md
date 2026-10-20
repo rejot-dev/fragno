@@ -103,22 +103,21 @@ for await (const frame of backoffice.watch({ kind: "org", orgId }, "pi.agent.wat
 
 `v0/provisioning` is a separate contract for apps Backoffice operates. Its operations are
 `POST /api/<version>/provisioning/<operationId>` with the app's OAuth client-credentials token, not
-a scope: they create the users, organizations, and projects that scopes then name. Each requires the
+a scope: they create the organizations and projects that scopes then name, and bring the app's users
+into them. Users are those who authorized the app with OAuth. Each operation requires the
 provisioning permission of the same name, which only a Backoffice administrator grants, and is
-idempotent on the app's identifiers, so a call whose outcome is unknown can be repeated.
+idempotent, so a call whose outcome is unknown can be repeated.
 
 ```ts
 import { createBackofficeProvisioningClient } from "@fragno-dev/backoffice-api/v0/client";
 
 const provisioning = createBackofficeProvisioningClient({ origin, accessToken, fetch });
-const user = await provisioning.call("users.provision", {
-  externalUserId: "user_123",
-  email: "ada@example.com",
-  name: "Ada",
+const { organizationId } = await provisioning.call("organizations.provision", {
+  externalOrganizationId: "workspace_123",
+  name: "Acme",
+  // The OAuth subject of a user who signed in to the app.
+  ownerUserId,
 });
-if (user.status === "requires_link") {
-  // Another Backoffice account has the address; its owner links it by authorizing the app.
-}
 ```
 
 Errors reject like `createBackofficeApiClient`'s.
