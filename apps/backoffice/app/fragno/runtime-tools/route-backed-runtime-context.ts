@@ -350,6 +350,10 @@ export const createRouteBackedRuntimeContext = ({
           await kernel
             .scoped("PI_MANAGER", execution.scope, runtime.objects.piManager)
             .commands.classify({ request, billingOrganizationId }),
+        generateImage: async (request) =>
+          await kernel
+            .scoped("PI_MANAGER", execution.scope, runtime.objects.piManager)
+            .commands.generateImage({ request, billingOrganizationId }),
       },
     },
     event: {

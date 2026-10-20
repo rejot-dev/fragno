@@ -29,6 +29,7 @@ export class PiScenarioManager extends DurableObject<CloudflareEnv> {
         { provider: "faux", modelId: "faux-1", label: "Faux 1", contextWindow: 128_000 },
       ],
       classifier: null,
+      imageGenerator: null,
       nowEpochMs: Date.now,
     });
   }

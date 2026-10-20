@@ -132,6 +132,14 @@ test("a workflow routes a ticket by the classifier's answers and bills its organ
           quantity: "1200",
           eventCount: "1",
         }),
+        then.billing.tracker({
+          organizationId: scope.orgId,
+          scope,
+          period,
+          meter: "models.classifications",
+          quantity: "1",
+          eventCount: "1",
+        }),
         // 1,200 input tokens at $0.10 per million.
         then.billing.tracker({
           organizationId: scope.orgId,
@@ -230,6 +238,104 @@ test("a personal-scope classification without a billing organization never reach
             }),
           ).rejects.toThrow("MODELS_BILLING_OWNER_REQUIRED");
           expect(ctx.fakes.classifier?.calls).toEqual([]);
+        }),
+      ],
+    }),
+  );
+});
+
+const productShotWorkflow = `defineWorkflow({ name: "product-shot" }, async (event, step) =>
+  await step.do("draw product shot", async () =>
+    await models.generateImage({
+      prompt: event.payload.prompt,
+      out: "/workspace/images/" + event.payload.sku + ".jpg",
+      size: "1536x1024",
+      quality: "low",
+    }),
+  ),
+);`;
+
+test("a workflow writes a generated image to the workspace and bills its organization", async () => {
+  const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46]);
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "product shot with models.generateImage",
+      objects: allLocalObjects,
+      files: backofficeFiles.workspaceStarter({
+        "automations/product-shot.workflow.js": productShotWorkflow,
+      }),
+      fakes: ({ fake }) => ({
+        openaiImages: fake.openaiImages({ image: jpeg, inputTokens: 40, outputTokens: 4_160 }),
+      }),
+      setup: ({ given }) => [
+        given.organization.exists({ id: scope.orgId, name: "Ada Labs" }),
+        given.auth.user({ id: "member-1" }),
+        given.auth.member({ orgId: scope.orgId, userId: "member-1", roles: ["member"] }),
+      ],
+      steps: ({ when, then }) => [
+        when.workflow.createInstance({
+          orgId: scope.orgId,
+          path: "/workspace/automations/product-shot.workflow.js",
+          remoteWorkflowName: "product-shot",
+          instanceId: "product-shot-1",
+          execution: member,
+          event: {
+            ...ticketOpened,
+            id: "product-1",
+            source: "catalog",
+            eventType: "product.created",
+            payload: { sku: "lamp-1", prompt: "A brass desk lamp on white, studio light" },
+          },
+        }),
+        then.workflow.instance({
+          remoteWorkflowName: "product-shot",
+          status: "complete",
+          output: { path: "/workspace/images/lamp-1.jpg" },
+        }),
+        then.assert("the .jpg path asked OpenAI for a JPEG", ({ fakes }) => {
+          expect(fakes.openaiImages?.requests).toEqual([
+            {
+              url: "https://api.openai.com/v1/images/generations",
+              body: {
+                model: "gpt-image-2.5-flare",
+                prompt: "A brass desk lamp on white, studio light",
+                n: 1,
+                size: "1536x1024",
+                quality: "low",
+                output_format: "jpeg",
+              },
+            },
+          ]);
+        }),
+        then.files.bytes({
+          orgId: scope.orgId,
+          path: "/workspace/images/lamp-1.jpg",
+          content: jpeg,
+        }),
+        then.billing.tracker({
+          organizationId: scope.orgId,
+          scope,
+          period,
+          meter: "ai.tokens.output",
+          quantity: "4160",
+          eventCount: "1",
+        }),
+        then.billing.tracker({
+          organizationId: scope.orgId,
+          scope,
+          period,
+          meter: "models.images",
+          quantity: "1",
+          eventCount: "1",
+        }),
+        // 40 text input tokens at $5 and 4,160 image output tokens at $30 per million.
+        then.billing.tracker({
+          organizationId: scope.orgId,
+          scope,
+          period,
+          meter: "ai.cost.total",
+          quantity: "125000000",
+          eventCount: "1",
         }),
       ],
     }),

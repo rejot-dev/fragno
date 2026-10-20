@@ -6,6 +6,8 @@ import {
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 
+import type { Usage } from "@earendil-works/pi-ai";
+
 import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
 import {
   BackofficeInternalRequestError,
@@ -18,6 +20,7 @@ import {
   type PiManagerObject,
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
+import type { BillingMeasurementInput } from "@/fragno/billing/contracts";
 import {
   piAgentObjectName,
   type PiAgent,
@@ -26,9 +29,11 @@ import {
 } from "@/fragno/pi/agent/pi-agent-contract";
 import {
   createPiClassifier,
+  createPiImageGenerator,
   createPiModels,
   listAvailablePiModels,
   type PiClassifier,
+  type PiImageGenerator,
 } from "@/fragno/pi/agent/pi-models";
 import {
   createPiBillingMeasurements,
@@ -41,6 +46,7 @@ import {
   createPiManagerFragment,
   reportPiAgentTurnSettled,
 } from "@/fragno/pi/manager/pi-manager-fragment";
+import { base64ToBytes } from "@/lib/base64";
 
 import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
 import type { BackofficeObjectImplementation } from "./lib/backoffice-object-implementation";
@@ -51,6 +57,15 @@ import {
 } from "./lib/scoped-fragment-durable-object";
 
 type PiManagerFragment = ReturnType<typeof createPiManagerFragment>;
+
+/** Each delivered result counts once, next to the tokens it cost. */
+const MODEL_CALL_COUNTS = {
+  classify: { meter: "models.classifications", unit: "classification", quantity: 1 },
+  generateImage: { meter: "models.images", unit: "image", quantity: 1 },
+} as const satisfies Record<string, BillingMeasurementInput>;
+
+/** Who pays for a model call: nobody while billing is disabled. */
+type ModelPayer = { type: "unbilled" } | { type: "billed"; organizationId: string };
 
 /** Shared scoped agent directory; agent execution is handed to the runtime's agent namespace. */
 export class InMemoryPiManagerObject extends RpcTarget implements PiManagerObject {
@@ -64,6 +79,7 @@ export class InMemoryPiManagerObject extends RpcTarget implements PiManagerObjec
   >;
   readonly #runtime: BackofficeRuntimeServices;
   readonly #classifier: PiClassifier | null;
+  readonly #imageGenerator: PiImageGenerator | null;
 
   constructor({
     state,
@@ -73,6 +89,7 @@ export class InMemoryPiManagerObject extends RpcTarget implements PiManagerObjec
     agent,
     supportedAvailableModels,
     classifier,
+    imageGenerator,
     nowEpochMs,
   }: {
     state: BackofficeObjectState;
@@ -83,6 +100,8 @@ export class InMemoryPiManagerObject extends RpcTarget implements PiManagerObjec
     supportedAvailableModels: () => Promise<readonly PiAvailableModel[]>;
     /** Null without classifier credentials, so `classify` rejects. */
     classifier: PiClassifier | null;
+    /** Null without image generation credentials, so `generateImage` rejects. */
+    imageGenerator: PiImageGenerator | null;
     nowEpochMs: () => number;
   }) {
     super();
@@ -90,6 +109,7 @@ export class InMemoryPiManagerObject extends RpcTarget implements PiManagerObjec
     this.#nowEpochMs = nowEpochMs;
     this.#runtime = runtime;
     this.#classifier = classifier;
+    this.#imageGenerator = imageGenerator;
     this.#config = {
       agent,
       supportedAvailableModels,
@@ -167,36 +187,90 @@ export class InMemoryPiManagerObject extends RpcTarget implements PiManagerObjec
     if (!this.#classifier) {
       throw new Error("MODELS_CLASSIFY_UNAVAILABLE: no classifier is configured.");
     }
-    const scope = this.#scoped.requireOwnerScope();
-    const billed = this.#runtime.config.bindings.billing;
-    const payer = backofficeScopeOrganization(scope)?.orgId ?? billingOrganizationId;
-    if (billed && payer === null) {
+    const payer = this.#modelPayer(billingOrganizationId);
+    if (payer === null) {
       return { type: "billing-owner-required" };
     }
     const result = await this.#classifier(request);
-    // A failed classification can still report the tokens the provider charged for.
-    const counters = piBillingCountersFromUsage(result.usage ? [result.usage] : []);
-    if (billed && payer !== null && hasPiBillingUsage(counters)) {
-      const fragment = await this.#scoped.getRuntime();
-      await fragment.callServices(() =>
-        fragment.services.recordModelUsage({
-          organizationId: payer,
-          event: {
-            id: `models-classify:${crypto.randomUUID()}`,
-            scope,
-            source: "models",
-            eventType: "classify.completed",
-            occurredAt: new Date(this.#nowEpochMs()).toISOString(),
-            measurements: createPiBillingMeasurements(counters),
-            metadata: { provider: result.provider, model: result.model },
-          },
-        }),
-      );
-    }
+    await this.#recordModelUsage(payer, {
+      operation: "classify",
+      succeeded: result.stopReason === "stop",
+      ...result,
+    });
     if (result.stopReason !== "stop") {
       throw new Error(`MODELS_CLASSIFY_FAILED: ${result.errorMessage ?? result.stopReason}`);
     }
     return { type: "classified", answers: result.answers };
+  }
+
+  async generateImage({
+    request,
+    billingOrganizationId,
+  }: Parameters<PiManagerObject["generateImage"]>[0]): ReturnType<
+    PiManagerObject["generateImage"]
+  > {
+    if (!this.#imageGenerator) {
+      throw new Error("MODELS_GENERATE_IMAGE_UNAVAILABLE: no image generator is configured.");
+    }
+    const payer = this.#modelPayer(billingOrganizationId);
+    if (payer === null) {
+      return { type: "billing-owner-required" };
+    }
+    const result = await this.#imageGenerator(request);
+    const image = result.output.find((part) => part.type === "image");
+    const succeeded = result.stopReason === "stop" && image !== undefined;
+    await this.#recordModelUsage(payer, { operation: "generateImage", succeeded, ...result });
+    if (!succeeded) {
+      throw new Error(
+        `MODELS_GENERATE_IMAGE_FAILED: ${result.errorMessage ?? (image ? result.stopReason : "the model returned no image")}`,
+      );
+    }
+    return { type: "generated", bytes: base64ToBytes(image.data) };
+  }
+
+  /** The scope's organization pays, then `billingOrganizationId`; null when nobody can. */
+  #modelPayer(billingOrganizationId: string | null): ModelPayer | null {
+    if (!this.#runtime.config.bindings.billing) {
+      return { type: "unbilled" };
+    }
+    const organizationId =
+      backofficeScopeOrganization(this.#scoped.requireOwnerScope())?.orgId ?? billingOrganizationId;
+    return organizationId === null ? null : { type: "billed", organizationId };
+  }
+
+  /** Commits the usage for durable delivery; a failed call can still report tokens it was charged. */
+  async #recordModelUsage(
+    payer: ModelPayer,
+    call: {
+      operation: keyof typeof MODEL_CALL_COUNTS;
+      succeeded: boolean;
+      provider: string;
+      model: string;
+      usage?: Usage;
+    },
+  ): Promise<void> {
+    const counters = piBillingCountersFromUsage(call.usage ? [call.usage] : []);
+    if (payer.type === "unbilled" || (!call.succeeded && !hasPiBillingUsage(counters))) {
+      return;
+    }
+    const fragment = await this.#scoped.getRuntime();
+    await fragment.callServices(() =>
+      fragment.services.recordModelUsage({
+        organizationId: payer.organizationId,
+        event: {
+          id: `models-${call.operation}:${crypto.randomUUID()}`,
+          scope: this.#scoped.requireOwnerScope(),
+          source: "models",
+          eventType: `${call.operation}.${call.succeeded ? "completed" : "failed"}`,
+          occurredAt: new Date(this.#nowEpochMs()).toISOString(),
+          measurements: [
+            ...createPiBillingMeasurements(counters),
+            ...(call.succeeded ? [MODEL_CALL_COUNTS[call.operation]] : []),
+          ],
+          metadata: { provider: call.provider, model: call.model },
+        },
+      }),
+    );
   }
 
   async alarm(): Promise<void> {
@@ -217,6 +291,7 @@ export class PiManager extends DurableObject<CloudflareEnv> implements PiManager
         env.PI.get(env.PI.idFromName(piAgentObjectName(config))) as unknown as PiAgent,
       supportedAvailableModels: async () => await listAvailablePiModels(models),
       classifier: createPiClassifier(env),
+      imageGenerator: createPiImageGenerator(env, fetch),
       nowEpochMs: Date.now,
     });
   }
@@ -237,6 +312,12 @@ export class PiManager extends DurableObject<CloudflareEnv> implements PiManager
     input: Parameters<PiManagerObject["classify"]>[0],
   ): ReturnType<PiManagerObject["classify"]> {
     return await this.#object.classify(input);
+  }
+
+  async generateImage(
+    input: Parameters<PiManagerObject["generateImage"]>[0],
+  ): ReturnType<PiManagerObject["generateImage"]> {
+    return await this.#object.generateImage(input);
   }
 
   async alarm(): Promise<void> {

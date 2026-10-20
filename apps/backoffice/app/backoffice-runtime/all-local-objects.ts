@@ -1,6 +1,7 @@
 import { createPiAgentDependencies } from "@/fragno/pi/agent/pi-agent-harness";
 import {
   createPiClassifier,
+  createPiImageGenerator,
   createPiModels,
   listAvailablePiModels,
 } from "@/fragno/pi/agent/pi-models";
@@ -195,6 +196,7 @@ export const allLocalObjects = {
       agent: input.getPiAgent,
       supportedAvailableModels,
       classifier: createPiClassifier(input.env),
+      imageGenerator: createPiImageGenerator(input.env, fetch),
     });
   },
   BILLING: (input) => new InMemoryBillingObject(input),
