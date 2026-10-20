@@ -117,15 +117,16 @@ one in `.dev.vars`: callback URL, scopes, and client credentials), registers the
 and `org.manage` and the actions declared in `workers/backoffice/actions.ts`, and writes the client
 ID, secret, and both origins to `.dev.vars`. Bookkeeping is registered as a first-party app with
 every provisioning permission: Backoffice skips its consent screen and permission review, and
-Bookkeeping may create organizations and administrations in Backoffice and accept invitations for
-its users (see Backoffice's `app/fragno/apps/README.md`). It reads both origins from `.dev.vars` and
-defaults to `http://127.0.0.1:5173` and `http://127.0.0.1:6174`; pass `--backoffice-url` or
-`--bookkeeping-url` to change them, which also moves the callback and the action endpoint. The app
-is registered as `app#bookkeeping`; pass `--slug` to choose another permanent name. Rerunning
-converges on the same client and app, updating its requested permissions and actions in place; as a
-first-party app, Bookkeeping has new permissions in every workspace within a minute. Action changes
-apply automatically to existing installations; pass `--change-approval installation` to make each
-installation's owner approve them. Production requires HTTPS.
+Bookkeeping may create organizations and administrations in Backoffice, and send and accept
+invitations for its users (see Backoffice's `app/fragno/apps/README.md`). It reads both origins from
+`.dev.vars` and defaults to `http://127.0.0.1:5173` and `http://127.0.0.1:6174`; pass
+`--backoffice-url` or `--bookkeeping-url` to change them, which also moves the callback and the
+action endpoint. The app is registered as `app#bookkeeping`; pass `--slug` to choose another
+permanent name. Rerunning converges on the same client and app, updating its requested permissions
+and actions in place; as a first-party app, Bookkeeping has new permissions in every workspace
+within a minute. Action changes apply automatically to existing installations; pass
+`--change-approval installation` to make each installation's owner approve them. Production requires
+HTTPS.
 
 ## Workspaces
 
@@ -150,11 +151,13 @@ unreachable, unconfirmed access answers 503. Members pages list members with `or
 the viewer and refresh the copy, showing the names people gave Bookkeeping.
 
 **Inviting.** Owners and admins invite on the members page: Bookkeeping creates the invitation with
-`org.invitations.create` as the inviter, so Backoffice's rules apply (only owners invite owners),
-and shows a link to `/invitations/:invitationId` to send. The invited person signs in there and
-joins: Bookkeeping calls `invitations.accept`, and Backoffice checks that the invitation is for
-their verified address. Invitations are sent only from Bookkeeping; someone invited in Backoffice
-itself finds the workspace once they open it.
+`org.invitations.create` as the inviter, so Backoffice's rules apply (only owners invite owners).
+Backoffice then emails the invitation in Bookkeeping's name with `invitations.send`, linking to
+`/invitations/:invitationId`; the page shows the link too, to send by hand when Backoffice cannot
+email, as a local Backoffice without Resend cannot. The invited person signs in there and joins:
+Bookkeeping calls `invitations.accept`, and Backoffice checks that the invitation is for their
+verified address. Invitations are sent only from Bookkeeping; someone invited in Backoffice itself
+finds the workspace once they open it.
 
 ### Backoffice actions
 

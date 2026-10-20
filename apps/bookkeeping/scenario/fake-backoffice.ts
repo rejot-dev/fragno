@@ -74,6 +74,10 @@ export class FakeBackoffice {
   readonly origin: string;
   readonly client = { id: "bookkeeping", secret: "bookkeeping-secret" };
   readonly #redirectUri: string;
+  readonly #bookkeepingOrigin: string;
+  /** Invitation emails Backoffice sent in Bookkeeping's name. */
+  readonly sentInvitations: { to: string; url: string }[] = [];
+  #emailConfigured = true;
   readonly #users = new Map<string, User>();
   readonly #organizations = new Map<string, Organization>();
   readonly #invitations = new Map<string, Invitation>();
@@ -87,6 +91,7 @@ export class FakeBackoffice {
 
   constructor({ origin, bookkeepingOrigin }: { origin: string; bookkeepingOrigin: string }) {
     this.origin = origin;
+    this.#bookkeepingOrigin = bookkeepingOrigin;
     this.#redirectUri = `${bookkeepingOrigin}/api/auth/callback/backoffice`;
   }
 
@@ -144,6 +149,11 @@ export class FakeBackoffice {
         ]),
       ),
     };
+  }
+
+  /** A Backoffice without email delivery, as a local one usually is, fails to send emails. */
+  setEmailConfigured(configured: boolean): void {
+    this.#emailConfigured = configured;
   }
 
   /** While Backoffice is unreachable, every request fails as a network failure does. */
@@ -445,6 +455,32 @@ export class FakeBackoffice {
             slug: project.slug,
             created: existing === undefined,
           }),
+        );
+      }
+      case "invitations.send": {
+        const input = backofficeProvisioningOperations[operationId].input.parse(body);
+        const invitation = this.#invitations.get(input.invitationId);
+        const organization = invitation && this.#organizations.get(invitation.organizationId);
+        if (!invitation || organization?.installation !== "active") {
+          throw new ApiError(
+            "not_found",
+            "The invitation is not to one of this app's organizations.",
+          );
+        }
+        if (new URL(input.url).origin !== this.#bookkeepingOrigin) {
+          throw new ApiError("invalid_request", "Invitation links go to the app's own origin.");
+        }
+        if (invitation.status !== "pending") {
+          throw new ApiError("conflict", "The invitation is no longer pending.");
+        }
+        if (!this.#emailConfigured) {
+          return Response.json({ message: "Resend is not configured." }, { status: 500 });
+        }
+        if (!this.sentInvitations.some(({ url }) => url === input.url)) {
+          this.sentInvitations.push({ to: invitation.email, url: input.url });
+        }
+        return Response.json(
+          backofficeProvisioningOperations[operationId].output.parse({ email: invitation.email }),
         );
       }
       case "invitations.accept": {
