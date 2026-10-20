@@ -60,6 +60,7 @@ export type PiClassificationRequest = Pick<ClassifierContext, "state" | "questio
 /** Classifies with OpenAI's Decisions API, which requires an OpenAI API key. */
 export function createPiClassifier(
   env: Pick<BackofficeRuntimeEnv, "OPENAI_API_KEY">,
+  fetch: FetchFunction,
 ): PiClassifier | null {
   if (!env.OPENAI_API_KEY) {
     return null;
@@ -70,7 +71,7 @@ export function createPiClassifier(
   if (!model) {
     throw new Error("pi-ai no longer lists OpenAI's gpt-6-luna classifier.");
   }
-  return async (context) => await models.classify(model, context);
+  return async (context) => await models.classify(model, context, { fetch });
 }
 
 /** Generates an image from a prompt; resolves to an error result instead of rejecting. */

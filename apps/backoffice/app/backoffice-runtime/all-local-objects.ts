@@ -195,7 +195,7 @@ export const allLocalObjects = {
       ...input,
       agent: input.getPiAgent,
       supportedAvailableModels,
-      classifier: createPiClassifier(input.env),
+      classifier: createPiClassifier(input.env, fetch),
       imageGenerator: createPiImageGenerator(input.env, fetch),
     });
   },

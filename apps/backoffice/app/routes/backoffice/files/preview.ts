@@ -1,6 +1,7 @@
 import { backofficeRuntimeScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import { absoluteFilePathSchema } from "@/file-collection/absolute-file-path";
 import { requireScopeSelection } from "@/layouts/backoffice-shell-request.server";
+import { rasterImageContentType } from "@/lib/raster-image-content-type";
 
 import type { Route } from "./+types/preview";
 import { createFilesOverviewCollections } from "./file-collections.server";
@@ -79,21 +80,4 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
     headers.set("content-length", String(content.sizeBytes));
   }
   return new Response(body, { headers });
-}
-
-function rasterImageContentType(prefix: Uint8Array): string | null {
-  if ([137, 80, 78, 71, 13, 10, 26, 10].every((byte, index) => prefix[index] === byte)) {
-    return "image/png";
-  }
-  if (prefix[0] === 255 && prefix[1] === 216 && prefix[2] === 255) {
-    return "image/jpeg";
-  }
-  const signature = new TextDecoder("ascii").decode(prefix);
-  if (signature.startsWith("GIF87a") || signature.startsWith("GIF89a")) {
-    return "image/gif";
-  }
-  if (signature.startsWith("RIFF") && signature.slice(8, 12) === "WEBP") {
-    return "image/webp";
-  }
-  return null;
 }

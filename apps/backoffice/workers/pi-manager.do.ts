@@ -290,7 +290,7 @@ export class PiManager extends DurableObject<CloudflareEnv> implements PiManager
       agent: (config): PiAgent =>
         env.PI.get(env.PI.idFromName(piAgentObjectName(config))) as unknown as PiAgent,
       supportedAvailableModels: async () => await listAvailablePiModels(models),
-      classifier: createPiClassifier(env),
+      classifier: createPiClassifier(env, fetch),
       imageGenerator: createPiImageGenerator(env, fetch),
       nowEpochMs: Date.now,
     });
