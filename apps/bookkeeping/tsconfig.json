@@ -3,6 +3,7 @@
     "app/**/*",
     "workers/**/*",
     "scripts/**/*",
+    "scenario/**/*",
     "*.ts",
     "worker-configuration.d.ts",
     ".react-router/types/**/*"

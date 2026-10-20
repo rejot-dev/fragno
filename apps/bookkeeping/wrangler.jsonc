@@ -5,8 +5,15 @@
   "compatibility_date": "2026-10-07",
   "compatibility_flags": ["nodejs_compat"],
   "durable_objects": {
-    "bindings": [{ "name": "AUTH", "class_name": "Auth" }],
+    "bindings": [
+      { "name": "AUTH", "class_name": "Auth" },
+      { "name": "WORKSPACES", "class_name": "Workspaces" },
+      { "name": "WORKFLOWS", "class_name": "Workflows" },
+    ],
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Auth"] }],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["Auth"] },
+    { "tag": "v2", "new_sqlite_classes": ["Workspaces", "Workflows"] },
+  ],
   "observability": { "enabled": true },
 }
