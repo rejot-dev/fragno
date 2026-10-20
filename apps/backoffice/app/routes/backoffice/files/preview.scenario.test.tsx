@@ -56,6 +56,8 @@ const png = Uint8Array.from(
   (character) => character.charCodeAt(0),
 );
 const imagePath = "/workspace/screenshots/dashboard #1.png";
+const svg =
+  '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"><rect width="4" height="4"/></svg>';
 const scope: BackofficeResolvedScope = {
   kind: "org",
   organization: { id: "org-images", slug: "image-team" },
@@ -152,6 +154,11 @@ test("private workspace images flow through session Markdown and generated UI wi
               type: "image/png",
             },
             { path: "/workspace/empty.png", bytes: new Uint8Array(), type: "image/png" },
+            {
+              path: "/workspace/diagram.svg",
+              bytes: new TextEncoder().encode(svg),
+              type: "image/svg+xml",
+            },
           ]) {
             const url = new URL("https://backoffice.example/api/files/org/org-images/workspace");
             url.searchParams.set("path", file.path);
@@ -280,7 +287,7 @@ test("private workspace images flow through session Markdown and generated UI wi
           },
         ),
         then.assert(
-          "deny anonymous and cross-scope reads, traversal, and non-raster files",
+          "sandbox declared SVGs and deny anonymous and cross-scope reads, traversal, and other markup",
           async (ctx) => {
             const kernel = new BackofficeKernel(ctx.runtime.services);
             async function requestPreview(
@@ -308,6 +315,21 @@ test("private workspace images flow through session Markdown and generated UI wi
               });
             }
             const cookie = ctx.vars.cookie as string;
+            // An SVG previews inline, but opened directly it may not run its scripts.
+            const svgPreview = await requestPreview(
+              "/workspace/diagram.svg",
+              "org",
+              "image-team",
+              cookie,
+            );
+            assert.equal(svgPreview.headers.get("content-type"), "image/svg+xml");
+            assert.equal(svgPreview.headers.get("x-content-type-options"), "nosniff");
+            assert.include(svgPreview.headers.get("content-security-policy")!, "sandbox");
+            assert.include(
+              svgPreview.headers.get("content-security-policy")!,
+              "default-src 'none'",
+            );
+            assert.equal(await svgPreview.text(), svg);
             await expect(requestPreview(imagePath, "org", "image-team", "")).rejects.toMatchObject({
               status: 302,
             });
