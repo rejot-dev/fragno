@@ -1,5 +1,7 @@
 import type { BackofficeApp } from "@fragno-dev/backoffice-api/v0/apps";
+import type { OrganizationMembershipRecord } from "@fragno-dev/backoffice-api/v0/organization";
 import {
+  type AcceptInvitationInput,
   backofficeProvisioningOperations,
   type BackofficeProvisioningOperationId,
   type ProvisionOrganizationInput,
@@ -114,6 +116,34 @@ async function provisionProject(
   return { ok: true, value: { organizationId: organization.organizationId, ...project } };
 }
 
+/** Only into an organization where the app is installed, so an app cannot reach any other. */
+async function acceptInvitation(
+  runtime: BackofficeRuntimeServices,
+  app: ProvisioningApp,
+  input: AcceptInvitationInput,
+): Promise<AppProvisioningResult<OrganizationMembershipRecord>> {
+  const auth = runtime.objects.auth.singleton().commands;
+  const organizationId = await auth.findInvitationOrganization({
+    invitationId: input.invitationId,
+  });
+  const installation =
+    organizationId === null
+      ? null
+      : await runtime.objects.appInstallations
+          .for({ kind: "org", orgId: organizationId })
+          .commands.getInstallation({ appId: app.id });
+  if (installation?.status !== "active") {
+    return {
+      ok: false,
+      error: {
+        code: "not_found",
+        message: `Invitation '${input.invitationId}' is not to an organization this app is installed in.`,
+      },
+    };
+  }
+  return await auth.acceptAppInvitation({ oauthClientId: app.oauthClientId, ...input });
+}
+
 type ProvisioningOperations = typeof backofficeProvisioningOperations;
 
 /** Each operation's implementation; failures the caller can act on come back as values. */
@@ -124,20 +154,9 @@ const provisioningHandlers: {
     input: z.output<ProvisioningOperations[TId]["input"]>,
   ) => Promise<AppProvisioningResult<z.input<ProvisioningOperations[TId]["output"]>>>;
 } = {
-  "users.provision": async (runtime, app, input) => ({
-    ok: true,
-    value: await runtime.objects.auth
-      .singleton()
-      .commands.provisionAppUser({ appId: app.id, ...input }),
-  }),
   "organizations.provision": provisionOrganization,
   "projects.provision": provisionProject,
-  "organizations.members.sync": async (runtime, app, input) =>
-    await runtime.objects.auth.singleton().commands.syncAppOrganizationMembers({
-      appId: app.id,
-      oauthClientId: app.oauthClientId,
-      ...input,
-    }),
+  "invitations.accept": acceptInvitation,
 };
 
 /**

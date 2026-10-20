@@ -272,10 +272,9 @@ type AppTrust =
   | {
       kind: "first-party";
       provisioningPermissions: (
-        | "users.provision"
         | "organizations.provision"
         | "projects.provision"
-        | "organizations.members.sync"
+        | "invitations.accept"
       )[];
       branding: AppBranding;
     };

@@ -114,8 +114,8 @@ one in `.dev.vars`: callback URL, scopes, and client credentials), registers the
 `events.emit` and the actions declared in `workers/backoffice-actions.ts`, and writes the client ID,
 secret, and both origins to `.dev.vars`. Bookkeeping is registered as a first-party app with every
 provisioning permission: Backoffice skips its consent screen and permission review, and Bookkeeping
-may provision its users, organizations, and administrations in Backoffice (see Backoffice's
-`app/fragno/apps/README.md`). It reads both origins from `.dev.vars` and defaults to
+may create organizations and administrations in Backoffice and accept invitations for its users (see
+Backoffice's `app/fragno/apps/README.md`). It reads both origins from `.dev.vars` and defaults to
 `http://127.0.0.1:5173` and `http://127.0.0.1:6174`; pass `--backoffice-url` or `--bookkeeping-url`
 to change them, which also moves the callback and the action endpoint. The app is registered as
 `app#bookkeeping`; pass `--slug` to choose another permanent name. Rerunning converges on the same

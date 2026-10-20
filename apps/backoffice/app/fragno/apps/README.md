@@ -378,7 +378,7 @@ system administrator says otherwise:
 
 ```bash
 admin.apps.update-trust --app-id APP_ID --trust-json \
-  '{"kind":"first-party","provisioningPermissions":["users.provision","organizations.provision","projects.provision","organizations.members.sync"],
+  '{"kind":"first-party","provisioningPermissions":["organizations.provision","projects.provision","invitations.accept"],
     "branding":{"displayName":"Bookkeeping","logoUrl":"https://bookkeeping.example/logo.svg","accentColor":"#2f6f4e",
       "homeUrl":"https://bookkeeping.example","supportUrl":"https://bookkeeping.example/help"}}'
 ```
@@ -403,44 +403,41 @@ recorded.
 
 ## Provisioning API
 
-A first-party app mirrors its own tenants in Backoffice server to server, e.g. Bookkeeping creating
-the Backoffice organization for a Bookkeeping organization. Each operation is
-`POST /api/v0/provisioning/<operationId>` with the app's client-credentials token, needs the
-provisioning permission of the same name in the app's trust, and is idempotent on the app's own
-identifiers: repeating a call returns what the first one made, with `created: false`. Calls whose
-outcome is unknown can therefore be retried. The contract and a client live in
+A first-party app creates its tenants in Backoffice server to server, e.g. Bookkeeping creating the
+Backoffice organization for a new Bookkeeping workspace, and brings its users into them. Each
+operation is `POST /api/v0/provisioning/<operationId>` with the app's client-credentials token,
+needs the provisioning permission of the same name in the app's trust, and is idempotent: repeating
+a call returns what the first one made, with `created: false` where it creates. Calls whose outcome
+is unknown can therefore be retried. The contract and a client live in
 `@fragno-dev/backoffice-api/v0/provisioning` and `createBackofficeProvisioningClient`.
 
-| Operation                    | Does                                                                                                                                                |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `users.provision`            | Creates a user without a password and with a verified address, or returns `requires_link` when another account has the address                      |
-| `organizations.provision`    | Creates an organization owned by a linked user, installs the app there with every requested permission, owner-wide, and claims it for the app's org |
-| `projects.provision`         | Creates a project in an organization the app provisioned                                                                                            |
-| `organizations.members.sync` | Makes the organization's members linked to the app exactly those listed, with their roles                                                           |
+| Operation                 | Does                                                                                                                                                          |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `organizations.provision` | Creates an organization owned by a user who authorized the app, installs the app there with every requested permission, owner-wide, and claims it for the app |
+| `projects.provision`      | Creates a project in an organization the app provisioned                                                                                                      |
+| `invitations.accept`      | Accepts an invitation for the user it is addressed to, in an organization where the app is installed                                                          |
 
-- **Linked users.** An app names Backoffice users it provisioned or who authorized its OAuth client,
-  never others. `requires_link` exists for this: handing an existing account to the app would let it
-  act as that person, so the person links it by authorizing the app instead.
-- **The app's identifiers.** A provisioned user has a Better Auth account with provider
-  `app:<appId>` whose account ID is the app's user, written with the user in one transaction; its
-  unique key keeps one Backoffice user per app user. Organizations and projects get IDs derived from
-  the app and its identifier (`app/fragno/apps/provisioned-id.ts`), so a repeated call finds them by
-  primary key. Nothing else records them.
-- **Membership sync** leaves members the app is not linked to, such as people invited in Backoffice,
-  and refuses a sync that would leave no owner.
+- **The app's users.** An app names only Backoffice users who authorized its OAuth client, which
+  everyone who signs in to it has. It cannot reach other Backoffice users.
+- **The app's identifiers.** Organizations and projects get IDs derived from the app and its
+  identifier (`app/fragno/apps/provisioned-id.ts`), so a repeated call finds them by primary key.
+  Nothing else records them.
+- **Invitations stay Backoffice's.** Owners and admins invite with `org.invitations.create`, as in
+  Backoffice. `invitations.accept` only does what the invited person could do themselves: the
+  invitation must be pending and addressed to the user's verified email, and an invitation they
+  already accepted returns their membership. It never adds anyone else.
 - **Uninstalling wins.** If the organization's owners uninstalled the app, provisioning that
   organization again answers `409` instead of installing it again.
-- **Provisioned users have no password yet.** Backoffice has no way for them to set one; until it
-  does, they use Backoffice only through the app.
 - **Audit.** Every completed call is recorded as a System event from source `provisioning`
-  (`user.provisioned`, `organization.provisioned`, `project.provisioned`,
-  `organization.members.synced`), with the app as initiator and the input and result as payload.
-  Administrators read them with `events.list` in System context. The event is recorded after the
-  operation, so a retry after a failure in between records it again.
+  (`organization.provisioned`, `project.provisioned`, `invitation.accepted`), with the app as
+  initiator and the input and result as payload. Administrators read them with `events.list` in
+  System context. The event is recorded after the operation, so a retry after a failure in between
+  records it again.
 
 Errors use the API's envelope: `401` for a missing or invalid token, `403` for a third-party app, a
-missing provisioning permission, or a user not linked to the app, `404` for an unknown organization,
-and `409` for a conflict.
+missing provisioning permission, or a user who has not authorized the app or was not invited, `404`
+for an unknown organization or an invitation outside the app's organizations, and `409` for a
+conflict, such as an invitation that is no longer pending.
 
 ### Rotating the app's secret
 

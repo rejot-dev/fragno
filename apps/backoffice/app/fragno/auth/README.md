@@ -233,7 +233,7 @@ tokens.
 - `app/routes/api/backoffice-app-installation-claim.ts`: installation claims by the app's server.
 - `app/backoffice-api/provisioning-router.ts`: the
   [provisioning API](../apps/README.md#provisioning-api) for first-party apps; Auth's side is
-  `provisionAppUser`, `provisionAppOrganization`, and `syncAppOrganizationMembers` in
+  `provisionAppOrganization`, `findInvitationOrganization`, and `acceptAppInvitation` in
   `workers/auth.do.ts`.
 - `workers/auth/better-auth-oauth-consent.ts`: provider-owned consent review, listing, device
   tracking, revocation, same-origin decisions, and live consent enforcement.
