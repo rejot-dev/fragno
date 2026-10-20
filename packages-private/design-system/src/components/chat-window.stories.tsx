@@ -9,6 +9,7 @@ import {
   ChatScrollToLatestButton,
   ChatThread,
   ChatThreadNotice,
+  ChatTurnSpacer,
   ChatViewport,
   ChatViewportFooter,
 } from "./chat-thread";
@@ -54,6 +55,7 @@ export function Conversation() {
                     setWorkflowShown((current) => !current);
                   }}
                 />
+                <ChatTurnSpacer />
               </ChatColumn>
               <ChatViewportFooter alert={null}>
                 <SampleComposer running={false} disabledReason={null} queue={[]} />
@@ -111,6 +113,7 @@ export function Running() {
                 description="Selecting history and writing a durable summary…"
               />
             </ChatThreadNotice>
+            <ChatTurnSpacer />
           </ChatColumn>
           <ChatViewportFooter alert={null}>
             <SampleComposer
@@ -150,6 +153,7 @@ export function Failed() {
                 onRetry={() => undefined}
               />
             </ChatThreadNotice>
+            <ChatTurnSpacer />
           </ChatColumn>
           <ChatViewportFooter alert="Write a message before sending.">
             <SampleComposer

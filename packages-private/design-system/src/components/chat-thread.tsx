@@ -1,4 +1,4 @@
-import type { ComponentProps, ReactNode } from "react";
+import { useEffect, useRef, type ComponentProps, type ReactNode } from "react";
 
 import { Button } from "./button";
 import { InlineAlert } from "./inline-alert";
@@ -27,9 +27,112 @@ export function ChatViewport(props: ElementProps) {
   );
 }
 
-/** The readable column the messages sit in. */
+/** The readable column the messages sit in. Its last child is a ChatTurnSpacer. */
 export function ChatColumn(props: ElementProps) {
   return <div {...props} className="mx-auto flex w-full max-w-3xl flex-1 flex-col py-5 sm:py-8" />;
+}
+
+// Room left above the newest turn when it sits at the top of the viewport.
+const TURN_TOP_GAP_PX = 16;
+
+/**
+ * Space after the messages that lets the newest turn, starting at the reader's latest message,
+ * scroll to the top of the viewport. The space shrinks as the reply fills it, so a viewport that
+ * keeps to its bottom first holds the reader's message at the top and then follows the reply.
+ *
+ * Must be the last child of the ChatColumn, which sits directly inside the ChatViewport.
+ */
+export function ChatTurnSpacer() {
+  const spacerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const spacer = spacerRef.current;
+    const column = spacer?.parentElement;
+    const viewport = column?.parentElement;
+    if (!spacer || !column || !viewport) {
+      return undefined;
+    }
+    return reserveTurnRoom(spacer, column, viewport);
+  }, []);
+
+  // Reduced motion gives every element a near-zero transition, which would make the height this
+  // spacer just set unreadable until the next frame.
+  return <div ref={spacerRef} aria-hidden="true" className="shrink-0 transition-none" />;
+}
+
+/** Keeps the spacer sized to the newest turn as the thread changes; returns the cleanup. */
+function reserveTurnRoom(spacer: HTMLElement, column: HTMLElement, viewport: HTMLElement) {
+  let turnStart: Element | null = null;
+
+  function resize(start: Element) {
+    let height = spacer.offsetHeight;
+    // The column stretches to fill a short thread, so the content's own height only shows once
+    // the spacer pushes past the viewport; a few passes reach that point.
+    for (let pass = 0; pass < 4; pass++) {
+      const startTop =
+        start.getBoundingClientRect().top -
+        viewport.getBoundingClientRect().top +
+        viewport.scrollTop;
+      const wantedScrollHeight = startTop - TURN_TOP_GAP_PX + viewport.clientHeight;
+      const next = Math.max(0, wantedScrollHeight - (viewport.scrollHeight - height));
+      if (Math.abs(next - height) < 1) {
+        return;
+      }
+      height = next;
+      spacer.style.height = `${next}px`;
+    }
+  }
+
+  function update() {
+    const starts = column.querySelectorAll("[data-chat-turn-start]");
+    const latestStart = starts.item(starts.length - 1);
+    const atBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 1;
+    const previousScrollHeight = viewport.scrollHeight;
+    if (latestStart) {
+      resize(latestStart);
+    } else {
+      spacer.style.height = "0px";
+    }
+    const newTurn = latestStart !== turnStart;
+    turnStart = latestStart;
+    // Chat runtimes keep to the bottom when content changes, but not when only this spacer's
+    // style does, so the spacer keeps a reader at the bottom itself. A new turn scrolls with the
+    // viewport's own scroll behavior, which reduced motion makes instant.
+    if (atBottom && viewport.scrollHeight !== previousScrollHeight) {
+      viewport.scrollTo({ top: viewport.scrollHeight, behavior: newTurn ? "auto" : "instant" });
+    }
+  }
+
+  const resizeObserver = new ResizeObserver(update);
+  function observeSizes() {
+    resizeObserver.disconnect();
+    resizeObserver.observe(viewport);
+    for (const child of column.children) {
+      if (child !== spacer) {
+        resizeObserver.observe(child);
+      }
+    }
+  }
+  const mutationObserver = new MutationObserver((mutations) => {
+    if (mutations.some((mutation) => mutation.target === column && mutation.type === "childList")) {
+      observeSizes();
+    }
+    if (mutations.some((mutation) => mutation.target !== spacer)) {
+      update();
+    }
+  });
+  observeSizes();
+  mutationObserver.observe(column, {
+    childList: true,
+    subtree: true,
+    characterData: true,
+    attributes: true,
+  });
+  update();
+  return () => {
+    resizeObserver.disconnect();
+    mutationObserver.disconnect();
+  };
 }
 
 /** Keeps the composer pinned under the messages, fading them out as they scroll beneath it. */
