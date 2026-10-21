@@ -195,13 +195,16 @@ console.log("\n2/4 Signing in to Backoffice");
 runCli(["login", "--base-url", backofficeUrl], "inherit");
 
 console.log("\n3/4 Creating or repairing the OAuth client");
-// A stored client from another Backoffice server is not found here, so a new one is created.
+// An app keeps the OAuth client it was registered with, so the client of the app holding the slug
+// wins over the stored one. A stored client from another Backoffice server is not found here, so
+// without such an app a new one is created.
 const client = execSystem(
   backofficeUrl,
   `async () => {
     const want = ${JSON.stringify({
-      clientId: devVars.get("BACKOFFICE_OAUTH_CLIENT_ID") ?? null,
-      hasSecret: Boolean(devVars.get("BACKOFFICE_OAUTH_CLIENT_SECRET")),
+      storedClientId: devVars.get("BACKOFFICE_OAUTH_CLIENT_ID") ?? null,
+      hasStoredSecret: Boolean(devVars.get("BACKOFFICE_OAUTH_CLIENT_SECRET")),
+      slug: flags.slug,
       name: flags.name,
       redirectUris: [callbackUrl],
       scopes: OAUTH_SCOPES,
@@ -217,9 +220,24 @@ const client = execSystem(
       } while (cursor !== null);
       return clients;
     };
-    const existing = want.clientId
-      ? (await listClients()).find((client) => client.clientId === want.clientId)
+    const findAppBySlug = async () => {
+      let cursor = null;
+      do {
+        const page = await admin.appsList({ pageSize: 100, cursor });
+        const app = page.apps.find((app) => app.slug === want.slug);
+        if (app) return app;
+        cursor = page.nextCursor;
+      } while (cursor !== null);
+      return null;
+    };
+    const appWithSlug = await findAppBySlug();
+    const wantedClientId = appWithSlug?.oauthClientId ?? want.storedClientId;
+    const existing = wantedClientId
+      ? (await listClients()).find((client) => client.clientId === wantedClientId)
       : undefined;
+    if (appWithSlug && !existing) {
+      throw new Error("app#" + want.slug + " is registered with OAuth client " + appWithSlug.oauthClientId + ", which no longer exists; pass another --slug.");
+    }
     let clientId;
     let clientSecret = null;
     let created = false;
@@ -232,7 +250,7 @@ const client = execSystem(
         scopes: want.scopes,
         clientCredentials: true,
       });
-      if (!want.hasSecret) {
+      if (clientId !== want.storedClientId || !want.hasStoredSecret) {
         clientSecret = (await admin.oauthClientsRotateSecret({ clientId })).clientSecret;
       }
     } else {
