@@ -90,6 +90,15 @@ export function createPiManagerFragment(
         actors: requestContext.execution.actors,
         scopeRestriction: backofficeExecutionScopeRestriction(requestContext.execution),
       };
+      // Agent changes are recorded as events attributed to whoever made them.
+      if (changesDefinitions || (method === "POST" && path === "/agents/:agentName/stop")) {
+        const body = requestState.body;
+        requestState.setBody({
+          ...(typeof body === "object" && body !== null ? body : {}),
+          provenance,
+        });
+        return undefined;
+      }
       const prompted = await ifMatchesRoute("POST", "/agents/:agentName/prompts", async () => {
         const parsed = promptRequestSchema.safeParse(requestState.body);
         if (!parsed.success) {

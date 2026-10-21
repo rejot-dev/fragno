@@ -118,7 +118,13 @@ export class InMemoryPiManagerObject extends RpcTarget implements PiManagerObjec
       name: "PiManager",
       createRuntime: (scope) =>
         createPiManagerFragment(
-          { scope, ...this.#config },
+          {
+            scope,
+            ...this.#config,
+            automations: runtime.config.bindings.automations
+              ? runtime.objects.automations.for(scope).commands
+              : null,
+          },
           {
             databaseAdapter: implementation.fragmentDatabase.adapters.createAdapter({
               kind: "pi-manager",

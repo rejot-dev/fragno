@@ -37,8 +37,19 @@ import {
 } from "./pi-manager-schema";
 import type { PiModelUsage } from "./pi-model-usage";
 
+/** A change a `pi.agent.*` operation made, attributed to whoever asked for it. */
+export type PiAgentChange = {
+  agentName: string;
+  provenance: PiAgentTurnProvenance;
+} & (
+  | { kind: "created" | "updated" | "deleted"; definition: PiAgentDefinition }
+  | { kind: "stopped" }
+);
+
 /** Work the manager's requests leave for durable delivery. */
 export type PiManagerHooks = {
+  /** Records the change as a `pi` Automations event; the hook's id makes it idempotent. */
+  recordAgentChange: HookFn<PiAgentChange>;
   /** Hands the agent its unsettled items again, in case the request that did failed. */
   redispatchAgentQueue: HookFn<{ agentName: string }>;
   /** Writes notifications that arrived into the conversation again, as above. */
@@ -564,12 +575,16 @@ export function piAgentQueueServices(
      * Stopping an agent pauses its queue, so what waits stays until the queue is resumed. Null when
      * the agent has not started.
      */
-    pauseAgentQueue: function (agentName: string) {
+    pauseAgentQueue: function (agentName: string, provenance: PiAgentTurnProvenance) {
       return this.serviceTx(piAgentDirectorySchema)
         .retrieve((uow) => findAgentQueue(uow, agentName))
-        .mutate(({ uow, retrieveResult: [, agent, , queued] }): PiAgentWaitingQueue | null =>
-          agent ? waitingQueue(changeAgentQueue(uow, agent, true), true, queued) : null,
-        )
+        .mutate(({ uow, retrieveResult: [, agent, , queued] }): PiAgentWaitingQueue | null => {
+          if (!agent) {
+            return null;
+          }
+          uow.triggerHook("recordAgentChange", { kind: "stopped", agentName, provenance });
+          return waitingQueue(changeAgentQueue(uow, agent, true), true, queued);
+        })
         .build();
     },
     /**

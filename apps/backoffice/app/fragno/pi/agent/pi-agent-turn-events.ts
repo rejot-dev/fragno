@@ -1,7 +1,6 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
-import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import type { Context } from "@earendil-works/chord";
 import {
@@ -15,6 +14,7 @@ import type { AutomationsObject, PiManagerObject } from "@/backoffice-runtime/ob
 import {
   PI_AUTOMATION_EVENT_TURN_COMPLETED,
   PI_AUTOMATION_SOURCE,
+  piAgentEventSubject,
 } from "@/fragno/backoffice-capabilities/capabilities/pi";
 
 import type { BackofficeAgentContext } from "./backoffice-agent-context";
@@ -32,7 +32,6 @@ function piAgentTurnCompletedEvent(
   occurredAt: Date,
 ): AutomationEvent {
   const { scope } = config;
-  const organization = backofficeScopeOrganization(scope);
   return {
     // A request ID settles once per conversation, so redelivery records one event.
     id: `pi:${config.agentName}:${requestId}`,
@@ -44,12 +43,7 @@ function piAgentTurnCompletedEvent(
     payload: { answerEntryId },
     occurredAt: occurredAt.toISOString(),
     actors: agent.turn(turn).execution.actors,
-    subject: {
-      ...(organization ? { orgId: organization.orgId } : {}),
-      ...(scope.kind === "project" ? { projectId: scope.projectId } : {}),
-      agentName: config.agentName,
-      requestId,
-    },
+    subject: { ...piAgentEventSubject(scope, config.agentName), requestId },
     causation: { kind: "origin" },
   };
 }

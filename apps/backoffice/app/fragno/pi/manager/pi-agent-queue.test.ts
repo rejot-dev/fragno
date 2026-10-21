@@ -139,6 +139,7 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
     billing: () => {
       throw new Error("Queue tests classify nothing.");
     },
+    automations: null,
   };
   const { fragments, test: database } = await buildDatabaseFragmentsTest()
     .withTestAdapter({ type: "kysely-sqlite" })
@@ -164,6 +165,7 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
 
   return {
     fragment,
+    provenance,
     handovers,
     failing,
     async prompt(input: PromptInput) {
@@ -208,9 +210,15 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
       assert(response.type === "empty", JSON.stringify(response));
     },
     async control(action: "stop" | "resume", agentName = "assistant") {
-      const response = await fragment.callRoute("POST", `/agents/:agentName/${action}`, {
-        pathParams: { agentName },
-      });
+      const response =
+        action === "stop"
+          ? await fragment.callRoute("POST", "/agents/:agentName/stop", {
+              pathParams: { agentName },
+              body: { provenance: provenance("ada") },
+            })
+          : await fragment.callRoute("POST", "/agents/:agentName/resume", {
+              pathParams: { agentName },
+            });
       assert(response.type === "empty", JSON.stringify(response));
     },
     /**
@@ -369,7 +377,12 @@ test("waiting prompts run under the definition as it is when their turn starts, 
     managedBy: null,
   };
   const created = await queue.fragment.callRoute("POST", "/agents", {
-    body: { agentName: "clerk", ...clerk, instructions: "Version one." },
+    body: {
+      agentName: "clerk",
+      ...clerk,
+      instructions: "Version one.",
+      provenance: queue.provenance("ada"),
+    },
   });
   assert(created.type === "json");
   for (const requestId of ["first", "second", "third"]) {
@@ -378,7 +391,7 @@ test("waiting prompts run under the definition as it is when their turn starts, 
 
   const edited = await queue.fragment.callRoute("PUT", "/agents/:agentName", {
     pathParams: { agentName: "clerk" },
-    body: { ...clerk, instructions: "Version two." },
+    body: { ...clerk, instructions: "Version two.", provenance: queue.provenance("ada") },
   });
   assert(edited.type === "json");
   await queue.settle("first", "clerk");
@@ -389,6 +402,7 @@ test("waiting prompts run under the definition as it is when their turn starts, 
 
   const deleted = await queue.fragment.callRoute("DELETE", "/agents/:agentName", {
     pathParams: { agentName: "clerk" },
+    body: { provenance: queue.provenance("ada") },
   });
   assert(deleted.type === "empty");
   await queue.settle("second", "clerk");

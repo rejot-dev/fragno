@@ -154,6 +154,17 @@ never holds back the agent's queue. A commit listener reports each settlement as
 alarm reports again after the agent goes idle, keeping its heartbeat until every settled turn is
 recorded. Runtimes without Automations forget settled turns without recording them.
 
+## Agent change events
+
+The manager records what `pi.agent.create`, `pi.agent.update`, `pi.agent.delete`, and
+`pi.agent.stop` change as `pi` events in its scope: `agent.created`, `agent.updated`, and
+`agent.deleted` carry the definition (the deleted one for `agent.deleted`), and `agent.stopped`
+carries nothing. Deleting an undefined agent and stopping an agent with no turns change nothing and
+record nothing. The subject names the agent, the actors are the requester's, and the scope
+restriction is theirs, which the manager middleware puts in the request as `provenance`, as it does
+for prompts. Each change triggers the `recordAgentChange` durable hook in the mutation that makes
+it, so the event is ingested, keyed by the hook's ID, exactly when the change commits.
+
 ## Notifications
 
 A `notify_agent` Automations route delivers an event to an agent of the route's scope through

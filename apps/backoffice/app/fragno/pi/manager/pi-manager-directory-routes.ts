@@ -13,6 +13,7 @@ import { builtInPiAgentDefinition } from "@/fragno/pi/agent/agent-definitions";
 import { piAvailableModelSchema } from "@/fragno/pi/agent/pi-agent-contract";
 
 import { piManagerDefinition } from "./pi-manager-definition";
+import { turnProvenanceSchema } from "./pi-manager-turn-routes";
 
 function builtInResponse<T>(
   agentName: string,
@@ -50,11 +51,13 @@ export const piManagerDirectoryRoutes = defineRoutes(piManagerDefinition).create
     defineRoute({
       method: "POST",
       path: "/agents",
-      inputSchema: piAgentDefinitionCreateSchema,
+      inputSchema: piAgentDefinitionCreateSchema._zod.innerType.extend({
+        provenance: turnProvenanceSchema,
+      }),
       outputSchema: piAgentDefinitionSchema,
       errorCodes: ["AGENT_EXISTS"],
       handler: async function ({ input }, { json, error }) {
-        const definition = await input.valid();
+        const { provenance, ...definition } = await input.valid();
         const conflict = error(
           { code: "AGENT_EXISTS", message: `Pi agent '${definition.agentName}' already exists.` },
           409,
@@ -63,7 +66,7 @@ export const piManagerDirectoryRoutes = defineRoutes(piManagerDefinition).create
           return conflict;
         }
         const created = await this.handlerTx()
-          .withServiceCalls(() => [services.createAgentDefinition(definition)])
+          .withServiceCalls(() => [services.createAgentDefinition(definition, provenance)])
           .transform(({ serviceResult: [created] }) => created)
           .execute();
         return created ? json(created, 201) : conflict;
@@ -91,7 +94,9 @@ export const piManagerDirectoryRoutes = defineRoutes(piManagerDefinition).create
     defineRoute({
       method: "PUT",
       path: "/agents/:agentName",
-      inputSchema: piAgentDefinitionUpdateSchema,
+      inputSchema: piAgentDefinitionUpdateSchema._zod.innerType.extend({
+        provenance: turnProvenanceSchema,
+      }),
       outputSchema: piAgentDefinitionSchema,
       errorCodes: ["AGENT_NOT_FOUND", "AGENT_BUILT_IN"],
       handler: async function ({ pathParams, input }, { json, error }) {
@@ -99,9 +104,10 @@ export const piManagerDirectoryRoutes = defineRoutes(piManagerDefinition).create
         if (builtInPiAgentDefinition(agentName)) {
           return builtInResponse(agentName, error);
         }
-        const definition = { agentName, ...(await input.valid()) };
+        const { provenance, ...fields } = await input.valid();
+        const definition = { agentName, ...fields };
         const replaced = await this.handlerTx()
-          .withServiceCalls(() => [services.replaceAgentDefinition(definition)])
+          .withServiceCalls(() => [services.replaceAgentDefinition(definition, provenance)])
           .transform(({ serviceResult: [replaced] }) => replaced)
           .execute();
         return replaced
@@ -112,13 +118,17 @@ export const piManagerDirectoryRoutes = defineRoutes(piManagerDefinition).create
     defineRoute({
       method: "DELETE",
       path: "/agents/:agentName",
+      inputSchema: z.object({ provenance: turnProvenanceSchema }),
       errorCodes: ["AGENT_BUILT_IN"],
-      handler: async function ({ pathParams }, { empty, error }) {
+      handler: async function ({ pathParams, input }, { empty, error }) {
         if (builtInPiAgentDefinition(pathParams.agentName)) {
           return builtInResponse(pathParams.agentName, error);
         }
+        const { provenance } = await input.valid();
         await this.handlerTx()
-          .withServiceCalls(() => [services.deleteAgentDefinition(pathParams.agentName)])
+          .withServiceCalls(() => [
+            services.deleteAgentDefinition(pathParams.agentName, provenance),
+          ])
           .execute();
         return empty(204);
       },

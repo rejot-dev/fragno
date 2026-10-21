@@ -12,12 +12,20 @@ import {
   builtInPiAgentDefinition,
 } from "@/fragno/pi/agent/agent-definitions";
 
-import { definitionFromRow, piAgentDirectorySchema } from "./pi-manager-schema";
+import type { PiManagerHooks } from "./pi-agent-queue";
+import {
+  definitionFromRow,
+  piAgentDirectorySchema,
+  type PiAgentTurnProvenance,
+} from "./pi-manager-schema";
 
-/** A scope's agent definitions and the agents provisioned in it; a first prompt provisions one. */
+/**
+ * A scope's agent definitions and the agents provisioned in it; a first prompt provisions one. Each
+ * change to a definition records who made it.
+ */
 export function piAgentDirectoryServices(
   defineService: <TService>(
-    service: TService & ThisType<DatabaseServiceContext<Record<never, never>>>,
+    service: TService & ThisType<DatabaseServiceContext<PiManagerHooks>>,
   ) => TService,
   config: { scope: BackofficeContextScope },
 ) {
@@ -64,7 +72,10 @@ export function piAgentDirectoryServices(
         .build();
     },
     /** Null when the name is taken. */
-    createAgentDefinition: function (definition: PiAgentDefinitionCreate) {
+    createAgentDefinition: function (
+      definition: PiAgentDefinitionCreate,
+      provenance: PiAgentTurnProvenance,
+    ) {
       return this.serviceTx(piAgentDirectorySchema)
         .retrieve((uow) =>
           uow.findFirst("agent_definition", (b) =>
@@ -77,12 +88,21 @@ export function piAgentDirectoryServices(
           }
           const { agentName, ...fields } = definition;
           uow.create("agent_definition", { id: agentName, ...fields });
+          uow.triggerHook("recordAgentChange", {
+            kind: "created",
+            agentName,
+            definition,
+            provenance,
+          });
           return definition;
         })
         .build();
     },
     /** Null when no definition has the name. */
-    replaceAgentDefinition: function (definition: PiAgentDefinitionCreate) {
+    replaceAgentDefinition: function (
+      definition: PiAgentDefinitionCreate,
+      provenance: PiAgentTurnProvenance,
+    ) {
       return this.serviceTx(piAgentDirectorySchema)
         .retrieve((uow) =>
           uow.findFirst("agent_definition", (b) =>
@@ -93,13 +113,19 @@ export function piAgentDirectoryServices(
           if (!existing) {
             return null;
           }
-          const { agentName: _agentName, ...fields } = definition;
+          const { agentName, ...fields } = definition;
           uow.update("agent_definition", existing.id, (b) => b.set(fields).check());
+          uow.triggerHook("recordAgentChange", {
+            kind: "updated",
+            agentName,
+            definition,
+            provenance,
+          });
           return definition;
         })
         .build();
     },
-    deleteAgentDefinition: function (agentName: string) {
+    deleteAgentDefinition: function (agentName: string, provenance: PiAgentTurnProvenance) {
       return this.serviceTx(piAgentDirectorySchema)
         .retrieve((uow) =>
           uow.findFirst("agent_definition", (b) =>
@@ -109,6 +135,12 @@ export function piAgentDirectoryServices(
         .mutate(({ uow, retrieveResult: [existing] }) => {
           if (existing) {
             uow.delete("agent_definition", existing.id, (b) => b.check());
+            uow.triggerHook("recordAgentChange", {
+              kind: "deleted",
+              agentName,
+              definition: definitionFromRow(existing),
+              provenance,
+            });
           }
         })
         .build();
