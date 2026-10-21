@@ -46,6 +46,7 @@ import {
   type CodemodeRunStartedHookPayload,
 } from "@/fragno/codemode/codemode-fragment";
 import type { CodemodeRunLease } from "@/fragno/codemode/codemode-object-execute";
+import { explainUnloadedSavedModule } from "@/fragno/codemode/saved-module-imports";
 import {
   loadDurableHook,
   loadDurableHookQueue,
@@ -91,9 +92,19 @@ async function executeCodemodeRunActivation(
   if (completion.status === "interrupted") {
     return failedCodemodeCompletion(new CodemodeInterruptedError(completion.cause), []);
   }
-  return completion.status === "suspended"
-    ? failedCodemodeCompletion(new Error("CODEMODE_ACTIVATION_CANNOT_SUSPEND"), completion.logs)
-    : completion;
+  if (completion.status === "suspended") {
+    return failedCodemodeCompletion(
+      new Error("CODEMODE_ACTIVATION_CANNOT_SUSPEND"),
+      completion.logs,
+    );
+  }
+  if (completion.status === "completed") {
+    return completion;
+  }
+  const explained = explainUnloadedSavedModule(completion.error.message);
+  return explained === null
+    ? completion
+    : { ...completion, error: { ...completion.error, message: explained } };
 }
 
 // One scope's share of the bridge: a tenant's burst of runs cannot crowd out other tenants.
