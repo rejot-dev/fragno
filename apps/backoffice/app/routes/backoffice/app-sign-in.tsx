@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { Form, Link, useLocation, useNavigation } from "react-router";
 
 import type { AppSignInActionData, AppSignInPage } from "./app-sign-in.server";
+import { startGitHubSignIn } from "./github-sign-in";
 
 const RESEND_AFTER_SECONDS = 60;
 
@@ -44,8 +45,9 @@ function useResendCountdown(actionData: AppSignInActionData | undefined): number
 }
 
 /**
- * Sign-in for people a first-party app sends here: their email, then a code from it. The same steps
- * create an account for a new address, so nobody chooses between signing in and signing up.
+ * Sign-in for people a first-party app sends here: their email, then a code from it or their
+ * password, or GitHub. The code also creates an account for a new address, so nobody chooses
+ * between signing in and signing up.
  */
 export function AppSignIn({
   page,
@@ -60,6 +62,21 @@ export function AppSignIn({
   const submittedIntent = navigation.formData?.get("intent");
   const resendIn = useResendCountdown(actionData);
   const location = useLocation();
+  const [githubPending, setGithubPending] = useState(false);
+  const [githubError, setGithubError] = useState<string | null>(null);
+  const continueWithGitHub = async () => {
+    setGithubPending(true);
+    setGithubError(null);
+    try {
+      await startGitHubSignIn({
+        returnTo: `/backoffice/oauth/consent?${page.oauthQuery}`,
+        oauthQuery: page.oauthQuery,
+      });
+    } catch (error) {
+      setGithubError(error instanceof Error ? error.message : "Try GitHub again in a moment.");
+      setGithubPending(false);
+    }
+  };
   const brand = {
     name: branding.displayName,
     logoUrl: branding.logoUrl,
@@ -145,41 +162,138 @@ export function AppSignIn({
     );
   }
 
+  if (actionData?.step === "method") {
+    return (
+      <AppAuthLayout
+        brand={brand}
+        title={`Continue to ${branding.displayName}`}
+        description={
+          <>
+            As <strong className="text-[var(--bo-fg)]">{actionData.email}</strong>.{" "}
+            {/* Loading the page again starts over with the request the app sent. */}
+            <Link
+              to={{ search: location.search }}
+              className="text-[var(--bo-accent)] underline-offset-4 hover:underline"
+            >
+              Use a different email
+            </Link>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          {actionData.error === null ? null : (
+            <p role="alert" className="text-sm text-[var(--bo-failed)]">
+              {actionData.error}
+            </p>
+          )}
+          <Form method="post" className="space-y-2">
+            <input type="hidden" name="email" value={actionData.email} />
+            <Button
+              type="submit"
+              name="intent"
+              value="send_code"
+              variant="solid"
+              disabled={pending}
+              className="w-full"
+            >
+              {pending && submittedIntent === "send_code"
+                ? "Sending your code…"
+                : "Email me a code"}
+            </Button>
+            <p className="text-xs leading-5 text-[var(--bo-muted)]">
+              New here? The code creates your account.
+            </p>
+          </Form>
+          <Divider label="Or use your password" />
+          <Form method="post" className="space-y-4">
+            {/* Lets password managers pair the password with this address. */}
+            <input type="hidden" name="email" value={actionData.email} autoComplete="username" />
+            <Field label="Password">
+              <Input
+                type="password"
+                name="password"
+                autoComplete="current-password"
+                required
+                className="w-full"
+              />
+            </Field>
+            <Button
+              type="submit"
+              name="intent"
+              value="sign_in_password"
+              variant="secondary"
+              disabled={pending}
+              className="w-full"
+            >
+              {pending && submittedIntent === "sign_in_password" ? "Signing in…" : "Sign in"}
+            </Button>
+          </Form>
+        </div>
+      </AppAuthLayout>
+    );
+  }
+
   return (
     <AppAuthLayout
       brand={brand}
       title={`Continue to ${branding.displayName}`}
-      description="Enter your email. We'll send you a code, so there's no password to remember. New here? This creates your account."
+      description="Enter your email to sign in. New here? This creates your account."
     >
-      <Form method="post" className="space-y-4">
-        <Field label="Email">
-          <Input
-            type="email"
-            name="email"
-            autoComplete="email"
-            required
-            autoFocus
-            defaultValue={actionData?.email ?? page.loginHint ?? ""}
-            placeholder="you@example.com"
+      <div className="space-y-4">
+        <Form method="post" className="space-y-4">
+          <Field label="Email">
+            <Input
+              type="email"
+              name="email"
+              autoComplete="username"
+              required
+              autoFocus
+              defaultValue={actionData?.email ?? page.loginHint ?? ""}
+              placeholder="you@example.com"
+              className="w-full"
+            />
+          </Field>
+          {actionData?.step === "email" ? (
+            <p role="alert" className="text-sm text-[var(--bo-failed)]">
+              {actionData.error}
+            </p>
+          ) : null}
+          <Button
+            type="submit"
+            name="intent"
+            value="choose_method"
+            variant="solid"
+            disabled={pending || githubPending}
             className="w-full"
-          />
-        </Field>
-        {actionData?.step === "email" ? (
-          <p role="alert" className="text-sm text-[var(--bo-failed)]">
-            {actionData.error}
-          </p>
-        ) : null}
+          >
+            Next
+          </Button>
+        </Form>
+        <Divider label="Or" />
         <Button
-          type="submit"
-          name="intent"
-          value="send_code"
-          variant="solid"
-          disabled={pending}
+          variant="secondary"
+          onClick={() => void continueWithGitHub()}
+          disabled={pending || githubPending}
           className="w-full"
         >
-          {pending ? "Sending your code…" : "Continue"}
+          {githubPending ? "Redirecting…" : "Continue with GitHub"}
         </Button>
-      </Form>
+        {githubError === null ? null : (
+          <p role="alert" className="text-sm text-[var(--bo-failed)]">
+            {githubError}
+          </p>
+        )}
+      </div>
     </AppAuthLayout>
+  );
+}
+
+function Divider({ label }: { label: string }) {
+  return (
+    <div role="separator" className="flex items-center gap-3 text-xs text-[var(--bo-muted)]">
+      <span className="h-px flex-1 bg-[var(--bo-border)]" aria-hidden="true" />
+      <span>{label}</span>
+      <span className="h-px flex-1 bg-[var(--bo-border)]" aria-hidden="true" />
+    </div>
   );
 }

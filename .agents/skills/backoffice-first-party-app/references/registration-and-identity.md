@@ -98,10 +98,10 @@ token, and refresh requests. Establish identity from authenticated userinfo; do 
 unverified ID token as proof of identity. Let the OAuth library own state and PKCE verification.
 
 A signed authorization request for a registered first-party client selects Backoffice's product-
-branded email-code sign-in. A new address becomes a verified Backoffice account, even when
-Backoffice's own sign-up is invitation-only. OAuth continues back to the app, which establishes its
-local session. Product copy can say “Get started”; users need not link a second account or know
-Backoffice's name.
+branded sign-in: email, then a code or the account's password, or GitHub. A code sign-in from a new
+address becomes a verified Backoffice account, even when Backoffice's own sign-up is
+invitation-only. OAuth continues back to the app, which establishes its local session. Product copy
+can say “Get started”; users need not link a second account or know Backoffice's name.
 
 Backoffice automatically records real OAuth consent through its consent endpoint. First-party
 consents are hidden from personal authorization listings and cannot be revoked there. Preserve this

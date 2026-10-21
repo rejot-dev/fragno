@@ -192,7 +192,13 @@ and enforced like any other. Auth leaves its consents out of listings and refuse
 
 People a first-party app sends here may not know Backoffice, so when `/backoffice/login` receives a
 signed authorization request from a first-party app, it shows the app's sign-in instead
-(`app/routes/backoffice/app-sign-in*`): the app's branding, an email field, then a 6-digit code.
+(`app/routes/backoffice/app-sign-in*`): the app's branding, an email field or GitHub, then a choice
+between a 6-digit code and the account's password.
+
+- **The choice never reveals an account.** Every address gets the same choice, and Next sends
+  nothing. Better Auth answers a password sign-in alike for no account, no password, and a wrong
+  password, and the page words all three the same. A code works for every address, so anyone without
+  a password, new or not, still gets in.
 
 - **Codes come from Better Auth's `emailOTP`** (`workers/auth/better-auth-app-sign-in.ts`), and
   Backoffice queues them through Resend in the app's name: its branding, and the configured sending

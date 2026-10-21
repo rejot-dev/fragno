@@ -190,6 +190,7 @@ test("people an app sends to Backoffice sign up with a code in the app's name, e
             kind: "app",
             branding,
             loginHint: "ada@example.test",
+            oauthQuery: signIn.search.slice(1),
           });
 
           const sent = await submit(ctx, signIn, {
@@ -267,7 +268,7 @@ test("people an app sends to Backoffice sign up with a code in the app's name, e
           expect(
             await submit(ctx, altered, { intent: "send_code", email: "grace@example.test" }),
           ).toEqual({
-            step: "email",
+            step: "method",
             email: "grace@example.test",
             error: "This sign-in page has expired. Go back to Bookkeeping and try again.",
           });
@@ -333,6 +334,74 @@ test("where addresses go unverified, a code sign-in keeps the account's password
   );
 });
 
+test("after their email, everyone an app sends here may use a code or a password, and the page never tells which addresses have an account", async () => {
+  const withPassword = "ada@example.test";
+  const withoutPassword = "grace@example.test";
+  const unknown = "nobody@example.test";
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      objects: scenarioObjects,
+      name: "choose a code or a password on a first-party app's sign-in",
+      env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_INVITATIONS_ENABLED: "false" },
+      fakes: ({ fake }) => ({ resend: fake.resend() }),
+      vars: () => ({ signIn: "" }),
+      setup: ({ given }) => [
+        given.auth.user({ id: "platform-admin", role: "admin" }),
+        given.auth.user({ id: "passwordless", email: withoutPassword }),
+      ],
+      steps: ({ when, then }) => [
+        when.auth.signUp({ email: withPassword, password: "password123" }),
+        then.assert("each address gets the same choice, and no email", async (ctx) => {
+          const signIn = await openSignIn(
+            ctx,
+            await registerApp(ctx, "bookkeeping", "first-party"),
+          );
+          ctx.vars.signIn = signIn.href;
+          for (const email of [withPassword, withoutPassword, unknown]) {
+            expect(await submit(ctx, signIn, { intent: "choose_method", email })).toEqual({
+              step: "method",
+              email,
+              error: null,
+            });
+          }
+          await ctx.runtime.drain();
+          expect(ctx.fakes.resend?.queueEmailCalls).toEqual([]);
+        }),
+        then.assert("a password that does not sign in reads the same for each", async (ctx) => {
+          const signIn = new URL(ctx.vars.signIn);
+          for (const email of [withPassword, withoutPassword, unknown]) {
+            expect(
+              await submit(ctx, signIn, {
+                intent: "sign_in_password",
+                email,
+                password: "not-the-password",
+              }),
+            ).toEqual({
+              step: "method",
+              email,
+              error: "That password isn't right. Try again, or sign in with a code instead.",
+            });
+          }
+        }),
+        then.assert("the right password returns to the app as that account", async (ctx) => {
+          // Another visitor: the wrong passwords above used up the first one's sign-in attempts.
+          const signedIn = await submit(
+            ctx,
+            new URL(ctx.vars.signIn),
+            { intent: "sign_in_password", email: withPassword, password: "password123" },
+            "198.51.100.7",
+          );
+          assert(signedIn instanceof Response, JSON.stringify(signedIn));
+          const { location, cookie } = await followToApp(ctx, signedIn);
+          assert.equal(location.origin + location.pathname, redirectUri);
+          assert.equal(location.searchParams.get("state"), "bookkeeping-state");
+          expect(await sessionUser(ctx, cookie)).toMatchObject({ email: withPassword });
+        }),
+      ],
+    }),
+  );
+});
+
 test("only a first-party app's request can ask for a sign-in code", async () => {
   await runBackofficeScenario(
     defineBackofficeScenario({
@@ -388,7 +457,7 @@ test("each visitor has their own limit on sign-in codes", async () => {
           expect(
             await submit(ctx, signIn, { intent: "send_code", email: "d@example.test" }, busy),
           ).toEqual({
-            step: "email",
+            step: "method",
             email: "d@example.test",
             error: "Please wait a minute before trying again.",
           });

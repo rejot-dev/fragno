@@ -411,9 +411,9 @@ A first-party app is part of Backoffice, so:
   installation object reuses the app's registration for at most that long. Installations made before
   this rule keep their stored grants until the app is linked again.
 - **Sign-in speaks in its name.** When it sends people to Backoffice, they see its name, logo, and
-  color, sign in with a code sent to their email, and get emails in its name; see
-  [Auth's README](../auth/README.md#signing-in-through-a-first-party-app). Anyone may sign up this
-  way, even where Backoffice's own sign-up needs an invitation.
+  color, sign in with a code sent to their email, their password, or GitHub, and get emails in its
+  name; see [Auth's README](../auth/README.md#signing-in-through-a-first-party-app). Anyone may sign
+  up with a code, even where Backoffice's own sign-up needs an invitation.
 - **It may provision**, with the [provisioning permissions](#provisioning-api) it is granted.
 
 Making an app third-party again ends all of this at once, except consents and installations already

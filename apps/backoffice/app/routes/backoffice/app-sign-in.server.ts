@@ -6,14 +6,22 @@ import { callBetterAuth, createBackofficeIdentityChangeHeaders } from "@/fragno/
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 /** The login page in a first-party app's name, for a request that app sent here. */
-export type AppSignInPage = { kind: "app"; branding: AppBranding; loginHint: string | null };
+export type AppSignInPage = {
+  kind: "app";
+  branding: AppBranding;
+  loginHint: string | null;
+  oauthQuery: string;
+};
 
 /**
- * Where sign-in stands after a submission. On the code step, `sent` and `resent` mean a new code
- * went out, which restarts the wait before another; a rejected attempt sends nothing.
+ * Where sign-in stands after a submission. The method step looks the same for every address, so
+ * the page never reveals whether an account exists or how it signs in. On the code step, `sent` and
+ * `resent` mean a new code went out, which restarts the wait before another; a rejected attempt
+ * sends nothing.
  */
 export type AppSignInActionData =
   | { step: "email"; email: string; error: string }
+  | { step: "method"; email: string; error: string | null }
   | {
       step: "code";
       email: string;
@@ -39,14 +47,19 @@ export async function findAppSignInPage(
     .runtime.objects.apps.singleton()
     .commands.getAppByOAuthClientId({ oauthClientId: clientId });
   return app?.trust.kind === "first-party"
-    ? { kind: "app", branding: app.trust.branding, loginHint: query.get("login_hint") }
+    ? { kind: "app", branding: app.trust.branding, loginHint: query.get("login_hint"), oauthQuery }
     : null;
 }
 
 const appSignInActionSchema = z.discriminatedUnion("intent", [
   z.object({
-    intent: z.enum(["send_code", "resend_code"]),
+    intent: z.enum(["choose_method", "send_code", "resend_code"]),
     email: z.string().trim().toLowerCase().pipe(z.email().max(191)),
+  }),
+  z.object({
+    intent: z.literal("sign_in_password"),
+    email: z.string().trim().toLowerCase().pipe(z.email().max(191)),
+    password: z.string().min(1),
   }),
   z.object({
     intent: z.literal("verify_code"),
@@ -98,6 +111,12 @@ async function explainFailure(
     case "OTP_EXPIRED":
     case "TOO_MANY_ATTEMPTS":
       return "That code no longer works. Send a new one and try again.";
+    // Better Auth answers alike for no account, no password, and a wrong password.
+    case "INVALID_EMAIL_OR_PASSWORD":
+      return "That password isn't right. Try again, or sign in with a code instead.";
+    // Only after a correct password; the code proves the address.
+    case "EMAIL_NOT_VERIFIED":
+      return "Sign in with a code to confirm this email address.";
     case "invalid_signature":
       return `This sign-in page has expired. Go back to ${branding.displayName} and try again.`;
     case null:
@@ -108,7 +127,7 @@ async function explainFailure(
   }
 }
 
-/** Sends a sign-in code, or signs in with one and continues to the app. */
+/** Moves to choosing how to sign in, sends a code, or signs in and continues to the app. */
 export async function appSignInAction(input: {
   request: Request;
   context: Readonly<RouterContextProvider>;
@@ -119,15 +138,43 @@ export async function appSignInAction(input: {
   const parsed = appSignInActionSchema.safeParse(Object.fromEntries(input.formData));
   if (!parsed.success) {
     const email = String(input.formData.get("email") ?? "");
-    return input.formData.get("intent") === "verify_code"
-      ? {
-          step: "code",
-          email,
-          outcome: { kind: "rejected", error: "Enter the 6-digit code from the email." },
-        }
+    const intent = input.formData.get("intent");
+    if (intent === "verify_code") {
+      return {
+        step: "code",
+        email,
+        outcome: { kind: "rejected", error: "Enter the 6-digit code from the email." },
+      };
+    }
+    return intent === "sign_in_password"
+      ? { step: "method", email, error: "Enter your password." }
       : { step: "email", email, error: "Enter a valid email address." };
   }
   const { email } = parsed.data;
+
+  if (parsed.data.intent === "choose_method") {
+    return { step: "method", email, error: null };
+  }
+
+  if (parsed.data.intent === "sign_in_password") {
+    const path = "/sign-in/email";
+    const signedIn = await callBetterAuth(input.request, input.context, path, {
+      method: "POST",
+      body: JSON.stringify({
+        email,
+        password: parsed.data.password,
+        oauth_query: input.oauthQuery,
+      }),
+    });
+    if (!signedIn.ok) {
+      return {
+        step: "method",
+        email,
+        error: await explainFailure(signedIn, path, input.page.branding),
+      };
+    }
+    return continueToApp(signedIn);
+  }
 
   if (parsed.data.intent !== "verify_code") {
     const path = "/email-otp/send-verification-otp";
@@ -138,7 +185,7 @@ export async function appSignInAction(input: {
     if (!sent.ok) {
       const error = await explainFailure(sent, path, input.page.branding);
       return parsed.data.intent === "send_code"
-        ? { step: "email", email, error }
+        ? { step: "method", email, error }
         : { step: "code", email, outcome: { kind: "rejected", error } };
     }
     return {
@@ -169,7 +216,11 @@ export async function appSignInAction(input: {
       },
     };
   }
-  // The OAuth Provider continues the app's authorization once the session exists.
+  return continueToApp(signedIn);
+}
+
+/** The OAuth Provider continues the app's authorization once the session exists. */
+async function continueToApp(signedIn: Response): Promise<Response> {
   const continued = z.object({ url: z.string().min(1) }).parse(await signedIn.json());
   return redirect(continued.url, { headers: createBackofficeIdentityChangeHeaders(signedIn) });
 }
