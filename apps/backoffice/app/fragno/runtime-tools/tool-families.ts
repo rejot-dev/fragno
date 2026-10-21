@@ -10,6 +10,8 @@ import {
 } from "./families/admin-marketplace";
 import { appsToolFamily } from "./families/apps";
 import type { AppsRuntime } from "./families/apps-runtime";
+import type { ArtifactsRuntime } from "./families/artifacts";
+import { artifactsToolFamily } from "./families/artifacts";
 import {
   automationStoreToolFamily,
   type AutomationStoreRuntime,
@@ -79,6 +81,7 @@ export type CoreBackofficeRuntimeMap = {
   admin?: AdminRuntime;
   org?: OrganizationRuntime;
   apps: AppsRuntime | undefined;
+  artifacts?: ArtifactsRuntime;
   backoffice?: BackofficeCapabilitiesRuntime;
   integrations: IntegrationsRuntime | undefined;
   automations?: AutomationStoreRuntime & AutomationRouterRuntime;
@@ -137,6 +140,7 @@ export const runtimeToolFamilies = [
   javaScriptRunToolFamily,
   javaScriptLogsToolFamily,
   javaScriptBuildToolFamily,
+  artifactsToolFamily,
   uploadToolFamily,
   marketplaceToolFamily,
   packagesToolFamily,

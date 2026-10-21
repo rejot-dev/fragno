@@ -214,8 +214,6 @@ type PageDefinition = {
 declare const page: {
   /** Builds the page file: build returns the root ui element, with queries in its props. At most ${PAGE_LIMITS.queries} queries. */
   define(build: (context: PageContext) => BackofficeUiElement): PageDefinition;
-  /** The file's interface with empty results, to return as $ui so the host validates it. */
-  preview(definition: PageDefinition): BackofficeUi;
 };`;
 
 /** Declares the guest `page` builder over every collection's synchronized row type. */

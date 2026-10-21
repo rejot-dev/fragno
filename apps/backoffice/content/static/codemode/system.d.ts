@@ -24,6 +24,7 @@
 /// <reference path="/static/codemode/providers/reson8.d.ts" />
 /// <reference path="/static/codemode/providers/sandbox.d.ts" />
 /// <reference path="/static/codemode/providers/js.d.ts" />
+/// <reference path="/static/codemode/providers/artifacts.d.ts" />
 /// <reference path="/static/codemode/providers/upload.d.ts" />
 /// <reference path="/static/codemode/providers/marketplace.d.ts" />
 /// <reference path="/static/codemode/providers/packages.d.ts" />
@@ -70,6 +71,7 @@ interface BackofficeCodemodeScopedProviders {
   reson8: Reson8CodemodeProvider;
   sandbox: SandboxCodemodeProvider;
   js: JsCodemodeProvider;
+  artifacts: ArtifactsCodemodeProvider;
   upload: UploadCodemodeProvider;
   marketplace: MarketplaceCodemodeProvider;
   packages: PackagesCodemodeProvider;

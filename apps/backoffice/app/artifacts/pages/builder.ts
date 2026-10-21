@@ -408,22 +408,7 @@ const PAGE_BUILDER_SOURCE = String.raw`({ collections, functions, aggregates, li
     return { version, queries: fileQueries, values: fileValues, spec: rendered.spec };
   };
 
-
-  const preview = (definition) => {
-    if (!isRecord(definition) || !isRecord(definition.queries) || !isRecord(definition.values) || !isRecord(definition.spec)) {
-      fail("page.preview(definition) expects the result of page.define.");
-    }
-    return {
-      version: 1,
-      state: {
-        data: Object.fromEntries(Object.keys(definition.queries).map((name) => [name, []])),
-        values: Object.fromEntries(Object.entries(definition.values).map(([name, value]) => [name, value.whenEmpty])),
-      },
-      spec: definition.spec,
-    };
-  };
-
-  return Object.freeze({ define, preview });
+  return Object.freeze({ define });
 }`;
 
 const builderConfig = JSON.stringify({
