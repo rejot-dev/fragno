@@ -77,15 +77,14 @@ export default function ForgotPassword({ actionData }: Route.ComponentProps) {
             title={accepted ? "Check your email" : "Forgot your password?"}
             description={
               accepted
-                ? "If an account with a password exists for this address, we’ll send you a reset link."
+                ? "If an account exists for this address, we’ll send you a link to choose a password."
                 : "Enter your account’s email address and we’ll send you a link to choose a new password."
             }
           >
             <div className="space-y-4">
               {accepted ? (
                 <p role="status" className="text-sm leading-6 text-[var(--bo-muted)]">
-                  Check your inbox and spam folder. If you normally sign in with GitHub, continue to
-                  use GitHub.
+                  Check your inbox and spam folder.
                 </p>
               ) : (
                 <Form method="post" className="space-y-4">

@@ -6,7 +6,10 @@ const resetRequestSchema = z.object({
   email: z.string().trim().toLowerCase().pipe(z.email().max(191)),
 });
 
-/** Recovery is for existing password accounts, not a way to add a password to a social account. */
+/**
+ * Recovery also adds a password to accounts that have none. That grants nothing new: inbox control
+ * already signs in through trusted GitHub account linking.
+ */
 export function createBackofficePasswordResetPlugin(input: {
   publicBaseUrl: string | null;
   acceptRequest: (email: string) => boolean;
@@ -19,7 +22,7 @@ export function createBackofficePasswordResetPlugin(input: {
           matcher(context) {
             return context.path === "/request-password-reset";
           },
-          handler: createAuthMiddleware(async function requirePasswordRecoveryAccount(context) {
+          handler: createAuthMiddleware(async function prepareRecoveryRequest(context) {
             if (input.publicBaseUrl === null) {
               throw APIError.from("SERVICE_UNAVAILABLE", {
                 code: "PASSWORD_RESET_UNAVAILABLE",
@@ -40,13 +43,6 @@ export function createBackofficePasswordResetPlugin(input: {
             };
             // Suppress email floods without disclosing whether the address has an account.
             if (!input.acceptRequest(email)) {
-              return context.json(accepted);
-            }
-            const user = await context.context.internalAdapter.findUserByEmail(email);
-            if (
-              user &&
-              !(await context.context.internalAdapter.findCredentialAccount(user.user.id))
-            ) {
               return context.json(accepted);
             }
             context.body.email = email;
