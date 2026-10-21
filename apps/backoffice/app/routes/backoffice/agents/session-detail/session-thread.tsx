@@ -39,19 +39,26 @@ import type {
   PiConversationQueueLabel,
   PiNotificationMessageMetadata,
   PiNotificationRequestMessageMetadata,
+  PiResetMessageMetadata,
 } from "./assistant-runtime";
 import {
   AssistantMessage,
   CompactionMessage,
   NotificationMessage,
   NotificationRequestMessage,
+  ResetMessage,
   UserMessage,
 } from "./messages";
 
 const OUT_OF_CONTEXT_HISTORY =
+  "Earlier messages are still visible but out of context for the agent due to compaction or a reset.";
+// Every other boundary starts at an entry a compaction kept.
+const COMPACTED_HISTORY =
   "Earlier messages are still visible but out of context for the agent due to compaction.";
+const CLEARED_HISTORY =
+  "Context cleared. Earlier messages are still visible but out of context for the agent.";
 
-type ComposerAction = "message" | "compact";
+export type ComposerAction = "message" | "compact" | "clear";
 
 function composerActionOptions(readyForInput: boolean): RadioMenuOption<ComposerAction>[] {
   return [
@@ -66,6 +73,13 @@ function composerActionOptions(readyForInput: boolean): RadioMenuOption<Composer
       value: "compact",
       label: "Compact context",
       description: "Summarize durable history using the instructions above",
+      icon: null,
+      disabled: !readyForInput,
+    },
+    {
+      value: "clear",
+      label: "Clear context",
+      description: "Start a new, empty context; earlier messages stay in history",
       icon: null,
       disabled: !readyForInput,
     },
@@ -146,6 +160,7 @@ export function SessionThread({
   modelLabel,
   needsNudge,
   onCompact,
+  onClear,
   onContinue,
   onStop,
   readyForInput,
@@ -177,6 +192,8 @@ export function SessionThread({
   modelLabel: string | null;
   needsNudge: boolean;
   onCompact: () => unknown;
+  /** Starts the agent on a new, empty context; earlier messages stay in its history. */
+  onClear: () => unknown;
   onContinue: () => unknown;
   onStop: () => unknown;
   readyForInput: boolean;
@@ -202,6 +219,8 @@ export function SessionThread({
   dictation: boolean;
 }) {
   const disabled = disabledReason !== null;
+  // Clearing takes no text, so nothing can be written for it.
+  const writingDisabled = disabled || composerAction === "clear";
   const viewportRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   // While older history loads, the reader's distance from the bottom stays fixed, so content
@@ -258,33 +277,40 @@ export function SessionThread({
               ) : null}
 
               <ThreadPrimitive.Messages>
-                {({ message }) => (
-                  <>
-                    {message.id === activeContextStartMessageId ? (
-                      <ChatBoundaryDivider>{OUT_OF_CONTEXT_HISTORY}</ChatBoundaryDivider>
-                    ) : null}
-                    {message.role === "user" ? (
-                      <UserMessage />
-                    ) : message.role === "assistant" ? (
-                      <AssistantMessage
-                        showThinking={showThinking}
-                        showToolCalls={showToolCalls}
-                        showUsage={showUsage}
-                      />
-                    ) : (
-                      <SystemMessage
-                        kind={
-                          (
-                            message.metadata.custom as
-                              | PiCompactionMessageMetadata
-                              | PiNotificationMessageMetadata
-                              | PiNotificationRequestMessageMetadata
-                          ).kind
-                        }
-                      />
-                    )}
-                  </>
-                )}
+                {({ message }) => {
+                  const systemKind =
+                    message.role === "system"
+                      ? (
+                          message.metadata.custom as
+                            | PiCompactionMessageMetadata
+                            | PiNotificationMessageMetadata
+                            | PiNotificationRequestMessageMetadata
+                            | PiResetMessageMetadata
+                        ).kind
+                      : null;
+                  // A context that starts at a reset needs one boundary, not the reset's marker too.
+                  if (message.id === activeContextStartMessageId && systemKind === "reset") {
+                    return <ChatBoundaryDivider>{CLEARED_HISTORY}</ChatBoundaryDivider>;
+                  }
+                  return (
+                    <>
+                      {message.id === activeContextStartMessageId ? (
+                        <ChatBoundaryDivider>{COMPACTED_HISTORY}</ChatBoundaryDivider>
+                      ) : null}
+                      {systemKind !== null ? (
+                        <SystemMessage kind={systemKind} />
+                      ) : message.role === "user" ? (
+                        <UserMessage />
+                      ) : (
+                        <AssistantMessage
+                          showThinking={showThinking}
+                          showToolCalls={showToolCalls}
+                          showUsage={showUsage}
+                        />
+                      )}
+                    </>
+                  );
+                }}
               </ThreadPrimitive.Messages>
 
               {compacting ? (
@@ -321,11 +347,11 @@ export function SessionThread({
                 <ScrollToLatest />
                 <ComposerPrimitive.Root
                   onSubmit={(event) => {
-                    if (composerAction !== "compact") {
+                    if (composerAction === "message") {
                       return;
                     }
                     event.preventDefault();
-                    if (readyForInput) {
+                    if (composerAction === "compact" && readyForInput) {
                       void onCompact();
                     }
                   }}
@@ -340,16 +366,18 @@ export function SessionThread({
                       )}
                     </ComposerPrimitive.Queue>
                     <ComposerPrimitive.Input
-                      disabled={disabled}
+                      disabled={writingDisabled}
                       submitMode="enter"
                       placeholder={
                         disabled
                           ? disabledReason
                           : composerAction === "compact"
                             ? "Tell Pi what the compaction summary must preserve"
-                            : running
-                              ? "Steer Pi; it reads this after the current step"
-                              : "Message Pi"
+                            : composerAction === "clear"
+                              ? "Clear starts Pi on a new, empty context"
+                              : running
+                                ? "Steer Pi; it reads this after the current step"
+                                : "Message Pi"
                       }
                       rows={1}
                       className={chatComposerInputClassName}
@@ -377,7 +405,7 @@ export function SessionThread({
                       }
                       end={
                         <>
-                          {dictation ? <DictationButton disabled={disabled} /> : null}
+                          {dictation ? <DictationButton disabled={writingDisabled} /> : null}
                           {needsNudge ? (
                             <Button variant="ghost" onClick={() => void onContinue()}>
                               Continue
@@ -410,6 +438,16 @@ export function SessionThread({
                                   onClick={() => void onCompact()}
                                 >
                                   Compact
+                                </ChatComposerButton>
+                              ) : composerAction === "clear" ? (
+                                <ChatComposerButton
+                                  tone="accent"
+                                  joined
+                                  // An empty active context, as right after a reset, has nothing to clear.
+                                  disabled={disabled || !readyForInput || contextUsage.tokens === 0}
+                                  onClick={() => void onClear()}
+                                >
+                                  Clear
                                 </ChatComposerButton>
                               ) : (
                                 <SendOrResume
@@ -444,7 +482,7 @@ export function SessionThread({
   );
 }
 
-/** System messages are compactions or notifications; their metadata names which. */
+/** System messages are compactions, resets, or notifications; their metadata names which. */
 function SystemMessage({
   kind,
 }: {
@@ -452,6 +490,7 @@ function SystemMessage({
     | PiCompactionMessageMetadata
     | PiNotificationMessageMetadata
     | PiNotificationRequestMessageMetadata
+    | PiResetMessageMetadata
   )["kind"];
 }) {
   switch (kind) {
@@ -461,6 +500,8 @@ function SystemMessage({
       return <NotificationRequestMessage />;
     case "compaction":
       return <CompactionMessage />;
+    case "reset":
+      return <ResetMessage />;
   }
   throw new Error("Unsupported system message kind.");
 }

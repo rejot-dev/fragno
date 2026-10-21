@@ -39,6 +39,7 @@ import {
   abortPiManagerAgent,
   resumePiManagerAgent,
   compactPiManagerAgent,
+  resetPiManagerAgent,
   submitPiManagerPrompt,
   type PiManagerEntryPage,
 } from "./data";
@@ -56,7 +57,7 @@ import {
   type PiAgentQueueState,
 } from "./session-detail/pi-session-view-stream";
 import { createReson8DictationAdapter } from "./session-detail/reson8-dictation";
-import { SessionThread } from "./session-detail/session-thread";
+import { SessionThread, type ComposerAction } from "./session-detail/session-thread";
 import {
   SessionWorkspaceNavigationProvider,
   type SessionWorkspaceNavigation,
@@ -77,9 +78,13 @@ const PI_COMPACTION_POLL_MS = 250;
 
 type PiAgentActionData =
   | { ok: true; intent: "start" | "send"; receipt: PiPromptReceipt }
-  | { ok: true; intent: "abort" | "resume" }
+  | { ok: true; intent: "abort" | "resume" | "reset" }
   | { ok: true; intent: "compact"; taskId: number }
-  | { ok: false; intent: "start" | "send" | "abort" | "resume" | "compact"; error: string };
+  | {
+      ok: false;
+      intent: "start" | "send" | "abort" | "resume" | "reset" | "compact";
+      error: string;
+    };
 
 type SessionWorkflowCollectionsState = {
   collections: AutomationBrowserCollections | null;
@@ -99,6 +104,10 @@ export async function action(args: Route.ActionArgs): Promise<PiAgentActionData>
   }
   if (intent === "resume") {
     const error = await resumePiManagerAgent(request, context, scope, agentName);
+    return error ? { ok: false, intent, error } : { ok: true, intent };
+  }
+  if (intent === "reset") {
+    const error = await resetPiManagerAgent(request, context, scope, agentName);
     return error ? { ok: false, intent, error } : { ok: true, intent };
   }
   if (intent === "compact") {
@@ -456,7 +465,7 @@ function BackofficeOrganizationPiAgent({
   const agentPath = `${basePath}/${encodeURIComponent(agent.agentName)}`;
   const fetcher = useFetcher<PiAgentActionData>();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [composerAction, setComposerAction] = useState<"message" | "compact">("message");
+  const [composerAction, setComposerAction] = useState<ComposerAction>("message");
   const [pendingCompactionTaskId, setPendingCompactionTaskId] = useState<number | null>(null);
   const [compactionError, setCompactionError] = useState<string | null>(null);
   const [compactionNotice, setCompactionNotice] = useState<string | null>(null);
@@ -701,6 +710,18 @@ function BackofficeOrganizationPiAgent({
   const handleResume = useCallback(() => {
     void fetcher.submit({ intent: "resume" }, { method: "post" });
   }, [fetcher]);
+  const handleClear = useCallback(() => {
+    if (running) {
+      return;
+    }
+    setCompactionError(null);
+    setCompactionNotice(null);
+    if (posthog) {
+      posthog.capture("agent_context_reset_requested", { agent_name: agent.agentName });
+    }
+    void fetcher.submit({ intent: "reset" }, { method: "post" });
+    setComposerAction("message");
+  }, [posthog, fetcher, running, agent.agentName]);
 
   // The definition can change models between turns; the conversation's stored agent is current.
   // Pi's agent document stores the conversation's model choice as a provider and model id.
@@ -755,6 +776,7 @@ function BackofficeOrganizationPiAgent({
                 modelLabel={modelLabel}
                 needsNudge={false}
                 onCompact={handleCompact}
+                onClear={handleClear}
                 onContinue={() => undefined}
                 onStop={handleStop}
                 readyForInput={!running}

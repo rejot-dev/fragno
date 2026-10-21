@@ -239,6 +239,17 @@ const compactionReasonLabels: Record<PiCompactionMessageMetadata["reason"], stri
   overflow: "Context overflow",
 };
 
+/** Marks where the context was cleared; Pi sees nothing from before it. */
+export function ResetMessage() {
+  return (
+    <MessagePrimitive.Root asChild>
+      <ChatEventDivider marker="accent" time={null}>
+        Context cleared
+      </ChatEventDivider>
+    </MessagePrimitive.Root>
+  );
+}
+
 /** Marks where Pi replaced earlier history with a summary; expanding it shows the summary. */
 export function CompactionMessage() {
   const createdAt = useAuiState((state) => state.message.createdAt);

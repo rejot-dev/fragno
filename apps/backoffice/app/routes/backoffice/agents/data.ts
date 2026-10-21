@@ -395,6 +395,31 @@ export async function resumePiManagerAgent(
   return `Failed to resume the agent (${response.status}).`;
 }
 
+export async function resetPiManagerAgent(
+  request: Request,
+  context: Readonly<RouterContextProvider>,
+  scope: BackofficeContextScope,
+  agentName: string,
+): Promise<string | null> {
+  const { callRoute, execution } = await createPiManagerRouteCaller(request, context, scope);
+  const response = await callRoute("POST", "/agents/:agentName/reset", {
+    pathParams: { agentName },
+  });
+  if (response.type === "empty") {
+    captureBackofficeServerEvent(context, {
+      event: "agent_context_reset",
+      userId: execution.userAuthority.userId,
+      properties: { agent_name: agentName, scope_kind: scope.kind },
+    });
+    return null;
+  }
+  if (response.type === "error") {
+    throwPiManagerAuthorizationFailure(response);
+    return response.error.message;
+  }
+  return `Failed to clear the context (${response.status}).`;
+}
+
 export async function abortPiManagerAgent(
   request: Request,
   context: Readonly<RouterContextProvider>,

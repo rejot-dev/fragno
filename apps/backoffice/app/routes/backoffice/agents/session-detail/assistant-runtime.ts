@@ -24,6 +24,11 @@ export type PiCompactionMessage = {
   summary: string;
   timestamp: number;
 };
+/** Where the context was cleared; Pi records no time for a reset. */
+export type PiResetMessage = {
+  role: "reset";
+  entryId: number;
+};
 /** An event a route delivered, shown where Pi placed it in the transcript. */
 export type PiNotificationMessage = {
   role: "notification";
@@ -39,6 +44,7 @@ export type PiNotificationRequestMessage = {
 export type PiConversationMessage =
   | PiDurableMessage
   | PiCompactionMessage
+  | PiResetMessage
   | PiNotificationMessage
   | PiNotificationRequestMessage;
 export type ToolResultMessage = Extract<PiConversationMessage, { role: "toolResult" }>;
@@ -81,6 +87,10 @@ export type PiToolCallArtifact = {
 export type PiCompactionMessageMetadata = {
   kind: "compaction";
   reason: CompactionReason;
+};
+
+export type PiResetMessageMetadata = {
+  kind: "reset";
 };
 
 export type PiNotificationMessageMetadata = {
@@ -192,9 +202,10 @@ function assistantRecoveryFingerprint(
   );
 }
 
-// Match pi-durable's `CompactionEntry.kind` and `UserEntry.kind`; their runtime exports would pull
-// the harness into the client.
+// Match pi-durable's `CompactionEntry.kind`, `ResetEntry.kind`, and `UserEntry.kind`; their runtime
+// exports would pull the harness into the client.
 const COMPACTION_ENTRY_KIND = "pi.compaction";
+const RESET_ENTRY_KIND = "pi.reset";
 const USER_ENTRY_KIND = "pi.user";
 
 /** Pi wraps the summary in model-facing framing; only the summary itself is worth reading. */
@@ -272,6 +283,11 @@ export function piConversationMessages(
     }
     if (entry.kind === PI_NOTIFICATION_ENTRY_KIND) {
       messages.push(notificationMessage(entry));
+      return;
+    }
+    if (entry.kind === RESET_ENTRY_KIND) {
+      // A handoff reset carries the note the new context starts from.
+      messages.push({ role: "reset", entryId: entry.id }, ...(entry.model ?? []));
       return;
     }
     const request = notificationRequestMessage(entry);
@@ -504,6 +520,15 @@ export function createAssistantUiMessages({
             notifications: message.notifications,
           } satisfies PiNotificationRequestMessageMetadata,
         },
+      });
+      return;
+    }
+    if (message.role === "reset") {
+      converted.push({
+        id: `pi-reset-${message.entryId}`,
+        role: "system",
+        content: [{ type: "text", text: "Context cleared" }],
+        metadata: { custom: { kind: "reset" } satisfies PiResetMessageMetadata },
       });
       return;
     }
