@@ -5,7 +5,6 @@ import {
   createSessionWorkspaceState,
   generatedUiWorkspaceId,
   toggleSessionWorkspaceItem,
-  updateSessionWorkspaceStateBySession,
   workflowGraphWorkspaceId,
   type SessionWorkspaceItem,
 } from "./workspace-model";
@@ -59,21 +58,6 @@ describe("session workspace selection", () => {
       open: true,
       selectedItemId: secondWorkflow.id,
       observedItemIds: [firstWorkflow.id, secondWorkflow.id],
-    });
-  });
-
-  test("keeps independent workspace state for each session in memory", () => {
-    const firstSessionId = "session-a";
-    const secondSessionId = "session-b";
-    const itemId = generatedUiWorkspaceId("interface");
-    const states = updateSessionWorkspaceStateBySession({}, firstSessionId, (current) =>
-      toggleSessionWorkspaceItem(current, itemId),
-    );
-
-    expect(states[firstSessionId]).toEqual({ open: true, selectedItemId: itemId });
-    expect(states[secondSessionId] ?? createSessionWorkspaceState()).toEqual({
-      open: false,
-      selectedItemId: null,
     });
   });
 

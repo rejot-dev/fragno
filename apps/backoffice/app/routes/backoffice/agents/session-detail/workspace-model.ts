@@ -41,17 +41,6 @@ export function createSessionWorkspaceState(): SessionWorkspaceState {
   };
 }
 
-export function updateSessionWorkspaceStateBySession(
-  states: SessionWorkspaceStateBySession,
-  sessionKey: string,
-  update: SessionWorkspaceStateUpdate,
-): SessionWorkspaceStateBySession {
-  const current = states[sessionKey] ?? createSessionWorkspaceState();
-  const next = update(current);
-
-  return next === current ? states : { ...states, [sessionKey]: next };
-}
-
 export function autoOpenNewWorkflowWorkspaceItem(
   state: SessionWorkspaceState,
   items: readonly SessionWorkspaceItem[],
