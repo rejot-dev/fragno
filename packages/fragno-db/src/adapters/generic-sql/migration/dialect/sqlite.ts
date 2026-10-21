@@ -30,15 +30,7 @@ const errors = {
     "SQLite doesn't support modifying foreign keys directly. Use `recreate-table` instead.",
 } as const;
 
-type RenameOrDropColumnOperation = Extract<
-  ColumnOperation,
-  { type: "rename-column" } | { type: "drop-column" }
->;
-
 type CopyColumnMapping = { from: string; to: string };
-type SqliteRecreateTable = NonNullable<SqliteAlterTableMetadata["recreateTable"]>;
-type SqliteRecreateIndex = SqliteRecreateTable["indexes"][number];
-type SqliteRecreateForeignKey = SqliteRecreateTable["foreignKeys"][number];
 
 function normalizeCopyColumns(copyColumns: SqliteCopyColumn[]): CopyColumnMapping[] {
   return copyColumns.map((column) =>
@@ -46,129 +38,6 @@ function normalizeCopyColumns(copyColumns: SqliteCopyColumn[]): CopyColumnMappin
       ? { from: column, to: column }
       : { from: column.from, to: column.to },
   );
-}
-
-function applyRenameDropToColumns(
-  columns: ColumnInfo[],
-  operations: RenameOrDropColumnOperation[],
-): ColumnInfo[] {
-  let next = columns.map((column) => ({ ...column }));
-
-  for (const op of operations) {
-    if (op.type === "rename-column") {
-      const column = next.find((col) => col.name === op.from);
-      if (column) {
-        column.name = op.to;
-      }
-    } else if (op.type === "drop-column") {
-      next = next.filter((column) => column.name !== op.name);
-    }
-  }
-
-  return next;
-}
-
-function applyRenameDropToCopyColumns(
-  copyColumns: CopyColumnMapping[],
-  operations: RenameOrDropColumnOperation[],
-): CopyColumnMapping[] {
-  let next = copyColumns.map((column) => ({ ...column }));
-
-  for (const op of operations) {
-    if (op.type === "rename-column") {
-      for (const mapping of next) {
-        if (mapping.to === op.from) {
-          mapping.to = op.to;
-        }
-      }
-    } else if (op.type === "drop-column") {
-      next = next.filter((mapping) => mapping.to !== op.name);
-    }
-  }
-
-  return next;
-}
-
-function applyRenameDropToIndexes(
-  indexes: SqliteRecreateIndex[],
-  operations: RenameOrDropColumnOperation[],
-): SqliteRecreateIndex[] {
-  const next: SqliteRecreateIndex[] = [];
-
-  for (const index of indexes) {
-    let columns = [...index.columns];
-    let dropped = false;
-
-    for (const op of operations) {
-      if (op.type === "rename-column") {
-        columns = columns.map((column) => (column === op.from ? op.to : column));
-      } else if (columns.includes(op.name)) {
-        dropped = true;
-        break;
-      }
-    }
-
-    if (!dropped) {
-      next.push({ ...index, columns });
-    }
-  }
-
-  return next;
-}
-
-function applyRenameDropToForeignKeys(
-  foreignKeys: SqliteRecreateForeignKey[],
-  operations: RenameOrDropColumnOperation[],
-): SqliteRecreateForeignKey[] {
-  const next: SqliteRecreateForeignKey[] = [];
-
-  for (const foreignKey of foreignKeys) {
-    let columns = [...foreignKey.columns];
-    let dropped = false;
-
-    for (const op of operations) {
-      if (op.type === "rename-column") {
-        columns = columns.map((column) => (column === op.from ? op.to : column));
-      } else if (columns.includes(op.name)) {
-        dropped = true;
-        break;
-      }
-    }
-
-    if (!dropped) {
-      next.push({
-        ...foreignKey,
-        columns,
-      });
-    }
-  }
-
-  return next;
-}
-
-function mergeRenameDropIntoRecreate(
-  recreate: SqliteRecreateTable,
-  operations: ColumnOperation[],
-): SqliteRecreateTable {
-  const renameDropOps = operations.filter(
-    (op): op is RenameOrDropColumnOperation =>
-      op.type === "rename-column" || op.type === "drop-column",
-  );
-
-  if (renameDropOps.length === 0) {
-    return recreate;
-  }
-
-  return {
-    ...recreate,
-    columns: applyRenameDropToColumns(recreate.columns, renameDropOps),
-    copyColumns: applyRenameDropToCopyColumns(
-      normalizeCopyColumns(recreate.copyColumns),
-      renameDropOps,
-    ),
-    indexes: applyRenameDropToIndexes(recreate.indexes, renameDropOps),
-    foreignKeys: applyRenameDropToForeignKeys(recreate.foreignKeys, renameDropOps),
-  };
 }
 
 /**
@@ -408,8 +277,7 @@ export class SQLiteSQLGenerator extends SQLGenerator {
       throw new Error(errors.SQLiteUpdateColumn);
     }
 
-    const mergedRecreate = mergeRenameDropIntoRecreate(recreate, operation.value);
-    return this.compileRecreateTable(operation.name, mergedRecreate, resolver);
+    return this.compileRecreateTable(operation.name, recreate, resolver);
   }
 
   protected override compileUpdateColumn(

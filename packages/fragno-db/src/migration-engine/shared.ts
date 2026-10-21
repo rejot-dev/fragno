@@ -40,6 +40,11 @@ export interface ColumnInfo {
   default?: { value: unknown } | { dbSpecial: "now" } | { runtime: "cuid" | "now" };
 }
 
+/**
+ * The table after every operation of its `alter-table`. Its operations are already applied here,
+ * so they must not be applied again: a later operation may reuse a name an earlier one freed.
+ * `copyColumns` maps each kept column's current name to its name in the rebuilt table.
+ */
 export interface SqliteRecreateTableInfo {
   columns: ColumnInfo[];
   copyColumns: SqliteCopyColumn[];
