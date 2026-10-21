@@ -71,6 +71,7 @@ type BackofficePermissionDecisions = {
  */
 export const USER_AUTHORITY_ROLE_PERMISSION_DECISIONS = {
   "system-administrator": {
+    projects: { create: "grant", read: "grant" },
     account: { read: "grant", manage: "grant" },
     admin: {
       appsManage: "grant",
@@ -105,6 +106,7 @@ export const USER_AUTHORITY_ROLE_PERMISSION_DECISIONS = {
     workflow: { executeCode: "grant", modify: "grant", read: "grant" },
   },
   "user-owner": {
+    projects: { create: "grant", read: "grant" },
     account: { read: "grant", manage: "grant" },
     admin: {
       appsManage: "deny",
@@ -140,6 +142,7 @@ export const USER_AUTHORITY_ROLE_PERMISSION_DECISIONS = {
     workflow: { executeCode: "grant", modify: "grant", read: "grant" },
   },
   "organization-member": {
+    projects: { create: "grant", read: "grant" },
     account: { read: "grant", manage: "grant" },
     // Administration stays with system administrators.
     admin: {
@@ -180,6 +183,7 @@ export const USER_AUTHORITY_ROLE_PERMISSION_DECISIONS = {
     workflow: { executeCode: "grant", modify: "grant", read: "grant" },
   },
   "app-workspace-observer": {
+    projects: { create: "deny", read: "deny" },
     // A person's own account is not the workspace's.
     account: { read: "grant", manage: "grant" },
     admin: {

@@ -99,6 +99,57 @@ for await (const frame of backoffice.watch({ kind: "org", orgId }, "pi.agent.wat
 }
 ```
 
+## Projects
+
+### Listing
+
+`projects.list` lists projects in the selected organization or personal scope. It requires a user
+principal and `projects.read`; personal-scope users and organization members receive that
+permission, and delegated agents must also be granted it.
+
+```ts
+const page = await backoffice.call({ kind: "user", userId }, "projects.list", { pageSize: 25 });
+// page: { projects, nextCursor, hasNextPage }
+```
+
+```sh
+projects.list --format json
+projects.list --page-size 10 --cursor CURSOR --format json
+```
+
+Codemode exposes the same operation as `projects.list({ pageSize: 25 })`. Results are ordered by
+slug and include archived projects, identified by a non-null `archivedAt`. Each project has a
+`projectId`, slug, name, description, creator ID, and ISO timestamps. Pages default to 25 records
+(maximum 100); resume using `nextCursor` with the same page size. The final page has
+`nextCursor: null` and `hasNextPage: false`. Listing does not move from a project scope to its
+owner.
+
+### Creating
+
+`projects.create` creates a project in the selected owner scope and returns `{ projectId, slug }`.
+It requires a user principal and the `projects.create` permission. Personal-scope users and
+organization members receive this permission; delegated agents must also be granted it. The creator
+is derived from the principal, never supplied in the input.
+
+```ts
+const project = await backoffice.call({ kind: "org", orgId }, "projects.create", {
+  name: "Customer Support",
+  slug: "support",
+  description: "Support workflows",
+});
+```
+
+The same operation is available as `projects.create(...)` in Codemode and in the terminal:
+
+```sh
+projects.create --name "Customer Support" --slug support --format json
+```
+
+Omitting `slug` derives it from the name; omitting `description` stores `null`. A duplicate slug
+within the owner returns `conflict`. Select an organization or personal scope—not System, an app
+workspace, or a project. Creating a sibling from a project requires explicitly selecting its owner
+scope, which project-restricted credentials cannot do.
+
 ## Provisioning
 
 `v0/provisioning` is a separate contract for apps Backoffice operates. Its operations are

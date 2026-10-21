@@ -1,15 +1,14 @@
-import { z } from "zod";
+import { projectPageSchema, projectSlugSchema } from "@fragno-dev/backoffice-api/v0/projects";
+import { directoryPageInputSchema } from "@fragno-dev/backoffice-api/v0/shared/pagination";
 
 import { defineRoutes } from "@fragno-dev/core";
-import { isUniqueConstraintError } from "@fragno-dev/db";
+import { decodeCursor, isUniqueConstraintError, type Cursor } from "@fragno-dev/db";
 
 import { automationFragmentDefinition } from "./definition";
 import {
   automationProjectCreateInputSchema,
-  automationProjectListInputSchema,
   automationProjectSchema,
   automationProjectUpdateInputSchema,
-  projectSlugSchema,
 } from "./projects";
 import { AutomationProjectOwnerRequiredError } from "./projects-storage-runtime";
 
@@ -19,12 +18,12 @@ export const automationProjectRoutes = defineRoutes(automationFragmentDefinition
       defineRoute({
         method: "GET",
         path: "/projects",
-        outputSchema: z.array(automationProjectSchema),
+        queryParameters: ["pageSize", "cursor"],
+        outputSchema: projectPageSchema,
         handler: async function ({ query }, { json, error }) {
-          const limitRaw = query.get("limit")?.trim();
-          const limit = limitRaw ? Number(limitRaw) : undefined;
-          const parsed = automationProjectListInputSchema.safeParse({
-            limit,
+          const parsed = directoryPageInputSchema.safeParse({
+            pageSize: query.has("pageSize") ? Number(query.get("pageSize")) : undefined,
+            cursor: query.get("cursor"),
           });
           if (!parsed.success) {
             return error(
@@ -36,11 +35,46 @@ export const automationProjectRoutes = defineRoutes(automationFragmentDefinition
             );
           }
 
-          const projects = await this.handlerTx()
-            .withServiceCalls(() => [services.listProjects(parsed.data)] as const)
+          let cursor: Cursor | null = null;
+          try {
+            if (parsed.data.cursor !== null) {
+              cursor = decodeCursor(parsed.data.cursor);
+              if (
+                cursor.indexName !== "idx_project_slug" ||
+                cursor.orderDirection !== "asc" ||
+                cursor.pageSize !== parsed.data.pageSize ||
+                typeof cursor.indexValues.slug !== "string"
+              ) {
+                throw new Error("Cursor does not match the project listing.");
+              }
+            }
+          } catch {
+            return error(
+              { message: "Invalid project list cursor.", code: "PROJECT_LIST_CURSOR_INVALID" },
+              400,
+            );
+          }
+
+          const page = await this.handlerTx()
+            .withServiceCalls(
+              () => [services.listProjects({ pageSize: parsed.data.pageSize, cursor })] as const,
+            )
             .transform(({ serviceResult: [result] }) => result)
             .execute();
-          return json(projects);
+          return json({
+            projects: page.items.map((project) => ({
+              projectId: project.id.valueOf(),
+              slug: project.slug,
+              name: project.name,
+              description: project.description,
+              archivedAt: project.archivedAt?.toISOString() ?? null,
+              createdByUserId: project.createdByUserId,
+              createdAt: project.createdAt.toISOString(),
+              updatedAt: project.updatedAt.toISOString(),
+            })),
+            nextCursor: page.hasNextPage && page.cursor ? page.cursor.encode() : null,
+            hasNextPage: page.hasNextPage,
+          });
         },
       }),
       defineRoute({

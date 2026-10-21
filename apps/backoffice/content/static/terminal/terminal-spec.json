@@ -3604,6 +3604,84 @@
     ]
   },
   {
+    "command": "projects.create",
+    "summary": "Create a project in the selected owner scope as the current user.",
+    "options": [
+      {
+        "name": "name",
+        "required": true,
+        "valueRequired": true,
+        "description": "Project name."
+      },
+      {
+        "name": "slug",
+        "valueRequired": true,
+        "description": "Unique project slug; defaults to a slug derived from the name."
+      },
+      {
+        "name": "description",
+        "valueRequired": true,
+        "description": "Project description."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "projects.list",
+    "summary": "List the selected owner's projects by slug, including archived projects.",
+    "options": [
+      {
+        "name": "page-size",
+        "valueRequired": true,
+        "valueName": "count",
+        "description": "Page size, 1–100 (default 25)."
+      },
+      {
+        "name": "cursor",
+        "valueRequired": true,
+        "valueName": "cursor",
+        "description": "Cursor from the previous page; keep the same page size."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "reson8.prerecorded.transcribe",
     "summary": "Transcribe a prerecorded audio file with Reson8.",
     "options": [

@@ -66,6 +66,7 @@ import {
   createUnavailableOtpRuntime,
 } from "@/fragno/runtime-tools/families/otp-runtime";
 import { createPackagesRuntime } from "@/fragno/runtime-tools/families/packages-runtime";
+import { createProjectsRuntime } from "@/fragno/runtime-tools/families/projects-runtime";
 import { createReson8Runtime } from "@/fragno/runtime-tools/families/reson8-runtime";
 import { createSandboxRouteRuntime } from "@/fragno/runtime-tools/families/sandbox-route-runtime";
 import {
@@ -372,6 +373,13 @@ export const createRouteBackedRuntimeContext = ({
         ...createRouteBackedAutomationRouterRuntime({ object: automationsObject, execution }),
       },
     },
+    // Never escalate a project-scoped run to its owner's scope to create a sibling.
+    projects:
+      runtime.config.bindings.automations &&
+      userId &&
+      (execution.scope.kind === "org" || execution.scope.kind === "user")
+        ? { runtime: createProjectsRuntime({ object: automationsObject, execution, userId }) }
+        : null,
     identity: {
       runtime: createRouteBackedAutomationIdentityRuntime({ object: automationsObject, execution }),
     },

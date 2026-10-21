@@ -159,21 +159,28 @@ export async function loadAppInstallChoices(
   // The personal scope is always offered, so there is always a selection.
   const selected = owners.find(({ value }) => value === input.selectedOwner) ?? owners[0];
 
-  const projectsResponse = await createAutomationsRouteCaller({
+  const callProjectsRoute = createAutomationsRouteCaller({
     object: runtime.objects.automations.for(selected.owner),
-  })("GET", "/projects", {});
-  // An unavailable project list must not look like "no projects": the page would then offer only
-  // access to everything the owner has.
-  if (projectsResponse.type !== "json") {
-    throw new Error(
-      `Projects for '${selected.value}' could not be loaded (${projectsResponse.status}).`,
+  });
+  const projects: { id: string; name: string }[] = [];
+  let cursor: string | null = null;
+  // Approval must offer every project, not silently widen access when a page is empty or fails.
+  do {
+    const query = new URLSearchParams({ pageSize: "100" });
+    if (cursor !== null) {
+      query.set("cursor", cursor);
+    }
+    const response = await callProjectsRoute("GET", "/projects", { query });
+    if (response.type !== "json") {
+      throw new Error(`Projects for '${selected.value}' could not be loaded (${response.status}).`);
+    }
+    projects.push(
+      ...response.data.projects
+        .filter(({ archivedAt }) => archivedAt === null)
+        .map(({ projectId, name }) => ({ id: projectId, name })),
     );
-  }
-  const projects = z
-    .array(z.object({ id: z.unknown(), name: z.string(), archivedAt: z.unknown().nullable() }))
-    .parse(projectsResponse.data)
-    .filter(({ archivedAt }) => archivedAt === null)
-    .map(({ id, name }) => ({ id: String(id), name }));
+    cursor = response.data.nextCursor;
+  } while (cursor !== null);
   const installation = await runtime.objects.appInstallations
     .for(selected.owner)
     .commands.getInstallation({ appId: input.appId });

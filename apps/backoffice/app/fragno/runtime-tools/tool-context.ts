@@ -26,6 +26,7 @@ export const createBackofficeToolContext = (
     packages: context.packages?.runtime,
     otp: context.otp?.runtime,
     pi: context.pi?.runtime,
+    projects: context.projects?.runtime,
     reson8: context.reson8?.runtime,
     sandbox: context.sandbox?.runtime,
     javascript: context.javascript?.runtime,

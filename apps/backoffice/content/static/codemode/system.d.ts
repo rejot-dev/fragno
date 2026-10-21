@@ -19,6 +19,7 @@
 /// <reference path="/static/codemode/providers/models.d.ts" />
 /// <reference path="/static/codemode/providers/otp.d.ts" />
 /// <reference path="/static/codemode/providers/pi.d.ts" />
+/// <reference path="/static/codemode/providers/projects.d.ts" />
 /// <reference path="/static/codemode/providers/reson8.d.ts" />
 /// <reference path="/static/codemode/providers/sandbox.d.ts" />
 /// <reference path="/static/codemode/providers/js.d.ts" />
@@ -64,6 +65,7 @@ interface BackofficeCodemodeScopedProviders {
   models: ModelsCodemodeProvider;
   otp: OtpCodemodeProvider;
   pi: PiCodemodeProvider;
+  projects: ProjectsCodemodeProvider;
   reson8: Reson8CodemodeProvider;
   sandbox: SandboxCodemodeProvider;
   js: JsCodemodeProvider;

@@ -264,6 +264,14 @@ type BackofficePermissionRequirement =
       permission: "read";
     }
   | {
+      namespace: "projects";
+      permission: "create";
+    }
+  | {
+      namespace: "projects";
+      permission: "read";
+    }
+  | {
       namespace: "reson8";
       permission: "transcribe";
     }

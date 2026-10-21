@@ -1,4 +1,5 @@
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
+import { projectSlugSchema } from "@fragno-dev/backoffice-api/v0/projects";
 import {
   type BackofficeContextScope,
   type BackofficeProjectOwner,
@@ -6,7 +7,7 @@ import {
   backofficeScopeRootOwner,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
-import type { DatabaseServiceContext } from "@fragno-dev/db";
+import type { Cursor, DatabaseServiceContext } from "@fragno-dev/db";
 
 import { nextNumberedSlug } from "@/lib/numbered-slug";
 
@@ -15,14 +16,11 @@ import type { AutomationEventIngestionPayload, AutomationInternalHooks } from ".
 import {
   automationProjectArchiveInputSchema,
   automationProjectCreateInputSchema,
-  automationProjectListInputSchema,
   automationProjectLookupInputSchema,
   automationProjectUpdateInputSchema,
-  projectSlugSchema,
   slugFromProjectName,
   type AutomationProjectArchiveInput,
   type AutomationProjectCreateInput,
-  type AutomationProjectListInput,
   type AutomationProjectExecutionTarget,
   type AutomationProjectLookupInput,
   type AutomationProjectUpdateInput,
@@ -146,16 +144,18 @@ export const createAutomationProjectServices = (
   options: AutomationProjectServicesOptions,
 ) =>
   defineService({
-    listProjects(args: AutomationProjectListInput = {}) {
-      const input = automationProjectListInputSchema.parse(args);
+    listProjects(input: { pageSize: number; cursor: Cursor | null }) {
       return this.serviceTx(automationFragmentSchema)
         .retrieve((uow) =>
-          uow.find("project", (b) => {
-            const query = b.whereIndex("idx_project_slug");
-            return input.limit ? query.pageSize(input.limit) : query;
+          uow.findWithCursor("project", (b) => {
+            const query = b
+              .whereIndex("idx_project_slug")
+              .orderByIndex("idx_project_slug", "asc")
+              .pageSize(input.pageSize);
+            return input.cursor ? query.after(input.cursor) : query;
           }),
         )
-        .transformRetrieve(([projects]) => projects)
+        .transformRetrieve(([page]) => page)
         .build();
     },
 

@@ -928,7 +928,7 @@ describe("automation routes /projects", () => {
     const listResponse = await fragment.callRoute("GET", "/projects");
     assert(listResponse.type === "json");
     if (listResponse.type === "json") {
-      expect(listResponse.data.map((project) => project.slug)).toEqual(["launch-plan"]);
+      expect(listResponse.data.projects.map((project) => project.slug)).toEqual(["launch-plan"]);
     }
 
     const projectId = projectIdValue(createResponse.data.id);
@@ -967,8 +967,8 @@ describe("automation routes /projects", () => {
     const listAfterArchiveResponse = await fragment.callRoute("GET", "/projects");
     assert(listAfterArchiveResponse.type === "json");
     if (listAfterArchiveResponse.type === "json") {
-      expect(listAfterArchiveResponse.data).toHaveLength(1);
-      expect(listAfterArchiveResponse.data[0]?.archivedAt).toBeTruthy();
+      expect(listAfterArchiveResponse.data.projects).toHaveLength(1);
+      expect(listAfterArchiveResponse.data.projects[0]?.archivedAt).toBeTruthy();
     }
   });
 

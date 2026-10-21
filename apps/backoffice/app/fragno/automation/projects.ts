@@ -1,14 +1,5 @@
+import { projectSlugSchema } from "@fragno-dev/backoffice-api/v0/projects";
 import { z } from "zod";
-
-export const projectSlugSchema = z
-  .string()
-  .trim()
-  .min(1)
-  .max(80)
-  .regex(
-    /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
-    "Project slug must use lowercase letters, numbers, and single hyphens.",
-  );
 
 const projectDateSchema = z.preprocess((value) => {
   if (value instanceof Date && Number.isNaN(value.getTime())) {
@@ -42,10 +33,6 @@ export const automationProjectUpdateInputSchema = z.object({
   description: z.string().trim().max(1000).nullable().optional(),
 });
 
-export const automationProjectListInputSchema = z.object({
-  limit: z.number().int().min(1).max(500).optional(),
-});
-
 export const automationProjectLookupInputSchema = z
   .object({
     projectId: z.string().trim().min(1).optional(),
@@ -68,7 +55,6 @@ export type AutomationProjectExecutionTarget = {
 export type AutomationProject = z.infer<typeof automationProjectSchema>;
 export type AutomationProjectCreateInput = z.infer<typeof automationProjectCreateInputSchema>;
 export type AutomationProjectUpdateInput = z.infer<typeof automationProjectUpdateInputSchema>;
-export type AutomationProjectListInput = z.infer<typeof automationProjectListInputSchema>;
 export type AutomationProjectLookupInput = z.infer<typeof automationProjectLookupInputSchema>;
 export type AutomationProjectArchiveInput = z.infer<typeof automationProjectArchiveInputSchema>;
 

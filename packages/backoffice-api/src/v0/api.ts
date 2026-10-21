@@ -15,6 +15,7 @@ import { modelsOperations } from "./models";
 import { organizationOperations } from "./organization";
 import { otpOperations } from "./otp";
 import { piOperations, piStreams } from "./pi";
+import { projectsOperations } from "./projects";
 import { reson8Operations } from "./reson8";
 import { sandboxOperations } from "./sandbox";
 import { stateOperations } from "./state";
@@ -43,6 +44,7 @@ export const backofficeApiV0 = {
     ...otpOperations,
     ...packagesOperations,
     ...piOperations,
+    ...projectsOperations,
     ...reson8Operations,
     ...sandboxOperations,
     ...stateOperations,
