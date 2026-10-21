@@ -16,6 +16,7 @@ import {
 } from "@/backoffice-runtime/resolved-scope";
 import type { BackofficeMeData, Organization } from "@/fragno/auth/contracts";
 
+import { backofficeScopeOptions } from "./scope-options";
 import { scopeSwitchPath } from "./scope-switch-path";
 
 const SCOPE_GROUPS = [
@@ -132,27 +133,10 @@ export function BackofficeScopeMenu({
     return null;
   }
 
-  const options: ScopeMenuOption[] = [
-    ...(me.user.role === "admin"
-      ? [
-          {
-            id: "system:system",
-            label: "System",
-            scope: { kind: "system" as const },
-          },
-        ]
-      : []),
-    ...me.organizations.map(({ organization }) => ({
-      id: `org:${organization.id}`,
-      label: organization.name,
-      scope: { kind: "org" as const, organization },
-    })),
-    {
-      id: `user:${me.user.id}`,
-      label: me.user.email ?? me.user.id,
-      scope: { kind: "user" as const, userId: me.user.id },
-    },
-  ];
+  const options: ScopeMenuOption[] = backofficeScopeOptions(me).map((option) => ({
+    ...option,
+    id: scopeOptionId(option.scope),
+  }));
   const selectedId = scopeOptionId(currentScope);
   const triggerLabel = currentScopeLabel(currentScope, me);
 
