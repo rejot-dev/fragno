@@ -142,10 +142,12 @@ published late is ignored.
 ## Turn events
 
 Every answered prompt records one `pi` Automations event in the agent's scope, `turn.completed` with
-the answer's entry ID. Prompts that settle unanswered, such as aborted, withdrawn, or failed ones,
-record nothing. A steer that joined a running turn settles with that turn. The event's subject names
-the agent and the prompt's request ID, its actors are the turn's execution actors, and its scope
-restriction is the turn's. It carries no answer text; `pi.getSubmission` leads to the answer.
+the answer's entry ID. A prompt a stop cut off, which Pi settles unanswered with reason `aborted`,
+records `turn.aborted`, with an empty payload. Other unanswered prompts, such as withdrawn or failed
+ones, record nothing. A steer that joined a running turn settles with that turn. The event's subject
+names the agent and the prompt's request ID, its actors are the turn's execution actors, and its
+scope restriction is the turn's, so `turn.aborted` names who prompted the turn; `agent.stopped`
+names who stopped it. Neither carries answer text; `pi.getSubmission` leads to the answer.
 
 Pi settles submissions in its own commits, so the turns document is the outbox: a settled turn stays
 in `pending` until its event, if any, is ingested, keyed `pi:<agentName>:<requestId>`, and its

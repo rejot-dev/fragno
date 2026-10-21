@@ -9,6 +9,7 @@ import type { BackofficeCapability } from "@/fragno/backoffice-capabilities/back
 
 export const PI_AUTOMATION_SOURCE = "pi" as const;
 export const PI_AUTOMATION_EVENT_TURN_COMPLETED = "turn.completed" as const;
+export const PI_AUTOMATION_EVENT_TURN_ABORTED = "turn.aborted" as const;
 
 /** What `pi.agent.*` operations change, each recorded as a `pi` event in the agent's scope. */
 export const PI_AGENT_AUTOMATION_EVENTS = {
@@ -98,7 +99,7 @@ export const piCapability: BackofficeCapability = {
         source: PI_AUTOMATION_SOURCE,
         label: "Pi",
         description:
-          "Agent turns that answered, and agents defined, changed, deleted, or stopped, attributed to whoever did it.",
+          "Agent turns that answered or were cut off, and agents defined, changed, deleted, or stopped, attributed to whoever did it.",
       },
     ],
     actionProviders: ["pi"],
@@ -114,6 +115,15 @@ export const piCapability: BackofficeCapability = {
         payloadSchema: turnCompletedPayloadSchema,
         subjectSchema: turnSubjectSchema,
         example: { answerEntryId: 12 },
+      },
+      {
+        source: PI_AUTOMATION_SOURCE,
+        eventType: PI_AUTOMATION_EVENT_TURN_ABORTED,
+        label: "Agent turn aborted",
+        description: `Fires after stopping an agent cuts off a turn before it answered; agent.stopped records who stopped it. ${turnNote}`,
+        payloadSchema: z.object({}),
+        subjectSchema: turnSubjectSchema,
+        example: {},
       },
       ...(["created", "updated", "deleted"] as const).map((kind) => ({
         source: PI_AUTOMATION_SOURCE,
