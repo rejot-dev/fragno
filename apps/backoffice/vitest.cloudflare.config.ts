@@ -3,7 +3,6 @@ import { defineProject } from "vitest/config";
 import { cloudflareTest } from "@cloudflare/vitest-plugin";
 
 import { docsVitestResolveConfig } from "./vitest.shared";
-import { stallWatchdog } from "./vitest.stall-watchdog";
 
 export default defineProject({
   plugins: [
@@ -13,11 +12,13 @@ export default defineProject({
       remoteBindings: false,
       wrangler: { configPath: "./tests/wrangler.vitest.jsonc" },
     }),
-    stallWatchdog(),
   ],
   resolve: docsVitestResolveConfig,
   test: {
     name: "cloudflare",
+    // Late Worker/DO logs can deadlock Vitest's console RPC after all tests finish.
+    // Use native workerd output (without test attribution) until cloudflare/workers-sdk#15719 is fixed.
+    disableConsoleIntercept: true,
     globals: true,
     setupFiles: ["./workers/vitest-compiler-setup.ts"],
     testTimeout: 15_000,

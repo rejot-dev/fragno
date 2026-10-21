@@ -1,10 +1,8 @@
 import { defineProject } from "vitest/config";
 
 import { docsVitestResolveConfig } from "./vitest.shared";
-import { stallWatchdog } from "./vitest.stall-watchdog";
 
 export default defineProject({
-  plugins: [stallWatchdog()],
   resolve: docsVitestResolveConfig,
   test: {
     name: "node",
