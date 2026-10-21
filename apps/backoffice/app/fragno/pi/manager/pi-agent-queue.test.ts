@@ -207,7 +207,7 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
       const response = await this.notify(input);
       assert(response.type === "empty", JSON.stringify(response));
     },
-    async control(action: "abort" | "resume", agentName = "assistant") {
+    async control(action: "stop" | "resume", agentName = "assistant") {
       const response = await fragment.callRoute("POST", `/agents/:agentName/${action}`, {
         pathParams: { agentName },
       });
@@ -406,7 +406,7 @@ test("stopping pauses the queue until someone sends a message, which joins its e
   for (const requestId of ["running", "waiting"]) {
     await queue.receipt({ requestId });
   }
-  await queue.control("abort");
+  await queue.control("stop");
   // The stopped turn settles unanswered, and nothing starts after it.
   await queue.settle("running");
   expect(await queue.submission("waiting")).toEqual({
@@ -442,12 +442,12 @@ test("resuming starts the next turn at once, or when the stopped turn settles", 
   for (const requestId of ["first", "second", "third"]) {
     await queue.receipt({ requestId });
   }
-  await queue.control("abort");
+  await queue.control("stop");
   await queue.settle("first");
   await queue.control("resume");
   expect(queue.turns()).toEqual(["dispatch first", "dispatch second"]);
 
-  await queue.control("abort");
+  await queue.control("stop");
   await queue.control("resume");
   expect(queue.turns()).toHaveLength(2);
   await queue.settle("second");
@@ -579,7 +579,7 @@ test("the view stream follows what waits in the agent's queue", async () => {
   await queue.settle("first");
   expect(await nextQueue()).toEqual(["notification route:orders:ada-1"]);
 
-  await queue.control("abort");
+  await queue.control("stop");
   expect(await nextQueue()).toEqual(["paused", "notification route:orders:ada-1"]);
   await queue.control("resume");
   expect(await nextQueue()).toEqual(["notification route:orders:ada-1"]);

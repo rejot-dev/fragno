@@ -56,7 +56,7 @@ const parsePromptRun = defineCliArgsParser<PiManagerRunPromptInput>("pi.prompt.r
   whenBusy: { option: "when-busy" },
   timeoutMs: { option: "timeout-ms", kind: "integer" },
 });
-const parseAgentAbort = defineCliArgsParser<PiManagerAgentInput>("pi.agent.abort", {
+const parseAgentStop = defineCliArgsParser<PiManagerAgentInput>("pi.agent.stop", {
   agentName: { option: "agent", required: true },
 });
 function definitionArgsParser(command: string) {
@@ -351,19 +351,19 @@ const promptRunTool = defineBackofficeRuntimeTool({
   },
 });
 
-const agentAbortTool = defineBackofficeRuntimeTool({
-  ...backofficeApiOperationToolFields("pi.agent.abort"),
+const agentStopTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("pi.agent.stop"),
   namespace: "pi",
-  name: "abortAgent",
+  name: "stopAgent",
   execute: async (input, context: PiToolContext) => {
-    await requirePiManagerRuntime(context.runtimes.pi).abortAgent(input);
-    return { aborted: true as const };
+    await requirePiManagerRuntime(context.runtimes.pi).stopAgent(input);
+    return { stopped: true as const };
   },
   adapters: {
     bash: {
-      command: "pi.agent.abort",
+      command: "pi.agent.stop",
       help: {
-        summary: "pi.agent.abort cancels an agent's active work.",
+        summary: "pi.agent.stop aborts an agent's work and pauses its queue.",
         options: [
           {
             name: "agent",
@@ -373,9 +373,9 @@ const agentAbortTool = defineBackofficeRuntimeTool({
             description: "Agent name",
           },
         ],
-        examples: ["pi.agent.abort --agent assistant"],
+        examples: ["pi.agent.stop --agent assistant"],
       },
-      parse: parseAgentAbort,
+      parse: parseAgentStop,
       format: (data) => ({ data }),
     },
   },
@@ -464,7 +464,7 @@ export const piRuntimeTools = [
   promptSubmitTool,
   submissionGetTool,
   promptRunTool,
-  agentAbortTool,
+  agentStopTool,
 ] as const;
 
 export const piToolFamily = defineBackofficeRuntimeToolFamily({

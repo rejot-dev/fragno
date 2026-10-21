@@ -275,7 +275,7 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
       }),
       defineRoute({
         method: "POST",
-        path: "/agents/:agentName/abort",
+        path: "/agents/:agentName/stop",
         errorCodes: ["AGENT_NOT_STARTED"],
         handler: async function ({ pathParams }, { empty, error }) {
           const { agentName } = pathParams;

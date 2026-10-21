@@ -3572,8 +3572,8 @@
     ]
   },
   {
-    "command": "pi.agent.abort",
-    "summary": "pi.agent.abort cancels an agent's active work.",
+    "command": "pi.agent.stop",
+    "summary": "pi.agent.stop aborts an agent's work and pauses its queue.",
     "options": [
       {
         "name": "agent",

@@ -267,11 +267,12 @@ export const piOperations = {
     input: promptRunInputSchema,
     output: piPromptResultOutputSchema,
   },
-  "pi.agent.abort": {
-    description: "Abort an agent's active foreground and background work.",
+  "pi.agent.stop": {
+    description:
+      "Stop an agent: abort its running turn and background work, and pause its queue. Queued and new prompts wait until someone resumes the agent in Backoffice.",
     permissions: [BACKOFFICE_PERMISSION.pi.modify],
     input: agentInputSchema,
-    output: z.lazy(() => z.object({ aborted: z.literal(true) })),
+    output: z.lazy(() => z.object({ stopped: z.literal(true) })),
   },
 } satisfies Record<string, BackofficeApiOperation>;
 

@@ -103,12 +103,13 @@ oldest item it handles.
 - `reject` is refused with `409 AGENT_BUSY` while a turn is dispatched or items wait.
 - With nothing dispatched and the queue running, a new item is dispatched at once; items wait only
   behind a dispatched turn or in a paused queue.
-- Aborting an agent pauses its queue and aborts what Pi holds; the stopped turn settles unanswered
-  and nothing starts after it. A paused queue records new items but dispatches none, even for an
-  idle agent, and a steer never joins the stopped turn. `POST /agents/:agentName/resume`, or a
-  prompt with `whenPaused: "resume"`, resumes it: the next turn starts at once, or when the stopped
-  turn settles, with the queue's oldest item. The Backoffice UI sends `resume`; the default, `wait`,
-  keeps automations and workflows from undoing a stop, so `pi.runPrompt` waits until its deadline.
+- Stopping an agent (`pi.agent.stop`) pauses its queue and aborts what Pi holds; the stopped turn
+  settles unanswered and nothing starts after it. A paused queue records new items but dispatches
+  none, even for an idle agent, and a steer never joins the stopped turn.
+  `POST /agents/:agentName/resume`, or a prompt with `whenPaused: "resume"`, resumes it: the next
+  turn starts at once, or when the stopped turn settles, with the queue's oldest item. The
+  Backoffice UI sends `resume`; the default, `wait`, keeps automations and workflows from undoing a
+  stop, so `pi.runPrompt` waits until its deadline.
 
 Each change is one retrieve and one mutation, then at most one call to the agent object. The
 mutation decides: it admits the item against the agent's definition and models as they are then,
@@ -215,7 +216,7 @@ All paths below are mounted at `/api/pi-manager` inside the manager object:
 - `GET /agents/:agentName/export`: streaming versioned JSONL export over every durable entry.
 - `POST /agents/:agentName/compact`: admits manual durable compaction with optional instructions.
 - `GET /agents/:agentName/compactions/:taskId`: public running/completed/failed compaction state.
-- `POST /agents/:agentName/abort`: aborts the agent's current work, including background work, and
+- `POST /agents/:agentName/stop`: aborts the agent's current work, including background work, and
   pauses its queue; see Queue.
 - `POST /agents/:agentName/resume`: resumes a paused queue; see Queue.
 
@@ -248,7 +249,7 @@ execution scope and actors and restore them after suspension, retries, and objec
 carry no independent billing choice. See [usage attribution](../billing/README.md).
 
 Runtime tools target the scoped manager directly: `pi.listAgents`, `pi.getAgent`, `pi.submitPrompt`,
-`pi.getSubmission`, `pi.runPrompt`, and `pi.abortAgent`. Scoped context handles rebuild this runtime
+`pi.getSubmission`, `pi.runPrompt`, and `pi.stopAgent`. Scoped context handles rebuild this runtime
 for the selected scope. Synchronous prompt execution uses Pi Durable's commit-driven submission
 waiter through a bounded long-poll request. Prompt request IDs are stable within durable tool
 invocations; timeout or caller cancellation stops the wait but does not retract already admitted

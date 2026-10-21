@@ -16,8 +16,8 @@ type PiCodemodeProvider = {
   getSubmission(input: PiGetSubmissionInput): Promise<unknown>;
   /** Durably queue a prompt for an agent, wait for its turn to settle, and return its conversation view. */
   runPrompt(input: PiRunPromptInput): Promise<PiRunPromptOutput>;
-  /** Abort an agent's active foreground and background work. */
-  abortAgent(input: PiAbortAgentInput): Promise<PiAbortAgentOutput>;
+  /** Stop an agent: abort its running turn and background work, and pause its queue. Queued and new prompts wait until someone resumes the agent in Backoffice. */
+  stopAgent(input: PiStopAgentInput): Promise<PiStopAgentOutput>;
 };
 declare const pi: PiCodemodeProvider;
 
@@ -135,9 +135,9 @@ type PiRunPromptOutput = {
   submission: unknown;
   assistantText: string;
 };
-type PiAbortAgentInput = {
+type PiStopAgentInput = {
   agentName: string;
 };
-type PiAbortAgentOutput = {
-  aborted: true;
+type PiStopAgentOutput = {
+  stopped: true;
 };

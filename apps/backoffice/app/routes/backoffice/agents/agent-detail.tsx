@@ -32,10 +32,10 @@ import { AgentStartComposer } from "./agent-start-composer";
 import type { PiAgentsOutletContext } from "./agent-types";
 import { AgentsHeader } from "./agents-header";
 import {
-  abortPiManagerAgent,
   resumePiManagerAgent,
   compactPiManagerAgent,
   resetPiManagerAgent,
+  stopPiManagerAgent,
   submitPiManagerPrompt,
   type PiManagerEntryPage,
 } from "./data";
@@ -74,11 +74,11 @@ const PI_COMPACTION_POLL_MS = 250;
 
 type PiAgentActionData =
   | { ok: true; intent: "start" | "send"; receipt: PiPromptReceipt }
-  | { ok: true; intent: "abort" | "resume" | "reset" }
+  | { ok: true; intent: "stop" | "resume" | "reset" }
   | { ok: true; intent: "compact"; taskId: number }
   | {
       ok: false;
-      intent: "start" | "send" | "abort" | "resume" | "reset" | "compact";
+      intent: "start" | "send" | "stop" | "resume" | "reset" | "compact";
       error: string;
     };
 
@@ -94,8 +94,8 @@ export async function action(args: Route.ActionArgs): Promise<PiAgentActionData>
   const formData = await request.formData();
   const intent = formData.get("intent");
 
-  if (intent === "abort") {
-    const error = await abortPiManagerAgent(request, context, scope, agentName);
+  if (intent === "stop") {
+    const error = await stopPiManagerAgent(request, context, scope, agentName);
     return error ? { ok: false, intent, error } : { ok: true, intent };
   }
   if (intent === "resume") {
@@ -695,7 +695,7 @@ function BackofficeOrganizationPiAgent({
   }, [posthog, fetcher, running, agent.agentName]);
 
   const handleStop = useCallback(() => {
-    void fetcher.submit({ intent: "abort" }, { method: "post" });
+    void fetcher.submit({ intent: "stop" }, { method: "post" });
   }, [fetcher]);
   const handleResume = useCallback(() => {
     void fetcher.submit({ intent: "resume" }, { method: "post" });
