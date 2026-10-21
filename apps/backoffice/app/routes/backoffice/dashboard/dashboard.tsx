@@ -5,7 +5,7 @@ import { Field } from "@fragno-private/design-system/field";
 import { Input } from "@fragno-private/design-system/input";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { TextArea } from "@fragno-private/design-system/text-area";
-import { Suspense, use, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { Suspense, use, useMemo, useSyncExternalStore } from "react";
 import {
   Form,
   redirect,
@@ -24,6 +24,7 @@ import {
 } from "@/backoffice-runtime/resolved-scope";
 import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
 import { backofficePageBodyClassName } from "@/components/backoffice/page-body";
+import { useClock } from "@/components/backoffice/use-clock";
 import {
   describeAutomationCollectionSource,
   getAutomationBrowserDatabase,
@@ -394,18 +395,4 @@ function DashboardWorkspace({
       recentEvents={eventsQuery.data ?? []}
     />
   );
-}
-
-/** Relative times and the window both move with the wall clock. */
-function useClock(tickMs: number): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      setNow(Date.now());
-    }, tickMs);
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [tickMs]);
-  return now;
 }
