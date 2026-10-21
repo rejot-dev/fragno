@@ -1,4 +1,5 @@
-import { useEffect, useMemo } from "react";
+import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
+import { Component, useEffect, useMemo, type ReactNode } from "react";
 
 import { createStateStore, type StateStore } from "@json-render/react";
 import { useLiveQuery } from "@tanstack/react-db";
@@ -21,14 +22,54 @@ import {
 } from "./definition";
 import { pageQuery, pageRows, pageValue } from "./query";
 
+type PageViewProps = { definition: PageDefinition; collections: AutomationCollections };
+
 /** Renders a page's interface over its queries' live results. */
-export function PageView({
-  definition,
-  collections,
-}: {
-  definition: PageDefinition;
-  collections: AutomationCollections;
-}) {
+export function PageView(props: PageViewProps) {
+  return (
+    <PageErrorBoundary definition={props.definition}>
+      <PageContent {...props} />
+    </PageErrorBoundary>
+  );
+}
+
+/**
+ * Validation cannot foresee everything TanStack DB or a component rejects, so a page that throws
+ * while rendering fails in place, leaving the views around it, such as its source, usable. A new
+ * definition, built from an edited source, renders again.
+ */
+class PageErrorBoundary extends Component<
+  { definition: PageDefinition; children: ReactNode },
+  { error: Error | null }
+> {
+  state: { error: Error | null } = { error: null };
+
+  static getDerivedStateFromError(error: unknown) {
+    return { error: error instanceof Error ? error : new Error(String(error)) };
+  }
+
+  componentDidUpdate(previous: { definition: PageDefinition }) {
+    if (previous.definition !== this.props.definition && this.state.error !== null) {
+      this.setState({ error: null });
+    }
+  }
+
+  render() {
+    if (this.state.error === null) {
+      return this.props.children;
+    }
+    return (
+      <BackofficeSystemState
+        tone="error"
+        label="Invalid page"
+        title="This page could not be shown."
+        description={this.state.error.message}
+      />
+    );
+  }
+}
+
+function PageContent({ definition, collections }: PageViewProps) {
   const { resolvedScope } = useCurrentBackofficeContext();
   const now = useMinuteClock();
   // Every query starts empty, so bound props hold rows and values before the first results arrive.

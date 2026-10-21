@@ -525,6 +525,25 @@ function readSelectQuery(
       "A grouped query cannot select many(...); group in a subquery and select from its rows, such as from({ workflow: grouped }).",
     );
   }
+  if (grouped) {
+    const own = new Set([from.alias, ...joins.map(({ source }) => source.alias)]);
+    const checked = [
+      ...(selected ?? []).flatMap(({ name, selection }) =>
+        "many" in selection ? [] : [{ at: `${path}.select.${name}`, expression: selection }],
+      ),
+      ...having.map((expression, index) => ({ at: `${path}.having.${index}`, expression })),
+    ];
+    for (const { at, expression } of checked) {
+      const ref = ungroupedRef(expression, own, groupBy);
+      if (ref) {
+        const field = ref.ref.join(".");
+        fail(
+          at,
+          `${field} is neither grouped nor aggregated. Add it to groupBy, or aggregate it, such as max(${field}).`,
+        );
+      }
+    }
+  }
   return {
     query: {
       kind: "select",
@@ -738,6 +757,38 @@ function readExpression(
     default:
       return fail(path, "Expected one of ref, value, now, fn, aggregate, or bucket.");
   }
+}
+
+/**
+ * The first field of the query's own rows that a grouped query reads outside its group keys and
+ * aggregates, as TanStack DB checks: an expression equal to a key is grouped, and fields of the
+ * rows a nested query sits in are fixed for the whole group.
+ */
+function ungroupedRef(
+  expression: PageExpression,
+  own: ReadonlySet<string>,
+  groupBy: readonly PageExpression[],
+): Extract<PageExpression, { ref: unknown }> | null {
+  const text = JSON.stringify(expression);
+  if (groupBy.some((key) => JSON.stringify(key) === text)) {
+    return null;
+  }
+  if ("ref" in expression) {
+    return own.has(expression.ref[0]) ? expression : null;
+  }
+  if ("fn" in expression) {
+    for (const arg of expression.args) {
+      const ref = ungroupedRef(arg, own, groupBy);
+      if (ref) {
+        return ref;
+      }
+    }
+    return null;
+  }
+  if ("bucket" in expression) {
+    return ungroupedRef(expression.bucket, own, groupBy);
+  }
+  return null;
 }
 
 function containsAggregate(expression: PageExpression): boolean {

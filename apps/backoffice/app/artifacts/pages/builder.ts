@@ -334,6 +334,25 @@ const PAGE_BUILDER_SOURCE = String.raw`({ collections, functions, aggregates, li
     if (state.select === null && state.joins.length > 0) fail(label + " joins collections; select the fields it shows.");
     if (state.select === null && grouped) fail(label + " is grouped; select its group fields and aggregates.");
     if (grouped && selected.some((value) => manys.has(value))) fail(label + " is grouped, so it cannot select many(...); group in a subquery and select from its rows, such as from({ workflow: grouped }).");
+    if (grouped) {
+      // As TanStack DB checks: a value equal to a group key is grouped, and so are fields of the rows a nested query sits in.
+      const keys = state.groupBy.map((key) => JSON.stringify(key));
+      const ungrouped = (ir) => {
+        if (keys.includes(JSON.stringify(ir))) return null;
+        if ("ref" in ir) return aliases.includes(ir.ref[0]) ? ir.ref.join(".") : null;
+        if ("fn" in ir) return ir.args.map(ungrouped).find((field) => field !== null) ?? null;
+        if ("bucket" in ir) return ungrouped(ir.bucket);
+        return null;
+      };
+      const checked = [
+        ...Object.entries(state.select ?? {}).filter(([, value]) => !manys.has(value)).map(([name, ir]) => ["select " + name, ir]),
+        ...state.having.map((ir) => ["having", ir]),
+      ];
+      for (const [where, ir] of checked) {
+        const field = ungrouped(ir);
+        if (field) fail(label + " is grouped, but " + where + " reads " + field + ", which is neither grouped nor aggregated; add it to groupBy, or aggregate it, such as max(" + field + ").");
+      }
+    }
     // A source's rows do not depend on the rows around them.
     const source = ({ alias, collection, query }) => (query ? { alias, query: serialize(query, [], budget) } : { alias, collection });
     return {
