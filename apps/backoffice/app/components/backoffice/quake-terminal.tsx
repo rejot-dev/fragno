@@ -169,7 +169,7 @@ export function QuakeTerminal({ pageScope, me }: QuakeTerminalProps) {
           }}
         />
       }
-      hint="⏎ run · \⏎ new line · Tab complete · ^R history · ^L clear · ^O scope"
+      hint="⏎ run · \⏎ new line · Tab complete · ^R history · ^C cancel · ^L clear · ^O scope"
       shortcut="` · ⌃`"
       onClose={() => {
         setOpen(false);

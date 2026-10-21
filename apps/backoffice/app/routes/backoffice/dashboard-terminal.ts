@@ -968,6 +968,20 @@ export const useDashboardTerminal = ({
       return;
     }
 
+    // Like a shell, ^C abandons the line; with text selected it stays copy, as on Windows and Linux.
+    if (
+      event.ctrlKey &&
+      event.key === "c" &&
+      event.currentTarget.selectionStart === event.currentTarget.selectionEnd
+    ) {
+      event.preventDefault();
+      setCommand("");
+      setHistoryIndex(-1);
+      setHistoryDraft("");
+      closeAutocomplete();
+      return;
+    }
+
     if (event.ctrlKey && event.key === "j") {
       event.preventDefault();
       inputRef.current?.form?.requestSubmit();
