@@ -874,7 +874,7 @@ test("each settled turn is recorded once as a pi Automations event", async () =>
   );
 });
 
-test("agent changes are recorded as pi Automations events attributed to whoever made them", async () => {
+test("agent changes and the turns a stop cuts off are recorded as pi events of whoever caused them", async () => {
   const scope: BackofficeContextScope = {
     kind: "project",
     owner: { kind: "org", orgId: "changes-org" },
@@ -893,13 +893,13 @@ test("agent changes are recorded as pi Automations events attributed to whoever 
   const revised = { ...reviewer, description: "Reviews and approves changes." };
 
   // Events of the same millisecond list in no particular order.
-  async function agentEvents(runtime: InMemoryBackofficeRuntime) {
+  async function piEvents(runtime: InMemoryBackofficeRuntime, prefix: "agent." | "turn.") {
     return (await automationEvents(runtime, scope)).filter(
-      (event) => event.source === "pi" && event.eventType.startsWith("agent."),
+      (event) => event.source === "pi" && event.eventType.startsWith(prefix),
     );
   }
 
-  function changes(events: Awaited<ReturnType<typeof agentEvents>>) {
+  function changes(events: Awaited<ReturnType<typeof piEvents>>) {
     return events.map((event) => {
       const definition = event.payload.definition as typeof reviewer | undefined;
       return `${event.eventType}: ${definition?.description ?? "-"}`;
@@ -911,7 +911,24 @@ test("agent changes are recorded as pi Automations events attributed to whoever 
       name: "Pi agent change events",
       piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
       options: { drain: false },
-      objects: { ...scenarioObjects, ...objectOverrides },
+      objects: {
+        ...scenarioObjects,
+        PI: ({ state, runtime, openPiSessionStore, piAgentIdFromConfig, nowEpochMs }) => {
+          // A slow answer keeps the turn running until the agent is stopped.
+          const faux = fauxProvider({ tokensPerSecond: 20, tokenSize: { min: 1, max: 1 } });
+          faux.setResponses([fauxAssistantMessage([fauxText("A long answer. ".repeat(100))])]);
+          const models = createModels();
+          models.setProvider(faux.provider);
+          return new InMemoryPiObject({
+            state,
+            dependencies: createScriptedPiAgentDependencies(models),
+            runtime,
+            openStorage: openPiSessionStore,
+            idFromConfig: piAgentIdFromConfig,
+            nowEpochMs,
+          });
+        },
+      },
       steps: ({ then }) => [
         then.assert("defining, replacing, and deleting record each change", async ({ runtime }) => {
           const responses = [
@@ -925,7 +942,7 @@ test("agent changes are recorded as pi Automations events attributed to whoever 
           expect(responses.map((response) => response.status)).toEqual([201, 200, 200, 204, 204]);
           await runtime.drain();
 
-          const events = await agentEvents(runtime);
+          const events = await piEvents(runtime, "agent.");
           expect(changes(events).sort()).toEqual([
             "agent.created: Reviews changes.",
             "agent.deleted: Reviews and approves changes.",
@@ -944,36 +961,52 @@ test("agent changes are recorded as pi Automations events attributed to whoever 
             });
           }
         }),
-        then.assert("stopping a started agent records who stopped it", async ({ runtime }) => {
-          const notStarted = await managerRequest(
-            runtime,
-            scope,
-            "/agents/assistant/stop",
-            {},
-            ada,
-          );
-          assert.equal(notStarted.status, 404, await notStarted.clone().text());
+        then.assert(
+          "stopping records who stopped the agent and the turn it cut off",
+          async ({ runtime }) => {
+            const grace = scopeExecution(scope, "grace");
+            const notStarted = await managerRequest(
+              runtime,
+              scope,
+              "/agents/assistant/stop",
+              {},
+              ada,
+            );
+            assert.equal(notStarted.status, 404, await notStarted.clone().text());
 
-          const submitted = await prompt(runtime, scope, {
-            requestId: "started",
-            content: "Echo and answer.",
-          });
-          assert.equal(submitted.status, 202, await submitted.clone().text());
-          await runtime.drain();
-          const stopped = await managerRequest(runtime, scope, "/agents/assistant/stop", {}, ada);
-          assert.equal(stopped.status, 204, await stopped.clone().text());
-          await runtime.drain();
+            const submitted = await managerRequest(
+              runtime,
+              scope,
+              "/agents/assistant/prompts",
+              { requestId: "cut-off", content: "Answer at length." },
+              grace,
+            );
+            assert.equal(submitted.status, 202, await submitted.clone().text());
+            const stopped = await managerRequest(runtime, scope, "/agents/assistant/stop", {}, ada);
+            assert.equal(stopped.status, 204, await stopped.clone().text());
+            await runtime.drain();
 
-          expect(
-            (await agentEvents(runtime)).filter((event) => event.eventType === "agent.stopped"),
-          ).toEqual([
-            expect.objectContaining({
-              payload: {},
-              subject: { orgId: "changes-org", projectId: "p-1", agentName: "assistant" },
-              actors: ada.actors,
-            }),
-          ]);
-        }),
+            const submission = await (
+              await managerRequest(runtime, scope, "/agents/assistant/submissions/cut-off")
+            ).json<{ status: string; reason: string }>();
+            expect(submission).toMatchObject({ status: "unanswered", reason: "aborted" });
+            const subject = { orgId: "changes-org", projectId: "p-1", agentName: "assistant" };
+            expect(
+              (await piEvents(runtime, "agent.")).filter(
+                (event) => event.eventType === "agent.stopped",
+              ),
+            ).toEqual([expect.objectContaining({ payload: {}, subject, actors: ada.actors })]);
+            expect(await piEvents(runtime, "turn.")).toEqual([
+              expect.objectContaining({
+                id: "pi:assistant:cut-off",
+                eventType: "turn.aborted",
+                payload: {},
+                subject: { ...subject, requestId: "cut-off" },
+                actors: expect.objectContaining({ principal: grace.actors.principal }),
+              }),
+            ]);
+          },
+        ),
       ],
     }),
   );

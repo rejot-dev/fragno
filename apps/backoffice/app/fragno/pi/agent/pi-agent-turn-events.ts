@@ -12,6 +12,7 @@ import {
 
 import type { AutomationsObject, PiManagerObject } from "@/backoffice-runtime/object-registry";
 import {
+  PI_AUTOMATION_EVENT_TURN_ABORTED,
   PI_AUTOMATION_EVENT_TURN_COMPLETED,
   PI_AUTOMATION_SOURCE,
   piAgentEventSubject,
@@ -24,11 +25,31 @@ import {
   type SettledPiAgentTurn,
 } from "./pi-agent-turns";
 
-function piAgentTurnCompletedEvent(
+/** Pi settles a turn the agent's stop cut off as unanswered with this reason. */
+const ABORTED_SUBMISSION_REASON = "aborted";
+
+/** The event a settled turn records: answered or aborted. Other unanswered turns record none. */
+function settledTurnEventOf({ submission }: SettledPiAgentTurn) {
+  if (submission.type !== "input") {
+    return null;
+  }
+  if (submission.status === "done") {
+    return {
+      eventType: PI_AUTOMATION_EVENT_TURN_COMPLETED,
+      payload: { answerEntryId: submission.answer },
+    };
+  }
+  if (submission.status === "unanswered" && submission.reason === ABORTED_SUBMISSION_REASON) {
+    return { eventType: PI_AUTOMATION_EVENT_TURN_ABORTED, payload: {} };
+  }
+  return null;
+}
+
+function piAgentTurnEvent(
   config: PiAgentConfig,
   agent: BackofficeAgentContext,
   { requestId, turn }: SettledPiAgentTurn,
-  answerEntryId: number,
+  { eventType, payload }: NonNullable<ReturnType<typeof settledTurnEventOf>>,
   occurredAt: Date,
 ): AutomationEvent {
   const { scope } = config;
@@ -39,8 +60,8 @@ function piAgentTurnCompletedEvent(
     // Automations started by this event inherit the turn's ceiling, never a wider one.
     scopeRestriction: turn.scopeRestriction,
     source: PI_AUTOMATION_SOURCE,
-    eventType: PI_AUTOMATION_EVENT_TURN_COMPLETED,
-    payload: { answerEntryId },
+    eventType,
+    payload,
     occurredAt: occurredAt.toISOString(),
     actors: agent.turn(turn).execution.actors,
     subject: { ...piAgentEventSubject(scope, config.agentName), requestId },
@@ -58,7 +79,7 @@ function settlesRootSubmission(publication: CommitPublication) {
 }
 
 /**
- * Records each answered turn as a `pi` Automations event and tells the agent's manager every turn
+ * Records each answered or aborted turn as a `pi` Automations event and tells the agent's manager every turn
  * that settled, then forgets it. Pi settles submissions in commits Backoffice cannot join, so a
  * report follows each commit that settles a turn. That report dies with the object, so callers
  * that must not lose one, like the agent alarm, call the returned function again.
@@ -78,18 +99,11 @@ export function startReportingPiAgentTurns(input: {
   let reporting = Promise.resolve();
 
   async function recordTurnEvent(settled: SettledPiAgentTurn) {
-    // Unanswered turns, such as aborted or withdrawn prompts, record no event.
-    const { submission } = settled;
-    if (submission.type === "input" && submission.status === "done") {
+    const event = settledTurnEventOf(settled);
+    if (event) {
       // The settling commit carries no time; its listener reports right after it.
       await automations?.ingestEvent(
-        piAgentTurnCompletedEvent(
-          config,
-          agent,
-          settled,
-          submission.answer,
-          new Date(input.nowEpochMs()),
-        ),
+        piAgentTurnEvent(config, agent, settled, event, new Date(input.nowEpochMs())),
         { propagationContext: null },
       );
     }
