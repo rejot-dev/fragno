@@ -23,7 +23,10 @@ import { piManagerDefinition } from "./pi-manager-definition";
 import type { PiAgentTurnProvenance } from "./pi-manager-schema";
 
 // Middleware resolves identity and overwrites provenance before route validation.
-const turnProvenanceSchema = piAgentTurnSchema.pick({ actors: true, scopeRestriction: true });
+export const turnProvenanceSchema = piAgentTurnSchema.pick({
+  actors: true,
+  scopeRestriction: true,
+});
 // A person's message resumes a stopped agent's queue; automations wait until someone does.
 const promptWhenPausedSchema = z.enum(["wait", "resume"]);
 export const promptRequestSchema = z.object({
@@ -276,12 +279,18 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
       defineRoute({
         method: "POST",
         path: "/agents/:agentName/stop",
+        inputSchema: z.object({ provenance: turnProvenanceSchema }),
         errorCodes: ["AGENT_NOT_STARTED"],
-        handler: async function ({ pathParams }, { empty, error }) {
+        handler: async function ({ pathParams, input }, { empty, error }) {
           const { agentName } = pathParams;
+          const { provenance } = await input.valid();
           const { agent, paused } = await this.handlerTx()
             .withServiceCalls(
-              () => [services.getAgents([agentName]), services.pauseAgentQueue(agentName)] as const,
+              () =>
+                [
+                  services.getAgents([agentName]),
+                  services.pauseAgentQueue(agentName, provenance),
+                ] as const,
             )
             .transform(({ serviceResult: [agents, queue] }) => ({
               agent: agents.get(agentName),

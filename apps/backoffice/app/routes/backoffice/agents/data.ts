@@ -428,6 +428,8 @@ export async function stopPiManagerAgent(
   const { callRoute, execution } = await createPiManagerRouteCaller(request, context, scope);
   const response = await callRoute("POST", "/agents/:agentName/stop", {
     pathParams: { agentName },
+    // Middleware overwrites the provenance with the authenticated caller's before validation.
+    body: { provenance: callerProvenance(execution) },
   });
   if (response.type === "empty") {
     captureBackofficeServerEvent(context, {

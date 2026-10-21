@@ -155,7 +155,7 @@ async function readPiViewStreamFrame(
   }
 }
 
-/** Every `pi` Automations event recorded in the scope. */
+/** Every Automations event recorded in the scope. */
 async function automationEvents(runtime: InMemoryBackofficeRuntime, scope: BackofficeContextScope) {
   const response = await runtime.objects.automations
     .for(scope)
@@ -165,7 +165,9 @@ async function automationEvents(runtime: InMemoryBackofficeRuntime, scope: Backo
 }
 
 async function piTurnEvents(runtime: InMemoryBackofficeRuntime, scope: BackofficeContextScope) {
-  return (await automationEvents(runtime, scope)).filter((event) => event.source === "pi");
+  return (await automationEvents(runtime, scope)).filter(
+    (event) => event.source === "pi" && event.eventType === "turn.completed",
+  );
 }
 
 function notificationEntryTexts(view: ConversationView) {
@@ -866,6 +868,111 @@ test("each settled turn is recorded once as a pi Automations event", async () =>
           expect(
             (await piTurnEvents(runtime, scope)).map((event) => event.subject?.requestId),
           ).toEqual(["answered"]);
+        }),
+      ],
+    }),
+  );
+});
+
+test("agent changes are recorded as pi Automations events attributed to whoever made them", async () => {
+  const scope: BackofficeContextScope = {
+    kind: "project",
+    owner: { kind: "org", orgId: "changes-org" },
+    projectId: "p-1",
+  };
+  const ada = scopeExecution(scope, "ada");
+  const reviewer = {
+    agentName: "reviewer",
+    description: "Reviews changes.",
+    model: null,
+    permissions: ["*"],
+    instructions: "Review carefully.",
+    managedBy: null,
+  };
+  const { agentName: _agentName, ...fields } = reviewer;
+  const revised = { ...reviewer, description: "Reviews and approves changes." };
+
+  // Events of the same millisecond list in no particular order.
+  async function agentEvents(runtime: InMemoryBackofficeRuntime) {
+    return (await automationEvents(runtime, scope)).filter(
+      (event) => event.source === "pi" && event.eventType.startsWith("agent."),
+    );
+  }
+
+  function changes(events: Awaited<ReturnType<typeof agentEvents>>) {
+    return events.map((event) => {
+      const definition = event.payload.definition as typeof reviewer | undefined;
+      return `${event.eventType}: ${definition?.description ?? "-"}`;
+    });
+  }
+
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "Pi agent change events",
+      piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+      options: { drain: false },
+      objects: { ...scenarioObjects, ...objectOverrides },
+      steps: ({ then }) => [
+        then.assert("defining, replacing, and deleting record each change", async ({ runtime }) => {
+          const responses = [
+            await managerRequest(runtime, scope, "/agents", reviewer, ada),
+            await managerRequest(runtime, scope, "/agents/reviewer", fields, ada, "PUT"),
+            await managerRequest(runtime, scope, "/agents/reviewer", revised, ada, "PUT"),
+            await managerRequest(runtime, scope, "/agents/reviewer", null, ada, "DELETE"),
+            // Deleting it again changes nothing, so it records nothing.
+            await managerRequest(runtime, scope, "/agents/reviewer", null, ada, "DELETE"),
+          ];
+          expect(responses.map((response) => response.status)).toEqual([201, 200, 200, 204, 204]);
+          await runtime.drain();
+
+          const events = await agentEvents(runtime);
+          expect(changes(events).sort()).toEqual([
+            "agent.created: Reviews changes.",
+            "agent.deleted: Reviews and approves changes.",
+            "agent.updated: Reviews and approves changes.",
+            "agent.updated: Reviews changes.",
+          ]);
+          expect(events.find((event) => event.eventType === "agent.deleted")?.payload).toEqual({
+            definition: revised,
+          });
+          for (const event of events) {
+            expect(event).toMatchObject({
+              scope,
+              scopeRestriction: null,
+              subject: { orgId: "changes-org", projectId: "p-1", agentName: "reviewer" },
+              actors: ada.actors,
+            });
+          }
+        }),
+        then.assert("stopping a started agent records who stopped it", async ({ runtime }) => {
+          const notStarted = await managerRequest(
+            runtime,
+            scope,
+            "/agents/assistant/stop",
+            {},
+            ada,
+          );
+          assert.equal(notStarted.status, 404, await notStarted.clone().text());
+
+          const submitted = await prompt(runtime, scope, {
+            requestId: "started",
+            content: "Echo and answer.",
+          });
+          assert.equal(submitted.status, 202, await submitted.clone().text());
+          await runtime.drain();
+          const stopped = await managerRequest(runtime, scope, "/agents/assistant/stop", {}, ada);
+          assert.equal(stopped.status, 204, await stopped.clone().text());
+          await runtime.drain();
+
+          expect(
+            (await agentEvents(runtime)).filter((event) => event.eventType === "agent.stopped"),
+          ).toEqual([
+            expect.objectContaining({
+              payload: {},
+              subject: { orgId: "changes-org", projectId: "p-1", agentName: "assistant" },
+              actors: ada.actors,
+            }),
+          ]);
         }),
       ],
     }),

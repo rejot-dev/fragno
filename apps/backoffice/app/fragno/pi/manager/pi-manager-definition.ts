@@ -4,6 +4,12 @@ import { z } from "zod";
 import { defineFragment } from "@fragno-dev/core";
 import { withDatabase } from "@fragno-dev/db";
 
+import type { AutomationsObject } from "@/backoffice-runtime/object-registry";
+import {
+  PI_AGENT_AUTOMATION_EVENTS,
+  PI_AUTOMATION_SOURCE,
+  piAgentEventSubject,
+} from "@/fragno/backoffice-capabilities/capabilities/pi";
 import type { UsageBilling } from "@/fragno/billing/usage-billing";
 import type {
   PiAgent,
@@ -29,6 +35,8 @@ export type PiManagerConfig = {
   queueChannel: PiAgentQueueChannel;
   /** Where a scope's model usage is recorded. */
   billing: (scope: BackofficeContextScope) => UsageBilling;
+  /** The scope's Automations, which record agent changes; null when the runtime has none. */
+  automations: Pick<AutomationsObject, "ingestEvent"> | null;
 };
 
 /** Execution scope is supplied by the object address, never by a request body. */
@@ -40,6 +48,24 @@ export const piManagerDefinition = defineFragment<PiManagerConfig>("pi-manager")
     ...piModelUsageServices(defineService),
   }))
   .provideHooks<PiManagerHooks>(({ defineHook, services, config }) => ({
+    recordAgentChange: defineHook(async function (change): Promise<void> {
+      await config.automations?.ingestEvent(
+        {
+          id: this.hookId.toString(),
+          scope: config.scope,
+          // Automations started by this event inherit the requester's ceiling, never a wider one.
+          scopeRestriction: change.provenance.scopeRestriction,
+          source: PI_AUTOMATION_SOURCE,
+          eventType: PI_AGENT_AUTOMATION_EVENTS[change.kind].eventType,
+          occurredAt: this.createdAt.toISOString(),
+          payload: change.kind === "stopped" ? {} : { definition: change.definition },
+          actors: change.provenance.actors,
+          subject: piAgentEventSubject(config.scope, change.agentName),
+          causation: { kind: "origin" },
+        },
+        { propagationContext: this.capturePropagationContext() },
+      );
+    }),
     redispatchAgentQueue: defineHook(async function ({ agentName }): Promise<void> {
       const handovers = await this.handlerTx()
         .withServiceCalls(() => [services.getUnsettledHandovers(agentName)] as const)
