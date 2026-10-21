@@ -3,6 +3,7 @@ import { defineProject } from "vitest/config";
 import { cloudflareTest } from "@cloudflare/vitest-plugin";
 
 import { docsVitestResolveConfig } from "./vitest.shared";
+import { stallWatchdog } from "./vitest.stall-watchdog";
 
 export default defineProject({
   plugins: [
@@ -12,6 +13,7 @@ export default defineProject({
       remoteBindings: false,
       wrangler: { configPath: "./tests/wrangler.vitest.jsonc" },
     }),
+    stallWatchdog(),
   ],
   resolve: docsVitestResolveConfig,
   test: {

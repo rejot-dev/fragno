@@ -88,6 +88,8 @@ Only app-specific components belong in Backoffice.
 
 In Backoffice, we test exclusively through scenario tests, unless specifically direct otherwise by me.
 
+If Backoffice tests stall after reporting results, read `apps/backoffice/vitest.stall-watchdog.ts` for investigation notes and diagnostics.
+
 ## Development
 
 We use Turborepo + PNPM. Verify your work with:
