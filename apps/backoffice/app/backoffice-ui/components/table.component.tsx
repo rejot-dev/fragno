@@ -11,7 +11,18 @@ export const Table: ComponentFn<typeof backofficeUiCatalog, "Table"> = ({ props 
     columns={props.columns
       .slice(0, BACKOFFICE_UI_DATA_LIMITS.tableColumns)
       .map((column) => ({ ...column, align: column.align ?? "start" }))}
-    rows={props.rows.slice(0, BACKOFFICE_UI_DATA_LIMITS.tableRows)}
+    rows={props.rows
+      .slice(0, BACKOFFICE_UI_DATA_LIMITS.tableRows)
+      .map((row) =>
+        Object.fromEntries(Object.entries(row).map(([key, value]) => [key, cellText(value)])),
+      )}
     totalRowCount={props.rows.length}
   />
 );
+
+function cellText(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  return typeof value === "object" ? JSON.stringify(value) : String(value);
+}

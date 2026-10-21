@@ -12,12 +12,11 @@ export const tableDefinition = {
   props: z.strictObject({
     caption: z.string().min(1).max(160),
     columns: z.array(tableColumnSchema).min(1).max(BACKOFFICE_UI_DATA_LIMITS.tableColumns),
-    rows: z
-      .array(z.record(z.string(), z.string().max(2_000)))
-      .max(BACKOFFICE_UI_DATA_LIMITS.tableRows),
+    // Rows may carry fields no column shows, such as a page query's JSON or nested rows.
+    rows: z.array(z.record(z.string(), z.unknown())).max(BACKOFFICE_UI_DATA_LIMITS.tableRows),
   }),
   slots: [],
-  description: `Displays up to ${BACKOFFICE_UI_DATA_LIMITS.tableRows} text-only rows in a horizontally scrollable table.`,
+  description: `Displays up to ${BACKOFFICE_UI_DATA_LIMITS.tableRows} rows in a horizontally scrollable table. Each column shows its key's value as text: JSON as JSON, and null as an empty cell.`,
   example: {
     caption: "Recent orders",
     columns: [

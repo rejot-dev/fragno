@@ -4,6 +4,11 @@ import { JSONUIProvider, Renderer, type StateStore } from "@json-render/react";
 
 import type { BackofficeUiSpec } from "./catalog";
 import { backofficeUiRegistry } from "./registry";
+import {
+  BackofficeUiRenderContextProvider,
+  useMinuteClock,
+  type BackofficeUiLinks,
+} from "./render-context";
 import type { BackofficeUiResultV1 } from "./result";
 import {
   WorkflowUiInteractionProvider,
@@ -50,44 +55,56 @@ export function BackofficeUiRenderer({
   onStateChange?: (changes: BackofficeUiStateChange[]) => void;
   ui: BackofficeUiResultV1["$ui"];
 }) {
+  const now = useMinuteClock();
   return (
     <div className={fillAvailableWidth ? "w-full min-w-0" : "w-full max-w-3xl min-w-0"}>
       <WorkflowUiInteractionProvider host={workflowInteractionHost}>
-        <JSONUIProvider
-          registry={backofficeUiRegistry}
-          initialState={ui.state}
-          onStateChange={onStateChange}
-        >
-          {workflowInteractionHost ? (
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-              }}
-            >
+        <BackofficeUiRenderContextProvider now={now} links={null}>
+          <JSONUIProvider
+            registry={backofficeUiRegistry}
+            initialState={ui.state}
+            onStateChange={onStateChange}
+          >
+            {workflowInteractionHost ? (
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                }}
+              >
+                <Renderer spec={ui.spec} registry={backofficeUiRegistry} />
+              </form>
+            ) : (
               <Renderer spec={ui.spec} registry={backofficeUiRegistry} />
-            </form>
-          ) : (
-            <Renderer spec={ui.spec} registry={backofficeUiRegistry} />
-          )}
-        </JSONUIProvider>
+            )}
+          </JSONUIProvider>
+        </BackofficeUiRenderContextProvider>
       </WorkflowUiInteractionProvider>
     </div>
   );
 }
 
-/** Renders a spec whose state the caller owns and keeps changing, such as live query results. */
+/**
+ * Renders a spec whose state the caller owns and keeps changing, such as live query results. The
+ * caller's clock is the one its state was computed at, and its links lead within its scope.
+ */
 export function BackofficeUiStoreRenderer({
   spec,
   store,
+  now,
+  links,
 }: {
   spec: BackofficeUiSpec;
   store: StateStore;
+  now: number;
+  links: BackofficeUiLinks;
 }) {
   return (
     <div className="w-full min-w-0">
-      <JSONUIProvider registry={backofficeUiRegistry} store={store}>
-        <Renderer spec={spec} registry={backofficeUiRegistry} />
-      </JSONUIProvider>
+      <BackofficeUiRenderContextProvider now={now} links={links}>
+        <JSONUIProvider registry={backofficeUiRegistry} store={store}>
+          <Renderer spec={spec} registry={backofficeUiRegistry} />
+        </JSONUIProvider>
+      </BackofficeUiRenderContextProvider>
     </div>
   );
 }

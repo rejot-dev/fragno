@@ -1,10 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 
 import { createStateStore, type StateStore } from "@json-render/react";
 import { useLiveQuery } from "@tanstack/react-db";
 
+import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scope";
+import type { BackofficeUiLinkTarget } from "@/backoffice-ui/components/link";
+import { useMinuteClock } from "@/backoffice-ui/render-context";
 import { BackofficeUiStoreRenderer } from "@/backoffice-ui/renderer";
+import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
 import type { AutomationCollections } from "@/fragno/automation/tanstack/collections";
+import { dashboardRunPath, dashboardSelectionPath } from "@/routes/backoffice/dashboard/path";
+import { integrationConnectionPath } from "@/routes/backoffice/integrations/connection-paths";
 
 import {
   pageDataPath,
@@ -13,9 +19,7 @@ import {
   type PageQuery,
   type PageValue,
 } from "./definition";
-import { pageQuery, pageRows, pageValueText } from "./query";
-
-const CLOCK_TICK_MS = 60_000;
+import { pageQuery, pageRows, pageValue } from "./query";
 
 /** Renders a page's interface over its queries' live results. */
 export function PageView({
@@ -25,6 +29,7 @@ export function PageView({
   definition: PageDefinition;
   collections: AutomationCollections;
 }) {
+  const { resolvedScope } = useCurrentBackofficeContext();
   const now = useMinuteClock();
   // Every query starts empty, so bound props hold rows and values before the first results arrive.
   const store = useMemo(() => {
@@ -47,6 +52,7 @@ export function PageView({
       ),
     [definition],
   );
+  const links = useMemo(() => pageLinks(resolvedScope), [resolvedScope]);
 
   return (
     <>
@@ -61,7 +67,7 @@ export function PageView({
           store={store}
         />
       ))}
-      <BackofficeUiStoreRenderer spec={definition.spec} store={store} />
+      <BackofficeUiStoreRenderer spec={definition.spec} store={store} now={now} links={links} />
     </>
   );
 }
@@ -89,29 +95,23 @@ function PageQueryResults({
     const rows = pageRows(data);
     store.set(pageDataPath(name), rows);
     for (const [valueName, value] of values) {
-      store.set(pageValuePath(valueName), pageValueText(value, rows));
+      store.set(pageValuePath(valueName), pageValue(value, rows));
     }
   }, [data, name, values, store]);
   return null;
 }
 
-/**
- * Relative times move with the wall clock. Whole minutes keep a query's `now` stable between
- * ticks, so only queries that read it restart, once a minute.
- */
-function useMinuteClock(): number {
-  const [now, setNow] = useState(() => minuteStart(Date.now()));
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      setNow(minuteStart(Date.now()));
-    }, CLOCK_TICK_MS);
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, []);
-  return now;
-}
-
-function minuteStart(time: number): number {
-  return Math.floor(time / CLOCK_TICK_MS) * CLOCK_TICK_MS;
+/** Runs and routes open on the scope's dashboard, and connections in Integrations. */
+function pageLinks(scope: BackofficeResolvedScope) {
+  return (target: BackofficeUiLinkTarget) => {
+    switch (target.kind) {
+      case "run":
+        return dashboardRunPath(scope, target);
+      case "route":
+        return dashboardSelectionPath(scope, { kind: "route", id: target.id });
+      case "connection":
+        return integrationConnectionPath(scope, target.id);
+    }
+    throw new Error("Unsupported generated UI link target.");
+  };
 }

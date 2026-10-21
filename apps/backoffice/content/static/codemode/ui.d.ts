@@ -8,15 +8,32 @@ type BackofficeUiStateRead = { $state: string };
 /** Binds an editable component's value prop to one form field. Create it with form.bind. */
 type BackofficeUiBinding = { readonly $bindState: string };
 declare const backofficeUiLiveValue: unique symbol;
-/** A live value, such as a page query's rows; page.define binds it to the page's data. */
+/** A live value, such as a page query's rows or a ui.each row's field; it renders as a state read. */
 type BackofficeUiLive<TValue> = { readonly [backofficeUiLiveValue]: TValue };
-type BackofficeUiProps<TProps> = {
-  [TKey in keyof TProps]:
-    | TProps[TKey]
-    | BackofficeUiStateRead
-    | BackofficeUiBinding
-    | BackofficeUiLive<TProps[TKey]>;
-};
+/** A prop value: the literal, or a live value or state read in its place, at any depth. */
+type BackofficeUiValue<TValue> =
+  | BackofficeUiLive<TValue>
+  | BackofficeUiStateRead
+  | BackofficeUiBinding
+  | (TValue extends readonly (infer TItem)[]
+      ? BackofficeUiValue<TItem>[]
+      : TValue extends object
+        ? { [TKey in keyof TValue]: BackofficeUiValue<TValue[TKey]> }
+        : TValue);
+type BackofficeUiProps<TProps> = { [TKey in keyof TProps]: BackofficeUiValue<TProps[TKey]> };
+/** One row of ui.each. Its fields, and their nested fields, are live values of the row. */
+type BackofficeUiRow<TRow> = BackofficeUiLive<TRow> &
+  (TRow extends readonly unknown[]
+    ? { readonly [index: number]: BackofficeUiRow<TRow[number]> }
+    : TRow extends object
+      ? { readonly [TKey in keyof TRow]-?: BackofficeUiRow<TRow[TKey]> }
+      : unknown);
+declare const backofficeUiRepeat: unique symbol;
+/** A container's children repeated once per row; see ui.each. */
+type BackofficeUiRepeat = { readonly [backofficeUiRepeat]: true };
+declare const backofficeUiLiveCondition: unique symbol;
+/** A condition on a live value; see ui.is. */
+type BackofficeUiLiveCondition = { readonly [backofficeUiLiveCondition]: true };
 type BackofficeUiComparison = {
   eq?: unknown;
   neq?: unknown;
@@ -30,6 +47,7 @@ type BackofficeUiComparison = {
 type BackofficeUiCondition =
   | boolean
   | (BackofficeUiStateRead & BackofficeUiComparison)
+  | BackofficeUiLiveCondition
   | BackofficeUiCondition[]
   | { $and: BackofficeUiCondition[] }
   | { $or: BackofficeUiCondition[] };
@@ -64,7 +82,7 @@ declare const ui: {
     props: BackofficeUiProps<{
       gap: "sm" | "md" | "lg";
     }>,
-    children: BackofficeUiElement[],
+    children: BackofficeUiElement[] | BackofficeUiRepeat,
   ): BackofficeUiElement;
   /** Builds Grid. Arranges related report items in a responsive one-to-four-column grid. */
   grid(
@@ -72,7 +90,7 @@ declare const ui: {
       columns: 1 | 2 | 3 | 4;
       gap: "sm" | "md" | "lg";
     }>,
-    children: BackofficeUiElement[],
+    children: BackofficeUiElement[] | BackofficeUiRepeat,
   ): BackofficeUiElement;
   /** Builds Section. Groups related report content in a square-edged Backoffice panel. */
   section(
@@ -81,7 +99,7 @@ declare const ui: {
       label?: string;
       tone?: "info" | "live" | "waiting" | "failed" | "muted";
     }>,
-    children: BackofficeUiElement[],
+    children: BackofficeUiElement[] | BackofficeUiRepeat,
   ): BackofficeUiElement;
   /** Builds Divider. Separates report sections with an optional compact label. */
   divider(
@@ -141,8 +159,7 @@ declare const ui: {
     props: BackofficeUiProps<{
       /** 1-120 characters */
       label: string;
-      /** at most 240 characters */
-      value: string;
+      value: string | number;
       /** at most 240 characters */
       detail?: string;
       tone?: "info" | "live" | "waiting" | "failed" | "muted";
@@ -154,6 +171,37 @@ declare const ui: {
       /** 1-80 characters */
       label: string;
       tone: "info" | "live" | "waiting" | "failed" | "muted";
+    }>,
+  ): BackofficeUiElement;
+  /** Builds Link. Links to a workflow run (workflowName is the runner's internal name), an automation route, or an integration connection in the current scope. */
+  link(
+    props: BackofficeUiProps<{
+      /** 1-200 characters */
+      label: string;
+      to:
+        | {
+            kind: "run";
+            /** 1-200 characters */
+            workflowName: string;
+            /** 1-200 characters */
+            instanceId: string;
+          }
+        | {
+            kind: "route";
+            /** 1-200 characters */
+            id: string;
+          }
+        | {
+            kind: "connection";
+            /** 1-200 characters */
+            id: string;
+          };
+    }>,
+  ): BackofficeUiElement;
+  /** Builds RelativeTime. Displays how long ago or until an ISO 8601 time, such as 3m ago or in 2h, and keeps it current; null shows a dash. */
+  relativeTime(
+    props: BackofficeUiProps<{
+      time: string | null;
     }>,
   ): BackofficeUiElement;
   /** Builds KeyValue. Displays compact label-value facts in a one- or two-column definition list. */
@@ -188,7 +236,7 @@ declare const ui: {
       }[];
     }>,
   ): BackofficeUiElement;
-  /** Builds Table. Displays up to 64 text-only rows in a horizontally scrollable table. */
+  /** Builds Table. Displays up to 64 rows in a horizontally scrollable table. Each column shows its key's value as text: JSON as JSON, and null as an empty cell. */
   table(
     props: BackofficeUiProps<{
       /** 1-160 characters */
@@ -201,9 +249,9 @@ declare const ui: {
         label: string;
         align?: "start" | "end";
       }[];
-      /** at most 64 items; each item's values at most 2000 characters */
+      /** at most 64 items */
       rows: {
-        [key: string]: string;
+        [key: string]: unknown;
       }[];
     }>,
   ): BackofficeUiElement;
@@ -217,6 +265,52 @@ declare const ui: {
       /** at most 240 characters */
       detail?: string;
       tone: "info" | "live" | "waiting" | "failed" | "muted";
+    }>,
+  ): BackofficeUiElement;
+  /** Builds SparkBars. Displays a word-sized bar per axis category, sized by the rows' value field, for trends in rows and lists. label describes the series for screen readers. */
+  sparkBars(
+    props: BackofficeUiProps<{
+      /** 1-200 characters */
+      label: string;
+      /** at most 1000 items */
+      rows: {
+        [key: string]: unknown;
+      }[];
+      axis: {
+        /** 1-80 characters */
+        field: string;
+        intervals?: {
+          /** 60000-9007199254740991 */
+          every: number;
+          since: number;
+        };
+      };
+      /** 1-80 characters */
+      value: string;
+    }>,
+  ): BackofficeUiElement;
+  /** Builds BarChart. Displays a bar per axis category, stacked by the rows' series field and sized by their value field, with a legend of series totals. The 6 largest series show; the rest stack as Other. */
+  barChart(
+    props: BackofficeUiProps<{
+      /** 1-200 characters */
+      label: string;
+      /** at most 1000 items */
+      rows: {
+        [key: string]: unknown;
+      }[];
+      axis: {
+        /** 1-80 characters */
+        field: string;
+        intervals?: {
+          /** 60000-9007199254740991 */
+          every: number;
+          since: number;
+        };
+      };
+      /** 1-80 characters */
+      value: string;
+      /** 1-80 characters */
+      series: string;
     }>,
   ): BackofficeUiElement;
   /** Builds TextInput. Collects a short text value. Bind value with form.bind(field) so edits update the form response. Set secret to true for sensitive values such as API keys. */
@@ -450,6 +544,20 @@ declare const ui: {
       confirmation?: string;
     }>,
   ): BackofficeUiElement;
+  /**
+   * A container's children, once per row of a live list such as a page query, or a row's nested
+   * rows. Pass it as the children of ui.stack, ui.grid, or ui.section. render builds one row's
+   * element from its fields, such as row.status; a nested ui.each reads only its own rows.
+   */
+  each<TRow>(
+    rows: BackofficeUiLive<readonly TRow[]>,
+    render: (row: BackofficeUiRow<TRow>) => BackofficeUiElement,
+  ): BackofficeUiRepeat;
+  /** True while a live value matches the comparison, such as ui.is(row.errored, { gt: 0 }); omit it to test truthiness. */
+  is(
+    value: BackofficeUiLive<unknown>,
+    comparison?: BackofficeUiComparison,
+  ): BackofficeUiLiveCondition;
   /** Shows the element only while the condition holds. */
   when(condition: BackofficeUiCondition, element: BackofficeUiElement): BackofficeUiElement;
   /** Declares the one form an interface may collect; initial names every field. */

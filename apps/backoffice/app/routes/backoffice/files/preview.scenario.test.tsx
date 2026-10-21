@@ -282,7 +282,8 @@ test("private workspace images flow through session Markdown and generated UI wi
                 <BackofficeUiRenderer ui={unsafe.value.$ui} />
               </FileImageScopeProvider>,
             );
-            assert.include(unsafeMarkup, "Image unavailable");
+            // A path read from state is checked as the image renders, before it can become a source.
+            assert.include(unsafeMarkup, "Image cannot show its data");
             assert.notInclude(unsafeMarkup, "<img");
           },
         ),

@@ -96,15 +96,32 @@ type BackofficeUiStateRead = { $state: string };
 /** Binds an editable component's value prop to one form field. Create it with form.bind. */
 type BackofficeUiBinding = { readonly $bindState: string };
 declare const backofficeUiLiveValue: unique symbol;
-/** A live value, such as a page query's rows; page.define binds it to the page's data. */
+/** A live value, such as a page query's rows or a ui.each row's field; it renders as a state read. */
 type BackofficeUiLive<TValue> = { readonly [backofficeUiLiveValue]: TValue };
-type BackofficeUiProps<TProps> = {
-  [TKey in keyof TProps]:
-    | TProps[TKey]
-    | BackofficeUiStateRead
-    | BackofficeUiBinding
-    | BackofficeUiLive<TProps[TKey]>;
-};
+/** A prop value: the literal, or a live value or state read in its place, at any depth. */
+type BackofficeUiValue<TValue> =
+  | BackofficeUiLive<TValue>
+  | BackofficeUiStateRead
+  | BackofficeUiBinding
+  | (TValue extends readonly (infer TItem)[]
+      ? BackofficeUiValue<TItem>[]
+      : TValue extends object
+        ? { [TKey in keyof TValue]: BackofficeUiValue<TValue[TKey]> }
+        : TValue);
+type BackofficeUiProps<TProps> = { [TKey in keyof TProps]: BackofficeUiValue<TProps[TKey]> };
+/** One row of ui.each. Its fields, and their nested fields, are live values of the row. */
+type BackofficeUiRow<TRow> = BackofficeUiLive<TRow> &
+  (TRow extends readonly unknown[]
+    ? { readonly [index: number]: BackofficeUiRow<TRow[number]> }
+    : TRow extends object
+      ? { readonly [TKey in keyof TRow]-?: BackofficeUiRow<TRow[TKey]> }
+      : unknown);
+declare const backofficeUiRepeat: unique symbol;
+/** A container's children repeated once per row; see ui.each. */
+type BackofficeUiRepeat = { readonly [backofficeUiRepeat]: true };
+declare const backofficeUiLiveCondition: unique symbol;
+/** A condition on a live value; see ui.is. */
+type BackofficeUiLiveCondition = { readonly [backofficeUiLiveCondition]: true };
 type BackofficeUiComparison = {
   eq?: unknown;
   neq?: unknown;
@@ -118,6 +135,7 @@ type BackofficeUiComparison = {
 type BackofficeUiCondition =
   | boolean
   | (BackofficeUiStateRead & BackofficeUiComparison)
+  | BackofficeUiLiveCondition
   | BackofficeUiCondition[]
   | { $and: BackofficeUiCondition[] }
   | { $or: BackofficeUiCondition[] };
@@ -146,7 +164,9 @@ export function generateBackofficeUiBuilderDeclarations() {
       const definition =
         backofficeUiComponentDefinitions[type as keyof typeof backofficeUiComponentDefinitions];
       const propsType = renderPropsType(definition.props, 1);
-      const children = acceptsChildren ? ", children: BackofficeUiElement[]" : "";
+      const children = acceptsChildren
+        ? ", children: BackofficeUiElement[] | BackofficeUiRepeat"
+        : "";
       return `  /** Builds ${type}. ${definition.description} */
   ${functionName}(props: BackofficeUiProps<${propsType}>${children}): BackofficeUiElement;`;
     },
@@ -164,6 +184,20 @@ type BackofficeUiFormSubmitProps = ${submitPropsType};
 
 declare const ui: {
 ${componentFunctions.join("\n")}
+  /**
+   * A container's children, once per row of a live list such as a page query, or a row's nested
+   * rows. Pass it as the children of ui.stack, ui.grid, or ui.section. render builds one row's
+   * element from its fields, such as row.status; a nested ui.each reads only its own rows.
+   */
+  each<TRow>(
+    rows: BackofficeUiLive<readonly TRow[]>,
+    render: (row: BackofficeUiRow<TRow>) => BackofficeUiElement,
+  ): BackofficeUiRepeat;
+  /** True while a live value matches the comparison, such as ui.is(row.errored, { gt: 0 }); omit it to test truthiness. */
+  is(
+    value: BackofficeUiLive<unknown>,
+    comparison?: BackofficeUiComparison,
+  ): BackofficeUiLiveCondition;
   /** Shows the element only while the condition holds. */
   when(condition: BackofficeUiCondition, element: BackofficeUiElement): BackofficeUiElement;
   /** Declares the one form an interface may collect; initial names every field. */

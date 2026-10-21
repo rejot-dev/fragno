@@ -48,6 +48,12 @@ const generatedUiElementSchema = z.strictObject({
   props: z.record(z.string(), z.unknown()),
   children: z.array(z.string()),
   visible: z.unknown().optional(),
+  // Children render once per item of the array at statePath, or of the item field around them.
+  repeat: z
+    .strictObject({
+      statePath: z.union([z.string(), z.strictObject({ $item: z.string() })]),
+    })
+    .optional(),
 });
 
 const generatedUiSpecSchema = z.strictObject({
@@ -64,7 +70,7 @@ const backofficeUiResultEnvelopeSchema = z.looseObject({
 });
 
 const specFieldNames = new Set(["root", "elements"]);
-const elementFieldNames = new Set(["type", "props", "children", "visible"]);
+const elementFieldNames = new Set(["type", "props", "children", "visible", "repeat"]);
 
 export function parseBackofficeUiResult(value: unknown): BackofficeUiParseResult {
   if (!isRecord(value) || !Object.hasOwn(value, "$ui")) {
@@ -183,8 +189,13 @@ export function parseBackofficeUiResult(value: unknown): BackofficeUiParseResult
   }
 
   const spec = specResult.data as Spec;
-  if (!validateSpec(spec).valid) {
-    return invalidResult("invalid-contract", "Generated UI contains an invalid element graph.");
+  const graph = validateSpec(spec);
+  if (!graph.valid) {
+    const errors = graph.issues.filter(({ severity }) => severity === "error");
+    return invalidResult(
+      "invalid-contract",
+      `Generated UI contains an invalid element graph: ${errors.map(({ message }) => message).join(" ")}`,
+    );
   }
 
   return {

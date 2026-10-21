@@ -6,6 +6,7 @@ import { createCodemodeNodeExecutor } from "@fragno-dev/codemode/remote/codemode
 import { createCodemodeTestServer } from "@fragno-dev/codemode/testing/codemode-test-server";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { MemoryRouter } from "react-router";
 import * as ts from "typescript";
 
 import { createStateStore } from "@json-render/react";
@@ -15,6 +16,7 @@ import { artifactBuildPath } from "@/artifacts/build-cache.server";
 import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import type { BackofficeUiLinkTarget } from "@/backoffice-ui/components/link";
 import { BackofficeUiStoreRenderer } from "@/backoffice-ui/renderer";
 import { STATIC_CODEMODE_CONTENT } from "@/files/content/static-codemode";
 import {
@@ -26,7 +28,7 @@ import {
 
 import { loadPage } from "./build.server";
 import { pageDataPath, pageValuePath, type PageDefinition, type PageLoad } from "./definition";
-import { pageQuery, pageRows, pageValueText } from "./query";
+import { pageQuery, pageRows, pageValue, type PageData } from "./query";
 
 const workers = vi.hoisted(() => ({
   DurableObject: class {},
@@ -50,7 +52,7 @@ const orgId = "org-1";
 const scope = { kind: "org" as const, orgId };
 const SOURCE_PATH = "/workspace/reports/operations.page.js";
 
-const operationsPage = `export default page.define(({ collections, from, and, eq, gte, not, isNull, coalesce, count, max, bucket, now }) => {
+const operationsPage = `export default page.define(({ collections, from, and, eq, gte, not, isNull, coalesce, count, max, intervals, bucket, now }) => {
   const day = now.minus("24 hours");
   const runs = collections.workflowInstances;
 
@@ -73,7 +75,7 @@ const operationsPage = `export default page.define(({ collections, from, and, eq
     }));
 
   // The window starts a minute after the oldest run, inside its hour, so the bucket excludes it.
-  const hours = { every: "1 hour", since: now.minus("119 minutes") };
+  const hours = intervals({ every: "1 hour", since: now.minus("119 minutes") });
   const hourly = from({ run: runs })
     .where(({ run }) => not(isNull(bucket(run.createdAt, hours))))
     .groupBy(({ run }) => bucket(run.createdAt, hours))
@@ -81,7 +83,7 @@ const operationsPage = `export default page.define(({ collections, from, and, eq
     .orderBy(({ run }) => bucket(run.createdAt, hours), "asc");
 
   return ui.stack({ gap: "md" }, [
-    ui.metric({ label: "Runs today", value: started.value("total", "0") }),
+    ui.metric({ label: "Runs today", value: started.value("total", 0) }),
     ui.table({
       caption: "Recent runs",
       columns: [
@@ -102,6 +104,104 @@ const operationsPage = `export default page.define(({ collections, from, and, eq
     ui.table({ caption: "Runs per hour", columns: [{ key: "runs", label: "Runs" }], rows: hourly }),
   ]);
 });
+`;
+
+/**
+ * The home page's Automations panel and attention list: one row per workflow with its latest run,
+ * a sparkline of starts per hour, and links, read from a grouped subquery with nested rows.
+ */
+const automationsPage = `export default page.define(({ collections, from, many, unionAll, intervals, bucket, now, and, eq, gte, coalesce, count, sum, max, caseWhen }) => {
+  const day = now.minus("24 hours");
+  const hours = intervals({ every: "1 hour", since: day });
+  const runs = from({ run: collections.workflowInstances }).select(({ run }) => ({
+    id: run.id,
+    workflow: coalesce(run.remoteWorkflowName, run.workflowName),
+    workflowName: run.workflowName,
+    instanceId: run.instanceId,
+    status: run.status,
+    createdAt: run.createdAt,
+    updatedAt: run.updatedAt,
+  }));
+  const workflows = from({ run: runs })
+    .groupBy(({ run }) => run.workflow)
+    .select(({ run }) => ({
+      workflow: run.workflow,
+      started: count(run.id),
+      errored: sum(caseWhen(eq(run.status, "errored"), 1, 0)),
+      lastActivity: max(run.updatedAt),
+    }));
+  const health = from({ workflow: workflows })
+    .orderBy(({ workflow }) => workflow.lastActivity, "desc")
+    .orderBy(({ workflow }) => workflow.workflow, "asc")
+    .select(({ workflow }) => ({
+      workflow: workflow.workflow,
+      started: workflow.started,
+      errored: workflow.errored,
+      latest: many(
+        from({ run: runs })
+          .where(({ run }) => eq(run.workflow, workflow.workflow))
+          .orderBy(({ run }) => run.updatedAt, "desc")
+          .limit(1)
+          .select(({ run }) => ({
+            workflowName: run.workflowName,
+            instanceId: run.instanceId,
+            status: run.status,
+            tone: caseWhen(eq(run.status, "errored"), "failed", eq(run.status, "complete"), "live", "waiting"),
+            updatedAt: run.updatedAt,
+          })),
+      ),
+      hourly: many(
+        from({ run: runs })
+          .where(({ run }) => and(eq(run.workflow, workflow.workflow), gte(run.createdAt, day)))
+          .groupBy(({ run }) => bucket(run.createdAt, hours))
+          .select(({ run }) => ({ hour: bucket(run.createdAt, hours), runs: count(run.id) })),
+      ),
+    }));
+  const attention = from({
+    item: unionAll(
+      from({ waiting: runs })
+        .where(({ waiting }) => eq(waiting.status, "waiting"))
+        .select(({ waiting }) => ({ title: waiting.workflow, detail: "Waiting for an event", at: waiting.updatedAt })),
+      from({ failed: runs })
+        .where(({ failed }) => eq(failed.status, "errored"))
+        .select(({ failed }) => ({ title: failed.workflow, detail: "Errored", at: failed.updatedAt })),
+    ),
+  })
+    .orderBy(({ item }) => item.at, "desc")
+    .limit(10);
+
+  return ui.stack({ gap: "md" }, [
+    ui.metric({ label: "Workflows", value: from({ workflow: workflows }).select(({ workflow }) => ({ total: count(workflow.workflow) })).value("total", 0) }),
+    ui.section({ label: "Automations" }, [
+      ui.stack({ gap: "sm" }, ui.each(health, (row) =>
+        ui.grid({ columns: 4, gap: "sm" }, [
+          ui.link({
+            label: row.workflow,
+            to: { kind: "run", workflowName: row.latest[0].workflowName, instanceId: row.latest[0].instanceId },
+          }),
+          ui.sparkBars({ label: "Starts per hour", rows: row.hourly, axis: { field: "hour", intervals: hours }, value: "runs" }),
+          ui.badge({ label: row.latest[0].status, tone: row.latest[0].tone }),
+          ui.relativeTime({ time: row.latest[0].updatedAt }),
+          ui.when(ui.is(row.errored, { gt: 0 }), ui.text({ text: "Has errored runs" })),
+        ]),
+      )),
+    ]),
+    ui.section({ label: "Needs attention" }, [
+      ui.stack({ gap: "sm" }, ui.each(attention, (item) =>
+        ui.stack({ gap: "sm" }, [ui.text({ text: item.title }), ui.text({ text: item.detail, tone: "muted" })]),
+      )),
+    ]),
+  ]);
+});
+`;
+
+/** Binds a JSON field, which declarations type as unknown, to a metric's value. */
+const paramsMetricPage = `export default page.define(({ collections, from }) =>
+  ui.metric({
+    label: "Newest params",
+    value: from({ run: collections.workflowInstances }).orderBy(({ run }) => run.createdAt, "desc").limit(1).value("params", "none"),
+  }),
+);
 `;
 
 const newestRunPage = `export default page.define(({ collections, from }) =>
@@ -238,27 +338,46 @@ async function cachedOutcome(ctx: BackofficeScenarioContext): Promise<string> {
   return build.result as string;
 }
 
-/** Renders a built page the way its route does, with each query's live results run once. */
+/** Where the scenario's links lead, so assertions read which target each link names. */
+function testLinks(target: BackofficeUiLinkTarget): string {
+  return target.kind === "run"
+    ? `/runs/${target.workflowName}/${target.instanceId}`
+    : `/${target.kind}s/${target.id}`;
+}
+
+/**
+ * Renders a built page the way its route does, with each query's live results run once, and
+ * returns the markup with each query's rows.
+ */
 async function renderPage(ctx: BackofficeScenarioContext, definition: PageDefinition) {
   const { queries, values, spec } = definition;
   const database = ctx.tanstack.automations.forOrg(orgId);
   await database.drain();
 
+  const now = ctx.runtime.now();
   const store = createStateStore({});
+  const data: Record<string, PageData[]> = {};
   for (const [name, query] of Object.entries(queries)) {
     const rows = pageRows(
-      await queryOnce((builder) =>
-        pageQuery(builder, database.collections, query, ctx.runtime.now()),
-      ),
+      await queryOnce((builder) => pageQuery(builder, database.collections, query, now)),
     );
+    data[name] = rows;
     store.set(pageDataPath(name), rows);
     for (const [valueName, value] of Object.entries(values)) {
       if (value.query === name) {
-        store.set(pageValuePath(valueName), pageValueText(value, rows));
+        store.set(pageValuePath(valueName), pageValue(value, rows));
       }
     }
   }
-  return renderToStaticMarkup(createElement(BackofficeUiStoreRenderer, { spec, store }));
+  // Links render as router links, as they do inside the app.
+  const markup = renderToStaticMarkup(
+    createElement(
+      MemoryRouter,
+      null,
+      createElement(BackofficeUiStoreRenderer, { spec, store, now, links: testLinks }),
+    ),
+  );
+  return { markup, data };
 }
 
 /** Each table's rows by caption, as cell text joined with " | ". */
@@ -274,6 +393,38 @@ function tables(markup: string): Record<string, string[]> {
         [...(row ?? "").matchAll(/<td[^>]*>(.*?)<\/td>/g)].map(([, cell]) => cell).join(" | "),
       ),
     ]),
+  );
+}
+
+/**
+ * Each Automations row as "workflow -> link | last bars | badge tone and label | time | note",
+ * where bars show 1 for an hour with starts.
+ */
+function automationRows(markup: string): string[] {
+  return [
+    ...markup.matchAll(
+      /<a[^>]*href="([^"]+)"[^>]*>([^<]+)<\/a><span role="img" aria-label="Starts per hour"[^>]*>((?:<span[^>]*><\/span>)*)<\/span><span[^>]*data-tone="(\w+)"[^>]*>([^<]+)<\/span><time[^>]*>([^<]+)<\/time>(?:<p[^>]*>([^<]+)<\/p>)?/g,
+    ),
+  ].map(([, href, workflow, bars, tone, status, time, note]) => {
+    const heights = [...(bars ?? "").matchAll(/height:([^"]+)"/g)].map(([, height]) =>
+      height === "1px" ? "0" : "1",
+    );
+    assert.lengthOf(heights, 25);
+    return [
+      `${workflow} -> ${href}`,
+      `...${heights.slice(-3).join("")}`,
+      `${tone} ${status}`,
+      time,
+      ...(note ? [note] : []),
+    ].join(" | ");
+  });
+}
+
+/** Each attention item as "title: detail". */
+function attentionItems(markup: string): string[] {
+  const section = markup.slice(markup.indexOf('aria-label="Needs attention"'));
+  return [...section.matchAll(/<div[^>]*><p[^>]*>([^<]+)<\/p><p[^>]*>([^<]+)<\/p><\/div>/g)].map(
+    ([, title, detail]) => `${title}: ${detail}`,
   );
 }
 
@@ -304,7 +455,7 @@ describe("workspace pages", () => {
             const loaded = await loadBuiltPage(ctx);
             assert(loaded.kind === "ready", JSON.stringify(loaded));
             assert.equal(await cachedOutcome(ctx), "built");
-            const markup = await renderPage(ctx, loaded.definition);
+            const { markup } = await renderPage(ctx, loaded.definition);
             assert.include(markup, "Runs today");
             assert.match(markup, />4</);
             assert.deepEqual(tables(markup), {
@@ -317,10 +468,80 @@ describe("workspace pages", () => {
             await writePage(ctx, newestRunPage);
             const loaded = await loadBuiltPage(ctx);
             assert(loaded.kind === "ready", JSON.stringify(loaded));
-            assert.deepEqual(tables(await renderPage(ctx, loaded.definition)), {
+            assert.deepEqual(tables((await renderPage(ctx, loaded.definition)).markup), {
               "Newest run": ["ship-2"],
             });
           }),
+        ],
+      }),
+    );
+  });
+
+  test("a page rebuilds the home page's automations panel from nested and merged rows", async () => {
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        objects: allLocalObjects,
+        env: codemodeEnv(),
+        name: "an automations page with a row per workflow and an attention list",
+        files: backofficeFiles.custom({ workspace: workflows }),
+        options: { allowErroredWorkflows: true },
+        setup: ({ given }) => [given.organization.exists({ id: orgId, name: "Ada Labs" })],
+        steps: ({ when, then }) => [
+          when.workflow.createInstance(startRun("ship-order", "ship-1")),
+          when.time.advance("1 hour"),
+          when.workflow.createInstance(startRun("await-shipment", "shipment-1")),
+          when.time.advance("1 hour"),
+          when.workflow.createInstance(startRun("charge-card", "charge-1")),
+          when.workflow.createInstance(startRun("ship-order", "ship-2")),
+          then.assert("the source checks against the declarations and verifies", async (ctx) => {
+            const { diagnostics, verifyError } = await writePage(ctx, automationsPage);
+            assert.deepEqual(diagnostics, [], diagnostics.join("\n"));
+            assert.equal(verifyError, null);
+          }),
+          then.assert(
+            "each workflow row shows its latest run, hourly starts, and errors",
+            async (ctx) => {
+              const loaded = await loadBuiltPage(ctx);
+              assert(loaded.kind === "ready", JSON.stringify(loaded));
+              const { markup } = await renderPage(ctx, loaded.definition);
+              assert.match(markup, /aria-label="Workflows"[^>]*>.*?<p[^>]*>3<\/p>/);
+              // Bars run oldest to newest over 25 hourly intervals; ship-order started 2 hours apart.
+              assert.deepEqual(automationRows(markup), [
+                "ship-order -> /runs/codemode-script/ship-2 | ...101 | live complete | now",
+                "charge-card -> /runs/codemode-script/charge-1 | ...001 | failed errored | now | Has errored runs",
+                "await-shipment -> /runs/codemode-script/shipment-1 | ...010 | waiting waiting | 1h ago",
+              ]);
+              assert.deepEqual(attentionItems(markup), [
+                "charge-card: Errored",
+                "await-shipment: Waiting for an event",
+              ]);
+            },
+          ),
+          then.assert(
+            "bound data that does not fit a prop shows the mismatch in its place",
+            async (ctx) => {
+              // params is JSON, which the declarations type as unknown, so only rendering can tell.
+              await writePage(ctx, paramsMetricPage);
+              const loaded = await loadBuiltPage(ctx);
+              assert(loaded.kind === "ready", JSON.stringify(loaded));
+              const { markup } = await renderPage(ctx, loaded.definition);
+              assert.include(markup, "Metric cannot show its data");
+              assert.match(markup, /value: Invalid input/);
+            },
+          ),
+          then.assert(
+            "merged queries that share an alias fail verification with the fix",
+            async (ctx) => {
+              const { verifyError } = await writePage(
+                ctx,
+                automationsPage.replaceAll("waiting", "run").replaceAll("failed", "run"),
+              );
+              assert.include(
+                verifyError,
+                'unionAll(...queries) merges queries with distinct aliases; "run" names a source of more than one',
+              );
+            },
+          ),
         ],
       }),
     );

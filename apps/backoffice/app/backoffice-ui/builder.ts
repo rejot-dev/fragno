@@ -19,18 +19,25 @@ export const backofficeUiBuilderComponents = Object.entries(backofficeUiComponen
  * forms; the host validates the rendered `$ui` with `parseBackofficeUiResult`, so props stay
  * unchecked here. Element ids encode their tree position ("root.1.0") so host validation errors
  * point at the authored call.
+ *
+ * `live` maps handles to the JSON they render as, such as a page query to its `$state` read.
+ * `ui.render` resolves them wherever they sit, so names assigned while rendering, like a page's
+ * query names, reach props, conditions, and repeats alike.
  */
-const BACKOFFICE_UI_BUILDER_SOURCE = String.raw`({ components, maxElements }) => {
+const BACKOFFICE_UI_BUILDER_SOURCE = String.raw`({ components, maxElements }) => (live) => {
   const elements = new WeakSet();
   const bindingForms = new WeakMap();
   const submitForms = new WeakMap();
+  const repeats = new WeakMap();
+  const itemScopes = new WeakMap();
   const isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
   const describe = (value) => (Array.isArray(value) ? "an array" : value === null ? "null" : typeof value);
   const fail = (message) => {
     throw new TypeError(message);
   };
-  const element = (type, props, children, visible) => {
-    const created = Object.freeze({ type, props, children, visible });
+  const ignoredKey = (key) => typeof key !== "string" || key === "then" || key === "toJSON";
+  const element = (type, props, children, visible, repeat) => {
+    const created = Object.freeze({ type, props, children, visible, repeat });
     elements.add(created);
     return created;
   };
@@ -42,31 +49,88 @@ const BACKOFFICE_UI_BUILDER_SOURCE = String.raw`({ components, maxElements }) =>
   };
   const pointerSegment = (segment) => segment.replace(/~/g, "~0").replace(/\//g, "~1");
 
+  // A row's fields read the item of the ui.each that made the row; json-render reads only the
+  // innermost item, so render rejects a row read inside another ui.each.
+  const itemRef = (path, scope) => {
+    const ref = new Proxy(Object.freeze({}), {
+      get: (_, key) => (ignoredKey(key) ? undefined : itemRef(path === "" ? pointerSegment(key) : path + "/" + pointerSegment(key), scope)),
+    });
+    itemScopes.set(ref, scope);
+    live.set(ref, (renderScope) => {
+      if (renderScope !== scope) {
+        fail("row" + (path === "" ? "" : "." + path.replace(/\//g, ".")) + " is read outside the ui.each that made the row, or inside a nested ui.each; select the fields each nested row needs into its rows.");
+      }
+      return { $item: path };
+    });
+    return ref;
+  };
+  const resolve = (value, scope) => {
+    if (live.has(value)) return resolve(live.get(value)(scope), scope);
+    if (Array.isArray(value)) return value.map((item) => resolve(item, scope));
+    if (isRecord(value) && !elements.has(value)) {
+      return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, resolve(item, scope)]));
+    }
+    return value;
+  };
+  const stateRead = (value, scope, label) => {
+    const read = resolve(value, scope);
+    if (isRecord(read) && typeof read.$state === "string" && Object.keys(read).length === 1) return read;
+    if (isRecord(read) && typeof read.$item === "string" && Object.keys(read).length === 1) return read;
+    return fail(label + " expects a live value, such as a page query or a row's field; received " + describe(value) + ".");
+  };
+
   const ui = {};
   for (const component of components) {
     const name = "ui." + component.functionName;
     ui[component.functionName] = (...args) => {
       const props = args[0];
-      if (!isRecord(props)) {
+      if (!isRecord(props) || live.has(props)) {
         fail(name + " expects a props object, received " + describe(props) + ".");
       }
       if (!component.acceptsChildren) {
         if (args.length > 1) fail(name + " does not accept children.");
-        return element(component.type, props, [], null);
+        return element(component.type, props, [], null, null);
       }
       const children = args[1];
+      if (repeats.has(children)) {
+        return element(component.type, props, [repeats.get(children).template], null, repeats.get(children));
+      }
       if (!Array.isArray(children)) {
-        fail(name + "(props, children) expects a children array, received " + describe(children) + ".");
+        fail(name + "(props, children) expects a children array or ui.each(rows, render), received " + describe(children) + ".");
       }
       children.forEach((child, index) => requireElement(child, name + " child " + index));
-      return element(component.type, props, [...children], null);
+      return element(component.type, props, [...children], null, null);
     };
   }
+
+  ui.each = (rows, render) => {
+    if (typeof render !== "function") {
+      fail("ui.each(rows, render) expects render, a function from a row to an element.");
+    }
+    const scope = Object.freeze({});
+    const template = requireElement(render(itemRef("", scope)), "ui.each(rows, render) render's result");
+    const repeat = Object.freeze({ rows, template, scope });
+    repeats.set(repeat, repeat);
+    return repeat;
+  };
+
+  ui.is = (value, comparison = {}) => {
+    if (!isRecord(comparison)) {
+      fail("ui.is(value, comparison) expects a comparison object such as { eq: value }.");
+    }
+    const unknown = Object.keys(comparison).filter((key) => !["eq", "neq", "gt", "gte", "lt", "lte", "not"].includes(key));
+    if (unknown.length > 0) {
+      fail("ui.is(value, comparison) compares with eq, neq, gt, gte, lt, lte, or not; remove " + unknown.join(", ") + ".");
+    }
+    const condition = Object.freeze({});
+    live.set(condition, (scope) => ({ ...stateRead(value, scope, "ui.is(value, comparison) value"), ...resolve(comparison, scope) }));
+    return condition;
+  };
 
   ui.when = (condition, target) => {
     requireElement(target, "ui.when(condition, element) element");
     const visible = target.visible === null ? condition : { $and: [target.visible, condition] };
-    const shown = element(target.type, target.props, target.children, visible);
+    const shown = element(target.type, target.props, target.children, visible, target.repeat);
     if (submitForms.has(target)) submitForms.set(shown, submitForms.get(target));
     return shown;
   };
@@ -105,7 +169,7 @@ const BACKOFFICE_UI_BUILDER_SOURCE = String.raw`({ components, maxElements }) =>
         if (Object.hasOwn(props, "eventType") || Object.hasOwn(props, "payload")) {
           fail("form.submit sets eventType and payload itself; pass label, variant, or confirmation.");
         }
-        const button = element("WorkflowEventButton", { ...props, eventType, payload: { $state: "/response" } }, [], null);
+        const button = element("WorkflowEventButton", { ...props, eventType, payload: { $state: "/response" } }, [], null, null);
         submitForms.set(button, form);
         return button;
       },
@@ -118,7 +182,7 @@ const BACKOFFICE_UI_BUILDER_SOURCE = String.raw`({ components, maxElements }) =>
     const forms = new Set();
     const submittedForms = new Set();
     let count = 0;
-    const visit = (node, id) => {
+    const visit = (node, id, scope) => {
       count += 1;
       // Reused subtrees expand per use, so stop before an exponential tree exhausts the guest.
       if (count > maxElements) fail("ui.render exceeds the " + maxElements + "-element limit.");
@@ -126,7 +190,7 @@ const BACKOFFICE_UI_BUILDER_SOURCE = String.raw`({ components, maxElements }) =>
       for (const [key, value] of Object.entries(node.props)) {
         const form = bindingForms.get(value);
         if (form) forms.add(form);
-        props[key] = form ? { $bindState: value.$bindState } : value;
+        props[key] = form ? { $bindState: value.$bindState } : resolve(value, scope);
       }
       const submitted = submitForms.get(node);
       if (submitted) {
@@ -135,12 +199,19 @@ const BACKOFFICE_UI_BUILDER_SOURCE = String.raw`({ components, maxElements }) =>
       }
       // Insert before visiting children so the spec, and its validation errors, read root-first.
       const rendered = { type: node.type, props, children: [] };
-      if (node.visible !== null) rendered.visible = node.visible;
+      if (node.visible !== null) rendered.visible = resolve(node.visible, scope);
       specElements[id] = rendered;
-      rendered.children = node.children.map((child, index) => visit(child, id + "." + index));
+      if (node.repeat !== null) {
+        // The repeated element reads its rows from the item around it; its child reads each row.
+        const read = stateRead(node.repeat.rows, scope, "ui.each(rows, render) rows");
+        rendered.repeat = { statePath: read.$state ?? { $item: read.$item } };
+        rendered.children = [visit(node.repeat.template, id + ".0", node.repeat.scope)];
+      } else {
+        rendered.children = node.children.map((child, index) => visit(child, id + "." + index, scope));
+      }
       return id;
     };
-    visit(root, "root");
+    visit(root, "root", null);
     if (forms.size > 1) {
       fail("ui.render found " + forms.size + " forms; one interface collects one ui.form.");
     }
@@ -170,7 +241,7 @@ const builderConfig = JSON.stringify({
 export function withBackofficeUiBuilder(code: string) {
   const program = normalizeCode(code.trim().replace(/;*$/u, ""));
   // The program starts on the first line so compiler diagnostics keep the author's line numbers.
-  return `((ui) => ((page) => (globalThis.ui = ui, globalThis.page = page, ${program}\n))(${pageBuilderSource}(ui)))((${BACKOFFICE_UI_BUILDER_SOURCE})(${builderConfig}))`;
+  return `((live) => ((ui) => ((page) => (globalThis.ui = ui, globalThis.page = page, ${program}\n))(${pageBuilderSource}(ui, live)))((${BACKOFFICE_UI_BUILDER_SOURCE})(${builderConfig})(live)))(new WeakMap())`;
 }
 
 // Saved modules live under /static and /workspace, so these paths cannot collide with them.
@@ -189,7 +260,7 @@ export function withBackofficeUiBuilderModule(program: {
     entry: UI_BUILDER_ENTRY_MODULE,
     modules: {
       ...program.modules,
-      [UI_BUILDER_GLOBALS_MODULE]: `const ui = (${BACKOFFICE_UI_BUILDER_SOURCE})(${builderConfig});\nglobalThis.ui = ui;\nglobalThis.page = ${pageBuilderSource}(ui);\n`,
+      [UI_BUILDER_GLOBALS_MODULE]: `const live = new WeakMap();\nconst ui = (${BACKOFFICE_UI_BUILDER_SOURCE})(${builderConfig})(live);\nglobalThis.ui = ui;\nglobalThis.page = ${pageBuilderSource}(ui, live);\n`,
       [UI_BUILDER_ENTRY_MODULE]: `import ${JSON.stringify(UI_BUILDER_GLOBALS_MODULE)};\nexport { default } from ${JSON.stringify(program.entry)};\n`,
     },
   };
