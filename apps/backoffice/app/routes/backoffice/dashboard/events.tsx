@@ -14,7 +14,7 @@ import { BackofficeStatusLight } from "@fragno-private/design-system/status-ligh
 import type { BackofficeStatusTone } from "@fragno-private/design-system/status-tone";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { formatWorkflowDuration } from "@fragno-private/design-system/workflow-run-timeline-model";
-import { Fragment, Suspense, use, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Fragment, Suspense, use, useMemo, useState, type ReactNode } from "react";
 import { Link, useSearchParams, type ShouldRevalidateFunctionArgs } from "react-router";
 
 import { useLiveQuery } from "@tanstack/react-db";
@@ -26,6 +26,7 @@ import {
 import type { BackofficeRouteScope } from "@/backoffice-runtime/route-scope";
 import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
 import { backofficePageBodyClassName } from "@/components/backoffice/page-body";
+import { useClock } from "@/components/backoffice/use-clock";
 import {
   describeAutomationCollectionSource,
   getAutomationBrowserDatabase,
@@ -1021,18 +1022,4 @@ function JsonBlock({ label, value }: { label: string; value: unknown }) {
       </pre>
     </div>
   );
-}
-
-/** Relative times move with the wall clock. */
-function useClock(tickMs: number): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      setNow(Date.now());
-    }, tickMs);
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [tickMs]);
-  return now;
 }
