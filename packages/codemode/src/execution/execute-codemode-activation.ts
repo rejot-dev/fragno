@@ -23,7 +23,7 @@ import {
   type CodemodeCompletion,
   sourceModuleFiles,
 } from "./codemode-activation-contract";
-import { CodemodeInterruptedError, encodeCodemodeError } from "./codemode-errors";
+import { CodemodeInterruptedError } from "./codemode-errors";
 import { CODEMODE_WORKER_RUNTIME } from "./codemode-worker-bundle";
 
 /** The bridge supplies compilation and Worker Loader; Node never loads guest code. */
@@ -247,7 +247,7 @@ export async function executeCodemodeActivation(
   const output = codemodeWorkerEvaluationSchema.parse(evaluation);
   const logs = collectCodemodeCompletionLogs(warnings, output.logs);
   return !output.ok
-    ? { status: "failed", error: encodeCodemodeError(new Error(output.error)), logs }
+    ? { status: "failed", error: output.error, logs }
     : {
         status: "completed",
         value: output.result,

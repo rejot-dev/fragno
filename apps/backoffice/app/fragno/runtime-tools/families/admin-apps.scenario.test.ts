@@ -470,7 +470,7 @@ describe("admin app runtime tool SQLite scenarios", () => {
                   scope,
                   code: "async () => await context.current.admin.appsList({})",
                 }),
-              ).rejects.toThrow("Unknown scoped tool");
+              ).rejects.toThrow("TOOL_UNAVAILABLE: admin.appsList");
             }
             const stored = await ctx.runtime.objects.apps
               .singleton()

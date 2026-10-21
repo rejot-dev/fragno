@@ -1,8 +1,33 @@
+import {
+  backofficeScopePathSegment,
+  type BackofficeContextScope,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
+
 import { BackofficeForbiddenError, isBackofficeForbiddenError } from "@/backoffice-runtime/kernel";
 import {
   BackofficeOperationError,
   backofficeOperationErrorKindForStatus,
 } from "@/backoffice-runtime/operation-error";
+
+export class BackofficeToolUnavailableError extends Error {
+  readonly status = 409;
+  readonly code = "TOOL_UNAVAILABLE";
+  readonly metadata: { tool: string; scope: string };
+
+  constructor(tool: string, scope: BackofficeContextScope, description: string) {
+    const scopeName = backofficeScopePathSegment(scope);
+    super(
+      [
+        `TOOL_UNAVAILABLE: ${tool} is unavailable in the current execution context.`,
+        `Current scope: ${scopeName}`,
+        `Action: ${description}`,
+        "Check the selected scope, principal, and configured services. Changing scope does not bypass credential restrictions or permissions.",
+      ].join("\n"),
+    );
+    this.name = "BackofficeToolUnavailableError";
+    this.metadata = { tool, scope: scopeName };
+  }
+}
 
 export class NotConfiguredError extends BackofficeOperationError {
   constructor(message: string) {

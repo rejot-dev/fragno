@@ -896,7 +896,7 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
                   scope,
                   code: "async () => await context.current.apps.listInstallations({})",
                 }),
-              ).rejects.toThrow("Unknown scoped tool");
+              ).rejects.toThrow("TOOL_UNAVAILABLE:");
             }
           }),
           runner.restartObject({

@@ -1,6 +1,6 @@
 import { NonRetryableError, WaitForEventTimeoutError } from "@fragno-dev/workflows/workflow";
 
-import type { CodemodeWireError } from "./codemode-activation-contract";
+import { codemodeErrorMetadataSchema, type CodemodeWireError } from "./codemode-error-contract";
 
 /** Interruption is an unknown outcome, not permission to retry an immediate invocation. */
 export class CodemodeInterruptedError extends Error {
@@ -39,6 +39,9 @@ function restoreCodemodeErrorDetails(error: Error, details: CodemodeWireError["d
 export function encodeCodemodeError(error: unknown): CodemodeWireError {
   const name = error instanceof Error ? error.name : "Error";
   const message = error instanceof Error ? error.message : String(error);
+  const metadata = codemodeErrorMetadataSchema.safeParse(
+    error !== null && typeof error === "object" && "metadata" in error ? error.metadata : null,
+  );
   return {
     kind:
       name === "NonRetryableError"
@@ -51,6 +54,7 @@ export function encodeCodemodeError(error: unknown): CodemodeWireError {
     name: name.slice(0, 1024),
     message: message.slice(0, 32_768),
     details: codemodeErrorDetails(error),
+    metadata: metadata.success ? metadata.data : null,
   };
 }
 
@@ -71,6 +75,9 @@ export function decodeCodemodeError(error: CodemodeWireError): Error {
       result = new Error(error.message);
       result.name = error.name;
       break;
+  }
+  if (error.metadata !== null) {
+    Object.defineProperty(result, "metadata", { value: error.metadata, enumerable: true });
   }
   return restoreCodemodeErrorDetails(result, error.details);
 }

@@ -2,8 +2,6 @@ import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api
 import { formatCodemodeLogLine } from "@fragno-dev/codemode/runtime-api";
 import { Type } from "typebox";
 
-import { visualizeWorkflowSource } from "@fragno-dev/workflow-visualizer-tokens";
-
 import { copyJson } from "@earendil-works/chord";
 import { defineTool } from "@earendil-works/pi-durable";
 
@@ -60,6 +58,14 @@ const formatExecCodeModeText = (result: BackofficeCodemodeExecuteResult) => {
 
   if (result.error) {
     lines.push(result.error);
+    if (result.errorDetails && (result.errorDetails.details || result.errorDetails.metadata)) {
+      lines.push(
+        `Diagnostics: ${JSON.stringify({
+          details: result.errorDetails.details,
+          metadata: result.errorDetails.metadata,
+        })}`,
+      );
+    }
     return lines.join("\n");
   }
 
@@ -136,15 +142,6 @@ export function createExecCodeModeTool(agent: BackofficeAgentContext) {
         toolContext,
       });
 
-      // Parse before scheduling so workflow-shaped failures retain tool details. The client builds
-      // its graph projection directly from the submitted source even when no run was created.
-      const workflowVisualization = visualizeWorkflowSource("codemode", code, {
-        fallbackName: result.workflowDefinition?.name,
-      });
-      const parsedWorkflow = workflowVisualization.graph.nodes.some(
-        (node) => node.kind === "workflow",
-      );
-
       // Scheduling failures are failed tool results, but still carry the authored workflow for the viewer.
       let scheduleError: WorkflowScheduleErrorDetails | undefined;
       // The scheduled run's handle, surfaced to the client so the workflow viewer
@@ -200,12 +197,7 @@ export function createExecCodeModeTool(agent: BackofficeAgentContext) {
         ...(generatedUiError ? [generatedUiError] : []),
       ].join("\n\n");
 
-      // Throw only when there is no workflow graph to preserve. Recognized workflows return an
-      // error result with details so both the viewer and model can inspect the scheduling failure.
-      if ((result.error || scheduleError) && !parsedWorkflow) {
-        throw new Error(text);
-      }
-
+      // Execution failures are tool results: throwing here would discard their diagnostics and run ID.
       return {
         output: [{ type: "text", text }],
         isError: Boolean(result.error || scheduleError || generatedUiError),

@@ -322,20 +322,26 @@ describe("Pi execCodeMode tool", () => {
   test("rejects form bindings to undeclared fields before the interface leaves the guest", async () => {
     const tool = await createExecCodeModeTool({});
 
-    await expect(
-      tool.execute(
-        {
-          code: `async () => {
-            const form = ui.form("approval", { decision: "approve" });
-            return { $ui: ui.render(ui.textArea({ label: "Reason", value: form.bind("reason") })) };
-          }`,
-        },
-        { taskId: "tool-call-unknown-field" } as never,
-        BACKGROUND_CONTEXT,
-      ),
-    ).rejects.toThrow(
-      'form.bind("reason") names no field of ui.form("approval"); declare it in the initial values.',
+    const result = await tool.execute(
+      {
+        code: `async () => {
+          const form = ui.form("approval", { decision: "approve" });
+          return { $ui: ui.render(ui.textArea({ label: "Reason", value: form.bind("reason") })) };
+        }`,
+      },
+      { taskId: "tool-call-unknown-field" } as never,
+      BACKGROUND_CONTEXT,
     );
+    expect(result).toMatchObject({
+      isError: true,
+      details: {
+        runId: expect.any(String),
+        errorDetails: {
+          message:
+            'form.bind("reason") names no field of ui.form("approval"); declare it in the initial values.',
+        },
+      },
+    });
   });
 
   test("surfaces workflow definitions from execCodeMode", async () => {
@@ -670,7 +676,7 @@ describe("Pi execCodeMode tool", () => {
     ]);
   });
 
-  test("rejects domain tool validation errors so the agent records a failed tool result", async () => {
+  test("retains domain tool validation diagnostics in a failed tool result", async () => {
     const calls: unknown[] = [];
     const automationsRuntime: RegisteredAutomationsRuntime = {
       ...createUnavailableAutomationRouterRuntime(),
@@ -698,17 +704,22 @@ describe("Pi execCodeMode tool", () => {
     };
 
     const tool = await createExecCodeModeTool({ automationsRuntime });
-    await expect(
-      tool.execute(
-        {
-          code: `async () => {
-            return await store.set({ key: "", value: "" });
-          }`,
-        },
-        { taskId: "tool-call-1" } as never,
-        BACKGROUND_CONTEXT,
-      ),
-    ).rejects.toThrow("Too small");
+    const result = await tool.execute(
+      {
+        code: `async () => {
+          return await store.set({ key: "", value: "" });
+        }`,
+      },
+      { taskId: "tool-call-1" } as never,
+      BACKGROUND_CONTEXT,
+    );
+    expect(result).toMatchObject({
+      isError: true,
+      details: {
+        runId: expect.any(String),
+        errorDetails: { name: "ZodError", message: expect.stringContaining("Too small") },
+      },
+    });
 
     expect(calls).toEqual([]);
   });

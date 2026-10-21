@@ -3,8 +3,8 @@ import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/share
 import type {
   CodemodeActivation,
   CodemodeCompletion,
-  CodemodeWireError,
 } from "@fragno-dev/codemode/execution/codemode-activation-contract";
+import type { CodemodeWireError } from "@fragno-dev/codemode/execution/codemode-error-contract";
 import type { CodemodeLogLine } from "@fragno-dev/codemode/runtime-api";
 import { column, idColumn, schema, type Column, type FragnoId } from "@fragno-dev/db/schema";
 

@@ -1,5 +1,6 @@
 import type { CompiledWorker } from "@fragno-dev/codemode/compiler/compile-worker";
 import type { WorkerBundle } from "@fragno-dev/codemode/compiler/worker-bundle";
+import { decodeCodemodeError } from "@fragno-dev/codemode/execution/codemode-errors";
 import { codemodeWorkerBundleSchema } from "@fragno-dev/codemode/execution/codemode-worker-bundle";
 import type { ResolvedProvider } from "@fragno-dev/codemode/runtime-api";
 import { z } from "zod";
@@ -58,7 +59,7 @@ export async function runBackofficeCompiledModule(
 ): Promise<unknown> {
   const { completion } = await executeBackofficeCompiledModule(input);
   if (completion.status === "failed") {
-    throw new Error(completion.error.message);
+    throw decodeCodemodeError(completion.error);
   }
   return completion.value;
 }

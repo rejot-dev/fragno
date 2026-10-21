@@ -1,6 +1,8 @@
 import { backofficeApiV0 } from "@fragno-dev/backoffice-api/v0";
 import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import type { CodemodeWireError } from "@fragno-dev/codemode/execution/codemode-error-contract";
+import { encodeCodemodeError } from "@fragno-dev/codemode/execution/codemode-errors";
 import type { ToolProvider } from "@fragno-dev/codemode/runtime-api";
 import type { Command } from "just-bash";
 import type { z } from "zod";
@@ -32,6 +34,8 @@ import {
   readOutputOptions,
   type ParsedCliTokens,
 } from "@/fragno/runtime-tools/bash-cli";
+
+import { BackofficeToolUnavailableError } from "./runtime-errors";
 
 export type BackofficeToolContext<
   TRuntimes extends Record<string, unknown> = Record<string, unknown>,
@@ -79,6 +83,7 @@ export type BackofficeRuntimeToolCall = {
   status: "success" | "error";
   resultSummary?: string;
   error?: string;
+  errorDetails: CodemodeWireError | null;
 };
 
 export type BackofficeBashShellContext = {
@@ -324,47 +329,58 @@ export async function executeBackofficeRuntimeTool<TTool extends AnyBackofficeRu
 }
 
 export const createBackofficeCodemodeProviders = ({
-  tools,
+  families,
   context,
   toolCalls,
 }: {
-  tools: readonly AnyBackofficeRuntimeTool[];
+  families: readonly BackofficeRuntimeToolFamily[];
   context: BackofficeToolContext;
   toolCalls?: BackofficeRuntimeToolCall[];
 }): ToolProvider[] => {
   const grouped = new Map<string, Record<string, CodemodeToolDescriptor>>();
 
-  for (const tool of tools) {
-    const providerTools = grouped.get(tool.namespace) ?? {};
-    grouped.set(tool.namespace, providerTools);
-    providerTools[tool.name] = {
-      description: tool.description,
-      inputSchema: tool.inputSchema,
-      inputMode: runtimeToolInputMode(tool.inputSchema),
-      outputSchema: tool.outputSchema,
-      execute: async (input) => {
-        const call: BackofficeRuntimeToolCall = {
-          providerName: tool.namespace,
-          toolName: tool.name,
-          toolId: tool.id,
-          inputSummary: summarizeToolValue(input),
-          status: "success",
-        };
+  for (const family of families) {
+    for (const tool of family.tools) {
+      const providerTools = grouped.get(tool.namespace) ?? {};
+      grouped.set(tool.namespace, providerTools);
+      providerTools[tool.name] = {
+        description: tool.description,
+        inputSchema: tool.inputSchema,
+        inputMode: runtimeToolInputMode(tool.inputSchema),
+        outputSchema: tool.outputSchema,
+        execute: async (input) => {
+          const call: BackofficeRuntimeToolCall = {
+            providerName: tool.namespace,
+            toolName: tool.name,
+            toolId: tool.id,
+            inputSummary: summarizeToolValue(input),
+            status: "success",
+            errorDetails: null,
+          };
 
-        try {
-          const output = await executeBackofficeRuntimeTool(tool, input, context);
-          call.resultSummary =
-            tool.resultLogging === "redacted" ? "[redacted]" : summarizeToolValue(output);
-          toolCalls?.push(call);
-          return output;
-        } catch (error) {
-          call.status = "error";
-          call.error = error instanceof Error ? error.message : String(error);
-          toolCalls?.push(call);
-          throw error;
-        }
-      },
-    };
+          try {
+            if (family.isAvailable && !family.isAvailable(context)) {
+              throw new BackofficeToolUnavailableError(
+                `${tool.namespace}.${tool.name}`,
+                context.execution.scope,
+                tool.description,
+              );
+            }
+            const output = await executeBackofficeRuntimeTool(tool, input, context);
+            call.resultSummary =
+              tool.resultLogging === "redacted" ? "[redacted]" : summarizeToolValue(output);
+            toolCalls?.push(call);
+            return output;
+          } catch (error) {
+            call.status = "error";
+            call.error = error instanceof Error ? error.message : String(error);
+            call.errorDetails = encodeCodemodeError(error);
+            toolCalls?.push(call);
+            throw error;
+          }
+        },
+      };
+    }
   }
 
   return [...grouped].map(([name, providerTools]) => ({ name, tools: providerTools }));

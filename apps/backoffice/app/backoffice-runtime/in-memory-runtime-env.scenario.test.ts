@@ -54,6 +54,7 @@ test("in-memory codemode returns host-realm values through a Backoffice scenario
           }
           expect(result).toEqual({
             runId: expect.any(String),
+            errorDetails: null,
             result: { logged: true, nested: { value: 1 } },
             logs: [],
             workflowDefinition: undefined,

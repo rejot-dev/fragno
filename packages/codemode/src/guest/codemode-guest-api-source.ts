@@ -15,9 +15,14 @@ function __codemodeCallbackFailure(error) {
   const message = typeof error?.message === "string" ? error.message : String(error);
   const details = Number.isInteger(error?.status) && error.status >= 100 && error.status <= 599 && typeof error?.code === "string"
     ? { status: error.status, code: error.code.slice(0, 1024) } : null;
+  const metadata = error?.metadata;
+  const validMetadata = metadata !== null && typeof metadata === "object" && !Array.isArray(metadata)
+    && Object.keys(metadata).length <= 16
+    && Object.entries(metadata).every(([key, value]) => key.length > 0 && key.length <= 128 && typeof value === "string" && value.length <= 4096);
   return { status: "error", error: {
     kind: name === "NonRetryableError" ? "non-retryable" : name === "WaitForEventTimeoutError" ? "event-timeout" : name === "CodemodeInterruptedError" ? "interrupted" : "error",
     name: name.slice(0, 1024), message: message.slice(0, 32768), details,
+    metadata: validMetadata ? metadata : null,
   } };
 }
 function __throwCodemodeProviderError(encoded) {
@@ -28,6 +33,7 @@ function __throwCodemodeProviderError(encoded) {
     if (typeof encoded.details.status === "number") error.status = encoded.details.status;
     if (typeof encoded.details.code === "string") error.code = encoded.details.code;
   }
+  if (encoded.metadata !== null) error.metadata = encoded.metadata;
   throw error;
 }
 function defineWorkflow(options, run) {

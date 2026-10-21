@@ -12,6 +12,7 @@ import { z } from "zod";
 
 import { CODEMODE_LIMITS } from "../codemode-limits";
 import { codemodeLogLineSchema } from "../runtime-api";
+import { codemodeWireErrorSchema } from "./codemode-error-contract";
 import { codemodeWorkerBundleSchema } from "./codemode-worker-bundle";
 
 /** Execution API v2 uses Cap'n Web; compiler HTTP archives retain their independent v1 format. */
@@ -144,19 +145,10 @@ export const codemodeSuspensionReasonSchema = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("checkpoint"), stepKey: name, delayMs: z.literal(0) }),
 ]);
 export type CodemodeSuspensionReason = z.infer<typeof codemodeSuspensionReasonSchema>;
-const errorSchema = z.strictObject({
-  kind: z.enum(["error", "non-retryable", "event-timeout", "interrupted"]),
-  name: z.string().max(1024),
-  message: z.string().max(32_768),
-  details: z
-    .strictObject({ status: z.number().int().min(100).max(599), code: z.string().min(1).max(1024) })
-    .nullable(),
-});
-export type CodemodeWireError = z.infer<typeof errorSchema>;
 /** Domain failures stay explicit across native RPC and Cap'n Web rather than relying on Error subclasses. */
 export const codemodeCallbackResultSchema = z.discriminatedUnion("status", [
   z.strictObject({ status: z.literal("ok"), value: z.unknown() }),
-  z.strictObject({ status: z.literal("error"), error: errorSchema }),
+  z.strictObject({ status: z.literal("error"), error: codemodeWireErrorSchema }),
 ]);
 export type CodemodeToolResult = z.infer<typeof codemodeCallbackResultSchema>;
 /** Step failures and suspension survive both transports without depending on native Error properties. */
@@ -172,7 +164,7 @@ export const codemodeCompletionSchema = z.discriminatedUnion("status", [
   }),
   z.strictObject({
     status: z.literal("failed"),
-    error: errorSchema,
+    error: codemodeWireErrorSchema,
     logs: z.array(codemodeLogLineSchema).max(CODEMODE_LIMITS.maxLogs),
   }),
   z.strictObject({

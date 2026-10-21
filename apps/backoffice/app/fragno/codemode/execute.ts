@@ -5,6 +5,8 @@ import {
 import type { WorkerCompiler } from "@fragno-dev/codemode/compiler/compile-worker";
 import { createWorkerCompilerServiceClient } from "@fragno-dev/codemode/compiler/compiler-service-client";
 import type { CodemodeRemoteExecutor } from "@fragno-dev/codemode/execution/codemode-activation-contract";
+import type { CodemodeWireError } from "@fragno-dev/codemode/execution/codemode-error-contract";
+import { encodeCodemodeError } from "@fragno-dev/codemode/execution/codemode-errors";
 import {
   resolveProvider,
   type ExecuteResult,
@@ -13,6 +15,7 @@ import {
 
 import type { NpmDependencyMap } from "@/backoffice-runtime/dynamic-workers/npm-dependencies";
 import { withBackofficeUiBuilder } from "@/backoffice-ui/builder";
+import { BackofficeToolUnavailableError } from "@/fragno/runtime-tools/runtime-errors";
 import {
   createBackofficeCodemodeProviders,
   executeBackofficeRuntimeTool,
@@ -65,6 +68,7 @@ export type BackofficeCodemodeWorkflowDefinition = {
 export type BackofficeCodemodeExecuteResult = ExecuteResult & {
   /** Leads to the run's retained record and its `codemode` events. */
   runId: string;
+  errorDetails: CodemodeWireError | null;
   toolCalls: BackofficeRuntimeToolCall[];
   workflowDefinition?: BackofficeCodemodeWorkflowDefinition;
   /** Saved modules the code imported; a workflow it defines pins these when scheduled. */
@@ -89,16 +93,14 @@ const callScopedTool = async (
   families: readonly BackofficeRuntimeToolFamily[],
   toolCalls?: BackofficeRuntimeToolCall[],
 ) => {
-  const tool = families
-    .flatMap((family) => {
-      if (family.isAvailable && !family.isAvailable(scopedContext)) {
-        return [];
-      }
-      return [...family.tools];
-    })
-    .find(
-      (candidate) => candidate.namespace === input.namespace && candidate.name === input.toolName,
-    );
+  const family = families.find((candidate) =>
+    candidate.tools.some(
+      (tool) => tool.namespace === input.namespace && tool.name === input.toolName,
+    ),
+  );
+  const tool = family?.tools.find(
+    (candidate) => candidate.namespace === input.namespace && candidate.name === input.toolName,
+  );
   if (!tool) {
     throw new Error(`Unknown scoped tool: ${input.namespace}.${input.toolName}`);
   }
@@ -109,8 +111,16 @@ const callScopedTool = async (
     toolId: tool.id,
     inputSummary: JSON.stringify(input.args[0] ?? null),
     status: "success",
+    errorDetails: null,
   };
   try {
+    if (family?.isAvailable && !family.isAvailable(scopedContext)) {
+      throw new BackofficeToolUnavailableError(
+        `${tool.namespace}.${tool.name}`,
+        scopedContext.execution.scope,
+        tool.description,
+      );
+    }
     const output = await executeBackofficeRuntimeTool(tool, input.args[0], scopedContext);
     call.resultSummary = tool.resultLogging === "redacted" ? "[redacted]" : JSON.stringify(output);
     toolCalls?.push(call);
@@ -118,6 +128,7 @@ const callScopedTool = async (
   } catch (error) {
     call.status = "error";
     call.error = error instanceof Error ? error.message : String(error);
+    call.errorDetails = encodeCodemodeError(error);
     toolCalls?.push(call);
     throw error;
   }
@@ -171,15 +182,8 @@ export function createBackofficeCodemodeResolvedProviders({
   toolContext,
   toolCalls,
 }: BackofficeCodemodeProvidersInput): ResolvedProvider[] {
-  const tools = families.flatMap((family) => {
-    if (family.isAvailable && !family.isAvailable(toolContext)) {
-      return [];
-    }
-    return [...family.tools];
-  });
-
   return [
-    ...createBackofficeCodemodeProviders({ tools, context: toolContext, toolCalls }),
+    ...createBackofficeCodemodeProviders({ families, context: toolContext, toolCalls }),
     createBackofficeScopedCodemodeProvider({ families, context: toolContext, toolCalls }),
   ].map((provider) => resolveProvider(provider));
 }
@@ -233,6 +237,7 @@ export const runBackofficeCodemode = async ({
       runId,
       result: undefined,
       error: completion.error.message,
+      errorDetails: completion.error,
       logs: completion.logs,
       toolCalls,
       modules,
@@ -241,6 +246,7 @@ export const runBackofficeCodemode = async ({
   return {
     runId,
     result: completion.value,
+    errorDetails: null,
     logs: completion.logs,
     ...(completion.workflowDefinition ? { workflowDefinition: completion.workflowDefinition } : {}),
     toolCalls,

@@ -68,6 +68,10 @@
       "types": "./dist/execution/execute-codemode-activation.d.ts",
       "default": "./dist/execution/execute-codemode-activation.js"
     },
+    "./execution/codemode-error-contract": {
+      "types": "./dist/execution/codemode-error-contract.d.ts",
+      "default": "./dist/execution/codemode-error-contract.js"
+    },
     "./execution/codemode-errors": {
       "types": "./dist/execution/codemode-errors.d.ts",
       "default": "./dist/execution/codemode-errors.js"

@@ -237,7 +237,7 @@ export const createCodemodeStateRuntime = (
     runtimes: { ...baseContext.runtimes, state },
   };
   const provider = createBackofficeCodemodeProviders({
-    tools: codemodeStateToolFamily.tools,
+    families: [codemodeStateToolFamily],
     context,
     ...(options?.toolCalls ? { toolCalls: options.toolCalls } : {}),
   }).at(0);

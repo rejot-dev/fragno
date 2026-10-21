@@ -1,3 +1,4 @@
+import { codemodeWireErrorSchema } from "@fragno-dev/codemode/execution/codemode-error-contract";
 import { z } from "zod";
 
 import type { BackofficeCapability } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
@@ -26,12 +27,7 @@ const runCompletedPayloadSchema = runStartedPayloadSchema.extend({
 const runFailedPayloadSchema = runStartedPayloadSchema.extend({
   finishedAt: z.iso.datetime(),
   status: z.literal("failed"),
-  error: z.object({
-    kind: z.enum(["error", "non-retryable", "event-timeout", "interrupted"]),
-    name: z.string(),
-    message: z.string(),
-    details: z.object({ status: z.number().int(), code: z.string() }).nullable(),
-  }),
+  error: codemodeWireErrorSchema,
 });
 
 const runSubjectSchema = z.object({
@@ -107,7 +103,13 @@ export const codemodeCapability: BackofficeCapability = {
           ...runExample,
           finishedAt: "2026-01-01T00:00:01.000Z",
           status: "failed",
-          error: { kind: "error", name: "Error", message: "Startup exploded", details: null },
+          error: {
+            kind: "error",
+            name: "Error",
+            message: "Startup exploded",
+            details: null,
+            metadata: null,
+          },
         },
       },
     ],

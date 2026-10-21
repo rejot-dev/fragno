@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { CODEMODE_LIMITS } from "./codemode-limits";
+import { codemodeWireErrorSchema } from "./execution/codemode-error-contract";
 
 export type CodemodeToolDescriptor = {
   description?: string;
@@ -61,7 +62,7 @@ export const codemodeWorkerEvaluationSchema = z.discriminatedUnion("ok", [
   z.strictObject({
     ok: z.literal(false),
     result: z.undefined(),
-    error: z.string().max(32_768),
+    error: codemodeWireErrorSchema,
     logs: guestLogsSchema,
     workflowDefinition: z.null(),
   }),

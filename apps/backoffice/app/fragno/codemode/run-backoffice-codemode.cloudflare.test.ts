@@ -81,6 +81,13 @@ describe("runBackofficeCodemode", () => {
         runId: expect.any(String),
         result: undefined,
         error: "Backoffice codemode compiler service is not configured.",
+        errorDetails: {
+          kind: "error",
+          name: "Error",
+          message: "Backoffice codemode compiler service is not configured.",
+          details: null,
+          metadata: null,
+        },
         logs: [],
         toolCalls: [],
         modules: {},

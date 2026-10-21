@@ -184,7 +184,7 @@ describe("static Marketplace publication scenarios", () => {
                   scope,
                   code: "async () => await context.current.admin.marketplacePushStatic({})",
                 }),
-              ).rejects.toThrow("Unknown scoped tool: admin.marketplacePushStatic");
+              ).rejects.toThrow("TOOL_UNAVAILABLE: admin.marketplacePushStatic");
               const execution = createBackofficeSystemExecution(scope);
               const context = createRouteBackedRuntimeContext({
                 emitter: { kind: "caller" },
