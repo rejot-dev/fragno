@@ -1,5 +1,7 @@
 import { normalizeCode } from "@fragno-dev/codemode/runtime-api";
 
+import { pageBuilderSource } from "@/artifacts/pages/builder";
+
 import { backofficeUiComponentDefinitions } from "./catalog";
 import { BACKOFFICE_UI_LIMITS } from "./result";
 
@@ -161,9 +163,12 @@ const builderConfig = JSON.stringify({
   maxElements: BACKOFFICE_UI_LIMITS.elements,
 });
 
-/** Gives a codemode program the `ui` builder without changing the guest protocol. */
+/**
+ * Gives a codemode program the `ui` and `page` builders without changing the guest protocol.
+ * Saved modules it imports have their own scope, so they reach the builders as globals.
+ */
 export function withBackofficeUiBuilder(code: string) {
   const program = normalizeCode(code.trim().replace(/;*$/u, ""));
   // The program starts on the first line so compiler diagnostics keep the author's line numbers.
-  return `((ui) => (${program}\n))((${BACKOFFICE_UI_BUILDER_SOURCE})(${builderConfig}))`;
+  return `((ui) => ((page) => (globalThis.ui = ui, globalThis.page = page, ${program}\n))(${pageBuilderSource}(ui)))((${BACKOFFICE_UI_BUILDER_SOURCE})(${builderConfig}))`;
 }

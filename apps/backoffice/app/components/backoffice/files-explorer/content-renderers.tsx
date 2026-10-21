@@ -4,12 +4,18 @@ import type {
   AutomationRouteDefinition,
 } from "@fragno-dev/backoffice-api/v0/automation";
 import { Icon } from "@fragno-private/design-system/icon";
+import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { UnderlineTab, UnderlineTabList } from "@fragno-private/design-system/underline-tabs";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { useFetcher } from "react-router";
 import { Streamdown } from "streamdown";
 
 import { visualizeWorkflowSource } from "@fragno-dev/workflow-visualizer-tokens";
 
+import { artifactKind } from "@/artifacts/kinds";
+import type { PageLoad } from "@/artifacts/pages/definition";
+import { PageView } from "@/artifacts/pages/view";
+import type { AutomationCollections } from "@/fragno/automation/tanstack/collections";
 import type { ResolvedWorkflowRuntimeToolCall } from "@/fragno/runtime-tools/workflow-catalog";
 import { parseFrontmatter } from "@/lib/frontmatter";
 import { formatTimestampInTimeZone } from "@/routes/backoffice/automations/formatting";
@@ -21,6 +27,24 @@ export type WorkflowFileRouting =
   | { status: "error"; message: string }
   | { status: "ready"; routes: readonly AutomationRouteDefinition[] };
 
+/** What a host gives page previews: the scope's live data and where each page opens. */
+export type FilesPages =
+  | { status: "unavailable" }
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | {
+      status: "ready";
+      collections: AutomationCollections;
+      pageHref: (sourcePath: string) => string;
+    };
+
+/** The selected file's page; its href is null outside `/workspace`, where pages do not open. */
+export type FilesPagePreview =
+  | { status: "unavailable" }
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "ready"; collections: AutomationCollections; href: string | null };
+
 export type FilesContentPreview = {
   title: string;
   contentType: string | null;
@@ -29,6 +53,7 @@ export type FilesContentPreview = {
   /** Same-origin URL serving the file bytes for embedding; null when the host has no file route. */
   inlineHref: string | null;
   workflowRouting: WorkflowFileRouting;
+  page: FilesPagePreview;
 };
 
 type FilesContentRenderer = {
@@ -244,6 +269,116 @@ function formatMatcherValue(value: unknown): string {
   return JSON.stringify(value) ?? String(value);
 }
 
+const PageRenderer: FilesContentRenderer = {
+  id: "page",
+  label: "Page preview",
+  render(preview) {
+    return <PageFilePreview preview={preview} />;
+  },
+};
+
+function PageFilePreview({ preview }: { preview: FilesContentPreview }) {
+  const source = preview.textContent ?? "";
+
+  return (
+    <Tabs.Root defaultValue="page" className="flex h-full min-h-0 flex-col">
+      <UnderlineTabList aria-label="Page preview views" className="shrink-0">
+        <UnderlineTab value="page">
+          <Icon name="layout" />
+          Page
+        </UnderlineTab>
+        <UnderlineTab value="source">
+          <Icon name="code" />
+          Source
+        </UnderlineTab>
+      </UnderlineTabList>
+
+      <Tabs.Panel value="page" className="backoffice-scroll min-h-0 flex-1 overflow-auto pt-3">
+        <PageFileContent source={source} page={preview.page} />
+      </Tabs.Panel>
+      <Tabs.Panel value="source" className="min-h-0 flex-1 pt-3">
+        <pre
+          aria-label="Page source"
+          tabIndex={0}
+          className="backoffice-scroll h-full overflow-auto overscroll-contain px-1 font-mono text-[12px] leading-6 whitespace-pre-wrap text-[var(--bo-fg)] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--bo-accent)]"
+        >
+          <code>{source}</code>
+        </pre>
+      </Tabs.Panel>
+    </Tabs.Root>
+  );
+}
+
+function PageFileContent({ source, page }: { source: string; page: FilesPagePreview }) {
+  if (page.status === "unavailable") {
+    return (
+      <BackofficeSystemState
+        tone="empty"
+        label="No live data"
+        title="Pages render with live data in a workspace's own files."
+      />
+    );
+  }
+  if (page.status === "loading") {
+    return <BackofficeSystemState tone="loading" title="Synchronizing automation data." />;
+  }
+  if (page.status === "error") {
+    return (
+      <BackofficeSystemState
+        tone="error"
+        title="Automation data could not be synchronized."
+        description={page.message}
+      />
+    );
+  }
+  if (page.href === null) {
+    return (
+      <BackofficeSystemState
+        tone="empty"
+        label="Not a workspace page"
+        title="Pages open from files in /workspace."
+      />
+    );
+  }
+  return <BuiltPage source={source} href={page.href} collections={page.collections} />;
+}
+
+/** Loads the page route again whenever the source changes, since its build depends on it. */
+function BuiltPage({
+  source,
+  href,
+  collections,
+}: {
+  source: string;
+  href: string;
+  collections: AutomationCollections;
+}) {
+  const fetcher = useFetcher<{ title: string; result: PageLoad }>();
+  const { load } = fetcher;
+  useEffect(() => {
+    void load(href);
+  }, [href, load, source]);
+
+  const loaded = fetcher.data?.result;
+  if (!loaded || fetcher.state === "loading") {
+    return <BackofficeSystemState tone="loading" title="Building page." />;
+  }
+  if (loaded.kind === "missing") {
+    return <BackofficeSystemState tone="empty" title="This page no longer exists." />;
+  }
+  if (loaded.kind === "failed") {
+    return (
+      <BackofficeSystemState
+        tone="error"
+        label="Invalid page"
+        title="This page could not be built."
+        description={loaded.message}
+      />
+    );
+  }
+  return <PageView definition={loaded.definition} collections={collections} />;
+}
+
 const TextRenderer: FilesContentRenderer = {
   id: "text",
   label: "Text preview",
@@ -373,8 +508,12 @@ const FILES_CONTENT_RENDERERS_BY_CONTENT_TYPE = new Map<string, FilesContentRend
 export function resolveFilesContentRenderer(
   preview: FilesContentPreview,
 ): FilesContentRenderer | null {
-  if (preview.title.toLowerCase().endsWith(".workflow.js") && preview.textContent !== null) {
+  const kind = artifactKind(preview.title);
+  if (kind === "workflow" && preview.textContent !== null) {
     return WorkflowRenderer;
+  }
+  if (kind === "page" && preview.textContent !== null) {
+    return PageRenderer;
   }
 
   const normalizedContentType = normalizeMediaType(preview.contentType);

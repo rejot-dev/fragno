@@ -14,7 +14,10 @@ import {
   FilesExplorerView,
   type FilesExplorerSource,
 } from "@/components/backoffice/files-explorer";
-import type { WorkflowFileRouting } from "@/components/backoffice/files-explorer/content-renderers";
+import type {
+  FilesPages,
+  WorkflowFileRouting,
+} from "@/components/backoffice/files-explorer/content-renderers";
 import type { FilesExplorerSearchGroup } from "@/components/backoffice/files-explorer/view";
 import { createUploadFileTree } from "@/file-collection/create-upload-file-tree";
 import { resolveSynchronizedFileTree } from "@/file-collection/resolve-synchronized-file-tree";
@@ -30,6 +33,7 @@ import {
 } from "@/fragno/upload/tanstack/browser-database";
 import { requireScopeSelection } from "@/layouts/backoffice-shell-request.server";
 
+import { pagePath } from "../pages/path";
 import type { Route } from "./+types/explorer";
 import { loadFilesExplorerData, type FilesExplorerSourceSnapshot } from "./data";
 import type { FilesLayoutContext } from "./layout-context";
@@ -54,6 +58,7 @@ export default function BackofficeFilesExplorer() {
       {...loaderData}
       selectedScope={selectedScope}
       workflowRouting={{ status: "loading" }}
+      pages={{ status: "loading" }}
     />
   );
 
@@ -81,6 +86,7 @@ function LocalFirstFilesExplorer({
       <FilesExplorerWithLocalData
         {...props}
         workflowRouting={{ status: "error", message: automationCollectionSource.message }}
+        pages={{ status: "error", message: automationCollectionSource.message }}
       />
     );
   }
@@ -108,7 +114,17 @@ function SynchronizedAutomationRoutesFilesExplorer({
         ? { status: "error", message: routesState.message }
         : { status: "ready", routes: routesState.routes };
 
-  return <FilesExplorerWithLocalData {...props} workflowRouting={workflowRouting} />;
+  return (
+    <FilesExplorerWithLocalData
+      {...props}
+      workflowRouting={workflowRouting}
+      pages={{
+        status: "ready",
+        collections,
+        pageHref: (sourcePath) => pagePath(props.selectedScope, sourcePath),
+      }}
+    />
+  );
 }
 
 function FilesExplorerWithLocalData(props: FilesExplorerRouteViewProps) {
@@ -135,6 +151,7 @@ function SynchronizedFilesExplorer({
   searchGroups,
   selectedScope,
   workflowRouting,
+  pages,
   synchronizedSource,
 }: FilesExplorerRouteViewProps & {
   synchronizedSource: SynchronizedFilesExplorerSource;
@@ -202,11 +219,12 @@ function SynchronizedFilesExplorer({
       searchGroups={searchGroups}
       selectedScope={selectedScope}
       workflowRouting={workflowRouting}
+      pages={pages}
     />
   );
 }
 
-type FilesExplorerLocalDataProps = Omit<FilesExplorerRouteViewProps, "workflowRouting">;
+type FilesExplorerLocalDataProps = Omit<FilesExplorerRouteViewProps, "workflowRouting" | "pages">;
 
 type FilesExplorerRouteViewProps = {
   sources: readonly FilesExplorerSourceSnapshot[];
@@ -217,6 +235,7 @@ type FilesExplorerRouteViewProps = {
   searchGroups: FilesExplorerSearchGroup[];
   selectedScope: BackofficeScopeSelection;
   workflowRouting: WorkflowFileRouting;
+  pages: FilesPages;
 };
 
 function FilesExplorerRouteView({
@@ -228,6 +247,7 @@ function FilesExplorerRouteView({
   searchGroups,
   selectedScope,
   workflowRouting,
+  pages,
 }: FilesExplorerRouteViewProps) {
   return (
     <FilesExplorerView
@@ -240,6 +260,7 @@ function FilesExplorerRouteView({
       buildNodeTo={(path) => ({ pathname: filesExplorerPath(selectedScope, path) })}
       buildFileHref={(path, disposition) => filesDownloadPath(selectedScope, path, disposition)}
       workflowRouting={workflowRouting}
+      pages={pages}
     />
   );
 }

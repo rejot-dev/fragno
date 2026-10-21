@@ -7,8 +7,15 @@ type BackofficeUiElement = { readonly type: string };
 type BackofficeUiStateRead = { $state: string };
 /** Binds an editable component's value prop to one form field. Create it with form.bind. */
 type BackofficeUiBinding = { readonly $bindState: string };
+declare const backofficeUiLiveValue: unique symbol;
+/** A live value, such as a page query's rows; page.define binds it to the page's data. */
+type BackofficeUiLive<TValue> = { readonly [backofficeUiLiveValue]: TValue };
 type BackofficeUiProps<TProps> = {
-  [TKey in keyof TProps]: TProps[TKey] | BackofficeUiStateRead | BackofficeUiBinding;
+  [TKey in keyof TProps]:
+    | TProps[TKey]
+    | BackofficeUiStateRead
+    | BackofficeUiBinding
+    | BackofficeUiLive<TProps[TKey]>;
 };
 type BackofficeUiComparison = {
   eq?: unknown;

@@ -19,6 +19,7 @@ describe("workflow file preview", () => {
 });`,
       inlineHref: null,
       workflowRouting: { status: "unavailable" },
+      page: { status: "unavailable" },
     };
     const renderer = resolveFilesContentRenderer(preview);
     assert(renderer);
@@ -45,6 +46,7 @@ describe("workflow file preview", () => {
   if (event.payload.text !== "/start") return { skipped: true };
 });`,
       inlineHref: null,
+      page: { status: "unavailable" },
       workflowRouting: {
         status: "ready",
         routes: [

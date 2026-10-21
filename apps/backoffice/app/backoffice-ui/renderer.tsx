@@ -1,7 +1,8 @@
 import { Component, type ReactNode } from "react";
 
-import { JSONUIProvider, Renderer } from "@json-render/react";
+import { JSONUIProvider, Renderer, type StateStore } from "@json-render/react";
 
+import type { BackofficeUiSpec } from "./catalog";
 import { backofficeUiRegistry } from "./registry";
 import type { BackofficeUiResultV1 } from "./result";
 import {
@@ -70,6 +71,23 @@ export function BackofficeUiRenderer({
           )}
         </JSONUIProvider>
       </WorkflowUiInteractionProvider>
+    </div>
+  );
+}
+
+/** Renders a spec whose state the caller owns and keeps changing, such as live query results. */
+export function BackofficeUiStoreRenderer({
+  spec,
+  store,
+}: {
+  spec: BackofficeUiSpec;
+  store: StateStore;
+}) {
+  return (
+    <div className="w-full min-w-0">
+      <JSONUIProvider registry={backofficeUiRegistry} store={store}>
+        <Renderer spec={spec} registry={backofficeUiRegistry} />
+      </JSONUIProvider>
     </div>
   );
 }

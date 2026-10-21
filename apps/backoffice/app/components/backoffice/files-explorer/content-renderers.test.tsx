@@ -15,6 +15,7 @@ describe("files content rendering", () => {
 });`,
       inlineHref: null,
       workflowRouting: { status: "unavailable" },
+      page: { status: "unavailable" },
     };
 
     const renderer = resolveFilesContentRenderer(preview);
@@ -40,6 +41,7 @@ describe("files content rendering", () => {
       metadata: null,
       textContent: 'defineWorkflow({ name: "daily-digest" }, async () => {});',
       inlineHref: null,
+      page: { status: "unavailable" },
       workflowRouting: {
         status: "ready",
         routes: [
@@ -90,6 +92,7 @@ describe("files content rendering", () => {
       textContent: "# Explorer heading\n\n- One\n- Two",
       inlineHref: null,
       workflowRouting: { status: "unavailable" },
+      page: { status: "unavailable" },
     };
 
     const renderer = resolveFilesContentRenderer(preview);
@@ -111,6 +114,7 @@ describe("files content rendering", () => {
       textContent: "---\nname: explorer\ndescription: Browse files\n---\n\n# Instructions",
       inlineHref: null,
       workflowRouting: { status: "unavailable" },
+      page: { status: "unavailable" },
     };
 
     const renderer = resolveFilesContentRenderer(preview);
@@ -134,6 +138,7 @@ describe("files content rendering", () => {
       textContent: "# Parameterized Markdown",
       inlineHref: null,
       workflowRouting: { status: "unavailable" },
+      page: { status: "unavailable" },
     };
 
     const renderer = resolveFilesContentRenderer(preview);
@@ -208,5 +213,6 @@ function createImagePreview(metadata: Record<string, unknown>): FilesContentPrev
     textContent: null,
     inlineHref: null,
     workflowRouting: { status: "unavailable" },
+    page: { status: "unavailable" },
   };
 }

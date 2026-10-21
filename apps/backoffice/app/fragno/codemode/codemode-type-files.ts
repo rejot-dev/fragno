@@ -1,3 +1,4 @@
+import { generatePageDeclarations } from "@/artifacts/pages/declarations-generation";
 import { generateBackofficeUiBuilderDeclarations } from "@/backoffice-ui/component-reference-generation";
 import {
   createRuntimeToolReferences,
@@ -11,6 +12,7 @@ const CODEMODE_TYPES_DIR_PATH = "/static/codemode";
 export const CODEMODE_SYSTEM_DTS_PATH = `${CODEMODE_TYPES_DIR_PATH}/system.d.ts`;
 export const CODEMODE_WORKFLOW_AUTHORING_DTS_PATH = `${CODEMODE_TYPES_DIR_PATH}/workflow-authoring.d.ts`;
 const CODEMODE_UI_DTS_PATH = `${CODEMODE_TYPES_DIR_PATH}/ui.d.ts`;
+const CODEMODE_PAGE_DTS_PATH = `${CODEMODE_TYPES_DIR_PATH}/page.d.ts`;
 const CODEMODE_PROVIDER_TYPES_DIR_PATH = `${CODEMODE_TYPES_DIR_PATH}/providers`;
 
 const VALID_DECLARE_CONST_NAME = /^[A-Za-z_$][\w$]*$/u;
@@ -100,6 +102,7 @@ export function createCodemodeStaticTypeFiles({
   const referencePaths = [
     CODEMODE_WORKFLOW_AUTHORING_DTS_PATH,
     CODEMODE_UI_DTS_PATH,
+    CODEMODE_PAGE_DTS_PATH,
     ...providerFiles.map((file) => file.path),
   ];
 
@@ -114,6 +117,7 @@ export function createCodemodeStaticTypeFiles({
       ),
     },
     { path: CODEMODE_UI_DTS_PATH, content: generateBackofficeUiBuilderDeclarations() },
+    { path: CODEMODE_PAGE_DTS_PATH, content: generatePageDeclarations() },
     ...providerFiles,
   ];
 }

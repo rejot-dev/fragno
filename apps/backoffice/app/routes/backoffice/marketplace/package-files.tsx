@@ -164,6 +164,7 @@ function MarketplacePackageExplorer({
           </div>
         }
         workflowRouting={{ status: "unavailable" }}
+        pages={{ status: "unavailable" }}
         buildNodeTo={(path) => {
           const entry = entriesByExplorerPath.get(path);
           return buildPackageSelectionPath(
@@ -277,6 +278,7 @@ function MarketplacePackageWorkflows({
                 textContent: selectedContent.text,
                 inlineHref: null,
                 workflowRouting: { status: "unavailable" },
+                page: { status: "unavailable" },
               }}
             />
           </div>

@@ -8,9 +8,15 @@ import { BackofficeSystemState } from "@fragno-private/design-system/system-stat
 import { useMemo, useState, type ReactNode } from "react";
 import { Form, Link, type To } from "react-router";
 
+import { artifactKind } from "@/artifacts/kinds";
 import type { FileTree, FileTreeEntry } from "@/file-collection/file-collection";
 
-import { resolveFilesContentRenderer, type WorkflowFileRouting } from "./content-renderers";
+import {
+  resolveFilesContentRenderer,
+  type FilesPagePreview,
+  type FilesPages,
+  type WorkflowFileRouting,
+} from "./content-renderers";
 
 type FilesExplorerRootKind = "static" | "upload" | "custom";
 type FilesExplorerPersistence = "ephemeral" | "persistent" | "session";
@@ -109,6 +115,7 @@ export type FilesExplorerViewProps = {
   emptySelection?: ReactNode;
   contentSearch?: FilesExplorerContentSearch;
   workflowRouting: WorkflowFileRouting;
+  pages: FilesPages;
 };
 
 export function FilesExplorerView({
@@ -129,6 +136,7 @@ export function FilesExplorerView({
   emptySelection = null,
   contentSearch,
   workflowRouting,
+  pages,
 }: FilesExplorerViewProps) {
   const [isMobileTreeCollapsed, setIsMobileTreeCollapsed] = useState(false);
   const { tree, selectedDetail } = useMemo(
@@ -240,6 +248,7 @@ export function FilesExplorerView({
                   rootIcon={rootIcon}
                   headingLevel={detailHeadingLevel}
                   workflowRouting={workflowRouting}
+                  pages={pages}
                 />
               ) : (
                 emptySelection
@@ -362,12 +371,14 @@ function ExplorerNodeDetailPanel({
   rootIcon,
   headingLevel,
   workflowRouting,
+  pages,
 }: {
   detail: ExplorerNodeDetail;
   buildFileHref?: (path: string, disposition: "attachment" | "inline") => string;
   rootIcon: IconName;
   headingLevel: 2 | 3 | 4;
   workflowRouting: WorkflowFileRouting;
+  pages: FilesPages;
 }) {
   const selectedWorkflowRouting: WorkflowFileRouting =
     workflowRouting.status === "ready"
@@ -380,6 +391,17 @@ function ExplorerNodeDetailPanel({
           ),
         }
       : workflowRouting;
+  const selectedPage: FilesPagePreview =
+    pages.status === "ready"
+      ? {
+          status: "ready",
+          collections: pages.collections,
+          href:
+            artifactKind(detail.node.path) === "page" && detail.node.path.startsWith("/workspace/")
+              ? pages.pageHref(detail.node.path)
+              : null,
+        }
+      : pages;
   const fileHrefs =
     detail.node.kind === "file" && buildFileHref
       ? {
@@ -394,6 +416,7 @@ function ExplorerNodeDetailPanel({
     textContent: detail.textContent,
     inlineHref: fileHrefs?.inline ?? null,
     workflowRouting: selectedWorkflowRouting,
+    page: selectedPage,
   };
   const contentRenderer = resolveFilesContentRenderer(contentPreview);
   const contentPreamble = contentRenderer?.renderBefore?.(contentPreview) ?? null;
