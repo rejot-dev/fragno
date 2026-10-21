@@ -287,6 +287,11 @@ permissions only through `admin.apps.update-permissions`, and trust only through
 `admin.apps.update-trust` (see [First-party apps](#first-party-apps)). `--trust-json` defaults to
 `{"kind":"third-party"}`.
 
+Apps cannot request `account.manage`, `apps.read`, `apps.manage`, or `org.manage`. Those change a
+person's account, an organization's apps, or its membership, and only the person acting directly
+holds them, never an app acting for them. Grants stored before this rule are still ignored when an
+app acts. A first-party app invites people through [provisioning](#provisioning-api) instead.
+
 A third-party app's installations keep the grants their owner approved, so changing its requested
 permissions never changes what an installation may do. A permission the app adds applies to an
 installation once an owner grants it, through `apps.installations.update` or the install page. A

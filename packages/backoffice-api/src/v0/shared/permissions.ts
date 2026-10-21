@@ -142,6 +142,24 @@ export const allBackofficePermissionRequirements = backofficePermissionNamespace
   (namespacePermissions) => Object.values(namespacePermissions),
 );
 
+/** Human control-plane changes are never performed under delegated capability grants. */
+const PRINCIPAL_ONLY_PERMISSION_KEYS: ReadonlySet<string> = new Set(
+  [
+    BACKOFFICE_PERMISSION.account.manage,
+    BACKOFFICE_PERMISSION.apps.read,
+    BACKOFFICE_PERMISSION.apps.manage,
+    BACKOFFICE_PERMISSION.org.manage,
+  ].map(({ namespace, permission }) => `${namespace}.${permission}`),
+);
+
+/** Whether only a person acting directly holds the permission, never an app or other delegate. */
+export function isPrincipalOnlyPermission({
+  namespace,
+  permission,
+}: BackofficePermissionRequirement): boolean {
+  return PRINCIPAL_ONLY_PERMISSION_KEYS.has(`${namespace}.${permission}`);
+}
+
 type BackofficePermissionRequirementSchema = z.ZodType<BackofficePermissionRequirement>;
 
 function backofficePermissionInputKey(input: unknown): string | null {

@@ -114,19 +114,18 @@ pnpm --dir apps/bookkeeping backoffice:connect
 
 The script signs in through the Backoffice CLI, creates Bookkeeping's OAuth client (or repairs the
 one in `.dev.vars`: callback URL, scopes, and client credentials), registers the app with `org.read`
-and `org.manage` and the actions declared in `workers/backoffice/actions.ts`, and writes the client
-ID, secret, and both origins to `.dev.vars`. Bookkeeping is registered as a first-party app with
-every provisioning permission: Backoffice skips its consent screen and permission review, and
-Bookkeeping may create organizations and administrations in Backoffice, and create, send, and accept
-invitations for its users (see Backoffice's `app/fragno/apps/README.md`). It reads both origins from
-`.dev.vars` and defaults to `http://127.0.0.1:5173` and `http://127.0.0.1:6174`; pass
-`--backoffice-url` or `--bookkeeping-url` to change them, which also moves the callback and the
-action endpoint. The app is registered as `app#bookkeeping`; pass `--slug` to choose another
-permanent name. Rerunning converges on the same client and app, updating its requested permissions
-and actions in place; as a first-party app, Bookkeeping has new permissions in every workspace
-within a minute. Action changes apply automatically to existing installations; pass
-`--change-approval installation` to make each installation's owner approve them. Production requires
-HTTPS.
+and the actions declared in `workers/backoffice/actions.ts`, and writes the client ID, secret, and
+both origins to `.dev.vars`. Bookkeeping is registered as a first-party app with every provisioning
+permission: Backoffice skips its consent screen and permission review, and Bookkeeping may create
+organizations and administrations in Backoffice, and create, send, and accept invitations for its
+users (see Backoffice's `app/fragno/apps/README.md`). It reads both origins from `.dev.vars` and
+defaults to `http://127.0.0.1:5173` and `http://127.0.0.1:6174`; pass `--backoffice-url` or
+`--bookkeeping-url` to change them, which also moves the callback and the action endpoint. The app
+is registered as `app#bookkeeping`; pass `--slug` to choose another permanent name. Rerunning
+converges on the same client and app, updating its requested permissions and actions in place; as a
+first-party app, Bookkeeping has new permissions in every workspace within a minute. Action changes
+apply automatically to existing installations; pass `--change-approval installation` to make each
+installation's owner approve them. Production requires HTTPS.
 
 ## Workspaces
 

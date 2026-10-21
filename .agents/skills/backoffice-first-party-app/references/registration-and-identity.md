@@ -32,11 +32,12 @@ Register that existing client as an app with:
 - branding fields `displayName`, `logoUrl`, `accentColor`, `homeUrl`, and `supportUrl`;
 - `{ kind: "none" }` actions unless the product exposes an action endpoint.
 
-First-party provisioning grants are per operation. Bookkeeping requests `org.read`, `org.manage`,
-and all four current provisioning permissions because it implements those flows; a smaller app
-should request less. First-party installations follow changed requested permissions within the
-registry cache lifetime (currently one minute). Treat permission updates as authority changes, not
-just metadata edits.
+First-party provisioning grants are per operation. Bookkeeping requests `org.read` and all five
+current provisioning permissions because it implements those flows; a smaller app should request
+less. Never request `account.manage`, `apps.read`, `apps.manage`, or `org.manage`: only people
+acting directly hold them, and registration rejects them. First-party installations follow changed
+requested permissions within the registry cache lifetime (currently one minute). Treat permission
+updates as authority changes, not just metadata edits.
 
 ## Ship `backoffice:connect`
 

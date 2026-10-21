@@ -758,6 +758,20 @@ test("a provisioned organization follows what Bookkeeping requests, within a min
         ).toMatchObject({ grantedPermissions: [emit, BACKOFFICE_PERMISSION.events.read] });
       },
     ),
+    then(
+      "Bookkeeping cannot request to manage organizations, which only people do",
+      async (ctx) => {
+        await expect(
+          ctx.runtime.objects.apps.singleton().commands.updateAppPermissions({
+            appId: ctx.vars.appId,
+            requestedPermissions: [
+              BACKOFFICE_PERMISSION.events.read,
+              BACKOFFICE_PERMISSION.org.manage,
+            ],
+          }),
+        ).rejects.toThrow("Apps cannot hold 'org.manage'");
+      },
+    ),
     then("Bookkeeping stops requesting emission, and loses it", async (ctx) => {
       await execAsAdministrator(
         ctx,

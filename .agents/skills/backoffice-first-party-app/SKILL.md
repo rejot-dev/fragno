@@ -82,8 +82,11 @@ browser session cookie is not either API's bearer credential.
 
 For user-initiated management, act as the user: effective authority is the user's live permissions
 intersected with installation grants. An installation token carries no user; substituting it after a
-user's refusal would bypass that boundary. First-party apps still use `installed-app` execution
-policy. `first-party-user` is reserved for Backoffice's deployment Codemode client, not this app.
+user's refusal would bypass that boundary. Apps never hold `account.manage`, `apps.read`,
+`apps.manage`, or `org.manage`, and registering an app that requests one fails: invite through
+provisioning `invitations.create`, never scoped `org.invitations.create`. First-party apps still use
+`installed-app` execution policy. `first-party-user` is reserved for Backoffice's deployment
+Codemode client, not this app.
 
 ### Scope and failure handling
 

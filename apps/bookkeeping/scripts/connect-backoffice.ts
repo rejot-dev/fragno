@@ -33,12 +33,9 @@ const devVarsPath = resolve(bookkeepingDir, ".dev.vars");
 const cliEntry = resolve(repositoryRoot, "apps/backoffice-cli/bin/run.js");
 
 const OAUTH_SCOPES = ["openid", "profile", "email", "offline_access", "backoffice"];
-// Workspaces are Backoffice organizations: Bookkeeping reads them and their members, and owners
-// and admins invite people through it.
-const REQUESTED_PERMISSIONS = [
-  { namespace: "org", permission: "read" },
-  { namespace: "org", permission: "manage" },
-];
+// Workspaces are Backoffice organizations: Bookkeeping reads them and their members as the person
+// signed in. Owners and admins invite through provisioning, since apps never hold org.manage.
+const REQUESTED_PERMISSIONS = [{ namespace: "org", permission: "read" }];
 
 function readDevVars(): Map<string, string> {
   const values = new Map<string, string>();

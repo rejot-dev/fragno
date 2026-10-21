@@ -849,7 +849,7 @@ describe("Backoffice API v0 SQLite scenarios", () => {
   test("installed apps act within their grants, and never manage the organization", async () => {
     await runApiScenario("installed-app credentials on the v0 API", (then) => [
       then(
-        "an administrator provisions Bookkeeping, and the owner grants it organization read and manage",
+        "an administrator provisions Bookkeeping, and the owner grants it organization read",
         async (ctx) => {
           const client = await ctx.runtime.objects.auth
             .singleton()
@@ -865,7 +865,7 @@ describe("Backoffice API v0 SQLite scenarios", () => {
           assert(client.clientType === "confidential");
           ctx.vars.clientId = client.clientId;
           ctx.vars.clientSecret = client.clientSecret;
-          const permissions = [BACKOFFICE_PERMISSION.org.read, BACKOFFICE_PERMISSION.org.manage];
+          const permissions = [BACKOFFICE_PERMISSION.org.read];
           const registered = await ctx.runtime.objects.apps.singleton().commands.registerApp({
             actions: { kind: "none" },
             trust: { kind: "third-party" },

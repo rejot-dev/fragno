@@ -10,15 +10,28 @@ import {
   appTrustSchema,
   backofficeAppLookupInputSchema,
 } from "@fragno-dev/backoffice-api/v0/apps";
+import { isPrincipalOnlyPermission } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { z } from "zod";
 
 import type { BackofficeAppOperationResult } from "./errors";
+
+/** An app would never receive a principal-only permission, so asking for one is a mistake. */
+const requestedAppPermissionsSchema = z.lazy(() =>
+  appPermissionsSchema.superRefine((permissions, ctx) => {
+    for (const permission of permissions.filter(isPrincipalOnlyPermission)) {
+      ctx.addIssue({
+        code: "custom",
+        message: `Apps cannot hold '${permission.namespace}.${permission.permission}'; only people acting directly do.`,
+      });
+    }
+  }),
+);
 
 /** Registers an already-provisioned OAuth client; Auth owns its identity and metadata. */
 export const backofficeAppRegistrationInputSchema = z.strictObject({
   slug: appSlugSchema,
   oauthClientId: z.string().min(1).max(191),
-  requestedPermissions: appPermissionsSchema,
+  requestedPermissions: requestedAppPermissionsSchema,
   actions: appActionsDeclarationSchema,
   trust: appTrustSchema,
 });
@@ -45,7 +58,7 @@ export type BackofficeAppActionsUpdateResult = z.infer<
  */
 export const backofficeAppPermissionsUpdateInputSchema = z.lazy(() =>
   backofficeAppLookupInputSchema._zod.innerType.extend({
-    requestedPermissions: appPermissionsSchema,
+    requestedPermissions: requestedAppPermissionsSchema,
   }),
 );
 export type BackofficeAppPermissionsUpdateInput = z.infer<

@@ -1,6 +1,6 @@
 import {
   allBackofficePermissionRequirements,
-  BACKOFFICE_PERMISSION,
+  isPrincipalOnlyPermission,
 } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 
 import type { BackofficeAuthorityResolver } from "./authority-resolver";
@@ -10,16 +10,6 @@ import {
   PERSONAL_SCOPE_GRANTS,
 } from "./authority-roles";
 import type { AuthObject } from "./object-registry";
-
-/** Human control-plane changes are never performed under delegated capability grants. */
-const PRINCIPAL_ONLY_PERMISSION_KEYS: ReadonlySet<string> = new Set(
-  [
-    BACKOFFICE_PERMISSION.account.manage,
-    BACKOFFICE_PERMISSION.apps.read,
-    BACKOFFICE_PERMISSION.apps.manage,
-    BACKOFFICE_PERMISSION.org.manage,
-  ].map(({ namespace, permission }) => `${namespace}.${permission}`),
-);
 
 /**
  * Resolves organization administration from live Auth membership instead of a JWT role snapshot.
@@ -75,9 +65,9 @@ export function createControlPlaneAuthorityResolver({
       ];
     },
     async resolveActorCapabilityGrants(input) {
+      // Apps cannot request these, but grants stored before that rule may still hold them.
       return (await resolver.resolveActorCapabilityGrants(input)).filter(
-        ({ namespace, permission }) =>
-          !PRINCIPAL_ONLY_PERMISSION_KEYS.has(`${namespace}.${permission}`),
+        (grant) => !isPrincipalOnlyPermission(grant),
       );
     },
   };
