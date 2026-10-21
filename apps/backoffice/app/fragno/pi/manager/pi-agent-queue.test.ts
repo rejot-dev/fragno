@@ -218,6 +218,7 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
             })
           : await fragment.callRoute("POST", "/agents/:agentName/resume", {
               pathParams: { agentName },
+              body: { provenance: provenance("ada") },
             });
       assert(response.type === "empty", JSON.stringify(response));
     },

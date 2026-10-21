@@ -308,13 +308,16 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
       defineRoute({
         method: "POST",
         path: "/agents/:agentName/resume",
+        inputSchema: z.object({ provenance: turnProvenanceSchema }),
         errorCodes: ["AGENT_NOT_STARTED"],
-        handler: async function ({ pathParams }, { empty, error }) {
+        handler: async function ({ pathParams, input }, { empty, error }) {
           const { agentName } = pathParams;
+          const { provenance } = await input.valid();
           const availableModels = await config.supportedAvailableModels();
           const resumed = await this.handlerTx()
             .withServiceCalls(
-              () => [services.resumeAgentQueue({ agentName, availableModels })] as const,
+              () =>
+                [services.resumeAgentQueue({ agentName, availableModels, provenance })] as const,
             )
             .transform(({ serviceResult: [result] }) => result)
             .execute();

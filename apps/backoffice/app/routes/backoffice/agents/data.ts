@@ -380,9 +380,11 @@ export async function resumePiManagerAgent(
   scope: BackofficeContextScope,
   agentName: string,
 ): Promise<string | null> {
-  const { callRoute } = await createPiManagerRouteCaller(request, context, scope);
+  const { callRoute, execution } = await createPiManagerRouteCaller(request, context, scope);
   const response = await callRoute("POST", "/agents/:agentName/resume", {
     pathParams: { agentName },
+    // Middleware overwrites the provenance with the authenticated caller's before validation.
+    body: { provenance: callerProvenance(execution) },
   });
   if (response.type === "empty") {
     return null;
