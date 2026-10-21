@@ -38,7 +38,7 @@ export type PiAgentDependencies = {
   /** Installed before Backoffice's own extensions, whose same-name tools therefore win. */
   extensions: (config: PiAgentConfig, agent: BackofficeAgentContext) => readonly Extension[];
   settings: HarnessSettings;
-  report: (error: unknown) => void;
+  report: (error: unknown, config: PiAgentConfig | null) => void;
 };
 
 export type OpenPiAgent = {
@@ -57,8 +57,28 @@ export function createPiAgentDependencies(
     models: createPiModels(env),
     extensions: () => [],
     settings: {},
-    report: (error) => {
-      console.error(error);
+    report: (error, config) => {
+      // Workers captured bare Error objects as stack-only logs, hiding the callback path and cause.
+      // Project diagnostic fields explicitly; never serialize arbitrary error/provider payloads.
+      const errors: { name: string; message: string; stack: string | null }[] = [];
+      const seen = new Set<unknown>();
+      let current: unknown = error;
+      do {
+        seen.add(current);
+        errors.push(
+          current instanceof Error
+            ? { name: current.name, message: current.message, stack: current.stack ?? null }
+            : { name: "NonError", message: String(current), stack: null },
+        );
+        current = current instanceof Error ? current.cause : undefined;
+      } while (current !== undefined && !seen.has(current) && errors.length < 16);
+      console.error({
+        event: "pi.agent.error",
+        agent: config,
+        message: errors[0].message,
+        errors,
+        causeChainTruncated: current !== undefined,
+      });
     },
   };
 }
@@ -74,6 +94,9 @@ export async function openPiAgentHarness(input: {
   nowEpochMs: () => number;
 }): Promise<OpenPiAgent> {
   const { config, runtime, dependencies } = input;
+  function report(error: unknown) {
+    dependencies.report(error, config);
+  }
   let opened: { harness: Harness; storage: Storage } | null = null;
   const agent = createBackofficeAgentContext({
     config,
@@ -127,7 +150,7 @@ export async function openPiAgentHarness(input: {
         ...dependencies.settings,
         stream: { maxRetries: 3, ...dependencies.settings.stream },
       },
-      onReport: dependencies.report,
+      onReport: report,
     },
     BACKGROUND_CONTEXT,
   );
@@ -142,7 +165,7 @@ export async function openPiAgentHarness(input: {
       : null,
     manager: runtime.objects.piManager.for(config.scope).commands,
     nowEpochMs: input.nowEpochMs,
-    report: dependencies.report,
+    report,
   });
   try {
     await harness.root(BACKGROUND_CONTEXT, { agent: { thinkingLevel: PI_THINKING_LEVEL } });

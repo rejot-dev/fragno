@@ -159,7 +159,7 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
         }
       })
       .catch((error: unknown) => {
-        this.#dependencies.report(error);
+        this.#dependencies.report(error, this.#provisioned?.config ?? null);
       });
   }
 
