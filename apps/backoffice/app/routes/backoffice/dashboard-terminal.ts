@@ -4,6 +4,7 @@ import type { AutomationCommandOptionSpec } from "@/fragno/runtime-tools/automat
 
 const DASHBOARD_CWD_MARKER = "__FRAGNO_BACKOFFICE_CWD__";
 const DASHBOARD_TERMINAL_STORAGE_KEY = "backoffice.dashboard.terminal";
+const DASHBOARD_COMMAND_HISTORY_STORAGE_KEY = "backoffice.dashboard.terminal.commands";
 const HYDRATION_SAFE_WELCOME_TIMESTAMP = "1970-01-01T00:00:00.000Z";
 const MAX_HISTORY = 80;
 const MAX_AUTOCOMPLETE_SUGGESTIONS = 8;
@@ -82,10 +83,10 @@ export type DashboardAutocompleteSuggestion = {
   replacementEnd: number;
 };
 
+/** A scope's own session: what it printed and where it is. Commands are recalled across scopes. */
 type DashboardTerminalSnapshot = {
   cwd: string;
   entries: DashboardTerminalEntry[];
-  commands: string[];
 };
 
 /** A scope the terminal can run commands in, named as `use` accepts it. */
@@ -314,7 +315,6 @@ const createSnapshot = (
 ): DashboardTerminalSnapshot => ({
   cwd: DEFAULT_CWD,
   entries: [createWelcomeEntry(scopeName, timestamp)],
-  commands: [],
 });
 
 const createHydrationSafeSnapshot = (scopeName?: string | null) =>
@@ -340,18 +340,35 @@ const writeSnapshot = (scopeId: string | null | undefined, snapshot: DashboardTe
   window.localStorage.setItem(getStorageKey(scopeId), JSON.stringify(snapshot));
 };
 
+/** Like a shell's history file, one list of commands serves every scope's session. */
+const readCommandHistory = (): string[] => {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  const raw = window.localStorage.getItem(DASHBOARD_COMMAND_HISTORY_STORAGE_KEY);
+  return raw ? (JSON.parse(raw) as string[]) : [];
+};
+
+const writeCommandHistory = (commands: readonly string[]) => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(DASHBOARD_COMMAND_HISTORY_STORAGE_KEY, JSON.stringify(commands));
+};
+
 const withResult = (
   snapshot: DashboardTerminalSnapshot,
   result: DashboardCommandResult,
-): DashboardTerminalSnapshot => {
-  const trimmedCommand = result.command.trim();
-  return {
-    cwd: result.nextCwd,
-    entries: trimHistory([...snapshot.entries, createEntry(result)]),
-    commands: trimmedCommand
-      ? trimHistory([...snapshot.commands, trimmedCommand])
-      : snapshot.commands,
-  };
+): DashboardTerminalSnapshot => ({
+  cwd: result.nextCwd,
+  entries: trimHistory([...snapshot.entries, createEntry(result)]),
+});
+
+const withCommand = (commands: string[], command: string) => {
+  const trimmedCommand = command.trim();
+  return trimmedCommand ? trimHistory([...commands, trimmedCommand]) : commands;
 };
 
 const createEntry = (result: DashboardCommandResult): DashboardTerminalEntry => ({
@@ -639,6 +656,7 @@ export const recordDashboardTerminalArrival = ({
       ok: true,
     }),
   );
+  writeCommandHistory(withCommand(readCommandHistory(), command));
 };
 
 /** An odd run of trailing backslashes escapes the newline that follows, continuing the command. */
@@ -655,6 +673,7 @@ export const useDashboardTerminal = ({
   scopes,
 }: UseDashboardTerminalOptions) => {
   const [snapshot, setSnapshot] = useState(() => createHydrationSafeSnapshot(scopeName));
+  const [commands, setCommands] = useState<string[]>([]);
   const [snapshotHydrated, setSnapshotHydrated] = useState(false);
   const [command, setCommand] = useState("");
   const [historyIndex, setHistoryIndex] = useState(-1);
@@ -675,7 +694,7 @@ export const useDashboardTerminal = ({
         commandLine: command,
         commandSpecs,
         currentCwd: snapshot.cwd,
-        history: snapshot.commands,
+        history: commands,
         mode: autocompleteMode,
         pathAutocompleteResult,
         scopes,
@@ -686,7 +705,7 @@ export const useDashboardTerminal = ({
       commandSpecs,
       pathAutocompleteResult,
       scopes,
-      snapshot.commands,
+      commands,
       snapshot.cwd,
     ],
   );
@@ -719,6 +738,7 @@ export const useDashboardTerminal = ({
 
   const settle = (commandResult: DashboardCommandResult) => {
     setSnapshot((current) => withResult(current, commandResult));
+    setCommands((current) => withCommand(current, commandResult.command));
     setCommand("");
     setHistoryIndex(-1);
     setHistoryDraft("");
@@ -738,6 +758,7 @@ export const useDashboardTerminal = ({
 
   useEffect(() => {
     setSnapshot(readSnapshot(scopeId, scopeName));
+    setCommands(readCommandHistory());
     setSnapshotHydrated(true);
   }, [scopeId, scopeName]);
 
@@ -748,6 +769,12 @@ export const useDashboardTerminal = ({
 
     writeSnapshot(scopeId, snapshot);
   }, [scopeId, snapshot, snapshotHydrated]);
+
+  useEffect(() => {
+    if (snapshotHydrated) {
+      writeCommandHistory(commands);
+    }
+  }, [commands, snapshotHydrated]);
 
   useEffect(() => {
     if (disabled || selectionVersion === 0) {
@@ -908,7 +935,7 @@ export const useDashboardTerminal = ({
 
     if (event.ctrlKey && event.key.toLowerCase() === "r") {
       event.preventDefault();
-      if (!disabled && snapshot.commands.length > 0) {
+      if (!disabled && commands.length > 0) {
         openAutocomplete("history", true);
       }
       return;
@@ -951,7 +978,7 @@ export const useDashboardTerminal = ({
       return;
     }
 
-    if (event.metaKey || event.ctrlKey || event.altKey || snapshot.commands.length === 0) {
+    if (event.metaKey || event.ctrlKey || event.altKey || commands.length === 0) {
       return;
     }
 
@@ -968,15 +995,14 @@ export const useDashboardTerminal = ({
     event.preventDefault();
 
     if (event.key === "ArrowUp") {
-      const nextIndex =
-        historyIndex === -1 ? snapshot.commands.length - 1 : Math.max(historyIndex - 1, 0);
+      const nextIndex = historyIndex === -1 ? commands.length - 1 : Math.max(historyIndex - 1, 0);
 
       if (historyIndex === -1) {
         setHistoryDraft(command);
       }
 
       setHistoryIndex(nextIndex);
-      setCommand(snapshot.commands[nextIndex] ?? "");
+      setCommand(commands[nextIndex] ?? "");
       closeAutocomplete();
       return;
     }
@@ -985,7 +1011,7 @@ export const useDashboardTerminal = ({
       return;
     }
 
-    if (historyIndex >= snapshot.commands.length - 1) {
+    if (historyIndex >= commands.length - 1) {
       setHistoryIndex(-1);
       setCommand(historyDraft);
       closeAutocomplete();
@@ -994,7 +1020,7 @@ export const useDashboardTerminal = ({
 
     const nextIndex = historyIndex + 1;
     setHistoryIndex(nextIndex);
-    setCommand(snapshot.commands[nextIndex] ?? "");
+    setCommand(commands[nextIndex] ?? "");
     closeAutocomplete();
   };
 
