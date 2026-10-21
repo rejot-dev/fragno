@@ -11,6 +11,7 @@ import {
   createBackofficeProvisioningClient,
 } from "@fragno-dev/backoffice-api/v0/client";
 import { automationEventListResultSchema } from "@fragno-dev/backoffice-api/v0/events";
+import type { CreateInvitationInput } from "@fragno-dev/backoffice-api/v0/provisioning";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { z } from "zod";
 
@@ -72,6 +73,7 @@ const branding = {
 const everyProvisioningPermission = [
   "organizations.provision",
   "projects.provision",
+  "invitations.create",
   "invitations.send",
   "invitations.accept",
 ] as const;
@@ -455,12 +457,25 @@ test("Bookkeeping provisions its organization and project, and brings invited pe
       async (ctx) => {
         const auth = ctx.runtime.objects.auth.singleton().commands;
         const client = provisioning(ctx);
-        const { invitationId } = await auth.createOrganizationInvitation({
+        // The owner invites on Bookkeeping's members page, and Bookkeeping invites as them.
+        const invite: CreateInvitationInput = {
           organizationId: ctx.vars.orgId,
           inviterUserId: ctx.vars.ownerId,
+          email: "Colleague@Bookkeeping.test",
+          roles: ["member"],
+        };
+        const invitation = await client.call("invitations.create", invite);
+        expect(invitation).toMatchObject({
+          organizationId: ctx.vars.orgId,
           email: "colleague@bookkeeping.test",
           roles: ["member"],
         });
+        expect(await client.call("invitations.create", invite)).toEqual(invitation);
+        await expectApiError(
+          client.call("invitations.create", { ...invite, roles: ["admin"] }),
+          "conflict",
+        );
+        const { invitationId } = invitation;
         const colleague = await ctx.runtime.objects.auth.singleton().http.fetch(
           new Request(`${origin}/api/auth/sign-up/email`, {
             method: "POST",
@@ -521,6 +536,16 @@ test("Bookkeeping provisions its organization and project, and brings invited pe
         });
         expect(await client.call("invitations.accept", accept)).toEqual(membership);
         await expectApiError(client.call("invitations.send", send), "conflict");
+        await expectApiError(client.call("invitations.create", invite), "conflict");
+        // As a member, the colleague cannot invite anyone.
+        await expectApiError(
+          client.call("invitations.create", {
+            ...invite,
+            inviterUserId: ctx.vars.colleagueId,
+            email: "friend@bookkeeping.test",
+          }),
+          "forbidden",
+        );
       },
     ),
     then(
@@ -564,6 +589,15 @@ test("Bookkeeping provisions its organization and project, and brings invited pe
           }),
           "forbidden",
         );
+        await expectApiError(
+          client.call("invitations.create", {
+            organizationId: ctx.vars.orgId,
+            inviterUserId: ctx.vars.existingUserId,
+            email: "friend@bookkeeping.test",
+            roles: ["member"],
+          }),
+          "forbidden",
+        );
         // Bookkeeping is not installed in the existing workspace.
         const elsewhere = await auth.createOrganizationInvitation({
           organizationId: ctx.vars.existingOrgId,
@@ -591,6 +625,37 @@ test("Bookkeeping provisions its organization and project, and brings invited pe
             userId: ctx.vars.colleagueId,
           }),
         ).toBeNull();
+      },
+    ),
+    then(
+      "an admin invites through Bookkeeping as in Backoffice, but not owners, and only where it is installed",
+      async (ctx) => {
+        const client = provisioning(ctx);
+        await authorizeBookkeeping(ctx, ctx.vars.existingCookie);
+        const invite: CreateInvitationInput = {
+          organizationId: ctx.vars.orgId,
+          inviterUserId: ctx.vars.existingUserId,
+          email: "friend@bookkeeping.test",
+          roles: ["owner"],
+        };
+        await expectApiError(client.call("invitations.create", invite), "forbidden");
+        expect(
+          await client.call("invitations.create", { ...invite, roles: ["admin"] }),
+        ).toMatchObject({ email: "friend@bookkeeping.test", roles: ["admin"] });
+        // A member does not get the invitation by asking for the same one.
+        await expectApiError(
+          client.call("invitations.create", {
+            ...invite,
+            inviterUserId: ctx.vars.colleagueId,
+            roles: ["admin"],
+          }),
+          "forbidden",
+        );
+        // They own the existing workspace, but Bookkeeping is not installed there.
+        await expectApiError(
+          client.call("invitations.create", { ...invite, organizationId: ctx.vars.existingOrgId }),
+          "not_found",
+        );
       },
     ),
     then(
@@ -643,6 +708,7 @@ test("Bookkeeping provisions its organization and project, and brings invited pe
       expect(counts).toEqual({
         "organization.provisioned": 3,
         "project.provisioned": 3,
+        "invitation.created": 3,
         "invitation.sent": 2,
         "invitation.accepted": 2,
       });

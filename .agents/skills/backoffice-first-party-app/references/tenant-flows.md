@@ -6,10 +6,10 @@ exact inputs and results, and the
 for cross-service behavior. The client uses `POST /api/v0/provisioning/<operationId>` with the app's
 client-credentials OAuth token, not an execution token or a scope argument.
 
-The current operations are `organizations.provision`, `projects.provision`, `invitations.send`, and
-`invitations.accept`. The earlier hidden-user provisioning and membership-sync design was replaced:
-users now sign in through Backoffice, and Backoffice owns membership. Use the current contract
-rather than resurrecting those historical endpoints.
+The current operations are `organizations.provision`, `projects.provision`, `invitations.create`,
+`invitations.send`, and `invitations.accept`. The earlier hidden-user provisioning and
+membership-sync design was replaced: users now sign in through Backoffice, and Backoffice owns
+membership. Use the current contract rather than resurrecting those historical endpoints.
 
 ## Create a tenant
 
@@ -99,8 +99,13 @@ project rename/deletion into its administration record.
 Read [members](../../../../apps/bookkeeping/app/workspace/members.tsx) and
 [invitation acceptance](../../../../apps/bookkeeping/app/invitations/invitation.tsx):
 
-1. As the inviting user, call scoped `org.invitations.create`; Backoffice enforces role authority,
-   including who may invite owners. Keep the returned invitation for the app's acceptance page.
+1. As the app, call provisioning `invitations.create` with the organization, the signed-in inviter's
+   Backoffice subject as `inviterUserId`, the email, and the roles. Backoffice requires the inviter
+   to be a member who authorized the app and applies their live role: owners and admins invite, only
+   owners invite owners. Scoped `org.invitations.create` needs `org.manage`, which apps never hold.
+   Inviting the same address with the same roles again returns the pending invitation, so store it
+   idempotently; other roles answer `409`. Keep the returned invitation for the app's acceptance
+   page.
 2. As the app, call provisioning `invitations.send` with the invitation ID and an acceptance URL on
    the origin of `branding.homeUrl`. Backoffice sends the branded email; repeated sends of that
    invitation do not send another email. If delivery is unavailable, show an explicit failure and

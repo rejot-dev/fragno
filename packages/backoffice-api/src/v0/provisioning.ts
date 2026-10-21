@@ -1,6 +1,10 @@
 import { z } from "zod";
 
-import { organizationMembershipRecordSchema } from "./organization";
+import {
+  organizationInvitationRecordSchema,
+  organizationMembershipRecordSchema,
+  organizationRoleSchema,
+} from "./organization";
 
 /**
  * Each provisioning operation is its own permission, so an administrator grants a first-party app
@@ -10,6 +14,7 @@ export const backofficeProvisioningPermissionSchema = z.lazy(() =>
   z.enum([
     "organizations.provision",
     "projects.provision",
+    "invitations.create",
     "invitations.send",
     "invitations.accept",
   ]),
@@ -76,6 +81,24 @@ export const provisionProjectResultSchema = z
   )
   .meta({ id: "ProvisionProjectResult" });
 export type ProvisionProjectResult = z.output<typeof provisionProjectResultSchema>;
+
+export const createInvitationInputSchema = z
+  .lazy(() =>
+    z.strictObject({
+      organizationId: z
+        .string()
+        .trim()
+        .min(1)
+        .describe("An organization where the app is installed; the invitation is to it."),
+      inviterUserId: userIdSchema.describe(
+        "A member of the organization who authorized the app; the invitation is theirs, and their current role decides whom they may invite.",
+      ),
+      email: z.string().trim().toLowerCase().pipe(z.email()),
+      roles: z.array(organizationRoleSchema).min(1),
+    }),
+  )
+  .meta({ id: "CreateInvitationInput" });
+export type CreateInvitationInput = z.output<typeof createInvitationInputSchema>;
 
 const invitationIdSchema = z.lazy(() => z.string().trim().min(1));
 
@@ -146,6 +169,13 @@ export const backofficeProvisioningOperations = {
     permission: "projects.provision",
     input: provisionProjectInputSchema,
     output: provisionProjectResultSchema,
+  },
+  "invitations.create": {
+    description:
+      "Invite an email address to an organization where the app is installed, as a member who authorized the app. Owners and admins invite; only owners invite owners. Inviting the same address with the same roles again returns the pending invitation.",
+    permission: "invitations.create",
+    input: createInvitationInputSchema,
+    output: organizationInvitationRecordSchema,
   },
   "invitations.send": {
     description:

@@ -9,8 +9,10 @@ import {
 } from "@fragno-dev/backoffice-api/v0/organization";
 import {
   acceptInvitationInputSchema,
+  createInvitationInputSchema,
   provisionOrganizationInputSchema,
   type AcceptInvitationInput,
+  type CreateInvitationInput,
   type ProvisionOrganizationInput,
   type ProvisionOrganizationResult,
 } from "@fragno-dev/backoffice-api/v0/provisioning";
@@ -562,6 +564,17 @@ type OrganizationUserEndpoints = {
     body: { invitationId: string };
   }): Promise<{ invitation: StoreInvitation; member: StoreMember }>;
 };
+
+function toOrganizationInvitationRecord(invitation: StoreInvitation): OrganizationInvitationRecord {
+  return {
+    invitationId: invitation.id,
+    organizationId: invitation.organizationId,
+    email: invitation.email,
+    roles: splitOrganizationRoles(invitation.role),
+    expiresAt: toIsoString(toDate(invitation.expiresAt)),
+    createdAt: toIsoString(toDate(invitation.createdAt)),
+  };
+}
 
 function getOrganizationUserEndpoints(auth: BetterAuthInstance): OrganizationUserEndpoints {
   const api: unknown = "api" in auth ? auth.api : null;
@@ -1922,6 +1935,81 @@ export class InMemoryAuthObject implements AuthObject {
     };
   }
 
+  /**
+   * Invites as a member who authorized the app, so Better Auth applies the inviter's live role
+   * exactly as when they invite in Backoffice. Inviting an address again returns its pending
+   * invitation when the roles match, so the app can retry.
+   */
+  async createAppInvitation(
+    input: Pick<ProvisioningApp, "oauthClientId"> & CreateInvitationInput,
+  ): Promise<AppProvisioningResult<OrganizationInvitationRecord>> {
+    const { oauthClientId, ...invite } = input;
+    const parsed = createInvitationInputSchema.parse(invite);
+    const inviter = await this.confirmAppOrganizationMember({
+      oauthClientId,
+      organizationId: parsed.organizationId,
+      userId: parsed.inviterUserId,
+    });
+    if (!inviter.ok) {
+      return inviter;
+    }
+    try {
+      return { ok: true, value: await this.createOrganizationInvitation(parsed) };
+    } catch (error) {
+      if (!(error instanceof APIError)) {
+        throw error;
+      }
+      // Better Auth refuses with FORBIDDEN when the inviter's role does not allow the invitation.
+      if (error.status === "FORBIDDEN") {
+        return { ok: false, error: { code: "forbidden", message: error.message } };
+      }
+      if (error.body?.code === "USER_IS_ALREADY_A_MEMBER_OF_THIS_ORGANIZATION") {
+        return { ok: false, error: { code: "conflict", message: error.message } };
+      }
+      // Better Auth checks the inviter's role before refusing a second invitation.
+      if (error.body?.code === "USER_IS_ALREADY_INVITED_TO_THIS_ORGANIZATION") {
+        return await this.#reusePendingInvitation(parsed);
+      }
+      throw error;
+    }
+  }
+
+  /** The address's pending invitation, when it is for the same roles. */
+  async #reusePendingInvitation(
+    input: Pick<CreateInvitationInput, "organizationId" | "email" | "roles">,
+  ): Promise<AppProvisioningResult<OrganizationInvitationRecord>> {
+    const { adapter } = await this.#authContext();
+    const pending = await adapter.findOne<StoreInvitation>({
+      model: "invitation",
+      where: [
+        { field: "organizationId", value: input.organizationId },
+        { field: "email", value: input.email },
+        { field: "status", value: "pending" },
+        { field: "expiresAt", operator: "gt", value: new Date() },
+      ],
+    });
+    if (!pending) {
+      throw new Error(
+        `Auth refused to invite '${input.email}' again but has no pending invitation.`,
+      );
+    }
+    const pendingRoles = new Set(splitOrganizationRoles(pending.role));
+    const requestedRoles = new Set(input.roles);
+    if (
+      pendingRoles.size !== requestedRoles.size ||
+      [...requestedRoles].some((role) => !pendingRoles.has(role))
+    ) {
+      return {
+        ok: false,
+        error: {
+          code: "conflict",
+          message: `'${input.email}' is already invited with other roles.`,
+        },
+      };
+    }
+    return { ok: true, value: toOrganizationInvitationRecord(pending) };
+  }
+
   async verifyAdminUserEmail(input: { email: string }): Promise<AdminUserEmailVerificationRecord> {
     const { adapter } = await this.#authContext();
     const email = input.email.trim().toLowerCase();
@@ -2193,14 +2281,7 @@ export class InMemoryAuthObject implements AuthObject {
           body: { organizationId: input.organizationId, email: input.email, role: roles },
         }),
     );
-    return {
-      invitationId: invitation.id,
-      organizationId: invitation.organizationId,
-      email: invitation.email,
-      roles: splitOrganizationRoles(invitation.role),
-      expiresAt: toIsoString(toDate(invitation.expiresAt)),
-      createdAt: toIsoString(toDate(invitation.createdAt)),
-    };
+    return toOrganizationInvitationRecord(invitation);
   }
 
   async getUserAuthorityFacts(input: {
@@ -2617,6 +2698,12 @@ export class Auth extends DurableObject<CloudflareEnv> implements AuthObject {
     input: Pick<ProvisioningApp, "oauthClientId"> & AcceptInvitationInput,
   ): Promise<AppProvisioningResult<OrganizationMembershipRecord>> {
     return await this.#object.acceptAppInvitation(input);
+  }
+
+  async createAppInvitation(
+    input: Pick<ProvisioningApp, "oauthClientId"> & CreateInvitationInput,
+  ): Promise<AppProvisioningResult<OrganizationInvitationRecord>> {
+    return await this.#object.createAppInvitation(input);
   }
 
   async verifyAdminUserEmail(input: { email: string }) {

@@ -17,8 +17,8 @@ This is a proposal; nothing is implemented.
 Brand Intelligence (MI) is a first-party app whose operators (ReJot staff) create partner
 organizations, such as a brand agency, from MI's operator page. Today the partner's owner must sign
 in to MI first, so MI can pass their user ID. Operators ask the owner to sign in, wait, then create
-the partner. Invitations into existing organizations do not have this problem:
-`org.invitations.create` takes an email, and `invitations.accept` works for a brand-new account.
+the partner. Invitations into existing organizations do not have this problem: `invitations.create`
+takes an email, and `invitations.accept` works for a brand-new account.
 
 The interim workaround in MI is to provision with the operator as owner, invite the real owner with
 role `owner`, and send that invitation. It leaves the operator as a permanent co-owner of every

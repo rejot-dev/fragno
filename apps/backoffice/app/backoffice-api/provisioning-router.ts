@@ -1,9 +1,13 @@
 import type { AppBranding, BackofficeApp } from "@fragno-dev/backoffice-api/v0/apps";
-import type { OrganizationMembershipRecord } from "@fragno-dev/backoffice-api/v0/organization";
+import type {
+  OrganizationInvitationRecord,
+  OrganizationMembershipRecord,
+} from "@fragno-dev/backoffice-api/v0/organization";
 import {
   type AcceptInvitationInput,
   backofficeProvisioningOperations,
   type BackofficeProvisioningOperationId,
+  type CreateInvitationInput,
   type ProvisionOrganizationInput,
   type ProvisionOrganizationResult,
   type ProvisionProjectInput,
@@ -137,6 +141,25 @@ async function provisionProject(
   return { ok: true, value: { organizationId: input.organizationId, ...project } };
 }
 
+async function createInvitation(
+  runtime: BackofficeRuntimeServices,
+  app: ProvisioningApp,
+  input: CreateInvitationInput,
+): Promise<AppProvisioningResult<OrganizationInvitationRecord>> {
+  if (!(await isInstalledIn(runtime, app, input.organizationId))) {
+    return {
+      ok: false,
+      error: {
+        code: "not_found",
+        message: `This app is not installed in organization '${input.organizationId}'.`,
+      },
+    };
+  }
+  return await runtime.objects.auth
+    .singleton()
+    .commands.createAppInvitation({ oauthClientId: app.oauthClientId, ...input });
+}
+
 function invitationNotFound(invitationId: string): AppProvisioningResult<never> {
   return {
     ok: false,
@@ -221,6 +244,7 @@ const provisioningHandlers: {
 } = {
   "organizations.provision": provisionOrganization,
   "projects.provision": provisionProject,
+  "invitations.create": createInvitation,
   "invitations.send": sendInvitation,
   "invitations.accept": acceptInvitation,
 };

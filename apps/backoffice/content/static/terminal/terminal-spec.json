@@ -558,7 +558,7 @@
         "name": "trust-json",
         "valueRequired": true,
         "valueName": "json",
-        "description": "Trust: {\"kind\":\"third-party\"}, or {\"kind\":\"first-party\",\"provisioningPermissions\":[\"organizations.provision\",\"projects.provision\",\"invitations.send\",\"invitations.accept\"],\"branding\":{\"displayName\",\"logoUrl\",\"accentColor\":\"#rrggbb\",\"homeUrl\",\"supportUrl\"}} for an app Backoffice operates (default: third-party)"
+        "description": "Trust: {\"kind\":\"third-party\"}, or {\"kind\":\"first-party\",\"provisioningPermissions\":[\"organizations.provision\",\"projects.provision\",\"invitations.create\",\"invitations.send\",\"invitations.accept\"],\"branding\":{\"displayName\",\"logoUrl\",\"accentColor\":\"#rrggbb\",\"homeUrl\",\"supportUrl\"}} for an app Backoffice operates (default: third-party)"
       },
       {
         "name": "help",
@@ -711,7 +711,7 @@
         "name": "trust-json",
         "valueRequired": true,
         "valueName": "json",
-        "description": "Trust: {\"kind\":\"third-party\"}, or {\"kind\":\"first-party\",\"provisioningPermissions\":[\"organizations.provision\",\"projects.provision\",\"invitations.send\",\"invitations.accept\"],\"branding\":{\"displayName\",\"logoUrl\",\"accentColor\":\"#rrggbb\",\"homeUrl\",\"supportUrl\"}} for an app Backoffice operates",
+        "description": "Trust: {\"kind\":\"third-party\"}, or {\"kind\":\"first-party\",\"provisioningPermissions\":[\"organizations.provision\",\"projects.provision\",\"invitations.create\",\"invitations.send\",\"invitations.accept\"],\"branding\":{\"displayName\",\"logoUrl\",\"accentColor\":\"#rrggbb\",\"homeUrl\",\"supportUrl\"}} for an app Backoffice operates",
         "required": true
       },
       {

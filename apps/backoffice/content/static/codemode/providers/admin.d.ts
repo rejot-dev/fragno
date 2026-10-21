@@ -340,6 +340,7 @@ type AppTrust =
       provisioningPermissions: (
         | "organizations.provision"
         | "projects.provision"
+        | "invitations.create"
         | "invitations.send"
         | "invitations.accept"
       )[];
