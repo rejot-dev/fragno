@@ -169,11 +169,11 @@ js.build /workspace/pi/extensions/project-context.js \
 ```
 
 Apply the JavaScript runtime skill's build checks: observe success, review warnings, and retain the
-returned artifact path. The saved artifact is generic `fragno-javascript-module/v1` code; Pi
+returned built module path. The saved built module is generic `fragno-javascript-module/v1` code; Pi
 metadata is validated later. A successful build proves compilation only. Failed builds leave the old
-artifact intact, so activation must not be described as updated after a failed rebuild.
+built module intact, so activation must not be described as updated after a failed rebuild.
 
-**Complete when** the intended source has successfully produced the intended artifact. Leave the
+**Complete when** the intended source has successfully produced the intended built module. Leave the
 manifest unchanged on build failure.
 
 ## 4. Activate explicitly and preserve existing entries
@@ -186,14 +186,14 @@ The manifest is `/workspace/pi/extensions.json` with exactly this shape:
 }
 ```
 
-Entries identify built `.json` artifacts under the current `/workspace/`. Relative entries resolve
+Entries identify built `.json` modules under the current `/workspace/`. Relative entries resolve
 against `/workspace/pi`, not the source directory or shell working directory. Absolute workspace
 paths are also accepted; using them makes read-modify-write activation straightforward:
 
 ```js
 async () => {
   const path = "/workspace/pi/extensions.json";
-  const artifactPath = "/workspace/pi/.build/project-context.module.json";
+  const outputPath = "/workspace/pi/.build/project-context.module.json";
   const manifest = (await state.exists({ path }))
     ? await state.readJson({ path })
     : { extensions: [] };
@@ -213,10 +213,10 @@ async () => {
   );
   if (new Set(activatedPaths).size !== activatedPaths.length) {
     throw new Error(
-      "Existing manifest activates one artifact more than once; inspect its entries.",
+      "Existing manifest activates one built module more than once; inspect its entries.",
     );
   }
-  if (!activatedPaths.includes(artifactPath)) manifest.extensions.push(artifactPath);
+  if (!activatedPaths.includes(outputPath)) manifest.extensions.push(outputPath);
   if (manifest.extensions.length > 16)
     throw new Error("Pi supports at most 16 activated extensions.");
 
@@ -229,17 +229,17 @@ Compare resolved paths, as above: different spellings of one file are duplicate 
 separate extensions. Preserve existing valid entries. Source `.js` entries, traversal through `..`,
 and paths outside the workspace are invalid activation references.
 
-**Complete when** the re-read manifest contains the successfully built artifact exactly once and all
+**Complete when** the re-read manifest contains the successfully built module exactly once and all
 unrelated entries remain intact. Building or placing a file in a conventional directory does not
 activate it.
 
 ## 5. Verify in the agent's next turn
 
 Every agent in the scope reloads extensions at the start of a turn when the manifest or a listed
-artifact changed, so rebuilding or editing the manifest takes effect at the next prompt, not during
-a running turn. Your own current turn keeps the extensions it started with: verify by prompting an
-agent with `pi.runPrompt` and a new verification request ID, or ask the person to send another
-message.
+built module changed, so rebuilding or editing the manifest takes effect at the next prompt, not
+during a running turn. Your own current turn keeps the extensions it started with: verify by
+prompting an agent with `pi.runPrompt` and a new verification request ID, or ask the person to send
+another message.
 
 Verify the contributed behavior: inspect rendered sections when available, otherwise use a narrow
 smoke prompt; invoke a custom tool and inspect its actual result; exercise a hook's intended
@@ -248,14 +248,14 @@ that completes, a successful generic `js.run`, or a model's unsupported claim al
 installation.
 
 **Complete only when** a later turn demonstrably exercises the intended contribution. If
-verification is unavailable, report the source/artifact/manifest paths as built and listed, with
+verification is unavailable, report the source/built module/manifest paths as built and listed, with
 activation verification explicitly outstanding.
 
 ### Diagnose the failing stage
 
-- **Build required or invalid artifact:** check the manifest's resolved path, rebuild the source,
-  and verify in a later turn. Source references and old Pi-specific artifact formats need
-  rebuilding; loading never compiles source or falls back to it.
+- **Build required or invalid built module:** check the manifest's resolved path, rebuild the
+  source, and verify in a later turn. Source references and old Pi-specific built module formats
+  need rebuilding; loading never compiles source or falls back to it.
 - **Invalid export or unsupported member:** use a default extension with the supported registrations
   above. Compilation accepts ordinary modules that Pi may reject.
 - **Duplicate name, tool, section, or path:** compare the manifest and all activated extensions,

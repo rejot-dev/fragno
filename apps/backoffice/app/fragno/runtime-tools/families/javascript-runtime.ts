@@ -8,7 +8,7 @@ import type { CodemodeLogLine } from "@fragno-dev/codemode/runtime-api";
 
 import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
 import { isPathWithin, normalizeAbsolutePath } from "@/files/normalize-path";
-import { javaScriptModuleArtifactSchema } from "@/fragno/codemode/javascript-module-artifact";
+import { builtJavaScriptModuleSchema } from "@/fragno/codemode/built-javascript-module";
 import {
   readSavedModuleImports,
   SavedModuleImportError,
@@ -44,9 +44,9 @@ export type JavaScriptRunLogsOutput =
 export type JavaScriptBuildFileInput = { path: string; out: string };
 
 export type JavaScriptBuildFileOutput =
-  | { status: "success"; path: string; artifactPath: string; runId: string; warnings: string[] }
-  | { status: "error"; path: string; artifactPath: string; runId: string; error: string }
-  | { status: "rejected"; path: string; artifactPath: string; error: string };
+  | { status: "success"; path: string; outputPath: string; runId: string; warnings: string[] }
+  | { status: "error"; path: string; outputPath: string; runId: string; error: string }
+  | { status: "rejected"; path: string; outputPath: string; error: string };
 
 /**
  * A saved file to run: source requires compilation together with the saved modules it imports,
@@ -89,7 +89,7 @@ function parseJavaScriptFilePath(path: string, kind: "source" | "run") {
       "invalid_request",
       kind === "source"
         ? "JavaScript file path must identify a .js file."
-        : "JavaScript run path must identify a .js source file or .json module artifact.",
+        : "JavaScript run path must identify a .js source file or built .json module.",
     );
   }
   return normalizedPath;
@@ -207,13 +207,13 @@ export function createJavaScriptRuntime({
               if (file?.type !== "file") {
                 throw new BackofficeOperationError(
                   "not_found",
-                  `JAVASCRIPT_RUN_ARTIFACT_MISSING: ${sourcePath}`,
+                  `JAVASCRIPT_RUN_BUILT_MODULE_MISSING: ${sourcePath}`,
                 );
               }
               if (file.size > CODEMODE_LIMITS.maxBundleBytes) {
-                throw new Error("JAVASCRIPT_RUN_ARTIFACT_TOO_LARGE");
+                throw new Error("JAVASCRIPT_RUN_BUILT_MODULE_TOO_LARGE");
               }
-              const { bundle } = javaScriptModuleArtifactSchema.parse(
+              const { bundle } = builtJavaScriptModuleSchema.parse(
                 await stateBackend.readJson(sourcePath),
               );
               program = { kind: "bundle", path: sourcePath, bundle };
@@ -229,7 +229,7 @@ export function createJavaScriptRuntime({
               });
               if (packages.length > 0) {
                 throw new Error(
-                  `JavaScript run cannot install packages (${packages.join(", ")}); compile with js.build and run the artifact.`,
+                  `JavaScript run cannot install packages (${packages.join(", ")}); compile with js.build and run the built module.`,
                 );
               }
               program = { kind: "source", path: sourcePath, modules };

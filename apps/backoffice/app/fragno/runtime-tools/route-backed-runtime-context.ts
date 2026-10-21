@@ -510,7 +510,7 @@ export const createRouteBackedRuntimeContext = ({
                   ? async (program, toolContext) => {
                       if (program.kind === "source" && !canCompileJavaScript) {
                         throw new Error(
-                          "JavaScript source execution requires a compiler; run a built JSON module artifact instead.",
+                          "JavaScript source execution requires a compiler; run a built JSON module instead.",
                         );
                       }
                       const { runBackofficeJavaScriptModule } =
@@ -560,7 +560,7 @@ export const createRouteBackedRuntimeContext = ({
                         return {
                           status: "rejected",
                           path: input.path,
-                          artifactPath: input.out,
+                          outputPath: input.out,
                           error: error instanceof Error ? error.message : String(error),
                         };
                       }

@@ -19,7 +19,7 @@ import {
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
-import { javaScriptModuleArtifactSchema } from "@/fragno/codemode/javascript-module-artifact";
+import { builtJavaScriptModuleSchema } from "@/fragno/codemode/built-javascript-module";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import { executeBackofficeRuntimeTool } from "@/fragno/runtime-tools/runtime-tools";
@@ -57,7 +57,7 @@ beforeAll(async () => {
     (compile) => async (input) => {
       compiler.compilations++;
       if (!compiler.available) {
-        throw new Error("Run must not compile an artifact");
+        throw new Error("Run must not compile a built module");
       }
       return await compile(input);
     },
@@ -72,13 +72,13 @@ afterAll(async () => {
 });
 
 const scope = { kind: "org", orgId: "org-1" } as const;
-const artifactPath = "/workspace/.build/example.module.json";
+const outputPath = "/workspace/.build/example.module.json";
 
 test("js.run executes bundled top-level statements and dependencies with the compiler offline, ignoring exports", async () => {
   await runBackofficeScenario(
     defineBackofficeScenario({
       objects: scenarioObjects,
-      name: "public module artifact execution",
+      name: "public built module execution",
       env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
       setup: ({ given }) => [
         given.organization.exists({ id: "org-1" }),
@@ -98,7 +98,7 @@ test("js.run executes bundled top-level statements and dependencies with the com
               kernel: new BackofficeKernel(runtime.services),
               execution: createBackofficeServiceExecution({
                 scope,
-                service: { type: "automation", id: "artifact-runner" },
+                service: { type: "automation", id: "module-runner" },
               }),
             });
             const { bash } = await createInteractiveBashHost({ context });
@@ -107,19 +107,19 @@ test("js.run executes bundled top-level statements and dependencies with the com
               { cwd: "/workspace" },
             );
             assert.equal(built.exitCode, 0, built.stderr);
-            const artifact = javaScriptModuleArtifactSchema.parse(
-              await context.stateBackend.readJson(artifactPath),
+            const builtModule = builtJavaScriptModuleSchema.parse(
+              await context.stateBackend.readJson(outputPath),
             );
             await context.stateBackend.writeFile(
-              artifactPath,
+              outputPath,
               JSON.stringify({
-                ...artifact,
+                ...builtModule,
                 bundle: {
-                  ...artifact.bundle,
+                  ...builtModule.bundle,
                   modules: {
-                    ...artifact.bundle.modules,
-                    [artifact.bundle.mainModule]:
-                      `import "./dependency.js";\n${artifact.bundle.modules[artifact.bundle.mainModule]}`,
+                    ...builtModule.bundle.modules,
+                    [builtModule.bundle.mainModule]:
+                      `import "./dependency.js";\n${builtModule.bundle.modules[builtModule.bundle.mainModule]}`,
                     "dependency.js": 'console.log("dependency startup");',
                   },
                 },
@@ -135,7 +135,7 @@ test("js.run executes bundled top-level statements and dependencies with the com
             const parsed = JSON.parse(result.stdout);
             expect(parsed).toMatchObject({
               status: "success",
-              path: artifactPath,
+              path: outputPath,
               logs: [
                 { at: expect.any(Number), channel: "log", text: "dependency startup" },
                 { at: expect.any(Number), channel: "log", text: "main startup 0" },
@@ -143,7 +143,7 @@ test("js.run executes bundled top-level statements and dependencies with the com
             });
             const repeated = await executeBackofficeRuntimeTool(
               javaScriptRunToolFamily.tools[0],
-              { path: artifactPath },
+              { path: outputPath },
               createBackofficeToolContext(context),
             );
             // Each run is recorded separately.
@@ -158,7 +158,7 @@ test("js.run executes bundled top-level statements and dependencies with the com
             });
             const denied = await (
               await createInteractiveBashHost({ context: deniedContext })
-            ).bash.exec(`js.run ${artifactPath}`);
+            ).bash.exec(`js.run ${outputPath}`);
             assert.notEqual(denied.exitCode, 0);
           },
         ),
@@ -201,22 +201,22 @@ for (const invalid of [
               kernel: new BackofficeKernel(runtime.services),
               execution: createBackofficeServiceExecution({
                 scope,
-                service: { type: "automation", id: "artifact-runner" },
+                service: { type: "automation", id: "module-runner" },
               }),
             });
             const { bash } = await createInteractiveBashHost({ context });
             assert.equal(
-              (await bash.exec(`js.build /workspace/scripts/invalid.js --out ${artifactPath}`))
+              (await bash.exec(`js.build /workspace/scripts/invalid.js --out ${outputPath}`))
                 .exitCode,
               0,
             );
             const before = compiler.compilations;
             compiler.available = false;
-            const failed = await bash.exec(`js.run ${artifactPath} --format json`);
+            const failed = await bash.exec(`js.run ${outputPath} --format json`);
             assert.notEqual(failed.exitCode, 0);
             expect(JSON.parse(failed.stdout)).toMatchObject({
               status: "error",
-              path: artifactPath,
+              path: outputPath,
               error: expect.stringContaining(invalid.error),
             });
             assert.equal(compiler.compilations, before);
@@ -227,11 +227,11 @@ for (const invalid of [
   });
 }
 
-test("js.run validates artifact format, entrypoint, runtime, JSON and scope before execution", async () => {
+test("js.run validates built module format, entrypoint, runtime, JSON and scope before execution", async () => {
   await runBackofficeScenario(
     defineBackofficeScenario({
       objects: scenarioObjects,
-      name: "artifact execution boundary",
+      name: "built module execution boundary",
       env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
       setup: ({ given }) => [
         given.organization.exists({ id: "org-1" }),
@@ -244,7 +244,7 @@ test("js.run validates artifact format, entrypoint, runtime, JSON and scope befo
       ],
       steps: ({ then }) => [
         then.assert(
-          "bad artifacts are rejected without running their code",
+          "bad built modules are rejected without running their code",
           async ({ runtime }) => {
             const context = createCodemodeRouteBackedRuntimeContext({
               emitter: { kind: "caller" },
@@ -252,41 +252,41 @@ test("js.run validates artifact format, entrypoint, runtime, JSON and scope befo
               kernel: new BackofficeKernel(runtime.services),
               execution: createBackofficeServiceExecution({
                 scope,
-                service: { type: "automation", id: "artifact-runner" },
+                service: { type: "automation", id: "module-runner" },
               }),
             });
             const { bash } = await createInteractiveBashHost({ context });
             assert.equal(
-              (await bash.exec(`js.build /workspace/scripts/example.js --out ${artifactPath}`))
+              (await bash.exec(`js.build /workspace/scripts/example.js --out ${outputPath}`))
                 .exitCode,
               0,
             );
-            const artifact = javaScriptModuleArtifactSchema.parse(
-              await context.stateBackend.readJson(artifactPath),
+            const builtModule = builtJavaScriptModuleSchema.parse(
+              await context.stateBackend.readJson(outputPath),
             );
             const before = compiler.compilations;
             compiler.available = false;
             for (const content of [
               "{",
-              JSON.stringify({ format: "unknown", bundle: artifact.bundle }),
+              JSON.stringify({ format: "unknown", bundle: builtModule.bundle }),
               JSON.stringify({
-                ...artifact,
-                bundle: { ...artifact.bundle, mainModule: "missing.js" },
+                ...builtModule,
+                bundle: { ...builtModule.bundle, mainModule: "missing.js" },
               }),
               JSON.stringify({
-                ...artifact,
+                ...builtModule,
                 bundle: {
-                  ...artifact.bundle,
+                  ...builtModule.bundle,
                   runtime: { compatibilityDate: "2026-05-07", compatibilityFlags: ["unsafe"] },
                 },
               }),
             ]) {
-              await context.stateBackend.writeFile(artifactPath, content);
-              const failed = await bash.exec(`js.run ${artifactPath} --format json`);
+              await context.stateBackend.writeFile(outputPath, content);
+              const failed = await bash.exec(`js.run ${outputPath} --format json`);
               assert.notEqual(failed.exitCode, 0);
               expect(JSON.parse(failed.stdout)).toEqual({
                 status: "rejected",
-                path: artifactPath,
+                path: outputPath,
                 error: expect.any(String),
               });
             }
@@ -296,14 +296,14 @@ test("js.run validates artifact format, entrypoint, runtime, JSON and scope befo
               kernel: new BackofficeKernel(runtime.services),
               execution: createBackofficeServiceExecution({
                 scope: { kind: "org", orgId: "org-2" },
-                service: { type: "automation", id: "artifact-runner" },
+                service: { type: "automation", id: "module-runner" },
               }),
             });
             const missing = await (
               await createInteractiveBashHost({ context: other })
-            ).bash.exec(`js.run ${artifactPath} --format json`);
+            ).bash.exec(`js.run ${outputPath} --format json`);
             assert.notEqual(missing.exitCode, 0);
-            expect(missing.stdout).toContain("JAVASCRIPT_RUN_ARTIFACT_MISSING");
+            expect(missing.stdout).toContain("JAVASCRIPT_RUN_BUILT_MODULE_MISSING");
             assert.equal(compiler.compilations, before);
           },
         ),

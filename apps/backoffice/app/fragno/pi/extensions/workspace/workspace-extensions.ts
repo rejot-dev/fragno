@@ -4,12 +4,12 @@ import { z } from "zod";
 
 import { createRegistry, type Extension, type RegistrySnapshot } from "@earendil-works/pi-durable";
 
+import {
+  builtJavaScriptModuleSchema,
+  resolveBuiltJavaScriptModulePath,
+} from "@/fragno/codemode/built-javascript-module";
 import type { CodemodeRunner } from "@/fragno/codemode/codemode-object-execute";
 import { runBackofficeCompiledModule } from "@/fragno/codemode/compiled-module-execute";
-import {
-  javaScriptModuleArtifactSchema,
-  resolveJavaScriptModuleArtifactPath,
-} from "@/fragno/codemode/javascript-module-artifact";
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 import type {
   BackofficeAgentContext,
@@ -28,14 +28,14 @@ const extensionFilePathSchema = z
   .regex(/^[^\p{Cc}]+$/u);
 
 export type LoadedWorkspaceExtensions = {
-  /** Identifies the manifest and artifacts the extensions were loaded from. */
+  /** Identifies the manifest and built modules the extensions were loaded from. */
   fingerprint: string;
   extensions: readonly Extension[];
 };
 
 /**
- * Loads activated artifacts and validates native proxies before an agent can install them.
- * Returns null when the manifest and its artifacts are unchanged since `loaded`.
+ * Loads activated built modules and validates native proxies before an agent can install them.
+ * Returns null when the manifest and its built modules are unchanged since `loaded`.
  */
 export async function loadWorkspaceExtensions(input: {
   agent: BackofficeAgentContext;
@@ -102,11 +102,11 @@ export async function loadWorkspaceExtensions(input: {
     const paths = manifest.extensions.map((path) => {
       if (path.endsWith(".js")) {
         throw new Error(
-          `PI_EXTENSION_BUILD_REQUIRED: build ${path} with js.build and activate its artifact.`,
+          `PI_EXTENSION_BUILD_REQUIRED: build ${path} with js.build and activate its built module.`,
         );
       }
       try {
-        return resolveJavaScriptModuleArtifactPath(path, state, "/workspace/pi");
+        return resolveBuiltJavaScriptModulePath(path, state, "/workspace/pi");
       } catch (error) {
         throw new Error(`PI_EXTENSION_INVALID_PATH: ${path}`, { cause: error });
       }
@@ -114,14 +114,14 @@ export async function loadWorkspaceExtensions(input: {
     if (new Set(paths).size !== paths.length) {
       throw new Error("PI_EXTENSION_DUPLICATE_PATH");
     }
-    // Rebuilding an artifact rewrites it, so its size and modification time identify the build.
-    const artifacts = await Promise.all(
+    // Rebuilding a built module rewrites it, so its size and modification time identify the build.
+    const builtModules = await Promise.all(
       paths.map(async (path) => {
         const file = await state.stat(path);
         return file ? [file.size, file.mtime.getTime()] : null;
       }),
     );
-    const fingerprint = JSON.stringify([manifestText, artifacts]);
+    const fingerprint = JSON.stringify([manifestText, builtModules]);
     if (input.loaded?.fingerprint === fingerprint) {
       return null;
     }
@@ -145,19 +145,19 @@ export async function loadWorkspaceExtensions(input: {
         throw new Error(`PI_EXTENSION_BUILD_REQUIRED: missing ${path}; create it with js.build.`);
       }
       if (file.size > CODEMODE_LIMITS.maxBundleBytes) {
-        throw new Error("PI_EXTENSION_ARTIFACT_TOO_LARGE");
+        throw new Error("PI_EXTENSION_BUILT_MODULE_TOO_LARGE");
       }
-      let artifact: z.infer<typeof javaScriptModuleArtifactSchema>;
+      let builtModule: z.infer<typeof builtJavaScriptModuleSchema>;
       try {
-        artifact = javaScriptModuleArtifactSchema.parse(await state.readJson(path));
+        builtModule = builtJavaScriptModuleSchema.parse(await state.readJson(path));
       } catch (error) {
-        throw new Error(`PI_EXTENSION_ARTIFACT_INVALID: rebuild ${path} with js.build.`, {
+        throw new Error(`PI_EXTENSION_BUILT_MODULE_INVALID: rebuild ${path} with js.build.`, {
           cause: error,
         });
       }
       const metadata = piWorkspaceExtensionMetadataSchema.parse(
         await runBackofficeCompiledModule({
-          bundle: artifact.bundle,
+          bundle: builtModule.bundle,
           invocation,
           input: { operation: "inspect" },
           providers: [],
@@ -182,10 +182,10 @@ export async function loadWorkspaceExtensions(input: {
       const extension = createPiWorkspaceExtensionBridge({
         agent: input.agent,
         metadata,
-        bundle: artifact.bundle,
+        bundle: builtModule.bundle,
         path,
       });
-      // Reuse native registration rules inside per-artifact recovery, before the real host installation.
+      // Reuse native registration rules inside per-module recovery, before the real host installation.
       validationRegistry.install(extension);
       installed.push(extension);
       names.add(metadata.name);

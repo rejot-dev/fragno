@@ -33,9 +33,9 @@ import type { InMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-r
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
+import { builtJavaScriptModuleSchema } from "@/fragno/codemode/built-javascript-module";
 import { codemodeRunnerFor } from "@/fragno/codemode/codemode-object-execute";
 import { runBackofficeCompiledModule } from "@/fragno/codemode/compiled-module-execute";
-import { javaScriptModuleArtifactSchema } from "@/fragno/codemode/javascript-module-artifact";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { javaScriptBuildToolFamily } from "@/fragno/runtime-tools/families/javascript";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
@@ -50,8 +50,8 @@ const scenarioObjects = allLocalObjects;
 const scope = { kind: "org", orgId: "org-1" } as const;
 const manifestPath = "/workspace/pi/extensions.json";
 const extensionPath = "/workspace/scripts/project-context.js";
-const artifactPath = "/workspace/.build/project-context.module.json";
-const manifest = JSON.stringify({ extensions: [artifactPath] });
+const outputPath = "/workspace/.build/project-context.module.json";
+const manifest = JSON.stringify({ extensions: [outputPath] });
 const extensionSource = `import { defineExtension, section } from "@earendil-works/pi-durable";
 export default defineExtension({
   name: "project-context",
@@ -137,7 +137,7 @@ async function buildExtension(
 ) {
   return await executeBackofficeRuntimeTool(
     javaScriptBuildToolFamily.tools[0],
-    { path: extensionPath, out: artifactPath },
+    { path: extensionPath, out: outputPath },
     createBackofficeToolContext(workspace(runtime, selectedScope)),
   );
 }
@@ -223,10 +223,10 @@ test("js.build publishes ordinary ES modules without executing or inspecting the
               );
               assert.equal(result.exitCode, 0, result.stderr);
             }
-            const artifact = javaScriptModuleArtifactSchema.parse(
+            const builtModule = builtJavaScriptModuleSchema.parse(
               await context.stateBackend.readJson("/workspace/.build/math.module.json"),
             );
-            const { bundle } = artifact;
+            const { bundle } = builtModule;
             expect(Object.values(bundle.modules).join("\n")).not.toContain("PI_EXTENSION_");
             await context.stateBackend.rm("/workspace/scripts/math.js");
             const before = compiler.compilations;
@@ -259,7 +259,7 @@ test("js.build publishes ordinary ES modules without executing or inspecting the
               }),
               "hello",
             );
-            const deferred = javaScriptModuleArtifactSchema.parse(
+            const deferred = builtJavaScriptModuleSchema.parse(
               await context.stateBackend.readJson("/workspace/.build/deferred.module.json"),
             );
             await expect(
@@ -354,7 +354,7 @@ test("js.build bundles native imports once; Pi inspects and renders fresh files 
             { cwd: "/workspace" },
           );
           expect(built.exitCode, built.stderr).toBe(0);
-          expect(JSON.parse(built.stdout)).toMatchObject({ status: "success", artifactPath });
+          expect(JSON.parse(built.stdout)).toMatchObject({ status: "success", outputPath });
           assert.equal(compiler.compilations - before, 1);
           const afterBuild = compiler.compilations;
           compiler.available = false;
@@ -545,7 +545,7 @@ test("native workspace tools and built-in hooks run through sealed codemode with
   );
 });
 
-test("user, project and system agents do not inherit organization build artifacts", async () => {
+test("user, project and system agents do not inherit organization built modules", async () => {
   const reports: unknown[] = [];
   await runBackofficeScenario(
     defineBackofficeScenario({
@@ -573,7 +573,7 @@ test("user, project and system agents do not inherit organization build artifact
         given.codemode.writeFile({ orgId: "org-1", path: manifestPath, content: manifest }),
       ],
       steps: ({ then }) => [
-        then.assert("only the exact workspace activates an artifact", async ({ runtime }) => {
+        then.assert("only the exact workspace activates a built module", async ({ runtime }) => {
           expect(await buildExtension(runtime)).toMatchObject({ status: "success" });
           compiler.available = false;
           for (const selectedScope of [
@@ -633,7 +633,7 @@ test("source edits require an explicit rebuild, which the agent loads at its nex
         }),
       ],
       steps: ({ then }) => [
-        then.assert("only a rebuilt artifact changes the next turn", async ({ runtime }) => {
+        then.assert("only a rebuilt module changes the next turn", async ({ runtime }) => {
           expect(await buildExtension(runtime)).toMatchObject({ status: "success" });
           await runPrompt(runtime, scope, "original");
           await workspace(runtime).stateBackend.writeFile(
@@ -661,7 +661,7 @@ for (const invalid of [
     error: "missing.js",
   },
 ]) {
-  test(`failed ${invalid.name} build preserves the previous artifact and does not activate source`, async () => {
+  test(`failed ${invalid.name} build preserves the previous built module and does not activate source`, async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         objects: scenarioObjects,
@@ -672,15 +672,15 @@ for (const invalid of [
           given.codemode.writeFile({ orgId: "org-1", path: extensionPath, content: simpleSource }),
         ],
         steps: ({ then }) => [
-          then.assert("the last complete artifact remains usable", async ({ runtime }) => {
+          then.assert("the last complete built module remains usable", async ({ runtime }) => {
             expect(await buildExtension(runtime)).toMatchObject({ status: "success" });
             const state = workspace(runtime).stateBackend;
-            const previous = await state.readFile(artifactPath);
+            const previous = await state.readFile(outputPath);
             await state.writeFile(extensionPath, invalid.source);
             const result = await buildExtension(runtime);
-            expect(result).toMatchObject({ status: invalid.status, artifactPath });
+            expect(result).toMatchObject({ status: invalid.status, outputPath });
             expect(JSON.stringify(result).toLowerCase()).toContain(invalid.error.toLowerCase());
-            assert.equal(await state.readFile(artifactPath), previous);
+            assert.equal(await state.readFile(outputPath), previous);
             assert.equal(await state.exists(manifestPath), false);
           }),
         ],
@@ -822,22 +822,22 @@ for (const invalid of [
   });
 }
 
-const artifactFailureCases = [
+const builtModuleFailureCases = [
   {
-    name: "unsupported artifact format",
-    change: (artifact: ReturnType<typeof javaScriptModuleArtifactSchema.parse>) => ({
-      ...artifact,
+    name: "unsupported built module format",
+    change: (builtModule: ReturnType<typeof builtJavaScriptModuleSchema.parse>) => ({
+      ...builtModule,
       format: "fragno-javascript-module/v0",
     }),
   },
   {
     name: "unsupported runtime flags",
-    change: (artifact: ReturnType<typeof javaScriptModuleArtifactSchema.parse>) => ({
-      ...artifact,
+    change: (builtModule: ReturnType<typeof builtJavaScriptModuleSchema.parse>) => ({
+      ...builtModule,
       bundle: {
-        ...artifact.bundle,
+        ...builtModule.bundle,
         runtime: {
-          ...artifact.bundle.runtime,
+          ...builtModule.bundle.runtime,
           compatibilityFlags: ["nodejs_compat", "unknown_flag"],
         },
       },
@@ -845,20 +845,20 @@ const artifactFailureCases = [
   },
   {
     name: "missing entry module",
-    change: (artifact: ReturnType<typeof javaScriptModuleArtifactSchema.parse>) => ({
-      ...artifact,
-      bundle: { ...artifact.bundle, mainModule: "missing.js" },
+    change: (builtModule: ReturnType<typeof builtJavaScriptModuleSchema.parse>) => ({
+      ...builtModule,
+      bundle: { ...builtModule.bundle, mainModule: "missing.js" },
     }),
   },
   {
     name: "unexpected consumer metadata",
-    change: (artifact: ReturnType<typeof javaScriptModuleArtifactSchema.parse>) => ({
-      ...artifact,
+    change: (builtModule: ReturnType<typeof builtJavaScriptModuleSchema.parse>) => ({
+      ...builtModule,
       extension: { name: "forged", sections: [] },
     }),
   },
 ];
-for (const invalid of artifactFailureCases) {
+for (const invalid of builtModuleFailureCases) {
   test(`${invalid.name} is reported without invoking a compiler or replacing built-in guidance`, async () => {
     const reports: unknown[] = [];
     await runBackofficeScenario(
@@ -888,20 +888,18 @@ for (const invalid of artifactFailureCases) {
           given.codemode.writeFile({ orgId: "org-1", path: extensionPath, content: simpleSource }),
         ],
         steps: ({ then }) => [
-          then.assert("invalid artifacts are nonfatal", async ({ runtime }) => {
+          then.assert("invalid built modules are nonfatal", async ({ runtime }) => {
             expect(await buildExtension(runtime)).toMatchObject({ status: "success" });
             const state = workspace(runtime).stateBackend;
-            const artifact = javaScriptModuleArtifactSchema.parse(
-              await state.readJson(artifactPath),
-            );
-            await state.writeFile(artifactPath, JSON.stringify(invalid.change(artifact)));
+            const builtModule = builtJavaScriptModuleSchema.parse(await state.readJson(outputPath));
+            await state.writeFile(outputPath, JSON.stringify(invalid.change(builtModule)));
             const before = compiler.compilations;
             compiler.available = false;
             expect(
-              JSON.stringify((await runPrompt(runtime, scope, "invalid-artifact")).entries),
+              JSON.stringify((await runPrompt(runtime, scope, "invalid-built-module")).entries),
             ).toContain("Built-in agent still works.");
             expect(reports).toHaveLength(1);
-            expect(errorMessages(reports[0])).toContain("PI_EXTENSION_ARTIFACT_INVALID");
+            expect(errorMessages(reports[0])).toContain("PI_EXTENSION_BUILT_MODULE_INVALID");
             expect(compiler.compilations).toBe(before);
           }),
         ],
@@ -917,7 +915,7 @@ for (const invalid of [
     error: "PI_EXTENSION_BUILD_REQUIRED",
   },
   {
-    name: "missing artifact",
+    name: "missing built module",
     entries: ["./.build/missing.extension.json"],
     error: "PI_EXTENSION_BUILD_REQUIRED",
   },
@@ -928,7 +926,7 @@ for (const invalid of [
   },
   {
     name: "duplicate activation",
-    entries: [artifactPath, artifactPath],
+    entries: [outputPath, outputPath],
     error: "PI_EXTENSION_DUPLICATE_PATH",
   },
 ]) {
@@ -1200,10 +1198,10 @@ test("js.build validates CLI inputs and scoped modification authority before com
           const { bash } = await createInteractiveBashHost({ context });
           for (const command of [
             `js.build ${extensionPath}`,
-            `js.build ${extensionPath} --target pi-extension --out ${artifactPath}`,
-            `js.build ${extensionPath} --out ${artifactPath} --unknown flag`,
+            `js.build ${extensionPath} --target pi-extension --out ${outputPath}`,
+            `js.build ${extensionPath} --out ${outputPath} --unknown flag`,
             `js.build ${extensionPath} --out /static/escape.module.json`,
-            `js.build /workspace/other.js --out ${artifactPath}`,
+            `js.build /workspace/other.js --out ${outputPath}`,
           ]) {
             const result = await bash.exec(command);
             expect(result.exitCode, command).not.toBe(0);
@@ -1216,10 +1214,10 @@ test("js.build validates CLI inputs and scoped modification authority before com
           });
           const denied = await (
             await createInteractiveBashHost({ context: deniedContext })
-          ).bash.exec(`js.build ${extensionPath} --out ${artifactPath}`);
+          ).bash.exec(`js.build ${extensionPath} --out ${outputPath}`);
           expect(denied.exitCode).not.toBe(0);
           assert.equal(compiler.compilations, before);
-          assert.equal(await context.stateBackend.exists(artifactPath), false);
+          assert.equal(await context.stateBackend.exists(outputPath), false);
         }),
       ],
     }),

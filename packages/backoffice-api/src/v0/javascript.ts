@@ -35,21 +35,21 @@ const javaScriptBuildOutputSchema = z.lazy(() =>
     z.strictObject({
       status: z.literal("success"),
       path: z.string(),
-      artifactPath: z.string(),
+      outputPath: z.string(),
       runId: z.string(),
       warnings: z.array(z.string()),
     }),
     z.strictObject({
       status: z.literal("error"),
       path: z.string(),
-      artifactPath: z.string(),
+      outputPath: z.string(),
       runId: z.string(),
       error: z.string(),
     }),
     z.strictObject({
       status: z.literal("rejected"),
       path: z.string(),
-      artifactPath: z.string(),
+      outputPath: z.string(),
       error: z.string(),
     }),
   ]),
@@ -120,7 +120,7 @@ const javaScriptLogsOutputSchema = z.lazy(() =>
 export const javascriptOperations = {
   "js.build": {
     description:
-      "Compile a saved JavaScript ES module into a reusable JSON artifact under /workspace without executing or activating it. Consumers validate exports.",
+      "Compile a saved JavaScript ES module into a reusable built JSON module under /workspace without executing or activating it. Consumers validate exports.",
     permissions: [BACKOFFICE_PERMISSION.upload.read, BACKOFFICE_PERMISSION.upload.modify],
     input: javaScriptBuildInputSchema,
     output: javaScriptBuildOutputSchema,
@@ -142,7 +142,7 @@ export const javascriptOperations = {
   },
   "js.run": {
     description:
-      "Run top-level statements in a saved .js source file or a built .json module artifact under /static or /workspace. Ignores exports; artifacts run without compilation and startup errors are returned.",
+      "Run top-level statements in a saved .js source file or a built .json module under /static or /workspace. Ignores exports; built modules run without compilation and startup errors are returned.",
     permissions: [BACKOFFICE_PERMISSION.upload.read],
     input: javaScriptFileInputSchema,
     output: javaScriptRunOutputSchema,

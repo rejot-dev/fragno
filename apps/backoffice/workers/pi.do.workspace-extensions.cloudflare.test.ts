@@ -155,7 +155,7 @@ test("precompiled workspace extensions open concurrently and after restart witho
         nowEpochMs: Date.now,
       });
       try {
-        // Both requests share one harness; artifact loading and rendering cannot consult a compiler.
+        // Both requests share one harness; built module loading and rendering cannot consult a compiler.
         const views = await Promise.all([object.getView(config), object.getView(config)]);
         expect(views[0]).toEqual(views[1]);
         await object.dispatch(config, turn, {

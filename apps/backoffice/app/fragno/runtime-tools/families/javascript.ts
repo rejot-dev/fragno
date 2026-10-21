@@ -157,7 +157,7 @@ function formatJavaScriptBuildOutput(
     return { stderr: `${output.error}\n`, exitCode: 1 };
   }
   return {
-    stdout: `${output.artifactPath}\n`,
+    stdout: `${output.outputPath}\n`,
     stderr: output.warnings.length ? `${output.warnings.join("\n")}\n` : "",
   };
 }
@@ -173,14 +173,14 @@ const javaScriptBuildTool = defineBackofficeRuntimeTool({
       command: "js.build",
       help: {
         summary: "js.build bundles a JavaScript ES module without executing it.",
-        usage: "js.build <file> --out <artifact> [options]",
+        usage: "js.build <file> --out <module.json> [options]",
         options: [
           {
             name: "out",
             valueName: "path",
             required: true,
             valueRequired: true,
-            description: "Output JSON module artifact under /workspace.",
+            description: "Output built JSON module under /workspace.",
           },
         ],
         examples: [
@@ -263,8 +263,7 @@ const javaScriptRunTool = defineBackofficeRuntimeTool({
     bash: {
       command: "js.run",
       help: {
-        summary:
-          "js.run executes top-level statements in JavaScript source or a built module artifact.",
+        summary: "js.run executes top-level statements in JavaScript source or a built module.",
         usage: "js.run <file> [options]",
         options: [],
         examples: [
@@ -295,7 +294,7 @@ export const javaScriptCheckToolFamily = defineBackofficeRuntimeToolFamily({
     context.runtimes.javascript?.checkFile !== undefined,
 });
 
-/** Runtime tool family for executing JavaScript source and precompiled module artifacts. */
+/** Runtime tool family for executing JavaScript source and precompiled modules. */
 export const javaScriptRunToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "js",
   tools: [javaScriptRunTool],

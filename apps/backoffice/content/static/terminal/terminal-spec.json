@@ -3974,7 +3974,7 @@
   },
   {
     "command": "js.run",
-    "summary": "js.run executes top-level statements in JavaScript source or a built module artifact.",
+    "summary": "js.run executes top-level statements in JavaScript source or a built module.",
     "options": [
       {
         "name": "help",
@@ -4031,7 +4031,7 @@
         "valueName": "path",
         "required": true,
         "valueRequired": true,
-        "description": "Output JSON module artifact under /workspace."
+        "description": "Output built JSON module under /workspace."
       },
       {
         "name": "help",

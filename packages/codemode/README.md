@@ -49,7 +49,7 @@ invocation imports the module for top-level effects only and ignores all exports
 invocation receives its module namespace. The host generates a lightweight Worker entrypoint
 importing the bundled module, without a compiler or eval. Native module-global initialization
 restrictions remain in force; startup errors are execution failures, never a reason to recompile or
-rewrite user code. Different consumers can reuse the same artifact. Every execution supplies and
+rewrite user code. Different consumers can reuse the same built module. Every execution supplies and
 revokes its own capabilities. Precompiled bundle validation accepts only the host's fixed
 compatibility date and flags, enforces bundle limits, and requires the entry module to exist.
 Compilation services may be `null` when only precompiled execution is required.
@@ -58,8 +58,9 @@ Native Worker bundles can contain up to 32 MiB of source. Node execution also ha
 limit: compiled requests and module-build responses are measured with Cap'n Web serialization,
 including escaped source and metadata, with 64 KiB reserved for the RPC envelope and capabilities.
 Oversized requests fail before opening a connection; oversized build results return a normal failed
-completion with `CODEMODE_REMOTE_PAYLOAD_LIMIT_EXCEEDED`, preserving any previous saved artifact.
-Reduce the module or use a native Worker Loader for bundles that exceed the remote payload budget.
+completion with `CODEMODE_REMOTE_PAYLOAD_LIMIT_EXCEEDED`, preserving any previous saved built
+module. Reduce the module or use a native Worker Loader for bundles that exceed the remote payload
+budget.
 
 A workflow step is not a separate sandbox. One activation may execute several nested steps. When the
 host suspends for a checkpoint, sleep, event, or retry, a later runner tick starts a fresh

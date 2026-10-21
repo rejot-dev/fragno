@@ -2,11 +2,11 @@
 type JsCodemodeProvider = {
   /** Type check a standalone JavaScript file under /static or /workspace against static declarations. */
   check(input: JsCheckInput): Promise<JsCheckOutput>;
-  /** Run top-level statements in a saved .js source file or a built .json module artifact under /static or /workspace. Ignores exports; artifacts run without compilation and startup errors are returned. */
+  /** Run top-level statements in a saved .js source file or a built .json module under /static or /workspace. Ignores exports; built modules run without compilation and startup errors are returned. */
   run(input: JsRunInput): Promise<JsRunOutput>;
   /** Show the console logs and outcome of a codemode run in the current scope, by run ID. Readable only with at least the authority the run had: same principal, no extra delegation, no narrower scope restriction. Codemode run events carry run IDs; runs are kept for 7 days. */
   logs(input: JsLogsInput): Promise<JsLogsOutput>;
-  /** Compile a saved JavaScript ES module into a reusable JSON artifact under /workspace without executing or activating it. Consumers validate exports. */
+  /** Compile a saved JavaScript ES module into a reusable built JSON module under /workspace without executing or activating it. Consumers validate exports. */
   build(input: JsBuildInput): Promise<JsBuildOutput>;
 };
 declare const js: JsCodemodeProvider;
@@ -90,20 +90,20 @@ type JsBuildOutput =
   | {
       status: "success";
       path: string;
-      artifactPath: string;
+      outputPath: string;
       runId: string;
       warnings: string[];
     }
   | {
       status: "error";
       path: string;
-      artifactPath: string;
+      outputPath: string;
       runId: string;
       error: string;
     }
   | {
       status: "rejected";
       path: string;
-      artifactPath: string;
+      outputPath: string;
       error: string;
     };

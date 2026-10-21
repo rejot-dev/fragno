@@ -239,9 +239,9 @@ data directory.
 ## Workspace extensions
 
 Workspace extensions load with the authority of the turn being admitted, and again whenever the
-manifest or a listed artifact's size or modification time changed since the last load. A turn keeps
-the extensions it started with. After a restart, an agent with a recorded turn reloads them before
-resuming work.
+manifest or a listed built module's size or modification time changed since the last load. A turn
+keeps the extensions it started with. After a restart, an agent with a recorded turn reloads them
+before resuming work.
 
 ## Backoffice execution
 

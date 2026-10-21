@@ -1,12 +1,12 @@
 import { CODEMODE_LIMITS } from "@fragno-dev/codemode/codemode-limits";
 
 import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
+import {
+  builtJavaScriptModuleSchema,
+  resolveBuiltJavaScriptModulePath,
+} from "@/fragno/codemode/built-javascript-module";
 import type { CodemodeRunner } from "@/fragno/codemode/codemode-object-execute";
 import { buildBackofficeJavaScriptModule } from "@/fragno/codemode/compiled-module-execute";
-import {
-  javaScriptModuleArtifactSchema,
-  resolveJavaScriptModuleArtifactPath,
-} from "@/fragno/codemode/javascript-module-artifact";
 import { readSavedModuleImports } from "@/fragno/codemode/saved-module-imports";
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 import type { JavaScriptBuildFileOutput } from "@/fragno/runtime-tools/families/javascript-runtime";
@@ -15,7 +15,7 @@ import { dependencies } from "../../../../package.json";
 
 /**
  * Builds one saved ES module without running it; a failed compilation preserves the previous
- * artifact. Throws when the input is refused before a build run is recorded.
+ * built module. Throws when the input is refused before a build run is recorded.
  */
 export async function buildJavaScriptModuleFile(input: {
   path: string;
@@ -44,7 +44,7 @@ export async function buildJavaScriptModuleFile(input: {
   if (!input.out.startsWith("/")) {
     throw new Error("JAVASCRIPT_BUILD_INVALID_OUTPUT_PATH: build output must be absolute.");
   }
-  const artifactPath = resolveJavaScriptModuleArtifactPath(input.out, input.state, "/workspace");
+  const outputPath = resolveBuiltJavaScriptModulePath(input.out, input.state, "/workspace");
   const source = await input.state.stat(path);
   if (source?.type !== "file") {
     throw new BackofficeOperationError("not_found", `JAVASCRIPT_BUILD_SOURCE_MISSING: ${path}`);
@@ -64,27 +64,27 @@ export async function buildJavaScriptModuleFile(input: {
   });
   const { runId } = built;
   if (built.status === "error") {
-    return { status: "error", path, artifactPath, runId, error: built.error };
+    return { status: "error", path, outputPath, runId, error: built.error };
   }
-  const artifact = JSON.stringify({
-    format: javaScriptModuleArtifactSchema.shape.format.value,
+  const builtModule = JSON.stringify({
+    format: builtJavaScriptModuleSchema.shape.format.value,
     bundle: built.bundle,
   });
-  if (new TextEncoder().encode(artifact).byteLength > CODEMODE_LIMITS.maxBundleBytes) {
+  if (new TextEncoder().encode(builtModule).byteLength > CODEMODE_LIMITS.maxBundleBytes) {
     return {
       status: "error",
       path,
-      artifactPath,
+      outputPath,
       runId,
-      error: "JAVASCRIPT_BUILD_ARTIFACT_TOO_LARGE",
+      error: "JAVASCRIPT_BUILD_OUTPUT_TOO_LARGE",
     };
   }
   try {
     // Upload publishes a complete file revision atomically; consumers never see partial build output.
-    await input.state.writeFile(artifactPath, artifact);
+    await input.state.writeFile(outputPath, builtModule);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return { status: "error", path, artifactPath, runId, error: message };
+    return { status: "error", path, outputPath, runId, error: message };
   }
-  return { status: "success", path, artifactPath, runId, warnings: built.warnings };
+  return { status: "success", path, outputPath, runId, warnings: built.warnings };
 }

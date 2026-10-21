@@ -4,13 +4,13 @@ import { z } from "zod";
 import type { BackofficeStateBackend } from "./state-backend";
 
 /** A compiled JavaScript module stores code only; consumers own export contracts and capabilities. */
-export const javaScriptModuleArtifactSchema = z.strictObject({
+export const builtJavaScriptModuleSchema = z.strictObject({
   format: z.literal("fragno-javascript-module/v1"),
   bundle: codemodeWorkerBundleSchema,
 });
 
 /** Build outputs and activation references stay inside the current workspace, regardless of consumer. */
-export function resolveJavaScriptModuleArtifactPath(
+export function resolveBuiltJavaScriptModulePath(
   path: string,
   state: Pick<BackofficeStateBackend, "resolvePath">,
   basePath: string,

@@ -298,7 +298,7 @@ describe("createJavaScriptRuntime", () => {
       status: "rejected",
       path: "/workspace/scripts/example.js",
       error:
-        "JavaScript run cannot install packages (helper); compile with js.build and run the artifact.",
+        "JavaScript run cannot install packages (helper); compile with js.build and run the built module.",
     });
     expect(executeModule).not.toHaveBeenCalled();
   });

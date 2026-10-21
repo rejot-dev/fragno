@@ -3,7 +3,7 @@ import { z } from "zod";
 import { CODEMODE_LIMITS } from "../codemode-limits";
 import { createWorkerBundle } from "../compiler/worker-bundle";
 
-/** Compiled guests use a host-owned runtime contract, never artifact-selected compatibility flags. */
+/** Compiled guests use a host-owned runtime contract, never bundle-selected compatibility flags. */
 export const CODEMODE_WORKER_RUNTIME = {
   compatibilityDate: "2026-05-07",
   compatibilityFlags: ["nodejs_compat"],

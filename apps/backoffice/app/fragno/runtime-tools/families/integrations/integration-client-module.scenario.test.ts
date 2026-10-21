@@ -199,7 +199,7 @@ console.log(Object.keys(tools).join(","));`,
             },
           ),
           then.assert(
-            "saved modules import the client relatively, as source and as a built artifact",
+            "saved modules import the client relatively, as source and as a built module",
             async (ctx) => {
               const bash = await terminal(ctx);
               const source = await bash.exec("js.run /workspace/scripts/echo.js --format json");
@@ -208,16 +208,16 @@ console.log(Object.keys(tools).join(","));`,
                 status: "success",
                 logs: [{ channel: "log", text: "saved" }],
               });
-              // Artifact initialization cannot call tools, so the build only proves the client is bundled.
+              // Built module initialization cannot call tools, so the build only proves the client is bundled.
               const built = await bash.exec(
                 "js.build /workspace/scripts/exports.js --out /workspace/.build/exports.module.json",
               );
               assert.equal(built.exitCode, 0, built.stderr);
-              const artifact = await bash.exec(
+              const build = await bash.exec(
                 "js.run /workspace/.build/exports.module.json --format json",
               );
-              assert.equal(artifact.exitCode, 0, artifact.stdout);
-              expect(JSON.parse(artifact.stdout)).toMatchObject({
+              assert.equal(build.exitCode, 0, build.stdout);
+              expect(JSON.parse(build.stdout)).toMatchObject({
                 status: "success",
                 logs: [{ channel: "log", text: "echo,legacy,refuse" }],
               });

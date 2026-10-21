@@ -1,7 +1,7 @@
 ---
 name: javascript-runtime
 description: >
-  Use js.check, js.build, and js.run to check saved JavaScript, compile reusable module artifacts,
+  Use js.check, js.build, and js.run to check saved JavaScript, compile reusable built modules,
   execute source or bundles, diagnose build or startup errors, and review past runs' outcomes and
   logs with js.logs. Load when a task uses the js.* runtime; Pi workspace extension authoring also
   uses the pi-extensions skill.
@@ -22,11 +22,11 @@ that blocker rather than guessing a replacement API.
 
 Choose the operation:
 
-| Operation                 | Input                                     | Purpose                                                                             |
-| ------------------------- | ----------------------------------------- | ----------------------------------------------------------------------------------- |
-| `js.check({ path })`      | `.js` source                              | Type-check it and its imports against the static declarations; does not execute.    |
-| `js.build({ path, out })` | `.js` source and workspace `.json` output | Compile an ES module into a reusable artifact; does not execute or inspect exports. |
-| `js.run({ path })`        | `.js` source or a built `.json` artifact  | Execute top-level statements; ignore named and default exports.                     |
+| Operation                 | Input                                     | Purpose                                                                                 |
+| ------------------------- | ----------------------------------------- | --------------------------------------------------------------------------------------- |
+| `js.check({ path })`      | `.js` source                              | Type-check it and its imports against the static declarations; does not execute.        |
+| `js.build({ path, out })` | `.js` source and workspace `.json` output | Compile an ES module into a reusable built module; does not execute or inspect exports. |
+| `js.run({ path })`        | `.js` source or a built `.json` module    | Execute top-level statements; ignore named and default exports.                         |
 
 For durable steps, retries, sleeps, or external events, read `/static/skills/workflows/SKILL.md` and
 use the workflow runtime. Saved `.workflow.js` files start through `workflow.createInstance`, not
@@ -90,7 +90,8 @@ branch because it imports the SDK.
 
 ## 3. Build a reusable module when needed
 
-Use a build when an artifact must run without a compiler or another consumer needs module exports:
+Use a build when a built module must run without a compiler or another consumer needs module
+exports:
 
 ```bash
 js.build /workspace/scripts/example.js --out /workspace/.build/example.module.json
@@ -111,17 +112,17 @@ async () => {
   conventions, not required locations or suffixes. Use direct paths without `..` traversal.
 - Builds bundle the source with the saved modules it imports and the installed, pinned
   `@earendil-works/pi-durable` dependency; other npm dependencies are outside this build contract.
-  The artifact captures imported modules as they were at build time: rebuild after editing one.
-- The generic `fragno-javascript-module/v1` artifact contains code, not Pi metadata, capability
+  The built module captures imported modules as they were at build time: rebuild after editing one.
+- The generic `fragno-javascript-module/v1` module contains code, not Pi metadata, capability
   grants, or a consumer-specific invocation wrapper. Use `js.build` without a target option.
 - Build neither initializes the module nor activates an extension. A successful build can still fail
   at startup or fail a consumer's export validation.
-- Review `warnings`. Failed compilation preserves the previous output: an older artifact still
+- Review `warnings`. Failed compilation preserves the previous output: an older built module still
   existing is not evidence that the latest source built successfully.
 
 Checking and running require `upload.read`; building also requires `upload.modify` and an available
-compiler. **Complete when** the build returns `status: "success"` with the intended `artifactPath`,
-or its exact error is reported. Preserve the returned path for execution or consumer activation.
+compiler. **Complete when** the build returns `status: "success"` with the intended `outputPath`, or
+its exact error is reported. Preserve the returned path for execution or consumer activation.
 
 ## 4. Run and inspect
 
@@ -155,35 +156,36 @@ and log truncation. `at` is epoch milliseconds from the run's clock, which only 
 awaited I/O: rely on array order, not timestamps, to sequence lines. Bash text output prints `text`,
 prefixed with `[channel]` for every channel except `log`.
 
-Artifact execution validates the bundle, imports its `mainModule` and bundled dependencies in a
+Built module execution validates the bundle, imports its `mainModule` and bundled dependencies in a
 fresh isolated Worker, and ignores exports. It uses captured code, so source deletion or editing
-does not change an existing artifact. Rebuild after source edits. Each run starts with fresh module
-state and fresh authorized capabilities; artifacts need no compiler or dependency installation. Node
-execution additionally checks the Cap'n Web serialized payload against its RPC frame budget,
-including escaped source and metadata. `CODEMODE_REMOTE_PAYLOAD_LIMIT_EXCEEDED` means the module
-must be reduced or executed with a native Worker Loader; an oversized remote build fails before
-publishing a new artifact.
+does not change an existing built module. Rebuild after source edits. Each run starts with fresh
+module state and fresh authorized capabilities; built modules need no compiler or dependency
+installation. Node execution additionally checks the Cap'n Web serialized payload against its RPC
+frame budget, including escaped source and metadata. `CODEMODE_REMOTE_PAYLOAD_LIMIT_EXCEEDED` means
+the module must be reduced or executed with a native Worker Loader; an oversized remote build fails
+before publishing a new built module.
 
 Native module initialization can fail on asynchronous I/O, including top-level network or tool
 calls. Let the error surface; keep initialization pure and use immediate codemode or a consumer's
-callback for request-time I/O. There is no rewrite or source-compilation fallback after an artifact
-failure. Malformed or incompatible artifacts should be rebuilt with the available runtime, not
-hand-edited to bypass validation. A transport interruption leaves effects already performed with an
-unknown outcome; inspect state and the run history below before repeating effectful work.
+callback for request-time I/O. There is no rewrite or source-compilation fallback after a built
+module failure. Malformed or incompatible built modules should be rebuilt with the available
+runtime, not hand-edited to bypass validation. A transport interruption leaves effects already
+performed with an unknown outcome; inspect state and the run history below before repeating
+effectful work.
 
 ### Run history
 
 Every build and run, like immediate codemode, is recorded as a run in the current scope and emits
 `codemode` events: `run.started`, then `run.completed` or `run.failed`.
 
-| Field                                     | Contents                                                                                |
-| ----------------------------------------- | --------------------------------------------------------------------------------------- |
-| `subject.runId`                           | Links a run's started and outcome events                                                |
-| `payload.activationKind`                  | `module-build` (`js.build`), `module` (`js.run` source), `compiled` (`js.run` artifact) |
-| `payload.origin`                          | `{ kind: "file", path }` for saved files; `{ kind: "inline" }` for immediate code       |
-| `payload.startedAt`, `payload.finishedAt` | Run timing; `finishedAt` is on outcome events only                                      |
-| `payload.error`                           | Why a `run.failed` run failed                                                           |
-| `actors`                                  | Whoever started the run                                                                 |
+| Field                                     | Contents                                                                                    |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `subject.runId`                           | Links a run's started and outcome events                                                    |
+| `payload.activationKind`                  | `module-build` (`js.build`), `module` (`js.run` source), `compiled` (`js.run` built module) |
+| `payload.origin`                          | `{ kind: "file", path }` for saved files; `{ kind: "inline" }` for immediate code           |
+| `payload.startedAt`, `payload.finishedAt` | Run timing; `finishedAt` is on outcome events only                                          |
+| `payload.error`                           | Why a `run.failed` run failed                                                               |
+| `actors`                                  | Whoever started the run                                                                     |
 
 To review runs you did not just start, use `events.list({ limit: 50 })` (newest first; requires
 `events.read`) and match `source === "codemode"` and `payload.origin.path` locally;
@@ -206,5 +208,5 @@ Otherwise `js.logs` fails with `CODEMODE_RUN_FORBIDDEN`. Runs are kept for 7 day
 fails with `CODEMODE_RUN_NOT_FOUND`, while its events remain.
 
 **Complete only when** the observed run succeeds and its expected logs or authorized effects are
-verified, or the observed failure and blocking requirement are reported. Running a Pi artifact
+verified, or the observed failure and blocking requirement are reported. Running a Pi built module
 initializes it but does not invoke sections or prove Pi activation.
