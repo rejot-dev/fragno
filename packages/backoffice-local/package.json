@@ -10,6 +10,10 @@
     ".": {
       "types": "./dist/backoffice-local.d.ts",
       "default": "./dist/backoffice-local.js"
+    },
+    "./dev-server-port": {
+      "types": "./dist/backoffice-dev-server-port.d.ts",
+      "default": "./dist/backoffice-dev-server-port.js"
     }
   },
   "scripts": {

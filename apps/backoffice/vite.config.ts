@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import { reactRouter } from "@react-router/dev/vite";
+import { backofficeDevServerPort } from "@rejot-dev/backoffice-local/dev-server-port";
 import { defineConfig } from "vite";
 import type { Plugin } from "vite";
 import devtoolsJson from "vite-plugin-devtools-json";
@@ -47,6 +48,8 @@ function emitWorkerLocalDevVarsPlugin(): Plugin {
 
 export default defineConfig(({ command }) => {
   const isDevServer = command === "serve";
+  // Only serving needs a port; builds must not depend on running inside a git checkout.
+  const port = isDevServer ? backofficeDevServerPort(__dirname) : undefined;
 
   return {
     define: {
@@ -101,13 +104,13 @@ export default defineConfig(({ command }) => {
       : undefined,
     preview: {
       host: localViteHost,
-      port: 5173,
+      port,
       strictPort: true,
       allowedHosts: [".trycloudflare.com", "local-wilco.recivo.email"],
     },
     server: {
       host: localViteHost,
-      port: 5173,
+      port,
       strictPort: true,
       hmr: false,
       allowedHosts: ["local-wilco.recivo.email"],

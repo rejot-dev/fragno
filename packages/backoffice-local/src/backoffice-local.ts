@@ -17,6 +17,7 @@ import {
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { FRAGNO_OUTBOX_PAGE_SIZE } from "@fragno-dev/db/outbox";
 
+import { backofficeDevServerPorts } from "./backoffice-dev-server-port.js";
 import {
   fetchBackofficeWithoutRedirect,
   resolveSameOriginBackofficeEndpoint,
@@ -103,7 +104,6 @@ function responseMessage(body: unknown): string {
   }
   return typeof body === "string" ? body : JSON.stringify(body);
 }
-const ports = [5173, 5174, 5175, 5176, 5177, 5178, 5179, 5180];
 const configuredBaseUrl = process.env["BACKOFFICE_URL"]?.replace(/\/$/, "") ?? null;
 const authFile = resolveBackofficeAuthFile();
 const oauthDeviceCodeGrantType = "urn:ietf:params:oauth:grant-type:device_code";
@@ -280,7 +280,7 @@ function isBackofficeHealthResponse(status: number, body: unknown): boolean {
 
 export async function findBackofficeServers(): Promise<BackofficeServerCandidate[]> {
   const candidates = [];
-  for (const port of ports) {
+  for (const port of backofficeDevServerPorts(process.cwd())) {
     const baseUrl = resolveSecureBackofficeBaseUrl(`http://localhost:${port}`);
     try {
       const response = await fetchBackofficeWithoutRedirect(`${baseUrl}/api/auth/ok`, {});
@@ -289,7 +289,7 @@ export async function findBackofficeServers(): Promise<BackofficeServerCandidate
         candidates.push({ baseUrl });
       }
     } catch {
-      // Try the next Vite port.
+      // Try the next worktree's port.
     }
   }
   return candidates;
@@ -330,7 +330,9 @@ export async function probeBackofficeServer({
 
   const candidates = await findBackofficeServers();
   if (candidates.length === 0) {
-    throw new Error("No Backoffice dev server found on ports 5173-5180.");
+    throw new Error(
+      `No Backoffice dev server found on ports ${backofficeDevServerPorts(process.cwd()).join(", ")}.`,
+    );
   }
 
   warnForMultipleBackofficeServers(candidates);

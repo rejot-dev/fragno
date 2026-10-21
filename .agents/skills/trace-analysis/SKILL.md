@@ -13,8 +13,9 @@ or proposing a fix.
 
 ## 1. Establish the evidence boundary
 
-Backoffice normally runs on `http://localhost:5173`; Vite may choose `5174` or another port. Probe
-the running server rather than starting a second one.
+Backoffice runs on `http://localhost:5173` in the main worktree; linked worktrees use a fixed port
+derived from their folder name, which the dev server prints on startup. Probe the running server
+rather than starting a second one.
 
 The read-only SQL endpoint is normally:
 

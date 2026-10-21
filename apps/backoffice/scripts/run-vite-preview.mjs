@@ -8,7 +8,7 @@ const enableSourceMaps = process.argv.includes(enableSourceMapsFlag);
 const previewArgs = process.argv
   .slice(2)
   .filter((argument) => argument !== enableContainersFlag && argument !== enableSourceMapsFlag);
-const previewCommand = ["vite", "preview", "--strictPort=false", ...previewArgs];
+const previewCommand = ["vite", "preview", ...previewArgs];
 // The bridge Worker hosts the Sandbox containers that the object Worker binds to.
 const containerWorkerConfigUrl = new URL(
   "../dist/cf_sandbox_bridge/wrangler.json",
