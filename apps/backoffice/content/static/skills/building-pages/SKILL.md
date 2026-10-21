@@ -57,50 +57,107 @@ module that reads them.
 
 ```js
 export default page.define(
-  ({ collections, from, and, eq, gte, coalesce, count, max, bucket, now }) => {
+  ({
+    collections,
+    from,
+    many,
+    eq,
+    gte,
+    coalesce,
+    count,
+    sum,
+    max,
+    caseWhen,
+    intervals,
+    bucket,
+    now,
+  }) => {
     const day = now.minus("24 hours");
-    const runs = collections.workflowInstances;
+    const hours = intervals({ every: "1 hour", since: day });
+
+    // One row per run with the name people know it by, read below as a source.
+    const runs = from({ run: collections.workflowInstances }).select(({ run }) => ({
+      id: run.id,
+      workflow: coalesce(run.remoteWorkflowName, run.workflowName),
+      workflowName: run.workflowName,
+      instanceId: run.instanceId,
+      status: run.status,
+      createdAt: run.createdAt,
+      updatedAt: run.updatedAt,
+    }));
+
+    const workflows = from({ run: runs })
+      .groupBy(({ run }) => run.workflow)
+      .select(({ run }) => ({
+        workflow: run.workflow,
+        started: count(run.id),
+        errored: sum(caseWhen(eq(run.status, "errored"), 1, 0)),
+        last: max(run.updatedAt),
+      }));
+
+    const health = from({ workflow: workflows })
+      .orderBy(({ workflow }) => workflow.last, "desc")
+      .select(({ workflow }) => ({
+        workflow: workflow.workflow,
+        errored: workflow.errored,
+        latest: many(
+          from({ run: runs })
+            .where(({ run }) => eq(run.workflow, workflow.workflow))
+            .orderBy(({ run }) => run.updatedAt, "desc")
+            .limit(1)
+            .select(({ run }) => ({
+              workflowName: run.workflowName,
+              instanceId: run.instanceId,
+              status: run.status,
+              tone: caseWhen(
+                eq(run.status, "errored"),
+                "failed",
+                eq(run.status, "complete"),
+                "live",
+                "waiting",
+              ),
+              updatedAt: run.updatedAt,
+            })),
+        ),
+        hourly: many(
+          from({ run: runs })
+            .where(({ run }) => eq(run.workflow, workflow.workflow))
+            .where(({ run }) => gte(run.createdAt, day))
+            .groupBy(({ run }) => bucket(run.createdAt, hours))
+            .select(({ run }) => ({ hour: bucket(run.createdAt, hours), runs: count(run.id) })),
+        ),
+      }));
 
     const started = from({ run: runs })
       .where(({ run }) => gte(run.createdAt, day))
       .select(({ run }) => ({ total: count(run.id) }));
 
-    const failing = from({ run: runs })
-      .where(({ run }) => and(eq(run.status, "errored"), gte(run.createdAt, day)))
-      .groupBy(({ run }) => coalesce(run.remoteWorkflowName, run.workflowName))
-      .select(({ run }) => ({
-        workflow: coalesce(run.remoteWorkflowName, run.workflowName),
-        errored: count(run.id),
-        last: max(run.createdAt),
-      }))
-      .orderBy(({ run }) => count(run.id), "desc");
-
-    const hours = { every: "1 hour", since: day };
-    const hourly = from({ run: runs })
-      .where(({ run }) => gte(run.createdAt, day))
-      .groupBy(({ run }) => bucket(run.createdAt, hours))
-      .select(({ run }) => ({ hour: bucket(run.createdAt, hours), runs: count(run.id) }))
-      .orderBy(({ run }) => bucket(run.createdAt, hours), "asc");
-
     return ui.stack({ gap: "md" }, [
-      ui.metric({ label: "Runs today", value: started.value("total", "0") }),
-      ui.table({
-        caption: "Failing workflows",
-        columns: [
-          { key: "workflow", label: "Workflow" },
-          { key: "errored", label: "Errored", align: "end" },
-          { key: "last", label: "Last failure" },
-        ],
-        rows: failing,
-      }),
-      ui.table({
-        caption: "Runs per hour",
-        columns: [
-          { key: "hour", label: "Hour" },
-          { key: "runs", label: "Runs", align: "end" },
-        ],
-        rows: hourly,
-      }),
+      ui.metric({ label: "Runs today", value: started.value("total", 0) }),
+      ui.stack(
+        { gap: "sm" },
+        ui.each(health, (row) =>
+          ui.grid({ columns: 4, gap: "sm" }, [
+            ui.link({
+              label: row.workflow,
+              to: {
+                kind: "run",
+                workflowName: row.latest[0].workflowName,
+                instanceId: row.latest[0].instanceId,
+              },
+            }),
+            ui.sparkBars({
+              label: "Starts per hour",
+              rows: row.hourly,
+              axis: { field: "hour", intervals: hours },
+              value: "runs",
+            }),
+            ui.badge({ label: row.latest[0].status, tone: row.latest[0].tone }),
+            ui.relativeTime({ time: row.latest[0].updatedAt }),
+            ui.when(ui.is(row.errored, { gt: 0 }), ui.text({ text: "Has errored runs" })),
+          ]),
+        ),
+      ),
     ]);
   },
 );
@@ -112,29 +169,54 @@ each callback, as above; a helper function that takes a source's fields needs a 
 
 ## Queries
 
-- `from({ alias: collections.name })` starts a query. `join` keeps matching rows and `leftJoin`
-  keeps every row; both match with `eq(field, field)`, such as `eq(run.id, step.instanceRef)`.
+- `from({ alias: source })` starts a query; a source is a collection or another query. `join` keeps
+  matching rows and `leftJoin` keeps every row; both match with `eq(field, field)`, such as
+  `eq(run.id, step.instanceRef)`.
 - `where`, `groupBy`, `having`, `select`, `orderBy`, and `limit` follow TanStack DB. Call `orderBy`
   again for ties; `limit` needs an `orderBy`.
 - Joined and grouped queries `select` the fields they show.
 - `count`, `sum`, `avg`, `min`, and `max` belong in `select`, `having`, and `orderBy`. Count a
   condition with `sum(caseWhen(eq(run.status, "errored"), 1, 0))`.
+- `many(query)` is a `select` field holding the rows of `query` for each selecting row; the query's
+  callbacks read the selecting row's fields, such as `workflow.workflow` above, and use their own
+  aliases. A grouped query cannot select `many`: group in a query, then read it with `from`, as
+  `health` reads `workflows`.
+- `unionAll(a, b, ...)` lists the rows of queries that select the same fields under distinct
+  aliases, such as waiting and errored runs. Order or limit it by reading it with `from`.
 - Times are relative to `now`, such as `now.minus("7 days")`; the page moves `now` every minute.
-- `bucket(time, { every, since })` groups times into intervals; repeat it in `groupBy`, `select`,
-  and `orderBy` with one shared options object.
+- `intervals({ every, since })` names consecutive intervals; `bucket(time, intervals)` labels each
+  time with its interval's start. Repeat the bucket in `groupBy`, `select`, and `orderBy`, and pass
+  the same intervals to a chart's `axis` so intervals without rows show.
 - JSON fields read nested values by property, such as `route.trigger.kind`.
+- `caseWhen` with a default keeps its literal values, so it can choose a tone, as `tone` does above.
 
 ## Binding results
 
-- A query goes in a prop that shows rows, such as `ui.table` `rows`. Every value arrives as text:
-  times as ISO 8601, JSON as JSON, and null as an empty cell. Without `select`, a row carries every
-  field of its collection, and the table's columns choose which to show.
-- `query.value(field, whenEmpty)` goes in a text prop, such as `ui.metric` `value`. It shows the
-  field of the first row, or `whenEmpty` while the query has no rows; an aggregate over no rows has
-  no row, so give counts `"0"`.
+- Values keep their types; times arrive as ISO 8601 strings. Each component checks its props as it
+  renders and, when a value does not fit, shows what is wrong in its place.
+- A query goes in a prop that shows rows, such as `ui.table` `rows` or a chart's `rows`. Without
+  `select`, a row carries every field of its collection, and a table's columns choose which to show.
+- `ui.each(query, (row) => element)` is the children of `ui.stack`, `ui.grid`, or `ui.section`: one
+  element per row. `row.field` reads a field, and `row.latest[0].status` reads into nested rows. A
+  nested `ui.each(row.hourly, ...)` reads only its own rows.
+- `ui.when(ui.is(row.errored, { gt: 0 }), element)` shows an element while a live value matches.
+- `query.value(field, whenEmpty)` goes in a single-value prop, such as `ui.metric` `value`. It holds
+  the field of the first row, or `whenEmpty` while the query has no rows; an aggregate over no rows
+  has no row, so give counts `0`.
+
+## Components for live data
+
+- `ui.link({ label, to })` opens a run (`{ kind: "run", workflowName, instanceId }`, where
+  `workflowName` is the run's internal name), a route (`{ kind: "route", id }`), or a connection
+  (`{ kind: "connection", id }`) in the page's scope.
+- `ui.relativeTime({ time })` shows "3m ago" or "in 2h" and moves with the page.
+- `ui.sparkBars` and `ui.barChart` take `rows`, an `axis` naming the field along it, and the `value`
+  field to size bars by; `ui.barChart` also stacks by a `series` field.
+- `ui.badge({ label, tone })` shows a status light.
 
 ## Supported today
 
-Pages show tables and metrics over the synchronized collections. When the user asks for charts,
-links to runs, relative times such as "3 minutes ago", forms, or data the collections do not hold,
-build the closest tables and metrics and tell them which part pages cannot express yet.
+Pages show the synchronized collections. When the user asks for forms, data the collections do not
+hold, or Backoffice's own judgments, such as what a waiting run waits for, whether it awaits input,
+or a connection's current state, build the closest page and tell them which part pages cannot
+express yet.

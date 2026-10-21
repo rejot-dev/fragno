@@ -138,7 +138,7 @@ describe("parseBackofficeUiResult", () => {
     );
   });
 
-  test.each(["on", "watch", "repeat"])(
+  test.each(["on", "watch"])(
     "rejects unsupported element field %s instead of silently stripping it",
     (field) => {
       expectInvalidResult(
@@ -270,7 +270,7 @@ describe("parseBackofficeUiResult", () => {
           elements: {
             metric: {
               type: "Metric",
-              props: { label: "Orders", value: 24 },
+              props: { label: "Orders", value: true },
               children: [],
             },
           },

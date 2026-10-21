@@ -306,7 +306,7 @@ describe("Pi execCodeMode tool", () => {
               elements: {
                 report: { type: "Stack", props: { gap: "md" }, children: ["grid"] },
                 grid: { type: "Grid", props: { columns: 6, gap: "md" }, children: ["metric"] },
-                metric: { type: "Metric", props: { label: "Orders", value: 2 }, children: [] },
+                metric: { type: "Metric", props: { label: 2, value: "Orders" }, children: [] },
               },
             },
           },
@@ -320,7 +320,7 @@ describe("Pi execCodeMode tool", () => {
     const content = result.output[0];
     assert(content?.type === "text");
     expect(content.text).toContain(
-      'Generated UI is invalid: Element "grid" has invalid props for Grid: columns: expected one of 1|2|3|4. Element "metric" has invalid props for Metric: value: Invalid input: expected string, received number.',
+      'Generated UI is invalid: Element "grid" has invalid props for Grid: columns: expected one of 1|2|3|4. Element "metric" has invalid props for Metric: label: Invalid input: expected string, received number.',
     );
   });
 

@@ -3,6 +3,7 @@ import { schema } from "@json-render/react/schema";
 import { defineCatalog, type Spec } from "@json-render/core";
 
 import { badgeDefinition } from "./components/badge";
+import { barChartDefinition } from "./components/bar-chart";
 import { calloutDefinition } from "./components/callout";
 import { checkboxDefinition } from "./components/checkbox";
 import { codeDefinition } from "./components/code";
@@ -12,11 +13,14 @@ import { gridDefinition } from "./components/grid";
 import { headingDefinition } from "./components/heading";
 import { imageDefinition } from "./components/image";
 import { keyValueDefinition } from "./components/key-value";
+import { linkDefinition } from "./components/link";
 import { listDefinition } from "./components/list";
 import { metricDefinition } from "./components/metric";
 import { progressDefinition } from "./components/progress";
+import { relativeTimeDefinition } from "./components/relative-time";
 import { sectionDefinition } from "./components/section";
 import { selectDefinition } from "./components/select";
+import { sparkBarsDefinition } from "./components/spark-bars";
 import { stackDefinition } from "./components/stack";
 import { tableDefinition } from "./components/table";
 import { textDefinition } from "./components/text";
@@ -36,10 +40,14 @@ export const backofficeUiComponentDefinitions = {
   Callout: calloutDefinition,
   Metric: metricDefinition,
   Badge: badgeDefinition,
+  Link: linkDefinition,
+  RelativeTime: relativeTimeDefinition,
   KeyValue: keyValueDefinition,
   List: listDefinition,
   Table: tableDefinition,
   Progress: progressDefinition,
+  SparkBars: sparkBarsDefinition,
+  BarChart: barChartDefinition,
   TextInput: textInputDefinition,
   TextArea: textAreaDefinition,
   Select: selectDefinition,

@@ -132,6 +132,19 @@ const componentDemoInputs: ComponentDemoInput[] = [
     props: { label: "Live", tone: "live" },
   },
   {
+    component: "Link",
+    category: "Data",
+    props: {
+      label: "Latest run",
+      to: { kind: "run", workflowName: "ship-order", instanceId: "run-42" },
+    },
+  },
+  {
+    component: "RelativeTime",
+    category: "Data",
+    props: { time: "2026-10-21T10:00:00.000Z" },
+  },
+  {
     component: "KeyValue",
     category: "Data",
     props: {
@@ -188,6 +201,35 @@ const componentDemoInputs: ComponentDemoInput[] = [
       value: 72,
       detail: "72 of 100 events",
       tone: "info",
+    },
+  },
+  {
+    component: "SparkBars",
+    category: "Data",
+    props: {
+      label: "Runs per hour",
+      rows: [
+        { hour: "09:00", runs: 3 },
+        { hour: "10:00", runs: 0 },
+        { hour: "11:00", runs: 5 },
+      ],
+      axis: { field: "hour" },
+      value: "runs",
+    },
+  },
+  {
+    component: "BarChart",
+    category: "Data",
+    props: {
+      label: "Events per source",
+      rows: [
+        { hour: "09:00", source: "shop", events: 4 },
+        { hour: "09:00", source: "github", events: 2 },
+        { hour: "10:00", source: "shop", events: 6 },
+      ],
+      axis: { field: "hour" },
+      value: "events",
+      series: "source",
     },
   },
   {

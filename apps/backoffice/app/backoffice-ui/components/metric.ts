@@ -5,7 +5,7 @@ import { backofficeUiToneSchema } from "./tone";
 export const metricDefinition = {
   props: z.strictObject({
     label: z.string().min(1).max(120),
-    value: z.string().max(240),
+    value: z.union([z.string().max(240), z.number()]),
     detail: z.string().max(240).optional(),
     tone: backofficeUiToneSchema.optional(),
   }),

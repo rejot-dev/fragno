@@ -2,6 +2,7 @@ import type { AnyColumn, AnyTable } from "@fragno-dev/db/schema";
 import { workflowsSchema } from "@fragno-dev/workflows/schema";
 
 import type { BackofficeUiSpec } from "@/backoffice-ui/catalog";
+import { INTERVAL_LIMITS } from "@/backoffice-ui/components/intervals";
 import { parseBackofficeUiResult } from "@/backoffice-ui/result";
 import { automationFragmentSchema } from "@/fragno/automation/schema";
 import type { AutomationCollections } from "@/fragno/automation/tanstack/collections";
@@ -26,9 +27,12 @@ export type PageCollection = keyof typeof PAGE_COLLECTIONS;
 export const PAGE_LIMITS = {
   queries: 16,
   values: 32,
+  /** Every query a bound query is made of: itself, its subqueries, nested rows, and branches. */
+  queryParts: 16,
+  unionBranches: 8,
   rowsPerQuery: 100,
-  buckets: 60,
-  minimumBucketMs: 60_000,
+  buckets: INTERVAL_LIMITS.count,
+  minimumBucketMs: INTERVAL_LIMITS.minimumMs,
   expressionDepth: 32,
   listItems: 100,
 } as const;
@@ -107,7 +111,7 @@ export const PAGE_QUERY_AGGREGATES = ["count", "sum", "avg", "min", "max"] as co
 
 export type PageQueryAggregate = (typeof PAGE_QUERY_AGGREGATES)[number];
 
-type Literal = string | number | boolean | null;
+export type PageLiteral = string | number | boolean | null;
 
 /**
  * A query expression. Times are relative to the moment the page renders: `now` is an offset
@@ -116,32 +120,46 @@ type Literal = string | number | boolean | null;
  */
 export type PageExpression =
   | { ref: [alias: string, field: string, ...path: string[]] }
-  | { value: Literal | Literal[] }
+  | { value: PageLiteral | PageLiteral[] }
   | { now: number }
   | { fn: PageQueryFunction; args: PageExpression[] }
   | { aggregate: PageQueryAggregate; arg: PageExpression }
   | { bucket: PageExpression; every: number; since: number };
 
-export type PageQuerySource = { alias: string; collection: PageCollection };
+/** A selected field: an expression, or the rows of a query correlated with the selecting row. */
+export type PageSelection = PageExpression | { many: PageQuery };
 
-/** A live query in TanStack DB's shape; every clause applies in the order TanStack applies it. */
-export type PageQuery = {
-  from: PageQuerySource;
-  joins: {
-    type: "inner" | "left";
-    source: PageQuerySource;
-    on: [PageExpression, PageExpression];
-  }[];
-  where: PageExpression[];
-  groupBy: PageExpression[];
-  having: PageExpression[];
-  select: Record<string, PageExpression> | null;
-  orderBy: { expression: PageExpression; direction: "asc" | "desc" }[];
-  limit: number | null;
-};
+type PageSelectQuery = Extract<PageQuery, { kind: "select" }>;
 
-/** One field of a query's first row, shown as text, such as a count for a metric. */
-export type PageValue = { query: string; field: string; whenEmpty: string };
+/** What a query reads: a synchronized collection, or another query's rows. */
+export type PageQuerySource =
+  | { alias: string; collection: PageCollection }
+  | { alias: string; query: PageQuery };
+
+/**
+ * A live query in TanStack DB's shape; every clause applies in the order TanStack applies it. A
+ * union's branches select the same fields.
+ */
+export type PageQuery =
+  | {
+      kind: "select";
+      from: PageQuerySource;
+      joins: {
+        type: "inner" | "left";
+        source: PageQuerySource;
+        on: [PageExpression, PageExpression];
+      }[];
+      where: PageExpression[];
+      groupBy: PageExpression[];
+      having: PageExpression[];
+      select: Record<string, PageSelection> | null;
+      orderBy: { expression: PageExpression; direction: "asc" | "desc" }[];
+      limit: number | null;
+    }
+  | { kind: "union"; branches: PageQuery[] };
+
+/** One field of a query's first row, such as a count for a metric. */
+export type PageValue = { query: string; field: string; whenEmpty: PageLiteral };
 
 /** A built page: named live queries and values, and the interface bound to them. */
 export type PageDefinition = {
@@ -165,10 +183,13 @@ export function pageDataPath(query: string): string {
   return `/data/${query}`;
 }
 
-/** Where a value's text lives in the interface's state, e.g. `{ "$state": "/values/v0" }`. */
+/** Where a value lives in the interface's state, e.g. `{ "$state": "/values/v0" }`. */
 export function pageValuePath(value: string): string {
   return `/values/${value}`;
 }
+
+/** Builds of an older version fail validation, so the system rebuilds them from source. */
+export const PAGE_DEFINITION_VERSION = 2;
 
 /** Validates what `page.define` returned, or what a cached build holds. */
 export function parsePageDefinition(json: unknown): PageParseResult {
@@ -176,8 +197,8 @@ export function parsePageDefinition(json: unknown): PageParseResult {
   let spec: unknown;
   try {
     const file = readObject(json, "", ["version", "queries", "values", "spec"]);
-    if (file.version !== 1) {
-      fail("version", "Expected 1.");
+    if (file.version !== PAGE_DEFINITION_VERSION) {
+      fail("version", `Expected ${PAGE_DEFINITION_VERSION}.`);
     }
     page = readPage(file.queries, file.values);
     spec = file.spec;
@@ -260,11 +281,24 @@ function readString(value: unknown, path: string) {
   return value;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/** A field of a query's rows; JSON fields read nested values by property. */
+type QueryField = { name: string; json: boolean };
+
+/** What each alias an expression may read names, and the fields it carries. */
+type Sources = ReadonlyMap<string, { label: string; fields: QueryField[] }>;
+
+/** Counts the parts of one bound query, so nesting cannot multiply the work a page asks for. */
+type QueryBudget = { parts: number };
+
 function readPage(queries: unknown, values: unknown): Omit<PageDefinition, "spec"> {
   const parsedQueries = Object.fromEntries(
     readRecord(queries, "queries", PAGE_LIMITS.queries).map(([name, query]) => [
       name,
-      readQuery(query, `queries.${name}`),
+      readQuery(query, `queries.${name}`, new Map(), { parts: 0 }),
     ]),
   );
   const parsedValues = Object.fromEntries(
@@ -273,7 +307,9 @@ function readPage(queries: unknown, values: unknown): Omit<PageDefinition, "spec
       const record = readObject(value, path, ["query", "field", "whenEmpty"]);
       const query = readString(record.query, `${path}.query`);
       const field = readString(record.field, `${path}.field`);
-      const fields = parsedQueries[query] ? queryFieldNames(parsedQueries[query]) : null;
+      const fields = Object.hasOwn(parsedQueries, query)
+        ? parsedQueries[query].fields.map(({ name: fieldName }) => fieldName)
+        : null;
       if (!fields) {
         fail(`${path}.query`, `"${query}" is not a query of this page.`);
       }
@@ -283,27 +319,103 @@ function readPage(queries: unknown, values: unknown): Omit<PageDefinition, "spec
           `Query ${query} has no "${field}" field. Fields: ${fields.join(", ")}.`,
         );
       }
-      return [name, { query, field, whenEmpty: readString(record.whenEmpty, `${path}.whenEmpty`) }];
+      const whenEmpty = readLiteral(record.whenEmpty, `${path}.whenEmpty`);
+      return [name, { query, field, whenEmpty }];
     }),
   );
-  return { queries: parsedQueries, values: parsedValues };
-}
-
-/** The fields of a query's rows: its selection, or its single collection's fields. */
-function queryFieldNames(query: PageQuery): string[] {
-  return query.select
-    ? Object.keys(query.select)
-    : pageFields(query.from.collection).map(({ name }) => name);
+  return {
+    queries: Object.fromEntries(
+      Object.entries(parsedQueries).map(([name, { query }]) => [name, query]),
+    ),
+    values: parsedValues,
+  };
 }
 
 /** Which clause an expression sits in decides whether aggregates may appear in it. */
 type ExpressionContext = {
-  sources: Map<string, PageCollection>;
+  sources: Sources;
   aggregates: "allowed" | "forbidden";
 };
 
-function readQuery(value: unknown, path: string): PageQuery {
+/**
+ * Reads a query and the fields its rows carry. `outer` holds the aliases of the rows a nested
+ * query is correlated with; a query's own aliases may not shadow them.
+ */
+function readQuery(
+  value: unknown,
+  path: string,
+  outer: Sources,
+  budget: QueryBudget,
+): { query: PageQuery; fields: QueryField[] } {
+  budget.parts += 1;
+  if (budget.parts > PAGE_LIMITS.queryParts) {
+    fail(
+      path,
+      `A query is made of at most ${PAGE_LIMITS.queryParts} queries, counting subqueries, many, and union branches.`,
+    );
+  }
+  if (isRecord(value) && value.kind === "union") {
+    return readUnion(value, path, outer, budget);
+  }
+  return readSelectQuery(value, path, outer, budget);
+}
+
+function readUnion(
+  value: Record<string, unknown>,
+  path: string,
+  outer: Sources,
+  budget: QueryBudget,
+): { query: PageQuery; fields: QueryField[] } {
+  const record = readObject(value, path, ["kind", "branches"]);
+  const branches = readArray(record.branches, `${path}.branches`);
+  if (branches.length < 2 || branches.length > PAGE_LIMITS.unionBranches) {
+    fail(`${path}.branches`, `A union has 2-${PAGE_LIMITS.unionBranches} branches.`);
+  }
+  const read = branches.map((branch, index) =>
+    readQuery(branch, `${path}.branches.${index}`, outer, budget),
+  );
+  // TanStack names a union's rows by its branches' aliases, so they must differ.
+  const aliases = read.flatMap(({ query }) => queryAliases(query));
+  const repeated = aliases.find((alias, index) => aliases.indexOf(alias) !== index);
+  if (repeated) {
+    fail(
+      `${path}.branches`,
+      `"${repeated}" names a source of more than one branch; use distinct aliases.`,
+    );
+  }
+  const names = (fields: QueryField[]) => fields.map(({ name }) => name).sort();
+  const [first, ...rest] = read;
+  for (const [index, branch] of rest.entries()) {
+    if (names(branch.fields).join() !== names(first.fields).join()) {
+      fail(
+        `${path}.branches.${index + 1}`,
+        `A union's branches select the same fields: ${names(first.fields).join(", ")}; this branch selects ${names(branch.fields).join(", ")}.`,
+      );
+    }
+  }
+  return {
+    query: { kind: "union", branches: read.map(({ query }) => query) },
+    fields: first.fields.map(({ name, json }) => ({
+      name,
+      json: json && rest.every(({ fields }) => fields.some((f) => f.name === name && f.json)),
+    })),
+  };
+}
+
+function queryAliases(query: PageQuery): string[] {
+  return query.kind === "union"
+    ? query.branches.flatMap(queryAliases)
+    : [query.from.alias, ...query.joins.map(({ source }) => source.alias)];
+}
+
+function readSelectQuery(
+  value: unknown,
+  path: string,
+  outer: Sources,
+  budget: QueryBudget,
+): { query: PageQuery; fields: QueryField[] } {
   const query = readObject(value, path, [
+    "kind",
     "from",
     "joins",
     "where",
@@ -313,17 +425,20 @@ function readQuery(value: unknown, path: string): PageQuery {
     "orderBy",
     "limit",
   ]);
-  const sources = new Map<string, PageCollection>();
-  const from = readSource(query.from, `${path}.from`, sources);
+  if (query.kind !== "select") {
+    fail(`${path}.kind`, 'Expected "select" or "union".');
+  }
+  const sources = new Map(outer);
+  const from = readSource(query.from, `${path}.from`, sources, budget);
   const joins = readArray(query.joins, `${path}.joins`).map(
-    (join, index): PageQuery["joins"][number] => {
+    (join, index): PageSelectQuery["joins"][number] => {
       const joinPath = `${path}.joins.${index}`;
       const record = readObject(join, joinPath, ["type", "source", "on"]);
       const { type } = record;
       if (type !== "inner" && type !== "left") {
         fail(`${joinPath}.type`, 'Expected "inner" or "left".');
       }
-      const source = readSource(record.source, `${joinPath}.source`, sources);
+      const source = readSource(record.source, `${joinPath}.source`, sources, budget);
       const on = readArray(record.on, `${joinPath}.on`);
       if (on.length !== 2) {
         fail(`${joinPath}.on`, "Expected the two fields a join matches.");
@@ -336,11 +451,7 @@ function readQuery(value: unknown, path: string): PageQuery {
         }
         return expression;
       });
-      return {
-        type,
-        source,
-        on: [left, right] as [PageExpression, PageExpression],
-      };
+      return { type, source, on: [left, right] as [PageExpression, PageExpression] };
     },
   );
 
@@ -353,17 +464,21 @@ function readQuery(value: unknown, path: string): PageQuery {
   const where = expressions("where", plain);
   const groupBy = expressions("groupBy", plain);
   const having = expressions("having", aggregated);
-  const select =
+  const selected =
     query.select === null
       ? null
-      : Object.fromEntries(
-          readRecord(query.select, `${path}.select`, 64).map(([name, expression]) => [
-            name,
-            readExpression(expression, `${path}.select.${name}`, aggregated, 0),
-          ]),
-        );
+      : readRecord(query.select, `${path}.select`, 64).map(([name, selection]) => {
+          const selectionPath = `${path}.select.${name}`;
+          if (isRecord(selection) && Object.hasOwn(selection, "many")) {
+            const record = readObject(selection, selectionPath, ["many"]);
+            const nested = readQuery(record.many, `${selectionPath}.many`, sources, budget);
+            return { name, selection: { many: nested.query }, json: false };
+          }
+          const expression = readExpression(selection, selectionPath, aggregated, 0);
+          return { name, selection: expression, json: readsJson(expression, sources) };
+        });
   const orderBy = readArray(query.orderBy, `${path}.orderBy`).map(
-    (entry, index): PageQuery["orderBy"][number] => {
+    (entry, index): PageSelectQuery["orderBy"][number] => {
       const entryPath = `${path}.orderBy.${index}`;
       const record = readObject(entry, entryPath, ["expression", "direction"]);
       const { direction } = record;
@@ -390,38 +505,78 @@ function readQuery(value: unknown, path: string): PageQuery {
     fail(`${path}.limit`, "A limit needs an orderBy, so the rows it keeps are deterministic.");
   }
   // TanStack nests joined rows by alias and labels grouped rows by internal keys without a selection.
-  if (select === null && joins.length > 0) {
+  if (selected === null && joins.length > 0) {
     fail(`${path}.select`, "A query with joins selects the fields it shows.");
   }
   const grouped =
-    groupBy.length > 0 || having.length > 0 || Object.values(select ?? {}).some(containsAggregate);
-  if (select === null && grouped) {
+    groupBy.length > 0 ||
+    having.length > 0 ||
+    (selected ?? []).some(
+      ({ selection }) => !("many" in selection) && containsAggregate(selection),
+    );
+  if (selected === null && grouped) {
     fail(`${path}.select`, "A grouped query selects its group fields and aggregates.");
   }
+  // TanStack rejects nested rows beside aggregates, but reads them from a grouped subquery's rows.
+  const many = grouped ? selected?.find(({ selection }) => "many" in selection) : undefined;
+  if (many) {
+    fail(
+      `${path}.select.${many.name}`,
+      "A grouped query cannot select many(...); group in a subquery and select from its rows, such as from({ workflow: grouped }).",
+    );
+  }
   return {
-    from,
-    joins,
-    where,
-    groupBy,
-    having,
-    select,
-    orderBy,
-    limit: limit as number | null,
+    query: {
+      kind: "select",
+      from,
+      joins,
+      where,
+      groupBy,
+      having,
+      select: selected
+        ? Object.fromEntries(selected.map(({ name, selection }) => [name, selection]))
+        : null,
+      orderBy,
+      limit: limit as number | null,
+    },
+    fields: selected
+      ? selected.map(({ name, json }) => ({ name, json }))
+      : sources.get(from.alias)!.fields,
   };
+}
+
+/** Whether a selected expression carries a JSON value, whose nested fields later queries read. */
+function readsJson(expression: PageExpression, sources: Sources): boolean {
+  if (!("ref" in expression)) {
+    return false;
+  }
+  const [alias, field, ...nested] = expression.ref;
+  return (
+    nested.length > 0 ||
+    (sources.get(alias)?.fields.some(({ name, json }) => name === field && json) ?? false)
+  );
 }
 
 function readSource(
   value: unknown,
   path: string,
-  sources: Map<string, PageCollection>,
+  sources: Map<string, { label: string; fields: QueryField[] }>,
+  budget: QueryBudget,
 ): PageQuerySource {
-  const record = readObject(value, path, ["alias", "collection"]);
+  const subquery = isRecord(value) && Object.hasOwn(value, "query");
+  const record = readObject(value, path, ["alias", subquery ? "query" : "collection"]);
   const alias = readString(record.alias, `${path}.alias`);
   if (!NAME_PATTERN.test(alias)) {
     fail(`${path}.alias`, "Start with a letter and use letters, digits, and _.");
   }
   if (sources.has(alias)) {
-    fail(`${path}.alias`, `"${alias}" already names a source of this query.`);
+    fail(`${path}.alias`, `"${alias}" already names a source of this query or the rows around it.`);
+  }
+  if (subquery) {
+    // A source's rows do not depend on the row around it, so it reads none of the outer aliases.
+    const { query, fields } = readQuery(record.query, `${path}.query`, new Map(), budget);
+    sources.set(alias, { label: `The query under ${alias}`, fields });
+    return { alias, query };
   }
   const collection = readString(record.collection, `${path}.collection`);
   if (!Object.hasOwn(PAGE_COLLECTIONS, collection)) {
@@ -430,11 +585,15 @@ function readSource(
       `"${collection}" is not a page collection. Use one of: ${Object.keys(PAGE_COLLECTIONS).join(", ")}.`,
     );
   }
-  sources.set(alias, collection as PageCollection);
+  const fields = pageFields(collection as PageCollection).map(({ name, type }) => ({
+    name,
+    json: type === "json",
+  }));
+  sources.set(alias, { label: collection, fields });
   return { alias, collection: collection as PageCollection };
 }
 
-function readLiteral(value: unknown, path: string): Literal {
+function readLiteral(value: unknown, path: string): PageLiteral {
   if (
     value === null ||
     typeof value === "string" ||
@@ -455,11 +614,11 @@ function readExpression(
   if (depth > PAGE_LIMITS.expressionDepth) {
     fail(path, `Expressions nest at most ${PAGE_LIMITS.expressionDepth} deep.`);
   }
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+  if (!isRecord(value)) {
     fail(path, "Expected an expression object.");
   }
   const kind = Object.keys(value).find((key) =>
-    ["ref", "value", "now", "fn", "aggregate", "bucket"].includes(key),
+    ["ref", "value", "now", "fn", "aggregate", "bucket", "many"].includes(key),
   );
   switch (kind) {
     case "ref": {
@@ -468,22 +627,21 @@ function readExpression(
         readString(segment, `${path}.ref.${index}`),
       );
       const [alias, field, ...nested] = ref;
-      const collection = alias === undefined ? undefined : context.sources.get(alias);
-      if (!collection || field === undefined) {
+      const source = alias === undefined ? undefined : context.sources.get(alias);
+      if (!source || field === undefined) {
         fail(
           `${path}.ref`,
           `Expected [alias, field] with an alias of this query: ${[...context.sources.keys()].join(", ")}.`,
         );
       }
-      const fields = pageFields(collection);
-      const column = fields.find(({ name }) => name === field);
+      const column = source.fields.find(({ name }) => name === field);
       if (!column) {
         fail(
           `${path}.ref`,
-          `${collection} has no "${field}" field. Fields: ${fields.map(({ name }) => name).join(", ")}.`,
+          `${source.label} has no "${field}" field. Fields: ${source.fields.map(({ name }) => name).join(", ")}.`,
         );
       }
-      if (nested.length > 0 && column.type !== "json") {
+      if (nested.length > 0 && !column.json) {
         fail(`${path}.ref`, `${alias}.${field} is not JSON, so it has no nested fields.`);
       }
       return { ref: [alias, field, ...nested] };
@@ -574,6 +732,8 @@ function readExpression(
         since,
       };
     }
+    case "many":
+      return fail(path, "many(...) is a whole select field, not part of an expression.");
     case undefined:
     default:
       return fail(path, "Expected one of ref, value, now, fn, aggregate, or bucket.");
@@ -593,34 +753,40 @@ function containsAggregate(expression: PageExpression): boolean {
   return false;
 }
 
-/** `$state` reads in the spec that point at a missing query or value. */
+/** State paths the spec reads, in props, conditions, and repeats, that name no query or value. */
 function unboundStatePaths(
   spec: BackofficeUiSpec,
   { queries, values }: Omit<PageDefinition, "spec">,
 ): string[] {
   const unbound = new Set<string>();
+  const check = (path: string) => {
+    const [, root, name] = path.split("/");
+    const known =
+      (root === "data" && name !== undefined && Object.hasOwn(queries, name)) ||
+      (root === "values" && name !== undefined && Object.hasOwn(values, name));
+    if (!known) {
+      unbound.add(path);
+    }
+  };
   const visit = (value: unknown) => {
     if (Array.isArray(value)) {
       value.forEach(visit);
       return;
     }
-    if (value === null || typeof value !== "object") {
+    if (!isRecord(value)) {
       return;
     }
-    const record = value as Record<string, unknown>;
-    if (typeof record.$state === "string") {
-      const [, root, name] = record.$state.split("/");
-      const known =
-        (root === "data" && name !== undefined && Object.hasOwn(queries, name)) ||
-        (root === "values" && name !== undefined && Object.hasOwn(values, name));
-      if (!known) {
-        unbound.add(record.$state);
-      }
+    if (typeof value.$state === "string") {
+      check(value.$state);
     }
-    Object.values(record).forEach(visit);
+    Object.values(value).forEach(visit);
   };
-  Object.values(spec.elements).forEach((element) => {
+  for (const element of Object.values(spec.elements)) {
     visit(element.props);
-  });
+    visit(element.visible);
+    if (typeof element.repeat?.statePath === "string") {
+      check(element.repeat.statePath);
+    }
+  }
   return [...unbound];
 }

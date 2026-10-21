@@ -11,11 +11,9 @@ describe("Backoffice UI builder declaration generation", () => {
     expect(declarations).toContain("declare const ui: {");
     expect(declarations).not.toContain("object[]");
     expect(declarations).toContain("detail?: string;");
-    expect(declarations).toContain("[key: string]: string;");
+    expect(declarations).toContain("[key: string]: unknown;");
     expect(declarations).toMatch(/\/\*\* 1-200 characters \*\/\s+title: string;/u);
-    expect(declarations).toMatch(
-      /\/\*\* at most 64 items; each item's values at most 2000 characters \*\/\s+rows: \{/u,
-    );
+    expect(declarations).toMatch(/\/\*\* at most 64 items \*\/\s+rows: \{/u);
 
     expect(componentNames).toEqual([
       "Stack",
@@ -29,10 +27,14 @@ describe("Backoffice UI builder declaration generation", () => {
       "Callout",
       "Metric",
       "Badge",
+      "Link",
+      "RelativeTime",
       "KeyValue",
       "List",
       "Table",
       "Progress",
+      "SparkBars",
+      "BarChart",
       "TextInput",
       "TextArea",
       "Select",

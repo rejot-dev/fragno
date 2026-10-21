@@ -530,7 +530,7 @@ test("a step returning an invalid generated UI fails without spending its retrie
             spec: {
               root: "metric",
               elements: {
-                metric: { type: "Metric", props: { label: "Orders", value: 24 }, children: [] },
+                metric: { type: "Metric", props: { label: 2, value: "Orders" }, children: [] },
               },
             },
           },
@@ -546,7 +546,7 @@ test("a step returning an invalid generated UI fails without spending its retrie
     ),
   );
   const message =
-    'Step "show report" returned an invalid generated UI: Element "metric" has invalid props for Metric: value: Invalid input: expected string, received number.';
+    'Step "show report" returned an invalid generated UI: Element "metric" has invalid props for Metric: label: Invalid input: expected string, received number.';
   await runScenario(
     defineScenario({
       name: "invalid step UI is a terminal step error",
