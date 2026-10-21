@@ -15,6 +15,7 @@ import { FragnoTableCollection } from "./fragno-table-collection";
 /** Owns the table collections registered against one Fragno outbox coordinator. */
 export class FragnoCollectionRegistry<TSchemas extends readonly AnySchema[]> {
   readonly #schemas: Set<AnySchema>;
+  readonly #databaseKey: string;
   readonly #persistence: PersistedCollectionPersistence;
   readonly #schemaVersion: number;
   readonly #outbox: FragnoOutboxSynchronizer;
@@ -22,11 +23,13 @@ export class FragnoCollectionRegistry<TSchemas extends readonly AnySchema[]> {
 
   constructor(options: {
     schemas: TSchemas;
+    databaseKey: string;
     persistence: PersistedCollectionPersistence;
     schemaVersion: number;
     outbox: FragnoOutboxSynchronizer;
   }) {
     this.#schemas = validateSchemas(options.schemas);
+    this.#databaseKey = options.databaseKey;
     this.#persistence = options.persistence;
     this.#schemaVersion = options.schemaVersion;
     this.#outbox = options.outbox;
@@ -67,7 +70,7 @@ export class FragnoCollectionRegistry<TSchemas extends readonly AnySchema[]> {
     }
 
     const tableCollection = new FragnoTableCollection({
-      id: fragnoTableCollectionId(namespace, tableName),
+      id: fragnoTableCollectionId(this.#databaseKey, targetKey),
       idColumnName: table.getIdColumn().name,
       persistence: this.#persistence,
       schemaVersion: this.#schemaVersion,
@@ -147,6 +150,8 @@ function validateSchemas(schemas: readonly AnySchema[]): Set<AnySchema> {
   return suppliedSchemas;
 }
 
-function fragnoTableCollectionId(namespace: string, tableName: string): string {
-  return `fragno.outbox.table.v1:${fragnoOutboxTargetKey(namespace, tableName)}`;
+// Coordinators for different sources register the same tables, and TanStack identifies live-query
+// sources by collection ID, so the ID names the coordinator's local database as well as the table.
+function fragnoTableCollectionId(databaseKey: string, targetKey: string): string {
+  return `fragno.outbox.table.v2:${databaseKey}:${targetKey}`;
 }

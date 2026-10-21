@@ -146,8 +146,7 @@ export async function withFromScratchTestScenario<
       if (!activePersistence?.adapter.scanRows) {
         throw new Error("The test persistence adapter cannot scan rows.");
       }
-      const namespace = options.schema.name.replaceAll("-", "_");
-      const collectionId = `fragno.outbox.table.v1:${namespace.length}:${namespace}${options.table.length}:${options.table}`;
+      const collectionId = frontend.collection.id;
       const persistence = activePersistence.resolvePersistenceForCollection!({
         collectionId,
         mode: "sync-present",

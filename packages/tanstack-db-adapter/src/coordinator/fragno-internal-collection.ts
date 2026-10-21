@@ -11,7 +11,6 @@ import {
 
 import type { FragnoOutboxCheckpoint } from "../checkpoint";
 
-export const FRAGNO_INTERNAL_COLLECTION_ID = "fragno.outbox.internal.v1";
 export const FRAGNO_INTERNAL_STATUS_ID = "coordinator" as const;
 export const FRAGNO_INTERNAL_CHECKPOINT_METADATA_KEY = "fragno.outbox.checkpoint.v1";
 const FRAGNO_INTERNAL_FLUSH_MARKER_METADATA_KEY = "fragno.outbox.flush-marker.v1";
@@ -52,13 +51,17 @@ export class FragnoInternalCollection {
   #status: FragnoInternalRow;
 
   constructor(options: {
+    databaseKey: string;
     persistence: PersistedCollectionPersistence;
     schemaVersion?: number;
     state?: FragnoOutboxCoordinatorState;
   }) {
+    // Every coordinator has the same internal table, and TanStack identifies live-query sources
+    // by collection ID, so the ID names this coordinator's local database.
+    const id = `fragno.outbox.internal.v2:${options.databaseKey}`;
     const persistence = resolveCollectionPersistence(
       options.persistence,
-      FRAGNO_INTERNAL_COLLECTION_ID,
+      id,
       options.schemaVersion,
     );
     this.#status = {
@@ -70,7 +73,7 @@ export class FragnoInternalCollection {
 
     this.collection = createCollection(
       persistedCollectionOptions<FragnoInternalRow, string>({
-        id: FRAGNO_INTERNAL_COLLECTION_ID,
+        id,
         getKey: (row) => row.id,
         persistence,
         schemaVersion: options.schemaVersion,

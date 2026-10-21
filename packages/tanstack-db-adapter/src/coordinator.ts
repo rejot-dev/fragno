@@ -186,7 +186,8 @@ export async function createFragnoOutboxCoordinator<const TSchemas extends reado
   // OPFSCoopSyncVFS fails to open filenames above 56 characters in some Electron/Chromium
   // runtimes. A 128-bit hash keeps this deterministic and collision-resistant within that limit.
   // The v3 prefix leaves behind databases created with the temporary single-process wiring.
-  const databaseName = `fragno-v3-${databaseHash.slice(0, 32)}.sqlite`;
+  const databaseKey = databaseHash.slice(0, 32);
+  const databaseName = `fragno-v3-${databaseKey}.sqlite`;
 
   const persistenceResource = await openFragnoBrowserPersistenceWithDiagnostics({
     databaseName,
@@ -204,6 +205,7 @@ export async function createFragnoOutboxCoordinator<const TSchemas extends reado
   try {
     // Load the one exact outbox checkpoint stored for this database.
     internalCollection = new FragnoInternalCollection({
+      databaseKey,
       persistence,
       schemaVersion: FRAGNO_OUTBOX_LOCAL_SCHEMA_VERSION,
       state,
@@ -231,6 +233,7 @@ export async function createFragnoOutboxCoordinator<const TSchemas extends reado
     });
     collectionRegistry = new FragnoCollectionRegistry({
       schemas: options.schemas,
+      databaseKey,
       persistence,
       schemaVersion: FRAGNO_OUTBOX_LOCAL_SCHEMA_VERSION,
       outbox: outboxSynchronizer,

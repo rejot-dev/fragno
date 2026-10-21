@@ -10,14 +10,13 @@ import {
 
 import {
   FRAGNO_INTERNAL_CHECKPOINT_METADATA_KEY,
-  FRAGNO_INTERNAL_COLLECTION_ID,
   FRAGNO_INTERNAL_STATUS_ID,
   FragnoInternalCollection,
 } from "./fragno-internal-collection";
 import { orderFragnoPersistenceWrites } from "./fragno-ordered-persistence";
 
 async function openInternalCollection(persistence: PersistedCollectionPersistence) {
-  const collection = new FragnoInternalCollection({ persistence });
+  const collection = new FragnoInternalCollection({ databaseKey: "test-database", persistence });
   await collection.preload();
   return collection;
 }
@@ -112,9 +111,7 @@ describe("FragnoInternalCollection", () => {
         error: null,
       });
       expect(
-        await persistence.adapter.loadCollectionMetadata?.(
-          eagerStorageTarget(FRAGNO_INTERNAL_COLLECTION_ID),
-        ),
+        await persistence.adapter.loadCollectionMetadata?.(eagerStorageTarget(first.collection.id)),
       ).toContainEqual({
         key: FRAGNO_INTERNAL_CHECKPOINT_METADATA_KEY,
         value: { versionstamp: "0000000000000002", uowId: "uow-2" },
@@ -156,7 +153,7 @@ describe("FragnoInternalCollection", () => {
       await deferredWrite.writeStarted;
 
       const metadataBeforePersistence = await persistence.adapter.loadCollectionMetadata?.(
-        eagerStorageTarget(FRAGNO_INTERNAL_COLLECTION_ID),
+        eagerStorageTarget(internal.collection.id),
       );
       expect(metadataBeforePersistence).not.toContainEqual({
         key: FRAGNO_INTERNAL_CHECKPOINT_METADATA_KEY,
@@ -169,7 +166,7 @@ describe("FragnoInternalCollection", () => {
       await deferredWrite.writeFinished;
 
       const metadataAfterPersistence = await persistence.adapter.loadCollectionMetadata?.(
-        eagerStorageTarget(FRAGNO_INTERNAL_COLLECTION_ID),
+        eagerStorageTarget(internal.collection.id),
       );
       expect(metadataAfterPersistence).toContainEqual({
         key: FRAGNO_INTERNAL_CHECKPOINT_METADATA_KEY,

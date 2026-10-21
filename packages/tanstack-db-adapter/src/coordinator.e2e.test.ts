@@ -167,7 +167,10 @@ function delayPersistenceWrites(
   return wrapPersistence(persistence);
 }
 
-function readDurableCheckpoint(databasePath: string): FragnoOutboxCheckpoint | null {
+function readDurableCheckpoint(
+  databasePath: string,
+  internalCollectionId: string,
+): FragnoOutboxCheckpoint | null {
   const database = new Database(databasePath, { readonly: true });
   try {
     const row = database
@@ -176,9 +179,7 @@ function readDurableCheckpoint(databasePath: string): FragnoOutboxCheckpoint | n
            FROM collection_metadata
           WHERE collection_id = ? AND key = ?`,
       )
-      .get("fragno.outbox.internal.v1", "fragno.outbox.checkpoint.v1") as
-      | { value: string }
-      | undefined;
+      .get(internalCollectionId, "fragno.outbox.checkpoint.v1") as { value: string } | undefined;
     return row ? (JSON.parse(row.value) as FragnoOutboxCheckpoint) : null;
   } finally {
     database.close();
@@ -364,6 +365,38 @@ describe("Fragno TanStack adapter from scratch end-to-end", () => {
     }
   });
 
+  it("gives each source's coordinator its own collection IDs", async () => {
+    // TanStack derives live-query identity from source collection IDs, so a mounted hook that
+    // switches between sources must see different IDs for the same table.
+    const firstServer = await createTestServer("first-source");
+    const secondServer = await createTestServer("second-source");
+
+    try {
+      const first = await createFragnoOutboxCoordinator(
+        { baseUrl: firstServer.baseUrl, fetch: firstServer.fetch, schemas: [appSchema] },
+        nodePersistenceDependencies,
+      );
+      const second = await createFragnoOutboxCoordinator(
+        { baseUrl: secondServer.baseUrl, fetch: secondServer.fetch, schemas: [appSchema] },
+        nodePersistenceDependencies,
+      );
+
+      try {
+        assert.notEqual(
+          first.collection(appSchema, "users").id,
+          second.collection(appSchema, "users").id,
+        );
+        assert.notEqual(first.internal.collection.id, second.internal.collection.id);
+      } finally {
+        await first.cleanup();
+        await second.cleanup();
+      }
+    } finally {
+      await firstServer.cleanup();
+      await secondServer.cleanup();
+    }
+  });
+
   it("reports delayed startup before synchronizing route-backed state into SQLite", async () => {
     const server = await createTestServer("delayed-persistence-startup");
     const temporaryDirectory = await mkdtemp(join(tmpdir(), "fragno-delayed-startup-"));
@@ -418,7 +451,7 @@ describe("Fragno TanStack adapter from scratch end-to-end", () => {
           { id: "user-1", name: "Ada" },
           { id: "user-2", name: "Grace" },
         ]);
-        assert.ok(readDurableCheckpoint(databasePath));
+        assert.ok(readDurableCheckpoint(databasePath, coordinator.internal.collection.id));
       } finally {
         await coordinator.cleanup();
         coordinatorCleaned = true;
@@ -592,7 +625,9 @@ describe("Fragno TanStack adapter from scratch end-to-end", () => {
             { id: "user-2", name: "Grace" },
           ]);
           await second.flushPersistence();
-          expect(readDurableCheckpoint(databasePath)).toEqual(checkpoint);
+          expect(readDurableCheckpoint(databasePath, second.internal.collection.id)).toEqual(
+            checkpoint,
+          );
         } finally {
           await second.cleanup();
         }
@@ -634,11 +669,15 @@ describe("Fragno TanStack adapter from scratch end-to-end", () => {
         const liveCheckpoint = coordinator.internal.getCheckpoint();
         assert.ok(liveCheckpoint);
 
-        expect(readDurableCheckpoint(databasePath)).not.toEqual(liveCheckpoint);
+        expect(readDurableCheckpoint(databasePath, coordinator.internal.collection.id)).not.toEqual(
+          liveCheckpoint,
+        );
 
         await coordinator.flushPersistence();
 
-        expect(readDurableCheckpoint(databasePath)).toEqual(liveCheckpoint);
+        expect(readDurableCheckpoint(databasePath, coordinator.internal.collection.id)).toEqual(
+          liveCheckpoint,
+        );
       } finally {
         await coordinator.cleanup();
       }

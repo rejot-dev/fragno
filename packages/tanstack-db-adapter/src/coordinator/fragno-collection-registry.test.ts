@@ -39,6 +39,7 @@ describe("FragnoCollectionRegistry", () => {
     const outbox = createOutboxSynchronizer();
     const registry = new FragnoCollectionRegistry({
       schemas: [blogSchema] as const,
+      databaseKey: "test-database",
       persistence,
       schemaVersion: 1,
       outbox,
@@ -49,7 +50,7 @@ describe("FragnoCollectionRegistry", () => {
     });
 
     try {
-      assert.equal(users.id, "fragno.outbox.table.v1:4:blog5:users");
+      assert.equal(users.id, "fragno.outbox.table.v2:test-database:4:blog5:users");
       assert.equal(users.config.sync.rowUpdateMode, "full");
       assert.equal(registry.registerCollection(blogSchema, "users", "live"), users);
       expect(() => registry.registerCollection(blogSchema, "posts", "registering")).toThrow(
@@ -76,6 +77,7 @@ describe("FragnoCollectionRegistry", () => {
         () =>
           new FragnoCollectionRegistry({
             schemas: [blogSchema, duplicateSchema] as const,
+            databaseKey: "test-database",
             persistence,
             schemaVersion: 1,
             outbox,
