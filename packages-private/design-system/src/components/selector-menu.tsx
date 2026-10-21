@@ -224,6 +224,56 @@ export function SelectorMenuOption({
   badge: string | null;
   current: boolean;
 }) {
+  return (
+    <SelectorMenuRow
+      choose={{ kind: "link", to }}
+      label={label}
+      description={description}
+      badge={badge}
+      current={current}
+    />
+  );
+}
+
+// Like an option, but choosing it calls back instead of navigating, for selections that live
+// outside the URL.
+export function SelectorMenuChoice({
+  label,
+  description,
+  badge,
+  current,
+  onSelect,
+}: {
+  label: string;
+  description: string | null;
+  badge: string | null;
+  current: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <SelectorMenuRow
+      choose={{ kind: "callback", onSelect }}
+      label={label}
+      description={description}
+      badge={badge}
+      current={current}
+    />
+  );
+}
+
+function SelectorMenuRow({
+  choose,
+  label,
+  description,
+  badge,
+  current,
+}: {
+  choose: { kind: "link"; to: string } | { kind: "callback"; onSelect: () => void };
+  label: string;
+  description: string | null;
+  badge: string | null;
+  current: boolean;
+}) {
   const rowClassName = cn(OPTION_CLASS_NAME, description === null ? "min-h-9" : "min-h-12");
   const content = (
     <>
@@ -244,23 +294,31 @@ export function SelectorMenuOption({
       </span>
     </>
   );
+  const selectableClassName = cn(
+    rowClassName,
+    "cursor-pointer data-[highlighted]:bg-[var(--bo-panel-2)]",
+  );
 
-  return current ? (
-    <Menu.Item
-      disabled
-      aria-current="true"
-      className={cn(
-        rowClassName,
-        "cursor-default bg-[var(--bo-selected-bg)] shadow-[var(--bo-selected-shadow)]",
-      )}
-    >
+  if (current) {
+    return (
+      <Menu.Item
+        disabled
+        aria-current="true"
+        className={cn(
+          rowClassName,
+          "cursor-default bg-[var(--bo-selected-bg)] shadow-[var(--bo-selected-shadow)]",
+        )}
+      >
+        {content}
+      </Menu.Item>
+    );
+  }
+  return choose.kind === "link" ? (
+    <Menu.Item render={<Link to={choose.to} preventScrollReset />} className={selectableClassName}>
       {content}
     </Menu.Item>
   ) : (
-    <Menu.Item
-      render={<Link to={to} preventScrollReset />}
-      className={cn(rowClassName, "cursor-pointer data-[highlighted]:bg-[var(--bo-panel-2)]")}
-    >
+    <Menu.Item onClick={choose.onSelect} className={selectableClassName}>
       {content}
     </Menu.Item>
   );
