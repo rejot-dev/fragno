@@ -44,7 +44,6 @@ const parsePromptSubmit = defineCliArgsParser<PiManagerSubmitPromptInput>("pi.pr
   content: { required: true },
   requestId: { option: "request-id" },
   whenBusy: { option: "when-busy" },
-  billingOrganizationId: { option: "billing-organization-id" },
 });
 const parseSubmissionGet = defineCliArgsParser<PiManagerGetSubmissionInput>("pi.submission.get", {
   agentName: { option: "agent", required: true },
@@ -55,7 +54,6 @@ const parsePromptRun = defineCliArgsParser<PiManagerRunPromptInput>("pi.prompt.r
   content: { required: true },
   requestId: { option: "request-id" },
   whenBusy: { option: "when-busy" },
-  billingOrganizationId: { option: "billing-organization-id" },
   timeoutMs: { option: "timeout-ms", kind: "integer" },
 });
 const parseAgentAbort = defineCliArgsParser<PiManagerAgentInput>("pi.agent.abort", {
@@ -119,7 +117,7 @@ const definitionOptions = [
 ];
 
 /** The scope configuration an agent runs with; its conversation's provisioning stays internal. */
-function agentDefinition({ provisioning: _provisioning, ...definition }: PiManagerAgent) {
+function agentDefinition({ provisioned: _provisioned, ...definition }: PiManagerAgent) {
   return definition;
 }
 

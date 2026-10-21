@@ -1,7 +1,6 @@
 import {
   type BackofficeContextScope,
   backofficeContextScopeSchema,
-  backofficeScopeOrganization,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
@@ -21,6 +20,7 @@ import {
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { BillingMeasurementInput } from "@/fragno/billing/contracts";
+import { usageBillingForScope, type UsageBilling } from "@/fragno/billing/usage-billing";
 import {
   piAgentObjectName,
   type PiAgent,
@@ -63,9 +63,6 @@ const MODEL_CALL_COUNTS = {
   classify: { meter: "models.classifications", unit: "classification", quantity: 1 },
   generateImage: { meter: "models.images", unit: "image", quantity: 1 },
 } as const satisfies Record<string, BillingMeasurementInput>;
-
-/** Who pays for a model call: nobody while billing is disabled. */
-type ModelPayer = { type: "unbilled" } | { type: "billed"; organizationId: string };
 
 /** Shared scoped agent directory; agent execution is handed to the runtime's agent namespace. */
 export class InMemoryPiManagerObject extends RpcTarget implements PiManagerObject {
@@ -114,7 +111,7 @@ export class InMemoryPiManagerObject extends RpcTarget implements PiManagerObjec
       agent,
       supportedAvailableModels,
       queueChannel: createPiAgentQueueChannel(),
-      billing: (organizationId) => runtime.objects.billing.forOrg(organizationId).commands,
+      billing: (scope) => usageBillingForScope(runtime, scope),
     };
     const kernel = new BackofficeKernel(runtime);
     this.#host = implementation.createFragmentHost({
@@ -182,17 +179,14 @@ export class InMemoryPiManagerObject extends RpcTarget implements PiManagerObjec
 
   async classify({
     request,
-    billingOrganizationId,
   }: Parameters<PiManagerObject["classify"]>[0]): ReturnType<PiManagerObject["classify"]> {
     if (!this.#classifier) {
       throw new Error("MODELS_CLASSIFY_UNAVAILABLE: no classifier is configured.");
     }
-    const payer = this.#modelPayer(billingOrganizationId);
-    if (payer === null) {
-      return { type: "billing-owner-required" };
-    }
+    // A customer scope without Billing fails here, before the provider charges for the call.
+    const billing = usageBillingForScope(this.#runtime, this.#scoped.requireOwnerScope());
     const result = await this.#classifier(request);
-    await this.#recordModelUsage(payer, {
+    await this.#recordModelUsage(billing, {
       operation: "classify",
       succeeded: result.stopReason === "stop",
       ...result,
@@ -200,47 +194,33 @@ export class InMemoryPiManagerObject extends RpcTarget implements PiManagerObjec
     if (result.stopReason !== "stop") {
       throw new Error(`MODELS_CLASSIFY_FAILED: ${result.errorMessage ?? result.stopReason}`);
     }
-    return { type: "classified", answers: result.answers };
+    return { answers: result.answers };
   }
 
   async generateImage({
     request,
-    billingOrganizationId,
   }: Parameters<PiManagerObject["generateImage"]>[0]): ReturnType<
     PiManagerObject["generateImage"]
   > {
     if (!this.#imageGenerator) {
       throw new Error("MODELS_GENERATE_IMAGE_UNAVAILABLE: no image generator is configured.");
     }
-    const payer = this.#modelPayer(billingOrganizationId);
-    if (payer === null) {
-      return { type: "billing-owner-required" };
-    }
+    const billing = usageBillingForScope(this.#runtime, this.#scoped.requireOwnerScope());
     const result = await this.#imageGenerator(request);
     const image = result.output.find((part) => part.type === "image");
     const succeeded = result.stopReason === "stop" && image !== undefined;
-    await this.#recordModelUsage(payer, { operation: "generateImage", succeeded, ...result });
+    await this.#recordModelUsage(billing, { operation: "generateImage", succeeded, ...result });
     if (!succeeded) {
       throw new Error(
         `MODELS_GENERATE_IMAGE_FAILED: ${result.errorMessage ?? (image ? result.stopReason : "the model returned no image")}`,
       );
     }
-    return { type: "generated", bytes: base64ToBytes(image.data) };
-  }
-
-  /** The scope's organization pays, then `billingOrganizationId`; null when nobody can. */
-  #modelPayer(billingOrganizationId: string | null): ModelPayer | null {
-    if (!this.#runtime.config.bindings.billing) {
-      return { type: "unbilled" };
-    }
-    const organizationId =
-      backofficeScopeOrganization(this.#scoped.requireOwnerScope())?.orgId ?? billingOrganizationId;
-    return organizationId === null ? null : { type: "billed", organizationId };
+    return { bytes: base64ToBytes(image.data) };
   }
 
   /** Commits the usage for durable delivery; a failed call can still report tokens it was charged. */
   async #recordModelUsage(
-    payer: ModelPayer,
+    billing: UsageBilling,
     call: {
       operation: keyof typeof MODEL_CALL_COUNTS;
       succeeded: boolean;
@@ -250,13 +230,12 @@ export class InMemoryPiManagerObject extends RpcTarget implements PiManagerObjec
     },
   ): Promise<void> {
     const counters = piBillingCountersFromUsage(call.usage ? [call.usage] : []);
-    if (payer.type === "unbilled" || (!call.succeeded && !hasPiBillingUsage(counters))) {
+    if (billing.kind === "system" || (!call.succeeded && !hasPiBillingUsage(counters))) {
       return;
     }
     const fragment = await this.#scoped.getRuntime();
     await fragment.callServices(() =>
       fragment.services.recordModelUsage({
-        organizationId: payer.organizationId,
         event: {
           id: `models-${call.operation}:${crypto.randomUUID()}`,
           scope: this.#scoped.requireOwnerScope(),

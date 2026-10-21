@@ -21,8 +21,7 @@ export function PiAgentsWorkspace({
   layoutContext: PiLayoutContext;
   directory: PiManagerAgentsResult;
 }) {
-  const { resolvedScope, availableModelOptions, billingOrganization, dictationMountRoute } =
-    layoutContext;
+  const { resolvedScope, availableModelOptions, usageLabel, dictationMountRoute } = layoutContext;
   const basePath = `/backoffice/agents/${backofficeRouteScopePath(
     backofficeRouteScopeFromResolvedScope(resolvedScope),
   )}/agents`;
@@ -44,7 +43,7 @@ export function PiAgentsWorkspace({
             ...directory,
             resolvedScope,
             availableModelOptions,
-            billingOrganization,
+            usageLabel,
             dictationMountRoute,
             basePath,
             workspaceStates,

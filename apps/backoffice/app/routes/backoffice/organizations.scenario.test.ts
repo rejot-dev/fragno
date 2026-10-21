@@ -72,7 +72,6 @@ async function runInUserTerminal(ctx: BackofficeScenarioContext, cookie: string,
     runtime: ctx.runtime.services,
     kernel: new BackofficeKernel(ctx.runtime.services),
     execution: createBackofficeUserExecution({ scope: { kind: "user", userId }, userId }),
-    billingOrganizationId: null,
   });
   assert(context.stateBackend);
   const { bash } = await createInteractiveBashHost({
@@ -113,7 +112,6 @@ async function runInSystemTerminal(ctx: BackofficeScenarioContext, command: stri
       runtime: ctx.runtime.services,
       kernel: new BackofficeKernel(ctx.runtime.services),
       execution: createBackofficeSystemExecution({ kind: "system" }),
-      billingOrganizationId: null,
     }),
   });
   return await bash.exec(command);

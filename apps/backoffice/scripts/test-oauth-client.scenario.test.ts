@@ -158,7 +158,6 @@ async function createNativeTestClient(
     runtime: ctx.runtime.services,
     kernel: new BackofficeKernel(ctx.runtime.services),
     execution: createBackofficeUserExecution({ scope: { kind: "system" }, userId: grant.userId }),
-    billingOrganizationId: null,
   });
   let client: z.output<typeof backofficeOAuthClientCreateResultSchema>;
   if (authentication === "none") {
@@ -190,7 +189,6 @@ async function createNativeTestClient(
       codemode: codemodeRunnerFor(
         ctx.runtime.objects.codemode.for(context.execution.scope).commands,
         context.execution,
-        null,
       ),
       families: runtimeToolFamilies,
       toolContext: createBackofficeToolContext(context),

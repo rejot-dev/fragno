@@ -138,7 +138,6 @@ test("a workflow routes a ticket by the classifier's answers and bills its organ
           ]);
         }),
         then.billing.tracker({
-          organizationId: scope.orgId,
           scope,
           period,
           meter: "ai.tokens.input",
@@ -146,7 +145,6 @@ test("a workflow routes a ticket by the classifier's answers and bills its organ
           eventCount: "1",
         }),
         then.billing.tracker({
-          organizationId: scope.orgId,
           scope,
           period,
           meter: "models.classifications",
@@ -155,7 +153,6 @@ test("a workflow routes a ticket by the classifier's answers and bills its organ
         }),
         // 1,200 input tokens at $0.10 per million.
         then.billing.tracker({
-          organizationId: scope.orgId,
           scope,
           period,
           meter: "ai.cost.total",
@@ -211,7 +208,6 @@ test("usage reaches billing after an outage without classifying again", async ()
           expect(fakes.classifier?.calls).toHaveLength(1);
         }),
         then.billing.tracker({
-          organizationId: scope.orgId,
           scope,
           period,
           meter: "ai.tokens.input",
@@ -223,22 +219,21 @@ test("usage reaches billing after an outage without classifying again", async ()
   );
 });
 
-test("a personal-scope classification without a billing organization never reaches the provider", async () => {
+test("a personal-scope classification is recorded on the user's ledger", async () => {
   const personal: BackofficeContextScope = { kind: "user", userId: "user-1" };
   await runBackofficeScenario(
     defineBackofficeScenario({
-      name: "personal classification requires a billing organization",
+      name: "personal classification bills its user",
       objects: allLocalObjects,
       fakes: ({ fake }) => ({
         classifier: fake.classifier({ answer: triageAnswers, inputTokens: 1_200 }),
       }),
       setup: ({ given }) => [given.auth.user({ id: "user-1" })],
       steps: ({ then }) => [
-        then.assert("the call is rejected before classifying", async (ctx) => {
-          await expect(
-            ctx.runCodemode({
-              scope: personal,
-              code: `async () => await models.classify({
+        then.assert("the call classifies without an organization", async (ctx) => {
+          const codemode = await ctx.runCodemode({
+            scope: personal,
+            code: `async () => await models.classify({
                 state: { text: "hello" },
                 questions: {
                   greeting: {
@@ -248,9 +243,16 @@ test("a personal-scope classification without a billing organization never reach
                   },
                 },
               })`,
-            }),
-          ).rejects.toThrow("MODELS_BILLING_OWNER_REQUIRED");
-          expect(ctx.fakes.classifier?.calls).toEqual([]);
+          });
+          expect(codemode.result).toEqual({ answers: triageAnswers() });
+          expect(ctx.fakes.classifier?.calls).toHaveLength(1);
+        }),
+        then.billing.tracker({
+          scope: personal,
+          period,
+          meter: "ai.tokens.input",
+          quantity: "1200",
+          eventCount: "1",
         }),
       ],
     }),
@@ -365,7 +367,6 @@ test("a workflow generates an image, judges its bytes through Decisions, and bil
           },
         ),
         then.billing.tracker({
-          organizationId: scope.orgId,
           scope,
           period,
           meter: "models.images",
@@ -373,7 +374,6 @@ test("a workflow generates an image, judges its bytes through Decisions, and bil
           eventCount: "1",
         }),
         then.billing.tracker({
-          organizationId: scope.orgId,
           scope,
           period,
           meter: "models.classifications",
@@ -381,7 +381,6 @@ test("a workflow generates an image, judges its bytes through Decisions, and bil
           eventCount: "1",
         }),
         then.billing.tracker({
-          organizationId: scope.orgId,
           scope,
           period,
           meter: "ai.tokens.input",
@@ -389,7 +388,6 @@ test("a workflow generates an image, judges its bytes through Decisions, and bil
           eventCount: "2",
         }),
         then.billing.tracker({
-          organizationId: scope.orgId,
           scope,
           period,
           meter: "ai.cost.total",
@@ -435,7 +433,6 @@ test("image read permission is checked before accessing files without restrictin
                 runtime: ctx.runtime.services,
                 execution,
                 kernel,
-                billingOrganizationId: null,
                 emitter: { kind: "caller" },
               }),
             );
@@ -461,7 +458,6 @@ test("image read permission is checked before accessing files without restrictin
           },
         ),
         then.billing.tracker({
-          organizationId: scope.orgId,
           scope,
           period,
           meter: "models.classifications",
@@ -499,7 +495,6 @@ test("invalid image evidence never reaches Decisions and corrected files preserv
                 runtime: ctx.runtime.services,
                 execution,
                 kernel: new BackofficeKernel(ctx.runtime.services),
-                billingOrganizationId: null,
                 emitter: { kind: "caller" },
               }),
             );
@@ -605,7 +600,6 @@ test("invalid image evidence never reaches Decisions and corrected files preserv
           },
         ),
         then.billing.tracker({
-          organizationId: scope.orgId,
           scope,
           period,
           meter: "models.classifications",
@@ -686,7 +680,6 @@ test("a workflow writes a generated image to the workspace and bills its organiz
           content: jpeg,
         }),
         then.billing.tracker({
-          organizationId: scope.orgId,
           scope,
           period,
           meter: "ai.tokens.output",
@@ -694,7 +687,6 @@ test("a workflow writes a generated image to the workspace and bills its organiz
           eventCount: "1",
         }),
         then.billing.tracker({
-          organizationId: scope.orgId,
           scope,
           period,
           meter: "models.images",
@@ -703,7 +695,6 @@ test("a workflow writes a generated image to the workspace and bills its organiz
         }),
         // 40 text input tokens at $5 and 4,160 image output tokens at $30 per million.
         then.billing.tracker({
-          organizationId: scope.orgId,
           scope,
           period,
           meter: "ai.cost.total",

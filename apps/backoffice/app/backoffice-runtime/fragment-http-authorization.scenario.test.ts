@@ -594,7 +594,7 @@ describe("fragment HTTP authority scenarios", () => {
                 scope,
                 scopeRestriction: null,
                 actors: execution.actors,
-                billingOrganizationId: scope.owner.orgId,
+
                 capabilityGrants: [],
               },
             },

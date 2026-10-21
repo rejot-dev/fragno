@@ -442,23 +442,12 @@ export type ApiObject = WarmableObject & DurableHookCommands;
 export type PiManagerObject = WarmableObject & {
   /** An agent reports each settled turn, so its queue can hand the agent its next item. */
   reportSettledTurn(input: { agentName: string; requestId: string }): Promise<void>;
-  /**
-   * Classifies and bills the usage: the scope's organization pays, and scopes without one bill
-   * `billingOrganizationId`, as codemode runs do. With billing enabled and nobody to pay, nothing
-   * is classified.
-   */
+  /** Classifies and records the usage on the ledger of the scope's root owner. */
   classify(input: {
     request: PiClassificationRequest;
-    billingOrganizationId: string | null;
-  }): Promise<
-    | { type: "classified"; answers: ClassifierResult["answers"] }
-    | { type: "billing-owner-required" }
-  >;
-  /** Generates one image, billed and refused like `classify`. */
-  generateImage(input: {
-    request: PiImageGenerationRequest;
-    billingOrganizationId: string | null;
-  }): Promise<{ type: "generated"; bytes: Uint8Array } | { type: "billing-owner-required" }>;
+  }): Promise<{ answers: ClassifierResult["answers"] }>;
+  /** Generates one image, recorded like `classify`. */
+  generateImage(input: { request: PiImageGenerationRequest }): Promise<{ bytes: Uint8Array }>;
 };
 
 export type BillingObject = {
@@ -817,7 +806,7 @@ export const backofficeObjectScopePolicy = {
   // An installed app's workspace keeps its data: store, files, events, routes, and workflows.
   AUTOMATIONS: ["singleton", "org", "user", "app", "project"],
   PI_MANAGER: ["singleton", "org", "user", "project"],
-  BILLING: ["org"],
+  BILLING: ["org", "user"],
   CODEMODE: ["singleton", "org", "user", "app", "project"],
   MARKETPLACE: ["singleton", "org"],
 

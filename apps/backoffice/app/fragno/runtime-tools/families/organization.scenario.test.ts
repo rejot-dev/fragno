@@ -54,7 +54,6 @@ async function terminal(
     runtime: ctx.runtime.services,
     kernel: new BackofficeKernel(ctx.runtime.services),
     execution: createBackofficeUserExecution({ scope, userId }),
-    billingOrganizationId: null,
   });
   assert(context.stateBackend);
   return (

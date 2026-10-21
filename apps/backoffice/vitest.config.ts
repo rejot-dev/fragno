@@ -17,6 +17,7 @@ export default mergeConfig(
       forceRerunTriggers: [
         ...configDefaults.forceRerunTriggers,
         resolveConfig("./vitest.*.ts"),
+        resolveConfig("./tests/wrangler.vitest.jsonc"),
         resolveConfig("./content/**"),
         // Read by `app/fragno/runtime-tools/async-execute.test.ts`.
         resolveConfig("./app/fragno/runtime-tools/families/!(*.test|*-runtime).ts"),

@@ -238,7 +238,6 @@ function createVersionRouter<TApi extends BackofficeApi>(
             runtime,
             kernel,
             execution: authorization.execution,
-            billingOrganizationId: null,
             emittedEventSource: authorization.emittedEventSource,
           }),
         ),

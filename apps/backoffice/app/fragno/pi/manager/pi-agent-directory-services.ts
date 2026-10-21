@@ -40,7 +40,6 @@ export function piAgentDirectoryServices(
             ? {
                 scope: config.scope,
                 agentName,
-                billingOrganizationId: agent.billingOrganizationId,
               }
             : null,
         }))
@@ -54,16 +53,12 @@ export function piAgentDirectoryServices(
             .find("agent", (b) => b.whereIndex("primary")),
         )
         .transformRetrieve(([definitions, agents]) => {
-          const provisioned = new Map(
-            agents.map((agent) => [agent.id.valueOf(), agent.billingOrganizationId]),
-          );
+          const provisioned = new Set(agents.map((agent) => agent.id.valueOf()));
           return [...BUILT_IN_PI_AGENT_DEFINITIONS, ...definitions.map(definitionFromRow)]
             .sort((left, right) => left.agentName.localeCompare(right.agentName))
             .map((definition) => ({
               ...definition,
-              provisioning: provisioned.has(definition.agentName)
-                ? { billingOrganizationId: provisioned.get(definition.agentName) ?? null }
-                : null,
+              provisioned: provisioned.has(definition.agentName),
             }));
         })
         .build();
@@ -133,7 +128,6 @@ export function piAgentDirectoryServices(
                 {
                   scope: config.scope,
                   agentName: agent.id.valueOf(),
-                  billingOrganizationId: agent.billingOrganizationId,
                 },
               ]),
             ),

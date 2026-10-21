@@ -136,6 +136,5 @@ cases.
 Test representative cases through the automation and check its resulting behavior. For a failure,
 inspect the exact state, questions, answers, the code that combined them, and the observed outcome.
 Separate missing evidence, model errors, code errors, and service failures: `MODELS_CLASSIFY_FAILED`
-reports a failed or refused classification, `MODELS_CLASSIFY_UNAVAILABLE` means no classifier is
-configured, and `MODELS_BILLING_OWNER_REQUIRED` means a scope outside an organization has nobody to
-bill, as in a personal workspace without a billing organization.
+reports a failed or refused classification, and `MODELS_CLASSIFY_UNAVAILABLE` means no classifier is
+configured.

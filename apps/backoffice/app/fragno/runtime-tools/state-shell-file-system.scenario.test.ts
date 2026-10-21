@@ -47,7 +47,6 @@ async function createScenarioShell(ctx: BackofficeScenarioContext) {
     runtime: ctx.runtime.services,
     kernel: new BackofficeKernel(ctx.runtime.services),
     execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
-    billingOrganizationId: null,
   });
   return { ...(await createInteractiveBashHost({ context })), state: context.stateBackend };
 }

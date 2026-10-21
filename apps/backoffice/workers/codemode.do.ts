@@ -1,7 +1,7 @@
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import {
-  type BackofficeContextScope,
   backofficeScopeOrganization,
+  type BackofficeContextScope,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { CODEMODE_LIMITS } from "@fragno-dev/codemode/codemode-limits";
 import type {
@@ -31,6 +31,7 @@ import {
   CODEMODE_AUTOMATION_EVENT_RUN_STARTED,
   CODEMODE_AUTOMATION_SOURCE,
 } from "@/fragno/backoffice-capabilities/capabilities/codemode";
+import { usageBillingForScope } from "@/fragno/billing/usage-billing";
 import {
   CODEMODE_RUN_ORDER_INDEX,
   createCodemodeFragment,
@@ -185,7 +186,15 @@ function codemodeRunEvent(
   run: CodemodeRunStartedHookPayload | CodemodeRunFinishedHookPayload,
 ): AutomationEvent {
   // Billing is delivered to the payer's Billing object, not published to the scope's automations.
-  const { actors, scopeRestriction, billingOrganizationId, ...payload } = run;
+  // Hooks queued before ownership-based billing still carry the old selection.
+  const {
+    actors,
+    scopeRestriction,
+    billingOrganizationId: _legacy,
+    ...payload
+  } = run as typeof run & {
+    billingOrganizationId?: string | null;
+  };
   const finished = "finishedAt" in run ? run : null;
   const organization = backofficeScopeOrganization(scope);
   return {
@@ -217,7 +226,6 @@ export class InMemoryCodemodeObject extends RpcTarget implements CodemodeObject 
   readonly #host: FragmentDurableObjectHost<void, CodemodeFragment>;
   readonly #env: BackofficeCodemodeEnv | null;
   readonly #nowEpochMs: () => number;
-  readonly #scopeOrganizationId: string | null;
   #fragment: CodemodeFragment | null = null;
 
   constructor({
@@ -235,17 +243,23 @@ export class InMemoryCodemodeObject extends RpcTarget implements CodemodeObject 
     this.#env = runtime.codemodeEnv;
     this.#nowEpochMs = nowEpochMs;
     const scope = requireBackofficeContextScopeFromDurableObjectId(state.id, "CODEMODE");
-    this.#scopeOrganizationId = backofficeScopeOrganization(scope)?.orgId ?? null;
+    const billing = usageBillingForScope(runtime, scope);
     // Cloudflare bills each Dynamic Worker a run loads; a module build only compiles.
     async function billRunStarted(run: CodemodeRunStartedHookPayload, hook: HookContext) {
-      if (
-        run.billingOrganizationId === null ||
-        run.activationKind === "module-build" ||
-        !runtime.config.bindings.billing
-      ) {
+      // Old queued deliveries retain their original destination, including retries after an ack was lost.
+      const destination =
+        "billingOrganizationId" in run
+          ? usageBillingForScope(
+              runtime,
+              run.billingOrganizationId === null
+                ? { kind: "system" }
+                : { kind: "org", orgId: z.string().parse(run.billingOrganizationId) },
+            )
+          : billing;
+      if (run.activationKind === "module-build" || destination.kind === "system") {
         return;
       }
-      await runtime.objects.billing.forOrg(run.billingOrganizationId).commands.recordEvent(
+      await destination.recordEvent(
         {
           id: `codemode-run:${run.runId}`,
           scope,
@@ -317,15 +331,7 @@ export class InMemoryCodemodeObject extends RpcTarget implements CodemodeObject 
     }
     const fragment = this.#getFragment();
     const runId = await fragment.callServices(() =>
-      fragment.services.startRun(
-        activation.kind,
-        // A scope's organization pays for its runs; only scopes without one take the caller's choice.
-        {
-          ...context,
-          billingOrganizationId: this.#scopeOrganizationId ?? context.billingOrganizationId,
-        },
-        new Date(this.#nowEpochMs()),
-      ),
+      fragment.services.startRun(activation.kind, context, new Date(this.#nowEpochMs())),
     );
     const completion = await executeCodemodeRunActivation(env, activation, host);
     await fragment.callServices(() =>

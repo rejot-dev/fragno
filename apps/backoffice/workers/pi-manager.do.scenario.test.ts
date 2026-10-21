@@ -7,10 +7,7 @@ import path from "node:path";
 import type { AutomationRouteCreateInput } from "@fragno-dev/backoffice-api/v0/automation";
 import { automationEventListResultSchema } from "@fragno-dev/backoffice-api/v0/events";
 import type { PiManagerAgent, PiManagerAgentDirectory } from "@fragno-dev/backoffice-api/v0/pi";
-import {
-  backofficeScopeOrganization,
-  type BackofficeContextScope,
-} from "@fragno-dev/backoffice-api/v0/shared/scope";
+import { type BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
   DurableObject: class {},
@@ -125,7 +122,6 @@ async function prompt(
   const { agentName = "assistant", ...body } = input;
   return await managerRequest(runtime, scope, `/agents/${agentName}/prompts`, {
     ...body,
-    billingOrganizationId: scope.kind === "user" ? "billing-org" : null,
   });
 }
 
@@ -255,7 +251,7 @@ test("agents are defined through the manager, checked on write, and keep their c
             ["offline", null],
             ["reviewer", null],
           ]);
-          assert(directory.agents.every((agent) => agent.provisioning === null));
+          assert(directory.agents.every((agent) => !agent.provisioned));
         }),
         then.assert("provision an agent with its first turn", async ({ runtime }) => {
           const notStarted = await managerRequest(runtime, scope, "/agents/reviewer/view");
@@ -272,7 +268,7 @@ test("agents are defined through the manager, checked on write, and keep their c
           const agent = await (
             await managerRequest(runtime, scope, "/agents/reviewer")
           ).json<PiManagerAgent>();
-          expect(agent.provisioning).toEqual({ billingOrganizationId: orgId });
+          expect(agent.provisioned).toEqual(true);
           const view = await readView(runtime, scope, "reviewer");
           expect(JSON.stringify(view.entries)).toContain("durable answer");
         }),
@@ -360,19 +356,6 @@ test("each scope's agents keep separate conversations and run real durable tool 
       options: { drain: false },
       objects: { ...scenarioObjects, ...objectOverrides },
       steps: ({ then }) => [
-        then.assert(
-          "a user-scoped agent's first turn needs a billing owner",
-          async ({ runtime }) => {
-            const scope: BackofficeContextScope = { kind: "user", userId: "shared-id" };
-            const unbilled = await managerRequest(runtime, scope, "/agents/assistant/prompts", {
-              requestId: "unbilled",
-              content: "Answer.",
-              billingOrganizationId: null,
-            });
-            assert.equal(unbilled.status, 400);
-            expect(await unbilled.json()).toMatchObject({ code: "PI_BILLING_OWNER_REQUIRED" });
-          },
-        ),
         then.assert("prompt the same agent name in every scope", async ({ runtime }) => {
           const modelCatalog = await (await managerRequest(runtime, scopes[0], "/models")).json();
           expect(modelCatalog).toEqual(PI_SCENARIO_AVAILABLE_MODELS);
@@ -516,7 +499,7 @@ test("a busy agent queues other principals' prompts, lets its own turn be steere
               runtime,
               scope,
               "/agents/assistant/prompts",
-              { requestId, content, whenBusy, billingOrganizationId: null },
+              { requestId, content, whenBusy },
               execution,
             );
           const receipts = [];
@@ -650,7 +633,6 @@ test("queued prompts each run a turn of their own, in arrival order, under the d
             requestId: "rejected",
             content: "Only if idle.",
             whenBusy: "reject",
-            billingOrganizationId: null,
           });
           expect(await rejected.json()).toMatchObject({ code: "AGENT_BUSY" });
           const edited = await managerRequest(
@@ -1703,12 +1685,7 @@ test("SQLite Pi directories and agent transcripts survive a complete local runti
                 const agent = await (
                   await managerRequest(runtime, scope, "/agents/assistant")
                 ).json<PiManagerAgent>();
-                expect(agent.provisioning).toEqual({
-                  billingOrganizationId:
-                    scope.kind === "system"
-                      ? null
-                      : (backofficeScopeOrganization(scope)?.orgId ?? "billing-org"),
-                });
+                expect(agent.provisioned).toEqual(true);
                 const duplicate = await prompt(runtime, scope, {
                   requestId: "persisted-prompt",
                   content: "Persist this answer.",

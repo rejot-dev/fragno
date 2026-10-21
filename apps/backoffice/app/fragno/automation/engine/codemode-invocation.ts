@@ -9,12 +9,10 @@ import {
   type AutomationEventPayload,
   automationEventSchema,
 } from "@fragno-dev/backoffice-api/v0/events";
-import { piBillingOrganizationIdSchema } from "@fragno-dev/backoffice-api/v0/pi";
 import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import {
   backofficeContextScopeSchema,
   backofficeContextScopesEqual,
-  backofficeScopeOrganization,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
@@ -68,7 +66,6 @@ export type CodemodeWorkflowParams = {
     scope: BackofficeExecutionContext["scope"];
     scopeRestriction: BackofficeExecutionContext["scope"] | null;
     actors: AutomationActors;
-    billingOrganizationId: string | null;
     capabilityGrants: readonly CodemodeCapabilityGrant[];
   };
   replyTo: WorkflowReplyTo | null;
@@ -90,12 +87,11 @@ export const codemodeWorkflowParamsSchema: z.ZodType<CodemodeWorkflowParams> = z
       payload: z.record(z.string(), z.unknown()),
     }),
   ]),
-  execution: z.strictObject({
+  // Persisted snapshots may still carry the removed billing selection; ownership now decides.
+  execution: z.object({
     scope: backofficeContextScopeSchema,
     scopeRestriction: backofficeContextScopeSchema.nullable(),
     actors: automationActorsSchema,
-    // Existing workflow snapshots predate billing inheritance and have no selected owner.
-    billingOrganizationId: piBillingOrganizationIdSchema.default(null),
     capabilityGrants: z.array(codemodeCapabilityGrantSchema),
   }),
   // Existing workflow snapshots predate replies and report to no one.
@@ -178,14 +174,12 @@ export function createCodemodeWorkflowInstanceInput<TPayload extends AutomationE
   prepared,
   trigger,
   execution,
-  billingOrganizationId,
   capabilityGrants = [],
   replyTo,
 }: {
   prepared: PreparedCodemodeWorkflowInstance;
   trigger: CodemodeWorkflowTrigger<TPayload>;
   execution: BackofficeExecutionContext;
-  billingOrganizationId: string | null;
   capabilityGrants?: readonly CodemodeCapabilityGrant[];
   replyTo: WorkflowReplyTo | null;
 }) {
@@ -208,8 +202,6 @@ export function createCodemodeWorkflowInstanceInput<TPayload extends AutomationE
         scope: execution.scope,
         scopeRestriction: backofficeExecutionScopeRestriction(execution),
         actors: execution.actors,
-        billingOrganizationId:
-          backofficeScopeOrganization(execution.scope)?.orgId ?? billingOrganizationId,
         capabilityGrants,
       },
       replyTo,

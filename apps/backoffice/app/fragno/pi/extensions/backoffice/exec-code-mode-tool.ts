@@ -174,7 +174,6 @@ export function createExecCodeModeTool(agent: BackofficeAgentContext) {
               prepared,
               trigger: { type: "manual", payload: {} },
               execution: turn.execution,
-              billingOrganizationId: turn.billingOrganizationId,
               replyTo: { kind: "agent", agentName: agent.agentName },
             });
             const created = await workflowScheduler.createInternalInstance(workflowInput);

@@ -43,7 +43,7 @@ function layoutContext(
 }
 
 describe("organization agents layout", () => {
-  test("uses the active organization for system agent billing", async () => {
+  test("labels system work independently of the active organization", async () => {
     const result = await loader({
       request: new Request("http://localhost:5173/backoffice/agents/system/system/agents"),
       params: { scopeKind: "system", scopeId: "system" },
@@ -53,10 +53,10 @@ describe("organization agents layout", () => {
       ),
     } as never);
 
-    expect(result.billingOrganization).toEqual(organization);
+    assert(result.usageLabel === "System work");
   });
 
-  test("uses the route organization for billing without requiring an active organization", async () => {
+  test("labels the route organization independently of the active organization", async () => {
     const result = await loader({
       request: new Request(
         "http://localhost:5173/backoffice/agents/org/wilcos-organization/agents",
@@ -71,7 +71,7 @@ describe("organization agents layout", () => {
       ),
     } as never);
 
-    expect(result.billingOrganization).toEqual(organization);
+    expect(result.usageLabel).toBe(`Usage: ${organization.name}`);
   });
 });
 

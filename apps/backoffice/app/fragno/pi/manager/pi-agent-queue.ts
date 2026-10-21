@@ -1,9 +1,9 @@
-import type { PiAgentConfig, PiAgentDefinition } from "@fragno-dev/backoffice-api/v0/pi";
-import type { PiAgentQueueEntry } from "@fragno-dev/backoffice-api/v0/pi";
-import {
-  type BackofficeContextScope,
-  backofficeScopeRootOwner,
-} from "@fragno-dev/backoffice-api/v0/shared/scope";
+import type {
+  PiAgentConfig,
+  PiAgentDefinition,
+  PiAgentQueueEntry,
+} from "@fragno-dev/backoffice-api/v0/pi";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { FragnoId } from "@fragno-dev/db/schema";
 
 import type { DatabaseServiceContext, HookFn, TypedUnitOfWork } from "@fragno-dev/db";
@@ -333,8 +333,8 @@ export function piAgentQueueServices(
   ) => TService,
   config: { scope: BackofficeContextScope },
 ) {
-  function agentConfig(agentName: string, billingOrganizationId: string | null): PiAgentConfig {
-    return { scope: config.scope, agentName, billingOrganizationId };
+  function agentConfig(agentName: string): PiAgentConfig {
+    return { scope: config.scope, agentName };
   }
 
   function definitionOf(
@@ -356,7 +356,6 @@ export function piAgentQueueServices(
       whenBusy: "followUp" | "steer" | "reject";
       whenPaused: "wait" | "resume";
       provenance: PiAgentTurnProvenance;
-      billingOrganizationId: string | null;
       availableModels: readonly PiAvailableModel[];
     }) {
       const { agentName, prompt } = input;
@@ -374,7 +373,6 @@ export function piAgentQueueServices(
             retrieveResult: [definitionRow, agent, [dispatched], queued, submitted],
           }):
             | Extract<PiAgentAdmission, { type: "error" }>
-            | { type: "billing-owner-required" }
             | { type: "busy" }
             | ({ type: "placed" } & PiAgentPlacement) => {
             if (submitted) {
@@ -395,14 +393,6 @@ export function piAgentQueueServices(
             if (admitted.type === "error") {
               return admitted;
             }
-            // Work a user answers for has no organization to bill unless the user picks one.
-            if (
-              !agent &&
-              backofficeScopeRootOwner(config.scope)?.kind === "user" &&
-              input.billingOrganizationId === null
-            ) {
-              return { type: "billing-owner-required" };
-            }
             // A paused queue can hold work with nothing dispatched.
             if (input.whenBusy === "reject" && (dispatched || queued.length > 0)) {
               return { type: "busy" };
@@ -410,19 +400,12 @@ export function piAgentQueueServices(
             const paused = (agent?.paused ?? false) && input.whenPaused === "wait";
             if (!agent) {
               // A concurrent first prompt may provision the agent first; the retry then finds it.
-              uow.create(
-                "agent",
-                { id: agentName, billingOrganizationId: input.billingOrganizationId },
-                { retryOnUniqueConflict: () => true },
-              );
+              uow.create("agent", { id: agentName }, { retryOnUniqueConflict: () => true });
             }
             // A new row starts at version 0.
             const revision = agent ? changeAgentQueue(uow, agent, paused) : 0;
             const placement = placeQueueItem(uow, {
-              agent: agentConfig(
-                agentName,
-                agent ? agent.billingOrganizationId : input.billingOrganizationId,
-              ),
+              agent: agentConfig(agentName),
               revision,
               paused,
               item: {
@@ -444,9 +427,9 @@ export function piAgentQueueServices(
         .build();
     },
     /**
-     * Admits a notification and places it like a queued prompt. A notification never starts an
-     * agent: a personal agent's billing owner is chosen by its first prompter. Redelivering one
-     * event through one route, or to the agent directly, finds the item it placed first.
+     * Admits a notification and places it like a queued prompt. A first prompt provisions the
+     * conversation; notifications only address agents already started. Redelivering one event
+     * through one route, or to the agent directly, finds the item it placed first.
      */
     submitNotification: function (input: {
       agentName: string;
@@ -494,7 +477,7 @@ export function piAgentQueueServices(
               return admitted;
             }
             const placement = placeQueueItem(uow, {
-              agent: agentConfig(agentName, agent.billingOrganizationId),
+              agent: agentConfig(agentName),
               revision: changeAgentQueue(uow, agent, agent.paused),
               paused: agent.paused,
               item: {
@@ -563,7 +546,7 @@ export function piAgentQueueServices(
               return { handover: null, queue: waitingQueue(revision, true, queued) };
             }
             const started = startNextTurn(uow, {
-              agent: agentConfig(agentName, agent.billingOrganizationId),
+              agent: agentConfig(agentName),
               definition: definitionOf(agentName, definitionRow),
               availableModels: input.availableModels,
               queued,
@@ -616,7 +599,7 @@ export function piAgentQueueServices(
               return { handover: null, queue: waitingQueue(revision, false, queued) };
             }
             const started = startNextTurn(uow, {
-              agent: agentConfig(agentName, agent.billingOrganizationId),
+              agent: agentConfig(agentName),
               definition: definitionOf(agentName, definitionRow),
               availableModels: input.availableModels,
               queued,
@@ -653,7 +636,7 @@ export function piAgentQueueServices(
           if (!agent) {
             return [];
           }
-          const config = agentConfig(agentName, agent.billingOrganizationId);
+          const config = agentConfig(agentName);
           const handovers = steered.flatMap((item): PiAgentHandover[] =>
             item.state.status === "steered" && item.input.type === "prompt"
               ? [

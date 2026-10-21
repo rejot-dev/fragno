@@ -1,8 +1,5 @@
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
-import {
-  backofficeContextScopesEqual,
-  backofficeScopeOrganization,
-} from "@fragno-dev/backoffice-api/v0/shared/scope";
+import { backofficeContextScopesEqual } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import { instantiate } from "@fragno-dev/core";
 import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
@@ -99,22 +96,9 @@ export function createPiManagerFragment(
           return error({ code: "INVALID_PROMPT", message: parsed.error.message }, 400);
         }
         const values = parsed.data;
-        const billingOrganizationId =
-          backofficeScopeOrganization(config.scope)?.orgId ?? values.billingOrganizationId;
-        if (billingOrganizationId !== null && !backofficeScopeOrganization(config.scope)) {
-          const billingDenied = await authorize(
-            { ...requestContext.execution, scope: { kind: "org", orgId: billingOrganizationId } },
-            BACKOFFICE_PERMISSION.pi.modify,
-            { kind: "pi-agent-billing" },
-          );
-          if (billingDenied) {
-            return billingDenied;
-          }
-        }
         requestState.setBody({
           ...values,
           requestId: values.requestId ?? crypto.randomUUID(),
-          billingOrganizationId,
           provenance,
         });
         return undefined;

@@ -68,7 +68,6 @@ function projectContext(ctx: BackofficeScenarioContext, execution: BackofficeExe
     runtime: ctx.runtime.services,
     kernel: new BackofficeKernel(ctx.runtime.services),
     execution,
-    billingOrganizationId: null,
   });
 }
 
@@ -154,7 +153,6 @@ describe("project runtime scenarios", () => {
               codemode: codemodeRunnerFor(
                 ctx.runtime.objects.codemode.for(personal).commands,
                 context.execution,
-                null,
               ),
               families: runtimeToolFamilies,
               toolContext: createBackofficeToolContext(context),
@@ -307,7 +305,6 @@ describe("project runtime scenarios", () => {
               codemode: codemodeRunnerFor(
                 ctx.runtime.objects.codemode.for(organization).commands,
                 context.execution,
-                null,
               ),
               families: runtimeToolFamilies,
               toolContext: createBackofficeToolContext(context),

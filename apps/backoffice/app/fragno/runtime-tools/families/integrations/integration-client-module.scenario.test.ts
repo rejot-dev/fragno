@@ -47,7 +47,6 @@ async function terminal(ctx: BackofficeScenarioContext) {
     runtime: ctx.runtime.services,
     kernel: new BackofficeKernel(ctx.runtime.services),
     execution: createBackofficeSystemExecution(scope),
-    billingOrganizationId: null,
   });
   return (await createInteractiveBashHost({ context })).bash;
 }

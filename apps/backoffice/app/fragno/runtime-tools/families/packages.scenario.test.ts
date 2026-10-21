@@ -89,7 +89,6 @@ async function createScenarioShell(ctx: BackofficeScenarioContext, scope: Backof
         runtime: ctx.runtime.services,
         kernel: new BackofficeKernel(ctx.runtime.services),
         execution: createBackofficeSystemExecution(scope),
-        billingOrganizationId: null,
       }),
     })
   ).bash;
@@ -251,11 +250,18 @@ describe("Workspace package runtime scenarios", () => {
                 emitter: { kind: "caller" },
                 runtime: ctx.runtime.services,
                 kernel: new BackofficeKernel(ctx.runtime.services),
-                execution: createBackofficeUserExecution({
-                  scope: { kind: "user", userId: "owner-1" },
-                  userId: "owner-1",
-                }),
-                billingOrganizationId: "org-2",
+                execution: createBackofficeExecutionForPrincipal(
+                  {
+                    user: { id: "owner-1", email: "owner@example.test", role: "user" },
+                    auth: {
+                      transport: "bearer",
+                      expiresAt: new Date(Date.now() + 60_000),
+                      organization: { id: "org-2", slug: "second-org", roles: ["owner"] },
+                      scopeRestriction: null,
+                    },
+                  },
+                  { kind: "user", userId: "owner-1" },
+                ),
               });
               const { bash } = await createInteractiveBashHost({ context });
               const personal = await bash.exec(
@@ -310,7 +316,7 @@ describe("Workspace package runtime scenarios", () => {
     );
   });
 
-  test("authenticated personal installations prefer request authority over the billing organization", async () => {
+  test("authenticated personal installations use the request's organization for coordination", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         objects: scenarioObjects,
@@ -322,7 +328,7 @@ describe("Workspace package runtime scenarios", () => {
         steps: ({ then, runner }) => [
           then.assert("publish artifacts", publishArtifacts),
           runner.drain(),
-          then.assert("the authenticated organization overrides billing", async (ctx) => {
+          then.assert("the authenticated organization coordinates installation", async (ctx) => {
             const principal = {
               user: { id: "owner-1", email: "owner@example.test", role: "user" as const },
               auth: {
@@ -340,7 +346,6 @@ describe("Workspace package runtime scenarios", () => {
                 kind: "user",
                 userId: "owner-1",
               }),
-              billingOrganizationId: "org-2",
             });
             const result = await (
               await createInteractiveBashHost({ context })
@@ -498,7 +503,6 @@ describe("Workspace package runtime scenarios", () => {
                   scope: ORG_SCOPE,
                   service: { type: "agent", id: "limited-agent" },
                 }),
-                billingOrganizationId: null,
               });
               const { bash } = await createInteractiveBashHost({ context: agentContext });
               for (const [command, permission] of [
@@ -525,7 +529,6 @@ describe("Workspace package runtime scenarios", () => {
                   scope: { kind: "user", userId: "outsider-1" },
                   userId: "outsider-1",
                 }),
-                billingOrganizationId: null,
               });
               const personalShell = (await createInteractiveBashHost({ context: personalContext }))
                 .bash;
@@ -542,7 +545,6 @@ describe("Workspace package runtime scenarios", () => {
                   scope: ORG_SCOPE,
                   userId: "outsider-1",
                 }),
-                billingOrganizationId: null,
               });
               const denied = await (
                 await createInteractiveBashHost({

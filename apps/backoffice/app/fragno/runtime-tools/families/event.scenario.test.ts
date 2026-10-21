@@ -93,7 +93,6 @@ test("stored event commands read scoped SQLite records with text, JSON, and curs
               runtime: ctx.runtime.services,
               kernel: new BackofficeKernel(ctx.runtime.services),
               execution: createBackofficeSystemExecution(scope),
-              billingOrganizationId: null,
             });
             assert(context.stateBackend);
             const { bash } = await createInteractiveBashHost({
@@ -161,7 +160,6 @@ test("stored event commands read scoped SQLite records with text, JSON, and curs
               runtime: ctx.runtime.services,
               kernel: new BackofficeKernel(ctx.runtime.services),
               execution: createBackofficeSystemExecution({ kind: "user", userId: "empty-user" }),
-              billingOrganizationId: null,
             });
             assert(emptyContext.stateBackend);
             const emptyBash = (

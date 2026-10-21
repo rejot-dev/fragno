@@ -77,7 +77,6 @@ export const createAutomationRuntimeHostContext = ({
         runtime: runtimeServices,
         kernel: backofficeKernel,
         execution,
-        billingOrganizationId: null,
       })
     : null;
 

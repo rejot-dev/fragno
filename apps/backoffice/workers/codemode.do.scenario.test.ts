@@ -37,6 +37,7 @@ import { InMemoryBillingObject } from "./billing.do";
 import { InMemoryCodemodeObject } from "./codemode.do";
 import { InMemoryFormsObject } from "./forms.do";
 import { InMemoryMcpObject } from "./mcp.do";
+import { InMemoryOtpObject } from "./otp.do";
 import { InMemoryResendObject } from "./resend.do";
 import { InMemoryTelegramObject } from "./telegram.do";
 import { InMemoryUploadObject } from "./upload.do";
@@ -48,6 +49,7 @@ const scenarioObjects = {
   BILLING: (input) => new InMemoryBillingObject(input),
   CODEMODE: (input) => new InMemoryCodemodeObject(input),
   FORMS: (input) => new InMemoryFormsObject(input),
+  OTP: (input) => new InMemoryOtpObject(input),
   MCP: (input) => new InMemoryMcpObject(input),
   RESEND: (input) => new InMemoryResendObject(input),
   TELEGRAM: (input) => new InMemoryTelegramObject(input),
@@ -93,7 +95,6 @@ const restrictedExecution = {
 async function bash(
   runtime: InMemoryBackofficeRuntime,
   as: BackofficeExecutionContext = execution,
-  billingOrganizationId: string | null = null,
 ) {
   return (
     await createInteractiveBashHost({
@@ -102,7 +103,6 @@ async function bash(
         runtime: runtime.services,
         kernel: new BackofficeKernel(runtime.services),
         execution: as,
-        billingOrganizationId,
       }),
     })
   ).bash;
@@ -375,16 +375,15 @@ test("codemode runs are retained with their outcome until a later run expires th
   );
 });
 
-test("codemode runs that load a guest bill their scope's organization, or else their caller's choice", async () => {
+test("codemode guests are attributed to their scope owner and builds remain unmetered", async () => {
   const userScope = { kind: "user", userId: "user-1" } as const;
-  const userExecution = createBackofficeSystemExecution(userScope);
 
   async function executions(
     runtime: InMemoryBackofficeRuntime,
-    billingOrganizationId: string,
+    owner: { kind: "org"; orgId: string } | { kind: "user"; userId: string },
     scope: BackofficeExecutionContext["scope"],
   ) {
-    const page = await runtime.objects.billing.forOrg(billingOrganizationId).commands.getTrackers({
+    const page = await runtime.objects.billing.for(owner).commands.getTrackers({
       scope,
       period: new Date(runtime.now()).toISOString().slice(0, 7),
       pageSize: 100,
@@ -393,25 +392,21 @@ test("codemode runs that load a guest bill their scope's organization, or else t
     return tracker ? { quantity: tracker.quantity, eventCount: tracker.eventCount } : null;
   }
 
-  async function runAsUser(
+  async function runInScope(
     runtime: InMemoryBackofficeRuntime,
-    billingOrganizationId: string | null,
+    scope: BackofficeExecutionContext["scope"],
   ) {
+    const scopedExecution = createBackofficeSystemExecution(scope);
     const result = await runBackofficeCodemode({
       code: "async () => 1",
-      codemode: codemodeRunnerFor(
-        runtime.objects.codemode.for(userScope).commands,
-        userExecution,
-        billingOrganizationId,
-      ),
+      codemode: codemodeRunnerFor(runtime.objects.codemode.for(scope).commands, scopedExecution),
       families: runtimeToolFamilies,
       toolContext: createBackofficeToolContext(
         createCodemodeRouteBackedRuntimeContext({
           emitter: { kind: "caller" },
           runtime: runtime.services,
           kernel: new BackofficeKernel(runtime.services),
-          execution: userExecution,
-          billingOrganizationId,
+          execution: scopedExecution,
         }),
       ),
     });
@@ -433,8 +428,8 @@ test("codemode runs that load a guest bill their scope's organization, or else t
         }),
       ],
       steps: ({ then }) => [
-        then.assert("an organization's runs bill it whatever their caller chose", async (ctx) => {
-          const orgBash = await bash(ctx.runtime, execution, "org-2");
+        then.assert("an organization owns usage in its scope", async (ctx) => {
+          const orgBash = await bash(ctx.runtime, execution);
           const built = await orgBash.exec(
             "js.build scripts/report.js --out .build/report.module.json",
             { cwd: "/workspace" },
@@ -449,25 +444,67 @@ test("codemode runs that load a guest bill their scope's organization, or else t
           await ctx.drain();
 
           // The setup write and both runs loaded a guest; the build only compiled.
-          expect(await executions(ctx.runtime, "org-1", execution.scope)).toEqual({
+          expect(
+            await executions(ctx.runtime, { kind: "org", orgId: "org-1" }, execution.scope),
+          ).toEqual({
             quantity: "3",
             eventCount: "3",
           });
-          expect(await executions(ctx.runtime, "org-2", execution.scope)).toBeNull();
+          expect(
+            await executions(ctx.runtime, { kind: "org", orgId: "org-2" }, execution.scope),
+          ).toBeNull();
         }),
-        then.assert("a user's runs bill the organization their caller chose", async (ctx) => {
-          await runAsUser(ctx.runtime, "org-1");
-          await runAsUser(ctx.runtime, null);
+        then.assert("a user owns every run in their personal scope", async (ctx) => {
+          await runInScope(ctx.runtime, userScope);
+          await runInScope(ctx.runtime, userScope);
           await ctx.drain();
 
-          expect(await executions(ctx.runtime, "org-1", userScope)).toEqual({
-            quantity: "1",
-            eventCount: "1",
+          expect(await executions(ctx.runtime, userScope, userScope)).toEqual({
+            quantity: "2",
+            eventCount: "2",
           });
+          expect(
+            await executions(ctx.runtime, { kind: "org", orgId: "org-1" }, userScope),
+          ).toBeNull();
           const runs = await ctx.runtime.objects.codemode
             .for(userScope)
             .commands.listRuns({ page: "first", pageSize: 20 });
-          expect(runs.runs.map((run) => run.billingOrganizationId)).toEqual([null, "org-1"]);
+          expect(runs.runs).toHaveLength(2);
+        }),
+        then.assert("app and project usage follows the root owner", async (ctx) => {
+          for (const owner of [userScope, { kind: "org", orgId: "org-1" } as const]) {
+            const app = { kind: "app", owner, appId: "books" } as const;
+            for (const scope of [
+              app,
+              { kind: "project", owner: app, projectId: "books-1" } as const,
+            ]) {
+              await runInScope(ctx.runtime, scope);
+              await ctx.drain();
+              expect(await executions(ctx.runtime, owner, scope)).toEqual({
+                quantity: "1",
+                eventCount: "1",
+              });
+              expect(
+                await executions(ctx.runtime, { kind: "org", orgId: "org-2" }, scope),
+              ).toBeNull();
+            }
+          }
+        }),
+      ],
+    }),
+  );
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "missing billing refuses customer codemode without disabling system work",
+      objects: { ...scenarioObjects, BILLING: null },
+      env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
+      steps: ({ then }) => [
+        then.assert("a customer cannot start a guest without Billing", async ({ runtime }) => {
+          await expect(runInScope(runtime, userScope)).rejects.toThrow("BILLING_UNAVAILABLE");
+        }),
+        then.assert("system work has an explicit non-customer attribution", async ({ runtime }) => {
+          await runInScope(runtime, { kind: "system" });
+          await runtime.drain();
         }),
       ],
     }),

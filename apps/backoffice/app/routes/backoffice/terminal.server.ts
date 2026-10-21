@@ -184,7 +184,6 @@ export const runBackofficeTerminalAction = async ({
         runtime,
         kernel,
         execution: execution,
-        billingOrganizationId: null,
       }),
     });
 

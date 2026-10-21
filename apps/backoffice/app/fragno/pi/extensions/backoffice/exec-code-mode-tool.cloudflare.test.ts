@@ -742,12 +742,10 @@ const createExecCodeModeTool = async ({
   } as never;
   const turn = {
     execution: createPiSystemFileContext().execution,
-    billingOrganizationId: "org-1",
     instructions: "",
     codemode: codemodeRunnerFor(
       createCloudflareBackofficeObjectRegistry(env as CloudflareEnv).codemode.singleton().commands,
       createBackofficeSystemExecution({ kind: "system" }),
-      null,
     ),
     authorize: async () => undefined,
     toolContext: () => runtimeToolContext,

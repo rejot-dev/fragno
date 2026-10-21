@@ -1,10 +1,6 @@
 import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
-import {
-  type BackofficeContextScope,
-  backofficeScopeOrganization,
-  backofficeScopeRootOwner,
-} from "@fragno-dev/backoffice-api/v0/shared/scope";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import type { Context } from "@earendil-works/chord";
 
@@ -40,7 +36,6 @@ export type PiRuntimeToolContext = InteractiveRuntimeToolContext & {
 export type BackofficeAgentTurnContext = {
   /** The submitter's actors with the agent appended as an assistant delegate. */
   execution: BackofficeExecutionContext;
-  billingOrganizationId: string | null;
   /** The agent definition's instructions, as read when the turn was admitted. */
   instructions: string;
   /** Null when the runtime has no Worker Loader; codemode-backed extensions fail closed. */
@@ -102,29 +97,11 @@ export function createBackofficeAgentContext(input: {
 
     // Running a turn is the submitter's act; the definition narrows only what the turn does.
     async function authorize() {
-      if (
-        backofficeScopeRootOwner(config.scope)?.kind === "user" &&
-        config.billingOrganizationId === null
-      ) {
-        throw new Error(
-          "PI_BILLING_OWNER_REQUIRED: Pi agents a user owns require a billing organization.",
-        );
-      }
       await kernel.assertAuthorized({
         execution: submitterExecution,
         operation: BACKOFFICE_PERMISSION.pi.modify,
         resource: { kind: "pi-agent-turn", agentName: config.agentName },
       });
-      if (config.billingOrganizationId !== null && !backofficeScopeOrganization(config.scope)) {
-        await kernel.assertAuthorized({
-          execution: {
-            ...submitterExecution,
-            scope: { kind: "org", orgId: config.billingOrganizationId },
-          },
-          operation: BACKOFFICE_PERMISSION.pi.modify,
-          resource: { kind: "pi-agent-billing", agentName: config.agentName },
-        });
-      }
     }
 
     function toolContext(invocationId: string, context: Context): PiRuntimeToolContext {
@@ -135,14 +112,12 @@ export function createBackofficeAgentContext(input: {
         runtime,
         kernel,
         execution,
-        billingOrganizationId: config.billingOrganizationId,
         // A factory follows scope changes; a fixed runtime would leak the parent directory into child contexts.
         pi: (scopedExecution) => ({
           runtime: createPiManagerRuntime({
             runtime,
             kernel,
             execution: scopedExecution,
-            defaultBillingOrganizationId: config.billingOrganizationId,
             createPromptRequestId,
             context,
           }),
@@ -152,13 +127,11 @@ export function createBackofficeAgentContext(input: {
 
     return {
       execution,
-      billingOrganizationId: config.billingOrganizationId,
       instructions: turn.agent.instructions,
       codemode: runtime.codemodeEnv
         ? codemodeRunnerFor(
             kernel.scoped("CODEMODE", config.scope, runtime.objects.codemode).commands,
             execution,
-            config.billingOrganizationId,
           )
         : null,
       authorize,
