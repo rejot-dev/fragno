@@ -181,7 +181,7 @@ function BackofficeShellFrame({
           setWorkflowDrawerOpen(false);
         }}
       />
-      {terminalScope ? <QuakeTerminal selectedScope={terminalScope} /> : null}
+      {terminalScope ? <QuakeTerminal pageScope={terminalScope} me={me} /> : null}
     </div>
   );
 }

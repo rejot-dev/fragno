@@ -73,7 +73,7 @@ type DashboardAutocompleteMode = "completion" | "history";
 
 export type DashboardAutocompleteSuggestion = {
   id: string;
-  kind: "argument" | "command" | "history" | "path";
+  kind: "argument" | "command" | "history" | "path" | "scope";
   label: string;
   description: string;
   detail?: string;
@@ -88,6 +88,14 @@ type DashboardTerminalSnapshot = {
   commands: string[];
 };
 
+/** A scope the terminal can run commands in, named as `use` accepts it. */
+export type DashboardTerminalScope = {
+  id: string;
+  name: string;
+  label: string;
+  actionPath: string;
+};
+
 type UseDashboardTerminalOptions = {
   scopeId?: string | null;
   scopeName?: string | null;
@@ -96,6 +104,7 @@ type UseDashboardTerminalOptions = {
   requestPathAutocomplete?: (request: DashboardPathAutocompleteRequest) => void;
   disabled?: boolean;
   commandSpecs?: readonly DashboardCommandSpec[];
+  scopes: readonly DashboardTerminalScope[];
 };
 
 type Token = {
@@ -134,15 +143,21 @@ const uniqueNewestCommands = (commands: readonly string[]) => {
   return newestFirst;
 };
 
+/**
+ * A `\` before a newline only continues the command, so tokens read it as blanks. Same length, so
+ * token offsets still index the typed command line.
+ */
+const withoutLineContinuations = (commandLine: string) => commandLine.replace(/\\\n/g, "  ");
+
 const tokenizeCommandLine = (commandLine: string): Token[] =>
-  [...commandLine.matchAll(/\S+/g)].map((match) => ({
+  [...withoutLineContinuations(commandLine).matchAll(/\S+/g)].map((match) => ({
     value: match[0],
     start: match.index ?? 0,
     end: (match.index ?? 0) + match[0].length,
   }));
 
 const currentTokenAt = (commandLine: string, cursorPosition: number): Token => {
-  const left = commandLine.slice(0, cursorPosition);
+  const left = withoutLineContinuations(commandLine).slice(0, cursorPosition);
   const match = /(?:^|\s)(\S*)$/.exec(left);
   const value = match?.[1] ?? "";
 
@@ -277,30 +292,6 @@ const buildDashboardPathAutocompleteSuggestions = (
   });
 };
 
-export const shortenDashboardCwd = (cwd: string, maxLength = 40) => {
-  if (cwd.length <= maxLength) {
-    return cwd;
-  }
-
-  const parts = cwd.split("/").filter(Boolean);
-  if (parts.length <= 2) {
-    return `…${cwd.slice(-(maxLength - 1))}`;
-  }
-
-  for (
-    let visiblePartCount = Math.min(parts.length, 4);
-    visiblePartCount >= 1;
-    visiblePartCount -= 1
-  ) {
-    const shortened = `/…/${parts.slice(-visiblePartCount).join("/")}`;
-    if (shortened.length <= maxLength || visiblePartCount === 1) {
-      return shortened;
-    }
-  }
-
-  return cwd;
-};
-
 const createWelcomeEntry = (
   scopeName?: string | null,
   timestamp = new Date().toISOString(),
@@ -312,7 +303,7 @@ const createWelcomeEntry = (
   exitCode: 0,
   output: `Backoffice terminal connected to the selected runtime-tool bash scope.
 Scope: ${scopeName ?? "unscoped"}
-Type a command and press Enter.`,
+Type a command and press Enter. End a line with \\ to continue it; run 'use' to switch scope.`,
   durationMs: 0,
   timestamp,
 });
@@ -349,6 +340,20 @@ const writeSnapshot = (scopeId: string | null | undefined, snapshot: DashboardTe
   window.localStorage.setItem(getStorageKey(scopeId), JSON.stringify(snapshot));
 };
 
+const withResult = (
+  snapshot: DashboardTerminalSnapshot,
+  result: DashboardCommandResult,
+): DashboardTerminalSnapshot => {
+  const trimmedCommand = result.command.trim();
+  return {
+    cwd: result.nextCwd,
+    entries: trimHistory([...snapshot.entries, createEntry(result)]),
+    commands: trimmedCommand
+      ? trimHistory([...snapshot.commands, trimmedCommand])
+      : snapshot.commands,
+  };
+};
+
 const createEntry = (result: DashboardCommandResult): DashboardTerminalEntry => ({
   id: `${Date.now()}-${Math.random()}`,
   command: result.command,
@@ -368,6 +373,7 @@ export const buildDashboardAutocomplete = ({
   history,
   mode,
   pathAutocompleteResult,
+  scopes,
 }: {
   commandLine: string;
   commandSpecs: readonly DashboardCommandSpec[];
@@ -376,6 +382,7 @@ export const buildDashboardAutocomplete = ({
   history: readonly string[];
   mode: DashboardAutocompleteMode;
   pathAutocompleteResult?: DashboardPathAutocompleteResult;
+  scopes: readonly DashboardTerminalScope[];
 }): DashboardAutocompleteSuggestion[] => {
   const trimmedQuery = commandLine.trim().toLowerCase();
   const historyCommands = uniqueNewestCommands(history);
@@ -425,6 +432,21 @@ export const buildDashboardAutocomplete = ({
     if (commandSuggestions.length) {
       return commandSuggestions;
     }
+  }
+
+  if (commandToken?.value === DASHBOARD_USE_COMMAND_SPEC.command) {
+    const query = currentToken.value.toLowerCase();
+    return scopes
+      .filter((scope) => scope.name.toLowerCase().startsWith(query))
+      .map((scope) => ({
+        id: `scope:${scope.id}`,
+        kind: "scope",
+        label: scope.name,
+        description: scope.label,
+        replacement: scope.name,
+        replacementStart: currentToken.start,
+        replacementEnd: currentToken.end,
+      }));
   }
 
   const pathAutocompleteRequest = getDashboardPathAutocompleteRequest({
@@ -521,6 +543,107 @@ __fragno_dashboard_exit=$?
 printf '\\n%s%s\\n' '${DASHBOARD_CWD_MARKER}' "$PWD" >&2
 exit "$__fragno_dashboard_exit"`;
 
+export const DASHBOARD_USE_COMMAND_SPEC: DashboardCommandSpec = {
+  command: "use",
+  summary: "Switch this terminal to another scope. Without a name, lists the scopes.",
+  options: [],
+};
+
+/**
+ * `use` is the terminal's own builtin: it changes which scope later commands run in, so it never
+ * reaches bash. A switch is left to the caller; anything else is answered in place.
+ */
+export const resolveDashboardUseCommand = ({
+  command,
+  cwd,
+  scopes,
+  current,
+}: {
+  command: string;
+  cwd: string;
+  scopes: readonly DashboardTerminalScope[];
+  current: DashboardTerminalScope;
+}):
+  | { kind: "not-use" }
+  | { kind: "switch"; scope: DashboardTerminalScope }
+  | { kind: "reply"; result: DashboardCommandResult } => {
+  const match = /^use(?:\s+(.+))?$/.exec(withoutLineContinuations(command).trim());
+  if (!match) {
+    return { kind: "not-use" };
+  }
+
+  const reply = (ok: boolean, output: string) => ({
+    kind: "reply" as const,
+    result: {
+      intent: "run-command" as const,
+      command,
+      cwd,
+      nextCwd: cwd,
+      output,
+      exitCode: ok ? 0 : 1,
+      durationMs: 0,
+      ok,
+    },
+  });
+  const name = match[1];
+  if (!name) {
+    const width = Math.max(...scopes.map((scope) => scope.name.length));
+    return reply(
+      true,
+      scopes
+        .map(
+          (scope) =>
+            `${scope.id === current.id ? "*" : " "} ${scope.name.padEnd(width)}  ${scope.label}`,
+        )
+        .join("\n"),
+    );
+  }
+
+  if (/\s/.test(name)) {
+    return reply(false, "use: takes one scope name. Run 'use' to list scopes.");
+  }
+  const scope = scopes.find((candidate) => candidate.name === name);
+  if (!scope) {
+    return reply(false, `use: no scope named '${name}'. Run 'use' to list scopes.`);
+  }
+  if (scope.id === current.id) {
+    return reply(true, `Already in ${scope.label}`);
+  }
+  return { kind: "switch", scope };
+};
+
+/**
+ * Records a switch with `use` at the end of the destination's session, which is shown next, so
+ * the scrollback says how it got there.
+ */
+export const recordDashboardTerminalArrival = ({
+  scope,
+  from,
+  command,
+}: {
+  scope: DashboardTerminalScope;
+  from: DashboardTerminalScope;
+  command: string;
+}) => {
+  const snapshot = readSnapshot(scope.actionPath, scope.label);
+  writeSnapshot(
+    scope.actionPath,
+    withResult(snapshot, {
+      intent: "run-command",
+      command,
+      cwd: snapshot.cwd,
+      nextCwd: snapshot.cwd,
+      output: `Switched from ${from.label} to ${scope.label}`,
+      exitCode: 0,
+      durationMs: 0,
+      ok: true,
+    }),
+  );
+};
+
+/** An odd run of trailing backslashes escapes the newline that follows, continuing the command. */
+const endsWithLineContinuation = (text: string) => /(?:^|[^\\])(?:\\\\)*\\$/.test(text);
+
 export const useDashboardTerminal = ({
   scopeId,
   scopeName,
@@ -529,6 +652,7 @@ export const useDashboardTerminal = ({
   requestPathAutocomplete,
   disabled = false,
   commandSpecs = [],
+  scopes,
 }: UseDashboardTerminalOptions) => {
   const [snapshot, setSnapshot] = useState(() => createHydrationSafeSnapshot(scopeName));
   const [snapshotHydrated, setSnapshotHydrated] = useState(false);
@@ -537,10 +661,13 @@ export const useDashboardTerminal = ({
   const [historyDraft, setHistoryDraft] = useState("");
   const [selectionVersion, setSelectionVersion] = useState(0);
   const [autocompleteMode, setAutocompleteMode] = useState<DashboardAutocompleteMode>("completion");
-  const [autocompleteOpen, setAutocompleteOpen] = useState(false);
+  const [autocompleteRequested, setAutocompleteRequested] = useState(false);
   const [activeAutocompleteIndex, setActiveAutocompleteIndex] = useState(0);
+  // Whether the user reached for the list (Tab, ^R, or the arrows) rather than it opening as they
+  // typed; only then does Enter take a suggestion instead of running the command.
+  const [autocompleteEngaged, setAutocompleteEngaged] = useState(false);
   const terminalRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const autocompleteSuggestions = useMemo(
     () =>
@@ -551,30 +678,52 @@ export const useDashboardTerminal = ({
         history: snapshot.commands,
         mode: autocompleteMode,
         pathAutocompleteResult,
+        scopes,
       }),
     [
       autocompleteMode,
       command,
       commandSpecs,
       pathAutocompleteResult,
+      scopes,
       snapshot.commands,
       snapshot.cwd,
     ],
   );
+  // Shown only with something to show, so a keypress racing the close never lands on an empty list.
+  const autocompleteOpen = autocompleteRequested && autocompleteSuggestions.length > 0;
 
   const queueInputSelection = () => {
     setSelectionVersion((current) => current + 1);
   };
 
   const closeAutocomplete = () => {
-    setAutocompleteOpen(false);
+    setAutocompleteRequested(false);
     setActiveAutocompleteIndex(0);
+    setAutocompleteEngaged(false);
   };
 
-  const openAutocomplete = (mode: DashboardAutocompleteMode) => {
+  const openAutocomplete = (mode: DashboardAutocompleteMode, engaged: boolean) => {
     setAutocompleteMode(mode);
-    setAutocompleteOpen(true);
+    setAutocompleteRequested(true);
     setActiveAutocompleteIndex(0);
+    setAutocompleteEngaged(engaged);
+  };
+
+  const placeCaret = (position: number) => {
+    window.requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(position, position);
+    });
+  };
+
+  const settle = (commandResult: DashboardCommandResult) => {
+    setSnapshot((current) => withResult(current, commandResult));
+    setCommand("");
+    setHistoryIndex(-1);
+    setHistoryDraft("");
+    closeAutocomplete();
+    queueInputSelection();
   };
 
   const applyAutocompleteSuggestion = (suggestion: DashboardAutocompleteSuggestion) => {
@@ -584,11 +733,7 @@ export const useDashboardTerminal = ({
     setHistoryIndex(-1);
     setHistoryDraft("");
     closeAutocomplete();
-    window.requestAnimationFrame(() => {
-      inputRef.current?.focus();
-      const nextPosition = inputRef.current?.value.length ?? 0;
-      inputRef.current?.setSelectionRange(nextPosition, nextPosition);
-    });
+    placeCaret(applyDashboardAutocompleteSuggestion(command, suggestion).length);
   };
 
   useEffect(() => {
@@ -620,24 +765,9 @@ export const useDashboardTerminal = ({
   }, [disabled, selectionVersion]);
 
   useEffect(() => {
-    if (!result) {
-      return;
+    if (result) {
+      settle(result);
     }
-
-    const trimmedCommand = result.command.trim();
-
-    setSnapshot((current) => ({
-      cwd: result.nextCwd,
-      entries: trimHistory([...current.entries, createEntry(result)]),
-      commands: trimmedCommand
-        ? trimHistory([...current.commands, trimmedCommand])
-        : current.commands,
-    }));
-    setCommand("");
-    setHistoryIndex(-1);
-    setHistoryDraft("");
-    closeAutocomplete();
-    queueInputSelection();
   }, [result]);
 
   useEffect(() => {
@@ -650,22 +780,20 @@ export const useDashboardTerminal = ({
   }, [snapshot.entries]);
 
   useEffect(() => {
-    if (autocompleteOpen && autocompleteSuggestions.length === 0) {
-      setAutocompleteOpen(false);
+    if (autocompleteRequested && autocompleteSuggestions.length === 0) {
+      setAutocompleteRequested(false);
     }
     if (activeAutocompleteIndex >= autocompleteSuggestions.length) {
       setActiveAutocompleteIndex(Math.max(autocompleteSuggestions.length - 1, 0));
     }
-  }, [activeAutocompleteIndex, autocompleteOpen, autocompleteSuggestions.length]);
+  }, [activeAutocompleteIndex, autocompleteRequested, autocompleteSuggestions.length]);
 
   useEffect(() => {
     if (disabled || !autocompleteSuggestions.some((suggestion) => suggestion.kind === "path")) {
       return;
     }
 
-    setAutocompleteMode("completion");
-    setAutocompleteOpen(true);
-    setActiveAutocompleteIndex(0);
+    openAutocomplete("completion", false);
   }, [autocompleteSuggestions, disabled]);
 
   useEffect(() => {
@@ -709,16 +837,45 @@ export const useDashboardTerminal = ({
 
     if (autocompleteOpen) {
       setActiveAutocompleteIndex(0);
+      setAutocompleteEngaged(false);
     }
 
     if (!disabled && insertedText && (nextValue.endsWith(".") || nextValue.endsWith(" "))) {
-      openAutocomplete("completion");
+      openAutocomplete("completion", false);
     }
   };
 
-  const onCommandKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+  const onCommandKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    const isPlainEnter =
+      event.key === "Enter" &&
+      !event.nativeEvent.isComposing &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey;
+    // A line continuation wins over an open suggestion: the `\` says what Enter is for.
+    if (isPlainEnter) {
+      const { selectionStart, selectionEnd } = event.currentTarget;
+      const before = command.slice(0, selectionStart);
+      if (event.shiftKey) {
+        // Shift+Enter writes the continuation the user would otherwise type.
+        event.preventDefault();
+        const continuation = endsWithLineContinuation(before)
+          ? "\n"
+          : `${before === "" || before.endsWith(" ") ? "" : " "}\\\n`;
+        setCommand(`${before}${continuation}${command.slice(selectionEnd)}`);
+        closeAutocomplete();
+        placeCaret(before.length + continuation.length);
+        return;
+      }
+      if (endsWithLineContinuation(before)) {
+        closeAutocomplete();
+        return;
+      }
+    }
+
     if (autocompleteOpen && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
       event.preventDefault();
+      setAutocompleteEngaged(true);
       setActiveAutocompleteIndex((currentIndex) => {
         if (autocompleteSuggestions.length === 0) {
           return 0;
@@ -731,19 +888,28 @@ export const useDashboardTerminal = ({
       return;
     }
 
-    if (autocompleteOpen && (event.key === "Enter" || event.key === "Tab")) {
-      const suggestion = autocompleteSuggestions[activeAutocompleteIndex];
-      if (suggestion) {
-        event.preventDefault();
-        applyAutocompleteSuggestion(suggestion);
-      }
+    const activeSuggestion = autocompleteOpen
+      ? autocompleteSuggestions[activeAutocompleteIndex]
+      : undefined;
+    if (
+      activeSuggestion &&
+      (event.key === "Tab" || (event.key === "Enter" && autocompleteEngaged))
+    ) {
+      event.preventDefault();
+      applyAutocompleteSuggestion(activeSuggestion);
+      return;
+    }
+
+    if (isPlainEnter) {
+      event.preventDefault();
+      event.currentTarget.form?.requestSubmit();
       return;
     }
 
     if (event.ctrlKey && event.key.toLowerCase() === "r") {
       event.preventDefault();
       if (!disabled && snapshot.commands.length > 0) {
-        openAutocomplete("history");
+        openAutocomplete("history", true);
       }
       return;
     }
@@ -764,7 +930,7 @@ export const useDashboardTerminal = ({
           return;
         }
 
-        openAutocomplete("completion");
+        openAutocomplete("completion", true);
       }
       return;
     }
@@ -786,6 +952,16 @@ export const useDashboardTerminal = ({
     }
 
     if (event.metaKey || event.ctrlKey || event.altKey || snapshot.commands.length === 0) {
+      return;
+    }
+
+    // Within a multi-line command the arrows move between its lines; history is past either end.
+    const { selectionStart, selectionEnd } = event.currentTarget;
+    if (
+      event.key === "ArrowUp"
+        ? command.slice(0, selectionStart).includes("\n")
+        : command.slice(selectionEnd).includes("\n")
+    ) {
       return;
     }
 
@@ -835,6 +1011,7 @@ export const useDashboardTerminal = ({
     onCommandKeyDown,
     closeAutocomplete,
     clear,
+    reply: settle,
     terminalHistory: snapshot.entries,
     terminalRef,
   };

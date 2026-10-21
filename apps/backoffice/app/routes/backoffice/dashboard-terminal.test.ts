@@ -70,6 +70,7 @@ describe("dashboard terminal autocomplete", () => {
       commandSpecs,
       history: ["ls /workspace", "pi.session.list", "pi.session.get --session-id abc"],
       mode: "history",
+      scopes: [],
     });
 
     expect(suggestions.map((suggestion) => suggestion.label)).toEqual([
@@ -88,6 +89,7 @@ describe("dashboard terminal autocomplete", () => {
       commandSpecs,
       history: [],
       mode: "completion",
+      scopes: [],
     });
 
     expect(suggestions.map((suggestion) => suggestion.label)).toEqual([
@@ -112,6 +114,7 @@ describe("dashboard terminal autocomplete", () => {
       commandSpecs: manyCommands,
       history: [],
       mode: "completion",
+      scopes: [],
     });
 
     expect(suggestions.map((suggestion) => suggestion.label)).toEqual(
@@ -125,6 +128,7 @@ describe("dashboard terminal autocomplete", () => {
       commandSpecs,
       history: [],
       mode: "completion",
+      scopes: [],
     });
 
     expect(suggestions.map((suggestion) => [suggestion.label, suggestion.description])).toEqual([
@@ -143,6 +147,7 @@ describe("dashboard terminal autocomplete", () => {
       commandSpecs,
       history: [],
       mode: "completion",
+      scopes: [],
     });
 
     expect(suggestions.map((suggestion) => [suggestion.label, suggestion.detail])).toEqual([
@@ -179,6 +184,7 @@ describe("dashboard terminal autocomplete", () => {
       currentCwd: "/",
       history: [],
       mode: "completion",
+      scopes: [],
       pathAutocompleteResult: {
         ...request,
         ok: true,

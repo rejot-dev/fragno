@@ -1,5 +1,13 @@
-import { Button } from "@fragno-private/design-system/button";
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import {
+  TerminalBanner,
+  TerminalLog,
+  TerminalLogEntry,
+  TerminalLogPending,
+  TerminalPrompt,
+  TerminalSuggestion,
+  TerminalSuggestions,
+} from "@fragno-private/design-system/terminal";
+import { useCallback, useEffect, useId, useMemo } from "react";
 import { useFetcher } from "react-router";
 
 import {
@@ -8,18 +16,19 @@ import {
   type DashboardAutocompleteSuggestion,
   type DashboardPathAutocompleteRequest,
   type DashboardTerminalActionResult,
-  shortenDashboardCwd,
+  type DashboardTerminalScope,
+  DASHBOARD_USE_COMMAND_SPEC,
+  resolveDashboardUseCommand,
   useDashboardTerminal,
 } from "./dashboard-terminal";
 
 type DashboardTerminalPanelProps = {
-  scopeId?: string | null;
-  scopeName?: string | null;
-  description?: string;
-  commandSpecs?: readonly DashboardCommandSpec[];
-  actionPath?: string;
-  presentation?: "page" | "quake";
-  focusInput?: boolean;
+  scope: DashboardTerminalScope;
+  scopes: readonly DashboardTerminalScope[];
+  commandSpecs: readonly DashboardCommandSpec[];
+  focusInput: boolean;
+  onSwitchScope: (scope: DashboardTerminalScope, command: string) => void;
+  onOpenScopeMenu: () => void;
 };
 
 const suggestionKindLabel = (suggestion: DashboardAutocompleteSuggestion) => {
@@ -29,19 +38,20 @@ const suggestionKindLabel = (suggestion: DashboardAutocompleteSuggestion) => {
   return suggestion.kind;
 };
 
+/** The terminal session inside a `TerminalOverlay`: scrollback, command line, and suggestions. */
 export function DashboardTerminalPanel({
-  scopeId,
-  scopeName,
-  description = "Command output is executed against the backoffice Pi-backed filesystem (/static, /workspace).",
-  commandSpecs = [],
-  actionPath,
-  presentation = "page",
-  focusInput = false,
+  scope,
+  scopes,
+  commandSpecs,
+  focusInput,
+  onSwitchScope,
+  onOpenScopeMenu,
 }: DashboardTerminalPanelProps) {
   const commandFetcher = useFetcher<DashboardTerminalActionResult>();
   const pathAutocompleteFetcher = useFetcher<DashboardTerminalActionResult>();
   const pathAutocompleteSubmit = pathAutocompleteFetcher.submit;
   const isSubmitting = commandFetcher.state !== "idle";
+  const pendingCommand = commandFetcher.formData?.get("command");
   const commandResult: DashboardCommandResult | undefined =
     commandFetcher.data?.intent === "run-command" ? commandFetcher.data : undefined;
   const pathAutocompleteResult =
@@ -55,23 +65,25 @@ export function DashboardTerminalPanel({
       formData.set("commandLine", request.commandLine);
       formData.set("cwd", request.cwd);
       formData.set("cursorPosition", String(request.cursorPosition));
-      void pathAutocompleteSubmit(formData, { method: "post", action: actionPath });
+      void pathAutocompleteSubmit(formData, { method: "post", action: scope.actionPath });
     },
-    [actionPath, pathAutocompleteSubmit],
+    [scope.actionPath, pathAutocompleteSubmit],
+  );
+  const allCommandSpecs = useMemo(
+    () => [DASHBOARD_USE_COMMAND_SPEC, ...commandSpecs],
+    [commandSpecs],
   );
   const terminal = useDashboardTerminal({
-    scopeId,
-    scopeName,
+    scopeId: scope.actionPath,
+    scopeName: scope.label,
     result: commandResult,
     pathAutocompleteResult,
     requestPathAutocomplete,
     disabled: isSubmitting,
-    commandSpecs,
+    commandSpecs: allCommandSpecs,
+    scopes,
   });
   const autocompleteListId = useId();
-  const autocompleteListRef = useRef<HTMLDivElement>(null);
-  const autocompleteItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const [quakeAutocompleteMaxHeight, setQuakeAutocompleteMaxHeight] = useState<number>();
 
   useEffect(() => {
     if (focusInput) {
@@ -80,259 +92,132 @@ export function DashboardTerminalPanel({
   }, [focusInput, terminal.inputRef]);
 
   useEffect(() => {
-    if (!terminal.autocompleteOpen || presentation !== "quake") {
-      setQuakeAutocompleteMaxHeight(undefined);
-      return undefined;
+    const log = terminal.terminalRef.current;
+    if (log && typeof pendingCommand === "string") {
+      log.scrollTop = log.scrollHeight;
     }
-
-    function fitQuakeAutocompleteToViewport() {
-      const list = autocompleteListRef.current;
-      if (!list) {
-        return;
-      }
-
-      const rootFontSize = Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
-      const desiredMenuHeight = Math.min(rootFontSize * 18, window.innerHeight * 0.4);
-      const availableHeight = Math.max(window.innerHeight - list.getBoundingClientRect().top, 0);
-      setQuakeAutocompleteMaxHeight(Math.min(availableHeight, desiredMenuHeight));
-    }
-
-    fitQuakeAutocompleteToViewport();
-    window.addEventListener("resize", fitQuakeAutocompleteToViewport);
-    return () => {
-      window.removeEventListener("resize", fitQuakeAutocompleteToViewport);
-    };
-  }, [presentation, terminal.autocompleteOpen, terminal.autocompleteSuggestions.length]);
-
-  useEffect(() => {
-    if (!terminal.autocompleteOpen) {
-      return;
-    }
-
-    const list = autocompleteListRef.current;
-    const item = autocompleteItemRefs.current[terminal.activeAutocompleteIndex];
-    if (!list || !item) {
-      return;
-    }
-
-    const itemTop = item.offsetTop;
-    const itemBottom = itemTop + item.offsetHeight;
-    const visibleTop = list.scrollTop;
-    const visibleBottom = visibleTop + list.clientHeight;
-
-    if (item.offsetHeight >= list.clientHeight) {
-      list.scrollTop = itemTop;
-      return;
-    }
-
-    if (itemTop < visibleTop) {
-      list.scrollTop = itemTop;
-      return;
-    }
-
-    if (itemBottom > visibleBottom) {
-      list.scrollTop = itemBottom - list.clientHeight;
-    }
-  }, [terminal.activeAutocompleteIndex, terminal.autocompleteOpen]);
-
-  const isQuakeTerminal = presentation === "quake";
-
-  function renderAutocompleteMenu(positionClassName: string) {
-    return (
-      <div
-        className={`absolute z-20 overflow-hidden border border-[color:var(--bo-border-strong)] bg-[color:color-mix(in_srgb,var(--bo-panel)_88%,transparent)] shadow-[0_18px_50px_rgba(0,0,0,0.18)] backdrop-blur-3xl ${positionClassName}`}
-      >
-        {!isQuakeTerminal ? (
-          <div className="flex items-center justify-between border-b border-[color:var(--bo-border)] px-3 py-2">
-            <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-              {terminal.autocompleteMode === "history" ? "Command history" : "Completions"}
-            </p>
-            <p className="text-[10px] text-[var(--bo-muted-2)]">↑↓ select · Enter/Tab apply</p>
-          </div>
-        ) : null}
-        <div
-          id={autocompleteListId}
-          ref={autocompleteListRef}
-          role="listbox"
-          aria-label={terminal.autocompleteMode === "history" ? "Command history" : "Suggestions"}
-          className={isQuakeTerminal ? "overflow-auto py-1" : "max-h-64 overflow-auto py-1"}
-          style={
-            isQuakeTerminal && quakeAutocompleteMaxHeight !== undefined
-              ? { maxHeight: quakeAutocompleteMaxHeight }
-              : undefined
-          }
-        >
-          {terminal.autocompleteSuggestions.map((suggestion, index) => {
-            const isActive = index === terminal.activeAutocompleteIndex;
-            return (
-              <button
-                key={suggestion.id}
-                id={`${autocompleteListId}-option-${index}`}
-                ref={(node) => {
-                  autocompleteItemRefs.current[index] = node;
-                }}
-                type="button"
-                role="option"
-                aria-selected={isActive}
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  terminal.onAutocompleteSuggestionMouseDown(suggestion);
-                }}
-                className={`flex min-h-16 w-full items-start gap-3 px-3 py-2 text-left font-mono text-xs transition-colors ${
-                  isActive
-                    ? "bg-[var(--bo-selected-bg)] font-semibold text-[var(--bo-fg)] shadow-[inset_3px_0_0_var(--bo-accent)]"
-                    : "text-[var(--bo-fg)] hover:bg-[var(--bo-panel-2)]"
-                }`}
-              >
-                <span className="mt-0.5 min-w-16 text-[9px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
-                  {suggestionKindLabel(suggestion)}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate">{suggestion.label}</span>
-                  <span className="mt-1 block truncate font-sans text-[11px] text-[var(--bo-muted)]">
-                    {suggestion.detail ? `${suggestion.detail} · ` : ""}
-                    {suggestion.description}
-                  </span>
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    );
-  }
+  }, [pendingCommand, terminal.terminalRef]);
 
   return (
-    <div
-      className={
-        isQuakeTerminal
-          ? "relative flex min-h-0 min-w-0 flex-1 flex-col bg-transparent"
-          : "min-w-0 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4"
-      }
-    >
-      {!isQuakeTerminal ? (
-        <div className="flex items-start justify-between gap-4">
-          <div className="space-y-2">
-            <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-              Pi terminal
-            </p>
-            <p className="text-sm text-[var(--bo-muted)]">{description}</p>
-          </div>
-          <p className="text-right text-[10px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
-            ^J run · ^L clear · ^R history · Tab complete
-          </p>
-        </div>
-      ) : null}
-
-      <div
-        ref={terminal.terminalRef}
-        className={`backoffice-scroll max-w-full min-w-0 overflow-auto font-mono text-xs leading-6 text-[var(--bo-fg)] ${
-          isQuakeTerminal
-            ? "min-h-0 flex-1 bg-[color:color-mix(in_srgb,var(--bo-bg)_38%,transparent)] px-5 py-3"
-            : "mt-4 max-h-[28rem] rounded border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3"
-        }`}
-      >
-        {terminal.terminalHistory.map((entry) => (
-          <div key={entry.id} className="mb-4 w-max min-w-full last:mb-0">
-            <p className="text-[var(--bo-muted-2)]">
-              [{new Date(entry.timestamp).toLocaleTimeString()}]
-            </p>
-            <p>
-              <span className="text-[var(--bo-accent-fg)]">{entry.cwd}</span>
-              <span className="text-[var(--bo-muted)]"> $ </span>
-              <span className="text-[var(--bo-fg)]">{entry.command || "(system)"}</span>
-            </p>
-            <pre className={`whitespace-pre ${entry.ok ? "text-[var(--bo-fg)]" : "text-red-400"}`}>
-              {entry.output}
-            </pre>
-            <p className="mt-1 text-[10px] text-[var(--bo-muted-2)] uppercase">
-              exit {entry.exitCode} · {entry.durationMs}ms
-            </p>
-          </div>
-        ))}
-      </div>
+    <>
+      <TerminalLog ref={terminal.terminalRef}>
+        {terminal.terminalHistory.map((entry) =>
+          // Only the greeting has no command.
+          entry.command === "" ? (
+            <TerminalBanner key={entry.id}>{entry.output}</TerminalBanner>
+          ) : (
+            <TerminalLogEntry
+              key={entry.id}
+              timestamp={entry.timestamp}
+              cwd={entry.cwd}
+              command={entry.command}
+              output={entry.output}
+              ok={entry.ok}
+              exitCode={entry.exitCode}
+              durationMs={entry.durationMs}
+            />
+          ),
+        )}
+        {typeof pendingCommand === "string" ? (
+          <TerminalLogPending cwd={terminal.currentCwd} command={pendingCommand} />
+        ) : null}
+      </TerminalLog>
 
       <commandFetcher.Form
         method="post"
-        action={actionPath}
-        className={
-          isQuakeTerminal
-            ? "space-y-2 bg-[color:color-mix(in_srgb,var(--bo-panel)_58%,transparent)] backdrop-blur-2xl"
-            : "mt-4 space-y-2"
-        }
+        action={scope.actionPath}
+        onSubmit={(event) => {
+          if (terminal.command.trim() === "") {
+            event.preventDefault();
+            return;
+          }
+          const use = resolveDashboardUseCommand({
+            command: terminal.command,
+            cwd: terminal.currentCwd,
+            scopes,
+            current: scope,
+          });
+          if (use.kind === "not-use") {
+            return;
+          }
+          event.preventDefault();
+          if (use.kind === "switch") {
+            onSwitchScope(use.scope, terminal.command.trim());
+          } else {
+            terminal.reply(use.result);
+          }
+        }}
       >
-        <div className={isQuakeTerminal ? "flex" : "flex gap-2"}>
-          <input type="hidden" name="intent" value="run-command" />
-          <input type="hidden" name="cwd" value={terminal.currentCwd} />
-          <div
-            className={`relative flex min-w-0 flex-1 items-stretch ${
-              isQuakeTerminal
-                ? "bg-[color:color-mix(in_srgb,var(--bo-panel-2)_46%,transparent)] focus-within:bg-[color:color-mix(in_srgb,var(--bo-panel-2)_68%,transparent)]"
-                : "border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)]"
-            }`}
-          >
-            {terminal.autocompleteOpen && !isQuakeTerminal
-              ? renderAutocompleteMenu("right-0 bottom-full left-0 mb-2")
-              : null}
-
-            <div
-              title={terminal.currentCwd}
-              className={`max-w-[42%] shrink-0 overflow-hidden px-3 py-2 font-mono text-sm text-ellipsis whitespace-nowrap text-[var(--bo-accent-fg)] ${
-                isQuakeTerminal ? "" : "w-72 border-r border-[color:var(--bo-border)] lg:w-96"
-              }`}
-            >
-              {shortenDashboardCwd(terminal.currentCwd, 44)}
-            </div>
-            <input
-              ref={terminal.inputRef}
-              name="command"
-              aria-label="Dashboard terminal command"
-              aria-autocomplete="list"
-              aria-controls={terminal.autocompleteOpen ? autocompleteListId : undefined}
-              aria-expanded={terminal.autocompleteOpen}
-              aria-activedescendant={
-                terminal.autocompleteOpen && terminal.autocompleteSuggestions.length > 0
-                  ? `${autocompleteListId}-option-${terminal.activeAutocompleteIndex}`
-                  : undefined
-              }
-              value={terminal.command}
-              onChange={(event) => {
-                terminal.onCommandChange(event.target.value);
-              }}
-              onKeyDownCapture={(event) => {
-                if (event.key !== "Escape" || !terminal.autocompleteOpen) {
-                  return;
-                }
-                event.preventDefault();
-                event.stopPropagation();
-                terminal.closeAutocomplete();
-              }}
-              onKeyDown={terminal.onCommandKeyDown}
-              placeholder="Run a bash command (e.g. ls /workspace, pwd, find /static)"
-              className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm text-[var(--bo-fg)] outline-none"
-              autoCapitalize="off"
-              autoComplete="off"
-              autoCorrect="off"
-              spellCheck={false}
-              disabled={isSubmitting}
-            />
-          </div>
-          {!isQuakeTerminal ? (
-            <>
-              <Button variant="accent" type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Running" : "Run"}
-              </Button>
-              <Button variant="secondary" onClick={terminal.clear} disabled={isSubmitting}>
-                Clear
-              </Button>
-            </>
-          ) : null}
-        </div>
+        <input type="hidden" name="intent" value="run-command" />
+        <input type="hidden" name="cwd" value={terminal.currentCwd} />
+        <TerminalPrompt
+          scope={scope.name}
+          cwd={terminal.currentCwd}
+          ref={terminal.inputRef}
+          name="command"
+          aria-label="Dashboard terminal command"
+          aria-autocomplete="list"
+          aria-controls={terminal.autocompleteOpen ? autocompleteListId : undefined}
+          aria-expanded={terminal.autocompleteOpen}
+          aria-activedescendant={
+            terminal.autocompleteOpen && terminal.autocompleteSuggestions.length > 0
+              ? `${autocompleteListId}-option-${terminal.activeAutocompleteIndex}`
+              : undefined
+          }
+          value={terminal.command}
+          onChange={(event) => {
+            terminal.onCommandChange(event.target.value);
+          }}
+          onKeyDownCapture={(event) => {
+            if (event.key !== "Escape" || !terminal.autocompleteOpen) {
+              return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            terminal.closeAutocomplete();
+          }}
+          onKeyDown={(event) => {
+            if (event.ctrlKey && event.key === "o") {
+              event.preventDefault();
+              onOpenScopeMenu();
+              return;
+            }
+            terminal.onCommandKeyDown(event);
+          }}
+          placeholder="Run a bash command (e.g. ls /workspace, pwd, find /static)"
+          autoCapitalize="off"
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
+          disabled={isSubmitting}
+        />
       </commandFetcher.Form>
 
-      {terminal.autocompleteOpen && isQuakeTerminal
-        ? renderAutocompleteMenu("top-full left-0 mt-2 w-full")
-        : null}
-    </div>
+      {terminal.autocompleteOpen ? (
+        <TerminalSuggestions
+          id={autocompleteListId}
+          label={terminal.autocompleteMode === "history" ? "Command history" : "Suggestions"}
+        >
+          {terminal.autocompleteSuggestions.map((suggestion, index) => (
+            <TerminalSuggestion
+              key={suggestion.id}
+              id={`${autocompleteListId}-option-${index}`}
+              kind={suggestionKindLabel(suggestion)}
+              label={suggestion.label}
+              description={
+                suggestion.detail
+                  ? `${suggestion.detail} · ${suggestion.description}`
+                  : suggestion.description
+              }
+              active={index === terminal.activeAutocompleteIndex}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                terminal.onAutocompleteSuggestionMouseDown(suggestion);
+              }}
+            />
+          ))}
+        </TerminalSuggestions>
+      ) : null}
+    </>
   );
 }

@@ -94,7 +94,7 @@ describe("BackofficeShell resolved scope", () => {
     );
     expect(terminalMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        selectedScope: {
+        pageScope: {
           ...resolvedScope,
           label: "Acme / Project One",
         },
