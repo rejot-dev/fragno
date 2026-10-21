@@ -6,7 +6,7 @@ object with one ongoing root conversation, compacted automatically, that runs on
 - `workers/pi-manager.do.ts`: one `PI_MANAGER` object per execution scope, with the same singleton,
   organization, user, and project scopes as Automations. Use `objects.piManager.for(scope)` or its
   `singleton`, `forOrg`, and `forUser` selectors. Its embedded Fragno fragment stores agent
-  definitions and records which agents have been provisioned, with their billing owner.
+  definitions and records which agents have been provisioned.
 - `workers/pi.do.ts`: one `PI` object per agent, addressed by `piAgentObjectName` from its scope and
   agent name.
 - `workers/lib/pi-session-store.ts`: Cloudflare SQLite implementation of Pi Durable's
@@ -60,10 +60,9 @@ Every authorization goes through the turn's execution: the submitter's actors wi
 identified by scope because agents of different scopes share names, whose capability grants are the
 definition's permissions, bound with `withBackofficeActorCapabilityGrants` for that turn. Because
 the kernel requires the principal and every delegate to grant an operation, a definition can only
-narrow the submitter, so editing a definition never escalates. Running a turn itself (`pi.modify`,
-and billing access for user and system scopes) is checked with the submitter's actors alone, so
-definitions need not grant it. Deferred executions re-resolve permissions on every check, so
-revocations apply mid-turn.
+narrow the submitter, so editing a definition never escalates. Running a turn itself (`pi.modify`)
+is checked with the submitter's actors alone, so definitions need not grant it. Deferred executions
+re-resolve permissions on every check, so revocations apply mid-turn.
 
 The root conversation's current run (`pi.live` `run.inputs[0]`) identifies the owning turn. Pi's
 model boundary has no conversation context, which is sound because the root conversation is the
@@ -169,8 +168,8 @@ A notification is a queue item whose sender is the route's or the workflow run's
 request to handle it waits its turn like a prompt (see Queue). Its request ID is
 `route:<routeId>:<eventId>`, or `reply:<eventId>` without a route, so redelivering an event through
 one route, or to the agent directly, places nothing new, even after it was handled. Notifications
-never provision an agent, because a personal agent's billing owner is chosen by its first prompter:
-an agent with no turns answers `404 AGENT_NOT_STARTED`.
+never provision an agent: a person must start the conversation first. An agent with no turns answers
+`404 AGENT_NOT_STARTED`.
 
 The event itself is written as it arrives, into the root conversation as a `backoffice.notification`
 entry with request ID `<requestId>:event`. Pi places a write at a busy conversation's next boundary,
@@ -195,15 +194,14 @@ All paths below are mounted at `/api/pi-manager` inside the manager object:
 
 - `GET /models`: the `PI_SUPPORTED_MODELS` entries whose provider credentials are available from the
   same registry used by agents, with each model's context window from that registry.
-- `GET /agents`: every definition with its provisioning (`null` until its first turn), and invalid
+- `GET /agents`: every definition with `provisioned` (`false` until its first turn), and invalid
   definitions.
-- `GET /agents/:agentName`: one definition and its provisioning.
-- `POST /agents/:agentName/prompts`:
-  `{ requestId, content, whenBusy, whenPaused, billingOrganizationId }`, answering
+- `GET /agents/:agentName`: one definition and whether it is provisioned.
+- `POST /agents/:agentName/prompts`: `{ requestId, content, whenBusy, whenPaused }`, answering
   `{ requestId, status }` or `409 AGENT_BUSY` for a refused `reject`; see Queue. The first prompt
-  provisions the agent: organization and project agents bill their organization, user agents require
-  an authorized billing organization, and later turns keep the original owner. Reusing a request ID
-  reuses the submission rather than generating another answer.
+  provisions the agent. Usage belongs to its scope's root owner, an organization or a user. System
+  work has no customer. Reusing a request ID reuses the submission rather than generating another
+  answer.
 - `POST /agents/:agentName/notifications`: `{ routeId, event }`, answering `204` or
   `404 AGENT_NOT_STARTED`. Automations routes and workflow replies, whose `routeId` is `null`, call
   it; see Notifications.
@@ -253,10 +251,10 @@ existing codemode execution environment, and kernel permission checks of the act
 Authorization does not rely on prompt sections or extension environment hooks: Pi reports their
 errors but continues generation, so the model boundary and every tool check fail closed.
 
-Pi tool calls inherit the agent's billing organization when a prompt omits `billingOrganizationId`.
-Inline codemode workflows snapshot the turn's execution and billing selection in their execution
-metadata and restore them after suspension, retries, and object restarts. Saved workflows started
-from these contexts inherit the same selection, including nested workflows.
+Pi, codemode, and prerecorded transcription attribute usage to the execution scope's root owner.
+Scoped tool calls use the selected scope, not the calling agent's owner. Workflows snapshot the
+execution scope and actors and restore them after suspension, retries, and object restarts; they
+carry no independent billing choice. See [usage attribution](../billing/README.md).
 
 Runtime tools target the scoped manager directly: `pi.listAgents`, `pi.getAgent`, `pi.submitPrompt`,
 `pi.getSubmission`, `pi.runPrompt`, and `pi.abortAgent`. Scoped context handles rebuild this runtime
@@ -270,14 +268,14 @@ which codemode preserves for workflow recovery decisions.
 
 The agent route loaders and actions call the scoped manager through `http.fetchAuthorized` and the
 Fragno route contract. The UI lists defined agents and where each comes from, starts an agent's
-conversation with its first message (choosing the active organization as a personal agent's billing
-owner), steers the sender's own running turn and queues messages otherwise, shows what waits in the
-composer (the input Pi holds in `pi.inbox` as steering or up next, then the agent's queue as queued
-prompts and notifications), estimates the active context against the conversation's model, runs and
-monitors manual compaction, paginates inactive transcript history, downloads streaming JSONL
-exports, and stops active work. Messages resume a stopped agent's queue, and while it is paused with
-items waiting, the composer's empty send button resumes it. A scoped resource route proxies the
-agent's `application/x-ndjson` conversation-view stream to the browser.
+conversation with its first message (no organization is required for personal agents), steers the
+sender's own running turn and queues messages otherwise, shows what waits in the composer (the input
+Pi holds in `pi.inbox` as steering or up next, then the agent's queue as queued prompts and
+notifications), estimates the active context against the conversation's model, runs and monitors
+manual compaction, paginates inactive transcript history, downloads streaming JSONL exports, and
+stops active work. Messages resume a stopped agent's queue, and while it is paused with items
+waiting, the composer's empty send button resumes it. A scoped resource route proxies the agent's
+`application/x-ndjson` conversation-view stream to the browser.
 
 ## Recovery
 
@@ -289,4 +287,6 @@ restored turn record is the recovered tools' authority.
 
 Production registers OpenAI, Anthropic, and Google providers with credentials from Worker bindings
 or Node configuration. An agent-scoped billing document and ownerless durable task deliver
-cumulative committed model usage to the agent's billing owner with an idempotent outbox event.
+cumulative committed model usage to the scope's root owner with an idempotent outbox event. Billing
+is required for customer-owned agents. Deliveries queued before ownership-based attribution retain
+their old destination until acknowledged; newly queued deliveries use ownership.

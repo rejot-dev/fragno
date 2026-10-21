@@ -5,7 +5,6 @@ import {
 import {
   backofficeContextScopesEqual,
   backofficeScopeContains,
-  backofficeScopeOrganization,
   isBackofficeRoutableScope,
   backofficeWorkspaceOrganization,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
@@ -33,6 +32,7 @@ import { createRouteBackedAutomationIdentityRuntime } from "@/fragno/automation/
 import { readBackofficeAutomationSource } from "@/fragno/automation/read-backoffice-automation-source";
 import { createRouteBackedAutomationRouterRuntime } from "@/fragno/automation/routing-route-runtime";
 import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
+import { usageBillingForScope } from "@/fragno/billing/usage-billing";
 import type { CodemodeRunContext } from "@/fragno/codemode/codemode-fragment";
 import { codemodeRunnerFor } from "@/fragno/codemode/codemode-object-execute";
 import { createRuntimeStateBackend } from "@/fragno/codemode/runtime-state-backend";
@@ -84,7 +84,6 @@ export type RouteBackedRuntimeContextOptions = {
   runtime: BackofficeRuntimeServices;
   kernel: BackofficeKernel;
   execution: BackofficeExecutionContext;
-  billingOrganizationId: string | null;
   /** Who the events emitted here, and in its scoped contexts, record as their cause. */
   emitter: EventEmitter;
   emittedEventActors?: AutomationActors;
@@ -168,7 +167,6 @@ export const createRouteBackedRuntimeContext = ({
   runtime,
   kernel,
   execution,
-  billingOrganizationId,
   emitter,
   emittedEventActors,
   emittedEventSource,
@@ -181,9 +179,6 @@ export const createRouteBackedRuntimeContext = ({
   const installationOwner =
     execution.scope.kind === "org" || execution.scope.kind === "user" ? execution.scope : null;
   const userId = userPrincipalId(execution);
-  // Work in an organization's scope bills that organization, as Codemode runs do.
-  const usageBillingOrganizationId =
-    backofficeScopeOrganization(execution.scope)?.orgId ?? billingOrganizationId;
   const stateBackend =
     execution.scope.kind === "system" || runtime.config.bindings.upload
       ? createRuntimeStateBackend({ runtime, kernel, execution })
@@ -207,8 +202,7 @@ export const createRouteBackedRuntimeContext = ({
   // Resolved per use: a local runtime instantiates an object as soon as its handle is created.
   const codemodeObject = () =>
     kernel.scoped("CODEMODE", execution.scope, runtime.objects.codemode).commands;
-  const codemodeRunner = () =>
-    codemodeRunnerFor(codemodeObject(), execution, billingOrganizationId);
+  const codemodeRunner = () => codemodeRunnerFor(codemodeObject(), execution);
 
   const formsObjects = runtime.objects.forms;
   const uploadObject = () => kernel.scoped("UPLOAD", execution.scope, runtime.objects.upload);
@@ -278,7 +272,6 @@ export const createRouteBackedRuntimeContext = ({
           ...execution,
           scope,
         },
-        billingOrganizationId,
         emitter,
         emittedEventActors,
         emittedEventSource,
@@ -329,7 +322,7 @@ export const createRouteBackedRuntimeContext = ({
               execution,
               preferredOrganizationId:
                 ("userAuthority" in execution ? execution.userAuthority?.organizationId : null) ??
-                billingOrganizationId,
+                null,
             }),
           }
         : null,
@@ -350,11 +343,11 @@ export const createRouteBackedRuntimeContext = ({
         classify: async (request) =>
           await kernel
             .scoped("PI_MANAGER", execution.scope, runtime.objects.piManager)
-            .commands.classify({ request, billingOrganizationId }),
+            .commands.classify({ request }),
         generateImage: async (request) =>
           await kernel
             .scoped("PI_MANAGER", execution.scope, runtime.objects.piManager)
-            .commands.generateImage({ request, billingOrganizationId }),
+            .commands.generateImage({ request }),
       },
     },
     event: {
@@ -421,7 +414,6 @@ export const createRouteBackedRuntimeContext = ({
             prepared,
             trigger: { type: "manual", payload: payload ?? {} },
             execution,
-            billingOrganizationId,
             replyTo: null,
           });
         },
@@ -481,7 +473,6 @@ export const createRouteBackedRuntimeContext = ({
         runtime,
         kernel,
         execution,
-        defaultBillingOrganizationId: billingOrganizationId,
       }),
     },
     integrations: {
@@ -492,13 +483,7 @@ export const createRouteBackedRuntimeContext = ({
           runtime: createReson8Runtime({
             reson8: runtime.reson8,
             scope: execution.scope,
-            recordBillingEvent:
-              usageBillingOrganizationId && runtime.config.bindings.billing
-                ? async (event) =>
-                    await runtime.objects.billing
-                      .forOrg(usageBillingOrganizationId)
-                      .commands.recordEvent(event)
-                : null,
+            billing: usageBillingForScope(runtime, execution.scope),
             nowEpochMs: Date.now,
           }),
         }

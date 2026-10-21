@@ -12,6 +12,7 @@ import type { InMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-r
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
+import { usageBillingForScope } from "@/fragno/billing/usage-billing";
 import { createReson8Server } from "@/fragno/reson8";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
@@ -23,6 +24,7 @@ import { InMemoryBillingObject } from "../../../../workers/billing.do";
 import { InMemoryCodemodeObject } from "../../../../workers/codemode.do";
 import { InMemoryFormsObject } from "../../../../workers/forms.do";
 import { InMemoryUploadObject } from "../../../../workers/upload.do";
+import { createReson8Runtime } from "./reson8-runtime";
 
 const scenarioObjects = {
   AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
@@ -82,7 +84,6 @@ async function terminal(runtime: InMemoryBackofficeRuntime, reson8Fetch: typeof 
         scope,
         service: { type: "automation", id: "transcriber" },
       }),
-      billingOrganizationId: null,
     }),
   });
   return bash;
@@ -133,7 +134,6 @@ test("an organization is billed for prerecorded transcription but not for realti
         }),
         // The token is unmetered, so only the transcription counts.
         then.billing.tracker({
-          organizationId: orgId,
           scope,
           period,
           meter: "transcription.audio",
@@ -141,13 +141,49 @@ test("an organization is billed for prerecorded transcription but not for realti
           eventCount: "1",
         }),
         then.billing.tracker({
-          organizationId: orgId,
           scope,
           period,
           meter: "transcription.requests",
           quantity: "1",
           eventCount: "1",
         }),
+        then.assert(
+          "personal transcription belongs to the user, not an organization",
+          async ({ runtime }) => {
+            const owner = { kind: "user", userId: "transcriber" } as const;
+            const personal = createReson8Runtime({
+              reson8: createReson8Server(platformApiKey, provider.fetch),
+              scope: owner,
+              billing: usageBillingForScope(runtime.services, owner),
+              nowEpochMs: () => Date.now(),
+            });
+            const transcription = await personal.transcribePrerecorded({
+              audio: new TextEncoder().encode(recording),
+              query: {},
+            });
+            assert.equal(transcription.text, "Hello from Reson8");
+            const statement = await runtime.objects.billing
+              .for(owner)
+              .commands.getStatement({ period });
+            expect(statement.trackers).toContainEqual(
+              expect.objectContaining({
+                meter: "transcription.audio",
+                quantity: "1500",
+                eventCount: "1",
+              }),
+            );
+            expect(
+              (await runtime.objects.billing.forOrg(orgId).commands.getStatement({ period }))
+                .trackers,
+            ).toContainEqual(
+              expect.objectContaining({
+                meter: "transcription.requests",
+                quantity: "1",
+                eventCount: "1",
+              }),
+            );
+          },
+        ),
       ],
     }),
   );

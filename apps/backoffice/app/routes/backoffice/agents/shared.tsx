@@ -8,7 +8,7 @@ import { getRouteErrorDebugDetails, getRouteErrorMessage } from "../route-errors
 
 export type PiLayoutContext = {
   resolvedScope: BackofficeResolvedScope;
-  billingOrganization: { id: string; name: string } | null;
+  usageLabel: string;
   availableModelOptions: PiAvailableModel[];
   /** Where dictation mints Reson8 tokens; null when the deployment has no Reson8 key. */
   dictationMountRoute: string | null;

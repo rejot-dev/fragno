@@ -22,6 +22,7 @@ import {
   type BackofficeScopeIdNames,
   backofficeScopeOrganization,
   backofficeScopePathSegment,
+  backofficeScopeRootOwner,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { workflowsSchema } from "@fragno-dev/workflows/schema";
 import { InMemoryFs, type IFileSystem } from "just-bash";
@@ -209,7 +210,6 @@ type FakePiAgent = {
 
 type PiProvisionedAgentCall = {
   agentName: string;
-  billingOrganizationId: string | null;
 };
 
 type PiGetViewCall = {
@@ -473,7 +473,6 @@ type TelegramSentChatActionInput = {
 
 type PiProvisionedAgentInput = {
   agentName?: string;
-  billingOrganizationId?: string | null;
 };
 
 type PiRanPromptInput = {
@@ -482,8 +481,8 @@ type PiRanPromptInput = {
   assistantText?: string | RegExp;
 };
 
+/** The tracker is read from the ledger of the scope's root owner. */
 type BillingTrackerAssertionInput = {
-  organizationId: string;
   scope: BackofficeContextScope;
   period: string;
   meter: string;
@@ -1110,7 +1109,6 @@ const createFakePiManagerApi = (
     agents.set(key, agent);
     provisionedAgents.push({
       agentName: config.agentName,
-      billingOrganizationId: config.billingOrganizationId,
     });
     return agent;
   }
@@ -1957,16 +1955,11 @@ const runScenarioCodemode = async (
     runtime: ctx.runtime.services,
     kernel,
     execution,
-    billingOrganizationId: null,
   });
   const toolContext = createBackofficeToolContext(runtimeContext);
   const result = await runBackofficeCodemode({
     code: input.code,
-    codemode: codemodeRunnerFor(
-      ctx.runtime.objects.codemode.for(input.scope).commands,
-      execution,
-      null,
-    ),
+    codemode: codemodeRunnerFor(ctx.runtime.objects.codemode.for(input.scope).commands, execution),
     timeout: input.timeout,
     families: runtimeToolFamilies,
     toolContext: toolContext,
@@ -3047,7 +3040,6 @@ const buildStepBuilders = <
                   scope: event.scope,
                   actors: event.actors,
                 },
-                billingOrganizationId: null,
                 replyTo: null,
               });
               await getWorkflow(ctx, input.orgId, execution).createInternalInstance(workflowInput);
@@ -3459,10 +3451,7 @@ const buildStepBuilders = <
           (ctx) => {
             const calls = ctx.fakes.pi?.provisionedAgents ?? [];
             const call = calls.find(
-              (candidate) =>
-                (!input.agentName || candidate.agentName === input.agentName) &&
-                (typeof input.billingOrganizationId === "undefined" ||
-                  candidate.billingOrganizationId === input.billingOrganizationId),
+              (candidate) => !input.agentName || candidate.agentName === input.agentName,
             );
             if (!call) {
               throw new Error(
@@ -3510,10 +3499,16 @@ const buildStepBuilders = <
         createStep(
           "then",
           "billing.tracker",
-          `assert ${input.meter} billing tracker for ${input.organizationId}`,
+          `assert ${input.meter} billing tracker for ${JSON.stringify(input.scope)}`,
           async (ctx) => {
-            ctx.rememberOrg(input.organizationId);
-            const billing = ctx.runtime.objects.billing.forOrg(input.organizationId);
+            const owner = backofficeScopeRootOwner(input.scope);
+            if (owner === null) {
+              throw new Error("System work has no billing ledger.");
+            }
+            if (owner.kind === "org") {
+              ctx.rememberOrg(owner.orgId);
+            }
+            const billing = ctx.runtime.objects.billing.for(owner);
             await ctx.runtime.drain();
             const page = await billing.commands.getTrackers({
               scope: input.scope,

@@ -377,7 +377,6 @@ async function getEventAsOwner(ctx: Ctx, eventId: string): Promise<unknown> {
       scope: { kind: "org", orgId: ctx.vars.orgId },
       userId: ctx.vars.ownerId,
     }),
-    billingOrganizationId: null,
   });
   assert(ownerContext.stateBackend);
   const { bash } = await createInteractiveBashHost({
@@ -420,7 +419,6 @@ async function execAsAdministrator(ctx: Ctx, command: string): Promise<string> {
       scope: { kind: "system" },
       userId: "platform-admin",
     }),
-    billingOrganizationId: null,
   });
   assert(context.stateBackend);
   const { bash } = await createInteractiveBashHost({
@@ -1367,7 +1365,6 @@ describe("installed-app event delivery SQLite scenarios", () => {
               runtime: ctx.runtime.services,
               kernel: new BackofficeKernel(ctx.runtime.services),
               execution: createBackofficeUserExecution({ scope: personal, userId }),
-              billingOrganizationId: null,
             });
             assert(context.stateBackend);
             const { bash } = await createInteractiveBashHost({

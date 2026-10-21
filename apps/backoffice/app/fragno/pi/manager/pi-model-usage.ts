@@ -5,9 +5,8 @@ import type { BillingEventInput } from "@/fragno/billing/contracts";
 import type { PiManagerHooks } from "./pi-agent-queue";
 import { piAgentDirectorySchema } from "./pi-manager-schema";
 
-/** Model usage that `deliverModelUsage` bills to the paying organization. */
+/** Model usage that `deliverModelUsage` records on the ledger of its scope's root owner. */
 export type PiModelUsage = {
-  organizationId: string;
   event: BillingEventInput;
 };
 

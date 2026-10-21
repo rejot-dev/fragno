@@ -1,7 +1,6 @@
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 
 import type { PiManagerObject } from "@/backoffice-runtime/object-registry";
-import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 import type {
   PiClassificationRequest,
@@ -25,13 +24,6 @@ type ModelsToolContext = BackofficeToolContext<{
   models?: ModelsRuntime;
   state: BackofficeStateBackend | undefined;
 }>;
-
-function billingOwnerRequired(work: string): BackofficeOperationError {
-  return new BackofficeOperationError(
-    "invalid_request",
-    `MODELS_BILLING_OWNER_REQUIRED: ${work} outside an organization requires a billing organization.`,
-  );
-}
 
 const OUTPUT_FORMAT_BY_EXTENSION = {
   png: "png",
@@ -73,11 +65,8 @@ const classifyTool = defineBackofficeRuntimeTool({
       }
       images = await readClassificationImages(context.runtimes.state, paths);
     }
-    const classified = await models.classify({ state, images, questions });
-    if (classified.type === "billing-owner-required") {
-      throw billingOwnerRequired("classifying");
-    }
-    return { answers: classified.answers };
+    const { answers } = await models.classify({ state, images, questions });
+    return { answers };
   },
 });
 
@@ -91,16 +80,13 @@ const generateImageTool = defineBackofficeRuntimeTool({
     if (!state) {
       throw new Error("Generating an image requires the workspace filesystem.");
     }
-    const generated = await requireModelsRuntime(context.runtimes.models).generateImage({
+    const { bytes } = await requireModelsRuntime(context.runtimes.models).generateImage({
       prompt,
       size,
       quality,
       outputFormat: outputFormatOf(out),
     });
-    if (generated.type === "billing-owner-required") {
-      throw billingOwnerRequired("generating an image");
-    }
-    await state.writeFileBytes(out, generated.bytes);
+    await state.writeFileBytes(out, bytes);
     return { path: out };
   },
 });

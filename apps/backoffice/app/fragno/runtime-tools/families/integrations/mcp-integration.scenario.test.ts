@@ -257,7 +257,6 @@ async function createIntegrationScenarioTerminal(
     runtime,
     execution,
     kernel,
-    billingOrganizationId: null,
   });
   assert(context.stateBackend);
   return (

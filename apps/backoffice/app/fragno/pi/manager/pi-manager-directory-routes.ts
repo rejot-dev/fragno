@@ -84,7 +84,7 @@ export const piManagerDirectoryRoutes = defineRoutes(piManagerDefinition).create
         }
         return json({
           ...definition,
-          provisioning: agent ? { billingOrganizationId: agent.billingOrganizationId } : null,
+          provisioned: agent !== null,
         });
       },
     }),

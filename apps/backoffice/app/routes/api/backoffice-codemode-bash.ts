@@ -66,7 +66,6 @@ export async function action({ request, context, params }: Route.ActionArgs) {
       runtime,
       kernel,
       execution: execution,
-      billingOrganizationId: null,
     }),
   });
 

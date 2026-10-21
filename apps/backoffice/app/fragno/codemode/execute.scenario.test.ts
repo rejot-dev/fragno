@@ -44,7 +44,7 @@ const owner = { kind: "org", orgId: "acme" } as const;
 function executionTool(ctx: BackofficeScenarioContext, execution: BackofficeExecutionContext) {
   return createExecCodeModeTool(
     createBackofficeAgentContext({
-      config: { agentName: "diagnostics", scope: execution.scope, billingOrganizationId: null },
+      config: { agentName: "diagnostics", scope: execution.scope },
       runtime: ctx.runtime.services,
       readActiveTurn: async () => ({
         actors: execution.actors,

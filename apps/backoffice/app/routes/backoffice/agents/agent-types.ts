@@ -11,7 +11,7 @@ import type {
 export type PiAgentsOutletContext = PiManagerAgentDirectory & {
   resolvedScope: BackofficeResolvedScope;
   basePath: string;
-  billingOrganization: { id: string; name: string } | null;
+  usageLabel: string;
   availableModelOptions: PiAvailableModel[];
   dictationMountRoute: string | null;
   agentsError: string | null;

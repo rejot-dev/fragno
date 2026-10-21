@@ -6,6 +6,7 @@ import { piAgentObjectName, type PiAgent } from "@/fragno/pi/agent/pi-agent-cont
 
 import { Auth, InMemoryAuthObject } from "./auth.do";
 import { Automations } from "./automations.do";
+import { Billing } from "./billing.do";
 import { Codemode } from "./codemode.do";
 import { createCloudflareBackofficeObjectContext } from "./lib/cloudflare-backoffice-object-implementation";
 import { Mcp } from "./mcp.do";
@@ -13,7 +14,7 @@ import { PiScenarioAgent } from "./pi-durable-scenario.test-support";
 import { InMemoryPiManagerObject } from "./pi-manager.do";
 import { Upload } from "./upload.do";
 
-export { PiScenarioAgent, Auth, Automations, Codemode, Mcp, Upload };
+export { PiScenarioAgent, Auth, Automations, Billing, Codemode, Mcp, Upload };
 
 /** Cloudflare test manager exposes the faux catalog used by PiScenarioAgent. */
 export class PiScenarioManager extends DurableObject<CloudflareEnv> {

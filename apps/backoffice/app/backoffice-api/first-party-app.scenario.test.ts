@@ -189,7 +189,6 @@ async function execAsAdministrator(ctx: Ctx, command: string): Promise<string> {
       scope: { kind: "system" },
       userId: "platform-admin",
     }),
-    billingOrganizationId: null,
   });
   assert(context.stateBackend);
   const { bash } = await createInteractiveBashHost({
@@ -245,7 +244,6 @@ async function listSystemEvents(ctx: Ctx) {
       scope: { kind: "system" },
       userId: "platform-admin",
     }),
-    billingOrganizationId: null,
   });
   assert(context.stateBackend);
   const { bash } = await createInteractiveBashHost({

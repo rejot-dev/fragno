@@ -77,7 +77,6 @@ export function createPiConversationExportStream(root: Conversation, config: PiA
       agent: {
         agentName: config.agentName,
         scope: config.scope,
-        billingOrganizationId: config.billingOrganizationId,
       },
     });
 

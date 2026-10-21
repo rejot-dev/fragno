@@ -82,7 +82,6 @@ describe("createRouteBackedRuntimeContext", () => {
       runtime,
       kernel: new BackofficeKernel(runtime),
       execution: createBackofficeSystemExecution({ kind: "system" }),
-      billingOrganizationId: null,
       pi: { runtime: piRuntime },
     });
 
@@ -108,7 +107,6 @@ describe("createRouteBackedRuntimeContext", () => {
       runtime,
       kernel: new BackofficeKernel(runtime),
       execution: createBackofficeSystemExecution({ kind: "system" }),
-      billingOrganizationId: null,
       workflowSourceReader: parentReadSource,
     });
     const projectScope = {
@@ -150,7 +148,6 @@ describe("createRouteBackedRuntimeContext", () => {
       runtime,
       kernel: new BackofficeKernel(runtime),
       execution: createBackofficeSystemExecution(scope),
-      billingOrganizationId: null,
       workflowSourceReader: readSource,
     });
     const scoped = context.createBackofficeScopedContext({ ...scope });
@@ -177,7 +174,6 @@ describe("createRouteBackedRuntimeContext", () => {
       runtime,
       kernel: new BackofficeKernel(runtime),
       execution: createBackofficeSystemExecution({ kind: "system" }),
-      billingOrganizationId: null,
     });
 
     expect(context.cloudflare).toBeNull();

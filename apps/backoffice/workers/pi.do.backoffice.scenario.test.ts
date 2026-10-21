@@ -41,7 +41,6 @@ import {
 
 import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import {
-  createBackofficeRequestExecution,
   createBackofficeServiceExecution,
   createBackofficeUserExecution,
   type BackofficeExecutionContext,
@@ -125,19 +124,16 @@ async function prompt(
     agentName?: string;
     requestId?: string;
     content?: string;
-    billingOrganizationId?: string | null;
   } = {},
 ) {
   const {
     agentName = "assistant",
     requestId = "backoffice-prompt",
     content = "Use the Backoffice context.",
-    billingOrganizationId = null,
   } = input;
   const submitted = await request(runtime, execution, `/agents/${agentName}/prompts`, {
     requestId,
     content,
-    billingOrganizationId,
   });
   assert.equal(submitted.status, 202, await submitted.clone().text());
 }
@@ -290,9 +286,7 @@ test("durable Pi runs a workspace agent with its instructions, scoped skills, Ba
           const directory = await (
             await request(runtime, execution, "/agents", null)
           ).json<PiManagerAgentDirectory>();
-          expect(
-            directory.agents.map((agent) => [agent.agentName, agent.provisioning !== null]),
-          ).toEqual([
+          expect(directory.agents.map((agent) => [agent.agentName, agent.provisioned])).toEqual([
             ["assistant", true],
             ["researcher", true],
           ]);
@@ -672,7 +666,7 @@ for (const revocation of ["restricted", "disabled", "deleted"] as const) {
   });
 }
 
-test("durable Pi delivers committed model usage to its persisted billing owner", async () => {
+test("durable Pi delivers committed model usage to its owning organization", async () => {
   const execution = createBackofficeServiceExecution({
     scope: { kind: "org", orgId: "org-1" },
     service: { type: "automation", id: "durable-billing-scenario" },
@@ -739,81 +733,76 @@ test("durable Pi delivers committed model usage to its persisted billing owner",
   );
 });
 
-test("a personal agent keeps its first turn's billing owner and rechecks current access before every generation", async () => {
+test("personal agents run without an organization and keep their usage after leaving one", async () => {
   const scope = { kind: "user", userId: "member" } as const;
-  const execution = createBackofficeRequestExecution({
-    scope,
-    userId: "member",
-    verifiedRequestAuthority: {
-      scopeRestriction: null,
-      role: "user",
-      organizationId: "org-1",
-      expiresAt: new Date(Date.now() + 60_000),
-    },
-  });
+  const execution = createBackofficeUserExecution({ scope, userId: "member" });
   let modelCalls = 0;
   await runBackofficeScenario(
     defineBackofficeScenario({
-      name: "durable Pi current billing authority",
+      name: "personal usage follows ownership",
       options: { drain: false },
       objects: {
         ...scenarioObjects,
-        ...scriptedAgents([
-          () => {
+        ...scriptedAgents(
+          Array.from({ length: 3 }, () => () => {
             modelCalls += 1;
-            return fauxAssistantMessage("Billed to the organization.");
-          },
-          () => {
-            modelCalls += 1;
-            return fauxAssistantMessage("Must not run.");
-          },
-        ]),
+            return fauxAssistantMessage("Personal work.");
+          }),
+        ),
       },
       piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
       setup: ({ given }) => [
         given.auth.user({ id: "owner", role: "admin" }),
         given.auth.user({ id: "member", role: "user" }),
-        given.auth.organization({
-          id: "org-1",
-          name: "Billing organization",
-          ownerUserId: "owner",
-          ownerRoles: ["owner"],
-        }),
-        given.auth.member({ orgId: "org-1", userId: "member", roles: ["member"] }),
+        given.auth.organization({ id: "org-1", ownerUserId: "owner", ownerRoles: ["owner"] }),
       ],
       steps: ({ when, then }) => [
-        then.assert("the first turn chooses an authorized billing owner", async ({ runtime }) => {
-          const missingOwner = await request(runtime, execution, "/agents/assistant/prompts", {
-            requestId: "unbilled",
-            content: "Answer.",
-            billingOrganizationId: null,
-          });
-          assert.equal(missingOwner.status, 400, await missingOwner.clone().text());
-          const foreignOwner = await request(runtime, execution, "/agents/assistant/prompts", {
-            requestId: "foreign",
-            content: "Answer.",
-            billingOrganizationId: "foreign-org",
-          });
-          assert.equal(foreignOwner.status, 403, await foreignOwner.clone().text());
-          await prompt(runtime, execution, { requestId: "billed", billingOrganizationId: "org-1" });
+        then.assert("a user without memberships starts their own agent", async ({ runtime }) => {
+          await prompt(runtime, execution, { requestId: "personal" });
           await runtime.drain();
-          expect(await submission(runtime, execution, "billed")).toMatchObject({ status: "done" });
-          const agent = await (await request(runtime, execution, "/agents/assistant", null)).json();
-          expect(agent).toMatchObject({ provisioning: { billingOrganizationId: "org-1" } });
+          expect(await submission(runtime, execution, "personal")).toMatchObject({
+            status: "done",
+          });
           expect(modelCalls).toBe(1);
+          await runtime.objects.auth.singleton().commands.addAdminOrganizationMember({
+            organizationId: "org-1",
+            userEmail: "member@scenario.test",
+            roles: ["member"],
+          });
         }),
+        then.assert(
+          "joining an organization does not redirect personal usage",
+          async ({ runtime }) => {
+            await prompt(runtime, execution, { requestId: "joined" });
+            await runtime.drain();
+            expect(await submission(runtime, execution, "joined")).toMatchObject({
+              status: "done",
+            });
+          },
+        ),
         when.auth.removeMember({ orgId: "org-1", userId: "member" }),
         then.assert(
-          "the still-valid JWT cannot authorize a deferred model call after revocation",
+          "leaving does not block personal work or change its ledger",
           async ({ runtime }) => {
-            await prompt(runtime, execution, { requestId: "revoked" });
+            await prompt(runtime, execution, { requestId: "left" });
             await runtime.drain();
-            expect(await submission(runtime, execution, "revoked")).toMatchObject({
-              status: "unanswered",
-            });
-            expect(modelCalls).toBe(1);
-            const transcript = await view(runtime, execution);
-            expect(JSON.stringify(transcript.entries)).not.toContain("Must not run.");
+            expect(await submission(runtime, execution, "left")).toMatchObject({ status: "done" });
+            expect(modelCalls).toBe(3);
+            const period = new Date(runtime.now()).toISOString().slice(0, 7);
+            const personal = await runtime.objects.billing
+              .for(scope)
+              .commands.getStatement({ period });
+            expect(personal.trackers).toContainEqual(
+              expect.objectContaining({ meter: "ai.tokens.total", eventCount: "3" }),
+            );
+            expect(
+              (await runtime.objects.billing.forOrg("org-1").commands.getStatement({ period }))
+                .trackers,
+            ).toEqual([]);
+            await runtime.drain();
+            expect(
+              await runtime.objects.billing.for(scope).commands.getStatement({ period }),
+            ).toEqual(personal);
           },
         ),
       ],
@@ -821,11 +810,11 @@ test("a personal agent keeps its first turn's billing owner and rechecks current
   );
 });
 
-for (const revokeBillingAccess of [false, true]) {
-  test(`durable Pi workflows inherit billing across nested saved workflows and restart${revokeBillingAccess ? " without retaining revoked authority" : ""}`, async () => {
+for (const leaveOrganization of [false, true]) {
+  test(`durable Pi workflows retain personal usage attribution across nested workflows and restart${leaveOrganization ? " after leaving an organization" : ""}`, async () => {
     const scope = { kind: "user", userId: "member" } as const;
     const execution = createBackofficeUserExecution({ scope, userId: "member" });
-    const promptOperation = revokeBillingAccess ? "pi.submitPrompt" : "pi.runPrompt";
+    const promptOperation = "pi.runPrompt";
     const savedWorkflowCode = `defineWorkflow({ name: "saved-sentence-checker" }, async (event, step) => {
       await step.waitForEvent("wait for sentence", { type: "sentence" });
       return await step.do("submit sentence", async () => await ${promptOperation}({
@@ -866,7 +855,7 @@ for (const revokeBillingAccess of [false, true]) {
     };
     await runBackofficeScenario(
       defineBackofficeScenario({
-        name: `inherited workflow billing${revokeBillingAccess ? " after revocation" : ""}`,
+        name: `personal workflow usage${leaveOrganization ? " after leaving an organization" : ""}`,
         files: backofficeFiles.workspaceStarter({
           "automations/saved-sentence-checker.workflow.js": savedWorkflowCode,
         }),
@@ -885,9 +874,9 @@ for (const revokeBillingAccess of [false, true]) {
         ],
         steps: ({ when, then, runner }) => [
           then.assert(
-            "inline and nested workflows persist the turn's billing selection and actors",
+            "inline and nested workflows persist the execution scope and actors",
             async ({ runtime }) => {
-              await prompt(runtime, execution, { billingOrganizationId: "org-1" });
+              await prompt(runtime, execution, {});
               await runtime.drain();
               const workflow = createRouteBackedAutomationWorkflowRuntime({
                 object: runtime.objects.automations.for(scope),
@@ -919,13 +908,12 @@ for (const revokeBillingAccess of [false, true]) {
                     ...execution.actors,
                     delegation: [...execution.actors.delegation, piAgentActor(scope, "assistant")],
                   },
-                  billingOrganizationId: "org-1",
                 });
                 expect(stored.meta.params.execution).not.toHaveProperty("userAuthority");
               }
               const period = new Date(runtime.now()).toISOString().slice(0, 7);
               const trackers = await runtime.objects.billing
-                .forOrg("org-1")
+                .for(scope)
                 .commands.getTrackers({ scope, period, pageSize: 100 });
               const tokens = trackers.trackers.find(
                 (tracker) => tracker.meter === "ai.tokens.total",
@@ -935,65 +923,43 @@ for (const revokeBillingAccess of [false, true]) {
             },
           ),
           runner.restartObject({ binding: "AUTOMATIONS", scope }),
-          ...(revokeBillingAccess
+          ...(leaveOrganization
             ? [when.auth.removeMember({ orgId: "org-1", userId: "member" })]
             : []),
-          then.assert(
-            "resumed workflow turns use current billing authority",
-            async ({ runtime }) => {
-              const workflow = createRouteBackedAutomationWorkflowRuntime({
-                object: runtime.objects.automations.for(scope),
-                execution,
+          then.assert("resumed workflow turns retain personal attribution", async ({ runtime }) => {
+            const workflow = createRouteBackedAutomationWorkflowRuntime({
+              object: runtime.objects.automations.for(scope),
+              execution,
+            });
+            for (const instanceId of [inlineInstanceId, "saved-checker"]) {
+              await workflow.sendEvent({
+                instanceId,
+                type: "sentence",
+                payload: { sentence: "hello" },
               });
-              for (const instanceId of [inlineInstanceId, "saved-checker"]) {
-                await workflow.sendEvent({
-                  instanceId,
-                  type: "sentence",
-                  payload: { sentence: "hello" },
-                });
-              }
-              await runtime.drain();
-              for (const instanceId of [inlineInstanceId, "saved-checker"]) {
-                // A workflow that lost its billing organization cannot admit the turn at all.
-                assert.equal(
-                  (await workflow.getInstance({ instanceId })).details.status,
-                  revokeBillingAccess ? "errored" : "complete",
-                );
-                expect(
-                  await submission(runtime, execution, `${instanceId}:sentence`),
-                ).toMatchObject(
-                  revokeBillingAccess ? { code: "SUBMISSION_NOT_FOUND" } : { status: "done" },
-                );
-              }
-              const transcript = JSON.stringify((await view(runtime, execution)).entries);
-              if (revokeBillingAccess) {
-                expect(transcript).not.toContain("Not naughty.");
-              } else {
-                expect(transcript).toContain("Not naughty.");
-              }
-              expect(classifierCalls).toBe(revokeBillingAccess ? 0 : 2);
-              const period = new Date(runtime.now()).toISOString().slice(0, 7);
-              const trackers = await runtime.objects.billing
-                .forOrg("org-1")
-                .commands.getTrackers({ scope, period, pageSize: 100 });
-              const tokens = trackers.trackers.find(
-                (tracker) => tracker.meter === "ai.tokens.total",
-              );
-              assert(tokens);
-              if (revokeBillingAccess) {
-                expect({ quantity: tokens.quantity, eventCount: tokens.eventCount }).toEqual(
-                  tokensBeforeResume,
-                );
-              } else {
-                expect(Number(tokens.quantity)).toBeGreaterThan(
-                  Number(tokensBeforeResume.quantity),
-                );
-                expect(Number(tokens.eventCount)).toBeGreaterThan(
-                  Number(tokensBeforeResume.eventCount),
-                );
-              }
-            },
-          ),
+            }
+            await runtime.drain();
+            for (const instanceId of [inlineInstanceId, "saved-checker"]) {
+              // Personal work remains authorized after organization membership is removed.
+              assert.equal((await workflow.getInstance({ instanceId })).details.status, "complete");
+              expect(await submission(runtime, execution, `${instanceId}:sentence`)).toMatchObject({
+                status: "done",
+              });
+            }
+            const transcript = JSON.stringify((await view(runtime, execution)).entries);
+            expect(transcript).toContain("Not naughty.");
+            expect(classifierCalls).toBe(2);
+            const period = new Date(runtime.now()).toISOString().slice(0, 7);
+            const trackers = await runtime.objects.billing
+              .for(scope)
+              .commands.getTrackers({ scope, period, pageSize: 100 });
+            const tokens = trackers.trackers.find((tracker) => tracker.meter === "ai.tokens.total");
+            assert(tokens);
+            expect(Number(tokens.quantity)).toBeGreaterThan(Number(tokensBeforeResume.quantity));
+            expect(Number(tokens.eventCount)).toBeGreaterThan(
+              Number(tokensBeforeResume.eventCount),
+            );
+          }),
         ],
       }),
     );
@@ -1105,7 +1071,6 @@ test("durable Pi restores scoped tools and reports interrupted codemode without 
   const config: PiAgentConfig = {
     scope: execution.scope,
     agentName: "assistant",
-    billingOrganizationId: "org-1",
   };
   let source: {
     agent: InMemoryPiObject;
@@ -1288,11 +1253,22 @@ test("durable Pi scoped codemode handles prompt the selected scope's agent", asy
           );
           const other = { ...execution, scope: userScope };
           const personal = await (await request(runtime, other, "/agents/assistant", null)).json();
-          // The personal agent inherits the organization agent's billing owner.
-          expect(personal).toMatchObject({ provisioning: { billingOrganizationId: "org-1" } });
+          expect(personal).toMatchObject({ provisioned: true });
           expect(JSON.stringify((await view(runtime, other)).entries)).toContain(
             "The personal agent answered.",
           );
+          const period = new Date(runtime.now()).toISOString().slice(0, 7);
+          const query = { scope: userScope, period, pageSize: 100 };
+          const personalUsage = await runtime.objects.billing
+            .for(userScope)
+            .commands.getTrackers(query);
+          expect(personalUsage.trackers).toEqual(
+            expect.arrayContaining([expect.objectContaining({ meter: "ai.tokens.total" })]),
+          );
+          const organizationUsage = await runtime.objects.billing
+            .for(execution.scope)
+            .commands.getTrackers(query);
+          expect(organizationUsage.trackers).toEqual([]);
         }),
       ],
     }),
@@ -1435,7 +1411,6 @@ test("Cloudflare backend analytics delivers verified outcomes and Pi usage witho
                   content: "PRIVATE_USER_PROMPT",
                   whenBusy: "reject",
                   whenPaused: "wait",
-                  billingOrganizationId: null,
                 },
               );
               expect(admission).toMatchObject({
@@ -1452,7 +1427,6 @@ test("Cloudflare backend analytics delivers verified outcomes and Pi usage witho
                   content: "PRIVATE_REJECTED_PROMPT",
                   whenBusy: "reject",
                   whenPaused: "wait",
-                  billingOrganizationId: null,
                 },
               );
               assert(rejected.error !== null);
@@ -1514,7 +1488,6 @@ test("Cloudflare backend analytics delivers verified outcomes and Pi usage witho
                   content: "PRIVATE_SECOND_PROMPT",
                   whenBusy: "followUp",
                   whenPaused: "wait",
-                  billingOrganizationId: null,
                 },
               );
               await shutdownCloudflarePostHog(failedDeliveryClient);
@@ -1524,8 +1497,8 @@ test("Cloudflare backend analytics delivers verified outcomes and Pi usage witho
               });
               const persisted = await fetchPiManagerAgents(authenticatedRequest, context, scope);
               expect(
-                persisted.agents.find((agent) => agent.agentName === "assistant")?.provisioning,
-              ).toEqual({ billingOrganizationId: organization.id });
+                persisted.agents.find((agent) => agent.agentName === "assistant")?.provisioned,
+              ).toEqual(true);
               expect(
                 received.filter((event) => event.event === "agent_prompt_admitted"),
               ).toHaveLength(1);

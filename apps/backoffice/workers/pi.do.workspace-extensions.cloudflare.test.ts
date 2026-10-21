@@ -1,4 +1,4 @@
-import { runInDurableObject } from "cloudflare:test";
+import { runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { expect, test } from "vitest";
 
 import { createModels } from "@earendil-works/pi-ai/models";
@@ -14,6 +14,7 @@ import {
   createBackofficeSystemExecution,
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import { encodeBackofficeObjectAddress } from "@/backoffice-runtime/object-registry";
 import { createCloudflareDurableObjectRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { createRuntimeStateBackend } from "@/fragno/codemode/runtime-state-backend";
 import { piAgentObjectName, type PiAgentTurn } from "@/fragno/pi/agent/pi-agent-contract";
@@ -33,7 +34,7 @@ import { InMemoryPiObject } from "./pi.do";
 test("precompiled workspace extensions open concurrently and after restart without a compiler", async () => {
   const testEnv = env as CloudflareEnv;
   const scope = { kind: "org", orgId: `extension-gate-${crypto.randomUUID()}` } as const;
-  const config: PiAgentConfig = { scope, agentName: "assistant", billingOrganizationId: null };
+  const config: PiAgentConfig = { scope, agentName: "assistant" };
   const turn: PiAgentTurn = {
     actors: BACKOFFICE_SYSTEM_ACTORS,
     scopeRestriction: null,
@@ -85,7 +86,6 @@ test("precompiled workspace extensions open concurrently and after restart witho
       runtime,
       kernel: new BackofficeKernel(runtime),
       execution: createBackofficeSystemExecution(scope),
-      billingOrganizationId: null,
     });
     const build = await executeBackofficeRuntimeTool(
       javaScriptBuildToolFamily.tools[0],
@@ -102,7 +102,6 @@ test("precompiled workspace extensions open concurrently and after restart witho
       runtime: executionRuntime,
       kernel: new BackofficeKernel(executionRuntime),
       execution: createBackofficeSystemExecution(scope),
-      billingOrganizationId: null,
     });
     const ran = await executeBackofficeRuntimeTool(
       javaScriptRunToolFamily.tools[0],
@@ -173,4 +172,8 @@ test("precompiled workspace extensions open concurrently and after restart witho
       }
     }
   });
+  // Finish usage delivery before Vitest closes the worker's module resolver.
+  await runDurableObjectAlarm(
+    testEnv.CODEMODE.getByName(encodeBackofficeObjectAddress({ binding: "CODEMODE", scope })),
+  );
 });

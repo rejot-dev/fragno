@@ -75,7 +75,6 @@ const createCodemodeWorkflowContext = async ({
     runtime,
     kernel,
     execution,
-    billingOrganizationId: params.execution.billingOrganizationId,
     emitter,
     emittedEventActors: execution.actors,
     workflowSourceReader: sourceReader,

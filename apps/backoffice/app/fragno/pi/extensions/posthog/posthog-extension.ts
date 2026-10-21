@@ -1,5 +1,6 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
+import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { PostHog } from "posthog-node";
 
 import { defineExtension, GenerationTask, hook } from "@earendil-works/pi-durable";
@@ -53,7 +54,7 @@ export function createPiPostHogExtension(input: {
                 conversation_id: api.conversationId,
                 task_id: api.taskId,
                 scope_kind: config.scope.kind,
-                organization_id: config.billingOrganizationId,
+                organization_id: backofficeScopeOrganization(config.scope)?.orgId ?? null,
                 stop_reason: message.stopReason,
                 $ai_trace_id: `${agentId}:${api.conversationId}:${api.taskId}`,
                 $ai_session_id: agentId,

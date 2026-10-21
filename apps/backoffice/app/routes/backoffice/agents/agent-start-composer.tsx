@@ -14,21 +14,20 @@ type AgentStartComposerProps = {
   agentName: string;
   description: string;
   permissions: readonly string[];
-  /** Null when no organization can pay for this agent's first turn. */
-  billingOrganization: { id: string; name: string } | null;
+  usageLabel: string;
 };
 
-/** The first turn provisions the agent's conversation and, for personal agents, its billing owner. */
+/** The first turn provisions the agent's conversation. */
 export function AgentStartComposer({
   agentName,
   description,
   permissions,
-  billingOrganization,
+  usageLabel,
 }: AgentStartComposerProps) {
   const fetcher = useFetcher<{ ok: boolean; error?: string }>();
   const [draftPrompt, setDraftPrompt] = useState("");
   const sending = fetcher.state !== "idle";
-  const submissionDisabled = sending || !draftPrompt.trim() || billingOrganization === null;
+  const submissionDisabled = sending || !draftPrompt.trim();
   const sendError = fetcher.data && !fetcher.data.ok ? (fetcher.data.error ?? null) : null;
   const displayName = formatPiAgentName(agentName);
 
@@ -66,7 +65,7 @@ export function AgentStartComposer({
           placeholder={`Message ${displayName}`}
         />
         <ChatStartFooter
-          note={`Billing organization: ${billingOrganization?.name ?? "No active organization"}`}
+          note={usageLabel}
           action={
             <Button type="submit" variant="solid" disabled={submissionDisabled}>
               {sending ? "Sending…" : "Send"}

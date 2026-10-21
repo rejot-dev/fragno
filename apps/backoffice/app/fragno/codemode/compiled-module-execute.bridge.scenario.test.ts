@@ -63,7 +63,6 @@ for (const interruption of ["parent cancellation", "activation deadline"] as con
                   scope: { kind: "org", orgId: "org-1" },
                   service: { type: "automation", id: "drain-check" },
                 }),
-                billingOrganizationId: null,
               });
               let releaseRead!: () => void;
               const blocked = new Promise<void>((resolve) => {
@@ -110,7 +109,6 @@ for (const interruption of ["parent cancellation", "activation deadline"] as con
                 codemode: codemodeRunnerFor(
                   runtime.objects.codemode.forOrg("org-1").commands,
                   createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
-                  null,
                 ),
                 origin: { kind: "file", path: "/workspace/.build/test.module.json" },
                 signal: cancellation.signal,
@@ -234,7 +232,6 @@ test("remote compiled execution keeps its full guest timeout after a delayed Web
                   scope: { kind: "org", orgId: "org-1" },
                   service: { type: "automation", id: "connection-check" },
                 }),
-                billingOrganizationId: null,
               });
               const result = await runBackofficeCompiledModule({
                 bundle: {
@@ -261,7 +258,6 @@ test("remote compiled execution keeps its full guest timeout after a delayed Web
                 codemode: codemodeRunnerFor(
                   runtime.objects.codemode.forOrg("org-1").commands,
                   createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
-                  null,
                 ),
                 origin: { kind: "file", path: "/workspace/.build/test.module.json" },
                 signal: null,

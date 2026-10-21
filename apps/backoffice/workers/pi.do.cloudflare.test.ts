@@ -101,7 +101,6 @@ function orgAgent(organizationId: string): PiAgentConfig {
   return {
     scope: { kind: "org", orgId: organizationId },
     agentName: "assistant",
-    billingOrganizationId: organizationId,
   };
 }
 
@@ -127,12 +126,11 @@ describe("Pi durable agent scenarios", () => {
     const before = await (
       await managerRequest(organizationId, "/agents/assistant")
     ).json<PiManagerAgent>();
-    expect(before.provisioning).toBeNull();
+    assert.equal(before.provisioned, false);
 
     const prompt = {
       requestId: "prompt-1",
       content: "Please echo and answer.",
-      billingOrganizationId: null,
     };
     const submitted = await managerRequest(organizationId, "/agents/assistant/prompts", prompt);
     expect(submitted.status, await submitted.clone().text()).toBe(202);
@@ -154,7 +152,7 @@ describe("Pi durable agent scenarios", () => {
     const after = await (
       await managerRequest(organizationId, "/agents/assistant")
     ).json<PiManagerAgent>();
-    expect(after.provisioning).toEqual({ billingOrganizationId: organizationId });
+    expect(after.provisioned).toEqual(true);
     const view = await (
       await managerRequest(organizationId, "/agents/assistant/view")
     ).json<ConversationView>();
@@ -201,7 +199,6 @@ describe("Pi durable agent scenarios", () => {
     const submitted = await managerRequest(organizationId, "/agents/assistant/prompts", {
       requestId: "stream-1",
       content: "Start the conversation.",
-      billingOrganizationId: null,
     });
     expect(submitted.status, await submitted.clone().text()).toBe(202);
     const response = await managerRequest(organizationId, "/agents/assistant/view-stream");
@@ -267,7 +264,6 @@ describe("Pi durable agent scenarios", () => {
       const prompt = {
         requestId: "scoped-prompt",
         content: "Echo and answer in this scope.",
-        billingOrganizationId: scope.kind === "user" ? "billing-org" : null,
       };
       const submitted = await request("/agents/assistant/prompts", prompt);
       assert.equal(submitted.status, 202, await submitted.clone().text());
@@ -292,7 +288,7 @@ describe("Pi durable agent scenarios", () => {
       const restored = await (await request("/agents/assistant/view")).json<ConversationView>();
       expect(restored.entries).toEqual(view.entries);
       const provisioned = await (await request("/agents/assistant")).json<PiManagerAgent>();
-      expect(provisioned.provisioning).not.toBeNull();
+      expect(provisioned.provisioned).not.toBeNull();
     }
   });
 
@@ -302,7 +298,6 @@ describe("Pi durable agent scenarios", () => {
     const directory = await managerRequest(organizationId, "/agents/assistant/prompts", {
       requestId: "provision",
       content: "Provision the agent.",
-      billingOrganizationId: null,
     });
     expect(directory.status, await directory.clone().text()).toBe(202);
     const agent = (env as CloudflareEnv).PI.getByName(piAgentObjectName(config));
@@ -361,7 +356,10 @@ describe("Pi durable agent scenarios", () => {
       const testEnv = env as CloudflareEnv;
       const stub = testEnv.PI.getByName(piAgentObjectName(config));
       await runInDurableObject(stub, async (_instance, state) => {
-        await state.storage.put("pi-agent-config", piAgentConfigSchema.parse(config));
+        await state.storage.put("pi-agent-config", {
+          ...piAgentConfigSchema.parse(config),
+          billingOrganizationId: "previous-billing-org",
+        });
         const startupError = new Error("PI_STARTUP_STORAGE_TEMPORARILY_UNAVAILABLE");
         const reports: unknown[] = [];
         let storageAttempts = 0;
@@ -397,6 +395,10 @@ describe("Pi durable agent scenarios", () => {
           await expect(object.getView(config)).resolves.toMatchObject({ entries: [] });
           expect(reports).toEqual([startupError]);
           await expect(state.storage.get("pi-agent-config")).resolves.toEqual(config);
+          await expect(state.storage.get("pi-legacy-billing-scope")).resolves.toEqual({
+            kind: "org",
+            orgId: "previous-billing-org",
+          });
 
           await object.dispatch(config, seededTurn(config), {
             type: "prompt",

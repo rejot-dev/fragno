@@ -37,7 +37,6 @@ export type PiManagerSubmitPromptInput = {
   content: string;
   requestId?: string;
   whenBusy?: z.infer<typeof piPromptWhenBusySchema>;
-  billingOrganizationId?: string | null;
 };
 export type PiManagerGetSubmissionInput = { agentName: string; requestId: string };
 export type PiManagerRunPromptInput = PiManagerSubmitPromptInput & { timeoutMs?: number };
@@ -163,7 +162,6 @@ export function createPiManagerRuntime(input: {
   runtime: BackofficeRuntimeServices;
   kernel: BackofficeKernel;
   execution: BackofficeExecutionContext;
-  defaultBillingOrganizationId?: string | null;
   createPromptRequestId?: () => string;
   context?: Context;
 }): PiManagerRuntime {
@@ -242,7 +240,7 @@ export function createPiManagerRuntime(input: {
       const agent = await request<PiManagerAgent>(route, null);
       return {
         ...agent,
-        view: agent.provisioning ? await request<ConversationView>(`${route}/view`, null) : null,
+        view: agent.provisioned ? await request<ConversationView>(`${route}/view`, null) : null,
       };
     },
     async createAgent(definition) {
@@ -254,7 +252,7 @@ export function createPiManagerRuntime(input: {
     async deleteAgent({ agentName }) {
       await request(agentRoute(agentName), null, "DELETE");
     },
-    async submitPrompt({ agentName, content, requestId, whenBusy, billingOrganizationId }) {
+    async submitPrompt({ agentName, content, requestId, whenBusy }) {
       const normalizedContent = content.trim();
       if (!normalizedContent) {
         throw new Error("PI_MANAGER_PROMPT_CONTENT_REQUIRED");
@@ -263,11 +261,6 @@ export function createPiManagerRuntime(input: {
         requestId: requestId?.trim() || createPromptRequestId(),
         content: normalizedContent,
         ...(whenBusy ? { whenBusy } : {}),
-        // Only an agent's first turn uses it, to choose a user- or system-scoped billing owner.
-        billingOrganizationId:
-          billingOrganizationId === undefined
-            ? (input.defaultBillingOrganizationId ?? null)
-            : billingOrganizationId,
       });
     },
     getSubmission,

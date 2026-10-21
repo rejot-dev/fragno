@@ -100,7 +100,6 @@ test("js.run executes bundled top-level statements and dependencies with the com
                 scope,
                 service: { type: "automation", id: "artifact-runner" },
               }),
-              billingOrganizationId: null,
             });
             const { bash } = await createInteractiveBashHost({ context });
             const built = await bash.exec(
@@ -156,7 +155,6 @@ test("js.run executes bundled top-level statements and dependencies with the com
               runtime: runtime.services,
               kernel: new BackofficeKernel(runtime.services),
               execution: createBackofficeUserExecution({ scope, userId: "outsider" }),
-              billingOrganizationId: null,
             });
             const denied = await (
               await createInteractiveBashHost({ context: deniedContext })
@@ -205,7 +203,6 @@ for (const invalid of [
                 scope,
                 service: { type: "automation", id: "artifact-runner" },
               }),
-              billingOrganizationId: null,
             });
             const { bash } = await createInteractiveBashHost({ context });
             assert.equal(
@@ -257,7 +254,6 @@ test("js.run validates artifact format, entrypoint, runtime, JSON and scope befo
                 scope,
                 service: { type: "automation", id: "artifact-runner" },
               }),
-              billingOrganizationId: null,
             });
             const { bash } = await createInteractiveBashHost({ context });
             assert.equal(
@@ -302,7 +298,6 @@ test("js.run validates artifact format, entrypoint, runtime, JSON and scope befo
                 scope: { kind: "org", orgId: "org-2" },
                 service: { type: "automation", id: "artifact-runner" },
               }),
-              billingOrganizationId: null,
             });
             const missing = await (
               await createInteractiveBashHost({ context: other })

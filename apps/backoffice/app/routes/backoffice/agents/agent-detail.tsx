@@ -1,5 +1,4 @@
 import type { PiManagerAgent, PiPromptReceipt } from "@fragno-dev/backoffice-api/v0/pi";
-import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { ChatWorkspaceSplit } from "@fragno-private/design-system/chat-workspace-split";
 import { PaneMessage } from "@fragno-private/design-system/pane-message";
 import { usePostHog } from "@posthog/react/slim";
@@ -24,10 +23,7 @@ import {
   type AutomationBrowserCollections,
 } from "@/fragno/automation/tanstack/browser-database";
 import type { PiAgentCompactionStatus } from "@/fragno/pi/agent/pi-agent-contract";
-import {
-  getBackofficeShellRequest,
-  requireRouteScope,
-} from "@/layouts/backoffice-shell-request.server";
+import { requireRouteScope } from "@/layouts/backoffice-shell-request.server";
 
 import type { Route } from "./+types/agent-detail";
 import { formatPiAgentName } from "./agent-name";
@@ -120,7 +116,6 @@ export async function action(args: Route.ActionArgs): Promise<PiAgentActionData>
     return { ok: false, intent, error: "Write a message before sending." };
   }
 
-  const { me } = getBackofficeShellRequest(context);
   // Your message joins your own running turn at its next tool boundary; otherwise it waits in the
   // agent's queue for a turn of its own. Sending to a stopped agent resumes its queue.
   const result = await submitPiManagerPrompt(request, context, scope, agentName, {
@@ -128,10 +123,6 @@ export async function action(args: Route.ActionArgs): Promise<PiAgentActionData>
     content: content.trim(),
     whenBusy: "steer",
     whenPaused: "resume",
-    // Agents outside an organization keep the organization that pays for their first turn.
-    billingOrganizationId: backofficeScopeOrganization(scope)
-      ? null
-      : (me.activeOrganization?.organization.id ?? null),
   });
   return result.error === null
     ? { ok: true, intent, receipt: result.receipt }
@@ -354,8 +345,7 @@ async function waitForPiCompaction(url: string, signal: AbortSignal) {
 }
 
 export default function BackofficeOrganizationPiAgentDetail({ params }: Route.ComponentProps) {
-  const { agents, agentsError, basePath, billingOrganization } =
-    useOutletContext<PiAgentsOutletContext>();
+  const { agents, agentsError, basePath, usageLabel } = useOutletContext<PiAgentsOutletContext>();
   const agent = agents.find((candidate) => candidate.agentName === params.agentName);
   if (!agent) {
     return (
@@ -364,7 +354,7 @@ export default function BackofficeOrganizationPiAgentDetail({ params }: Route.Co
       </AgentStatusPane>
     );
   }
-  if (agent.provisioning === null) {
+  if (!agent.provisioned) {
     return (
       <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
         <AgentsHeader
@@ -377,7 +367,7 @@ export default function BackofficeOrganizationPiAgentDetail({ params }: Route.Co
           agentName={agent.agentName}
           description={agent.description}
           permissions={agent.permissions}
-          billingOrganization={billingOrganization}
+          usageLabel={usageLabel}
         />
       </div>
     );

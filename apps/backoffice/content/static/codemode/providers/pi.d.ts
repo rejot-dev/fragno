@@ -10,7 +10,7 @@ type PiCodemodeProvider = {
   updateAgent(input: PiUpdateAgentInput): Promise<PiUpdateAgentOutput>;
   /** Idempotently delete an agent's definition. Its stored conversation is kept and resumes if the name is defined again. */
   deleteAgent(input: PiDeleteAgentInput): Promise<PiDeleteAgentOutput>;
-  /** Durably queue a prompt for an agent, or steer its running turn, and return a receipt saying which. A request ID still queued is not queued twice. The turn runs with the caller's current permissions, narrowed by the agent's definition. A user- or system-scoped agent's first turn sets its billing organization; omitting billingOrganizationId inherits the calling Pi agent or workflow's. */
+  /** Durably queue a prompt for an agent, or steer its running turn, and return a receipt saying which. A request ID still queued is not queued twice. The turn runs with the caller's current permissions, narrowed by the agent's definition. Usage belongs to the agent scope's root owner, independently of the caller or their active organization. */
   submitPrompt(input: PiSubmitPromptInput): Promise<PiSubmitPromptOutput>;
   /** Get the durable status of one prompt submission. */
   getSubmission(input: PiGetSubmissionInput): Promise<unknown>;
@@ -113,7 +113,6 @@ type PiSubmitPromptInput = {
   content: string;
   requestId?: string;
   whenBusy?: "followUp" | "steer" | "reject";
-  billingOrganizationId?: string | null;
 };
 type PiSubmitPromptOutput = {
   requestId: string;
@@ -128,7 +127,6 @@ type PiRunPromptInput = {
   content: string;
   requestId?: string;
   whenBusy?: "followUp" | "steer" | "reject";
-  billingOrganizationId?: string | null;
   timeoutMs?: number;
 };
 type PiRunPromptOutput = {

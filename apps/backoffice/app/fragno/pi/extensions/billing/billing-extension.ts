@@ -33,7 +33,10 @@ type PiDurableBillingTaskInput = {
   occurredAt: string;
 };
 
-type PiDurableBillingTaskCheckpoint =
+type PiDurableBillingTaskCheckpoint = {
+  /** Old tasks keep their original destination even when a delivery's acknowledgement was lost. */
+  attribution: "owner" | "legacy";
+} & (
   | {
       phase: "prepare";
       through: PiBillingCounters;
@@ -45,8 +48,8 @@ type PiDurableBillingTaskCheckpoint =
       event: BillingEventInput;
       attempt: number;
       retryAtEpochMs: number;
-    };
-
+    }
+);
 type PiDurableBillingTaskResult = {
   eventId: string | null;
   accepted: boolean;
@@ -81,6 +84,7 @@ async function durableBillingEventId(config: PiAgentConfig, taskId: number) {
 function createPiDurableBillingTask(input: {
   config: PiAgentConfig;
   recordEvent: (event: BillingEventInput) => Promise<BillingRecordEventResult>;
+  recordLegacyEvent: (event: BillingEventInput) => Promise<BillingRecordEventResult>;
   retryDelayMs: (attempt: number) => number;
 }): Task<
   PiDurableBillingTaskInput,
@@ -88,7 +92,7 @@ function createPiDurableBillingTask(input: {
   PiDurableBillingTaskResult,
   object
 > {
-  const { config, recordEvent, retryDelayMs } = input;
+  const { config, recordEvent, recordLegacyEvent, retryDelayMs } = input;
 
   return defineTask<
     PiDurableBillingTaskInput,
@@ -98,6 +102,7 @@ function createPiDurableBillingTask(input: {
     name: "backoffice.pi.billing-delivery",
     version: 1,
     initial: (taskInput: PiDurableBillingTaskInput) => ({
+      attribution: "owner" as const,
       phase: "prepare" as const,
       through: taskInput.through,
       occurredAt: taskInput.occurredAt,
@@ -128,6 +133,11 @@ function createPiDurableBillingTask(input: {
           return {
             status: "running",
             checkpoint: {
+              // The stored task boundary is the only place that accepts the previous checkpoint shape.
+              attribution:
+                "attribution" in task.state.checkpoint
+                  ? task.state.checkpoint.attribution
+                  : "legacy",
               phase: "deliver",
               through: task.state.checkpoint.through,
               event: createPiDurableBillingEvent({
@@ -153,7 +163,9 @@ function createPiDurableBillingTask(input: {
 
         let result: BillingRecordEventResult;
         try {
-          result = await recordEvent(checkpoint.event);
+          result = await ("attribution" in checkpoint && checkpoint.attribution === "owner"
+            ? recordEvent(checkpoint.event)
+            : recordLegacyEvent(checkpoint.event));
         } catch (error) {
           runtime.report(error);
           await runtime.commit(
@@ -285,7 +297,7 @@ async function flushPiDurableBilling(input: {
   }
 }
 
-/** Delivers committed model usage to an agent's billing owner through a background durable task. */
+/** Delivers committed model usage to an agent's root owner through a background durable task. */
 export type PiBilling = {
   extension: Extension;
   /** Atomically repairs the billing watermark and admits at most one delivery task. */
@@ -301,6 +313,7 @@ export type PiBilling = {
 export function createPiBilling(input: {
   config: PiAgentConfig;
   recordEvent: (event: BillingEventInput) => Promise<BillingRecordEventResult>;
+  recordLegacyEvent: (event: BillingEventInput) => Promise<BillingRecordEventResult>;
   retryDelayMs: (attempt: number) => number;
 }): PiBilling {
   const task = createPiDurableBillingTask(input);

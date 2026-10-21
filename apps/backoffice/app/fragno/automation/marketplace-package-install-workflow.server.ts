@@ -764,7 +764,6 @@ export function defineMarketplacePackageInstallWorkflow(
               prepared,
               trigger: { type: "manual", payload: installationInput },
               execution,
-              billingOrganizationId: null,
               capabilityGrants: [
                 {
                   actor: CODEMODE_CAPABILITY_ACTOR,

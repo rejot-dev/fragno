@@ -56,7 +56,6 @@ const localObjects = {
 const codemode = codemodeRunnerFor(
   createCloudflareBackofficeObjectRegistry(env as CloudflareEnv).codemode.singleton().commands,
   createBackofficeSystemExecution({ kind: "system" }),
-  null,
 );
 
 describe("runBackofficeCodemode", () => {
@@ -70,7 +69,6 @@ describe("runBackofficeCodemode", () => {
         codemode: codemodeRunnerFor(
           runtime.objects.codemode.singleton().commands,
           createBackofficeSystemExecution({ kind: "system" }),
-          null,
         ),
         families: runtimeToolFamilies,
         toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
@@ -552,7 +550,6 @@ describe("runBackofficeCodemode", () => {
       emitter: { kind: "caller" },
       runtime,
       kernel,
-      billingOrganizationId: null,
       execution: createBackofficeUserExecution({
         scope: { kind: "org", orgId: "org-1" },
         userId: "user-1",
@@ -602,7 +599,6 @@ describe("runBackofficeCodemode", () => {
         emitter: { kind: "caller" },
         runtime: runtime.services,
         kernel: new BackofficeKernel(runtime.services),
-        billingOrganizationId: null,
         execution: createBackofficeUserExecution({
           scope: { kind: "org", orgId: "org-1" },
           userId: "user-1",
@@ -613,7 +609,6 @@ describe("runBackofficeCodemode", () => {
         codemode: codemodeRunnerFor(
           runtime.objects.codemode.for(routeContext.execution.scope).commands,
           routeContext.execution,
-          null,
         ),
         families: runtimeToolFamilies,
         toolContext: createBackofficeToolContext(routeContext),
@@ -658,14 +653,12 @@ describe("runBackofficeCodemode", () => {
         runtime: runtime.services,
         kernel,
         execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
-        billingOrganizationId: null,
       });
 
       const result = await runBackofficeCodemode({
         codemode: codemodeRunnerFor(
           runtime.objects.codemode.for(routeContext.execution.scope).commands,
           routeContext.execution,
-          null,
         ),
         families: runtimeToolFamilies,
         toolContext: createBackofficeToolContext(routeContext),

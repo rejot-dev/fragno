@@ -43,6 +43,7 @@
       { "name": "MCP", "class_name": "Mcp" },
       { "name": "UPLOAD", "class_name": "Upload" },
       { "name": "CODEMODE", "class_name": "Codemode" },
+      { "name": "BILLING", "class_name": "Billing" },
       {
         "name": "PI",
         "class_name": "PiScenarioAgent",
@@ -73,6 +74,10 @@
     {
       "tag": "v5",
       "new_sqlite_classes": ["Codemode"],
+    },
+    {
+      "tag": "v6",
+      "new_sqlite_classes": ["Billing"],
     },
   ],
 }

@@ -79,6 +79,4 @@ fresh: the model sees this prompt only, never earlier images or the conversation
   Rephrase the prompt before calling again.
 - Other `MODELS_GENERATE_IMAGE_FAILED` errors carry OpenAI's error code. Retry rate limits and
   server errors; correct the request for the rest.
-- `MODELS_BILLING_OWNER_REQUIRED`: a personal scope has no organization to bill. Run the call in an
-  organization's workspace.
 - `MODELS_GENERATE_IMAGE_UNAVAILABLE`: this deployment has no image model configured. Tell the user.

@@ -70,7 +70,7 @@ const createPiRuntime = (): PiManagerRuntime => {
       permissions: ["*"],
       instructions: "",
       managedBy: { kind: "built-in" },
-      provisioning: null,
+      provisioned: false,
       view: null,
     }),
     createAgent: async ({ managedBy, ...definition }) => ({ ...definition, managedBy }),
