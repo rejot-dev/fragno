@@ -36,6 +36,7 @@
       "outputs": ["coverage/**"]
     },
     "types:generate": {
+      "dependsOn": ["@rejot-dev/backoffice-local#build"],
       "outputs": ["worker-configuration.d.ts", ".react-router/types/**", ".source/**"]
     },
     "types:check": {
