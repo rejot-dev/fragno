@@ -10,7 +10,7 @@ import {
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
-import { type MarketplaceArtifactManifest } from "@/fragno/marketplace/contracts";
+import { type MarketplaceListingStorage } from "@/fragno/marketplace/contracts";
 
 import { backofficeWorkflowActorMetadataSchema } from "./actors";
 
@@ -28,10 +28,10 @@ export class MarketplaceIngestionTargetAccessError extends Error {
   }
 }
 
-export class MarketplaceIngestionArtifactUnavailableError extends Error {
+export class MarketplaceIngestionPackageUnavailableError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = "MarketplaceIngestionArtifactUnavailableError";
+    this.name = "MarketplaceIngestionPackageUnavailableError";
   }
 }
 
@@ -93,21 +93,21 @@ export const assertMarketplaceIngestionTargetAccessible = async (input: {
   }
 };
 
-export const resolveMarketplaceIngestionArtifactVersion = (
-  manifest: MarketplaceArtifactManifest | null,
+export const resolveMarketplaceIngestionPackageVersion = (
+  manifest: MarketplaceListingStorage | null,
   requestedVersion: string | undefined,
 ): {
-  manifest: MarketplaceArtifactManifest;
+  manifest: MarketplaceListingStorage;
   version: string;
 } => {
   if (manifest?.listingStatus !== "published") {
-    throw new MarketplaceIngestionArtifactUnavailableError("Marketplace listing is not published.");
+    throw new MarketplaceIngestionPackageUnavailableError("Marketplace listing is not published.");
   }
 
   const version = requestedVersion ?? manifest.versions[0];
   const selected = manifest.versions.find((candidate) => candidate === version);
   if (!selected) {
-    throw new MarketplaceIngestionArtifactUnavailableError(
+    throw new MarketplaceIngestionPackageUnavailableError(
       `Marketplace version '${requestedVersion ?? "latest"}' is not available.`,
     );
   }

@@ -12,7 +12,7 @@ import type { MarketplaceStaticEntry } from "./contracts";
 const TEXT_ENCODER = new TextEncoder();
 
 /** Exact inventories recognize committed package files without repeating external writes. */
-export function marketplaceArtifactFileInventoryMatches(
+export function marketplacePackageFileInventoryMatches(
   expected: readonly {
     fileKey: string;
     sizeBytes: number;
@@ -35,30 +35,30 @@ export function marketplaceArtifactFileInventoryMatches(
 }
 
 export const MARKETPLACE_INSTALL_WORKFLOW_PATH = ".marketplace/install.workflow.js";
-export const isMarketplaceInternalArtifactPath = (relativePath: string) =>
+export const isMarketplaceInternalPackagePath = (relativePath: string) =>
   relativePath === ".marketplace" || relativePath.startsWith(".marketplace/");
 
-export type MarketplaceStaticArtifactVersion = Pick<MarketplaceStaticEntry, "version"> & {
+export type MarketplaceStaticPackageVersion = Pick<MarketplaceStaticEntry, "version"> & {
   files: Readonly<Record<string, string>>;
 };
 
-export type MarketplaceStaticArtifactListing = Omit<MarketplaceStaticEntry, "version"> & {
+export type MarketplaceStaticPackageListing = Omit<MarketplaceStaticEntry, "version"> & {
   rootFiles?: Readonly<Record<string, string>>;
-  versions: readonly MarketplaceStaticArtifactVersion[];
+  versions: readonly MarketplaceStaticPackageVersion[];
 };
 
-export type MarketplaceStaticArtifactEntry = MarketplaceStaticEntry & {
+export type MarketplaceStaticPackageEntry = MarketplaceStaticEntry & {
   rootFiles?: Readonly<Record<string, string>>;
   files: Readonly<Record<string, string>>;
 };
 
-export type MarketplaceArtifactFile = {
+export type MarketplacePackageFile = {
   relativePath: string;
   content: string;
 };
 
-/** Listing ids repeat across Marketplaces, so organization artifacts are namespaced by their Marketplace. */
-export function marketplaceArtifactUploadName({
+/** Listing ids repeat across Marketplaces, so organization packages are namespaced by their Marketplace. */
+export function marketplacePackageUploadName({
   marketplace,
   listingId,
 }: {
@@ -71,22 +71,22 @@ export function marketplaceArtifactUploadName({
     : `marketplace/org/${bytesToHex(TEXT_ENCODER.encode(marketplace.orgId))}/${listing}`;
 }
 
-export const normalizeMarketplaceArtifactPath = (path: string): string => {
+export const normalizeMarketplacePackagePath = (path: string): string => {
   const trimmed = path.trim();
   if (!trimmed || trimmed.startsWith("/") || trimmed.includes("\\")) {
-    throw new Error(`Marketplace artifact path '${path}' must be a relative POSIX path.`);
+    throw new Error(`Marketplace package path '${path}' must be a relative POSIX path.`);
   }
 
   const segments = trimmed.split("/");
   if (segments.some((segment) => !segment || segment === "." || segment === "..")) {
-    throw new Error(`Marketplace artifact path '${path}' contains an invalid path segment.`);
+    throw new Error(`Marketplace package path '${path}' contains an invalid path segment.`);
   }
 
   return segments.join("/");
 };
 
-export const marketplaceRootArtifactFilePath = (relativePath: string) => {
-  const normalizedPath = normalizeMarketplaceArtifactPath(relativePath);
+export const marketplaceRootPackageFilePath = (relativePath: string) => {
+  const normalizedPath = normalizeMarketplacePackagePath(relativePath);
   const topLevelName = normalizedPath.split("/", 1)[0];
   if (marketplaceVersionSchema.safeParse(topLevelName).success) {
     throw new Error(
@@ -96,17 +96,17 @@ export const marketplaceRootArtifactFilePath = (relativePath: string) => {
   return normalizedPath;
 };
 
-export const marketplaceVersionArtifactFilePath = (version: string, relativePath: string) =>
-  `${marketplaceVersionSchema.parse(version)}/${normalizeMarketplaceArtifactPath(relativePath)}`;
+export const marketplaceVersionPackageFilePath = (version: string, relativePath: string) =>
+  `${marketplaceVersionSchema.parse(version)}/${normalizeMarketplacePackagePath(relativePath)}`;
 
-export const prepareMarketplaceArtifactFiles = (
+export const prepareMarketplacePackageFiles = (
   files: Readonly<Record<string, string>>,
-): MarketplaceArtifactFile[] => {
+): MarketplacePackageFile[] => {
   const normalizedPaths = new Set<string>();
   const prepared = Object.entries(files).map(([path, source]) => {
-    const relativePath = normalizeMarketplaceArtifactPath(path);
+    const relativePath = normalizeMarketplacePackagePath(path);
     if (normalizedPaths.has(relativePath)) {
-      throw new Error(`Marketplace artifact contains duplicate path '${relativePath}'.`);
+      throw new Error(`Marketplace package contains duplicate path '${relativePath}'.`);
     }
     normalizedPaths.add(relativePath);
 

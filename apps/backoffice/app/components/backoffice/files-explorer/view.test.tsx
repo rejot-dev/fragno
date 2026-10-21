@@ -18,7 +18,7 @@ import {
 
 afterEach(cleanup);
 
-const filePath = "/artifact/1.0.0/README.md";
+const filePath = "/package/1.0.0/README.md";
 function FilesExplorerView(props: Omit<FilesExplorerViewProps, "workflowRouting">) {
   return <FilesExplorerViewComponent {...props} workflowRouting={{ status: "unavailable" }} />;
 }
@@ -34,7 +34,7 @@ const source: FilesExplorerSource = {
       metadata: null,
     },
   ]),
-  rootPath: "/artifact",
+  rootPath: "/package",
   rootTitle: "Published versions",
 };
 
@@ -45,9 +45,9 @@ describe("FilesExplorerView", () => {
         <FilesExplorerView
           sources={[source]}
           selectedPath={filePath}
-          selectedContent={{ path: filePath, text: "# Published artifact" }}
+          selectedContent={{ path: filePath, text: "# Published package" }}
           loadError={null}
-          treeAriaLabel="Marketplace artifact files"
+          treeAriaLabel="Marketplace package files"
           rootSelection="detail"
           detailHeadingLevel={4}
           buildNodeTo={(path) => ({ pathname: "/marketplace/example", search: `?path=${path}` })}
@@ -55,10 +55,10 @@ describe("FilesExplorerView", () => {
       </MemoryRouter>,
     );
 
-    assert(markup.includes("Marketplace artifact files"));
+    assert(markup.includes("Marketplace package files"));
     assert(markup.includes("README.md"));
     assert(markup.includes("<h1"));
-    assert(markup.includes("Published artifact"));
+    assert(markup.includes("Published package"));
     assert(!markup.includes("Download"));
   });
 
@@ -229,7 +229,7 @@ describe("FilesExplorerView", () => {
       <MemoryRouter>
         <FilesExplorerView
           sources={[workspaceSource, source]}
-          selectedPath="/artifact"
+          selectedPath="/package"
           loadError={null}
           defaultCollapsedRootPaths={["/workspace"]}
           buildNodeTo={(path) => ({ pathname: "/files", search: `?path=${path}` })}
@@ -463,7 +463,7 @@ describe("FilesExplorerView", () => {
                 query: "published",
                 groups: [
                   {
-                    rootPath: "/artifact",
+                    rootPath: "/package",
                     rootTitle: "Published versions",
                     matches: [
                       {
@@ -521,7 +521,7 @@ describe("FilesExplorerView", () => {
     );
 
     assert(markup.includes("Download"));
-    assert(markup.includes("/files/download?path=%2Fartifact%2F1.0.0%2FREADME.md"));
+    assert(markup.includes("/files/download?path=%2Fpackage%2F1.0.0%2FREADME.md"));
   });
 });
 function createNestedWorkspaceSource(): FilesExplorerSource {

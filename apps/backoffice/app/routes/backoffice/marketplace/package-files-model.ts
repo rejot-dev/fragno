@@ -1,18 +1,18 @@
 import type { FileTree } from "@/file-collection/file-collection";
 
-export const MARKETPLACE_ARTIFACT_ROOT_PATH = "/artifact";
+export const MARKETPLACE_PACKAGE_ROOT_PATH = "/package";
 
-export type MarketplaceArtifactSelectedContent = {
+export type MarketplacePackageSelectedContent = {
   path: string;
   text: string;
 };
 
-export type MarketplaceArtifactExplorerData =
+export type MarketplacePackageExplorerData =
   | {
       state: "ready";
       fileTree: FileTree;
       selectedVersion: string;
-      /** Artifact path of the README shown as the package overview, or null without one. */
+      /** Package path of the README shown as the package overview, or null without one. */
       overviewPath: string | null;
     }
   | {

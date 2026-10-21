@@ -140,7 +140,7 @@ describe("Marketplace listing navigation scenarios", () => {
                 const publicPath = `/marketplace/${ref}`;
                 const catalogPath = marketplaceListingPath(ref, scope, "marketplace");
                 expect(catalogPath).toBe(`/backoffice/marketplace/org/reader/marketplace/${ref}`);
-                for (const path of [publicPath, catalogPath, `${catalogPath}/artifact-file`]) {
+                for (const path of [publicPath, catalogPath, `${catalogPath}/package-file`]) {
                   const resolved = await resolveMarketplaceListingRoute(
                     ctx.runtime.objects,
                     routeParams(path),

@@ -8,8 +8,8 @@ import {
   throwUnexpectedMarketplaceUploadResponse,
 } from "./marketplace-upload-errors";
 
-/** Prepared artifact upload transport is shared by release workflows and listing-root initialization. */
-export async function createMarketplaceArtifactUpload({
+/** Prepared package upload transport is shared by release workflows and listing-root initialization. */
+export async function createMarketplacePackageUpload({
   routes,
   file,
 }: {
@@ -27,21 +27,21 @@ export async function createMarketplaceArtifactUpload({
       fileKey: file.fileKey,
       filename: file.relativePath.split("/").at(-1)!,
       sizeBytes: file.sizeBytes,
-      contentType: inferMarketplaceArtifactContentType(file.fileKey),
+      contentType: inferMarketplacePackageContentType(file.fileKey),
       checksum: file.checksum,
       publicationMode: "batch",
     },
   });
   if (response.type === "error") {
     throwMarketplaceUploadRouteError({
-      operation: "Marketplace artifact upload creation",
+      operation: "Marketplace package upload creation",
       status: response.status,
       error: response.error,
     });
   }
   if (response.type !== "json" || response.status < 200 || response.status >= 300) {
     throwUnexpectedMarketplaceUploadResponse({
-      operation: "Marketplace artifact upload creation",
+      operation: "Marketplace package upload creation",
       status: response.status,
     });
   }
@@ -49,7 +49,7 @@ export async function createMarketplaceArtifactUpload({
 }
 
 /** Transfer is a separate retry boundary; prepared bytes remain invisible until batch commit. */
-export async function transferMarketplaceArtifactUpload({
+export async function transferMarketplacePackageUpload({
   routes,
   uploadId,
   content,
@@ -66,14 +66,14 @@ export async function transferMarketplaceArtifactUpload({
   });
   if (response.type === "error") {
     throwMarketplaceUploadRouteError({
-      operation: "Marketplace artifact upload transfer",
+      operation: "Marketplace package upload transfer",
       status: response.status,
       error: response.error,
     });
   }
   if (response.type !== "json" || response.status < 200 || response.status >= 300) {
     throwUnexpectedMarketplaceUploadResponse({
-      operation: "Marketplace artifact upload transfer",
+      operation: "Marketplace package upload transfer",
       status: response.status,
     });
   }
@@ -83,7 +83,7 @@ export async function transferMarketplaceArtifactUpload({
   return response.data.write;
 }
 
-function inferMarketplaceArtifactContentType(fileKey: string): string {
+function inferMarketplacePackageContentType(fileKey: string): string {
   if (/\.json$/iu.test(fileKey)) {
     return "application/json";
   }

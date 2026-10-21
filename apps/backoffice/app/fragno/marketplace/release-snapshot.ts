@@ -75,7 +75,7 @@ export function encodeMarketplaceReleaseBytes(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-/** Decode captured artifact bytes at the Upload boundary. */
+/** Decode captured package bytes at the Upload boundary. */
 export function decodeMarketplaceReleaseBytes(content: string): Uint8Array {
   return Uint8Array.from(atob(content), (character) => character.charCodeAt(0));
 }
@@ -161,7 +161,7 @@ export async function verifyMarketplaceReleaseSnapshot(
 }
 
 /** Commit the publisher-owned guard alongside authored files, including metadata-only replacements. */
-export async function marketplaceReleaseArtifactFiles(
+export async function marketplaceReleasePackageFiles(
   release: MarketplaceReleaseSnapshot,
 ): Promise<MarketplaceReleaseFile[]> {
   const content = new TextEncoder().encode(JSON.stringify({ snapshotId: release.snapshotId }));

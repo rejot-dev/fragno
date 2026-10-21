@@ -198,7 +198,7 @@ const pushStaticTool = defineBackofficeRuntimeTool({
         options: [
           {
             name: "force",
-            description: "Publish with fresh workflow IDs and overwrite existing artifact files.",
+            description: "Publish with fresh workflow IDs and overwrite existing package files.",
           },
         ],
         examples: [

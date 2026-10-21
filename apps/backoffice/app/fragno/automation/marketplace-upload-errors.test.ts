@@ -65,7 +65,7 @@ describe("Marketplace Upload error classification", () => {
   test("includes validation issue paths in permanent Upload failures", () => {
     const error = captureError(() =>
       throwMarketplaceUploadRouteError({
-        operation: "Marketplace artifact batch commit",
+        operation: "Marketplace package batch commit",
         status: 400,
         error: {
           code: "FRAGNO_VALIDATION_ERROR",

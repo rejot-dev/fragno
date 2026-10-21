@@ -6,7 +6,10 @@ import {
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import { z } from "zod";
 
-import type { MarketplaceStaticArtifactEntry, MarketplaceStaticArtifactListing } from "./artifacts";
+import type {
+  MarketplaceStaticPackageEntry,
+  MarketplaceStaticPackageListing,
+} from "./package-files";
 
 export const marketplaceManifestSchema = z.object({
   owner: marketplaceOwnerSchema,
@@ -26,7 +29,7 @@ const manifests = import.meta.glob<string>("../../../content/marketplace/*/manif
   query: "?raw",
   import: "default",
 });
-const artifacts = Object.entries(
+const packageEntries = Object.entries(
   import.meta.glob<string>(
     ["../../../content/marketplace/**/*", "!../../../content/marketplace/*/manifest.json"],
     {
@@ -40,10 +43,10 @@ const artifacts = Object.entries(
 );
 
 export const STATIC_MARKETPLACE_ENTRIES = Object.entries(manifests).map(
-  ([manifestPath, source]): MarketplaceStaticArtifactListing => {
+  ([manifestPath, source]): MarketplaceStaticPackageListing => {
     const manifest = marketplaceManifestSchema.parse(JSON.parse(source));
     const listingDirectory = manifestPath.slice(0, -"manifest.json".length);
-    const listingFiles = artifacts.reduce<Array<readonly [string, string]>>(
+    const listingFiles = packageEntries.reduce<Array<readonly [string, string]>>(
       (files, [path, content]) => {
         if (path.startsWith(listingDirectory)) {
           files.push([path.slice(listingDirectory.length), content]);
@@ -76,7 +79,7 @@ export const STATIC_MARKETPLACE_ENTRIES = Object.entries(manifests).map(
   },
 );
 
-const staticMarketplaceVersions: MarketplaceStaticArtifactEntry[] =
+const staticMarketplaceVersions: MarketplaceStaticPackageEntry[] =
   STATIC_MARKETPLACE_ENTRIES.flatMap((listing) =>
     listing.versions.map((version) => ({
       owner: listing.owner,
@@ -88,14 +91,14 @@ const staticMarketplaceVersions: MarketplaceStaticArtifactEntry[] =
     })),
   );
 
-export const listStaticMarketplaceEntries = (): MarketplaceStaticArtifactEntry[] => [
+export const listStaticMarketplaceEntries = (): MarketplaceStaticPackageEntry[] => [
   ...staticMarketplaceVersions,
 ];
 
 export const getStaticMarketplaceEntry = (input: {
   slug: string;
   version: string;
-}): MarketplaceStaticArtifactEntry | null =>
+}): MarketplaceStaticPackageEntry | null =>
   staticMarketplaceVersions.find(
     (entry) => entry.slug === input.slug && entry.version === input.version,
   ) ?? null;

@@ -14,7 +14,7 @@ export type MarketplacePackageTab = (typeof MARKETPLACE_PACKAGE_TABS)[number]["i
 
 /** Unrecognized package tabs show the overview. */
 export function marketplacePackageTabFromSearch(search: string): MarketplacePackageTab {
-  const requestedTab = new URLSearchParams(search).get("artifactTab");
+  const requestedTab = new URLSearchParams(search).get("packageTab");
   return MARKETPLACE_PACKAGE_TABS.find((tab) => tab.id === requestedTab)?.id ?? "overview";
 }
 
@@ -25,10 +25,10 @@ export function buildMarketplacePackageTabPath(
   tab: MarketplacePackageTab,
 ): string {
   const search = new URLSearchParams(currentSearch);
-  search.set("artifactTab", tab);
+  search.set("packageTab", tab);
   if (tab === "overview" || tab === "install") {
-    search.delete("artifactPath");
-    search.delete("artifactContent");
+    search.delete("packagePath");
+    search.delete("packageContent");
   }
   return `${pathname}?${search}`;
 }

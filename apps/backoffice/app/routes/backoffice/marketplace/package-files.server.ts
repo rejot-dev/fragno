@@ -9,28 +9,28 @@ import { createFileTree } from "@/file-collection/create-file-tree";
 import { createUploadFileCollection } from "@/file-collection/create-upload-file-collection";
 import type { FileCollection, FileContent, FileTree } from "@/file-collection/file-collection";
 import { isPathWithin, normalizeAbsolutePath } from "@/files/normalize-path";
-import { type MarketplaceArtifactManifest } from "@/fragno/marketplace/contracts";
+import { type MarketplaceListingStorage } from "@/fragno/marketplace/contracts";
 import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
 import { createUploadRouteCaller } from "@/fragno/upload-server";
 
 import {
-  MARKETPLACE_ARTIFACT_ROOT_PATH,
-  type MarketplaceArtifactExplorerData,
-} from "./artifact-files-model";
+  MARKETPLACE_PACKAGE_ROOT_PATH,
+  type MarketplacePackageExplorerData,
+} from "./package-files-model";
 
-export async function loadPublishedMarketplaceArtifactExplorer(input: {
-  manifest: MarketplaceArtifactManifest | null;
+export async function loadPublishedMarketplacePackageExplorer(input: {
+  manifest: MarketplaceListingStorage | null;
   objects: BackofficeObjectRegistry;
   request: Request;
   requestedVersion?: string;
-}): Promise<MarketplaceArtifactExplorerData> {
+}): Promise<MarketplacePackageExplorerData> {
   const manifest = input.manifest;
-  if (!isPublishedArtifactManifest(manifest)) {
+  if (!isPublishedListingStorage(manifest)) {
     return { state: "unavailable", message: "This Marketplace listing has no published files." };
   }
 
   try {
-    const collection = createPublishedMarketplaceArtifactCollection({
+    const collection = createPublishedMarketplacePackageCollection({
       manifest,
       objects: input.objects,
       request: input.request,
@@ -51,25 +51,25 @@ export async function loadPublishedMarketplaceArtifactExplorer(input: {
   }
 }
 
-export async function fetchPublishedMarketplaceArtifactFile(input: {
-  manifest: MarketplaceArtifactManifest | null;
+export async function fetchPublishedMarketplacePackageFile(input: {
+  manifest: MarketplaceListingStorage | null;
   objects: BackofficeObjectRegistry;
   request: Request;
   path: string;
 }): Promise<Response> {
   const manifest = input.manifest;
-  if (!isPublishedArtifactManifest(manifest)) {
+  if (!isPublishedListingStorage(manifest)) {
     return new Response("Marketplace file is unavailable.", { status: 404 });
   }
 
-  const fileKey = resolveArtifactFileKey(input.path);
-  if (!fileKey || !isPublishedArtifactPath(manifest, fileKey)) {
-    return new Response("artifactPath must identify a published Marketplace file.", {
+  const fileKey = resolvePackageFileKey(input.path);
+  if (!fileKey || !isPublishedPackagePath(manifest, fileKey)) {
+    return new Response("packagePath must identify a published Marketplace file.", {
       status: 400,
     });
   }
 
-  const collection = createPublishedMarketplaceArtifactCollection({
+  const collection = createPublishedMarketplacePackageCollection({
     manifest,
     objects: input.objects,
     request: input.request,
@@ -78,8 +78,8 @@ export async function fetchPublishedMarketplaceArtifactFile(input: {
   return content ? createFileContentResponse(content) : new Response("Not Found", { status: 404 });
 }
 
-function createPublishedMarketplaceArtifactCollection(input: {
-  manifest: MarketplaceArtifactManifest;
+function createPublishedMarketplacePackageCollection(input: {
+  manifest: MarketplaceListingStorage;
   objects: BackofficeObjectRegistry;
   request: Request;
 }): Pick<FileCollection, "getTree" | "getFile"> {
@@ -97,11 +97,11 @@ function createPublishedMarketplaceArtifactCollection(input: {
     async getTree() {
       const tree = await uploadCollection.getTree();
       return createFileTree(
-        tree.entries.filter((entry) => isPublishedArtifactPath(input.manifest, entry.path)),
+        tree.entries.filter((entry) => isPublishedPackagePath(input.manifest, entry.path)),
       );
     },
     async getFile(path) {
-      if (!isPublishedArtifactPath(input.manifest, path)) {
+      if (!isPublishedPackagePath(input.manifest, path)) {
         return null;
       }
       return await uploadCollection.getFile(path);
@@ -136,20 +136,20 @@ function createFileContentResponse(content: FileContent): Response {
   return new Response(content.body, { headers });
 }
 
-function isPublishedArtifactManifest(
-  manifest: MarketplaceArtifactManifest | null,
-): manifest is MarketplaceArtifactManifest {
+function isPublishedListingStorage(
+  manifest: MarketplaceListingStorage | null,
+): manifest is MarketplaceListingStorage {
   return manifest?.listingStatus === "published" && manifest.versions.length > 0;
 }
 
-function isPublishedArtifactPath(manifest: MarketplaceArtifactManifest, path: string): boolean {
+function isPublishedPackagePath(manifest: MarketplaceListingStorage, path: string): boolean {
   const topLevelName = path.split("/", 1)[0];
   const version = marketplaceVersionSchema.safeParse(topLevelName);
   return !version.success || manifest.versions.includes(version.data);
 }
 
 function resolvePublishedVersion(
-  manifest: MarketplaceArtifactManifest,
+  manifest: MarketplaceListingStorage,
   requestedVersion?: string,
 ): string {
   return manifest.versions.find((version) => version === requestedVersion) ?? manifest.versions[0];
@@ -160,10 +160,10 @@ function resolveOverviewPath(fileTree: FileTree, selectedVersion: string): strin
   const path = ["README.md", `${selectedVersion}/README.md`].find((candidate) =>
     fileTree.entries.some((entry) => entry.kind === "file" && entry.path === candidate),
   );
-  return path ? `${MARKETPLACE_ARTIFACT_ROOT_PATH}/${path}` : null;
+  return path ? `${MARKETPLACE_PACKAGE_ROOT_PATH}/${path}` : null;
 }
 
-function resolveArtifactFileKey(path: string): string | null {
+function resolvePackageFileKey(path: string): string | null {
   if (path.endsWith("/")) {
     return null;
   }
@@ -171,12 +171,12 @@ function resolveArtifactFileKey(path: string): string | null {
   try {
     const normalizedPath = normalizeAbsolutePath(path);
     if (
-      normalizedPath === MARKETPLACE_ARTIFACT_ROOT_PATH ||
-      !isPathWithin(normalizedPath, MARKETPLACE_ARTIFACT_ROOT_PATH)
+      normalizedPath === MARKETPLACE_PACKAGE_ROOT_PATH ||
+      !isPathWithin(normalizedPath, MARKETPLACE_PACKAGE_ROOT_PATH)
     ) {
       return null;
     }
-    return normalizedPath.slice(MARKETPLACE_ARTIFACT_ROOT_PATH.length + 1);
+    return normalizedPath.slice(MARKETPLACE_PACKAGE_ROOT_PATH.length + 1);
   } catch {
     return null;
   }

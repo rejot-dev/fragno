@@ -64,7 +64,7 @@ const ORG_SCOPE = { kind: "org", orgId: "org-1" } as const;
 const INSTALLATION_ROOT = "/workspace/packages/telegram";
 const WORKFLOW_FILE = "automations/telegram-test-command.workflow.js";
 
-async function publishArtifacts(ctx: BackofficeScenarioContext) {
+async function publishPackages(ctx: BackofficeScenarioContext) {
   await ctx.runtime.objects.automations.singleton().commands.requestStaticMarketplacePublications();
 }
 
@@ -103,7 +103,7 @@ describe("Workspace package runtime scenarios", () => {
         vars: () => ({ instanceId: "", version: "" }),
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then, runner }) => [
-          then.assert("publish artifacts", publishArtifacts),
+          then.assert("publish packages", publishPackages),
           runner.drain(),
           then.assert(
             "new installation is an asynchronous workflow, not a successful lock entry",
@@ -116,7 +116,7 @@ describe("Workspace package runtime scenarios", () => {
               const result = packagesInstallResultSchema.parse(run.result);
               const manifest = await ctx.runtime.objects.marketplace
                 .singleton()
-                .commands.getArtifactManifest({ listingId: LISTING_ID });
+                .commands.getListingStorage({ listingId: LISTING_ID });
               assert(manifest);
               expect(result).toMatchObject({
                 action: "created",
@@ -241,7 +241,7 @@ describe("Workspace package runtime scenarios", () => {
             createdByUserId: "owner-1",
             captureIdAs: "projectId",
           }),
-          then.assert("publish artifacts", publishArtifacts),
+          then.assert("publish packages", publishPackages),
           runner.drain(),
           then.assert(
             "personal installation selects the active organization and keeps its user destination",
@@ -326,7 +326,7 @@ describe("Workspace package runtime scenarios", () => {
           given.organization.exists({ id: "org-2", name: "Second Org", ownerUserId: "owner-1" }),
         ],
         steps: ({ then, runner }) => [
-          then.assert("publish artifacts", publishArtifacts),
+          then.assert("publish packages", publishPackages),
           runner.drain(),
           then.assert("the authenticated organization coordinates installation", async (ctx) => {
             const principal = {
@@ -447,9 +447,9 @@ describe("Workspace package runtime scenarios", () => {
         options: { allowErroredWorkflows: true },
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then, runner }) => [
-          then.assert("publish artifacts", publishArtifacts),
+          then.assert("publish packages", publishPackages),
           runner.drain(),
-          then.assert("a local file conflicts with the selected artifact", async (ctx) => {
+          then.assert("a local file conflicts with the selected package", async (ctx) => {
             await ctx.runCodemode({
               scope: ORG_SCOPE,
               code: `async () => await state.writeFile({ path: ${JSON.stringify(`${INSTALLATION_ROOT}/${WORKFLOW_FILE}`)}, content: "local changes" })`,

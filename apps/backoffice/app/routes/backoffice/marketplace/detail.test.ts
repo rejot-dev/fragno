@@ -19,18 +19,18 @@ const {
   shellMeMock,
   requireBackofficeContextMock,
   getPublishedListingMock,
-  getArtifactManifestMock,
+  getListingStorageMock,
   restartMarketplaceIngestionMock,
   fetchAutomationCollectionSourceMock,
-  loadPublishedMarketplaceArtifactExplorerMock,
+  loadPublishedMarketplacePackageExplorerMock,
 } = vi.hoisted(() => ({
   shellMeMock: vi.fn(),
   requireBackofficeContextMock: vi.fn(),
   getPublishedListingMock: vi.fn(),
-  getArtifactManifestMock: vi.fn(),
+  getListingStorageMock: vi.fn(),
   restartMarketplaceIngestionMock: vi.fn(),
   fetchAutomationCollectionSourceMock: vi.fn(),
-  loadPublishedMarketplaceArtifactExplorerMock: vi.fn(),
+  loadPublishedMarketplacePackageExplorerMock: vi.fn(),
 }));
 
 vi.mock("@/fragno/auth/backoffice-principal.server", () => ({
@@ -42,8 +42,8 @@ vi.mock("@/fragno/automation/tanstack/server", () => ({
 vi.mock("@fragno-private/design-system/client-only", () => ({
   ClientOnly: ({ children }: { children: () => never }) => children(),
 }));
-vi.mock("./artifact-files.server", () => ({
-  loadPublishedMarketplaceArtifactExplorer: loadPublishedMarketplaceArtifactExplorerMock,
+vi.mock("./package-files.server", () => ({
+  loadPublishedMarketplacePackageExplorer: loadPublishedMarketplacePackageExplorerMock,
 }));
 vi.mock("./installation-workflow.client", () => ({
   MarketplaceInstallationWorkflow: ({
@@ -66,7 +66,7 @@ import {
   readMarketplaceInstallationReference,
   type MarketplaceInstallationReference,
 } from "./installation-reference";
-import { buildArtifactVersionPath } from "./navigation";
+import { buildPackageVersionPath } from "./navigation";
 
 const listingId = marketplaceListingId({
   ownerScope: { kind: "system" },
@@ -90,7 +90,7 @@ const automations = {
 const forOrgMock = vi.fn(() => ({ commands: automations }));
 const marketplace = {
   getPublishedListing: getPublishedListingMock,
-  getArtifactManifest: getArtifactManifestMock,
+  getListingStorage: getListingStorageMock,
 };
 const workerContext = {
   runtime: {
@@ -142,7 +142,7 @@ async function routeContext(scope: BackofficeRoutableScope) {
 
 const runLoader = async (
   scope: BackofficeRoutableScope = { kind: "org", orgId: "org-1" },
-  artifactVersion?: string,
+  packageVersion?: string,
   installation?: MarketplaceInstallationReference,
 ) => {
   const routeScope = routeScopeForTest(scope);
@@ -150,8 +150,8 @@ const runLoader = async (
   const url = new URL(
     `https://example.test/backoffice/marketplace/${routePath}/marketplace/${listingRef}`,
   );
-  if (artifactVersion) {
-    url.searchParams.set("artifactVersion", artifactVersion);
+  if (packageVersion) {
+    url.searchParams.set("packageVersion", packageVersion);
   }
   if (installation) {
     url.searchParams.set("installation", JSON.stringify(installation));
@@ -210,10 +210,10 @@ beforeEach(() => {
   shellMeMock.mockReset();
   requireBackofficeContextMock.mockReset();
   getPublishedListingMock.mockReset();
-  getArtifactManifestMock.mockReset();
+  getListingStorageMock.mockReset();
   restartMarketplaceIngestionMock.mockReset();
   fetchAutomationCollectionSourceMock.mockReset();
-  loadPublishedMarketplaceArtifactExplorerMock.mockReset();
+  loadPublishedMarketplacePackageExplorerMock.mockReset();
   forOrgMock.mockClear();
   shellMeMock.mockResolvedValue(authenticatedUser);
   requireBackofficeContextMock.mockImplementation(async (_request, _context, scope) =>
@@ -238,14 +238,14 @@ beforeEach(() => {
     nextVersionCursor: null,
     hasNextVersionPage: false,
   });
-  getArtifactManifestMock.mockResolvedValue(null);
+  getListingStorageMock.mockResolvedValue(null);
   fetchAutomationCollectionSourceMock.mockImplementation(
     async (_request, _context, resolvedScope) => ({
       resolvedScope,
       adapterIdentity: "automations-test-adapter",
     }),
   );
-  loadPublishedMarketplaceArtifactExplorerMock.mockResolvedValue({
+  loadPublishedMarketplacePackageExplorerMock.mockResolvedValue({
     state: "unavailable",
     message: "This Marketplace listing has no published files.",
   });
@@ -308,8 +308,8 @@ describe("marketplace detail loader", () => {
     expect(forOrgMock).not.toHaveBeenCalled();
   });
 
-  test("loads a validated artifact version outside the current page", async () => {
-    loadPublishedMarketplaceArtifactExplorerMock.mockResolvedValueOnce({
+  test("loads a validated package version outside the current page", async () => {
+    loadPublishedMarketplacePackageExplorerMock.mockResolvedValueOnce({
       state: "ready",
       fileTree: { entries: [] },
       selectedVersion: "1.0.0",
@@ -318,8 +318,8 @@ describe("marketplace detail loader", () => {
     const result = await runLoader({ kind: "org", orgId: "org-1" }, "1.0.0");
 
     assert(!(result instanceof Response));
-    assert(result.artifactFiles.state === "ready");
-    assert(result.artifactFiles.selectedVersion === "1.0.0");
+    assert(result.packageFiles.state === "ready");
+    assert(result.packageFiles.selectedVersion === "1.0.0");
   });
 
   test.each([
@@ -402,15 +402,15 @@ describe("marketplace detail loader", () => {
   });
 });
 
-describe("marketplace artifact version navigation", () => {
+describe("marketplace package version navigation", () => {
   test("tab and version navigation retain the persisted installer until dismissal", () => {
     const path = buildMarketplaceInstallationPath(
       "/marketplace",
-      "?artifactPath=/artifact/1.0.0/file",
+      "?packagePath=/package/1.0.0/file",
       installationReference,
     );
     const initial = new URL(path, "https://example.test");
-    const switched = buildArtifactVersionPath(
+    const switched = buildPackageVersionPath(
       initial.pathname,
       initial.search,
       installationReference.version,
@@ -423,8 +423,8 @@ describe("marketplace artifact version navigation", () => {
       "https://example.test",
     );
     assert(readMarketplaceInstallationReference(closed.search) === null);
-    assert(closed.searchParams.get("artifactTab") === "install");
-    assert(closed.searchParams.get("artifactVersion") === "2.0.0");
+    assert(closed.searchParams.get("packageTab") === "install");
+    assert(closed.searchParams.get("packageVersion") === "2.0.0");
     const markup = renderMarketplaceDetail("2.0.0", undefined, undefined, "install");
     assert(markup.includes('name="installationRoot"'));
     assert(!markup.includes("observing:"));
@@ -448,7 +448,7 @@ describe("marketplace artifact version navigation", () => {
     assert(installMarkup.includes("Ada Labs"));
   });
 
-  test("offers the selected artifact version when it is outside the current page", () => {
+  test("offers the selected package version when it is outside the current page", () => {
     const markup = renderMarketplaceDetail("1.0.0");
 
     assert(markup.includes("Version history"));
@@ -495,67 +495,67 @@ describe("marketplace artifact version navigation", () => {
   });
 
   test("keeps the overview tab selected when changing versions", () => {
-    const explicitOverviewPath = buildArtifactVersionPath(
+    const explicitOverviewPath = buildPackageVersionPath(
       "/backoffice/marketplace/example",
-      "?artifactTab=overview&artifactVersion=1.0.0",
+      "?packageTab=overview&packageVersion=1.0.0",
       "1.0.0",
       "2.0.0",
     );
-    const defaultOverviewPath = buildArtifactVersionPath(
+    const defaultOverviewPath = buildPackageVersionPath(
       "/backoffice/marketplace/example",
-      "?artifactVersion=1.0.0",
+      "?packageVersion=1.0.0",
       "1.0.0",
       "2.0.0",
     );
 
     assert(
-      new URL(explicitOverviewPath, "https://example.test").searchParams.get("artifactTab") ===
+      new URL(explicitOverviewPath, "https://example.test").searchParams.get("packageTab") ===
         "overview",
     );
     assert(
-      new URL(defaultOverviewPath, "https://example.test").searchParams.get("artifactTab") === null,
+      new URL(defaultOverviewPath, "https://example.test").searchParams.get("packageTab") === null,
     );
   });
 
-  test("retargets the selected artifact path to the next version", () => {
-    const nextPath = buildArtifactVersionPath(
+  test("retargets the selected package path to the next version", () => {
+    const nextPath = buildPackageVersionPath(
       "/backoffice/marketplace/example",
-      "?artifactTab=workflows&artifactVersion=1.0.0&artifactPath=%2Fartifact%2F1.0.0%2Fautomations%2Fdaily-report.workflow.js",
+      "?packageTab=workflows&packageVersion=1.0.0&packagePath=%2Fpackage%2F1.0.0%2Fautomations%2Fdaily-report.workflow.js",
       "1.0.0",
       "2.0.0",
     );
     const nextUrl = new URL(nextPath, "https://example.test");
 
-    assert(nextUrl.searchParams.get("artifactVersion") === "2.0.0");
-    assert(nextUrl.searchParams.get("artifactTab") === "workflows");
+    assert(nextUrl.searchParams.get("packageVersion") === "2.0.0");
+    assert(nextUrl.searchParams.get("packageTab") === "workflows");
     assert(
-      nextUrl.searchParams.get("artifactPath") ===
-        "/artifact/2.0.0/automations/daily-report.workflow.js",
+      nextUrl.searchParams.get("packagePath") ===
+        "/package/2.0.0/automations/daily-report.workflow.js",
     );
   });
 
   test("retargets a selected file to the next version", () => {
-    const nextPath = buildArtifactVersionPath(
+    const nextPath = buildPackageVersionPath(
       "/backoffice/marketplace/example",
-      "?artifactTab=files&artifactPath=%2Fartifact%2F1.0.0%2Fsrc%2Findex.ts",
+      "?packageTab=files&packagePath=%2Fpackage%2F1.0.0%2Fsrc%2Findex.ts",
       "1.0.0",
       "2.0.0",
     );
     const nextUrl = new URL(nextPath, "https://example.test");
 
-    assert(nextUrl.searchParams.get("artifactPath") === "/artifact/2.0.0/src/index.ts");
+    assert(nextUrl.searchParams.get("packagePath") === "/package/2.0.0/src/index.ts");
   });
 
-  test("keeps version-independent artifact paths unchanged", () => {
-    const nextPath = buildArtifactVersionPath(
+  test("keeps version-independent package paths unchanged", () => {
+    const nextPath = buildPackageVersionPath(
       "/backoffice/marketplace/example",
-      "?artifactTab=files&artifactPath=%2Fartifact%2FREADME.md",
+      "?packageTab=files&packagePath=%2Fpackage%2FREADME.md",
       "1.0.0",
       "2.0.0",
     );
     const nextUrl = new URL(nextPath, "https://example.test");
 
-    assert(nextUrl.searchParams.get("artifactPath") === "/artifact/README.md");
+    assert(nextUrl.searchParams.get("packagePath") === "/package/README.md");
   });
 });
 
@@ -563,21 +563,21 @@ describe("marketplace detail revalidation", () => {
   test("uses the default revalidation behavior after form submissions", () => {
     assert(
       shouldRevalidate({
-        currentUrl: new URL("https://example.test/marketplace/example?artifactTab=files"),
-        nextUrl: new URL("https://example.test/marketplace/example?artifactTab=files"),
+        currentUrl: new URL("https://example.test/marketplace/example?packageTab=files"),
+        nextUrl: new URL("https://example.test/marketplace/example?packageTab=files"),
         formMethod: "POST",
         defaultShouldRevalidate: true,
       } as never),
     );
   });
 
-  test("skips revalidation when only the artifact selection changes", () => {
+  test("skips revalidation when only the package selection changes", () => {
     assert(
       !shouldRevalidate({
         currentUrl: new URL(
-          "https://example.test/marketplace/example?artifactTab=files&artifactPath=%2Fartifact%2F1.0.0%2F",
+          "https://example.test/marketplace/example?packageTab=files&packagePath=%2Fpackage%2F1.0.0%2F",
         ),
-        nextUrl: new URL("https://example.test/marketplace/example?artifactTab=workflows"),
+        nextUrl: new URL("https://example.test/marketplace/example?packageTab=workflows"),
         defaultShouldRevalidate: true,
       } as never),
     );
@@ -615,7 +615,7 @@ function renderMarketplaceDetail(
       resolvedScope: { kind: "org", organization: { id: "org-1", slug: "acme" } },
       adapterIdentity: "automations-test-adapter",
     },
-    artifactFiles: {
+    packageFiles: {
       state: "ready",
       fileTree: { entries: [] },
       selectedVersion,
@@ -643,7 +643,7 @@ function renderMarketplaceDetail(
       },
     ],
     {
-      initialEntries: [`/marketplace?artifactVersion=${selectedVersion}&artifactTab=${tab}`],
+      initialEntries: [`/marketplace?packageVersion=${selectedVersion}&packageTab=${tab}`],
       ...(actionData
         ? {
             hydrationData: {
@@ -670,7 +670,7 @@ describe("marketplace ingestion action", () => {
       version: "1.0.0",
       installationRoot: "/workspace/telegram-test-command",
     });
-    assert(destination.searchParams.get("artifactTab") === "install");
+    assert(destination.searchParams.get("packageTab") === "install");
     expect(forOrgMock).toHaveBeenCalledWith("org-1");
     expect(restartMarketplaceIngestionMock).toHaveBeenCalledWith(
       {
@@ -701,7 +701,7 @@ describe("marketplace ingestion action", () => {
     const destination = new URL(result.headers.get("Location")!, "https://example.test");
     const reference = readMarketplaceInstallationReference(destination.search);
     expect(reference).toEqual(installationReference);
-    assert(destination.searchParams.get("artifactVersion") === "1.3.0");
+    assert(destination.searchParams.get("packageVersion") === "1.3.0");
     assert(reference);
     const reloaded = await runLoader(
       { kind: "user", userId: "user-1" },

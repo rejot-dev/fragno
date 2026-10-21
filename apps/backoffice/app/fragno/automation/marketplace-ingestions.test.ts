@@ -1,16 +1,16 @@
 import { describe, expect, test, vi, assert } from "vitest";
 
-import type { MarketplaceArtifactManifest } from "@/fragno/marketplace/contracts";
+import type { MarketplaceListingStorage } from "@/fragno/marketplace/contracts";
 
 import {
   assertMarketplaceIngestionTargetAccessible,
   assertMarketplaceIngestionTargetBelongsToOrganization,
-  MarketplaceIngestionArtifactUnavailableError,
+  MarketplaceIngestionPackageUnavailableError,
   MarketplaceIngestionTargetAccessError,
-  resolveMarketplaceIngestionArtifactVersion,
+  resolveMarketplaceIngestionPackageVersion,
 } from "./marketplace-ingestions";
 
-const publishedManifest: MarketplaceArtifactManifest = {
+const publishedManifest: MarketplaceListingStorage = {
   listingId: "system:telegram-test-command",
   slug: "telegram-test-command",
   listingStatus: "published",
@@ -78,20 +78,20 @@ describe("marketplace ingestion request rules", () => {
     ).rejects.toThrow("Marketplace ingestion user target is not a member of the organization.");
   });
 
-  test("resolves latest and explicitly requested published artifact versions", () => {
+  test("resolves latest and explicitly requested published package versions", () => {
     assert(
-      resolveMarketplaceIngestionArtifactVersion(publishedManifest, undefined).version === "1.1.0",
+      resolveMarketplaceIngestionPackageVersion(publishedManifest, undefined).version === "1.1.0",
     );
     assert(
-      resolveMarketplaceIngestionArtifactVersion(publishedManifest, "1.0.0").version === "1.0.0",
+      resolveMarketplaceIngestionPackageVersion(publishedManifest, "1.0.0").version === "1.0.0",
     );
   });
 
-  test("rejects unavailable marketplace artifacts", () => {
-    expect(() => resolveMarketplaceIngestionArtifactVersion(null, undefined)).toThrow(
-      new MarketplaceIngestionArtifactUnavailableError("Marketplace listing is not published."),
+  test("rejects unavailable marketplace packages", () => {
+    expect(() => resolveMarketplaceIngestionPackageVersion(null, undefined)).toThrow(
+      new MarketplaceIngestionPackageUnavailableError("Marketplace listing is not published."),
     );
-    expect(() => resolveMarketplaceIngestionArtifactVersion(publishedManifest, "2.0.0")).toThrow(
+    expect(() => resolveMarketplaceIngestionPackageVersion(publishedManifest, "2.0.0")).toThrow(
       "Marketplace version '2.0.0' is not available.",
     );
   });

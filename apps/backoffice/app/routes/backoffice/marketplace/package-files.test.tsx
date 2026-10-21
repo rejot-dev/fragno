@@ -5,20 +5,20 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 
 import { createFileTree } from "@/file-collection/create-file-tree";
 
-import { MarketplaceArtifactFiles } from "./artifact-files";
+import { MarketplacePackageFiles } from "./package-files";
 import type {
-  MarketplaceArtifactExplorerData,
-  MarketplaceArtifactSelectedContent,
-} from "./artifact-files-model";
+  MarketplacePackageExplorerData,
+  MarketplacePackageSelectedContent,
+} from "./package-files-model";
 
 const workflowSource = {
-  path: "/artifact/1.0.0/automations/daily-report.workflow.js",
+  path: "/package/1.0.0/automations/daily-report.workflow.js",
   source: `defineWorkflow({ name: "daily-report" }, async (_event, step) => {
     await step.do("send report", async () => {});
   });`,
 };
 
-const artifactData: MarketplaceArtifactExplorerData = {
+const packageData: MarketplacePackageExplorerData = {
   state: "ready",
   fileTree: createFileTree([
     {
@@ -34,9 +34,9 @@ const artifactData: MarketplaceArtifactExplorerData = {
   overviewPath: null,
 };
 
-describe("MarketplaceArtifactFiles", () => {
+describe("MarketplacePackageFiles", () => {
   test("defaults to overview content and omits the old badges", () => {
-    const markup = renderMarketplaceArtifacts("/backoffice/marketplace/example");
+    const markup = renderMarketplacePackages("/backoffice/marketplace/example");
 
     assert(markup.includes("No package overview"));
     assert(!markup.includes('aria-label="Marketplace package sections"'));
@@ -46,17 +46,17 @@ describe("MarketplaceArtifactFiles", () => {
     assert(!markup.includes("could not be found"));
   });
 
-  test("reports an explicitly requested artifact path that is missing", () => {
-    const markup = renderMarketplaceArtifacts(
-      "/backoffice/marketplace/example?artifactTab=files&artifactPath=%2Fartifact%2Fmissing.txt",
+  test("reports an explicitly requested package path that is missing", () => {
+    const markup = renderMarketplacePackages(
+      "/backoffice/marketplace/example?packageTab=files&packagePath=%2Fpackage%2Fmissing.txt",
     );
 
-    assert(markup.includes("Artifact path &#x27;/artifact/missing.txt&#x27; could not be found."));
+    assert(markup.includes("Package path &#x27;/package/missing.txt&#x27; could not be found."));
   });
 
   test("renders workflow file tabs without loading their sources", () => {
-    const markup = renderMarketplaceArtifacts(
-      "/backoffice/marketplace/example?artifactTab=workflows",
+    const markup = renderMarketplacePackages(
+      "/backoffice/marketplace/example?packageTab=workflows",
     );
 
     assert(markup.includes("daily-report.workflow.js"));
@@ -65,8 +65,8 @@ describe("MarketplaceArtifactFiles", () => {
   });
 
   test("parses fetched workflow sources with the shared workflow graph on the client", () => {
-    const markup = renderMarketplaceArtifacts(
-      `/backoffice/marketplace/example?artifactTab=workflows&artifactPath=${encodeURIComponent(workflowSource.path)}`,
+    const markup = renderMarketplacePackages(
+      `/backoffice/marketplace/example?packageTab=workflows&packagePath=${encodeURIComponent(workflowSource.path)}`,
       { path: workflowSource.path, text: workflowSource.source },
     );
 
@@ -77,15 +77,15 @@ describe("MarketplaceArtifactFiles", () => {
   });
 });
 
-function renderMarketplaceArtifacts(
+function renderMarketplacePackages(
   initialEntry: string,
-  selectedContent: MarketplaceArtifactSelectedContent | null = null,
+  selectedContent: MarketplacePackageSelectedContent | null = null,
 ): string {
   const router = createMemoryRouter(
     [
       {
         path: "*",
-        element: <MarketplaceArtifactFiles data={artifactData} selectedContent={selectedContent} />,
+        element: <MarketplacePackageFiles data={packageData} selectedContent={selectedContent} />,
       },
     ],
     { initialEntries: [initialEntry] },

@@ -29,20 +29,17 @@ import { InMemoryAuthObject } from "../../../workers/auth.do";
 import { InMemoryAutomationsObject } from "../../../workers/automations.do";
 import { InMemoryMarketplaceObject } from "../../../workers/marketplace.do";
 import { InMemoryUploadObject } from "../../../workers/upload.do";
-import { marketplaceArtifactUploadName, type MarketplaceStaticArtifactEntry } from "./artifacts";
 import {
   captureBundledMarketplaceRelease,
   initializeMarketplaceListingRootFiles,
 } from "./bundled-release";
+import { marketplacePackageUploadName, type MarketplaceStaticPackageEntry } from "./package-files";
 import {
   marketplacePackagePublishRequestSchema,
   marketplacePackagePublishWorkflowInstanceId,
   type MarketplacePackagePublishRequest,
 } from "./package-publishing";
-import {
-  MARKETPLACE_RELEASE_GUARD_PATH,
-  marketplaceReleaseArtifactFiles,
-} from "./release-snapshot";
+import { MARKETPLACE_RELEASE_GUARD_PATH, marketplaceReleasePackageFiles } from "./release-snapshot";
 
 const scenarioObjects = {
   AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
@@ -57,7 +54,7 @@ const CONTEXT = {
   propagationContext: null,
 };
 
-function bundledEntry(): MarketplaceStaticArtifactEntry & {
+function bundledEntry(): MarketplaceStaticPackageEntry & {
   rootFiles: Readonly<Record<string, string>>;
 } {
   return {
@@ -77,10 +74,10 @@ function bundledEntry(): MarketplaceStaticArtifactEntry & {
   };
 }
 
-function artifactRoutes(ctx: BackofficeScenarioContext) {
+function packageRoutes(ctx: BackofficeScenarioContext) {
   return createUploadRouteCaller(
     ctx.runtime.objects.upload.forName(
-      marketplaceArtifactUploadName({ marketplace: { kind: "system" }, listingId: LISTING_ID }),
+      marketplacePackageUploadName({ marketplace: { kind: "system" }, listingId: LISTING_ID }),
     ).http,
   );
 }
@@ -91,7 +88,7 @@ async function fileContent(ctx: BackofficeScenarioContext, fileKey: string): Pro
   url.searchParams.set("key", fileKey);
   return ctx.runtime.objects.upload
     .forName(
-      marketplaceArtifactUploadName({ marketplace: { kind: "system" }, listingId: LISTING_ID }),
+      marketplacePackageUploadName({ marketplace: { kind: "system" }, listingId: LISTING_ID }),
     )
     .http.fetch(new Request(url));
 }
@@ -161,10 +158,10 @@ test("a maximum-size release captures destination revisions in one batch without
               (
                 await ctx.runtime.objects.marketplace
                   .singleton()
-                  .commands.getArtifactManifest({ listingId: LISTING_ID })
+                  .commands.getListingStorage({ listingId: LISTING_ID })
               )?.versions,
             ).toEqual(["1.0.0"]);
-            const response = await artifactRoutes(ctx)("GET", "/files", {
+            const response = await packageRoutes(ctx)("GET", "/files", {
               query: { provider: "database", prefix: "1.0.0/", pageSize: "500", status: "ready" },
             });
             assert(response.type === "json");
@@ -197,7 +194,7 @@ test("a maximum-size release captures destination revisions in one batch without
           async (ctx) => {
             expect(uploads).toBe(102);
             expect(individualReads).toBe(0);
-            const result = await artifactRoutes(ctx)("POST", "/files/snapshots", {
+            const result = await packageRoutes(ctx)("POST", "/files/snapshots", {
               body: {
                 provider: "database",
                 fileKeys: ["1.0.0/file-99.txt", `1.0.0/${MARKETPLACE_RELEASE_GUARD_PATH}`],
@@ -338,7 +335,7 @@ test("generic workflow creation cannot forge the release publisher's provenance"
           "create a structurally valid workflow that claims a different original publisher",
           async (ctx) => {
             const release = await captureBundledMarketplaceRelease(bundledEntry());
-            const files = await marketplaceReleaseArtifactFiles(release);
+            const files = await marketplaceReleasePackageFiles(release);
             const work: Omit<MarketplacePackagePublishRequest, "workflowInstanceId"> = {
               intent: {
                 marketplace: { kind: "system" },
@@ -381,7 +378,7 @@ test("generic workflow creation cannot forge the release publisher's provenance"
             await expect(
               ctx.runtime.objects.marketplace
                 .singleton()
-                .commands.getArtifactManifest({ listingId: LISTING_ID }),
+                .commands.getListingStorage({ listingId: LISTING_ID }),
             ).resolves.toBeNull();
             const result = await ctx.runtime.objects.marketplace
               .singleton()
@@ -408,7 +405,7 @@ test("generic workflow creation cannot forge the release publisher's provenance"
               (
                 await ctx.runtime.objects.marketplace
                   .singleton()
-                  .commands.getArtifactManifest({ listingId: LISTING_ID })
+                  .commands.getListingStorage({ listingId: LISTING_ID })
               )?.versions,
             ).toEqual(["1.1.0"]);
           },
@@ -434,7 +431,7 @@ test("bundled releases use captured input, guarded replacement, and stale-restar
         then.assert(
           "capture a System release before enqueueing and initialize listing-root files separately",
           async (ctx) => {
-            await initializeMarketplaceListingRootFiles(artifactRoutes(ctx), source.rootFiles);
+            await initializeMarketplaceListingRootFiles(packageRoutes(ctx), source.rootFiles);
             const release = await captureBundledMarketplaceRelease(source);
             const result = await ctx.runtime.objects.marketplace
               .singleton()
@@ -490,7 +487,7 @@ test("bundled releases use captured input, guarded replacement, and stale-restar
               state: "published",
               workflowInstanceId: ctx.vars.originalInstanceId,
             });
-            const marker = await artifactRoutes(ctx)("GET", "/files/by-key", {
+            const marker = await packageRoutes(ctx)("GET", "/files/by-key", {
               query: { provider: "database", key: `1.0.0/${MARKETPLACE_RELEASE_GUARD_PATH}` },
             });
             assert(marker.type === "json");
@@ -532,7 +529,7 @@ test("bundled releases use captured input, guarded replacement, and stale-restar
                   .commands.getPublishedListing({ listingId: LISTING_ID })
               )?.listing.name === "Replaced metadata",
             );
-            const marker = await artifactRoutes(ctx)("GET", "/files/by-key", {
+            const marker = await packageRoutes(ctx)("GET", "/files/by-key", {
               query: { provider: "database", key: `1.0.0/${MARKETPLACE_RELEASE_GUARD_PATH}` },
             });
             assert(marker.type === "json");
@@ -628,7 +625,7 @@ test("bundled releases use captured input, guarded replacement, and stale-restar
                   .commands.getPublishedListing({ listingId: LISTING_ID })
               )?.listing,
             ).toMatchObject({ latestVersion: "1.0.0", name: "Complete replacement" });
-            await initializeMarketplaceListingRootFiles(artifactRoutes(ctx), {
+            await initializeMarketplaceListingRootFiles(packageRoutes(ctx), {
               "README.md": "Attempt to replace initialized listing docs",
             });
             await expect((await fileContent(ctx, "README.md")).text()).resolves.toBe(

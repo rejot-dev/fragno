@@ -2,16 +2,16 @@ import type { PreparedFileBatchEntry, PreparedFileWrite } from "@fragno-dev/uplo
 import { NonRetryableError, type WorkflowStep } from "@fragno-dev/workflows/workflow";
 
 import { listUploadFiles } from "@/file-collection/create-upload-file-collection";
-import { marketplaceArtifactFileInventoryMatches } from "@/fragno/marketplace/artifacts";
+import { marketplacePackageFileInventoryMatches } from "@/fragno/marketplace/package-files";
 import type { MarketplacePackagePublishRequest } from "@/fragno/marketplace/package-publishing";
 import { decodeMarketplaceReleaseBytes } from "@/fragno/marketplace/release-snapshot";
 import type { UploadRouteCaller } from "@/fragno/upload-server";
 import { bytesToHex } from "@/lib/crypto";
 
 import {
-  createMarketplaceArtifactUpload,
-  transferMarketplaceArtifactUpload,
-} from "./marketplace-artifact-upload";
+  createMarketplacePackageUpload,
+  transferMarketplacePackageUpload,
+} from "./marketplace-package-upload";
 import {
   throwMarketplaceUploadRouteError,
   throwUnexpectedMarketplaceUploadResponse,
@@ -23,7 +23,7 @@ export const MARKETPLACE_PUBLICATION_RETRIES = {
 } as const;
 
 /** Base64 bytes stay encoded on replay and are decoded only inside the transfer step. */
-export type MarketplaceArtifactPublicationFile = {
+export type MarketplacePackagePublicationFile = {
   relativePath: string;
   fileKey: string;
   content: string;
@@ -31,14 +31,14 @@ export type MarketplaceArtifactPublicationFile = {
   checksum: { algo: "sha256"; value: string };
 };
 
-type MarketplaceArtifactPublication = {
+type MarketplacePackagePublication = {
   filePrefix: string;
   expectedFiles: MarketplacePackagePublishRequest["expectedFiles"];
   beforeCommit: () => Promise<void>;
 };
 
 /** Prepared uploads stay invisible until writes and obsolete-file deletions commit in one batch. */
-export async function publishMarketplaceArtifactFiles({
+export async function publishMarketplacePackageFiles({
   step,
   routes,
   files,
@@ -46,14 +46,14 @@ export async function publishMarketplaceArtifactFiles({
 }: {
   step: WorkflowStep;
   routes: UploadRouteCaller;
-  files: MarketplaceArtifactPublicationFile[];
-  publication: MarketplaceArtifactPublication;
+  files: MarketplacePackagePublicationFile[];
+  publication: MarketplacePackagePublication;
 }): Promise<void> {
   const preconditions = new Map(
     publication.expectedFiles.map((file) => [file.fileKey, file.precondition]),
   );
   const plan = await step.do(
-    "plan marketplace artifact writes",
+    "plan marketplace package writes",
     MARKETPLACE_PUBLICATION_RETRIES,
     async (): Promise<{ state: "committed" } | { state: "prepare"; unchangedKeys: string[] }> => {
       const inventory = await listUploadFiles({
@@ -61,7 +61,7 @@ export async function publishMarketplaceArtifactFiles({
         provider: "database",
         prefix: publication.filePrefix,
       });
-      if (marketplaceArtifactFileInventoryMatches(files, inventory)) {
+      if (marketplacePackageFileInventoryMatches(files, inventory)) {
         return { state: "committed" };
       }
       const existing = new Map(inventory.map((file) => [file.fileKey, file]));
@@ -71,7 +71,7 @@ export async function publishMarketplaceArtifactFiles({
           return (
             preconditions.get(file.fileKey)?.kind === "revision" &&
             current &&
-            marketplaceArtifactFileInventoryMatches([file], [current])
+            marketplacePackageFileInventoryMatches([file], [current])
           );
         })
         .map((file) => file.fileKey);
@@ -91,15 +91,15 @@ export async function publishMarketplaceArtifactFiles({
     }
     const stepKey = bytesToHex(new TextEncoder().encode(file.fileKey));
     const session = await step.do(
-      `create marketplace artifact upload ${stepKey}`,
+      `create marketplace package upload ${stepKey}`,
       MARKETPLACE_PUBLICATION_RETRIES,
-      async () => ({ uploadId: await createMarketplaceArtifactUpload({ routes, file }) }),
+      async () => ({ uploadId: await createMarketplacePackageUpload({ routes, file }) }),
     );
     const prepared = await step.do(
-      `transfer marketplace artifact upload ${stepKey}`,
+      `transfer marketplace package upload ${stepKey}`,
       MARKETPLACE_PUBLICATION_RETRIES,
       async () =>
-        transferMarketplaceArtifactUpload({
+        transferMarketplacePackageUpload({
           routes,
           uploadId: session.uploadId,
           content: decodeMarketplaceReleaseBytes(file.content),
@@ -108,7 +108,7 @@ export async function publishMarketplaceArtifactFiles({
     writes.push(prepared);
   }
 
-  await step.do("commit marketplace artifact files", MARKETPLACE_PUBLICATION_RETRIES, async () => {
+  await step.do("commit marketplace package files", MARKETPLACE_PUBLICATION_RETRIES, async () => {
     // Recheck current authority and publishing ownership immediately before promotion.
     await publication.beforeCommit();
     const currentFiles = await listUploadFiles({
@@ -116,7 +116,7 @@ export async function publishMarketplaceArtifactFiles({
       provider: "database",
       prefix: publication.filePrefix,
     });
-    if (marketplaceArtifactFileInventoryMatches(files, currentFiles)) {
+    if (marketplacePackageFileInventoryMatches(files, currentFiles)) {
       return;
     }
 
@@ -155,7 +155,7 @@ export async function publishMarketplaceArtifactFiles({
     if (response.type === "error") {
       if (response.error.code === "FILE_PRECONDITION_FAILED") {
         if (
-          marketplaceArtifactFileInventoryMatches(
+          marketplacePackageFileInventoryMatches(
             files,
             await listUploadFiles({ routes, provider: "database", prefix: publication.filePrefix }),
           )
@@ -167,14 +167,14 @@ export async function publishMarketplaceArtifactFiles({
         );
       }
       throwMarketplaceUploadRouteError({
-        operation: "Marketplace artifact batch commit",
+        operation: "Marketplace package batch commit",
         status: response.status,
         error: response.error,
       });
     }
     if (response.type !== "json" || response.status < 200 || response.status >= 300) {
       throwUnexpectedMarketplaceUploadResponse({
-        operation: "Marketplace artifact batch commit",
+        operation: "Marketplace package batch commit",
         status: response.status,
       });
     }

@@ -30,15 +30,11 @@ import {
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { listUploadFiles } from "@/file-collection/create-upload-file-collection";
 import { getUploadFileSnapshots } from "@/file-collection/get-upload-file-snapshots";
-import {
-  marketplaceArtifactFileInventoryMatches,
-  marketplaceArtifactUploadName,
-} from "@/fragno/marketplace/artifacts";
 import type {
   MarketplaceAddDraftVersionInput,
   MarketplaceArchiveListingInput,
-  MarketplaceArtifactManifest,
-  MarketplaceArtifactManifestInput,
+  MarketplaceListingStorage,
+  MarketplaceListingStorageInput,
   MarketplaceArchiveResult,
   MarketplaceCreateDraftListingInput,
   MarketplaceDraftResult,
@@ -67,6 +63,10 @@ import type { MarketplaceFragment } from "@/fragno/marketplace/index";
 import { createMarketplaceServer } from "@/fragno/marketplace/marketplace";
 import { marketplaceScopeForVisibility } from "@/fragno/marketplace/owner";
 import {
+  marketplacePackageFileInventoryMatches,
+  marketplacePackageUploadName,
+} from "@/fragno/marketplace/package-files";
+import {
   marketplacePackageIdentity,
   verifyMarketplacePackageSnapshot,
 } from "@/fragno/marketplace/package-manifest";
@@ -86,7 +86,7 @@ import {
 } from "@/fragno/marketplace/package-publishing";
 import {
   captureMarketplaceReleaseSnapshot,
-  marketplaceReleaseArtifactFiles,
+  marketplaceReleasePackageFiles,
   verifyMarketplaceReleaseSnapshot,
 } from "@/fragno/marketplace/release-snapshot";
 import { createUploadRouteCaller } from "@/fragno/upload-server";
@@ -268,14 +268,14 @@ export class InMemoryMarketplaceObject extends RpcTarget implements MarketplaceO
     const filePrefix = `${release.version}/`;
     const routes = createUploadRouteCaller(
       this.#runtime.objects.upload.forName(
-        marketplaceArtifactUploadName({ marketplace: this.#scope, listingId: release.listingId }),
+        marketplacePackageUploadName({ marketplace: this.#scope, listingId: release.listingId }),
       ).http,
     );
-    const files = await marketplaceReleaseArtifactFiles(release);
+    const files = await marketplaceReleasePackageFiles(release);
     const existing = await listUploadFiles({ routes, provider: "database", prefix: filePrefix });
     if (plan.state === "published") {
       if (
-        marketplaceArtifactFileInventoryMatches(
+        marketplacePackageFileInventoryMatches(
           files.map((file) => ({
             fileKey: `${filePrefix}${file.relativePath}`,
             sizeBytes: file.sizeBytes,
@@ -379,12 +379,12 @@ export class InMemoryMarketplaceObject extends RpcTarget implements MarketplaceO
   ): Promise<void> {
     const request = marketplacePackagePublishRequestSchema.parse(rawRequest);
     await this.#authorizePackagePublish(request, context);
-    const uploadName = marketplaceArtifactUploadName({
+    const uploadName = marketplacePackageUploadName({
       marketplace: this.#scope,
       listingId: request.intent.release.listingId,
     });
     const filePrefix = `${request.intent.release.version}/`;
-    const artifactFiles = await marketplaceReleaseArtifactFiles(request.intent.release);
+    const packageFiles = await marketplaceReleasePackageFiles(request.intent.release);
     const files = await listUploadFiles({
       routes: createUploadRouteCaller(this.#runtime.objects.upload.forName(uploadName).http),
       provider: "database",
@@ -392,8 +392,8 @@ export class InMemoryMarketplaceObject extends RpcTarget implements MarketplaceO
       maxPages: 1,
     });
     if (
-      !marketplaceArtifactFileInventoryMatches(
-        artifactFiles.map((file) => ({
+      !marketplacePackageFileInventoryMatches(
+        packageFiles.map((file) => ({
           fileKey: `${filePrefix}${file.relativePath}`,
           sizeBytes: file.sizeBytes,
           checksum: { algo: "sha256" as const, value: file.checksum },
@@ -402,7 +402,7 @@ export class InMemoryMarketplaceObject extends RpcTarget implements MarketplaceO
       )
     ) {
       throw new MarketplacePublicationConflictError(
-        "Marketplace artifact snapshot is incomplete or has different checksums.",
+        "Marketplace package snapshot is incomplete or has different checksums.",
       );
     }
     const fragment = this.#getFragment();
@@ -423,11 +423,11 @@ export class InMemoryMarketplaceObject extends RpcTarget implements MarketplaceO
     return await fragment.callServices(() => fragment.services.getPublishedListing(input));
   }
 
-  async getArtifactManifest(
-    input: MarketplaceArtifactManifestInput,
-  ): Promise<MarketplaceArtifactManifest | null> {
+  async getListingStorage(
+    input: MarketplaceListingStorageInput,
+  ): Promise<MarketplaceListingStorage | null> {
     const fragment = this.#getFragment();
-    return await fragment.callServices(() => fragment.services.getArtifactManifest(input));
+    return await fragment.callServices(() => fragment.services.getListingStorage(input));
   }
 
   async getLatestPublishedVersions(
@@ -616,10 +616,10 @@ export class Marketplace extends DurableObject<CloudflareEnv> implements Marketp
     return this.#object.getPublishedListing(input);
   }
 
-  getArtifactManifest(
-    input: MarketplaceArtifactManifestInput,
-  ): Promise<MarketplaceArtifactManifest | null> {
-    return this.#object.getArtifactManifest(input);
+  getListingStorage(
+    input: MarketplaceListingStorageInput,
+  ): Promise<MarketplaceListingStorage | null> {
+    return this.#object.getListingStorage(input);
   }
 
   getLatestPublishedVersions(

@@ -50,11 +50,11 @@ export default [
           index("routes/backoffice/marketplace/browse.tsx"),
           route("all", "routes/backoffice/marketplace/browse-all.tsx"),
           route(
-            ":publisher/:packageSlug/artifact-file",
-            "routes/backoffice/marketplace/artifact-file.ts",
+            ":publisher/:packageSlug/package-file",
+            "routes/backoffice/marketplace/package-file.ts",
           ),
           route(":publisher/:packageSlug", "routes/backoffice/marketplace/detail.tsx", [
-            index("routes/backoffice/marketplace/artifact-selection.tsx"),
+            index("routes/backoffice/marketplace/package-selection.tsx"),
           ]),
         ]),
         route("my-listings", "routes/backoffice/marketplace/my-listings.tsx"),

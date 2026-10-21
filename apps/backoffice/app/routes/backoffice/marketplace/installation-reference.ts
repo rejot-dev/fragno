@@ -52,7 +52,7 @@ export function buildMarketplaceInstallationPath(
         version: reference.version,
       }),
     );
-    search.set("artifactVersion", reference.version);
+    search.set("packageVersion", reference.version);
   } else {
     search.delete("installation");
   }

@@ -44,8 +44,6 @@ import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import { filesExplorerPath } from "../files/scope";
 import type { Route } from "./+types/detail";
-import type { MarketplaceArtifactExplorerData } from "./artifact-files-model";
-import { loadPublishedMarketplaceArtifactExplorer } from "./artifact-files.server";
 import {
   buildMarketplaceInstallationPath,
   readMarketplaceInstallationReference,
@@ -55,10 +53,12 @@ import { MarketplaceInstallationWorkflow } from "./installation-workflow.client"
 import type { MarketplaceLayoutContext } from "./layout-context";
 import { resolveMarketplaceListingRoute } from "./listing-route.server";
 import {
-  buildArtifactVersionPath,
+  buildPackageVersionPath,
   marketplaceListingManagePath,
   marketplaceListingPath,
 } from "./navigation";
+import type { MarketplacePackageExplorerData } from "./package-files-model";
+import { loadPublishedMarketplacePackageExplorer } from "./package-files.server";
 import {
   buildMarketplacePackageTabPath,
   marketplacePackageTabFromSearch,
@@ -105,8 +105,8 @@ function sortMarketplaceVersionsNewestFirst(
 
 type IngestionActionData = { ok: false; message: string };
 
-export type MarketplaceArtifactOutletContext = {
-  artifactFiles: MarketplaceArtifactExplorerData;
+export type MarketplacePackageOutletContext = {
+  packageFiles: MarketplacePackageExplorerData;
 };
 
 type MarketplaceInstallationTarget =
@@ -193,7 +193,7 @@ export function shouldRevalidate({
 
   const currentSearch = new URLSearchParams(currentUrl.search);
   const nextSearch = new URLSearchParams(nextUrl.search);
-  for (const parameter of ["artifactTab", "artifactPath", "artifactContent"]) {
+  for (const parameter of ["packageTab", "packagePath", "packageContent"]) {
     currentSearch.delete(parameter);
     nextSearch.delete(parameter);
   }
@@ -245,9 +245,9 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
 
   const runtime = context.get(BackofficeWorkerContext).runtime;
   const marketplace = runtime.objects.marketplace.for(marketplaceScope).commands;
-  const [detail, artifactManifest] = await Promise.all([
+  const [detail, listingStorage] = await Promise.all([
     marketplace.getPublishedListing({ listingId, versionCursor }),
-    marketplace.getArtifactManifest({ listingId }),
+    marketplace.getListingStorage({ listingId }),
   ]);
   if (!detail) {
     throw new Response("Not Found", { status: 404 });
@@ -266,12 +266,12 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
           ({ organization }) => organization.id === installationTarget.organizationId,
         )?.organization
       : null;
-  const [artifactFiles, installationCollectionSource] = await Promise.all([
-    loadPublishedMarketplaceArtifactExplorer({
-      manifest: artifactManifest,
+  const [packageFiles, installationCollectionSource] = await Promise.all([
+    loadPublishedMarketplacePackageExplorer({
+      manifest: listingStorage,
       objects: runtime.objects,
       request,
-      requestedVersion: url.searchParams.get("artifactVersion")?.trim() || undefined,
+      requestedVersion: url.searchParams.get("packageVersion")?.trim() || undefined,
     }),
     installationOrganization
       ? fetchAutomationCollectionSource(request, context, {
@@ -302,7 +302,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
             }),
           }
         : null,
-    artifactFiles,
+    packageFiles,
   };
 }
 
@@ -407,7 +407,7 @@ function MarketplaceListingDetail({ loaderData }: Route.ComponentProps) {
     installationCollectionSource,
     installationUnavailableMessage,
     installationReference,
-    artifactFiles,
+    packageFiles,
   } = loaderData;
   const installation = useFetcher<IngestionActionData>();
   const navigationActionData = useActionData<IngestionActionData>();
@@ -425,9 +425,9 @@ function MarketplaceListingDetail({ loaderData }: Route.ComponentProps) {
     location.search,
     "install",
   );
-  const selectedArtifactVersion =
-    artifactFiles.state === "ready" ? artifactFiles.selectedVersion : listing.latestVersion;
-  const installationVersion = selectedArtifactVersion;
+  const selectedPackageVersion =
+    packageFiles.state === "ready" ? packageFiles.selectedVersion : listing.latestVersion;
+  const installationVersion = selectedPackageVersion;
   const installationVersions = sortMarketplaceVersionsNewestFirst(
     versions.some(({ version }) => version === installationVersion)
       ? versions
@@ -438,8 +438,8 @@ function MarketplaceListingDetail({ loaderData }: Route.ComponentProps) {
     ? publishedVersionParam
     : null;
   const reusedPublication = publishedVersion !== null && search.get("reused") === "1";
-  const artifactContent = (
-    <Outlet context={{ artifactFiles } satisfies MarketplaceArtifactOutletContext} />
+  const packageContent = (
+    <Outlet context={{ packageFiles } satisfies MarketplacePackageOutletContext} />
   );
 
   function closeInstallationResult() {
@@ -509,7 +509,7 @@ function MarketplaceListingDetail({ loaderData }: Route.ComponentProps) {
           <span>Updated {formatDate(listing.updatedAt)}</span>
           <VersionHistoryDropdown
             versions={installationVersions}
-            selectedVersion={selectedArtifactVersion}
+            selectedVersion={selectedPackageVersion}
             latestVersion={listing.latestVersion}
             selectedScope={selectedScope}
             catalog={catalog}
@@ -537,7 +537,7 @@ function MarketplaceListingDetail({ loaderData }: Route.ComponentProps) {
       <section className="bo-panel-surface min-w-0 bg-[var(--bo-panel)] p-5 md:p-7">
         <MarketplacePackageTabs />
         {activeTab !== "install" ? (
-          artifactContent
+          packageContent
         ) : (
           <div className="mt-6">
             {installation.state !== "idle" ? (
@@ -725,7 +725,7 @@ function VersionHistoryDropdown({
             return (
               <Link
                 key={version.version}
-                to={buildArtifactVersionPath(pathname, search, selectedVersion, version.version)}
+                to={buildPackageVersionPath(pathname, search, selectedVersion, version.version)}
                 preventScrollReset
                 aria-current={isSelected ? "page" : undefined}
                 onClick={(event) => {

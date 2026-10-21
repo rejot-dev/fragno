@@ -1109,7 +1109,7 @@ describe("Automations object scope binding", () => {
     }
   });
 
-  test("ingests marketplace artifacts into an organization member's user workspace", async () => {
+  test("ingests marketplace packages into an organization member's user workspace", async () => {
     const runtime = await createInMemoryBackofficeRuntime({
       objects: {
         ...localObjects,

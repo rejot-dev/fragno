@@ -129,8 +129,8 @@ import type {
 import type {
   MarketplaceAddDraftVersionInput,
   MarketplaceArchiveListingInput,
-  MarketplaceArtifactManifest,
-  MarketplaceArtifactManifestInput,
+  MarketplaceListingStorage,
+  MarketplaceListingStorageInput,
   MarketplaceArchiveResult,
   MarketplaceCreateDraftListingInput,
   MarketplaceDraftResult,
@@ -500,9 +500,9 @@ export type MarketplaceObject = {
   getPublishedListing(
     input: MarketplacePublishedListingInput,
   ): Promise<MarketplaceListingDetail | null>;
-  getArtifactManifest(
-    input: MarketplaceArtifactManifestInput,
-  ): Promise<MarketplaceArtifactManifest | null>;
+  getListingStorage(
+    input: MarketplaceListingStorageInput,
+  ): Promise<MarketplaceListingStorage | null>;
   getLatestPublishedVersions(
     input: MarketplaceLatestPublishedVersionsInput,
   ): Promise<MarketplaceLatestPublishedVersions>;

@@ -33,7 +33,6 @@ import { InMemoryOtpObject } from "../../../workers/otp.do";
 import { InMemoryTelegramObject } from "../../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../../workers/upload.do";
 import { buildBackofficeLoginPath } from "../backoffice/auth-navigation";
-import { loadMarketplaceArtifactFile as artifactFileLoader } from "../backoffice/marketplace/artifact-file.server";
 import { loader as browseLoaderRaw } from "../backoffice/marketplace/browse";
 import { loader as browseAllLoader } from "../backoffice/marketplace/browse-all";
 import { loader as detailLoader } from "../backoffice/marketplace/detail";
@@ -43,11 +42,12 @@ import {
   action as manageActionRaw,
 } from "../backoffice/marketplace/manage";
 import { marketplaceInstallEntryPath } from "../backoffice/marketplace/navigation";
+import { loadMarketplacePackageFile as packageFileLoader } from "../backoffice/marketplace/package-file.server";
 import { loader as scopeLayoutLoaderRaw } from "../backoffice/marketplace/scope-layout";
 import { loader as browseLoader } from "./index";
 import { loader as listingLoader } from "./listing";
 
-const loadMarketplaceArtifactFile = behindBackofficeLayout(artifactFileLoader);
+const loadMarketplacePackageFile = behindBackofficeLayout(packageFileLoader);
 const catalogFeaturedLoader = behindBackofficeLayout(browseLoaderRaw);
 const catalogAllLoader = behindBackofficeLayout(browseAllLoader);
 const catalogListingLoader = behindBackofficeLayout(detailLoader);
@@ -419,7 +419,7 @@ describe("Marketplace browsing scenarios", () => {
             },
           ),
           then.assert(
-            "artifact URLs download the selected publisher's bytes and still require sign-in",
+            "package URLs download the selected publisher's bytes and still require sign-in",
             async (ctx) => {
               for (const [publisher, listingId, content] of [
                 ["@ada-labs", listingIdOf(INVOICE_DIGEST), "Ada's package"],
@@ -427,9 +427,9 @@ describe("Marketplace browsing scenarios", () => {
               ]) {
                 const manifest = await ctx.runtime.objects.marketplace
                   .singleton()
-                  .commands.getArtifactManifest({ listingId });
+                  .commands.getListingStorage({ listingId });
                 assert(manifest);
-                const uploadArtifactFile = async (fileKey: string, text: string) => {
+                const uploadPackageFile = async (fileKey: string, text: string) => {
                   const form = new FormData();
                   form.set("provider", "database");
                   form.set("fileKey", fileKey);
@@ -445,39 +445,39 @@ describe("Marketplace browsing scenarios", () => {
                   assert(uploaded.ok, await uploaded.clone().text());
                 };
                 const overviewPath = async () => {
-                  const { artifactFiles } = await viewCatalogListing(
+                  const { packageFiles } = await viewCatalogListing(
                     ctx,
                     ORG_SCOPE,
                     `${publisher}/invoice-digest`,
                     ctx.vars.cookie,
                   );
-                  assert(artifactFiles.state === "ready");
-                  return artifactFiles.overviewPath;
+                  assert(packageFiles.state === "ready");
+                  return packageFiles.overviewPath;
                 };
                 assert((await overviewPath()) === null);
-                await uploadArtifactFile("1.0.0/README.md", content);
+                await uploadPackageFile("1.0.0/README.md", content);
                 // Without a listing README, the selected release's README is the overview.
-                assert((await overviewPath()) === "/artifact/1.0.0/README.md");
+                assert((await overviewPath()) === "/package/1.0.0/README.md");
                 const args = catalogRequest(
                   ctx,
                   ORG_SCOPE,
-                  `/marketplace/${publisher}/invoice-digest/artifact-file?artifactPath=/artifact/1.0.0/README.md`,
+                  `/marketplace/${publisher}/invoice-digest/package-file?packagePath=/package/1.0.0/README.md`,
                   { catalog: "marketplace", publisher, packageSlug: "invoice-digest" },
                   ctx.vars.cookie,
                 );
-                const response = await loadMarketplaceArtifactFile(args);
+                const response = await loadMarketplacePackageFile(args);
                 assert(response.status === 200);
                 expect(await response.text()).toBe(content);
                 const anonymous = new Request(args.url);
                 await expect(
-                  loadMarketplaceArtifactFile({
+                  loadMarketplacePackageFile({
                     ...args,
                     request: anonymous,
                     context: routeContext(ctx, anonymous),
                   }),
                 ).rejects.toMatchObject({ status: 302 });
-                await uploadArtifactFile("README.md", `${content} listing`);
-                assert((await overviewPath()) === "/artifact/README.md");
+                await uploadPackageFile("README.md", `${content} listing`);
+                assert((await overviewPath()) === "/package/README.md");
               }
             },
           ),

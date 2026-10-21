@@ -36,17 +36,17 @@ import {
   createBackofficeStateBackend,
   type BackofficeStateBackend,
 } from "@/fragno/codemode/state-backend";
-import { marketplaceArtifactUploadName } from "@/fragno/marketplace/artifacts";
-import type { MarketplaceArtifactManifest } from "@/fragno/marketplace/contracts";
+import type { MarketplaceListingStorage } from "@/fragno/marketplace/contracts";
+import { marketplacePackageUploadName } from "@/fragno/marketplace/package-files";
 import { marketplacePackageManifestSchema } from "@/fragno/marketplace/package-manifest";
 import { marketplacePackagePublishRequestSchema } from "@/fragno/marketplace/package-publishing";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import { sha256Hex } from "@/lib/crypto";
 import {
-  fetchPublishedMarketplaceArtifactFile,
-  loadPublishedMarketplaceArtifactExplorer,
-} from "@/routes/backoffice/marketplace/artifact-files.server";
+  fetchPublishedMarketplacePackageFile,
+  loadPublishedMarketplacePackageExplorer,
+} from "@/routes/backoffice/marketplace/package-files.server";
 
 import { InMemoryApiObject } from "../../../../workers/api.do";
 import { InMemoryAppInstallationsObject } from "../../../../workers/app-installations.do";
@@ -85,7 +85,7 @@ const METADATA = {
   name: "Durable package",
   summary: "A package captured before publication begins.",
   description:
-    "A package used to exercise real publishing, artifact reads, and workspace installation.",
+    "A package used to exercise real publishing, package reads, and workspace installation.",
   category: "developer-tools" as const,
   tags: ["testing"],
 };
@@ -179,25 +179,25 @@ async function publishedManifest(
   ctx: BackofficeScenarioContext,
   listingId = LISTING_ID,
   marketplace: MarketplaceScope = { kind: "system" },
-): Promise<MarketplaceArtifactManifest> {
+): Promise<MarketplaceListingStorage> {
   const manifest = await ctx.runtime.objects.marketplace
     .for(marketplace)
-    .commands.getArtifactManifest({ listingId });
+    .commands.getListingStorage({ listingId });
   assert(manifest?.listingStatus === "published");
   return manifest;
 }
 
-function artifactFile(
+function packageFile(
   ctx: BackofficeScenarioContext,
-  manifest: MarketplaceArtifactManifest,
+  manifest: MarketplaceListingStorage,
   relativePath: string,
   version = "1.0.0",
 ) {
-  return fetchPublishedMarketplaceArtifactFile({
+  return fetchPublishedMarketplacePackageFile({
     manifest,
     objects: ctx.runtime.objects,
     request: new Request("https://backoffice.test/marketplace/package"),
-    path: `/artifact/${version}/${relativePath}`,
+    path: `/package/${version}/${relativePath}`,
   });
 }
 
@@ -222,7 +222,7 @@ async function publicationRequest(
 }
 
 describe("Marketplace package publication scenarios", () => {
-  test("publishes a frozen binary-capable snapshot through codemode and installs the exact artifact", async () => {
+  test("publishes a frozen binary-capable snapshot through codemode and installs the exact package", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario<{ publication: MarketplacePublishResult | null }>({
         objects: scenarioObjects,
@@ -275,7 +275,7 @@ describe("Marketplace package publication scenarios", () => {
                   execution: createBackofficeSystemExecution({ kind: "system" }),
                   propagationContext: null,
                 }),
-            ).rejects.toThrow("Marketplace artifact snapshot is incomplete");
+            ).rejects.toThrow("Marketplace package snapshot is incomplete");
             await expect(
               ctx.runtime.objects.marketplace
                 .singleton()
@@ -296,17 +296,17 @@ describe("Marketplace package publication scenarios", () => {
                 (await publicationStatus(ctx, ctx.vars.publication)).details.status === "complete",
               );
               const manifest = await publishedManifest(ctx);
-              const readme = await artifactFile(ctx, manifest, "README.md");
+              const readme = await packageFile(ctx, manifest, "README.md");
               await expect(readme.text()).resolves.toBe("Original README");
-              const html = await artifactFile(ctx, manifest, "assets/page.html");
+              const html = await packageFile(ctx, manifest, "assets/page.html");
               expect(html.headers.get("content-security-policy")).toContain(
                 "sandbox; default-src 'none'",
               );
               assert(html.headers.get("x-content-type-options") === "nosniff");
               await expect(html.text()).resolves.toContain("<script>");
-              const binary = await artifactFile(ctx, manifest, "assets/payload.bin");
+              const binary = await packageFile(ctx, manifest, "assets/payload.bin");
               expect(new Uint8Array(await binary.arrayBuffer())).toEqual(BINARY);
-              const explorer = await loadPublishedMarketplaceArtifactExplorer({
+              const explorer = await loadPublishedMarketplacePackageExplorer({
                 manifest,
                 objects: ctx.runtime.objects,
                 request: new Request("https://backoffice.test/marketplace/package"),
@@ -412,7 +412,7 @@ describe("Marketplace package publication scenarios", () => {
               await expect(
                 ctx.runtime.objects.marketplace
                   .singleton()
-                  .commands.getArtifactManifest({ listingId: LISTING_ID }),
+                  .commands.getListingStorage({ listingId: LISTING_ID }),
               ).resolves.toBeNull();
               const help = await bash.exec("marketplace.publish --help");
               expect(help.stdout).toContain("--skip-author-check");
@@ -521,7 +521,7 @@ describe("Marketplace package publication scenarios", () => {
             await expect(
               ctx.runtime.objects.marketplace
                 .singleton()
-                .commands.getArtifactManifest({ listingId: "org:org-2#durable-package" }),
+                .commands.getListingStorage({ listingId: "org:org-2#durable-package" }),
             ).resolves.toBeNull();
           }),
         ],
@@ -587,23 +587,23 @@ describe("Marketplace package publication scenarios", () => {
             const manifest = await publishedManifest(ctx, LISTING_ID, ORG_MARKETPLACE);
             expect(manifest).toMatchObject({
               versions: ["1.0.0"],
-              uploadName: marketplaceArtifactUploadName({
+              uploadName: marketplacePackageUploadName({
                 marketplace: ORG_MARKETPLACE,
                 listingId: LISTING_ID,
               }),
             });
-            await expect((await artifactFile(ctx, manifest, "README.md")).text()).resolves.toBe(
+            await expect((await packageFile(ctx, manifest, "README.md")).text()).resolves.toBe(
               "Members only",
             );
 
             const publicMarketplace = ctx.runtime.objects.marketplace.singleton();
             await expect(
-              publicMarketplace.commands.getArtifactManifest({ listingId: LISTING_ID }),
+              publicMarketplace.commands.getListingStorage({ listingId: LISTING_ID }),
             ).resolves.toBeNull();
             await expect(
               ctx.runtime.objects.marketplace
                 .forOrg("org-2")
-                .commands.getArtifactManifest({ listingId: LISTING_ID }),
+                .commands.getListingStorage({ listingId: LISTING_ID }),
             ).resolves.toBeNull();
             const publicListings = await publicMarketplace.http.fetch(
               new Request("https://backoffice.test/api/marketplace/listings"),
@@ -650,10 +650,10 @@ describe("Marketplace package publication scenarios", () => {
             const organizationManifest = await publishedManifest(ctx, LISTING_ID, ORG_MARKETPLACE);
             assert(publicManifest.uploadName !== organizationManifest.uploadName);
             await expect(
-              (await artifactFile(ctx, publicManifest, "README.md")).text(),
+              (await packageFile(ctx, publicManifest, "README.md")).text(),
             ).resolves.toBe("Shared with everyone");
             await expect(
-              (await artifactFile(ctx, organizationManifest, "README.md")).text(),
+              (await packageFile(ctx, organizationManifest, "README.md")).text(),
             ).resolves.toBe("Members only");
           }),
         ],
@@ -717,7 +717,7 @@ describe("Marketplace package publication scenarios", () => {
               await expect(
                 ctx.runtime.objects.marketplace
                   .forOrg("org-1")
-                  .commands.getArtifactManifest({ listingId: LISTING_ID }),
+                  .commands.getListingStorage({ listingId: LISTING_ID }),
               ).resolves.toBeNull();
             },
           ),
@@ -930,7 +930,7 @@ describe("Marketplace package publication scenarios", () => {
 
   test("System overrides replace complete version directories without changing installed copies", async () => {
     await runBackofficeScenario(
-      defineBackofficeScenario<{ pinned: MarketplaceArtifactManifest | null }>({
+      defineBackofficeScenario<{ pinned: MarketplaceListingStorage | null }>({
         objects: scenarioObjects,
         name: "System publishes older releases and atomic replacements",
         vars: () => ({ pinned: null }),
@@ -999,7 +999,7 @@ describe("Marketplace package publication scenarios", () => {
             );
             assert(denied.exitCode !== 0);
             await publishFromShell(bash, "--skip-author-check --skip-version-check");
-            const stillOld = await artifactFile(
+            const stillOld = await packageFile(
               ctx,
               await publishedManifest(ctx),
               "README.md",
@@ -1013,16 +1013,16 @@ describe("Marketplace package publication scenarios", () => {
             async (ctx) => {
               const manifest = await publishedManifest(ctx);
               await expect(
-                (await artifactFile(ctx, manifest, "README.md", "2.0.0")).text(),
+                (await packageFile(ctx, manifest, "README.md", "2.0.0")).text(),
               ).resolves.toBe("Replacement release");
               assert(
-                (await artifactFile(ctx, manifest, "assets/payload.bin", "2.0.0")).status === 404,
+                (await packageFile(ctx, manifest, "assets/payload.bin", "2.0.0")).status === 404,
               );
               assert(ctx.vars.pinned);
               await expect(
-                (await artifactFile(ctx, ctx.vars.pinned, "README.md", "2.0.0")).text(),
+                (await packageFile(ctx, ctx.vars.pinned, "README.md", "2.0.0")).text(),
               ).resolves.toBe("Replacement release");
-              const explorer = await loadPublishedMarketplaceArtifactExplorer({
+              const explorer = await loadPublishedMarketplacePackageExplorer({
                 manifest,
                 objects: ctx.runtime.objects,
                 request: new Request("https://backoffice.test/marketplace/package"),
@@ -1105,7 +1105,7 @@ describe("Marketplace package publication scenarios", () => {
               assert(ctx.vars.first);
               assert((await publicationStatus(ctx, ctx.vars.first)).details.status === "waiting");
               await expect(
-                (await artifactFile(ctx, await publishedManifest(ctx), "README.md")).text(),
+                (await packageFile(ctx, await publishedManifest(ctx), "README.md")).text(),
               ).resolves.toBe("First snapshot");
               const state = sourceState(ctx, ORG_SCOPE);
               await state.writeFile(`${PACKAGE_ROOT}/README.md`, "Second snapshot");
@@ -1125,12 +1125,12 @@ describe("Marketplace package publication scenarios", () => {
               assert((await publicationStatus(ctx, ctx.vars.first)).details.status === "errored");
               assert((await publicationStatus(ctx, ctx.vars.second)).details.status === "complete");
               const manifest = await publishedManifest(ctx);
-              await expect((await artifactFile(ctx, manifest, "README.md")).text()).resolves.toBe(
+              await expect((await packageFile(ctx, manifest, "README.md")).text()).resolves.toBe(
                 "Second snapshot",
               );
               assert(ctx.vars.second.state !== "preview");
               expect(manifest.uploadName).toBe(
-                marketplaceArtifactUploadName({
+                marketplacePackageUploadName({
                   marketplace: { kind: "system" },
                   listingId: LISTING_ID,
                 }),
@@ -1186,7 +1186,7 @@ describe("Marketplace package publication scenarios", () => {
                 assert((await publicationStatus(ctx, result)).details.status === "complete");
                 expect(result.workflowInstanceId).toBe(first.workflowInstanceId);
                 expect(manifest.uploadName).toBe(
-                  marketplaceArtifactUploadName({
+                  marketplacePackageUploadName({
                     marketplace: { kind: "system" },
                     listingId: LISTING_ID,
                   }),
@@ -1224,7 +1224,7 @@ describe("Marketplace package publication scenarios", () => {
                   "complete",
               );
               await expect(
-                (await artifactFile(ctx, await publishedManifest(ctx), "README.md")).text(),
+                (await packageFile(ctx, await publishedManifest(ctx), "README.md")).text(),
               ).resolves.toBe("Identical snapshot");
             },
           ),
@@ -1311,7 +1311,7 @@ describe("Marketplace package publication scenarios", () => {
                 await expect(
                   ctx.runtime.objects.marketplace
                     .singleton()
-                    .commands.getArtifactManifest({ listingId: LISTING_ID }),
+                    .commands.getListingStorage({ listingId: LISTING_ID }),
                 ).resolves.toBeNull();
               },
             ),
@@ -1432,7 +1432,7 @@ describe("Marketplace package publication scenarios", () => {
               assert(fault === null);
               assert(uploadCreations === ctx.vars.creationsBeforeRestart);
               await expect(
-                (await artifactFile(ctx, await publishedManifest(ctx), "README.md")).text(),
+                (await packageFile(ctx, await publishedManifest(ctx), "README.md")).text(),
               ).resolves.toBe("Frozen through upload failures");
             },
           ),
@@ -1499,7 +1499,7 @@ describe("Marketplace package publication scenarios", () => {
               "changed after publication was prepared",
             );
             const content = await (
-              await artifactFile(ctx, await publishedManifest(ctx), "README.md")
+              await packageFile(ctx, await publishedManifest(ctx), "README.md")
             ).text();
             assert(content === "First replacement" || content === "Second replacement");
           }),
@@ -1544,16 +1544,16 @@ describe("Marketplace package publication scenarios", () => {
                 await systemPublisher(ctx, state),
                 "--skip-author-check --skip-version-check",
               );
-              const artifactState = createBackofficeStateBackend({
+              const packageState = createBackofficeStateBackend({
                 uploadObject: ctx.runtime.objects.upload.forName(
-                  marketplaceArtifactUploadName({
+                  marketplacePackageUploadName({
                     marketplace: { kind: "system" },
                     listingId: LISTING_ID,
                   }),
                 ).http,
                 staticFileCollection: createStaticFileCollection({}),
               });
-              await artifactState.writeFile(
+              await packageState.writeFile(
                 "/workspace/1.0.0/README.md",
                 "Concurrent destination edit",
               );
@@ -1568,16 +1568,16 @@ describe("Marketplace package publication scenarios", () => {
               "version files changed after publication was prepared",
             );
             const manifest = await publishedManifest(ctx);
-            await expect((await artifactFile(ctx, manifest, "README.md")).text()).resolves.toBe(
+            await expect((await packageFile(ctx, manifest, "README.md")).text()).resolves.toBe(
               "Concurrent destination edit",
             );
             expect(
               new Uint8Array(
-                await (await artifactFile(ctx, manifest, "assets/payload.bin")).arrayBuffer(),
+                await (await packageFile(ctx, manifest, "assets/payload.bin")).arrayBuffer(),
               ),
             ).toEqual(BINARY);
             const oldManifest = marketplacePackageManifestSchema.parse(
-              await (await artifactFile(ctx, manifest, "manifest.json")).json(),
+              await (await packageFile(ctx, manifest, "manifest.json")).json(),
             );
             expect(oldManifest.files).toEqual(["README.md", "assets/"]);
             const state = sourceState(ctx, ORG_SCOPE);
@@ -1595,10 +1595,10 @@ describe("Marketplace package publication scenarios", () => {
                 (await publicationStatus(ctx, ctx.vars.replacement)).details.status === "complete",
               );
               const manifest = await publishedManifest(ctx);
-              await expect((await artifactFile(ctx, manifest, "README.md")).text()).resolves.toBe(
+              await expect((await packageFile(ctx, manifest, "README.md")).text()).resolves.toBe(
                 "Replacement README",
               );
-              assert((await artifactFile(ctx, manifest, "assets/payload.bin")).status === 404);
+              assert((await packageFile(ctx, manifest, "assets/payload.bin")).status === 404);
             },
           ),
         ],
@@ -1682,12 +1682,12 @@ describe("Marketplace package publication scenarios", () => {
             assert(repeated.state === "requested" && ctx.vars.abandoned.state !== "preview");
             expect(repeated.workflowInstanceId).toBe(ctx.vars.abandoned.workflowInstanceId);
             const manifest = await publishedManifest(ctx);
-            await expect((await artifactFile(ctx, manifest, "README.md")).text()).resolves.toBe(
+            await expect((await packageFile(ctx, manifest, "README.md")).text()).resolves.toBe(
               "Original file set",
             );
             expect(
               new Uint8Array(
-                await (await artifactFile(ctx, manifest, "assets/payload.bin")).arrayBuffer(),
+                await (await packageFile(ctx, manifest, "assets/payload.bin")).arrayBuffer(),
               ),
             ).toEqual(BINARY);
           }),
@@ -1698,7 +1698,7 @@ describe("Marketplace package publication scenarios", () => {
             assert(ctx.vars.abandoned);
             assert((await publicationStatus(ctx, ctx.vars.abandoned)).details.status === "errored");
             await expect(
-              (await artifactFile(ctx, await publishedManifest(ctx), "README.md")).text(),
+              (await packageFile(ctx, await publishedManifest(ctx), "README.md")).text(),
             ).resolves.toBe("Original file set");
             loseTransfers = false;
             const state = sourceState(ctx, ORG_SCOPE);
@@ -1718,10 +1718,10 @@ describe("Marketplace package publication scenarios", () => {
                 (await publicationStatus(ctx, ctx.vars.replacement)).details.status === "complete",
               );
               const manifest = await publishedManifest(ctx);
-              await expect((await artifactFile(ctx, manifest, "README.md")).text()).resolves.toBe(
+              await expect((await packageFile(ctx, manifest, "README.md")).text()).resolves.toBe(
                 "Successful replacement",
               );
-              assert((await artifactFile(ctx, manifest, "assets/payload.bin")).status === 404);
+              assert((await packageFile(ctx, manifest, "assets/payload.bin")).status === 404);
               const routes = createWorkflowsRouteCaller({
                 object: ctx.runtime.objects.automations.singleton(),
                 context: {
@@ -1751,7 +1751,7 @@ describe("Marketplace package publication scenarios", () => {
               "changed after publication was prepared",
             );
             await expect(
-              (await artifactFile(ctx, await publishedManifest(ctx), "README.md")).text(),
+              (await packageFile(ctx, await publishedManifest(ctx), "README.md")).text(),
             ).resolves.toBe("Successful replacement");
           }),
         ],
@@ -1761,7 +1761,7 @@ describe("Marketplace package publication scenarios", () => {
 
   test.each([
     { phase: "reservation", lookup: 1, stepName: "begin marketplace package publication" },
-    { phase: "commit", lookup: 2, stepName: "commit marketplace artifact files" },
+    { phase: "commit", lookup: 2, stepName: "commit marketplace package files" },
     { phase: "finalization", lookup: 3, stepName: "publish marketplace package release" },
   ])(
     "retries a temporary Auth outage during $phase and completes publication",
@@ -1875,7 +1875,7 @@ describe("Marketplace package publication scenarios", () => {
                   ]),
                 );
                 await expect(
-                  (await artifactFile(ctx, await publishedManifest(ctx), "README.md")).text(),
+                  (await packageFile(ctx, await publishedManifest(ctx), "README.md")).text(),
                 ).resolves.toBe("Frozen during Auth outage");
               },
             ),
@@ -1996,7 +1996,7 @@ describe("Marketplace package publication scenarios", () => {
             await expect(
               ctx.runtime.objects.marketplace
                 .singleton()
-                .commands.getArtifactManifest({ listingId: LISTING_ID }),
+                .commands.getListingStorage({ listingId: LISTING_ID }),
             ).resolves.toBeNull();
             await state.writeFile(
               `${PACKAGE_ROOT}/manifest.json`,
@@ -2010,9 +2010,9 @@ describe("Marketplace package publication scenarios", () => {
             "the allowlist excludes oversized unselected content and includes its explicit manifest once",
             async (ctx) => {
               const manifest = await publishedManifest(ctx);
-              assert((await artifactFile(ctx, manifest, "README.md")).status === 404);
+              assert((await packageFile(ctx, manifest, "README.md")).status === 404);
               const content = marketplacePackageManifestSchema.parse(
-                await (await artifactFile(ctx, manifest, "manifest.json")).json(),
+                await (await packageFile(ctx, manifest, "manifest.json")).json(),
               );
               assert(content.name === "@ada-labs/durable-package");
               expect(content.files).toEqual(["manifest.json"]);

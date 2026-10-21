@@ -77,9 +77,9 @@ import {
 } from "@/fragno/codemode/execute";
 import { createRuntimeStateBackend } from "@/fragno/codemode/runtime-state-backend";
 import { readSavedModuleImports } from "@/fragno/codemode/saved-module-imports";
-import { isMarketplaceInternalArtifactPath } from "@/fragno/marketplace/artifacts";
 import type { MarketplaceStaticEntry } from "@/fragno/marketplace/contracts";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
+import { isMarketplaceInternalPackagePath } from "@/fragno/marketplace/package-files";
 import { getStaticMarketplaceEntry } from "@/fragno/marketplace/static-entries";
 import {
   piAgentObjectName,
@@ -2829,7 +2829,7 @@ const buildStepBuilders = <
             // Scenario workflow execution uses a session filesystem, while Marketplace ingestion
             // writes through Upload. Mirror the installed result so later steps execute those files.
             for (const relativePath of Object.keys(entry.files)) {
-              if (isMarketplaceInternalArtifactPath(relativePath)) {
+              if (isMarketplaceInternalPackagePath(relativePath)) {
                 continue;
               }
               const workspacePath = `${input.installationRoot}/${relativePath}`;

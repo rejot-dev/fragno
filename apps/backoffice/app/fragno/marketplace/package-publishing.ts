@@ -88,7 +88,7 @@ export type MarketplacePackagePublishRequest = z.output<
   typeof marketplacePackagePublishRequestSchema
 >;
 
-/** Only the current version's publishing workflow is retained, not historical receipts or artifact locations. */
+/** Only the current version's publishing workflow is retained, not historical receipts or package locations. */
 export type MarketplaceVersionPublishState = {
   state: "publishing" | "published" | "failed";
   workflowInstanceId: string;

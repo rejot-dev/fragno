@@ -32,10 +32,10 @@ import {
 import type { BackofficeObjectHandle, UploadObject } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import {
-  isMarketplaceInternalArtifactPath,
+  isMarketplaceInternalPackagePath,
   MARKETPLACE_INSTALL_WORKFLOW_PATH,
-  normalizeMarketplaceArtifactPath,
-} from "@/fragno/marketplace/artifacts";
+  normalizeMarketplacePackagePath,
+} from "@/fragno/marketplace/package-files";
 import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
 import type { UploadFragment } from "@/fragno/upload-server";
 import { sha256Hex } from "@/lib/crypto";
@@ -60,10 +60,10 @@ import {
   assertMarketplaceIngestionTargetAccessible,
   assertMarketplaceIngestionSourceAccessible,
   assertMarketplaceIngestionTargetBelongsToOrganization,
-  MarketplaceIngestionArtifactUnavailableError,
+  MarketplaceIngestionPackageUnavailableError,
   MarketplaceIngestionTargetAccessError,
   marketplaceIngestionWorkflowInputSchema,
-  resolveMarketplaceIngestionArtifactVersion,
+  resolveMarketplaceIngestionPackageVersion,
 } from "./marketplace-ingestions";
 import {
   MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
@@ -78,8 +78,8 @@ import { workflowCompletedEventType, type WorkflowCompletedEventPayload } from "
 
 type PreparedWorkspaceWrite = PreparedFileWrite & { precondition: UploadFileWritePrecondition };
 
-const MARKETPLACE_ARTIFACT_LIST_PAGE_SIZE = 500;
-const MARKETPLACE_ARTIFACT_MAX_LIST_PAGES = 5;
+const MARKETPLACE_PACKAGE_LIST_PAGE_SIZE = 500;
+const MARKETPLACE_PACKAGE_MAX_LIST_PAGES = 5;
 const TEXT_ENCODER = new TextEncoder();
 const TEXT_DECODER = new TextDecoder();
 const MARKETPLACE_EXTERNAL_STEP_RETRIES = {
@@ -105,7 +105,7 @@ const createUploadRouteCaller = (http: UploadHttpTransport) =>
 
 type UploadRouteCaller = ReturnType<typeof createUploadRouteCaller>;
 
-const requestMarketplaceArtifactBytes = async (http: UploadHttpTransport, fileKey: string) => {
+const requestMarketplacePackageBytes = async (http: UploadHttpTransport, fileKey: string) => {
   const url = new URL("/api/upload/files/by-key/content", UPLOAD_INTERNAL_ORIGIN);
   url.searchParams.set("provider", UPLOAD_PROVIDER_DATABASE);
   url.searchParams.set("key", fileKey);
@@ -125,7 +125,7 @@ const requestMarketplaceArtifactBytes = async (http: UploadHttpTransport, fileKe
       // The HTTP status still provides a stable failure classification.
     }
     return throwMarketplaceUploadRequestError({
-      operation: "Marketplace artifact content read",
+      operation: "Marketplace package content read",
       status: response.status,
       code,
       message,
@@ -156,18 +156,18 @@ const assertMarketplaceSourceBytesMatch = async (
 ) => {
   if (source.checksum.algo !== "sha256") {
     throw new NonRetryableError(
-      `Marketplace artifact file '${source.fileKey}' uses unsupported checksum '${source.checksum.algo}'.`,
+      `Marketplace package file '${source.fileKey}' uses unsupported checksum '${source.checksum.algo}'.`,
     );
   }
   if (bytes.byteLength !== source.sizeBytes) {
     throw new NonRetryableError(
-      `Marketplace artifact file '${source.fileKey}' changed size while it was being ingested.`,
+      `Marketplace package file '${source.fileKey}' changed size while it was being ingested.`,
     );
   }
   const checksum = await sha256Hex(bytes);
   if (checksum !== source.checksum.value.toLowerCase()) {
     throw new NonRetryableError(
-      `Marketplace artifact file '${source.fileKey}' changed content while it was being ingested.`,
+      `Marketplace package file '${source.fileKey}' changed content while it was being ingested.`,
     );
   }
 };
@@ -204,7 +204,7 @@ async function readMarketplaceLockFile(input: {
   const file = await requestUploadFile(input.routes, fileKey);
   let lock: z.infer<typeof marketplaceLockSchema> = { entries: [] };
   if (file) {
-    const bytes = await requestMarketplaceArtifactBytes(input.http, fileKey);
+    const bytes = await requestMarketplacePackageBytes(input.http, fileKey);
     try {
       lock = marketplaceLockSchema.parse(JSON.parse(TEXT_DECODER.decode(bytes)));
     } catch {
@@ -318,56 +318,56 @@ export function defineMarketplacePackageInstallWorkflow(
         );
       }
 
-      const artifact = await step.do(
-        "resolve published marketplace artifact",
+      const release = await step.do(
+        "resolve published marketplace package",
         MARKETPLACE_EXTERNAL_STEP_RETRIES,
-        async function resolvePublishedMarketplaceArtifact() {
+        async function resolvePublishedMarketplacePackage() {
           const manifest = await runtime.objects.marketplace
             .for(input.marketplace)
-            .commands.getArtifactManifest({
+            .commands.getListingStorage({
               listingId: input.listingId,
             });
-          let resolvedArtifact;
+          let resolvedPackage;
           try {
-            resolvedArtifact = resolveMarketplaceIngestionArtifactVersion(manifest, input.version);
+            resolvedPackage = resolveMarketplaceIngestionPackageVersion(manifest, input.version);
           } catch (error) {
-            if (error instanceof MarketplaceIngestionArtifactUnavailableError) {
+            if (error instanceof MarketplaceIngestionPackageUnavailableError) {
               throw new NonRetryableError(error.message);
             }
             throw error;
           }
           return {
-            listingId: resolvedArtifact.manifest.listingId,
-            version: resolvedArtifact.version,
-            uploadName: resolvedArtifact.manifest.uploadName,
-            filePrefix: `${resolvedArtifact.version}/`,
+            listingId: resolvedPackage.manifest.listingId,
+            version: resolvedPackage.version,
+            uploadName: resolvedPackage.manifest.uploadName,
+            filePrefix: `${resolvedPackage.version}/`,
           };
         },
       );
 
-      const sourceObject = runtime.objects.upload.forName(artifact.uploadName);
+      const sourceObject = runtime.objects.upload.forName(release.uploadName);
       const sourceUploadRoutes = createUploadRouteCaller(sourceObject.http);
 
       /** Published versions are immutable, so a listing is stable across replays. */
-      async function listArtifactFiles(version: string, stepName: string) {
-        const artifactPrefix = `${version}/`;
+      async function listPackageFiles(version: string, stepName: string) {
+        const packagePrefix = `${version}/`;
         const files: MarketplaceIngestionSourceFile[] = [];
         let cursor: string | undefined;
 
-        for (let pageIndex = 0; pageIndex < MARKETPLACE_ARTIFACT_MAX_LIST_PAGES; pageIndex += 1) {
+        for (let pageIndex = 0; pageIndex < MARKETPLACE_PACKAGE_MAX_LIST_PAGES; pageIndex += 1) {
           const pageCursor = cursor;
           const page = await step.do(stepName, MARKETPLACE_EXTERNAL_STEP_RETRIES, async () => {
             const response = await sourceUploadRoutes("GET", "/files", {
               query: {
                 provider: UPLOAD_PROVIDER_DATABASE,
-                prefix: artifactPrefix,
+                prefix: packagePrefix,
                 status: "ready",
-                pageSize: String(MARKETPLACE_ARTIFACT_LIST_PAGE_SIZE),
+                pageSize: String(MARKETPLACE_PACKAGE_LIST_PAGE_SIZE),
                 ...(pageCursor ? { cursor: pageCursor } : {}),
               },
             });
             if (response.type !== "json" || response.status < 200 || response.status >= 300) {
-              throw new Error(`Failed to list Marketplace artifact files (${response.status}).`);
+              throw new Error(`Failed to list Marketplace package files (${response.status}).`);
             }
 
             const pageFiles: MarketplaceIngestionSourceFile[] = [];
@@ -375,13 +375,13 @@ export function defineMarketplacePackageInstallWorkflow(
               if (file.metadata?.__docsDirectoryMarker === true) {
                 continue;
               }
-              const relativePath = normalizeMarketplaceArtifactPath(
-                file.fileKey.slice(artifactPrefix.length),
+              const relativePath = normalizeMarketplacePackagePath(
+                file.fileKey.slice(packagePrefix.length),
               );
               const checksum = file.checksum;
               if (!checksum) {
                 throw new NonRetryableError(
-                  `Marketplace artifact file '${file.fileKey}' has no checksum.`,
+                  `Marketplace package file '${file.fileKey}' has no checksum.`,
                 );
               }
               pageFiles.push({
@@ -406,29 +406,29 @@ export function defineMarketplacePackageInstallWorkflow(
           }
           if (!page.cursor) {
             throw new NonRetryableError(
-              "Marketplace artifact listing reported another page without a cursor.",
+              "Marketplace package listing reported another page without a cursor.",
             );
           }
           cursor = page.cursor;
         }
 
         throw new NonRetryableError(
-          `Marketplace artifact listing exceeds ${MARKETPLACE_ARTIFACT_MAX_LIST_PAGES} pages.`,
+          `Marketplace package listing exceeds ${MARKETPLACE_PACKAGE_MAX_LIST_PAGES} pages.`,
         );
       }
 
-      const requestedArtifactFiles = await listArtifactFiles(
-        artifact.version,
-        "list marketplace artifact files page",
+      const requestedPackageFiles = await listPackageFiles(
+        release.version,
+        "list marketplace package files page",
       );
-      if (requestedArtifactFiles.length === 0) {
-        throw new NonRetryableError("Marketplace artifact contains no files.");
+      if (requestedPackageFiles.length === 0) {
+        throw new NonRetryableError("Marketplace package contains no files.");
       }
-      const installationWorkflowFile = requestedArtifactFiles.find(
+      const installationWorkflowFile = requestedPackageFiles.find(
         (file) => file.relativePath === MARKETPLACE_INSTALL_WORKFLOW_PATH,
       );
-      const sourceFiles = requestedArtifactFiles.filter(
-        (file) => !isMarketplaceInternalArtifactPath(file.relativePath),
+      const sourceFiles = requestedPackageFiles.filter(
+        (file) => !isMarketplaceInternalPackagePath(file.relativePath),
       );
       if (
         sourceFiles.some((file) =>
@@ -436,7 +436,7 @@ export function defineMarketplacePackageInstallWorkflow(
         )
       ) {
         throw new NonRetryableError(
-          "Marketplace artifacts cannot overwrite /workspace/marketplace-lock.json.",
+          "Marketplace packages cannot overwrite /workspace/marketplace-lock.json.",
         );
       }
 
@@ -446,7 +446,7 @@ export function defineMarketplacePackageInstallWorkflow(
         routes: destinationUploadRoutes,
         http: destinationObject.http,
         marketplace: input.marketplace,
-        listingId: artifact.listingId,
+        listingId: release.listingId,
         installationRoot: input.installationRoot,
       };
       const installedVersion = await step.do(
@@ -456,14 +456,14 @@ export function defineMarketplacePackageInstallWorkflow(
       );
       // Installing another version at an occupied root upgrades (or downgrades) it in place.
       const previousFiles =
-        installedVersion === null || installedVersion === artifact.version
+        installedVersion === null || installedVersion === release.version
           ? []
           : (
-              await listArtifactFiles(
+              await listPackageFiles(
                 installedVersion,
-                "list installed marketplace artifact files page",
+                "list installed marketplace package files page",
               )
-            ).filter((file) => !isMarketplaceInternalArtifactPath(file.relativePath));
+            ).filter((file) => !isMarketplaceInternalPackagePath(file.relativePath));
       const previousFilesByPath = new Map(previousFiles.map((file) => [file.relativePath, file]));
       const sourcePaths = new Set(sourceFiles.map((file) => file.relativePath));
       const installationPlan = await step.do(
@@ -512,10 +512,10 @@ export function defineMarketplacePackageInstallWorkflow(
         const stepKey = await sha256Hex(TEXT_ENCODER.encode(source.relativePath));
 
         const uploadSession = await step.do(
-          `create marketplace artifact upload ${stepKey}`,
+          `create marketplace package upload ${stepKey}`,
           MARKETPLACE_EXTERNAL_STEP_RETRIES,
           async () => {
-            const sourceBytes = await requestMarketplaceArtifactBytes(
+            const sourceBytes = await requestMarketplacePackageBytes(
               sourceObject.http,
               source.fileKey,
             );
@@ -558,10 +558,10 @@ export function defineMarketplacePackageInstallWorkflow(
         );
 
         const prepared = await step.do(
-          `transfer marketplace artifact upload ${stepKey}`,
+          `transfer marketplace package upload ${stepKey}`,
           MARKETPLACE_EXTERNAL_STEP_RETRIES,
           async () => {
-            const sourceBytes = await requestMarketplaceArtifactBytes(
+            const sourceBytes = await requestMarketplacePackageBytes(
               sourceObject.http,
               source.fileKey,
             );
@@ -682,8 +682,8 @@ export function defineMarketplacePackageInstallWorkflow(
 
       if (installationWorkflowFile) {
         const installationInput: MarketplaceInstallationWorkflowInput = {
-          listingId: artifact.listingId,
-          version: artifact.version,
+          listingId: release.listingId,
+          version: release.version,
           targetScope: input.targetScope,
           installationRoot: input.installationRoot,
           installedFiles: Object.fromEntries(
@@ -735,7 +735,7 @@ export function defineMarketplacePackageInstallWorkflow(
               throw new Error("Marketplace ingestion requires the local Workflows fragment.");
             }
             const code = TEXT_DECODER.decode(
-              await requestMarketplaceArtifactBytes(
+              await requestMarketplacePackageBytes(
                 sourceObject.http,
                 installationWorkflowFile.fileKey,
               ),
@@ -832,13 +832,13 @@ export function defineMarketplacePackageInstallWorkflow(
 
       await step.do("record marketplace lock file", MARKETPLACE_EXTERNAL_STEP_RETRIES, async () => {
         const { lock, revision, existing } = await readMarketplaceLockFile(lockReadInput);
-        if (existing?.version === artifact.version) {
+        if (existing?.version === release.version) {
           return;
         }
         const entry = {
           marketplace: input.marketplace,
-          listingId: artifact.listingId,
-          version: artifact.version,
+          listingId: release.listingId,
+          version: release.version,
           installationRoot: input.installationRoot,
         };
         const entries = existing
@@ -883,8 +883,8 @@ export function defineMarketplacePackageInstallWorkflow(
       });
 
       return {
-        listingId: artifact.listingId,
-        version: artifact.version,
+        listingId: release.listingId,
+        version: release.version,
         workflowInstanceId: event.instanceId,
       };
     },

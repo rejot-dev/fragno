@@ -10,22 +10,22 @@ import {
 } from "@/components/backoffice/files-explorer";
 import { WorkflowFilePreview } from "@/components/backoffice/files-explorer/content-renderers";
 import type { FileTreeEntry } from "@/file-collection/file-collection";
-import { MARKETPLACE_INSTALL_WORKFLOW_PATH } from "@/fragno/marketplace/artifacts";
+import { MARKETPLACE_INSTALL_WORKFLOW_PATH } from "@/fragno/marketplace/package-files";
 
 import {
-  MARKETPLACE_ARTIFACT_ROOT_PATH,
-  type MarketplaceArtifactExplorerData,
-  type MarketplaceArtifactSelectedContent,
-} from "./artifact-files-model";
+  MARKETPLACE_PACKAGE_ROOT_PATH,
+  type MarketplacePackageExplorerData,
+  type MarketplacePackageSelectedContent,
+} from "./package-files-model";
 import { marketplacePackageTabFromSearch, type MarketplacePackageTab } from "./package-tabs";
-type ReadyArtifactData = Extract<MarketplaceArtifactExplorerData, { state: "ready" }>;
+type ReadyPackageData = Extract<MarketplacePackageExplorerData, { state: "ready" }>;
 
-export function MarketplaceArtifactFiles({
+export function MarketplacePackageFiles({
   data,
   selectedContent = null,
 }: {
-  data: MarketplaceArtifactExplorerData;
-  selectedContent?: MarketplaceArtifactSelectedContent | null;
+  data: MarketplacePackageExplorerData;
+  selectedContent?: MarketplacePackageSelectedContent | null;
 }) {
   if (data.state !== "ready") {
     return (
@@ -42,22 +42,22 @@ export function MarketplaceArtifactFiles({
     );
   }
 
-  return <ReadyMarketplaceArtifactFiles data={data} selectedContent={selectedContent} />;
+  return <ReadyMarketplacePackageFiles data={data} selectedContent={selectedContent} />;
 }
 
-function ReadyMarketplaceArtifactFiles({
+function ReadyMarketplacePackageFiles({
   data,
   selectedContent,
 }: {
-  data: ReadyArtifactData;
-  selectedContent: MarketplaceArtifactSelectedContent | null;
+  data: ReadyPackageData;
+  selectedContent: MarketplacePackageSelectedContent | null;
 }) {
   const location = useLocation();
   const overview = useFetcher<string>();
   const [requestedOverviewPath, setRequestedOverviewPath] = useState<string | null>(null);
   const activeTab = marketplacePackageTabFromSearch(location.search);
   const overviewResourcePath = data.overviewPath
-    ? buildArtifactFileResourcePath(location.pathname, data.overviewPath)
+    ? buildPackageFileResourcePath(location.pathname, data.overviewPath)
     : null;
   const loadOverview = () => {
     if (overviewResourcePath && requestedOverviewPath !== overviewResourcePath) {
@@ -79,7 +79,7 @@ function ReadyMarketplaceArtifactFiles({
   return (
     <>
       {activeTab === "overview" ? (
-        <MarketplaceArtifactOverview
+        <MarketplacePackageOverview
           path={data.overviewPath}
           requested={requestedOverviewPath === overviewResourcePath}
           loading={overview.state !== "idle"}
@@ -91,32 +91,32 @@ function ReadyMarketplaceArtifactFiles({
           onLoad={loadOverview}
         />
       ) : activeTab === "workflows" ? (
-        <MarketplaceArtifactWorkflows data={data} selectedContent={selectedContent} />
+        <MarketplacePackageWorkflows data={data} selectedContent={selectedContent} />
       ) : (
-        <MarketplaceArtifactExplorer data={data} selectedContent={selectedContent} />
+        <MarketplacePackageExplorer data={data} selectedContent={selectedContent} />
       )}
     </>
   );
 }
 
-function MarketplaceArtifactExplorer({
+function MarketplacePackageExplorer({
   data,
   selectedContent,
 }: {
-  data: ReadyArtifactData;
-  selectedContent: MarketplaceArtifactSelectedContent | null;
+  data: ReadyPackageData;
+  selectedContent: MarketplacePackageSelectedContent | null;
 }) {
   const location = useLocation();
   const search = new URLSearchParams(location.search);
-  const explicitRequestedPath = search.get("artifactPath")?.trim() || null;
+  const explicitRequestedPath = search.get("packagePath")?.trim() || null;
   const entriesByExplorerPath = useMemo(
-    () => createMarketplaceArtifactEntriesByExplorerPath(data.fileTree.entries),
+    () => createMarketplacePackageEntriesByExplorerPath(data.fileTree.entries),
     [data.fileTree.entries],
   );
-  const defaultPath = `${MARKETPLACE_ARTIFACT_ROOT_PATH}/${data.selectedVersion}/`;
+  const defaultPath = `${MARKETPLACE_PACKAGE_ROOT_PATH}/${data.selectedVersion}/`;
   const requestedPath = explicitRequestedPath ?? defaultPath;
   const selectedPath =
-    requestedPath === MARKETPLACE_ARTIFACT_ROOT_PATH || entriesByExplorerPath.has(requestedPath)
+    requestedPath === MARKETPLACE_PACKAGE_ROOT_PATH || entriesByExplorerPath.has(requestedPath)
       ? requestedPath
       : defaultPath;
   const selectedEntry = entriesByExplorerPath.get(selectedPath);
@@ -131,7 +131,7 @@ function MarketplaceArtifactExplorer({
     () => [
       {
         tree: data.fileTree,
-        rootPath: MARKETPLACE_ARTIFACT_ROOT_PATH,
+        rootPath: MARKETPLACE_PACKAGE_ROOT_PATH,
         rootTitle: "Package contents",
         rootDescription: "Files published for this Marketplace package.",
       },
@@ -147,12 +147,12 @@ function MarketplaceArtifactExplorer({
         selectedContent={displayedContent}
         loadError={
           explicitRequestedPath &&
-          explicitRequestedPath !== MARKETPLACE_ARTIFACT_ROOT_PATH &&
+          explicitRequestedPath !== MARKETPLACE_PACKAGE_ROOT_PATH &&
           !entriesByExplorerPath.has(explicitRequestedPath)
-            ? `Artifact path '${explicitRequestedPath}' could not be found.`
+            ? `Package path '${explicitRequestedPath}' could not be found.`
             : null
         }
-        treeAriaLabel="Marketplace artifact files"
+        treeAriaLabel="Marketplace package files"
         rootIcon={"package"}
         rootSelection="detail"
         detailHeadingLevel={4}
@@ -166,7 +166,7 @@ function MarketplaceArtifactExplorer({
         workflowRouting={{ status: "unavailable" }}
         buildNodeTo={(path) => {
           const entry = entriesByExplorerPath.get(path);
-          return buildArtifactSelectionPath(
+          return buildPackageSelectionPath(
             location.pathname,
             location.search,
             "files",
@@ -180,17 +180,17 @@ function MarketplaceArtifactExplorer({
   );
 }
 
-function MarketplaceArtifactWorkflows({
+function MarketplacePackageWorkflows({
   data,
   selectedContent,
 }: {
-  data: ReadyArtifactData;
-  selectedContent: MarketplaceArtifactSelectedContent | null;
+  data: ReadyPackageData;
+  selectedContent: MarketplacePackageSelectedContent | null;
 }) {
   const location = useLocation();
-  const installationWorkflowPath = `${MARKETPLACE_ARTIFACT_ROOT_PATH}/${data.selectedVersion}/${MARKETPLACE_INSTALL_WORKFLOW_PATH}`;
+  const installationWorkflowPath = `${MARKETPLACE_PACKAGE_ROOT_PATH}/${data.selectedVersion}/${MARKETPLACE_INSTALL_WORKFLOW_PATH}`;
   const workflowPaths = useMemo(() => {
-    const installer = findMarketplaceArtifactEntry(
+    const installer = findMarketplacePackageEntry(
       data,
       `${data.selectedVersion}/${MARKETPLACE_INSTALL_WORKFLOW_PATH}`,
     );
@@ -203,20 +203,20 @@ function MarketplaceArtifactWorkflows({
         entry.path.startsWith(workflowPathPrefix) &&
         entry.path.toLowerCase().endsWith(".workflow.js")
       ) {
-        paths.push(`${MARKETPLACE_ARTIFACT_ROOT_PATH}/${entry.path}`);
+        paths.push(`${MARKETPLACE_PACKAGE_ROOT_PATH}/${entry.path}`);
       }
     }
 
     const sortedPaths = paths.sort((left, right) => left.localeCompare(right));
     return installer?.kind === "file" ? [installationWorkflowPath, ...sortedPaths] : sortedPaths;
   }, [data, installationWorkflowPath]);
-  const requestedPath = new URLSearchParams(location.search).get("artifactPath")?.trim();
+  const requestedPath = new URLSearchParams(location.search).get("packagePath")?.trim();
   const selectedPath =
     requestedPath && workflowPaths.includes(requestedPath) ? requestedPath : null;
 
   if (workflowPaths.length === 0) {
     return (
-      <MarketplaceArtifactMessage
+      <MarketplacePackageMessage
         title="No workflows found"
         description="This release does not contain any .workflow.js files."
       />
@@ -235,7 +235,7 @@ function MarketplaceArtifactWorkflows({
           return (
             <Link
               key={path}
-              to={buildArtifactSelectionPath(
+              to={buildPackageSelectionPath(
                 location.pathname,
                 location.search,
                 "workflows",
@@ -256,7 +256,7 @@ function MarketplaceArtifactWorkflows({
       </div>
 
       {!selectedPath ? (
-        <MarketplaceArtifactMessage title="Select a workflow" />
+        <MarketplacePackageMessage title="Select a workflow" />
       ) : selectedContent?.path === selectedPath ? (
         <section className="mt-5 overflow-hidden shadow-[0_0_0_1px_var(--bo-border)]">
           <div className="border-b border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2.5">
@@ -282,13 +282,13 @@ function MarketplaceArtifactWorkflows({
           </div>
         </section>
       ) : (
-        <MarketplaceArtifactMessage title="Workflow source unavailable" />
+        <MarketplacePackageMessage title="Workflow source unavailable" />
       )}
     </div>
   );
 }
 
-function MarketplaceArtifactOverview({
+function MarketplacePackageOverview({
   path,
   requested,
   loading,
@@ -303,7 +303,7 @@ function MarketplaceArtifactOverview({
 }) {
   if (!path) {
     return (
-      <MarketplaceArtifactMessage
+      <MarketplacePackageMessage
         title="No package overview"
         description="Add a README.md at the top level or in this release to provide an overview for this Marketplace listing."
       />
@@ -311,14 +311,14 @@ function MarketplaceArtifactOverview({
   }
   if (!requested) {
     return (
-      <MarketplaceArtifactMessage
+      <MarketplacePackageMessage
         title="Package overview"
         action={<LoadContentButton onClick={onLoad}>Load overview</LoadContentButton>}
       />
     );
   }
   if (loading || markdown === null) {
-    return <MarketplaceArtifactMessage title="Loading overview…" />;
+    return <MarketplacePackageMessage title="Loading overview…" />;
   }
 
   return (
@@ -335,7 +335,7 @@ function MarketplaceArtifactOverview({
   );
 }
 
-function MarketplaceArtifactMessage({
+function MarketplacePackageMessage({
   title,
   description,
   action,
@@ -365,25 +365,25 @@ function LoadContentButton({ onClick, children }: { onClick: () => void; childre
   );
 }
 
-function createMarketplaceArtifactEntriesByExplorerPath(
+function createMarketplacePackageEntriesByExplorerPath(
   entries: readonly FileTreeEntry[],
 ): ReadonlyMap<string, FileTreeEntry> {
   return new Map(
     entries.map((entry) => [
-      `${MARKETPLACE_ARTIFACT_ROOT_PATH}/${entry.path}${entry.kind === "directory" ? "/" : ""}`,
+      `${MARKETPLACE_PACKAGE_ROOT_PATH}/${entry.path}${entry.kind === "directory" ? "/" : ""}`,
       entry,
     ]),
   );
 }
 
-function findMarketplaceArtifactEntry(
-  data: ReadyArtifactData,
+function findMarketplacePackageEntry(
+  data: ReadyPackageData,
   relativePath: string,
 ): FileTreeEntry | undefined {
   return data.fileTree.entries.find((entry) => entry.path === relativePath);
 }
 
-function buildArtifactSelectionPath(
+function buildPackageSelectionPath(
   pathname: string,
   currentSearch: string,
   tab: Extract<MarketplacePackageTab, "files" | "workflows">,
@@ -391,12 +391,12 @@ function buildArtifactSelectionPath(
   loadTextContent: boolean,
 ): string {
   const search = new URLSearchParams(currentSearch);
-  search.set("artifactTab", tab);
-  search.set("artifactPath", path);
+  search.set("packageTab", tab);
+  search.set("packagePath", path);
   if (loadTextContent) {
-    search.set("artifactContent", "text");
+    search.set("packageContent", "text");
   } else {
-    search.delete("artifactContent");
+    search.delete("packageContent");
   }
   return `${pathname}?${search}`;
 }
@@ -413,10 +413,10 @@ function shouldLoadTextContent(node: { path: string; contentType?: string | null
   );
 }
 
-function buildArtifactFileResourcePath(pathname: string, path: string): string {
+function buildPackageFileResourcePath(pathname: string, path: string): string {
   const resourcePath = pathname.endsWith("/")
-    ? `${pathname}artifact-file`
-    : `${pathname}/artifact-file`;
-  const search = new URLSearchParams({ artifactPath: path });
+    ? `${pathname}package-file`
+    : `${pathname}/package-file`;
+  const search = new URLSearchParams({ packagePath: path });
   return `${resourcePath}?${search}`;
 }

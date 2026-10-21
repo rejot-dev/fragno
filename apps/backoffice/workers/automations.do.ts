@@ -84,7 +84,7 @@ import {
   assertMarketplaceIngestionTargetAccessible,
   assertMarketplaceIngestionSourceAccessible,
   assertMarketplaceIngestionTargetBelongsToOrganization,
-  resolveMarketplaceIngestionArtifactVersion,
+  resolveMarketplaceIngestionPackageVersion,
 } from "@/fragno/automation/marketplace-ingestions";
 import {
   buildMarketplacePackageInstallWorkflowInstanceId,
@@ -93,7 +93,6 @@ import {
 import { MARKETPLACE_PACKAGE_PUBLISH_WORKFLOW_NAME } from "@/fragno/automation/marketplace-package-publish-workflow";
 import { readBackofficeAutomationSource } from "@/fragno/automation/read-backoffice-automation-source";
 import type { DurableHookQueueOptions } from "@/fragno/durable-hooks";
-import { marketplaceArtifactUploadName } from "@/fragno/marketplace/artifacts";
 import {
   captureBundledMarketplaceRelease,
   initializeMarketplaceListingRootFiles,
@@ -104,6 +103,7 @@ import type {
 } from "@/fragno/marketplace/contracts";
 import { MarketplaceListingArchivedError } from "@/fragno/marketplace/definition";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
+import { marketplacePackageUploadName } from "@/fragno/marketplace/package-files";
 import {
   assertMarketplacePublicationAuthority,
   marketplacePackagePublishWorkflowInstanceId,
@@ -505,7 +505,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
         Array.from(
           new Set(listingIds),
           async (listingId) =>
-            [listingId, await marketplace.getArtifactManifest({ listingId })] as const,
+            [listingId, await marketplace.getListingStorage({ listingId })] as const,
         ),
       ),
     );
@@ -562,7 +562,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
               await initializeMarketplaceListingRootFiles(
                 createUploadRouteCaller(
                   this.#runtimeServices.objects.upload.forName(
-                    marketplaceArtifactUploadName({
+                    marketplacePackageUploadName({
                       marketplace: { kind: "system" },
                       listingId: release.listingId,
                     }),
@@ -613,7 +613,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
               ),
             });
             if (status.state === "complete") {
-              const published = await marketplace.getArtifactManifest({
+              const published = await marketplace.getListingStorage({
                 listingId: release.listingId,
               });
               publications[index] = published?.versions.includes(release.version)
@@ -692,13 +692,13 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
         }),
     });
 
-    const resolvedArtifact = resolveMarketplaceIngestionArtifactVersion(
+    const resolvedPackage = resolveMarketplaceIngestionPackageVersion(
       await this.#runtimeServices.objects.marketplace
         .for(input.marketplace)
-        .commands.getArtifactManifest({ listingId: input.listingId }),
+        .commands.getListingStorage({ listingId: input.listingId }),
       input.version,
     );
-    const version = resolvedArtifact.version;
+    const version = resolvedPackage.version;
     const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
       marketplace: input.marketplace,
       targetScope: input.targetScope,

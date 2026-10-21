@@ -37,21 +37,21 @@ export function marketplaceListingPath(
   return `${marketplaceScopeTabPath(scope, catalog)}/${listingRef}`;
 }
 
-export function buildArtifactVersionPath(
+export function buildPackageVersionPath(
   pathname: string,
   currentSearch: string,
   currentVersion: string,
   nextVersion: string,
 ): string {
   const search = new URLSearchParams(currentSearch);
-  search.set("artifactVersion", nextVersion);
+  search.set("packageVersion", nextVersion);
 
-  const selectedPath = search.get("artifactPath")?.trim();
-  const currentVersionRoot = `/artifact/${currentVersion}`;
+  const selectedPath = search.get("packagePath")?.trim();
+  const currentVersionRoot = `/package/${currentVersion}`;
   if (selectedPath === currentVersionRoot || selectedPath?.startsWith(`${currentVersionRoot}/`)) {
     search.set(
-      "artifactPath",
-      `/artifact/${nextVersion}${selectedPath.slice(currentVersionRoot.length)}`,
+      "packagePath",
+      `/package/${nextVersion}${selectedPath.slice(currentVersionRoot.length)}`,
     );
   }
 

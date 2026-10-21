@@ -343,7 +343,7 @@ export default function BackofficeMarketplaceManage({ loaderData }: Route.Compon
           <FormContainer
             eyebrow="Catalog metadata"
             title="Edit listing presentation"
-            description="This metadata describes the marketplace entry independently of its future uploaded artifact."
+            description="This metadata describes the marketplace entry independently of its future uploaded package."
           >
             <Form method="post" className="space-y-4">
               <input type="hidden" name="intent" value="update" />

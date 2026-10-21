@@ -18,7 +18,7 @@ function normalizePathSegments(value: string): string[] {
   return segments;
 }
 
-/** Normalizes artifact paths while rejecting traversal and null bytes. */
+/** Normalizes absolute file paths while rejecting traversal and null bytes. */
 export function normalizeAbsolutePath(value: string): string {
   const segments = normalizePathSegments(value);
   return segments.length === 0 ? "/" : `/${segments.join("/")}`;
@@ -33,7 +33,7 @@ export function normalizeRelativePath(value: string): string {
   return normalizePathSegments(normalized).join("/");
 }
 
-/** Tests artifact ownership using complete path segments rather than string prefixes. */
+/** Tests path containment using complete path segments rather than string prefixes. */
 export function isPathWithin(path: string, parent: string): boolean {
   const normalizedPath = normalizeAbsolutePath(path);
   const normalizedParent = normalizeAbsolutePath(parent);

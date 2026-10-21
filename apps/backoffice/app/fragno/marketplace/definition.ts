@@ -16,11 +16,10 @@ import {
 import { defineFragment } from "@fragno-dev/core";
 import { withDatabase } from "@fragno-dev/db";
 
-import { marketplaceArtifactUploadName } from "./artifacts";
 import {
   marketplaceAddDraftVersionInputSchema,
   marketplaceArchiveListingInputSchema,
-  marketplaceArtifactManifestInputSchema,
+  marketplaceListingStorageInputSchema,
   marketplaceCreateDraftListingInputSchema,
   marketplaceFeatureListingInputSchema,
   marketplaceInsertStaticEntriesInputSchema,
@@ -31,7 +30,7 @@ import {
   marketplaceUnfeatureInputSchema,
   marketplaceUpdateListingInputSchema,
   type MarketplaceArchiveResult,
-  type MarketplaceArtifactManifest,
+  type MarketplaceListingStorage,
   type MarketplaceDraftResult,
   type MarketplaceFeaturedListing,
   type MarketplaceInsertStaticEntriesResult,
@@ -53,6 +52,7 @@ import {
   marketplaceOwnerKey,
   marketplaceVersionId,
 } from "./owner";
+import { marketplacePackageUploadName } from "./package-files";
 import {
   type MarketplacePackagePublishRequest,
   type MarketplacePackagePublishIntent,
@@ -420,8 +420,8 @@ export const marketplaceFragmentDefinition = defineFragment<MarketplaceFragmentC
           .build();
       },
 
-      getArtifactManifest: function (rawInput: unknown) {
-        const input = marketplaceArtifactManifestInputSchema.parse(rawInput);
+      getListingStorage: function (rawInput: unknown) {
+        const input = marketplaceListingStorageInputSchema.parse(rawInput);
 
         return this.serviceTx(marketplaceFragmentSchema)
           .retrieve((uow) =>
@@ -437,7 +437,7 @@ export const marketplaceFragmentDefinition = defineFragment<MarketplaceFragmentC
                   .orderByIndex(MARKETPLACE_PUBLISHED_VERSION_INDEX, "desc"),
               ),
           )
-          .transformRetrieve(([listing, versions]): MarketplaceArtifactManifest | null => {
+          .transformRetrieve(([listing, versions]): MarketplaceListingStorage | null => {
             if (!listing) {
               return null;
             }
@@ -454,7 +454,7 @@ export const marketplaceFragmentDefinition = defineFragment<MarketplaceFragmentC
               listingId: listing.id.externalId,
               slug: marketplaceListingSlug(listing.id.externalId),
               listingStatus: listing.status,
-              uploadName: marketplaceArtifactUploadName({
+              uploadName: marketplacePackageUploadName({
                 marketplace: config.scope,
                 listingId: listing.id.externalId,
               }),

@@ -42,12 +42,12 @@ import {
   CODEMODE_CAPABILITY_ACTOR,
   CODEMODE_WORKFLOW,
 } from "@/fragno/automation/engine/codemode-invocation";
-import {
-  MARKETPLACE_INSTALL_WORKFLOW_PATH,
-  marketplaceArtifactUploadName,
-} from "@/fragno/marketplace/artifacts";
 import { captureBundledMarketplaceRelease } from "@/fragno/marketplace/bundled-release";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
+import {
+  MARKETPLACE_INSTALL_WORKFLOW_PATH,
+  marketplacePackageUploadName,
+} from "@/fragno/marketplace/package-files";
 import type { MarketplacePackagePublishRequest } from "@/fragno/marketplace/package-publishing";
 import {
   STATIC_MARKETPLACE_ENTRIES,
@@ -95,14 +95,14 @@ const MARKETPLACE_LISTING_ID = marketplaceListingId({
   ownerScope: { kind: "system" },
   slug: "telegram-test-command",
 });
-const MARKETPLACE_ARTIFACT_UPLOAD_OBJECT_NAME = `v1:named:${encodeURIComponent(
-  marketplaceArtifactUploadName({
+const MARKETPLACE_PACKAGE_UPLOAD_OBJECT_NAME = `v1:named:${encodeURIComponent(
+  marketplacePackageUploadName({
     marketplace: { kind: "system" },
     listingId: MARKETPLACE_LISTING_ID,
   }),
 )}`;
-const MARKETPLACE_ARTIFACT_FILE_KEY = "automations/telegram-test-command.workflow.js";
-const MARKETPLACE_ARTIFACT_CONFLICT_MESSAGE =
+const MARKETPLACE_PACKAGE_FILE_KEY = "automations/telegram-test-command.workflow.js";
+const MARKETPLACE_PACKAGE_CONFLICT_MESSAGE =
   "Marketplace ingestion conflicts with workspace file '/workspace/automations/telegram-test-command.workflow.js'.";
 const MARKETPLACE_UNCHANGED_FILE_KEY = "prompts/marketplace.md";
 const MARKETPLACE_UNCHANGED_FILE_SOURCE = "# Marketplace\n";
@@ -133,11 +133,11 @@ if (
   throw new Error("Expected all Telegram test command Marketplace versions.");
 }
 const TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE =
-  BASE_STATIC_MARKETPLACE_VERSION.files[MARKETPLACE_ARTIFACT_FILE_KEY];
+  BASE_STATIC_MARKETPLACE_VERSION.files[MARKETPLACE_PACKAGE_FILE_KEY];
 const CURRENT_TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE = getStaticMarketplaceEntry({
   slug: "telegram-test-command",
   version: "1.4.0",
-})?.files[MARKETPLACE_ARTIFACT_FILE_KEY];
+})?.files[MARKETPLACE_PACKAGE_FILE_KEY];
 
 /**
  * From 1.3.0, the test command's installer waits for its reply message before creating its route.
@@ -362,8 +362,8 @@ const writeUploadFile = async (input: {
   const form = new FormData();
   form.set("provider", "database");
   form.set("fileKey", input.fileKey);
-  form.set("filename", input.fileKey.split("/").at(-1) ?? "artifact");
-  form.set("file", new File([input.content], input.fileKey.split("/").at(-1) ?? "artifact"));
+  form.set("filename", input.fileKey.split("/").at(-1) ?? "package");
+  form.set("file", new File([input.content], input.fileKey.split("/").at(-1) ?? "package"));
   const response = await input.upload.http.fetch(
     new Request("https://upload.test/api/upload/files", {
       method: "POST",
@@ -376,7 +376,7 @@ const writeUploadFile = async (input: {
 describe("marketplace scenarios", { concurrent: false }, () => {
   test("normal seeding skips published bundled bytes before capture and does not enqueue more workflows", async () => {
     const files = BASE_STATIC_MARKETPLACE_VERSION.files as Record<string, string>;
-    const original = files[MARKETPLACE_ARTIFACT_FILE_KEY];
+    const original = files[MARKETPLACE_PACKAGE_FILE_KEY];
     try {
       await runBackofficeScenario(
         defineBackofficeScenario({
@@ -393,7 +393,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             then.assert(
               "skip published releases even when current source bytes cannot be captured",
               async (ctx) => {
-                files[MARKETPLACE_ARTIFACT_FILE_KEY] = "x".repeat(1_048_577);
+                files[MARKETPLACE_PACKAGE_FILE_KEY] = "x".repeat(1_048_577);
                 const result = await ctx.runtime.objects.automations
                   .singleton()
                   .commands.requestStaticMarketplacePublications();
@@ -402,15 +402,15 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                   (
                     await ctx.runtime.objects.marketplace
                       .singleton()
-                      .commands.getArtifactManifest({ listingId: MARKETPLACE_LISTING_ID })
+                      .commands.getListingStorage({ listingId: MARKETPLACE_LISTING_ID })
                   )?.versions,
                 ).toContain("1.0.0");
                 const url = new URL("https://upload.test/api/upload/files/by-key/content");
                 url.searchParams.set("provider", "database");
-                url.searchParams.set("key", `1.0.0/${MARKETPLACE_ARTIFACT_FILE_KEY}`);
+                url.searchParams.set("key", `1.0.0/${MARKETPLACE_PACKAGE_FILE_KEY}`);
                 const response = await ctx.runtime.objects.upload
                   .forName(
-                    marketplaceArtifactUploadName({
+                    marketplacePackageUploadName({
                       marketplace: { kind: "system" },
                       listingId: MARKETPLACE_LISTING_ID,
                     }),
@@ -424,15 +424,15 @@ describe("marketplace scenarios", { concurrent: false }, () => {
         }),
       );
     } finally {
-      files[MARKETPLACE_ARTIFACT_FILE_KEY] = original;
+      files[MARKETPLACE_PACKAGE_FILE_KEY] = original;
     }
   });
 
-  test("force-publishes with fresh workflow IDs and overwrites artifact files", async () => {
+  test("force-publishes with fresh workflow IDs and overwrites package files", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         objects: scenarioObjects,
-        name: "force-publish bundled Marketplace artifacts",
+        name: "force-publish bundled Marketplace packages",
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then, runner }) => [
           then.assert("the normal publication is requested", async (ctx) => {
@@ -449,9 +449,9 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             async (ctx) => {
               await writeUploadFile({
                 content: "Changed outside the publisher",
-                fileKey: `1.0.0/${MARKETPLACE_ARTIFACT_FILE_KEY}`,
+                fileKey: `1.0.0/${MARKETPLACE_PACKAGE_FILE_KEY}`,
                 upload: ctx.runtime.objects.upload.forName(
-                  marketplaceArtifactUploadName({
+                  marketplacePackageUploadName({
                     marketplace: { kind: "system" },
                     listingId: MARKETPLACE_LISTING_ID,
                   }),
@@ -470,11 +470,11 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             },
           ),
           runner.drain(),
-          then.assert("the overwritten artifacts remain published", async (ctx) => {
+          then.assert("the overwritten packages remain published", async (ctx) => {
             await expect(
               ctx.runtime.objects.marketplace
                 .singleton()
-                .commands.getArtifactManifest({ listingId: MARKETPLACE_LISTING_ID }),
+                .commands.getListingStorage({ listingId: MARKETPLACE_LISTING_ID }),
             ).resolves.toMatchObject({
               listingStatus: "published",
               versions: ["1.4.0", "1.3.0", "1.2.1", "1.1.0", "1.0.0"],
@@ -747,18 +747,18 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     );
   });
 
-  test("ingests a published artifact into organization and project workspaces", async () => {
+  test("ingests a published package into organization and project workspaces", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         objects: scenarioObjects,
-        name: "ingest marketplace artifact into scoped workspaces",
+        name: "ingest marketplace package into scoped workspaces",
 
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
 
         steps: ({ when, then, runner }) => [
           when.codemode.run({
             scope: { kind: "system" },
-            label: "publish the bundled marketplace artifact",
+            label: "publish the bundled marketplace package",
             code: "async () => await admin.marketplacePushStatic({})",
             assertToolCalls: ["admin.marketplace.push-static"],
           }),
@@ -916,7 +916,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
         name: "configure the Marketplace Telegram test command",
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then, runner }) => [
-          then.assert("the Marketplace artifact is published", async (ctx) => {
+          then.assert("the Marketplace package is published", async (ctx) => {
             await ctx.runtime.objects.automations
               .singleton()
               .commands.requestStaticMarketplacePublications();
@@ -1044,7 +1044,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             name: "deny unauthorized Marketplace installer operation",
             setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
             steps: ({ then, runner }) => [
-              then.assert("publish the Marketplace artifact", async (ctx) => {
+              then.assert("publish the Marketplace package", async (ctx) => {
                 await ctx.runtime.objects.automations
                   .singleton()
                   .commands.requestStaticMarketplacePublications();
@@ -1133,7 +1133,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
         name: "reconcile a Marketplace-owned automation route",
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then, runner }) => [
-          then.assert("the Marketplace artifact is published", async (ctx) => {
+          then.assert("the Marketplace package is published", async (ctx) => {
             await ctx.runtime.objects.automations
               .singleton()
               .commands.requestStaticMarketplacePublications();
@@ -1379,7 +1379,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
         steps: ({ when, then, runner }) => [
           when.codemode.run({
             scope: { kind: "system" },
-            label: "publish the bundled marketplace artifact",
+            label: "publish the bundled marketplace package",
             code: "async () => await admin.marketplacePushStatic({})",
             assertToolCalls: ["admin.marketplace.push-static"],
           }),
@@ -1478,7 +1478,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
         steps: ({ when, then, runner }) => [
           when.codemode.run({
             scope: { kind: "system" },
-            label: "publish the bundled marketplace artifact",
+            label: "publish the bundled marketplace package",
             code: "async () => await admin.marketplacePushStatic({})",
             assertToolCalls: ["admin.marketplace.push-static"],
           }),
@@ -1602,7 +1602,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
         },
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then, runner, when }) => [
-          then.assert("the Marketplace artifact is published", async (ctx) => {
+          then.assert("the Marketplace package is published", async (ctx) => {
             await createMarketplacePublicationWorkflow(ctx, "1.0.0");
           }),
           runner.drain(),
@@ -1648,7 +1648,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
             const url = new URL("https://upload.test/api/upload/files/by-key/content");
             url.searchParams.set("provider", "database");
-            url.searchParams.set("key", MARKETPLACE_ARTIFACT_FILE_KEY);
+            url.searchParams.set("key", MARKETPLACE_PACKAGE_FILE_KEY);
             const response = await ctx.runtime.objects.upload
               .forOrg("org-1")
               .http.fetch(new Request(url));
@@ -1729,7 +1729,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           },
           setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
           steps: ({ then, runner, when }) => [
-            then.assert("the two-file Marketplace artifact is published", async (ctx) => {
+            then.assert("the two-file Marketplace package is published", async (ctx) => {
               await createMarketplacePublicationWorkflow(ctx, "1.0.0");
             }),
             runner.drain(),
@@ -1758,13 +1758,13 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             then.assert("both upload sessions were created exactly once", () => {
               expect(createAttempts).toEqual(
                 new Map([
-                  [MARKETPLACE_ARTIFACT_FILE_KEY, 1],
+                  [MARKETPLACE_PACKAGE_FILE_KEY, 1],
                   [MARKETPLACE_UNCHANGED_FILE_KEY, 1],
                 ]),
               );
               expect(transferAttempts).toEqual(
                 new Map([
-                  [MARKETPLACE_ARTIFACT_FILE_KEY, 1],
+                  [MARKETPLACE_PACKAGE_FILE_KEY, 1],
                   [MARKETPLACE_UNCHANGED_FILE_KEY, 1],
                 ]),
               );
@@ -1784,20 +1784,20 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               async (ctx) => {
                 expect(createAttempts).toEqual(
                   new Map([
-                    [MARKETPLACE_ARTIFACT_FILE_KEY, 1],
+                    [MARKETPLACE_PACKAGE_FILE_KEY, 1],
                     [MARKETPLACE_UNCHANGED_FILE_KEY, 1],
                   ]),
                 );
                 expect(transferAttempts).toEqual(
                   new Map([
-                    [MARKETPLACE_ARTIFACT_FILE_KEY, 1],
+                    [MARKETPLACE_PACKAGE_FILE_KEY, 1],
                     [MARKETPLACE_UNCHANGED_FILE_KEY, 2],
                   ]),
                 );
 
                 const upload = ctx.runtime.objects.upload.forOrg("org-1");
                 for (const [fileKey, expectedContent] of [
-                  [MARKETPLACE_ARTIFACT_FILE_KEY, TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE],
+                  [MARKETPLACE_PACKAGE_FILE_KEY, TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE],
                   [MARKETPLACE_UNCHANGED_FILE_KEY, MARKETPLACE_UNCHANGED_FILE_SOURCE],
                 ] as const) {
                   const url = new URL("https://upload.test/api/upload/files/by-key/content");
@@ -1856,7 +1856,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
         },
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then, runner }) => [
-          then.assert("the Marketplace artifact is published", async (ctx) => {
+          then.assert("the Marketplace package is published", async (ctx) => {
             await createMarketplacePublicationWorkflow(ctx, "1.0.0");
           }),
           runner.drain(),
@@ -1908,7 +1908,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
         steps: ({ when, then, runner }) => [
           when.codemode.run({
             scope: { kind: "system" },
-            label: "publish the bundled marketplace artifact",
+            label: "publish the bundled marketplace package",
             code: "async () => await admin.marketplacePushStatic({})",
             assertToolCalls: ["admin.marketplace.push-static"],
           }),
@@ -1917,7 +1917,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             await upload.commands.setAdminConfig({ provider: "database" }, "org-1");
             await writeUploadFile({
               upload,
-              fileKey: MARKETPLACE_ARTIFACT_FILE_KEY,
+              fileKey: MARKETPLACE_PACKAGE_FILE_KEY,
               content: "locally modified",
             });
 
@@ -1964,7 +1964,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               status: "errored",
               error: {
                 name: "NonRetryableError",
-                message: MARKETPLACE_ARTIFACT_CONFLICT_MESSAGE,
+                message: MARKETPLACE_PACKAGE_CONFLICT_MESSAGE,
               },
             });
           }),
@@ -1973,7 +1973,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             async (ctx) => {
               const contentUrl = new URL("https://upload.test/api/upload/files/by-key/content");
               contentUrl.searchParams.set("provider", "database");
-              contentUrl.searchParams.set("key", MARKETPLACE_ARTIFACT_FILE_KEY);
+              contentUrl.searchParams.set("key", MARKETPLACE_PACKAGE_FILE_KEY);
               const response = await ctx.runtime.objects.upload
                 .forOrg("org-1")
                 .http.fetch(new Request(contentUrl));
@@ -2023,7 +2023,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               await upload.commands.setAdminConfig({ provider: "database" }, "org-1");
               await writeUploadFile({
                 upload,
-                fileKey: MARKETPLACE_ARTIFACT_FILE_KEY,
+                fileKey: MARKETPLACE_PACKAGE_FILE_KEY,
                 content: TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE,
               });
               await expect(
@@ -2056,7 +2056,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           ),
           runner.drain(),
           then.assert(
-            "the existing legacy file conflicts with the requested artifact",
+            "the existing legacy file conflicts with the requested package",
             async (ctx) => {
               const workflows = createWorkflowsRouteCaller({
                 object: ctx.runtime.objects.automations.forOrg("org-1"),
@@ -2079,7 +2079,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 status: "errored",
                 error: {
                   name: "NonRetryableError",
-                  message: MARKETPLACE_ARTIFACT_CONFLICT_MESSAGE,
+                  message: MARKETPLACE_PACKAGE_CONFLICT_MESSAGE,
                 },
               });
             },
@@ -2089,7 +2089,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             async (ctx) => {
               const contentUrl = new URL("https://upload.test/api/upload/files/by-key/content");
               contentUrl.searchParams.set("provider", "database");
-              contentUrl.searchParams.set("key", MARKETPLACE_ARTIFACT_FILE_KEY);
+              contentUrl.searchParams.set("key", MARKETPLACE_PACKAGE_FILE_KEY);
               const response = await ctx.runtime.objects.upload
                 .forOrg("org-1")
                 .http.fetch(new Request(contentUrl));
@@ -2112,7 +2112,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
   test("replays publication from its durable static entry snapshot after an object restart", async () => {
     const baseEntryFiles = BASE_STATIC_MARKETPLACE_VERSION.files as Record<string, string>;
-    const originalSource = baseEntryFiles[MARKETPLACE_ARTIFACT_FILE_KEY];
+    const originalSource = baseEntryFiles[MARKETPLACE_PACKAGE_FILE_KEY];
     let rejectReservation = true;
 
     try {
@@ -2146,7 +2146,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               status: "waiting",
             }),
             then.assert("the bundled source changes after capture and acceptance", () => {
-              baseEntryFiles[MARKETPLACE_ARTIFACT_FILE_KEY] = "changed after snapshot";
+              baseEntryFiles[MARKETPLACE_PACKAGE_FILE_KEY] = "changed after snapshot";
             }),
             runner.restartObject({
               binding: "AUTOMATIONS",
@@ -2159,14 +2159,14 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             }),
             then.assert("publication uses the source captured before restart", async (ctx) => {
               const upload = ctx.runtime.objects.upload.forName(
-                marketplaceArtifactUploadName({
+                marketplacePackageUploadName({
                   marketplace: { kind: "system" },
                   listingId: MARKETPLACE_LISTING_ID,
                 }),
               );
               const url = new URL("https://upload.test/api/upload/files/by-key/content");
               url.searchParams.set("provider", "database");
-              url.searchParams.set("key", `1.0.0/${MARKETPLACE_ARTIFACT_FILE_KEY}`);
+              url.searchParams.set("key", `1.0.0/${MARKETPLACE_PACKAGE_FILE_KEY}`);
               const response = await upload.http.fetch(new Request(url));
               assert(response.ok);
               await expect(response.text()).resolves.toBe(originalSource);
@@ -2176,7 +2176,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
       );
     } finally {
       if (originalSource !== undefined) {
-        baseEntryFiles[MARKETPLACE_ARTIFACT_FILE_KEY] = originalSource;
+        baseEntryFiles[MARKETPLACE_PACKAGE_FILE_KEY] = originalSource;
       }
     }
   });
@@ -2193,12 +2193,12 @@ describe("marketplace scenarios", { concurrent: false }, () => {
         objects: {
           ...scenarioObjects,
           UPLOAD: ({ name, state, env, runtime, implementation }) => {
-            const artifactUploadObject = name.endsWith(MARKETPLACE_ARTIFACT_UPLOAD_OBJECT_NAME);
+            const packageUploadObject = name.endsWith(MARKETPLACE_PACKAGE_UPLOAD_OBJECT_NAME);
             return new (class extends InMemoryUploadObject {
               async fetch(request: Request): Promise<Response> {
                 const url = new URL(request.url);
                 if (
-                  artifactUploadObject &&
+                  packageUploadObject &&
                   request.method === "POST" &&
                   url.pathname.endsWith("/uploads")
                 ) {
@@ -2217,7 +2217,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                   return response;
                 }
                 if (
-                  artifactUploadObject &&
+                  packageUploadObject &&
                   request.method === "PUT" &&
                   /\/uploads\/[^/]+\/content$/u.test(url.pathname)
                 ) {
@@ -2263,30 +2263,30 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     );
   });
 
-  test("retries a lost artifact transfer response without creating another upload session", async () => {
+  test("retries a lost package transfer response without creating another upload session", async () => {
     let createUploadAttempts = 0;
     let transferUploadAttempts = 0;
     let loseFirstTransferResponse = true;
 
     await runBackofficeScenario(
       defineBackofficeScenario({
-        name: "replay marketplace artifact transfer without recreating its upload",
+        name: "replay marketplace package transfer without recreating its upload",
         objects: {
           ...scenarioObjects,
           UPLOAD: ({ name, state, env, runtime, implementation }) => {
-            const artifactUploadObject = name.endsWith(MARKETPLACE_ARTIFACT_UPLOAD_OBJECT_NAME);
+            const packageUploadObject = name.endsWith(MARKETPLACE_PACKAGE_UPLOAD_OBJECT_NAME);
             return new (class extends InMemoryUploadObject {
               async fetch(request: Request): Promise<Response> {
                 const url = new URL(request.url);
                 if (
-                  artifactUploadObject &&
+                  packageUploadObject &&
                   request.method === "POST" &&
                   url.pathname.endsWith("/uploads")
                 ) {
                   createUploadAttempts += 1;
                 }
                 if (
-                  artifactUploadObject &&
+                  packageUploadObject &&
                   request.method === "PUT" &&
                   /\/uploads\/[^/]+\/content$/u.test(url.pathname)
                 ) {
@@ -2294,7 +2294,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                   const response = await super.fetch(request);
                   if (response.ok && loseFirstTransferResponse) {
                     loseFirstTransferResponse = false;
-                    throw new Error("Marketplace artifact transfer response was lost.");
+                    throw new Error("Marketplace package transfer response was lost.");
                   }
                   return response;
                 }
@@ -2331,14 +2331,14 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             expect(transferUploadAttempts).toBe(3);
 
             const upload = ctx.runtime.objects.upload.forName(
-              marketplaceArtifactUploadName({
+              marketplacePackageUploadName({
                 marketplace: { kind: "system" },
                 listingId: MARKETPLACE_LISTING_ID,
               }),
             );
             const url = new URL("https://upload.test/api/upload/files/by-key/content");
             url.searchParams.set("provider", "database");
-            url.searchParams.set("key", `1.0.0/${MARKETPLACE_ARTIFACT_FILE_KEY}`);
+            url.searchParams.set("key", `1.0.0/${MARKETPLACE_PACKAGE_FILE_KEY}`);
             const response = await upload.http.fetch(new Request(url));
             assert(response.ok);
             await expect(response.text()).resolves.toBe(TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE);
@@ -2353,16 +2353,16 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
     await runBackofficeScenario(
       defineBackofficeScenario({
-        name: "reject permanent marketplace artifact upload errors",
+        name: "reject permanent marketplace package upload errors",
         objects: {
           ...scenarioObjects,
           UPLOAD: ({ name, state, env, runtime, implementation }) => {
-            const artifactUploadObject = name.endsWith(MARKETPLACE_ARTIFACT_UPLOAD_OBJECT_NAME);
+            const packageUploadObject = name.endsWith(MARKETPLACE_PACKAGE_UPLOAD_OBJECT_NAME);
             return new (class extends InMemoryUploadObject {
               async fetch(request: Request): Promise<Response> {
                 const url = new URL(request.url);
                 if (
-                  artifactUploadObject &&
+                  packageUploadObject &&
                   request.method === "POST" &&
                   url.pathname.endsWith("/uploads")
                 ) {
@@ -2409,12 +2409,12 @@ describe("marketplace scenarios", { concurrent: false }, () => {
         objects: {
           ...scenarioObjects,
           UPLOAD: ({ name, state, env, runtime, implementation }) => {
-            const artifactUploadObject = name.endsWith(MARKETPLACE_ARTIFACT_UPLOAD_OBJECT_NAME);
+            const packageUploadObject = name.endsWith(MARKETPLACE_PACKAGE_UPLOAD_OBJECT_NAME);
             return new (class extends InMemoryUploadObject {
               async fetch(request: Request): Promise<Response> {
                 const url = new URL(request.url);
                 if (
-                  artifactUploadObject &&
+                  packageUploadObject &&
                   request.method === "POST" &&
                   url.pathname.endsWith("/uploads")
                 ) {
@@ -2472,12 +2472,12 @@ describe("marketplace scenarios", { concurrent: false }, () => {
         objects: {
           ...scenarioObjects,
           UPLOAD: ({ name, state, env, runtime, implementation }) => {
-            const artifactUploadObject = name.endsWith(MARKETPLACE_ARTIFACT_UPLOAD_OBJECT_NAME);
+            const packageUploadObject = name.endsWith(MARKETPLACE_PACKAGE_UPLOAD_OBJECT_NAME);
             return new (class extends InMemoryUploadObject {
               async fetch(request: Request): Promise<Response> {
                 const url = new URL(request.url);
                 if (
-                  artifactUploadObject &&
+                  packageUploadObject &&
                   request.method === "POST" &&
                   url.pathname.endsWith("/files/commit-prepared")
                 ) {
@@ -2505,17 +2505,17 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             status: "waiting",
           }),
           then.assert(
-            "the committed artifact is ready before Marketplace publication",
+            "the committed package is ready before Marketplace publication",
             async (ctx) => {
               const upload = ctx.runtime.objects.upload.forName(
-                marketplaceArtifactUploadName({
+                marketplacePackageUploadName({
                   marketplace: { kind: "system" },
                   listingId: MARKETPLACE_LISTING_ID,
                 }),
               );
               const url = new URL("https://upload.test/api/upload/files/by-key/content");
               url.searchParams.set("provider", "database");
-              url.searchParams.set("key", `1.0.0/${MARKETPLACE_ARTIFACT_FILE_KEY}`);
+              url.searchParams.set("key", `1.0.0/${MARKETPLACE_PACKAGE_FILE_KEY}`);
               const response = await upload.http.fetch(new Request(url));
               assert(response.ok);
               await expect(response.text()).resolves.toBe(TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE);
@@ -2553,12 +2553,12 @@ describe("marketplace scenarios", { concurrent: false }, () => {
         objects: {
           ...scenarioObjects,
           UPLOAD: ({ name, state, env, runtime, implementation }) => {
-            const artifactUploadObject = name.endsWith(MARKETPLACE_ARTIFACT_UPLOAD_OBJECT_NAME);
+            const packageUploadObject = name.endsWith(MARKETPLACE_PACKAGE_UPLOAD_OBJECT_NAME);
             return new (class extends InMemoryUploadObject {
               async fetch(request: Request): Promise<Response> {
                 const url = new URL(request.url);
                 if (
-                  artifactUploadObject &&
+                  packageUploadObject &&
                   request.method === "POST" &&
                   url.pathname.endsWith("/files/commit-prepared")
                 ) {
@@ -2602,14 +2602,14 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             ).resolves.toBeNull();
 
             const upload = ctx.runtime.objects.upload.forName(
-              marketplaceArtifactUploadName({
+              marketplacePackageUploadName({
                 marketplace: { kind: "system" },
                 listingId: MARKETPLACE_LISTING_ID,
               }),
             );
             const url = new URL("https://upload.test/api/upload/files/by-key/content");
             url.searchParams.set("provider", "database");
-            url.searchParams.set("key", `1.0.0/${MARKETPLACE_ARTIFACT_FILE_KEY}`);
+            url.searchParams.set("key", `1.0.0/${MARKETPLACE_PACKAGE_FILE_KEY}`);
             const response = await upload.http.fetch(new Request(url));
             assert(response.status === 404);
           }),
@@ -2662,7 +2662,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
         steps: ({ when, then, runner }) => [
           when.codemode.run({
             scope: { kind: "system" },
-            label: "publish the bundled marketplace artifact",
+            label: "publish the bundled marketplace package",
             code: "async () => await admin.marketplacePushStatic({})",
             assertToolCalls: ["admin.marketplace.push-static"],
           }),
@@ -2692,7 +2692,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           then.assert("the committed batch remains readable", async (ctx) => {
             const url = new URL("https://upload.test/api/upload/files/by-key/content");
             url.searchParams.set("provider", "database");
-            url.searchParams.set("key", MARKETPLACE_ARTIFACT_FILE_KEY);
+            url.searchParams.set("key", MARKETPLACE_PACKAGE_FILE_KEY);
             const response = await ctx.runtime.objects.upload
               .forOrg("org-1")
               .http.fetch(new Request(url));
@@ -2757,12 +2757,12 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                     mutateSourceAfterUploadCreation = false;
                     await writeUploadFile({
                       upload: runtime.objects.upload.forName(
-                        marketplaceArtifactUploadName({
+                        marketplacePackageUploadName({
                           marketplace: { kind: "system" },
                           listingId: MARKETPLACE_LISTING_ID,
                         }),
                       ),
-                      fileKey: `1.0.0/${MARKETPLACE_ARTIFACT_FILE_KEY}`,
+                      fileKey: `1.0.0/${MARKETPLACE_PACKAGE_FILE_KEY}`,
                       content: "source changed after destination upload creation",
                     });
                   }
@@ -2782,7 +2782,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
         },
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then, runner }) => [
-          then.assert("the Marketplace artifact is published", async (ctx) => {
+          then.assert("the Marketplace package is published", async (ctx) => {
             await createMarketplacePublicationWorkflow(ctx, "1.0.0");
           }),
           runner.drain(),
@@ -2812,7 +2812,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             expect(destinationTransferAttempts).toBe(0);
             const url = new URL("https://upload.test/api/upload/files/by-key/content");
             url.searchParams.set("provider", "database");
-            url.searchParams.set("key", MARKETPLACE_ARTIFACT_FILE_KEY);
+            url.searchParams.set("key", MARKETPLACE_PACKAGE_FILE_KEY);
             const response = await ctx.runtime.objects.upload
               .forOrg("org-1")
               .http.fetch(new Request(url));
@@ -2854,18 +2854,18 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                   destinationObject &&
                   request.method === "GET" &&
                   url.pathname.endsWith("/files/by-key") &&
-                  url.searchParams.get("key") === MARKETPLACE_ARTIFACT_FILE_KEY &&
+                  url.searchParams.get("key") === MARKETPLACE_PACKAGE_FILE_KEY &&
                   mutateSourceAfterListing
                 ) {
                   mutateSourceAfterListing = false;
                   await writeUploadFile({
                     upload: runtime.objects.upload.forName(
-                      marketplaceArtifactUploadName({
+                      marketplacePackageUploadName({
                         marketplace: { kind: "system" },
                         listingId: MARKETPLACE_LISTING_ID,
                       }),
                     ),
-                    fileKey: `1.0.0/${MARKETPLACE_ARTIFACT_FILE_KEY}`,
+                    fileKey: `1.0.0/${MARKETPLACE_PACKAGE_FILE_KEY}`,
                     content: "source changed after durable listing",
                   });
                 }
@@ -2878,7 +2878,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
         steps: ({ when, then, runner }) => [
           when.codemode.run({
             scope: { kind: "system" },
-            label: "publish the bundled marketplace artifact",
+            label: "publish the bundled marketplace package",
             code: "async () => await admin.marketplacePushStatic({})",
             assertToolCalls: ["admin.marketplace.push-static"],
           }),
@@ -2908,7 +2908,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           then.assert("the changed source was never written or recorded", async (ctx) => {
             const contentUrl = new URL("https://upload.test/api/upload/files/by-key/content");
             contentUrl.searchParams.set("provider", "database");
-            contentUrl.searchParams.set("key", MARKETPLACE_ARTIFACT_FILE_KEY);
+            contentUrl.searchParams.set("key", MARKETPLACE_PACKAGE_FILE_KEY);
             const contentResponse = await ctx.runtime.objects.upload
               .forOrg("org-1")
               .http.fetch(new Request(contentUrl));
@@ -2989,7 +2989,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
         steps: ({ when, then }) => [
           when.codemode.run({
             scope: { kind: "system" },
-            label: "publish the bundled marketplace artifact",
+            label: "publish the bundled marketplace package",
             code: "async () => await admin.marketplacePushStatic({})",
             assertToolCalls: ["admin.marketplace.push-static"],
           }),
@@ -3017,7 +3017,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               marketplace.commands.getPublishedListing({ listingId }),
             ).resolves.toBeNull();
             await expect(
-              marketplace.commands.getArtifactManifest({ listingId }),
+              marketplace.commands.getListingStorage({ listingId }),
             ).resolves.toMatchObject({
               listingStatus: "archived",
               versions: ["1.4.0", "1.3.0", "1.2.1", "1.1.0", "1.0.0"],
@@ -3047,7 +3047,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 name: "Scenario download entry",
                 summary: "A marketplace fixture for exercising scenario download behavior.",
                 description:
-                  "This entry is inserted directly by the scenario runner so download scenarios can attach and retrieve fixture artifacts later.",
+                  "This entry is inserted directly by the scenario runner so download scenarios can attach and retrieve fixture packages later.",
                 category: "developer-tools",
                 tags: ["scenario", "download"],
               },

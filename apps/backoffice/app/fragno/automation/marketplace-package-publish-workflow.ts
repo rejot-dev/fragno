@@ -10,13 +10,13 @@ import { z } from "zod";
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { isBackofficeForbiddenError } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
-import { marketplaceArtifactUploadName } from "@/fragno/marketplace/artifacts";
+import { marketplacePackageUploadName } from "@/fragno/marketplace/package-files";
 import {
   marketplacePackagePublishRequestSchema,
   marketplacePackagePublishWorkflowInstanceId,
 } from "@/fragno/marketplace/package-publishing";
 import {
-  marketplaceReleaseArtifactFiles,
+  marketplaceReleasePackageFiles,
   verifyMarketplaceReleaseSnapshot,
 } from "@/fragno/marketplace/release-snapshot";
 import { createUploadRouteCaller } from "@/fragno/upload-server";
@@ -27,8 +27,8 @@ import {
 } from "./actors";
 import {
   MARKETPLACE_PUBLICATION_RETRIES,
-  publishMarketplaceArtifactFiles,
-} from "./marketplace-artifact-publication";
+  publishMarketplacePackageFiles,
+} from "./marketplace-package-publication";
 
 /** All captured releases use the same System publication workflow, regardless of source. */
 export const MARKETPLACE_PACKAGE_PUBLISH_WORKFLOW_NAME = "marketplace-package-publish";
@@ -150,12 +150,12 @@ export function defineMarketplacePackagePublishWorkflow(
         return result;
       }
       const filePrefix = `${release.version}/`;
-      const files = await marketplaceReleaseArtifactFiles(release);
-      await publishMarketplaceArtifactFiles({
+      const files = await marketplaceReleasePackageFiles(release);
+      await publishMarketplacePackageFiles({
         step,
         routes: createUploadRouteCaller(
           runtime.objects.upload.forName(
-            marketplaceArtifactUploadName({
+            marketplacePackageUploadName({
               marketplace: request.intent.marketplace,
               listingId: release.listingId,
             }),

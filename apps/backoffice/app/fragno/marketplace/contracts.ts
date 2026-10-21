@@ -121,13 +121,11 @@ export const marketplacePublishVersionInputSchema = z
 
 export type MarketplacePublishVersionInput = z.infer<typeof marketplacePublishVersionInputSchema>;
 
-export const marketplaceArtifactManifestInputSchema = z.object({
+export const marketplaceListingStorageInputSchema = z.object({
   listingId: marketplaceListingIdSchema,
 });
 
-export type MarketplaceArtifactManifestInput = z.infer<
-  typeof marketplaceArtifactManifestInputSchema
->;
+export type MarketplaceListingStorageInput = z.infer<typeof marketplaceListingStorageInputSchema>;
 
 export const marketplaceLatestPublishedVersionsInputSchema = z.object({
   listingIds: z
@@ -146,7 +144,7 @@ export type MarketplaceLatestPublishedVersionsInput = z.infer<
 
 export type MarketplaceLatestPublishedVersions = Record<string, string | null>;
 
-export const marketplaceArtifactManifestSchema = z.object({
+export const marketplaceListingStorageSchema = z.object({
   listingId: marketplaceListingIdSchema,
   slug: marketplaceSlugSchema,
   listingStatus: marketplaceListingStatusSchema,
@@ -154,7 +152,7 @@ export const marketplaceArtifactManifestSchema = z.object({
   versions: z.array(marketplaceVersionSchema),
 });
 
-export type MarketplaceArtifactManifest = z.infer<typeof marketplaceArtifactManifestSchema>;
+export type MarketplaceListingStorage = z.infer<typeof marketplaceListingStorageSchema>;
 
 const marketplaceStaticPublicationIdentitySchema = z.object({
   listingId: marketplaceListingIdSchema,

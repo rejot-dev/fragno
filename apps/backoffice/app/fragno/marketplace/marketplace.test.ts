@@ -8,7 +8,6 @@ import type {
 import { instantiate } from "@fragno-dev/core";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
-import { marketplaceArtifactUploadName } from "./artifacts";
 import type { MarketplaceCreateDraftListingInput } from "./contracts";
 import {
   MarketplaceOwnerConflictError,
@@ -16,6 +15,7 @@ import {
   MarketplaceVersionTransitionError,
 } from "./definition";
 import { marketplaceListingId } from "./owner";
+import { marketplacePackageUploadName } from "./package-files";
 import { MarketplaceListingCursorError } from "./pagination";
 
 const organizationOwner = (orgId: string): MarketplaceOwner => ({
@@ -226,12 +226,12 @@ describe("marketplace fragment", async () => {
     });
   });
 
-  test("projects published versions into the artifact file collection manifest", async () => {
-    const owner = organizationOwner("org-artifacts");
+  test("projects published versions into the package file collection manifest", async () => {
+    const owner = organizationOwner("org-packages");
     const input = draftInput({
       owner,
-      slug: "artifact-backed-automation",
-      metadata: { name: "Artifact backed automation" },
+      slug: "package-backed-automation",
+      metadata: { name: "Package backed automation" },
     });
     const listingId = marketplaceListingId({ ownerScope: owner.scope, slug: input.slug });
 
@@ -246,12 +246,12 @@ describe("marketplace fragment", async () => {
       ),
     ).resolves.toMatchObject({ published: true });
     await expect(
-      callServices(() => marketplace.services.getArtifactManifest({ listingId })),
+      callServices(() => marketplace.services.getListingStorage({ listingId })),
     ).resolves.toEqual({
       listingId,
       slug: input.slug,
       listingStatus: "published",
-      uploadName: marketplaceArtifactUploadName({ marketplace: { kind: "system" }, listingId }),
+      uploadName: marketplacePackageUploadName({ marketplace: { kind: "system" }, listingId }),
       versions: ["1.0.0"],
     });
     await expect(
@@ -268,7 +268,7 @@ describe("marketplace fragment", async () => {
       callServices(() => marketplace.services.archiveListing({ listingId, owner })),
     ).resolves.toMatchObject({ archived: true });
     await expect(
-      callServices(() => marketplace.services.getArtifactManifest({ listingId })),
+      callServices(() => marketplace.services.getListingStorage({ listingId })),
     ).resolves.toMatchObject({
       listingStatus: "archived",
       versions: ["1.0.0"],
@@ -369,7 +369,7 @@ describe("marketplace fragment", async () => {
         callServices(() => marketplace.services.getPublishedListing({ listingId })),
       ).rejects.toThrow(incompleteListingError);
       await expect(
-        callServices(() => marketplace.services.getArtifactManifest({ listingId })),
+        callServices(() => marketplace.services.getListingStorage({ listingId })),
       ).rejects.toThrow(incompleteListingError);
     } finally {
       await testContext.kysely
@@ -380,9 +380,9 @@ describe("marketplace fragment", async () => {
     }
   });
 
-  test("isolates artifact upload names for owners sharing a listing slug", async () => {
-    const slug = "shared-artifact-listing";
-    const listings = [organizationOwner("org-artifact-a"), organizationOwner("org-artifact-b")].map(
+  test("isolates package upload names for owners sharing a listing slug", async () => {
+    const slug = "shared-package-listing";
+    const listings = [organizationOwner("org-package-a"), organizationOwner("org-package-b")].map(
       (owner) => ({
         owner,
         listingId: marketplaceListingId({ ownerScope: owner.scope, slug }),
@@ -393,7 +393,7 @@ describe("marketplace fragment", async () => {
       const input = draftInput({
         owner,
         slug,
-        metadata: { name: `Shared artifact listing ${index + 1}` },
+        metadata: { name: `Shared package listing ${index + 1}` },
       });
       await callServices(() => marketplace.services.createDraftListing(input));
       await callServices(() =>
@@ -407,12 +407,12 @@ describe("marketplace fragment", async () => {
 
     const manifests = await Promise.all(
       listings.map(({ listingId }) =>
-        callServices(() => marketplace.services.getArtifactManifest({ listingId })),
+        callServices(() => marketplace.services.getListingStorage({ listingId })),
       ),
     );
     expect(manifests.map((manifest) => manifest?.uploadName)).toEqual(
       listings.map(({ listingId }) =>
-        marketplaceArtifactUploadName({ marketplace: { kind: "system" }, listingId }),
+        marketplacePackageUploadName({ marketplace: { kind: "system" }, listingId }),
       ),
     );
     expect(manifests[0]?.uploadName).not.toBe(manifests[1]?.uploadName);
@@ -524,7 +524,7 @@ describe("marketplace fragment", async () => {
       callServices(() => marketplace.services.getPublishedListing({ listingId })),
     ).resolves.toMatchObject({ listing: { latestVersion: "1.1.0" } });
     await expect(
-      callServices(() => marketplace.services.getArtifactManifest({ listingId })),
+      callServices(() => marketplace.services.getListingStorage({ listingId })),
     ).resolves.toMatchObject({
       versions: ["1.1.0", "1.0.0"],
     });

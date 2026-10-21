@@ -14,9 +14,9 @@ import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-regis
 import { seedReadyUploadFiles } from "@/file-collection/ready-upload-files.test-support";
 
 import {
-  fetchPublishedMarketplaceArtifactFile,
-  loadPublishedMarketplaceArtifactExplorer,
-} from "./artifact-files.server";
+  fetchPublishedMarketplacePackageFile,
+  loadPublishedMarketplacePackageExplorer,
+} from "./package-files.server";
 
 const manifest = {
   listingId: "system#daily-report",
@@ -26,13 +26,13 @@ const manifest = {
   versions: ["2.0.0", "1.0.0"],
 };
 
-type ArtifactSeedFile = {
+type PackageSeedFile = {
   fileKey: string;
   contentType: string;
   content: string;
 };
 
-const files: ArtifactSeedFile[] = [
+const files: PackageSeedFile[] = [
   createFile("README.md", "text/markdown", "# Package overview"),
   createFile("2.0.0/README.md", "text/markdown", "# Version 2"),
   createFile(
@@ -104,10 +104,10 @@ afterAll(async () => {
   await uploadTest.test.cleanup();
 });
 
-describe("Marketplace artifact files", () => {
+describe("Marketplace package files", () => {
   test("builds the explorer from Upload metadata without reading file content", async () => {
     const { objects, requests } = await createUploadObjects();
-    const result = await loadPublishedMarketplaceArtifactExplorer({
+    const result = await loadPublishedMarketplacePackageExplorer({
       manifest,
       objects,
       request: new Request("https://backoffice.test/marketplace/daily-report"),
@@ -144,7 +144,7 @@ describe("Marketplace artifact files", () => {
       provider: "database",
       fileKeys: Array.from({ length: 501 }, (_, index) => `2.0.0/generated/file-${index}.txt`),
     });
-    const result = await loadPublishedMarketplaceArtifactExplorer({
+    const result = await loadPublishedMarketplacePackageExplorer({
       manifest,
       objects,
       request: new Request("https://backoffice.test/marketplace/daily-report"),
@@ -158,9 +158,9 @@ describe("Marketplace artifact files", () => {
     assert(requests.length === 2);
   });
 
-  test("rejects artifact exploration for an unpublished manifest", async () => {
+  test("rejects package exploration for an unpublished manifest", async () => {
     const { objects, requests } = await createUploadObjects();
-    const result = await loadPublishedMarketplaceArtifactExplorer({
+    const result = await loadPublishedMarketplacePackageExplorer({
       manifest: { ...manifest, listingStatus: "draft" },
       objects,
       request: new Request("https://backoffice.test/marketplace/daily-report"),
@@ -176,11 +176,11 @@ describe("Marketplace artifact files", () => {
 
   test("streams one selected file through the lazy content route", async () => {
     const { objects, requests } = await createUploadObjects();
-    const response = await fetchPublishedMarketplaceArtifactFile({
+    const response = await fetchPublishedMarketplacePackageFile({
       manifest,
       objects,
       request: new Request("https://backoffice.test/marketplace/daily-report"),
-      path: "/artifact/README.md",
+      path: "/package/README.md",
     });
 
     assert(response.status === 200);
@@ -193,24 +193,24 @@ describe("Marketplace artifact files", () => {
 
   test("rejects invalid file paths before requesting Upload content", async () => {
     const { objects, requests } = await createUploadObjects();
-    const response = await fetchPublishedMarketplaceArtifactFile({
+    const response = await fetchPublishedMarketplacePackageFile({
       manifest,
       objects,
       request: new Request("https://backoffice.test/marketplace/daily-report"),
-      path: "/artifact/2.0.0/../private.txt",
+      path: "/package/2.0.0/../private.txt",
     });
 
     assert(response.status === 400);
     assert(requests.length === 0);
   });
 
-  test("rejects files from an unpublished artifact manifest", async () => {
+  test("rejects files from an unpublished listing storage", async () => {
     const { objects, requests } = await createUploadObjects();
-    const response = await fetchPublishedMarketplaceArtifactFile({
+    const response = await fetchPublishedMarketplacePackageFile({
       manifest: { ...manifest, listingStatus: "draft" },
       objects,
       request: new Request("https://backoffice.test/marketplace/daily-report"),
-      path: "/artifact/2.0.0/README.md",
+      path: "/package/2.0.0/README.md",
     });
 
     assert(response.status === 404);
@@ -236,7 +236,7 @@ async function createUploadObjects(): Promise<{
     form.set("fileKey", file.fileKey);
     form.set(
       "file",
-      new File([file.content], file.fileKey.split("/").at(-1) ?? "artifact", {
+      new File([file.content], file.fileKey.split("/").at(-1) ?? "package", {
         type: file.contentType,
       }),
     );
@@ -264,7 +264,7 @@ async function createUploadObjects(): Promise<{
 
 async function readStoredFile(fileKey: string) {
   const fileUow = uploadTest.fragments.upload.db
-    .createUnitOfWork("read-marketplace-artifact-file")
+    .createUnitOfWork("read-marketplace-package-file")
     .forSchema(uploadSchema)
     .findFirst("file", (builder) =>
       builder.whereIndex("idx_file_provider_key", (expression) =>
@@ -275,6 +275,6 @@ async function readStoredFile(fileKey: string) {
   return (await fileUow.retrievalPhase)[0];
 }
 
-function createFile(fileKey: string, contentType: string, content: string): ArtifactSeedFile {
+function createFile(fileKey: string, contentType: string, content: string): PackageSeedFile {
   return { fileKey, contentType, content };
 }

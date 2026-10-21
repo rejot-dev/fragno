@@ -33,7 +33,7 @@ import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/
 import { captureBundledMarketplaceRelease } from "@/fragno/marketplace/bundled-release";
 import { marketplaceStaticPublicationResultSchema } from "@/fragno/marketplace/contracts";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
-import { marketplaceReleaseArtifactFiles } from "@/fragno/marketplace/release-snapshot";
+import { marketplaceReleasePackageFiles } from "@/fragno/marketplace/release-snapshot";
 import { listStaticMarketplaceEntries } from "@/fragno/marketplace/static-entries";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
@@ -96,7 +96,7 @@ describe("static Marketplace publication scenarios", () => {
               await expect(
                 ctx.runtime.objects.marketplace
                   .singleton()
-                  .commands.getArtifactManifest({ listingId }),
+                  .commands.getListingStorage({ listingId }),
               ).resolves.toMatchObject({
                 listingStatus: "published",
                 versions: expect.arrayContaining([entry.version]),
@@ -166,7 +166,7 @@ describe("static Marketplace publication scenarios", () => {
             );
             assert(entry);
             const release = await captureBundledMarketplaceRelease(entry);
-            const files = await marketplaceReleaseArtifactFiles(release);
+            const files = await marketplaceReleasePackageFiles(release);
             const publisherExecution = createBackofficeSystemExecution({ kind: "system" });
             const scopes: BackofficeContextScope[] = [
               { kind: "org", orgId: "org-1" },
@@ -273,7 +273,7 @@ describe("static Marketplace publication scenarios", () => {
                 });
               }
               await expect(
-                ctx.runtime.objects.marketplace.singleton().commands.getArtifactManifest({
+                ctx.runtime.objects.marketplace.singleton().commands.getListingStorage({
                   listingId: "system#telegram-test-command",
                 }),
               ).resolves.toBeNull();
@@ -316,7 +316,7 @@ describe("static Marketplace publication scenarios", () => {
               ),
             ).rejects.toThrow("Required permission: internal.manage.");
             await expect(
-              ctx.runtime.objects.marketplace.singleton().commands.getArtifactManifest({
+              ctx.runtime.objects.marketplace.singleton().commands.getListingStorage({
                 listingId: "system#telegram-test-command",
               }),
             ).resolves.toBeNull();

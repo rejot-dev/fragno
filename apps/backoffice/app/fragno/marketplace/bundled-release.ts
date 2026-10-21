@@ -2,9 +2,9 @@ import type { PreparedFileBatchEntry } from "@fragno-dev/upload/types";
 
 import { getUploadFileSnapshots } from "@/file-collection/get-upload-file-snapshots";
 import {
-  createMarketplaceArtifactUpload,
-  transferMarketplaceArtifactUpload,
-} from "@/fragno/automation/marketplace-artifact-upload";
+  createMarketplacePackageUpload,
+  transferMarketplacePackageUpload,
+} from "@/fragno/automation/marketplace-package-upload";
 import {
   throwMarketplaceUploadRouteError,
   throwUnexpectedMarketplaceUploadResponse,
@@ -12,12 +12,12 @@ import {
 import type { UploadRouteCaller } from "@/fragno/upload-server";
 import { sha256Hex } from "@/lib/crypto";
 
-import {
-  marketplaceRootArtifactFilePath,
-  prepareMarketplaceArtifactFiles,
-  type MarketplaceStaticArtifactEntry,
-} from "./artifacts";
 import { marketplaceCreateDraftListingInputSchema } from "./contracts";
+import {
+  marketplaceRootPackageFilePath,
+  prepareMarketplacePackageFiles,
+  type MarketplaceStaticPackageEntry,
+} from "./package-files";
 import {
   captureMarketplaceReleaseSnapshot,
   encodeMarketplaceReleaseBytes,
@@ -26,7 +26,7 @@ import {
 
 /** Bundled files are captured before enqueueing, using the same resolved release shape as workspace packages. */
 export async function captureBundledMarketplaceRelease(
-  entry: MarketplaceStaticArtifactEntry,
+  entry: MarketplaceStaticPackageEntry,
 ): Promise<MarketplaceReleaseSnapshot> {
   const identity = marketplaceCreateDraftListingInputSchema.parse({
     owner: entry.owner,
@@ -35,7 +35,7 @@ export async function captureBundledMarketplaceRelease(
     metadata: entry.metadata,
   });
   const files = await Promise.all(
-    prepareMarketplaceArtifactFiles(entry.files).map(async (file) => {
+    prepareMarketplacePackageFiles(entry.files).map(async (file) => {
       const bytes = new TextEncoder().encode(file.content);
       return {
         relativePath: file.relativePath,
@@ -53,9 +53,9 @@ export async function initializeMarketplaceListingRootFiles(
   routes: UploadRouteCaller,
   files: Readonly<Record<string, string>>,
 ): Promise<void> {
-  const roots = prepareMarketplaceArtifactFiles(files).map((file) => ({
+  const roots = prepareMarketplacePackageFiles(files).map((file) => ({
     ...file,
-    fileKey: marketplaceRootArtifactFilePath(file.relativePath),
+    fileKey: marketplaceRootPackageFilePath(file.relativePath),
   }));
   const fileKeys = roots.map((file) => file.fileKey);
   const existing = new Set(
@@ -69,7 +69,7 @@ export async function initializeMarketplaceListingRootFiles(
       continue;
     }
     const content = new TextEncoder().encode(file.content);
-    const uploadId = await createMarketplaceArtifactUpload({
+    const uploadId = await createMarketplacePackageUpload({
       routes,
       file: {
         ...file,
@@ -77,7 +77,7 @@ export async function initializeMarketplaceListingRootFiles(
         checksum: { algo: "sha256", value: await sha256Hex(content) },
       },
     });
-    const prepared = await transferMarketplaceArtifactUpload({ routes, uploadId, content });
+    const prepared = await transferMarketplacePackageUpload({ routes, uploadId, content });
     entries.push({ kind: "write", uploadId: prepared.uploadId, precondition: { kind: "absent" } });
   }
   if (entries.length === 0) {

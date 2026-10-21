@@ -21,8 +21,8 @@ import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "@/fragno/automation/actors";
 import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
-import { marketplaceArtifactUploadName } from "@/fragno/marketplace/artifacts";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
+import { marketplacePackageUploadName } from "@/fragno/marketplace/package-files";
 import { getStaticMarketplaceEntry } from "@/fragno/marketplace/static-entries";
 import { sha256Hex } from "@/lib/crypto";
 
@@ -75,11 +75,11 @@ const GITHUB_CHANNEL_ID = marketplaceListingId({
 const WORKFLOW_FILE = "automations/telegram-test-command.workflow.js";
 const TARGET_SCOPE = { kind: "org", orgId: "org-1" } as const;
 
-async function publishMarketplaceArtifacts(ctx: BackofficeScenarioContext) {
+async function publishMarketplacePackages(ctx: BackofficeScenarioContext) {
   await ctx.runtime.objects.automations.singleton().commands.requestStaticMarketplacePublications();
 }
 
-async function installMarketplaceArtifact(
+async function installMarketplacePackage(
   ctx: BackofficeScenarioContext,
   input: {
     listingId: string;
@@ -183,11 +183,11 @@ describe("marketplace lock scenarios", () => {
         name: "install Marketplace into a nested directory",
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then, runner }) => [
-          then.assert("publish artifacts", publishMarketplaceArtifacts),
+          then.assert("publish packages", publishMarketplacePackages),
           runner.drain(),
           then.assert("start the installation at the chosen path", async (ctx) => {
             await expect(
-              installMarketplaceArtifact(ctx, {
+              installMarketplacePackage(ctx, {
                 listingId: LISTING_ID,
                 version: "1.4.0",
                 installationRoot: `${installationRoot}/`,
@@ -251,10 +251,10 @@ describe("marketplace lock scenarios", () => {
         name: "install multiple Marketplace items into one root",
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then, runner }) => [
-          then.assert("publish artifacts", publishMarketplaceArtifacts),
+          then.assert("publish packages", publishMarketplacePackages),
           runner.drain(),
           then.assert("install the Telegram channel", async (ctx) => {
-            await installMarketplaceArtifact(ctx, {
+            await installMarketplacePackage(ctx, {
               listingId: TELEGRAM_CHANNEL_ID,
               version: "1.1.0",
               installationRoot,
@@ -262,7 +262,7 @@ describe("marketplace lock scenarios", () => {
           }),
           runner.drain(),
           then.assert("install the GitHub channel", async (ctx) => {
-            await installMarketplaceArtifact(ctx, {
+            await installMarketplacePackage(ctx, {
               listingId: GITHUB_CHANNEL_ID,
               version: "1.0.0",
               installationRoot,
@@ -271,7 +271,7 @@ describe("marketplace lock scenarios", () => {
           runner.drain(),
           then.assert("reinstall the Telegram channel", async (ctx) => {
             await expect(
-              installMarketplaceArtifact(ctx, {
+              installMarketplacePackage(ctx, {
                 listingId: TELEGRAM_CHANNEL_ID,
                 version: "1.1.0",
                 installationRoot,
@@ -324,16 +324,16 @@ describe("marketplace lock scenarios", () => {
     });
     await runBackofficeScenario(
       defineBackofficeScenario({
-        // Writing to the system-scope artifact upload runs system automations, which load more objects.
+        // Writing to the system-scope package upload runs system automations, which load more objects.
         objects: allLocalObjects,
         name: "upgrade a Marketplace installation in place",
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then, runner }) => [
-          then.assert("publish artifacts", publishMarketplaceArtifacts),
+          then.assert("publish packages", publishMarketplacePackages),
           runner.drain(),
           then.assert("version 1.0.0 also ships two notes that 1.4.0 drops", async (ctx) => {
-            const artifact = ctx.runtime.objects.upload.forName(
-              marketplaceArtifactUploadName({
+            const packageUpload = ctx.runtime.objects.upload.forName(
+              marketplacePackageUploadName({
                 marketplace: { kind: "system" },
                 listingId: LISTING_ID,
               }),
@@ -342,10 +342,10 @@ describe("marketplace lock scenarios", () => {
               await writeUploadFile({
                 fileKey: `1.0.0/notes/${note}.md`,
                 content: `shipped ${note} note`,
-                fetch: (request) => artifact.http.fetch(request),
+                fetch: (request) => packageUpload.http.fetch(request),
               });
             }
-            await installMarketplaceArtifact(ctx, {
+            await installMarketplacePackage(ctx, {
               listingId: LISTING_ID,
               version: "1.0.0",
               installationRoot,
@@ -360,7 +360,7 @@ describe("marketplace lock scenarios", () => {
               fetch: (request) => upload.http.fetch(request),
             });
             await expect(
-              installMarketplaceArtifact(ctx, {
+              installMarketplacePackage(ctx, {
                 listingId: LISTING_ID,
                 version: "1.4.0",
                 installationRoot,
@@ -419,10 +419,10 @@ describe("marketplace lock scenarios", () => {
         name: "preserve edited files when upgrading a Marketplace installation",
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then, runner }) => [
-          then.assert("publish artifacts", publishMarketplaceArtifacts),
+          then.assert("publish packages", publishMarketplacePackages),
           runner.drain(),
           then.assert("install version 1.0.0", async (ctx) => {
-            await installMarketplaceArtifact(ctx, {
+            await installMarketplacePackage(ctx, {
               listingId: LISTING_ID,
               version: "1.0.0",
               installationRoot,
@@ -436,7 +436,7 @@ describe("marketplace lock scenarios", () => {
               content: "// edited in the workspace",
               fetch: (request) => upload.http.fetch(request),
             });
-            await installMarketplaceArtifact(ctx, {
+            await installMarketplacePackage(ctx, {
               listingId: LISTING_ID,
               version: "1.4.0",
               installationRoot,
@@ -462,7 +462,7 @@ describe("marketplace lock scenarios", () => {
             const file = await readWorkspaceFile(ctx, `${installationRoot}/${WORKFLOW_FILE}`);
             assert(file.ok);
             await expect(file.text()).resolves.toBe("// edited in the workspace");
-            await installMarketplaceArtifact(ctx, {
+            await installMarketplacePackage(ctx, {
               listingId: LISTING_ID,
               version: "1.4.0",
               installationRoot: "/workspace/second",
@@ -530,7 +530,7 @@ describe("marketplace lock scenarios", () => {
           name: "preserve an invalid Marketplace lock",
           setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
           steps: ({ then, runner }) => [
-            then.assert("publish artifacts", publishMarketplaceArtifacts),
+            then.assert("publish packages", publishMarketplacePackages),
             runner.drain(),
             then.assert("write an invalid lock and request installation", async (ctx) => {
               const upload = ctx.runtime.objects.upload.for(TARGET_SCOPE);
@@ -540,7 +540,7 @@ describe("marketplace lock scenarios", () => {
                 content,
                 fetch: (request) => upload.http.fetch(request),
               });
-              await installMarketplaceArtifact(ctx, {
+              await installMarketplacePackage(ctx, {
                 listingId: LISTING_ID,
                 version: "1.0.0",
                 installationRoot,
@@ -613,7 +613,7 @@ describe("marketplace lock scenarios", () => {
         },
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then, runner }) => [
-          then.assert("publish artifacts", publishMarketplaceArtifacts),
+          then.assert("publish packages", publishMarketplacePackages),
           runner.drain(),
           then.assert("seed a matching file and request installation", async (ctx) => {
             const entry = getStaticMarketplaceEntry({ slug: "telegram-channel", version: "1.0.1" });
@@ -625,7 +625,7 @@ describe("marketplace lock scenarios", () => {
               content: entry.files[matchingFile],
               fetch: (request) => upload.http.fetch(request),
             });
-            await installMarketplaceArtifact(ctx, {
+            await installMarketplacePackage(ctx, {
               listingId: TELEGRAM_CHANNEL_ID,
               version: "1.0.1",
               installationRoot,
@@ -656,7 +656,7 @@ describe("marketplace lock scenarios", () => {
   });
 
   test.each(["marketplace-lock.json", "marketplace-lock.json/nested.json"])(
-    "refuses an artifact that would overwrite or use the root lock as a directory: %s",
+    "refuses a package that would overwrite or use the root lock as a directory: %s",
     async (relativePath) => {
       const installationRoot = "/workspace";
       const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
@@ -672,11 +672,11 @@ describe("marketplace lock scenarios", () => {
           name: "reserve marketplace-lock.json for installation bookkeeping",
           setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
           steps: ({ then, runner }) => [
-            then.assert("publish artifacts", publishMarketplaceArtifacts),
+            then.assert("publish packages", publishMarketplacePackages),
             runner.drain(),
-            then.assert("add a reserved artifact file and request installation", async (ctx) => {
+            then.assert("add a reserved package file and request installation", async (ctx) => {
               const upload = ctx.runtime.objects.upload.forName(
-                marketplaceArtifactUploadName({
+                marketplacePackageUploadName({
                   marketplace: { kind: "system" },
                   listingId: LISTING_ID,
                 }),
@@ -686,7 +686,7 @@ describe("marketplace lock scenarios", () => {
                 content: "cannot overwrite installation bookkeeping",
                 fetch: (request) => upload.http.fetch(request),
               });
-              await installMarketplaceArtifact(ctx, {
+              await installMarketplacePackage(ctx, {
                 listingId: LISTING_ID,
                 version: "1.0.0",
                 installationRoot,
@@ -698,7 +698,7 @@ describe("marketplace lock scenarios", () => {
               instanceId: workflowInstanceId,
               status: "errored",
             }),
-            then.assert("no artifact files or lock were installed", async (ctx) => {
+            then.assert("no package files or lock were installed", async (ctx) => {
               assert(
                 (await readWorkspaceFile(ctx, `${installationRoot}/${WORKFLOW_FILE}`)).status ===
                   404,
@@ -752,10 +752,10 @@ describe("marketplace lock scenarios", () => {
         },
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then, runner, when }) => [
-          then.assert("publish artifacts", publishMarketplaceArtifacts),
+          then.assert("publish packages", publishMarketplacePackages),
           runner.drain(),
           then.assert("request installation", async (ctx) => {
-            await installMarketplaceArtifact(ctx, {
+            await installMarketplacePackage(ctx, {
               listingId: LISTING_ID,
               version: "1.0.0",
               installationRoot,
@@ -853,10 +853,10 @@ describe("marketplace lock scenarios", () => {
         },
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then, runner, when }) => [
-          then.assert("publish artifacts", publishMarketplaceArtifacts),
+          then.assert("publish packages", publishMarketplacePackages),
           runner.drain(),
           then.assert("request installation", async (ctx) => {
-            await installMarketplaceArtifact(ctx, {
+            await installMarketplacePackage(ctx, {
               listingId: LISTING_ID,
               version: "1.0.0",
               installationRoot,
