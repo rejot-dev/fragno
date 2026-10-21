@@ -1584,6 +1584,81 @@ test("durable Pi paginates history, streams exports, and compacts without deleti
   );
 });
 
+test("clearing an agent's context starts its next turn fresh and keeps earlier entries in history", async () => {
+  const scope: BackofficeContextScope = { kind: "org", orgId: "reset-org" };
+  const modelContexts: string[] = [];
+  const answer =
+    (text: string): FauxResponseStep =>
+    (context) => {
+      modelContexts.push(JSON.stringify(context.messages));
+      return fauxAssistantMessage([fauxText(text)]);
+    };
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "durable Pi context reset",
+      options: { drain: false },
+      piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+      objects: {
+        ...scenarioObjects,
+        PI: ({ state, runtime, openPiSessionStore, piAgentIdFromConfig, nowEpochMs }) => {
+          const faux = fauxProvider();
+          faux.setResponses([answer("First answer."), answer("Fresh answer.")]);
+          const models = createModels();
+          models.setProvider(faux.provider);
+          return new InMemoryPiObject({
+            state,
+            dependencies: createScriptedPiAgentDependencies(models),
+            runtime,
+            openStorage: openPiSessionStore,
+            idFromConfig: piAgentIdFromConfig,
+            nowEpochMs,
+          });
+        },
+      },
+      steps: ({ then }) => [
+        then.assert("a cleared context hides earlier turns from the model", async ({ runtime }) => {
+          const first = await prompt(runtime, scope, {
+            requestId: "before-reset",
+            content: "Remember the old topic.",
+          });
+          assert.equal(first.status, 202, await first.clone().text());
+          await runtime.drain();
+
+          const reset = await managerRequest(runtime, scope, "/agents/assistant/reset", null);
+          assert.equal(reset.status, 204, await reset.clone().text());
+          await runtime.drain();
+
+          // The cleared view is only the reset's head marker; the old turn is in history before it.
+          const cleared = await readView(runtime, scope);
+          const before = cleared.entries[0]?.head;
+          assert(before !== undefined, "the cleared view leads with its head marker");
+          expect(userEntryTexts(cleared)).toEqual([]);
+          const history = await managerRequest(
+            runtime,
+            scope,
+            `/agents/assistant/entries?${new URLSearchParams({ before: String(before), pageSize: "100" })}`,
+          );
+          assert.equal(history.status, 200, await history.clone().text());
+          expect(JSON.stringify(await history.json())).toContain("Remember the old topic.");
+
+          const second = await prompt(runtime, scope, {
+            requestId: "after-reset",
+            content: "Start the new topic.",
+          });
+          assert.equal(second.status, 202, await second.clone().text());
+          await runtime.drain();
+
+          expect(modelContexts).toHaveLength(2);
+          expect(modelContexts[1]).toContain("Start the new topic.");
+          expect(modelContexts[1]).not.toContain("Remember the old topic.");
+          expect(modelContexts[1]).not.toContain("First answer.");
+          expect(userEntryTexts(await readView(runtime, scope))).toEqual(["Start the new topic."]);
+        }),
+      ],
+    }),
+  );
+});
+
 test("SQLite Pi directories and agent transcripts survive a complete local runtime restart", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "backoffice-pi-manager-"));
   const views: { scope: BackofficeContextScope; view: ConversationView }[] = [];

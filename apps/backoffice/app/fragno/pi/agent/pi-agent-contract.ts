@@ -214,6 +214,11 @@ export type PiAgent = {
     request: z.infer<typeof piAgentCompactionSchema>,
   ): Promise<{ taskId: number }>;
   getCompaction(config: PiAgentConfig, taskId: number): Promise<PiAgentCompactionStatus | null>;
+  /**
+   * Starts a new, empty context; earlier entries stay in history. A running turn ends at its next
+   * boundary, where the reset lands.
+   */
+  reset(config: PiAgentConfig): Promise<void>;
   abort(config: PiAgentConfig): Promise<void>;
 };
 

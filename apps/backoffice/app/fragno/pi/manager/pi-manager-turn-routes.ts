@@ -209,6 +209,22 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
         },
       }),
       defineRoute({
+        method: "POST",
+        path: "/agents/:agentName/reset",
+        errorCodes: ["AGENT_NOT_STARTED"],
+        handler: async function ({ pathParams }, { empty, error }) {
+          const { config: agent } = await this.handlerTx()
+            .withServiceCalls(() => [services.getAgent(pathParams.agentName)])
+            .transform(({ serviceResult: [agent] }) => agent)
+            .execute();
+          if (!agent) {
+            return error({ code: "AGENT_NOT_STARTED", message: "Pi agent has no turns yet." }, 404);
+          }
+          await config.agent(agent).reset(agent);
+          return empty(204);
+        },
+      }),
+      defineRoute({
         method: "GET",
         path: "/agents/:agentName/submissions/:requestId/wait",
         queryParameters: ["waitMs"],

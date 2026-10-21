@@ -1251,6 +1251,7 @@ const createFakePiManagerApi = (
     async getCompaction(_config, taskId) {
       return { taskId, status: "completed", message: null };
     },
+    async reset() {},
     async abort() {},
   };
 

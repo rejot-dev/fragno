@@ -435,6 +435,13 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
     }
   }
 
+  async reset(config: PiAgentConfig): Promise<void> {
+    const { harness } = await this.#requireAgent(config);
+    // A busy conversation queues the reset for its next boundary, which only a running wake reaches.
+    await this.#state.storage.setAlarm(this.#nowEpochMs());
+    await (await harness.root(BACKGROUND_CONTEXT)).reset(undefined, BACKGROUND_CONTEXT);
+  }
+
   async abort(config: PiAgentConfig): Promise<void> {
     const { harness } = await this.#requireAgent(config);
     await this.#state.storage.setAlarm(this.#nowEpochMs());
@@ -581,6 +588,9 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
   }
   async watchView(config: PiAgentConfig): Promise<ReadableStream<Uint8Array>> {
     return await this.#object.watchView(config);
+  }
+  async reset(config: PiAgentConfig): Promise<void> {
+    await this.#object.reset(config);
   }
   async abort(config: PiAgentConfig): Promise<void> {
     await this.#object.abort(config);

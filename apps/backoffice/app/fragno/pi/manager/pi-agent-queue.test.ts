@@ -129,6 +129,7 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
     exportEntries: unused,
     compact: unused,
     getCompaction: unused,
+    reset: unused,
     abort: async () => undefined,
   };
   const config = {
