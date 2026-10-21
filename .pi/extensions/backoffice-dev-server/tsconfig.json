@@ -1,0 +1,10 @@
+{
+  "extends": "@fragno-private/typescript-config/tsconfig.node.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    "allowImportingTsExtensions": true
+  },
+  "include": ["index.ts"],
+  "exclude": ["node_modules"]
+}
