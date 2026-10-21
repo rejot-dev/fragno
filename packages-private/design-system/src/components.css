@@ -267,6 +267,9 @@
   }
 }
 
+/* Transitions get no duration at all, not the usual 0.01ms: transition-property defaults to all, so
+   a duration would make every element transition its inherited visibility, keeping a just-shown
+   control hidden, and unfocusable, for a frame. */
 :root[data-reduced-motion="reduce"] [data-backoffice-root],
 :root[data-reduced-motion="reduce"] [data-backoffice-root]::before,
 :root[data-reduced-motion="reduce"] [data-backoffice-root]::after,
@@ -276,7 +279,7 @@
   animation-duration: 0.01ms !important;
   animation-iteration-count: 1 !important;
   scroll-behavior: auto !important;
-  transition-duration: 0.01ms !important;
+  transition-duration: 0s !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -289,7 +292,7 @@
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
-    transition-duration: 0.01ms !important;
+    transition-duration: 0s !important;
   }
 }
 
