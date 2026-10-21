@@ -278,6 +278,61 @@ test("people an app sends to Backoffice sign up with a code in the app's name, e
   );
 });
 
+test("where addresses go unverified, a code sign-in keeps the account's password and sessions", async () => {
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      objects: scenarioObjects,
+      name: "code sign-in to an unverified password account",
+      // As in local development: accounts sign in without ever verifying their email.
+      env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_INVITATIONS_ENABLED: "false" },
+      fakes: ({ fake }) => ({ resend: fake.resend() }),
+      vars: () => ({ passwordCookie: "" }),
+      setup: ({ given }) => [given.auth.user({ id: "platform-admin", role: "admin" })],
+      steps: ({ when, then }) => [
+        when.auth.signUp({
+          email: "ada@example.test",
+          password: "password123",
+          captureSessionCookieAs: "passwordCookie",
+        }),
+        then.assert("the code signs in the same account", async (ctx) => {
+          const existing = await sessionUser(ctx, ctx.vars.passwordCookie);
+          assert.isFalse(existing.emailVerified);
+          const signIn = await openSignIn(
+            ctx,
+            await registerApp(ctx, "bookkeeping", "first-party"),
+          );
+          await submit(ctx, signIn, { intent: "send_code", email: "ada@example.test" });
+          const [code] = sentCodes(ctx, "ada@example.test");
+          assert(code);
+          const signedIn = await submit(ctx, signIn, {
+            intent: "verify_code",
+            email: "ada@example.test",
+            code,
+          });
+          assert(signedIn instanceof Response, JSON.stringify(signedIn));
+          const { cookie } = await followToApp(ctx, signedIn);
+          expect(await sessionUser(ctx, cookie)).toEqual({
+            id: existing.id,
+            email: "ada@example.test",
+            emailVerified: true,
+          });
+        }),
+        then.assert("the password and the earlier session still work", async (ctx) => {
+          assert.equal((await sessionUser(ctx, ctx.vars.passwordCookie)).email, "ada@example.test");
+          const passwordSignIn = await ctx.runtime.objects.auth.singleton().http.fetch(
+            new Request(`${origin}/api/auth/sign-in/email`, {
+              method: "POST",
+              headers: { origin, "content-type": "application/json" },
+              body: JSON.stringify({ email: "ada@example.test", password: "password123" }),
+            }),
+          );
+          assert.equal(passwordSignIn.status, 200, await passwordSignIn.clone().text());
+        }),
+      ],
+    }),
+  );
+});
+
 test("only a first-party app's request can ask for a sign-in code", async () => {
   await runBackofficeScenario(
     defineBackofficeScenario({

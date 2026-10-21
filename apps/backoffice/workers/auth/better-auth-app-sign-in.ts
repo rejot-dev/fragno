@@ -4,6 +4,7 @@ import type { BetterAuthPlugin } from "better-auth";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { emailOTP } from "better-auth/plugins/email-otp";
 
+import type { GenericEndpointContext } from "@better-auth/core";
 import { getOAuthProviderState } from "@better-auth/oauth-provider";
 
 const APP_SIGN_IN_CODE_LIFETIME_SECONDS = 10 * 60;
@@ -32,6 +33,7 @@ const appSignInRequest = defineRequestState<AppBranding | null>(() => null);
  * the plugin must come after it.
  */
 export function createBackofficeAppSignInPlugins(input: {
+  emailVerificationEnabled: boolean;
   findFirstPartyBranding(clientId: string): Promise<AppBranding | null>;
   sendSignInCode(input: {
     email: string;
@@ -61,6 +63,25 @@ export function createBackofficeAppSignInPlugins(input: {
     }),
     {
       id: "fragno-backoffice-app-sign-in",
+      init() {
+        if (input.emailVerificationEnabled) {
+          return {};
+        }
+        // A code sign-in to an unverified account deletes its password, links, and sessions, so
+        // that the address's owner inherits nothing set up before they proved it. Without email
+        // verification, Backoffice lets unverified accounts sign in, so that access is theirs.
+        const keepAccessOnCodeSignIn = {
+          delete: {
+            before: async (_row: unknown, context: GenericEndpointContext | null) =>
+              context?.path !== "/sign-in/email-otp",
+          },
+        };
+        return {
+          options: {
+            databaseHooks: { account: keepAccessOnCodeSignIn, session: keepAccessOnCodeSignIn },
+          },
+        };
+      },
       hooks: {
         before: [
           {

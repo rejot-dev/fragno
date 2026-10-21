@@ -957,6 +957,7 @@ export class InMemoryAuthObject implements AuthObject {
         ]
       : [];
     const appSignInPlugins = createBackofficeAppSignInPlugins({
+      emailVerificationEnabled: emailVerification.enabled,
       findFirstPartyBranding: async (clientId) => {
         const app = await runtime.objects.apps
           .singleton()
