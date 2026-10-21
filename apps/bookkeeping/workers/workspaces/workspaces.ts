@@ -222,11 +222,13 @@ export class Workspaces extends DurableObject<CloudflareEnv> {
     return row ?? null;
   }
 
+  /** Backoffice returns the pending invitation when an address is invited again; the first is kept. */
   addInvitation(input: Omit<WorkspaceInvitation, "workspace"> & { workspaceId: string }): void {
     this.ctx.storage.sql.exec(
       `INSERT INTO "workspace_invitation"
          ("id", "workspaceId", "email", "roles", "invitedBy", "expiresAt")
-       VALUES (?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT ("id") DO NOTHING`,
       input.id,
       input.workspaceId,
       input.email,

@@ -125,9 +125,12 @@ export async function loader({ request, params }: Route.LoaderArgs) {
   };
 }
 
-/** Invites someone in Backoffice, which allows only owners and admins to, and keeps the link. */
+/**
+ * Has Backoffice invite someone as the signed-in person, which it allows only owners and admins
+ * to, and keeps the link.
+ */
 export async function action({ request, params }: Route.ActionArgs) {
-  const { user, membership, backoffice, scope } = await backofficeFor(request, params.slug);
+  const { user, membership } = await requireWorkspace(request, params.slug);
   assertSameOrigin(request);
   const parsed = inviteSchema.safeParse(Object.fromEntries(await request.formData()));
   if (!parsed.success) {
@@ -138,8 +141,10 @@ export async function action({ request, params }: Route.ActionArgs) {
   }
   let invitation;
   try {
-    invitation = await callBackoffice(() =>
-      backoffice.call(scope, "org.invitations.create", {
+    invitation = await callBackoffice(async () =>
+      (await createProvisioningClient(env)).call("invitations.create", {
+        organizationId: membership.workspace.id,
+        inviterUserId: user.backofficeUserId,
         email: parsed.data.email,
         roles: [parsed.data.role],
       }),

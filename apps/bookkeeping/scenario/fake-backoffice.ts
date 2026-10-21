@@ -341,31 +341,6 @@ export class FakeBackoffice {
           nextCursor: null,
           hasNextPage: false,
         }));
-      case "org.invitations.create":
-        return respond("org.invitations.create", body, ({ email, roles }) => {
-          if (!member.roles.some((role) => MANAGING_ROLES.has(role))) {
-            throw new ApiError("forbidden", "Only owners and admins invite.");
-          }
-          if (roles.includes("owner") && !member.roles.includes("owner")) {
-            throw new ApiError("forbidden", "Only owners invite owners.");
-          }
-          const invitation: Invitation = {
-            id: randomToken(),
-            organizationId: organization.id,
-            email,
-            roles,
-            status: "pending",
-            expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
-            createdAt: new Date().toISOString(),
-          };
-          this.#invitations.set(invitation.id, invitation);
-          const { id, status: _status, ...record } = invitation;
-          return {
-            invitationId: id,
-            ...record,
-            url: `${this.origin}/backoffice/invitations/${id}`,
-          };
-        });
       default:
         throw new ApiError("not_found", `Operation '${operationId}' is not available here.`);
     }
@@ -454,6 +429,57 @@ export class FakeBackoffice {
             projectId: project.id,
             slug: project.slug,
             created: existing === undefined,
+          }),
+        );
+      }
+      case "invitations.create": {
+        const input = backofficeProvisioningOperations[operationId].input.parse(body);
+        const organization = this.#organizations.get(input.organizationId);
+        if (organization?.installation !== "active") {
+          throw new ApiError("not_found", "This app is not installed in the organization.");
+        }
+        const inviter = organization.members.get(input.inviterUserId);
+        if (!inviter || !this.#consents.has(input.inviterUserId)) {
+          throw new ApiError(
+            "forbidden",
+            `User '${input.inviterUserId}' is not a member who authorized this app.`,
+          );
+        }
+        if (!inviter.roles.some((role) => MANAGING_ROLES.has(role))) {
+          throw new ApiError("forbidden", "Only owners and admins invite.");
+        }
+        if (input.roles.includes("owner") && !inviter.roles.includes("owner")) {
+          throw new ApiError("forbidden", "Only owners invite owners.");
+        }
+        const invitee = this.#userByEmail(input.email);
+        if (invitee && organization.members.has(invitee.id)) {
+          throw new ApiError("conflict", "User is already a member of this organization.");
+        }
+        const pending = [...this.#invitations.values()].find(
+          (invitation) =>
+            invitation.organizationId === organization.id &&
+            invitation.email === input.email &&
+            invitation.status === "pending" &&
+            Date.parse(invitation.expiresAt) > Date.now(),
+        );
+        if (pending && [...pending.roles].sort().join() !== [...input.roles].sort().join()) {
+          throw new ApiError("conflict", `'${input.email}' is already invited with other roles.`);
+        }
+        const invitation: Invitation = pending ?? {
+          id: randomToken(),
+          organizationId: organization.id,
+          email: input.email,
+          roles: input.roles,
+          status: "pending",
+          expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+          createdAt: new Date().toISOString(),
+        };
+        this.#invitations.set(invitation.id, invitation);
+        const { id, status: _status, ...record } = invitation;
+        return Response.json(
+          backofficeProvisioningOperations[operationId].output.parse({
+            invitationId: id,
+            ...record,
           }),
         );
       }
