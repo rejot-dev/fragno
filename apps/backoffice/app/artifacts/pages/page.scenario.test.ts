@@ -581,6 +581,44 @@ describe("workspace pages", () => {
     );
   });
 
+  test("a grouped query that selects an ungrouped field fails verification and the route", async () => {
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        objects: allLocalObjects,
+        env: codemodeEnv(),
+        name: "events grouped by time that select their type",
+        setup: ({ given }) => [given.organization.exists({ id: orgId, name: "Ada Labs" })],
+        steps: ({ then }) => [
+          then.assert("the verification and the route name the field and the fix", async (ctx) => {
+            // TanStack DB rejects this only once the browser runs the query.
+            const { diagnostics, verifyError } = await writePage(
+              ctx,
+              `export default page.define(({ collections, from, count }) =>
+  ui.barChart({
+    label: "Events by day and type",
+    rows: from({ event: collections.events })
+      .groupBy(({ event }) => event.occurredAt)
+      .select(({ event }) => ({ day: event.occurredAt, events: count(event.id), series: event.eventType })),
+    axis: { field: "day" },
+    value: "events",
+    series: "series",
+  }),
+);
+`,
+            );
+            assert.deepEqual(diagnostics, [], diagnostics.join("\n"));
+            const ungrouped =
+              "The query from events is grouped, but select series reads event.eventType, which is neither grouped nor aggregated; add it to groupBy, or aggregate it, such as max(event.eventType).";
+            assert.include(verifyError, ungrouped);
+            const loaded = await loadBuiltPage(ctx);
+            assert(loaded.kind === "failed", JSON.stringify(loaded));
+            assert.include(loaded.message, ungrouped);
+          }),
+        ],
+      }),
+    );
+  });
+
   test("an outage fails the page without caching, and the page builds once it recovers", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
