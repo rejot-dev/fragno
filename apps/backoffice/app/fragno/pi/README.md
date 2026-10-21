@@ -163,14 +163,14 @@ who prompted the turn; `agent.stopped` names who stopped it. No turn event carri
 `pi.getSubmission` leads to the answer.
 
 Pi starts and settles submissions in its own commits, so the turns document is the outbox: a turn
-stays in `pending` until it settles, its events are ingested, keyed `pi:<agentName>:<requestId>`
-with `:started` for the start, and its manager is told, and then forgotten. Pi keeps a started
-input's entry once it settles, so a turn that settles before its start was reported records the
-start first; recording either again records nothing. Neither report waits on the other, so an
-unrecordable event never holds back the agent's queue. A commit listener reports each start and
-settlement as it happens, and the alarm reports again after the agent goes idle, keeping its
-heartbeat until every settled turn is recorded. Runtimes without Automations forget settled turns
-without recording them.
+stays in `pending` until it settles, its events are ingested, keyed
+`pi:<agentName>:started:<requestId>` and `pi:<agentName>:ended:<requestId>`, and its manager is
+told, and then forgotten. Pi keeps a started input's entry once it settles, so a turn that settles
+before its start was reported records the start first; recording either again records nothing.
+Neither report waits on the other, so an unrecordable event never holds back the agent's queue. A
+commit listener reports each start and settlement as it happens, and the alarm reports again after
+the agent goes idle, keeping its heartbeat until every settled turn is recorded. Runtimes without
+Automations forget settled turns without recording them.
 
 ## Agent change events
 
@@ -184,6 +184,15 @@ nothing and record nothing. The subject names the agent, the actors are the requ
 scope restriction is theirs, which the manager middleware puts in the request as `provenance`, as it
 does for prompts. Each change triggers the `recordAgentChange` durable hook in the mutation that
 makes it, so the event is ingested, keyed by the hook's ID, exactly when the change commits.
+
+These events are the scope's agent directory for views: the scope's agents are Backoffice's built-in
+agents, which no scope stores and no event records, and every agent whose latest `agent.created`,
+`agent.updated`, or `agent.deleted` event defines it. Agents defined before the events were recorded
+are missing until `pi.agent.backfillEvents` records them. The backfill compares each agent's latest
+recorded definition with the manager's and records, as its caller, `agent.created` for an agent the
+events lack or record deleted, `agent.updated` for a different definition, and `agent.deleted` for a
+recorded agent the manager no longer defines. Each backfilled event is keyed by the recorded event
+it follows, so a rerun records nothing new.
 
 ## Notifications
 
@@ -280,17 +289,21 @@ execution scope and actors and restore them after suspension, retries, and objec
 carry no independent billing choice. See [usage attribution](../billing/README.md).
 
 Runtime tools target the scoped manager directly: `pi.listAgents`, `pi.getAgent`, `pi.submitPrompt`,
-`pi.getSubmission`, `pi.runPrompt`, and `pi.stopAgent`. Scoped context handles rebuild this runtime
-for the selected scope. Synchronous prompt execution uses Pi Durable's commit-driven submission
-waiter through a bounded long-poll request. Prompt request IDs are stable within durable tool
-invocations; timeout or caller cancellation stops the wait but does not retract already admitted
-work. Manager failures throw `PiManagerRuntimeRequestError` with stable `status` and `code` fields,
-which codemode preserves for workflow recovery decisions.
+`pi.getSubmission`, `pi.runPrompt`, `pi.stopAgent`, and `pi.backfillAgentEvents`. Scoped context
+handles rebuild this runtime for the selected scope. Synchronous prompt execution uses Pi Durable's
+commit-driven submission waiter through a bounded long-poll request. Prompt request IDs are stable
+within durable tool invocations; timeout or caller cancellation stops the wait but does not retract
+already admitted work. Manager failures throw `PiManagerRuntimeRequestError` with stable `status`
+and `code` fields, which codemode preserves for workflow recovery decisions.
 
 ## Backoffice agents UI
 
 The agent route loaders and actions call the scoped manager through `http.fetchAuthorized` and the
-Fragno route contract. The UI lists defined agents and where each comes from, starts an agent's
+Fragno route contract. The agent tabs, the agents overview, and the dashboard's Agents panel read
+the scope's agents from its synchronized `pi` events (see Agent change events), with whether each is
+answering or stopped, how much work is queued or steering and whether a stop holds it, its latest
+event, and its turns over the last day; an agent's page loads that agent from the manager, which
+says whether it has started. The UI shows where each agent comes from, starts an agent's
 conversation with its first message (no organization is required for personal agents), steers the
 sender's own running turn and queues messages otherwise, shows what waits in the composer (the input
 Pi holds in `pi.inbox` as steering or up next, then the agent's queue as queued prompts and

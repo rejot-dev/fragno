@@ -61,7 +61,7 @@ import { piAgentActor } from "@/fragno/pi/agent/pi-agent-actor";
 import { piAgentObjectName } from "@/fragno/pi/agent/pi-agent-contract";
 import { createPiPostHogExtension } from "@/fragno/pi/extensions/posthog/posthog-extension";
 import { BackofficePostHogContext, captureBackofficeServerException } from "@/posthog.server";
-import { fetchPiManagerAgents, submitPiManagerPrompt } from "@/routes/backoffice/agents/data";
+import { fetchPiManagerAgent, submitPiManagerPrompt } from "@/routes/backoffice/agents/data";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
 import { shutdownCloudflarePostHog } from "./lib/cloudflare-posthog";
@@ -296,6 +296,78 @@ test("durable Pi runs a workspace agent with its instructions, scoped skills, Ba
           path: "/workspace/durable-result.txt",
           text: "executed through Backoffice",
         }),
+      ],
+    }),
+  );
+});
+
+test("an agent's backfill records agent events as the agent's turn, keeping its delegation", async () => {
+  const scope: BackofficeContextScope = { kind: "org", orgId: "org-1" };
+  const execution = createBackofficeServiceExecution({
+    scope,
+    service: { type: "automation", id: "backfill-scenario" },
+  });
+  const respond: FauxResponseStep = (context) =>
+    toolResults(context).length === 0
+      ? fauxAssistantMessage(
+          [fauxToolCall("execCodeMode", { code: "async () => await pi.backfillAgentEvents({})" })],
+          { stopReason: "toolUse" },
+        )
+      : fauxAssistantMessage("Backfilled.");
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "Pi agent events backfilled by an agent",
+      options: { drain: false },
+      objects: { ...scenarioObjects, ...scriptedAgents([respond, respond]) },
+      piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+      setup: ({ given }) => [given.organization.exists({ id: "org-1" })],
+      steps: ({ then }) => [
+        then.assert(
+          "automations the backfilled event starts stay within the agent's delegation",
+          async ({ runtime }) => {
+            const automations = runtime.objects.automations.for(scope).commands;
+            // An agent the events record but the manager never defined, so the backfill deletes it.
+            await automations.ingestEvent({
+              id: "stale:ghost",
+              scope,
+              scopeRestriction: null,
+              source: "pi",
+              eventType: "agent.created",
+              occurredAt: new Date(runtime.now()).toISOString(),
+              payload: {
+                definition: {
+                  agentName: "ghost",
+                  description: "Gone already.",
+                  model: null,
+                  permissions: ["*"],
+                  instructions: "",
+                  managedBy: null,
+                },
+              },
+              actors: execution.actors,
+              subject: { orgId: "org-1", agentName: "ghost" },
+              causation: { kind: "origin" },
+            });
+            await prompt(runtime, execution, {});
+            await runtime.drain();
+
+            const { events } = await automations.listEventsOfType({
+              source: "pi",
+              eventType: "agent.deleted",
+              cursor: null,
+            });
+            expect(events).toEqual([
+              expect.objectContaining({
+                id: "pi-agent-backfill:ghost:stale:ghost",
+                scopeRestriction: null,
+                actors: {
+                  ...execution.actors,
+                  delegation: [...execution.actors.delegation, piAgentActor(scope, "assistant")],
+                },
+              }),
+            ]);
+          },
+        ),
       ],
     }),
   );
@@ -1495,10 +1567,13 @@ test("Cloudflare backend analytics delivers verified outcomes and Pi usage witho
                 receipt: { requestId: "second-prompt" },
                 error: null,
               });
-              const persisted = await fetchPiManagerAgents(authenticatedRequest, context, scope);
-              expect(
-                persisted.agents.find((agent) => agent.agentName === "assistant")?.provisioned,
-              ).toEqual(true);
+              const persisted = await fetchPiManagerAgent(
+                authenticatedRequest,
+                context,
+                scope,
+                "assistant",
+              );
+              expect(persisted).toMatchObject({ found: true, agent: { provisioned: true } });
               expect(
                 received.filter((event) => event.event === "agent_prompt_admitted"),
               ).toHaveLength(1);

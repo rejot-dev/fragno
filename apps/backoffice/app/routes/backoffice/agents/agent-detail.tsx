@@ -3,7 +3,12 @@ import { ChatWorkspaceSplit } from "@fragno-private/design-system/chat-workspace
 import { PaneMessage } from "@fragno-private/design-system/pane-message";
 import { usePostHog } from "@posthog/react/slim";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useFetcher, useOutletContext, useSearchParams } from "react-router";
+import {
+  useFetcher,
+  useOutletContext,
+  useSearchParams,
+  type ShouldRevalidateFunctionArgs,
+} from "react-router";
 
 import {
   AssistantRuntimeProvider,
@@ -15,23 +20,21 @@ import {
 import type { ConversationView, EntryRecord } from "@earendil-works/pi-durable";
 import { eq, inArray, useLiveQuery } from "@tanstack/react-db";
 
-import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
 import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
-import {
-  describeAutomationCollectionSource,
-  getAutomationBrowserDatabase,
-  type AutomationBrowserCollections,
-} from "@/fragno/automation/tanstack/browser-database";
+import type { AutomationBrowserCollections } from "@/fragno/automation/tanstack/browser-database";
+import { useAutomationBrowserCollections } from "@/fragno/automation/tanstack/use-automation-browser-collections";
 import type { PiAgentCompactionStatus } from "@/fragno/pi/agent/pi-agent-contract";
 import { requireRouteScope } from "@/layouts/backoffice-shell-request.server";
 
 import type { Route } from "./+types/agent-detail";
+import { isPiConversationSubmission } from "./agent-conversation-submission";
 import { formatPiAgentName } from "./agent-name";
 import { AgentPermissions } from "./agent-permissions";
 import { AgentStartComposer } from "./agent-start-composer";
 import type { PiAgentsOutletContext } from "./agent-types";
 import { AgentsHeader } from "./agents-header";
 import {
+  fetchPiManagerAgent,
   resumePiManagerAgent,
   compactPiManagerAgent,
   resetPiManagerAgent,
@@ -82,11 +85,6 @@ type PiAgentActionData =
       error: string;
     };
 
-type SessionWorkflowCollectionsState = {
-  collections: AutomationBrowserCollections | null;
-  error: string | null;
-};
-
 export async function action(args: Route.ActionArgs): Promise<PiAgentActionData> {
   const { request, params, context } = args;
   const agentName = params.agentName;
@@ -115,7 +113,7 @@ export async function action(args: Route.ActionArgs): Promise<PiAgentActionData>
       ? { ok: false, intent, error: result.error ?? "Failed to compact the conversation." }
       : { ok: true, intent, taskId: result.taskId };
   }
-  // Starting is sending the first turn; the separate intent tells the agents layouts to reload.
+  // Starting is sending the first turn; the separate intent reloads the agent, which it provisions.
   if (intent !== "start" && intent !== "send") {
     return { ok: false, intent: "send", error: "Unsupported agent action." };
   }
@@ -248,57 +246,6 @@ function conversationViewWithInactiveHistory(
   };
 }
 
-function useSessionWorkflowCollections(): SessionWorkflowCollectionsState {
-  const { automationCollectionSource } = useCurrentBackofficeContext();
-  const source =
-    automationCollectionSource.status === "ready" ? automationCollectionSource.source : null;
-  const sourceKey = source ? describeAutomationCollectionSource(source).resourceKey : null;
-  const [state, setState] = useState<SessionWorkflowCollectionsState>({
-    collections: null,
-    error:
-      automationCollectionSource.status === "unavailable"
-        ? automationCollectionSource.message
-        : null,
-  });
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!source) {
-      setState({
-        collections: null,
-        error:
-          automationCollectionSource.status === "unavailable"
-            ? automationCollectionSource.message
-            : null,
-      });
-      return () => {
-        cancelled = true;
-      };
-    }
-    setState({ collections: null, error: null });
-    void getAutomationBrowserDatabase(source).then(
-      ({ collections }) => {
-        if (!cancelled) {
-          setState({ collections, error: null });
-        }
-      },
-      (cause: unknown) => {
-        if (!cancelled) {
-          setState({
-            collections: null,
-            error: cause instanceof Error ? cause.message : "Workflow synchronization failed.",
-          });
-        }
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [automationCollectionSource, source, sourceKey]);
-
-  return state;
-}
-
 function useStartedWorkflowRunIds(
   collections: AutomationBrowserCollections | null,
   sessionWorkflowRunIds: string[],
@@ -353,22 +300,41 @@ async function waitForPiCompaction(url: string, signal: AbortSignal) {
   }
 }
 
-export default function BackofficeOrganizationPiAgentDetail({ params }: Route.ComponentProps) {
-  const { agents, agentsError, basePath, usageLabel } = useOutletContext<PiAgentsOutletContext>();
-  const agent = agents.find((candidate) => candidate.agentName === params.agentName);
-  if (!agent) {
+export async function loader({ request, params, context }: Route.LoaderArgs) {
+  return await fetchPiManagerAgent(
+    request,
+    context,
+    requireRouteScope(context).execution.scope,
+    params.agentName,
+  );
+}
+
+export function shouldRevalidate({
+  formData,
+  defaultShouldRevalidate,
+}: ShouldRevalidateFunctionArgs) {
+  return isPiConversationSubmission(formData) ? false : defaultShouldRevalidate;
+}
+
+export default function BackofficeOrganizationPiAgentDetail({
+  loaderData,
+  params,
+}: Route.ComponentProps) {
+  const { directory, basePath, usageLabel } = useOutletContext<PiAgentsOutletContext>();
+  if (!loaderData.found) {
     return (
       <AgentStatusPane selectedAgentName={params.agentName} tone="failed">
-        {agentsError ?? `${formatPiAgentName(params.agentName)} is not an agent in this scope.`}
+        {loaderData.message}
       </AgentStatusPane>
     );
   }
+  const { agent } = loaderData;
   if (!agent.provisioned) {
     return (
       <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
         <AgentsHeader
           basePath={basePath}
-          agents={agents}
+          directory={directory}
           selectedAgentName={agent.agentName}
           options={null}
         />
@@ -396,12 +362,12 @@ function AgentStatusPane({
   tone: "muted" | "failed";
   children: string;
 }) {
-  const { agents, basePath } = useOutletContext<PiAgentsOutletContext>();
+  const { directory, basePath } = useOutletContext<PiAgentsOutletContext>();
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       <AgentsHeader
         basePath={basePath}
-        agents={agents}
+        directory={directory}
         selectedAgentName={selectedAgentName}
         options={null}
       />
@@ -444,7 +410,7 @@ function BackofficeOrganizationPiAgent({
 }) {
   const posthog = usePostHog();
   const {
-    agents,
+    directory,
     availableModelOptions,
     basePath,
     dictationMountRoute,
@@ -505,7 +471,7 @@ function BackofficeOrganizationPiAgent({
     fetcher.data?.intent === "compact" ? initialPromptError : (actionError ?? initialPromptError);
   const submitting = fetcher.state !== "idle";
 
-  const workflowCollections = useSessionWorkflowCollections();
+  const workflowCollections = useAutomationBrowserCollections();
   const sessionWorkflowRunIds = useMemo(
     () => getSessionWorkflowRunIds({ draftAgentMessage, messages }),
     [draftAgentMessage, messages],
@@ -730,7 +696,7 @@ function BackofficeOrganizationPiAgent({
         <h2 className="sr-only">{formatPiAgentName(agent.agentName)}</h2>
         <AgentsHeader
           basePath={basePath}
-          agents={agents}
+          directory={directory}
           selectedAgentName={agent.agentName}
           options={
             <>

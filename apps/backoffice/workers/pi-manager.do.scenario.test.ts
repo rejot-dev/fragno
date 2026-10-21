@@ -45,13 +45,19 @@ import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-f
 import { backofficeObjectScopeFromContextScope } from "@/backoffice-runtime/object-registry";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import { createRouteBackedAutomationRouterRuntime } from "@/fragno/automation/routing-route-runtime";
-import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
+import {
+  defineBackofficeScenario,
+  runBackofficeScenario,
+  type BackofficeScenarioContext,
+} from "@/fragno/automation/scenario";
+import { BUILT_IN_PI_AGENT_DEFINITIONS } from "@/fragno/pi/agent/agent-definitions";
 import { piAgentActor } from "@/fragno/pi/agent/pi-agent-actor";
 import type { PiAgentViewStreamFrame } from "@/fragno/pi/agent/pi-agent-contract";
 import {
   PI_NOTIFICATION_ENTRY_KIND,
   renderPiNotificationRequest,
 } from "@/fragno/pi/agent/pi-agent-notification-entry";
+import { piAgentEventsQuery, projectPiAgents } from "@/routes/backoffice/agents/agent-activity";
 import {
   eventTraceDispatchesQuery,
   type EventTraceDispatch,
@@ -855,7 +861,7 @@ test("each settled turn is recorded once as a pi Automations event", async () =>
           const [event, ...others] = await piTurnEvents(runtime, scope);
           expect(others).toEqual([]);
           expect(event).toMatchObject({
-            id: "pi:assistant:answered",
+            id: "pi:assistant:ended:answered",
             scope,
             eventType: "turn.completed",
             payload: { answerEntryId: submission.answer },
@@ -1018,7 +1024,7 @@ test("agent changes and the turns a stop cuts off are recorded as pi events of w
             expect(turnEvents.sort((left, right) => left.id.localeCompare(right.id))).toEqual(
               ["turn.aborted", "turn.started"].map((eventType) =>
                 expect.objectContaining({
-                  id: `pi:assistant:cut-off${eventType === "turn.started" ? ":started" : ""}`,
+                  id: `pi:assistant:${eventType === "turn.started" ? "started" : "ended"}:cut-off`,
                   eventType,
                   payload: {},
                   subject: { ...subject, requestId: "cut-off" },
@@ -1033,7 +1039,7 @@ test("agent changes and the turns a stop cuts off are recorded as pi events of w
   );
 });
 
-test("an agent's turns and queue are recorded as they move", async () => {
+test("an agent's turns and queue are recorded as they move, so its events say what it is doing", async () => {
   const orgId = "lifecycle-org";
   const scope: BackofficeContextScope = { kind: "org", orgId };
   const ada = scopeExecution(scope, "ada");
@@ -1055,6 +1061,19 @@ test("an agent's turns and queue are recorded as they move", async () => {
     return (await automationEvents(runtime, scope))
       .filter((event) => event.source === "pi" && event.subject?.requestId === requestId)
       .sort((left, right) => order.indexOf(left.eventType) - order.indexOf(right.eventType));
+  }
+
+  /** What the agent page reads of the assistant from the synchronized events. */
+  async function assistantState(ctx: BackofficeScenarioContext) {
+    const database = ctx.tanstack.automations.forOrg(orgId);
+    await database.sync();
+    const events = await queryOnce((query) => piAgentEventsQuery(query, database.collections));
+    const activity = projectPiAgents({ events, bucketStarts: [] }).find(
+      ({ definition }) => definition.agentName === "assistant",
+    )?.activity;
+    return activity
+      ? { answering: activity.answering, paused: activity.paused, ...activity.waiting }
+      : null;
   }
 
   async function waitForEvent(
@@ -1120,7 +1139,7 @@ test("an agent's turns and queue are recorded as they move", async () => {
       setup: ({ given }) => [given.organization.exists({ id: orgId })],
       steps: ({ then }) => [
         then.assert(
-          "a running turn waits for its sender's steer, and another's prompt queues behind it",
+          "a running turn reads as answering, with its sender's steer and another's prompt waiting",
           async (ctx) => {
             const { runtime } = ctx;
             await prompted(runtime, "first", grace);
@@ -1131,6 +1150,12 @@ test("an agent's turns and queue are recorded as they move", async () => {
             await waitForEvent(runtime, "second", "queue.added");
             await waitForEvent(runtime, "steer", "queue.added");
 
+            expect(await assistantState(ctx)).toEqual({
+              answering: true,
+              paused: false,
+              queued: 1,
+              steering: 1,
+            });
             expect((await requestEvents(runtime, "steer"))[0]).toMatchObject({
               eventType: "queue.added",
               payload: { type: "steer" },
@@ -1152,6 +1177,12 @@ test("an agent's turns and queue are recorded as they move", async () => {
             await runningTurnAlarms;
             await runtime.drain();
 
+            expect(await assistantState(ctx)).toEqual({
+              answering: false,
+              paused: true,
+              queued: 1,
+              steering: 0,
+            });
             expect((await requestEvents(runtime, "first")).map((event) => event.eventType)).toEqual(
               ["turn.started", "turn.aborted"],
             );
@@ -1173,6 +1204,12 @@ test("an agent's turns and queue are recorded as they move", async () => {
           assert.equal(resumed.status, 204, await resumed.clone().text());
           await runtime.drain();
 
+          expect(await assistantState(ctx)).toEqual({
+            answering: false,
+            paused: false,
+            queued: 0,
+            steering: 0,
+          });
           expect(
             (await requestEvents(runtime, "second")).map(({ eventType, payload }) => ({
               eventType,
@@ -1194,6 +1231,12 @@ test("an agent's turns and queue are recorded as they move", async () => {
           await prompted(runtime, "third", grace);
           await runtime.drain();
 
+          expect(await assistantState(ctx)).toEqual({
+            answering: false,
+            paused: false,
+            queued: 0,
+            steering: 0,
+          });
           expect(
             (await requestEvents(runtime, "third")).map(({ eventType, payload }) => ({
               eventType,
@@ -1209,9 +1252,110 @@ test("an agent's turns and queue are recorded as they move", async () => {
   );
 });
 
+test("a backfill records what the agent events lack, once, so they list the defined agents", async () => {
+  const orgId = "backfill-org";
+  const scope: BackofficeContextScope = { kind: "org", orgId };
+  const definition = (agentName: string, description: string) => ({
+    agentName,
+    description,
+    model: null,
+    permissions: ["*"],
+    instructions: "Work carefully.",
+    managedBy: null,
+  });
+
+  /** An event that disagrees with the directory, as one recorded before the agent changed. */
+  function staleEvent(eventType: string, agentName: string, description: string) {
+    return {
+      id: `stale:${eventType}:${agentName}`,
+      scope,
+      scopeRestriction: null,
+      source: "pi",
+      eventType,
+      occurredAt: new Date().toISOString(),
+      payload: { definition: definition(agentName, description) },
+      actors: { initiator: AUTOMATION_SYSTEM_INITIATOR, principal: null, delegation: [] },
+      subject: { orgId, agentName },
+      causation: { kind: "origin" as const },
+    };
+  }
+
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "Pi agent events backfill",
+      piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+      options: { drain: false },
+      objects: { ...scenarioObjects, ...objectOverrides },
+      setup: ({ given }) => [given.organization.exists({ id: orgId })],
+      steps: ({ then }) => [
+        then.assert(
+          "the backfill records the current definitions where the events disagree",
+          async (ctx) => {
+            const { runtime } = ctx;
+            for (const agent of [
+              definition("reviewer", "Reviews changes."),
+              definition("drafter", "Drafts replies."),
+            ]) {
+              const created = await managerRequest(runtime, scope, "/agents", agent);
+              assert.equal(created.status, 201, await created.clone().text());
+            }
+            await runtime.drain();
+            const automations = runtime.objects.automations.for(scope).commands;
+            await automations.ingestEvent(staleEvent("agent.updated", "reviewer", "Old review."));
+            await automations.ingestEvent(
+              staleEvent("agent.deleted", "drafter", "Drafts replies."),
+            );
+            await automations.ingestEvent(staleEvent("agent.created", "ghost", "Gone already."));
+
+            const backfill = async () =>
+              (
+                await ctx.runCodemode({
+                  scope,
+                  code: "async () => await pi.backfillAgentEvents({})",
+                  assertToolCalls: ["pi.agent.backfillEvents"],
+                })
+              ).result as { agents: { agentName: string; eventType: string }[] };
+            // The built-in assistant is defined in every scope, so it is never backfilled.
+            expect(
+              (await backfill()).agents
+                .map((agent) => `${agent.eventType} ${agent.agentName}`)
+                .sort(),
+            ).toEqual(["agent.created drafter", "agent.deleted ghost", "agent.updated reviewer"]);
+            await runtime.drain();
+            expect(await backfill()).toEqual({ agents: [] });
+
+            const backfilled = (await automationEvents(runtime, scope)).filter((event) =>
+              event.id.startsWith("pi-agent-backfill:"),
+            );
+            expect(backfilled).toHaveLength(3);
+            for (const event of backfilled) {
+              expect(event.actors.initiator).toEqual(AUTOMATION_SYSTEM_INITIATOR);
+            }
+
+            const database = ctx.tanstack.automations.forOrg(orgId);
+            await database.sync();
+            const events = await queryOnce((query) =>
+              piAgentEventsQuery(query, database.collections),
+            );
+            expect(
+              projectPiAgents({ events, bucketStarts: [] }).map(
+                ({ definition }) => `${definition.agentName}: ${definition.description}`,
+              ),
+            ).toEqual([
+              `assistant: ${BUILT_IN_PI_AGENT_DEFINITIONS[0]?.description}`,
+              "drafter: Drafts replies.",
+              "reviewer: Reviews changes.",
+            ]);
+          },
+        ),
+      ],
+    }),
+  );
+});
+
 test("a turn whose event cannot be recorded stays pending without holding back later turns", async () => {
   const scope: BackofficeContextScope = { kind: "org", orgId: "report-org" };
-  const unrecordable = new Set(["pi:assistant:first"]);
+  const unrecordable = new Set(["pi:assistant:ended:first"]);
   await runBackofficeScenario(
     defineBackofficeScenario({
       name: "Pi turn events after a failed report",
@@ -1225,6 +1369,8 @@ test("a turn whose event cannot be recorded stays pending without holding back l
             fauxAssistantMessage([fauxText("First.")]),
             fauxAssistantMessage([fauxText("Second.")]),
             fauxAssistantMessage([fauxText("Third.")]),
+            fauxAssistantMessage([fauxText("Fourth.")]),
+            fauxAssistantMessage([fauxText("Fifth.")]),
           ]);
           const models = createModels();
           models.setProvider(faux.provider);
@@ -1273,7 +1419,7 @@ test("a turn whose event cannot be recorded stays pending without holding back l
             await expect(runtime.drain()).rejects.toThrow("alarms failed");
           }
           expect((await piTurnEvents(runtime, scope)).map((event) => event.id)).toEqual([
-            "pi:assistant:second",
+            "pi:assistant:ended:second",
           ]);
         }),
         then.assert("the next report records the turn once it can", async ({ runtime }) => {
@@ -1288,8 +1434,27 @@ test("a turn whose event cannot be recorded stays pending without holding back l
             (await piTurnEvents(runtime, scope))
               .map((event) => event.id)
               .sort((left, right) => left.localeCompare(right)),
-          ).toEqual(["pi:assistant:first", "pi:assistant:second", "pi:assistant:third"]);
+          ).toEqual([
+            "pi:assistant:ended:first",
+            "pi:assistant:ended:second",
+            "pi:assistant:ended:third",
+          ]);
         }),
+        then.assert(
+          "request IDs that look like another's event phase still record their own events",
+          async ({ runtime }) => {
+            for (const requestId of ["third:started", "started:third"]) {
+              const submitted = await prompt(runtime, scope, { requestId, content: "Answer." });
+              assert.equal(submitted.status, 202, await submitted.clone().text());
+              await runtime.drain();
+            }
+            expect(
+              (await piTurnEvents(runtime, scope))
+                .map((event) => event.subject?.requestId)
+                .sort((left, right) => String(left).localeCompare(String(right))),
+            ).toEqual(["first", "second", "started:third", "third", "third:started"]);
+          },
+        ),
       ],
     }),
   );
@@ -1434,8 +1599,8 @@ test("a notify_agent route delivers events as turns but never the agent's own wo
               .map((event) => event.id)
               .sort((left, right) => left.localeCompare(right)),
           ).toEqual([
-            "reclassified:reclassify-turn:pi:assistant:route:notify-on-order:order-1",
-            "reclassified:reclassify-turn:pi:assistant:start",
+            "reclassified:reclassify-turn:pi:assistant:ended:route:notify-on-order:order-1",
+            "reclassified:reclassify-turn:pi:assistant:ended:start",
           ]);
 
           // Event traces show the notification, and the notifications the guard held back.
@@ -1458,11 +1623,11 @@ test("a notify_agent route delivers events as turns but never the agent's own wo
               })
               .sort((left, right) => left.localeCompare(right)),
           ).toEqual([
-            "notify-on-answer reclassified:reclassify-turn:pi:assistant:route:notify-on-order:order-1: skipped: caused_by_notified_agent",
-            "notify-on-answer reclassified:reclassify-turn:pi:assistant:start: skipped: caused_by_notified_agent",
+            "notify-on-answer reclassified:reclassify-turn:pi:assistant:ended:route:notify-on-order:order-1: skipped: caused_by_notified_agent",
+            "notify-on-answer reclassified:reclassify-turn:pi:assistant:ended:start: skipped: caused_by_notified_agent",
             "notify-on-order order-1: notified assistant",
-            "notify-on-turn pi:assistant:route:notify-on-order:order-1: skipped: caused_by_notified_agent",
-            "notify-on-turn pi:assistant:start: skipped: caused_by_notified_agent",
+            "notify-on-turn pi:assistant:ended:route:notify-on-order:order-1: skipped: caused_by_notified_agent",
+            "notify-on-turn pi:assistant:ended:start: skipped: caused_by_notified_agent",
           ]);
         }),
       ],
@@ -1560,7 +1725,7 @@ test("a forwarded turn event reaches a same-named agent of another scope", async
           expect(userEntryTexts(await readView(runtime, projectScope))).toEqual([
             "Start.",
             renderPiNotificationRequest([
-              { routeId: "notify-on-turn", eventId: "pi:assistant:org-turn" },
+              { routeId: "notify-on-turn", eventId: "pi:assistant:ended:org-turn" },
             ]),
           ]);
         }),

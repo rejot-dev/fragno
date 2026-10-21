@@ -17,8 +17,12 @@ import { WorkflowRunGeneratedInterface } from "@/components/backoffice/workflow-
 import type { AutomationBrowserCollections } from "@/fragno/automation/tanstack/browser-database";
 import type { RuntimeToolWorkflowDescriptor } from "@/fragno/runtime-tools/workflow-catalog";
 
+import {
+  describePiAgentActivity,
+  piAgentQueueStatus,
+  type PiAgentListing,
+} from "../agents/agent-activity";
 import { formatPiAgentName } from "../agents/agent-name";
-import type { PiManagerAgentsResult } from "../agents/data";
 import type { AutomationScriptSourceRecord } from "../automations/data";
 import { formatRelativeTime } from "../automations/formatting";
 import {
@@ -50,7 +54,7 @@ const openedRunScrollMarginClassName = "scroll-mt-20";
 
 export type DashboardLoaderData = {
   selectedScope: BackofficeScopeSelection;
-  agents: PiManagerAgentsResult;
+  hasAgents: boolean;
   workflowSource: AutomationScriptSourceRecord;
   runtimeToolCatalog: readonly RuntimeToolWorkflowDescriptor[];
 };
@@ -62,6 +66,7 @@ export function DashboardSections({
   collections,
   routes,
   recentEvents,
+  agents,
 }: {
   dashboard: BackofficeDashboard;
   now: number;
@@ -69,6 +74,7 @@ export function DashboardSections({
   collections: AutomationBrowserCollections;
   routes: readonly AutomationRouteDefinition[];
   recentEvents: readonly { source: string; eventType: string }[];
+  agents: readonly PiAgentListing[];
 }) {
   const { selectedScope } = loaderData;
   const agentsPath = `/backoffice/agents/${backofficeRouteScopePath(
@@ -105,7 +111,9 @@ export function DashboardSections({
           {dashboard.upcoming.length > 0 ? (
             <UpcomingPanel upcoming={dashboard.upcoming} now={now} selectedScope={selectedScope} />
           ) : null}
-          <AgentsPanel agents={loaderData.agents} agentsPath={agentsPath} />
+          {loaderData.hasAgents ? (
+            <AgentsPanel agents={agents} now={now} agentsPath={agentsPath} />
+          ) : null}
         </div>
       </div>
     </>
@@ -659,33 +667,60 @@ function UpcomingRow({
 
 function AgentsPanel({
   agents,
+  now,
   agentsPath,
 }: {
-  agents: PiManagerAgentsResult;
+  agents: readonly PiAgentListing[];
+  now: number;
   agentsPath: string;
 }) {
+  // The most recently active agents come first; agents without activity keep directory order.
+  const lastActive = ({ activity }: PiAgentListing) =>
+    activity?.latest.occurredAt.getTime() ?? Number.NEGATIVE_INFINITY;
+  const sortedAgents = [...agents].sort((left, right) => lastActive(right) - lastActive(left));
   return (
     <Panel title="Agents" back={null} footer={<PanelFooter to={agentsPath} page="Agents" />}>
-      {agents.agentsError ? (
-        <p className="pt-3 text-xs text-[var(--bo-failed)]">{agents.agentsError}</p>
-      ) : null}
       <ul className="divide-y divide-[color:var(--bo-border)]">
-        {agents.agents.map((agent) => (
-          <li key={agent.agentName}>
-            <Link
-              to={`${agentsPath}/${encodeURIComponent(agent.agentName)}`}
-              className="group flex items-center gap-3 py-2.5"
-            >
-              <Icon name="message-square" className="size-4 shrink-0 text-[var(--bo-muted-2)]" />
-              <span className="min-w-0 flex-1 truncate text-sm text-[var(--bo-fg)] group-hover:underline">
-                {formatPiAgentName(agent.agentName)}
-              </span>
-              <span className="shrink-0 text-xs text-[var(--bo-muted-2)]">
-                {agent.provisioned ? "Active" : "Not started"}
-              </span>
-            </Link>
-          </li>
-        ))}
+        {sortedAgents.map(({ definition, activity }) => {
+          const agentName = formatPiAgentName(definition.agentName);
+          const queue = piAgentQueueStatus(activity);
+          return (
+            <li key={definition.agentName}>
+              <Link
+                to={`${agentsPath}/${encodeURIComponent(definition.agentName)}`}
+                className="group flex items-center gap-3 py-2.5"
+              >
+                <Icon name="message-square" className="size-4 shrink-0 text-[var(--bo-muted-2)]" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold text-[var(--bo-fg)] group-hover:underline">
+                    {agentName}
+                  </span>
+                  <span
+                    className={`block truncate text-xs ${activity?.answering ? "text-[var(--bo-live)]" : "text-[var(--bo-muted-2)]"}`}
+                  >
+                    {describePiAgentActivity(activity, now)}
+                  </span>
+                </span>
+                {queue ? (
+                  <BackofficeStatusLight tone={queue.tone} dot={false} role="status">
+                    {queue.label}
+                  </BackofficeStatusLight>
+                ) : null}
+                {activity ? (
+                  <span className="flex shrink-0 items-center gap-2">
+                    <SparkBars
+                      values={activity.turnsPerBucket}
+                      ariaLabel={`${agentName} turns over the last ${WINDOW_LABEL}`}
+                    />
+                    <span className="w-6 text-right text-xs text-[var(--bo-muted)] tabular-nums">
+                      {activity.turns}
+                    </span>
+                  </span>
+                ) : null}
+              </Link>
+            </li>
+          );
+        })}
       </ul>
     </Panel>
   );

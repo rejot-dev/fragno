@@ -1,6 +1,5 @@
 import type {
   PiManagerAgent,
-  PiManagerAgentDirectory,
   PiPromptReceipt,
   piPromptWhenBusySchema,
 } from "@fragno-dev/backoffice-api/v0/pi";
@@ -24,6 +23,8 @@ import type { createPiManagerFragment } from "@/fragno/pi/manager/pi-manager-fra
 import { captureBackofficeServerEvent } from "@/posthog.server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
+import { formatPiAgentName } from "./agent-name";
+
 type PiManagerFragment = ReturnType<typeof createPiManagerFragment>;
 
 type PiRouteError = { message: string; code: string };
@@ -35,9 +36,9 @@ export type PiManagerAgentDetail = {
   view: ConversationView | null;
 };
 
-export type PiManagerAgentsResult = PiManagerAgentDirectory & {
-  agentsError: string | null;
-};
+export type PiManagerAgentLookup =
+  | { found: true; agent: PiManagerAgent }
+  | { found: false; message: string };
 
 export type PiManagerAgentDetailResult = {
   detail: PiManagerAgentDetail | null;
@@ -113,25 +114,29 @@ export async function fetchPiManagerAvailableModels(
   });
 }
 
-export async function fetchPiManagerAgents(
+/** One agent of the scope, with whether it has started; the detail page opens on it. */
+export async function fetchPiManagerAgent(
   request: Request,
   context: Readonly<RouterContextProvider>,
   scope: BackofficeContextScope,
-): Promise<PiManagerAgentsResult> {
+  agentName: string,
+): Promise<PiManagerAgentLookup> {
   const { callRoute } = await createPiManagerRouteCaller(request, context, scope);
-  const response = await callRoute("GET", "/agents", {});
-
+  const response = await callRoute("GET", "/agents/:agentName", { pathParams: { agentName } });
   if (response.type === "json") {
-    return { ...response.data, agentsError: null };
+    return { found: true, agent: response.data };
   }
   if (response.type === "error") {
     throwPiManagerAuthorizationFailure(response);
-    return { agents: [], agentsError: response.error.message };
+    return {
+      found: false,
+      message:
+        response.error.code === "AGENT_NOT_FOUND"
+          ? `${formatPiAgentName(agentName)} is not an agent in this scope.`
+          : response.error.message,
+    };
   }
-  return {
-    agents: [],
-    agentsError: `Failed to fetch agents (${response.status}).`,
-  };
+  return { found: false, message: `Failed to fetch agent (${response.status}).` };
 }
 
 export async function fetchPiManagerAgentDetail(

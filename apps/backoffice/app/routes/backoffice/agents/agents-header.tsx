@@ -1,20 +1,21 @@
-import type { PiManagerAgent } from "@fragno-dev/backoffice-api/v0/pi";
 import { BackofficeTabHeader } from "@fragno-private/design-system/tab-header";
 import type { ReactNode } from "react";
 
 import { formatPiAgentName } from "./agent-name";
+import type { PiAgentDirectoryState } from "./agent-types";
 
 const OVERVIEW_TAB_ID = "all-agents";
 
 /** Every agents page shares one tab row, so switching agents never goes through the overview. */
 export function AgentsHeader({
   basePath,
-  agents,
+  directory,
   selectedAgentName,
   options,
 }: {
   basePath: string;
-  agents: readonly PiManagerAgent[];
+  /** Agent tabs appear once the directory is read. */
+  directory: PiAgentDirectoryState;
   /** Null on the overview. */
   selectedAgentName: string | null;
   options: ReactNode | null;
@@ -27,12 +28,12 @@ export function AgentsHeader({
       groupId: "overview",
       active: selectedAgentName === null,
     },
-    ...agents.map((agent) => ({
-      id: agent.agentName,
-      label: formatPiAgentName(agent.agentName),
-      to: `${basePath}/${encodeURIComponent(agent.agentName)}`,
+    ...(directory.status === "ready" ? directory.agents : []).map(({ definition }) => ({
+      id: definition.agentName,
+      label: formatPiAgentName(definition.agentName),
+      to: `${basePath}/${encodeURIComponent(definition.agentName)}`,
       groupId: "agents",
-      active: agent.agentName === selectedAgentName,
+      active: definition.agentName === selectedAgentName,
     })),
   ];
 

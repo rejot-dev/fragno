@@ -274,6 +274,22 @@ export const piOperations = {
     input: agentInputSchema,
     output: z.lazy(() => z.object({ stopped: z.literal(true) })),
   },
+  "pi.agent.backfillEvents": {
+    description:
+      "Record the scope's defined agents as pi agent.* events, for agents defined before those events were recorded, so views and routes built on the events see every agent. For each agent the events record missing, deleted, or with a different definition, it records agent.created or agent.updated with the current definition, and for each agent they record that is no longer defined, agent.deleted. Routes on those events run for each new event. A rerun records nothing new. Built-in agents are left out: they are defined in every scope. Returns the events it recorded.",
+    permissions: [BACKOFFICE_PERMISSION.pi.manage],
+    input: z.lazy(() => z.strictObject({})),
+    output: z.lazy(() =>
+      z.object({
+        agents: z.array(
+          z.object({
+            agentName: piAgentNameSchema,
+            eventType: z.enum(["agent.created", "agent.updated", "agent.deleted"]),
+          }),
+        ),
+      }),
+    ),
+  },
 } satisfies Record<string, BackofficeApiOperation>;
 
 export const piStreams = {

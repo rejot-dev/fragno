@@ -37,6 +37,12 @@ export function dashboardBucketStarts(now: number): number[] {
   );
 }
 
+/** Records stamped by a server clock ahead of this one land in the current bucket. */
+export function dashboardBucketIndex(bucketStarts: readonly number[], time: Date): number {
+  const windowStart = bucketStarts[0] ?? time.getTime();
+  return Math.min(bucketStarts.length - 1, Math.floor((time.getTime() - windowStart) / BUCKET_MS));
+}
+
 export function dashboardRunsQuery(
   query: InitialQueryBuilder,
   collections: Pick<AutomationCollections, "workflowInstances">,
@@ -220,9 +226,7 @@ export function projectBackofficeDashboard({
 }): BackofficeDashboard {
   const bucketStarts = dashboardBucketStarts(now);
   const windowStart = bucketStarts[0] ?? now;
-  // Records stamped by a server clock ahead of this one land in the current bucket.
-  const bucketIndex = (time: Date) =>
-    Math.min(bucketStarts.length - 1, Math.floor((time.getTime() - windowStart) / BUCKET_MS));
+  const bucketIndex = (time: Date) => dashboardBucketIndex(bucketStarts, time);
   const inWindow = (time: Date | null): time is Date =>
     time !== null && time.getTime() >= windowStart;
 

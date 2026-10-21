@@ -321,6 +321,16 @@ describe("runtime tool reference generation", () => {
           bashCommand: "pi.agent.stop",
           bashOptions: ["agent"],
         },
+        {
+          id: "pi.agent.backfillEvents",
+          namespace: "pi",
+          codemodeProvider: "pi",
+          codemodeTool: "backfillAgentEvents",
+          inputType: "PiBackfillAgentEventsInput",
+          outputType: "PiBackfillAgentEventsOutput",
+          bashCommand: "pi.agent.backfillEvents",
+          bashOptions: [],
+        },
       ],
     },
   ])("converts $namespace family tools into reference objects", (expectedFamily) => {

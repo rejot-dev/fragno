@@ -32,6 +32,7 @@ import { InMemoryProjectConnectorObject } from "../../../../workers/project-conn
 import { InMemoryResendObject } from "../../../../workers/resend.do";
 import { InMemoryTelegramObject } from "../../../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../../../workers/upload.do";
+import { piAgentEventsQuery, piAgentQueueStatus, projectPiAgents } from "../agents/agent-activity";
 import {
   automationWorkflowRunsFromRecords,
   workflowRunRecordsQuery,
@@ -151,6 +152,59 @@ function connectionEvent(
   });
 }
 
+type PiEventType =
+  | "turn.completed"
+  | "turn.aborted"
+  | "agent.created"
+  | "agent.updated"
+  | "agent.deleted"
+  | "agent.stopped";
+
+/** Each `pi` event with the smallest payload its catalog entry accepts. */
+function piEvent(
+  id: string,
+  eventType: PiEventType,
+  agentName: string,
+  at: number,
+  description = "Reviews changes.",
+) {
+  const definition = {
+    agentName,
+    description,
+    model: null,
+    permissions: [],
+    instructions: "Review carefully.",
+    managedBy: null,
+  };
+  const payloads: Record<PiEventType, Record<string, unknown>> = {
+    "turn.completed": { answerEntryId: 1 },
+    "turn.aborted": {},
+    "agent.created": { definition },
+    "agent.updated": { definition },
+    "agent.deleted": { definition },
+    "agent.stopped": {},
+  };
+  const isTurn = eventType.startsWith("turn.");
+  return event(id, "pi", eventType, at, {
+    payload: payloads[eventType],
+    subject: { orgId, agentName, ...(isTurn ? { requestId: id } : {}) },
+  });
+}
+
+/** A turn or queue event about one request, whose ID differs from the request's. */
+function requestEvent(
+  id: string,
+  eventType: "turn.started" | "queue.added" | "queue.dispatched",
+  requestId: string,
+  at: number,
+  payload: Record<string, unknown>,
+) {
+  return event(id, "pi", eventType, at, {
+    payload,
+    subject: { orgId, agentName: "assistant", requestId },
+  });
+}
+
 /** Reads the dashboard the way the page does: the same live queries, run once. */
 async function readDashboard(ctx: BackofficeScenarioContext) {
   const database = ctx.tanstack.automations.forOrg(orgId);
@@ -158,12 +212,13 @@ async function readDashboard(ctx: BackofficeScenarioContext) {
   const { collections } = database;
   const now = ctx.runtime.now();
   const since = new Date(dashboardBucketStarts(now)[0] ?? now);
-  const [runs, waitingRuns, events, connectionEvents, routeRecords, activeWorkflows] =
+  const [runs, waitingRuns, events, connectionEvents, agentEvents, routeRecords, activeWorkflows] =
     await Promise.all([
       queryOnce((query) => dashboardRunsQuery(query, collections)),
       queryOnce((query) => workflowRunRecordsQuery(query, collections, { type: "waiting" })),
       queryOnce((query) => dashboardEventsQuery(query, collections, since)),
       queryOnce((query) => dashboardConnectionEventsQuery(query, collections)),
+      queryOnce((query) => piAgentEventsQuery(query, collections)),
       queryOnce((query) => automationRoutesQuery(query, collections)),
       queryOnce((query) => orchestrationActiveWorkflowsQuery(query, collections)),
     ]);
@@ -217,6 +272,16 @@ async function readDashboard(ctx: BackofficeScenarioContext) {
         .map(({ id, recentCount }) => `${id} ×${recentCount}`)
         .sort(),
     },
+    agents: projectPiAgents({
+      events: agentEvents,
+      bucketStarts: dashboard.eventVolume.bucketStarts,
+    }).map(({ definition, activity }) => {
+      const recorded = activity
+        ? `${activity.latest.kind}, ${activity.turns} turns in ${activity.turnsPerBucket.filter((count) => count > 0).length} hours`
+        : "no activity";
+      const queue = piAgentQueueStatus(activity);
+      return `${definition.agentName} (${definition.description.slice(0, 20)}): ${recorded}${queue ? `; ${queue.label}` : ""}`;
+    }),
     connections: dashboard.connections.map(
       ({ connectionId, state }) => `${connectionId}: ${state}`,
     ),
@@ -327,12 +392,73 @@ describe("dashboard", () => {
                     "shop:order.placed ×1",
                   ],
                 },
+                agents: ["assistant (General-purpose Back): no activity"],
                 connections: ["api#billing: ready", "mcp#agensi: unavailable"],
                 upcoming: [
                   "waiting: await-shipment for shipped",
                   `schedule: New year digest at ${SCHEDULED_AT}`,
                 ],
               });
+            },
+          ),
+        ],
+      }),
+    );
+  });
+
+  test("lists the agents its events define, with what each did over the last day", async () => {
+    const start = Date.now();
+    const twoDaysLater = start + 2 * DAY_MS;
+    const minuteBefore = twoDaysLater - 60_000;
+
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        objects: scenarioObjects,
+        name: "agents are defined, answer, get cut off, stop, change, and go over two days",
+        setup: ({ given }) => [given.organization.exists({ id: orgId, name: "Ada Labs" })],
+        steps: ({ when, then }) => [
+          when.automation.ingestEvent(piEvent("old", "turn.completed", "assistant", start)),
+          when.automation.ingestEvent(piEvent("reviewer", "agent.created", "reviewer", start)),
+          when.automation.ingestEvent(piEvent("drafter", "agent.created", "drafter", start)),
+          when.time.advance("2 days"),
+          when.automation.ingestEvent(
+            piEvent("answered", "turn.completed", "assistant", minuteBefore),
+          ),
+          when.automation.ingestEvent(
+            piEvent("cut-off", "turn.aborted", "assistant", minuteBefore),
+          ),
+          // A steer Pi placed in its turn no longer waits; work queued while stopped does.
+          when.automation.ingestEvent(
+            requestEvent("steer-added", "queue.added", "steer", minuteBefore, { type: "steer" }),
+          ),
+          when.automation.ingestEvent(
+            requestEvent("steer-started", "turn.started", "steer", minuteBefore, {}),
+          ),
+          when.automation.ingestEvent(
+            requestEvent("taken-added", "queue.added", "taken", minuteBefore, { type: "prompt" }),
+          ),
+          when.automation.ingestEvent(
+            requestEvent("taken-dispatched", "queue.dispatched", "taken", minuteBefore, {
+              turnRequestId: "taken",
+            }),
+          ),
+          when.automation.ingestEvent(piEvent("stop", "agent.stopped", "assistant", twoDaysLater)),
+          when.automation.ingestEvent(
+            requestEvent("waiting-added", "queue.added", "waiting", twoDaysLater, {
+              type: "notification",
+            }),
+          ),
+          when.automation.ingestEvent(
+            piEvent("revised", "agent.updated", "reviewer", minuteBefore, "Approves changes."),
+          ),
+          when.automation.ingestEvent(piEvent("gone", "agent.deleted", "drafter", minuteBefore)),
+          then.assert(
+            "built-in agents come first, each agent's latest definition and event stand, and only the last day's turns count",
+            async (ctx) => {
+              assert.deepEqual((await readDashboard(ctx)).agents, [
+                "assistant (General-purpose Back): queued, 2 turns in 1 hours; 1 queued · paused",
+                "reviewer (Approves changes.): updated, 0 turns in 0 hours",
+              ]);
             },
           ),
         ],
