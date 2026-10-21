@@ -28,6 +28,20 @@ export class SavedModuleImportError extends BackofficeOperationError {
   }
 }
 
+/**
+ * workerd reports an import a program was not given as `No such module "workspace/x.js".`, which
+ * reads as a missing file. Saved modules reach a program only through imports found before it
+ * runs, so the message explains how to import one; null leaves other messages as they are.
+ */
+export function explainUnloadedSavedModule(message: string): string | null {
+  const name = /^No such module "([^"]+)"\.?$/u.exec(message)?.[1];
+  const path = name === undefined ? null : `/${name}`;
+  if (path === null || !SOURCE_MODULE_ROOTS.some((root) => path.startsWith(root))) {
+    return null;
+  }
+  return `Import "${path}" was not loaded. A program imports saved modules found before it runs, so name the path as a string literal, such as import(${JSON.stringify(path)}), and import a module in a later call than the one that writes it.`;
+}
+
 type ImportSpecifier = {
   specifier: string;
   /** Static imports and re-exports belong to modules; dynamic imports work in any code. */
@@ -38,7 +52,8 @@ type ImportSpecifier = {
 
 /**
  * Finds static imports, re-exports, and dynamic imports of string literals. Other dynamic imports
- * cannot be resolved before execution and are left to fail when they run.
+ * cannot be resolved before execution; they fail when they run, as `explainUnloadedSavedModule`
+ * describes.
  */
 function findImportSpecifiers(code: string): ImportSpecifier[] {
   let offset = 0;

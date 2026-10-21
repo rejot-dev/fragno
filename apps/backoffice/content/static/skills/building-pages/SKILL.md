@@ -23,7 +23,10 @@ page runs the queries in the browser and re-renders as the data changes.
 2. **Write the source.** Save the module with `state.writeFile`, following the example below.
    Complete when it default-exports `page.define(...)` and is pure, as the Source section defines.
 3. **Check.** Run `js.check({ path })` on the source. Complete when it reports no diagnostics.
-4. **Verify.** In a separate codemode call, import the source and return its preview:
+4. **Verify.** In a later codemode call than the one that wrote the source, import it by its path as
+   a string literal and return its preview. Codemode loads only the saved modules a call names
+   literally, and only those that exist when the call starts, so `import(path)` with a variable, or
+   importing in the writing call, fails with "was not loaded":
 
    ```js
    async () => {

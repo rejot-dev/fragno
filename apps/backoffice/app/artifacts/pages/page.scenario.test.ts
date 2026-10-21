@@ -648,12 +648,12 @@ describe("workspace pages", () => {
     );
   });
 
-  test("an import the build cannot read fails the page with where it is imported", async () => {
+  test("an import the build or the verification cannot load names how to fix it", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         objects: allLocalObjects,
         env: codemodeEnv(),
-        name: "a page that imports a deleted helper",
+        name: "a page that imports a deleted helper, then a verification that imports by variable",
         setup: ({ given }) => [given.organization.exists({ id: orgId, name: "Ada Labs" })],
         steps: ({ then }) => [
           then.assert("the route reports the import as the page's error", async (ctx) => {
@@ -662,6 +662,29 @@ describe("workspace pages", () => {
             assert(loaded.kind === "failed", JSON.stringify(loaded));
             assert.include(loaded.message, `${SOURCE_PATH}:1:`);
             assert.include(loaded.message, "Import './helpers.js' cannot be read");
+          }),
+          then.assert("verifying through a variable path names how to import it", async (ctx) => {
+            // The write and the import share a call, and the import names a variable, so the
+            // program is not given the module.
+            const error = await ctx
+              .runCodemode({
+                scope,
+                code: `async () => {
+  const path = ${JSON.stringify(SOURCE_PATH)};
+  await state.writeFile({ path, content: ${JSON.stringify(newestRunPage)} });
+  const { default: definition } = await import(path);
+  return { $ui: page.preview(definition) };
+}`,
+              })
+              .then(
+                () => null,
+                (failure: unknown) =>
+                  failure instanceof Error ? failure.message : String(failure),
+              );
+            assert.include(
+              error,
+              `Import "${SOURCE_PATH}" was not loaded. A program imports saved modules found before it runs, so name the path as a string literal, such as import("${SOURCE_PATH}"), and import a module in a later call than the one that writes it.`,
+            );
           }),
         ],
       }),
