@@ -3,8 +3,7 @@ name: javascript-runtime
 description: >
   Use js.check, js.build, and js.run to check saved JavaScript, compile reusable built modules,
   execute source or bundles, diagnose build or startup errors, and review past runs' outcomes and
-  logs with js.logs. Load when a task uses the js.* runtime; Pi workspace extension authoring also
-  uses the pi-extensions skill.
+  logs with js.logs. Load when a task uses the js.* runtime.
 ---
 
 # JavaScript runtime
@@ -30,8 +29,7 @@ Choose the operation:
 
 For durable steps, retries, sleeps, or external events, read `/static/skills/workflows/SKILL.md` and
 use the workflow runtime. Saved `.workflow.js` files start through `workflow.createInstance`, not
-`js.run`. Pi section modules follow the Pi Extensions skill's consumer contract and activation
-process; this skill owns their build/runtime semantics.
+`js.run`.
 
 **Complete when** the operation, available methods, concrete scope, and required permissions are
 known. Workspace files belong to the current scope; another organization's or project's files are
@@ -82,11 +80,10 @@ async () => {
 
 Inspect `valid` and every diagnostic's path, line, column, code, and message. Diagnostics cover the
 imported modules too, and an import that cannot be loaded is a diagnostic at the import. Fix them
-and check again. Source checking and execution resolve no npm packages; SDK-importing modules use
-the build branch below instead. Build success is not a substitute for type-check success.
+and check again. Source checking, builds, and execution resolve saved modules, not npm packages.
+Build success is not a substitute for type-check success.
 
-**Complete when** the source has `valid: true`, or the task deliberately uses the compiled module
-branch because it imports the SDK.
+**Complete when** the source has `valid: true`.
 
 ## 3. Build a reusable module when needed
 
@@ -110,19 +107,18 @@ async () => {
 
 - Output is a `.json` file under the current `/workspace/`. `.build/` and `.module.json` are naming
   conventions, not required locations or suffixes. Use direct paths without `..` traversal.
-- Builds bundle the source with the saved modules it imports and the installed, pinned
-  `@earendil-works/pi-durable` dependency; other npm dependencies are outside this build contract.
-  The built module captures imported modules as they were at build time: rebuild after editing one.
-- The generic `fragno-javascript-module/v1` module contains code, not Pi metadata, capability
-  grants, or a consumer-specific invocation wrapper. Use `js.build` without a target option.
-- Build neither initializes the module nor activates an extension. A successful build can still fail
-  at startup or fail a consumer's export validation.
+- Builds bundle the source with the saved modules it imports. The built module captures imported
+  modules as they were at build time: rebuild after editing one.
+- The generic `fragno-javascript-module/v1` module contains code, not capability grants or a
+  consumer-specific invocation wrapper. Use `js.build` without a target option.
+- Building does not initialize the module. A successful build can still fail at startup or fail a
+  consumer's export validation.
 - Review `warnings`. Failed compilation preserves the previous output: an older built module still
   existing is not evidence that the latest source built successfully.
 
 Checking and running require `upload.read`; building also requires `upload.modify` and an available
 compiler. **Complete when** the build returns `status: "success"` with the intended `outputPath`, or
-its exact error is reported. Preserve the returned path for execution or consumer activation.
+its exact error is reported. Preserve the returned path for execution.
 
 ## 4. Run and inspect
 
@@ -208,5 +204,4 @@ Otherwise `js.logs` fails with `CODEMODE_RUN_FORBIDDEN`. Runs are kept for 7 day
 fails with `CODEMODE_RUN_NOT_FOUND`, while its events remain.
 
 **Complete only when** the observed run succeeds and its expected logs or authorized effects are
-verified, or the observed failure and blocking requirement are reported. Running a Pi built module
-initializes it but does not invoke sections or prove Pi activation.
+verified, or the observed failure and blocking requirement are reported.

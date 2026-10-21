@@ -9,7 +9,7 @@ export const builtJavaScriptModuleSchema = z.strictObject({
   bundle: codemodeWorkerBundleSchema,
 });
 
-/** Build outputs and activation references stay inside the current workspace, regardless of consumer. */
+/** Build outputs stay inside the current workspace. */
 export function resolveBuiltJavaScriptModulePath(
   path: string,
   state: Pick<BackofficeStateBackend, "resolvePath">,

@@ -11,8 +11,6 @@ import { readSavedModuleImports } from "@/fragno/codemode/saved-module-imports";
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 import type { JavaScriptBuildFileOutput } from "@/fragno/runtime-tools/families/javascript-runtime";
 
-import { dependencies } from "../../../../package.json";
-
 /**
  * Builds one saved ES module without running it; a failed compilation preserves the previous
  * built module. Throws when the input is refused before a build run is recorded.
@@ -59,7 +57,7 @@ export async function buildJavaScriptModuleFile(input: {
   const built = await buildBackofficeJavaScriptModule({
     entry: path,
     modules,
-    dependencies: { "@earendil-works/pi-durable": dependencies["@earendil-works/pi-durable"] },
+    dependencies: {},
     codemode: input.codemode,
   });
   const { runId } = built;

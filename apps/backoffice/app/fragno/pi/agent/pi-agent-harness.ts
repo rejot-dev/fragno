@@ -22,17 +22,12 @@ import {
   createPiBilling,
   type PiBilling,
 } from "@/fragno/pi/extensions/billing/billing-extension";
-import {
-  loadWorkspaceExtensions,
-  type LoadedWorkspaceExtensions,
-} from "@/fragno/pi/extensions/workspace/workspace-extensions";
 
 import { createAuthorizedPiModels } from "./authorized-models";
 import {
   createBackofficeAgentContext,
   type BackofficeAgentContext,
 } from "./backoffice-agent-context";
-import type { PiAgentTurn } from "./pi-agent-contract";
 import { startReportingPiAgentTurns } from "./pi-agent-turn-events";
 import { readActivePiAgentTurn } from "./pi-agent-turns";
 import { createPiModels, PI_THINKING_LEVEL } from "./pi-models";
@@ -50,8 +45,6 @@ export type OpenPiAgent = {
   harness: Harness;
   storage: Storage;
   billing: PiBilling;
-  /** Installs the workspace's current extensions with the authority of the given turn. */
-  refreshWorkspaceExtensions: (turn: PiAgentTurn) => Promise<void>;
   /** Reports every settled turn not yet reported to Automations and the agent's manager. */
   reportSettledTurns: (context: Context) => Promise<void>;
 };
@@ -151,43 +144,11 @@ export async function openPiAgentHarness(input: {
     nowEpochMs: input.nowEpochMs,
     report: dependencies.report,
   });
-  let workspaceExtensions: LoadedWorkspaceExtensions | null = null;
-  let refreshing = Promise.resolve();
-  // A shared agent has no fresh session to pick up rebuilt extensions, so each turn checks for them.
-  async function refreshWorkspaceExtensions(turn: PiAgentTurn) {
-    refreshing = refreshing
-      .then(async () => {
-        const reloaded = await loadWorkspaceExtensions({
-          agent,
-          turn: agent.turn(turn),
-          registry: registry.snapshot(),
-          loaded: workspaceExtensions,
-          report: dependencies.report,
-        });
-        if (!reloaded) {
-          return;
-        }
-        for (const extension of workspaceExtensions?.extensions ?? []) {
-          registry.uninstall(extension);
-        }
-        for (const extension of reloaded.extensions) {
-          registry.install(extension);
-        }
-        workspaceExtensions = reloaded;
-      })
-      .catch(dependencies.report);
-    await refreshing;
-  }
   try {
     await harness.root(BACKGROUND_CONTEXT, { agent: { thinkingLevel: PI_THINKING_LEVEL } });
-    // Recovered work resumes with the extensions it ran with before the restart.
-    const recovering = await readActivePiAgentTurn(harness, storage, BACKGROUND_CONTEXT);
-    if (recovering) {
-      await refreshWorkspaceExtensions(recovering);
-    }
   } catch (cause) {
     await harness.close(BACKGROUND_CONTEXT);
     throw cause;
   }
-  return { harness, storage, billing, refreshWorkspaceExtensions, reportSettledTurns };
+  return { harness, storage, billing, reportSettledTurns };
 }

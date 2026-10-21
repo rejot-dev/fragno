@@ -19,15 +19,13 @@ organized around Pi Durable:
 - `agent/`: one Pi Durable `Harness` per agent. `agent-definitions.ts` holds the built-in
   definitions and reads instructions. `pi-agent-turns.ts` records each turn's authority.
   `pi-agent-harness.ts` is the only place a `Registry` is built; it installs the runtime's
-  `PiAgentDependencies.extensions`, then the Backoffice extensions, then workspace extensions. A
-  later extension's same-name tool wins. `backoffice-agent-context.ts` rebuilds execution authority
-  and tool runtimes for the turn that owns the agent's current work; extensions receive it as their
-  only Backoffice collaborator.
+  `PiAgentDependencies.extensions`, then the Backoffice extensions. A later extension's same-name
+  tool wins. `backoffice-agent-context.ts` rebuilds execution authority and tool runtimes for the
+  turn that owns the agent's current work; extensions receive it as their only Backoffice
+  collaborator.
 - `extensions/`: everything installed into the registry. `backoffice/` (guidance and agent
   instruction sections, and the `read`, `search`, and `execCodeMode` tools), `billing/` (usage
-  delivery task and document), `posthog/` (generation analytics, production Cloudflare only), and
-  `workspace/` (author-built extensions from `/workspace/pi/extensions.json`, run inside sealed
-  codemode guests).
+  delivery task and document), and `posthog/` (generation analytics, production Cloudflare only).
 - `manager/`: the scoped agent directory fragment and the runtime that runtime tools and codemode
   use to call it.
 
@@ -235,13 +233,6 @@ no Fragno workflow involved in agent execution. The same manager and agent lifec
 Cloudflare and local/Node runtimes. Local agents use Pi Durable's Node SQLite adapter: in-memory
 SQLite for transient scenarios, or one `pi-agent-*.sqlite` file per agent in the configured SQLite
 data directory.
-
-## Workspace extensions
-
-Workspace extensions load with the authority of the turn being admitted, and again whenever the
-manifest or a listed built module's size or modification time changed since the last load. A turn
-keeps the extensions it started with. After a restart, an agent with a recorded turn reloads them
-before resuming work.
 
 ## Backoffice execution
 

@@ -149,7 +149,6 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
         if (!this.#provisioned) {
           return;
         }
-        // Compiler RPC consumes caller-owned streams; its pulls need the input gate to be open.
         const opened = await this.#open(this.#provisioned);
         const billingTaskId = await this.#ensureBillingDelivery(opened);
         if (
@@ -241,7 +240,6 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
       await this.#state.storage.setAlarm(this.#nowEpochMs());
       await recordPiAgentTurn(harness, prompt.requestId, turn, BACKGROUND_CONTEXT);
       try {
-        await opened.refreshWorkspaceExtensions(turn);
         const { model } = await root.agent(BACKGROUND_CONTEXT);
         if (
           model?.provider !== turn.agent.model.provider ||
