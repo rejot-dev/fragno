@@ -101,3 +101,6 @@ lefthook-local.yml
 
 # Fiberplane local issue tracking
 .fp/
+
+# Backoffice CLI credential caches (BACKOFFICE_AUTH_FILE) kept next to a skill
+.agents/skills/*/auth.json
