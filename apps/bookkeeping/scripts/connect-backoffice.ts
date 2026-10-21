@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 import { isLoopbackUrl } from "@fragno-dev/backoffice-api/v0/apps";
+import { backofficeDevServerPort } from "@rejot-dev/backoffice-local/dev-server-port";
 import { z } from "zod";
 
 import {
@@ -111,6 +112,8 @@ const { values: flags } = parseArgs({
   },
 });
 
+const localBackofficeUrl = `http://127.0.0.1:${backofficeDevServerPort(bookkeepingDir)}`;
+
 if (flags.help) {
   console.log(`Usage: pnpm --dir apps/bookkeeping backoffice:connect [options]
 
@@ -119,7 +122,8 @@ repairs Bookkeeping's OAuth client, registers the app as first-party with its ac
 apps/bookkeeping/.dev.vars. Rerunning converges on the same client and app.
 
 Options:
-  --backoffice-url URL     Backoffice origin (default: BACKOFFICE_BASE_URL or http://127.0.0.1:5173)
+  --backoffice-url URL     Backoffice origin (default: this worktree's local Backoffice,
+                           ${localBackofficeUrl})
   --bookkeeping-url URL    Bookkeeping origin (default: BOOKKEEPING_BASE_URL or http://127.0.0.1:6174)
   --name NAME              OAuth client name for a new client (default: Bookkeeping)
   --slug SLUG              Permanent app slug, addressed as app#SLUG (default: bookkeeping)
@@ -133,10 +137,9 @@ if (changeApproval !== "automatic" && changeApproval !== "installation") {
 }
 
 const devVars = readDevVars();
-const backofficeUrl = origin(
-  flags["backoffice-url"] ?? devVars.get("BACKOFFICE_BASE_URL") ?? "http://127.0.0.1:5173",
-  "--backoffice-url",
-);
+// Not .dev.vars: a value written by an earlier run, or copied from another checkout, may point at
+// another worktree's Backoffice.
+const backofficeUrl = origin(flags["backoffice-url"] ?? localBackofficeUrl, "--backoffice-url");
 const bookkeepingUrl = origin(
   flags["bookkeeping-url"] ?? devVars.get("BOOKKEEPING_BASE_URL") ?? "http://127.0.0.1:6174",
   "--bookkeeping-url",
