@@ -46,6 +46,28 @@ function emitWorkerLocalDevVarsPlugin(): Plugin {
   };
 }
 
+// Vite's dev server has a `u` shortcut, but its preview server does not. Shortcuts bound here merge
+// with the ones Vite's CLI binds after startup.
+function previewServerUrlShortcutPlugin(): Plugin {
+  return {
+    name: "preview-server-url-shortcut",
+    configurePreviewServer(server) {
+      server.bindCLIShortcuts({
+        customShortcuts: [
+          {
+            key: "u",
+            description: "show server url",
+            action(previewServer) {
+              previewServer.config.logger.info("");
+              previewServer.printUrls();
+            },
+          },
+        ],
+      });
+    },
+  };
+}
+
 export default defineConfig(({ command }) => {
   const isDevServer = command === "serve";
   // Only serving needs a port; builds must not depend on running inside a git checkout.
@@ -89,6 +111,7 @@ export default defineConfig(({ command }) => {
       devtoolsJson(),
       emitWaSqliteWasmAssetPlugin(),
       emitWorkerLocalDevVarsPlugin(),
+      previewServerUrlShortcutPlugin(),
     ],
     ssr: {
       noExternal: ["@earendil-works/pi-ai"],
