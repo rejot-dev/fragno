@@ -45,8 +45,8 @@ export type OpenPiAgent = {
   harness: Harness;
   storage: Storage;
   billing: PiBilling;
-  /** Reports every settled turn not yet reported to Automations and the agent's manager. */
-  reportSettledTurns: (context: Context) => Promise<void>;
+  /** Reports the turns started and settled since the last report to Automations and the manager. */
+  reportTurns: (context: Context) => Promise<void>;
 };
 
 /** Production agents use credential-backed providers and Pi's default run policy. */
@@ -155,7 +155,7 @@ export async function openPiAgentHarness(input: {
     BACKGROUND_CONTEXT,
   );
   opened = { harness, storage };
-  const reportSettledTurns = startReportingPiAgentTurns({
+  const reportTurns = startReportingPiAgentTurns({
     config,
     agent,
     harness,
@@ -173,5 +173,5 @@ export async function openPiAgentHarness(input: {
     await harness.close(BACKGROUND_CONTEXT);
     throw cause;
   }
-  return { harness, storage, billing, reportSettledTurns };
+  return { harness, storage, billing, reportTurns };
 }

@@ -5,11 +5,6 @@ import { defineFragment } from "@fragno-dev/core";
 import { withDatabase } from "@fragno-dev/db";
 
 import type { AutomationsObject } from "@/backoffice-runtime/object-registry";
-import {
-  PI_AGENT_AUTOMATION_EVENTS,
-  PI_AUTOMATION_SOURCE,
-  piAgentEventSubject,
-} from "@/fragno/backoffice-capabilities/capabilities/pi";
 import type { UsageBilling } from "@/fragno/billing/usage-billing";
 import type {
   PiAgent,
@@ -17,6 +12,7 @@ import type {
   PiAvailableModel,
 } from "@/fragno/pi/agent/pi-agent-contract";
 
+import { piAgentChangeEvent, piAgentQueueEvent } from "./pi-agent-change-events";
 import { piAgentDirectoryServices } from "./pi-agent-directory-services";
 import {
   handOverPiAgentWork,
@@ -50,19 +46,23 @@ export const piManagerDefinition = defineFragment<PiManagerConfig>("pi-manager")
   .provideHooks<PiManagerHooks>(({ defineHook, services, config }) => ({
     recordAgentChange: defineHook(async function (change): Promise<void> {
       await config.automations?.ingestEvent(
-        {
+        piAgentChangeEvent({
           id: this.hookId.toString(),
           scope: config.scope,
-          // Automations started by this event inherit the requester's ceiling, never a wider one.
-          scopeRestriction: change.provenance.scopeRestriction,
-          source: PI_AUTOMATION_SOURCE,
-          eventType: PI_AGENT_AUTOMATION_EVENTS[change.kind].eventType,
-          occurredAt: this.createdAt.toISOString(),
-          payload: change.kind === "stopped" ? {} : { definition: change.definition },
-          actors: change.provenance.actors,
-          subject: piAgentEventSubject(config.scope, change.agentName),
-          causation: { kind: "origin" },
-        },
+          occurredAt: this.createdAt,
+          change,
+        }),
+        { propagationContext: this.capturePropagationContext() },
+      );
+    }),
+    recordQueueChange: defineHook(async function (change): Promise<void> {
+      await config.automations?.ingestEvent(
+        piAgentQueueEvent({
+          id: this.hookId.toString(),
+          scope: config.scope,
+          occurredAt: this.createdAt,
+          change,
+        }),
         { propagationContext: this.capturePropagationContext() },
       );
     }),

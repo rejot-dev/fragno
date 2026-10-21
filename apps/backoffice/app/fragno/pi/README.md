@@ -139,33 +139,51 @@ row's version as their revision, to the manager object's in-memory queue channel
 leads with them and sends them again as a `queue` frame whenever they change; an older revision
 published late is ignored.
 
+Work that waits is also recorded as `pi` events, attributed to its sender, so views show the queue
+the agent page shows. `queue.added` records an item that starts waiting, with its type: `prompt` or
+`notification` for an item in the queue, or `steer` for a steer, which waits in Pi's inbox for the
+running turn's next tool boundary. A queued item's wait ends with `queue.dispatched`, naming the
+request ID of the turn that took it, or `queue.dropped` with the reason; a steer's ends with its own
+`turn.started`, or with its turn's end when a stop cuts it off before Pi places it. Items an idle
+agent takes at once never wait, so they record none. The mutation that changes an item triggers the
+`recordQueueChange` durable hook, so each event is ingested, keyed by the hook's ID, exactly when
+the change commits.
+
 ## Turn events
 
-Every answered prompt records one `pi` Automations event in the agent's scope, `turn.completed` with
-the answer's entry ID. A prompt a stop cut off, which Pi settles unanswered with reason `aborted`,
-records `turn.aborted`, with an empty payload. Other unanswered prompts, such as withdrawn or failed
-ones, record nothing. A steer that joined a running turn settles with that turn. The event's subject
-names the agent and the prompt's request ID, its actors are the turn's execution actors, and its
-scope restriction is the turn's, so `turn.aborted` names who prompted the turn; `agent.stopped`
-names who stopped it. Neither carries answer text; `pi.getSubmission` leads to the answer.
+Each prompt Pi starts records `turn.started` in the agent's scope when Pi places it in the
+conversation, and each prompt Pi settles records one end: `turn.completed` with the answer's entry
+ID, `turn.aborted` for a prompt a stop cut off (Pi's reason `aborted`), or `turn.failed` with Pi's
+reason for any other unanswered prompt, such as `model_error`. A started prompt without an end is
+running, which is how views show an agent answering. A prompt Pi settles without starting records
+only its end, and a withdrawn one records nothing. A steer that joined a running turn starts and
+settles with that turn. The event's subject names the agent and the prompt's request ID, its actors
+are the turn's execution actors, and its scope restriction is the turn's, so `turn.aborted` names
+who prompted the turn; `agent.stopped` names who stopped it. No turn event carries answer text;
+`pi.getSubmission` leads to the answer.
 
-Pi settles submissions in its own commits, so the turns document is the outbox: a settled turn stays
-in `pending` until its event, if any, is ingested, keyed `pi:<agentName>:<requestId>`, and its
-manager is told, and then forgotten. Neither report waits on the other, so an unrecordable event
-never holds back the agent's queue. A commit listener reports each settlement as it happens, and the
-alarm reports again after the agent goes idle, keeping its heartbeat until every settled turn is
-recorded. Runtimes without Automations forget settled turns without recording them.
+Pi starts and settles submissions in its own commits, so the turns document is the outbox: a turn
+stays in `pending` until it settles, its events are ingested, keyed `pi:<agentName>:<requestId>`
+with `:started` for the start, and its manager is told, and then forgotten. Pi keeps a started
+input's entry once it settles, so a turn that settles before its start was reported records the
+start first; recording either again records nothing. Neither report waits on the other, so an
+unrecordable event never holds back the agent's queue. A commit listener reports each start and
+settlement as it happens, and the alarm reports again after the agent goes idle, keeping its
+heartbeat until every settled turn is recorded. Runtimes without Automations forget settled turns
+without recording them.
 
 ## Agent change events
 
 The manager records what `pi.agent.create`, `pi.agent.update`, `pi.agent.delete`, and
-`pi.agent.stop` change as `pi` events in its scope: `agent.created`, `agent.updated`, and
-`agent.deleted` carry the definition (the deleted one for `agent.deleted`), and `agent.stopped`
-carries nothing. Deleting an undefined agent and stopping an agent with no turns change nothing and
-record nothing. The subject names the agent, the actors are the requester's, and the scope
-restriction is theirs, which the manager middleware puts in the request as `provenance`, as it does
-for prompts. Each change triggers the `recordAgentChange` durable hook in the mutation that makes
-it, so the event is ingested, keyed by the hook's ID, exactly when the change commits.
+`pi.agent.stop` change, and resuming a stopped agent's queue, as `pi` events in its scope:
+`agent.created`, `agent.updated`, and `agent.deleted` carry the definition (the deleted one for
+`agent.deleted`), and `agent.stopped` and `agent.resumed` carry nothing. A stopped agent stays
+paused until its latest of the two is `agent.resumed`, recorded by the resume route or a prompt with
+`whenPaused: "resume"`. Deleting an undefined agent and stopping an agent with no turns change
+nothing and record nothing. The subject names the agent, the actors are the requester's, and the
+scope restriction is theirs, which the manager middleware puts in the request as `provenance`, as it
+does for prompts. Each change triggers the `recordAgentChange` durable hook in the mutation that
+makes it, so the event is ingested, keyed by the hook's ID, exactly when the change commits.
 
 ## Notifications
 

@@ -43,13 +43,26 @@ export type PiAgentChange = {
   provenance: PiAgentTurnProvenance;
 } & (
   | { kind: "created" | "updated" | "deleted"; definition: PiAgentDefinition }
-  | { kind: "stopped" }
+  | { kind: "stopped" | "resumed" }
+);
+
+/** What happens to an item that waits in an agent's queue; its sender's provenance attributes it. */
+export type PiAgentQueueChange = {
+  agentName: string;
+  requestId: string;
+  provenance: PiAgentTurnProvenance;
+} & (
+  | { kind: "added"; type: "prompt" | "notification" | "steer" }
+  | { kind: "dispatched"; turnRequestId: string }
+  | { kind: "dropped"; reason: string }
 );
 
 /** Work the manager's requests leave for durable delivery. */
 export type PiManagerHooks = {
   /** Records the change as a `pi` Automations event; the hook's id makes it idempotent. */
   recordAgentChange: HookFn<PiAgentChange>;
+  /** Records the change as a `pi` Automations event; the hook's id makes it idempotent. */
+  recordQueueChange: HookFn<PiAgentQueueChange>;
   /** Hands the agent its unsettled items again, in case the request that did failed. */
   redispatchAgentQueue: HookFn<{ agentName: string }>;
   /** Writes notifications that arrived into the conversation again, as above. */
@@ -204,6 +217,30 @@ type PiAgentArrivingItem = PiAgentQueueItem & {
 type PiAgentQueueRow = PiAgentQueueItem & { id: FragnoId; provenance: PiAgentTurnProvenance };
 
 /**
+ * Only work that waits is recorded: queued items, and steers, which wait in Pi's inbox for the
+ * running turn's next tool boundary. Work an idle agent takes at once records nothing.
+ */
+function recordQueueChange(
+  uow: PiAgentQueueUow,
+  agentName: string,
+  item: PiAgentQueueItem & { provenance: PiAgentTurnProvenance },
+  change:
+    | { kind: "added"; steer: boolean }
+    | { kind: "dispatched"; turnRequestId: string }
+    | { kind: "dropped"; reason: string },
+) {
+  const { requestId, provenance } = item;
+  uow.triggerHook("recordQueueChange", {
+    agentName,
+    requestId,
+    provenance,
+    ...(change.kind === "added"
+      ? { kind: "added", type: change.steer ? "steer" : item.input.type }
+      : change),
+  });
+}
+
+/**
  * Starts the next turn, which only happens while nothing is dispatched and the queue is not
  * paused: the rules' items are dispatched, or every candidate is dropped when the definition or
  * model they need is gone. Returns what still waits.
@@ -239,6 +276,12 @@ function startNextTurn(
   if (step.type === "drop") {
     for (const candidate of candidates) {
       record(candidate, { status: "dropped", reason: step.reason });
+      if (candidate.id) {
+        recordQueueChange(uow, agent.agentName, candidate, {
+          kind: "dropped",
+          reason: step.reason,
+        });
+      }
     }
     return { handover: null, waiting: [] };
   }
@@ -246,10 +289,14 @@ function startNextTurn(
   const waiting = candidates.filter((candidate) => !step.items.includes(candidate));
   for (const candidate of step.items) {
     record(candidate, { status: "dispatched", turn: step.turn, turnRequestId });
+    if (candidate.id) {
+      recordQueueChange(uow, agent.agentName, candidate, { kind: "dispatched", turnRequestId });
+    }
   }
   for (const candidate of waiting) {
     if (!candidate.id) {
       record(candidate, { status: "queued" });
+      recordQueueChange(uow, agent.agentName, candidate, { kind: "added", steer: false });
     }
   }
   uow.triggerHook("redispatchAgentQueue", { agentName: agent.agentName });
@@ -297,6 +344,7 @@ function placeQueueItem(
     mayJoinPiAgentTurn(dispatched.state.turn, turn)
   ) {
     uow.create("agent_queue_item", { ...arriving, ...itemState({ status: "steered", turn }) });
+    recordQueueChange(uow, agentName, arriving, { kind: "added", steer: true });
     uow.triggerHook("redispatchAgentQueue", { agentName });
     return {
       status: "steered",
@@ -306,6 +354,7 @@ function placeQueueItem(
   }
   if (paused || dispatched) {
     uow.create("agent_queue_item", { ...arriving, ...itemState({ status: "queued" }) });
+    recordQueueChange(uow, agentName, arriving, { kind: "added", steer: false });
     const queue = waitingQueue(revision, paused, [...queued, arriving]);
     if (arriving.input.type === "prompt") {
       return { status: "queued", handover: null, queue };
@@ -409,6 +458,13 @@ export function piAgentQueueServices(
               return { type: "busy" };
             }
             const paused = (agent?.paused ?? false) && input.whenPaused === "wait";
+            if (agent?.paused && !paused) {
+              uow.triggerHook("recordAgentChange", {
+                kind: "resumed",
+                agentName,
+                provenance: input.provenance,
+              });
+            }
             if (!agent) {
               // A concurrent first prompt may provision the agent first; the retry then finds it.
               uow.create("agent", { id: agentName }, { retryOnUniqueConflict: () => true });
@@ -594,6 +650,7 @@ export function piAgentQueueServices(
     resumeAgentQueue: function (input: {
       agentName: string;
       availableModels: readonly PiAvailableModel[];
+      provenance: PiAgentTurnProvenance;
     }) {
       const { agentName } = input;
       return this.serviceTx(piAgentDirectorySchema)
@@ -610,6 +667,11 @@ export function piAgentQueueServices(
               return { handover: null, queue: waitingQueue(agent.id.version, false, queued) };
             }
             const revision = changeAgentQueue(uow, agent, false);
+            uow.triggerHook("recordAgentChange", {
+              kind: "resumed",
+              agentName,
+              provenance: input.provenance,
+            });
             if (dispatched.length > 0) {
               return { handover: null, queue: waitingQueue(revision, false, queued) };
             }

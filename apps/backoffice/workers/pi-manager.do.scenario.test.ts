@@ -747,6 +747,24 @@ test("a prompt whose agent is deleted while it waits is dropped, and its submiss
               )
             ).json(),
           ).toEqual({ status: "settled", submission: dropped });
+          // The queue records the work leaving it, so nothing reads as still waiting.
+          expect(
+            (await automationEvents(runtime, scope))
+              .filter((event) => event.eventType.startsWith("queue."))
+              .map(({ eventType, subject, payload }) => ({ eventType, subject, payload }))
+              .sort((left, right) => left.eventType.localeCompare(right.eventType)),
+          ).toEqual([
+            {
+              eventType: "queue.added",
+              subject: { orgId: "dropped-org", agentName: "clerk", requestId: "second" },
+              payload: { type: "prompt" },
+            },
+            {
+              eventType: "queue.dropped",
+              subject: { orgId: "dropped-org", agentName: "clerk", requestId: "second" },
+              payload: { reason: "Pi agent 'clerk' is not defined." },
+            },
+          ]);
         }),
       ],
     }),
@@ -996,17 +1014,196 @@ test("agent changes and the turns a stop cuts off are recorded as pi events of w
                 (event) => event.eventType === "agent.stopped",
               ),
             ).toEqual([expect.objectContaining({ payload: {}, subject, actors: ada.actors })]);
-            expect(await piEvents(runtime, "turn.")).toEqual([
-              expect.objectContaining({
-                id: "pi:assistant:cut-off",
-                eventType: "turn.aborted",
-                payload: {},
-                subject: { ...subject, requestId: "cut-off" },
-                actors: expect.objectContaining({ principal: grace.actors.principal }),
-              }),
+            const turnEvents = await piEvents(runtime, "turn.");
+            expect(turnEvents.sort((left, right) => left.id.localeCompare(right.id))).toEqual(
+              ["turn.aborted", "turn.started"].map((eventType) =>
+                expect.objectContaining({
+                  id: `pi:assistant:cut-off${eventType === "turn.started" ? ":started" : ""}`,
+                  eventType,
+                  payload: {},
+                  subject: { ...subject, requestId: "cut-off" },
+                  actors: expect.objectContaining({ principal: grace.actors.principal }),
+                }),
+              ),
+            );
+          },
+        ),
+      ],
+    }),
+  );
+});
+
+test("an agent's turns and queue are recorded as they move", async () => {
+  const orgId = "lifecycle-org";
+  const scope: BackofficeContextScope = { kind: "org", orgId };
+  const ada = scopeExecution(scope, "ada");
+  const grace = scopeExecution(scope, "grace");
+  // Delivering due alarms runs the manager's durable hooks, which record queue events, and the
+  // agent's alarm, which waits for its running turn; the stop that ends the turn awaits it.
+  let runningTurnAlarms: Promise<void> = Promise.resolve();
+
+  /** Each request's `pi` events, in the order their kinds happen. */
+  async function requestEvents(runtime: InMemoryBackofficeRuntime, requestId: string) {
+    const order = [
+      "queue.added",
+      "queue.dispatched",
+      "turn.started",
+      "turn.completed",
+      "turn.aborted",
+      "turn.failed",
+    ];
+    return (await automationEvents(runtime, scope))
+      .filter((event) => event.source === "pi" && event.subject?.requestId === requestId)
+      .sort((left, right) => order.indexOf(left.eventType) - order.indexOf(right.eventType));
+  }
+
+  async function waitForEvent(
+    runtime: InMemoryBackofficeRuntime,
+    requestId: string,
+    eventType: string,
+  ) {
+    await vi.waitFor(
+      async () => {
+        const events = await requestEvents(runtime, requestId);
+        assert(
+          events.some((event) => event.eventType === eventType),
+          `waiting for ${eventType}`,
+        );
+      },
+      { timeout: 5_000, interval: 20 },
+    );
+  }
+
+  async function prompted(
+    runtime: InMemoryBackofficeRuntime,
+    requestId: string,
+    execution: BackofficeExecutionContext,
+    whenBusy: "followUp" | "steer" = "followUp",
+  ) {
+    const response = await managerRequest(
+      runtime,
+      scope,
+      "/agents/assistant/prompts",
+      { requestId, content: `Prompt ${requestId}.`, whenBusy },
+      execution,
+    );
+    assert.equal(response.status, 202, await response.clone().text());
+  }
+
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "Pi agent turn and queue events",
+      piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+      options: { drain: false },
+      objects: {
+        ...scenarioObjects,
+        PI: ({ state, runtime, openPiSessionStore, piAgentIdFromConfig, nowEpochMs }) => {
+          // A slow first answer keeps its turn running until the agent is stopped.
+          const faux = fauxProvider({ tokensPerSecond: 20, tokenSize: { min: 1, max: 1 } });
+          faux.setResponses([
+            fauxAssistantMessage([fauxText("A long answer. ".repeat(100))]),
+            fauxAssistantMessage([fauxText("Done.")]),
+            fauxAssistantMessage([], { stopReason: "error", errorMessage: "Model overloaded." }),
+          ]);
+          const models = createModels();
+          models.setProvider(faux.provider);
+          return new InMemoryPiObject({
+            state,
+            dependencies: createScriptedPiAgentDependencies(models),
+            runtime,
+            openStorage: openPiSessionStore,
+            idFromConfig: piAgentIdFromConfig,
+            nowEpochMs,
+          });
+        },
+      },
+      setup: ({ given }) => [given.organization.exists({ id: orgId })],
+      steps: ({ then }) => [
+        then.assert(
+          "a running turn waits for its sender's steer, and another's prompt queues behind it",
+          async (ctx) => {
+            const { runtime } = ctx;
+            await prompted(runtime, "first", grace);
+            await waitForEvent(runtime, "first", "turn.started");
+            await prompted(runtime, "second", ada);
+            await prompted(runtime, "steer", grace, "steer");
+            runningTurnAlarms = runtime.drainAlarms();
+            await waitForEvent(runtime, "second", "queue.added");
+            await waitForEvent(runtime, "steer", "queue.added");
+
+            expect((await requestEvents(runtime, "steer"))[0]).toMatchObject({
+              eventType: "queue.added",
+              payload: { type: "steer" },
+              actors: grace.actors,
+            });
+            expect((await requestEvents(runtime, "second"))[0]).toMatchObject({
+              eventType: "queue.added",
+              payload: { type: "prompt" },
+              actors: ada.actors,
+            });
+          },
+        ),
+        then.assert(
+          "a stop ends the turn and the steer waiting for it, and keeps the queued work waiting",
+          async (ctx) => {
+            const { runtime } = ctx;
+            const stopped = await managerRequest(runtime, scope, "/agents/assistant/stop", {}, ada);
+            assert.equal(stopped.status, 204, await stopped.clone().text());
+            await runningTurnAlarms;
+            await runtime.drain();
+
+            expect((await requestEvents(runtime, "first")).map((event) => event.eventType)).toEqual(
+              ["turn.started", "turn.aborted"],
+            );
+            // The stop cut off the steer while it waited, so it ends without starting.
+            expect(
+              (await requestEvents(runtime, "steer")).map(({ eventType, payload }) => ({
+                eventType,
+                payload,
+              })),
+            ).toEqual([
+              { eventType: "queue.added", payload: { type: "steer" } },
+              { eventType: "turn.aborted", payload: {} },
             ]);
           },
         ),
+        then.assert("resuming runs the queued work in a turn of its own", async (ctx) => {
+          const { runtime } = ctx;
+          const resumed = await managerRequest(runtime, scope, "/agents/assistant/resume", {}, ada);
+          assert.equal(resumed.status, 204, await resumed.clone().text());
+          await runtime.drain();
+
+          expect(
+            (await requestEvents(runtime, "second")).map(({ eventType, payload }) => ({
+              eventType,
+              payload,
+            })),
+          ).toEqual([
+            { eventType: "queue.added", payload: { type: "prompt" } },
+            { eventType: "queue.dispatched", payload: { turnRequestId: "second" } },
+            { eventType: "turn.started", payload: {} },
+            { eventType: "turn.completed", payload: { answerEntryId: expect.any(Number) } },
+          ]);
+          const resumedEvents = (await automationEvents(runtime, scope)).filter(
+            (event) => event.eventType === "agent.resumed",
+          );
+          expect(resumedEvents).toEqual([expect.objectContaining({ actors: ada.actors })]);
+        }),
+        then.assert("a turn the model fails ends as failed, with Pi's reason", async (ctx) => {
+          const { runtime } = ctx;
+          await prompted(runtime, "third", grace);
+          await runtime.drain();
+
+          expect(
+            (await requestEvents(runtime, "third")).map(({ eventType, payload }) => ({
+              eventType,
+              payload,
+            })),
+          ).toEqual([
+            { eventType: "turn.started", payload: {} },
+            { eventType: "turn.failed", payload: { reason: "model_error" } },
+          ]);
+        }),
       ],
     }),
   );

@@ -8,8 +8,56 @@ import { z } from "zod";
 import type { BackofficeCapability } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 
 export const PI_AUTOMATION_SOURCE = "pi" as const;
-export const PI_AUTOMATION_EVENT_TURN_COMPLETED = "turn.completed" as const;
-export const PI_AUTOMATION_EVENT_TURN_ABORTED = "turn.aborted" as const;
+
+// Steering joins a running turn, so the steered prompt settles with that turn's answer.
+const turnNote =
+  "Fires once per prompt request ID. Steering prompts that joined a running turn settle with it.";
+
+/** What happens to a prompt Pi holds, each recorded as a `pi` event in the agent's scope. */
+export const PI_TURN_AUTOMATION_EVENTS = {
+  started: {
+    eventType: "turn.started",
+    label: "Agent turn started",
+    description: `Fires when an agent starts on a prompt; turn.completed, turn.aborted, or turn.failed follows for the same request ID. ${turnNote}`,
+  },
+  completed: {
+    eventType: "turn.completed",
+    label: "Agent turn completed",
+    description: `Fires after an agent answers a prompt. ${turnNote}`,
+  },
+  aborted: {
+    eventType: "turn.aborted",
+    label: "Agent turn aborted",
+    description: `Fires after stopping an agent cuts off a turn before it answered; agent.stopped records who stopped it. ${turnNote}`,
+  },
+  failed: {
+    eventType: "turn.failed",
+    label: "Agent turn failed",
+    description: `Fires after a prompt ends unanswered for any reason but a stop, such as a model error. ${turnNote}`,
+  },
+} as const;
+
+/** What the agent's queue does with an item that waits, each recorded as a `pi` event. */
+export const PI_QUEUE_AUTOMATION_EVENTS = {
+  added: {
+    eventType: "queue.added",
+    label: "Agent work queued",
+    description:
+      "Fires when work starts waiting for an agent: a prompt or notification in its queue, behind its running turn or while it is stopped, or a steer for the running turn's next tool boundary. queue.dispatched or queue.dropped ends a queued item's wait, and turn.started a steer's. Work an idle agent starts at once never waits.",
+  },
+  dispatched: {
+    eventType: "queue.dispatched",
+    label: "Queued agent work dispatched",
+    description:
+      "Fires when queued work leaves the queue for a turn; notifications handled together name the turn's request ID.",
+  },
+  dropped: {
+    eventType: "queue.dropped",
+    label: "Queued agent work dropped",
+    description:
+      "Fires when queued work can no longer run, such as after its agent's definition or model is gone.",
+  },
+} as const;
 
 /** What `pi.agent.*` operations change, each recorded as a `pi` event in the agent's scope. */
 export const PI_AGENT_AUTOMATION_EVENTS = {
@@ -35,6 +83,12 @@ export const PI_AGENT_AUTOMATION_EVENTS = {
     description:
       "Fires after a started agent is stopped: its work aborted and its queue paused until someone resumes it.",
   },
+  resumed: {
+    eventType: "agent.resumed",
+    label: "Agent resumed",
+    description:
+      "Fires after someone resumes a stopped agent's queue, directly or by sending it a message; its queued work runs again.",
+  },
 } as const;
 
 const turnCompletedPayloadSchema = z.object({
@@ -45,6 +99,24 @@ const turnCompletedPayloadSchema = z.object({
     .describe("The conversation entry holding the turn's answer."),
 });
 
+const turnFailedPayloadSchema = z.object({
+  reason: z.string().describe("Why Pi left the prompt unanswered, such as model_error."),
+});
+
+const queueAddedPayloadSchema = z.object({
+  type: z
+    .enum(["prompt", "notification", "steer"])
+    .describe("A steer is a prompt that joins the running turn instead of waiting for its own."),
+});
+
+const queueDispatchedPayloadSchema = z.object({
+  turnRequestId: z.string().describe("The request ID of the turn that took the work."),
+});
+
+const queueDroppedPayloadSchema = z.object({
+  reason: z.string().describe("Why the queued work can no longer run."),
+});
+
 const agentDefinitionPayloadSchema = z.object({ definition: piAgentDefinitionSchema });
 
 const agentSubjectSchema = z.object({
@@ -53,12 +125,12 @@ const agentSubjectSchema = z.object({
   agentName: z.string().trim().min(1),
 });
 
-const turnSubjectSchema = agentSubjectSchema.extend({
+const requestSubjectSchema = agentSubjectSchema.extend({
   requestId: z
     .string()
     .trim()
     .min(1)
-    .describe("The prompt's request ID; pi.getSubmission reads the turn's submission."),
+    .describe("The work's request ID; pi.getSubmission reads its submission."),
 });
 
 /** Names an agent among same-named agents of other scopes. */
@@ -73,10 +145,6 @@ export function piAgentEventSubject(
     agentName,
   };
 }
-
-// Steering joins a running turn, so the steered prompt settles with that turn's answer.
-const turnNote =
-  "Fires once per prompt request ID. Steering prompts that joined a running turn settle with it.";
 
 const exampleDefinition = {
   agentName: "reviewer",
@@ -99,7 +167,7 @@ export const piCapability: BackofficeCapability = {
         source: PI_AUTOMATION_SOURCE,
         label: "Pi",
         description:
-          "Agent turns that answered or were cut off, and agents defined, changed, deleted, or stopped, attributed to whoever did it.",
+          "Agent work as it waits in an agent's queue, starts, and ends, and agents defined, changed, deleted, stopped, or resumed, attributed to whoever did it.",
       },
     ],
     actionProviders: ["pi"],
@@ -109,21 +177,52 @@ export const piCapability: BackofficeCapability = {
     automationEvents: [
       {
         source: PI_AUTOMATION_SOURCE,
-        eventType: PI_AUTOMATION_EVENT_TURN_COMPLETED,
-        label: "Agent turn completed",
-        description: `Fires after an agent answers a prompt. ${turnNote}`,
+        ...PI_TURN_AUTOMATION_EVENTS.started,
+        payloadSchema: z.object({}),
+        subjectSchema: requestSubjectSchema,
+        example: {},
+      },
+      {
+        source: PI_AUTOMATION_SOURCE,
+        ...PI_TURN_AUTOMATION_EVENTS.completed,
         payloadSchema: turnCompletedPayloadSchema,
-        subjectSchema: turnSubjectSchema,
+        subjectSchema: requestSubjectSchema,
         example: { answerEntryId: 12 },
       },
       {
         source: PI_AUTOMATION_SOURCE,
-        eventType: PI_AUTOMATION_EVENT_TURN_ABORTED,
-        label: "Agent turn aborted",
-        description: `Fires after stopping an agent cuts off a turn before it answered; agent.stopped records who stopped it. ${turnNote}`,
+        ...PI_TURN_AUTOMATION_EVENTS.aborted,
         payloadSchema: z.object({}),
-        subjectSchema: turnSubjectSchema,
+        subjectSchema: requestSubjectSchema,
         example: {},
+      },
+      {
+        source: PI_AUTOMATION_SOURCE,
+        ...PI_TURN_AUTOMATION_EVENTS.failed,
+        payloadSchema: turnFailedPayloadSchema,
+        subjectSchema: requestSubjectSchema,
+        example: { reason: "model_error" },
+      },
+      {
+        source: PI_AUTOMATION_SOURCE,
+        ...PI_QUEUE_AUTOMATION_EVENTS.added,
+        payloadSchema: queueAddedPayloadSchema,
+        subjectSchema: requestSubjectSchema,
+        example: { type: "prompt" },
+      },
+      {
+        source: PI_AUTOMATION_SOURCE,
+        ...PI_QUEUE_AUTOMATION_EVENTS.dispatched,
+        payloadSchema: queueDispatchedPayloadSchema,
+        subjectSchema: requestSubjectSchema,
+        example: { turnRequestId: "prompt-1" },
+      },
+      {
+        source: PI_AUTOMATION_SOURCE,
+        ...PI_QUEUE_AUTOMATION_EVENTS.dropped,
+        payloadSchema: queueDroppedPayloadSchema,
+        subjectSchema: requestSubjectSchema,
+        example: { reason: "Pi agent 'reviewer' is not defined." },
       },
       ...(["created", "updated", "deleted"] as const).map((kind) => ({
         source: PI_AUTOMATION_SOURCE,
@@ -132,13 +231,13 @@ export const piCapability: BackofficeCapability = {
         subjectSchema: agentSubjectSchema,
         example: { definition: exampleDefinition },
       })),
-      {
+      ...(["stopped", "resumed"] as const).map((kind) => ({
         source: PI_AUTOMATION_SOURCE,
-        ...PI_AGENT_AUTOMATION_EVENTS.stopped,
+        ...PI_AGENT_AUTOMATION_EVENTS[kind],
         payloadSchema: z.object({}),
         subjectSchema: agentSubjectSchema,
         example: {},
-      },
+      })),
     ],
   },
 };

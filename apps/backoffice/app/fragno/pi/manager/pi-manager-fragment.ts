@@ -91,7 +91,11 @@ export function createPiManagerFragment(
         scopeRestriction: backofficeExecutionScopeRestriction(requestContext.execution),
       };
       // Agent changes are recorded as events attributed to whoever made them.
-      if (changesDefinitions || (method === "POST" && path === "/agents/:agentName/stop")) {
+      if (
+        changesDefinitions ||
+        (method === "POST" &&
+          (path === "/agents/:agentName/stop" || path === "/agents/:agentName/resume"))
+      ) {
         const body = requestState.body;
         requestState.setBody({
           ...(typeof body === "object" && body !== null ? body : {}),

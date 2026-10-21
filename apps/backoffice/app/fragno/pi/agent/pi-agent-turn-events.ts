@@ -7,55 +7,72 @@ import {
   ROOT_CONVERSATION_ID,
   type CommitPublication,
   type Harness,
+  type SettledSubmissionRecord,
   type Storage,
 } from "@earendil-works/pi-durable";
 
 import type { AutomationsObject, PiManagerObject } from "@/backoffice-runtime/object-registry";
 import {
-  PI_AUTOMATION_EVENT_TURN_ABORTED,
-  PI_AUTOMATION_EVENT_TURN_COMPLETED,
   PI_AUTOMATION_SOURCE,
+  PI_TURN_AUTOMATION_EVENTS,
   piAgentEventSubject,
 } from "@/fragno/backoffice-capabilities/capabilities/pi";
 
 import type { BackofficeAgentContext } from "./backoffice-agent-context";
 import {
   forgetReportedPiAgentTurn,
-  readSettledPiAgentTurns,
-  type SettledPiAgentTurn,
+  readReportablePiAgentTurns,
+  type ReportablePiAgentTurn,
 } from "./pi-agent-turns";
 
 /** Pi settles a turn the agent's stop cut off as unanswered with this reason. */
 const ABORTED_SUBMISSION_REASON = "aborted";
 
-/** The event a settled turn records: answered or aborted. Other unanswered turns record none. */
-function settledTurnEventOf({ submission }: SettledPiAgentTurn) {
+type PiTurnEvent = {
+  /** Distinguishes the turn's start from its end, which share the request ID. */
+  idSuffix: string;
+  eventType: string;
+  payload: Record<string, unknown>;
+};
+
+const STARTED_TURN_EVENT: PiTurnEvent = {
+  idSuffix: ":started",
+  eventType: PI_TURN_AUTOMATION_EVENTS.started.eventType,
+  payload: {},
+};
+
+/** The event a settled input records: answered, cut off by a stop, or failed for another reason. */
+function settledTurnEventOf(submission: SettledSubmissionRecord): PiTurnEvent | null {
   if (submission.type !== "input") {
     return null;
   }
   if (submission.status === "done") {
     return {
-      eventType: PI_AUTOMATION_EVENT_TURN_COMPLETED,
+      idSuffix: "",
+      eventType: PI_TURN_AUTOMATION_EVENTS.completed.eventType,
       payload: { answerEntryId: submission.answer },
     };
   }
-  if (submission.status === "unanswered" && submission.reason === ABORTED_SUBMISSION_REASON) {
-    return { eventType: PI_AUTOMATION_EVENT_TURN_ABORTED, payload: {} };
-  }
-  return null;
+  return submission.reason === ABORTED_SUBMISSION_REASON
+    ? { idSuffix: "", eventType: PI_TURN_AUTOMATION_EVENTS.aborted.eventType, payload: {} }
+    : {
+        idSuffix: "",
+        eventType: PI_TURN_AUTOMATION_EVENTS.failed.eventType,
+        payload: { reason: submission.reason },
+      };
 }
 
 function piAgentTurnEvent(
   config: PiAgentConfig,
   agent: BackofficeAgentContext,
-  { requestId, turn }: SettledPiAgentTurn,
-  { eventType, payload }: NonNullable<ReturnType<typeof settledTurnEventOf>>,
+  { requestId, turn }: ReportablePiAgentTurn,
+  { idSuffix, eventType, payload }: PiTurnEvent,
   occurredAt: Date,
 ): AutomationEvent {
   const { scope } = config;
   return {
-    // A request ID settles once per conversation, so redelivery records one event.
-    id: `pi:${config.agentName}:${requestId}`,
+    // A request ID starts and settles once per conversation, so redelivery records one event.
+    id: `pi:${config.agentName}:${requestId}${idSuffix}`,
     scope,
     // Automations started by this event inherit the turn's ceiling, never a wider one.
     scopeRestriction: turn.scopeRestriction,
@@ -69,20 +86,24 @@ function piAgentTurnEvent(
   };
 }
 
-function settlesRootSubmission(publication: CommitPublication) {
+function changesRootSubmission(publication: CommitPublication) {
   return publication.changes.some(
     (change) =>
       change.type === "submission" &&
       change.value.conversationId === ROOT_CONVERSATION_ID &&
-      (change.value.status === "done" || change.value.status === "unanswered"),
+      (change.value.status === "placed" ||
+        change.value.status === "done" ||
+        change.value.status === "unanswered"),
   );
 }
 
 /**
- * Records each answered or aborted turn as a `pi` Automations event and tells the agent's manager every turn
- * that settled, then forgets it. Pi settles submissions in commits Backoffice cannot join, so a
- * report follows each commit that settles a turn. That report dies with the object, so callers
- * that must not lose one, like the agent alarm, call the returned function again.
+ * Records each turn's start and end as `pi` Automations events and tells the agent's manager every
+ * turn that settled, then forgets it. Pi starts and settles submissions in commits Backoffice
+ * cannot join, so a report follows each commit that does. A turn's start is recorded before its
+ * end, also when the turn settles before its start was reported, and recording it again records
+ * nothing. A report dies with the object, so callers that must not lose one, like the agent alarm,
+ * call the returned function again.
  */
 export function startReportingPiAgentTurns(input: {
   config: PiAgentConfig;
@@ -98,37 +119,43 @@ export function startReportingPiAgentTurns(input: {
   const { config, agent, harness, storage, automations, manager } = input;
   let reporting = Promise.resolve();
 
-  async function recordTurnEvent(settled: SettledPiAgentTurn) {
-    const event = settledTurnEventOf(settled);
-    if (event) {
-      // The settling commit carries no time; its listener reports right after it.
+  async function recordTurnEvents(reportable: ReportablePiAgentTurn) {
+    const { started, settlement } = reportable;
+    const ended = settlement ? settledTurnEventOf(settlement) : null;
+    for (const event of [...(started ? [STARTED_TURN_EVENT] : []), ...(ended ? [ended] : [])]) {
+      // The commits carry no time; their listener reports right after them.
       await automations?.ingestEvent(
-        piAgentTurnEvent(config, agent, settled, event, new Date(input.nowEpochMs())),
+        piAgentTurnEvent(config, agent, reportable, event, new Date(input.nowEpochMs())),
         { propagationContext: null },
       );
     }
   }
 
-  async function reportSettledTurn(settled: SettledPiAgentTurn, context: Context) {
+  async function reportTurn(reportable: ReportablePiAgentTurn, context: Context) {
+    const { requestId, settlement } = reportable;
+    if (!settlement) {
+      await recordTurnEvents(reportable);
+      return;
+    }
     // Both reports are idempotent, and an unrecordable event must not stop the agent's queue.
     const [recorded, advanced] = await Promise.allSettled([
-      recordTurnEvent(settled),
-      manager.reportSettledTurn({ agentName: config.agentName, requestId: settled.requestId }),
+      recordTurnEvents(reportable),
+      manager.reportSettledTurn({ agentName: config.agentName, requestId }),
     ]);
     for (const report of [recorded, advanced]) {
       if (report.status === "rejected") {
         throw report.reason;
       }
     }
-    await forgetReportedPiAgentTurn(harness, settled.requestId, context);
+    await forgetReportedPiAgentTurn(harness, requestId, context);
   }
 
-  async function reportSettledTurns(context: Context) {
+  async function reportTurns(context: Context) {
     // A turn that cannot be reported stays pending without holding back the turns after it.
     const failures: unknown[] = [];
-    for (const settled of await readSettledPiAgentTurns(harness, storage, context)) {
+    for (const reportable of await readReportablePiAgentTurns(harness, storage, context)) {
       try {
-        await reportSettledTurn(settled, context);
+        await reportTurn(reportable, context);
       } catch (error) {
         failures.push(error);
       }
@@ -137,21 +164,21 @@ export function startReportingPiAgentTurns(input: {
       throw failures[0];
     }
     if (failures.length > 1) {
-      throw new AggregateError(failures, "Some settled Pi turns could not be reported.");
+      throw new AggregateError(failures, "Some Pi turns could not be reported.");
     }
   }
 
   // One report at a time, so overlapping triggers do not ingest and forget the same turn at once.
   function report(context: Context) {
     const reported = reporting.then(async () => {
-      await reportSettledTurns(context);
+      await reportTurns(context);
     });
     reporting = reported.catch(() => undefined);
     return reported;
   }
 
   harness.subscribeCommits((publication) => {
-    if (settlesRootSubmission(publication)) {
+    if (changesRootSubmission(publication)) {
       report(BACKGROUND_CONTEXT).catch(input.report);
     }
   });

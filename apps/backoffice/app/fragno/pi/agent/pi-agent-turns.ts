@@ -55,27 +55,38 @@ export async function recordPiAgentTurn(
   }, context);
 }
 
-/** A recorded turn whose submission Pi has settled but whose settlement is not yet reported. */
-export type SettledPiAgentTurn = {
+/**
+ * A recorded turn Pi has started or settled, whose events may not all be reported yet. Pi gives an
+ * input the entry it places it as when it starts on it, and keeps it once it settles.
+ */
+export type ReportablePiAgentTurn = {
   requestId: string;
   turn: PiAgentTurn;
-  submission: SettledSubmissionRecord;
+  started: boolean;
+  /** Null while the turn runs. */
+  settlement: SettledSubmissionRecord | null;
 };
 
-export async function readSettledPiAgentTurns(
+export async function readReportablePiAgentTurns(
   read: DocumentReader,
   storage: Pick<Storage, "submissionByRequest">,
   context: Context,
-): Promise<SettledPiAgentTurn[]> {
+): Promise<ReportablePiAgentTurn[]> {
   const turns = await read.snapshot(PiAgentTurnsDoc, context);
-  const settled: SettledPiAgentTurn[] = [];
+  const reportable: ReportablePiAgentTurn[] = [];
   for (const [requestId, turn] of Object.entries(turns?.pending ?? {})) {
     const submission = await storage.submissionByRequest(ROOT_CONVERSATION_ID, requestId, context);
-    if (submission?.status === "done" || submission?.status === "unanswered") {
-      settled.push({ requestId, turn: turn as unknown as PiAgentTurn, submission });
+    if (!submission) {
+      continue;
+    }
+    const started = submission.type === "input" && submission.entry !== undefined;
+    const settlement =
+      submission.status === "done" || submission.status === "unanswered" ? submission : null;
+    if (started || settlement) {
+      reportable.push({ requestId, turn: turn as unknown as PiAgentTurn, started, settlement });
     }
   }
-  return settled;
+  return reportable;
 }
 
 /** Forgets a settled turn once its turn event is recorded; running turns keep their authority. */

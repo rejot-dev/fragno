@@ -491,7 +491,7 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
       // Keep the alarm invocation alive while Pi runs; a persisted heartbeat covers eviction.
       await harness.waitForIdle(alarmContext);
       // A throw keeps the heartbeat alarm, which retries reports a restart or failure left behind.
-      await opened.reportSettledTurns(alarmContext);
+      await opened.reportTurns(alarmContext);
       await opened.billing.flush(harness, this.#nowEpochMs, alarmContext);
     } catch (error) {
       if (!controller.signal.aborted) {
