@@ -22,6 +22,8 @@ const evolvingSchema = schema("evolving", (s) =>
         .addColumn("id", idColumn())
         .addColumn("organizationId", column("string"))
         .addColumn("note", column("string"))
+        .addColumn("payer", column("string").nullable())
+        .addColumn("rootOwner", column("string"))
         .createIndex("idx_installation_org", ["organizationId", "id"])
         .createIndex("uniq_installation_note", ["note"], { unique: true }),
     )
@@ -43,6 +45,10 @@ const evolvingSchema = schema("evolving", (s) =>
         .nullable()
         .dropIndex("idx_installation_owner")
         .createIndex("idx_installation_owner", ["ownerId", "label"]),
+    )
+    // A rebuild must keep the data of a column renamed to a name dropped in the same step.
+    .alterTable("installation", (t) =>
+      t.dropColumn("payer").renameColumn("rootOwner", "payer").alterColumn("payer").nullable(),
     ),
 );
 
@@ -76,7 +82,7 @@ const databases = [
 describe.each(databases)("evolving a table with rows on $name", (database) => {
   // A namespace may put the fragment's tables in their own database schema.
   it.each([null, "evolving"])(
-    "renames columns and replaces indexes without losing rows (namespace %s)",
+    "renames and drops columns and replaces indexes without losing rows (namespace %s)",
     async (namespace) => {
       const adapter = database.createAdapter();
       const migrations = adapter.prepareMigrations(evolvingSchema, namespace);
@@ -96,13 +102,14 @@ describe.each(databases)("evolving a table with rows on $name", (database) => {
         });
         const indexesBefore = await indexNames();
         await run(
-          sql`insert into ${qualifiedTable} (${sql.ref("id")}, ${sql.ref("organizationId")}, ${sql.ref("note")})
-            values ('first', 'org-1', 'shared'), ('second', 'org-1', 'own')`,
+          sql`insert into ${qualifiedTable} (${sql.ref("id")}, ${sql.ref("organizationId")}, ${sql.ref("note")}, ${sql.ref("payer")}, ${sql.ref("rootOwner")})
+            values ('first', 'org-1', 'shared', 'org-1', 'user-1'), ('second', 'org-1', 'own', null, 'user-2')`,
         );
 
         for (const [from, to] of [
           [1, 2],
           [2, 3],
+          [3, 4],
         ]) {
           await migrations.executeWithDriver(adapter.driver, from, to, {
             updateVersionInMigration: false,
@@ -117,6 +124,12 @@ describe.each(databases)("evolving a table with rows on $name", (database) => {
           { id: "first", ownerId: "org-1", label: "shared" },
           { id: "second", ownerId: "org-1", label: "own" },
         ]);
+        const rows = await run(sql`select * from ${qualifiedTable} order by ${sql.ref("id")}`);
+        expect(rows).toEqual([
+          expect.objectContaining({ id: "first", payer: "user-1" }),
+          expect.objectContaining({ id: "second", payer: "user-2" }),
+        ]);
+        expect(rows[0]).not.toHaveProperty("rootOwner");
         const ownerIndex = resolver.getIndexName("idx_installation_owner", "installation");
         const droppedIndex = resolver.getIndexName("idx_installation_org", "installation");
         const uniqueIndex = resolver.getUniqueIndexName("uniq_installation_note", "installation");

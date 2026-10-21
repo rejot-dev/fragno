@@ -497,7 +497,7 @@ describe("SQLiteSQLGenerator", () => {
       `);
     });
 
-    it("should preserve rename and drop operations during recreation", () => {
+    it("should rebuild renamed and dropped columns from the final table", () => {
       const operation: MigrationOperation = {
         type: "alter-table",
         name: "test_table",
@@ -535,13 +535,7 @@ describe("SQLiteSQLGenerator", () => {
                 role: "external-id",
               },
               {
-                name: "title",
-                type: "string",
-                isNullable: true,
-                role: "regular",
-              },
-              {
-                name: "old_field",
+                name: "headline",
                 type: "string",
                 isNullable: true,
                 role: "regular",
@@ -560,16 +554,11 @@ describe("SQLiteSQLGenerator", () => {
                 default: { value: 0 },
               },
             ],
-            copyColumns: ["id", "title", "old_field", "_internalId", "_version"],
+            copyColumns: ["id", { from: "title", to: "headline" }, "_internalId", "_version"],
             indexes: [
               {
                 name: "idx_title",
-                columns: ["title"],
-                unique: false,
-              },
-              {
-                name: "idx_old_field",
-                columns: ["old_field"],
+                columns: ["headline"],
                 unique: false,
               },
             ],
@@ -590,7 +579,7 @@ describe("SQLiteSQLGenerator", () => {
       `);
     });
 
-    it("should update foreign keys and indexes when rename/drop are applied during recreation", () => {
+    it("should rebuild foreign keys and indexes on renamed columns from the final table", () => {
       const operation: MigrationOperation = {
         type: "alter-table",
         name: "test_table",
@@ -628,16 +617,10 @@ describe("SQLiteSQLGenerator", () => {
                 role: "external-id",
               },
               {
-                name: "author_id",
+                name: "writer_id",
                 type: "integer",
                 isNullable: false,
                 role: "reference",
-              },
-              {
-                name: "obsolete",
-                type: "string",
-                isNullable: true,
-                role: "regular",
               },
               {
                 name: "_internalId",
@@ -653,23 +636,18 @@ describe("SQLiteSQLGenerator", () => {
                 default: { value: 0 },
               },
             ],
-            copyColumns: ["id", "author_id", "obsolete", "_internalId", "_version"],
+            copyColumns: ["id", { from: "author_id", to: "writer_id" }, "_internalId", "_version"],
             indexes: [
               {
                 name: "idx_author",
-                columns: ["author_id"],
-                unique: false,
-              },
-              {
-                name: "idx_obsolete",
-                columns: ["obsolete"],
+                columns: ["writer_id"],
                 unique: false,
               },
             ],
             foreignKeys: [
               {
                 name: "test_users_author_fk",
-                columns: ["author_id"],
+                columns: ["writer_id"],
                 referencedTable: "users",
                 referencedColumns: ["id"],
               },
