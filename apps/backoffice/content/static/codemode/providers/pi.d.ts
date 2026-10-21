@@ -18,6 +18,8 @@ type PiCodemodeProvider = {
   runPrompt(input: PiRunPromptInput): Promise<PiRunPromptOutput>;
   /** Stop an agent: abort its running turn and background work, and pause its queue. Queued and new prompts wait until someone resumes the agent in Backoffice. */
   stopAgent(input: PiStopAgentInput): Promise<PiStopAgentOutput>;
+  /** Record the scope's defined agents as pi agent.* events, for agents defined before those events were recorded, so views and routes built on the events see every agent. For each agent the events record missing, deleted, or with a different definition, it records agent.created or agent.updated with the current definition, and for each agent they record that is no longer defined, agent.deleted. Routes on those events run for each new event. A rerun records nothing new. Built-in agents are left out: they are defined in every scope. Returns the events it recorded. */
+  backfillAgentEvents(input: PiBackfillAgentEventsInput): Promise<PiBackfillAgentEventsOutput>;
 };
 declare const pi: PiCodemodeProvider;
 
@@ -140,4 +142,11 @@ type PiStopAgentInput = {
 };
 type PiStopAgentOutput = {
   stopped: true;
+};
+type PiBackfillAgentEventsInput = Record<string, unknown>;
+type PiBackfillAgentEventsOutput = {
+  agents: {
+    agentName: string;
+    eventType: "agent.created" | "agent.updated" | "agent.deleted";
+  }[];
 };

@@ -1220,7 +1220,7 @@ describe("installed-app event delivery SQLite scenarios", () => {
               owner: { kind: "org", organization: { id: ctx.vars.orgId } },
               appId: ctx.vars.appId,
             },
-            agents: { agents: [], agentsError: null },
+            hasAgents: false,
           });
 
           const installations = ctx.runtime.objects.appInstallations.forOrg(

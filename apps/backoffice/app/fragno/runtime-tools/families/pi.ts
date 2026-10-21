@@ -36,6 +36,10 @@ function requirePiManagerRuntime(runtime: PiToolContext["runtimes"]["pi"]): PiMa
 }
 
 const parseAgentList = defineCliArgsParser<Record<string, never>>("pi.agent.list", {});
+const parseAgentBackfillEvents = defineCliArgsParser<Record<string, never>>(
+  "pi.agent.backfillEvents",
+  {},
+);
 const parseAgentGet = defineCliArgsParser<PiManagerAgentInput>("pi.agent.get", {
   agentName: { option: "agent", required: true },
 });
@@ -455,6 +459,27 @@ const agentDeleteTool = defineBackofficeRuntimeTool({
   },
 });
 
+const agentBackfillEventsTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("pi.agent.backfillEvents"),
+  namespace: "pi",
+  name: "backfillAgentEvents",
+  execute: async (_input, context: PiToolContext) =>
+    await requirePiManagerRuntime(context.runtimes.pi).backfillAgentEvents(),
+  adapters: {
+    bash: {
+      command: "pi.agent.backfillEvents",
+      help: {
+        summary: "pi.agent.backfillEvents records the scope's defined agents as pi agent.* events.",
+        options: [],
+        examples: ["pi.agent.backfillEvents --format json"],
+      },
+      parse: parseAgentBackfillEvents,
+      outputOptions: jsonByDefaultOutputOptions,
+      format: (data) => ({ data }),
+    },
+  },
+});
+
 export const piRuntimeTools = [
   agentListTool,
   agentGetTool,
@@ -465,6 +490,7 @@ export const piRuntimeTools = [
   submissionGetTool,
   promptRunTool,
   agentStopTool,
+  agentBackfillEventsTool,
 ] as const;
 
 export const piToolFamily = defineBackofficeRuntimeToolFamily({

@@ -1,4 +1,4 @@
-import { piAgentDefinitionSchema } from "@fragno-dev/backoffice-api/v0/pi";
+import { piAgentDefinitionSchema, type PiAgentDefinition } from "@fragno-dev/backoffice-api/v0/pi";
 import {
   backofficeScopeOrganization,
   type BackofficeContextScope,
@@ -144,6 +144,75 @@ export function piAgentEventSubject(
     ...(scope.kind === "project" ? { projectId: scope.projectId } : {}),
     agentName,
   };
+}
+
+/** What happened to an agent, by the `pi` event that records it. */
+const agentActivityByEventType = {
+  [PI_TURN_AUTOMATION_EVENTS.started.eventType]: "started",
+  [PI_TURN_AUTOMATION_EVENTS.completed.eventType]: "answered",
+  [PI_TURN_AUTOMATION_EVENTS.aborted.eventType]: "cut-off",
+  [PI_TURN_AUTOMATION_EVENTS.failed.eventType]: "failed",
+  [PI_QUEUE_AUTOMATION_EVENTS.added.eventType]: "queued",
+  [PI_QUEUE_AUTOMATION_EVENTS.dispatched.eventType]: "dispatched",
+  [PI_QUEUE_AUTOMATION_EVENTS.dropped.eventType]: "dropped",
+  [PI_AGENT_AUTOMATION_EVENTS.created.eventType]: "created",
+  [PI_AGENT_AUTOMATION_EVENTS.updated.eventType]: "updated",
+  [PI_AGENT_AUTOMATION_EVENTS.deleted.eventType]: "deleted",
+  [PI_AGENT_AUTOMATION_EVENTS.stopped.eventType]: "stopped",
+  [PI_AGENT_AUTOMATION_EVENTS.resumed.eventType]: "resumed",
+} as const;
+
+export type PiAgentActivityKind =
+  (typeof agentActivityByEventType)[keyof typeof agentActivityByEventType];
+
+type PiAgentRequestKind = "started" | "answered" | "cut-off" | "failed" | "dispatched" | "dropped";
+
+export type PiAgentEvent =
+  | { agentName: string; kind: "created" | "updated" | "deleted"; definition: PiAgentDefinition }
+  | { agentName: string; kind: "stopped" | "resumed" }
+  | { agentName: string; kind: PiAgentRequestKind; requestId: string }
+  | { agentName: string; kind: "queued"; requestId: string; steer: boolean };
+
+/**
+ * The agent a stored `pi` event is about and what happened to it, with the definition a definition
+ * event carries and the request ID of turn and queue events; null for any other event.
+ */
+export function readPiAgentEvent(event: {
+  source: string;
+  eventType: string;
+  payload: unknown;
+  subject: unknown;
+}): PiAgentEvent | null {
+  if (
+    event.source !== PI_AUTOMATION_SOURCE ||
+    !Object.hasOwn(agentActivityByEventType, event.eventType)
+  ) {
+    return null;
+  }
+  const kind = agentActivityByEventType[event.eventType as keyof typeof agentActivityByEventType];
+  if (kind === "created" || kind === "updated" || kind === "deleted") {
+    const subject = agentSubjectSchema.safeParse(event.subject);
+    const payload = agentDefinitionPayloadSchema.safeParse(event.payload);
+    return subject.success && payload.success
+      ? { agentName: subject.data.agentName, kind, definition: payload.data.definition }
+      : null;
+  }
+  if (kind === "stopped" || kind === "resumed") {
+    const subject = agentSubjectSchema.safeParse(event.subject);
+    return subject.success ? { agentName: subject.data.agentName, kind } : null;
+  }
+  const subject = requestSubjectSchema.safeParse(event.subject);
+  if (!subject.success) {
+    return null;
+  }
+  const { agentName, requestId } = subject.data;
+  if (kind === "queued") {
+    const payload = queueAddedPayloadSchema.safeParse(event.payload);
+    return payload.success
+      ? { agentName, kind, requestId, steer: payload.data.type === "steer" }
+      : null;
+  }
+  return { agentName, kind, requestId };
 }
 
 const exampleDefinition = {

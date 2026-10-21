@@ -30,13 +30,13 @@ const ABORTED_SUBMISSION_REASON = "aborted";
 
 type PiTurnEvent = {
   /** Distinguishes the turn's start from its end, which share the request ID. */
-  idSuffix: string;
+  phase: "started" | "ended";
   eventType: string;
   payload: Record<string, unknown>;
 };
 
 const STARTED_TURN_EVENT: PiTurnEvent = {
-  idSuffix: ":started",
+  phase: "started",
   eventType: PI_TURN_AUTOMATION_EVENTS.started.eventType,
   payload: {},
 };
@@ -48,15 +48,15 @@ function settledTurnEventOf(submission: SettledSubmissionRecord): PiTurnEvent | 
   }
   if (submission.status === "done") {
     return {
-      idSuffix: "",
+      phase: "ended",
       eventType: PI_TURN_AUTOMATION_EVENTS.completed.eventType,
       payload: { answerEntryId: submission.answer },
     };
   }
   return submission.reason === ABORTED_SUBMISSION_REASON
-    ? { idSuffix: "", eventType: PI_TURN_AUTOMATION_EVENTS.aborted.eventType, payload: {} }
+    ? { phase: "ended", eventType: PI_TURN_AUTOMATION_EVENTS.aborted.eventType, payload: {} }
     : {
-        idSuffix: "",
+        phase: "ended",
         eventType: PI_TURN_AUTOMATION_EVENTS.failed.eventType,
         payload: { reason: submission.reason },
       };
@@ -66,13 +66,14 @@ function piAgentTurnEvent(
   config: PiAgentConfig,
   agent: BackofficeAgentContext,
   { requestId, turn }: ReportablePiAgentTurn,
-  { idSuffix, eventType, payload }: PiTurnEvent,
+  { phase, eventType, payload }: PiTurnEvent,
   occurredAt: Date,
 ): AutomationEvent {
   const { scope } = config;
   return {
     // A request ID starts and settles once per conversation, so redelivery records one event.
-    id: `pi:${config.agentName}:${requestId}${idSuffix}`,
+    // Callers choose request IDs, so the phase comes first: no request ID can forge another's.
+    id: `pi:${config.agentName}:${phase}:${requestId}`,
     scope,
     // Automations started by this event inherit the turn's ceiling, never a wider one.
     scopeRestriction: turn.scopeRestriction,

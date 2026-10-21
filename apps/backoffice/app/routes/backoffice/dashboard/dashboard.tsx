@@ -40,7 +40,7 @@ import {
   requireScopeSelection,
 } from "@/layouts/backoffice-shell-request.server";
 
-import { fetchPiManagerAgents, type PiManagerAgentsResult } from "../agents/data";
+import { piAgentEventsQuery, projectPiAgents } from "../agents/agent-activity";
 import { createAutomationProject, loadAutomationScriptSource } from "../automations/data.server";
 import {
   automationWorkflowRunsFromRecords,
@@ -66,26 +66,23 @@ const pageClassName = `${backofficePageBodyClassName} flex flex-col gap-4`;
 
 type ProjectActionData = { ok: false; message: string };
 
-export async function loader({ request, context, url }: Route.LoaderArgs) {
+export async function loader({ context, url }: Route.LoaderArgs) {
   const selectedScope = requireScopeSelection(context);
   const workflowScriptId = url.searchParams.get(WORKFLOW_SCRIPT_PARAM)?.trim() ?? "";
-  const [agents, workflowSource] = await Promise.all([
-    fetchDashboardPiAgents(
-      request,
-      context,
-      backofficeRuntimeScopeFromResolvedScope(selectedScope),
-    ),
-    workflowScriptId
-      ? loadAutomationScriptSource({
-          context,
-          execution: requireRouteScope(context).execution,
-          scriptId: workflowScriptId,
-        })
-      : EMPTY_WORKFLOW_SOURCE,
-  ]);
+  const workflowSource = workflowScriptId
+    ? await loadAutomationScriptSource({
+        context,
+        execution: requireRouteScope(context).execution,
+        scriptId: workflowScriptId,
+      })
+    : EMPTY_WORKFLOW_SOURCE;
   return {
     selectedScope,
-    agents,
+    // Some workspaces, such as an installed app's, have no agents.
+    hasAgents: isBackofficeObjectAvailableInContext(
+      "PI_MANAGER",
+      backofficeRuntimeScopeFromResolvedScope(selectedScope),
+    ),
     workflowSource,
     runtimeToolCatalog: runtimeToolWorkflowCatalog,
   } satisfies DashboardLoaderData;
@@ -150,26 +147,6 @@ export async function action({ request, context }: Route.ActionArgs) {
       projectSlug,
     }),
   );
-}
-
-/** Agents are one panel of the dashboard, so an unavailable Pi manager does not fail the page. */
-async function fetchDashboardPiAgents(
-  request: Request,
-  context: Route.LoaderArgs["context"],
-  scope: Parameters<typeof fetchPiManagerAgents>[2],
-): Promise<PiManagerAgentsResult> {
-  // Some workspaces, such as an installed app's, have no agents.
-  if (!isBackofficeObjectAvailableInContext("PI_MANAGER", scope)) {
-    return { agents: [], agentsError: null };
-  }
-  try {
-    return await fetchPiManagerAgents(request, context, scope);
-  } catch (error) {
-    if (error instanceof Response) {
-      return { agents: [], agentsError: `Agents are unavailable (${error.status}).` };
-    }
-    throw error;
-  }
 }
 
 export function meta({ loaderData }: Route.MetaArgs) {
@@ -340,6 +317,9 @@ function DashboardWorkspace({
   const connectionEventsQuery = useLiveQuery({
     query: (query) => dashboardConnectionEventsQuery(query, collections),
   });
+  const agentEventsQuery = useLiveQuery({
+    query: (query) => piAgentEventsQuery(query, collections),
+  });
   const routesState = useAutomationRoutes(collections);
   const waitingRuns = useMemo(
     () => automationWorkflowRunsFromRecords(waitingRunsQuery.data ?? []),
@@ -365,7 +345,22 @@ function DashboardWorkspace({
     ],
   );
 
-  const queries = [runsQuery, waitingRunsQuery, eventsQuery, connectionEventsQuery];
+  const agents = useMemo(
+    () =>
+      projectPiAgents({
+        events: agentEventsQuery.data ?? [],
+        bucketStarts: dashboard.eventVolume.bucketStarts,
+      }),
+    [agentEventsQuery.data, dashboard.eventVolume.bucketStarts],
+  );
+
+  const queries = [
+    runsQuery,
+    waitingRunsQuery,
+    eventsQuery,
+    connectionEventsQuery,
+    agentEventsQuery,
+  ];
   if (queries.some((query) => query.isError) || routesState.status === "error") {
     return (
       <BackofficeSystemState
@@ -393,6 +388,7 @@ function DashboardWorkspace({
       collections={collections}
       routes={routesState.routes}
       recentEvents={eventsQuery.data ?? []}
+      agents={agents}
     />
   );
 }

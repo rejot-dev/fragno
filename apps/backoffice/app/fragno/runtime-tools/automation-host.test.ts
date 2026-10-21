@@ -86,6 +86,7 @@ const createPiRuntime = (): PiManagerRuntime => {
       assistantText: content,
     }),
     stopAgent: async () => undefined,
+    backfillAgentEvents: async () => ({ agents: [] }),
   };
 };
 

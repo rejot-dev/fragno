@@ -13,7 +13,10 @@ import type { z } from "zod";
 import type { Context } from "@earendil-works/chord";
 import type { ConversationView, SubmissionRecord } from "@earendil-works/pi-durable";
 
-import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
+import {
+  backofficeExecutionScopeRestriction,
+  type BackofficeExecutionContext,
+} from "@/backoffice-runtime/context";
 import {
   type BackofficeKernel,
   BackofficeForbiddenError,
@@ -30,6 +33,8 @@ import {
   type PiAgentQueueSubmission,
   type PiAgentSubmissionWait,
 } from "@/fragno/pi/agent/pi-agent-contract";
+
+import { backfillPiAgentEvents, type PiAgentBackfilledEvent } from "./pi-agent-change-events";
 
 export type PiManagerAgentInput = { agentName: string };
 export type PiManagerSubmitPromptInput = {
@@ -140,6 +145,8 @@ export type PiManagerRuntime = {
   notifyAgent(input: PiManagerNotifyAgentInput): Promise<void>;
   /** Aborts the agent's work and pauses its queue until someone resumes it. */
   stopAgent(input: PiManagerAgentInput): Promise<void>;
+  /** Records the scope's defined agents as `agent.*` events where the events lack them. */
+  backfillAgentEvents(): Promise<{ agents: PiAgentBackfilledEvent[] }>;
 };
 
 function assistantTextFromSubmission(view: ConversationView, submission: SubmissionRecord): string {
@@ -235,6 +242,24 @@ export function createPiManagerRuntime(input: {
   const managerRuntime: PiManagerRuntime = {
     async listAgents() {
       return await request<PiManagerAgentDirectory>("/agents", null);
+    },
+    async backfillAgentEvents() {
+      const { agents } = await request<PiManagerAgentDirectory>("/agents", null);
+      return {
+        agents: await backfillPiAgentEvents({
+          automations: input.runtime.objects.automations.for(input.execution.scope).commands,
+          scope: input.execution.scope,
+          definitions: agents
+            .filter((agent) => agent.managedBy?.kind !== "built-in")
+            .map(({ provisioned: _provisioned, ...definition }) => definition),
+          occurredAt: new Date(),
+          provenance: {
+            actors: input.execution.actors,
+            scopeRestriction: backofficeExecutionScopeRestriction(input.execution),
+          },
+          context: { propagationContext: null },
+        }),
+      };
     },
     async getAgent({ agentName }) {
       const route = agentRoute(agentName);
