@@ -23,7 +23,6 @@ import {
   createBackofficeIdentityChangeHeaders,
   getBackofficeMe,
 } from "@/fragno/auth/auth-server";
-import { betterAuthClient } from "@/fragno/auth/better-auth.client";
 import { requestEmailVerificationResend } from "@/fragno/auth/email-verification.server";
 
 import type { Route } from "./+types/login";
@@ -35,6 +34,7 @@ import {
   type AppSignInPage,
 } from "./app-sign-in.server";
 import { buildBackofficeSignUpPath, readBackofficeReturnTo } from "./auth-navigation";
+import { startGitHubSignIn } from "./github-sign-in";
 
 type BackofficeLoginAuthError = {
   title: string;
@@ -347,21 +347,7 @@ function BackofficeLogin({
     setAuthErrorNotice(null);
 
     try {
-      const callbackURL = new URL(returnTo, window.location.origin).toString();
-      const socialSignIn = {
-        provider: "github",
-        callbackURL,
-        disableRedirect: true,
-        ...(oauthQuery === null ? {} : { oauth_query: oauthQuery }),
-      };
-      const result = await betterAuthClient.signIn.social(socialSignIn);
-      if (result.error) {
-        throw new Error(result.error.message || "Unable to start GitHub sign-in.");
-      }
-      if (!result.data?.url) {
-        throw new Error("GitHub authorization URL is missing.");
-      }
-      window.location.assign(result.data.url);
+      await startGitHubSignIn({ returnTo, oauthQuery });
     } catch (error) {
       setAuthErrorNotice({
         title: "GitHub sign-in could not be started",
