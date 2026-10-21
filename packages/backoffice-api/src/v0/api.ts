@@ -1,6 +1,7 @@
 import type { BackofficeApi } from "../api";
 import { accountOperations } from "./account";
 import { appsOperations } from "./apps";
+import { artifactsOperations } from "./artifacts";
 import { automationRouterOperations } from "./automation";
 import { capabilitiesOperations } from "./capabilities";
 import { eventsOperations } from "./events";
@@ -30,6 +31,7 @@ export const backofficeApiV0 = {
   operations: {
     ...accountOperations,
     ...appsOperations,
+    ...artifactsOperations,
     ...automationRouterOperations,
     ...capabilitiesOperations,
     ...eventsOperations,

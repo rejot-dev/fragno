@@ -17,6 +17,7 @@ import { createCurrentScopeBashCommand } from "./current-scope-command";
 import type { AccountRuntime } from "./families/account";
 import type { AdminRuntime } from "./families/admin";
 import type { AppsRuntime } from "./families/apps-runtime";
+import type { ArtifactsRuntime } from "./families/artifacts";
 import type { AutomationStoreRuntime } from "./families/automations-bindings";
 import type { DurableHooksRuntime } from "./families/automations-durable-hooks";
 import type { AutomationIdentityRuntime } from "./families/automations-identities";
@@ -61,6 +62,7 @@ export type BashHostContext = {
   admin?: { runtime: AdminRuntime } | null;
   org?: { runtime: OrganizationRuntime } | null;
   apps: { runtime: AppsRuntime } | null;
+  artifacts?: { runtime: ArtifactsRuntime } | null;
   backoffice: { runtime: BackofficeCapabilitiesRuntime } | null;
   automation: RegisteredEventBashCommandContext | null;
   cloudflare?: { runtime: CloudflareRuntime } | null;

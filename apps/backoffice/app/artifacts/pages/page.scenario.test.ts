@@ -298,25 +298,30 @@ function checkPageSource(source: string): string[] {
     .map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"));
 }
 
-/** Writes the source and runs the skill's verification call, which imports it and returns its preview. */
-async function writePage(ctx: BackofficeScenarioContext, source: string) {
+/** Saves the source as an agent does. */
+async function writeSource(ctx: BackofficeScenarioContext, source: string) {
   await ctx.runCodemode({
     scope,
     code: `async () => await state.writeFile({ path: ${JSON.stringify(SOURCE_PATH)}, content: ${JSON.stringify(source)} })`,
   });
-  const verifyError = await ctx
-    .runCodemode({
-      scope,
-      code: `async () => {
-  const { default: definition } = await import(${JSON.stringify(SOURCE_PATH)});
-  return { $ui: page.preview(definition) };
-}`,
-    })
-    .then(
-      () => null,
-      (error: unknown) => (error instanceof Error ? error.message : String(error)),
-    );
-  return { diagnostics: checkPageSource(source), verifyError };
+}
+
+/**
+ * Writes the source and runs the skill's checks: js.check's diagnostics, and artifacts.buildPage,
+ * which builds the page as its route does and reports the error viewers would see.
+ */
+async function writePage(ctx: BackofficeScenarioContext, source: string) {
+  await writeSource(ctx, source);
+  const build = await ctx.runCodemode({
+    scope,
+    code: `async () => await artifacts.buildPage({ path: ${JSON.stringify(SOURCE_PATH)} })`,
+  });
+  // The tool's output schema has validated the result.
+  const built = build.result as { status: "built" } | { status: "failed"; message: string };
+  return {
+    diagnostics: checkPageSource(source),
+    verifyError: built.status === "failed" ? built.message : null,
+  };
 }
 
 /** Loads the page as its route does, building it when the cache does not match. */
@@ -619,7 +624,7 @@ describe("workspace pages", () => {
     );
   });
 
-  test("an outage fails the page without caching, and the page builds once it recovers", async () => {
+  test("an outage fails the page without caching; builds before it are served from the cache", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         objects: allLocalObjects,
@@ -628,7 +633,7 @@ describe("workspace pages", () => {
         setup: ({ given }) => [given.organization.exists({ id: orgId, name: "Ada Labs" })],
         steps: ({ then }) => [
           then.assert("the page fails while codemode is down", async (ctx) => {
-            await writePage(ctx, newestRunPage);
+            await writeSource(ctx, newestRunPage);
             outage = "CODEMODE_CONNECTION_FAILED";
             try {
               const loaded = await loadBuiltPage(ctx);
@@ -643,6 +648,20 @@ describe("workspace pages", () => {
             assert(loaded.kind === "ready", JSON.stringify(loaded));
             assert.equal(await cachedOutcome(ctx), "built");
           }),
+          then.assert(
+            "a page the agent built opens from the cache without codemode",
+            async (ctx) => {
+              const { verifyError } = await writePage(ctx, paramsMetricPage);
+              assert.equal(verifyError, null);
+              outage = "CODEMODE_CONNECTION_FAILED";
+              try {
+                const loaded = await loadBuiltPage(ctx);
+                assert(loaded.kind === "ready", JSON.stringify(loaded));
+              } finally {
+                outage = null;
+              }
+            },
+          ),
         ],
       }),
     );
@@ -672,8 +691,7 @@ describe("workspace pages", () => {
                 code: `async () => {
   const path = ${JSON.stringify(SOURCE_PATH)};
   await state.writeFile({ path, content: ${JSON.stringify(newestRunPage)} });
-  const { default: definition } = await import(path);
-  return { $ui: page.preview(definition) };
+  return (await import(path)).default;
 }`,
               })
               .then(

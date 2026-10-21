@@ -23,21 +23,10 @@ page runs the queries in the browser and re-renders as the data changes.
 2. **Write the source.** Save the module with `state.writeFile`, following the example below.
    Complete when it default-exports `page.define(...)` and is pure, as the Source section defines.
 3. **Check.** Run `js.check({ path })` on the source. Complete when it reports no diagnostics.
-4. **Verify.** In a later codemode call than the one that wrote the source, import it by its path as
-   a string literal and return its preview. Codemode loads only the saved modules a call names
-   literally, and only those that exist when the call starts, so `import(path)` with a variable, or
-   importing in the writing call, fails with "was not loaded":
-
-   ```js
-   async () => {
-     const { default: definition } = await import("/workspace/reports/operations.page.js");
-     // Shows the interface with empty results, which validates the spec.
-     return { $ui: page.preview(definition) };
-   };
-   ```
-
-   Complete when the call succeeds and its result reports no generated UI error. A builder error
-   names the call and, for fields, lists the collection's fields.
+4. **Build.** Run `artifacts.buildPage({ path })`. It builds the page as Backoffice does when it
+   opens, without providers, and caches the build for viewers. Complete when it returns
+   `{ status: "built" }`; a `failed` result's `message` is what the page would show, such as a
+   builder error that names the call and, for fields, lists the collection's fields.
 
 5. **Hand off.** Give the user the source path. Selecting it in Files shows the live page on its
    Page tab; the page also opens at `/backoffice/pages/<scope>/<path>`, where `<scope>` is the scope
@@ -46,16 +35,16 @@ page runs the queries in the browser and re-renders as the data changes.
 
 ## Branches
 
-- To change a page, edit its source, then check and verify again. The `.build` file is the system's
+- To change a page, edit its source, then check and build again. The `.build` file is the system's
   cache; leave it to the system.
 - When the page or the Files preview shows "Invalid page", its message is the build's error. Fix the
-  source and verify again.
+  source and build again.
 
 ## Source
 
 The module is pure: data comes from queries, time from `now`, and code from `page`, `ui`, and the
 saved modules it imports. The system builds it without providers such as `state`, and caches the
-result until the source changes, so step 4's codemode call, which has providers, cannot catch a
+result until the source changes; `artifacts.buildPage` builds it the same way, so it reports a
 module that reads them.
 
 ```js

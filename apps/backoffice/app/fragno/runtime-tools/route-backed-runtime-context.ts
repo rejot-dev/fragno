@@ -334,6 +334,17 @@ export const createRouteBackedRuntimeContext = ({
           return object ? { runtime: createWebRuntime({ object: object.http }) } : null;
         })()
       : null,
+    // Building a page runs codemode, and the build loads this module, so it is imported per use.
+    artifacts: codemodeExecutor
+      ? {
+          runtime: {
+            loadPage: async (sourcePath) => {
+              const { loadPage } = await import("@/artifacts/pages/build.server");
+              return await loadPage({ runtime, kernel, execution, sourcePath });
+            },
+          },
+        }
+      : null,
     models: {
       runtime: {
         classify: async (request) =>
