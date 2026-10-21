@@ -197,7 +197,7 @@ describe("Backoffice shell request middleware", () => {
     const next = vi.fn(async () => {
       expect(getBackofficeShellRequest(context)).toMatchObject({
         route: { status: "not-found" },
-        resolvedScope: { kind: "org", organization: activeOrganization.organization },
+        resolvedScope: { kind: "user", userId: "user-1" },
       });
       return new Response("descendant response");
     });
@@ -214,7 +214,7 @@ describe("Backoffice shell request middleware", () => {
     const { context } = createShellContext({ request });
     const next = vi.fn(async () => {
       expect(getBackofficeShellRequest(context)).toMatchObject({
-        resolvedScope: { kind: "org", organization: activeOrganization.organization },
+        resolvedScope: { kind: "user", userId: "user-1" },
         route: { status: "not-found" },
       });
       return new Response("descendant response");

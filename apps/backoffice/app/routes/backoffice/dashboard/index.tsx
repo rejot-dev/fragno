@@ -7,11 +7,7 @@ import { dashboardPath } from "./path";
 
 export async function loader({ context }: Route.LoaderArgs) {
   const { me } = getBackofficeShellRequest(context);
-  const activeOrganization = me.activeOrganization?.organization;
-  if (!activeOrganization) {
-    throw new Response("Not Found", { status: 404 });
-  }
-  return redirect(dashboardPath({ kind: "org", orgSlug: activeOrganization.slug }));
+  return redirect(dashboardPath({ kind: "user", userId: me.user.id }));
 }
 
 export default function BackofficeDashboardIndex() {

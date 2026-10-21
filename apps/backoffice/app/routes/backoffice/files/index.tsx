@@ -7,18 +7,7 @@ import { filesScopeBasePath } from "./scope";
 
 export async function loader({ context }: Route.LoaderArgs) {
   const { me } = getBackofficeShellRequest(context);
-
-  const activeOrganization = me.activeOrganization?.organization;
-  if (!activeOrganization) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
-  return redirect(
-    filesScopeBasePath({
-      kind: "org",
-      organization: { id: activeOrganization.id, slug: activeOrganization.slug },
-    }),
-  );
+  return redirect(filesScopeBasePath({ kind: "user", userId: me.user.id }));
 }
 
 export default function BackofficeFilesIndex() {

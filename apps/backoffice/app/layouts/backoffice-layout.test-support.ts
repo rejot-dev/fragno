@@ -68,10 +68,10 @@ export function provideBackofficeShellRequest(
   },
 ): void {
   const { me, routeScope } = input;
-  const defaultScope: BackofficeResolvedScope<Organization, BackofficeNamedProject> =
-    me.activeOrganization
-      ? { kind: "org", organization: me.activeOrganization.organization }
-      : { kind: "user", userId: me.user.id };
+  const defaultScope: BackofficeResolvedScope<Organization, BackofficeNamedProject> = {
+    kind: "user",
+    userId: me.user.id,
+  };
   const accessTokenExpiresAt = new Date(Date.now() + 60_000);
   context.set(BackofficeShellRequestContext, {
     me,

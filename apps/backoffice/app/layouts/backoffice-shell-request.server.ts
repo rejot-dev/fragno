@@ -97,9 +97,8 @@ export async function establishBackofficeShellRequest(
     throw await reopenWithBackofficeCredential(args, { selection: "preferred" });
   }
 
-  const defaultScope: BackofficePageResolvedScope = activeOrganization
-    ? { kind: "org", organization: activeOrganization }
-    : { kind: "user", userId: me.user.id };
+  // Every user has a personal scope, so it is the default even while an organization is active.
+  const defaultScope: BackofficePageResolvedScope = { kind: "user", userId: me.user.id };
   // Throwing here would replace the whole layout; sections report the 502 from their loaders.
   let projectLookupFailure = null as string | null;
   const pageScope = await resolveBackofficePageScope({

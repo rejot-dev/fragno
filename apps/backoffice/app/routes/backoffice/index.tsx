@@ -6,12 +6,8 @@ import type { Route } from "./+types/index";
 import { dashboardPath } from "./dashboard/path";
 
 export function loader({ context }: Route.LoaderArgs) {
-  const activeOrganization = getBackofficeShellRequest(context).me.activeOrganization?.organization;
-  if (!activeOrganization) {
-    return redirect("/backoffice/organizations");
-  }
-
-  return redirect(dashboardPath({ kind: "org", orgSlug: activeOrganization.slug }));
+  const { me } = getBackofficeShellRequest(context);
+  return redirect(dashboardPath({ kind: "user", userId: me.user.id }));
 }
 
 export default function BackofficeIndex() {

@@ -7,13 +7,7 @@ import { sandboxesPath } from "./paths";
 
 export async function loader({ context }: Route.LoaderArgs) {
   const { me } = getBackofficeShellRequest(context);
-
-  const activeOrganization = me.activeOrganization?.organization;
-  if (!activeOrganization) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
-  return redirect(sandboxesPath({ kind: "org", orgSlug: activeOrganization.slug }));
+  return redirect(sandboxesPath({ kind: "user", userId: me.user.id }));
 }
 
 export default function BackofficeComputersIndex() {
