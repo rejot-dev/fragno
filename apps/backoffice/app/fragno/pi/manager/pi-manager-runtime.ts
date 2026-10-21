@@ -138,7 +138,8 @@ export type PiManagerRuntime = {
   runPrompt(input: PiManagerRunPromptInput): Promise<PiManagerPromptResult>;
   /** Writes an event into a started agent's conversation and asks it to handle the event. */
   notifyAgent(input: PiManagerNotifyAgentInput): Promise<void>;
-  abortAgent(input: PiManagerAgentInput): Promise<void>;
+  /** Aborts the agent's work and pauses its queue until someone resumes it. */
+  stopAgent(input: PiManagerAgentInput): Promise<void>;
 };
 
 function assistantTextFromSubmission(view: ConversationView, submission: SubmissionRecord): string {
@@ -303,8 +304,8 @@ export function createPiManagerRuntime(input: {
     async notifyAgent({ agentName, ...notification }) {
       await request(`${agentRoute(agentName)}/notifications`, notification);
     },
-    async abortAgent({ agentName }) {
-      await request(`${agentRoute(agentName)}/abort`, {});
+    async stopAgent({ agentName }) {
+      await request(`${agentRoute(agentName)}/stop`, {});
     },
   };
 

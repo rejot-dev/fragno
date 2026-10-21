@@ -419,14 +419,14 @@ export async function resetPiManagerAgent(
   return `Failed to clear the context (${response.status}).`;
 }
 
-export async function abortPiManagerAgent(
+export async function stopPiManagerAgent(
   request: Request,
   context: Readonly<RouterContextProvider>,
   scope: BackofficeContextScope,
   agentName: string,
 ): Promise<string | null> {
   const { callRoute, execution } = await createPiManagerRouteCaller(request, context, scope);
-  const response = await callRoute("POST", "/agents/:agentName/abort", {
+  const response = await callRoute("POST", "/agents/:agentName/stop", {
     pathParams: { agentName },
   });
   if (response.type === "empty") {

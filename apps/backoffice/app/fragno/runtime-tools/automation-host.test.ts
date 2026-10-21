@@ -85,7 +85,7 @@ const createPiRuntime = (): PiManagerRuntime => {
       submission,
       assistantText: content,
     }),
-    abortAgent: async () => undefined,
+    stopAgent: async () => undefined,
   };
 };
 
