@@ -8,11 +8,17 @@ import {
 
 import type { Collection } from "@tanstack/react-db";
 
+import {
+  createIntegrationConnectionsCollection,
+  type IntegrationConnectionRecord,
+} from "@/fragno/runtime-tools/families/integrations/integration-connections";
+
 import { automationFragmentSchema } from "../schema";
 
 type TableCollection<TTable extends AnyTable> = Collection<FragnoCollectionRow<TTable>, string>;
 
-export type AutomationCollections = {
+/** The collections that mirror the scope's synchronized tables. */
+export type AutomationTableCollections = {
   kvStore: TableCollection<(typeof automationFragmentSchema.tables)["kv_store"]>;
   projects: TableCollection<(typeof automationFragmentSchema.tables)["project"]>;
   routes: TableCollection<(typeof automationFragmentSchema.tables)["automation_route"]>;
@@ -38,6 +44,11 @@ export type AutomationCollections = {
   workflowStepEmissions: TableCollection<(typeof workflowsSchema.tables)["workflow_step_emission"]>;
 };
 
+/** The synchronized tables, and what Backoffice derives from them. */
+export type AutomationCollections = AutomationTableCollections & {
+  connections: Collection<IntegrationConnectionRecord, string>;
+};
+
 type AutomationCoordinator = FragnoOutboxCoordinator<
   readonly [typeof automationFragmentSchema, typeof workflowsSchema]
 >;
@@ -45,6 +56,13 @@ type AutomationCoordinator = FragnoOutboxCoordinator<
 export function createAutomationCollections(
   coordinator: AutomationCoordinator,
 ): AutomationCollections {
+  const tables = createAutomationTableCollections(coordinator);
+  return { ...tables, connections: createIntegrationConnectionsCollection(tables) };
+}
+
+function createAutomationTableCollections(
+  coordinator: AutomationCoordinator,
+): AutomationTableCollections {
   return {
     kvStore: coordinator.collection(automationFragmentSchema, "kv_store"),
     projects: coordinator.collection(automationFragmentSchema, "project"),

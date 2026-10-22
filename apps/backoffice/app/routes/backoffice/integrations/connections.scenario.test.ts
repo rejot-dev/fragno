@@ -1,6 +1,6 @@
 import { expect, test, vi } from "vitest";
 
-import { eq, queryOnce } from "@tanstack/react-db";
+import { queryOnce } from "@tanstack/react-db";
 
 const workers = vi.hoisted(() => ({
   DurableObject: class {},
@@ -17,7 +17,6 @@ import {
   runBackofficeScenario,
   type BackofficeScenarioContext,
 } from "@/fragno/automation/scenario";
-import { INTEGRATIONS_EVENT_SOURCE } from "@/fragno/runtime-tools/families/integrations/integration-events";
 import { createIntegrationsRuntime } from "@/fragno/runtime-tools/families/integrations/integrations-runtime";
 
 import { InMemoryApiObject } from "../../../../workers/api.do";
@@ -37,10 +36,6 @@ import { InMemoryResendObject } from "../../../../workers/resend.do";
 import { InMemoryTelegramObject } from "../../../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../../../workers/upload.do";
 import { integrationConnectionName } from "./connection-display";
-import {
-  currentIntegrationConnections,
-  integrationConnectionStateChanges,
-} from "./connection-overview";
 
 const scenarioObjects = {
   API: (input) => new InMemoryApiObject(input),
@@ -121,22 +116,11 @@ test("the integrations section shows each connection's reported state and source
         then.assert("the overview lists each connection's latest state and label", async (ctx) => {
           const database = ctx.tanstack.automations.forOrg(orgId);
           await database.drain();
-          const events = await queryOnce((query) =>
+          const connections = await queryOnce((query) =>
             query
-              .from({ event: database.collections.events })
-              .where(({ event }) => eq(event.source, INTEGRATIONS_EVENT_SOURCE)),
-          );
-          // Deployed sources recorded events like this one before state events carried labels.
-          const recordedBeforeLabels = {
-            id: "recorded-before-labels",
-            source: INTEGRATIONS_EVENT_SOURCE,
-            eventType: "connection.ready",
-            payload: {},
-            subject: { scope, orgId, service: "mcp", connectionId: "mcp#before-labels" },
-            occurredAt: new Date("2026-01-01T00:00:00.000Z"),
-          };
-          const connections = currentIntegrationConnections(
-            integrationConnectionStateChanges([...events, recordedBeforeLabels]),
+              .from({ connection: database.collections.connections })
+              .orderBy(({ connection }) => connection.service, "asc")
+              .orderBy(({ connection }) => connection.connectionId, "asc"),
           );
           expect(
             connections.map((connection) => ({
@@ -144,7 +128,7 @@ test("the integrations section shows each connection's reported state and source
               kind: connection.kind,
               state: connection.state,
               name: integrationConnectionName(connection),
-              authMethod: connection.label?.authMethod ?? null,
+              authMethod: connection.authMethod,
             })),
           ).toEqual([
             {
@@ -161,14 +145,6 @@ test("the integrations section shows each connection's reported state and source
               kind: "api",
               state: "disconnected",
               name: "legacy",
-              authMethod: null,
-            },
-            // Unlabeled events fall back to the address until a backfill records a label.
-            {
-              connectionId: "mcp#before-labels",
-              kind: "mcp",
-              state: "ready",
-              name: "before-labels",
               authMethod: null,
             },
             {

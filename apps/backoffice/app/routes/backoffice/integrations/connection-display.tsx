@@ -5,22 +5,23 @@ import { BackofficeStatusLight } from "@fragno-private/design-system/status-ligh
 import type { BackofficeStatusTone } from "@fragno-private/design-system/status-tone";
 import type { ReactNode } from "react";
 
+import type { IntegrationConnectionRecord } from "@/fragno/runtime-tools/families/integrations/integration-connections";
+
 import { formatTimestamp } from "../automations/formatting";
-import type { IntegrationConnectionStateChange } from "./connection-overview";
 
 const stateLights = {
   ready: { label: "Ready", tone: "live" },
   unavailable: { label: "Unavailable", tone: "waiting" },
   disconnected: { label: "Disconnected", tone: "muted" },
 } as const satisfies Record<
-  IntegrationConnectionStateChange["state"],
+  IntegrationConnectionRecord["state"],
   { label: string; tone: BackofficeStatusTone }
 >;
 
 export function IntegrationConnectionStateLight({
   state,
 }: {
-  state: IntegrationConnectionStateChange["state"];
+  state: IntegrationConnectionRecord["state"];
 }) {
   const light = stateLights[state];
   return (
@@ -36,7 +37,7 @@ export const integrationConnectionKindLabels = {
   mcp: "MCP",
   connector: "Connector",
   native: "Native",
-} as const satisfies Record<IntegrationConnectionStateChange["kind"], string>;
+} as const satisfies Record<IntegrationConnectionRecord["kind"], string>;
 
 /** A titled block of the connection detail panel. */
 export function DetailSection({ title, children }: { title: string; children: ReactNode }) {
@@ -86,11 +87,11 @@ export const integrationAuthMethodLabels = {
 
 /** API, webhook, and MCP addresses are their own names; other kinds also name the service. */
 export function describeIntegrationConnectionKind(
-  change: Pick<IntegrationConnectionStateChange, "kind" | "service">,
+  connection: Pick<IntegrationConnectionRecord, "kind" | "service">,
 ) {
-  const label = integrationConnectionKindLabels[change.kind];
-  return change.kind === "connector" || change.kind === "native"
-    ? `${label} · ${change.service}`
+  const label = integrationConnectionKindLabels[connection.kind];
+  return connection.kind === "connector" || connection.kind === "native"
+    ? `${label} · ${connection.service}`
     : label;
 }
 
@@ -99,13 +100,15 @@ export function describeIntegrationConnectionKind(
  * and native slots are named after their service, so both fall back to the service.
  */
 export function integrationConnectionName(
-  change: Pick<IntegrationConnectionStateChange, "connectionId" | "kind" | "service" | "label">,
+  connection: Pick<IntegrationConnectionRecord, "connectionId" | "kind" | "service" | "name">,
 ) {
-  if (change.label !== null) {
-    return change.label.name;
+  if (connection.name !== null) {
+    return connection.name;
   }
-  const [namespace, localId] = splitConnectionId(change.connectionId);
-  return change.kind === "connector" || namespace === "backoffice" ? change.service : localId;
+  const [namespace, localId] = splitConnectionId(connection.connectionId);
+  return connection.kind === "connector" || namespace === "backoffice"
+    ? connection.service
+    : localId;
 }
 
 function splitConnectionId(connectionId: string) {

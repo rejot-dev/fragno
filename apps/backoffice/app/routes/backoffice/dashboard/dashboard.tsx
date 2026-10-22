@@ -15,7 +15,7 @@ import {
   type ShouldRevalidateFunctionArgs,
 } from "react-router";
 
-import { useLiveQuery } from "@tanstack/react-db";
+import { eq, not, useLiveQuery } from "@tanstack/react-db";
 
 import { isBackofficeObjectAvailableInContext } from "@/backoffice-runtime/object-registry";
 import {
@@ -52,7 +52,6 @@ import { DashboardSections, type DashboardLoaderData } from "./dashboard-section
 import { DashboardTabs } from "./dashboard-tabs";
 import {
   dashboardBucketStarts,
-  dashboardConnectionEventsQuery,
   dashboardEventsQuery,
   dashboardRunsQuery,
   projectBackofficeDashboard,
@@ -314,8 +313,13 @@ function DashboardWorkspace({
   const eventsQuery = useLiveQuery({
     query: (query) => dashboardEventsQuery(query, collections, new Date(windowStart)),
   });
-  const connectionEventsQuery = useLiveQuery({
-    query: (query) => dashboardConnectionEventsQuery(query, collections),
+  const connectionsQuery = useLiveQuery({
+    query: (query) =>
+      query
+        .from({ connection: collections.connections })
+        .where(({ connection }) => not(eq(connection.state, "disconnected")))
+        .orderBy(({ connection }) => connection.service, "asc")
+        .orderBy(({ connection }) => connection.connectionId, "asc"),
   });
   const agentEventsQuery = useLiveQuery({
     query: (query) => piAgentEventsQuery(query, collections),
@@ -332,17 +336,10 @@ function DashboardWorkspace({
         runs: runsQuery.data ?? [],
         waitingRuns,
         events: eventsQuery.data ?? [],
-        connectionEvents: connectionEventsQuery.data ?? [],
+        connections: connectionsQuery.data ?? [],
         routes: routesState.routes,
       }),
-    [
-      now,
-      runsQuery.data,
-      waitingRuns,
-      eventsQuery.data,
-      connectionEventsQuery.data,
-      routesState.routes,
-    ],
+    [now, runsQuery.data, waitingRuns, eventsQuery.data, connectionsQuery.data, routesState.routes],
   );
 
   const agents = useMemo(
@@ -354,13 +351,7 @@ function DashboardWorkspace({
     [agentEventsQuery.data, dashboard.eventVolume.bucketStarts],
   );
 
-  const queries = [
-    runsQuery,
-    waitingRunsQuery,
-    eventsQuery,
-    connectionEventsQuery,
-    agentEventsQuery,
-  ];
+  const queries = [runsQuery, waitingRunsQuery, eventsQuery, connectionsQuery, agentEventsQuery];
   if (queries.some((query) => query.isError) || routesState.status === "error") {
     return (
       <BackofficeSystemState

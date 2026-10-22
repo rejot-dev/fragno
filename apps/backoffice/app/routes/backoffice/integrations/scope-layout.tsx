@@ -2,7 +2,7 @@ import { Checkbox } from "@fragno-private/design-system/checkbox";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { BackofficeTabHeader } from "@fragno-private/design-system/tab-header";
-import { Suspense, use, useMemo, useState, type ReactNode } from "react";
+import { Suspense, use, useState, type ReactNode } from "react";
 import {
   Link,
   Outlet,
@@ -11,7 +11,7 @@ import {
   type ShouldRevalidateFunctionArgs,
 } from "react-router";
 
-import { eq, useLiveQuery } from "@tanstack/react-db";
+import { caseWhen, count, eq, not, or, sum, useLiveQuery } from "@tanstack/react-db";
 
 import type { BackofficeScopeSelection } from "@/backoffice-runtime/resolved-scope";
 import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
@@ -20,7 +20,7 @@ import {
   describeAutomationCollectionSource,
   getAutomationBrowserDatabase,
 } from "@/fragno/automation/tanstack/browser-database";
-import { INTEGRATIONS_EVENT_SOURCE } from "@/fragno/runtime-tools/families/integrations/integration-events";
+import type { IntegrationConnectionRecord } from "@/fragno/runtime-tools/families/integrations/integration-connections";
 import { requireScopeSelection } from "@/layouts/backoffice-shell-request.server";
 
 import { formatTimestamp } from "../automations/formatting";
@@ -31,11 +31,6 @@ import {
   integrationAuthMethodLabels,
   integrationConnectionName,
 } from "./connection-display";
-import {
-  currentIntegrationConnections,
-  integrationConnectionStateChanges,
-  type IntegrationConnectionStateChange,
-} from "./connection-overview";
 import { integrationConnectionPath, integrationsScopeBasePath } from "./connection-paths";
 import type { IntegrationsLayoutContext } from "./layout-context";
 import { NativeServices } from "./native-services";
@@ -167,32 +162,39 @@ function IntegrationsWorkspace({
 }: WorkspaceProps & Pick<IntegrationsLayoutContext, "collections">) {
   const { connectionId: selectedConnectionId } = useParams();
   const [showDisconnected, setShowDisconnected] = useState(false);
-  const eventsQuery = useLiveQuery({
+  // A selected disconnected connection keeps its tab while the others are hidden.
+  const connectionsQuery = useLiveQuery({
+    query: (query) => {
+      const all = query.from({ connection: collections.connections });
+      const shown = showDisconnected
+        ? all
+        : all.where(({ connection }) =>
+            selectedConnectionId === undefined
+              ? not(eq(connection.state, "disconnected"))
+              : or(
+                  not(eq(connection.state, "disconnected")),
+                  eq(connection.connectionId, selectedConnectionId),
+                ),
+          );
+      return shown
+        .orderBy(({ connection }) => connection.service, "asc")
+        .orderBy(({ connection }) => connection.connectionId, "asc");
+    },
+  });
+  const countsQuery = useLiveQuery({
     query: (query) =>
       query
-        .from({ event: collections.events })
-        .where(({ event }) => eq(event.source, INTEGRATIONS_EVENT_SOURCE))
-        .select(({ event }) => ({
-          id: event.id,
-          source: event.source,
-          eventType: event.eventType,
-          payload: event.payload,
-          subject: event.subject,
-          occurredAt: event.occurredAt,
-        })),
+        .from({ connection: collections.connections })
+        .select(({ connection }) => ({
+          total: count(connection.connectionId),
+          disconnected: sum(caseWhen(eq(connection.state, "disconnected"), 1, 0)),
+        }))
+        .findOne(),
   });
-  const changes = useMemo(
-    () => integrationConnectionStateChanges(eventsQuery.data ?? []),
-    [eventsQuery.data],
-  );
-  const connections = currentIntegrationConnections(changes);
-  const visibleConnections = showDisconnected
-    ? connections
-    : connections.filter(
-        (connection) =>
-          connection.state !== "disconnected" || connection.connectionId === selectedConnectionId,
-      );
-  const disconnectedCount = connections.length - visibleConnections.length;
+  const visibleConnections = connectionsQuery.data ?? [];
+  // Without connections the count query has no row.
+  const total = countsQuery.data?.total ?? 0;
+  const hiddenCount = showDisconnected ? 0 : (countsQuery.data?.disconnected ?? 0);
   const connectionTabs = visibleConnections.map((connection) => ({
     connectionId: connection.connectionId,
     label: integrationConnectionName(connection),
@@ -205,9 +207,9 @@ function IntegrationsWorkspace({
           <section className="bo-panel-surface bg-[var(--bo-panel)]">
             <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
               <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-                {connections.length} {connections.length === 1 ? "connection" : "connections"}
+                {total} {total === 1 ? "connection" : "connections"}
               </p>
-              {connections.length > 0 ? (
+              {total > 0 ? (
                 <Checkbox
                   density="compact"
                   checked={showDisconnected}
@@ -215,17 +217,17 @@ function IntegrationsWorkspace({
                   className="text-[var(--bo-muted)]"
                 >
                   Show disconnected
-                  {disconnectedCount > 0 ? ` (${disconnectedCount})` : null}
+                  {hiddenCount > 0 ? ` (${hiddenCount})` : null}
                 </Checkbox>
               ) : null}
             </div>
-            {eventsQuery.isError ? (
+            {connectionsQuery.isError || countsQuery.isError ? (
               <BackofficeSystemState
                 tone="error"
                 title="Connection events could not be read."
                 flush
               />
-            ) : connections.length === 0 ? (
+            ) : total === 0 ? (
               <BackofficeSystemState
                 tone="empty"
                 title="No connections yet."
@@ -246,9 +248,7 @@ function IntegrationsWorkspace({
           <NativeServices selectedScope={selectedScope} />
         </>
       ) : (
-        <Outlet
-          context={{ selectedScope, collections, changes } satisfies IntegrationsLayoutContext}
-        />
+        <Outlet context={{ selectedScope, collections } satisfies IntegrationsLayoutContext} />
       )}
     </IntegrationsPage>
   );
@@ -289,7 +289,7 @@ function ConnectionsTable({
   connections,
 }: {
   selectedScope: BackofficeScopeSelection;
-  connections: IntegrationConnectionStateChange[];
+  connections: IntegrationConnectionRecord[];
 }) {
   return (
     <div className="backoffice-scroll overflow-x-auto border-t border-[color:var(--bo-border)]">
@@ -305,7 +305,7 @@ function ConnectionsTable({
         </thead>
         <tbody className="divide-y divide-[color:var(--bo-border)]">
           {connections.map((connection) => {
-            const authMethod = connection.label?.authMethod ?? null;
+            const { authMethod } = connection;
             return (
               <tr key={connection.connectionId} className="hover:bg-[var(--bo-panel-2)]">
                 <td className="max-w-[24rem] px-3 py-2">
@@ -335,7 +335,7 @@ function ConnectionsTable({
                   <IntegrationConnectionStateLight state={connection.state} />
                 </td>
                 <td className="px-3 py-2 text-xs whitespace-nowrap text-[var(--bo-muted)]">
-                  {formatTimestamp(connection.occurredAt)}
+                  {formatTimestamp(connection.changedAt)}
                 </td>
               </tr>
             );
