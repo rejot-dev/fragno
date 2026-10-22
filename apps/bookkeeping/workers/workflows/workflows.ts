@@ -21,9 +21,8 @@ import {
 
 /** Where a person is in the sign-up wizard. */
 export type WizardState =
-  | { step: "name" }
   | { step: "business-name" }
-  /** Between questions, until the workflow asks the next one. */
+  /** Until the workflow asks its question. */
   | { step: "next-question" }
   /** The business name is in; the workspace is being created. */
   | { step: "setting-up" }
@@ -35,9 +34,6 @@ function createWorkflows(ctx: DurableObjectState, env: CloudflareEnv) {
     {
       workflows: {
         createWorkspace: defineCreateWorkspaceWorkflow({
-          setUserName: async (input) => {
-            await env.AUTH.getByName("auth").setUserName(input);
-          },
           provisioning: async () => await createProvisioningClient(env),
           recordMembership: async (input) => {
             await env.WORKSPACES.getByName("workspaces").recordMembership(input);
@@ -91,7 +87,6 @@ export class Workflows extends DurableObject<CloudflareEnv> {
   async openWizard(user: SessionUser): Promise<WizardState> {
     const fragment = this.#getFragment();
     const params: CreateWorkspaceParams = {
-      userId: user.id,
       backofficeUserId: user.backofficeUserId,
       email: user.email,
       name: user.name,
@@ -146,7 +141,7 @@ export class Workflows extends DurableObject<CloudflareEnv> {
       // An answer is stored when it is sent, but the workflow takes it on its next run; the page
       // reloads before that, and must not ask the question again.
       if (
-        (question === "name" || question === "business-name") &&
+        question === "business-name" &&
         !events.some((event) => event.type === question && event.consumedByStepKey === null)
       ) {
         return { step: question };

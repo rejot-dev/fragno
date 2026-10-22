@@ -14,7 +14,7 @@ membership. Use the current contract rather than resurrecting those historical e
 ## Create a tenant
 
 [Bookkeeping's wizard](../../../../apps/bookkeeping/workers/workflows/create-workspace.ts) asks for
-the missing name and business name, then:
+the business name, then:
 
 1. Calls `organizations.provision` with a stable `externalOrganizationId`, the organization name,
    and `ownerUserId` from the signed-in user's Backoffice subject.

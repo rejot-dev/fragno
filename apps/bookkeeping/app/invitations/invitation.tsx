@@ -4,7 +4,12 @@ import { env } from "cloudflare:workers";
 import { Form, Link, redirect, useNavigation } from "react-router";
 
 import { createProvisioningClient } from "../../workers/backoffice/client";
-import { assertSameOrigin, getSessionUser, requireSessionUser } from "../auth/session.server";
+import {
+  assertSameOrigin,
+  getSessionUser,
+  requireName,
+  requireSessionUser,
+} from "../auth/session.server";
 import { SignInButton } from "../auth/sign-in-button";
 import { callBackoffice } from "../workspace/access.server";
 import type { Route } from "./+types/invitation";
@@ -28,6 +33,9 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     return { status: "invalid" } as const;
   }
   const user = await getSessionUser(request);
+  if (user) {
+    requireName(request, user);
+  }
   return {
     status: "open",
     workspaceName: invitation.workspace.name,

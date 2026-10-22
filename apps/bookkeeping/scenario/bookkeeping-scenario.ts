@@ -221,8 +221,8 @@ export class BookkeepingScenario {
   }
 
   /**
-   * A new person signs in, answers the wizard, and ends up in their new workspace, as the pages
-   * lead them. Returns their browser, signed in.
+   * A new person signs in, gives their name, answers the wizard, and ends up in their new
+   * workspace, as the pages lead them. Returns their browser, signed in.
    */
   async signUp(person: {
     email: string;
@@ -230,14 +230,10 @@ export class BookkeepingScenario {
     businessName: string;
   }): Promise<ScenarioBrowser> {
     const browser = this.browser();
-    await browser.signIn(person.email);
+    const named = await browser.signIn(person.email);
+    await browser.submit(named.path, { name: person.name });
     await this.drain();
-    await browser.submit("/welcome", { intent: "name", name: person.name });
-    await this.drain();
-    await browser.submit("/welcome", {
-      intent: "business-name",
-      businessName: person.businessName,
-    });
+    await browser.submit("/welcome", { businessName: person.businessName });
     await this.drain();
     const workspace = await browser.navigate("/welcome");
     if (!workspace.path.startsWith("/w/")) {
