@@ -1,4 +1,5 @@
 import type { FileKey } from "./file-key";
+import type { FileLinksConfig } from "./file-links";
 import type {
   StorageAdapter,
   StorageAdapterLimits,
@@ -33,6 +34,8 @@ export interface UploadFragmentConfig {
   maxSingleUploadBytes?: number;
   maxMultipartUploadBytes?: number;
   textIndex?: TextIndexOptions;
+  /** Enables signed links that read or write files without the integrator's authentication. */
+  fileLinks?: FileLinksConfig;
 
   onFileReady?: (payload: FileHookPayload, idempotencyKey: string) => Promise<void>;
   onUploadFailed?: (payload: FileHookPayload, idempotencyKey: string) => Promise<void>;

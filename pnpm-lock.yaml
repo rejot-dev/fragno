@@ -2732,6 +2732,9 @@ importers:
       gunshi:
         specifier: ^0.26.3
         version: 0.26.3
+      modern-tar:
+        specifier: ^0.8.6
+        version: 0.8.6
       react:
         specifier: '>=18.0.0'
         version: 19.2.7
@@ -16661,6 +16664,10 @@ packages:
 
   modern-tar@0.7.7:
     resolution: {integrity: sha512-t9VmxaqrmANnEOBhpSDI6HD192Ge48k8vmWqQQL7hSFEqHEYwZbbsu49+aKLWZeRvFs3j1pMhXOqqF4kPlvjkQ==}
+    engines: {node: '>=18.0.0'}
+
+  modern-tar@0.8.6:
+    resolution: {integrity: sha512-LYSks0tNVqbtez/9OB0YFP6qLRSqkdAxJWOQpVaR67lNTbj2zNLyYpowkRMia5lXLCZKzxwoxkxH2MbbBR2aEg==}
     engines: {node: '>=18.0.0'}
 
   module-details-from-path@1.0.4:
@@ -35123,6 +35130,8 @@ snapshots:
   mocked-exports@0.1.1: {}
 
   modern-tar@0.7.7: {}
+
+  modern-tar@0.8.6: {}
 
   module-details-from-path@1.0.4: {}
 

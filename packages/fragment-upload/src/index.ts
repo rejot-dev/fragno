@@ -22,6 +22,7 @@ export type {
   TextIndexTerm,
 } from "./text-index";
 export type { FileKey, FileKeyValidationResult, ValidateFileKeyOptions } from "./file-key";
+export type { FileLinksConfig } from "./file-links";
 export { assertFileKey, splitFileKey, validateFileKey } from "./file-key";
 export {
   applyFileEditOperation,

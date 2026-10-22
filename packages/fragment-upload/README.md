@@ -1,8 +1,8 @@
 # Upload Fragment
 
 Full-stack upload and logical file publication for Fragno. The fragment supports direct-to-storage
-uploads, proxy uploads, multipart uploads, optimistic file-write preconditions, and atomic
-publication of prepared upload batches.
+uploads, proxy uploads, multipart uploads, optimistic file-write preconditions, atomic publication
+of prepared upload batches, and signed file links for clients without credentials.
 
 ## Upload Strategy vs. Publication Mode
 
@@ -225,6 +225,99 @@ use the multipart upload-session flow instead.
 - `POST /uploads/:uploadId/progress`: monotonic byte/part progress;
 - `POST /uploads/:uploadId/abort`: abort the session and clean up prepared physical objects;
 - `GET /uploads/:uploadId/parts`: recorded multipart parts.
+
+## File Links
+
+A file link is a signed, expiring token that reads or writes files without the integrator's
+authentication, for example from a sandbox with `curl`. The token is the only authority, so mount
+the `/file-links/:token...` routes where unauthenticated requests can reach them, and keep
+`POST /file-links` behind your normal authentication.
+
+Enable links in the fragment config:
+
+```ts
+createUploadFragment(
+  {
+    storage,
+    fileLinks: {
+      secret: env.FILE_LINK_SECRET,
+      // Names the file namespace. Instances that share a secret need distinct audiences.
+      audience: "workspace:org-1",
+      // Link writes carry no trustworthy content type.
+      contentTypeForKey: (fileKey) => inferContentType(fileKey),
+      // Bound one uploaded archive. File counts above 5,000, the prepared-batch limit, act as 5,000.
+      maxArchiveWriteFiles: 200,
+      maxArchiveWriteBytes: 25 * 1024 * 1024,
+    },
+  },
+  options,
+);
+```
+
+A link verifies only on an instance with the same `secret` and `audience` and the provider it was
+created for. Rotating the secret invalidates every outstanding link. Links cannot be revoked; they
+expire after at most one hour.
+
+### Create a link
+
+```http
+POST /file-links
+Content-Type: application/json
+
+{
+  "provider": "database",
+  "access": "read",
+  "target": { "kind": "glob", "glob": "reports/**" },
+  "expiresInSeconds": 900
+}
+```
+
+```json
+{ "token": "eyJ2ZXJzaW9uIjox...", "expiresAt": "2027-01-01T00:15:00.000Z" }
+```
+
+`access` is `read` or `write`. `target` is either one file, `{ "kind": "file", "fileKey" }`, or a
+relative glob with a `*` or `?` wildcard, `{ "kind": "glob", "glob" }`, using the same matching as
+`GET /files?glob=`. A link does not check that its files exist.
+
+### Use a link
+
+| Route                                | Link        | Behavior                                     |
+| ------------------------------------ | ----------- | -------------------------------------------- |
+| `GET /file-links/:token`             | file, read  | Streams the file                             |
+| `PUT /file-links/:token`             | file, write | Replaces the file; requires `Content-Length` |
+| `GET /file-links/:token/archive.tar` | glob, read  | Streams a tar of up to 500 matching files    |
+| `PUT /file-links/:token/archive.tar` | glob, write | Publishes every tar entry as one batch       |
+
+`PUT` routes expect `Content-Type: application/octet-stream`.
+
+Archive entry names are relative to the glob's static directory prefix: `reports/**` reads
+`reports/q1/summary.csv` as `q1/summary.csv`, and writes the entry `q1/summary.csv` back to the same
+key.
+
+- **Reading:** each archive is one listing page. When more files match, the response carries an
+  `X-Next-Cursor` header; request the archive again with `?cursor=<value>` for the next page.
+- **Writing:** writes replace existing files without preconditions. Entries may be files or
+  directories; directories are skipped. The archive must be uncompressed tar. The fragment rejects
+  the whole archive, publishing nothing and deleting its staged objects, when an entry is outside
+  the glob, a symlink or other special entry, a duplicate, or beyond `maxArchiveWriteFiles` or
+  `maxArchiveWriteBytes`. A file over `maxSingleUploadBytes`, alone or in an archive, is rejected
+  with 413. Successful writes return a summary, `{ "fileCount": 2, "sizeBytes": 23 }`, rather than a
+  file list.
+
+```sh
+curl -sS --fail-with-body "$BASE/file-links/$READ_TOKEN/archive.tar" | tar -x -C reports
+tar -ch -C out . | curl -sS --fail-with-body -T - -H 'Expect:' \
+  -H 'Content-Type: application/octet-stream' "$BASE/file-links/$WRITE_TOKEN/archive.tar"
+```
+
+Links need storage that streams through the fragment: the filesystem, database, and R2 binding
+adapters. On S3-compatible storage, link requests fail with `STORAGE_ERROR`.
+
+Errors use `FILE_LINKS_DISABLED` (400) when `fileLinks` is not configured, `FILE_LINK_INVALID` (403)
+for a token this instance did not sign, `FILE_LINK_EXPIRED` (410), and `FILE_LINK_FORBIDDEN` (403)
+for the wrong access or an archive entry outside the glob. A body that is not a readable tar archive
+is `INVALID_REQUEST` (400).
 
 ## Storage and Atomicity
 
