@@ -7,15 +7,26 @@ export default [
     route("login", "public/login.tsx"),
     route("help", "public/help.tsx"),
     route("name", "public/name.tsx"),
-    route("welcome", "welcome/welcome.tsx"),
+    route("account", "public/account.tsx"),
+    route("start", "organizations/start.tsx"),
     route("invitations/:invitationId", "invitations/invitation.tsx"),
   ]),
-  route("start", "workspace/start.tsx"),
-  route("w/:slug", "workspace/layout.tsx", [
-    index("workspace/overview.tsx"),
+  // Operators run Bookkeeping and create firms.
+  route("operator", "operator/layout.tsx", [
+    index("operator/firms.tsx"),
+    route("firms/new", "operator/new-firm.tsx"),
+  ]),
+  // An accounting firm: its clients and its team.
+  route("f/:slug", "firms/layout.tsx", [
+    index("firms/dashboard.tsx"),
+    route("clients/new", "firms/new-client.tsx"),
+    route("members", "firms/members.tsx"),
+  ]),
+  // A client's workspace: the administrations a firm keeps for it, and its team.
+  route("w/:slug", "clients/layout.tsx", [
+    index("clients/overview.tsx"),
     route("administrations/new", "administrations/new.tsx"),
     route("a/:administration", "administrations/administration.tsx"),
-    route("members", "workspace/members.tsx"),
-    route("account", "workspace/account.tsx"),
+    route("members", "clients/members.tsx"),
   ]),
 ] satisfies RouteConfig;

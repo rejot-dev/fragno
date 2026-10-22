@@ -34,8 +34,8 @@ const devVarsPath = resolve(bookkeepingDir, ".dev.vars");
 const cliEntry = resolve(repositoryRoot, "apps/backoffice-cli/bin/run.js");
 
 const OAUTH_SCOPES = ["openid", "profile", "email", "offline_access", "backoffice"];
-// Workspaces are Backoffice organizations: Bookkeeping reads them and their members as the person
-// signed in. Owners and admins invite through provisioning, since apps never hold org.manage.
+// Firms and clients are Backoffice organizations: Bookkeeping reads them and their members as the
+// person signed in. Owners and admins invite through provisioning, since apps never hold org.manage.
 const REQUESTED_PERMISSIONS = [{ namespace: "org", permission: "read" }];
 
 function readDevVars(): Map<string, string> {
@@ -193,6 +193,12 @@ if (build.status !== 0) {
 console.log("\n2/4 Signing in to Backoffice");
 // The CLI prints the approval link and code; the user opens it themselves.
 runCli(["login", "--base-url", backofficeUrl], "inherit");
+const account = execSystem(
+  backofficeUrl,
+  "async () => account.me()",
+  z.object({ userId: z.string().min(1), email: z.string(), emailVerified: z.boolean() }),
+);
+console.log(`Signed in as ${account.email} (user ID ${account.userId})`);
 
 console.log("\n3/4 Creating or repairing the OAuth client");
 // An app keeps the OAuth client it was registered with, so the client of the app holding the slug
@@ -359,6 +365,12 @@ console.log(
 );
 
 const betterAuthSecret = devVars.get("BETTER_AUTH_SECRET") ?? "";
+// The administrator operates their local Bookkeeping. User IDs differ per Backoffice server, so
+// the ID is added to the ones already there, which may belong to colleagues.
+const operators = (devVars.get("BOOKKEEPING_OPERATOR_USER_IDS") ?? "")
+  .split(",")
+  .map((id) => id.trim())
+  .filter((id) => id !== "");
 writeDevVars({
   ...(betterAuthSecret.length >= 32 && !betterAuthSecret.startsWith("replace-")
     ? {}
@@ -366,15 +378,21 @@ writeDevVars({
   BOOKKEEPING_BASE_URL: bookkeepingUrl,
   BACKOFFICE_BASE_URL: backofficeUrl,
   BACKOFFICE_OAUTH_CLIENT_ID: client.clientId,
+  BOOKKEEPING_OPERATOR_USER_IDS: [...new Set([...operators, account.userId])].join(","),
   ...(client.clientSecret ? { BACKOFFICE_OAUTH_CLIENT_SECRET: client.clientSecret } : {}),
 });
 
-console.log(`\nUpdated ${devVarsPath}.
+console.log(`\nUpdated ${devVarsPath}; ${account.email} is a Bookkeeping operator.
 
 Next:
   1. Restart Bookkeeping so it reads the new .dev.vars, and open ${bookkeepingUrl}.
-  2. Get started: sign in, and name your business to create its workspace.
-  3. In that organization's Backoffice terminal:
+  2. Sign in as ${account.email}, and create the first firm at
+     ${bookkeepingUrl}/operator/firms/new. Bookkeeping invites its owner by email.${
+       account.emailVerified
+         ? ""
+         : `\n     ${account.email} is not verified in Backoffice, so it cannot accept invitations.`
+     }
+  3. In a firm's or client's Backoffice terminal:
        integrations.verify --connection-id 'app#${app.slug}'${
          app.actionsChanged && changeApproval === "installation"
            ? `\n  Existing installations approve the changed actions with:

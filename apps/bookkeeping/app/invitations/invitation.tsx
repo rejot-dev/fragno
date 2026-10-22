@@ -4,6 +4,7 @@ import { env } from "cloudflare:workers";
 import { Form, Link, redirect, useNavigation } from "react-router";
 
 import { createProvisioningClient } from "../../workers/backoffice/client";
+import type { Invitation } from "../../workers/directory/directory";
 import {
   assertSameOrigin,
   getSessionUser,
@@ -12,20 +13,29 @@ import {
 } from "../auth/session.server";
 import { SignInButton } from "../auth/sign-in-button";
 import { SignOutButton } from "../auth/sign-out-button";
-import { callBackoffice } from "../workspace/access.server";
+import { isOutcomeUnknown, parseRoles } from "../organizations/access.server";
+import { organizationPath } from "../organizations/paths";
+import { highestRole, ROLE_LABELS } from "../organizations/roles";
 import type { Route } from "./+types/invitation";
 
 export function meta() {
   return [{ title: "Invitation · Bookkeeping" }];
 }
 
-function workspaces() {
-  return env.WORKSPACES.getByName("workspaces");
+const INVALID = "This invitation is no longer valid.";
+
+function directory() {
+  return env.DIRECTORY.getByName("directory");
 }
 
 async function findOpenInvitation(invitationId: string) {
-  const invitation = await workspaces().findInvitation(invitationId);
+  const invitation = await directory().findInvitation(invitationId);
   return invitation && invitation.expiresAt > Date.now() ? invitation : null;
+}
+
+/** What the invitation is to, such as "the accounting firm Lovelace & Co". */
+function invitedTo({ kind, name }: Invitation["organization"]): string {
+  return kind === "firm" ? `the accounting firm ${name}` : `the books of ${name}`;
 }
 
 /**
@@ -43,30 +53,34 @@ export async function loader({ request, params }: Route.LoaderArgs) {
   }
   return {
     status: "open",
-    workspaceName: invitation.workspace.name,
+    invitedTo: invitedTo(invitation.organization),
+    organizationName: invitation.organization.name,
     invitedBy: invitation.invitedBy,
     email: invitation.email,
+    role: ROLE_LABELS[highestRole(invitation.roles)].toLowerCase(),
     signedInAs: user?.email ?? null,
   } as const;
 }
 
-/** Joins the workspace in Backoffice, which checks that the invitation is for this person. */
+/** Joins in Backoffice, which checks that the invitation is for this person's verified email. */
 export async function action({ request, params }: Route.ActionArgs) {
   const user = await requireSessionUser(request);
   assertSameOrigin(request);
   const invitation = await findOpenInvitation(params.invitationId);
   if (!invitation) {
-    return { error: "This invitation is no longer valid." };
+    return { error: INVALID };
   }
   let membership;
   try {
-    membership = await callBackoffice(async () =>
-      (await createProvisioningClient(env)).call("invitations.accept", {
-        invitationId: invitation.id,
-        userId: user.backofficeUserId,
-      }),
-    );
+    const provisioning = await createProvisioningClient(env);
+    membership = await provisioning.call("invitations.accept", {
+      invitationId: invitation.id,
+      userId: user.backofficeUserId,
+    });
   } catch (error) {
+    if (isOutcomeUnknown(error)) {
+      return { error: "Accepting didn't work. Try again shortly." };
+    }
     if (!(error instanceof BackofficeApiRequestError)) {
       throw error;
     }
@@ -76,14 +90,20 @@ export async function action({ request, params }: Route.ActionArgs) {
       };
     }
     if (error.code === "conflict" || error.code === "not_found") {
-      await workspaces().removeInvitation(invitation.id);
-      return { error: "This invitation is no longer valid." };
+      await directory().removeInvitation(invitation.id);
+      return { error: INVALID };
     }
     throw error;
   }
-  await workspaces().removeInvitation(invitation.id);
-  // The workspace confirms the new membership with Backoffice as it opens.
-  throw redirect(`/w/${membership.organization.slug}`);
+  const { organizationId: id, slug, name } = membership.organization;
+  await directory().confirmMembership({
+    organization: { id, slug, name },
+    userId: user.backofficeUserId,
+    roles: parseRoles(membership.roles),
+    confirmedAt: Date.now(),
+  });
+  await directory().removeInvitation(invitation.id);
+  throw redirect(organizationPath(invitation.organization.kind, slug));
 }
 
 export function headers() {
@@ -95,10 +115,9 @@ export default function Invitation({ loaderData, actionData, params }: Route.Com
   if (loaderData.status === "invalid") {
     return (
       <section className="auth">
-        <h1>This invitation is no longer valid</h1>
+        <h1>{INVALID}</h1>
         <p>
-          It may have expired or already been used. Ask the person who invited you to send a new
-          one.
+          It may have expired or already been used. Ask the person who invited you for a new one.
         </p>
         <p>
           <Link to="/">Go to Bookkeeping</Link>
@@ -106,13 +125,13 @@ export default function Invitation({ loaderData, actionData, params }: Route.Com
       </section>
     );
   }
-  const { workspaceName, invitedBy, email, signedInAs } = loaderData;
+  const { invitedTo, organizationName, invitedBy, email, role, signedInAs } = loaderData;
   const forSomeoneElse = signedInAs !== null && signedInAs.toLowerCase() !== email.toLowerCase();
   return (
     <section className="auth">
-      <h1>Join {workspaceName}</h1>
+      <h1>Join {organizationName}</h1>
       <p>
-        {invitedBy} invited {email} to keep the books of {workspaceName} together in Bookkeeping.
+        {invitedBy} invited {email} to {invitedTo} in Bookkeeping, as {role}.
       </p>
       {signedInAs === null && (
         <>
@@ -137,7 +156,7 @@ export default function Invitation({ loaderData, actionData, params }: Route.Com
             className="w-full"
             disabled={navigation.state !== "idle"}
           >
-            Join {workspaceName}
+            Join {organizationName}
           </Button>
           <p className="text-sm">You're signed in as {signedInAs}.</p>
         </Form>

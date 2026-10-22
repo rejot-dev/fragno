@@ -52,3 +52,10 @@ export function assertSameOrigin(request: Request): void {
     throw new Response("Cross-origin submissions are not allowed.", { status: 403 });
   }
 }
+
+/** Operators run Bookkeeping: they create firms. */
+export function isOperator(user: SessionUser): boolean {
+  return env.BOOKKEEPING_OPERATOR_USER_IDS.split(",")
+    .map((id) => id.trim())
+    .includes(user.backofficeUserId);
+}

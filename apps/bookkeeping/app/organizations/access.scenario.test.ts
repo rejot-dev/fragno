@@ -7,41 +7,39 @@ import {
 
 const CONFIRMATION_EXPIRED_MS = 61_000;
 
-/** Ada's workspace, with Charles joined as a member through an invitation. */
-async function workspaceWithColleague(scenario: BookkeepingScenario) {
-  const ada = await scenario.signUp({
-    email: "ada@example.test",
-    name: "Ada Lovelace",
-    businessName: "Analytical Engines",
-  });
-  const invited = await ada.submit("/w/analytical-engines/members", {
-    email: "charles@example.test",
-    role: "member",
-  });
-  const invitationPath = new URL((invited.actionData as { link: string }).link).pathname;
-  scenario.backoffice.addUser({ email: "charles@example.test", name: "Charles Babbage" });
-  const charles = scenario.browser();
-  await charles.signIn("charles@example.test", invitationPath);
-  await charles.submit(invitationPath, {});
+/** The practice, with Charles joined to Analytical Engines as a member through an invitation. */
+async function clientWithColleague(scenario: BookkeepingScenario) {
+  const { ada } = await scenario.practice();
+  const path = await scenario.invite(
+    ada,
+    "/w/analytical-engines",
+    "charles@example.test",
+    "member",
+  );
+  const { browser: charles } = await scenario.acceptInvitation(
+    "charles@example.test",
+    "Charles Babbage",
+    { path },
+  );
   return { ada, charles };
 }
 
 test("Backoffice's membership and roles reach Bookkeeping within a minute", async () => {
   await runBookkeepingScenario(async (scenario) => {
-    const { ada, charles } = await workspaceWithColleague(scenario);
+    const { ada, charles } = await clientWithColleague(scenario);
 
     scenario.backoffice.admin.setRoles("analytical-engines", "charles@example.test", ["admin"]);
     scenario.backoffice.admin.rename("analytical-engines", "Difference Engines");
     // A confirmed membership is trusted for a minute.
     expect(await charles.navigate("/w/analytical-engines")).toMatchObject({
-      loaderData: { "workspace/layout": { roles: ["member"] } },
+      loaderData: { "clients/layout": { context: { roles: ["member"] } } },
     });
     scenario.advanceTime(CONFIRMATION_EXPIRED_MS);
     expect(await charles.navigate("/w/analytical-engines")).toMatchObject({
       loaderData: {
-        "workspace/layout": {
-          roles: ["admin"],
-          workspace: { name: "Difference Engines" },
+        "clients/layout": {
+          place: { mode: "client", name: "Difference Engines" },
+          user: { name: "Charles Babbage", role: "Admin" },
         },
       },
     });
@@ -49,15 +47,18 @@ test("Backoffice's membership and roles reach Bookkeeping within a minute", asyn
     scenario.backoffice.admin.removeMember("analytical-engines", "charles@example.test");
     scenario.advanceTime(CONFIRMATION_EXPIRED_MS);
     expect(await charles.navigate("/w/analytical-engines")).toMatchObject({ status: 404 });
-    // Without a workspace, Charles is offered to set up his own.
-    expect(await charles.navigate("/start")).toMatchObject({ path: "/welcome" });
+    // With nowhere left to go, Charles is told to ask for an invitation.
+    expect(await charles.navigate("/start")).toMatchObject({
+      path: "/start",
+      loaderData: { "organizations/start": { places: [] } },
+    });
     expect(await ada.navigate("/w/analytical-engines")).toMatchObject({ status: 200 });
   });
 });
 
-test("uninstalling Bookkeeping hides the workspace, and an outage keeps no one in", async () => {
+test("uninstalling Bookkeeping hides the client, and an outage keeps no one in", async () => {
   await runBookkeepingScenario(async (scenario) => {
-    const { ada } = await workspaceWithColleague(scenario);
+    const { ada } = await clientWithColleague(scenario);
 
     scenario.backoffice.setReachable(false);
     expect(await ada.navigate("/w/analytical-engines")).toMatchObject({ status: 200 });
@@ -71,17 +72,14 @@ test("uninstalling Bookkeeping hides the workspace, and an outage keeps no one i
     scenario.backoffice.admin.uninstall("analytical-engines");
     scenario.advanceTime(CONFIRMATION_EXPIRED_MS);
     expect(await ada.navigate("/w/analytical-engines")).toMatchObject({ status: 404 });
-    expect(await ada.navigate("/start")).toMatchObject({ path: "/welcome" });
+    // Her firm is all she has left, so signing in opens it.
+    expect(await ada.navigate("/start")).toMatchObject({ path: "/f/lovelace-co" });
   });
 });
 
 test("after Backoffice withdraws Bookkeeping's authorization, signing in again returns to the page", async () => {
   await runBookkeepingScenario(async (scenario) => {
-    const ada = await scenario.signUp({
-      email: "ada@example.test",
-      name: "Ada Lovelace",
-      businessName: "Analytical Engines",
-    });
+    const { ada } = await scenario.practice();
 
     scenario.backoffice.revokeAuthorization("ada@example.test");
     scenario.advanceTime(CONFIRMATION_EXPIRED_MS);
@@ -97,5 +95,33 @@ test("after Backoffice withdraws Bookkeeping's authorization, signing in again r
       path: "/w/analytical-engines/members",
       status: 200,
     });
+  });
+});
+
+test("resubmitting the form that created a client does not let a removed owner back in", async () => {
+  await runBookkeepingScenario(async (scenario) => {
+    const { ada, firmPath } = await scenario.practice();
+    const path = `${firmPath}/clients/new`;
+    const form = await ada.navigate(path);
+    const { externalId } = form.loaderData["firms/new-client"] as { externalId: string };
+    const submission = { externalId, name: "Difference Engines" };
+    expect(await ada.submit(path, submission)).toMatchObject({ status: 200 });
+    const invited = await scenario.invite(
+      ada,
+      "/w/difference-engines",
+      "charles@example.test",
+      "owner",
+    );
+    await scenario.acceptInvitation("charles@example.test", "Charles Babbage", { path: invited });
+
+    scenario.backoffice.admin.removeMember("difference-engines", "ada@example.test");
+    scenario.advanceTime(CONFIRMATION_EXPIRED_MS);
+    expect(await ada.navigate("/w/difference-engines")).toMatchObject({ status: 404 });
+    // Backoffice answers that the client exists; it does not make Ada its owner again.
+    expect(await ada.submit(path, submission)).toMatchObject({
+      path: "/w/difference-engines/members",
+      status: 404,
+    });
+    expect(await ada.navigate("/w/difference-engines")).toMatchObject({ status: 404 });
   });
 });

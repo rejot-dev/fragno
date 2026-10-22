@@ -12,29 +12,25 @@ async function openNewAdministration(browser: ScenarioBrowser) {
   return page.loaderData["administrations/new"] as { externalId: string; suggestedName: string };
 }
 
-/** Ada invites Charles as a member, and he joins. */
+/** Ada invites Charles, the client, as a member of Analytical Engines, and he joins. */
 async function charlesJoins(scenario: BookkeepingScenario, ada: ScenarioBrowser) {
-  const invited = await ada.submit("/w/analytical-engines/members", {
-    email: "charles@example.test",
-    role: "member",
+  const path = await scenario.invite(
+    ada,
+    "/w/analytical-engines",
+    "charles@example.test",
+    "member",
+  );
+  const { browser } = await scenario.acceptInvitation("charles@example.test", "Charles Babbage", {
+    path,
   });
-  const invitationPath = new URL((invited.actionData as { link: string }).link).pathname;
-  scenario.backoffice.addUser({ email: "charles@example.test", name: "Charles Babbage" });
-  const charles = scenario.browser();
-  await charles.signIn("charles@example.test", invitationPath);
-  await charles.submit(invitationPath, {});
-  return charles;
+  return browser;
 }
 
-test("an owner sets up their business's books, and every member opens them", async () => {
+test("a client's owner sets up its books, and every member opens them", async () => {
   await runBookkeepingScenario(async (scenario) => {
-    const ada = await scenario.signUp({
-      email: "ada@example.test",
-      name: "Ada Lovelace",
-      businessName: "Analytical Engines",
-    });
+    const { ada } = await scenario.practice();
     expect(await ada.navigate("/w/analytical-engines")).toMatchObject({
-      loaderData: { "workspace/overview": { administrations: [], canCreate: true } },
+      loaderData: { "clients/overview": { administrations: [], canCreate: true } },
     });
 
     const form = await openNewAdministration(ada);
@@ -82,7 +78,7 @@ test("an owner sets up their business's books, and every member opens them", asy
     const charles = await charlesJoins(scenario, ada);
     expect(await charles.navigate("/w/analytical-engines")).toMatchObject({
       loaderData: {
-        "workspace/overview": {
+        "clients/overview": {
           administrations: [{ name: "Analytical Engines" }, { name: "Difference Engines" }],
           canCreate: false,
         },
@@ -94,13 +90,9 @@ test("an owner sets up their business's books, and every member opens them", asy
   });
 });
 
-test("only owners and admins create administrations, and only members open them", async () => {
+test("only owners and admins create administrations, and only a client's members open them", async () => {
   await runBookkeepingScenario(async (scenario) => {
-    const ada = await scenario.signUp({
-      email: "ada@example.test",
-      name: "Ada Lovelace",
-      businessName: "Analytical Engines",
-    });
+    const { ada, firmPath } = await scenario.practice();
     const { externalId } = await openNewAdministration(ada);
     await ada.submit("/w/analytical-engines/administrations/new", {
       externalId,
@@ -123,15 +115,13 @@ test("only owners and admins create administrations, and only members open them"
       "Analytical Engines",
     ]);
 
-    const eve = await scenario.signUp({
-      email: "eve@example.test",
-      name: "Eve",
-      businessName: "Eavesdropping",
-    });
+    // Eve is the firm's other client; she opens only her own books.
+    await scenario.createClient(ada, firmPath, "Eavesdropping");
+    const path = await scenario.invite(ada, "/w/eavesdropping", "eve@example.test", "member");
+    const { browser: eve } = await scenario.acceptInvitation("eve@example.test", "Eve", { path });
     expect(await eve.navigate("/w/analytical-engines/a/analytical-engines")).toMatchObject({
       status: 404,
     });
-    // Nor through her own workspace.
     expect(await eve.navigate("/w/eavesdropping/a/analytical-engines")).toMatchObject({
       status: 404,
     });
@@ -140,11 +130,7 @@ test("only owners and admins create administrations, and only members open them"
 
 test("creating an administration while Backoffice is down can be submitted again", async () => {
   await runBookkeepingScenario(async (scenario) => {
-    const ada = await scenario.signUp({
-      email: "ada@example.test",
-      name: "Ada Lovelace",
-      businessName: "Analytical Engines",
-    });
+    const { ada } = await scenario.practice();
     const { externalId } = await openNewAdministration(ada);
     const submitted = { externalId, name: "Analytical Engines", functionalCurrency: "EUR" };
     scenario.backoffice.setReachable(false);
@@ -152,7 +138,7 @@ test("creating an administration while Backoffice is down can be submitted again
       status: 503,
     });
     expect(await ada.navigate("/w/analytical-engines")).toMatchObject({
-      loaderData: { "workspace/overview": { administrations: [] } },
+      loaderData: { "clients/overview": { administrations: [] } },
     });
 
     scenario.backoffice.setReachable(true);

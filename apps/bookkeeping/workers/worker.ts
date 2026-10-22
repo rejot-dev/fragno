@@ -5,8 +5,7 @@ import { BACKOFFICE_ACTIONS_PATH, handleBackofficeAction } from "./backoffice/ac
 
 export { Auth } from "./auth/auth";
 export { Books } from "./books/books";
-export { Workflows } from "./workflows/workflows";
-export { Workspaces } from "./workspaces/workspaces";
+export { Directory } from "./directory/directory";
 
 const handleRequest = createRequestHandler(serverBuild, import.meta.env.MODE);
 

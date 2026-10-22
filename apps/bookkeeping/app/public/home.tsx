@@ -16,8 +16,8 @@ export default function Home() {
         <div>
           <h1>Make room for clearer books.</h1>
           <p className="hero-description">
-            A quiet workspace for the financial side of your work. Start with an account; your books
-            will have a place to grow.
+            A quiet workspace where your accounting firm keeps your books, and you see them too.
+            Your firm invites you; sign in to open them.
           </p>
           <div className="flex flex-wrap items-center gap-3">
             <ButtonLink variant="solid" to={user ? "/start" : "/login"}>
@@ -51,7 +51,7 @@ export default function Home() {
         <div>
           <Icon name="user-check" className="mb-4 size-5 text-[var(--bo-accent)]" />
           <h2 className="text-base font-semibold">Your own workspace</h2>
-          <p>Create an account and get a dedicated place to begin.</p>
+          <p>Your firm sets up a place for your books and invites you to it.</p>
         </div>
         <div>
           <Icon name="log-in" className="mb-4 size-5 text-[var(--bo-accent)]" />

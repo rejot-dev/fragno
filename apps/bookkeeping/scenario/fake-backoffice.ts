@@ -29,6 +29,7 @@ type Organization = {
 type Invitation = {
   id: string;
   organizationId: string;
+  inviterId: string;
   email: string;
   roles: Role[];
   status: "pending" | "accepted";
@@ -88,6 +89,8 @@ export class FakeBackoffice {
   readonly #refreshTokens = new Map<string, string>();
   readonly #executionTokens = new Map<string, { principal: Principal; organizationId: string }>();
   #reachable = true;
+  /** Provisioning operations whose next response is lost after Backoffice did the work. */
+  readonly #failNextResponse = new Set<string>();
 
   constructor({ origin, bookkeepingOrigin }: { origin: string; bookkeepingOrigin: string }) {
     this.origin = origin;
@@ -177,8 +180,32 @@ export class FakeBackoffice {
     this.#reachable = reachable;
   }
 
+  /** Backoffice does the next `operationId` it is asked to, but Bookkeeping never hears the answer. */
+  failNextResponse(operationId: string): void {
+    this.#failNextResponse.add(operationId);
+  }
+
+  organizationCount(): number {
+    return this.#organizations.size;
+  }
+
+  /** The organization's pending invitations, with who sent them. */
+  pendingInvitations(slug: string): { email: string; roles: Role[]; inviter: string }[] {
+    return this.#pendingInvitations(this.#organizationBySlug(slug)).map((invitation) => ({
+      email: invitation.email,
+      roles: invitation.roles,
+      inviter: this.#users.get(invitation.inviterId)!.email,
+    }));
+  }
+
   /** An owner changes things in Backoffice's own UI. */
   readonly admin = {
+    addMember: (slug: string, email: string, roles: Role[]) => {
+      this.#organizationBySlug(slug).members.set(this.userId(email), {
+        roles,
+        joinedAt: new Date().toISOString(),
+      });
+    },
     removeMember: (slug: string, email: string) => {
       this.#organizationBySlug(slug).members.delete(this.userId(email));
     },
@@ -210,7 +237,11 @@ export class FakeBackoffice {
       }
       const provisioning = /^\/api\/v0\/provisioning\/([^/]+)$/u.exec(url.pathname);
       if (provisioning) {
-        return await this.#provision(request, provisioning[1]);
+        const response = await this.#provision(request, provisioning[1]);
+        if (this.#failNextResponse.delete(provisioning[1])) {
+          throw new TypeError("fetch failed");
+        }
+        return response;
       }
       const operation = /^\/api\/v0\/scopes\/([^/]+)\/([^/]+)$/u.exec(url.pathname);
       if (operation) {
@@ -348,6 +379,20 @@ export class FakeBackoffice {
     switch (operationId) {
       case "org.get":
         return respond("org.get", undefined, () => this.#membership(organization, member.roles));
+      case "org.invitations.list":
+        return respond("org.invitations.list", body, () => ({
+          invitations: this.#pendingInvitations(organization).map((invitation) => ({
+            invitationId: invitation.id,
+            organizationId: invitation.organizationId,
+            email: invitation.email,
+            roles: invitation.roles,
+            expiresAt: invitation.expiresAt,
+            createdAt: invitation.createdAt,
+            url: `${this.origin}/invitations/${invitation.id}`,
+          })),
+          nextCursor: null,
+          hasNextPage: false,
+        }));
       case "org.members.list":
         return respond("org.members.list", body, () => ({
           members: [...organization.members].map(([memberId, { roles, joinedAt }]) => {
@@ -471,12 +516,8 @@ export class FakeBackoffice {
         if (invitee && organization.members.has(invitee.id)) {
           throw new ApiError("conflict", "User is already a member of this organization.");
         }
-        const pending = [...this.#invitations.values()].find(
-          (invitation) =>
-            invitation.organizationId === organization.id &&
-            invitation.email === input.email &&
-            invitation.status === "pending" &&
-            Date.parse(invitation.expiresAt) > Date.now(),
+        const pending = this.#pendingInvitations(organization).find(
+          (invitation) => invitation.email === input.email,
         );
         if (pending && [...pending.roles].sort().join() !== [...input.roles].sort().join()) {
           throw new ApiError("conflict", `'${input.email}' is already invited with other roles.`);
@@ -484,6 +525,7 @@ export class FakeBackoffice {
         const invitation: Invitation = pending ?? {
           id: randomToken(),
           organizationId: organization.id,
+          inviterId: input.inviterUserId,
           email: input.email,
           roles: input.roles,
           status: "pending",
@@ -491,7 +533,7 @@ export class FakeBackoffice {
           createdAt: new Date().toISOString(),
         };
         this.#invitations.set(invitation.id, invitation);
-        const { id, status: _status, ...record } = invitation;
+        const { id, status: _status, inviterId: _inviterId, ...record } = invitation;
         return Response.json(
           backofficeProvisioningOperations[operationId].output.parse({
             invitationId: id,
@@ -570,6 +612,15 @@ export class FakeBackoffice {
       },
       roles,
     };
+  }
+
+  #pendingInvitations(organization: Organization): Invitation[] {
+    return [...this.#invitations.values()].filter(
+      (invitation) =>
+        invitation.organizationId === organization.id &&
+        invitation.status === "pending" &&
+        Date.parse(invitation.expiresAt) > Date.now(),
+    );
   }
 
   #createUser(email: string): User {

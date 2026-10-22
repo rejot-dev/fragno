@@ -12,8 +12,9 @@ export const BACKOFFICE_ACTIONS_PATH = "/api/backoffice/actions";
 export const BOOKKEEPING_BACKOFFICE_ACTIONS: AppAction[] = [
   {
     id: "organization.get",
-    label: "Describe the workspace",
-    description: "Name, slug, and member count of the organization's Bookkeeping workspace.",
+    label: "Describe the organization",
+    description:
+      "Name, slug, kind (an accounting firm, or a client whose books a firm keeps), and member count of the organization in Bookkeeping.",
     inputSchema: { type: "object", additionalProperties: false },
     outputSchema: {
       type: "object",
@@ -21,9 +22,10 @@ export const BOOKKEEPING_BACKOFFICE_ACTIONS: AppAction[] = [
         id: { type: "string" },
         name: { type: "string" },
         slug: { type: "string" },
+        kind: { type: "string", enum: ["firm", "client"] },
         memberCount: { type: "integer" },
       },
-      required: ["id", "name", "slug", "memberCount"],
+      required: ["id", "name", "slug", "kind", "memberCount"],
     },
   },
 ];
@@ -36,7 +38,7 @@ function message(status: number, text: string) {
 
 /**
  * Serves the actions Bookkeeping declares in its Backoffice registration. Backoffice signs every
- * request for one installation; its organization is the workspace the action acts on.
+ * request for one installation; the action acts on its organization.
  */
 export async function handleBackofficeAction(
   request: Request,
@@ -59,19 +61,19 @@ export async function handleBackofficeAction(
   }
   const { claims, request: call } = verified;
   const owner = backofficeScopeRootOwner(claims.scopeRestriction);
-  const workspace =
+  const organization =
     owner.kind === "org"
-      ? await env.WORKSPACES.getByName("workspaces").describeWorkspace(owner.orgId)
+      ? await env.DIRECTORY.getByName("directory").describeOrganization(owner.orgId)
       : null;
-  if (!workspace) {
-    return message(403, "This Backoffice organization has no Bookkeeping workspace.");
+  if (!organization) {
+    return message(403, "Bookkeeping does not know this Backoffice organization.");
   }
   if (call.type === "ping") {
     return Response.json({ ok: true });
   }
   switch (call.actionId) {
     case "organization.get":
-      return Response.json(workspace);
+      return Response.json(organization);
     default:
       return message(404, `Bookkeeping has no action '${call.actionId}'.`);
   }

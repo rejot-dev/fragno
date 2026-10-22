@@ -11,16 +11,13 @@ import {
 import routeConfig from "../app/routes";
 import { Auth } from "../workers/auth/auth";
 import { Books } from "../workers/books/books";
-import { Workflows } from "../workers/workflows/workflows";
-import { Workspaces } from "../workers/workspaces/workspaces";
+import { Directory } from "../workers/directory/directory";
 import { env as workerEnv } from "./cloudflare-workers";
 import { FakeBackoffice } from "./fake-backoffice";
 import { FakeDurableObjectNamespace } from "./fake-durable-objects";
 
 const BOOKKEEPING_ORIGIN = "https://bookkeeping.test";
 const BACKOFFICE_ORIGIN = "https://backoffice.test";
-// Each drain step fires due alarms; work that keeps rescheduling itself is a bug.
-const MAX_DRAIN_ROUNDS = 100;
 const MAX_REDIRECTS = 10;
 
 type RouteModule = { loader?: RouteObject["loader"]; action?: RouteObject["action"] };
@@ -200,12 +197,12 @@ export class BookkeepingScenario {
       BACKOFFICE_BASE_URL: BACKOFFICE_ORIGIN,
       BACKOFFICE_OAUTH_CLIENT_ID: this.backoffice.client.id,
       BACKOFFICE_OAUTH_CLIENT_SECRET: this.backoffice.client.secret,
+      BOOKKEEPING_OPERATOR_USER_IDS: "",
     };
     const env = { ...vars } as unknown as CloudflareEnv;
     const bindings = {
       AUTH: new FakeDurableObjectNamespace(Auth, env),
-      WORKSPACES: new FakeDurableObjectNamespace(Workspaces, env),
-      WORKFLOWS: new FakeDurableObjectNamespace(Workflows, env),
+      DIRECTORY: new FakeDurableObjectNamespace(Directory, env),
       BOOKS: new FakeDurableObjectNamespace(Books, env),
     };
     this.#namespaces = Object.values(bindings);
@@ -220,53 +217,121 @@ export class BookkeepingScenario {
     return new ScenarioBrowser(this);
   }
 
-  /**
-   * A new person signs in, gives their name, answers the wizard, and ends up in their new
-   * workspace, as the pages lead them. Returns their browser, signed in.
-   */
-  async signUp(person: {
-    email: string;
-    name: string;
-    businessName: string;
-  }): Promise<ScenarioBrowser> {
+  /** Makes these people, by their Backoffice accounts, Bookkeeping's operators. */
+  setOperators(...emails: string[]): void {
+    const operators = emails.map((email) => this.backoffice.userId(email)).join(",");
+    // Pages read `cloudflare:workers`, which holds a copy of the vars, and objects read `env`.
+    this.env.BOOKKEEPING_OPERATOR_USER_IDS = operators;
+    workerEnv.BOOKKEEPING_OPERATOR_USER_IDS = operators;
+  }
+
+  /** A new person signs in and gives their name, as the pages lead them. */
+  async signUp(email: string, name: string): Promise<ScenarioBrowser> {
     const browser = this.browser();
-    const named = await browser.signIn(person.email);
-    await browser.submit(named.path, { name: person.name });
-    await this.drain();
-    await browser.submit("/welcome", { businessName: person.businessName });
-    await this.drain();
-    const workspace = await browser.navigate("/welcome");
-    if (!workspace.path.startsWith("/w/")) {
-      throw new Error(`${person.email} did not reach a workspace: ${JSON.stringify(workspace)}`);
+    const named = await browser.signIn(email);
+    if (!named.path.startsWith("/name")) {
+      throw new Error(`${email} was not asked for a name: ${JSON.stringify(named)}`);
     }
+    await browser.submit(named.path, { name });
     return browser;
   }
 
-  /** Moves every clock forward: sessions, tokens, confirmations, and workflow retries. */
-  advanceTime(ms: number): void {
-    vi.setSystemTime(Date.now() + ms);
+  /** An operator creates a firm and invites `ownerEmail` to own it. Returns the firm's path. */
+  async createFirm(operator: ScenarioBrowser, name: string, ownerEmail: string): Promise<string> {
+    const form = await operator.navigate("/operator/firms/new");
+    const { externalId } = form.loaderData["operator/new-firm"] as { externalId: string };
+    const created = await operator.submit("/operator/firms/new", { externalId, name, ownerEmail });
+    const result = created.actionData as { status: string; path: string };
+    if (result.status !== "created") {
+      throw new Error(`${name} was not created: ${JSON.stringify(created)}`);
+    }
+    return result.path;
   }
 
-  /** Fires due alarms and waits for background work until nothing is left. */
-  async drain(): Promise<void> {
-    for (let round = 0; round < MAX_DRAIN_ROUNDS; round++) {
-      let fired = false;
-      for (const namespace of this.#namespaces) {
-        for (const { state, object } of namespace.entries()) {
-          await state.ready;
-          await state.settle();
-          if (state.dueAlarm(Date.now()) !== null && "alarm" in object) {
-            state.clearAlarm();
-            await (object as { alarm(): Promise<void> }).alarm();
-            fired = true;
-          }
-        }
-      }
-      if (!fired) {
-        return;
-      }
+  /** The path of the latest invitation Backoffice emailed to `email`. */
+  invitationPath(email: string): string {
+    const sent = this.backoffice.sentInvitations.filter(({ to }) => to === email).at(-1);
+    if (!sent) {
+      throw new Error(`Backoffice emailed ${email} no invitation.`);
     }
-    throw new Error(`Durable Object alarms kept firing after ${MAX_DRAIN_ROUNDS} rounds.`);
+    return new URL(sent.url).pathname;
+  }
+
+  /**
+   * `email` opens the invitation Backoffice emailed them, or the one at `path`, signs in with that
+   * address, giving `name` the first time, and accepts. Returns their browser and the page
+   * accepting opened.
+   */
+  async acceptInvitation(
+    email: string,
+    name: string,
+    { browser = this.browser(), path = this.invitationPath(email) } = {},
+  ): Promise<{ browser: ScenarioBrowser; page: ScenarioPage }> {
+    let page = await browser.signIn(email, path);
+    if (page.path.startsWith("/name")) {
+      page = await browser.submit(page.path, { name });
+    }
+    if (page.path !== path) {
+      throw new Error(`Signing in did not return to the invitation: ${JSON.stringify(page)}`);
+    }
+    return { browser, page: await browser.submit(path, {}) };
+  }
+
+  /**
+   * `inviter` invites `email` from the members page of the firm or client at `path`. Returns the
+   * invitation's path.
+   */
+  async invite(
+    inviter: ScenarioBrowser,
+    path: string,
+    email: string,
+    role: "owner" | "admin" | "member",
+  ): Promise<string> {
+    const invited = await inviter.submit(`${path}/members`, { email, role });
+    const result = invited.actionData as { status: string; link: string };
+    if (result.status !== "invited") {
+      throw new Error(`${email} was not invited: ${JSON.stringify(invited)}`);
+    }
+    return new URL(result.link).pathname;
+  }
+
+  /** A firm member creates a client, whose workspace opens on its members page. */
+  async createClient(
+    member: ScenarioBrowser,
+    firmPath: string,
+    name: string,
+  ): Promise<ScenarioPage> {
+    const path = `${firmPath}/clients/new`;
+    const form = await member.navigate(path);
+    const { externalId } = form.loaderData["firms/new-client"] as { externalId: string };
+    return await member.submit(path, { externalId, name });
+  }
+
+  /**
+   * A practice: Grace operates Bookkeeping and creates the firm Lovelace & Co, inviting Ada to own
+   * it. Ada accepts and creates the client Analytical Engines. Returns their browsers, signed in.
+   */
+  async practice(): Promise<{
+    grace: ScenarioBrowser;
+    ada: ScenarioBrowser;
+    firmPath: string;
+    clientPath: string;
+  }> {
+    const grace = await this.signUp("grace@bookkeeping.test", "Grace Hopper");
+    this.setOperators("grace@bookkeeping.test");
+    const firmPath = await this.createFirm(grace, "Lovelace & Co", "ada@example.test");
+    const { browser: ada } = await this.acceptInvitation("ada@example.test", "Ada Lovelace");
+    const client = await this.createClient(ada, firmPath, "Analytical Engines");
+    const clientPath = /^(\/w\/[^/]+)\/members$/u.exec(client.path)?.[1];
+    if (client.status !== 200 || clientPath === undefined) {
+      throw new Error(`Analytical Engines did not open: ${JSON.stringify(client)}`);
+    }
+    return { grace, ada, firmPath, clientPath };
+  }
+
+  /** Moves every clock forward: sessions, tokens, and confirmations. */
+  advanceTime(ms: number): void {
+    vi.setSystemTime(Date.now() + ms);
   }
 
   /** Requests leaving Bookkeeping: Backoffice's origin reaches the fake, anything else fails. */
