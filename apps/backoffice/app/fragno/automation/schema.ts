@@ -230,5 +230,13 @@ export const automationFragmentSchema = schema("automations", (s) => {
       .alterTable("automation_event", (t) =>
         t.addColumn("routesMatched", column("bool").defaultTo(true)),
       )
+      // Lists the routes in one state, such as failed, newest match first.
+      .alterTable("automation_route_dispatch", (t) =>
+        t.createIndex("idx_automation_route_dispatch_status_dispatchedAt", [
+          "status",
+          "dispatchedAt",
+          "id",
+        ]),
+      )
   );
 });

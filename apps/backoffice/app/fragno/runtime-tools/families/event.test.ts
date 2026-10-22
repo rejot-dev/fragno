@@ -18,7 +18,8 @@ describe("event runtime tools", () => {
       "events.fire",
       "events.list",
       "events.get",
-      "events.retry-route",
+      "events.routes.list",
+      "events.routes.retry",
     ]);
   });
 
@@ -39,7 +40,8 @@ describe("event runtime tools", () => {
       "events.fire",
       "events.list",
       "events.get",
-      "events.retry-route",
+      "events.routes.list",
+      "events.routes.retry",
     ]);
     expect(availableToolIds({ eventCatalog: {} })).toEqual([
       "events.catalog.list",

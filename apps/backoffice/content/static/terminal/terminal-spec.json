@@ -2685,7 +2685,7 @@
   },
   {
     "command": "events.list",
-    "summary": "events.list lists stored automation events in the current scope, newest first.",
+    "summary": "events.list lists stored automation events in the current scope, newest first, with where the routes each matched stand.",
     "options": [
       {
         "name": "limit",
@@ -2753,22 +2753,66 @@
     ]
   },
   {
-    "command": "events.retry-route",
-    "summary": "events.retry-route runs a route that failed for good on a stored event again, as the route was when the event matched it.",
+    "command": "events.routes.list",
+    "summary": "events.routes.list lists the routes in one state on stored events, such as those that failed for good, newest match first.",
     "options": [
       {
-        "name": "id",
+        "name": "status",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "status",
+        "description": "failed, retrying, pending, or completed."
+      },
+      {
+        "name": "limit",
+        "valueRequired": true,
+        "valueName": "number",
+        "description": "Page size (1–500; defaults to 100)."
+      },
+      {
+        "name": "cursor",
+        "valueRequired": true,
+        "valueName": "cursor",
+        "description": "Cursor returned by the previous page."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "events.routes.retry",
+    "summary": "events.routes.retry runs a route that failed for good on a stored event again, as the route was when the event matched it, with the route's current permissions.",
+    "options": [
+      {
+        "name": "event",
         "required": true,
         "valueRequired": true,
         "valueName": "id",
-        "description": "Stored event id."
+        "description": "Id of the stored event, as events.routes.list or events.list shows it."
       },
       {
         "name": "route",
         "required": true,
         "valueRequired": true,
         "valueName": "id",
-        "description": "Id of a route the event matched, from events.get."
+        "description": "Id of a route the event matched, as events.routes.list or events.get shows it."
       },
       {
         "name": "help",

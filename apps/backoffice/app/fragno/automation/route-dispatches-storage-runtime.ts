@@ -7,7 +7,7 @@ import {
   type AutomationRouteDispatchState,
 } from "@fragno-dev/backoffice-api/v0/events";
 
-import type { DatabaseServiceContext, TxResult } from "@fragno-dev/db";
+import type { Cursor, DatabaseServiceContext, TxResult } from "@fragno-dev/db";
 
 import type { AutomationHookUnitOfWork } from "./internal-hooks";
 import { automationFragmentSchema } from "./schema";
@@ -86,6 +86,15 @@ function subjectDispatchId({ event, route }: RouteDispatchSubject): string {
   return routeDispatchId({ eventId: event.id, routeId: route.id });
 }
 
+/** The routes an event matched, as `events.get` and `events.list` return them. */
+export function eventRouteDispatchesOfRows(
+  rows: readonly Parameters<typeof routeDispatchOfRow>[0][],
+): AutomationEventRouteDispatch[] {
+  return rows
+    .map(routeDispatchOfRow)
+    .sort((left, right) => left.routeId.localeCompare(right.routeId));
+}
+
 function routeDispatchOfRow(row: {
   routeId: string;
   routeName: string;
@@ -127,6 +136,9 @@ export function recordMatchedRoute(uow: AutomationHookUnitOfWork, subject: Route
 
 type AutomationRouteDispatchServiceContext = DatabaseServiceContext<Record<string, never>>;
 
+/** Cursors of `listRoutesWithStatus` name this index. */
+export const ROUTES_BY_STATUS_INDEX = "idx_automation_route_dispatch_status_dispatchedAt";
+
 export const createAutomationRouteDispatchServices = (
   defineService: <TService>(
     service: TService & ThisType<AutomationRouteDispatchServiceContext>,
@@ -143,11 +155,34 @@ export const createAutomationRouteDispatchServices = (
             ),
           ),
         )
-        .transformRetrieve(([rows]) =>
-          rows
-            .map(routeDispatchOfRow)
-            .sort((left, right) => left.routeId.localeCompare(right.routeId)),
+        .transformRetrieve(([rows]) => eventRouteDispatchesOfRows(rows))
+        .build();
+    },
+    /** The routes in `status`, each with the event it matched, by when it matched, newest first. */
+    listRoutesWithStatus(input: {
+      status: AutomationRouteDispatchState["status"];
+      limit: number;
+      cursor?: Cursor;
+    }) {
+      const { status, cursor } = input;
+      return this.serviceTx(automationFragmentSchema)
+        .retrieve((uow) =>
+          uow.findWithCursor("automation_route_dispatch", (b) => {
+            const query = b
+              .whereIndex(ROUTES_BY_STATUS_INDEX, (eb) => eb("status", "=", status))
+              .orderByIndex(ROUTES_BY_STATUS_INDEX, "desc")
+              .pageSize(cursor?.pageSize ?? input.limit);
+            return cursor ? query.after(cursor) : query;
+          }),
         )
+        .transformRetrieve(([page]) => ({
+          routes: page.items.map((row) => ({
+            eventId: row.eventId,
+            route: routeDispatchOfRow(row),
+          })),
+          cursor: page.cursor,
+          hasNextPage: page.hasNextPage,
+        }))
         .build();
     },
     /**

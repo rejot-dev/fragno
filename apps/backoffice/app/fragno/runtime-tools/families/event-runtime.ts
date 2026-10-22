@@ -4,6 +4,7 @@ import {
   type AutomationEventCausation,
   automationEventDetailSchema,
   automationEventListResultSchema,
+  automationEventRoutesListResultSchema,
   automationEventRouteDispatchSchema,
   automationEventParentOf,
 } from "@fragno-dev/backoffice-api/v0/events";
@@ -98,6 +99,23 @@ export function createEventRuntime(options: CreateEventRuntimeOptions): EventRun
         `Events backend returned ${response.status}${response.type === "error" ? `: ${response.error.message}` : ""}`,
       );
     },
+    listEventRoutes: async ({ status, limit, cursor }) => {
+      const query: Record<string, string> = { status };
+      if (limit !== undefined) {
+        query.limit = limit.toString();
+      }
+      if (cursor !== undefined) {
+        query.cursor = cursor;
+      }
+      const response = await callRoute("GET", "/event-routes", { query });
+      if (response.type === "json") {
+        return automationEventRoutesListResultSchema.parse(response.data);
+      }
+      throw new BackofficeOperationError(
+        backofficeOperationErrorKindForStatus(response.status),
+        `Events backend returned ${response.status}${response.type === "error" ? `: ${response.error.message}` : ""}`,
+      );
+    },
     getEvent: async ({ id }) => {
       const response = await callRoute("GET", "/events/:eventId", { pathParams: { eventId: id } });
       if (response.type === "error" && response.status === 404) {
@@ -111,9 +129,9 @@ export function createEventRuntime(options: CreateEventRuntimeOptions): EventRun
         `Events backend returned ${response.status}${response.type === "error" ? `: ${response.error.message}` : ""}`,
       );
     },
-    retryRoute: async ({ id, routeId }) => {
+    retryEventRoute: async ({ eventId, routeId }) => {
       const response = await callRoute("POST", "/events/:eventId/routes/:routeId/retry", {
-        pathParams: { eventId: id, routeId },
+        pathParams: { eventId, routeId },
       });
       if (response.type === "error" && response.status === 404) {
         return null;
@@ -233,10 +251,13 @@ export function createUnavailableEventRuntime(
     listEvents: async () => {
       throw new Error(message);
     },
+    listEventRoutes: async () => {
+      throw new Error(message);
+    },
     getEvent: async () => {
       throw new Error(message);
     },
-    retryRoute: async () => {
+    retryEventRoute: async () => {
       throw new Error(message);
     },
   };
