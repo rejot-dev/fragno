@@ -59,6 +59,8 @@ const BACKOFFICE_TOOL_NAMES = [
   "localLs",
 ];
 const CLOUD_BACKOFFICE_URL = "https://backoffice.rejot.dev";
+// Matches Backoffice's own search tool: tuning knobs only invited unhelpful variations.
+const SEARCH_OPTIONS = { contextBefore: 2, contextAfter: 2, maxMatches: 30 };
 const BACKOFFICE_EXIT_OPTION = "Exit Backoffice (restore normal Pi)";
 const BACKOFFICE_TOOL_NAMESPACE = {
   name: "backoffice",
@@ -523,18 +525,27 @@ export default function registerBackofficeExtension(pi: ExtensionAPI) {
       outputSchema: Type.Unknown(),
       description: `Search file contents in the active Backoffice scope. Output is limited to ${DEFAULT_MAX_LINES} lines or ${formatSize(DEFAULT_MAX_BYTES)}; use returned cursors to continue.`,
       parameters: Type.Object({
-        query: Type.String({ minLength: 1, description: "Text to search for." }),
-        glob: Type.Optional(Type.String({ description: "File glob. Defaults to all files." })),
-        caseSensitive: Type.Optional(Type.Boolean()),
-        wholeWord: Type.Optional(Type.Boolean()),
-        contextBefore: Type.Optional(Type.Number({ minimum: 0, maximum: 200 })),
-        contextAfter: Type.Optional(Type.Number({ minimum: 0, maximum: 200 })),
-        maxMatches: Type.Optional(Type.Number({ minimum: 1, maximum: 100 })),
-        cursor: Type.Optional(
-          Type.Object({
-            upload: Type.Optional(Type.String()),
-            static: Type.Optional(Type.String()),
+        keywords: Type.Array(Type.String({ minLength: 1, maxLength: 512 }), {
+          minItems: 1,
+          maxItems: 8,
+          description:
+            "Distinctive words or identifiers, not sentences. A line matches when it contains any keyword, case-insensitively.",
+        }),
+        glob: Type.Optional(
+          Type.String({
+            minLength: 1,
+            description:
+              "Path glob such as `/workspace/**` or `/static/skills/**`. Defaults to all files.",
           }),
+        ),
+        cursor: Type.Optional(
+          Type.Object(
+            {
+              upload: Type.Optional(Type.String()),
+              static: Type.Optional(Type.String()),
+            },
+            { description: "Continuation cursor from a previous search result." },
+          ),
         ),
       }),
       async execute(_toolCallId, params, signal, _onUpdate, ctx) {
@@ -542,17 +553,22 @@ export default function registerBackofficeExtension(pi: ExtensionAPI) {
         if (!session) {
           throw new Error("Run /backoffice before using Backoffice tools.");
         }
+        // Naming any mount limits Backoffice's search to the named mounts, so a continuation
+        // searches only the mounts its cursor still has pages for.
+        const options = params.cursor
+          ? Object.fromEntries(
+              Object.entries(params.cursor).map(([mount, cursor]) => [
+                mount,
+                { ...SEARCH_OPTIONS, cursor },
+              ]),
+            )
+          : { upload: SEARCH_OPTIONS, static: SEARCH_OPTIONS };
         const result = await executeBackofficeCode(
           session,
           `async () => await state.searchFiles(${JSON.stringify({
             pattern: params.glob ?? "**",
-            query: params.query,
-            caseSensitive: params.caseSensitive,
-            wholeWord: params.wholeWord,
-            contextBefore: params.contextBefore,
-            contextAfter: params.contextAfter,
-            maxMatches: params.maxMatches ?? 50,
-            cursor: params.cursor,
+            keywords: params.keywords,
+            options,
           })})`,
           signal,
         );

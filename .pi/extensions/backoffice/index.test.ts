@@ -12,6 +12,7 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai/providers/faux";
 import { createInMemoryTransportPair } from "@earendil-works/pi-mcp/testing";
+import { backofficeApiV0 } from "@fragno-dev/backoffice-api/v0";
 
 import {
   getCurrentSystemMessage,
@@ -46,6 +47,7 @@ const nativeCodemodeExtension = {
 let createTransport: McpTransportFactory;
 let mcpConnections: string[];
 let logQueries: string[];
+let searchRequests: unknown[];
 let directory: string;
 let session: AgentSession;
 let server: ReturnType<typeof createServer>;
@@ -98,6 +100,23 @@ async function startBackofficeScenarioServer() {
             state: {
               readFile: ({ path }: { path: string }) =>
                 readFile(join(directory, "remote", path), "utf8"),
+              // Backoffice rejects input outside its published contract.
+              searchFiles: (input: unknown) => {
+                const { keywords, options } =
+                  backofficeApiV0.operations["state.searchFiles"].input.parse(input);
+                searchRequests.push({ keywords, options });
+                const match = { line: 1, column: 1, match: "needle", lineText: "needle" };
+                return {
+                  upload: options?.upload?.cursor
+                    ? { results: [{ path: "/workspace/b.md", matches: [match] }], hasMore: false }
+                    : {
+                        results: [{ path: "/workspace/a.md", matches: [match] }],
+                        cursor: "upload-page-2",
+                        hasMore: true,
+                      },
+                  static: { results: [], hasMore: false },
+                };
+              },
             },
           });
           response.end(JSON.stringify({ ok: true, result }));
@@ -186,6 +205,7 @@ describe("Backoffice extension scenarios", () => {
 
     mcpConnections = [];
     logQueries = [];
+    searchRequests = [];
     createTransport = (entry) => {
       mcpConnections.push(entry.name);
       const { client, server } = createInMemoryTransportPair();
@@ -308,6 +328,37 @@ describe("Backoffice extension scenarios", () => {
       process.env["BACKOFFICE_AUTH_FILE"] = originalAuthFile;
     }
     await rm(directory, { recursive: true, force: true });
+  });
+
+  test("searches both mounts, then continues only the mount with more pages", async () => {
+    const searchOptions = { contextBefore: 2, contextAfter: 2, maxMatches: 30 };
+    const firstPage = await executeSessionTool("search", {
+      keywords: ["needle", "haystack"],
+      glob: "/workspace/**",
+    });
+    expect(firstPage.details).toMatchObject({
+      continuation: { cursor: { upload: "upload-page-2" } },
+    });
+
+    const secondPage = await executeSessionTool("search", {
+      keywords: ["needle", "haystack"],
+      glob: "/workspace/**",
+      cursor: { upload: "upload-page-2" },
+    });
+    expect(secondPage.structuredContent).toMatchObject({
+      upload: { results: [{ path: "/workspace/b.md" }], hasMore: false },
+    });
+    expect(secondPage.details).toMatchObject({ continuation: null });
+    expect(searchRequests).toEqual([
+      {
+        keywords: ["needle", "haystack"],
+        options: { upload: searchOptions, static: searchOptions },
+      },
+      {
+        keywords: ["needle", "haystack"],
+        options: { upload: { ...searchOptions, cursor: "upload-page-2" } },
+      },
+    ]);
   });
 
   test("projects complete remote results while keeping local and remote files distinct", async () => {
