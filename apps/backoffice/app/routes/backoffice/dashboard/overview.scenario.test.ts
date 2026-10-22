@@ -280,7 +280,7 @@ function sectionQueries({ spec, queries }: PageDefinition): Record<string, strin
 
 type HomePageRows = {
   "Needs attention": [
-    { workflow: string; step: string }[],
+    { workflow: string; step: string; instanceId: string }[],
     { workflow: string; errored: number; latest: { error: string }[] }[],
     { id: string }[],
   ];
@@ -357,6 +357,11 @@ async function readHomePage(ctx: BackofficeScenarioContext, definition: PageDefi
         store,
         now,
         links: () => "/",
+        // The widgets are the dashboard's own components, so markers show where the page puts them.
+        widgets: {
+          orchestration: () => createElement("i", { "data-widget": "orchestration" }),
+          workflowResponse: ({ instanceId }) => createElement("i", { "data-respond": instanceId }),
+        },
       }),
     ),
   );
@@ -371,13 +376,18 @@ async function readHomePage(ctx: BackofficeScenarioContext, definition: PageDefi
   ) as unknown as HomePageRows;
   const [awaitingInput, failing, unavailable] = sections["Needs attention"];
   const [waiting, schedules] = sections["Scheduled & waiting"];
+  const responses = new Set([...markup.matchAll(/data-respond="([^"]+)"/g)].map(([, id]) => id));
   const eventsBySource = new Map<string, number>();
   for (const { source, events } of sections.Events[0]) {
     eventsBySource.set(source, (eventsBySource.get(source) ?? 0) + events);
   }
   return {
+    showsOrchestration: markup.includes('data-widget="orchestration"'),
     attention: [
-      ...awaitingInput.map(({ workflow, step }) => `input: ${workflow} (${step})`),
+      ...awaitingInput.map(
+        ({ workflow, step, instanceId }) =>
+          `input: ${workflow} (${step})${responses.has(instanceId) ? "" : " without a form"}`,
+      ),
       ...failing.map(
         ({ workflow, errored, latest }) => `failing: ${workflow} ×${errored} (${latest[0]?.error})`,
       ),
@@ -415,13 +425,16 @@ async function readHomePage(ctx: BackofficeScenarioContext, definition: PageDefi
 }
 
 /**
- * The example home page shows what the dashboard shows, but for the orchestration graph. Building
- * the page records Codemode events, so both read the scope after the build.
+ * The example home page shows what the dashboard shows. Its orchestration graph and response forms
+ * are the dashboard's own, so the page only has to place them. Building the page records Codemode
+ * events, so both read the scope after the build.
  */
 async function assertHomePageMatchesDashboard(ctx: BackofficeScenarioContext) {
   const definition = await buildHomePage(ctx);
   const { orchestration: _graph, ...dashboard } = await readDashboard(ctx);
-  assert.deepEqual(await readHomePage(ctx, definition), dashboard);
+  const { showsOrchestration, ...page } = await readHomePage(ctx, definition);
+  assert.isTrue(showsOrchestration, "The home page shows the orchestration graph.");
+  assert.deepEqual(page, dashboard);
 }
 
 /** Reads the dashboard the way the page does: the same live queries, run once. */

@@ -377,7 +377,17 @@ async function renderPage(ctx: BackofficeScenarioContext, definition: PageDefini
     createElement(
       MemoryRouter,
       null,
-      createElement(BackofficeUiStoreRenderer, { spec, store, now, links: testLinks }),
+      createElement(BackofficeUiStoreRenderer, {
+        spec,
+        store,
+        now,
+        links: testLinks,
+        // These pages place no widgets; the overview scenario checks a page that does.
+        widgets: {
+          orchestration: () => null,
+          workflowResponse: () => null,
+        },
+      }),
     ),
   );
   return { markup, data };

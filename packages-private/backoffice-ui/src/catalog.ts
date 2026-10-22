@@ -19,6 +19,7 @@ import { listDefinition } from "./components/list";
 import { listRowDefinition } from "./components/list-row";
 import { metricDefinition } from "./components/metric";
 import { numberDefinition } from "./components/number";
+import { orchestrationDefinition } from "./components/orchestration";
 import { panelDefinition } from "./components/panel";
 import { panelTableDefinition } from "./components/panel-table";
 import { panelTableRowDefinition } from "./components/panel-table-row";
@@ -35,6 +36,7 @@ import { textDefinition } from "./components/text";
 import { textAreaDefinition } from "./components/text-area";
 import { textInputDefinition } from "./components/text-input";
 import { workflowEventButtonDefinition } from "./components/workflow-event-button";
+import { workflowResponseDefinition } from "./components/workflow-response";
 
 export const backofficeUiComponentDefinitions = {
   Stack: stackDefinition,
@@ -70,6 +72,8 @@ export const backofficeUiComponentDefinitions = {
   Checkbox: checkboxDefinition,
   FileUpload: fileUploadDefinition,
   WorkflowEventButton: workflowEventButtonDefinition,
+  Orchestration: orchestrationDefinition,
+  WorkflowResponse: workflowResponseDefinition,
 };
 
 export const backofficeUiCatalog = defineCatalog(schema, {

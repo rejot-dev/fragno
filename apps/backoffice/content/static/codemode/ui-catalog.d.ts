@@ -703,4 +703,15 @@ type BackofficeUiComponents = {
       confirmation?: string;
     }>,
   ): BackofficeUiElement;
+  /** Builds Orchestration. The scope's orchestration graph, as the dashboard shows it: every event source, event, route, and workflow, with the selected item's details beside it. Only pages show it; put it in a ui.panel. */
+  orchestration(props: BackofficeUiProps<Record<string, unknown>>): BackofficeUiElement;
+  /** Builds WorkflowResponse. The form a waiting run asks a person to answer, such as an upload or an approval; workflowName is the runner's internal name. It shows nothing while the run does not ask. Only pages show it; put it in a ui.listRow's expanded. */
+  workflowResponse(
+    props: BackofficeUiProps<{
+      /** 1-200 characters */
+      workflowName: string;
+      /** 1-200 characters */
+      instanceId: string;
+    }>,
+  ): BackofficeUiElement;
 };

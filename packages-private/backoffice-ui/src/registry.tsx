@@ -20,6 +20,7 @@ import { ListRow } from "./components/list-row.component";
 import { List } from "./components/list.component";
 import { Metric } from "./components/metric.component";
 import { NumberValue } from "./components/number.component";
+import { Orchestration } from "./components/orchestration.component";
 import { PanelTable, PanelTableRow } from "./components/panel-table.component";
 import { Panel } from "./components/panel.component";
 import { Progress } from "./components/progress.component";
@@ -35,6 +36,7 @@ import { TextArea } from "./components/text-area.component";
 import { TextInput } from "./components/text-input.component";
 import { Text } from "./components/text.component";
 import { WorkflowEventButton } from "./components/workflow-event-button.component";
+import { WorkflowResponse } from "./components/workflow-response.component";
 import { renderedPropsSchema } from "./rendered-props";
 
 type BackofficeUiComponentType = keyof typeof backofficeUiComponentDefinitions;
@@ -75,6 +77,8 @@ const components: BackofficeUiComponents = {
   Checkbox,
   FileUpload,
   WorkflowEventButton,
+  Orchestration,
+  WorkflowResponse,
 };
 
 const MAX_REPORTED_ISSUES = 3;

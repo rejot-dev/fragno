@@ -139,6 +139,20 @@ export type BackofficeDashboard = {
   upcoming: DashboardUpcoming[];
 };
 
+/**
+ * The completed step whose interface a waiting run asks a person to answer, or null when the run
+ * waits without asking.
+ */
+export function awaitingInputStep(
+  run: AutomationWorkflowRun,
+  runWaits: readonly WorkflowWaitRecord[],
+): WorkflowRunStep | null {
+  const interfaceStepKey = runWaits[0]?.interfaceStepKey ?? null;
+  return interfaceStepKey === null
+    ? null
+    : (run.workflowSteps.find((step) => step.stepKey === interfaceStepKey) ?? null);
+}
+
 function workflowDisplayName(run: { workflowName: string; remoteWorkflowName: string | null }) {
   return run.remoteWorkflowName ?? run.workflowName;
 }
@@ -244,11 +258,7 @@ export function projectBackofficeDashboard({
   for (const run of waitingRuns) {
     const runWaits = waitsByRun.get(run.id) ?? [];
     const waitingFor = runWaits.map((wait) => wait.eventType);
-    const interfaceStepKey = runWaits[0]?.interfaceStepKey ?? null;
-    const interfaceStep =
-      interfaceStepKey === null
-        ? undefined
-        : run.workflowSteps.find((step) => step.stepKey === interfaceStepKey);
+    const interfaceStep = awaitingInputStep(run, runWaits);
     if (interfaceStep) {
       awaitingInput.push({
         kind: "awaiting-input",

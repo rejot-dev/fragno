@@ -7,6 +7,7 @@ import { backofficeUiRegistry } from "./registry";
 import {
   BackofficeUiRenderContextProvider,
   useMinuteClock,
+  type BackofficeUiHostWidgets,
   type BackofficeUiLinks,
 } from "./render-context";
 import type { BackofficeUiResultV1 } from "./result";
@@ -59,7 +60,7 @@ export function BackofficeUiRenderer({
   return (
     <div className={fillAvailableWidth ? "w-full min-w-0" : "w-full max-w-3xl min-w-0"}>
       <WorkflowUiInteractionProvider host={workflowInteractionHost}>
-        <BackofficeUiRenderContextProvider now={now} links={null}>
+        <BackofficeUiRenderContextProvider now={now} links={null} widgets={null}>
           <JSONUIProvider
             registry={backofficeUiRegistry}
             initialState={ui.state}
@@ -85,22 +86,25 @@ export function BackofficeUiRenderer({
 
 /**
  * Renders a spec whose state the caller owns and keeps changing, such as live query results. The
- * caller's clock is the one its state was computed at, and its links lead within its scope.
+ * caller's clock is the one its state was computed at, its links lead within its scope, and it
+ * draws the host widgets.
  */
 export function BackofficeUiStoreRenderer({
   spec,
   store,
   now,
   links,
+  widgets,
 }: {
   spec: BackofficeUiSpec;
   store: StateStore;
   now: number;
   links: BackofficeUiLinks;
+  widgets: BackofficeUiHostWidgets;
 }) {
   return (
     <div className="w-full min-w-0">
-      <BackofficeUiRenderContextProvider now={now} links={links}>
+      <BackofficeUiRenderContextProvider now={now} links={links} widgets={widgets}>
         <JSONUIProvider registry={backofficeUiRegistry} store={store}>
           <Renderer spec={spec} registry={backofficeUiRegistry} />
         </JSONUIProvider>

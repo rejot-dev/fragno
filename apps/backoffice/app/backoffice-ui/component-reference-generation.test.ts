@@ -50,6 +50,8 @@ describe("Backoffice UI builder declaration generation", () => {
       "Checkbox",
       "FileUpload",
       "WorkflowEventButton",
+      "Orchestration",
+      "WorkflowResponse",
     ]);
 
     let previousIndex = -1;

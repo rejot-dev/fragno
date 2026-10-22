@@ -19,6 +19,7 @@
     "./relative-time": "./src/components/relative-time.ts",
     "./status-tone": "./src/components/status-tone.ts",
     "./orchestration-graph-model": "./src/components/orchestration-graph-model.ts",
+    "./orchestration-graph-story-support": "./src/components/orchestration-graph-story-support.ts",
     "./causal-flame-graph-model": "./src/components/causal-flame-graph-model.ts",
     "./workflow-run-timeline-model": "./src/components/workflow-run-timeline-model.ts",
     "./workflow-run-timeline-graph": "./src/components/workflow-run-timeline-graph.ts",

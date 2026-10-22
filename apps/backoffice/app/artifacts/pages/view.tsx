@@ -1,7 +1,10 @@
 import type { BackofficeUiLinkTarget } from "@fragno-private/backoffice-ui/link";
 import type { PageDefinition } from "@fragno-private/backoffice-ui/pages/definition";
 import { PageView } from "@fragno-private/backoffice-ui/pages/view";
-import { useMinuteClock } from "@fragno-private/backoffice-ui/render-context";
+import {
+  useMinuteClock,
+  type BackofficeUiHostWidgets,
+} from "@fragno-private/backoffice-ui/render-context";
 import { useMemo } from "react";
 
 import {
@@ -11,24 +14,53 @@ import {
 import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
 import type { AutomationCollections } from "@/fragno/automation/tanstack/collections";
 import { piAgentsPath } from "@/routes/backoffice/agents/path";
+import {
+  ScopeOrchestration,
+  type OrchestrationLoaderData,
+} from "@/routes/backoffice/dashboard/orchestration-panel";
 import { dashboardRunPath, dashboardSelectionPath } from "@/routes/backoffice/dashboard/path";
+import { WorkflowRunResponse } from "@/routes/backoffice/dashboard/workflow-run-response";
 import {
   integrationConnectionPath,
   integrationsScopeBasePath,
 } from "@/routes/backoffice/integrations/connection-paths";
 
-/** Renders a page over the current scope's collections, with links into that scope. */
+/**
+ * Renders a page over the current scope's collections, with links into that scope, and draws its
+ * host widgets: the orchestration graph from the route's loader data, and the forms runs ask.
+ */
 export function BackofficePageView({
   definition,
   collections,
+  orchestration,
 }: {
   definition: PageDefinition;
   collections: AutomationCollections;
+  orchestration: OrchestrationLoaderData;
 }) {
   const { resolvedScope } = useCurrentBackofficeContext();
   const now = useMinuteClock();
   const links = useMemo(() => pageLinks(resolvedScope), [resolvedScope]);
-  return <PageView definition={definition} sources={collections} now={now} links={links} />;
+  const widgets = useMemo(
+    (): BackofficeUiHostWidgets => ({
+      orchestration: () => (
+        <ScopeOrchestration collections={collections} loaderData={orchestration} />
+      ),
+      workflowResponse: (run) => (
+        <WorkflowRunResponse collections={collections} resolvedScope={resolvedScope} run={run} />
+      ),
+    }),
+    [collections, orchestration, resolvedScope],
+  );
+  return (
+    <PageView
+      definition={definition}
+      sources={collections}
+      now={now}
+      links={links}
+      widgets={widgets}
+    />
+  );
 }
 
 /** Runs and routes open on the scope's dashboard, and connections in Integrations. */
