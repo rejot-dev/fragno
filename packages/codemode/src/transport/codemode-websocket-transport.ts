@@ -95,10 +95,7 @@ export class CodemodeWebSocketTransport implements RpcTransport {
     }
     this.#messages += 1;
     this.#bytes += bytes;
-    if (
-      this.#messages > CODEMODE_LIMITS.maxMessages ||
-      this.#bytes > CODEMODE_LIMITS.maxSessionBytes
-    ) {
+    if (this.#bytes > CODEMODE_LIMITS.maxSessionBytes) {
       throw new Error("CODEMODE_SESSION_LIMIT_EXCEEDED");
     }
     return bytes;

@@ -7,6 +7,7 @@ import { registerSandboxHttpRoutes } from "./http/sandbox-http-routes";
 
 // Wrangler discovers named RPC entrypoints and Durable Object classes here.
 export { CodemodeCompiler } from "./compiler/codemode-compiler-entrypoint";
+export { CodemodeExecutor } from "./execution/codemode-executor-entrypoint";
 export { Sandbox } from "./sandbox/sandbox.do";
 
 const app = new Hono<SandboxBridgeHonoEnv>();

@@ -1,7 +1,7 @@
 import { posix } from "node:path";
 
 import { build } from "esbuild";
-import { Miniflare, Response as MiniflareResponse } from "miniflare";
+import { Miniflare, Request as MiniflareRequest, Response as MiniflareResponse } from "miniflare";
 
 import type {
   CompiledWorker,
@@ -183,7 +183,7 @@ export default class JavaScriptTestCompiler extends WorkerEntrypoint {
           env: {
             BUILD: {
               type: "fetcher",
-              async handler(request) {
+              async handler(request: MiniflareRequest) {
                 let response: Response;
                 try {
                   const input = await readCompileWorkerServiceRequest(

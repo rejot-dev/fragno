@@ -5,14 +5,15 @@ Backoffice deploys as two Cloudflare Workers:
 - `rejot-backoffice` owns the Durable Objects and backend bindings.
 - `rejot-backoffice-web` is the public React Router Worker.
 
-Compilation and type-checking live in the separately deployed
+Codemode guests compile and run in the separately deployed
 [`cf-sandbox-bridge`](../cf-sandbox-bridge/README.md#compiler). Both Backoffice Workers bind
-`CODEMODE_COMPILER` to its private `CodemodeCompiler` entrypoint; guest execution still uses
-Backoffice's own Worker Loader. There is no standalone compiler Worker. For local Cloudflare
-codemode development, start the bridge's `dev` script alongside Backoffice.
+`CODEMODE_EXECUTOR` to its private `CodemodeExecutor` entrypoint, which runs each activation as its
+own request, and `CODEMODE_COMPILER` to `CodemodeCompiler` for type checking. Backoffice loads no
+Dynamic Workers itself. Deploy the bridge before Backoffice when either entrypoint changes. `dev`
+and `preview` run the bridge as an auxiliary Worker, so local development needs no second command.
 
-Every codemode activation except workflows (execCodeMode, `js.build`, `js.run`, and Pi workspace
-extensions) goes through the scope's `CODEMODE` Durable Object, which talks to the bridge and keeps
+Every codemode activation (execCodeMode, `js.build`, `js.run`, Pi workspace extensions, and each
+workflow tick) goes through the scope's `CODEMODE` Durable Object, which calls the bridge and keeps
 seven days of run history: outcome, error, and bounded logs. Guests have no network egress; use the
 `web.*` tools for internet access.
 
@@ -52,10 +53,11 @@ Cloudflare tests use `tests/wrangler.vitest.jsonc` with deterministic test bindi
 bindings. Keep that directory free of `.dev.vars` and `.env` files: Wrangler resolves development
 secrets beside its configuration, and local credentials must not affect cached tests.
 
-Ordinary tests do not start the Codemode HTTP/WebSocket bridge. Shared Codemode execution coverage
-uses the local Cloudflare test pool's Worker Loader and the unbundled in-process compiler from
-`workers/vitest-compiler-setup.ts`. Bundling, npm installation, and type checking are tested in
-`cf-sandbox-bridge`. Pure Codemode helpers are tested in the owning package under Node.
+Ordinary tests do not start the Codemode bridge. Cloudflare tests serve the bridge's executor
+in-process, with the test pool's Worker Loader and an unbundled compiler, from
+`workers/vitest-codemode-executor-setup.ts`. The service-binding hop, bundling, npm installation,
+and type checking are tested in `cf-sandbox-bridge`. Pure Codemode helpers are tested in the owning
+package under Node.
 
 Node-specific bridge transport and recovery scenarios run separately through `test:bridge`,
 including binary codemode setup and in-flight event subscriptions. CI runs the Backoffice bridge

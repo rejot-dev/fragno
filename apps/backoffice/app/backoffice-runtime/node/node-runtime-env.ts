@@ -39,12 +39,7 @@ export function createNodeBackofficeRuntimeConfiguration(
   return {
     runtimeEnv: {
       ...input.env,
-      codemode: {
-        remoteExecutor: createCodemodeNodeExecutor({
-          url: bridgeUrl,
-          apiKey: bridgeApiKey,
-        }),
-      },
+      codemode: createCodemodeNodeExecutor({ url: bridgeUrl, apiKey: bridgeApiKey }),
     },
     workerTypeChecker: compiler.typeCheckFiles,
     createSandboxProviders(managerId) {

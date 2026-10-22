@@ -129,8 +129,8 @@ The stateless compiler lives in `src/compiler/`:
 - `codemode-compiler-operations.ts` owns the streamed compile/type-check operations shared by RPC
   and HTTP. Public authentication and routing live in `src/http/codemode-compiler-http-routes.ts`.
 
-WebSocket activations call the compiler directly. Cloudflare Backoffice uses a service binding and
-then executes the returned bundle with its own Worker Loader:
+Activations call the compiler directly, whether they arrive over WebSocket or the `CodemodeExecutor`
+entrypoint. Cloudflare Backoffice binds the compiler only for type checking:
 
 ```json
 { "binding": "CODEMODE_COMPILER", "service": "cf-sandbox-bridge", "entrypoint": "CodemodeCompiler" }
@@ -146,12 +146,16 @@ protocol. `createCodemodeCompilerHttpClient` from
 `@fragno-dev/codemode/compiler/compiler-service-client` constructs both Node clients from the bridge
 URL and API key. The bridge no longer needs a compiler service binding.
 
-RPC, HTTP compilation, type-checking, and WebSocket compilation share the isolate-local admission
-limit. Slots remain occupied until operations settle, including after disconnects; `ctx.waitUntil`
-keeps settlement cleanup alive within the platform's lifecycle allowance. This is not a distributed
-quota. Compiler work shares the bridge's runtime resources; JavaScript deadlines cannot interrupt
-synchronous compiler CPU work. Validate startup, memory, CPU, and disconnect behavior after
-deployment.
+RPC, HTTP compilation, type-checking, and activation compilation share one isolate-local admission
+limit, because compiling runs in this isolate's memory. Operations beyond it wait in arrival order,
+up to a bounded queue; an activation interrupted while waiting leaves the queue without compiling. A
+full queue answers an activation as `unavailable`, which its caller treats as interrupted, and
+answers a compiler call with HTTP 503. Compiler calls stop waiting when their caller disconnects or
+their compile budget ends. Slots remain occupied until operations settle, including after
+disconnects; `ctx.waitUntil` keeps settlement cleanup alive within the platform's lifecycle
+allowance. This is not a distributed quota. Compiler work shares the bridge's runtime resources;
+JavaScript deadlines cannot interrupt synchronous compiler CPU work. Validate startup, memory, CPU,
+and disconnect behavior after deployment.
 
 `build` checks `src/compiler/typescript-standard-library.generated.json` against the pinned
 `typescript-runtime` version. After changing that version, regenerate the pack from the repository
@@ -165,6 +169,19 @@ Backoffice's workerd scenarios import the compiler functions directly through th
 explicit compiler source exports. They do not start another bridge. The bridge's own tests load the
 Wrangler-built Worker and Wasm in Miniflare to cover named RPC, local-loader consumption, WebSocket
 execution, authentication, and shared admission.
+
+## Cloudflare Backoffice
+
+The private `CodemodeExecutor` entrypoint (`src/execution/`) runs one activation per service-binding
+call. Backoffice's Codemode Durable Object passes its caller's host capabilities as native RPC
+stubs; the bridge compiles the guest, loads it through `LOADER`, and forwards the stubs to it. Each
+call is its own request with its own I/O context, so a scope's concurrent guests are not capped by
+the Durable Object limit on Dynamic Workers. The WebSocket session and this entrypoint share
+`runCodemodeBridgeActivation` from `@fragno-dev/codemode`.
+
+```json
+{ "binding": "CODEMODE_EXECUTOR", "service": "cf-sandbox-bridge", "entrypoint": "CodemodeExecutor" }
+```
 
 ## Node Backoffice
 

@@ -33,16 +33,17 @@
       "custom_domain": true,
     },
   ],
-  "worker_loaders": [
-    {
-      "binding": "LOADER",
-    },
-  ],
+  // Codemode guests compile and run in the bridge, one request each; Backoffice loads none itself.
   "services": [
     {
       "binding": "CODEMODE_COMPILER",
       "service": "cf-sandbox-bridge",
       "entrypoint": "CodemodeCompiler",
+    },
+    {
+      "binding": "CODEMODE_EXECUTOR",
+      "service": "cf-sandbox-bridge",
+      "entrypoint": "CodemodeExecutor",
     },
   ],
   "durable_objects": {

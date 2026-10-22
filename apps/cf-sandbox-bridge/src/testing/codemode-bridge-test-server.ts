@@ -47,6 +47,7 @@ export async function createCodemodeBridgeTestServer() {
       exports: {
         Sandbox: { type: "durable-object", storage: "sqlite" },
         CodemodeCompiler: { type: "worker" },
+        CodemodeExecutor: { type: "worker" },
       },
       env: {
         SANDBOX_API_KEY: { type: "text", value: apiKey },
@@ -89,6 +90,16 @@ export default {
     write: false,
     external: ["cloudflare:workers", "node:*"],
   });
+  const executorCaller = await build({
+    entryPoints: [new URL("./codemode-executor-test-caller.ts", import.meta.url).pathname],
+    bundle: true,
+    format: "esm",
+    platform: "neutral",
+    // As in Wrangler builds: capnweb's RpcTarget is then workerd's, so host targets cross native RPC.
+    conditions: ["workerd"],
+    write: false,
+    external: ["cloudflare:workers", "node:*"],
+  });
   const runtime = new Miniflare({
     host: "127.0.0.1",
     port: 0,
@@ -115,11 +126,32 @@ export default {
           },
         },
       },
+      {
+        config: {
+          name: "executor-client",
+          compatibilityDate: bridge.config.compatibilityDate,
+          compatibilityFlags: bridge.config.compatibilityFlags,
+          manifest: {
+            mainModule: "executor-client.js",
+            modules: {
+              "executor-client.js": { type: "esm", contents: executorCaller.outputFiles[0].text },
+            },
+          },
+          env: {
+            EXECUTOR: {
+              type: "worker",
+              worker: bridge.config.name,
+              exportName: "CodemodeExecutor",
+            },
+          },
+        },
+      },
     ],
   });
   try {
     const ready = await runtime.ready;
     const compiler = await runtime.getWorker("compiler-client");
+    const executorClient = await runtime.getWorker("executor-client");
     return {
       url: ready.href,
       apiKey,
@@ -141,6 +173,14 @@ export default {
           duplex: "half",
         });
         return response as unknown as Response;
+      },
+      /** Runs one activation from a separate caller Worker through the executor service binding. */
+      async executeThroughService(activation: unknown): Promise<unknown> {
+        const response = await executorClient.fetch("http://executor/", {
+          method: "POST",
+          body: JSON.stringify(activation),
+        });
+        return await response.json();
       },
       close: () => runtime.dispose(),
     };

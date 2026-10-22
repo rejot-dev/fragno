@@ -79,7 +79,7 @@ test("js.run executes bundled top-level statements and dependencies with the com
     defineBackofficeScenario({
       objects: scenarioObjects,
       name: "public built module execution",
-      env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
+      env: { codemode: createCodemodeNodeExecutor(server) },
       setup: ({ given }) => [
         given.organization.exists({ id: "org-1" }),
         given.codemode.writeFile({
@@ -184,7 +184,7 @@ for (const invalid of [
       defineBackofficeScenario({
         objects: scenarioObjects,
         name: invalid.name,
-        env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
+        env: { codemode: createCodemodeNodeExecutor(server) },
         setup: ({ given }) => [
           given.organization.exists({ id: "org-1" }),
           given.codemode.writeFile({
@@ -232,7 +232,7 @@ test("js.run validates built module format, entrypoint, runtime, JSON and scope 
     defineBackofficeScenario({
       objects: scenarioObjects,
       name: "built module execution boundary",
-      env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
+      env: { codemode: createCodemodeNodeExecutor(server) },
       setup: ({ given }) => [
         given.organization.exists({ id: "org-1" }),
         given.organization.exists({ id: "org-2" }),

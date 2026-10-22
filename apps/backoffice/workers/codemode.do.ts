@@ -3,16 +3,15 @@ import {
   backofficeScopeOrganization,
   type BackofficeContextScope,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import { CODEMODE_LIMITS } from "@fragno-dev/codemode/codemode-limits";
 import type {
   CodemodeCompletion,
+  CodemodeExecutor,
   CodemodeHost,
 } from "@fragno-dev/codemode/execution/codemode-activation-contract";
 import {
   CodemodeInterruptedError,
   encodeCodemodeError,
 } from "@fragno-dev/codemode/execution/codemode-errors";
-import { executeCodemodeActivation } from "@fragno-dev/codemode/execution/execute-codemode-activation";
 import type { CodemodeLogLine } from "@fragno-dev/codemode/runtime-api";
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
@@ -47,11 +46,6 @@ import {
   type CodemodeRunStartedHookPayload,
 } from "@/fragno/codemode/codemode-fragment";
 import {
-  resolveBackofficeWorkerCompiler,
-  type BackofficeCodemodeEnv,
-  type LocalBackofficeCodemodeEnv,
-} from "@/fragno/codemode/execute";
-import {
   loadDurableHook,
   loadDurableHookQueue,
   type DurableHookQueueOptions,
@@ -71,121 +65,43 @@ const codemodeRunPageInputSchema = z.discriminatedUnion("page", [
   z.strictObject({ page: z.literal("next"), cursor: z.string().min(1) }),
 ]);
 
-/** Workers RPC delivers the caller's host methods as stubs whose calls return promises. */
-type CodemodeExecutionHost = Omit<CodemodeHost, "close"> & { close(): void | Promise<void> };
-
 function failedCodemodeCompletion(error: unknown, logs: CodemodeLogLine[]): CodemodeCompletion {
   return { status: "failed", error: encodeCodemodeError(error), logs };
 }
 
-/** Compiled guests skip compilation; source guests may exceed the bridge limit, as Cloudflare always allowed. */
-function codemodeActivationDeadlineMs(activation: CodemodeRunActivation): number {
-  if (activation.kind === "compiled") {
-    return activation.timeoutMs;
-  }
-  if (activation.kind === "module-build") {
-    return CODEMODE_LIMITS.activationTimeoutMs;
-  }
-  return CODEMODE_LIMITS.compileTimeoutMs + activation.timeoutMs;
-}
-
-/** Runs one guest on the local Worker Loader, then revokes and drains the caller's host. */
-async function executeCodemodeActivationOnLoader(
-  env: LocalBackofficeCodemodeEnv,
-  activation: CodemodeRunActivation,
-  host: CodemodeExecutionHost,
-): Promise<CodemodeCompletion> {
-  const interrupted = new AbortController();
-  const deadline = setTimeout(() => {
-    interrupted.abort(new CodemodeInterruptedError("CODEMODE_ACTIVATION_TIMED_OUT"));
-  }, codemodeActivationDeadlineMs(activation));
-  let rejectInterrupted: (error: unknown) => void;
-  const cancellation = new Promise<never>((_resolve, reject) => {
-    rejectInterrupted = reject;
-  });
-  function rejectOnAbort() {
-    rejectInterrupted(interrupted.signal.reason);
-  }
-  interrupted.signal.addEventListener("abort", rejectOnAbort, { once: true });
-  let completion: CodemodeCompletion;
-  try {
-    completion = await Promise.race([
-      executeCodemodeActivation(
-        activation,
-        {
-          loader: env.LOADER,
-          compile: activation.kind === "compiled" ? null : resolveBackofficeWorkerCompiler(env),
-        },
-        host.capabilities,
-        interrupted.signal,
-        (error) => {
-          interrupted.abort(error);
-        },
-      ),
-      cancellation,
-    ]);
-  } catch (error) {
-    completion = failedCodemodeCompletion(error, []);
-  } finally {
-    clearTimeout(deadline);
-    interrupted.signal.removeEventListener("abort", rejectOnAbort);
-    await host.close();
-  }
-  // Revocation cannot stop an already-running tool. Bound the wait instead of holding the run open.
-  let drainTimer: ReturnType<typeof setTimeout> | null = null;
-  try {
-    const settled = await Promise.race([
-      host.settle().then((suspension) => ({ suspension })),
-      new Promise<null>((resolve) => {
-        drainTimer = setTimeout(() => {
-          resolve(null);
-        }, CODEMODE_LIMITS.hostDrainTimeoutMs);
-      }),
-    ]);
-    if (settled === null) {
-      return failedCodemodeCompletion(
-        new CodemodeInterruptedError("CODEMODE_HOST_DRAIN_TIMED_OUT"),
-        completion.logs,
-      );
-    }
-    // The host's retry or wake decision survives a guest RPC response that was lost or overridden.
-    if (settled.suspension !== null) {
-      return { status: "suspended", reason: settled.suspension, logs: completion.logs };
-    }
-  } finally {
-    if (drainTimer !== null) {
-      clearTimeout(drainTimer);
-    }
-  }
-  return completion;
-}
-
-/** Execution failures, including interruption, are outcomes to record rather than object errors. */
+/**
+ * Execution failures are outcomes to record rather than object errors. Only a workflow tick keeps
+ * a suspension or interruption, because only its runner runs it again.
+ */
 async function executeCodemodeRunActivation(
-  env: BackofficeCodemodeEnv,
+  executor: CodemodeExecutor,
   activation: CodemodeRunActivation,
-  host: CodemodeExecutionHost,
-): Promise<CodemodeCompletion> {
-  let completion: CodemodeCompletion;
+  host: CodemodeHost,
+): Promise<CodemodeRunCompletion> {
+  let completion: Awaited<ReturnType<CodemodeExecutor>>;
   try {
-    completion =
-      "remoteExecutor" in env
-        ? await env.remoteExecutor(activation, host)
-        : await executeCodemodeActivationOnLoader(env, activation, host);
+    completion = await executor(activation, host);
   } catch (error) {
     return failedCodemodeCompletion(error, []);
   }
-  return completion.status === "suspended" && activation.kind !== "workflow"
+  if (activation.kind === "workflow") {
+    return completion;
+  }
+  if (completion.status === "interrupted") {
+    return failedCodemodeCompletion(new CodemodeInterruptedError(completion.cause), []);
+  }
+  return completion.status === "suspended"
     ? failedCodemodeCompletion(new Error("CODEMODE_ACTIVATION_CANNOT_SUSPEND"), completion.logs)
     : completion;
 }
 
-// Cloudflare runs at most 10 Dynamic Workers at once for one Durable Object.
-const CODEMODE_OBJECT_MAX_ACTIVATIONS = 10;
+// One scope's share of the bridge: a tenant's burst of runs cannot crowd out other tenants.
+const CODEMODE_SCOPE_MAX_ACTIVATIONS = 10;
 
 /**
- * Admits guests first come, first served. Callers wait rather than fail: a workflow tick that
- * fails outside a step errors its whole instance.
+ * Admits a scope's guests first come, first served. Runs wait rather than fail, because an
+ * interactive caller such as an agent's tool call has no one to try it again. Every admitted run
+ * ends within its executor's deadline, so every waiter is eventually admitted.
  */
 class CodemodeActivationSlots {
   #available: number;
@@ -195,22 +111,17 @@ class CodemodeActivationSlots {
     this.#available = size;
   }
 
-  /** Resolves with the slot's release, or null when none opened within timeoutMs. */
-  acquire(timeoutMs: number): Promise<(() => void) | null> {
+  /** Resolves with the slot's release once the run may start. */
+  acquire(): Promise<() => void> {
     if (this.#available > 0) {
       this.#available -= 1;
       return Promise.resolve(this.#release());
     }
+    // One object shares one I/O context, so another request may resolve this waiter.
     return new Promise((resolve) => {
-      const admit = () => {
-        clearTimeout(timer);
+      this.#waiting.push(() => {
         resolve(this.#release());
-      };
-      const timer = setTimeout(() => {
-        this.#waiting.splice(this.#waiting.indexOf(admit), 1);
-        resolve(null);
-      }, timeoutMs);
-      this.#waiting.push(admit);
+      });
     });
   }
 
@@ -280,9 +191,9 @@ function codemodeRunEvent(
 /** Scope-owned codemode boundary shared by Cloudflare and the SQLite runtime. */
 export class InMemoryCodemodeObject extends RpcTarget implements CodemodeObject {
   readonly #host: FragmentDurableObjectHost<void, CodemodeFragment>;
-  readonly #env: BackofficeCodemodeEnv | null;
+  readonly #executor: CodemodeExecutor | null;
   readonly #nowEpochMs: () => number;
-  readonly #slots = new CodemodeActivationSlots(CODEMODE_OBJECT_MAX_ACTIVATIONS);
+  readonly #slots = new CodemodeActivationSlots(CODEMODE_SCOPE_MAX_ACTIVATIONS);
   #fragment: CodemodeFragment | null = null;
 
   constructor({
@@ -297,7 +208,7 @@ export class InMemoryCodemodeObject extends RpcTarget implements CodemodeObject 
     implementation: BackofficeObjectImplementation;
   }) {
     super();
-    this.#env = runtime.codemodeEnv;
+    this.#executor = runtime.codemodeExecutor;
     this.#nowEpochMs = nowEpochMs;
     const scope = requireBackofficeContextScopeFromDurableObjectId(state.id, "CODEMODE");
     const billing = usageBillingForScope(runtime, scope);
@@ -387,10 +298,10 @@ export class InMemoryCodemodeObject extends RpcTarget implements CodemodeObject 
   async execute<TActivation extends CodemodeRunActivation>(
     activation: TActivation,
     context: CodemodeRunContext,
-    host: CodemodeExecutionHost,
+    host: CodemodeHost,
   ): Promise<CodemodeExecution<TActivation>> {
-    const env = this.#env;
-    if (!env) {
+    const executor = this.#executor;
+    if (!executor) {
       throw new Error("CODEMODE_UNAVAILABLE: this runtime has no codemode executor.");
     }
     const fragment = this.#getFragment();
@@ -398,25 +309,17 @@ export class InMemoryCodemodeObject extends RpcTarget implements CodemodeObject 
       fragment.services.startRun(activation, context, new Date(this.#nowEpochMs())),
     );
     // The run is recorded first, so history shows it running while it waits for a slot.
-    const release = await this.#slots.acquire(codemodeActivationDeadlineMs(activation));
-    let completion: CodemodeCompletion;
-    if (release === null) {
-      await host.close();
-      completion = failedCodemodeCompletion(
-        new CodemodeInterruptedError("CODEMODE_ACTIVATION_SLOT_TIMED_OUT"),
-        [],
-      );
-    } else {
-      try {
-        completion = await executeCodemodeRunActivation(env, activation, host);
-      } finally {
-        release();
-      }
+    const release = await this.#slots.acquire();
+    let completion: CodemodeRunCompletion;
+    try {
+      completion = await executeCodemodeRunActivation(executor, activation, host);
+    } finally {
+      release();
     }
     await fragment.callServices(() =>
       fragment.services.finishRun(runId, completion, new Date(this.#nowEpochMs())),
     );
-    // executeCodemodeRunActivation fails every suspension except a workflow tick's.
+    // executeCodemodeRunActivation fails every suspension and interruption except a workflow tick's.
     return { runId, completion: completion as CodemodeRunCompletion<TActivation> };
   }
 

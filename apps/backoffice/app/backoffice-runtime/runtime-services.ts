@@ -1,12 +1,16 @@
 import type { WorkerTypeChecker } from "@fragno-dev/codemode/compiler/compile-worker";
 import { createWorkerTypeCheckerServiceClient } from "@fragno-dev/codemode/compiler/compiler-service-client";
+import type { CodemodeExecutor } from "@fragno-dev/codemode/execution/codemode-activation-contract";
+import {
+  codemodeExecutionService,
+  createCodemodeServiceExecutor,
+} from "@fragno-dev/codemode/remote/codemode-service-executor";
 import type { FragmentDurableObjectHostOperations } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 
 import type { FragnoRuntime } from "@fragno-dev/core";
 
 import { createAppInstallationAuthorityResolver } from "@/fragno/app-installations/authority";
 import { createAutomationRouteAuthorityResolver } from "@/fragno/automation/authority";
-import type { BackofficeCodemodeEnv } from "@/fragno/codemode/execute";
 import { createReson8Server, type Reson8Fragment } from "@/fragno/reson8";
 
 import {
@@ -64,7 +68,7 @@ export type BackofficeRuntimeServices = {
   config: BackofficeRuntimeConfig;
   authorityResolver: BackofficeAuthorityResolver;
   kernelObserver: BackofficeKernelObserver;
-  codemodeEnv: BackofficeCodemodeEnv | null;
+  codemodeExecutor: CodemodeExecutor | null;
   workerTypeChecker: WorkerTypeChecker | null;
   /** Speech-to-text under the platform key; null when the deployment has none. */
   reson8: Reson8Fragment | null;
@@ -201,7 +205,9 @@ export const createCloudflareBackofficeRuntimeServices = (
       },
     }),
     kernelObserver: options.kernelObserver ?? noopBackofficeKernelObserver,
-    codemodeEnv: env.LOADER ? env : null,
+    codemodeExecutor: env.CODEMODE_EXECUTOR
+      ? createCodemodeServiceExecutor(codemodeExecutionService(env.CODEMODE_EXECUTOR))
+      : null,
     workerTypeChecker: env.CODEMODE_COMPILER
       ? createWorkerTypeCheckerServiceClient(env.CODEMODE_COMPILER)
       : null,

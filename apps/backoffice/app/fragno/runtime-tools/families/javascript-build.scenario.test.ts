@@ -82,7 +82,7 @@ test("js.build publishes ordinary ES modules without executing or inspecting the
     defineBackofficeScenario({
       objects: scenarioObjects,
       name: "generic JavaScript module build",
-      env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
+      env: { codemode: createCodemodeNodeExecutor(server) },
       setup: ({ given }) => [
         given.organization.exists({ id: "org-1" }),
         given.codemode.writeFile({
@@ -181,7 +181,7 @@ for (const invalid of [
       defineBackofficeScenario({
         objects: scenarioObjects,
         name: `failed build ${invalid.name}`,
-        env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
+        env: { codemode: createCodemodeNodeExecutor(server) },
         setup: ({ given }) => [
           given.organization.exists({ id: "org-1" }),
           given.codemode.writeFile({ orgId: "org-1", path: sourcePath, content: simpleSource }),
@@ -208,7 +208,7 @@ test("js.build validates CLI inputs and scoped modification authority before com
     defineBackofficeScenario({
       objects: scenarioObjects,
       name: "build input and authority boundaries",
-      env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
+      env: { codemode: createCodemodeNodeExecutor(server) },
       setup: ({ given }) => [
         given.organization.exists({ id: "org-1" }),
         given.auth.user({ id: "outsider", email: "outsider@example.test" }),

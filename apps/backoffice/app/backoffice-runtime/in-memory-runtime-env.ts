@@ -1,6 +1,8 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { runInNewContext } from "node:vm";
 
+import { createCodemodeInProcessExecutor } from "@fragno-dev/codemode/remote/codemode-service-executor";
+
 import type { BackofficeRuntimeEnv } from "./backoffice-runtime-env";
 import { compileNodeWorker } from "./dynamic-workers/compile-node-worker";
 
@@ -93,7 +95,10 @@ const createInMemoryWorkerLoader = (): WorkerLoader => {
 
 /** Creates the node:vm runtime environment used only by in-process tests. */
 export const defaultInMemoryBackofficeRuntimeEnv = (): BackofficeRuntimeEnv => ({
-  codemode: { LOADER: createInMemoryWorkerLoader(), compileWorker: compileNodeWorker },
+  codemode: createCodemodeInProcessExecutor({
+    loader: createInMemoryWorkerLoader(),
+    compile: compileNodeWorker,
+  }),
   DOCS_PUBLIC_BASE_URL: "https://example.com",
   TURNSTILE_SITEKEY: "0x4AAAAAACEAKTUMl498hZ6v",
   GITHUB_CLIENT_ID: "in-memory-github-client-id",

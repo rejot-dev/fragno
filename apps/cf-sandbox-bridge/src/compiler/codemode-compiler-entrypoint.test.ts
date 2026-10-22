@@ -177,12 +177,12 @@ test("public compiler HTTP routes require bearer authentication and POST", async
   });
 });
 
-test("RPC, HTTP, and WebSocket compilation share compiler admission and recover", async () => {
+test("RPC, HTTP, and WebSocket compilation queue behind one shared compiler admission", async () => {
   let releaseFiles!: () => void;
   const filesReady = new Promise<void>((resolve) => {
     releaseFiles = resolve;
   });
-  const pending = Array.from({ length: CODEMODE_LIMITS.maxBridgeCompilations + 1 }, () => {
+  const held = Array.from({ length: CODEMODE_LIMITS.maxBridgeCompilations }, () => {
     const request = createTypeCheckFilesServiceRequest({
       files: [
         {
@@ -197,75 +197,65 @@ test("RPC, HTTP, and WebSocket compilation share compiler admission and recover"
     });
     return server
       .requestCompiler(new Request("http://compiler/typecheck", request))
-      .then(readTypeCheckFilesServiceResponse)
-      .then(
-        (result) => ({ status: "checked" as const, result }),
-        (error: unknown) => ({ status: "rejected" as const, error }),
-      );
+      .then(readTypeCheckFilesServiceResponse);
   });
-  const execute = createCodemodeNodeExecutor(server);
-  const activation = {
-    kind: "immediate" as const,
-    modules: {},
-    code: "42",
+  // Let every held check take its admission before the newcomers arrive.
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  const compileInput = {
+    files: { "worker.ts": "export default 42;" },
+    entryPoint: "worker.ts",
     dependencies: {},
-    providers: [],
-    timeoutMs: 10_000,
+    runtime,
   };
-  const host = () => createCodemodeHost([], null);
-  try {
-    // The ninth RPC returns only once all eight admitted calls are waiting for file contents.
-    await expect(Promise.race(pending)).resolves.toMatchObject({
-      status: "rejected",
-      error: { message: "CODEMODE_COMPILATION_LIMIT_EXCEEDED" },
+  const httpCompiler = createCodemodeCompilerHttpClient(server);
+  const settled: string[] = [];
+  const record = <T>(name: string, operation: Promise<T>) =>
+    operation.finally(() => {
+      settled.push(name);
     });
-    const compileInput = {
-      files: { "worker.ts": "export default 42;" },
-      entryPoint: "worker.ts",
-      dependencies: {},
-      runtime,
-    };
-    const compileRequest = createCompileWorkerServiceRequest(compileInput);
-    const response = await server.requestCompiler(
-      new Request("http://compiler/compile", compileRequest),
-    );
-    await expect(readCompileWorkerServiceResponse(response)).rejects.toThrow(
-      "CODEMODE_COMPILATION_LIMIT_EXCEEDED",
-    );
-    const httpCompiler = createCodemodeCompilerHttpClient(server);
-    // Keep the upload larger than socket buffers so rejecting an unread body exposes EPIPE.
-    const uploadContent = "x".repeat(8 * 1024 * 1024);
-    await expect(
-      httpCompiler.compileWorker({
-        ...compileInput,
-        files: { ...compileInput.files, "payload.txt": uploadContent },
-      }),
-    ).rejects.toThrow("CODEMODE_COMPILATION_LIMIT_EXCEEDED");
-    await expect(
+  const queued = Promise.all([
+    record(
+      "rpc compile",
+      server
+        .requestCompiler(
+          new Request("http://compiler/compile", createCompileWorkerServiceRequest(compileInput)),
+        )
+        .then(readCompileWorkerServiceResponse),
+    ),
+    record("http compile", httpCompiler.compileWorker(compileInput)),
+    record(
+      "http typecheck",
       httpCompiler.typeCheckFiles({
-        files: [
-          { path: "script.js", read: async () => "const value = 42;" },
-          { path: "payload.txt", read: async () => uploadContent },
-        ],
+        files: [{ path: "script.js", read: async () => "const value = 42;" }],
         sourcePaths: ["script.js"],
       }),
-    ).rejects.toThrow("CODEMODE_COMPILATION_LIMIT_EXCEEDED");
-    await expect(execute(activation, host())).resolves.toMatchObject({
-      status: "failed",
-      error: { message: "CODEMODE_COMPILATION_LIMIT_EXCEEDED" },
-    });
+    ),
+    record(
+      "websocket execute",
+      createCodemodeNodeExecutor(server)(
+        {
+          kind: "immediate",
+          modules: {},
+          code: "42",
+          dependencies: {},
+          providers: [],
+          timeoutMs: 10_000,
+        },
+        createCodemodeHost([], null),
+      ),
+    ),
+  ]);
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(settled).toEqual([]);
   } finally {
     releaseFiles();
-    await Promise.all(pending);
   }
-  const outcomes = await Promise.all(pending);
-  expect(outcomes.filter((outcome) => outcome.status === "checked")).toHaveLength(
-    CODEMODE_LIMITS.maxBridgeCompilations,
-  );
-  await expect(execute(activation, host())).resolves.toMatchObject({
-    status: "completed",
-    value: 42,
-  });
+  expect(await Promise.all(held)).toHaveLength(CODEMODE_LIMITS.maxBridgeCompilations);
+  const [rpcCompiled, httpCompiled, , executed] = await queued;
+  expect(rpcCompiled.bundle.modules[rpcCompiled.bundle.mainModule]).toContain("42");
+  expect(httpCompiled.bundle.modules[httpCompiled.bundle.mainModule]).toContain("42");
+  expect(executed).toMatchObject({ status: "completed", value: 42 });
 });
 
 test("named compiler RPC preserves invalid-project errors and unrelated HTTP paths", async () => {

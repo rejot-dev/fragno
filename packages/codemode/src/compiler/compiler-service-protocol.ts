@@ -1,3 +1,4 @@
+import { CodemodeCompilerBusyError } from "./codemode-compiler-admission";
 import {
   WorkerCompilationError,
   type CompiledWorker,
@@ -624,7 +625,14 @@ export function createCompilerServiceErrorResponse(error: unknown) {
           code: "INTERNAL_ERROR",
           message: error instanceof Error ? error.message : String(error),
         };
-  return Response.json(body, { status: error instanceof WorkerCompilationError ? 400 : 500 });
+  return Response.json(body, {
+    status:
+      error instanceof WorkerCompilationError
+        ? 400
+        : error instanceof CodemodeCompilerBusyError
+          ? 503
+          : 500,
+  });
 }
 
 async function readCompilerServiceError(response: Response) {

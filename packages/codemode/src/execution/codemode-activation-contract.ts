@@ -59,17 +59,15 @@ export const codemodeHookIntentSchema = z.strictObject({
 });
 
 const executionBase = {
-  providers: z
-    .array(z.strictObject({ name, tools: z.array(name).max(CODEMODE_LIMITS.maxEntries) }))
-    .max(CODEMODE_LIMITS.maxProviders),
+  providers: z.array(
+    z.strictObject({ name, tools: z.array(name).max(CODEMODE_LIMITS.maxEntries) }),
+  ),
   timeoutMs: z.number().int().positive().max(CODEMODE_LIMITS.activationTimeoutMs),
 };
 const activationBase = {
   ...executionBase,
   code: z.string().min(1).max(CODEMODE_LIMITS.maxSourceBytes),
-  dependencies: z
-    .record(z.string().min(1).max(214), z.string().min(1).max(256))
-    .refine((value) => Object.keys(value).length <= CODEMODE_LIMITS.maxDependencies),
+  dependencies: z.record(z.string().min(1).max(214), z.string().min(1).max(256)),
 };
 const sourceModulePath = z
   .string()
@@ -80,9 +78,7 @@ const sourceModulePath = z
  * Source modules by absolute path, importable by that path or relative to an importing module.
  * The caller resolves the complete import graph; the compiler never reads files.
  */
-const sourceModules = z
-  .record(sourceModulePath, z.string().max(CODEMODE_LIMITS.maxSourceBytes))
-  .refine((value) => Object.keys(value).length <= CODEMODE_LIMITS.maxSourceModules);
+const sourceModules = z.record(sourceModulePath, z.string().max(CODEMODE_LIMITS.maxSourceBytes));
 /** Compilers resolve an absolute specifier against the project root, which has no leading slash. */
 export function sourceModuleFiles(
   modules: Readonly<Record<string, string>>,
@@ -155,7 +151,11 @@ export type CodemodeToolResult = z.infer<typeof codemodeCallbackResultSchema>;
 export type CodemodeStepResult =
   | CodemodeToolResult
   | { status: "suspended"; reason: CodemodeSuspensionReason };
-export const codemodeCompletionSchema = z.discriminatedUnion("status", [
+/**
+ * The bridge's answer for one activation: the guest's completion, or `unavailable` when the bridge
+ * declined to run it, such as with a full compile queue. Guests cannot produce `unavailable`.
+ */
+export const codemodeBridgeAnswerSchema = z.discriminatedUnion("status", [
   z.strictObject({
     status: z.literal("completed"),
     value: z.unknown(),
@@ -172,8 +172,11 @@ export const codemodeCompletionSchema = z.discriminatedUnion("status", [
     reason: codemodeSuspensionReasonSchema,
     logs: z.array(codemodeLogLineSchema).max(CODEMODE_LIMITS.maxLogs),
   }),
+  z.strictObject({ status: z.literal("unavailable"), cause: z.string().max(1024) }),
 ]);
-export type CodemodeCompletion = z.infer<typeof codemodeCompletionSchema>;
+export type CodemodeBridgeAnswer = z.infer<typeof codemodeBridgeAnswerSchema>;
+/** How the guest's execution ended. */
+export type CodemodeCompletion = Exclude<CodemodeBridgeAnswer, { status: "unavailable" }>;
 
 /** A provider capability exposes only explicitly registered tool names. */
 export interface CodemodeProviderCapability {
@@ -222,7 +225,7 @@ export interface CodemodeExecutionCapability {
   execute(
     request: z.infer<typeof codemodeExecutionRequestSchema>,
     capabilities: CodemodeCapabilities,
-  ): Promise<CodemodeCompletion>;
+  ): Promise<CodemodeBridgeAnswer>;
 }
 /** Trusted workflow collaborator; its parent scopes are supplied by the capability owner, never the guest. */
 export interface CodemodeWorkflowHost {
@@ -265,14 +268,22 @@ export interface CodemodeWorkflowTransactionHost {
   triggerHook(intent: RemoteWorkflowHookIntent): void;
   onEvent(type: string, callback: (event: WorkflowStepEvent) => Promise<void>): () => void;
 }
-/** Host settlement preserves runner retry decisions after a disconnect; closing never implies rollback. */
+/**
+ * Host settlement preserves runner retry decisions after a disconnect; closing never implies
+ * rollback. Closing resolves once revocation holds, which over Workers RPC is a later round trip.
+ */
 export type CodemodeHost = {
   capabilities: CodemodeCapabilities;
-  close(): void;
+  close(): Promise<void>;
   settle(): Promise<CodemodeSuspensionReason | null>;
 };
-/** Node-owned execution boundary; implementations must never retry an activation implicitly. */
-export type CodemodeRemoteExecutor = (
+/**
+ * The executor never learned how the activation ended, such as when it lost the bridge. Only the
+ * caller's executor reports it: bridge completions cannot express it, so guests cannot forge it.
+ */
+export type CodemodeInterruption = { status: "interrupted"; cause: string };
+/** Runs one activation against its caller's host; implementations never retry it implicitly. */
+export type CodemodeExecutor = (
   activation: CodemodeActivation,
   host: CodemodeHost,
-) => Promise<CodemodeCompletion>;
+) => Promise<CodemodeCompletion | CodemodeInterruption>;

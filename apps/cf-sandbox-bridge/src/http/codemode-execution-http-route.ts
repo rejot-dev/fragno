@@ -3,6 +3,7 @@ import { acceptCodemodeBridgeSession } from "@fragno-dev/codemode/remote/codemod
 import { authenticateCodemodeHttpRequest } from "@fragno-dev/codemode/transport/codemode-http-authentication";
 import type { Hono } from "hono";
 
+import { bridgeCodemodeActivationServices } from "../execution/codemode-activation-services";
 import type { SandboxBridgeHonoEnv } from "./sandbox-bridge-http-env";
 
 /** Authenticates and upgrades codemode execution requests. */
@@ -30,14 +31,7 @@ export function registerCodemodeExecutionHttpRoute(app: Hono<SandboxBridgeHonoEn
     const executionCtx = context.executionCtx as unknown as ExecutionContext;
     acceptCodemodeBridgeSession(
       pair[1],
-      {
-        loader: context.env.LOADER,
-        async compile(input) {
-          // Sandbox-only requests should not initialize the compiler runtime.
-          const { buildWorkerProject } = await import("../compiler/build-worker-project");
-          return await buildWorkerProject(input);
-        },
-      },
+      bridgeCodemodeActivationServices(context.env),
       executionCtx,
     );
     return new Response(null, { status: 101, webSocket: pair[0] });

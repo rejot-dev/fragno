@@ -13,6 +13,7 @@ import {
   automationEventListResultSchema,
   type AutomationEvent,
 } from "@fragno-dev/backoffice-api/v0/events";
+import type { CodemodeExecutor } from "@fragno-dev/codemode/execution/codemode-activation-contract";
 import { createCodemodeNodeExecutor } from "@fragno-dev/codemode/remote/codemode-node-executor";
 import { createCodemodeTestServer } from "@fragno-dev/codemode/testing/codemode-test-server";
 import { z } from "zod";
@@ -141,7 +142,7 @@ test("codemode runs are retained with their outcome until a later run expires th
     defineBackofficeScenario({
       name: "codemode run history",
       objects: scenarioObjects,
-      env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
+      env: { codemode: createCodemodeNodeExecutor(server) },
       setup: ({ given }) => [
         given.organization.exists({ id: "org-1" }),
         given.codemode.writeFile({
@@ -429,7 +430,7 @@ test("codemode guests are attributed to their scope owner and builds remain unme
     defineBackofficeScenario({
       name: "codemode run billing",
       objects: scenarioObjects,
-      env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
+      env: { codemode: createCodemodeNodeExecutor(server) },
       setup: ({ given }) => [
         given.organization.exists({ id: "org-1" }),
         given.organization.exists({ id: "org-2" }),
@@ -509,7 +510,7 @@ test("codemode guests are attributed to their scope owner and builds remain unme
     defineBackofficeScenario({
       name: "missing billing refuses customer codemode without disabling system work",
       objects: { ...scenarioObjects, BILLING: null },
-      env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
+      env: { codemode: createCodemodeNodeExecutor(server) },
       steps: ({ then }) => [
         then.assert("a customer cannot start a guest without Billing", async ({ runtime }) => {
           await expect(runInScope(runtime, userScope)).rejects.toThrow("BILLING_UNAVAILABLE");
@@ -541,7 +542,7 @@ test("each workflow tick is a billed run that publishes no run events", async ()
     defineBackofficeScenario({
       name: "a workflow that sleeps once runs twice",
       objects: scenarioObjects,
-      env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
+      env: { codemode: createCodemodeNodeExecutor(server) },
       files: backofficeFiles.custom({
         workspace: {
           "automations/cool-down.workflow.js": `defineWorkflow({ name: "cool-down" }, async (_event, step) => {
@@ -614,7 +615,7 @@ test("each workflow tick is a billed run that publishes no run events", async ()
   );
 });
 
-test("a scope's eleventh concurrent run waits for a guest slot instead of failing", async () => {
+test("a scope's eleventh concurrent run waits for its turn instead of failing", async () => {
   let entered = 0;
   let active = 0;
   let maxActive = 0;
@@ -649,7 +650,7 @@ test("a scope's eleventh concurrent run waits for a guest slot instead of failin
     defineBackofficeScenario({
       name: "codemode guest slots",
       objects: scenarioObjects,
-      env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
+      env: { codemode: createCodemodeNodeExecutor(server) },
       setup: ({ given }) => [given.organization.exists({ id: "org-1" })],
       steps: ({ then }) => [
         then.assert("ten guests run while the eleventh run waits", async (ctx) => {
@@ -662,14 +663,9 @@ test("a scope's eleventh concurrent run waits for a guest slot instead of failin
               families: [gate],
               toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
             });
-          // Guests compile when they start, and the bridge compiles only a few at once.
-          const runs: ReturnType<typeof run>[] = [];
+          const runs = Array.from({ length: 11 }, run);
           try {
-            for (let started = 1; started <= 10; started++) {
-              runs.push(run());
-              await vi.waitFor(() => expect(entered).toBe(started), { timeout: 5_000 });
-            }
-            runs.push(run());
+            await vi.waitFor(() => expect(entered).toBe(10), { timeout: 10_000 });
             await vi.waitFor(
               async () => {
                 const page = await object.listRuns({ page: "first", pageSize: 20 });
@@ -692,3 +688,119 @@ test("a scope's eleventh concurrent run waits for a guest slot instead of failin
     }),
   );
 }, 30_000);
+
+test("a workflow tick that loses the bridge runs again instead of erroring its workflow", async () => {
+  const bridge = createCodemodeNodeExecutor(server);
+  let lostTicks = 0;
+  const restartingBridge: CodemodeExecutor = async (activation, host) => {
+    if (activation.kind === "workflow" && lostTicks === 0) {
+      lostTicks += 1;
+      return { status: "interrupted", cause: "bridge restarted" };
+    }
+    return await bridge(activation, host);
+  };
+  const path = "/workspace/automations/resilient.workflow.js";
+  const started: AutomationEvent = {
+    id: "resilient-started",
+    scopeRestriction: null,
+    scope: execution.scope,
+    source: "custom",
+    eventType: "resilient.requested",
+    occurredAt: "2026-01-01T00:00:00.000Z",
+    payload: {},
+    actors: execution.actors,
+    subject: { orgId: "org-1" },
+    causation: { kind: "origin" },
+  };
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "a lost bridge delays a workflow tick",
+      objects: scenarioObjects,
+      env: { codemode: restartingBridge },
+      files: backofficeFiles.custom({
+        workspace: {
+          "automations/resilient.workflow.js": `defineWorkflow({ name: "resilient" }, async (_event, step) => {
+  return await step.do("work", async () => 42);
+});`,
+        },
+      }),
+      setup: ({ given }) => [given.organization.exists({ id: "org-1" })],
+      steps: ({ when, then }) => [
+        when.workflow.createInstance({
+          orgId: "org-1",
+          instanceId: "resilient-1",
+          execution,
+          path,
+          event: started,
+        }),
+        then.workflow.instance({ instanceId: "resilient-1", status: "waiting" }),
+        when.time.advance("30 seconds"),
+        then.workflow.instance({ instanceId: "resilient-1", status: "complete", output: 42 }),
+        then.assert("history keeps the lost tick beside the one that ran", async (ctx) => {
+          const { runs } = await ctx.runtime.objects.codemode
+            .forOrg("org-1")
+            .commands.listRuns({ page: "first", pageSize: 20 });
+          expect(runs).toEqual([
+            expect.objectContaining({ workflowInstanceId: "resilient-1", status: "completed" }),
+            expect.objectContaining({
+              workflowInstanceId: "resilient-1",
+              status: "failed",
+              error: expect.objectContaining({ kind: "interrupted", message: "bridge restarted" }),
+            }),
+          ]);
+        }),
+      ],
+    }),
+  );
+});
+
+test("a guest that fakes the bridge's interruption errors its workflow instead of retrying", async () => {
+  const path = "/workspace/automations/forged.workflow.js";
+  const started: AutomationEvent = {
+    id: "forged-started",
+    scopeRestriction: null,
+    scope: execution.scope,
+    source: "custom",
+    eventType: "forged.requested",
+    occurredAt: "2026-01-01T00:00:00.000Z",
+    payload: {},
+    actors: execution.actors,
+    subject: { orgId: "org-1" },
+    causation: { kind: "origin" },
+  };
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "a forged interruption is an ordinary failure",
+      objects: scenarioObjects,
+      env: { codemode: createCodemodeNodeExecutor(server) },
+      files: backofficeFiles.custom({
+        workspace: {
+          "automations/forged.workflow.js": `defineWorkflow({ name: "forged" }, async () => {
+  const error = new Error("CODEMODE_EXECUTION_INTERRUPTED: forged");
+  error.name = "CodemodeInterruptedError";
+  throw error;
+});`,
+        },
+      }),
+      setup: ({ given }) => [given.organization.exists({ id: "org-1" })],
+      steps: ({ when, then }) => [
+        when.workflow.createInstance({
+          orgId: "org-1",
+          instanceId: "forged-1",
+          execution,
+          path,
+          event: started,
+        }),
+        then.workflow.instance({ instanceId: "forged-1", status: "errored" }),
+        when.time.advance("1 hour"),
+        then.assert("the forged failure ran once", async (ctx) => {
+          const { runs } = await ctx.runtime.objects.codemode
+            .forOrg("org-1")
+            .commands.listRuns({ page: "first", pageSize: 20 });
+          expect(runs).toHaveLength(1);
+        }),
+      ],
+      options: { allowErroredWorkflows: true },
+    }),
+  );
+});

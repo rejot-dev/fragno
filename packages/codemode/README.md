@@ -121,19 +121,19 @@ retry/suspension takes precedence over an incidental socket error.
 - Remote guests are sealed with `globalOutbound: null`; they never receive bridge credentials.
 - Zod validates activation and operation inputs at the capability boundary. TypeScript types alone
   do not establish trust. Providers dispatch only own, explicitly registered tool names.
-- `CodemodeWebSocketTransport` bounds frames, receive queues, outgoing queues, session bytes,
-  messages, and Cap'n Web import/export table sizes. Cap'n Web bounds decoding depth and bigint
-  digits. Binary data is bounded by frame size, not a separate application binary codec.
-- Host calls and live capabilities are admission-limited. Activation, connection, startup, and
-  compilation deadlines remain explicit; loaded Workers also receive CPU/subrequest limits. See
-  `CODEMODE_LIMITS` for the canonical policy.
+- `CodemodeWebSocketTransport` bounds frames, receive queues, outgoing queues, session bytes, and
+  Cap'n Web import/export table sizes. Cap'n Web bounds decoding depth and bigint digits. Binary
+  data is bounded by frame size, not a separate application binary codec.
+- Activation, connection, startup, and compilation deadlines remain explicit; loaded Workers also
+  receive CPU/subrequest limits. See `CODEMODE_LIMITS` for the canonical policy.
 - WebSocket compilation, private compiler RPC, and authenticated HTTP compiler calls share
   isolate-local admission. Disconnected or timed-out compilation retains its slot until it settles,
   and `ctx.waitUntil` keeps cleanup alive within platform lifecycle allowances. This is not a
   distributed quota. Synchronous compiler work shares bridge CPU and cannot be interrupted by a
   JavaScript timer.
-- Host cleanup waits are bounded, but unabortable work keeps its Node admission slot until actual
-  settlement. Disconnects cannot create unlimited detached work.
+- Host cleanup waits are bounded, and a completion is reported only after its host's revocation
+  holds. Only the caller's executor reports an activation as interrupted, when it never heard the
+  bridge's answer or the bridge declined to run it; guests cannot produce that outcome.
 - Compiler warnings and guest logs share count and UTF-8 byte budgets. Overflow preserves a prefix
   followed by `[codemode] Logs truncated.` without changing the execution outcome. Guest log floods
   still fail at the logging limit. Logs are returned at completion, not streamed, and may be lost on
