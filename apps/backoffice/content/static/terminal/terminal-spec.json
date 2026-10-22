@@ -3338,6 +3338,89 @@
     ]
   },
   {
+    "command": "pi.agent.messages",
+    "summary": "pi.agent.messages prints an agent's most recent messages, oldest first, without thinking or tool calls.",
+    "options": [
+      {
+        "name": "agent",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "agent-name",
+        "description": "Agent name"
+      },
+      {
+        "name": "last",
+        "valueRequired": true,
+        "valueName": "count",
+        "description": "How many of the most recent messages to print, up to 100; default 20"
+      },
+      {
+        "name": "before",
+        "valueRequired": true,
+        "valueName": "entry-id",
+        "description": "Print the messages before this one, as a previous page suggests"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "pi.agent.export",
+    "summary": "pi.agent.export writes an agent's whole conversation history, tool calls included, to a JSONL file, oldest entry first.",
+    "options": [
+      {
+        "name": "agent",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "agent-name",
+        "description": "Agent name"
+      },
+      {
+        "name": "output",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "path",
+        "description": "Absolute path of the JSONL file to write under /workspace"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "pi.agent.create",
     "summary": "pi.agent.create defines an agent in the current scope.",
     "options": [

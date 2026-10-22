@@ -125,6 +125,7 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
         },
       }),
     listEntries: unused,
+    listMessages: unused,
     exportEntries: unused,
     compact: unused,
     getCompaction: unused,

@@ -1226,6 +1226,23 @@ const createFakePiManagerApi = (
       // The fake never compacts, so no history precedes its active context.
       return { entries: [], cursor: null };
     },
+    async listMessages(config) {
+      const fake = requireAgent(config);
+      // Like its view, the fake keeps only its latest answer.
+      return {
+        messages: fake.answerEntryId
+          ? [
+              {
+                entryId: Number(fake.answerEntryId.slice("answer-".length)),
+                role: "assistant",
+                text: fake.assistantText,
+                sentAt: "2026-01-01T00:00:00.000Z",
+              },
+            ]
+          : [],
+        before: null,
+      };
+    },
     async exportEntries(config) {
       const fake = requireAgent(config);
       const bytes = new TextEncoder().encode(

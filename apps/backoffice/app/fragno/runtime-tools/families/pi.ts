@@ -1,9 +1,11 @@
 import {
   piPromptReceiptOutputSchema,
   type PiAgentDefinitionCreate,
+  type PiAgentMessagePage,
   type PiManagerAgent,
 } from "@fragno-dev/backoffice-api/v0/pi";
 
+import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 import type {
   PiManagerAgentInput,
   PiManagerGetSubmissionInput,
@@ -26,7 +28,10 @@ import {
 } from "../runtime-tools";
 
 export type RegisteredPiCommandContext = { runtime: PiManagerRuntime };
-type PiToolContext = BackofficeToolContext<{ pi?: PiManagerRuntime }>;
+type PiToolContext = BackofficeToolContext<{
+  pi?: PiManagerRuntime;
+  state: BackofficeStateBackend | undefined;
+}>;
 
 function requirePiManagerRuntime(runtime: PiToolContext["runtimes"]["pi"]): PiManagerRuntime {
   if (!runtime) {
@@ -77,6 +82,22 @@ function definitionArgsParser(command: string) {
 const parseAgentDelete = defineCliArgsParser<PiManagerAgentInput>("pi.agent.delete", {
   agentName: { option: "agent", required: true },
 });
+const parseAgentMessages = defineCliArgsParser<{
+  agentName: string;
+  last?: number;
+  before?: number;
+}>("pi.agent.messages", {
+  agentName: { option: "agent", required: true },
+  last: { kind: "positiveInteger" },
+  before: { kind: "positiveInteger" },
+});
+const parseAgentExport = defineCliArgsParser<{ agentName: string; out: string }>(
+  "pi.agent.export",
+  {
+    agentName: { option: "agent", required: true },
+    out: { option: "output", required: true },
+  },
+);
 
 const definitionOptions = [
   {
@@ -123,6 +144,23 @@ const definitionOptions = [
 /** The scope configuration an agent runs with; its conversation's provisioning stays internal. */
 function agentDefinition({ provisioned: _provisioned, ...definition }: PiManagerAgent) {
   return definition;
+}
+
+/** A page as a transcript to read, with how to read further back above its oldest message. */
+function messagesTranscript({ messages, before }: PiAgentMessagePage) {
+  const blocks = messages.map((message) =>
+    message.role === "notification"
+      ? `[notification · ${message.sentAt}]\n${message.notifications
+          .map(({ routeId, eventId }) =>
+            routeId === null ? `event ${eventId}` : `event ${eventId} via route ${routeId}`,
+          )
+          .join("\n")}`
+      : `[${message.role} · ${message.sentAt}]\n${message.text}`,
+  );
+  if (before !== null) {
+    blocks.unshift(`(earlier messages: --before ${before})`);
+  }
+  return blocks.length > 0 ? `${blocks.join("\n\n")}\n` : "";
 }
 
 function jsonByDefaultOutputOptions(args: string[]) {
@@ -480,9 +518,108 @@ const agentBackfillEventsTool = defineBackofficeRuntimeTool({
   },
 });
 
+const agentMessagesTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("pi.agent.messages"),
+  namespace: "pi",
+  name: "listMessages",
+  execute: async (input, context: PiToolContext) =>
+    await requirePiManagerRuntime(context.runtimes.pi).listMessages(input),
+  adapters: {
+    bash: {
+      command: "pi.agent.messages",
+      help: {
+        summary:
+          "pi.agent.messages prints an agent's most recent messages, oldest first, without thinking or tool calls.",
+        options: [
+          {
+            name: "agent",
+            required: true,
+            valueRequired: true,
+            valueName: "agent-name",
+            description: "Agent name",
+          },
+          {
+            name: "last",
+            valueRequired: true,
+            valueName: "count",
+            description: "How many of the most recent messages to print, up to 100; default 20",
+          },
+          {
+            name: "before",
+            valueRequired: true,
+            valueName: "entry-id",
+            description: "Print the messages before this one, as a previous page suggests",
+          },
+        ],
+        examples: [
+          "pi.agent.messages --agent assistant --last 1",
+          "pi.agent.messages --agent assistant --last 50 --format json",
+        ],
+      },
+      parse: parseAgentMessages,
+      format: (data, options) =>
+        options.format === "json" || options.print
+          ? { data }
+          : { stdout: messagesTranscript(data) },
+    },
+  },
+});
+
+const agentExportTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("pi.agent.export"),
+  namespace: "pi",
+  name: "exportConversation",
+  getResource: ({ out }) => ({ path: out }),
+  execute: async ({ agentName, out }, context: PiToolContext) => {
+    const state = context.runtimes.state;
+    if (!state) {
+      throw new Error("Exporting a conversation requires the workspace filesystem.");
+    }
+    const jsonl = await requirePiManagerRuntime(context.runtimes.pi).exportConversation({
+      agentName,
+    });
+    await state.writeFile(out, jsonl);
+    // Every line after the header is one entry.
+    return { path: out, entryCount: jsonl.split("\n").filter(Boolean).length - 1 };
+  },
+  adapters: {
+    bash: {
+      command: "pi.agent.export",
+      help: {
+        summary:
+          "pi.agent.export writes an agent's whole conversation history, tool calls included, to a JSONL file, oldest entry first.",
+        options: [
+          {
+            name: "agent",
+            required: true,
+            valueRequired: true,
+            valueName: "agent-name",
+            description: "Agent name",
+          },
+          {
+            name: "output",
+            required: true,
+            valueRequired: true,
+            valueName: "path",
+            description: "Absolute path of the JSONL file to write under /workspace",
+          },
+        ],
+        examples: ["pi.agent.export --agent assistant --output /workspace/assistant.jsonl"],
+      },
+      parse: parseAgentExport,
+      format: (data, options) =>
+        options.format === "json" || options.print
+          ? { data }
+          : { stdout: `Wrote ${data.entryCount} entries to ${data.path}.\n` },
+    },
+  },
+});
+
 export const piRuntimeTools = [
   agentListTool,
   agentGetTool,
+  agentMessagesTool,
+  agentExportTool,
   agentCreateTool,
   agentUpdateTool,
   agentDeleteTool,

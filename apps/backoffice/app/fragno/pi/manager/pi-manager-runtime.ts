@@ -3,6 +3,7 @@ import {
   type PiAgentDefinition,
   type PiAgentDefinitionCreate,
   type PiManagerAgent,
+  type PiAgentMessagePage,
   type PiManagerAgentDirectory,
   type PiPromptReceipt,
   type piPromptWhenBusySchema,
@@ -46,6 +47,11 @@ export type PiManagerSubmitPromptInput = {
 export type PiManagerGetSubmissionInput = { agentName: string; requestId: string };
 export type PiManagerRunPromptInput = PiManagerSubmitPromptInput & { timeoutMs?: number };
 export type PiManagerNotifyAgentInput = { agentName: string } & PiAgentNotification;
+export type PiManagerListMessagesInput = {
+  agentName: string;
+  last: number;
+  before: number | null;
+};
 
 /** `view` is null until the agent's conversation has received its first turn. */
 export type PiManagerAgentDetail = PiManagerAgent & { view: ConversationView | null };
@@ -147,6 +153,10 @@ export type PiManagerRuntime = {
   stopAgent(input: PiManagerAgentInput): Promise<void>;
   /** Records the scope's defined agents as `agent.*` events where the events lack them. */
   backfillAgentEvents(): Promise<{ agents: PiAgentBackfilledEvent[] }>;
+  /** What users and the agent said, oldest first; see `pi.agent.messages`. */
+  listMessages(input: PiManagerListMessagesInput): Promise<PiAgentMessagePage>;
+  /** The agent's whole history as JSONL, newest entry last; see `pi.agent.export`. */
+  exportConversation(input: PiManagerAgentInput): Promise<string>;
 };
 
 function assistantTextFromSubmission(view: ConversationView, submission: SubmissionRecord): string {
@@ -180,11 +190,11 @@ export function createPiManagerRuntime(input: {
     return input.context ? await awaitWithContext(promise, input.context) : await promise;
   }
 
-  async function request<T>(
+  async function fetchManager(
     route: string,
     body: unknown,
-    method: "GET" | "POST" | "PUT" | "DELETE" = body === null ? "GET" : "POST",
-  ): Promise<T> {
+    method: "GET" | "POST" | "PUT" | "DELETE",
+  ): Promise<Response> {
     const object = input.kernel.scoped(
       "PI_MANAGER",
       input.execution.scope,
@@ -206,6 +216,15 @@ export function createPiManagerRuntime(input: {
     if (!response.ok) {
       throw piManagerRuntimeRequestError(response.status, await response.text());
     }
+    return response;
+  }
+
+  async function request<T>(
+    route: string,
+    body: unknown,
+    method: "GET" | "POST" | "PUT" | "DELETE" = body === null ? "GET" : "POST",
+  ): Promise<T> {
+    const response = await fetchManager(route, body, method);
     if (response.status === 204) {
       return undefined as T;
     }
@@ -331,6 +350,17 @@ export function createPiManagerRuntime(input: {
     },
     async stopAgent({ agentName }) {
       await request(`${agentRoute(agentName)}/stop`, {});
+    },
+    async listMessages({ agentName, last, before }) {
+      const query = new URLSearchParams({ last: String(last) });
+      if (before !== null) {
+        query.set("before", String(before));
+      }
+      return await request<PiAgentMessagePage>(`${agentRoute(agentName)}/messages?${query}`, null);
+    },
+    async exportConversation({ agentName }) {
+      const response = await fetchManager(`${agentRoute(agentName)}/export`, null, "GET");
+      return await awaitRequest(response.text());
     },
   };
 
