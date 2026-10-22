@@ -50,6 +50,7 @@ const codemode = codemodeRunnerFor(
 const unusedObjects = {} as BackofficeObjectRegistry;
 const testRuntimeConfig: BackofficeRuntimeConfig = {
   authEmailVerification: { enabled: false },
+  sandboxBackofficeBaseUrl: null,
   signUpInvitationsEnabled: true,
   localEmailLog: false,
   bindings: {

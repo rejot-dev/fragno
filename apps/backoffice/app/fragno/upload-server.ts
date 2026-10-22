@@ -13,6 +13,7 @@ import {
 
 import type { BackofficeFragmentRuntimeOptions } from "@/backoffice-runtime/fragment-runtime";
 import type { FetchObject } from "@/backoffice-runtime/object-registry";
+import { inferFileContentType } from "@/file-collection/file-content-type";
 
 import {
   UPLOAD_DATABASE_MAX_SINGLE_UPLOAD_BYTES,
@@ -23,6 +24,11 @@ import {
   type UploadProvider,
   type UploadR2SignerConfig,
 } from "./upload";
+
+// Sandbox pushes write into the shared workspace without preconditions, so one archive stays sized
+// for task outputs rather than whole projects.
+const FILE_LINK_MAX_ARCHIVE_WRITE_FILES = 200;
+const FILE_LINK_MAX_ARCHIVE_WRITE_BYTES = 25 * 1024 * 1024;
 
 const toBody = (value: S3SignerInput["body"]): BodyInit | undefined => {
   if (value === undefined || value === null) {
@@ -108,6 +114,7 @@ export function createUploadServerForProvider(
   provider: UploadProvider,
   runtime: BackofficeFragmentRuntimeOptions,
   bindings: Parameters<typeof resolveR2BindingBucket>[0],
+  fileLinkSigning: { secret: string; audience: string },
 ): ReturnType<typeof createUploadFragment> {
   const providerConfig = getProviderConfig(config, provider);
   const limits =
@@ -174,6 +181,12 @@ export function createUploadServerForProvider(
   return createUploadFragment(
     {
       storage,
+      fileLinks: {
+        ...fileLinkSigning,
+        contentTypeForKey: inferFileContentType,
+        maxArchiveWriteFiles: FILE_LINK_MAX_ARCHIVE_WRITE_FILES,
+        maxArchiveWriteBytes: FILE_LINK_MAX_ARCHIVE_WRITE_BYTES,
+      },
       ...(providerConfig.provider === UPLOAD_PROVIDER_DATABASE
         ? { textIndex: { enabled: true } }
         : {}),

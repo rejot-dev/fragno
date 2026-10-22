@@ -2,7 +2,8 @@
 name: sandbox
 description:
   "Sandbox isolated shell work in Backoffice-managed Cloudflare containers. Use when the task
-  requires starting, listing, executing commands in, or terminating a sandbox runtime."
+  requires starting, listing, executing commands in, or terminating a sandbox runtime, or moving
+  files between Backoffice and a sandbox."
 ---
 
 # Sandbox
@@ -27,9 +28,9 @@ Sandbox capability.
 
 2. Start the sandbox with a lease. `sleepAfter` saves and stops it after that long, and defaults to
    `10m`. Set `keepAlive` only when the user asks to preserve it beyond the task. For a new
-   workspace, `image: "workspace"` (the default) has Node.js, Python, git, ripgrep, and jq;
-   `image: "debian"` has only Node.js and starts fastest. A saved workspace keeps its image. Raise
-   `instanceType` from `"lite"` to `"standard-1"` or larger for builds:
+   workspace, `image: "workspace"` (the default) has Node.js, Python, git, curl, tar, ripgrep, and
+   jq; `image: "debian"` has only Node.js and starts fastest. A saved workspace keeps its image.
+   Raise `instanceType` from `"lite"` to `"standard-1"` or larger for builds:
 
    ```js
    async () => {
@@ -63,8 +64,10 @@ Sandbox capability.
 
    Trust command output only when `result.ok` is true. On failure, use `reason`, `retryable`,
    stdout, and stderr to decide whether to correct the command, restart the sandbox, or report the
-   failure. **Complete when** every command succeeded and its expected output was checked, or a
-   non-retryable failure was identified precisely.
+   failure. When the task moves files between Backoffice and the sandbox, read
+   `/static/skills/sandbox/references/moving-files.md` first. **Complete when** every command
+   succeeded and its expected output was checked, or a non-retryable failure was identified
+   precisely.
 
 4. Release the lease when the task no longer needs the environment. Killing saves the workspace for
    a later start of the same id:

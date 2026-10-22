@@ -316,6 +316,7 @@ export default [
     route("github/:orgSlug/*", "routes/api/github.ts"),
     route("upload/:orgSlug/*", "routes/api/upload.ts"),
     route("files-scoped/:scopeKind/:scopeId/workspace", "routes/api/files-scoped-workspace.ts"),
+    route("file-links/:scopeKind/:scopeId/:provider/*", "routes/api/file-links.ts"),
     route("upload-scoped/:scopeKind/:scopeId/*", "routes/api/upload-scoped.ts"),
     route("workflows/:scopeSegment/*", "routes/api/workflows.ts"),
     route("automations-scoped/:scopeKind/:scopeId/*", "routes/api/automations-scoped.ts"),

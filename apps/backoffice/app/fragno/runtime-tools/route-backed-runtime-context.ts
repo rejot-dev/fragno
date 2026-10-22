@@ -70,6 +70,7 @@ import { createProjectsRuntime } from "@/fragno/runtime-tools/families/projects-
 import { createReson8Runtime } from "@/fragno/runtime-tools/families/reson8-runtime";
 import { createSandboxRouteRuntime } from "@/fragno/runtime-tools/families/sandbox-route-runtime";
 import {
+  createUploadLinkRuntime,
   createUploadRuntime,
   createUploadStorageRuntime,
 } from "@/fragno/runtime-tools/families/upload-runtime";
@@ -563,6 +564,11 @@ export const createRouteBackedRuntimeContext = ({
             runtime: {
               ...createUploadRuntime(uploadObject().http),
               ...createUploadStorageRuntime(uploadObject().commands, execution.scope),
+              ...createUploadLinkRuntime({
+                object: uploadObject().http,
+                scope: execution.scope,
+                baseUrl: runtime.config.sandboxBackofficeBaseUrl,
+              }),
             },
           }
         : null,

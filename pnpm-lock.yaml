@@ -517,6 +517,9 @@ importers:
       happy-dom:
         specifier: ^20.3.3
         version: 20.10.2
+      modern-tar:
+        specifier: ^0.8.6
+        version: 0.8.6
       oxfmt:
         specifier: ^0.40.0
         version: 0.40.0

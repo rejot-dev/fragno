@@ -432,6 +432,12 @@ describe("runBackofficeCodemode", () => {
       configureStorage: async () => {
         throw new Error("Upload storage is not used in this test.");
       },
+      createDownloadLink: async () => {
+        throw new Error("File links are not used in this test.");
+      },
+      createUploadLink: async () => {
+        throw new Error("File links are not used in this test.");
+      },
     };
     const systemContext = createTrustedSystemBackofficeToolContext({
       runtimes: { upload: uploadRuntime },
@@ -839,6 +845,7 @@ const createScopedMcpRuntimeServices = (
     reson8: null,
     config: {
       authEmailVerification: { enabled: false },
+      sandboxBackofficeBaseUrl: null,
       signUpInvitationsEnabled: true,
       localEmailLog: false,
       bindings: {

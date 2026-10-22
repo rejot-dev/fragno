@@ -1,6 +1,8 @@
 import { DurableObject } from "cloudflare:workers";
 import { z } from "zod";
 
+import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
+import { resolveBackofficeInternalRequestSecret } from "@/backoffice-runtime/internal-object-request";
 import {
   decodeBackofficeObjectScope,
   type UploadObject,
@@ -128,6 +130,9 @@ type UploadRuntime = {
   fragmentsByProvider: Map<UploadProvider, UploadFragment>;
 };
 
+type UploadObjectEnv = Parameters<typeof createUploadServerForProvider>[3] &
+  Pick<BackofficeRuntimeEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">;
+
 type UploadStoragePolicy =
   | { kind: "configurable-organization"; orgId: string }
   | { kind: "fixed-database"; namespace: string };
@@ -180,7 +185,7 @@ function assertUploadConfigMatchesStoragePolicy(
 export class InMemoryUploadObject implements UploadObject {
   readonly #state: BackofficeObjectState & Pick<DurableObjectState, "id">;
   readonly #storagePolicy: UploadStoragePolicy;
-  readonly #env: Parameters<typeof createUploadServerForProvider>[3];
+  readonly #env: UploadObjectEnv;
   readonly #runtimeServices: BackofficeRuntimeServices;
   readonly #fragmentDatabase: BackofficeObjectFragmentDatabase;
   readonly #host: BackofficeFragmentDurableObject<
@@ -198,7 +203,7 @@ export class InMemoryUploadObject implements UploadObject {
     durableHooks,
   }: {
     state: BackofficeObjectState & Pick<DurableObjectState, "id">;
-    env: Parameters<typeof createUploadServerForProvider>[3];
+    env: UploadObjectEnv;
     runtime: BackofficeRuntimeServices;
     implementation: BackofficeObjectImplementation;
     durableHooks?: BackofficeDurableHookDependencies;
@@ -307,10 +312,21 @@ export class InMemoryUploadObject implements UploadObject {
     const response = buildUploadAdminConfigResponse(stored);
     const fragmentsByProvider = new Map<UploadProvider, UploadFragment>();
 
+    // The object name identifies the file namespace, so links only open files of the object that signed them.
+    const fileLinkSigning = {
+      secret: resolveBackofficeInternalRequestSecret(this.#env),
+      audience: this.#state.id.name!,
+    };
     for (const provider of configuredProvidersFromResponse(response)) {
       fragmentsByProvider.set(
         provider,
-        createUploadServerForProvider(stored, provider, this.#fragmentDatabase, this.#env),
+        createUploadServerForProvider(
+          stored,
+          provider,
+          this.#fragmentDatabase,
+          this.#env,
+          fileLinkSigning,
+        ),
       );
     }
 
@@ -528,7 +544,7 @@ export class Upload extends DurableObject<CloudflareEnv> implements UploadObject
     this.#object = new InMemoryUploadObject({
       ...createCloudflareBackofficeObjectContext(state, env),
       // Upload reads R2 buckets by their configured binding name and validates each one it finds.
-      env: env as unknown as Record<string, unknown>,
+      env: env as unknown as UploadObjectEnv,
       durableHooks,
     });
   }

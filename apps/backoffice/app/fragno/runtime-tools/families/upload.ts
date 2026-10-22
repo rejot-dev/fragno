@@ -4,6 +4,7 @@ import {
   isBackofficeRoutableScope,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import {
+  type FileLinkInput,
   uploadPreparedInputSchema,
   uploadStorageConfigureInputSchema,
 } from "@fragno-dev/backoffice-api/v0/upload";
@@ -242,6 +243,72 @@ const discardPreparedTool = defineUploadTool({
   },
 });
 
+const parseFileLink = (command: string) =>
+  defineCliArgsParser<FileLinkInput>(command, {
+    path: { required: true },
+    expiresInSeconds: { kind: "positiveInteger" },
+  });
+
+const fileLinkHelpOptions = [
+  {
+    name: "path",
+    required: true,
+    valueRequired: true,
+    valueName: "path",
+    description: "A /workspace file, a folder ending in /, or a glob such as /workspace/out/**.",
+  },
+  {
+    name: "expires-in-seconds",
+    valueRequired: true,
+    valueName: "seconds",
+    description: "How long the link works, from 60 to 3600. Defaults to 900.",
+  },
+];
+
+const createDownloadLinkTool = defineUploadTool({
+  ...backofficeApiOperationToolFields("upload.createDownloadLink"),
+  namespace: "upload",
+  name: "createDownloadLink",
+  capabilityId: "upload",
+  getResource: ({ path }) => ({ path }),
+  execute: async (input, context) => await getUploadRuntime(context).createDownloadLink(input),
+  adapters: {
+    bash: {
+      command: "upload.createDownloadLink",
+      help: {
+        summary: "Create a temporary URL that reads a workspace file, folder, or glob.",
+        options: fileLinkHelpOptions,
+        examples: ["upload.createDownloadLink --path /workspace/data/"],
+      },
+      parse: parseFileLink("upload.createDownloadLink"),
+      format: (result, options) =>
+        options.format === "json" ? { data: result } : { stdout: `${result.url}\n` },
+    },
+  },
+});
+
+const createUploadLinkTool = defineUploadTool({
+  ...backofficeApiOperationToolFields("upload.createUploadLink"),
+  namespace: "upload",
+  name: "createUploadLink",
+  capabilityId: "upload",
+  getResource: ({ path }) => ({ path }),
+  execute: async (input, context) => await getUploadRuntime(context).createUploadLink(input),
+  adapters: {
+    bash: {
+      command: "upload.createUploadLink",
+      help: {
+        summary: "Create a temporary URL that writes a workspace file, folder, or glob.",
+        options: fileLinkHelpOptions,
+        examples: ["upload.createUploadLink --path /workspace/results/"],
+      },
+      parse: parseFileLink("upload.createUploadLink"),
+      format: (result, options) =>
+        options.format === "json" ? { data: result } : { stdout: `${result.url}\n` },
+    },
+  },
+});
+
 const getStorageTool = defineUploadTool({
   ...backofficeApiOperationToolFields("upload.storage.get"),
   namespace: "upload",
@@ -304,6 +371,8 @@ export const uploadRuntimeTools = [
   readPreparedTool,
   commitPreparedTool,
   discardPreparedTool,
+  createDownloadLinkTool,
+  createUploadLinkTool,
   getStorageTool,
   configureStorageTool,
 ] as const;

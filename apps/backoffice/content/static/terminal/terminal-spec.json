@@ -4354,6 +4354,82 @@
     ]
   },
   {
+    "command": "upload.createDownloadLink",
+    "summary": "Create a temporary URL that reads a workspace file, folder, or glob.",
+    "options": [
+      {
+        "name": "path",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "path",
+        "description": "A /workspace file, a folder ending in /, or a glob such as /workspace/out/**."
+      },
+      {
+        "name": "expires-in-seconds",
+        "valueRequired": true,
+        "valueName": "seconds",
+        "description": "How long the link works, from 60 to 3600. Defaults to 900."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "upload.createUploadLink",
+    "summary": "Create a temporary URL that writes a workspace file, folder, or glob.",
+    "options": [
+      {
+        "name": "path",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "path",
+        "description": "A /workspace file, a folder ending in /, or a glob such as /workspace/out/**."
+      },
+      {
+        "name": "expires-in-seconds",
+        "valueRequired": true,
+        "valueName": "seconds",
+        "description": "How long the link works, from 60 to 3600. Defaults to 900."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "upload.storage.get",
     "summary": "Show the configured upload storage providers and the default.",
     "options": [

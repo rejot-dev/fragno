@@ -46,6 +46,7 @@ const createRuntime = (): BackofficeRuntimeServices => {
     adapters: {} as BackofficeRuntimeServices["adapters"],
     config: {
       authEmailVerification: { enabled: false },
+      sandboxBackofficeBaseUrl: null,
       signUpInvitationsEnabled: true,
       localEmailLog: false,
       bindings: {

@@ -6,6 +6,10 @@ type UploadCodemodeProvider = {
   commitPrepared(input: UploadCommitPreparedInput): Promise<UploadCommitPreparedOutput>;
   /** Discard a temporary prepared private upload. */
   discardPrepared(input: UploadDiscardPreparedInput): Promise<UploadDiscardPreparedOutput>;
+  /** Create a temporary URL that sandbox commands use to read workspace files without credentials; it may not work outside sandboxes. A file path links the file: `curl -sS --fail-with-body "$url" -o file`. A folder or glob links an uncompressed tar archive of up to 500 matching files named relative to `root`: `curl -sS --fail-with-body "$url" | tar -x -C dir`. When the archive response has an X-Next-Cursor header, request the URL again with ?cursor=<value> for the next files. Anyone holding the URL can read these files until it expires. */
+  createDownloadLink(input: UploadCreateDownloadLinkInput): Promise<UploadCreateDownloadLinkOutput>;
+  /** Create a temporary URL that sandbox commands use to write workspace files without credentials; it may not work outside sandboxes. Writes replace existing files. Each file may be at most 1.9 MB. A file path accepts the file: `curl -sS --fail-with-body -H "Expect:" -T file "$url"`. A folder or glob accepts an uncompressed tar archive of at most 200 regular files and 25 MB, without symlinks, whose entry names are relative to `root` and must match: `tar -ch -C dir . | curl -sS --fail-with-body -H "Expect:" -T - "$url"`. Push only the files the task produced, never a whole project; an archive is written all-or-nothing. A successful write returns `{"fileCount","sizeBytes"}`. Anyone holding the URL can write these files until it expires. */
+  createUploadLink(input: UploadCreateUploadLinkInput): Promise<UploadCreateUploadLinkOutput>;
   /** Read the organization's upload storage: the configured providers and the one new uploads use. */
   getStorage(): Promise<UploadGetStorageOutput>;
   /** Store one upload storage provider's configuration for the organization, replacing that provider's earlier configuration. Secrets are never returned. */
@@ -493,6 +497,60 @@ type UploadDiscardPreparedOutput = {
   discarded: true;
   uploadId: string;
 };
+type UploadCreateDownloadLinkInput = {
+  /** A /workspace file path, a folder ending in /, or a glob with * or ?, for example /workspace/data/*.csv. */
+  path: string;
+  /** How long the link works. Defaults to 900 seconds. */
+  expiresInSeconds?: number;
+};
+type UploadCreateDownloadLinkOutput =
+  | {
+      /** The URL's body is the file itself. */
+      format: "file";
+      /** Use unchanged in a sandbox command; its host may resolve only inside sandboxes. */
+      url: string;
+      path: string;
+      /** ISO 8601 datetime string. */
+      expiresAt: string;
+    }
+  | {
+      /** The URL's body is a tar archive of the matching files. */
+      format: "tar";
+      /** Use unchanged in a sandbox command; its host may resolve only inside sandboxes. */
+      url: string;
+      glob: string;
+      /** The /workspace folder that archive entry names are relative to. */
+      root: string;
+      /** ISO 8601 datetime string. */
+      expiresAt: string;
+    };
+type UploadCreateUploadLinkInput = {
+  /** A /workspace file path, a folder ending in /, or a glob with * or ?, for example /workspace/data/*.csv. */
+  path: string;
+  /** How long the link works. Defaults to 900 seconds. */
+  expiresInSeconds?: number;
+};
+type UploadCreateUploadLinkOutput =
+  | {
+      /** The URL's body is the file itself. */
+      format: "file";
+      /** Use unchanged in a sandbox command; its host may resolve only inside sandboxes. */
+      url: string;
+      path: string;
+      /** ISO 8601 datetime string. */
+      expiresAt: string;
+    }
+  | {
+      /** The URL's body is a tar archive of the matching files. */
+      format: "tar";
+      /** Use unchanged in a sandbox command; its host may resolve only inside sandboxes. */
+      url: string;
+      glob: string;
+      /** The /workspace folder that archive entry names are relative to. */
+      root: string;
+      /** ISO 8601 datetime string. */
+      expiresAt: string;
+    };
 type UploadGetStorageOutput = UploadStorage;
 type UploadConfigureStorageInput = UploadStorageConfigureInput;
 type UploadConfigureStorageOutput = UploadStorage;
