@@ -1465,6 +1465,55 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
       }
     });
 
+    it("joins on an external id held in a plain string column, in both directions", async () => {
+      const { adapter, close } = await createContext();
+      try {
+        const create = createSuiteUnitOfWork(adapter, "create-string-id-join-data");
+        create.create("users", {
+          id: "string-id-user",
+          name: "StringId",
+          email: "string-id@example.com",
+          age: 1,
+        });
+        create.create("user_notes", {
+          id: "string-id-note",
+          user_external_id: "string-id-user",
+          text: "Named by external id",
+        });
+        await create.executeMutations();
+
+        const [notes, users] = await createSuiteUnitOfWork(adapter, "read-string-id-join")
+          .find("user_notes", (b) =>
+            b
+              .whereIndex("user_notes_user_idx", (eb) =>
+                eb("user_external_id", "=", "string-id-user"),
+              )
+              .joinOne("user", "users", (user) =>
+                user
+                  .onIndex("primary", (eb) => eb("id", "=", eb.parent("user_external_id")))
+                  .select(["name"]),
+              ),
+          )
+          .find("users", (b) =>
+            b
+              .whereIndex("primary", (eb) => eb("id", "=", "string-id-user"))
+              .joinMany("notes", "user_notes", (note) =>
+                note
+                  .onIndex("user_notes_user_idx", (eb) =>
+                    eb("user_external_id", "=", eb.parent("id")),
+                  )
+                  .select(["text"]),
+              ),
+          )
+          .executeRetrieve();
+
+        expect(notes).toMatchObject([{ user: { name: "StringId" } }]);
+        expect(users[0]?.notes).toMatchObject([{ text: "Named by external id" }]);
+      } finally {
+        await close?.();
+      }
+    });
+
     it("supports findFirst and child whereIndex filtering in joined query-tree retrievals", async () => {
       const { adapter, close } = await createContext();
       try {

@@ -86,7 +86,12 @@ const resolveComparisonValue = (
     let leftColumn = column;
     let parentColumn = value.column;
 
-    if (leftColumn.role === "external-id" && parentColumn.role !== "external-id") {
+    // References hold internal ids; any other parent column holds what it was given, such as an
+    // external id string, so it compares with the child's external id.
+    if (
+      leftColumn.role === "external-id" &&
+      (parentColumn.role === "reference" || parentColumn.role === "internal-id")
+    ) {
       leftColumn = resolveComparableColumn(leftColumn, currentTable);
     }
     if (
@@ -206,7 +211,10 @@ export const evaluateQueryTreeCondition = (
   );
 
   if (isParentColumnRef(condition.b)) {
-    if (leftColumn.role === "external-id" && right.column.role !== "external-id") {
+    if (
+      leftColumn.role === "external-id" &&
+      (right.column.role === "reference" || right.column.role === "internal-id")
+    ) {
       leftColumn = resolveComparableColumn(leftColumn, currentTable);
     }
     if (

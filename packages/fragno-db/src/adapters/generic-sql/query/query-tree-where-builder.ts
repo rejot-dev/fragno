@@ -74,7 +74,12 @@ export function buildQueryTreeWhere(
       }
 
       let parentColumn = rightValue.column;
-      if (left.role === "external-id" && parentColumn.role !== "external-id") {
+      // References hold internal ids; any other parent column holds what it was given, such as an
+      // external id string, so it compares with the child's external id.
+      if (
+        left.role === "external-id" &&
+        (parentColumn.role === "reference" || parentColumn.role === "internal-id")
+      ) {
         left = getComparableColumn(left, childTable);
       }
       if (
