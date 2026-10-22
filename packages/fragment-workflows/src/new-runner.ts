@@ -63,6 +63,7 @@ type RunnerTickContext = {
   busHandlerTx: DatabaseRequestContext["handlerTx"];
   executionId: string;
   createEpoch: () => string;
+  random: () => number;
   stepEmissions?: WorkflowStepLivePumpRegistry;
 };
 
@@ -371,7 +372,7 @@ async function planRunTask(
       (uow) => {
         applyRunnerMutations(uow, state, ctx.workflowsByName, ctx.executionId);
         addStepCommittedEmissions(uow, state, ctx.executionId);
-        applyOutcome(uow, selection.instance, outcome);
+        applyOutcome(uow, selection.instance, outcome, payload.reason);
       },
     ],
   };
@@ -430,6 +431,10 @@ async function runTask(
     outcome = isRunnerStepSuspended(err)
       ? { type: "suspended", reason: err.reason }
       : { type: "errored", error: toError(err) };
+  }
+  // Outranks whatever the workflow returned or threw: the host saw that the tick did not run.
+  if (workflow.remote && step.tickInterruption) {
+    outcome = { type: "interrupted", error: step.tickInterruption, jitter: ctx.random() };
   }
   // The other tick owns the instance, so this one commits nothing, whatever the workflow made of
   // the conflict.
@@ -540,6 +545,8 @@ export async function runWorkflowsTick(options: {
   workflowsByName?: Map<string, WorkflowsRegistry[keyof WorkflowsRegistry]>;
   createExecutionId: () => string;
   createEpoch: () => string;
+  /** Uniform draws in [0, 1); seeded runtimes keep retry delays reproducible. */
+  random: () => number;
   stepEmissions?: WorkflowStepLivePumpRegistry;
 }): Promise<number> {
   const workflowsByName =
@@ -588,6 +595,7 @@ export async function runWorkflowsTick(options: {
               busHandlerTx: options.busHandlerTx ?? options.handlerTx,
               executionId,
               createEpoch,
+              random: options.random,
               stepEmissions: options.stepEmissions,
             },
             options.payload,

@@ -186,5 +186,9 @@ export const workflowsSchema = schema("workflows", (s) => {
           "status",
         ]),
       )
+      .alterTable("workflow_instance", (t) =>
+        // Consecutive ticks whose host reported they could not run; any other outcome resets it.
+        t.addColumn("interruptedTicks", column("integer").defaultTo(0)),
+      )
   );
 });

@@ -7,6 +7,7 @@ import { workflowsSchema } from "../schema";
 import { WORKFLOW_EVENT_ACTOR_USER } from "../system-events";
 import type {
   AnyTxResult,
+  WorkflowEnqueuedHookPayload,
   WorkflowRegistryEntry,
   WorkflowStepWorkflowOperation,
   WorkflowTerminalHookPayload,
@@ -26,7 +27,42 @@ import { isMutateOnlyTx } from "./utils";
 export type RunnerTaskOutcome =
   | { type: "completed"; output: unknown }
   | { type: "suspended"; reason: RunnerStepSuspended["reason"] }
-  | { type: "errored"; error: Error };
+  | { type: "errored"; error: Error }
+  // `jitter` is a uniform draw in [0, 1) that spreads the retries of ticks interrupted together.
+  | { type: "interrupted"; error: Error; jitter: number };
+
+// Interrupted ticks retry after up to 30s, doubling up to 10 minutes; the eighth in a row errors
+// the instance, at most about 35 minutes after the first. Each delay is drawn from the upper half
+// of its backoff, because one lost executor interrupts many ticks at once, and retrying them all
+// together would meet it again while it recovers.
+const MAX_INTERRUPTED_TICKS = 8;
+const INTERRUPTED_TICK_BASE_DELAY_MS = 30_000;
+const INTERRUPTED_TICK_MAX_DELAY_MS = 10 * 60_000;
+
+/** An interrupted tick either retries with its count, or has exhausted its budget and errors. */
+function resolveInterruptedTick(
+  outcome: RunnerTaskOutcome,
+  instance: WorkflowInstanceRecord,
+):
+  | Exclude<RunnerTaskOutcome, { type: "interrupted" }>
+  | { type: "retryingTick"; interruptedTicks: number; delayMs: number } {
+  if (outcome.type !== "interrupted") {
+    return outcome;
+  }
+  const interruptedTicks = instance.interruptedTicks + 1;
+  if (interruptedTicks >= MAX_INTERRUPTED_TICKS) {
+    return { type: "errored", error: outcome.error };
+  }
+  const backoffMs = Math.min(
+    INTERRUPTED_TICK_BASE_DELAY_MS * 2 ** (interruptedTicks - 1),
+    INTERRUPTED_TICK_MAX_DELAY_MS,
+  );
+  return {
+    type: "retryingTick",
+    interruptedTicks,
+    delayMs: Math.round(backoffMs / 2 + outcome.jitter * (backoffMs / 2)),
+  };
+}
 
 /**
  * Remove undefined keys from mutation payloads to avoid clobbering columns.
@@ -261,14 +297,18 @@ export function applyRunnerMutations(
 export function applyOutcome(
   uow: IUnitOfWork,
   instance: WorkflowInstanceRecord,
-  outcome: RunnerTaskOutcome,
+  taskOutcome: RunnerTaskOutcome,
+  trigger: WorkflowEnqueuedHookPayload["reason"],
 ) {
   const schemaUow = uow.forSchema(workflowsSchema);
+  const outcome = resolveInterruptedTick(taskOutcome, instance);
 
   schemaUow.update("workflow_instance", instance.id, (b) => {
     const baseUpdate = {
       updatedAt: schemaUow.now(),
       ...(instance.startedAt ? {} : { startedAt: b.now() }),
+      // Only interrupted ticks in a row count toward the budget; any other outcome breaks the run.
+      interruptedTicks: outcome.type === "retryingTick" ? outcome.interruptedTicks : 0,
     };
 
     const outcomeUpdate =
@@ -288,12 +328,26 @@ export function applyOutcome(
               errorMessage: outcome.error.message,
               completedAt: schemaUow.now(),
             }
-          : outcome.type === "suspended"
-            ? { status: "waiting" }
-            : {};
+          : { status: "waiting" };
 
     return b.set({ ...baseUpdate, ...outcomeUpdate }).check();
   });
+
+  if (outcome.type === "retryingTick") {
+    // The retry repeats the interrupted trigger, so it runs the same kind of task.
+    uow.triggerHook(
+      schemaUow.namespace ?? workflowsSchema.name,
+      "onWorkflowEnqueued",
+      {
+        workflowName: instance.workflowName,
+        instanceId: instance.instanceId,
+        instanceRef: String(instance.id),
+        reason: trigger,
+      },
+      { processAt: schemaUow.now().plus({ ms: outcome.delayMs }) },
+    );
+    return;
+  }
 
   if (outcome.type !== "suspended") {
     if (outcome.type === "completed") {

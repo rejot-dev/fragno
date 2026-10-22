@@ -242,6 +242,7 @@ type PageCollections = {
     output: unknown | null;
     errorName: string | null;
     errorMessage: string | null;
+    interruptedTicks: number;
   }>;
   /** Steps of workflow runs; instanceRef is the run's id. */
   workflowSteps: PageCollection<{

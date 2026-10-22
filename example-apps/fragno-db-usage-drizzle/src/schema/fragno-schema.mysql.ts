@@ -521,7 +521,8 @@ export const workflow_instance_workflows = mysqlTable("workflow_instance_workflo
   errorName: varchar("errorName", { length: 191 }),
   errorMessage: varchar("errorMessage", { length: 191 }),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
-  _version: int("_version").notNull().default(0)
+  _version: int("_version").notNull().default(0),
+  interruptedTicks: int("interruptedTicks").notNull().default(0)
 }, (table) => [
   uniqueIndex("uidx_workflow_instance_idx_workflow_instance_workflowNa12b3a436").on(table.workflowName, table.instanceId),
   index("idx_workflow_instance_idx_workflow_instance_list_workfl9c4bc4aa").on(table.workflowName, table.createdAt, table.instanceId, table.remoteWorkflowName, table.status)
@@ -657,5 +658,5 @@ export const workflows_schema = {
   workflow_step_emission_workflowsRelations: workflow_step_emission_workflowsRelations,
   workflow_step_emission: workflow_step_emission_workflows,
   workflow_step_emissionRelations: workflow_step_emission_workflowsRelations,
-  schemaVersion: 7
+  schemaVersion: 8
 }

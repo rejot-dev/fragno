@@ -165,6 +165,7 @@ export async function runWorkflowsTestTick<TRegistry extends WorkflowsRegistry>(
       workflows: config.workflows,
       createExecutionId: () => config.runtime.random.uuid(),
       createEpoch: () => config.runtime.random.uuid(),
+      random: () => config.runtime.random.float(),
       stepEmissions: fragment.$internal.deps.stepEmissions,
       payload: {
         ...payload,
@@ -508,7 +509,8 @@ export async function recordWorkflowStepRunForTest<TOutput = unknown>(
         triggerHook: () => undefined,
       } as unknown as IUnitOfWork;
       applyRunnerMutations(uow, state, new Map(options.workflowsByName ?? []), executionId);
-      applyOutcome(uow, instance, outcome);
+      // Only an interrupted outcome reads its trigger, and this helper never produces one.
+      applyOutcome(uow, instance, outcome, "create");
     })
     .execute();
 

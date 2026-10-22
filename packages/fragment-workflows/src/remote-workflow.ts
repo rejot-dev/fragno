@@ -145,6 +145,14 @@ export interface RemoteWorkflowStepHost {
     name: string,
     options: RemoteWorkflowWaitForEventOptions<T>,
   ): Promise<{ type: string; payload: Readonly<T>; timestamp: Date }>;
+  /**
+   * Reports that this tick could not run where the host sent it, such as to an unreachable
+   * executor. The runner keeps step progress and runs the whole tick again later with growing
+   * delays, then errors the instance once consecutive interrupted ticks exhaust their budget. Steps
+   * the interrupted tick had started may run again. Only workflows defined as remote can interrupt
+   * their tick, and catching the thrown error does not undo the report.
+   */
+  interruptTick(cause: string): never;
 }
 
 export type RemoteCapableWorkflowStep = WorkflowStep & {
