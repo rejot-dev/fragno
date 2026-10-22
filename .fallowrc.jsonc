@@ -61,7 +61,6 @@
       "apps/**",
       "example-apps/**",
       "example-fragments/**",
-      "specs/**",
 
       // Generated file / tooling fixtures.
       "packages/fragment-workflows/workflows-smoke-artifacts/**",
@@ -125,7 +124,6 @@
         "packages/jsonforms-shadcn-renderers/src/**/*.ts",
         "packages/jsonforms-shadcn-renderers/src/**/*.tsx",
         "apps/docs/content/**/*.mdx",
-        "specs/**/*.ts",
         "packages/create/templates/**/*",
         "**/*.config.ts",
         "**/*.config.js",

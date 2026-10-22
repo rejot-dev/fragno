@@ -230,8 +230,7 @@
         "**/*.mjs",
         ".agents/**/*.ts",
         "packages/create/templates/**/*.ts",
-        "packages/create/templates/**/*.tsx",
-        "specs/references/**/*.ts"
+        "packages/create/templates/**/*.tsx"
       ],
       "rules": {
         "typescript/no-unsafe-argument": "off",
