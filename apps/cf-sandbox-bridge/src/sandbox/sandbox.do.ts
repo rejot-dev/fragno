@@ -14,6 +14,7 @@ import type {
   SandboxStartRequest,
   SandboxStartSource,
 } from "./sandbox-container-contract";
+import { SANDBOX_BACKOFFICE_HOST } from "./sandbox-container-contract";
 
 // Cloudflare stops a container shortly after its Durable Object goes idle. The alarm heartbeat keeps
 // the object active for as long as the lease holds; the inactivity timeout outlives a missed beat.
@@ -21,6 +22,10 @@ const LEASE_HEARTBEAT_MS = 5 * 60_000;
 const INACTIVITY_TIMEOUT_MS = 3 * LEASE_HEARTBEAT_MS;
 const LEASE_STORAGE_KEY = "lease-expires-at";
 const START_OUTCOME_STORAGE_KEY = "start-outcome";
+
+// The bridge's main module exports this entrypoint; Workers that import this class type-check it
+// against their own exports.
+type BridgeExports = { SandboxBackofficeEgress: Fetcher };
 
 const MANAGED_DEBIAN_IMAGE = "cloudflare/debian-trixie";
 const WORKSPACE_DIRECTORY = "/workspace";
@@ -56,6 +61,11 @@ export class Sandbox extends DurableObject<unknown> implements SandboxContainerC
       });
     }
     try {
+      // Re-registering replaces the intercept, so containers started before it existed gain it too.
+      await container.interceptOutboundHttp(
+        SANDBOX_BACKOFFICE_HOST,
+        (this.ctx.exports as unknown as BridgeExports).SandboxBackofficeEgress,
+      );
       let outcome: SandboxStartOutcome;
       if (wasRunning) {
         const stored = await this.ctx.storage.get<SandboxStartOutcome>(START_OUTCOME_STORAGE_KEY);

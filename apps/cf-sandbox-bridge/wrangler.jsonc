@@ -63,5 +63,7 @@
   // Clients must send this value as: Authorization: Bearer <token>
   // Declared in .dev.vars.example so wrangler generates the Env type.
   "worker_loaders": [{ "binding": "LOADER" }],
+  // Sandbox containers reach Backoffice file links through this binding; see SandboxBackofficeEgress.
+  "services": [{ "binding": "BACKOFFICE", "service": "rejot-backoffice-web" }],
   "preview_urls": false,
 }
