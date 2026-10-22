@@ -32,6 +32,7 @@ export type BackofficeUiValidationErrorCode =
   | "child-count"
   | "missing-root"
   | "missing-child"
+  | "unknown-slot"
   | "unknown-component"
   | "invalid-props"
   | "invalid-visibility"
@@ -47,6 +48,8 @@ const generatedUiElementSchema = z.strictObject({
   type: z.string(),
   props: z.record(z.string(), z.unknown()),
   children: z.array(z.string()),
+  // Named slots of the component, such as a row's expanded content; children fill the default one.
+  slots: z.record(z.string(), z.array(z.string())).optional(),
   visible: z.unknown().optional(),
   // Children render once per item of the array at statePath, or of the item field around them.
   repeat: z
@@ -70,7 +73,12 @@ const backofficeUiResultEnvelopeSchema = z.looseObject({
 });
 
 const specFieldNames = new Set(["root", "elements"]);
-const elementFieldNames = new Set(["type", "props", "children", "visible", "repeat"]);
+const elementFieldNames = new Set(["type", "props", "children", "slots", "visible", "repeat"]);
+
+/** Every element an element renders, in its children and its named slots. */
+function childKeysOf(element: { children?: string[]; slots?: Record<string, string[]> }): string[] {
+  return [...(element.children ?? []), ...Object.values(element.slots ?? {}).flat()];
+}
 
 export function parseBackofficeUiResult(value: unknown): BackofficeUiParseResult {
   if (!isRecord(value) || !Object.hasOwn(value, "$ui")) {
@@ -109,13 +117,14 @@ export function parseBackofficeUiResult(value: unknown): BackofficeUiParseResult
 
   let childReferenceCount = 0;
   for (const [elementKey, element] of elementEntries) {
-    if (element.children.length > BACKOFFICE_UI_LIMITS.childrenPerElement) {
+    const childCount = childKeysOf(element).length;
+    if (childCount > BACKOFFICE_UI_LIMITS.childrenPerElement) {
       return invalidResult(
         "child-count",
         `Element "${elementKey}" exceeds the ${BACKOFFICE_UI_LIMITS.childrenPerElement}-child limit.`,
       );
     }
-    childReferenceCount += element.children.length;
+    childReferenceCount += childCount;
   }
   if (childReferenceCount > BACKOFFICE_UI_LIMITS.childReferences) {
     return invalidResult(
@@ -131,7 +140,7 @@ export function parseBackofficeUiResult(value: unknown): BackofficeUiParseResult
   // Prop problems are independent per element, so report all of them in one pass.
   const invalidPropsMessages: string[] = [];
   for (const [elementKey, element] of elementEntries) {
-    for (const childKey of element.children) {
+    for (const childKey of childKeysOf(element)) {
       if (!Object.hasOwn(rawSpec.elements, childKey)) {
         return invalidResult(
           "missing-child",
@@ -149,6 +158,16 @@ export function parseBackofficeUiResult(value: unknown): BackofficeUiParseResult
 
     const componentName = element.type as keyof typeof backofficeUiComponentDefinitions;
     const componentDefinition = backofficeUiComponentDefinitions[componentName];
+    const namedSlots = (componentDefinition.slots as readonly string[]).filter(
+      (slot) => slot !== "default",
+    );
+    const unknownSlot = Object.keys(element.slots ?? {}).find((slot) => !namedSlots.includes(slot));
+    if (unknownSlot !== undefined) {
+      return invalidResult(
+        "unknown-slot",
+        `Element "${elementKey}" fills slot "${unknownSlot}", which ${componentName} does not have.`,
+      );
+    }
     if (!validateGeneratedProps(componentDefinition.props, element.props)) {
       invalidPropsMessages.push(
         `Element "${elementKey}" has invalid props for ${componentName}: ${describeInvalidGeneratedProps(componentDefinition.props, element.props)}.`,
@@ -257,7 +276,7 @@ function analyzeChildGraph(spec: Spec) {
   const elementDepth = new Map(Object.keys(spec.elements).map((elementKey) => [elementKey, 1]));
 
   for (const element of Object.values(spec.elements)) {
-    for (const childKey of element.children ?? []) {
+    for (const childKey of childKeysOf(element)) {
       incomingReferenceCount.set(childKey, (incomingReferenceCount.get(childKey) ?? 0) + 1);
     }
   }
@@ -281,7 +300,8 @@ function analyzeChildGraph(spec: Spec) {
     const currentDepth = elementDepth.get(elementKey) ?? 1;
     depth = Math.max(depth, currentDepth);
 
-    for (const childKey of spec.elements[elementKey]?.children ?? []) {
+    const element = spec.elements[elementKey];
+    for (const childKey of element ? childKeysOf(element) : []) {
       elementDepth.set(childKey, Math.max(elementDepth.get(childKey) ?? 1, currentDepth + 1));
       const nextCount = (incomingReferenceCount.get(childKey) ?? 0) - 1;
       incomingReferenceCount.set(childKey, nextCount);

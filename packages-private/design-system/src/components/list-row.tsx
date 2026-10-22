@@ -26,9 +26,14 @@ export function RowList({ empty, children }: { empty: ReactNode; children: React
 
 const rowClassName = "group flex items-center gap-3 py-2.5";
 
+/** What an expandable row shows below itself once opened, and the toggle that opens it. */
+export type ListRowExpansion = { label: string; content: ReactNode };
+
 /**
  * One row of a RowList: what it is, a line about it, and what it trails with, such as a time or a
- * status. With `to`, the whole row leads there, so its trailing content holds no links.
+ * status. With `to`, the whole row leads there, so its trailing content holds no links. With an
+ * expansion, the row opens to show its content below, such as a form to answer; then only the
+ * title leads to `to`, so the rest of the row toggles.
  */
 export function ListRow({
   leading,
@@ -36,37 +41,81 @@ export function ListRow({
   detail,
   trailing,
   to,
+  expansion,
 }: {
   leading: ReactNode;
   title: string;
   detail: ReactNode;
   trailing: ReactNode;
   to: string | null;
+  expansion: ListRowExpansion | null;
 }) {
-  const content = (
+  const titleClassName = "block truncate text-sm font-semibold text-[var(--bo-fg)]";
+  const content = (titleElement: ReactNode, end: ReactNode) => (
     <>
       {leading}
       <span className="min-w-0 flex-1">
-        <span
-          className={`block truncate text-sm font-semibold text-[var(--bo-fg)] ${to === null ? "" : "group-hover:underline"}`}
-          title={title}
-        >
-          {title}
-        </span>
+        {titleElement}
         {detail === null ? null : (
           <span className="block truncate text-xs text-[var(--bo-muted-2)]">{detail}</span>
         )}
       </span>
-      <span className="flex shrink-0 items-center gap-3 text-xs">{trailing}</span>
+      <span className="flex shrink-0 items-center gap-3 text-xs">
+        {trailing}
+        {end}
+      </span>
     </>
+  );
+
+  if (expansion !== null) {
+    return (
+      <li>
+        <details className="group/expansion">
+          <summary
+            className={`${rowClassName} cursor-pointer list-none [&::-webkit-details-marker]:hidden`}
+          >
+            {content(
+              to === null ? (
+                <span className={titleClassName} title={title}>
+                  {title}
+                </span>
+              ) : (
+                <Link to={to} className={`${titleClassName} hover:underline`} title={title}>
+                  {title}
+                </Link>
+              ),
+              <span className="inline-flex items-center gap-1 font-semibold text-[var(--bo-accent-fg)]">
+                {expansion.label}
+                <Icon
+                  name="chevron-down"
+                  className="size-3.5 transition-transform group-open/expansion:rotate-180"
+                />
+              </span>,
+            )}
+          </summary>
+          {/* Lines up with the title past a leading tile. */}
+          <div className={`pb-3 ${leading === null ? "" : "pl-11"}`}>{expansion.content}</div>
+        </details>
+      </li>
+    );
+  }
+
+  const row = content(
+    <span
+      className={`${titleClassName} ${to === null ? "" : "group-hover:underline"}`}
+      title={title}
+    >
+      {title}
+    </span>,
+    null,
   );
   return (
     <li>
       {to === null ? (
-        <div className={rowClassName}>{content}</div>
+        <div className={rowClassName}>{row}</div>
       ) : (
         <Link to={to} className={rowClassName}>
-          {content}
+          {row}
         </Link>
       )}
     </li>

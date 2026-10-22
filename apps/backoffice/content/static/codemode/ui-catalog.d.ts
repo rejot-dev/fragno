@@ -155,7 +155,7 @@ type BackofficeUiComponents = {
     }>,
     children: BackofficeUiElement[] | BackofficeUiRepeat,
   ): BackofficeUiElement;
-  /** Builds ListRow. One row of a rowList: an icon, its title, a muted detail line, and its children at the end, such as a relativeTime, badge, or sparkBars. With to, the whole row is a link, so its children hold no links. A tone puts the icon on a tile in that tone, for rows that ask for something. */
+  /** Builds ListRow. One row of a rowList: an icon, its title, a muted detail line, and its children at the end, such as a relativeTime, badge, or sparkBars. With to, the whole row is a link, so its children hold no links. A tone puts the icon on a tile in that tone, for rows that ask for something. Elements in expanded show below the row once it is opened with its expandLabel toggle (Details by default), such as ui.workflowResponse; then only the title links to to. */
   listRow(
     props: BackofficeUiProps<{
       /** 1-200 characters */
@@ -208,7 +208,9 @@ type BackofficeUiComponents = {
         | "x-circle"
         | "zap";
       tone?: "info" | "live" | "waiting" | "failed" | "muted";
-    }>,
+      /** 1-40 characters */
+      expandLabel?: string;
+    }> & { expanded?: BackofficeUiElement[] },
     children: BackofficeUiElement[] | BackofficeUiRepeat,
   ): BackofficeUiElement;
   /** Builds Divider. Separates report sections with an optional compact label. */

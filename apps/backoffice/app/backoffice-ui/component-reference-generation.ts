@@ -89,15 +89,17 @@ function renderPropsType(propsSchema: z.ZodObject, depth: number) {
 /** Declares the ui.* function of every catalog component, with its canonical props, for ui.d.ts. */
 export function generateBackofficeUiCatalogDeclarations() {
   const componentFunctions = backofficeUiBuilderComponents.map(
-    ({ functionName, type, acceptsChildren }) => {
+    ({ functionName, type, acceptsChildren, slots }) => {
       const definition =
         backofficeUiComponentDefinitions[type as keyof typeof backofficeUiComponentDefinitions];
       const propsType = renderPropsType(definition.props, 1);
+      // A named slot is a prop that holds elements.
+      const slotProps = slots.map((slot) => ` & { ${slot}?: BackofficeUiElement[] }`).join("");
       const children = acceptsChildren
         ? ", children: BackofficeUiElement[] | BackofficeUiRepeat"
         : "";
       return `  /** Builds ${type}. ${definition.description} */
-  ${functionName}(props: BackofficeUiProps<${propsType}>${children}): BackofficeUiElement;`;
+  ${functionName}(props: BackofficeUiProps<${propsType}>${slotProps}${children}): BackofficeUiElement;`;
     },
   );
   const submitPropsType = renderPropsType(

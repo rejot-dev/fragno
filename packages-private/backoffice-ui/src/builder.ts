@@ -10,6 +10,8 @@ export const backofficeUiBuilderComponents = Object.entries(backofficeUiComponen
     functionName: `${type.charAt(0).toLowerCase()}${type.slice(1)}`,
     type,
     acceptsChildren: (definition.slots as readonly string[]).includes("default"),
+    // Named slots are passed as props that hold elements, such as `expanded: [...]`.
+    slots: (definition.slots as readonly string[]).filter((slot) => slot !== "default"),
   }),
 );
 
@@ -35,8 +37,8 @@ const BACKOFFICE_UI_BUILDER_SOURCE = String.raw`({ components, maxElements }) =>
     throw new TypeError(message);
   };
   const ignoredKey = (key) => typeof key !== "string" || key === "then" || key === "toJSON";
-  const element = (type, props, children, visible, repeat) => {
-    const created = Object.freeze({ type, props, children, visible, repeat });
+  const element = (type, props, children, visible, repeat, slots) => {
+    const created = Object.freeze({ type, props, children, visible, repeat, slots });
     elements.add(created);
     return created;
   };
@@ -82,23 +84,33 @@ const BACKOFFICE_UI_BUILDER_SOURCE = String.raw`({ components, maxElements }) =>
   for (const component of components) {
     const name = "ui." + component.functionName;
     ui[component.functionName] = (...args) => {
-      const props = args[0];
-      if (!isRecord(props) || live.has(props)) {
-        fail(name + " expects a props object, received " + describe(props) + ".");
+      const given = args[0];
+      if (!isRecord(given) || live.has(given)) {
+        fail(name + " expects a props object, received " + describe(given) + ".");
+      }
+      const props = { ...given };
+      const slots = {};
+      for (const slot of component.slots) {
+        if (!Object.hasOwn(props, slot)) continue;
+        if (!Array.isArray(props[slot])) {
+          fail(name + " " + slot + " expects an array of ui elements, received " + describe(props[slot]) + ".");
+        }
+        slots[slot] = props[slot].map((child, index) => requireElement(child, name + " " + slot + " " + index));
+        delete props[slot];
       }
       if (!component.acceptsChildren) {
         if (args.length > 1) fail(name + " does not accept children.");
-        return element(component.type, props, [], null, null);
+        return element(component.type, props, [], null, null, slots);
       }
       const children = args[1];
       if (repeats.has(children)) {
-        return element(component.type, props, [repeats.get(children).template], null, repeats.get(children));
+        return element(component.type, props, [repeats.get(children).template], null, repeats.get(children), slots);
       }
       if (!Array.isArray(children)) {
         fail(name + "(props, children) expects a children array or ui.each(rows, render), received " + describe(children) + ".");
       }
       children.forEach((child, index) => requireElement(child, name + " child " + index));
-      return element(component.type, props, [...children], null, null);
+      return element(component.type, props, [...children], null, null, slots);
     };
   }
 
@@ -129,7 +141,7 @@ const BACKOFFICE_UI_BUILDER_SOURCE = String.raw`({ components, maxElements }) =>
   ui.when = (condition, target) => {
     requireElement(target, "ui.when(condition, element) element");
     const visible = target.visible === null ? condition : { $and: [target.visible, condition] };
-    const shown = element(target.type, target.props, target.children, visible, target.repeat);
+    const shown = element(target.type, target.props, target.children, visible, target.repeat, target.slots);
     if (submitForms.has(target)) submitForms.set(shown, submitForms.get(target));
     return shown;
   };
@@ -168,7 +180,7 @@ const BACKOFFICE_UI_BUILDER_SOURCE = String.raw`({ components, maxElements }) =>
         if (Object.hasOwn(props, "eventType") || Object.hasOwn(props, "payload")) {
           fail("form.submit sets eventType and payload itself; pass label, variant, or confirmation.");
         }
-        const button = element("WorkflowEventButton", { ...props, eventType, payload: { $state: "/response" } }, [], null, null);
+        const button = element("WorkflowEventButton", { ...props, eventType, payload: { $state: "/response" } }, [], null, null, {});
         submitForms.set(button, form);
         return button;
       },
@@ -207,6 +219,12 @@ const BACKOFFICE_UI_BUILDER_SOURCE = String.raw`({ components, maxElements }) =>
         rendered.children = [visit(node.repeat.template, id + ".0", node.repeat.scope)];
       } else {
         rendered.children = node.children.map((child, index) => visit(child, id + "." + index, scope));
+      }
+      const slotNames = Object.keys(node.slots);
+      if (slotNames.length > 0) {
+        rendered.slots = Object.fromEntries(
+          slotNames.map((slot) => [slot, node.slots[slot].map((child, index) => visit(child, id + "." + slot + "." + index, scope))]),
+        );
       }
       return id;
     };

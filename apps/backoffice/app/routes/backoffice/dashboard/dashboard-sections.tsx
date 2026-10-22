@@ -1,6 +1,6 @@
 import type { AutomationRouteDefinition } from "@fragno-dev/backoffice-api/v0/automation";
 import { RunStatusLight } from "@fragno-private/backoffice-ui/run-status-light";
-import { Icon, type IconName } from "@fragno-private/design-system/icon";
+import { Icon } from "@fragno-private/design-system/icon";
 import { ListRow, ListRowIcon, RowList } from "@fragno-private/design-system/list-row";
 import {
   Panel,
@@ -13,7 +13,7 @@ import { formatRelativeTime } from "@fragno-private/design-system/relative-time"
 import { SparkBars } from "@fragno-private/design-system/spark-bars";
 import { StackedBarChart } from "@fragno-private/design-system/stacked-bar-chart";
 import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 
 import {
@@ -146,32 +146,6 @@ function ShowMoreFooter({ to, page }: { to: string; page: string }) {
   );
 }
 
-function TextLink({ to, children }: { to: string; children: ReactNode }) {
-  return (
-    <Link
-      to={to}
-      className="font-semibold whitespace-nowrap text-[var(--bo-accent-fg)] hover:underline"
-    >
-      {children}
-    </Link>
-  );
-}
-
-const attentionTiles = {
-  "awaiting-input": {
-    icon: "edit-3",
-    className: "bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]",
-  },
-  "failing-workflow": {
-    icon: "alert-triangle",
-    className: "bg-[var(--bo-failed-bg)] text-[var(--bo-failed)]",
-  },
-  "connection-unavailable": {
-    icon: "link",
-    className: "bg-[var(--bo-waiting-bg)] text-[var(--bo-waiting)]",
-  },
-} as const satisfies Record<DashboardAttention["kind"], { icon: IconName; className: string }>;
-
 function AttentionPanel({
   attention,
   now,
@@ -183,20 +157,23 @@ function AttentionPanel({
 }) {
   return (
     <Panel title="Needs attention" leading={null} footer={null}>
-      {attention.length === 0 ? (
-        <p className="flex items-center gap-2 py-5 text-sm text-[var(--bo-muted)]">
-          <Icon name="check" className="size-4 text-[var(--bo-live)]" />
-          Nothing needs attention. Runs are healthy and every connection is ready.
-        </p>
-      ) : (
-        <ul className="divide-y divide-[color:var(--bo-border)]">
-          {attention.map((item) => (
-            <li key={attentionKey(item)} className="py-3">
-              <AttentionItem item={item} now={now} selectedScope={selectedScope} />
-            </li>
-          ))}
-        </ul>
-      )}
+      <RowList
+        empty={
+          <span className="flex items-center gap-2">
+            <Icon name="check" className="size-4 text-[var(--bo-live)]" />
+            Nothing needs attention. Runs are healthy and every connection is ready.
+          </span>
+        }
+      >
+        {attention.map((item) => (
+          <AttentionRow
+            key={attentionKey(item)}
+            item={item}
+            now={now}
+            selectedScope={selectedScope}
+          />
+        ))}
+      </RowList>
     </Panel>
   );
 }
@@ -213,7 +190,7 @@ function attentionKey(item: DashboardAttention) {
   throw new Error("Unsupported dashboard attention item.");
 }
 
-function AttentionItem({
+function AttentionRow({
   item,
   now,
   selectedScope,
@@ -222,84 +199,55 @@ function AttentionItem({
   now: number;
   selectedScope: BackofficeScopeSelection;
 }) {
-  const tile = attentionTiles[item.kind];
-  const row = (title: string, detail: ReactNode, time: Date | string, action: ReactNode) => (
-    <div className="flex items-start gap-3">
-      <span
-        className={`flex size-8 shrink-0 items-center justify-center rounded-[4px] ${tile.className}`}
-      >
-        <Icon name={tile.icon} className="size-4" />
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-[var(--bo-fg)]">{title}</p>
-        <div className="mt-0.5 text-xs text-[var(--bo-muted)]">{detail}</div>
-      </div>
-      <div className="flex shrink-0 items-center gap-4 text-xs">
-        <span className="text-[var(--bo-muted-2)] tabular-nums">
-          {formatRelativeTime(time, now)}
-        </span>
-        {action}
-      </div>
-    </div>
-  );
-
   switch (item.kind) {
     case "awaiting-input":
       return (
-        <details className="group">
-          <summary className="cursor-pointer list-none marker:content-none">
-            {row(
-              item.workflow,
-              "Waiting for your input",
-              item.run.updatedAt,
-              <>
-                <span className="inline-flex items-center gap-1 font-semibold text-[var(--bo-accent-fg)]">
-                  Respond
-                  <Icon
-                    name="chevron-down"
-                    className="size-3.5 transition-transform group-open:rotate-180"
-                  />
-                </span>
-                <TextLink to={dashboardRunPath(selectedScope, item.run)}>Open run</TextLink>
-              </>,
-            )}
-          </summary>
-          <div className="mt-3 ml-11">
-            <WorkflowRunGeneratedInterface
-              run={{ ...item.run, steps: item.run.workflowSteps }}
-              generatedUi={item.generatedUi}
-              resolvedScope={selectedScope}
-            />
-          </div>
-        </details>
+        <ListRow
+          to={dashboardRunPath(selectedScope, item.run)}
+          leading={<ListRowIcon name="edit-3" tone="info" />}
+          title={item.workflow}
+          detail="Waiting for your input"
+          trailing={<RowTime time={formatRelativeTime(item.run.updatedAt, now)} />}
+          expansion={{
+            label: "Respond",
+            content: (
+              <WorkflowRunGeneratedInterface
+                run={{ ...item.run, steps: item.run.workflowSteps }}
+                generatedUi={item.generatedUi}
+                resolvedScope={selectedScope}
+              />
+            ),
+          }}
+        />
       );
     case "failing-workflow":
-      return row(
-        item.workflow,
-        <>
-          <span className="font-semibold text-[var(--bo-failed)]">
-            {item.erroredRuns} errored {item.erroredRuns === 1 ? "run" : "runs"}
-          </span>
-          {item.error ? (
-            <span className="mt-0.5 block truncate font-mono text-[11px]" title={item.error}>
-              {item.error}
-            </span>
-          ) : null}
-        </>,
-        item.latestRun.updatedAt,
-        <TextLink to={dashboardRunPath(selectedScope, item.latestRun)}>Latest run</TextLink>,
+      return (
+        <ListRow
+          to={dashboardRunPath(selectedScope, item.latestRun)}
+          leading={<ListRowIcon name="alert-triangle" tone="failed" />}
+          title={item.workflow}
+          detail={item.error ?? "Errored"}
+          trailing={
+            <>
+              <BackofficeStatusLight tone="failed" dot={false}>
+                {item.erroredRuns} errored {item.erroredRuns === 1 ? "run" : "runs"}
+              </BackofficeStatusLight>
+              <RowTime time={formatRelativeTime(item.latestRun.updatedAt, now)} />
+            </>
+          }
+          expansion={null}
+        />
       );
     case "connection-unavailable":
-      return row(
-        item.connection.displayName,
-        <>
-          {item.connection.kindLabel} connection is unavailable ·{" "}
-          <span className="font-mono">{item.connection.connectionId}</span>
-        </>,
-        item.connection.changedAt,
-        <TextLink to={integrationConnectionPath(selectedScope, item.connection.connectionId)}>
-          Fix
-        </TextLink>,
+      return (
+        <ListRow
+          to={integrationConnectionPath(selectedScope, item.connection.connectionId)}
+          leading={<ListRowIcon name="link" tone="waiting" />}
+          title={item.connection.displayName}
+          detail={`${item.connection.kindLabel} connection is unavailable`}
+          trailing={<RowTime time={formatRelativeTime(item.connection.changedAt, now)} />}
+          expansion={null}
+        />
       );
   }
   throw new Error("Unsupported dashboard attention item.");
@@ -502,6 +450,7 @@ function ConnectionsPanel({
             title={connection.displayName}
             detail={`${connection.kindLabel} · ${formatRelativeTime(connection.changedAt, now)}`}
             trailing={<IntegrationConnectionStateLight state={connection.state} />}
+            expansion={null}
           />
         ))}
       </RowList>
@@ -529,7 +478,8 @@ function UpcomingPanel({
               leading={<ListRowIcon name="clock" tone={null} />}
               title={entry.name}
               detail="Scheduled route"
-              trailing={<UpcomingTime time={formatRelativeTime(entry.at, now)} />}
+              trailing={<RowTime time={formatRelativeTime(entry.at, now)} />}
+              expansion={null}
             />
           ) : (
             <ListRow
@@ -542,7 +492,8 @@ function UpcomingPanel({
                   ? `Waiting for ${entry.waitingFor.join(", ")}`
                   : "Waiting"
               }
-              trailing={<UpcomingTime time={formatRelativeTime(entry.run.updatedAt, now)} />}
+              trailing={<RowTime time={formatRelativeTime(entry.run.updatedAt, now)} />}
+              expansion={null}
             />
           ),
         )}
@@ -551,7 +502,7 @@ function UpcomingPanel({
   );
 }
 
-function UpcomingTime({ time }: { time: string }) {
+function RowTime({ time }: { time: string }) {
   return <span className="text-[var(--bo-muted-2)] tabular-nums">{time}</span>;
 }
 
@@ -601,6 +552,7 @@ function AgentsPanel({
                   ) : null}
                 </>
               }
+              expansion={null}
             />
           );
         })}
