@@ -253,6 +253,54 @@ test("an interruption inside a step discards the attempt and stops further steps
   );
 });
 
+test("an interruption while consuming an event leaves the event for the rerun", async () => {
+  let consumptions = 0;
+  const workflow = defineRemoteWorkflow({ name: "approval" }, async (_event, remote) => {
+    const approval = await remote.waitForEvent<{ by: string }>(null, "approval", {
+      type: "approved",
+      onConsume: () => {
+        consumptions += 1;
+        if (consumptions === 1) {
+          remote.interruptTick("EXECUTOR_UNREACHABLE");
+        }
+      },
+    });
+    return approval.payload.by;
+  });
+  await runScenario(
+    defineScenario({
+      name: "an interrupted event consumption is retried",
+      workflows: { APPROVAL: workflow },
+      harness: { adapter: { type: "in-memory" }, autoTickHooks: true },
+      steps: ({ workflow, runner }) => [
+        workflow.create({ workflow: "APPROVAL", id: "approval-1", remoteWorkflowName: "approval" }),
+        runner.drainHooks(),
+        workflow.event({
+          workflow: "APPROVAL",
+          instanceId: "approval-1",
+          event: { type: "approved", payload: { by: "ada" } },
+        }),
+        runner.drainHooks(),
+        workflow.read({
+          read: (ctx) => ctx.state.getStatus("APPROVAL", "approval-1"),
+          assert: (status) => {
+            assert.equal(status.status, "waiting");
+            assert.equal(consumptions, 1);
+          },
+        }),
+        runner.advanceTimeAndDrainHooks({ advanceBy: "30 seconds" }),
+        workflow.read({
+          read: (ctx) => ctx.state.getStatus("APPROVAL", "approval-1"),
+          assert: (status) => {
+            expect(status).toMatchObject({ status: "complete", output: "ada" });
+            assert.equal(consumptions, 2);
+          },
+        }),
+      ],
+    }),
+  );
+});
+
 test("a healthy tick resets the interruption count that a stale retry would carry", async () => {
   const executor = { down: true, ticks: 0 };
   const workflow = defineRemoteWorkflow({ name: "recovering" }, async (_event, remote) => {
