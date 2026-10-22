@@ -96,6 +96,14 @@ export const queryEngineSuiteSchema = schema("query_engine_suite", (s) =>
         .addColumn("scope", column("string"))
         .addColumn("key", column("string"))
         .createIndex("reservations_scope_key_idx", ["scope", "key"], { unique: true }),
+    )
+    // Names its user by external id in a plain string column, not a reference.
+    .addTable("user_notes", (t) =>
+      t
+        .addColumn("id", idColumn())
+        .addColumn("user_external_id", column("string"))
+        .addColumn("text", column("string"))
+        .createIndex("user_notes_user_idx", ["user_external_id"]),
     ),
 );
 
