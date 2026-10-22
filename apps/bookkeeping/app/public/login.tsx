@@ -29,7 +29,7 @@ export default function Login({ loaderData }: Route.ComponentProps) {
           : "Sign in or create your account. "}
         We'll email you a code, so there's no password to remember.
       </p>
-      <SignInButton returnTo={loaderData.returnTo} />
+      <SignInButton returnTo={loaderData.returnTo} email={null} />
       <p>
         Trouble signing in? <Link to="/help">Get help</Link>
       </p>

@@ -1,10 +1,8 @@
-import { Button } from "@fragno-private/design-system/button";
 import { FormContainer } from "@fragno-private/design-system/form-container";
 import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
-import { useState } from "react";
 import { useOutletContext } from "react-router";
 
-import { authClient } from "../auth/auth-client";
+import { SignOutButton } from "../auth/sign-out-button";
 import type { WorkspaceOutletContext } from "./layout";
 
 export function meta() {
@@ -13,26 +11,6 @@ export function meta() {
 
 export default function Account() {
   const { user, workspace } = useOutletContext<WorkspaceOutletContext>();
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function logOut() {
-    setPending(true);
-    setError(null);
-    try {
-      const result = await authClient.signOut();
-      if (result.error) {
-        setError("Could not log out. Please try again.");
-        setPending(false);
-      } else {
-        window.location.assign("/login");
-      }
-    } catch {
-      setError("Could not connect. Please try again.");
-      setPending(false);
-    }
-  }
-
   return (
     <div className="space-y-6">
       <BackofficePageHeader
@@ -57,20 +35,7 @@ export default function Account() {
           </dl>
         </FormContainer>
         <FormContainer title="Session" description="Log out of Bookkeeping on this browser.">
-          <Button
-            variant="secondary"
-            disabled={pending}
-            onClick={() => {
-              void logOut();
-            }}
-          >
-            {pending ? "Logging out…" : "Log out"}
-          </Button>
-          {error && (
-            <p role="alert" className="text-sm text-[var(--bo-failed)]">
-              {error}
-            </p>
-          )}
+          <SignOutButton then="/login" />
         </FormContainer>
       </div>
     </div>

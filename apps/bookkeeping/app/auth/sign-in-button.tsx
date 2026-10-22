@@ -8,8 +8,9 @@ import { authClient } from "./auth-client";
  * Starts signing in, returning to `returnTo` afterwards, or to this page if it fails. Backoffice
  * holds every Bookkeeping account; its sign-in page looks like Bookkeeping, asks for an email, and
  * creates the account for a new address, so this one button serves new and returning people alike.
+ * With `email`, that page starts with the address filled in.
  */
-export function SignInButton({ returnTo }: { returnTo: string }) {
+export function SignInButton({ returnTo, email }: { returnTo: string; email: string | null }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [params] = useSearchParams();
@@ -23,6 +24,8 @@ export function SignInButton({ returnTo }: { returnTo: string }) {
         provider: "backoffice",
         callbackURL: returnTo,
         errorCallbackURL: pathname + search,
+        // OAuth's login_hint; the person can still change it.
+        loginHint: email ?? undefined,
       });
       if (result.error) {
         setError("We couldn't start signing in. Please try again.");

@@ -158,10 +158,11 @@ the viewer and refresh the copy, showing the names people gave Bookkeeping.
 owners). Apps cannot use `org.invitations.create`, which only people acting directly may. Backoffice
 then emails the invitation in Bookkeeping's name with `invitations.send`, linking to
 `/invitations/:invitationId`; the page shows the link too, to send by hand when Backoffice cannot
-email, as a local Backoffice without Resend cannot. The invited person signs in there and joins:
-Bookkeeping calls `invitations.accept`, and Backoffice checks that the invitation is for their
-verified address. Invitations are sent only from Bookkeeping; someone invited in Backoffice itself
-finds the workspace once they open it.
+email, as a local Backoffice without Resend cannot. The invited person signs in there, with
+Backoffice's sign-in page already showing the invited address; someone signed in with another
+address is offered to log out first. They then join: Bookkeeping calls `invitations.accept`, and
+Backoffice checks that the invitation is for their verified address. Invitations are sent only from
+Bookkeeping; someone invited in Backoffice itself finds the workspace once they open it.
 
 ### Backoffice actions
 
