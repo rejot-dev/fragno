@@ -17,6 +17,7 @@ import {
   JoinConditionMustBeEqualityError,
   JoinError,
   isNull,
+  isUndefined,
   length,
   like,
   LimitOffsetRequireOrderByError,
@@ -55,6 +56,14 @@ import {
 // The file was validated against these functions' arities, so they are called untyped.
 type Operator = (...args: unknown[]) => unknown;
 
+/**
+ * TanStack DB leaves a left join's fields undefined where nothing matches, and its isNull matches
+ * only null, so a page's isNull matches both, as pages read unmatched fields as null.
+ */
+function isMissing(value: unknown) {
+  return or(isNull(value as never), isUndefined(value as never));
+}
+
 const FUNCTIONS = {
   eq,
   gt,
@@ -64,7 +73,7 @@ const FUNCTIONS = {
   and,
   or,
   not,
-  isNull,
+  isNull: isMissing,
   inArray,
   like,
   ilike,
