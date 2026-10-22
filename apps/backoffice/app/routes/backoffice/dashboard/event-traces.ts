@@ -34,6 +34,7 @@ export function eventTraceEventsQuery(
     subject: event.subject,
     causation: event.causation,
     rootEventId: event.rootEventId,
+    routesMatched: event.routesMatched,
   }));
 }
 
@@ -115,6 +116,28 @@ export function eventTraceStepsQuery(
     }));
 }
 
+/**
+ * The workflow events of the runs in the open trace, so a route's delivery to a run that was
+ * already going can be followed into the steps it set off.
+ */
+export function eventTraceDeliveriesQuery(
+  query: InitialQueryBuilder,
+  collections: Pick<AutomationCollections, "workflowEvents">,
+  instanceRefs: readonly string[],
+) {
+  return query
+    .from({ delivery: collections.workflowEvents })
+    .where(({ delivery }) => inArray(delivery.instanceRef, [...instanceRefs]))
+    .select(({ delivery }) => ({
+      id: delivery.id,
+      instanceRef: delivery.instanceRef,
+      type: delivery.type,
+      createdAt: delivery.createdAt,
+      deliveredAt: delivery.deliveredAt,
+      consumedByStepKey: delivery.consumedByStepKey,
+    }));
+}
+
 export type EventTraceEvent = {
   id: string;
   source: string;
@@ -125,6 +148,8 @@ export type EventTraceEvent = {
   /** `null` for events recorded before causation was tracked; they are origins. */
   causation: AutomationEventCausation | null;
   rootEventId: string | null;
+  /** `false` until every route the event matched is recorded, so no route yet means "not yet". */
+  routesMatched: boolean;
 };
 
 export type EventTraceDispatch = {
@@ -166,11 +191,22 @@ export type EventTraceStep = {
   updatedAt: Date;
 };
 
+/** A workflow event sent to a run; routes send theirs as `<routeId>:<eventId>`. */
+export type EventTraceDelivery = {
+  id: string;
+  instanceRef: string;
+  type: string;
+  createdAt: Date;
+  /** `null` until a step of the run takes the event. */
+  deliveredAt: Date | null;
+  consumedByStepKey: string | null;
+};
+
 /** The records behind each node, so a selected node can show what it stands for. */
 export type EventTraceRecord =
   | { kind: "event"; event: EventTraceEvent }
   | { kind: "dispatch"; dispatch: EventTraceDispatch }
-  | { kind: "run"; nodeId: string; run: EventTraceRun | null; dispatch: EventTraceDispatch }
+  | { kind: "run"; nodeId: string; run: EventTraceRun }
   | { kind: "step"; step: EventTraceStep; run: EventTraceRun; runNodeId: string };
 
 export type EventTrace = {
@@ -267,6 +303,25 @@ function startedRunKey(dispatch: EventTraceDispatch): string | null {
     : null;
 }
 
+/** The workflow run a route started or sent an event to, if it did either. */
+function actedOnRunKey(dispatch: EventTraceDispatch): string | null {
+  const outcome = completedOutcome(dispatch);
+  return outcome?.kind === "workflow_started" || outcome?.kind === "workflow_event_sent"
+    ? runKey(outcome.workflowName, outcome.instanceId)
+    : null;
+}
+
+/** The id a route gives the workflow event it sends for an automation event. */
+function routeDeliveryId(dispatch: EventTraceDispatch): string {
+  return `${dispatch.routeId}:${dispatch.eventId}`;
+}
+
+const TERMINAL_RUN_STATUSES: ReadonlySet<WorkflowInstanceStatus> = new Set([
+  "complete",
+  "errored",
+  "terminated",
+]);
+
 const RUN_STATUS: Record<WorkflowInstanceStatus, CausalFlameStatus> = {
   active: "running",
   waiting: "waiting",
@@ -295,18 +350,6 @@ export function describeRouteDispatchSkipReason(reason: AutomationRouteDispatchS
 }
 
 type RouteDispatchProgress = Exclude<AutomationRouteDispatchState, { status: "completed" }>;
-
-function dispatchProgressLabel(routeName: string, state: RouteDispatchProgress): string {
-  switch (state.status) {
-    case "pending":
-      return `${routeName} is about to act`;
-    case "retrying":
-      return `${routeName} is retrying`;
-    case "failed":
-      return `${routeName} failed`;
-  }
-  throw new Error("Unsupported automation route dispatch state.");
-}
 
 /** What a route that has not completed is doing, such as the error it will retry after. */
 export function describeRouteDispatchProgress(state: RouteDispatchProgress): string {
@@ -364,7 +407,7 @@ export function projectEventTraceSummaries({
         eventType: origin.eventType,
         headline: eventHeadline(origin.payload),
         occurredAt: origin.occurredAt,
-        effects: traceEffects(rootDispatches, rootRuns, derivedEvents),
+        effects: traceEffects(rootDispatches, runsByKey, derivedEvents),
         outcome: traceOutcome(origin, derivedEvents, rootDispatches, rootRuns),
       };
     });
@@ -384,51 +427,60 @@ function distinct(values: readonly string[]): string[] {
 }
 
 /**
- * The workflows and agents an event set to work say the most about what it did. Without any, the
- * derived events say it, and without those, what the routes did instead.
+ * What each route the trace matched did, in the order they matched, so an event that fanned out
+ * lists every branch. A route that started or sent an event to a workflow, or notified an agent, is
+ * named by that worker.
+ * Reclassifications and skips only stand in when no route did anything else, because the routes of
+ * a reclassified event already say what came of it.
  */
 function traceEffects(
   dispatches: readonly EventTraceDispatch[],
-  runs: readonly EventTraceRun[],
-  derivedEvents: readonly EventTraceEvent[],
+  runsByKey: ReadonlyMap<string, EventTraceRun>,
+  events: readonly EventTraceEvent[],
 ): string[] {
-  const workers = [
-    ...runs.map((run) => run.remoteWorkflowName ?? run.workflowName),
-    ...dispatches.flatMap((dispatch) => {
-      const outcome = completedOutcome(dispatch);
-      return outcome?.kind === "agent_notified" ? [`${outcome.agentName} agent`] : [];
-    }),
-  ];
-  if (workers.length > 0) {
-    return distinct(workers);
-  }
-  if (derivedEvents.length > 0) {
-    return distinct(derivedEvents.map((event) => event.eventType));
-  }
-  return distinct(
-    dispatches.flatMap(({ routeName, state }) => {
-      if (state.status === "failed") {
-        return [`${routeName} failed`];
+  const effects = dispatches.map(({ routeName, state }): { text: string; acted: boolean } => {
+    switch (state.status) {
+      case "pending":
+      case "retrying":
+        return { text: routeName, acted: true };
+      case "failed":
+        return { text: `${routeName} failed`, acted: true };
+      case "completed":
+        break;
+    }
+    const { outcome } = state;
+    switch (outcome.kind) {
+      case "workflow_started": {
+        const run = runsByKey.get(runKey(outcome.workflowName, outcome.instanceId));
+        return {
+          text: run?.remoteWorkflowName ?? run?.workflowName ?? outcome.workflowName,
+          acted: true,
+        };
       }
-      if (state.status !== "completed") {
-        return [];
+      // A delivery is named by the run that took it, like a run a route started.
+      case "workflow_event_sent": {
+        const run = runsByKey.get(runKey(outcome.workflowName, outcome.instanceId));
+        return {
+          text: run?.remoteWorkflowName ?? `${routeName} delivered ${outcome.eventType}`,
+          acted: true,
+        };
       }
-      const { outcome } = state;
-      switch (outcome.kind) {
-        case "skipped":
-          return [`${routeName} skipped`];
-        case "workflow_event_sent":
-          return [`${routeName} delivered ${outcome.eventType}`];
-        case "event_forwarded":
-          return [`${routeName} forwarded`];
-        case "workflow_started":
-        case "event_reclassified":
-        case "agent_notified":
-          return [];
-      }
-      throw new Error("Unsupported automation route dispatch outcome.");
-    }),
-  );
+      case "agent_notified":
+        return { text: `${outcome.agentName} agent`, acted: true };
+      case "event_forwarded":
+        return { text: `${routeName} forwarded`, acted: true };
+      case "event_reclassified":
+        return {
+          text: events.find((event) => event.id === outcome.eventId)?.eventType ?? routeName,
+          acted: false,
+        };
+      case "skipped":
+        return { text: `${routeName} skipped`, acted: false };
+    }
+    throw new Error("Unsupported automation route dispatch outcome.");
+  });
+  const acted = effects.filter((effect) => effect.acted);
+  return distinct((acted.length > 0 ? acted : effects).map((effect) => effect.text));
 }
 
 function traceOutcome(
@@ -437,6 +489,9 @@ function traceOutcome(
   dispatches: readonly EventTraceDispatch[],
   runs: readonly EventTraceRun[],
 ): EventTraceOutcome {
+  if (!origin.routesMatched) {
+    return { kind: "in_progress", state: "running", failedCount: 0 };
+  }
   if (dispatches.length === 0 && derivedEvents.length === 0) {
     return { kind: "unhandled" };
   }
@@ -492,7 +547,10 @@ export function projectEventTraceList(
   return entries;
 }
 
-/** Row ids of the runs routes started within one trace, whose steps the trace draws. */
+/**
+ * Row ids of the runs routes started or sent events to within one trace, whose steps and workflow
+ * events the trace draws.
+ */
 export function eventTraceRunIds({
   rootEventId,
   dispatches,
@@ -504,15 +562,18 @@ export function eventTraceRunIds({
 }): string[] {
   const runsByKey = new Map(runs.map((run) => [runKey(run.workflowName, run.instanceId), run]));
   return dispatches.flatMap((dispatch) => {
-    const key = dispatch.rootEventId === rootEventId ? startedRunKey(dispatch) : null;
+    const key = dispatch.rootEventId === rootEventId ? actedOnRunKey(dispatch) : null;
     const run = key === null ? undefined : runsByKey.get(key);
     return run ? [run.id] : [];
   });
 }
 
 /**
- * Builds one origin's causal tree. Derived events hang from their parent event, or from the run
- * that fired them; runs and route outcomes hang from the event a route dispatched them for.
+ * Builds one origin's causal tree. Every route an event matched hangs from it, so an event that
+ * fans out to several routes reads as siblings; what a route caused, a derived event or a run,
+ * hangs from the route. Events a run fired hang from the run. A run a route only sent an event to
+ * appears for what that event set off: the steps from when it took the event until it waits for
+ * the next one.
  */
 export function projectEventTrace({
   rootEventId,
@@ -520,12 +581,14 @@ export function projectEventTrace({
   dispatches,
   runs,
   steps,
+  deliveries,
 }: {
   rootEventId: string;
   events: readonly EventTraceEvent[];
   dispatches: readonly EventTraceDispatch[];
   runs: readonly EventTraceRun[];
   steps: readonly EventTraceStep[];
+  deliveries: readonly EventTraceDelivery[];
 }): EventTrace | null {
   const traceEvents = events.filter((event) => rootIdOf(event) === rootEventId);
   const root = traceEvents.find((event) => event.id === rootEventId);
@@ -534,11 +597,8 @@ export function projectEventTrace({
   }
   const traceDispatches = dispatches.filter((dispatch) => dispatch.rootEventId === rootEventId);
   const runsByKey = new Map(runs.map((run) => [runKey(run.workflowName, run.instanceId), run]));
-  const routeNames = new Map(
-    traceDispatches.map((dispatch) => [
-      dispatchKey(dispatch.routeId, dispatch.eventId),
-      dispatch.routeName,
-    ]),
+  const dispatchKeys = new Set(
+    traceDispatches.map((dispatch) => dispatchKey(dispatch.routeId, dispatch.eventId)),
   );
   const startedRunKeys = new Set(
     traceDispatches.flatMap((dispatch) => {
@@ -551,14 +611,12 @@ export function projectEventTrace({
   function eventNode(event: EventTraceEvent, detail: string | null): CausalFlameNode {
     const id = `event:${event.id}`;
     records.set(id, { kind: "event", event });
-    const routeChildren = traceEvents.flatMap((child) =>
-      child.causation?.kind === "route" && child.causation.parent.eventId === event.id
-        ? [
-            eventNode(
-              child,
-              `via ${routeNames.get(dispatchKey(child.causation.routeId, event.id)) ?? child.causation.routeId}`,
-            ),
-          ]
+    // A derived event hangs from the route that derived it, unless that route's record is gone.
+    const unroutedChildren = traceEvents.flatMap((child) =>
+      child.causation?.kind === "route" &&
+      child.causation.parent.eventId === event.id &&
+      !dispatchKeys.has(dispatchKey(child.causation.routeId, event.id))
+        ? [eventNode(child, `via route ${child.causation.routeId}`)]
         : [],
     );
     // Events fired by a run outside this trace, such as a manual one, hang from their parent.
@@ -570,7 +628,7 @@ export function projectEventTrace({
         : [],
     );
     const dispatchChildren = traceDispatches.flatMap((dispatch) =>
-      dispatch.eventId === event.id ? dispatchNodes(dispatch) : [],
+      dispatch.eventId === event.id ? [dispatchNode(dispatch)] : [],
     );
     return {
       id,
@@ -579,68 +637,80 @@ export function projectEventTrace({
       detail,
       status: "ok",
       timing: { kind: "instant", at: event.occurredAt.getTime() },
-      children: [...routeChildren, ...orphanedWorkflowChildren, ...dispatchChildren],
+      children: [...dispatchChildren, ...unroutedChildren, ...orphanedWorkflowChildren],
     };
   }
 
-  function dispatchNodes(dispatch: EventTraceDispatch): CausalFlameNode[] {
+  function dispatchNode(dispatch: EventTraceDispatch): CausalFlameNode {
     const { state } = dispatch;
     const id = `dispatch:${dispatch.id}`;
-    const at = dispatch.dispatchedAt.getTime();
+    records.set(id, { kind: "dispatch", dispatch });
+    const route = {
+      id,
+      kind: "route",
+      label: dispatch.routeName,
+      timing: { kind: "instant", at: dispatch.dispatchedAt.getTime() },
+    } as const;
     if (state.status !== "completed") {
-      records.set(id, { kind: "dispatch", dispatch });
-      return [
-        routeNode(id, dispatchProgressLabel(dispatch.routeName, state), {
-          detail: describeRouteDispatchProgress(state),
-          status: DISPATCH_STATUS[state.status],
-          at,
-        }),
-      ];
+      return {
+        ...route,
+        detail: describeRouteDispatchProgress(state),
+        status: DISPATCH_STATUS[state.status],
+        children: [],
+      };
     }
     const { outcome } = state;
     switch (outcome.kind) {
-      // The derived event is a node of its own, which already names the route.
-      case "event_reclassified":
-        return [];
+      case "event_reclassified": {
+        const derived = traceEvents.filter(
+          (event) =>
+            event.causation?.kind === "route" &&
+            event.causation.routeId === dispatch.routeId &&
+            event.causation.parent.eventId === dispatch.eventId,
+        );
+        return {
+          ...route,
+          detail: "Reclassified the event",
+          status: "ok",
+          children: derived.map((event) => eventNode(event, null)),
+        };
+      }
       case "workflow_started":
-        return [runNode(dispatch, outcome)];
+        return {
+          ...route,
+          detail: "Started a run",
+          status: "ok",
+          children: [runNode(dispatch, outcome)],
+        };
       case "workflow_event_sent":
-        records.set(id, { kind: "dispatch", dispatch });
-        return [
-          routeNode(id, `${dispatch.routeName} delivered ${outcome.eventType}`, {
-            detail: `To run ${outcome.instanceId}`,
-            status: "ok",
-            at,
-          }),
-        ];
+        return {
+          ...route,
+          detail: `Delivered ${outcome.eventType} to run ${outcome.instanceId}`,
+          status: "ok",
+          children: deliveredRunNodes(dispatch, outcome),
+        };
       case "event_forwarded":
-        records.set(id, { kind: "dispatch", dispatch });
-        return [
-          routeNode(id, `${dispatch.routeName} forwarded the event`, {
-            detail: `To ${backofficeScopePathSegment(outcome.scope)}`,
-            status: "ok",
-            at,
-          }),
-        ];
+        return {
+          ...route,
+          detail: `Forwarded to ${backofficeScopePathSegment(outcome.scope)}`,
+          status: "ok",
+          children: [],
+        };
       case "agent_notified":
-        records.set(id, { kind: "dispatch", dispatch });
-        return [
-          routeNode(id, `${dispatch.routeName} notified ${outcome.agentName}`, {
-            // Turns are queued and answered later, so an answer roots a trace of its own.
-            detail: "The agent's answer starts its own trace",
-            status: "ok",
-            at,
-          }),
-        ];
+        return {
+          ...route,
+          // Turns are queued and answered later, so an answer roots a trace of its own.
+          detail: `Notified ${outcome.agentName}; its answer starts its own trace`,
+          status: "ok",
+          children: [],
+        };
       case "skipped":
-        records.set(id, { kind: "dispatch", dispatch });
-        return [
-          routeNode(id, `${dispatch.routeName} skipped`, {
-            detail: describeRouteDispatchSkipReason(outcome.reason),
-            status: "skipped",
-            at,
-          }),
-        ];
+        return {
+          ...route,
+          detail: `Skipped: ${describeRouteDispatchSkipReason(outcome.reason)}`,
+          status: "skipped",
+          children: [],
+        };
     }
     throw new Error("Unsupported automation route dispatch outcome.");
   }
@@ -651,7 +721,6 @@ export function projectEventTrace({
   ): CausalFlameNode {
     const run = runsByKey.get(runKey(outcome.workflowName, outcome.instanceId)) ?? null;
     const id = `run:${outcome.workflowName}:${outcome.instanceId}`;
-    records.set(id, { kind: "run", nodeId: id, run, dispatch });
     const label = run === null ? outcome.instanceId : (run.remoteWorkflowName ?? run.workflowName);
     // The events a run fired still belong under it when its row is gone, or not synchronized yet.
     const firedEvents = traceEvents.flatMap((event) =>
@@ -662,21 +731,24 @@ export function projectEventTrace({
         : [],
     );
     if (run === null) {
+      // Only the route that started it still tells anything about it.
+      records.set(id, { kind: "dispatch", dispatch });
       return {
         id,
         kind: "workflow",
         label,
-        detail: `via ${dispatch.routeName}; the run is no longer recorded`,
+        detail: "The run is no longer recorded",
         status: "pending",
         timing: { kind: "instant", at: dispatch.dispatchedAt.getTime() },
         children: firedEvents,
       };
     }
+    records.set(id, { kind: "run", nodeId: id, run });
     return {
       id,
       kind: "workflow",
       label,
-      detail: run.errorMessage ?? `via ${dispatch.routeName}`,
+      detail: run.errorMessage,
       status: RUN_STATUS[run.status],
       // The runner stamps `startedAt` when a run's first tick commits, not when it begins, so it
       // cannot separate queueing from work: a started run spans from its creation.
@@ -694,54 +766,145 @@ export function projectEventTrace({
     };
   }
 
-  function stepNodes(run: EventTraceRun, runNodeId: string): CausalFlameNode[] {
+  /**
+   * The run as far as one delivered event set it to work. Its span starts when the event was sent,
+   * not when the run was created, so a run that waited days before the trace does not stretch it.
+   */
+  function deliveredRunNodes(
+    dispatch: EventTraceDispatch,
+    outcome: Extract<AutomationRouteDispatchOutcome, { kind: "workflow_event_sent" }>,
+  ): CausalFlameNode[] {
+    const run = runsByKey.get(runKey(outcome.workflowName, outcome.instanceId));
+    if (!run) {
+      return [];
+    }
+    const id = `delivery:${dispatch.id}`;
+    records.set(id, { kind: "run", nodeId: id, run });
+    const label = run.remoteWorkflowName ?? run.workflowName;
+    const delivery = deliveries.find(
+      (candidate) => candidate.instanceRef === run.id && candidate.id === routeDeliveryId(dispatch),
+    );
+    const sentAt = (delivery?.createdAt ?? dispatch.dispatchedAt).getTime();
+    if (!delivery || delivery.deliveredAt === null || delivery.consumedByStepKey === null) {
+      return [
+        {
+          id,
+          kind: "workflow",
+          label,
+          detail: `Has not taken ${outcome.eventType} yet`,
+          status: TERMINAL_RUN_STATUSES.has(run.status) ? "failed" : "pending",
+          timing: { kind: "queued", queuedAt: sentAt },
+          children: [],
+        },
+      ];
+    }
+
+    // What the event set off is what the run did after taking it, until it took its next event.
+    // Steps that commit in one tick share a timestamp, so time bounds them, not step order.
+    const deliveredAt = delivery.deliveredAt.getTime();
+    const consumer = steps.find(
+      (step) => step.instanceRef === run.id && step.stepKey === delivery.consumedByStepKey,
+    );
+    const nextTakenAt = Math.min(
+      ...deliveries.flatMap((other) =>
+        other.instanceRef === run.id &&
+        other.deliveredAt !== null &&
+        other.deliveredAt.getTime() > deliveredAt
+          ? [other.deliveredAt.getTime()]
+          : [],
+      ),
+    );
+    const later = steps
+      .filter(
+        (step) =>
+          step.instanceRef === run.id &&
+          step.parentStepKey === (consumer?.parentStepKey ?? null) &&
+          step.stepKey !== delivery.consumedByStepKey &&
+          step.createdAt.getTime() >= deliveredAt &&
+          step.createdAt.getTime() < nextTakenAt,
+      )
+      .sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
+    const caused = later.filter((step) => step.type !== "waitForEvent");
+    const waitsAgain = later.some((step) => step.type === "waitForEvent");
+    const settled =
+      waitsAgain || Number.isFinite(nextTakenAt) || TERMINAL_RUN_STATUSES.has(run.status);
+    const failedStep = caused.find((step) => step.status === "errored");
+    const failed =
+      failedStep !== undefined ||
+      (!waitsAgain && (run.status === "errored" || run.status === "terminated"));
+    const endedAt = settled
+      ? Math.max(
+          deliveredAt,
+          ...caused.map((step) => step.updatedAt.getTime()),
+          ...(!waitsAgain && run.completedAt !== null ? [run.completedAt.getTime()] : []),
+        )
+      : null;
+    return [
+      {
+        id,
+        kind: "workflow",
+        label,
+        detail: failed
+          ? (failedStep?.errorMessage ?? run.errorMessage)
+          : `Took ${outcome.eventType}`,
+        status: failed
+          ? "failed"
+          : settled
+            ? "ok"
+            : run.status === "waiting" || run.status === "paused"
+              ? "waiting"
+              : "running",
+        timing: {
+          kind: "span",
+          activity: "work",
+          queuedAt: sentAt,
+          startedAt: deliveredAt,
+          endedAt,
+        },
+        children: stepNodes(run, id, caused),
+      },
+    ];
+  }
+
+  function stepNodes(
+    run: EventTraceRun,
+    runNodeId: string,
+    /** The top-level steps to draw, when only part of the run belongs to the trace. */
+    topLevel?: readonly EventTraceStep[],
+  ): CausalFlameNode[] {
     const runSteps = steps.filter((step) => step.instanceRef === run.id);
     const starts = inferWorkflowStepStarts(runSteps, run.createdAt.getTime());
     return nestedStepNodes(null);
 
     function nestedStepNodes(parentStepKey: string | null): CausalFlameNode[] {
-      return runSteps
-        .filter((step) => step.parentStepKey === parentStepKey)
-        .map((step) => {
-          const id = eventTraceStepNodeId(step.id);
-          records.set(id, { kind: "step", step, run, runNodeId });
-          const startedAt = starts.get(step.id) ?? workflowRunTime(step.createdAt);
-          return {
-            id,
-            kind: "step",
-            label: step.name,
-            detail:
-              step.errorMessage ??
-              (step.waitEventType === null ? null : `Waits for ${step.waitEventType}`),
-            status:
-              step.status === "completed" ? "ok" : step.status === "errored" ? "failed" : "waiting",
-            timing: {
-              kind: "span",
-              activity: step.type === "do" ? "work" : "wait",
-              queuedAt: startedAt,
-              startedAt,
-              endedAt: step.status === "waiting" ? null : step.updatedAt.getTime(),
-            },
-            children: nestedStepNodes(step.stepKey),
-          };
-        });
+      return (
+        parentStepKey === null && topLevel !== undefined
+          ? topLevel
+          : runSteps.filter((step) => step.parentStepKey === parentStepKey)
+      ).map((step) => {
+        const id = eventTraceStepNodeId(step.id);
+        records.set(id, { kind: "step", step, run, runNodeId });
+        const startedAt = starts.get(step.id) ?? workflowRunTime(step.createdAt);
+        return {
+          id,
+          kind: "step",
+          label: step.name,
+          detail:
+            step.errorMessage ??
+            (step.waitEventType === null ? null : `Waits for ${step.waitEventType}`),
+          status:
+            step.status === "completed" ? "ok" : step.status === "errored" ? "failed" : "waiting",
+          timing: {
+            kind: "span",
+            activity: step.type === "do" ? "work" : "wait",
+            queuedAt: startedAt,
+            startedAt,
+            endedAt: step.status === "waiting" ? null : step.updatedAt.getTime(),
+          },
+          children: nestedStepNodes(step.stepKey),
+        };
+      });
     }
-  }
-
-  function routeNode(
-    id: string,
-    label: string,
-    fields: { detail: string; status: CausalFlameStatus; at: number },
-  ): CausalFlameNode {
-    return {
-      id,
-      kind: "route",
-      label,
-      detail: fields.detail,
-      status: fields.status,
-      timing: { kind: "instant", at: fields.at },
-      children: [],
-    };
   }
 
   return { rootEventId, root: eventNode(root, null), records };
