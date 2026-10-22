@@ -651,30 +651,33 @@ export function projectEventTrace({
       label: dispatch.routeName,
       timing: { kind: "instant", at: dispatch.dispatchedAt.getTime() },
     } as const;
+    // The events this route caused: what it reclassified the event into, or, once it failed,
+    // the route.failed events announcing it.
+    const caused = traceEvents
+      .filter(
+        (event) =>
+          event.causation?.kind === "route" &&
+          event.causation.routeId === dispatch.routeId &&
+          event.causation.parent.eventId === dispatch.eventId,
+      )
+      .map((event) => eventNode(event, null));
     if (state.status !== "completed") {
       return {
         ...route,
         detail: describeRouteDispatchProgress(state),
         status: DISPATCH_STATUS[state.status],
-        children: [],
+        children: caused,
       };
     }
     const { outcome } = state;
     switch (outcome.kind) {
-      case "event_reclassified": {
-        const derived = traceEvents.filter(
-          (event) =>
-            event.causation?.kind === "route" &&
-            event.causation.routeId === dispatch.routeId &&
-            event.causation.parent.eventId === dispatch.eventId,
-        );
+      case "event_reclassified":
         return {
           ...route,
           detail: "Reclassified the event",
           status: "ok",
-          children: derived.map((event) => eventNode(event, null)),
+          children: caused,
         };
-      }
       case "workflow_started":
         return {
           ...route,

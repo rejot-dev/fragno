@@ -29,6 +29,13 @@ const projectSubjectSchema = z.object({
   projectId: z.string().trim().min(1),
 });
 
+const routeFailedPayloadSchema = z.object({
+  route: z.object({ id: z.string(), name: z.string() }),
+  event: z.object({ id: z.string(), source: z.string(), eventType: z.string() }),
+  error: z.string(),
+  failedAttempts: z.number().int().positive(),
+});
+
 const scheduleTriggeredPayloadSchema = z.object({
   id: z.string().trim().min(1),
   name: z.string().trim().min(1),
@@ -54,8 +61,8 @@ export const automationsCapability: BackofficeCapability = {
     eventSources: [
       {
         source: "automations",
-        label: "Projects",
-        description: "Backoffice project lifecycle events.",
+        label: "Automations",
+        description: "Backoffice project lifecycle events and routes that failed for good.",
       },
       {
         source: "scheduler",
@@ -87,6 +94,21 @@ export const automationsCapability: BackofficeCapability = {
     skillPaths: [],
     externalEntities: [],
     automationEvents: [
+      {
+        source: "automations",
+        eventType: "route.failed",
+        label: "Route failed",
+        description:
+          "Fires when a route fails for good on an event: its error cannot be fixed by retrying, or it ran out of attempts. Fires again each time a retried route fails. A route that fails on a route.failed event fires none.",
+        payloadSchema: routeFailedPayloadSchema,
+        example: {
+          route: { id: "deliver-to-run", name: "Deliver to the triage run" },
+          event: { id: "event-1", source: "github", eventType: "issues.opened" },
+          error:
+            "Workflow run triage-1 has finished, so it can no longer receive events (INSTANCE_TERMINAL).",
+          failedAttempts: 1,
+        },
+      },
       {
         source: "scheduler",
         eventType: "schedule.triggered",

@@ -196,5 +196,8 @@ When an automation did not do what it should for an event, or the user asks what
 **Complete when** each route the event matched is accounted for by its retrieved status and outcome,
 or by the exact error still blocking it.
 
+To act whenever a route fails for good, such as notifying an agent, route the `automations`
+`route.failed` event; the reference describes its payload.
+
 Legacy `router.cm.js` files are outside this topology. Database-backed router rules are the routing
 source of truth; saved workflow files contain the behavior.

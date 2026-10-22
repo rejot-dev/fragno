@@ -315,14 +315,19 @@ test("an agent reads where each route its event matched stands", async () => {
               ].join("\n"),
             );
 
-            // The list carries the same routing, and lists only events a route is failing on.
+            // The list carries the same routing, newest first: the forward route's failure was
+            // recorded as an event of its own.
             const listed = automationEventListResultSchema.parse(
               JSON.parse((await bash.exec("events.list --format json")).stdout),
             );
             expect(listed.events.map((event) => [event.id, event.routing.status])).toEqual([
+              [expect.stringMatching(/^route-failed:forward:/), "matched"],
               [`reclassified:reclassify:${eventId}`, "matched"],
               [eventId, "matched"],
             ]);
+            const reclassified = listed.events.find(
+              (event) => event.id === `reclassified:reclassify:${eventId}`,
+            );
             // Routes in one state list on their own, each with the event it matched.
             const failing = automationEventRoutesListResultSchema.parse(
               JSON.parse(
@@ -355,7 +360,7 @@ test("an agent reads where each route its event matched stands", async () => {
               });
             }
             expect((await bash.exec("events.list")).stdout).toContain(
-              `reclassified:reclassify:${eventId}\t${listed.events[0]?.occurredAt}\tcustom\tcheck.reclassified\tno route`,
+              `reclassified:reclassify:${eventId}\t${reclassified?.occurredAt}\tcustom\tcheck.reclassified\tno route`,
             );
 
             // Only a route that failed for good can run again, and only one the event matched.
