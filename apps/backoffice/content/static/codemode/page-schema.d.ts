@@ -15,7 +15,7 @@ type PageLimits = {
 };
 
 /** The version of the definition page.define writes. */
-type PageDefinitionVersion = 2;
+type PageDefinitionVersion = 3;
 
 type PageCollections = {
   projects: PageCollection<{

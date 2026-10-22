@@ -6,7 +6,7 @@
 
 declare const pageExpressionType: unique symbol;
 declare const pageRowType: unique symbol;
-declare const pageManyRows: unique symbol;
+declare const pageArrayRows: unique symbol;
 
 /** A value inside a query: a field, the current time, or a page function's result. */
 type PageExpression<T> = { readonly [pageExpressionType]: T };
@@ -45,9 +45,9 @@ type PageShown<T> = T extends Date
       : T;
 /** A query's rows as a live value for props such as ui.table rows, or rows for ui.each. */
 type PageRows<TRow> = PageSource<TRow> & BackofficeUiLive<PageShown<TRow>[]>;
-/** A query's rows nested in each selecting row; see many. */
-type PageMany<TRow> = { readonly [pageManyRows]: TRow[] };
-type PageSelected<TValue> = TValue extends PageMany<infer TRow> ? TRow[] : PageValueOf<TValue>;
+/** A query's rows nested in each selecting row; see toArray. */
+type PageArray<TRow> = { readonly [pageArrayRows]: TRow[] };
+type PageSelected<TValue> = TValue extends PageArray<infer TRow> ? TRow[] : PageValueOf<TValue>;
 type PageValueField<TRow> = {
   /** One field of the first row, such as a count for ui.metric value; whenEmpty shows while there are no rows. */
   value<TField extends keyof TRow & string>(
@@ -62,12 +62,16 @@ type PageValueField<TRow> = {
  */
 type PageQuery<TSources, TRow> = PageRows<TRow> &
   PageValueField<TRow> & {
-    /** Keeps rows that match a row of source; on returns eq(field, field). */
+    /**
+     * Keeps rows that match a row of source. on returns eq(left, right), where one side reads the
+     * sources before the join and the other the joined source, such as eq(run.id, step.instanceRef)
+     * or eq(lower(user.email), lower(invite.email)).
+     */
     join<TAlias extends string, TJoined>(
       source: Record<TAlias, PageSource<TJoined>>,
       on: (sources: TSources & Record<TAlias, PageFields<TJoined>>) => PageCondition,
     ): PageQuery<TSources & Record<TAlias, PageFields<TJoined>>, TRow>;
-    /** Keeps every row; source's fields are null where nothing matches. */
+    /** Keeps every row; source's fields are null where nothing matches. on is as for join. */
     leftJoin<TAlias extends string, TJoined>(
       source: Record<TAlias, PageSource<TJoined>>,
       on: (sources: TSources & Record<TAlias, PageFields<TJoined>>) => PageCondition,
@@ -80,7 +84,7 @@ type PageQuery<TSources, TRow> = PageRows<TRow> &
     /** Filters groups, usually by an aggregate. */
     having(condition: (sources: TSources) => PageCondition): PageQuery<TSources, TRow>;
     /** Names the fields each row shows. Joined and grouped queries select their fields. */
-    select<TSelected extends Record<string, PageOperand<unknown> | PageMany<unknown>>>(
+    select<TSelected extends Record<string, PageOperand<unknown> | PageArray<unknown>>>(
       fields: (sources: TSources) => TSelected,
     ): PageQuery<TSources, { [TKey in keyof TSelected]: PageSelected<TSelected[TKey]> }>;
     /** Sorts rows; call it again for ties. Aggregates sort groups. */
@@ -107,7 +111,7 @@ type PageContext = {
    * such as eq(run.workflow, workflow.workflow). A grouped query cannot select it, so group in a
    * subquery and read that with from.
    */
-  many<TRow>(query: PageRows<TRow>): PageMany<TRow>;
+  toArray<TRow>(query: PageRows<TRow>): PageArray<TRow>;
   /** One list of every row of 2 to PageLimits["unionBranches"] queries that select the same fields. */
   unionAll<TQueries extends [PageRows<unknown>, PageRows<unknown>, ...PageRows<unknown>[]]>(
     ...queries: TQueries

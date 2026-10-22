@@ -11,7 +11,7 @@ const PAGE_BUILDER_SOURCE = String.raw`({ functions, aggregates, version }) => (
   const expressions = new WeakMap();
   const sources = new WeakMap();
   const queries = new WeakMap();
-  const manys = new WeakMap();
+  const arrays = new WeakMap();
   const windows = new WeakMap();
   const isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
   const describe = (value) => (Array.isArray(value) ? "an array" : value === null ? "null" : typeof value);
@@ -33,17 +33,17 @@ const PAGE_BUILDER_SOURCE = String.raw`({ functions, aggregates, version }) => (
   };
   const toExpression = (value, label) => {
     if (expressions.has(value)) return expressions.get(value);
-    if (value === null || typeof value === "string" || typeof value === "boolean") return { value };
+    if (value === null || typeof value === "string" || typeof value === "boolean") return { kind: "value", value };
     if (typeof value === "number") {
       // JSON writes NaN and the infinities as null, so the host would read a different value.
       if (!Number.isFinite(value)) fail(label + " must be a finite number.");
-      return { value };
+      return { kind: "value", value };
     }
     if (value instanceof Date) {
       fail(label + " is a Date; pages compare times against now, such as now.minus(\"24 hours\").");
     }
-    if (queries.has(value)) fail(label + " is a query; select nested rows with many(query), or pass it to props such as ui.table rows.");
-    if (manys.has(value)) fail(label + " is many(query), which is a whole select field.");
+    if (queries.has(value)) fail(label + " is a query; select nested rows with toArray(query), or pass it to props such as ui.table rows.");
+    if (arrays.has(value)) fail(label + " is toArray(query), which is a whole select field.");
     return fail(label + " expects a field, a page function, or a string, number, boolean, or null; received " + describe(value) + ".");
   };
   // A field reads nested values by property, such as route.trigger.kind; the host checks that the
@@ -52,7 +52,7 @@ const PAGE_BUILDER_SOURCE = String.raw`({ functions, aggregates, version }) => (
     const ref = new Proxy(Object.freeze({}), {
       get: (_, key) => (ignoredKey(key) ? undefined : fieldRef([...path, key])),
     });
-    expressions.set(ref, { ref: path });
+    expressions.set(ref, { kind: "ref", path });
     return ref;
   };
   const refsFor = (aliases) =>
@@ -78,9 +78,9 @@ const PAGE_BUILDER_SOURCE = String.raw`({ functions, aggregates, version }) => (
       fail(label + " expects one aliased collection or query, such as { run: collections.workflowInstances }.");
     }
     const [[alias, handle]] = entries;
-    if (queries.has(handle)) return { alias, query: queries.get(handle) };
+    if (queries.has(handle)) return { kind: "query", alias, query: queries.get(handle) };
     if (!sources.has(handle)) fail(label + " " + alias + " must be one of collections, such as collections.workflowInstances, or a query.");
-    return { alias, collection: sources.get(handle) };
+    return { kind: "collection", alias, collection: sources.get(handle) };
   };
 
   const valueOf = (handle) => (field, whenEmpty) => {
@@ -101,10 +101,7 @@ const PAGE_BUILDER_SOURCE = String.raw`({ functions, aggregates, version }) => (
     const join = (type, method) => (source, on) => {
       const joined = readSource(source, method + "(source, on)");
       const condition = toExpression(callback(on, method)(refsFor([...aliases, joined.alias])), method + " on");
-      if (!("fn" in condition) || condition.fn !== "eq") {
-        fail(method + "(source, on) matches two fields: return eq(field, field), such as eq(run.id, step.instanceRef).");
-      }
-      return next({ joins: [...state.joins, { type, source: joined, on: condition.args }] });
+      return next({ joins: [...state.joins, { type, source: joined, on: condition }] });
     };
     const handle = Object.freeze({
       join: join("inner", "join"),
@@ -123,7 +120,7 @@ const PAGE_BUILDER_SOURCE = String.raw`({ functions, aggregates, version }) => (
         }
         return next({
           select: Object.fromEntries(
-            Object.entries(result).map(([name, value]) => [name, manys.has(value) ? manys.get(value) : toExpression(value, "select " + name)]),
+            Object.entries(result).map(([name, value]) => [name, arrays.has(value) ? arrays.get(value) : toExpression(value, "select " + name)]),
           ),
         });
       },
@@ -138,10 +135,10 @@ const PAGE_BUILDER_SOURCE = String.raw`({ functions, aggregates, version }) => (
   const from = (source) =>
     makeQuery({ kind: "select", from: readSource(source, "from(source)"), joins: [], where: [], groupBy: [], having: [], select: null, orderBy: [], limit: null });
 
-  const many = (query) => {
-    if (!queries.has(query)) fail("many(query) selects the rows of a query, such as many(from({ step: collections.workflowSteps }).where(...)).");
+  const toArray = (query) => {
+    if (!queries.has(query)) fail("toArray(query) selects the rows of a query, such as toArray(from({ step: collections.workflowSteps }).where(...)).");
     const selected = Object.freeze({});
-    manys.set(selected, { many: queries.get(query) });
+    arrays.set(selected, { kind: "toArray", query: queries.get(query) });
     return selected;
   };
 
@@ -172,7 +169,7 @@ const PAGE_BUILDER_SOURCE = String.raw`({ functions, aggregates, version }) => (
   };
   const time = (offset) =>
     expression(
-      { now: offset },
+      { kind: "now", offset },
       {
         minus: (amount) => time(offset - duration(amount, "now.minus")),
         plus: (amount) => time(offset + duration(amount, "now.plus")),
@@ -181,8 +178,8 @@ const PAGE_BUILDER_SOURCE = String.raw`({ functions, aggregates, version }) => (
   const intervals = (options) => {
     if (!isRecord(options)) fail("intervals({ every, since }) expects options such as { every: \"1 hour\", since: now.minus(\"24 hours\") }.");
     const since = expressions.get(options.since);
-    if (!since || !("now" in since)) fail("intervals since is a time relative to now, such as now.minus(\"24 hours\").");
-    const window = { every: duration(options.every, "intervals every"), since: since.now };
+    if (!since || since.kind !== "now") fail("intervals since is a time relative to now, such as now.minus(\"24 hours\").");
+    const window = { every: duration(options.every, "intervals every"), since: since.offset };
     const handle = Object.freeze({});
     windows.set(handle, window);
     // A chart's axis shows every interval, including those no row falls in.
@@ -191,24 +188,25 @@ const PAGE_BUILDER_SOURCE = String.raw`({ functions, aggregates, version }) => (
   };
   const bucket = (value, window) => {
     if (!windows.has(window)) fail("bucket(time, intervals) groups by intervals({ every, since }), such as intervals({ every: \"1 hour\", since: now.minus(\"24 hours\") }).");
-    return expression({ bucket: toExpression(value, "bucket time"), ...windows.get(window) });
+    return expression({ kind: "bucket", time: toExpression(value, "bucket time"), ...windows.get(window) });
   };
 
   const operators = {};
   for (const name of functions) {
     operators[name] = (...args) =>
       expression({
-        fn: name,
+        kind: "fn",
+        name,
         args: args.map((arg, index) =>
-          name === "inArray" && index === 1 && Array.isArray(arg) ? { value: arg } : toExpression(arg, name + " argument " + index),
+          name === "inArray" && index === 1 && Array.isArray(arg) ? { kind: "value", value: arg } : toExpression(arg, name + " argument " + index),
         ),
       });
   }
   for (const name of aggregates) {
-    operators[name] = (arg) => expression({ aggregate: name, arg: toExpression(arg, name + " argument") });
+    operators[name] = (arg) => expression({ kind: "aggregate", name, arg: toExpression(arg, name + " argument") });
   }
 
-  const context = Object.freeze({ collections, from, many, unionAll, now: time(0), intervals, bucket, ...operators });
+  const context = Object.freeze({ collections, from, toArray, unionAll, now: time(0), intervals, bucket, ...operators });
 
   const define = (build) => {
     if (typeof build !== "function") fail("page.define(build) expects a function that returns the page's root ui element.");

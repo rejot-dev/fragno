@@ -110,7 +110,7 @@ const operationsPage = `export default page.define(({ collections, from, and, eq
  * The home page's Automations panel and attention list: one row per workflow with its latest run,
  * a sparkline of starts per hour, and links, read from a grouped subquery with nested rows.
  */
-const automationsPage = `export default page.define(({ collections, from, many, unionAll, intervals, bucket, now, and, eq, gt, gte, add, divide, coalesce, count, sum, max, caseWhen }) => {
+const automationsPage = `export default page.define(({ collections, from, toArray, unionAll, intervals, bucket, now, and, eq, gt, gte, not, isNull, add, divide, concat, coalesce, count, sum, max, caseWhen }) => {
   const day = now.minus("24 hours");
   const hours = intervals({ every: "1 hour", since: day });
   const runs = from({ run: collections.workflowInstances }).select(({ run }) => ({
@@ -143,7 +143,7 @@ const automationsPage = `export default page.define(({ collections, from, many, 
         divide(workflow.completed, add(workflow.completed, workflow.errored)),
       ),
       rateTone: caseWhen(gt(workflow.errored, 0), "failed", "live"),
-      latest: many(
+      latest: toArray(
         from({ run: runs })
           .where(({ run }) => eq(run.workflow, workflow.workflow))
           .orderBy(({ run }) => run.updatedAt, "desc")
@@ -156,7 +156,7 @@ const automationsPage = `export default page.define(({ collections, from, many, 
             updatedAt: run.updatedAt,
           })),
       ),
-      hourly: many(
+      hourly: toArray(
         from({ run: runs })
           .where(({ run }) => and(eq(run.workflow, workflow.workflow), gte(run.createdAt, day)))
           .groupBy(({ run }) => bucket(run.createdAt, hours))
@@ -166,8 +166,9 @@ const automationsPage = `export default page.define(({ collections, from, many, 
   const attention = from({
     item: unionAll(
       from({ waiting: runs })
-        .where(({ waiting }) => eq(waiting.status, "waiting"))
-        .select(({ waiting }) => ({ title: waiting.workflow, detail: "Waiting for an event", at: waiting.updatedAt })),
+        .join({ step: collections.workflowSteps }, ({ waiting, step }) => eq(waiting.id, step.instanceRef))
+        .where(({ waiting, step }) => and(eq(waiting.status, "waiting"), not(isNull(step.waitEventType))))
+        .select(({ waiting, step }) => ({ title: waiting.workflow, detail: concat("Waiting for ", step.waitEventType), at: waiting.updatedAt })),
       from({ failed: runs })
         .where(({ failed }) => eq(failed.status, "errored"))
         .select(({ failed }) => ({ title: failed.workflow, detail: "Errored", at: failed.updatedAt })),
@@ -548,7 +549,7 @@ describe("workspace pages", () => {
               ]);
               assert.deepEqual(attentionItems(markup), [
                 "failed | charge-card: Errored | now",
-                "waiting | await-shipment: Waiting for an event | 1h ago",
+                "waiting | await-shipment: Waiting for shipped | 1h ago",
               ]);
               // Details sit beside a narrow side column, which ends in the scope's integrations.
               assert.include(markup, "xl:grid-cols-[minmax(0,1fr)_22rem]");
@@ -577,6 +578,19 @@ describe("workspace pages", () => {
             );
             assert.include(verifyError, "The query from item cannot run in TanStack DB");
             assert.include(verifyError, '"run"');
+          }),
+          then.assert("a join on anything but eq fails the build", async (ctx) => {
+            const { verifyError } = await writePage(
+              ctx,
+              automationsPage.replace(
+                "eq(waiting.id, step.instanceRef)",
+                "gte(waiting.id, step.instanceRef)",
+              ),
+            );
+            assert.include(
+              verifyError,
+              "joins on eq(left, right), where one side reads the rows before",
+            );
           }),
           then.assert(
             "nested rows that do not match the selecting row by eq fail the build",
@@ -625,6 +639,19 @@ describe("workspace pages", () => {
             assert.include(loaded.message, fieldError);
             assert.equal(await cachedOutcome(ctx), "failed");
           }),
+          then.assert(
+            "a limit beyond the page limits names the clause and the range",
+            async (ctx) => {
+              const { verifyError } = await writePage(
+                ctx,
+                newestRunPage.replace(".limit(1)", ".limit(500)"),
+              );
+              assert.include(
+                verifyError,
+                "queries.q0.limit: Expected null or a whole number 1-100.",
+              );
+            },
+          ),
         ],
       }),
     );
