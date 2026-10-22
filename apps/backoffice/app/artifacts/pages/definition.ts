@@ -7,6 +7,8 @@ import { parseBackofficeUiResult } from "@/backoffice-ui/result";
 import { automationFragmentSchema } from "@/fragno/automation/schema";
 import type { AutomationCollections } from "@/fragno/automation/tanstack/collections";
 
+import { pageQueriesError } from "./query";
+
 /** The synchronized collections a page query can read from, by the table each one mirrors. */
 export const PAGE_COLLECTIONS = {
   projects: automationFragmentSchema.tables.project,
@@ -216,6 +218,10 @@ export function parsePageDefinition(json: unknown): PageParseResult {
   if (ui.kind === "invalid") {
     return { kind: "invalid", message: `spec: ${ui.message}` };
   }
+  const uncompiled = pageQueriesError(page.queries);
+  if (uncompiled !== null) {
+    return { kind: "invalid", message: uncompiled };
+  }
   const unbound = unboundStatePaths(ui.value.$ui.spec, page);
   if (unbound.length > 0) {
     return {
@@ -374,15 +380,6 @@ function readUnion(
   const read = branches.map((branch, index) =>
     readQuery(branch, `${path}.branches.${index}`, outer, budget),
   );
-  // TanStack names a union's rows by its branches' aliases, so they must differ.
-  const aliases = read.flatMap(({ query }) => queryAliases(query));
-  const repeated = aliases.find((alias, index) => aliases.indexOf(alias) !== index);
-  if (repeated) {
-    fail(
-      `${path}.branches`,
-      `"${repeated}" names a source of more than one branch; use distinct aliases.`,
-    );
-  }
   const names = (fields: QueryField[]) => fields.map(({ name }) => name).sort();
   const [first, ...rest] = read;
   for (const [index, branch] of rest.entries()) {
@@ -400,12 +397,6 @@ function readUnion(
       json: json && rest.every(({ fields }) => fields.some((f) => f.name === name && f.json)),
     })),
   };
-}
-
-function queryAliases(query: PageQuery): string[] {
-  return query.kind === "union"
-    ? query.branches.flatMap(queryAliases)
-    : [query.from.alias, ...query.joins.map(({ source }) => source.alias)];
 }
 
 function readSelectQuery(
@@ -501,9 +492,6 @@ function readSelectQuery(
   ) {
     fail(`${path}.limit`, `Expected null or a whole number 1-${PAGE_LIMITS.rowsPerQuery}.`);
   }
-  if (limit !== null && orderBy.length === 0) {
-    fail(`${path}.limit`, "A limit needs an orderBy, so the rows it keeps are deterministic.");
-  }
   // TanStack nests joined rows by alias and labels grouped rows by internal keys without a selection.
   if (selected === null && joins.length > 0) {
     fail(`${path}.select`, "A query with joins selects the fields it shows.");
@@ -516,33 +504,6 @@ function readSelectQuery(
     );
   if (selected === null && grouped) {
     fail(`${path}.select`, "A grouped query selects its group fields and aggregates.");
-  }
-  // TanStack rejects nested rows beside aggregates, but reads them from a grouped subquery's rows.
-  const many = grouped ? selected?.find(({ selection }) => "many" in selection) : undefined;
-  if (many) {
-    fail(
-      `${path}.select.${many.name}`,
-      "A grouped query cannot select many(...); group in a subquery and select from its rows, such as from({ workflow: grouped }).",
-    );
-  }
-  if (grouped) {
-    const own = new Set([from.alias, ...joins.map(({ source }) => source.alias)]);
-    const checked = [
-      ...(selected ?? []).flatMap(({ name, selection }) =>
-        "many" in selection ? [] : [{ at: `${path}.select.${name}`, expression: selection }],
-      ),
-      ...having.map((expression, index) => ({ at: `${path}.having.${index}`, expression })),
-    ];
-    for (const { at, expression } of checked) {
-      const ref = ungroupedRef(expression, own, groupBy);
-      if (ref) {
-        const field = ref.ref.join(".");
-        fail(
-          at,
-          `${field} is neither grouped nor aggregated. Add it to groupBy, or aggregate it, such as max(${field}).`,
-        );
-      }
-    }
   }
   return {
     query: {
@@ -650,7 +611,7 @@ function readExpression(
       if (!source || field === undefined) {
         fail(
           `${path}.ref`,
-          `Expected [alias, field] with an alias of this query: ${[...context.sources.keys()].join(", ")}.`,
+          `Expected [alias, field], where alias is a source of this query or of the rows a many(...) query is nested in: ${[...context.sources.keys()].join(", ")}.`,
         );
       }
       const column = source.fields.find(({ name }) => name === field);
@@ -760,38 +721,6 @@ function readExpression(
     default:
       return fail(path, "Expected one of ref, value, now, fn, aggregate, or bucket.");
   }
-}
-
-/**
- * The first field of the query's own rows that a grouped query reads outside its group keys and
- * aggregates, as TanStack DB checks: an expression equal to a key is grouped, and fields of the
- * rows a nested query sits in are fixed for the whole group.
- */
-function ungroupedRef(
-  expression: PageExpression,
-  own: ReadonlySet<string>,
-  groupBy: readonly PageExpression[],
-): Extract<PageExpression, { ref: unknown }> | null {
-  const text = JSON.stringify(expression);
-  if (groupBy.some((key) => JSON.stringify(key) === text)) {
-    return null;
-  }
-  if ("ref" in expression) {
-    return own.has(expression.ref[0]) ? expression : null;
-  }
-  if ("fn" in expression) {
-    for (const arg of expression.args) {
-      const ref = ungroupedRef(arg, own, groupBy);
-      if (ref) {
-        return ref;
-      }
-    }
-    return null;
-  }
-  if ("bucket" in expression) {
-    return ungroupedRef(expression.bucket, own, groupBy);
-  }
-  return null;
 }
 
 function containsAggregate(expression: PageExpression): boolean {

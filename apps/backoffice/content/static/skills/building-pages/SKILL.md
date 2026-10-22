@@ -25,8 +25,9 @@ page runs the queries in the browser and re-renders as the data changes.
 3. **Check.** Run `js.check({ path })` on the source. Complete when it reports no diagnostics.
 4. **Build.** Run `artifacts.buildPage({ path })`. It builds the page as Backoffice does when it
    opens, without providers, and caches the build for viewers. Complete when it returns
-   `{ status: "built" }`; a `failed` result's `message` is what the page would show, such as a
-   builder error that names the call and, for fields, lists the collection's fields.
+   `{ status: "built" }`; a `failed` result's `message` is what the page would show, such as an
+   error that names the query and, for fields, lists the collection's fields, or a TanStack DB rule
+   the query breaks.
 
 5. **Hand off.** Give the user the source path. Selecting it in Files shows the live page on its
    Page tab; the page also opens at `/backoffice/pages/<scope>/<path>`, where `<scope>` is the scope
@@ -169,10 +170,11 @@ each callback, as above; a helper function that takes a source's fields needs a 
 - Joined and grouped queries `select` the fields they show.
 - `count`, `sum`, `avg`, `min`, and `max` belong in `select`, `having`, and `orderBy`. Count a
   condition with `sum(caseWhen(eq(run.status, "errored"), 1, 0))`.
-- `many(query)` is a `select` field holding the rows of `query` for each selecting row; the query's
-  callbacks read the selecting row's fields, such as `workflow.workflow` above, and use their own
-  aliases. A grouped query cannot select `many`: group in a query, then read it with `from`, as
-  `health` reads `workflows`.
+- `many(query)` is a `select` field holding the rows of `query` for each selecting row. The query
+  starts with `from`, not `unionAll`, and its `where` matches the selecting row with `eq`, such as
+  `eq(run.workflow, workflow.workflow)` above; its own aliases differ from the selecting row's. A
+  grouped query cannot select `many`: group in a query, then read it with `from`, as `health` reads
+  `workflows`.
 - `unionAll(a, b, ...)` lists the rows of queries that select the same fields under distinct
   aliases, such as waiting and errored runs. Order or limit it by reading it with `from`.
 - Times are relative to `now`, such as `now.minus("7 days")`; the page moves `now` every minute.

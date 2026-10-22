@@ -101,8 +101,9 @@ type PageContext = {
   ): PageQuery<Record<TAlias, PageFields<TRow>>, TRow>;
   /**
    * A select field holding the rows of query for each selecting row, such as each workflow's
-   * latest run. Its callbacks read the selecting row's fields; a grouped query cannot select it,
-   * so group in a subquery and read that with from.
+   * latest run. The query is a from, not a unionAll, whose where matches the selecting row with eq,
+   * such as eq(run.workflow, workflow.workflow). A grouped query cannot select it, so group in a
+   * subquery and read that with from.
    */
   many<TRow>(query: PageRows<TRow>): PageMany<TRow>;
   /** One list of every row of 2-8 queries that select the same fields. */

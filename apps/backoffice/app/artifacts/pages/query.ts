@@ -6,6 +6,8 @@ import {
   coalesce,
   concat,
   count,
+  createCollection,
+  createLiveQueryCollection,
   divide,
   eq,
   gt,
@@ -15,12 +17,15 @@ import {
   isNull,
   length,
   like,
+  LimitOffsetRequireOrderByError,
+  localOnlyCollectionOptions,
   lower,
   lt,
   lte,
   max,
   min,
   multiply,
+  NonAggregateExpressionNotInGroupByError,
   not,
   or,
   subtract,
@@ -28,19 +33,21 @@ import {
   toArray,
   upper,
   type InitialQueryBuilder,
+  type Source,
 } from "@tanstack/react-db";
 
 import { intervalStarts } from "@/backoffice-ui/components/intervals";
-import type { AutomationCollections } from "@/fragno/automation/tanstack/collections";
 
-import type {
-  PageExpression,
-  PageLiteral,
-  PageQuery,
-  PageQueryAggregate,
-  PageQueryFunction,
-  PageQuerySource,
-  PageValue,
+import {
+  PAGE_COLLECTIONS,
+  type PageCollection,
+  type PageExpression,
+  type PageLiteral,
+  type PageQuery,
+  type PageQueryAggregate,
+  type PageQueryFunction,
+  type PageQuerySource,
+  type PageValue,
 } from "./definition";
 
 // The file was validated against these functions' arities, so they are called untyped.
@@ -72,6 +79,9 @@ const FUNCTIONS = {
 } as unknown as Record<PageQueryFunction, Operator>;
 
 const AGGREGATES = { count, sum, avg, min, max } as unknown as Record<PageQueryAggregate, Operator>;
+
+/** The collections a page reads, by name, as TanStack accepts any query source. */
+type PageCollections = Record<PageCollection, Source[string]>;
 
 /** TanStack's refs by alias; aliases and fields come from the validated file, not from types. */
 type Refs = Record<string, unknown>;
@@ -105,7 +115,7 @@ type DynamicBuilder = {
 /** Builds the TanStack DB live query a page query describes, with times relative to `now`. */
 export function pageQuery(
   builder: InitialQueryBuilder,
-  collections: AutomationCollections,
+  collections: PageCollections,
   query: PageQuery,
   now: number,
 ) {
@@ -117,7 +127,7 @@ export function pageQuery(
 
 function buildQuery(
   builder: DynamicBuilder,
-  collections: AutomationCollections,
+  collections: PageCollections,
   query: PageQuery,
   now: number,
   outer: Scope,
@@ -216,6 +226,54 @@ function compileExpression(expression: PageExpression, scope: Scope, now: number
         start,
       ]) as [never, never]),
   );
+}
+
+/**
+ * Why TanStack DB cannot run one of a page's queries, or null. TanStack checks its rules, such as
+ * grouping and how a many(...) query correlates, as it builds a live query, before any row
+ * arrives, so empty collections stand in for the synchronized ones.
+ */
+export function pageQueriesError(queries: Record<string, PageQuery>): string | null {
+  const collections = {} as PageCollections;
+  for (const id of Object.keys(PAGE_COLLECTIONS) as PageCollection[]) {
+    collections[id] = createCollection(
+      localOnlyCollectionOptions({ id, getKey: (row: { id: string }) => row.id }),
+    );
+  }
+  for (const [name, query] of Object.entries(queries)) {
+    try {
+      const live = createLiveQueryCollection({
+        query: (builder) => pageQuery(builder, collections, query, 0),
+        startSync: false,
+      });
+      void live.cleanup();
+    } catch (error) {
+      return `queries.${name}: ${queryLabel(query)} ${compileErrorMessage(error)}`;
+    }
+  }
+  return null;
+}
+
+function queryLabel(query: PageQuery): string {
+  if (query.kind === "union") {
+    return `The unionAll of ${query.branches.map(queryLabel).join(" and ").replaceAll("The query", "the query")}`;
+  }
+  return `The query from ${"collection" in query.from ? query.from.collection : query.from.alias}`;
+}
+
+/**
+ * Production builds of TanStack DB replace messages with error codes, so the rules pages break most
+ * are explained here; others keep TanStack's message, which links its documentation.
+ */
+function compileErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (error instanceof NonAggregateExpressionNotInGroupByError) {
+    return `is grouped, so it selects and filters only its group keys, aggregates such as max(run.status), and functions of those. To select many(...), group in a query and select from its rows with from. TanStack DB: ${message}`;
+  }
+  if (error instanceof LimitOffsetRequireOrderByError) {
+    return "sets a limit without orderBy; order it so the rows it keeps are deterministic.";
+  }
+  return `cannot run in TanStack DB: ${message}`;
 }
 
 /** A value as the interface reads it: JSON, with times as ISO 8601 strings. */
