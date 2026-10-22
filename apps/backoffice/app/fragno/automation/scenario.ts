@@ -1229,11 +1229,10 @@ const createFakePiManagerApi = (
     async exportEntries(config) {
       const fake = requireAgent(config);
       const bytes = new TextEncoder().encode(
-        `${JSON.stringify({ type: "pi-durable-agent", version: 1, order: "newest-first" })}\n${[
-          ...conversationView(fake).entries,
-        ]
-          .reverse()
-          .map((entry) => JSON.stringify({ type: "entry", entry }))
+        `${JSON.stringify({ type: "pi-durable-agent", version: 2, order: "oldest-first" })}\n${conversationView(
+          fake,
+        )
+          .entries.map((entry) => JSON.stringify({ type: "entry", entry }))
           .join("\n")}\n`,
       );
       return new ReadableStream<Uint8Array>({

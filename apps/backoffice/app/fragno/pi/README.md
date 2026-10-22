@@ -253,7 +253,8 @@ All paths below are mounted at `/api/pi-manager` inside the manager object:
   interleaved with `queue` frames listing the items waiting in the agent's queue; see Queue.
 - `GET /agents/:agentName/entries?cursor=...&pageSize=...`: newest-first, fork-aware durable entry
   history (maximum 256 entries per page).
-- `GET /agents/:agentName/export`: streaming versioned JSONL export over every durable entry.
+- `GET /agents/:agentName/export`: streaming JSONL export of every durable entry, oldest first,
+  after a `{ type: "pi-durable-agent", version: 2, order: "oldest-first" }` header line.
 - `POST /agents/:agentName/compact`: admits manual durable compaction with optional instructions.
 - `GET /agents/:agentName/compactions/:taskId`: public running/completed/failed compaction state.
 - `POST /agents/:agentName/stop`: aborts the agent's current work, including background work, and

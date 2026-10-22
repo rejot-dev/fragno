@@ -72,8 +72,8 @@ export function createPiConversationExportStream(root: Conversation, config: PiA
   async function* exportLines() {
     yield encodePiExportLine({
       type: "pi-durable-agent",
-      version: 1,
-      order: "newest-first",
+      version: 2,
+      order: "oldest-first",
       agent: {
         agentName: config.agentName,
         scope: config.scope,
@@ -82,7 +82,12 @@ export function createPiConversationExportStream(root: Conversation, config: PiA
 
     let cursor: Cursor | undefined;
     do {
-      const page = await root.entries({}, ENTRY_SCAN_PAGE_SIZE, cursor, BACKGROUND_CONTEXT);
+      const page = await root.entries(
+        { order: "ascending" },
+        ENTRY_SCAN_PAGE_SIZE,
+        cursor,
+        BACKGROUND_CONTEXT,
+      );
       for (const entry of page.items) {
         yield encodePiExportLine({ type: "entry", entry });
       }
