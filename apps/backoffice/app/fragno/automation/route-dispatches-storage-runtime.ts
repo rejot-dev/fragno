@@ -4,6 +4,7 @@ import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/share
 
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 
+import type { AutomationHookUnitOfWork } from "./internal-hooks";
 import { automationFragmentSchema } from "./schema";
 
 /**
@@ -29,6 +30,94 @@ export type AutomationRouteDispatchSkipReason =
   | "workflow_instance_unresolved"
   | "caused_by_notified_agent";
 
+/**
+ * Where a matched route stands. `failedAttempts` counts the attempts that threw; a completed route
+ * keeps the count, so one that only acted after retries stays visible. `retrying` and `failed`
+ * keep the last error; `failed` is final, because the error cannot be fixed by retrying or the
+ * route ran out of attempts.
+ */
+export type AutomationRouteDispatchState =
+  | { status: "pending" }
+  | { status: "retrying"; failedAttempts: number; error: string }
+  | { status: "completed"; outcome: AutomationRouteDispatchOutcome; failedAttempts: number }
+  | { status: "failed"; failedAttempts: number; error: string };
+
+type AutomationRouteDispatchStateColumns = {
+  status: string;
+  outcome: AutomationRouteDispatchOutcome | null;
+  failedAttempts: number;
+  error: string | null;
+};
+
+function routeDispatchStateColumns(
+  state: AutomationRouteDispatchState,
+): AutomationRouteDispatchStateColumns {
+  switch (state.status) {
+    case "pending":
+      return { status: state.status, outcome: null, failedAttempts: 0, error: null };
+    case "retrying":
+    case "failed":
+      return {
+        status: state.status,
+        outcome: null,
+        failedAttempts: state.failedAttempts,
+        error: state.error,
+      };
+    case "completed":
+      return {
+        status: state.status,
+        outcome: state.outcome,
+        failedAttempts: state.failedAttempts,
+        error: null,
+      };
+  }
+  throw new Error("Unsupported automation route dispatch state.");
+}
+
+/** Dispatch rows are only written through `routeDispatchStateColumns`, so their columns agree. */
+export function readRouteDispatchState(
+  row: AutomationRouteDispatchStateColumns,
+): AutomationRouteDispatchState {
+  switch (row.status) {
+    case "pending":
+      return { status: "pending" };
+    case "retrying":
+    case "failed":
+      return { status: row.status, failedAttempts: row.failedAttempts, error: row.error! };
+    case "completed":
+      return { status: "completed", outcome: row.outcome!, failedAttempts: row.failedAttempts };
+  }
+  throw new Error(`Unknown automation route dispatch status '${row.status}'.`);
+}
+
+/** A settled route has acted or given up, so a replayed dispatch must not act again. */
+export function isRouteDispatchSettled(state: AutomationRouteDispatchState): boolean {
+  return state.status === "completed" || state.status === "failed";
+}
+
+type RouteDispatchSubject = {
+  event: Pick<AutomationEvent, "id" | "causation">;
+  route: Pick<AutomationRouteDefinition, "id" | "name">;
+};
+
+export function routeDispatchId({ event, route }: RouteDispatchSubject): string {
+  // Both ids may contain colons; the route id's length says where it ends.
+  return `${route.id.length}:${route.id}:${event.id}`;
+}
+
+/** Records that an event matched a route, before the route acts. */
+export function recordMatchedRoute(uow: AutomationHookUnitOfWork, subject: RouteDispatchSubject) {
+  uow.create("automation_route_dispatch", {
+    id: routeDispatchId(subject),
+    eventId: subject.event.id,
+    rootEventId: automationEventRootId(subject.event),
+    routeId: subject.route.id,
+    routeName: subject.route.name,
+    ...routeDispatchStateColumns({ status: "pending" }),
+    dispatchedAt: uow.now(),
+  });
+}
+
 type AutomationRouteDispatchServiceContext = DatabaseServiceContext<Record<string, never>>;
 
 export const createAutomationRouteDispatchServices = (
@@ -38,39 +127,33 @@ export const createAutomationRouteDispatchServices = (
 ) =>
   defineService({
     /**
-     * Ingestion hooks replay every matched route until all of them succeed, so a route that
-     * already acted keeps its first record.
+     * A replayed route, such as one whose completion committed before its hook did, keeps the
+     * state it settled with first.
      */
-    recordRouteDispatch({
-      event,
-      route,
-      outcome,
-    }: {
-      event: Pick<AutomationEvent, "id" | "causation">;
-      route: Pick<AutomationRouteDefinition, "id" | "name">;
-      outcome: AutomationRouteDispatchOutcome;
+    updateRouteDispatch({
+      state,
+      ...subject
+    }: RouteDispatchSubject & {
+      state: Exclude<AutomationRouteDispatchState, { status: "pending" }>;
     }) {
-      // Both ids may contain colons; the route id's length says where it ends.
-      const id = `${route.id.length}:${route.id}:${event.id}`;
       return this.serviceTx(automationFragmentSchema)
         .retrieve((uow) =>
           uow.findFirst("automation_route_dispatch", (b) =>
-            b.whereIndex("primary", (eb) => eb("id", "=", id)),
+            b.whereIndex("primary", (eb) => eb("id", "=", routeDispatchId(subject))),
           ),
         )
-        .mutate(({ uow, retrieveResult: [existing] }) => {
-          if (existing) {
+        .mutate(({ uow, retrieveResult: [row] }) => {
+          if (!row) {
+            throw new Error(
+              `Automation route ${subject.route.id} has no dispatch for event ${subject.event.id}.`,
+            );
+          }
+          if (isRouteDispatchSettled(readRouteDispatchState(row))) {
             return;
           }
-          uow.create("automation_route_dispatch", {
-            id,
-            eventId: event.id,
-            rootEventId: automationEventRootId(event),
-            routeId: route.id,
-            routeName: route.name,
-            outcome,
-            dispatchedAt: uow.now(),
-          });
+          uow.update("automation_route_dispatch", row.id, (b) =>
+            b.set(routeDispatchStateColumns(state)).check(),
+          );
         })
         .build();
     },

@@ -175,8 +175,11 @@ type PageCollections = {
     rootEventId: string;
     routeId: string;
     routeName: string;
-    outcome: unknown;
+    outcome: unknown | null;
     dispatchedAt: Date;
+    status: string;
+    failedAttempts: number;
+    error: string | null;
   }>;
   /** Automation events, newest by occurredAt. */
   events: PageCollection<{

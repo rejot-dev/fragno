@@ -12,6 +12,16 @@ export type AutomationEventIngestionPayload = {
   route?: AutomationRouteDefinition;
 };
 
+/**
+ * One matched route acting on one event. The route is snapshotted when the event matches it, so a
+ * route changed or deleted while this hook waits to retry still acts as it was matched.
+ */
+export type AutomationRouteDispatchPayload = {
+  event: AutomationEvent;
+  route: AutomationRouteDefinition;
+  reclassificationChain: readonly AutomationEventIdentity[];
+};
+
 export type AutomationRouteScheduleDispatchPayload =
   | {
       kind: "initialize";
@@ -34,6 +44,7 @@ export type AutomationRouteScheduleDispatchPayload =
  */
 export type AutomationInternalHooks = {
   internalIngestEvent: HookFn<AutomationEventIngestionPayload>;
+  internalDispatchRoute: HookFn<AutomationRouteDispatchPayload>;
   internalDispatchRouteSchedule: HookFn<AutomationRouteScheduleDispatchPayload>;
 };
 

@@ -213,5 +213,17 @@ export const automationFragmentSchema = schema("automations", (s) => {
             "id",
           ]),
       )
+      // Routes are recorded when an event matches them, before they act, so one that keeps failing
+      // stays visible. Rows recorded before then are completed. `dispatchedAt` is when the event
+      // was matched. Written and read only through `route-dispatches-storage-runtime`.
+      .alterTable("automation_route_dispatch", (t) =>
+        t
+          .addColumn("status", column("string").defaultTo("completed"))
+          .alterColumn("outcome")
+          .nullable()
+          .addColumn("failedAttempts", column("integer").defaultTo(0))
+          .addColumn("error", column("text").nullable())
+          .createIndex("idx_automation_route_dispatch_eventId", ["eventId"]),
+      )
   );
 });

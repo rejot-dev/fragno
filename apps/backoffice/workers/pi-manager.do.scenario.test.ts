@@ -59,8 +59,9 @@ import {
 } from "@/fragno/pi/agent/pi-agent-notification-entry";
 import { piAgentEventsQuery, projectPiAgents } from "@/routes/backoffice/agents/agent-activity";
 import {
+  eventTraceDispatch,
   eventTraceDispatchesQuery,
-  type EventTraceDispatch,
+  type EventTraceDispatchRow,
 } from "@/routes/backoffice/dashboard/event-traces";
 
 import {
@@ -1606,13 +1607,17 @@ test("a notify_agent route delivers events as turns but never the agent's own wo
           // Event traces show the notification, and the notifications the guard held back.
           const database = tanstack.automations.forOrg(orgId);
           await database.sync();
-          const dispatches = (await queryOnce((query) =>
-            eventTraceDispatchesQuery(query, database.collections),
-          )) as EventTraceDispatch[];
+          const dispatches = (
+            (await queryOnce((query) =>
+              eventTraceDispatchesQuery(query, database.collections),
+            )) as EventTraceDispatchRow[]
+          ).map(eventTraceDispatch);
           expect(
             dispatches
               .filter((dispatch) => dispatch.routeId.startsWith("notify-"))
-              .map(({ routeId, eventId, outcome }) => {
+              .map(({ routeId, eventId, state }) => {
+                assert(state.status === "completed");
+                const { outcome } = state;
                 const done =
                   outcome.kind === "agent_notified"
                     ? `notified ${outcome.agentName}`

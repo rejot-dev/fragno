@@ -38,7 +38,9 @@ import { formatTimestamp } from "../automations/formatting";
 import type { Route } from "./+types/events";
 import { DashboardTabs } from "./dashboard-tabs";
 import {
+  describeRouteDispatchProgress,
   describeRouteDispatchSkipReason,
+  eventTraceDispatch,
   eventTraceDispatchesQuery,
   eventTraceEventsQuery,
   eventTraceRunIds,
@@ -50,6 +52,7 @@ import {
   projectEventTraceSummaries,
   type EventTrace,
   type EventTraceDispatch,
+  type EventTraceDispatchRow,
   type EventTraceEvent,
   type EventTraceListEntry,
   type EventTraceRecord,
@@ -159,7 +162,8 @@ function EventTracesWorkspace({
   // Synchronized rows are written by the automations fragment, so their JSON columns and status
   // strings hold the shapes it persists.
   const events = (eventsQuery.data ?? []) as EventTraceEvent[];
-  const dispatches = (dispatchesQuery.data ?? []) as EventTraceDispatch[];
+  const dispatchRows = dispatchesQuery.data as EventTraceDispatchRow[] | undefined;
+  const dispatches = useMemo(() => (dispatchRows ?? []).map(eventTraceDispatch), [dispatchRows]);
   const runs = (runsQuery.data ?? []) as EventTraceRun[];
 
   const summaries = useMemo(
@@ -304,7 +308,7 @@ function traceTone({ outcome }: EventTraceSummary): TraceTone {
   if (outcome.kind === "unhandled") {
     return "unhandled";
   }
-  if (outcome.failedRunCount > 0) {
+  if (outcome.failedCount > 0) {
     return "failed";
   }
   if (outcome.kind === "in_progress") {
@@ -331,14 +335,14 @@ const TRACE_TONE_LABEL: Record<TraceTone, string> = {
 
 /** Only what needs attention gets a status; settled work is the quiet default. */
 function AttentionLight({
-  failedRunCount,
+  failedCount,
   state,
 }: {
-  failedRunCount: number;
+  failedCount: number;
   state: "running" | "waiting" | null;
 }) {
-  if (failedRunCount > 0) {
-    return <BackofficeStatusLight tone="failed">{failedRunCount} failed</BackofficeStatusLight>;
+  if (failedCount > 0) {
+    return <BackofficeStatusLight tone="failed">{failedCount} failed</BackofficeStatusLight>;
   }
   if (state === null) {
     return null;
@@ -355,10 +359,10 @@ function TraceOutcome({ summary }: { summary: EventTraceSummary }) {
   if (outcome.kind === "unhandled") {
     return null;
   }
-  if (outcome.kind === "in_progress" || outcome.failedRunCount > 0) {
+  if (outcome.kind === "in_progress" || outcome.failedCount > 0) {
     return (
       <AttentionLight
-        failedRunCount={outcome.failedRunCount}
+        failedCount={outcome.failedCount}
         state={outcome.kind === "in_progress" ? outcome.state : null}
       />
     );
@@ -381,8 +385,8 @@ function RepeatsOutcome({ traces }: { traces: readonly EventTraceSummary[] }) {
   );
   return (
     <AttentionLight
-      failedRunCount={outcomes.reduce(
-        (count, outcome) => count + (outcome.kind === "unhandled" ? 0 : outcome.failedRunCount),
+      failedCount={outcomes.reduce(
+        (count, outcome) => count + (outcome.kind === "unhandled" ? 0 : outcome.failedCount),
         0,
       )}
       state={states.includes("running") ? "running" : states.includes("waiting") ? "waiting" : null}
@@ -979,8 +983,11 @@ function EventDetail({ event }: { event: EventTraceEvent }) {
   );
 }
 
-function describeDispatchOutcome(dispatch: EventTraceDispatch): string {
-  const { outcome } = dispatch;
+function describeDispatchOutcome({ state }: EventTraceDispatch): string {
+  if (state.status !== "completed") {
+    return describeRouteDispatchProgress(state);
+  }
+  const { outcome } = state;
   switch (outcome.kind) {
     case "workflow_started":
       return `Started run ${outcome.instanceId}, which is no longer recorded`;
@@ -1004,8 +1011,16 @@ function DispatchDetail({ dispatch }: { dispatch: EventTraceDispatch }) {
       facts={[
         ["Route", <span className="font-mono text-[12px]">{dispatch.routeId}</span>],
         ["Event", <span className="font-mono text-[12px]">{dispatch.eventId}</span>],
-        ["Acted", formatTimestamp(dispatch.dispatchedAt)],
+        ["Matched", formatTimestamp(dispatch.dispatchedAt)],
         ["Outcome", describeDispatchOutcome(dispatch)],
+        ...(dispatch.state.status === "completed" && dispatch.state.failedAttempts > 0
+          ? [
+              [
+                "Retries",
+                `Acted after ${dispatch.state.failedAttempts} failed ${dispatch.state.failedAttempts === 1 ? "attempt" : "attempts"}`,
+              ] as [string, ReactNode],
+            ]
+          : []),
       ]}
     />
   );

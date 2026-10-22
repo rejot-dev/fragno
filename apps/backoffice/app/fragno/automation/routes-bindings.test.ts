@@ -14,7 +14,9 @@ import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-ser
 import { SYSTEM_STARTER_AUTOMATION_ROUTES } from "./content/starter-routing";
 import type { AutomationWorkflowsService } from "./definition";
 import { createAutomationFragment } from "./index";
+import { readRouteDispatchState } from "./route-dispatches-storage-runtime";
 import { setAutomationRouteMutationActors } from "./route-routes";
+import { automationFragmentSchema } from "./schema";
 import { createTestAutomationSourceReader } from "./test-automation-source-reader.test-utils";
 
 const createAutomation = async (
@@ -447,11 +449,31 @@ describe("automation routes /routes", () => {
     expect(hooks).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          hookName: "internalIngestEvent",
+          hookName: "internalDispatchRoute",
+          // A denied scope cannot change, so the route fails without retrying.
+          status: "failed",
+          attempts: 1,
           error: "automation.forward-event cannot use org:org_999 within org:org_123.",
         }),
       ]),
     );
+    const dispatches = await fragment.inContext(async function () {
+      return await this.handlerTx()
+        .retrieve(({ forSchema }) =>
+          forSchema(automationFragmentSchema).find("automation_route_dispatch", (b) =>
+            b.whereIndex("primary"),
+          ),
+        )
+        .transformRetrieve(([rows]) => rows.map(readRouteDispatchState))
+        .execute();
+    });
+    expect(dispatches).toEqual([
+      {
+        status: "failed",
+        failedAttempts: 1,
+        error: "automation.forward-event cannot use org:org_999 within org:org_123.",
+      },
+    ]);
   });
 
   test("forward event routes fail when the target scope template is empty", async () => {
@@ -524,7 +546,7 @@ describe("automation routes /routes", () => {
     expect(hooks).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          hookName: "internalIngestEvent",
+          hookName: "internalDispatchRoute",
           error: "Automation route custom-forwarder-empty-target resolved an empty target org id.",
         }),
       ]),

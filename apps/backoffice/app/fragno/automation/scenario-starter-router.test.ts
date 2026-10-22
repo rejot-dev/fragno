@@ -45,7 +45,14 @@ import { InMemoryMcpObject } from "../../../workers/mcp.do";
 import { InMemoryResendObject } from "../../../workers/resend.do";
 import { InMemoryTelegramObject } from "../../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../../workers/upload.do";
-import { backofficeFiles, defineBackofficeScenario, runBackofficeScenario } from "./scenario";
+import type { AutomationRouteDispatchPayload } from "./internal-hooks";
+import { readRouteDispatchState } from "./route-dispatches-storage-runtime";
+import {
+  backofficeFiles,
+  type BackofficeScenarioContext,
+  defineBackofficeScenario,
+  runBackofficeScenario,
+} from "./scenario";
 
 const scenarioObjects = {
   API: (input) => new InMemoryApiObject(input),
@@ -63,6 +70,26 @@ const scenarioObjects = {
   TELEGRAM: (input) => new InMemoryTelegramObject(input),
   UPLOAD: (input) => new InMemoryUploadObject(input),
 } satisfies LocalBackofficeObjects;
+
+const fanoutRetryProjectScope = {
+  kind: "project",
+  owner: { kind: "org", orgId: "org-1" },
+  projectId: "fanout-retry-project",
+} as const;
+
+/** What each route matched to an event did, as the dashboard reads it. */
+async function routeDispatchStates(ctx: BackofficeScenarioContext, eventId: string) {
+  const database = ctx.tanstack.automations.forOrg("org-1");
+  await database.drain();
+  const dispatches = await queryOnce((query) =>
+    query
+      .from({ dispatch: database.collections.routeDispatches })
+      .where(({ dispatch }) => eq(dispatch.eventId, eventId)),
+  );
+  return Object.fromEntries(
+    dispatches.map((dispatch) => [dispatch.routeId, readRouteDispatchState(dispatch)]),
+  );
+}
 
 const telegramTestCommandEntry = getStaticMarketplaceEntry({
   slug: "telegram-test-command",
@@ -668,7 +695,7 @@ describe("starter automation router scenarios", () => {
     );
   });
 
-  test("a failed fan-out retries after its missing workflow is created without duplicating a forwarded event", async () => {
+  test("a failing route retries alone after its missing workflow is created", async () => {
     const event = customAutomationEvent({
       id: "fanout-retry-1",
       eventType: "fanout.retry",
@@ -678,10 +705,9 @@ describe("starter automation router scenarios", () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         objects: scenarioObjects,
-        name: "retry failed route fan-out after creating its workflow target",
+        name: "retry a failing route without its sibling",
 
         files: backofficeFiles.workspaceStarter(),
-        vars: () => ({ firstAttemptAt: "" }),
 
         setup: ({ given }) => [
           given.organization.exists({ id: "org-1", name: "Ada Labs" }),
@@ -745,29 +771,27 @@ describe("starter automation router scenarios", () => {
         steps: ({ when, then }) => [
           when.automation.ingestEvent(event),
 
-          then.assert("the first fan-out attempt is waiting to retry", async (ctx) => {
-            const queue = await ctx.runtime.objects.automations
-              .forOrg("org-1")
-              .commands.getDurableHookQueue("automation", { pageSize: 100 });
-            const hook = queue.items.find(
-              (item) =>
-                item.hookName === "internalIngestEvent" &&
-                (item.payload as { event?: { id?: string } }).event?.id === event.id,
-            );
-            assert(hook);
-            assert.equal(hook.status, "pending");
-            assert.equal(hook.attempts, 1);
-            assert.equal(hook.error, "INSTANCE_NOT_FOUND");
-            assert(hook.lastAttemptAt);
-            ctx.vars.firstAttemptAt = hook.lastAttemptAt;
+          then.assert("only the route whose workflow is missing waits to retry", async (ctx) => {
+            expect(await routeDispatchStates(ctx, event.id)).toEqual({
+              "fanout-forward-success": {
+                status: "completed",
+                outcome: {
+                  kind: "event_forwarded",
+                  eventId: "forwarded-fanout-retry-1",
+                  scope: fanoutRetryProjectScope,
+                },
+                failedAttempts: 0,
+              },
+              "fanout-send-to-late-workflow": {
+                status: "retrying",
+                failedAttempts: 1,
+                error: "INSTANCE_NOT_FOUND",
+              },
+            });
           }),
 
           then.automation.event({
-            scope: {
-              kind: "project",
-              owner: { kind: "org", orgId: "org-1" },
-              projectId: "fanout-retry-project",
-            },
+            scope: fanoutRetryProjectScope,
             where: { id: "forwarded-fanout-retry-1" },
             expected: {
               source: "custom",
@@ -798,37 +822,94 @@ describe("starter automation router scenarios", () => {
             status: "complete",
             output: { received: "ready" },
           }),
-          then.assert("the retry completed without forwarding the event twice", async (ctx) => {
-            const sourceQueue = await ctx.runtime.objects.automations
+          then.assert("the retry delivered the event and left the forward alone", async (ctx) => {
+            expect(await routeDispatchStates(ctx, event.id)).toMatchObject({
+              "fanout-forward-success": { status: "completed" },
+              "fanout-send-to-late-workflow": {
+                status: "completed",
+                outcome: { kind: "workflow_event_sent", instanceId: "fanout-retry-waiter-1" },
+                failedAttempts: 1,
+              },
+            });
+            const queue = await ctx.runtime.objects.automations
               .forOrg("org-1")
               .commands.getDurableHookQueue("automation", { pageSize: 100 });
-            const sourceHook = sourceQueue.items.find(
+            const forwardHook = queue.items.find(
               (item) =>
-                item.hookName === "internalIngestEvent" &&
-                (item.payload as { event?: { id?: string } }).event?.id === event.id,
+                item.hookName === "internalDispatchRoute" &&
+                (item.payload as AutomationRouteDispatchPayload).route.id ===
+                  "fanout-forward-success",
             );
-            assert(sourceHook);
-            assert.equal(sourceHook.status, "completed");
-            assert(sourceHook.lastAttemptAt);
-            assert.notEqual(sourceHook.lastAttemptAt, ctx.vars.firstAttemptAt);
-
-            const response = await ctx.runtime.objects.automations
-              .for({
-                kind: "project",
-                owner: { kind: "org", orgId: "org-1" },
-                projectId: "fanout-retry-project",
-              })
-              .http.fetch(new Request("https://automations.test/api/automations/events?limit=100"));
-            assert(response.ok);
-            const result = (await response.json()) as { events: Array<{ id: string }> };
-            assert.equal(
-              result.events.filter(({ id }) => id === "forwarded-fanout-retry-1").length,
-              1,
-            );
+            // The sibling's retry did not forward the event again.
+            expect(forwardHook).toMatchObject({ status: "completed", attempts: 0 });
           }),
           then.workflow.noErrored({ orgId: "org-1" }),
           then.hooks.noPending({ orgId: "org-1", fragments: ["automations"] }),
           then.hooks.noFailed({ orgId: "org-1", fragments: ["automations"] }),
+        ],
+      }),
+    );
+  });
+
+  test("a route whose workflow never appears gives up after its last attempt", async () => {
+    const event = customAutomationEvent({
+      id: "fanout-exhausted-1",
+      eventType: "fanout.exhausted",
+      payload: { value: "ready" },
+    });
+
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        objects: scenarioObjects,
+        name: "give up on a route after its retries",
+        options: { allowFailedDurableHooks: true },
+
+        files: backofficeFiles.workspaceStarter(),
+
+        setup: ({ given }) => [
+          given.organization.exists({ id: "org-1", name: "Ada Labs" }),
+          given.router.route({
+            orgId: "org-1",
+            id: "fanout-send-to-missing-workflow",
+            name: "Send to a workflow that is never created",
+            enabled: true,
+            trigger: {
+              kind: "event",
+              source: "custom",
+              eventType: "fanout.exhausted",
+              matcher: null,
+            },
+            priority: 50,
+            action: {
+              kind: "send_workflow_event",
+              target: { kind: "instance_id", template: "missing-waiter-1" },
+              eventType: "fanout-ready",
+              payload: "$event",
+            },
+          }),
+        ],
+
+        steps: ({ when, then }) => [
+          when.automation.ingestEvent(event),
+          // Each advance outlasts one backoff, which never exceeds 15 minutes.
+          ...Array.from({ length: 9 }, () => when.time.advance("15 minutes")),
+
+          then.assert("the route failed for good with its last error", async (ctx) => {
+            expect(await routeDispatchStates(ctx, event.id)).toEqual({
+              "fanout-send-to-missing-workflow": {
+                status: "failed",
+                failedAttempts: 10,
+                error: "INSTANCE_NOT_FOUND",
+              },
+            });
+            const queue = await ctx.runtime.objects.automations
+              .forOrg("org-1")
+              .commands.getDurableHookQueue("automation", { pageSize: 100 });
+            const routeHooks = queue.items.filter(
+              (item) => item.hookName === "internalDispatchRoute",
+            );
+            expect(routeHooks).toMatchObject([{ status: "failed", attempts: 10, maxAttempts: 10 }]);
+          }),
         ],
       }),
     );
