@@ -1,3 +1,3 @@
-defineWorkflow({ name: "install-telegram-test-command" }, async () => {
+export default defineWorkflow({ name: "install-telegram-test-command" }, async () => {
   throw new Error("Intentional Telegram test command installer failure.");
 });

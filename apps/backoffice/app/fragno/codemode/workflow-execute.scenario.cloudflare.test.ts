@@ -18,6 +18,7 @@ import { codemodeRunnerFor, type CodemodeRunner } from "@/fragno/codemode/codemo
 import { createTrustedSystemBackofficeToolContext } from "@/fragno/runtime-tools/runtime-tools";
 
 import { defineCodemodeWorkflowRun, runBackofficeCodemodeWorkflow } from "./workflow-execute";
+import { testWorkflowProgram } from "./workflow-program.test-utils";
 
 const codemode = codemodeRunnerFor(
   createCloudflareBackofficeObjectRegistry(env as CloudflareEnv).codemode.singleton().commands,
@@ -42,17 +43,16 @@ for (const caller of ["runner", "wrapper"] as const) {
     const options = {
       allowedHooks: [],
       origin: { kind: "inline" } as const,
-      modules: {},
       families: [],
       toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
     };
     const Workflow = defineRemoteWorkflow(
       { name: workflowName },
       caller === "runner"
-        ? defineCodemodeWorkflowRun(code, codemode, options)
+        ? defineCodemodeWorkflowRun(testWorkflowProgram(code), codemode, options)
         : async (event, remote) => {
             const output = await runBackofficeCodemodeWorkflow({
-              code,
+              program: testWorkflowProgram(code),
               event,
               remote,
               codemode,
@@ -141,18 +141,17 @@ test.each(["throw", "return"] as const)(
     const Workflow = defineRemoteWorkflow(
       { name: workflowName },
       defineCodemodeWorkflowRun(
-        `async (_event, step) => {
+        testWorkflowProgram(`async (_event, step) => {
       try { await step.sleep("pause", "3 seconds"); }
       catch {
         ${terminal === "throw" ? 'throw new Error("NATIVE_WORKFLOW_RPC_FAILURE_AFTER_SLEEP");' : 'return "must not complete before waking";'}
       }
       return "awake";
-    }`,
+    }`),
         codemode,
         {
           allowedHooks: [],
           origin: { kind: "inline" } as const,
-          modules: {},
           families: [],
           toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
         },
@@ -232,16 +231,15 @@ test("suspension history uses ISO timestamps while the live runner sleeps and re
   const Workflow = defineRemoteWorkflow(
     { name: workflowName },
     defineCodemodeWorkflowRun(
-      `async (event, step) => {
+      testWorkflowProgram(`async (event, step) => {
         await step.sleepUntil("scheduled", new Date(event.payload.wakeAt));
         const approval = await step.waitForEvent("approval", { type: "approved", timeout: "1 hour" });
         return approval.payload;
-      }`,
+      }`),
       recordingRunner,
       {
         allowedHooks: [],
         origin: { kind: "inline" },
-        modules: {},
         families: [],
         toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
       },
@@ -348,12 +346,13 @@ test("native RPC errors without host suspension still reach the runner", async (
   const Workflow = defineRemoteWorkflow(
     { name: workflowName },
     defineCodemodeWorkflowRun(
-      `async (_event, _step) => { throw new Error("NATIVE_WORKFLOW_RPC_FAILURE_WITHOUT_SUSPENSION"); }`,
+      testWorkflowProgram(
+        `async (_event, _step) => { throw new Error("NATIVE_WORKFLOW_RPC_FAILURE_WITHOUT_SUSPENSION"); }`,
+      ),
       codemode,
       {
         allowedHooks: [],
         origin: { kind: "inline" } as const,
-        modules: {},
         families: [],
         toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
       },
@@ -394,7 +393,7 @@ test("a ui.form step collects workflow input that the paired waitForEvent consum
   const Workflow = defineRemoteWorkflow(
     { name: workflowName },
     defineCodemodeWorkflowRun(
-      `async (_event, step) => {
+      testWorkflowProgram(`async (_event, step) => {
         const approval = ui.form("approval", { decision: "approve", reason: "" });
         await step.do("request approval", async () => ({
           $ui: ui.render(
@@ -417,13 +416,12 @@ test("a ui.form step collects workflow input that the paired waitForEvent consum
         }));
         const { payload } = await step.waitForEvent("approval", { type: approval.eventType });
         return payload;
-      }`,
+      }`),
       codemode,
       {
         allowedHooks: [],
         origin: { kind: "inline" } as const,
         families: [],
-        modules: {},
         toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
       },
     ),
@@ -524,7 +522,7 @@ test("a step returning an invalid generated UI fails without spending its retrie
   const Workflow = defineRemoteWorkflow(
     { name: workflowName },
     defineCodemodeWorkflowRun(
-      `async (_event, step) => {
+      testWorkflowProgram(`async (_event, step) => {
         await step.do("show report", { retries: { limit: 3, delay: "1 second" } }, async () => ({
           $ui: {
             version: 1,
@@ -537,13 +535,12 @@ test("a step returning an invalid generated UI fails without spending its retrie
             },
           },
         }));
-      }`,
+      }`),
       codemode,
       {
         allowedHooks: [],
         origin: { kind: "inline" } as const,
         families: [],
-        modules: {},
         toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
       },
     ),

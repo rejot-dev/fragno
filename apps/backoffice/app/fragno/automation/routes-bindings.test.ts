@@ -538,7 +538,7 @@ describe("automation routes /routes", () => {
     }> = [];
     fragment = await createAutomation({
       workflowFiles: {
-        "/workspace/automations/custom-start.workflow.js": `defineWorkflow({ name: "custom-start" }, async (event) => event.payload);`,
+        "/workspace/automations/custom-start.workflow.js": `export default defineWorkflow({ name: "custom-start" }, async (event) => event.payload);`,
       },
       workflows: {
         createInstance: async (

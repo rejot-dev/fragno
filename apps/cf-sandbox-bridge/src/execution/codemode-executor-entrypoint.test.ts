@@ -40,7 +40,9 @@ test("workflow step capabilities and guest callbacks survive the caller, bridge,
       timestamp: "2026-01-01T00:00:00.000Z",
       payload: {},
     },
-    code: `async (_event, step) => {
+    entry: "/workflow.js",
+    modules: {
+      "/workflow.js": `export default defineWorkflow({ name: "bridge-hops" }, async (_event, step) => {
       const listened = await step.do("listen", async (tx) => {
         await tx.emit({ phase: "listening" });
         const emissions = await tx.previousEmissions();
@@ -61,7 +63,8 @@ test("workflow step capabilities and guest callbacks survive the caller, bridge,
         },
       });
       return { listened, nested, approved: approval.payload.approved };
-    }`,
+    });`,
+    },
   });
   expect(result).toEqual({
     completion: expect.objectContaining({

@@ -144,7 +144,7 @@ export async function executeCodemodeActivation(
     }
     if (activation.kind === "workflow") {
       files["executor.js"] = createCodemodeWorkflowSource({
-        code: activation.code.trim().replace(/;*$/, ""),
+        modulePath: `.${activation.entry}`,
         providers,
       });
     } else if (activation.kind === "module") {

@@ -76,7 +76,7 @@ import {
   type BackofficeCodemodeExecuteResult,
 } from "@/fragno/codemode/execute";
 import { createRuntimeStateBackend } from "@/fragno/codemode/runtime-state-backend";
-import { readSavedModuleImports } from "@/fragno/codemode/saved-module-imports";
+import { readSavedWorkflowProgram } from "@/fragno/codemode/workflow-program";
 import type { MarketplaceStaticEntry } from "@/fragno/marketplace/contracts";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
 import { isMarketplaceInternalPackagePath } from "@/fragno/marketplace/package-files";
@@ -3008,20 +3008,17 @@ const buildStepBuilders = <
               if (workflowName !== CODEMODE_WORKFLOW) {
                 throw new Error("Saved workflow paths use the codemode workflow host.");
               }
-              const [execution, event, code] = await Promise.all([
+              const [execution, event, program] = await Promise.all([
                 executionPromise,
                 resolveScenarioValue(scenarioContext, input.event),
-                ctx.files.forOrg(input.orgId).readFile(input.path, "utf-8"),
+                readSavedWorkflowProgram({
+                  path: input.path,
+                  readFile: async (path) =>
+                    await ctx.files.forOrg(input.orgId).readFile(path, "utf-8"),
+                }),
               ]);
-              const { modules } = await readSavedModuleImports({
-                readFile: async (path) =>
-                  await ctx.files.forOrg(input.orgId).readFile(path, "utf-8"),
-                program: { kind: "inline", code },
-              });
               const prepared = prepareCodemodeWorkflowInstance({
-                code,
-                modules,
-                filename: input.path,
+                program,
                 instanceId: input.instanceId,
               });
               if (

@@ -1,17 +1,19 @@
 import { CODEMODE_LIMITS } from "../codemode-limits";
-import { normalizeCode, type ResolvedProvider } from "../runtime-api";
+import type { ResolvedProvider } from "../runtime-api";
 import {
   CODEMODE_GUEST_API_SOURCE,
   createCodemodeProviderGlobalsSource,
   createCodemodeProviderProxySource,
 } from "./codemode-guest-api-source";
 
-/** Generates the same guest workflow API for local and WebSocket-backed host targets. */
+/**
+ * Generates a guest that runs the workflow its entry module exports by default. The entry is a
+ * module like any saved program, so it imports others statically, by absolute or relative path.
+ */
 export function createCodemodeWorkflowSource(input: {
-  code: string;
+  modulePath: string;
   providers: readonly ResolvedProvider[];
 }): string {
-  const code = normalizeCode(input.code.trim().replace(/;*$/, "")).trim().replace(/;*$/, "");
   return `
 import { WorkerEntrypoint } from "cloudflare:workers";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -30,7 +32,6 @@ const captureLog = (channel, args) => {
 for (const channel of ["log", "info", "debug", "warn", "error"]) {
   console[channel] = (...args) => captureLog(channel, args);
 }
-const workflowProgram = (${code});
 const suspensionKey = "__fragnoRemoteWorkflowSuspended";
 const isSuspension = (value) => Boolean(value) && typeof value === "object" && value[suspensionKey] === true && "reason" in value;
 const unwrap = (result) => {
@@ -129,13 +130,15 @@ function createRemoteWorkflowStep(stepTarget) {
 export default class RemoteWorkflowEntrypoint extends WorkerEntrypoint {
   async run(event, stepTarget, dispatchers = {}) {
     __dispatchers = dispatchers;
-    if (typeof workflowProgram !== "function" && !__isFragnoCodemodeWorkflowDefinition(workflowProgram)) throw new Error("REMOTE_WORKFLOW_CODE_MUST_EVALUATE_TO_FUNCTION");
+    // Modules evaluate in their own scope, so the entry reaches defineWorkflow as a global.
+    globalThis.defineWorkflow = defineWorkflow;
+    const definition = (await import(${JSON.stringify(input.modulePath)})).default;
+    if (!__isFragnoCodemodeWorkflowDefinition(definition)) {
+      throw new Error("CODEMODE_WORKFLOW_DEFINITION_MISSING: the workflow module must export default defineWorkflow(...).");
+    }
     try {
       const step = createRemoteWorkflowStep(stepTarget);
-      const definition = __isFragnoCodemodeWorkflowDefinition(workflowProgram) || workflowProgram.length >= 2 ? workflowProgram : await workflowProgram();
-      const run = __isFragnoCodemodeWorkflowDefinition(definition) ? definition.run : definition;
-      if (typeof run !== "function") throw new Error("REMOTE_WORKFLOW_CODE_MUST_DEFINE_WORKFLOW");
-      return { ok: true, result: await run(event, step), logs };
+      return { ok: true, result: await definition.run(event, step), logs };
     } catch (error) {
       if (isSuspension(error)) return { ok: false, suspension: error, logs };
       if (error?.name === "RemoteWorkflowSuspendedError" && error.reason) return { ok: false, suspension: { [suspensionKey]: true, reason: error.reason }, logs };

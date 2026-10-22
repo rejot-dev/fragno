@@ -278,7 +278,7 @@ function githubPullRequestWebhookEvent(action: "opened" | "synchronize"): Automa
   };
 }
 
-const UNAUTHORIZED_MARKETPLACE_INSTALL_WORKFLOW_SOURCE = `defineWorkflow(
+const UNAUTHORIZED_MARKETPLACE_INSTALL_WORKFLOW_SOURCE = `export default defineWorkflow(
   { name: "unauthorized-marketplace-install" },
   async (_event, step) => {
     await step.do("attempt unauthorized workflow read", async () => {

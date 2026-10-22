@@ -12,7 +12,14 @@ import {
   prepareCodemodeWorkflowInstance,
 } from "./codemode-invocation";
 
-const SOURCE = `defineWorkflow({ name: "canonical-demo" }, async (event) => event.payload);`;
+const FILENAME = "/workspace/automations/canonical-demo.workflow.js";
+const PROGRAM = {
+  filename: FILENAME,
+  modules: {
+    [FILENAME]: `export default defineWorkflow({ name: "canonical-demo" }, async (event) => event.payload);`,
+  },
+  workflowName: "canonical-demo",
+};
 const execution = createBackofficeUserExecution({
   scope: { kind: "org", orgId: "org-1" },
   userId: "user-1",
@@ -32,44 +39,9 @@ const event: AutomationEvent = {
 };
 
 describe("codemode invocation preparation", () => {
-  test("prepares the same program snapshot for every source origin", () => {
-    const filenames = [
-      "/workspace/automations/canonical-demo.workflow.js",
-      "/pi/session-1/tool-1.workflow.js",
-      ".marketplace/install.workflow.js",
-    ];
-
-    const preparedInstances = filenames.map((filename, index) =>
-      prepareCodemodeWorkflowInstance({
-        modules: {},
-        code: SOURCE,
-        dependencies: { zod: "4.3.5" },
-        filename,
-        instanceId: `instance-${index + 1}`,
-      }),
-    );
-
-    for (const [index, prepared] of preparedInstances.entries()) {
-      expect(prepared).toEqual({
-        workflowName: "codemode-script",
-        remoteWorkflowName: "canonical-demo",
-        instanceId: `instance-${index + 1}`,
-        program: {
-          code: SOURCE,
-          modules: {},
-          dependencies: { zod: "4.3.5" },
-          workflowName: "canonical-demo",
-          filename: filenames[index],
-        },
-      });
-    }
-  });
-
   test("combines a prepared program with trusted invocation context", () => {
     const prepared = prepareCodemodeWorkflowInstance({
-      modules: {},
-      code: SOURCE,
-      filename: "/workspace/automations/canonical-demo.workflow.js",
+      program: PROGRAM,
       instanceId: "instance-1",
     });
 
@@ -114,9 +86,7 @@ describe("codemode invocation preparation", () => {
 
   test("rejects trusted invocation context from a different scope", () => {
     const prepared = prepareCodemodeWorkflowInstance({
-      modules: {},
-      code: SOURCE,
-      filename: "/workspace/automations/canonical-demo.workflow.js",
+      program: PROGRAM,
       instanceId: "instance-1",
     });
 

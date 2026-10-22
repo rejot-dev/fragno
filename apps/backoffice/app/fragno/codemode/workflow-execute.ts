@@ -9,7 +9,7 @@ import {
 import type { RemoteWorkflowRunFn, WorkflowEvent } from "@fragno-dev/workflows/workflow";
 
 import type { NpmDependencyMap } from "@/backoffice-runtime/dynamic-workers/npm-dependencies";
-import { withBackofficeUiBuilder } from "@/backoffice-ui/builder";
+import { withBackofficeUiBuilderModule } from "@/backoffice-ui/builder";
 import type {
   BackofficeRuntimeToolFamily,
   BackofficeToolContext,
@@ -23,6 +23,7 @@ import type {
 import { codemodeProviderManifest, type CodemodeRunner } from "./codemode-object-execute";
 import { createBackofficeCodemodeResolvedProviders } from "./execute";
 import { BackofficeWorkflowStepHost } from "./workflow-host";
+import type { CodemodeWorkflowProgram } from "./workflow-program";
 
 export type BackofficeCodemodeWorkflowResult<TOutput = unknown> = {
   result?: TOutput;
@@ -36,8 +37,6 @@ export type BackofficeCodemodeWorkflowOptions = {
   /** Hook identities the trusted host permits this sandbox to trigger. */
   allowedHooks: readonly RemoteWorkflowAllowedHook[];
   dependencies?: NpmDependencyMap;
-  /** Saved modules the program imports, pinned when its instance was created. */
-  modules: Record<string, string>;
   /** Names the program in each tick's run history. */
   origin: CodemodeRunOrigin;
 };
@@ -47,7 +46,7 @@ type WorkflowTickCompletion = CodemodeRunCompletion<
 >;
 
 type WorkflowExecutionInput<TParams> = {
-  code: string;
+  program: Pick<CodemodeWorkflowProgram, "filename" | "modules">;
   event: CodemodeWorkflowEvent<TParams>;
   remote: RemoteWorkflowStepHost;
   codemode: CodemodeRunner;
@@ -57,7 +56,7 @@ type WorkflowExecutionInput<TParams> = {
 async function runCodemodeWorkflowTick<TParams>(
   input: WorkflowExecutionInput<TParams>,
 ): Promise<WorkflowTickCompletion> {
-  const { modules, event, remote, codemode, origin, families, toolContext, dependencies } = input;
+  const { program, event, remote, codemode, origin, families, toolContext, dependencies } = input;
   const providers = createBackofficeCodemodeResolvedProviders({ families, toolContext });
   const host = createCodemodeHost(
     providers,
@@ -68,8 +67,7 @@ async function runCodemodeWorkflowTick<TParams>(
     ({ completion } = await codemode.run(
       {
         kind: "workflow",
-        code: withBackofficeUiBuilder(input.code),
-        modules,
+        ...withBackofficeUiBuilderModule({ entry: program.filename, modules: program.modules }),
         dependencies: dependencies ?? {},
         providers: codemodeProviderManifest(providers),
         timeoutMs: CODEMODE_LIMITS.activationTimeoutMs,
@@ -119,15 +117,15 @@ export async function runBackofficeCodemodeWorkflow<TParams = unknown, TOutput =
   return { result: workflowTickOutput(completion, input.remote) as TOutput };
 }
 
-/** Re-evaluates workflow source on each runner tick using Node-owned checkpoints. */
+/** Re-evaluates the workflow program on each runner tick using Node-owned checkpoints. */
 export function defineCodemodeWorkflowRun<TParams = unknown, TOutput = unknown>(
-  code: string,
+  program: Pick<CodemodeWorkflowProgram, "filename" | "modules">,
   codemode: CodemodeRunner,
   options: BackofficeCodemodeWorkflowOptions,
 ): RemoteWorkflowRunFn<TParams, TOutput> {
   return async (event, remote) =>
     workflowTickOutput(
-      await runCodemodeWorkflowTick({ code, event, remote, codemode, ...options }),
+      await runCodemodeWorkflowTick({ program, event, remote, codemode, ...options }),
       remote,
     ) as TOutput;
 }

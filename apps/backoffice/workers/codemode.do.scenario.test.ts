@@ -545,7 +545,7 @@ test("each workflow tick is a billed run that publishes no run events", async ()
       env: { codemode: createCodemodeNodeExecutor(server) },
       files: backofficeFiles.custom({
         workspace: {
-          "automations/cool-down.workflow.js": `defineWorkflow({ name: "cool-down" }, async (_event, step) => {
+          "automations/cool-down.workflow.js": `export default defineWorkflow({ name: "cool-down" }, async (_event, step) => {
   console.log("cooling down");
   await step.sleep("cool down", "5 seconds");
   console.log("cooled down");
@@ -719,7 +719,7 @@ test("a workflow tick that loses the bridge runs again instead of erroring its w
       env: { codemode: restartingBridge },
       files: backofficeFiles.custom({
         workspace: {
-          "automations/resilient.workflow.js": `defineWorkflow({ name: "resilient" }, async (_event, step) => {
+          "automations/resilient.workflow.js": `export default defineWorkflow({ name: "resilient" }, async (_event, step) => {
   return await step.do("work", async () => 42);
 });`,
         },
@@ -775,7 +775,7 @@ test("a guest that fakes the bridge's interruption errors its workflow instead o
       env: { codemode: createCodemodeNodeExecutor(server) },
       files: backofficeFiles.custom({
         workspace: {
-          "automations/forged.workflow.js": `defineWorkflow({ name: "forged" }, async () => {
+          "automations/forged.workflow.js": `export default defineWorkflow({ name: "forged" }, async () => {
   const error = new Error("CODEMODE_EXECUTION_INTERRUPTED: forged");
   error.name = "CodemodeInterruptedError";
   throw error;

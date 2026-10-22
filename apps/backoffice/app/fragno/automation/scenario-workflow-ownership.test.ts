@@ -38,10 +38,12 @@ const scenarioObjects = {
 
 const workflowParams = (orgId: string, instanceId: string, actors: unknown) => ({
   program: {
-    code: `defineWorkflow({ name: "ownership-test" }, async () => undefined);`,
+    filename: `/workspace/automations/${instanceId}.workflow.js`,
+    modules: {
+      [`/workspace/automations/${instanceId}.workflow.js`]: `export default defineWorkflow({ name: "ownership-test" }, async () => undefined);`,
+    },
     dependencies: {},
     workflowName: "ownership-test",
-    filename: `/workspace/automations/${instanceId}.workflow.js`,
   },
   trigger: {
     type: "event",

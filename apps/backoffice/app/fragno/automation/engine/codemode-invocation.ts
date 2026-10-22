@@ -14,15 +14,15 @@ import {
   backofficeContextScopeSchema,
   backofficeContextScopesEqual,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import { normalizeCode } from "@fragno-dev/codemode/runtime-api";
 import { z } from "zod";
-
-import { visualizeWorkflowSource } from "@fragno-dev/workflow-visualizer-tokens";
 
 import { backofficeExecutionScopeRestriction } from "@/backoffice-runtime/context";
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { NpmDependencyMap } from "@/backoffice-runtime/dynamic-workers/npm-dependencies";
 import { knownBackofficePermissions } from "@/backoffice-runtime/stored-permissions";
 import { type WorkflowReplyTo, workflowReplyToSchema } from "@/fragno/automation/workflow-reply";
+import type { CodemodeWorkflowProgram } from "@/fragno/codemode/workflow-program";
 
 export const CODEMODE_WORKFLOW = "codemode-script";
 
@@ -32,8 +32,6 @@ export const CODEMODE_CAPABILITY_ACTOR = {
   id: CODEMODE_WORKFLOW,
   role: "delegate",
 } as const satisfies AutomationActors["delegation"][number];
-
-const dependencyMapSchema = z.record(z.string().trim().min(1), z.string().trim().min(1));
 
 export type CodemodeCapabilityGrant = {
   actor: AutomationActors["delegation"][number];
@@ -53,14 +51,7 @@ export type CodemodeWorkflowTrigger<T extends AutomationEventPayload> =
   | { type: "manual"; payload: T };
 
 export type CodemodeWorkflowParams = {
-  program: {
-    code: string;
-    /** Saved modules the code imports, pinned at creation so every tick runs the same code. */
-    modules: Record<string, string>;
-    dependencies: NpmDependencyMap;
-    workflowName: string;
-    filename: string;
-  };
+  program: CodemodeWorkflowProgram & { dependencies: NpmDependencyMap };
   trigger: CodemodeWorkflowTrigger<AutomationEventPayload>;
   execution: {
     scope: BackofficeExecutionContext["scope"];
@@ -71,15 +62,56 @@ export type CodemodeWorkflowParams = {
   replyTo: WorkflowReplyTo | null;
 };
 
-export const codemodeWorkflowParamsSchema: z.ZodType<CodemodeWorkflowParams> = z.object({
-  program: z.strictObject({
+const codemodeWorkflowProgramSchema = z.strictObject({
+  filename: z.string().trim().min(1),
+  modules: z.record(z.string(), z.string()),
+  dependencies: z.record(z.string().trim().min(1), z.string().trim().min(1)),
+  workflowName: z.string().trim().min(1),
+});
+
+/**
+ * The guest once evaluated a program expression and accepted a workflow definition, a bare
+ * `(event, step)` run function, or a function returning either. The module keeps all three, and
+ * calls a factory inside the run, where the guest called it, rather than at module evaluation.
+ */
+function legacyWorkflowModuleSource(code: string, workflowName: string) {
+  const name = JSON.stringify(workflowName);
+  return `const program = (
+${normalizeCode(code.trim().replace(/;*$/u, ""))}
+);
+export default typeof program !== "function"
+  ? program
+  : program.length >= 2
+    ? defineWorkflow({ name: ${name} }, program)
+    : defineWorkflow({ name: ${name} }, async (event, step) => {
+        const value = await program();
+        return await (typeof value === "function" ? value : value.run)(event, step);
+      });
+`;
+}
+
+/** Workflow snapshots from before workflow modules store their program as one expression. */
+const legacyCodemodeWorkflowProgramSchema = z
+  .strictObject({
     code: z.string().min(1),
-    // Existing workflow snapshots predate pinned imports and import nothing.
+    // The oldest snapshots predate pinned imports and import nothing.
     modules: z.record(z.string(), z.string()).default({}),
-    dependencies: dependencyMapSchema,
+    dependencies: z.record(z.string().trim().min(1), z.string().trim().min(1)),
     workflowName: z.string().trim().min(1),
     filename: z.string().trim().min(1),
-  }),
+  })
+  .transform(({ code, modules, filename, ...program }) => {
+    // Marketplace installation programs were named by a package-relative path.
+    const entry = filename.startsWith("/") ? filename : `/${filename}`;
+    return {
+      ...program,
+      filename: entry,
+      modules: { ...modules, [entry]: legacyWorkflowModuleSource(code, program.workflowName) },
+    };
+  });
+
+export const codemodeWorkflowParamsSchema: z.ZodType<CodemodeWorkflowParams> = z.object({
+  program: z.union([codemodeWorkflowProgramSchema, legacyCodemodeWorkflowProgramSchema]),
   trigger: z.discriminatedUnion("type", [
     z.strictObject({ type: z.literal("event"), event: automationEventSchema }),
     z.strictObject({
@@ -97,23 +129,6 @@ export const codemodeWorkflowParamsSchema: z.ZodType<CodemodeWorkflowParams> = z
   // Existing workflow snapshots predate replies and report to no one.
   replyTo: workflowReplyToSchema.nullable().default(null),
 });
-
-const workflowNameFromSource = (filename: string, code: string) => {
-  const workflowNodes = visualizeWorkflowSource(filename, code).graph.nodes.filter(
-    (node) => node.kind === "workflow",
-  );
-  if (workflowNodes.length !== 1) {
-    throw new Error(
-      `Codemode program '${filename}' must contain exactly one defineWorkflow(...) declaration.`,
-    );
-  }
-
-  const workflowName = workflowNodes[0]?.name.trim();
-  if (!workflowName) {
-    throw new Error(`Codemode program '${filename}' must declare a static workflow name.`);
-  }
-  return workflowName;
-};
 
 export const assertCodemodeCapabilityGrantsBelongToExecution = ({
   execution,
@@ -142,31 +157,19 @@ export type PreparedCodemodeWorkflowInstance = {
 };
 
 export function prepareCodemodeWorkflowInstance({
-  code,
-  modules,
+  program,
   dependencies,
-  filename,
   instanceId,
 }: {
-  code: string;
-  modules: Record<string, string>;
+  program: CodemodeWorkflowProgram;
   dependencies?: NpmDependencyMap;
-  filename: string;
   instanceId: string;
 }): PreparedCodemodeWorkflowInstance {
-  const workflowName = workflowNameFromSource(filename, code);
-
   return {
     workflowName: CODEMODE_WORKFLOW,
-    remoteWorkflowName: workflowName,
+    remoteWorkflowName: program.workflowName,
     instanceId,
-    program: {
-      code,
-      modules,
-      dependencies: dependencies ?? {},
-      workflowName,
-      filename,
-    },
+    program: { ...program, dependencies: dependencies ?? {} },
   };
 }
 

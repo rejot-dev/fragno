@@ -111,14 +111,16 @@ export const codemodeActivationSchema = z.discriminatedUnion("kind", [
     invocation: z.string().min(1).max(CODEMODE_LIMITS.maxSourceBytes).nullable(),
     input: z.unknown(),
   }),
-  z.strictObject({
-    kind: z.literal("workflow"),
-    ...activationBase,
-    modules: sourceModules,
-    event: z
-      .object({ payload: z.unknown(), timestamp: z.date(), instanceId: name, id: name })
-      .catchall(z.unknown()),
-  }),
+  z
+    .strictObject({
+      kind: z.literal("workflow"),
+      ...executionBase,
+      ...moduleProgram,
+      event: z
+        .object({ payload: z.unknown(), timestamp: z.date(), instanceId: name, id: name })
+        .catchall(z.unknown()),
+    })
+    .refine(isModuleProgramEntry),
 ]);
 export type CodemodeActivation = z.infer<typeof codemodeActivationSchema>;
 /** Independently deployed peers must agree on the application API before compilation starts. */

@@ -3,7 +3,7 @@ export const SYSTEM_AUTOMATION_SCRIPT_PATHS = {
 } as const;
 
 export const SYSTEM_AUTOMATION_CONTENT: Record<string, string | Uint8Array> = {
-  "automations/workspace-file-initialization.workflow.js": `defineWorkflow(
+  "automations/workspace-file-initialization.workflow.js": `export default defineWorkflow(
   { name: "workspace-file-initialization" },
   async (event, step) => {
     const automationEvent = event;

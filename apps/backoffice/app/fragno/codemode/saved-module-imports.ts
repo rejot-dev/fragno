@@ -28,7 +28,13 @@ export class SavedModuleImportError extends BackofficeOperationError {
   }
 }
 
-type ImportSpecifier = { specifier: string; line: number; column: number };
+type ImportSpecifier = {
+  specifier: string;
+  /** Static imports and re-exports belong to modules; dynamic imports work in any code. */
+  form: "static" | "dynamic";
+  line: number;
+  column: number;
+};
 
 /**
  * Finds static imports, re-exports, and dynamic imports of string literals. Other dynamic imports
@@ -57,21 +63,23 @@ function findImportSpecifiers(code: string): ImportSpecifier[] {
       continue;
     }
     const next = tokens[index + 1];
-    const literal =
-      token.value === "from" || token.value === "import"
-        ? next?.token.type === "StringLiteral"
-          ? next
-          : token.value === "import" &&
-              next?.token.value === "(" &&
-              tokens[index + 2]?.token.type === "StringLiteral" &&
-              [")", ","].includes(tokens[index + 3]?.token.value ?? "")
-            ? tokens[index + 2]
-            : null
+    const staticLiteral =
+      (token.value === "from" || token.value === "import") && next?.token.type === "StringLiteral"
+        ? next
         : null;
+    const literal =
+      staticLiteral ??
+      (token.value === "import" &&
+      next?.token.value === "(" &&
+      tokens[index + 2]?.token.type === "StringLiteral" &&
+      [")", ","].includes(tokens[index + 3]?.token.value ?? "")
+        ? tokens[index + 2]
+        : null);
     if (literal) {
       const lines = code.slice(0, literal.start).split(/\r\n|[\n\r\u2028\u2029]/u);
       specifiers.push({
         specifier: literal.token.value.slice(1, -1),
+        form: staticLiteral ? "static" : "dynamic",
         line: lines.length,
         column: (lines.at(-1)?.length ?? 0) + 1,
       });
@@ -82,8 +90,8 @@ function findImportSpecifiers(code: string): ImportSpecifier[] {
 
 /**
  * Reads the saved modules a program imports, following path specifiers from module to module.
- * Inline code, including workflow programs, is not a module with a location, so it imports saved
- * modules by absolute path only.
+ * Inline code is one expression with no location, so it imports saved modules dynamically and by
+ * absolute path only. Saved files, including workflows, are modules.
  */
 export async function readSavedModuleImports(input: {
   readFile: (path: string) => Promise<string>;
@@ -128,6 +136,15 @@ export async function readSavedModuleImports(input: {
   async function followImports(code: string, importer: string | null) {
     for (const imported of findImportSpecifiers(code)) {
       const { specifier } = imported;
+      if (importer === null && imported.form === "static") {
+        // The guest wraps inline code in an expression, where a static import does not compile.
+        throw new SavedModuleImportError(
+          null,
+          imported.line,
+          imported.column,
+          `Inline code is one expression, so it loads modules with \`await import(${JSON.stringify(specifier)})\` instead of a static import.`,
+        );
+      }
       if (!specifier.startsWith("/") && !specifier.startsWith(".")) {
         packages.add(specifier);
         continue;
@@ -140,7 +157,7 @@ export async function readSavedModuleImports(input: {
           null,
           imported.line,
           imported.column,
-          `Inline code and workflow programs import saved modules by absolute path, not '${specifier}'.`,
+          `Inline code imports saved modules by absolute path, not '${specifier}'.`,
         );
       } else {
         path = posix.join(posix.dirname(importer), specifier);

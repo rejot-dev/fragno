@@ -35,7 +35,7 @@ const scope: BackofficeContextScope = { kind: "org", orgId: "org-1" };
 const member = createBackofficeUserExecution({ scope, userId: "member-1" });
 const period = new Date().toISOString().slice(0, 7);
 
-const triageWorkflow = `defineWorkflow({ name: "ticket-triage" }, async (event, step) => {
+const triageWorkflow = `export default defineWorkflow({ name: "ticket-triage" }, async (event, step) => {
   const triage = await step.do("classify ticket", async () =>
     await models.classify({
       state: { subject: event.payload.subject, body: event.payload.body },
@@ -270,7 +270,7 @@ const reviewAnswers = { matchesBrief: { type: "bool", probability: 0.95 } } as c
 const pngBase64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aXioAAAAASUVORK5CYII=";
 
-const reviewedImageWorkflow = `defineWorkflow({ name: "reviewed-image" }, async (event, step) => {
+const reviewedImageWorkflow = `export default defineWorkflow({ name: "reviewed-image" }, async (event, step) => {
   const { path } = await step.do("generate image", async () =>
     await models.generateImage({ prompt: event.payload.brief, out: "/workspace/images/review.png" }),
   );
@@ -611,7 +611,7 @@ test("invalid image evidence never reaches Decisions and corrected files preserv
   );
 });
 
-const productShotWorkflow = `defineWorkflow({ name: "product-shot" }, async (event, step) =>
+const productShotWorkflow = `export default defineWorkflow({ name: "product-shot" }, async (event, step) =>
   await step.do("draw product shot", async () =>
     await models.generateImage({
       prompt: event.payload.prompt,

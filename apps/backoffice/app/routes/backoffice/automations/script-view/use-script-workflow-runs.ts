@@ -16,7 +16,15 @@ import {
 
 // Instance params are opaque to the workflow runtime; only Codemode runs carry a program.
 const codemodeWorkflowRunParamsSchema = z.object({
-  program: z.object({ filename: z.string(), code: z.string() }),
+  program: z.union([
+    // Snapshots from before workflow modules store their source as one expression. They also
+    // carry the modules it imports, so they are told apart by their code, not their modules.
+    z.object({ filename: z.string(), code: z.string() }),
+    z
+      .object({ filename: z.string(), modules: z.record(z.string(), z.string()) })
+      // A program's own module holds its source.
+      .transform(({ filename, modules }) => ({ filename, code: modules[filename] ?? null })),
+  ]),
   trigger: z.discriminatedUnion("type", [
     z.object({
       type: z.literal("event"),
@@ -154,22 +162,24 @@ export function automationWorkflowRunsFromRecords(
 ): AutomationWorkflowRun[] {
   return (records as PersistedAutomationWorkflowRun[]).map(({ params, ...instance }) => {
     const codemodeParams = codemodeWorkflowRunParamsSchema.safeParse(params);
+    const code = codemodeParams.success ? codemodeParams.data.program.code : null;
     return {
       ...instance,
-      codemode: codemodeParams.success
-        ? {
-            filename: codemodeParams.data.program.filename,
-            code: codemodeParams.data.program.code,
-            trigger:
-              codemodeParams.data.trigger.type === "event"
-                ? {
-                    type: "event",
-                    source: codemodeParams.data.trigger.event.source,
-                    eventType: codemodeParams.data.trigger.event.eventType,
-                  }
-                : { type: "manual" },
-          }
-        : null,
+      codemode:
+        codemodeParams.success && code !== null
+          ? {
+              filename: codemodeParams.data.program.filename,
+              code,
+              trigger:
+                codemodeParams.data.trigger.type === "event"
+                  ? {
+                      type: "event",
+                      source: codemodeParams.data.trigger.event.source,
+                      eventType: codemodeParams.data.trigger.event.eventType,
+                    }
+                  : { type: "manual" },
+            }
+          : null,
     };
   });
 }

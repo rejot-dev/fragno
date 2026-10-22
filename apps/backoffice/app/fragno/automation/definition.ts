@@ -31,7 +31,7 @@ import {
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel, BackofficeForbiddenError } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
-import { readSavedModuleImports } from "@/fragno/codemode/saved-module-imports";
+import { readSavedWorkflowProgram } from "@/fragno/codemode/workflow-program";
 import { piAgentActor } from "@/fragno/pi/agent/pi-agent-actor";
 import { createPiManagerRuntime } from "@/fragno/pi/manager/pi-manager-runtime";
 
@@ -40,7 +40,7 @@ import {
   createAutomationRuntimeExecution,
   linkAutomationEventToUser,
 } from "./authority";
-import { readAutomationScript, type AutomationSourceReader } from "./automation-source";
+import { resolveAutomationScriptPath, type AutomationSourceReader } from "./automation-source";
 import { createAutomationStoreServices } from "./bindings-storage-runtime";
 import { SYSTEM_STARTER_AUTOMATION_ROUTES } from "./content/starter-routing";
 import { getAutomationEventIdentity, type AutomationEventIdentity } from "./contracts";
@@ -286,20 +286,11 @@ const handleStartWorkflowRouteAction = async ({
     throw new Error("Automation workflow source reading is not configured.");
   }
   const readAutomationSource = config.readAutomationSource;
-  const script = await readAutomationScript(readAutomationSource, {
-    execution,
-    scriptPath: action.workflowScriptPath,
-  });
-  const { modules } = await readSavedModuleImports({
+  const program = await readSavedWorkflowProgram({
+    path: resolveAutomationScriptPath(action.workflowScriptPath),
     readFile: async (path) => await readAutomationSource({ execution, path }),
-    program: { kind: "inline", code: script.body },
   });
-  const prepared = prepareCodemodeWorkflowInstance({
-    code: script.body,
-    modules,
-    filename: script.absolutePath,
-    instanceId,
-  });
+  const prepared = prepareCodemodeWorkflowInstance({ program, instanceId });
   const triggerEvent =
     action.authority.kind === "linked-user"
       ? { ...workflowEvent, actors: execution.actors }

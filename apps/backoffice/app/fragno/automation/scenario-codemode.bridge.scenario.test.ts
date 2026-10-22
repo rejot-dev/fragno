@@ -18,6 +18,7 @@ import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { createNodeBackofficeRuntimeConfiguration } from "@/backoffice-runtime/node/node-runtime-env";
+import { readSavedWorkflowProgram } from "@/fragno/codemode/workflow-program";
 
 import {
   createCodemodeWorkflowInstanceInput,
@@ -131,7 +132,7 @@ test("scenario TanStack DB exposes an in-flight step.do lifecycle", async () => 
       env: runtimeEnv,
       files: backofficeFiles.custom({
         workspace: {
-          "automations/tanstack-live-step.workflow.js": `defineWorkflow(
+          "automations/tanstack-live-step.workflow.js": `export default defineWorkflow(
   { name: "tanstack-live-step" },
   async (_event, step) => {
     await step.do("blocked operation", async (tx) => {
@@ -169,9 +170,10 @@ test("scenario TanStack DB exposes an in-flight step.do lifecycle", async () => 
             causation: { kind: "origin" },
           };
           const prepared = prepareCodemodeWorkflowInstance({
-            modules: {},
-            code: await ctx.files.forOrg("org-1").readFile(workflowPath, "utf-8"),
-            filename: workflowPath,
+            program: await readSavedWorkflowProgram({
+              path: workflowPath,
+              readFile: async (path) => await ctx.files.forOrg("org-1").readFile(path, "utf-8"),
+            }),
             instanceId: "tanstack-live-step-run",
           });
           assert(prepared.remoteWorkflowName === "tanstack-live-step");

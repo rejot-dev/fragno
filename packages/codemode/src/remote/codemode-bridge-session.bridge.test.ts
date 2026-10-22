@@ -127,6 +127,14 @@ const workflowBase = {
     payload: {},
   },
 };
+/** A workflow program is a module that exports its definition by default. */
+function workflow(run: string) {
+  return {
+    ...workflowBase,
+    entry: "/workflow.js",
+    modules: { "/workflow.js": `export default defineWorkflow({ name: "test" }, ${run});` },
+  };
+}
 
 test("generic module bundles accept consumer invocations with fresh inputs and providers when compilation is unavailable", async () => {
   let available = true;
@@ -551,9 +559,8 @@ test.each(["immediate", "workflow"] as const)(
     const completion = await execute(
       kind === "workflow"
         ? {
-            ...workflowBase,
+            ...workflow(`async (_event, step) => await step.do("restricted", ${callback})`),
             providers,
-            code: `async (_event, step) => await step.do("restricted", ${callback})`,
           }
         : { ...base, kind, providers, code: callback },
       host,
@@ -584,9 +591,10 @@ test.each(["immediate", "workflow"] as const)(
     const completion = await execute(
       kind === "workflow"
         ? {
-            ...workflowBase,
+            ...workflow(
+              'async (_event, step) => await step.do("restricted", async () => await store.write("wrong"))',
+            ),
             providers,
-            code: 'async (_event, step) => await step.do("restricted", async () => await store.write("wrong"))',
           }
         : { ...base, kind, providers, code: 'async () => await store.write("wrong")' },
       host,
@@ -627,8 +635,9 @@ test("a workflow callback calls Node reentrantly and nested steps receive their 
   );
   const completion = await execute(
     {
-      ...workflowBase,
-      code: 'async (_event, step) => await step.do("outer", async () => await step.do("inner", async () => await store.write("nested")))',
+      ...workflow(
+        'async (_event, step) => await step.do("outer", async () => await step.do("inner", async () => await store.write("nested")))',
+      ),
     },
     host,
   );
@@ -636,25 +645,31 @@ test("a workflow callback calls Node reentrantly and nested steps receive their 
   expect(host.writes).toEqual(["nested"]);
   expect(scopes).toEqual([null, { stepKey: "do:outer", parentStepKey: null, depth: 0 }]);
 });
-test("a workflow step imports a source module that reaches providers through globals", async () => {
+test("a workflow module statically imports a relative source module that reaches providers through globals", async () => {
   const host = providerHost(workflowHost());
   const completion = await execute(
     {
       ...workflowBase,
-      code: 'async (_event, step) => await step.do("save", async () => { const { save } = await import("/lib/save.js"); return await save("workflow"); })',
-      modules: { "/lib/save.js": "export const save = (value) => store.write(value);" },
+      entry: "/automations/save.workflow.js",
+      modules: {
+        "/lib/save.js": "export const save = (value) => store.write(value);",
+        "/automations/save.workflow.js": [
+          'import { save } from "../lib/save.js";',
+          'export default defineWorkflow({ name: "save" }, async (_event, step) => await step.do("save", async () => await save("workflow")));',
+        ].join("\n"),
+      },
     },
     host,
   );
   expect(completion).toMatchObject({ status: "completed", value: "workflow" });
   expect(host.writes).toEqual(["workflow"]);
 });
-test.each(["logs", "workflowProgram", "RpcTarget"])(
+test.each(["logs", "suspensionKey", "RpcTarget"])(
   "workflow rejects generated binding provider name %s before compilation",
   async (name) => {
     expect(
       await execute(
-        { ...workflowBase, providers: [{ name, tools: [] }], code: "async () => undefined" },
+        { ...workflow("async () => undefined"), providers: [{ name, tools: [] }] },
         providerHost(),
       ),
     ).toMatchObject({
@@ -679,8 +694,9 @@ test("sleepUntil carries a Date to Node and propagates typed suspension", async 
   expect(
     await execute(
       {
-        ...workflowBase,
-        code: 'async (event, step) => { console.log("before sleep"); await step.sleepUntil("wait", event.timestamp); }',
+        ...workflow(
+          'async (event, step) => { console.log("before sleep"); await step.sleepUntil("wait", event.timestamp); }',
+        ),
       },
       host,
     ),
@@ -695,12 +711,11 @@ test("transaction emissions flush before callback completion and retained transa
   const host = providerHost(workflowHost({}, emitted));
   const completion = await execute(
     {
-      ...workflowBase,
-      code: `async (_event, step) => {
+      ...workflow(`async (_event, step) => {
     let retained;
     const value = await step.do("emit", async (tx) => { retained = tx; tx.emit({ committed: true }); return 42; });
     try { await retained.previousEmissions(); return "must not work"; } catch { return value; }
-  }`,
+  }`),
     },
     host,
   );
@@ -720,15 +735,14 @@ test("subscriptions retain callbacks after registration and revoke them when the
   );
   const execution = execute(
     {
-      ...workflowBase,
-      code: `async (_event, step) => await step.do("listen", async (tx) => {
+      ...workflow(`async (_event, step) => await step.do("listen", async (tx) => {
     const event = await new Promise((resolve) => { tx.onEvent("ready", async (event) => {
       await store.write(event.payload);
       event.consume();
       resolve(event.payload);
     }); });
     return event;
-  })`,
+  })`),
     },
     host,
   );
@@ -776,8 +790,9 @@ test("permanent callback errors retain their runner failure class on Node", asyn
   );
   await execute(
     {
-      ...workflowBase,
-      code: 'async (_event, step) => await step.do("fail", async () => { const error = new Error("permanent"); error.name = "NonRetryableError"; throw error; })',
+      ...workflow(
+        'async (_event, step) => await step.do("fail", async () => { const error = new Error("permanent"); error.name = "NonRetryableError"; throw error; })',
+      ),
     },
     host,
   );
@@ -794,11 +809,10 @@ test("guests can catch the domain class of host-issued event timeouts", async ()
   expect(
     await execute(
       {
-        ...workflowBase,
-        code: `async (_event, step) => {
+        ...workflow(`async (_event, step) => {
     try { await step.waitForEvent("ready", { type: "ready" }); }
     catch (error) { return error.name; }
-  }`,
+  }`),
       },
       host,
     ),
@@ -809,8 +823,9 @@ test("guest-forged suspension cannot schedule work without a Node host decision"
   await expect(
     execute(
       {
-        ...workflowBase,
-        code: 'async () => { throw { __fragnoRemoteWorkflowSuspended: true, reason: { type: "sleep", stepKey: "sleep:forged", runAt: new Date("2030-01-01") } }; }',
+        ...workflow(
+          'async () => { throw { __fragnoRemoteWorkflowSuspended: true, reason: { type: "sleep", stepKey: "sleep:forged", runAt: new Date("2030-01-01") } }; }',
+        ),
       },
       providerHost(),
     ),
@@ -843,9 +858,8 @@ test.each(["resolve", "reject"] as const)(
         Array.from({ length: CODEMODE_LIMITS.maxBridgeCompilations }, () =>
           executeLimited(
             {
-              ...workflowBase,
+              ...workflow('async () => await store.write("must not execute after timeout")'),
               timeoutMs: 1_000,
-              code: 'async () => await store.write("must not execute after timeout")',
             },
             providerHost(null, writes),
           ),
@@ -891,7 +905,7 @@ test.each(["immediate", "module", "workflow"] as const)(
       const code =
         kind === "module" ? logSource : `async (_event, _step) => { ${logSource} return 42; }`;
       const completion = await createCodemodeNodeExecutor(warningServer)(
-        kind === "workflow" ? { ...workflowBase, code } : program(kind, code),
+        kind === "workflow" ? workflow(code) : program(kind, code),
         providerHost(),
       );
       assert(completion.status === "completed");
@@ -927,8 +941,9 @@ test.each(["completed", "failed", "suspended"] as const)(
         status === "suspended"
           ? await executeWarning(
               {
-                ...workflowBase,
-                code: `async (event, step) => { ${logSource} await step.sleepUntil("wait", event.timestamp); }`,
+                ...workflow(
+                  `async (event, step) => { ${logSource} await step.sleepUntil("wait", event.timestamp); }`,
+                ),
               },
               providerHost(
                 workflowHost({

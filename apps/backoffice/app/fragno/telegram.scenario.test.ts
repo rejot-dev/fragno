@@ -63,7 +63,7 @@ test("a shared Telegram conversation cannot inherit its legacy linked user's aut
           given.direct.file({
             orgId: "org-1",
             path: "/workspace/automations/group-identity.workflow.js",
-            content: `defineWorkflow({ name: "group-identity" }, async (event, step) => {
+            content: `export default defineWorkflow({ name: "group-identity" }, async (event, step) => {
           await step.do("write protected entry", async () => {
             await store.set({ key: "group-impersonation", value: event.payload.fromUserId });
           });

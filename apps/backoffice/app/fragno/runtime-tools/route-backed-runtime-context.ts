@@ -19,7 +19,7 @@ import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-ser
 import { createStaticFileCollection } from "@/file-collection/create-static-file-collection";
 import { createBackofficeStaticFileCollection } from "@/files/content/static";
 import {
-  readAutomationScript,
+  resolveAutomationScriptPath,
   type AutomationSourceReader,
 } from "@/fragno/automation/automation-source";
 import { createRouteBackedAutomationStoreRuntime } from "@/fragno/automation/bindings-route-runtime";
@@ -36,11 +36,11 @@ import { usageBillingForScope } from "@/fragno/billing/usage-billing";
 import type { CodemodeRunContext } from "@/fragno/codemode/codemode-fragment";
 import { codemodeRunnerFor } from "@/fragno/codemode/codemode-object-execute";
 import { createRuntimeStateBackend } from "@/fragno/codemode/runtime-state-backend";
-import { readSavedModuleImports } from "@/fragno/codemode/saved-module-imports";
 import {
   createBackofficeSystemStateBackend,
   type BackofficeStateBackend,
 } from "@/fragno/codemode/state-backend";
+import { readSavedWorkflowProgram } from "@/fragno/codemode/workflow-program";
 import {
   createPiManagerRuntime,
   type PiManagerRuntime,
@@ -387,25 +387,11 @@ export const createRouteBackedRuntimeContext = ({
                 kernel,
                 path: sourcePath,
               }));
-          const script = await readAutomationScript(sourceReader, {
-            execution,
-            scriptPath: path,
-          });
-          if (!script.absolutePath.endsWith(".workflow.js")) {
-            throw new Error(
-              `Saved workflow path '${script.absolutePath}' must end with '.workflow.js'.`,
-            );
-          }
-          const { modules } = await readSavedModuleImports({
+          const program = await readSavedWorkflowProgram({
+            path: resolveAutomationScriptPath(path),
             readFile: async (modulePath) => await sourceReader({ execution, path: modulePath }),
-            program: { kind: "inline", code: script.body },
           });
-          const prepared = prepareCodemodeWorkflowInstance({
-            code: script.body,
-            modules,
-            filename: script.absolutePath,
-            instanceId,
-          });
+          const prepared = prepareCodemodeWorkflowInstance({ program, instanceId });
           return createCodemodeWorkflowInstanceInput({
             prepared,
             trigger: { type: "manual", payload: payload ?? {} },

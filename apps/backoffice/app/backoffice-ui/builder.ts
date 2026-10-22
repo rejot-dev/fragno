@@ -172,3 +172,25 @@ export function withBackofficeUiBuilder(code: string) {
   // The program starts on the first line so compiler diagnostics keep the author's line numbers.
   return `((ui) => ((page) => (globalThis.ui = ui, globalThis.page = page, ${program}\n))(${pageBuilderSource}(ui)))((${BACKOFFICE_UI_BUILDER_SOURCE})(${builderConfig}))`;
 }
+
+// Saved modules live under /static and /workspace, so these paths cannot collide with them.
+const UI_BUILDER_GLOBALS_MODULE = "/__backoffice__/ui-builder-globals.js";
+const UI_BUILDER_ENTRY_MODULE = "/__backoffice__/ui-builder-entry.js";
+
+/**
+ * Gives a module program the `ui` and `page` builders as globals. A module evaluates its imports in
+ * order, so the builders exist before any of the program's modules run.
+ */
+export function withBackofficeUiBuilderModule(program: {
+  entry: string;
+  modules: Record<string, string>;
+}) {
+  return {
+    entry: UI_BUILDER_ENTRY_MODULE,
+    modules: {
+      ...program.modules,
+      [UI_BUILDER_GLOBALS_MODULE]: `const ui = (${BACKOFFICE_UI_BUILDER_SOURCE})(${builderConfig});\nglobalThis.ui = ui;\nglobalThis.page = ${pageBuilderSource}(ui);\n`,
+      [UI_BUILDER_ENTRY_MODULE]: `import ${JSON.stringify(UI_BUILDER_GLOBALS_MODULE)};\nexport { default } from ${JSON.stringify(program.entry)};\n`,
+    },
+  };
+}

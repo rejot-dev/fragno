@@ -14,11 +14,37 @@ import {
   SavedModuleImportError,
 } from "@/fragno/codemode/saved-module-imports";
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
+import { savedWorkflowName, WorkflowModuleError } from "@/fragno/codemode/workflow-program";
 import type { CoreBackofficeToolContext } from "@/fragno/runtime-tools/tool-families";
 
 const JAVASCRIPT_FILE_ROOTS = ["/static", "/workspace"] as const;
 const JAVASCRIPT_DECLARATION_ROOT = "/static";
 const SAVED_MODULE_IMPORT_DIAGNOSTIC_CODE = 95001;
+const WORKFLOW_MODULE_DIAGNOSTIC_CODE = 95002;
+
+/** A workflow file runs only as the workflow it exports, so checking it checks that export too. */
+function workflowModuleDiagnostics(path: string, code: string) {
+  if (!path.endsWith(".workflow.js")) {
+    return [];
+  }
+  try {
+    savedWorkflowName(path, code);
+    return [];
+  } catch (error) {
+    if (!(error instanceof WorkflowModuleError)) {
+      throw error;
+    }
+    return [
+      {
+        code: WORKFLOW_MODULE_DIAGNOSTIC_CODE,
+        path: error.path,
+        line: error.line,
+        column: error.column,
+        message: error.message,
+      },
+    ];
+  }
+}
 
 export type JavaScriptCheckFileOutput = {
   path: string;
@@ -182,13 +208,17 @@ export function createJavaScriptRuntime({
             ],
             sourcePaths,
           });
-          const diagnostics = result.diagnostics.map((diagnostic) => ({
-            ...diagnostic,
-            path:
-              diagnostic.path === null || diagnostic.path.startsWith("/")
-                ? diagnostic.path
-                : `/${diagnostic.path}`,
-          }));
+          const diagnostics = [
+            // Reading a file program always includes the file itself.
+            ...workflowModuleDiagnostics(sourcePath, modules[sourcePath]),
+            ...result.diagnostics.map((diagnostic) => ({
+              ...diagnostic,
+              path:
+                diagnostic.path === null || diagnostic.path.startsWith("/")
+                  ? diagnostic.path
+                  : `/${diagnostic.path}`,
+            })),
+          ];
 
           return {
             path: sourcePath,

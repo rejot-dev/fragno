@@ -71,7 +71,7 @@ test("events record the routes and workflows that caused them back to their orig
       env: runtimeEnv,
       files: backofficeFiles.custom({
         workspace: {
-          "automations/triage-issue.workflow.js": `defineWorkflow(
+          "automations/triage-issue.workflow.js": `export default defineWorkflow(
   { name: "triage-issue" },
   async (event, step) => {
     await step.do("announce triage", async () => {

@@ -6,6 +6,7 @@ import type { CodemodeRunOrigin } from "@/fragno/codemode/codemode-fragment";
 import type { CodemodeRunner } from "@/fragno/codemode/codemode-object-execute";
 import type { BackofficeCodemodeWorkflowDefinition } from "@/fragno/codemode/execute";
 import { runBackofficeCodemodeWorkflow } from "@/fragno/codemode/workflow-execute";
+import type { CodemodeWorkflowProgram } from "@/fragno/codemode/workflow-program";
 import type { AutomationScriptHostContext } from "@/fragno/runtime-tools/automation-host";
 import type { BackofficeRuntimeToolCall } from "@/fragno/runtime-tools/runtime-tools";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
@@ -39,8 +40,7 @@ const createCodemodeAutomationRunResult = ({
   });
 
 export const executeWorkflowCodemodeAutomation = async ({
-  script,
-  modules,
+  program,
   dependencies,
   context,
   codemode,
@@ -48,8 +48,7 @@ export const executeWorkflowCodemodeAutomation = async ({
   workflowEvent,
   remote,
 }: {
-  script: string;
-  modules: Record<string, string>;
+  program: Pick<CodemodeWorkflowProgram, "filename" | "modules">;
   dependencies?: NpmDependencyMap;
   context: AutomationScriptHostContext;
   codemode: CodemodeRunner;
@@ -59,8 +58,7 @@ export const executeWorkflowCodemodeAutomation = async ({
 }): Promise<AutomationRunResult<"codemode">> => {
   const toolContext = createBackofficeToolContext(context);
   const result = await runBackofficeCodemodeWorkflow({
-    code: script,
-    modules,
+    program,
     dependencies,
     event: { ...workflowEvent, id: context.automation.event.id },
     remote,

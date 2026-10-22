@@ -1,4 +1,4 @@
-defineWorkflow({ name: "configure-telegram" }, async (_event, step) => {
+export default defineWorkflow({ name: "configure-telegram" }, async (_event, step) => {
   await step.do("request Telegram bot token", async () => ({
     $ui: {
       version: 1,
