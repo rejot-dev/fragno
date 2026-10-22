@@ -2,6 +2,7 @@
 // the last day, connections, what is scheduled or waiting, and agents. Copy it into /workspace
 // as a <name>.page.js file to open it or start from it.
 export default page.define(
+  { title: "Home" },
   ({
     collections,
     from,

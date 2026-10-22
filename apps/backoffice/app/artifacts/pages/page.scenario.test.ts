@@ -61,7 +61,7 @@ const orgId = "org-1";
 const scope = { kind: "org" as const, orgId };
 const SOURCE_PATH = "/workspace/reports/operations.page.js";
 
-const operationsPage = `export default page.define(({ collections, from, and, eq, gte, not, isNull, coalesce, count, max, intervals, bucket, now }) => {
+const operationsPage = `export default page.define({ title: "Operations" }, ({ collections, from, and, eq, gte, not, isNull, coalesce, count, max, intervals, bucket, now }) => {
   const day = now.minus("24 hours");
   const runs = collections.workflowInstances;
 
@@ -119,7 +119,7 @@ const operationsPage = `export default page.define(({ collections, from, and, eq
  * The home page's Automations panel and attention list: one row per workflow with its latest run,
  * a sparkline of starts per hour, and links, read from a grouped subquery with nested rows.
  */
-const automationsPage = `export default page.define(({ collections, from, toArray, unionAll, intervals, bucket, now, and, eq, gt, gte, not, isNull, add, divide, concat, coalesce, count, sum, max, caseWhen }) => {
+const automationsPage = `export default page.define({ title: "Automations" }, ({ collections, from, toArray, unionAll, intervals, bucket, now, and, eq, gt, gte, not, isNull, add, divide, concat, coalesce, count, sum, max, caseWhen }) => {
   const day = now.minus("24 hours");
   const hours = intervals({ every: "1 hour", since: day });
   const runs = from({ run: collections.workflowInstances }).select(({ run }) => ({
@@ -231,7 +231,7 @@ const automationsPage = `export default page.define(({ collections, from, toArra
 `;
 
 /** Binds a JSON field, which declarations type as unknown, to a metric's value. */
-const paramsMetricPage = `export default page.define(({ collections, from }) =>
+const paramsMetricPage = `export default page.define({ title: "Order params" }, ({ collections, from }) =>
   ui.metric({
     label: "Newest params",
     value: from({ run: collections.workflowInstances }).orderBy(({ run }) => run.createdAt, "desc").limit(1).value("params", "none"),
@@ -239,7 +239,7 @@ const paramsMetricPage = `export default page.define(({ collections, from }) =>
 );
 `;
 
-const newestRunPage = `export default page.define(({ collections, from }) =>
+const newestRunPage = `export default page.define({ title: "Newest run" }, ({ collections, from }) =>
   ui.table({
     caption: "Newest run",
     columns: [{ key: "instanceId", label: "Run" }],
@@ -461,6 +461,7 @@ describe("workspace pages", () => {
             const loaded = await loadBuiltPage(ctx);
             assert(loaded.kind === "ready", JSON.stringify(loaded));
             assert.equal(await cachedOutcome(ctx), "built");
+            assert.equal(loaded.definition.title, "Operations");
             const { markup } = await renderPage(ctx, loaded.definition);
             assert.include(markup, "Runs today");
             assert.match(markup, />4</);
@@ -592,7 +593,7 @@ describe("workspace pages", () => {
           then.assert("the check, the verification, and the route name the field", async (ctx) => {
             const { diagnostics, verifyError } = await writePage(
               ctx,
-              `export default page.define(({ collections, from }) =>
+              `export default page.define({ title: "Broken" }, ({ collections, from }) =>
   ui.table({
     caption: "Runs",
     columns: [{ key: "status", label: "Status" }],
@@ -639,7 +640,7 @@ describe("workspace pages", () => {
             // TanStack DB rejects it as the build compiles the query, before any row arrives.
             const { diagnostics, verifyError } = await writePage(
               ctx,
-              `export default page.define(({ collections, from, count }) =>
+              `export default page.define({ title: "Broken" }, ({ collections, from, count }) =>
   ui.barChart({
     label: "Events by day and type",
     rows: from({ event: collections.events })

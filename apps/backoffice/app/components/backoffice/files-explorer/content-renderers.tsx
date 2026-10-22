@@ -353,7 +353,7 @@ function BuiltPage({
   href: string;
   collections: AutomationCollections;
 }) {
-  const fetcher = useFetcher<{ title: string; result: PageLoad }>();
+  const fetcher = useFetcher<{ name: string; result: PageLoad }>();
   const { load } = fetcher;
   useEffect(() => {
     void load(href);
