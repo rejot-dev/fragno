@@ -449,7 +449,8 @@ describe("dashboard", () => {
               turnRequestId: "taken",
             }),
           ),
-          when.automation.ingestEvent(piEvent("stop", "agent.stopped", "assistant", twoDaysLater)),
+          // Before the queued work: events in one instant order by when they were stored, which can tie.
+          when.automation.ingestEvent(piEvent("stop", "agent.stopped", "assistant", minuteBefore)),
           when.automation.ingestEvent(
             requestEvent("waiting-added", "queue.added", "waiting", twoDaysLater, {
               type: "notification",
