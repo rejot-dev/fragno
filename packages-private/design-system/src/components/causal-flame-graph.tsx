@@ -24,6 +24,7 @@ import {
   causalFlamePath,
   causalFlamePosition,
   causalFlameScale,
+  causalFlameShowsDetail,
   causalFlameTicks,
   causalFlameTimeAt,
   countCausalFlameNodes,
@@ -210,6 +211,7 @@ export function CausalFlameGraph({
         </h3>
         <p className="flex shrink-0 items-center gap-3 text-[var(--bo-muted)]">
           <Fact noun="event" value={counts.event} />
+          <Fact noun="route" value={counts.route} />
           <Fact noun="workflow" value={counts.workflow} />
           <Fact noun="step" value={counts.step} />
           {counts.failed === 0 ? null : (
@@ -452,7 +454,10 @@ function Axis({
         >
           {tick.offset === 0 && !tick.afterIdle
             ? "0s"
-            : `+${formatWorkflowDuration(tick.offset, "fine")}`}
+            : // Rounding to tenths would label quarter-second ticks "+0.3s" and "+0.8s".
+              tick.offset < 1_000
+              ? `+${tick.offset}ms`
+              : `+${formatWorkflowDuration(tick.offset, "fine")}`}
         </span>
       ))}
       {scale.segments.map((segment) =>
@@ -557,11 +562,24 @@ function Connectors({
             : highlighted === null
               ? 0.45
               : 0.18;
+        // A label before its bar sits between the anchor and the bar, so the line reaches the bar
+        // through the gap above the label instead of striking through it.
+        const turn = bar.labelSide === "start" ? rowCenter(bar.row) - ROW_HEIGHT / 2 + 2 : bottom;
         return (
           <g key={bar.node.id} stroke={stroke} strokeOpacity={opacity} strokeWidth={lit ? 1.5 : 1}>
-            <line x1={percent(anchor)} y1={top} x2={percent(anchor)} y2={bottom} />
+            <line x1={percent(anchor)} y1={top} x2={percent(anchor)} y2={turn} />
             {bar.queuedFrom > anchor ? (
-              <line x1={percent(anchor)} y1={bottom} x2={percent(bar.queuedFrom)} y2={bottom} />
+              <>
+                <line x1={percent(anchor)} y1={turn} x2={percent(bar.queuedFrom)} y2={turn} />
+                {turn === bottom ? null : (
+                  <line
+                    x1={percent(bar.queuedFrom)}
+                    y1={turn}
+                    x2={percent(bar.queuedFrom)}
+                    y2={bottom - BAR_HALF_HEIGHT[bar.node.kind]}
+                  />
+                )}
+              </>
             ) : null}
             <circle
               cx={percent(anchor)}
@@ -612,7 +630,7 @@ function Bar({
 }) {
   const { node, labelSide } = bar;
   const instant = node.timing.kind === "instant";
-  const failure = node.status === "failed" ? node.detail : null;
+  const inlineDetail = causalFlameShowsDetail(node) ? node.detail : null;
 
   return (
     <div
@@ -701,10 +719,15 @@ function Bar({
                 )}
               </span>
             )}
-            {failure === null ? null : (
+            {inlineDetail === null ? null : (
               // Gives way long before the name does when room runs out.
-              <span className="min-w-0 shrink-[100] truncate text-[11px] text-[var(--bo-failed)]">
-                {failure}
+              <span
+                className={cn(
+                  "min-w-0 shrink-[100] truncate text-[11px]",
+                  node.status === "failed" ? "text-[var(--bo-failed)]" : "text-[var(--bo-muted)]",
+                )}
+              >
+                {inlineDetail}
               </span>
             )}
           </span>
