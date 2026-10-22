@@ -3,7 +3,8 @@ name: building-automations
 description:
   "Automate persistent Backoffice behavior from events or schedules. Use when the user explicitly
   asks to create or change an automation, event-triggered route, scheduled route, or saved workflow
-  that should run later."
+  that should run later, or asks why an automation did not act on an event or to retry one that
+  failed."
 ---
 
 # Building Automations
@@ -177,6 +178,16 @@ reclassifies the event, or forwards it to another scope.
    and connection status line up, and any exercised delivery has matching ingestion and downstream
    evidence. If no delivery was exercised, report configuration as verified and runtime execution as
    unverified.
+
+## Diagnose a route that did not act
+
+When an automation did not do what it should for an event, read
+`/static/skills/building-automations/references/event-routing.md`, find the event with
+`events.list`, and read `events.get({ id })`. Its `routing` lists every route the event matched with
+its status, outcome, and last error. Fix the cause the error names before retrying a `failed` route
+with `events.retryRoute({ id, routeId })`, then read `events.get` again to confirm the outcome.
+**Complete when** each route the event matched is accounted for by its retrieved status and outcome,
+or by the exact error still blocking it.
 
 Legacy `router.cm.js` files are outside this topology. Database-backed router rules are the routing
 source of truth; saved workflow files contain the behavior.
