@@ -33,7 +33,9 @@ import {
 } from "./upload-model";
 
 export const MAX_PREPARED_FILE_BATCH_ENTRIES = 5_000;
-const BATCH_QUERY_CHUNK_SIZE = 200;
+// Durable Object SQLite binds at most 100 parameters per statement; each chunked lookup adds one or
+// two fixed parameters to its `in` list.
+const BATCH_QUERY_CHUNK_SIZE = 90;
 
 type UploadWithFile = UploadSnapshot & { file: FileRow | null };
 type UploadInsert = TableToInsertValues<typeof uploadSchema.tables.upload>;
