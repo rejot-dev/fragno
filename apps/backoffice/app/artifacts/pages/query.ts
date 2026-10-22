@@ -281,10 +281,18 @@ export type PageData = PageLiteral | PageData[] | { [field: string]: PageData };
 
 /**
  * Rows keep their types, nested rows included; components check the props they are bound to as
- * they render. TanStack's `$`-prefixed virtual fields describe sync state, not data.
+ * they render. TanStack adds `$`-prefixed virtual fields, which describe sync state, to each row
+ * it returns but not to rows nested by many(...). Page names cannot start with `$`, while JSON
+ * values, such as a payload's `$schema`, can, so only a row's own fields are dropped.
  */
 export function pageRows(rows: readonly object[]): PageData[] {
-  return rows.map(pageData);
+  return rows.map((row) =>
+    Object.fromEntries(
+      Object.entries(row)
+        .filter(([field]) => !field.startsWith("$"))
+        .map(([field, item]) => [field, pageData(item)]),
+    ),
+  );
 }
 
 function pageData(value: unknown): PageData {
@@ -302,9 +310,7 @@ function pageData(value: unknown): PageData {
   }
   if (typeof value === "object") {
     return Object.fromEntries(
-      Object.entries(value)
-        .filter(([field]) => !field.startsWith("$"))
-        .map(([field, item]) => [field, pageData(item)]),
+      Object.entries(value).map(([field, item]) => [field, pageData(item)]),
     );
   }
   return value as PageLiteral;
