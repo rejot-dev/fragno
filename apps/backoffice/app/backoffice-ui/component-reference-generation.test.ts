@@ -1,14 +1,14 @@
 import { describe, expect, test } from "vitest";
 
 import { backofficeUiComponentDefinitions } from "./catalog";
-import { generateBackofficeUiBuilderDeclarations } from "./component-reference-generation";
+import { generateBackofficeUiCatalogDeclarations } from "./component-reference-generation";
 
 describe("Backoffice UI builder declaration generation", () => {
   test("declares every canonical component with exact nested prop types and limits", () => {
-    const declarations = generateBackofficeUiBuilderDeclarations();
+    const declarations = generateBackofficeUiCatalogDeclarations();
     const componentNames = Object.keys(backofficeUiComponentDefinitions);
 
-    expect(declarations).toContain("declare const ui: {");
+    expect(declarations).toContain("type BackofficeUiComponents = {");
     expect(declarations).not.toContain("object[]");
     expect(declarations).toContain("detail?: string;");
     expect(declarations).toContain("[key: string]: unknown;");

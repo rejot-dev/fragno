@@ -5,6 +5,8 @@ import {
 } from "@/fragno/codemode/codemode-type-files";
 import type { BackofficeRuntimeToolFamily } from "@/fragno/runtime-tools/runtime-tools";
 
+import pageTypes from "../../../content/static/codemode/page.d.ts?raw";
+import uiTypes from "../../../content/static/codemode/ui.d.ts?raw";
 import workflowAuthoringTypes from "../../../content/static/codemode/workflow-authoring.d.ts?raw";
 
 export const renderCodemodeSystemPrompt = async ({
@@ -22,5 +24,8 @@ export function createCodemodeTypeFiles({
 }: {
   families: readonly BackofficeRuntimeToolFamily[];
 }) {
-  return createCodemodeTypeFilesFromTemplates({ families, workflowAuthoringTypes });
+  return createCodemodeTypeFilesFromTemplates({
+    families,
+    authoredTypes: { workflowAuthoring: workflowAuthoringTypes, ui: uiTypes, page: pageTypes },
+  });
 }

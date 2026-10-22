@@ -11,9 +11,10 @@ description:
 1. **Ground.** Resolve the source data used by the interface. Use input, retrieved data, or
    persisted output already available to the current return path. Complete when every displayed
    operational value, record, status, and identifier traces to one of those sources.
-2. **Compose.** Read `/static/codemode/ui.d.ts`, then build one element tree with the codemode `ui`
-   builder, passing grounded values directly as props. Complete when every component call and prop
-   matches its declaration and documented limits.
+2. **Compose.** Read `/static/codemode/ui.d.ts` and the components in
+   `/static/codemode/ui-catalog.d.ts`, then build one element tree with the codemode `ui` builder,
+   passing grounded values directly as props. Complete when every component call and prop matches
+   its declaration and documented limits.
 3. **Return.** Return one result object with `$ui: ui.render(root)` beside any ordinary fields
    needed by the user or later code. Complete when the tool result reports no generated UI error,
    later code consumes ordinary fields, and follow-up prose does not restate rendered fields.

@@ -17,9 +17,10 @@ page runs the queries in the browser and re-renders as the data changes.
 
 ## Steps
 
-1. **Ground.** Read `/static/codemode/page.d.ts` for the collections, their fields, and the query
-   functions, and `/static/codemode/ui.d.ts` for the components. Complete when every field you plan
-   to show belongs to its collection in `PageCollections`.
+1. **Ground.** Read `/static/codemode/page.d.ts` for the query functions,
+   `/static/codemode/page-schema.d.ts` for the collections, their fields, and the limits, and
+   `/static/codemode/ui-catalog.d.ts` for the components. Complete when every field you plan to show
+   belongs to its collection in `PageCollections`.
 2. **Write the source.** Save the module with `state.writeFile`, following the example below.
    Complete when it default-exports `page.define(...)` and is pure, as the Source section defines.
 3. **Check.** Run `js.check({ path })` on the source. Complete when it reports no diagnostics.

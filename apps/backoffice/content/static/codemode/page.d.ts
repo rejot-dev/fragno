@@ -1,6 +1,8 @@
-// Generated page builder. page.define records live queries over the scope's synchronized
-// collections, in TanStack DB's query style, and binds their results to a ui interface. Default-
-// export it from a /workspace/**/<name>.page.js file; the system builds it when it opens.
+/// <reference path="/static/codemode/page-schema.d.ts" />
+// The page builder. page.define records live queries over the scope's synchronized collections, in
+// TanStack DB's query style, and binds their results to a ui interface. Default-export it from a
+// /workspace/**/<name>.page.js file; the system builds it when it opens. page-schema.d.ts declares
+// the collections, their fields, and PageLimits.
 
 declare const pageExpressionType: unique symbol;
 declare const pageRowType: unique symbol;
@@ -86,7 +88,7 @@ type PageQuery<TSources, TRow> = PageRows<TRow> &
       value: (sources: TSources) => PageExpression<unknown>,
       direction?: "asc" | "desc",
     ): PageQuery<TSources, TRow>;
-    /** Keeps the first count rows (1-100); needs orderBy. */
+    /** Keeps the first count rows, 1 to PageLimits["rowsPerQuery"]; needs orderBy. */
     limit(count: number): PageQuery<TSources, TRow>;
   };
 
@@ -106,7 +108,7 @@ type PageContext = {
    * subquery and read that with from.
    */
   many<TRow>(query: PageRows<TRow>): PageMany<TRow>;
-  /** One list of every row of 2-8 queries that select the same fields. */
+  /** One list of every row of 2 to PageLimits["unionBranches"] queries that select the same fields. */
   unionAll<TQueries extends [PageRows<unknown>, PageRows<unknown>, ...PageRows<unknown>[]]>(
     ...queries: TQueries
   ): PageUnion<PageRowOf<TQueries[number]>>;
@@ -114,7 +116,7 @@ type PageContext = {
   now: PageTime;
   /**
    * every-long intervals from since through now, including the one now falls in, so 24 hours of
-   * 1 hour is 25; at most 60.
+   * 1 hour is 25; at most PageLimits["buckets"].
    */
   intervals(options: { every: PageDuration; since: PageTime }): PageIntervals;
   /** The start of the interval a time falls in, or null before the first. */
@@ -128,7 +130,7 @@ type PageContext = {
   or(...conditions: PageCondition[]): PageExpression<boolean>;
   not(condition: PageCondition): PageExpression<boolean>;
   isNull(value: PageExpression<unknown>): PageExpression<boolean>;
-  /** True when value is one of at most 100 plain values. */
+  /** True when value is one of at most PageLimits["listItems"] plain values. */
   inArray<T>(value: PageOperand<T>, list: readonly T[]): PageExpression<boolean>;
   /** SQL LIKE: % matches any text and _ one character. ilike ignores case. */
   like(value: PageOperand<string | null>, pattern: PageOperand<string>): PageExpression<boolean>;
@@ -193,7 +195,7 @@ type PageContext = {
 
 /** A built page: its queries as JSON and the interface bound to them. */
 type PageDefinition = {
-  version: 2;
+  version: PageDefinitionVersion;
   queries: Record<string, unknown>;
   values: Record<
     string,
@@ -203,149 +205,6 @@ type PageDefinition = {
 };
 
 declare const page: {
-  /** Builds the page file: build returns the root ui element, with queries in its props. At most 16 queries. */
+  /** Builds the page file: build returns the root ui element, with queries in its props. At most PageLimits["queries"] queries. */
   define(build: (context: PageContext) => BackofficeUiElement): PageDefinition;
-};
-
-type PageCollections = {
-  projects: PageCollection<{
-    id: string;
-    slug: string;
-    name: string;
-    description: string | null;
-    archivedAt: Date | null;
-    createdByUserId: string;
-    createdAt: Date;
-    updatedAt: Date;
-  }>;
-  /** Automation routes; routeScheduleStates holds a scheduled route's next occurrence by the same id. */
-  routes: PageCollection<{
-    id: string;
-    name: string;
-    enabled: boolean;
-    priority: number;
-    trigger: unknown;
-    action: unknown;
-    description: string | null;
-    createdAt: Date;
-    updatedAt: Date;
-    metadata: unknown | null;
-  }>;
-  routeScheduleStates: PageCollection<{
-    id: string;
-    initializationAt: Date | null;
-    nextOccurrenceAt: Date | null;
-  }>;
-  routeDispatches: PageCollection<{
-    id: string;
-    eventId: string;
-    rootEventId: string;
-    routeId: string;
-    routeName: string;
-    outcome: unknown | null;
-    dispatchedAt: Date;
-    status: string;
-    failedAttempts: number;
-    error: string | null;
-  }>;
-  /** Automation events, newest by occurredAt. */
-  events: PageCollection<{
-    id: string;
-    scope: unknown;
-    source: string;
-    eventType: string;
-    occurredAt: Date;
-    payload: unknown;
-    actors: unknown;
-    subject: unknown | null;
-    createdAt: Date;
-    scopeRestriction: unknown | null;
-    causation: unknown | null;
-    rootEventId: string | null;
-    routesMatched: boolean;
-  }>;
-  eventSources: PageCollection<{
-    id: string;
-    source: string;
-    label: string;
-    description: string;
-    category: unknown;
-    createdAt: Date;
-    updatedAt: Date;
-  }>;
-  eventDefinitions: PageCollection<{
-    id: string;
-    source: string;
-    eventType: string;
-    label: string;
-    description: string | null;
-    payloadSchema: unknown | null;
-    actorSchema: unknown | null;
-    subjectSchema: unknown | null;
-    example: unknown | null;
-    enabled: boolean;
-    createdAt: Date;
-    updatedAt: Date;
-  }>;
-  /** Values stored with the store provider. */
-  kvStore: PageCollection<{
-    id: string;
-    key: string;
-    value: string;
-    description: string | null;
-    category: unknown | null;
-    createdAt: Date;
-    updatedAt: Date;
-  }>;
-  /** Workflow runs. workflowName is the runner's internal name; remoteWorkflowName is the workflow's own name. */
-  workflowInstances: PageCollection<{
-    id: string;
-    workflowName: string;
-    remoteWorkflowName: string | null;
-    instanceId: string;
-    status: string;
-    runGeneration: number;
-    createdAt: Date;
-    updatedAt: Date;
-    startedAt: Date | null;
-    completedAt: Date | null;
-    params: unknown;
-    output: unknown | null;
-    errorName: string | null;
-    errorMessage: string | null;
-    interruptedTicks: number;
-  }>;
-  /** Steps of workflow runs; instanceRef is the run's id. */
-  workflowSteps: PageCollection<{
-    id: string;
-    instanceRef: string;
-    stepKey: string;
-    parentStepKey: string | null;
-    depth: number;
-    name: string;
-    type: string;
-    status: string;
-    committedByExecutionId: string;
-    attempts: number;
-    maxAttempts: number;
-    timeoutMs: number | null;
-    nextRetryAt: Date | null;
-    wakeAt: Date | null;
-    waitEventType: string | null;
-    result: unknown | null;
-    errorName: string | null;
-    errorMessage: string | null;
-    createdAt: Date;
-    updatedAt: Date;
-  }>;
-  workflowEvents: PageCollection<{
-    id: string;
-    instanceRef: string;
-    actor: string;
-    type: string;
-    payload: unknown | null;
-    createdAt: Date;
-    deliveredAt: Date | null;
-    consumedByStepKey: string | null;
-  }>;
 };
