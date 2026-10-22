@@ -952,6 +952,11 @@ export class RunnerStep implements WorkflowStep {
       try {
         await options.onConsume?.(consumeTx, result);
       } catch (error) {
+        // As with a `do` attempt, an interrupted consumption never happened: the step keeps
+        // waiting and the event stays unconsumed for the rerun.
+        if (this.#tickInterruption) {
+          throw this.#tickInterruption;
+        }
         const err = toError(error);
         this.#upsertStep(stepKey, {
           name,
