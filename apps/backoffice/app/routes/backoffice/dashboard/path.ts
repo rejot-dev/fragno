@@ -2,6 +2,7 @@ import type {
   OrchestrationGraphItem,
   OrchestrationGraphItemKind,
 } from "@fragno-private/design-system/orchestration-graph-model";
+import type { ShouldRevalidateFunctionArgs } from "react-router";
 
 import {
   backofficeRouteScopeFromResolvedScope,
@@ -22,6 +23,26 @@ const SELECTION_KIND_PARAM = "selection";
 const SELECTION_ID_PARAM = "selected";
 // The loader reads the selected workflow's source; the page derives it from the selection.
 export const WORKFLOW_SCRIPT_PARAM = "workflowScript";
+
+/**
+ * Selecting in the orchestration graph only changes the URL; a route that shows it loads again
+ * once the selected workflow's source does.
+ */
+export function shouldRevalidateOrchestration({
+  currentUrl,
+  nextUrl,
+  formMethod,
+  defaultShouldRevalidate,
+}: ShouldRevalidateFunctionArgs): boolean {
+  if (formMethod || currentUrl.pathname !== nextUrl.pathname) {
+    return defaultShouldRevalidate;
+  }
+  return (
+    currentUrl.searchParams.get(WORKFLOW_SCRIPT_PARAM) !==
+    nextUrl.searchParams.get(WORKFLOW_SCRIPT_PARAM)
+  );
+}
+
 const SELECTION_KINDS: readonly OrchestrationGraphItemKind[] = [
   "source",
   "event",

@@ -6,14 +6,7 @@ import { Input } from "@fragno-private/design-system/input";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { TextArea } from "@fragno-private/design-system/text-area";
 import { Suspense, use, useMemo, useSyncExternalStore } from "react";
-import {
-  Form,
-  redirect,
-  useActionData,
-  useNavigation,
-  useSearchParams,
-  type ShouldRevalidateFunctionArgs,
-} from "react-router";
+import { Form, redirect, useActionData, useNavigation, useSearchParams } from "react-router";
 
 import { eq, not, useLiveQuery } from "@tanstack/react-db";
 
@@ -33,15 +26,13 @@ import {
   type AutomationBrowserCollections,
 } from "@/fragno/automation/tanstack/browser-database";
 import { useAutomationRoutes } from "@/fragno/automation/tanstack/use-automation-routes";
-import { runtimeToolWorkflowCatalog } from "@/fragno/runtime-tools/workflow-catalog.server";
 import {
   getBackofficeShellRequest,
   requireRouteScope,
-  requireScopeSelection,
 } from "@/layouts/backoffice-shell-request.server";
 
 import { piAgentListings, piAgentTurnsQuery } from "../agents/agent-activity";
-import { createAutomationProject, loadAutomationScriptSource } from "../automations/data.server";
+import { createAutomationProject } from "../automations/data.server";
 import {
   automationWorkflowRunsFromRecords,
   workflowRunRecordsQuery,
@@ -50,58 +41,34 @@ import type { Route } from "./+types/dashboard";
 import { AutomationBrowserPersistenceDiagnosticPanel } from "./browser-persistence-diagnostics";
 import { DashboardSections, type DashboardLoaderData } from "./dashboard-sections";
 import { DashboardTabs } from "./dashboard-tabs";
+import { loadOrchestration } from "./orchestration-loader.server";
 import {
   dashboardBucketStarts,
   dashboardEventsQuery,
   dashboardRunsQuery,
   projectBackofficeDashboard,
 } from "./overview";
-import { WORKFLOW_SCRIPT_PARAM, dashboardPath } from "./path";
+import { dashboardPath, shouldRevalidateOrchestration } from "./path";
 
 const CLOCK_TICK_MS = 60_000;
 const CREATE_PROJECT_PARAM = "createProject";
-const EMPTY_WORKFLOW_SOURCE = { script: null, scriptError: null };
 const pageClassName = `${backofficePageBodyClassName} flex flex-col gap-4`;
 
 type ProjectActionData = { ok: false; message: string };
 
 export async function loader({ context, url }: Route.LoaderArgs) {
-  const selectedScope = requireScopeSelection(context);
-  const workflowScriptId = url.searchParams.get(WORKFLOW_SCRIPT_PARAM)?.trim() ?? "";
-  const workflowSource = workflowScriptId
-    ? await loadAutomationScriptSource({
-        context,
-        execution: requireRouteScope(context).execution,
-        scriptId: workflowScriptId,
-      })
-    : EMPTY_WORKFLOW_SOURCE;
+  const orchestration = await loadOrchestration({ context, url });
   return {
-    selectedScope,
+    ...orchestration,
     // Some workspaces, such as an installed app's, have no agents.
     hasAgents: isBackofficeObjectAvailableInContext(
       "PI_MANAGER",
-      backofficeRuntimeScopeFromResolvedScope(selectedScope),
+      backofficeRuntimeScopeFromResolvedScope(orchestration.selectedScope),
     ),
-    workflowSource,
-    runtimeToolCatalog: runtimeToolWorkflowCatalog,
   } satisfies DashboardLoaderData;
 }
 
-/** Selecting in the graph only changes the URL; the loader matters once a workflow's source does. */
-export function shouldRevalidate({
-  currentUrl,
-  nextUrl,
-  formMethod,
-  defaultShouldRevalidate,
-}: ShouldRevalidateFunctionArgs): boolean {
-  if (formMethod || currentUrl.pathname !== nextUrl.pathname) {
-    return defaultShouldRevalidate;
-  }
-  return (
-    currentUrl.searchParams.get(WORKFLOW_SCRIPT_PARAM) !==
-    nextUrl.searchParams.get(WORKFLOW_SCRIPT_PARAM)
-  );
-}
+export const shouldRevalidate = shouldRevalidateOrchestration;
 
 export async function action({ request, context }: Route.ActionArgs) {
   const formData = await request.formData();

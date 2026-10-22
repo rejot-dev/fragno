@@ -1,9 +1,13 @@
 import homePageSource from "@backoffice-static/skills/building-pages/examples/home.page.js?raw";
+import { Callout } from "@fragno-private/design-system/callout";
+import { ORGANIZATION_GRAPH } from "@fragno-private/design-system/orchestration-graph-story-support";
+import { OrchestrationLayeredGraph } from "@fragno-private/design-system/orchestration-layered-graph";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { backofficePageColumnClassName } from "@fragno-private/design-system/tab-header";
 import { useMemo } from "react";
 
 import type { BackofficeUiLinkTarget } from "../../components/link";
+import type { BackofficeUiHostWidgets } from "../../render-context";
 import { PageView } from "../view";
 import {
   BUSY_SCOPE,
@@ -21,6 +25,28 @@ export default { title: "Pages/Home page" };
 function storyLink(target: BackofficeUiLinkTarget): string {
   return `#${Object.values(target).join("/")}`;
 }
+
+/**
+ * Backoffice draws these from data a story does not have, so the graph is the design system's
+ * sample organization, and the response form a stand-in.
+ */
+const storyWidgets: BackofficeUiHostWidgets = {
+  orchestration: () => (
+    <div className="pt-3">
+      <OrchestrationLayeredGraph
+        graph={ORGANIZATION_GRAPH}
+        selected={null}
+        onSelect={() => {}}
+        pulses={[]}
+      />
+    </div>
+  ),
+  workflowResponse: ({ workflowName, instanceId }) => (
+    <Callout tone="info" title="Response form">
+      Backoffice shows the form {workflowName} run {instanceId} asks you to answer here.
+    </Callout>
+  ),
+};
 
 /** The home page as its route shows it, built from the source Backoffice ships. */
 function HomePage({ scope }: { scope: StoryScope }) {
@@ -44,6 +70,7 @@ function HomePage({ scope }: { scope: StoryScope }) {
           sources={sources}
           now={STORY_NOW}
           links={storyLink}
+          widgets={storyWidgets}
         />
       )}
     </div>

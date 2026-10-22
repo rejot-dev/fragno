@@ -4,7 +4,7 @@ import { Component, useEffect, useMemo, type ReactNode } from "react";
 import { createStateStore, type StateStore } from "@json-render/react";
 import { useLiveQuery } from "@tanstack/react-db";
 
-import type { BackofficeUiLinks } from "../render-context";
+import type { BackofficeUiHostWidgets, BackofficeUiLinks } from "../render-context";
 import { BackofficeUiStoreRenderer } from "../renderer";
 import {
   pageDataPath,
@@ -21,6 +21,7 @@ type PageViewProps = {
   /** The clock the page's queries and relative times read, such as `useMinuteClock()`. */
   now: number;
   links: BackofficeUiLinks;
+  widgets: BackofficeUiHostWidgets;
 };
 
 /** Renders a page's interface over its queries' live results from the host's collections. */
@@ -68,7 +69,7 @@ class PageErrorBoundary extends Component<
   }
 }
 
-function PageContent({ definition, sources, now, links }: PageViewProps) {
+function PageContent({ definition, sources, now, links, widgets }: PageViewProps) {
   // Every query starts empty, so bound props hold rows and values before the first results arrive.
   const store = useMemo(() => {
     const created = createStateStore({});
@@ -104,7 +105,13 @@ function PageContent({ definition, sources, now, links }: PageViewProps) {
           store={store}
         />
       ))}
-      <BackofficeUiStoreRenderer spec={definition.spec} store={store} now={now} links={links} />
+      <BackofficeUiStoreRenderer
+        spec={definition.spec}
+        store={store}
+        now={now}
+        links={links}
+        widgets={widgets}
+      />
     </>
   );
 }

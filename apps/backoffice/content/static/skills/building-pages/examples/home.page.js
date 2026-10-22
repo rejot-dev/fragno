@@ -1,6 +1,6 @@
-// The scope's home dashboard as a page: what needs a person, how automations and events did over
-// the last day, connections, what is scheduled or waiting, and agents. Copy it into /workspace
-// as a <name>.page.js file to open it or start from it.
+// The scope's home dashboard as a page: what needs a person, how routes lead events to workflows,
+// how automations and events did over the last day, connections, what is scheduled or waiting,
+// and agents. Copy it into /workspace as a <name>.page.js file to open it or start from it.
 export default page.define(
   { title: "Home" },
   ({
@@ -324,6 +324,13 @@ export default page.define(
                 detail: "Waiting for your input",
                 icon: "edit-3",
                 tone: "info",
+                expandLabel: "Respond",
+                expanded: [
+                  ui.workflowResponse({
+                    workflowName: run.workflowName,
+                    instanceId: run.instanceId,
+                  }),
+                ],
               },
               [ui.relativeTime({ time: run.updatedAt })],
             ),
@@ -367,6 +374,7 @@ export default page.define(
           ),
         ),
       ]),
+      ui.panel({ title: "Orchestration" }, [ui.orchestration({})]),
       ui.grid({ columns: "main-side", gap: "xl" }, [
         ui.stack({ gap: "xl" }, [
           ui.panelTable(

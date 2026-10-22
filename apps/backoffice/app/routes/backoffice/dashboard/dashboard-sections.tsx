@@ -22,7 +22,6 @@ import {
 } from "@/backoffice-runtime/resolved-scope";
 import { WorkflowRunGeneratedInterface } from "@/components/backoffice/workflow-run-generated-interface";
 import type { AutomationBrowserCollections } from "@/fragno/automation/tanstack/browser-database";
-import type { RuntimeToolWorkflowDescriptor } from "@/fragno/runtime-tools/workflow-catalog";
 
 import {
   describePiAgentActivity,
@@ -30,13 +29,12 @@ import {
   type PiAgentListing,
 } from "../agents/agent-activity";
 import { piAgentsPath } from "../agents/path";
-import type { AutomationScriptSourceRecord } from "../automations/data";
 import { IntegrationConnectionStateLight } from "../integrations/connection-display";
 import {
   integrationConnectionPath,
   integrationsScopeBasePath,
 } from "../integrations/connection-paths";
-import { OrchestrationPanel } from "./orchestration-panel";
+import { OrchestrationPanel, type OrchestrationLoaderData } from "./orchestration-panel";
 import type { BackofficeDashboard, DashboardAttention } from "./overview";
 import {
   dashboardOpenedRun,
@@ -54,12 +52,7 @@ const WINDOW_LABEL = "24 hours";
 // Clears the sticky top bar when an opened run scrolls the Automations panel into view.
 const openedRunScrollMarginClassName = "scroll-mt-20";
 
-export type DashboardLoaderData = {
-  selectedScope: BackofficeScopeSelection;
-  hasAgents: boolean;
-  workflowSource: AutomationScriptSourceRecord;
-  runtimeToolCatalog: readonly RuntimeToolWorkflowDescriptor[];
-};
+export type DashboardLoaderData = OrchestrationLoaderData & { hasAgents: boolean };
 
 export function DashboardSections({
   dashboard,

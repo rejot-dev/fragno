@@ -217,6 +217,8 @@ a JSDoc type to pass `js.check`.
   shows a title and a muted detail line, ends with its children, such as a badge and a time, and
   links as a whole when `to` is set. A `tone` sets the icon on a tile, for rows that ask for
   something. Row lists in one panel read as one list, so a panel can list several queries.
+- A row opens to show more when given `expanded: [elements]`; `expandLabel` names its toggle, such
+  as "Respond". The home page's runs awaiting input open to `ui.workflowResponse(...)`.
 - `ui.panelTable({ title, columns, empty }, ui.each(query, (row) => ui.panelTableRow(...)))` shows
   rows that share columns; `ui.panelTableRow({ title, to }, [...])` holds one child per column.
 - Select labels people read beside the raw values queries compare, such as `erroredLabel` beside
@@ -237,6 +239,16 @@ a JSDoc type to pass `js.check`.
 - `ui.runStatus({ status })` shows a run's status as the dashboard does, such as "Running" or
   "Errored"; pass the run's `status` as it is.
 - `ui.badge({ label, tone })` shows any other status light.
+
+## Backoffice widgets
+
+Backoffice draws these parts from more than a page's queries, with the viewer's authority; pages
+place them.
+
+- `ui.orchestration({})` shows the scope's orchestration graph with the selected item's details, as
+  the dashboard does. Put it in a `ui.panel`.
+- `ui.workflowResponse({ workflowName, instanceId })` shows the form a waiting run asks a person to
+  answer, and nothing while the run does not ask. Put it in a row's `expanded`.
 
 ## Supported today
 

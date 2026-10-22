@@ -351,6 +351,16 @@ const componentDemoInputs: ComponentDemoInput[] = [
       variant: "primary",
     },
   },
+  {
+    component: "Orchestration",
+    category: "Data",
+    props: backofficeUiComponentDefinitions.Orchestration.example,
+  },
+  {
+    component: "WorkflowResponse",
+    category: "Input",
+    props: backofficeUiComponentDefinitions.WorkflowResponse.example,
+  },
 ];
 
 export const BACKOFFICE_UI_COMPONENT_DEMOS = componentDemoInputs.map(

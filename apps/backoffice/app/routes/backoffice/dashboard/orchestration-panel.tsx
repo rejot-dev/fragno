@@ -4,13 +4,16 @@ import type {
   OrchestrationGraphItem,
 } from "@fragno-private/design-system/orchestration-graph-model";
 import { OrchestrationLayeredGraph } from "@fragno-private/design-system/orchestration-layered-graph";
+import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router";
 
 import { useLiveQuery } from "@tanstack/react-db";
 
 import type { BackofficeScopeSelection } from "@/backoffice-runtime/resolved-scope";
+import { useClock } from "@/components/backoffice/use-clock";
 import type { AutomationBrowserCollections } from "@/fragno/automation/tanstack/browser-database";
+import { useAutomationRoutes } from "@/fragno/automation/tanstack/use-automation-routes";
 import {
   listAutomationEventDescriptors,
   listCapabilityEventSources,
@@ -34,6 +37,7 @@ import {
   OrchestrationInspector,
   type OrchestrationInspectorSelection,
 } from "./orchestration-inspector";
+import { dashboardBucketStarts, dashboardEventsQuery } from "./overview";
 import {
   WORKFLOW_SCRIPT_PARAM,
   dashboardSelection,
@@ -42,6 +46,14 @@ import {
 } from "./path";
 
 const SELECTION_NAVIGATION = { replace: true, preventScrollReset: true } as const;
+const CLOCK_TICK_MS = 60_000;
+
+/** What the orchestration panel reads from its route's loader. */
+export type OrchestrationLoaderData = {
+  selectedScope: BackofficeScopeSelection;
+  workflowSource: AutomationScriptSourceRecord;
+  runtimeToolCatalog: readonly RuntimeToolWorkflowDescriptor[];
+};
 
 type OrchestrationCatalog = {
   sources: readonly OrchestrationCatalogSource[];
@@ -212,6 +224,48 @@ export function OrchestrationPanel({
         ) : null}
       </div>
     </div>
+  );
+}
+
+/**
+ * The orchestration panel on its own, as a page shows it. The dashboard shares routes and the
+ * last day's events with its other panels; here the panel reads them itself.
+ */
+export function ScopeOrchestration({
+  collections,
+  loaderData,
+}: {
+  collections: AutomationBrowserCollections;
+  loaderData: OrchestrationLoaderData;
+}) {
+  const now = useClock(CLOCK_TICK_MS);
+  // The window start only moves when a new bucket begins, so the event query restarts rarely.
+  const windowStart = dashboardBucketStarts(now)[0] ?? now;
+  const routesState = useAutomationRoutes(collections);
+  const eventsQuery = useLiveQuery({
+    query: (query) => dashboardEventsQuery(query, collections, new Date(windowStart)),
+  });
+  if (routesState.status === "error" || eventsQuery.isError) {
+    return (
+      <BackofficeSystemState
+        tone="error"
+        title="The orchestration graph could not be read."
+        description="Routes or events failed to synchronize. Reload to try again."
+      />
+    );
+  }
+  if (routesState.status === "loading" || !eventsQuery.isReady) {
+    return <BackofficeSystemState tone="loading" title="Synchronizing routes and events…" />;
+  }
+  return (
+    <OrchestrationPanel
+      collections={collections}
+      routes={routesState.routes}
+      recentEvents={eventsQuery.data ?? []}
+      selectedScope={loaderData.selectedScope}
+      workflowSource={loaderData.workflowSource}
+      runtimeToolCatalog={loaderData.runtimeToolCatalog}
+    />
   );
 }
 

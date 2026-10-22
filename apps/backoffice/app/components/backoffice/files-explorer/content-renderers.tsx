@@ -20,6 +20,7 @@ import type { ResolvedWorkflowRuntimeToolCall } from "@/fragno/runtime-tools/wor
 import { parseFrontmatter } from "@/lib/frontmatter";
 import { formatTimestampInTimeZone } from "@/routes/backoffice/automations/formatting";
 import { ScriptWorkflowGraph } from "@/routes/backoffice/automations/script-view/workflow-graph";
+import type { OrchestrationLoaderData } from "@/routes/backoffice/dashboard/orchestration-panel";
 
 export type WorkflowFileRouting =
   | { status: "unavailable" }
@@ -353,14 +354,19 @@ function BuiltPage({
   href: string;
   collections: AutomationCollections;
 }) {
-  const fetcher = useFetcher<{ name: string; result: PageLoad }>();
+  const fetcher = useFetcher<{
+    name: string;
+    result: PageLoad;
+    orchestration: OrchestrationLoaderData;
+  }>();
   const { load } = fetcher;
   useEffect(() => {
     void load(href);
   }, [href, load, source]);
 
   const loaded = fetcher.data?.result;
-  if (!loaded || fetcher.state === "loading") {
+  const orchestration = fetcher.data?.orchestration;
+  if (!loaded || !orchestration || fetcher.state === "loading") {
     return <BackofficeSystemState tone="loading" title="Building page." />;
   }
   if (loaded.kind === "missing") {
@@ -376,7 +382,13 @@ function BuiltPage({
       />
     );
   }
-  return <BackofficePageView definition={loaded.definition} collections={collections} />;
+  return (
+    <BackofficePageView
+      definition={loaded.definition}
+      collections={collections}
+      orchestration={orchestration}
+    />
+  );
 }
 
 const TextRenderer: FilesContentRenderer = {

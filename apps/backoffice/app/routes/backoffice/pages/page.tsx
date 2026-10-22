@@ -12,15 +12,21 @@ import {
   getAutomationBrowserDatabase,
 } from "@/fragno/automation/tanstack/browser-database";
 
+import { loadOrchestration } from "../dashboard/orchestration-loader.server";
+import type { OrchestrationLoaderData } from "../dashboard/orchestration-panel";
+import { shouldRevalidateOrchestration } from "../dashboard/path";
 import type { Route } from "./+types/page";
 import { loadPageRoute } from "./load.server";
 
 // A missing page is data, not a thrown response, so previews that fetch this loader can show it.
-export async function loader({ request, context, params }: Route.LoaderArgs) {
+export async function loader({ request, context, params, url }: Route.LoaderArgs) {
   const name = params["*"];
   const result = await loadPageRoute({ request, context, name });
-  return data({ name, result }, { status: result.kind === "missing" ? 404 : 200 });
+  const orchestration = await loadOrchestration({ context, url });
+  return data({ name, result, orchestration }, { status: result.kind === "missing" ? 404 : 200 });
 }
+
+export const shouldRevalidate = shouldRevalidateOrchestration;
 
 /** A built page names itself; until it builds, its file name stands in. */
 function pageTitle(name: string, result: PageLoad): string {
@@ -33,7 +39,7 @@ export function meta({ loaderData }: Route.MetaArgs) {
 }
 
 export default function PageRoute({ loaderData }: Route.ComponentProps) {
-  const { name, result } = loaderData;
+  const { name, result, orchestration } = loaderData;
   const loading = <BackofficeSystemState tone="loading" title="Synchronizing automation data." />;
 
   return (
@@ -51,7 +57,7 @@ export default function PageRoute({ loaderData }: Route.ComponentProps) {
       ) : (
         <ClientOnly fallback={loading}>
           <Suspense fallback={loading}>
-            <PageClient definition={result.definition} />
+            <PageClient definition={result.definition} orchestration={orchestration} />
           </Suspense>
         </ClientOnly>
       )}
@@ -59,7 +65,13 @@ export default function PageRoute({ loaderData }: Route.ComponentProps) {
   );
 }
 
-function PageClient({ definition }: { definition: PageDefinition }) {
+function PageClient({
+  definition,
+  orchestration,
+}: {
+  definition: PageDefinition;
+  orchestration: OrchestrationLoaderData;
+}) {
   const { automationCollectionSource } = useCurrentBackofficeContext();
   if (automationCollectionSource.status === "unavailable") {
     return (
@@ -77,6 +89,7 @@ function PageClient({ definition }: { definition: PageDefinition }) {
       key={describeAutomationCollectionSource(source).resourceKey}
       definition={definition}
       collections={use(getAutomationBrowserDatabase(source)).collections}
+      orchestration={orchestration}
     />
   );
 }
