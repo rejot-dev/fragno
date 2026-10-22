@@ -21,14 +21,6 @@ export default mergeConfig(
         resolveConfig("./content/**"),
         // Read by `app/fragno/runtime-tools/async-execute.test.ts`.
         resolveConfig("./app/fragno/runtime-tools/families/!(*.test|*-runtime).ts"),
-        // Read by `app/routes/backoffice/agents/session-detail/workspace-boundary.test.ts`.
-        resolveConfig("./app/routes/backoffice/agents/session-detail/!(*.test).{ts,tsx}"),
-        resolveConfig("./app/routes/backoffice/agents/organization-layout.tsx"),
-        resolveConfig("./app/routes/backoffice/automations/script-view/workflow-graph.tsx"),
-        resolveConfig("../../packages-private/design-system/src/components/chat-thread.tsx"),
-        resolveConfig(
-          "../../packages-private/design-system/src/components/chat-workspace-panel.tsx",
-        ),
         // Run as a subprocess by `scripts/run-worker-release.test.ts`.
         resolveConfig("./scripts/run-worker-release.mjs"),
         // Read by `dev-vars.test.ts`.
