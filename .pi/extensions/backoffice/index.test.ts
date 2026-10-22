@@ -1,4 +1,14 @@
-import { afterAll, afterEach, assert, beforeAll, beforeEach, describe, expect, test } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  assert,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+} from "vitest";
 
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -49,6 +59,7 @@ let mcpConnections: string[];
 let logQueries: string[];
 let searchRequests: unknown[];
 let directory: string;
+let baseUrl: string;
 let session: AgentSession;
 let server: ReturnType<typeof createServer>;
 let faux: ReturnType<typeof fauxProvider>;
@@ -65,6 +76,10 @@ async function startBackofficeScenarioServer() {
     void handleRequest();
     async function handleRequest() {
       response.setHeader("content-type", "application/json");
+      // Cloud requests routed to this server must see endpoints on the Cloud origin.
+      const scenarioOrigin = request.headers["x-scenario-origin"];
+      const origin =
+        typeof scenarioOrigin === "string" ? scenarioOrigin : `http://${request.headers.host}`;
       try {
         if (request.url === "/api/auth/ok") {
           response.end(JSON.stringify({ ok: true }));
@@ -73,9 +88,9 @@ async function startBackofficeScenarioServer() {
             JSON.stringify({
               clientId: "scenario-client",
               scope: "backoffice",
-              deviceAuthorizationEndpoint: `http://${request.headers.host}/oauth/device`,
-              tokenEndpoint: `http://${request.headers.host}/oauth/token`,
-              verificationUri: `http://${request.headers.host}/oauth/verify`,
+              deviceAuthorizationEndpoint: `${origin}/oauth/device`,
+              tokenEndpoint: `${origin}/oauth/token`,
+              verificationUri: `${origin}/oauth/verify`,
             }),
           );
         } else if (request.url === "/api/backoffice/me") {
@@ -86,6 +101,9 @@ async function startBackofficeScenarioServer() {
               organizations: [],
             }),
           );
+        } else if (request.url === `${scopedPath}/SYSTEM.md`) {
+          response.setHeader("content-type", "text/markdown");
+          response.end("Follow the Cloud scope instructions.");
         } else if (request.url === scopedPath && request.method === "POST") {
           if (request.headers.authorization !== "Bearer scenario-backoffice-token") {
             response.writeHead(401).end();
@@ -183,7 +201,7 @@ describe("Backoffice extension scenarios", () => {
     await mkdir(join(directory, "remote"), { recursive: true });
     await writeFile(join(directory, "remote", "document.txt"), remoteText);
     await writeFile(join(directory, "document.txt"), "local-only content");
-    const baseUrl = await startBackofficeScenarioServer();
+    baseUrl = await startBackofficeScenarioServer();
     const expiresAt = new Date(Date.now() + 3_600_000).toISOString();
     await writeFile(
       join(directory, "backoffice-auth.json"),
@@ -565,7 +583,7 @@ describe("Backoffice extension scenarios", () => {
     expect(text).toContain("remote scenario failure");
   });
 
-  test("exits in place, preserving bug investigation context and restoring normal tools across reload", async () => {
+  test("exits and re-enters in place, preserving bug investigation context and restoring normal tools across reload", async () => {
     const modelRuntime = await ModelRuntime.create({
       authPath: join(directory, "pi-auth.json"),
       modelsPath: null,
@@ -606,7 +624,14 @@ describe("Backoffice extension scenarios", () => {
       agentDir: directory,
       sessionManager: session.sessionManager,
     });
-    const selections = [undefined, "Exit Backoffice (restore normal Pi)", undefined];
+    const selections = [
+      undefined,
+      "Exit Backoffice (restore normal Pi)",
+      undefined,
+      "Backoffice Cloud",
+      "user:scenario-user",
+      "Exit Backoffice (restore normal Pi)",
+    ];
     const menus: string[][] = [];
     const notifications: string[] = [];
     const statuses = new Map<string, string>();
@@ -614,7 +639,10 @@ describe("Backoffice extension scenarios", () => {
       ...runtime.session.extensionRunner.getUIContext(),
       select: async (_title, options) => {
         menus.push([...options]);
-        return selections.shift();
+        const selection = selections.shift();
+        return selection === undefined
+          ? undefined
+          : options.find((option) => option.includes(selection));
       },
       notify: (message) => {
         notifications.push(message);
@@ -761,6 +789,63 @@ describe("Backoffice extension scenarios", () => {
       assert(!statuses.has("backoffice"));
       expect(runtime.session.getToolDefinition("read")?.description).not.toContain(
         "active Backoffice scope",
+      );
+
+      // Re-entering continues the local fix in this session instead of starting a new one.
+      const cloudUrl = "https://backoffice.rejot.dev";
+      const expiresAt = new Date(Date.now() + 3_600_000).toISOString();
+      await writeFile(
+        join(directory, "backoffice-auth.json"),
+        JSON.stringify({
+          baseUrl: cloudUrl,
+          oauth: {
+            clientId: "scenario-client",
+            accessToken: "scenario-oauth-token",
+            accessTokenExpiresAt: expiresAt,
+            refreshToken: "scenario-refresh-token",
+          },
+          backoffice: {
+            accessToken: "scenario-backoffice-token",
+            expiresAt,
+            scope: { kind: "user", userId: "scenario-user" },
+          },
+        }),
+      );
+      const realFetch = globalThis.fetch;
+      vi.stubGlobal("fetch", (input: string | URL | Request, init?: RequestInit) => {
+        const url = input instanceof Request ? input.url : String(input);
+        if (!url.startsWith(cloudUrl)) {
+          return realFetch(input, init);
+        }
+        const headers = new Headers(init?.headers);
+        headers.set("x-scenario-origin", cloudUrl);
+        return realFetch(`${baseUrl}${url.slice(cloudUrl.length)}`, { ...init, headers });
+      });
+      const historyBeforeReentry = [...runtime.session.messages];
+      try {
+        await runtime.session.prompt("/backoffice");
+      } finally {
+        vi.unstubAllGlobals();
+      }
+      expect(runtime.session).toBe(originalSession);
+      assert(runtime.session.sessionId === normalSessionId);
+      expect(runtime.session.messages).toEqual(historyBeforeReentry);
+      expect(notifications).toContain(`Connected to ${cloudUrl} with scope user:scenario-user.`);
+      expect(runtime.session.getActiveToolNames()).toContain("backofficeCodemode");
+      assert(statuses.get("backoffice") === "backoffice:backoffice.rejot.dev");
+      const reentered = await runtime.session.extensionRunner.emitBeforeAgentStart(
+        "Continue in Backoffice",
+        undefined,
+        { cwd: directory },
+      );
+      expect(reentered.systemPromptOptions.customPrompt).toContain(
+        "Follow the Cloud scope instructions.",
+      );
+
+      await runtime.session.prompt("/backoffice");
+      assert(runtime.session.sessionId === normalSessionId);
+      expect(new Set(runtime.session.getActiveToolNames())).toEqual(
+        new Set(["read", "bash", "edit", "write", "codemode"]),
       );
     } finally {
       await runtime.dispose();
