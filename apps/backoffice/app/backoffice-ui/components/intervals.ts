@@ -8,11 +8,19 @@ export const intervalsSchema = z
     every: z.number().int().min(INTERVAL_LIMITS.minimumMs),
     since: z.number().negative(),
   })
-  .refine(({ every, since }) => Math.ceil(-since / every) <= INTERVAL_LIMITS.count, {
-    message: `Intervals cover at most ${INTERVAL_LIMITS.count} intervals.`,
+  .refine((intervals) => mostIntervals(intervals) <= INTERVAL_LIMITS.count, {
+    message: `Intervals cover at most ${INTERVAL_LIMITS.count} intervals, counting the one now falls in.`,
   });
 
 export type Intervals = z.infer<typeof intervalsSchema>;
+
+/**
+ * The most intervals `intervalStarts` yields for a window: those `since` spans, plus the one now
+ * falls in, as now rarely sits on a boundary.
+ */
+export function mostIntervals({ every, since }: { every: number; since: number }): number {
+  return Math.ceil(-since / every) + 1;
+}
 
 /**
  * Interval starts aligned to whole `every`s, oldest first, from the one `since` falls in through

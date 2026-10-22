@@ -34,16 +34,25 @@ const CLOCK_TICK_MS = 60_000;
 
 /**
  * Relative times move with the wall clock. Whole minutes keep the time stable between ticks, so
- * live queries that read it restart once a minute.
+ * live queries that read it restart once a minute. Each tick waits for the next minute boundary;
+ * an interval counted from mount would lag the wall clock by up to a minute.
  */
 export function useMinuteClock(): number {
   const [now, setNow] = useState(() => minuteStart(Date.now()));
   useEffect(() => {
-    const timer = window.setInterval(() => {
-      setNow(minuteStart(Date.now()));
-    }, CLOCK_TICK_MS);
+    let timer: number;
+    const scheduleTick = () => {
+      timer = window.setTimeout(
+        () => {
+          setNow(minuteStart(Date.now()));
+          scheduleTick();
+        },
+        CLOCK_TICK_MS - (Date.now() % CLOCK_TICK_MS),
+      );
+    };
+    scheduleTick();
     return () => {
-      window.clearInterval(timer);
+      window.clearTimeout(timer);
     };
   }, []);
   return now;
