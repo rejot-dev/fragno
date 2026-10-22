@@ -177,7 +177,13 @@ export function buildRouteFailedEvent({
       error,
       failedAttempts,
     },
-    actors: { initiator: AUTOMATION_SYSTEM_INITIATOR, principal: null, delegation: [] },
+    // Keeps the delegates the failed event acted through, so an agent is not told of failures
+    // its own turns caused.
+    actors: {
+      initiator: AUTOMATION_SYSTEM_INITIATOR,
+      principal: null,
+      delegation: event.actors.delegation,
+    },
     subject: null,
     causation: { kind: "route", routeId: route.id, parent: automationEventParentOf(event) },
   };
