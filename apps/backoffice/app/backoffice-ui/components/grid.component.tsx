@@ -7,6 +7,7 @@ const gridColumnsClass = {
   2: "grid-cols-1 sm:grid-cols-2",
   3: "grid-cols-1 sm:grid-cols-2 xl:grid-cols-3",
   4: "grid-cols-1 sm:grid-cols-2 xl:grid-cols-4",
+  "main-side": "grid-cols-1 items-start xl:grid-cols-[minmax(0,1fr)_22rem]",
 } as const;
 
 const gridGapClass = {

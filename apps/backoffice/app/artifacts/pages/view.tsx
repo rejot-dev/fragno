@@ -4,14 +4,21 @@ import { Component, useEffect, useMemo, type ReactNode } from "react";
 import { createStateStore, type StateStore } from "@json-render/react";
 import { useLiveQuery } from "@tanstack/react-db";
 
-import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scope";
+import {
+  backofficeRouteScopeFromResolvedScope,
+  type BackofficeResolvedScope,
+} from "@/backoffice-runtime/resolved-scope";
 import type { BackofficeUiLinkTarget } from "@/backoffice-ui/components/link";
 import { useMinuteClock } from "@/backoffice-ui/render-context";
 import { BackofficeUiStoreRenderer } from "@/backoffice-ui/renderer";
 import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
 import type { AutomationCollections } from "@/fragno/automation/tanstack/collections";
+import { piAgentsPath } from "@/routes/backoffice/agents/path";
 import { dashboardRunPath, dashboardSelectionPath } from "@/routes/backoffice/dashboard/path";
-import { integrationConnectionPath } from "@/routes/backoffice/integrations/connection-paths";
+import {
+  integrationConnectionPath,
+  integrationsScopeBasePath,
+} from "@/routes/backoffice/integrations/connection-paths";
 
 import {
   pageDataPath,
@@ -152,6 +159,10 @@ function pageLinks(scope: BackofficeResolvedScope) {
         return dashboardSelectionPath(scope, { kind: "route", id: target.id });
       case "connection":
         return integrationConnectionPath(scope, target.id);
+      case "integrations":
+        return integrationsScopeBasePath(scope);
+      case "agents":
+        return piAgentsPath(backofficeRouteScopeFromResolvedScope(scope));
     }
     throw new Error("Unsupported generated UI link target.");
   };

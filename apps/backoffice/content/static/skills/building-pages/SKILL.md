@@ -202,9 +202,17 @@ each callback, as above; a helper function that takes a source's fields needs a 
 ## Components for live data
 
 - `ui.link({ label, to })` opens a run (`{ kind: "run", workflowName, instanceId }`, where
-  `workflowName` is the run's internal name), a route (`{ kind: "route", id }`), or a connection
-  (`{ kind: "connection", id }`) in the page's scope.
+  `workflowName` is the run's internal name), a route (`{ kind: "route", id }`), a connection
+  (`{ kind: "connection", id }`), or the scope's integrations or agents (`{ kind: "integrations" }`,
+  `{ kind: "agents" }`).
 - `ui.relativeTime({ time })` shows "3m ago" or "in 2h" and moves with the page.
+- `ui.number({ value, format })` rounds as it shows; queries cannot round. A `percent` takes a
+  ratio, such as `divide(workflow.completed, workflow.finished)`, and null shows a dash.
+- `ui.icon({ name, tone })` marks a row's kind. Lay a row out with
+  `ui.stack({ gap: "sm", direction: "row", justify: "between" }, [...])`, where `between` pushes the
+  last child, such as a time, to the end.
+- `ui.grid({ columns: "main-side", gap: "lg" }, [main, side])` sets details beside a narrow column,
+  as the home page does.
 - `ui.sparkBars` and `ui.barChart` take `rows`, an `axis` naming the field along it, and the `value`
   field to size bars by; `ui.barChart` also stacks by a `series` field.
 - `ui.badge({ label, tone })` shows a status light.

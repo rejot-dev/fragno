@@ -12,11 +12,13 @@ import { Divider } from "./components/divider.component";
 import { FileUpload } from "./components/file-upload.component";
 import { Grid } from "./components/grid.component";
 import { Heading } from "./components/heading.component";
+import { Icon } from "./components/icon.component";
 import { Image } from "./components/image.component";
 import { KeyValue } from "./components/key-value.component";
 import { Link } from "./components/link.component";
 import { List } from "./components/list.component";
 import { Metric } from "./components/metric.component";
+import { NumberValue } from "./components/number.component";
 import { Progress } from "./components/progress.component";
 import { RelativeTime } from "./components/relative-time.component";
 import { Section } from "./components/section.component";
@@ -45,7 +47,9 @@ const components: BackofficeUiComponents = {
   Image,
   Callout: CalloutComponent,
   Metric,
+  Number: NumberValue,
   Badge,
+  Icon,
   Link,
   RelativeTime,
   KeyValue,

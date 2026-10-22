@@ -110,7 +110,7 @@ const operationsPage = `export default page.define(({ collections, from, and, eq
  * The home page's Automations panel and attention list: one row per workflow with its latest run,
  * a sparkline of starts per hour, and links, read from a grouped subquery with nested rows.
  */
-const automationsPage = `export default page.define(({ collections, from, many, unionAll, intervals, bucket, now, and, eq, gte, coalesce, count, sum, max, caseWhen }) => {
+const automationsPage = `export default page.define(({ collections, from, many, unionAll, intervals, bucket, now, and, eq, gt, gte, add, divide, coalesce, count, sum, max, caseWhen }) => {
   const day = now.minus("24 hours");
   const hours = intervals({ every: "1 hour", since: day });
   const runs = from({ run: collections.workflowInstances }).select(({ run }) => ({
@@ -127,6 +127,7 @@ const automationsPage = `export default page.define(({ collections, from, many, 
     .select(({ run }) => ({
       workflow: run.workflow,
       started: count(run.id),
+      completed: sum(caseWhen(eq(run.status, "complete"), 1, 0)),
       errored: sum(caseWhen(eq(run.status, "errored"), 1, 0)),
       lastActivity: max(run.updatedAt),
     }));
@@ -137,6 +138,11 @@ const automationsPage = `export default page.define(({ collections, from, many, 
       workflow: workflow.workflow,
       started: workflow.started,
       errored: workflow.errored,
+      successRate: caseWhen(
+        gt(add(workflow.completed, workflow.errored), 0),
+        divide(workflow.completed, add(workflow.completed, workflow.errored)),
+      ),
+      rateTone: caseWhen(gt(workflow.errored, 0), "failed", "live"),
       latest: many(
         from({ run: runs })
           .where(({ run }) => eq(run.workflow, workflow.workflow))
@@ -168,28 +174,47 @@ const automationsPage = `export default page.define(({ collections, from, many, 
     ),
   })
     .orderBy(({ item }) => item.at, "desc")
-    .limit(10);
+    .limit(10)
+    .select(({ item }) => ({
+      title: item.title,
+      detail: item.detail,
+      at: item.at,
+      icon: caseWhen(eq(item.detail, "Errored"), "alert-triangle", "pause-circle"),
+      tone: caseWhen(eq(item.detail, "Errored"), "failed", "waiting"),
+    }));
 
-  return ui.stack({ gap: "md" }, [
-    ui.metric({ label: "Workflows", value: from({ workflow: workflows }).select(({ workflow }) => ({ total: count(workflow.workflow) })).value("total", 0) }),
-    ui.section({ label: "Automations" }, [
-      ui.stack({ gap: "sm" }, ui.each(health, (row) =>
-        ui.grid({ columns: 4, gap: "sm" }, [
-          ui.link({
-            label: row.workflow,
-            to: { kind: "run", workflowName: row.latest[0].workflowName, instanceId: row.latest[0].instanceId },
-          }),
-          ui.sparkBars({ label: "Starts per hour", rows: row.hourly, axis: { field: "hour", intervals: hours }, value: "runs" }),
-          ui.badge({ label: row.latest[0].status, tone: row.latest[0].tone }),
-          ui.relativeTime({ time: row.latest[0].updatedAt }),
-          ui.when(ui.is(row.errored, { gt: 0 }), ui.text({ text: "Has errored runs" })),
-        ]),
-      )),
+  return ui.grid({ columns: "main-side", gap: "lg" }, [
+    ui.stack({ gap: "md" }, [
+      ui.metric({ label: "Workflows", value: from({ workflow: workflows }).select(({ workflow }) => ({ total: count(workflow.workflow) })).value("total", 0) }),
+      ui.section({ label: "Automations" }, [
+        ui.stack({ gap: "sm" }, ui.each(health, (row) =>
+          ui.grid({ columns: 4, gap: "sm" }, [
+            ui.link({
+              label: row.workflow,
+              to: { kind: "run", workflowName: row.latest[0].workflowName, instanceId: row.latest[0].instanceId },
+            }),
+            ui.sparkBars({ label: "Starts per hour", rows: row.hourly, axis: { field: "hour", intervals: hours }, value: "runs" }),
+            ui.number({ value: row.successRate, format: "percent", tone: row.rateTone }),
+            ui.badge({ label: row.latest[0].status, tone: row.latest[0].tone }),
+            ui.relativeTime({ time: row.latest[0].updatedAt }),
+            ui.when(ui.is(row.errored, { gt: 0 }), ui.text({ text: "Has errored runs" })),
+          ]),
+        )),
+      ]),
     ]),
-    ui.section({ label: "Needs attention" }, [
-      ui.stack({ gap: "sm" }, ui.each(attention, (item) =>
-        ui.stack({ gap: "sm" }, [ui.text({ text: item.title }), ui.text({ text: item.detail, tone: "muted" })]),
-      )),
+    ui.stack({ gap: "md" }, [
+      ui.section({ label: "Needs attention" }, [
+        ui.stack({ gap: "sm" }, ui.each(attention, (item) =>
+          ui.stack({ gap: "sm", direction: "row", justify: "between" }, [
+            ui.stack({ gap: "sm", direction: "row" }, [
+              ui.icon({ name: item.icon, tone: item.tone }),
+              ui.stack({ gap: "sm" }, [ui.text({ text: item.title }), ui.text({ text: item.detail, tone: "muted" })]),
+            ]),
+            ui.relativeTime({ time: item.at }),
+          ]),
+        )),
+      ]),
+      ui.link({ label: "Integrations", to: { kind: "integrations" } }),
     ]),
   ]);
 });
@@ -345,9 +370,10 @@ async function cachedOutcome(ctx: BackofficeScenarioContext): Promise<string> {
 
 /** Where the scenario's links lead, so assertions read which target each link names. */
 function testLinks(target: BackofficeUiLinkTarget): string {
-  return target.kind === "run"
-    ? `/runs/${target.workflowName}/${target.instanceId}`
-    : `/${target.kind}s/${target.id}`;
+  if (target.kind === "run") {
+    return `/runs/${target.workflowName}/${target.instanceId}`;
+  }
+  return "id" in target ? `/${target.kind}s/${target.id}` : `/${target.kind}`;
 }
 
 /**
@@ -408,9 +434,9 @@ function tables(markup: string): Record<string, string[]> {
 function automationRows(markup: string): string[] {
   return [
     ...markup.matchAll(
-      /<a[^>]*href="([^"]+)"[^>]*>([^<]+)<\/a><span role="img" aria-label="Starts per hour"[^>]*>((?:<span[^>]*><\/span>)*)<\/span><span[^>]*data-tone="(\w+)"[^>]*>([^<]+)<\/span><time[^>]*>([^<]+)<\/time>(?:<p[^>]*>([^<]+)<\/p>)?/g,
+      /<a[^>]*href="([^"]+)"[^>]*>([^<]+)<\/a><span role="img" aria-label="Starts per hour"[^>]*>((?:<span[^>]*><\/span>)*)<\/span><span(?: data-tone="(\w+)")?[^>]*>([^<]+)<\/span><span[^>]*data-tone="(\w+)"[^>]*>([^<]+)<\/span><time[^>]*>([^<]+)<\/time>(?:<p[^>]*>([^<]+)<\/p>)?/g,
     ),
-  ].map(([, href, workflow, bars, tone, status, time, note]) => {
+  ].map(([, href, workflow, bars, rateTone, rate, tone, status, time, note]) => {
     const heights = [...(bars ?? "").matchAll(/height:([^"]+)"/g)].map(([, height]) =>
       height === "1px" ? "0" : "1",
     );
@@ -418,6 +444,7 @@ function automationRows(markup: string): string[] {
     return [
       `${workflow} -> ${href}`,
       `...${heights.slice(-3).join("")}`,
+      rateTone ? `${rateTone} ${rate}` : rate,
       `${tone} ${status}`,
       time,
       ...(note ? [note] : []),
@@ -425,12 +452,14 @@ function automationRows(markup: string): string[] {
   });
 }
 
-/** Each attention item as "title: detail". */
+/** Each attention item as "icon tone | title: detail | time". */
 function attentionItems(markup: string): string[] {
   const section = markup.slice(markup.indexOf('aria-label="Needs attention"'));
-  return [...section.matchAll(/<div[^>]*><p[^>]*>([^<]+)<\/p><p[^>]*>([^<]+)<\/p><\/div>/g)].map(
-    ([, title, detail]) => `${title}: ${detail}`,
-  );
+  return [
+    ...section.matchAll(
+      /<span data-tone="(\w+)"[^>]*><svg[^>]*>.*?<\/svg><\/span><div[^>]*><p[^>]*>([^<]+)<\/p><p[^>]*>([^<]+)<\/p><\/div><\/div><time[^>]*>([^<]+)<\/time>/g,
+    ),
+  ].map(([, tone, title, detail, time]) => `${tone} | ${title}: ${detail} | ${time}`);
 }
 
 describe("workspace pages", () => {
@@ -504,7 +533,7 @@ describe("workspace pages", () => {
             assert.equal(verifyError, null);
           }),
           then.assert(
-            "each workflow row shows its latest run, hourly starts, and errors",
+            "each workflow row shows its latest run, hourly starts, success rate, and errors",
             async (ctx) => {
               const loaded = await loadBuiltPage(ctx);
               assert(loaded.kind === "ready", JSON.stringify(loaded));
@@ -512,14 +541,17 @@ describe("workspace pages", () => {
               assert.match(markup, /aria-label="Workflows"[^>]*>.*?<p[^>]*>3<\/p>/);
               // Bars run oldest to newest over 25 hourly intervals; ship-order started 2 hours apart.
               assert.deepEqual(automationRows(markup), [
-                "ship-order -> /runs/codemode-script/ship-2 | ...101 | live complete | now",
-                "charge-card -> /runs/codemode-script/charge-1 | ...001 | failed errored | now | Has errored runs",
-                "await-shipment -> /runs/codemode-script/shipment-1 | ...010 | waiting waiting | 1h ago",
+                "ship-order -> /runs/codemode-script/ship-2 | ...101 | live 100% | live complete | now",
+                "charge-card -> /runs/codemode-script/charge-1 | ...001 | failed 0% | failed errored | now | Has errored runs",
+                "await-shipment -> /runs/codemode-script/shipment-1 | ...010 | — | waiting waiting | 1h ago",
               ]);
               assert.deepEqual(attentionItems(markup), [
-                "charge-card: Errored",
-                "await-shipment: Waiting for an event",
+                "failed | charge-card: Errored | now",
+                "waiting | await-shipment: Waiting for an event | 1h ago",
               ]);
+              // Details sit beside a narrow side column, which ends in the scope's integrations.
+              assert.include(markup, "xl:grid-cols-[minmax(0,1fr)_22rem]");
+              assert.include(markup, 'href="/integrations"');
             },
           ),
           then.assert(
