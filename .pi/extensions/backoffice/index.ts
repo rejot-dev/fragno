@@ -692,7 +692,7 @@ export default function registerBackofficeExtension(pi: ExtensionAPI) {
   });
 
   pi.registerCommand("backoffice", {
-    description: "Start, switch, or exit a Backoffice-powered session",
+    description: "Enter, switch, or exit Backoffice in the current session",
     handler: async (_args, ctx) => {
       if (!ctx.hasUI) {
         ctx.ui.notify("/backoffice requires an interactive UI.", "error");
@@ -752,23 +752,14 @@ export default function registerBackofficeExtension(pi: ExtensionAPI) {
           baseUrl,
           scope: parsedScope,
         });
-        const normalTools = backofficeEnabled
-          ? (findBackofficeNormalTools(ctx) ?? configuredNormalPiTools(pi, ctx))
-          : pi.getActiveTools();
-        await ctx.newSession({
-          parentSession: ctx.sessionManager.getSessionFile(),
-          setup: async (sessionManager) => {
-            sessionManager.appendCustomEntry(BACKOFFICE_NORMAL_TOOLS_ENTRY, normalTools);
-            sessionManager.appendCustomEntry(BACKOFFICE_SESSION_ENTRY, {
-              baseUrl,
-              scope,
-              systemPrompt,
-            });
-          },
-          withSession: async (newContext) => {
-            newContext.ui.notify(`Connected to ${baseUrl} with scope ${scope}.`, "info");
-          },
-        });
+        // Like exiting, entering or switching only marks this branch, so the conversation
+        // continues in the current session. Switching keeps the tools saved on entry.
+        if (!backofficeEnabled) {
+          pi.appendEntry(BACKOFFICE_NORMAL_TOOLS_ENTRY, pi.getActiveTools());
+        }
+        pi.appendEntry(BACKOFFICE_SESSION_ENTRY, { baseUrl, scope, systemPrompt });
+        synchronizeBackofficeMode(ctx);
+        ctx.ui.notify(`Connected to ${baseUrl} with scope ${scope}.`, "info");
       } catch (error) {
         ctx.ui.notify(`Backoffice setup failed: ${backofficeErrorMessage(error)}`, "error");
       }
