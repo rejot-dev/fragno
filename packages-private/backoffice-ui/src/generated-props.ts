@@ -78,9 +78,11 @@ function createGeneratedLiteralSchema(
 }
 
 function createGeneratedPropSchema(literalSchema: z.ZodType, conditionalDepth = 0): z.ZodType {
+  // Built on first use: eager branches nest a full chain inside every nested field, so a
+  // component's first parse grew exponentially with prop nesting.
   const nestedGeneratedPropSchema =
     conditionalDepth < MAX_GENERATED_PROP_CONDITIONAL_DEPTH
-      ? createGeneratedPropSchema(literalSchema, conditionalDepth + 1)
+      ? z.lazy(() => createGeneratedPropSchema(literalSchema, conditionalDepth + 1))
       : z.never();
 
   return z.union([
