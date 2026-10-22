@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import type { BackofficeUiLinkTarget } from "./components/link";
 
@@ -19,7 +19,8 @@ export function BackofficeUiRenderContextProvider({
   links,
   children,
 }: BackofficeUiRenderContextValue & { children: ReactNode }) {
-  return <BackofficeUiRenderContext value={{ now, links }}>{children}</BackofficeUiRenderContext>;
+  const value = useMemo(() => ({ now, links }), [now, links]);
+  return <BackofficeUiRenderContext value={value}>{children}</BackofficeUiRenderContext>;
 }
 
 export function useBackofficeUiRenderContext(): BackofficeUiRenderContextValue {
