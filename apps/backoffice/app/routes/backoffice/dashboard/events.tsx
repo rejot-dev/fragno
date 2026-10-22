@@ -48,6 +48,7 @@ import {
   eventTraceRunsQuery,
   eventTraceStepNodeId,
   eventTraceStepsQuery,
+  eventTraceDeliveriesQuery,
   projectEventTrace,
   projectEventTraceList,
   projectEventTraceSummaries,
@@ -59,6 +60,7 @@ import {
   type EventTraceRecord,
   type EventTraceRun,
   type EventTraceStep,
+  type EventTraceDelivery,
   type EventTraceSummary,
 } from "./event-traces";
 import {
@@ -195,15 +197,26 @@ function EventTracesWorkspace({
     query: (query) => eventTraceStepsQuery(query, collections, runIds),
   });
   const steps = (stepsQuery.data ?? []) as EventTraceStep[];
+  const deliveriesQuery = useLiveQuery({
+    query: (query) => eventTraceDeliveriesQuery(query, collections, runIds),
+  });
+  const deliveries = (deliveriesQuery.data ?? []) as EventTraceDelivery[];
   const trace = useMemo(
     () =>
       openedTrace === null
         ? null
-        : projectEventTrace({ rootEventId: openedTrace, events, dispatches, runs, steps }),
-    [openedTrace, events, dispatches, runs, steps],
+        : projectEventTrace({
+            rootEventId: openedTrace,
+            events,
+            dispatches,
+            runs,
+            steps,
+            deliveries,
+          }),
+    [openedTrace, events, dispatches, runs, steps, deliveries],
   );
 
-  const queries = [eventsQuery, dispatchesQuery, runsQuery, stepsQuery];
+  const queries = [eventsQuery, dispatchesQuery, runsQuery, stepsQuery, deliveriesQuery];
   if (queries.some((query) => query.isError)) {
     return (
       <BackofficeSystemState
@@ -781,7 +794,7 @@ function TraceSelection({
       return (
         <section className="min-w-0">
           {header(null)}
-          <EventDetail event={record.event} />
+          <EventDetail event={record.event} node={path.at(-1) ?? null} onSelect={onSelect} />
         </section>
       );
     case "dispatch":
@@ -792,12 +805,7 @@ function TraceSelection({
         </section>
       );
     case "run":
-      return record.run === null ? (
-        <section className="min-w-0">
-          {header(null)}
-          <DispatchDetail dispatch={record.dispatch} />
-        </section>
-      ) : (
+      return (
         <RunSelection
           header={header}
           run={record.run}
@@ -981,7 +989,16 @@ function describeCausation(causation: AutomationEventCausation | null): string {
     : `Fired by run ${causation.instanceId}`;
 }
 
-function EventDetail({ event }: { event: EventTraceEvent }) {
+function EventDetail({
+  event,
+  node,
+  onSelect,
+}: {
+  event: EventTraceEvent;
+  /** The event's node in the trace, whose route children are the routes it matched. */
+  node: CausalFlameNode | null;
+  onSelect: (nodeId: string) => void;
+}) {
   return (
     <>
       <Facts
@@ -991,9 +1008,69 @@ function EventDetail({ event }: { event: EventTraceEvent }) {
           ["Cause", describeCausation(event.causation)],
         ]}
       />
+      <MatchedRoutes
+        matching={!event.routesMatched}
+        routes={(node?.children ?? []).filter((child) => child.kind === "route")}
+        onSelect={onSelect}
+      />
       <JsonBlock label="Payload" value={event.payload} />
       {event.subject === null ? null : <JsonBlock label="Subject" value={event.subject} />}
     </>
+  );
+}
+
+/** Every route the event fanned out to, each with where it stands. */
+function MatchedRoutes({
+  matching,
+  routes,
+  onSelect,
+}: {
+  matching: boolean;
+  routes: readonly CausalFlameNode[];
+  onSelect: (nodeId: string) => void;
+}) {
+  return (
+    <div className="mt-2 mb-4">
+      <p className="text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+        {routes.length === 0 ? "Routes" : `Routes · ${routes.length}`}
+      </p>
+      {routes.length === 0 ? (
+        <p className="mt-1 text-sm text-[var(--bo-muted)]">
+          {matching ? "Matching routes…" : "No route matched this event."}
+        </p>
+      ) : (
+        <ul className="mt-1 divide-y divide-[color:var(--bo-border)] border-y border-[color:var(--bo-border)]">
+          {routes.map((route) => {
+            const status = SELECTION_STATUS[route.status];
+            return (
+              <li key={route.id}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSelect(route.id);
+                  }}
+                  className="grid w-full grid-cols-[minmax(8rem,14rem)_minmax(0,1fr)_auto] items-baseline gap-x-4 py-2 text-left text-sm transition-colors duration-150 hover:bg-[var(--bo-panel-2)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none"
+                >
+                  <span className="truncate font-medium text-[var(--bo-fg)]">{route.label}</span>
+                  <span
+                    className={cn(
+                      "truncate text-xs",
+                      route.status === "failed"
+                        ? "text-[var(--bo-failed)]"
+                        : "text-[var(--bo-muted)]",
+                    )}
+                    title={route.detail ?? undefined}
+                  >
+                    {route.detail}
+                  </span>
+                  <BackofficeStatusLight tone={status.tone}>{status.label}</BackofficeStatusLight>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }
 

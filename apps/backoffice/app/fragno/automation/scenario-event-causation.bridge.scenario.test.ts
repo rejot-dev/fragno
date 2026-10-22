@@ -17,6 +17,7 @@ import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
 import { createNodeBackofficeRuntimeConfiguration } from "@/backoffice-runtime/node/node-runtime-env";
 import {
+  eventTraceDeliveriesQuery,
   eventTraceDispatch,
   eventTraceDispatchesQuery,
   eventTraceEventsQuery,
@@ -25,6 +26,7 @@ import {
   eventTraceStepsQuery,
   projectEventTrace,
   projectEventTraceSummaries,
+  type EventTraceDelivery,
   type EventTraceDispatchRow,
   type EventTraceEvent,
   type EventTraceRun,
@@ -52,6 +54,24 @@ afterAll(async () => {
 const scope = { kind: "org" as const, orgId: "org-1" };
 const webhookEventId = "github-delivery-1";
 const issueOpenedEventId = `reclassified:promote-issue-opened:${webhookEventId}`;
+
+function gitHubIssueEvent(hookId: string, issue: { number: number; title: string }) {
+  return buildGitHubAutomationEvent({
+    orgId: scope.orgId,
+    event: {
+      name: "issues",
+      payload: { action: "opened", issue: { id: issue.number * 100, ...issue, state: "open" } },
+    },
+    meta: {
+      hookId,
+      deliveryId: `delivery-${hookId}`,
+      event: "issues",
+      action: "opened",
+      installationId: "installation-1",
+      receivedAt: "2026-10-18T09:00:00.000Z",
+    },
+  });
+}
 
 /** One line per node, siblings in label order, so the tree reads like the flame graph's chain. */
 function outline(node: CausalFlameNode, depth = 0): string[] {
@@ -87,6 +107,18 @@ test("events record the routes and workflows that caused them back to their orig
         payload: { issueNumber: event.payload.issue.number },
       });
     });
+  },
+);`,
+          // Already running before the trace starts, so the trace only owns what its event set off.
+          "automations/issue-log.workflow.js": `defineWorkflow(
+  { name: "issue-log" },
+  async (_event, step) => {
+    for (let index = 0; index < 2; index += 1) {
+      const received = await step.waitForEvent(\`issue \${index}\`, { type: "issue.opened" });
+      await step.do(\`record issue \${index}\`, async () => ({
+        number: received.payload.payload.issue.number,
+      }));
+    }
   },
 );`,
         },
@@ -143,27 +175,29 @@ test("events record the routes and workflows that caused them back to their orig
             instanceIdTemplate: "assist-${event.id}",
           },
         }),
+        given.router.route({
+          orgId: scope.orgId,
+          id: "log-issues",
+          name: "Log issues",
+          enabled: true,
+          priority: 40,
+          trigger: { kind: "event", source: "github", eventType: "issues.opened", matcher: null },
+          action: {
+            kind: "send_workflow_event",
+            target: { kind: "instance_id", template: "issue-log" },
+            eventType: "issue.opened",
+          },
+        }),
       ],
       steps: ({ when, then }) => [
+        when.workflow.createInstance({
+          orgId: scope.orgId,
+          instanceId: "issue-log",
+          path: "/workspace/automations/issue-log.workflow.js",
+          event: gitHubIssueEvent("issue-log-start", { number: 1, title: "Start the log" }),
+        }),
         when.automation.ingestEvent(
-          buildGitHubAutomationEvent({
-            orgId: scope.orgId,
-            event: {
-              name: "issues",
-              payload: {
-                action: "opened",
-                issue: { id: 4200, number: 42, title: "Flaky deploy check", state: "open" },
-              },
-            },
-            meta: {
-              hookId: webhookEventId,
-              deliveryId: "delivery-1",
-              event: "issues",
-              action: "opened",
-              installationId: "installation-1",
-              receivedAt: "2026-10-18T09:00:00.000Z",
-            },
-          }),
+          gitHubIssueEvent(webhookEventId, { number: 42, title: "Flaky deploy check" }),
         ),
         then.workflow.instance({
           workflowName: CODEMODE_WORKFLOW,
@@ -218,9 +252,10 @@ test("events record the routes and workflows that caused them back to their orig
           ])) as [EventTraceEvent[], EventTraceDispatchRow[], EventTraceRun[]];
           const dispatches = dispatchRows.map(eventTraceDispatch);
           const runIds = eventTraceRunIds({ rootEventId: webhookEventId, dispatches, runs });
-          const steps = (await queryOnce((query) =>
-            eventTraceStepsQuery(query, collections, runIds),
-          )) as EventTraceStep[];
+          const [steps, deliveries] = (await Promise.all([
+            queryOnce((query) => eventTraceStepsQuery(query, collections, runIds)),
+            queryOnce((query) => eventTraceDeliveriesQuery(query, collections, runIds)),
+          ])) as [EventTraceStep[], EventTraceDelivery[]];
 
           const trace = projectEventTrace({
             rootEventId: webhookEventId,
@@ -228,16 +263,22 @@ test("events record the routes and workflows that caused them back to their orig
             dispatches,
             runs,
             steps,
+            deliveries,
           });
 
           expect(trace && outline(trace.root)).toEqual([
             "event github · webhook.received [ok]",
-            "  event github · issues.opened [ok] (via Promote opened issues)",
-            "    route Assist the sender skipped [skipped] (No external sender linked to a user)",
-            "    workflow triage-issue [ok] (via Triage issues)",
-            "      step announce triage [ok]",
-            "      event github · issue.labeled [ok] (fired by triage-issue)",
-            "      event github · issue.triaged [ok] (fired by triage-issue)",
+            "  route Promote opened issues [ok] (Reclassified the event)",
+            "    event github · issues.opened [ok]",
+            "      route Assist the sender [skipped] (Skipped: No external sender linked to a user)",
+            "      route Log issues [ok] (Delivered issue.opened to run issue-log)",
+            "        workflow issue-log [ok] (Took issue.opened)",
+            "          step record issue 0 [ok]",
+            "      route Triage issues [ok] (Started a run)",
+            "        workflow triage-issue [ok]",
+            "          step announce triage [ok]",
+            "          event github · issue.labeled [ok] (fired by triage-issue)",
+            "          event github · issue.triaged [ok] (fired by triage-issue)",
           ]);
 
           // Live, a dispatch can synchronize before the run it started.
@@ -247,21 +288,25 @@ test("events record the routes and workflows that caused them back to their orig
             dispatches,
             runs: [],
             steps: [],
+            deliveries: [],
           });
           expect(runless && outline(runless.root)).toEqual([
             "event github · webhook.received [ok]",
-            "  event github · issues.opened [ok] (via Promote opened issues)",
-            "    route Assist the sender skipped [skipped] (No external sender linked to a user)",
-            "    workflow triage-issue-42 [pending] (via Triage issues; the run is no longer recorded)",
-            "      event github · issue.labeled [ok] (fired by triage-issue-42)",
-            "      event github · issue.triaged [ok] (fired by triage-issue-42)",
+            "  route Promote opened issues [ok] (Reclassified the event)",
+            "    event github · issues.opened [ok]",
+            "      route Assist the sender [skipped] (Skipped: No external sender linked to a user)",
+            "      route Log issues [ok] (Delivered issue.opened to run issue-log)",
+            "      route Triage issues [ok] (Started a run)",
+            "        workflow triage-issue-42 [pending] (The run is no longer recorded)",
+            "          event github · issue.labeled [ok] (fired by triage-issue-42)",
+            "          event github · issue.triaged [ok] (fired by triage-issue-42)",
           ]);
 
           const [summary] = projectEventTraceSummaries({ events, dispatches, runs, limit: 10 });
           expect(summary).toMatchObject({
             rootEventId: webhookEventId,
             headline: "#42 Flaky deploy check",
-            effects: ["triage-issue"],
+            effects: expect.arrayContaining(["issue-log", "triage-issue"]),
             outcome: { kind: "settled", failedCount: 0 },
           });
         }),
