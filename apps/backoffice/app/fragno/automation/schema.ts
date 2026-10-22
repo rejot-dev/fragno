@@ -6,11 +6,11 @@ import type {
 import type {
   AutomationEvent,
   AutomationEventDefinition,
+  AutomationRouteDispatchOutcome,
 } from "@fragno-dev/backoffice-api/v0/events";
 import { column, idColumn, schema, type Column } from "@fragno-dev/db/schema";
 
 import type { AutomationEventSource } from "./event-sources";
-import type { AutomationRouteDispatchOutcome } from "./route-dispatches-storage-runtime";
 
 const jsonColumn = <T>() => column("json") as Column<"json", T, T>;
 
@@ -224,6 +224,11 @@ export const automationFragmentSchema = schema("automations", (s) => {
           .addColumn("failedAttempts", column("integer").defaultTo(0))
           .addColumn("error", column("text").nullable())
           .createIndex("idx_automation_route_dispatch_eventId", ["eventId"]),
+      )
+      // False from when an event is stored until its routes are matched and recorded. Events
+      // stored before then had their routes matched.
+      .alterTable("automation_event", (t) =>
+        t.addColumn("routesMatched", column("bool").defaultTo(true)),
       )
   );
 });

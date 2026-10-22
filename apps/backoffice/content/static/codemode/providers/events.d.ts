@@ -4,7 +4,7 @@ type EventsCodemodeProvider = {
   fire(input: EventsFireInput): Promise<EventsFireOutput>;
   /** List stored automation events in the current scope, newest first. */
   list(input: EventsListInput): Promise<EventsListOutput>;
-  /** Get one stored automation event by id in the current scope. */
+  /** Get one stored automation event by id in the current scope, with each route it matched and where that route stands: about to act, retrying after an error, completed with what it did, or failed for good. */
   get(input: EventsGetInput): Promise<EventsGetOutput>;
   /** List known automation event source/type pairs from the Backoffice capability registry. */
   catalogList(): Promise<EventsCatalogListOutput>;
@@ -541,6 +541,130 @@ type EventsGetOutput = {
       };
   /** ISO 8601 datetime string. */
   createdAt?: string;
+  routing:
+    | {
+        status: "matching";
+      }
+    | {
+        status: "matched";
+        routes: (
+          | {
+              routeId: string;
+              routeName: string;
+              /** ISO 8601 datetime string. */
+              matchedAt: string;
+              status: "pending";
+            }
+          | {
+              routeId: string;
+              routeName: string;
+              /** ISO 8601 datetime string. */
+              matchedAt: string;
+              status: "retrying";
+              failedAttempts: number;
+              error: string;
+            }
+          | {
+              routeId: string;
+              routeName: string;
+              /** ISO 8601 datetime string. */
+              matchedAt: string;
+              status: "completed";
+              outcome:
+                | {
+                    kind: "workflow_started";
+                    workflowName: string;
+                    instanceId: string;
+                  }
+                | {
+                    kind: "workflow_event_sent";
+                    workflowName: string;
+                    instanceId: string;
+                    eventType: string;
+                  }
+                | {
+                    kind: "event_forwarded";
+                    eventId: string;
+                    scope:
+                      | {
+                          kind: "system";
+                        }
+                      | {
+                          kind: "org";
+                          orgId: string;
+                        }
+                      | {
+                          kind: "user";
+                          userId: string;
+                        }
+                      | {
+                          kind: "app";
+                          owner:
+                            | {
+                                kind: "org";
+                                orgId: string;
+                              }
+                            | {
+                                kind: "user";
+                                userId: string;
+                              };
+                          appId: string;
+                        }
+                      | {
+                          kind: "project";
+                          owner:
+                            | {
+                                kind: "org";
+                                orgId: string;
+                              }
+                            | {
+                                kind: "user";
+                                userId: string;
+                              }
+                            | {
+                                kind: "app";
+                                owner:
+                                  | {
+                                      kind: "org";
+                                      orgId: string;
+                                    }
+                                  | {
+                                      kind: "user";
+                                      userId: string;
+                                    };
+                                appId: string;
+                              };
+                          projectId: string;
+                        };
+                  }
+                | {
+                    kind: "event_reclassified";
+                    eventId: string;
+                  }
+                | {
+                    kind: "agent_notified";
+                    agentName: string;
+                  }
+                | {
+                    kind: "skipped";
+                    reason:
+                      | "no_linked_external_sender"
+                      | "workflow_instance_unresolved"
+                      | "caused_by_notified_agent";
+                  };
+              failedAttempts: number;
+            }
+          | {
+              routeId: string;
+              routeName: string;
+              /** ISO 8601 datetime string. */
+              matchedAt: string;
+              status: "failed";
+              failedAttempts: number;
+              error: string;
+            }
+        )[];
+      };
 } | null;
 type EventsCatalogListOutput = {
   source: string;

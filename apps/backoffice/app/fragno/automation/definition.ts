@@ -14,6 +14,7 @@ import {
   type AutomationEventDefinition,
   automationEventParentOf,
   automationEventRootId,
+  type AutomationRouteDispatchOutcome,
 } from "@fragno-dev/backoffice-api/v0/events";
 import {
   type BackofficeContextScope,
@@ -74,7 +75,6 @@ import type {
 } from "./internal-hooks";
 import { createAutomationProjectServices } from "./projects-storage-runtime";
 import {
-  type AutomationRouteDispatchOutcome,
   createAutomationRouteDispatchServices,
   isRouteDispatchSettled,
   readRouteDispatchState,
@@ -191,6 +191,7 @@ const ingestAutomationEvent = (
     subject: validatedEvent.subject ?? null,
     causation: validatedEvent.causation,
     rootEventId: automationEventRootId(validatedEvent),
+    routesMatched: false,
     createdAt: now,
   });
 
@@ -729,10 +730,19 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
                 b.whereIndex("idx_automation_route_dispatch_eventId", (eb) =>
                   eb("eventId", "=", event.id),
                 ),
+              )
+              .findFirst("automation_event", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "=", event.id)),
               ),
           )
-          .mutate(({ forSchema, retrieveResult: [routeRows, dispatchRows] }) => {
+          .mutate(({ forSchema, retrieveResult: [routeRows, dispatchRows, storedEvent] }) => {
             const uow = forSchema(automationFragmentSchema);
+            // Project lifecycle events are matched without being stored.
+            if (storedEvent && !storedEvent.routesMatched) {
+              uow.update("automation_event", storedEvent.id, (b) =>
+                b.set({ routesMatched: true }).check(),
+              );
+            }
             const matchedRoutes = route
               ? [route]
               : routeRows

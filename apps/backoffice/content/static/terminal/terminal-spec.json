@@ -2722,7 +2722,7 @@
   },
   {
     "command": "events.get",
-    "summary": "events.get shows a stored automation event, including its payload and actors.",
+    "summary": "events.get shows a stored automation event, including its payload, actors, and where each route it matched stands.",
     "options": [
       {
         "name": "id",

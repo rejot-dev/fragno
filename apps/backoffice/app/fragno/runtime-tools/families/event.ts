@@ -1,7 +1,8 @@
 import type { EventListInput } from "@fragno-dev/backoffice-api/v0/events";
 import {
+  type AutomationEventDetail,
   automationEventListResultSchema,
-  type AutomationEventRecord,
+  type AutomationEventRouteDispatch,
 } from "@fragno-dev/backoffice-api/v0/events";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
@@ -32,7 +33,7 @@ export type AutomationEmitEventResult = {
 export type EventRuntime = {
   emitEvent: (input: EventEmitArgs) => Promise<AutomationEmitEventResult>;
   listEvents(input: EventListInput): Promise<z.infer<typeof automationEventListResultSchema>>;
-  getEvent(input: { id: string }): Promise<AutomationEventRecord | null>;
+  getEvent(input: { id: string }): Promise<AutomationEventDetail | null>;
 };
 
 type EventToolContext = BackofficeToolContext<{ event?: EventRuntime }>;
@@ -51,6 +52,38 @@ const parseEventFireArgs = defineCliArgsParser<EventEmitArgs>("events.fire", {
   payload: { kind: "json", option: "payload-json" },
   targetScope: { kind: "json", option: "target-scope-json" },
 });
+
+function attempts(count: number): string {
+  return `${count} failed ${count === 1 ? "attempt" : "attempts"}`;
+}
+
+/** One line per matched route; `--format json` has the full outcome. */
+function formatRouteDispatch(route: AutomationEventRouteDispatch): string {
+  const name = `${route.routeId} (${route.routeName})`;
+  switch (route.status) {
+    case "pending":
+      return `${name}: pending, not attempted yet`;
+    case "retrying":
+      return `${name}: retrying after ${attempts(route.failedAttempts)}, last error: ${route.error}`;
+    case "failed":
+      return `${name}: failed for good after ${attempts(route.failedAttempts)}: ${route.error}`;
+    case "completed":
+      return `${name}: completed, ${route.outcome.kind}${route.failedAttempts > 0 ? ` after ${attempts(route.failedAttempts)}` : ""}`;
+  }
+  throw new Error("Unsupported automation route dispatch status.");
+}
+
+function formatEventRouting({ routing }: AutomationEventDetail): string[] {
+  if (routing.status === "matching") {
+    return ["routes", "not matched yet; run events.get again shortly"];
+  }
+  return [
+    "routes",
+    ...(routing.routes.length === 0
+      ? ["no route matched"]
+      : routing.routes.map(formatRouteDispatch)),
+  ];
+}
 
 const fireEventTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("events.fire"),
@@ -178,7 +211,8 @@ const getEventTool = defineBackofficeRuntimeTool({
     bash: {
       command: "events.get",
       help: {
-        summary: "events.get shows a stored automation event, including its payload and actors.",
+        summary:
+          "events.get shows a stored automation event, including its payload, actors, and where each route it matched stands.",
         options: [
           {
             name: "id",
@@ -217,6 +251,8 @@ const getEventTool = defineBackofficeRuntimeTool({
               "",
               "subject",
               JSON.stringify(event.subject, null, 2),
+              "",
+              ...formatEventRouting(event),
             ].join("\n") + "\n",
         };
       },

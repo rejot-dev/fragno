@@ -195,6 +195,7 @@ type PageCollections = {
     scopeRestriction: unknown | null;
     causation: unknown | null;
     rootEventId: string | null;
+    routesMatched: boolean;
   }>;
   eventSources: PageCollection<{
     id: string;

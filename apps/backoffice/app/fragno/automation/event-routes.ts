@@ -1,5 +1,6 @@
 import {
   type AutomationEvent,
+  automationEventDetailSchema,
   type AutomationEventRecord,
   automationEventListInputSchema,
   automationEventListResultSchema,
@@ -42,18 +43,28 @@ export const automationEventRoutes = defineRoutes(automationFragmentDefinition).
     defineRoute({
       method: "GET",
       path: "/events/:eventId",
-      outputSchema: automationEventListResultSchema._zod.innerType.shape.events.element,
+      outputSchema: automationEventDetailSchema,
       handler: async function ({ pathParams }, { json, error }) {
-        const event = await this.handlerTx()
-          .withServiceCalls(() => [services.getEvent({ id: pathParams.eventId })] as const)
-          .transform(({ serviceResult: [event] }) => event)
+        const { eventId } = pathParams;
+        const [event, routes] = await this.handlerTx()
+          .withServiceCalls(
+            () =>
+              [
+                services.getEvent({ id: eventId }),
+                services.listEventRouteDispatches({ eventId }),
+              ] as const,
+          )
+          .transform(({ serviceResult }) => serviceResult)
           .execute();
 
         if (!event) {
           return error({ message: "Automation event not found.", code: "EVENT_NOT_FOUND" }, 404);
         }
 
-        return json(automationEventRecord(event));
+        return json({
+          ...automationEventRecord(event),
+          routing: event.routesMatched ? { status: "matched", routes } : { status: "matching" },
+        });
       },
     }),
     defineRoute({

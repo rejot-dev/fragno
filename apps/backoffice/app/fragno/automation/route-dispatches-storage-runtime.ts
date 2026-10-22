@@ -1,46 +1,16 @@
 import type { AutomationRouteDefinition } from "@fragno-dev/backoffice-api/v0/automation";
-import { type AutomationEvent, automationEventRootId } from "@fragno-dev/backoffice-api/v0/events";
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  type AutomationEvent,
+  type AutomationEventRouteDispatch,
+  automationEventRootId,
+  type AutomationRouteDispatchOutcome,
+  type AutomationRouteDispatchState,
+} from "@fragno-dev/backoffice-api/v0/events";
 
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 
 import type { AutomationHookUnitOfWork } from "./internal-hooks";
 import { automationFragmentSchema } from "./schema";
-
-/**
- * What a matched route did with an event. Derived events also record the route in their own
- * causation; workflow runs, deliveries, agent notifications, and skips are only recorded here.
- */
-export type AutomationRouteDispatchOutcome =
-  | { kind: "workflow_started"; workflowName: string; instanceId: string }
-  | { kind: "workflow_event_sent"; workflowName: string; instanceId: string; eventType: string }
-  | { kind: "event_forwarded"; eventId: string; scope: BackofficeContextScope }
-  | { kind: "event_reclassified"; eventId: string }
-  | { kind: "agent_notified"; agentName: string }
-  | { kind: "skipped"; reason: AutomationRouteDispatchSkipReason };
-
-/**
- * `no_linked_external_sender`: a linked-user route only acts for an external sender linked to a
- * user, and the event had none. `workflow_instance_unresolved`: the route's target instance id
- * rendered empty. `caused_by_notified_agent`: the agent's own turns produced the event, and
- * notifying it would let the agent wake itself.
- */
-export type AutomationRouteDispatchSkipReason =
-  | "no_linked_external_sender"
-  | "workflow_instance_unresolved"
-  | "caused_by_notified_agent";
-
-/**
- * Where a matched route stands. `failedAttempts` counts the attempts that threw; a completed route
- * keeps the count, so one that only acted after retries stays visible. `retrying` and `failed`
- * keep the last error; `failed` is final, because the error cannot be fixed by retrying or the
- * route ran out of attempts.
- */
-export type AutomationRouteDispatchState =
-  | { status: "pending" }
-  | { status: "retrying"; failedAttempts: number; error: string }
-  | { status: "completed"; outcome: AutomationRouteDispatchOutcome; failedAttempts: number }
-  | { status: "failed"; failedAttempts: number; error: string };
 
 type AutomationRouteDispatchStateColumns = {
   status: string;
@@ -126,6 +96,30 @@ export const createAutomationRouteDispatchServices = (
   ) => TService,
 ) =>
   defineService({
+    /** The routes an event matched, by route id. */
+    listEventRouteDispatches({ eventId }: { eventId: string }) {
+      return this.serviceTx(automationFragmentSchema)
+        .retrieve((uow) =>
+          uow.find("automation_route_dispatch", (b) =>
+            b.whereIndex("idx_automation_route_dispatch_eventId", (eb) =>
+              eb("eventId", "=", eventId),
+            ),
+          ),
+        )
+        .transformRetrieve(([rows]) =>
+          rows
+            .map(
+              (row): AutomationEventRouteDispatch => ({
+                ...readRouteDispatchState(row),
+                routeId: row.routeId,
+                routeName: row.routeName,
+                matchedAt: row.dispatchedAt.toISOString(),
+              }),
+            )
+            .sort((left, right) => left.routeId.localeCompare(right.routeId)),
+        )
+        .build();
+    },
     /**
      * A replayed route, such as one whose completion committed before its hook did, keeps the
      * state it settled with first.
