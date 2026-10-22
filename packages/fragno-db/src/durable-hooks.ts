@@ -1,4 +1,5 @@
 import type { DatabaseAdapter } from "./adapters/adapters";
+import type { ImplicitDatabaseDependencies } from "./db-fragment-definition-builder";
 import type { InternalFragmentInstance } from "./fragments/internal-fragment";
 import { getDurableHooksToken } from "./hooks/durable-hooks-fragment";
 import { getDurableHooksRuntimeByToken } from "./hooks/durable-hooks-runtime";
@@ -40,6 +41,21 @@ export type DurableHooksAccessor = {
   hooksEnabled: boolean;
   hookService: DurableHooksService;
 };
+
+/**
+ * A database fragment's own durable hooks, reached from the dependencies its routes and services
+ * receive, so the fragment can retry its failed hooks without holding its instance.
+ */
+export function getFragmentDurableHooks(
+  deps: Pick<ImplicitDatabaseDependencies, "databaseAdapter" | "namespace" | "schema">,
+): { namespace: string; hookService: DurableHooksService } {
+  const hookAdapter = deps.databaseAdapter.getHookProcessingAdapter?.() ?? deps.databaseAdapter;
+  return {
+    // The namespace the fragment's hooks are queued under.
+    namespace: deps.namespace ?? deps.schema.name,
+    hookService: getInternalFragment(hookAdapter).services.hookService,
+  };
+}
 
 export function getDurableHooksService(
   fragment: AnyFragnoInstantiatedDatabaseFragment,

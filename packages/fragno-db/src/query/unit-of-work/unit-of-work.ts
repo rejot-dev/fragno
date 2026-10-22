@@ -294,6 +294,14 @@ export interface IUnitOfWork {
 
   getTriggeredHooks(): readonly TriggeredHook[];
 
+  /**
+   * @internal Record that a stored hook of `namespace` became due again, so its dispatcher is woken
+   * after commit like it is for a triggered hook.
+   */
+  markHookRequeued(namespace: string): void;
+
+  getRequeuedHookNamespaces(): readonly string[];
+
   /** @internal Register an ordered outbox notification without adding a database operation. */
   notifyOutboxTruncate(notification: OutboxTruncateNotificationDraft): void;
 }
@@ -635,6 +643,7 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
 
   // Hook triggers
   #triggeredHooks: TriggeredHook[] = [];
+  #requeuedHookNamespaces: string[] = [];
 
   #queryPolicies?: QueryPolicySet;
 
@@ -773,6 +782,7 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
     child.#retrievalError = this.#retrievalError;
     child.#mutationError = this.#mutationError;
     child.#triggeredHooks = this.#triggeredHooks;
+    child.#requeuedHookNamespaces = this.#requeuedHookNamespaces;
     child.#queryPolicies = this.#queryPolicies;
 
     this.#coordinator.addChild(child);
@@ -843,6 +853,7 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
 
     // Reset hooks
     this.#triggeredHooks = [];
+    this.#requeuedHookNamespaces = [];
   }
 
   /**
@@ -867,6 +878,14 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
    */
   getTriggeredHooks(): ReadonlyArray<TriggeredHook> {
     return this.#triggeredHooks;
+  }
+
+  markHookRequeued(namespace: string): void {
+    this.#requeuedHookNamespaces.push(namespace);
+  }
+
+  getRequeuedHookNamespaces(): readonly string[] {
+    return this.#requeuedHookNamespaces;
   }
 
   get state(): UOWState {
@@ -1775,6 +1794,14 @@ export class TypedUnitOfWork<
 
   getTriggeredHooks(): ReadonlyArray<TriggeredHook> {
     return this.#uow.getTriggeredHooks();
+  }
+
+  markHookRequeued(namespace: string): void {
+    this.#uow.markHookRequeued(namespace);
+  }
+
+  getRequeuedHookNamespaces(): readonly string[] {
+    return this.#uow.getRequeuedHookNamespaces();
   }
 }
 

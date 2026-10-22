@@ -80,6 +80,7 @@ function createMockAdapter(): DatabaseAdapter {
     getCreatedIds: vi.fn(() => []),
     triggerHook: vi.fn(),
     getTriggeredHooks: vi.fn(() => []),
+    getRequeuedHookNamespaces: vi.fn(() => []),
     table: vi.fn(() => ({
       findMany: vi.fn(),
     })),
