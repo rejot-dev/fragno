@@ -28,7 +28,7 @@ cp .dev.vars.example .dev.vars
 
 Replace `BETTER_AUTH_SECRET` in `.dev.vars` with a random secret (generate one with
 `openssl rand -base64 32`). Keep `BOOKKEEPING_BASE_URL` aligned with the app's origin; Bookkeeping
-runs at `http://127.0.0.1:6174` so Backoffice can run on port 5173. Configure the Backoffice OAuth
+runs at `http://127.0.0.1:4173` so Backoffice can run on port 5173. Configure the Backoffice OAuth
 credentials as described below.
 
 ```sh
@@ -68,13 +68,13 @@ values in `.dev.vars` (never commit credentials):
 - `BACKOFFICE_OAUTH_CLIENT_ID`: a dedicated client ID returned by Backoffice.
 - `BACKOFFICE_OAUTH_CLIENT_SECRET`: the initial secret returned when creating that confidential
   client.
-- `BOOKKEEPING_BASE_URL`: the Bookkeeping origin, e.g. `http://127.0.0.1:6174`.
+- `BOOKKEEPING_BASE_URL`: the Bookkeeping origin, e.g. `http://127.0.0.1:4173`.
 
 Create a dedicated confidential client in the **Backoffice terminal**, in System context, as a
 global administrator (not in your host shell):
 
 ```sh
-admin.oauth-clients.create --name Bookkeeping --application-type native --client-type confidential --redirect-uri http://127.0.0.1:6174/api/auth/callback/backoffice --scope openid --scope profile --scope email --scope offline_access --scope backoffice --client-credentials
+admin.oauth-clients.create --name Bookkeeping --application-type native --client-type confidential --redirect-uri http://127.0.0.1:4173/api/auth/callback/backoffice --scope openid --scope profile --scope email --scope offline_access --scope backoffice --client-credentials
 ```
 
 The native application type allows the local HTTP loopback callback. For production, create a
@@ -119,7 +119,7 @@ both origins to `.dev.vars`. Bookkeeping is registered as a first-party app with
 permission: Backoffice skips its consent screen and permission review, and Bookkeeping may create
 organizations and administrations in Backoffice, and create, send, and accept invitations for its
 users (see Backoffice's `app/fragno/apps/README.md`). It reads both origins from `.dev.vars` and
-defaults to `http://127.0.0.1:5173` and `http://127.0.0.1:6174`; pass `--backoffice-url` or
+defaults to `http://127.0.0.1:5173` and `http://127.0.0.1:4173`; pass `--backoffice-url` or
 `--bookkeeping-url` to change them, which also moves the callback and the action endpoint. The app
 is registered as `app#bookkeeping`; pass `--slug` to choose another permanent name. Rerunning
 converges on the same client and app, updating its requested permissions and actions in place; as a
