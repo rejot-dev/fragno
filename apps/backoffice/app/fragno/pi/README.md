@@ -253,6 +253,8 @@ All paths below are mounted at `/api/pi-manager` inside the manager object:
   interleaved with `queue` frames listing the items waiting in the agent's queue; see Queue.
 - `GET /agents/:agentName/entries?cursor=...&pageSize=...`: newest-first, fork-aware durable entry
   history (maximum 256 entries per page).
+- `GET /agents/:agentName/messages?last=...&before=...`: the `last` (default 20, at most 100)
+  messages said before entry `before`, or the latest ones, oldest first; see Reading conversations.
 - `GET /agents/:agentName/export`: streaming JSONL export of every durable entry, oldest first,
   after a `{ type: "pi-durable-agent", version: 2, order: "oldest-first" }` header line.
 - `POST /agents/:agentName/compact`: admits manual durable compaction with optional instructions.
@@ -289,13 +291,38 @@ Scoped tool calls use the selected scope, not the calling agent's owner. Workflo
 execution scope and actors and restore them after suspension, retries, and object restarts; they
 carry no independent billing choice. See [usage attribution](../billing/README.md).
 
-Runtime tools target the scoped manager directly: `pi.listAgents`, `pi.getAgent`, `pi.submitPrompt`,
-`pi.getSubmission`, `pi.runPrompt`, `pi.stopAgent`, and `pi.backfillAgentEvents`. Scoped context
-handles rebuild this runtime for the selected scope. Synchronous prompt execution uses Pi Durable's
-commit-driven submission waiter through a bounded long-poll request. Prompt request IDs are stable
-within durable tool invocations; timeout or caller cancellation stops the wait but does not retract
-already admitted work. Manager failures throw `PiManagerRuntimeRequestError` with stable `status`
-and `code` fields, which codemode preserves for workflow recovery decisions.
+Runtime tools target the scoped manager directly: `pi.listAgents`, `pi.getAgent`, `pi.listMessages`,
+`pi.exportConversation`, `pi.submitPrompt`, `pi.getSubmission`, `pi.runPrompt`, `pi.stopAgent`, and
+`pi.backfillAgentEvents`. Scoped context handles rebuild this runtime for the selected scope.
+Synchronous prompt execution uses Pi Durable's commit-driven submission waiter through a bounded
+long-poll request. Prompt request IDs are stable within durable tool invocations; timeout or caller
+cancellation stops the wait but does not retract already admitted work. Manager failures throw
+`PiManagerRuntimeRequestError` with stable `status` and `code` fields, which codemode preserves for
+workflow recovery decisions.
+
+## Reading conversations
+
+Users and agents with `pi.read` read any started agent of a scope, as the agents UI does. A reader
+sees every tool result, including data the agent fetched with permissions the reader lacks.
+
+`pi.listMessages` (`pi.agent.messages`) returns what was said: each user input's text, the text of
+each model response, including narration between tool calls, and a `notification` marker where a
+turn handled delivered events, which explains an answer no one prompted. Thinking, tool calls, tool
+results, notification cards, and compaction summaries are left out. The agent scans entries
+newest-first until it holds one message more than asked for, so `before`, the oldest returned
+message's entry ID, is null exactly when no earlier message exists. An aborted response that a newer
+one in its task repeats is a recovery partial and is skipped, as the chat skips it, unless the two
+fall on different pages. `pi.agent.messages --agent assistant --last 1` prints only the latest
+message; `--format json` prints the page.
+
+`pi.exportConversation` (`pi.agent.export`) writes the export route's JSONL to a `.jsonl` file under
+`/workspace` and also needs `upload.modify`. It holds the whole export in memory to write it in one
+piece.
+
+Both answer `404 AGENT_NOT_FOUND` for a name no agent has, and `AGENT_NOT_STARTED` only for a
+defined agent without turns, so a typo is not mistaken for an idle agent. A deleted agent's
+conversation stays readable. Models asked about "the assistant" tend to read their own conversation,
+so the operations tell them to find the agent meant with `pi.listAgents`.
 
 ## Backoffice agents UI
 

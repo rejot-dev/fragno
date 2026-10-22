@@ -3,6 +3,7 @@ import { automationEventSchema } from "@fragno-dev/backoffice-api/v0/events";
 import {
   piAgentModelSchema,
   type PiAgentConfig,
+  type PiAgentMessagePage,
   type PiAgentQueueEntry,
 } from "@fragno-dev/backoffice-api/v0/pi";
 import { jsonValueSchema } from "@fragno-dev/backoffice-api/v0/shared/json";
@@ -158,6 +159,12 @@ export type PiAgentEntryPage = {
   cursor: Cursor | null;
 };
 
+/** The `last` messages said before entry `before`, or the latest ones when it is null. */
+export const piAgentMessagePageRequestSchema = z.object({
+  last: z.number().int().min(1).max(100),
+  before: z.number().int().positive().nullable(),
+});
+
 /**
  * An agent's waiting items in queue order, and whether its queue is paused, as of a revision of
  * its queue.
@@ -207,6 +214,10 @@ export type PiAgent = {
     config: PiAgentConfig,
     request: z.infer<typeof piAgentEntryPageRequestSchema>,
   ): Promise<PiAgentEntryPage>;
+  listMessages(
+    config: PiAgentConfig,
+    request: z.infer<typeof piAgentMessagePageRequestSchema>,
+  ): Promise<PiAgentMessagePage>;
   exportEntries(config: PiAgentConfig): Promise<ReadableStream<Uint8Array>>;
   compact(
     config: PiAgentConfig,

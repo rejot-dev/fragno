@@ -1,4 +1,7 @@
-import { piAgentWatchFrameSchema } from "@fragno-dev/backoffice-api/v0/pi";
+import {
+  piAgentMessagePageSchema,
+  piAgentWatchFrameSchema,
+} from "@fragno-dev/backoffice-api/v0/pi";
 import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
@@ -7,6 +10,7 @@ import {
   PiConversationViewDamagedError,
   piAgentCompactionStatusSchema,
   piAgentEntryPageRequestSchema,
+  piAgentMessagePageRequestSchema,
   type PiAgentViewStreamFrame,
   type PiAgentWaitingQueue,
 } from "@/fragno/pi/agent/pi-agent-contract";
@@ -63,6 +67,11 @@ function withQueueFrames(
       await reader.cancel(reason);
     },
   });
+}
+
+/** Unlike an unstarted agent, a name no agent has is most likely a typo. */
+function agentNotFoundMessage(agentName: string) {
+  return `No agent in this scope is named '${agentName}'; pi.listAgents lists the scope's agents.`;
 }
 
 function damagedViewResponse<T>(
@@ -208,15 +217,58 @@ export const piManagerConversationRoutes = defineRoutes(piManagerDefinition).cre
     }),
     defineRoute({
       method: "GET",
-      path: "/agents/:agentName/export",
-      errorCodes: ["AGENT_NOT_STARTED"],
-      handler: async function ({ pathParams }, { error }) {
-        const agent = await this.handlerTx()
-          .withServiceCalls(() => [services.getAgents([pathParams.agentName])])
-          .transform(({ serviceResult: [agents] }) => agents.get(pathParams.agentName))
+      path: "/agents/:agentName/messages",
+      queryParameters: ["last", "before"],
+      outputSchema: piAgentMessagePageSchema,
+      errorCodes: ["AGENT_NOT_FOUND", "AGENT_NOT_STARTED", "INVALID_MESSAGE_PAGE"],
+      handler: async function ({ pathParams, query }, { json, error }) {
+        const request = piAgentMessagePageRequestSchema.safeParse({
+          last: Number(query.get("last") ?? 20),
+          before: query.has("before") ? Number(query.get("before")) : null,
+        });
+        if (!request.success) {
+          return error(
+            {
+              code: "INVALID_MESSAGE_PAGE",
+              message:
+                "Pi messages take `last` between 1 and 100 and, optionally, a `before` entry ID.",
+            },
+            400,
+          );
+        }
+        const { definition, config: agent } = await this.handlerTx()
+          .withServiceCalls(() => [services.getAgent(pathParams.agentName)])
+          .transform(({ serviceResult: [found] }) => found)
           .execute();
+        // A deleted agent keeps its conversation, which stays readable.
         if (!agent) {
-          return error({ code: "AGENT_NOT_STARTED", message: "Pi agent has no turns yet." }, 404);
+          return definition
+            ? error({ code: "AGENT_NOT_STARTED", message: "Pi agent has no turns yet." }, 404)
+            : error(
+                { code: "AGENT_NOT_FOUND", message: agentNotFoundMessage(pathParams.agentName) },
+                404,
+              );
+        }
+        return json(await config.agent(agent).listMessages(agent, request.data));
+      },
+    }),
+    defineRoute({
+      method: "GET",
+      path: "/agents/:agentName/export",
+      errorCodes: ["AGENT_NOT_FOUND", "AGENT_NOT_STARTED"],
+      handler: async function ({ pathParams }, { error }) {
+        const { definition, config: agent } = await this.handlerTx()
+          .withServiceCalls(() => [services.getAgent(pathParams.agentName)])
+          .transform(({ serviceResult: [found] }) => found)
+          .execute();
+        // A deleted agent keeps its conversation, which stays readable.
+        if (!agent) {
+          return definition
+            ? error({ code: "AGENT_NOT_STARTED", message: "Pi agent has no turns yet." }, 404)
+            : error(
+                { code: "AGENT_NOT_FOUND", message: agentNotFoundMessage(pathParams.agentName) },
+                404,
+              );
         }
         return new Response(await config.agent(agent).exportEntries(agent), {
           headers: {

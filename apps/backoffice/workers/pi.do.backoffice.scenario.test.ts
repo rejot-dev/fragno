@@ -20,6 +20,8 @@ import { createModels } from "@earendil-works/pi-ai/models";
 import {
   fauxAssistantMessage,
   fauxProvider,
+  fauxText,
+  fauxThinking,
   fauxToolCall,
   type FauxResponseStep,
 } from "@earendil-works/pi-ai/providers/faux";
@@ -60,6 +62,8 @@ import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/
 import { piAgentActor } from "@/fragno/pi/agent/pi-agent-actor";
 import { piAgentObjectName } from "@/fragno/pi/agent/pi-agent-contract";
 import { createPiPostHogExtension } from "@/fragno/pi/extensions/posthog/posthog-extension";
+import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
+import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import { BackofficePostHogContext, captureBackofficeServerException } from "@/posthog.server";
 import { fetchPiManagerAgent, submitPiManagerPrompt } from "@/routes/backoffice/agents/data";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
@@ -295,6 +299,143 @@ test("durable Pi runs a workspace agent with its instructions, scoped skills, Ba
           orgId: "org-1",
           path: "/workspace/durable-result.txt",
           text: "executed through Backoffice",
+        }),
+      ],
+    }),
+  );
+});
+
+test("agents and users read another agent's messages and export its whole conversation", async () => {
+  const execution = createBackofficeServiceExecution({
+    scope: { kind: "org", orgId: "org-1" },
+    service: { type: "automation", id: "agent-messages-scenario" },
+  });
+  let research: unknown = null;
+  const respond: FauxResponseStep = (context) => {
+    const results = toolResults(context);
+    if (lastUserText(context) === "What do the notes say?") {
+      return results.length === 0
+        ? fauxAssistantMessage(
+            [
+              fauxThinking("The notes are in the workspace."),
+              fauxText("Checking the notes."),
+              fauxToolCall("read", { path: "/workspace/notes.txt" }),
+            ],
+            { stopReason: "toolUse" },
+          )
+        : fauxAssistantMessage("The notes say: Durable marker.");
+    }
+    if (results.length === 0) {
+      return fauxAssistantMessage(
+        [
+          fauxToolCall("execCodeMode", {
+            code: `async () => {
+          const latest = await pi.listMessages({ agentName: "assistant", last: 1 });
+          const earlier = await pi.listMessages({ agentName: "assistant", before: latest.before });
+          const exported = await pi.exportConversation({ agentName: "assistant", out: "/workspace/assistant.jsonl" });
+          return { latest, earlier, exported };
+        }`,
+          }),
+        ],
+        { stopReason: "toolUse" },
+      );
+    }
+    research = results[0]?.details;
+    return fauxAssistantMessage("Read the assistant's conversation.");
+  };
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "durable Pi agent messages and export",
+      options: { drain: false },
+      objects: { ...scenarioObjects, ...scriptedAgents([respond, respond]) },
+      piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+      setup: ({ given }) => [
+        given.organization.exists({ id: "org-1" }),
+        given.codemode.writeFile({
+          orgId: "org-1",
+          path: "/workspace/notes.txt",
+          content: "Durable marker",
+        }),
+      ],
+      steps: ({ then }) => [
+        then.assert("an agent reads only what was said, newest last", async ({ runtime }) => {
+          await prompt(runtime, execution, { content: "What do the notes say?" });
+          await runtime.drain();
+          const defined = await request(runtime, execution, "/agents", {
+            agentName: "researcher",
+            description: "Reads other agents.",
+            model: null,
+            permissions: ["pi.read", "upload.modify"],
+            instructions: "",
+            managedBy: null,
+          });
+          assert.equal(defined.status, 201, await defined.clone().text());
+          await prompt(runtime, execution, {
+            agentName: "researcher",
+            requestId: "research",
+            content: "Read the assistant.",
+          });
+          await runtime.drain();
+
+          const said = (page: { messages: { role: string; text: string }[] }) =>
+            page.messages.map(({ role, text }) => [role, text]);
+          const { result } = research as {
+            result: {
+              latest: { messages: { role: string; text: string }[]; before: number | null };
+              earlier: { messages: { role: string; text: string }[]; before: number | null };
+              exported: { path: string; entryCount: number };
+            };
+          };
+          expect(said(result.latest)).toEqual([["assistant", "The notes say: Durable marker."]]);
+          assert(result.latest.before !== null, "earlier messages exist");
+          expect(said(result.earlier)).toEqual([
+            ["user", "What do the notes say?"],
+            ["assistant", "Checking the notes."],
+          ]);
+          expect(result.earlier.before).toBeNull();
+          assert(result.exported.path === "/workspace/assistant.jsonl");
+        }),
+        then.assert("a user prints the last message and reads the export", async ({ runtime }) => {
+          const context = createRouteBackedRuntimeContext({
+            emitter: { kind: "caller" },
+            runtime: runtime.services,
+            kernel: new BackofficeKernel(runtime.services),
+            execution,
+          });
+          assert(context.stateBackend);
+          const { bash } = await createInteractiveBashHost({
+            context: { ...context, stateBackend: context.stateBackend },
+          });
+          const printed = await bash.exec("pi.agent.messages --agent assistant --last 1");
+          assert.equal(printed.exitCode, 0, printed.stderr);
+          expect(printed.stdout).toMatch(
+            /^\(earlier messages: --before \d+\)\n\n\[assistant · \S+\]\nThe notes say: Durable marker\.\n$/u,
+          );
+
+          const misspelled = await bash.exec("pi.agent.messages --agent asistant --last 1");
+          assert(misspelled.exitCode === 1);
+          expect(misspelled.stderr).toContain("No agent in this scope is named 'asistant'");
+          const readOnly = await bash.exec(
+            "pi.agent.export --agent assistant --output /static/assistant.jsonl",
+          );
+          assert(readOnly.exitCode === 1);
+          expect(readOnly.stderr).toContain("under /workspace");
+
+          const exported = await bash.exec("cat /workspace/assistant.jsonl");
+          assert.equal(exported.exitCode, 0, exported.stderr);
+          const [header, ...entries] = exported.stdout
+            .trim()
+            .split("\n")
+            .map((line) => JSON.parse(line) as { type: string; entry: { id: number } });
+          expect(header).toMatchObject({ type: "pi-durable-agent", version: 2 });
+          const ids = entries.map(({ entry }) => entry.id);
+          expect(ids).toEqual([...ids].sort((a, b) => a - b));
+          const lines = JSON.stringify(entries);
+          expect(lines).toContain("The notes are in the workspace.");
+          expect(lines).toContain('"toolName":"read"');
+          expect(lines.indexOf("What do the notes say?")).toBeLessThan(
+            lines.indexOf("The notes say: Durable marker."),
+          );
         }),
       ],
     }),

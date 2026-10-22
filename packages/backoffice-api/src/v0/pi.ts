@@ -185,6 +185,80 @@ const submissionGetInputSchema = z.lazy(() =>
   }),
 );
 
+/** Another agent's conversation; models otherwise tend to read their own. */
+const readAgentInputSchema = z.lazy(() =>
+  z.strictObject({
+    agentName: piAgentNameSchema.describe(
+      "The agent whose conversation to read, by its name from `pi.listAgents`; it is yours only when you pass your own name.",
+    ),
+  }),
+);
+
+const messagesListInputSchema = z.lazy(() =>
+  readAgentInputSchema._zod.innerType.extend({
+    last: z
+      .number()
+      .int()
+      .min(1)
+      .max(100)
+      .default(20)
+      .describe("How many of the most recent messages to return."),
+    before: z
+      .number()
+      .int()
+      .positive()
+      .nullable()
+      .default(null)
+      .describe("A previous page's `before`, to read the messages preceding it."),
+  }),
+);
+
+/**
+ * What was said in an agent's conversation, without thinking, tool calls, or tool results. A
+ * `notification` marks where the agent was asked to handle delivered events, which explains an
+ * answer no one prompted.
+ */
+const piAgentMessageSchema = z.lazy(() =>
+  z.union([
+    z.object({
+      entryId: z.number().int().positive(),
+      role: z.enum(["user", "assistant"]),
+      text: z.string(),
+      sentAt: z.string(),
+    }),
+    z.object({
+      entryId: z.number().int().positive(),
+      role: z.literal("notification"),
+      notifications: z.array(z.object({ routeId: z.string().nullable(), eventId: z.string() })),
+      sentAt: z.string(),
+    }),
+  ]),
+);
+export type PiAgentMessage = z.infer<typeof piAgentMessageSchema>;
+
+export const piAgentMessagePageSchema = z.lazy(() =>
+  z.object({
+    messages: z.array(piAgentMessageSchema),
+    // The oldest message's entry ID while earlier messages exist; null at the conversation's start.
+    before: z.number().int().positive().nullable(),
+  }),
+);
+export type PiAgentMessagePage = z.infer<typeof piAgentMessagePageSchema>;
+
+const exportInputSchema = z.lazy(() =>
+  readAgentInputSchema._zod.innerType.extend({
+    out: z
+      .string()
+      .trim()
+      // `/system` is the System scope's writable root.
+      .regex(/^\/(workspace|system)\/.+\.jsonl$/u, {
+        message:
+          "Write the export to a .jsonl file under /workspace, such as /workspace/agent.jsonl.",
+      })
+      .describe("Absolute path of the .jsonl file to write under /workspace."),
+  }),
+);
+
 const piAgentQueueEntrySchema = z.lazy(() =>
   z.discriminatedUnion("type", [
     z.object({ type: z.literal("prompt"), requestId: z.string(), content: z.string() }),
@@ -246,6 +320,22 @@ export const piOperations = {
     permissions: [BACKOFFICE_PERMISSION.pi.manage],
     input: agentInputSchema,
     output: z.lazy(() => z.object({ deleted: z.literal(true) })),
+  },
+  "pi.agent.messages": {
+    description:
+      "Read the most recent messages of a started agent's conversation, oldest first, by the agent's name; call `pi.listAgents` to find the agent a request means rather than assuming it is you: what users said and the agent answered, without thinking, tool calls, or tool results. Pass the returned `before` to read further back; it is null at the conversation's start. Includes history before compactions and resets.",
+    permissions: [BACKOFFICE_PERMISSION.pi.read],
+    input: messagesListInputSchema,
+    output: piAgentMessagePageSchema,
+  },
+  "pi.agent.export": {
+    description:
+      "Write a started agent's whole conversation history to a JSONL file, by the agent's name; call `pi.listAgents` to find the agent a request means rather than assuming it is you. The file holds a header line, then every durable entry oldest first, including thinking, tool calls, tool results, and history before compactions and resets.",
+    permissions: [BACKOFFICE_PERMISSION.pi.read, BACKOFFICE_PERMISSION.upload.modify],
+    input: exportInputSchema,
+    output: z.lazy(() =>
+      z.object({ path: z.string(), entryCount: z.number().int().nonnegative() }),
+    ),
   },
   "pi.prompt.submit": {
     description:

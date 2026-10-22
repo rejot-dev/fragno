@@ -4,6 +4,10 @@ type PiCodemodeProvider = {
   listAgents(input: PiListAgentsInput): Promise<PiListAgentsOutput>;
   /** Get one defined agent and its durable conversation view. */
   getAgent(input: PiGetAgentInput): Promise<PiGetAgentOutput>;
+  /** Read the most recent messages of a started agent's conversation, oldest first, by the agent's name; call `pi.listAgents` to find the agent a request means rather than assuming it is you: what users said and the agent answered, without thinking, tool calls, or tool results. Pass the returned `before` to read further back; it is null at the conversation's start. Includes history before compactions and resets. */
+  listMessages(input: PiListMessagesInput): Promise<PiListMessagesOutput>;
+  /** Write a started agent's whole conversation history to a JSONL file, by the agent's name; call `pi.listAgents` to find the agent a request means rather than assuming it is you. The file holds a header line, then every durable entry oldest first, including thinking, tool calls, tool results, and history before compactions and resets. */
+  exportConversation(input: PiExportConversationInput): Promise<PiExportConversationOutput>;
   /** Define an agent in the current scope. Use permissions ["*"] unless the agent should be limited: each turn already runs with the prompter's permissions, and the grants only narrow them. */
   createAgent(input: PiCreateAgentInput): Promise<PiCreateAgentOutput>;
   /** Replace an agent's whole definition, including its permissions (["*"] narrows nothing). The agent keeps its conversation; the new definition applies from its next turn. */
@@ -61,6 +65,44 @@ type PiGetAgentOutput = {
     | AutomationRouteManagedBy
     | null;
   view: unknown;
+};
+type PiListMessagesInput = {
+  /** The agent whose conversation to read, by its name from `pi.listAgents`; it is yours only when you pass your own name. */
+  agentName: string;
+  /** How many of the most recent messages to return. */
+  last?: number;
+  /** A previous page's `before`, to read the messages preceding it. */
+  before?: number | null;
+};
+type PiListMessagesOutput = {
+  messages: (
+    | {
+        entryId: number;
+        role: "user" | "assistant";
+        text: string;
+        sentAt: string;
+      }
+    | {
+        entryId: number;
+        role: "notification";
+        notifications: {
+          routeId: string | null;
+          eventId: string;
+        }[];
+        sentAt: string;
+      }
+  )[];
+  before: number | null;
+};
+type PiExportConversationInput = {
+  /** The agent whose conversation to read, by its name from `pi.listAgents`; it is yours only when you pass your own name. */
+  agentName: string;
+  /** Absolute path of the .jsonl file to write under /workspace. */
+  out: string;
+};
+type PiExportConversationOutput = {
+  path: string;
+  entryCount: number;
 };
 type PiCreateAgentInput = {
   description: string;

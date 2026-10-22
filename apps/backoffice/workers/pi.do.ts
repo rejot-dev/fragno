@@ -22,6 +22,7 @@ import {
   type BackofficeRuntimeServices,
 } from "@/backoffice-runtime/runtime-services";
 import { readPiCompactionStatus } from "@/fragno/pi/agent/compaction-status";
+import { listPiConversationMessages } from "@/fragno/pi/agent/conversation-messages";
 import {
   createPiConversationExportStream,
   createPiConversationViewNdjsonStream,
@@ -29,6 +30,7 @@ import {
 import {
   piAgentCompactionSchema,
   piAgentEntryPageRequestSchema,
+  piAgentMessagePageRequestSchema,
   piAgentNotificationSchema,
   piAgentObjectName,
   piAgentPromptSchema,
@@ -392,6 +394,15 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
     return { entries: page.items, cursor: page.next ?? null };
   }
 
+  async listMessages(
+    config: PiAgentConfig,
+    rawRequest: z.infer<typeof piAgentMessagePageRequestSchema>,
+  ) {
+    const request = piAgentMessagePageRequestSchema.parse(rawRequest);
+    const { harness } = await this.#requireAgent(config);
+    return await listPiConversationMessages(await harness.root(BACKGROUND_CONTEXT), request);
+  }
+
   async exportEntries(config: PiAgentConfig): Promise<ReadableStream<Uint8Array>> {
     const { harness } = await this.#requireAgent(config);
     return createPiConversationExportStream(await harness.root(BACKGROUND_CONTEXT), config);
@@ -591,6 +602,12 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
   }
   async listEntries(config: PiAgentConfig, request: z.infer<typeof piAgentEntryPageRequestSchema>) {
     return await this.#object.listEntries(config, request);
+  }
+  async listMessages(
+    config: PiAgentConfig,
+    request: z.infer<typeof piAgentMessagePageRequestSchema>,
+  ) {
+    return await this.#object.listMessages(config, request);
   }
   async exportEntries(config: PiAgentConfig): Promise<ReadableStream<Uint8Array>> {
     return await this.#object.exportEntries(config);
