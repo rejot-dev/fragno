@@ -105,6 +105,24 @@ describe("parseBackofficeUiResult", () => {
     );
   });
 
+  test.each([
+    ["a slot the component does not have", "Stack", { gap: "sm" }, "text", "unknown-slot"],
+    ["a dangling slot child", "ListRow", { title: "Run" }, "missing", "missing-child"],
+  ] as const)("rejects %s", (_, type, props, child, code) => {
+    expectInvalidResult(
+      generatedResult({
+        spec: {
+          root: "row",
+          elements: {
+            row: { type, props, children: [], slots: { expanded: [child] } },
+            text: { type: "Text", props: { text: "Answer" }, children: [] },
+          },
+        },
+      }),
+      code,
+    );
+  });
+
   test.each(["Iframe", "toString"])("rejects unknown catalog component %s", (type) => {
     expectInvalidResult(
       generatedResult({

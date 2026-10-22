@@ -8,6 +8,7 @@ import { useBackofficeUiRenderContext } from "../render-context";
 export const ListRow: ComponentFn<typeof backofficeUiCatalog, "ListRow"> = ({
   props,
   children,
+  slots,
 }) => {
   const { links } = useBackofficeUiRenderContext();
   return (
@@ -17,6 +18,11 @@ export const ListRow: ComponentFn<typeof backofficeUiCatalog, "ListRow"> = ({
       detail={props.detail ?? null}
       trailing={children}
       to={props.to && links ? links(props.to) : null}
+      expansion={
+        slots?.expanded === undefined
+          ? null
+          : { label: props.expandLabel ?? "Details", content: slots.expanded }
+      }
     />
   );
 };
