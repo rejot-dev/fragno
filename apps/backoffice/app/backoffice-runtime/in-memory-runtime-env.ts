@@ -48,7 +48,9 @@ const createInMemoryWorkerLoader = (): WorkerLoader => {
             /^\s*import\s+\{\s*AsyncLocalStorage\s*\}\s+from\s+["']node:async_hooks["'];\s*$/gmu,
             "",
           )
-          .replace(/export default class/u, "Entrypoint = class");
+          .replace(/export default class/u, "Entrypoint = class")
+          // Bundled output declares its entrypoint and exports it at the end.
+          .replace(/^export\s*\{\s*([\w$]+)\s+as\s+default\s*\};?\s*$/mu, "Entrypoint = $1;");
         const evaluationContext: InMemoryWorkerEvaluationContext = {
           WorkerEntrypoint: InMemoryWorkerEntrypoint,
           RpcTarget: InMemoryRpcTarget,
