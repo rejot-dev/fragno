@@ -480,15 +480,11 @@ test("invalid image evidence never reaches Decisions and corrected files preserv
       setup: ({ given }) => [given.organization.exists({ id: scope.orgId, name: "Ada Labs" })],
       steps: ({ then }) => [
         then.assert(
-          "reject missing files, unsupported content, unsafe paths, and image budgets",
+          "reject missing files, unsupported content, unsafe paths, and too many images",
           async (ctx) => {
-            await ctx.runtime.objects.upload.for(scope).commands.setAdminConfig(
-              {
-                provider: "database",
-                maxSingleUploadBytes: MODELS_CLASSIFY_IMAGE_LIMITS.perImageBytes + 1,
-              },
-              scope.orgId,
-            );
+            await ctx.runtime.objects.upload
+              .for(scope)
+              .commands.setAdminConfig({ provider: "database" }, scope.orgId);
             const execution = createBackofficeSystemExecution(scope);
             const context = createBackofficeToolContext(
               createRouteBackedRuntimeContext({
@@ -536,27 +532,6 @@ test("invalid image evidence never reaches Decisions and corrected files preserv
                 ),
               ),
             ).rejects.toThrow();
-            const oversized = new Uint8Array(MODELS_CLASSIFY_IMAGE_LIMITS.perImageBytes + 1);
-            oversized.set(base64ToBytes(pngBase64));
-            await context.runtimes.state.writeFileBytes("/workspace/images/large.png", oversized);
-            await expect(classify(["/workspace/images/large.png"])).rejects.toMatchObject({
-              kind: "invalid_request",
-              message: expect.stringContaining("MODELS_CLASSIFY_IMAGE_TOO_LARGE"),
-            });
-            await context.runtimes.state.writeFileBytes(
-              "/workspace/images/large.png",
-              oversized.subarray(0, MODELS_CLASSIFY_IMAGE_LIMITS.perImageBytes),
-            );
-            await expect(
-              classify([
-                "/workspace/images/large.png",
-                "/workspace/images/large.png",
-                "/workspace/images/reference.jpg",
-              ]),
-            ).rejects.toMatchObject({
-              kind: "invalid_request",
-              message: expect.stringContaining("MODELS_CLASSIFY_IMAGE_TOO_LARGE"),
-            });
             expect(ctx.fakes.openaiDecisions?.requests).toEqual([]);
             const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46]);
             const webp = new Uint8Array([82, 73, 70, 70, 4, 0, 0, 0, 87, 69, 66, 80]);

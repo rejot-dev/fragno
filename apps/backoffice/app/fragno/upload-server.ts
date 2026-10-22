@@ -15,7 +15,7 @@ import type { BackofficeFragmentRuntimeOptions } from "@/backoffice-runtime/frag
 import type { FetchObject } from "@/backoffice-runtime/object-registry";
 
 import {
-  UPLOAD_DATABASE_DEFAULT_MAX_SINGLE_UPLOAD_BYTES,
+  UPLOAD_DATABASE_MAX_SINGLE_UPLOAD_BYTES,
   UPLOAD_PROVIDER_DATABASE,
   UPLOAD_PROVIDER_R2,
   resolveUploadProviderStorageKeyPrefix,
@@ -112,7 +112,15 @@ export function createUploadServerForProvider(
   const providerConfig = getProviderConfig(config, provider);
   const limits =
     providerConfig.provider === UPLOAD_PROVIDER_DATABASE
-      ? (providerConfig.database.limits ?? {})
+      ? {
+          ...providerConfig.database.limits,
+          // Configs saved before the Durable Object SQLite cap may hold a larger limit.
+          maxSingleUploadBytes: Math.min(
+            providerConfig.database.limits?.maxSingleUploadBytes ??
+              UPLOAD_DATABASE_MAX_SINGLE_UPLOAD_BYTES,
+            UPLOAD_DATABASE_MAX_SINGLE_UPLOAD_BYTES,
+          ),
+        }
       : providerConfig.provider === UPLOAD_PROVIDER_R2
         ? (providerConfig.r2.limits ?? {})
         : (providerConfig.r2Binding.limits ?? {});
@@ -128,8 +136,7 @@ export function createUploadServerForProvider(
           providerName: UPLOAD_PROVIDER_DATABASE,
           storageKeyPrefix,
           uploadExpiresInSeconds: limits.uploadExpiresInSeconds,
-          maxObjectBytes:
-            limits.maxSingleUploadBytes ?? UPLOAD_DATABASE_DEFAULT_MAX_SINGLE_UPLOAD_BYTES,
+          maxObjectBytes: limits.maxSingleUploadBytes,
         })
       : providerConfig.provider === UPLOAD_PROVIDER_R2
         ? createR2StorageAdapter({
