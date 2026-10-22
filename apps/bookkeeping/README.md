@@ -42,8 +42,11 @@ administrations), `/w/:slug/administrations/new` (create one), `/w/:slug/a/:admi
 administration's books), `/w/:slug/members` (members and invitations), `/w/:slug/account` (profile
 and logout), and Better Auth's `/api/auth/*` endpoints. The workspace uses a collapsible desktop
 sidebar, mobile navigation, and a workspace switcher. Workspace routes require a session and the
-person's membership; others redirect to login. Signed-in visitors are redirected away from auth
-pages. Personalized route responses are marked private and non-cacheable.
+person's membership. Pages that require a session send signed-out visitors to
+`/login?returnTo=<page>`, which continues to that page, and only to Bookkeeping's own pages.
+Signed-in visitors at `/login` continue to its `returnTo`. When Backoffice no longer accepts
+Bookkeeping's authorization, the page sends them to `/login?reauthorize=1&returnTo=<page>` to sign
+in again. Personalized route responses are marked private and non-cacheable.
 
 Signing in requires JavaScript. An administration's books open empty; transaction, accounting, and
 reporting functionality are not implemented.

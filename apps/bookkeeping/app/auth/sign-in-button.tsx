@@ -13,7 +13,7 @@ export function SignInButton({ returnTo }: { returnTo: string }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [params] = useSearchParams();
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
 
   async function signIn() {
     setPending(true);
@@ -22,7 +22,7 @@ export function SignInButton({ returnTo }: { returnTo: string }) {
       const result = await authClient.signIn.social({
         provider: "backoffice",
         callbackURL: returnTo,
-        errorCallbackURL: pathname,
+        errorCallbackURL: pathname + search,
       });
       if (result.error) {
         setError("We couldn't start signing in. Please try again.");

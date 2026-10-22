@@ -151,6 +151,22 @@ export class FakeBackoffice {
     };
   }
 
+  /** The person withdraws Bookkeeping's authorization in Backoffice; their tokens stop working. */
+  revokeAuthorization(email: string): void {
+    const userId = this.userId(email);
+    this.#consents.delete(userId);
+    for (const [token, principal] of this.#accessTokens) {
+      if (principal.kind === "user" && principal.userId === userId) {
+        this.#accessTokens.delete(token);
+      }
+    }
+    for (const [token, owner] of this.#refreshTokens) {
+      if (owner === userId) {
+        this.#refreshTokens.delete(token);
+      }
+    }
+  }
+
   /** A Backoffice without email delivery, as a local one usually is, fails to send emails. */
   setEmailConfigured(configured: boolean): void {
     this.#emailConfigured = configured;
