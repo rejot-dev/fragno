@@ -107,7 +107,7 @@ export function ChatTokenUsage({
 /** Revealed on hover where the reader has a pointer, and always shown on touch screens. */
 export function ChatMessageActions({ children }: { children: ReactNode }) {
   return (
-    <div className="flex min-h-10 items-center justify-end transition-opacity duration-150 focus-within:opacity-100 pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100">
+    <div className="flex min-h-10 items-center justify-end gap-3 transition-opacity duration-150 focus-within:opacity-100 pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100">
       {children}
     </div>
   );

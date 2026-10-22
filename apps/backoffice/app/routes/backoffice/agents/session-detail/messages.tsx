@@ -35,6 +35,7 @@ import {
   type ToolCallPresentation,
 } from "./tool-call";
 import { ToolWorkspaceSelector, type ToolWorkspaceSelectorOption } from "./tool-workspace-selector";
+import { turnTranscript } from "./turn-transcript";
 import { useSessionWorkspaceNavigation } from "./workspace-context";
 
 export function UserMessage() {
@@ -100,8 +101,10 @@ export function AssistantMessage({
   const failure = stopped ? null : metadata.errorMessage;
   const usage = showUsage ? metadata.usage : null;
   const copyable = answerText.length > 0 && !running;
+  // Without steps the full turn is just the response.
+  const turnCopyable = steps.length > 0 && !running;
   const footer =
-    stopped || failure !== null || usage !== null || copyable ? (
+    stopped || failure !== null || usage !== null || copyable || turnCopyable ? (
       <>
         {stopped ? <ChatStoppedNotice /> : null}
         {failure === null ? null : <InlineAlert>{failure}</InlineAlert>}
@@ -113,9 +116,18 @@ export function AssistantMessage({
             cost={usage.cost}
           />
         )}
-        {copyable ? (
+        {copyable || turnCopyable ? (
           <ChatMessageActions>
-            <CopyButton value={answerText} label="Copy response" />
+            {copyable ? (
+              <CopyButton value={answerText} label="Copy response" labelled={turnCopyable} />
+            ) : null}
+            {turnCopyable ? (
+              <CopyButton
+                value={() => turnTranscript({ steps, answer, stopped, failure })}
+                label="Copy full turn"
+                labelled
+              />
+            ) : null}
           </ChatMessageActions>
         ) : null}
       </>

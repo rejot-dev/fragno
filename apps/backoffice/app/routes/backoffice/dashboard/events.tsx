@@ -850,7 +850,7 @@ function RunSelection({
             "Run",
             <span className="flex min-w-0 items-center gap-1">
               <span className="truncate font-mono text-[12px]">{run.instanceId}</span>
-              <CopyButton value={run.instanceId} label="Copy run id" />
+              <CopyButton value={run.instanceId} label="Copy run id" labelled={false} />
             </span>,
           ],
           ["Created", formatTimestamp(run.createdAt)],

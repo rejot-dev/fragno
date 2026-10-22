@@ -35,6 +35,29 @@ export const OUT_OF_CONTEXT =
 const ANSWER =
   "Three invoices are still unpaid. The oldest, **INV-4182** from Acme, is 32 days overdue. I drafted a reminder for each in `/workspace/drafts/`.";
 
+const TURN = `### Thinking
+
+Load the unpaid invoices first, then draft one reminder per customer.
+
+### Tool call: execCodeMode (1.2s)
+
+**Arguments**
+
+\`\`\`js
+return await invoices.unpaid();
+\`\`\`
+
+**Result**
+
+\`\`\`
+["INV-4182", "INV-4190", "INV-4203"]
+\`\`\`
+
+### Answer
+
+${ANSWER}
+`;
+
 type ComposerAction = "message" | "compact";
 
 const COMPOSER_ACTIONS: RadioMenuOption<ComposerAction>[] = [
@@ -96,7 +119,8 @@ export function SampleConversation({
           <>
             <ChatTokenUsage input={18_204} output={612} total={18_816} cost={0.0612} />
             <ChatMessageActions>
-              <CopyButton value={ANSWER} label="Copy response" />
+              <CopyButton value={ANSWER} label="Copy response" labelled />
+              <CopyButton value={TURN} label="Copy full turn" labelled />
             </ChatMessageActions>
           </>
         }
