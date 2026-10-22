@@ -3,7 +3,9 @@ export const UPLOAD_PROVIDER_R2_BINDING = "r2-binding" as const;
 export const UPLOAD_PROVIDER_DATABASE = "database" as const;
 export const UPLOAD_ADMIN_CONFIG_KEY = "upload-config" as const;
 export const UPLOAD_R2_DEFAULT_BINDING_NAME = "UPLOAD_BUCKET" as const;
-export const UPLOAD_DATABASE_DEFAULT_MAX_SINGLE_UPLOAD_BYTES = 10 * 1024 * 1024;
+// The database provider stores each file as one Durable Object SQLite row, and Durable Object SQLite
+// rejects values and rows over 2 MB; the margin covers the row's other columns.
+export const UPLOAD_DATABASE_MAX_SINGLE_UPLOAD_BYTES = 1_900_000;
 const ORG_PREFIX_ROOT = "org" as const;
 const NAMED_PREFIX_ROOT = "named" as const;
 
@@ -1010,7 +1012,7 @@ function createDefaultDatabaseUploadProviderConfig(
     provider: UPLOAD_PROVIDER_DATABASE,
     database: {
       limits: {
-        maxSingleUploadBytes: UPLOAD_DATABASE_DEFAULT_MAX_SINGLE_UPLOAD_BYTES,
+        maxSingleUploadBytes: UPLOAD_DATABASE_MAX_SINGLE_UPLOAD_BYTES,
       },
     },
     createdAt: now,
@@ -1191,7 +1193,13 @@ export const resolveUploadAdminConfigInput = (input: {
     }
 
     if (limits.maxSingleUploadBytes === undefined) {
-      limits.maxSingleUploadBytes = UPLOAD_DATABASE_DEFAULT_MAX_SINGLE_UPLOAD_BYTES;
+      limits.maxSingleUploadBytes = UPLOAD_DATABASE_MAX_SINGLE_UPLOAD_BYTES;
+    }
+    if (limits.maxSingleUploadBytes > UPLOAD_DATABASE_MAX_SINGLE_UPLOAD_BYTES) {
+      return {
+        ok: false,
+        message: `Database storage holds files of at most ${UPLOAD_DATABASE_MAX_SINGLE_UPLOAD_BYTES} bytes.`,
+      };
     }
 
     providers[UPLOAD_PROVIDER_DATABASE] = {

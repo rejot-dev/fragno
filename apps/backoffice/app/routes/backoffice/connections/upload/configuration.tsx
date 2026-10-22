@@ -14,7 +14,7 @@ import {
 } from "react-router";
 
 import {
-  UPLOAD_DATABASE_DEFAULT_MAX_SINGLE_UPLOAD_BYTES,
+  UPLOAD_DATABASE_MAX_SINGLE_UPLOAD_BYTES,
   UPLOAD_R2_DEFAULT_BINDING_NAME,
   type UploadAdminConfigResponse,
   type UploadAdminSetConfigPayload,
@@ -177,7 +177,7 @@ const getProviderFormValues = (
       ),
       maxSingleUploadBytes: toInputValue(
         config?.limits?.maxSingleUploadBytes,
-        String(UPLOAD_DATABASE_DEFAULT_MAX_SINGLE_UPLOAD_BYTES),
+        String(UPLOAD_DATABASE_MAX_SINGLE_UPLOAD_BYTES),
       ),
     };
   }
@@ -965,7 +965,7 @@ export default function BackofficeOrganizationUploadConfiguration() {
     multipartPartSizeBytes: DEFAULT_LIMIT_VALUES.multipartPartSizeBytes,
     uploadExpiresInSeconds: DEFAULT_LIMIT_VALUES.uploadExpiresInSeconds,
     signedUrlExpiresInSeconds: DEFAULT_LIMIT_VALUES.signedUrlExpiresInSeconds,
-    maxSingleUploadBytes: String(UPLOAD_DATABASE_DEFAULT_MAX_SINGLE_UPLOAD_BYTES),
+    maxSingleUploadBytes: String(UPLOAD_DATABASE_MAX_SINGLE_UPLOAD_BYTES),
     maxMultipartUploadBytes: DEFAULT_LIMIT_VALUES.maxMultipartUploadBytes,
     maxMetadataBytes: DEFAULT_LIMIT_VALUES.maxMetadataBytes,
   });

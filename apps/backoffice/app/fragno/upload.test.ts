@@ -1,7 +1,7 @@
 import { describe, expect, test, assert } from "vitest";
 
 import {
-  UPLOAD_DATABASE_DEFAULT_MAX_SINGLE_UPLOAD_BYTES,
+  UPLOAD_DATABASE_MAX_SINGLE_UPLOAD_BYTES,
   buildUploadAdminConfigResponse,
   createNamedDatabaseUploadConfig,
   createOrganizationDatabaseUploadConfig,
@@ -115,7 +115,7 @@ describe("upload admin contract", () => {
         provider: "database",
         defaultProvider: "database",
         storageKeySuffix: "workspace",
-        maxSingleUploadBytes: 10485760,
+        maxSingleUploadBytes: 1048576,
         uploadExpiresInSeconds: 1800,
       },
     });
@@ -125,7 +125,7 @@ describe("upload admin contract", () => {
     assert(result.config.defaultProvider === "database");
     assert(result.config.providers.database?.database.storageKeySuffix === "workspace");
     expect(result.config.providers.database?.database.limits).toMatchObject({
-      maxSingleUploadBytes: 10485760,
+      maxSingleUploadBytes: 1048576,
       uploadExpiresInSeconds: 1800,
     });
 
@@ -148,7 +148,7 @@ describe("upload admin contract", () => {
     assert(result.ok);
 
     expect(result.config.providers.database?.database.limits?.maxSingleUploadBytes).toBe(
-      UPLOAD_DATABASE_DEFAULT_MAX_SINGLE_UPLOAD_BYTES,
+      UPLOAD_DATABASE_MAX_SINGLE_UPLOAD_BYTES,
     );
   });
 
