@@ -124,7 +124,7 @@ apps/bookkeeping/.dev.vars. Rerunning converges on the same client and app.
 Options:
   --backoffice-url URL     Backoffice origin (default: this worktree's local Backoffice,
                            ${localBackofficeUrl})
-  --bookkeeping-url URL    Bookkeeping origin (default: BOOKKEEPING_BASE_URL or http://127.0.0.1:6174)
+  --bookkeeping-url URL    Bookkeeping origin (default: BOOKKEEPING_BASE_URL or http://127.0.0.1:4173)
   --name NAME              OAuth client name for a new client (default: Bookkeeping)
   --slug SLUG              Permanent app slug, addressed as app#SLUG (default: bookkeeping)
   --change-approval MODE   automatic (default) or installation`);
@@ -141,7 +141,7 @@ const devVars = readDevVars();
 // another worktree's Backoffice.
 const backofficeUrl = origin(flags["backoffice-url"] ?? localBackofficeUrl, "--backoffice-url");
 const bookkeepingUrl = origin(
-  flags["bookkeeping-url"] ?? devVars.get("BOOKKEEPING_BASE_URL") ?? "http://127.0.0.1:6174",
+  flags["bookkeeping-url"] ?? devVars.get("BOOKKEEPING_BASE_URL") ?? "http://127.0.0.1:4173",
   "--bookkeeping-url",
 );
 const callbackUrl = `${bookkeepingUrl}/api/auth/callback/backoffice`;
