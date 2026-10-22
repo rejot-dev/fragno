@@ -1,11 +1,24 @@
-import { assert, describe, test, vi } from "vitest";
+import { afterAll, assert, beforeAll, describe, test, vi } from "vitest";
 
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
+import { createCodemodeNodeExecutor } from "@fragno-dev/codemode/remote/codemode-node-executor";
+import { createCodemodeTestServer } from "@fragno-dev/codemode/testing/codemode-test-server";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { MemoryRouter } from "react-router";
 
+import { createStateStore } from "@json-render/react";
 import { eq, not, queryOnce } from "@tanstack/react-db";
 
+import { loadPage } from "@/artifacts/pages/build.server";
+import { pageDataPath, pageValuePath, type PageDefinition } from "@/artifacts/pages/definition";
+import { checkPageSource } from "@/artifacts/pages/page-source.test-support";
+import { pageQuery, pageRows, pageValue, type PageData } from "@/artifacts/pages/query";
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
+import { BackofficeUiStoreRenderer } from "@/backoffice-ui/renderer";
+import { GENERAL_SKILL_CONTENT } from "@/files/content/skills";
 import {
   backofficeFiles,
   defineBackofficeScenario,
@@ -82,6 +95,15 @@ const scenarioObjects = {
   TELEGRAM: (input) => new InMemoryTelegramObject(input),
   UPLOAD: (input) => new InMemoryUploadObject(input),
 } satisfies LocalBackofficeObjects;
+
+// Building the home page runs its source, which needs a compiler that bundles saved modules.
+let codemodeServer: Awaited<ReturnType<typeof createCodemodeTestServer>>;
+beforeAll(async () => {
+  codemodeServer = await createCodemodeTestServer();
+});
+afterAll(async () => {
+  await codemodeServer?.close();
+});
 
 const orgId = "org-1";
 const scope = { kind: "org" as const, orgId };
@@ -206,6 +228,190 @@ function requestEvent(
   });
 }
 
+const HOME_PAGE_PATH = "/workspace/home.page.js";
+const HOME_PAGE_SOURCE = String(
+  GENERAL_SKILL_CONTENT["skills/building-pages/examples/home.page.js"],
+);
+
+type SpecElement = {
+  type: string;
+  props: Record<string, unknown>;
+  children?: string[];
+  repeat?: { statePath: unknown };
+};
+
+/**
+ * The rows of each section's top-level lists and charts, by section label, in layout order;
+ * lists nested in a row read that row's fields.
+ */
+function sectionQueries({ spec, queries }: PageDefinition): Record<string, string[]> {
+  const elements = spec.elements as Record<string, SpecElement>;
+  const queryAt = (path: unknown) =>
+    Object.keys(queries).find((name) => pageDataPath(name) === path);
+  const sections: Record<string, string[]> = {};
+  const visit = (id: string, section: string) => {
+    const element = elements[id];
+    const label = element.type === "Section" ? String(element.props.label) : section;
+    const rows = element.props.rows as { $state?: unknown } | undefined;
+    const query = queryAt(element.repeat?.statePath) ?? queryAt(rows?.$state);
+    if (query !== undefined) {
+      (sections[label] ??= []).push(query);
+      return;
+    }
+    for (const child of element.children ?? []) {
+      visit(child, label);
+    }
+  };
+  visit(spec.root, "");
+  return sections;
+}
+
+type HomePageRows = {
+  "Needs attention": [
+    { workflow: string; step: string }[],
+    { workflow: string; errored: number; latest: { error: string }[] }[],
+    { id: string }[],
+  ];
+  Automations: [
+    {
+      workflow: string;
+      started: number;
+      completed: number;
+      errored: number;
+      latest: { status: string }[];
+    }[],
+  ];
+  Events: [{ source: string; events: number }[]];
+  Connections: [{ id: string; state: string }[]];
+  "Scheduled & waiting": [
+    { workflow: string; waits: { eventType: string }[] }[],
+    { name: string; at: string }[],
+  ];
+  Agents: [
+    {
+      agentName: string;
+      description: string;
+      latestKind: string | null;
+      queue: string;
+      hourly: { turns: number }[];
+    }[],
+  ];
+};
+
+/** Saves the example home page and builds it as its route does. */
+async function buildHomePage(ctx: BackofficeScenarioContext): Promise<PageDefinition> {
+  assert.deepEqual(checkPageSource(HOME_PAGE_PATH, HOME_PAGE_SOURCE), []);
+  await ctx.runCodemode({
+    scope,
+    code: `async () => await state.writeFile({ path: ${JSON.stringify(HOME_PAGE_PATH)}, content: ${JSON.stringify(HOME_PAGE_SOURCE)} })`,
+  });
+  const loaded = await loadPage({
+    runtime: ctx.runtime.services,
+    kernel: new BackofficeKernel(ctx.runtime.services),
+    execution: createBackofficeSystemExecution(scope),
+    sourcePath: HOME_PAGE_PATH,
+  });
+  assert(loaded.kind === "ready", JSON.stringify(loaded));
+  return loaded.definition;
+}
+
+/**
+ * Renders the home page and reads each section the way readDashboard reads the dashboard, so the
+ * two compare where the page covers the dashboard.
+ */
+async function readHomePage(ctx: BackofficeScenarioContext, definition: PageDefinition) {
+  const database = ctx.tanstack.automations.forOrg(orgId);
+  await database.drain();
+  const now = ctx.runtime.now();
+  const store = createStateStore({});
+  const data: Record<string, PageData[]> = {};
+  for (const [name, query] of Object.entries(definition.queries)) {
+    data[name] = pageRows(
+      await queryOnce((builder) => pageQuery(builder, database.collections, query, now)),
+    );
+    store.set(pageDataPath(name), data[name]);
+    for (const [valueName, value] of Object.entries(definition.values)) {
+      if (value.query === name) {
+        store.set(pageValuePath(valueName), pageValue(value, data[name]));
+      }
+    }
+  }
+  const markup = renderToStaticMarkup(
+    createElement(
+      MemoryRouter,
+      null,
+      createElement(BackofficeUiStoreRenderer, {
+        spec: definition.spec,
+        store,
+        now,
+        links: () => "/",
+      }),
+    ),
+  );
+  assert.notInclude(markup, "cannot show its data");
+
+  // The page's queries select these fields, and pageRows reads them as JSON.
+  const sections = Object.fromEntries(
+    Object.entries(sectionQueries(definition)).map(([label, queries]) => [
+      label,
+      queries.map((query) => data[query]),
+    ]),
+  ) as unknown as HomePageRows;
+  const [awaitingInput, failing, unavailable] = sections["Needs attention"];
+  const [waiting, schedules] = sections["Scheduled & waiting"];
+  const eventsBySource = new Map<string, number>();
+  for (const { source, events } of sections.Events[0]) {
+    eventsBySource.set(source, (eventsBySource.get(source) ?? 0) + events);
+  }
+  return {
+    attention: [
+      ...awaitingInput.map(({ workflow, step }) => `input: ${workflow} (${step})`),
+      ...failing.map(
+        ({ workflow, errored, latest }) => `failing: ${workflow} ×${errored} (${latest[0]?.error})`,
+      ),
+      ...unavailable.map(({ id }) => `unavailable: ${id}`),
+    ],
+    workflows: sections.Automations[0]
+      .map(
+        ({ workflow, started, completed, errored, latest }) =>
+          `${workflow}: ${started} started, ${completed} complete, ${errored} errored, last ${latest[0]?.status}`,
+      )
+      .sort(),
+    sources: [...eventsBySource]
+      .sort(
+        ([left, leftCount], [right, rightCount]) =>
+          rightCount - leftCount || left.localeCompare(right),
+      )
+      .map(([source, count]) => `${source} ×${count}`),
+    agents: sections.Agents[0].map(({ agentName, description, latestKind, queue, hourly }) => {
+      const turns = hourly.reduce((total, hour) => total + hour.turns, 0);
+      const recorded =
+        latestKind === null
+          ? "no activity"
+          : `${latestKind}, ${turns} turns in ${hourly.length} hours`;
+      return `${agentName} (${description.slice(0, 20)}): ${recorded}${queue ? `; ${queue}` : ""}`;
+    }),
+    connections: sections.Connections[0].map(({ id, state }) => `${id}: ${state}`),
+    upcoming: [
+      ...waiting.map(
+        ({ workflow, waits }) =>
+          `waiting: ${workflow} for ${waits.map(({ eventType }) => eventType).join(", ")}`,
+      ),
+      ...schedules.map(({ name, at }) => `schedule: ${name} at ${at}`),
+    ],
+  };
+}
+
+/**
+ * The example home page shows what the dashboard shows, but for the orchestration graph. Building
+ * the page records Codemode events, so both read the scope after the build.
+ */
+async function assertHomePageMatchesDashboard(ctx: BackofficeScenarioContext) {
+  const definition = await buildHomePage(ctx);
+  const { orchestration: _graph, ...dashboard } = await readDashboard(ctx);
+  assert.deepEqual(await readHomePage(ctx, definition), dashboard);
+}
+
 /** Reads the dashboard the way the page does: the same live queries, run once. */
 async function readDashboard(ctx: BackofficeScenarioContext) {
   const database = ctx.tanstack.automations.forOrg(orgId);
@@ -216,6 +422,7 @@ async function readDashboard(ctx: BackofficeScenarioContext) {
   const [
     runs,
     waitingRuns,
+    waits,
     events,
     connections,
     agents,
@@ -225,6 +432,7 @@ async function readDashboard(ctx: BackofficeScenarioContext) {
   ] = await Promise.all([
     queryOnce((query) => dashboardRunsQuery(query, collections)),
     queryOnce((query) => workflowRunRecordsQuery(query, collections, { type: "waiting" })),
+    queryOnce((query) => query.from({ wait: collections.workflowWaits })),
     queryOnce((query) => dashboardEventsQuery(query, collections, since)),
     queryOnce((query) =>
       query
@@ -249,6 +457,7 @@ async function readDashboard(ctx: BackofficeScenarioContext) {
     now,
     runs,
     waitingRuns: automationWorkflowRunsFromRecords(waitingRuns),
+    waits,
     events,
     connections,
     routes,
@@ -329,6 +538,7 @@ describe("dashboard", () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         objects: scenarioObjects,
+        env: { codemode: createCodemodeNodeExecutor(codemodeServer) },
         name: "a dashboard over two days of automation activity",
         files: backofficeFiles.custom({ workspace: workflows }),
         // Failing card charges are part of what the dashboard reports.
@@ -422,6 +632,9 @@ describe("dashboard", () => {
               });
             },
           ),
+          then.assert("the example home page shows what the dashboard shows", async (ctx) => {
+            await assertHomePageMatchesDashboard(ctx);
+          }),
         ],
       }),
     );
@@ -435,6 +648,7 @@ describe("dashboard", () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         objects: scenarioObjects,
+        env: { codemode: createCodemodeNodeExecutor(codemodeServer) },
         name: "agents are defined, answer, get cut off, stop, change, and go over two days",
         setup: ({ given }) => [given.organization.exists({ id: orgId, name: "Ada Labs" })],
         steps: ({ when, then }) => [
@@ -481,6 +695,12 @@ describe("dashboard", () => {
                 "assistant (General-purpose Back): queued, 2 turns in 1 hours; 1 queued · paused",
                 "reviewer (Approves changes.): updated, 0 turns in 0 hours",
               ]);
+            },
+          ),
+          then.assert(
+            "the example home page shows the agents as the dashboard does",
+            async (ctx) => {
+              await assertHomePageMatchesDashboard(ctx);
             },
           ),
         ],
