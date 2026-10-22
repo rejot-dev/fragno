@@ -45,6 +45,7 @@ import {
   type CodemodeRunPageInput,
   type CodemodeRunStartedHookPayload,
 } from "@/fragno/codemode/codemode-fragment";
+import type { CodemodeRunLease } from "@/fragno/codemode/codemode-object-execute";
 import {
   loadDurableHook,
   loadDurableHookQueue,
@@ -194,6 +195,8 @@ export class InMemoryCodemodeObject extends RpcTarget implements CodemodeObject 
   readonly #executor: CodemodeExecutor | null;
   readonly #nowEpochMs: () => number;
   readonly #slots = new CodemodeActivationSlots(CODEMODE_SCOPE_MAX_ACTIVATIONS);
+  /** Each admitted run lends its slot to the runs its tool calls start, one at a time. */
+  readonly #lentSlots = new Map<string, CodemodeActivationSlots>();
   #fragment: CodemodeFragment | null = null;
 
   constructor({
@@ -299,6 +302,7 @@ export class InMemoryCodemodeObject extends RpcTarget implements CodemodeObject 
     activation: TActivation,
     context: CodemodeRunContext,
     host: CodemodeHost,
+    lease: CodemodeRunLease,
   ): Promise<CodemodeExecution<TActivation>> {
     const executor = this.#executor;
     if (!executor) {
@@ -308,12 +312,17 @@ export class InMemoryCodemodeObject extends RpcTarget implements CodemodeObject 
     const runId = await fragment.callServices(() =>
       fragment.services.startRun(activation, context, new Date(this.#nowEpochMs())),
     );
-    // The run is recorded first, so history shows it running while it waits for a slot.
-    const release = await this.#slots.acquire();
+    // The run is recorded first, so history shows it running while it waits for a slot. A child
+    // waits for its parent's slot instead: when every scope slot holds a parent awaiting its child,
+    // waiting for a scope slot would hold both until the parents time out.
+    const parentSlot = lease.parentKey === null ? undefined : this.#lentSlots.get(lease.parentKey);
+    const release = await (parentSlot ?? this.#slots).acquire();
+    this.#lentSlots.set(lease.key, new CodemodeActivationSlots(1));
     let completion: CodemodeRunCompletion;
     try {
       completion = await executeCodemodeRunActivation(executor, activation, host);
     } finally {
+      this.#lentSlots.delete(lease.key);
       release();
     }
     await fragment.callServices(() =>
@@ -378,8 +387,9 @@ export class Codemode extends DurableObject<CloudflareEnv> implements CodemodeOb
     activation: TActivation,
     context: CodemodeRunContext,
     host: CodemodeHost,
+    lease: CodemodeRunLease,
   ): Promise<CodemodeExecution<TActivation>> {
-    return this.#object.execute(activation, context, host);
+    return this.#object.execute(activation, context, host, lease);
   }
 
   getRun(runId: string): Promise<CodemodeRun | null> {

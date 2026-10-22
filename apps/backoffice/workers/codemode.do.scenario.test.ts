@@ -689,6 +689,91 @@ test("a scope's eleventh concurrent run waits for its turn instead of failing", 
   );
 }, 30_000);
 
+test("ten runs that each await js.run or js.build finish on their own slots", async () => {
+  let entered = 0;
+  let enterAll = () => {};
+  const allEntered = new Promise<void>((resolve) => {
+    enterAll = resolve;
+  });
+  const gate = defineBackofficeRuntimeToolFamily({
+    namespace: "gate",
+    tools: [
+      defineBackofficeRuntimeTool({
+        id: "gate.wait",
+        namespace: "gate",
+        name: "wait",
+        description: "Wait until every slot holds a run.",
+        requiredPermissions: [],
+        inputSchema: z.object({}),
+        outputSchema: z.object({}),
+        execute: async () => {
+          entered += 1;
+          if (entered === 10) {
+            enterAll();
+          }
+          await allEntered;
+          return {};
+        },
+      }),
+    ],
+  });
+
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "nested codemode runs",
+      objects: scenarioObjects,
+      env: { codemode: createCodemodeNodeExecutor(server) },
+      setup: ({ given }) => [
+        given.organization.exists({ id: "org-1" }),
+        given.codemode.writeFile({
+          orgId: "org-1",
+          path: "/workspace/child.js",
+          content: 'export const child = true;\nconsole.log("child ran");',
+        }),
+      ],
+      steps: ({ then }) => [
+        then.assert("every parent's child runs while its parent holds a slot", async (ctx) => {
+          const toolContext = createBackofficeToolContext(
+            createCodemodeRouteBackedRuntimeContext({
+              emitter: { kind: "caller" },
+              runtime: ctx.runtime.services,
+              kernel: new BackofficeKernel(ctx.runtime.services),
+              execution,
+            }),
+          );
+          const codemode = codemodeRunnerFor(
+            ctx.runtime.objects.codemode.forOrg("org-1").commands,
+            execution,
+          );
+          // Each parent takes a slot before any child starts, so the children start only on
+          // their parents' slots.
+          const results = await Promise.all(
+            Array.from({ length: 10 }, (_, index) =>
+              runBackofficeCodemode({
+                code: `async () => {
+                  await gate.wait({});
+                  return ${
+                    index % 2 === 0
+                      ? 'await js.run({ path: "/workspace/child.js" })'
+                      : `await js.build({ path: "/workspace/child.js", out: "/workspace/.build/child-${index}.module.json" })`
+                  };
+                }`,
+                codemode,
+                families: [...runtimeToolFamilies, gate],
+                toolContext,
+              }),
+            ),
+          );
+          expect(results.map((result) => result.error)).toEqual(Array(10).fill(undefined));
+          expect(results.map((result) => (result.result as { status: string }).status)).toEqual(
+            Array(10).fill("success"),
+          );
+        }),
+      ],
+    }),
+  );
+}, 30_000);
+
 test("a workflow tick that loses the bridge runs again instead of erroring its workflow", async () => {
   const bridge = createCodemodeNodeExecutor(server);
   let lostTicks = 0;
