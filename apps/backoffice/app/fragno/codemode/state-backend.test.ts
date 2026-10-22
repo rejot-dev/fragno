@@ -194,7 +194,7 @@ describe("BackofficeStateBackend", () => {
 
     const results = (await searchAllFiles(tools, {
       pattern: "**/*",
-      query: UNIQUE_SEARCH_TEXT,
+      keywords: [UNIQUE_SEARCH_TEXT],
       options: { caseSensitive: false },
     })) as Array<{ path: string }>;
 
@@ -1091,7 +1091,7 @@ describe("BackofficeStateBackend", () => {
       await expect(
         tools.searchFiles?.execute({
           pattern: "**/shared.txt",
-          query: "needle",
+          keywords: ["needle"],
         }),
       ).resolves.toMatchObject({
         upload: {
@@ -1114,7 +1114,7 @@ describe("BackofficeStateBackend", () => {
 
       const firstPage = (await tools.searchFiles?.execute({
         pattern: "**/*.txt",
-        query: "needle",
+        keywords: ["needle"],
         options: {
           upload: { maxMatches: 1 },
           static: { maxMatches: 1 },
@@ -1139,7 +1139,7 @@ describe("BackofficeStateBackend", () => {
       await expect(
         tools.searchFiles?.execute({
           pattern: "**/*.txt",
-          query: "needle",
+          keywords: ["needle"],
           options: {
             upload: { maxMatches: 1, cursor: firstPage.upload.cursor },
             static: { maxMatches: 1, cursor: firstPage.static.cursor },
@@ -1162,7 +1162,7 @@ describe("BackofficeStateBackend", () => {
       await expect(
         tools.searchFiles?.execute({
           pattern: "**/*.txt",
-          query: "needle",
+          keywords: ["needle"],
           options: {},
         }),
       ).resolves.toMatchObject({
@@ -1179,7 +1179,7 @@ describe("BackofficeStateBackend", () => {
       await expect(
         tools.searchFiles?.execute({
           pattern: "**/*.txt",
-          query: "needle",
+          keywords: ["needle"],
           options: { static: {} },
         }),
       ).resolves.toEqual({
@@ -1202,7 +1202,7 @@ describe("BackofficeStateBackend", () => {
         });
         const page = (await tools.searchFiles?.execute({
           pattern,
-          query: "needle",
+          keywords: ["needle"],
         })) as SearchFilesPage;
 
         expect(page[mount].results).toEqual([{ path, matches: [expect.any(Object)] }]);
@@ -1219,7 +1219,7 @@ describe("BackofficeStateBackend", () => {
       });
       const firstPage = (await tools.searchFiles?.execute({
         pattern: "**/*.txt",
-        query: "needle",
+        keywords: ["needle"],
         options: { upload: { maxMatches: 1 }, static: { maxMatches: 1 } },
       })) as SearchFilesPage;
 
@@ -1231,7 +1231,7 @@ describe("BackofficeStateBackend", () => {
 
       const secondPage = (await tools.searchFiles?.execute({
         pattern: "**/*.txt",
-        query: "needle",
+        keywords: ["needle"],
         options: { static: { maxMatches: 1, cursor: firstPage.static.cursor } },
       })) as SearchFilesPage;
       expect(secondPage.upload).toEqual({ results: [], hasMore: false });
@@ -1242,7 +1242,7 @@ describe("BackofficeStateBackend", () => {
 
       const thirdPage = (await tools.searchFiles?.execute({
         pattern: "**/*.txt",
-        query: "needle",
+        keywords: ["needle"],
         options: {
           static: { maxMatches: 1, cursor: secondPage.static.cursor },
         },
@@ -1259,10 +1259,9 @@ describe("BackofficeStateBackend", () => {
     });
 
     test.each([
-      ["an empty query", "", 50],
-      ["a zero match limit", "needle", 0],
-      ["a negative match limit", "needle", -1],
-    ] as const)("searchFiles returns empty pages for %s", async (_label, query, maxMatches) => {
+      ["a zero match limit", 0],
+      ["a negative match limit", -1],
+    ] as const)("searchFiles returns empty pages for %s", async (_label, maxMatches) => {
       const tools = createStateTools(new MemoryUploadObject({ "upload.txt": "needle" }), {
         "static.txt": "needle",
       });
@@ -1270,7 +1269,7 @@ describe("BackofficeStateBackend", () => {
       await expect(
         tools.searchFiles?.execute({
           pattern: "**/*.txt",
-          query,
+          keywords: ["needle"],
           options: { upload: { maxMatches }, static: { maxMatches } },
         }),
       ).resolves.toEqual({
@@ -1287,14 +1286,14 @@ describe("BackofficeStateBackend", () => {
       await expect(
         tools.searchFiles?.execute({
           pattern: "**/*.txt",
-          query: "needle",
+          keywords: ["needle"],
           options: { upload: { cursor: "invalid" } },
         }),
       ).rejects.toThrow("Invalid Upload file search cursor.");
       await expect(
         tools.searchFiles?.execute({
           pattern: "**/*.txt",
-          query: "needle",
+          keywords: ["needle"],
           options: { static: { cursor: "invalid" } },
         }),
       ).rejects.toThrow("Invalid static file search cursor.");
@@ -1306,7 +1305,7 @@ describe("BackofficeStateBackend", () => {
       });
       const page = (await tools.searchFiles?.execute({
         pattern: "**/*.txt",
-        query: "needle",
+        keywords: ["needle"],
         options: { upload: { maxMatches: 1 }, static: { maxMatches: 1 } },
       })) as SearchFilesPage;
 
@@ -1318,9 +1317,9 @@ describe("BackofficeStateBackend", () => {
     });
 
     test.each([
-      ["query", { pattern: "**/*.txt", query: "different", caseSensitive: false }],
-      ["pattern", { pattern: "**/*.md", query: "needle", caseSensitive: false }],
-      ["options", { pattern: "**/*.txt", query: "needle", caseSensitive: true }],
+      ["keywords", { pattern: "**/*.txt", keywords: ["different"], caseSensitive: false }],
+      ["pattern", { pattern: "**/*.md", keywords: ["needle"], caseSensitive: false }],
+      ["options", { pattern: "**/*.txt", keywords: ["needle"], caseSensitive: true }],
     ] as const)(
       "searchFiles rejects a static cursor reused with changed %s",
       async (_label, changed) => {
@@ -1329,7 +1328,7 @@ describe("BackofficeStateBackend", () => {
         });
         const firstPage = (await tools.searchFiles?.execute({
           pattern: "**/*.txt",
-          query: "needle",
+          keywords: ["needle"],
           options: { static: { maxMatches: 1, caseSensitive: false } },
         })) as SearchFilesPage;
         expect(firstPage.static.cursor).toEqual(expect.any(String));
@@ -1337,7 +1336,7 @@ describe("BackofficeStateBackend", () => {
         await expect(
           tools.searchFiles?.execute({
             pattern: changed.pattern,
-            query: changed.query,
+            keywords: [...changed.keywords],
             options: {
               static: {
                 maxMatches: 1,
@@ -1351,9 +1350,9 @@ describe("BackofficeStateBackend", () => {
     );
 
     test.each([
-      ["query", { pattern: "**/*.txt", query: "different", caseSensitive: false }],
-      ["pattern", { pattern: "**/*.md", query: "needle", caseSensitive: false }],
-      ["options", { pattern: "**/*.txt", query: "needle", caseSensitive: true }],
+      ["keywords", { pattern: "**/*.txt", keywords: ["different"], caseSensitive: false }],
+      ["pattern", { pattern: "**/*.md", keywords: ["needle"], caseSensitive: false }],
+      ["options", { pattern: "**/*.txt", keywords: ["needle"], caseSensitive: true }],
     ] as const)(
       "searchFiles rejects an Upload cursor reused with changed %s",
       async (_label, changed) => {
@@ -1366,7 +1365,7 @@ describe("BackofficeStateBackend", () => {
         );
         const firstPage = (await tools.searchFiles?.execute({
           pattern: "**/*.txt",
-          query: "needle",
+          keywords: ["needle"],
           options: { upload: { caseSensitive: false } },
         })) as SearchFilesPage;
         expect(firstPage.upload.cursor).toEqual(expect.any(String));
@@ -1374,7 +1373,7 @@ describe("BackofficeStateBackend", () => {
         await expect(
           tools.searchFiles?.execute({
             pattern: changed.pattern,
-            query: changed.query,
+            keywords: [...changed.keywords],
             options: {
               upload: {
                 caseSensitive: changed.caseSensitive,
@@ -1759,7 +1758,7 @@ const searchAllFiles = async (
   tools: ReturnType<typeof createStateTools>,
   input: {
     pattern: string;
-    query: string;
+    keywords: string[];
     options?: {
       caseSensitive?: boolean;
       wholeWord?: boolean;
@@ -1784,7 +1783,7 @@ const searchAllFiles = async (
   do {
     const page = (await tools.searchFiles?.execute({
       pattern: input.pattern,
-      query: input.query,
+      keywords: input.keywords,
       options,
     })) as
       | {

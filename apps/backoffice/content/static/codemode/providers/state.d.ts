@@ -44,7 +44,7 @@ type StateCodemodeProvider = {
   applyEdits(input: StateApplyEditsInput): Promise<StateApplyEditsOutput>;
   /** Search for text within one codemode state file. */
   searchText(input: StateSearchTextInput): Promise<StateSearchTextOutput>;
-  /** Search for text across codemode state files matching a glob pattern. */
+  /** Search codemode state files matching a glob pattern for lines containing any of the keywords. */
   searchFiles(input: StateSearchFilesInput): Promise<StateSearchFilesOutput>;
   /** Hash the bytes of one codemode state file. */
   hashFile(input: StateHashFileInput): Promise<string>;
@@ -210,7 +210,7 @@ type StateSearchTextOutput = {
 }[];
 type StateSearchFilesInput = {
   pattern: string;
-  query: string;
+  keywords: string[];
   options?: {
     upload?: {
       caseSensitive?: boolean;

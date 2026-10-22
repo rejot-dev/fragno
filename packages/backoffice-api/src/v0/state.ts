@@ -315,12 +315,14 @@ export const stateOperations = {
     output: z.lazy(() => z.array(textMatchSchema)),
   },
   "state.searchFiles": {
-    description: "Search for text across codemode state files matching a glob pattern.",
+    description:
+      "Search codemode state files matching a glob pattern for lines containing any of the keywords.",
     permissions: [BACKOFFICE_PERMISSION.upload.read],
     input: z.lazy(() =>
       z.strictObject({
         pattern: z.string(),
-        query: z.string(),
+        // The upload index runs one pass per keyword, so it bounds how many a search may ask for.
+        keywords: z.array(z.string().min(1).max(512)).min(1).max(8),
         options: fileSearchOptionsByMountSchema.optional(),
       }),
     ),
