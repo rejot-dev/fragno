@@ -1,17 +1,12 @@
 import { ButtonLink } from "@fragno-private/design-system/button";
 import { Icon } from "@fragno-private/design-system/icon";
-import { Link, Outlet, redirect } from "react-router";
+import { Link, Outlet } from "react-router";
 
 import { getSessionUser } from "../auth/session.server";
 import type { Route } from "./+types/layout";
 
 export async function loader({ request }: Route.LoaderArgs) {
-  const user = await getSessionUser(request);
-  const pathname = new URL(request.url).pathname;
-  if (user && (pathname === "/login" || pathname === "/signup")) {
-    throw redirect("/start");
-  }
-  return { user };
+  return { user: await getSessionUser(request) };
 }
 
 export function headers() {

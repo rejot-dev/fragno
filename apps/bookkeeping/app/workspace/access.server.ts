@@ -14,7 +14,7 @@ import type {
   WorkspaceMembership,
   WorkspaceRole,
 } from "../../workers/workspaces/workspaces";
-import { requireSessionUser } from "../auth/session.server";
+import { currentPath, requireSessionUser } from "../auth/session.server";
 
 /**
  * How long Bookkeeping trusts a membership Backoffice confirmed. Someone removed in Backoffice
@@ -34,6 +34,11 @@ export function backofficeUnavailable(): Response {
 
 function workspaceNotFound(): Response {
   return new Response("This workspace does not exist, or you are not a member.", { status: 404 });
+}
+
+/** Signing in again renews a revoked or expired Backoffice authorization. */
+function reauthorize(request: Request): Response {
+  return redirect(`/login?reauthorize=1&returnTo=${encodeURIComponent(currentPath(request))}`);
 }
 
 export function parseRoles(roles: string[]): WorkspaceRole[] {
@@ -74,9 +79,8 @@ export async function connectAsUser(
   switch (token.status) {
     case "backoffice-unavailable":
       throw backofficeUnavailable();
-    // Signing in again renews the authorization.
     case "reauthorization-required":
-      throw redirect("/login");
+      throw reauthorize(request);
     case "authorized":
       break;
   }
@@ -87,7 +91,7 @@ export async function connectAsUser(
     }),
   );
   if (credential.status === "unauthorized") {
-    throw redirect("/login");
+    throw reauthorize(request);
   }
   return credential.status === "issued" ? credential.client : null;
 }

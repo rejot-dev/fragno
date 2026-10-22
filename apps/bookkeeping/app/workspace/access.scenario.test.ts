@@ -73,3 +73,28 @@ test("uninstalling Bookkeeping hides the workspace, and an outage keeps no one i
     expect(await ada.navigate("/start")).toMatchObject({ path: "/welcome" });
   });
 });
+
+test("after Backoffice withdraws Bookkeeping's authorization, signing in again returns to the page", async () => {
+  await runBookkeepingScenario(async (scenario) => {
+    const ada = await scenario.signUp({
+      email: "ada@example.test",
+      name: "Ada Lovelace",
+      businessName: "Analytical Engines",
+    });
+
+    scenario.backoffice.revokeAuthorization("ada@example.test");
+    scenario.advanceTime(CONFIRMATION_EXPIRED_MS);
+    // Her Bookkeeping session is still valid, so only an explicit reauthorization shows login.
+    const login = await ada.navigate("/w/analytical-engines/members");
+    expect(login).toMatchObject({
+      path: "/login?reauthorize=1&returnTo=%2Fw%2Fanalytical-engines%2Fmembers",
+      loaderData: {
+        "public/login": { returnTo: "/w/analytical-engines/members", reauthorize: true },
+      },
+    });
+    expect(await ada.signIn("ada@example.test", "/w/analytical-engines/members")).toMatchObject({
+      path: "/w/analytical-engines/members",
+      status: 200,
+    });
+  });
+});
