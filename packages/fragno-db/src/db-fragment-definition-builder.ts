@@ -652,9 +652,16 @@ async function notifyDurableHooksAfterMutate<THooks extends HooksMap>({
   };
   const notifications: Promise<void>[] = [];
   const logContextFields = buildDurableHooksLogContext(logContext);
-  const triggeredHooks = uow.getTriggeredHooks();
+  // Requeued hooks were already stored, but their dispatchers sleep until told they are due.
+  const triggeredCountByNamespace = new Map<string, number>();
+  for (const namespace of [
+    ...uow.getTriggeredHooks().map((hook) => hook.namespace),
+    ...uow.getRequeuedHookNamespaces(),
+  ]) {
+    triggeredCountByNamespace.set(namespace, (triggeredCountByNamespace.get(namespace) ?? 0) + 1);
+  }
   const ownNamespaceTriggeredCount = hooksConfig
-    ? triggeredHooks.filter((hook) => hook.namespace === hooksConfig.namespace).length
+    ? (triggeredCountByNamespace.get(hooksConfig.namespace) ?? 0)
     : 0;
 
   if (hooksConfig?.notifier && autoSchedule && ownNamespaceTriggeredCount > 0) {
@@ -689,19 +696,11 @@ async function notifyDurableHooksAfterMutate<THooks extends HooksMap>({
     });
   }
 
-  if (triggeredHooks.length === 0) {
+  if (triggeredCountByNamespace.size === 0) {
     return;
   }
 
-  const namespaces = new Set<string>();
-  const triggeredCountByNamespace = new Map<string, number>();
-  for (const hook of triggeredHooks) {
-    namespaces.add(hook.namespace);
-    triggeredCountByNamespace.set(
-      hook.namespace,
-      (triggeredCountByNamespace.get(hook.namespace) ?? 0) + 1,
-    );
-  }
+  const namespaces = new Set(triggeredCountByNamespace.keys());
   if (hooksConfig) {
     namespaces.delete(hooksConfig.namespace);
   }

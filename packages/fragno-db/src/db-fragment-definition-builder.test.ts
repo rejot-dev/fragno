@@ -18,7 +18,9 @@ import {
   DatabaseFragmentDefinitionBuilder,
   type ImplicitDatabaseDependencies,
 } from "./db-fragment-definition-builder";
+import { getFragmentDurableHooks } from "./durable-hooks";
 import { internalSchema } from "./fragments/internal-fragment";
+import { defaultDurableHookRetryPolicy } from "./hooks/durable-hook-retry-policy";
 import { getDurableHooksRuntimeByToken } from "./hooks/durable-hooks-runtime";
 import type {
   DurableHookPropagationContext,
@@ -1213,6 +1215,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         const callArgs = createHandlerTxBuilderSpy.mock.calls[0]?.[0];
         const mockUow = {
           idempotencyKey: "request-uow",
+          getRequeuedHookNamespaces: () => [],
           getTriggeredHooks: () => [
             {
               namespace: runtime.config.namespace,
@@ -1323,6 +1326,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
             execute: vi.fn(async () => {
               const mockUow = {
                 idempotencyKey: "hook-uow",
+                getRequeuedHookNamespaces: () => [],
                 getTriggeredHooks: () => [
                   {
                     namespace: runtime.config.namespace,
@@ -1432,6 +1436,127 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
           traceparent,
           tracestate: "vendor=value",
         });
+      } finally {
+        await adapter.close();
+        sqlite.close();
+      }
+    });
+  });
+
+  describe("durable hook retries", () => {
+    it("lets a fragment's route retry its failed hook, which wakes the dispatcher and runs again", async () => {
+      const sqlite = new SQLite(":memory:");
+      const adapter = new SqlAdapter({
+        dialect: new SqliteDialect({ database: sqlite }),
+        driverConfig: new BetterSQLite3DriverConfig(),
+      });
+      type DeliveryHooks = {
+        onDeliver: HookFn<{ parcel: string }>;
+      };
+      class RecipientMissingError extends Error {}
+      let recipientExists = false;
+      const delivered: string[] = [];
+      const definition = defineFragment("retry-failed-hook")
+        .extend(withDatabase(testSchema))
+        .providesBaseService(({ defineService }) =>
+          defineService({
+            queueDelivery: function () {
+              return this.serviceTx(testSchema)
+                .mutate(({ uow }) => {
+                  uow.triggerHook("onDeliver", { parcel: "parcel-1" }, { id: "delivery-1" });
+                })
+                .build();
+            },
+          }),
+        )
+        .provideHooks<DeliveryHooks>(({ defineHook }) => ({
+          onDeliver: defineHook(
+            async function ({ parcel }) {
+              if (!recipientExists) {
+                throw new RecipientMissingError("Recipient is missing");
+              }
+              delivered.push(parcel);
+            },
+            {
+              retryPolicy: {
+                ...defaultDurableHookRetryPolicy,
+                isRetryable: (error) => !(error instanceof RecipientMissingError),
+              },
+            },
+          ),
+        }))
+        .build();
+      const routes = defineRoutes(definition).create(({ defineRoute, deps }) => {
+        const { namespace, hookService } = getFragmentDurableHooks(deps);
+        return [
+          defineRoute({
+            method: "POST",
+            path: "/deliveries/retry",
+            handler: async function (_input, { json }) {
+              const status = await this.handlerTx()
+                .withServiceCalls(
+                  () => [hookService.retryFailedHook(namespace, "delivery-1")] as const,
+                )
+                .transform(({ serviceResult: [result] }) => result)
+                .execute();
+              return json({ status });
+            },
+          }),
+        ];
+      });
+      const namespace = sanitizeNamespace(testSchema.name);
+
+      try {
+        await adapter.prepareMigrations(internalSchema, null).executeWithDriver(adapter.driver, 0);
+        await adapter.prepareMigrations(testSchema, namespace).executeWithDriver(adapter.driver, 0);
+        const fragment = instantiate(definition)
+          .withRoutes([routes])
+          .withOptions({ mountRoute: "/api/retry-failed-hook", databaseAdapter: adapter })
+          .build();
+        const token = (fragment.$internal as { durableHooksToken?: object }).durableHooksToken;
+        const runtime = token ? getDurableHooksRuntimeByToken(token) : undefined;
+        assert(runtime);
+        const notifySpy = vi.fn(async (_context: HookNotifyContext) => {});
+        runtime.config.notifier = { notify: notifySpy };
+        const runner = hooks.createDurableHooksRunner(runtime.config);
+        const internalFragment = getInternalFragment(adapter);
+        const readDeliveries = () =>
+          internalFragment.inContext(async function () {
+            return await this.handlerTx()
+              .withServiceCalls(
+                () =>
+                  [internalFragment.services.hookService.getHooksByNamespace(namespace)] as const,
+              )
+              .transform(({ serviceResult: [result] }) => result)
+              .execute();
+          });
+        const retryDelivery = async () => {
+          const response = await fragment.callRoute("POST", "/deliveries/retry");
+          assert(response.type === "json");
+          return response.data;
+        };
+
+        await fragment.callServices(() => fragment.services.queueDelivery());
+        await (
+          await runner.processDue()
+        ).completion;
+        expect(await readDeliveries()).toMatchObject([{ status: "failed", attempts: 1 }]);
+
+        recipientExists = true;
+        notifySpy.mockClear();
+        expect(await retryDelivery()).toEqual({ status: "retried" });
+        // The stored hook became due again, so its dispatcher is woken as for a new one.
+        expect(notifySpy).toHaveBeenCalledTimes(1);
+        expect(await readDeliveries()).toMatchObject([
+          { status: "pending", attempts: 0, error: null, payload: { parcel: "parcel-1" } },
+        ]);
+
+        await (
+          await runner.processDue()
+        ).completion;
+        expect(delivered).toEqual(["parcel-1"]);
+        expect(await readDeliveries()).toMatchObject([{ status: "completed", attempts: 0 }]);
+        expect(await retryDelivery()).toEqual({ status: "not_failed" });
       } finally {
         await adapter.close();
         sqlite.close();

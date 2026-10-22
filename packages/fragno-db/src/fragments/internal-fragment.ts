@@ -118,6 +118,15 @@ const mapHookRecord = <
   propagationContext: event.propagationContext as DurableHookPropagationContext | null,
 });
 
+/**
+ * Whether `retryFailedHook` queues a hook again. `not_found` also covers a hook of another
+ * namespace, which the caller may not touch.
+ */
+type DurableHookRetry =
+  | { status: "retried"; hookId: FragnoId }
+  | { status: "not_failed" }
+  | { status: "not_found" };
+
 const DEFAULT_HOOKS_PAGE_SIZE = 50;
 
 const resolveHookPageSize = (pageSize?: number): number => {
@@ -497,6 +506,40 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
             uow.update("fragno_hooks", eventId, (b) =>
               b.set({ status: "processing", lastAttemptAt: dbNow() }).check(),
             );
+          })
+          .build();
+      },
+
+      /**
+       * Queues a hook that failed for good again, with a fresh set of attempts. Its payload, creation
+       * time, and propagation context stay as they were. Callers composing this see in their
+       * mutate phase whether it will run again; only a failed hook of `namespace` does.
+       */
+      retryFailedHook(namespace: string, hookId: string) {
+        return this.serviceTx(internalSchema, { name: "internal.hooks.retryFailed" })
+          .retrieve((uow) =>
+            uow.findFirst("fragno_hooks", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", hookId)),
+            ),
+          )
+          .transformRetrieve(([hook]): DurableHookRetry => {
+            if (!hook || hook.namespace !== namespace) {
+              return { status: "not_found" };
+            }
+            return hook.status === "failed"
+              ? { status: "retried", hookId: hook.id }
+              : { status: "not_failed" };
+          })
+          .mutate(({ uow, retrieveResult: retry }): DurableHookRetry["status"] => {
+            if (retry.status === "retried") {
+              uow.update("fragno_hooks", retry.hookId, (b) =>
+                b
+                  .set({ status: "pending", attempts: 0, nextRetryAt: dbNow(), error: null })
+                  .check(),
+              );
+              uow.markHookRequeued(namespace);
+            }
+            return retry.status;
           })
           .build();
       },
