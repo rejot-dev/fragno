@@ -30,6 +30,8 @@
     "types:check": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "storybook": "storybook dev --port 6007 --no-open --ci",
+    "storybook:build": "storybook build --output-dir build/storybook",
     "format:package": "node ../../scripts/run-package-quality.mjs format",
     "format:check:package": "node ../../scripts/run-package-quality.mjs format:check",
     "lint:package": "node ../../scripts/run-package-quality.mjs lint",
