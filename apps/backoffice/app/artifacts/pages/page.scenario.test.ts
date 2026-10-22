@@ -276,7 +276,8 @@ function startRun(workflow: string, instanceId: string) {
       source: "shop",
       eventType: "order.manual",
       occurredAt: new Date(ctx.runtime.now()).toISOString(),
-      payload: { instanceId },
+      // Payloads are JSON, whose fields may start with $ as TanStack's virtual fields do.
+      payload: { $schema: "https://example.com/order.json", instanceId },
       actors: createBackofficeSystemExecution(scope).actors,
       subject: { orgId },
       causation: { kind: "origin" },
@@ -561,9 +562,12 @@ describe("workspace pages", () => {
               await writePage(ctx, paramsMetricPage);
               const loaded = await loadBuiltPage(ctx);
               assert(loaded.kind === "ready", JSON.stringify(loaded));
-              const { markup } = await renderPage(ctx, loaded.definition);
+              const { markup, data } = await renderPage(ctx, loaded.definition);
               assert.include(markup, "Metric cannot show its data");
               assert.match(markup, /value: Invalid input/);
+              const [newest] = Object.values(data).flat();
+              assert.include(JSON.stringify(newest), '"$schema":"https://example.com/order.json"');
+              assert.notInclude(JSON.stringify(newest), '"$synced"');
             },
           ),
           then.assert("merged queries that share an alias fail the build", async (ctx) => {
