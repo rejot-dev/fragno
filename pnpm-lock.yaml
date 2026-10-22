@@ -508,6 +508,9 @@ importers:
       auth:
         specifier: ^1.7.1
         version: 1.7.1(d1eaed0af7d8cd0df8427bf0772ac9f5)
+      esbuild:
+        specifier: ^0.28.1
+        version: 0.28.2
       happy-dom:
         specifier: ^20.3.3
         version: 20.10.2
@@ -38166,7 +38169,7 @@ snapshots:
       '@vitest/expect': 3.2.4
       '@vitest/spy': 3.2.4
       '@webcontainer/env': 1.1.1
-      esbuild: 0.28.1
+      esbuild: 0.28.2
       jsonc-parser: 3.3.1
       open: 10.2.0
       oxc-parser: 0.127.0

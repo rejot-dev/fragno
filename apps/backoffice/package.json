@@ -136,6 +136,7 @@
     "@types/react-dom": "catalog:",
     "ajv": "^8.18.0",
     "auth": "^1.7.1",
+    "esbuild": "^0.28.1",
     "happy-dom": "^20.3.3",
     "oxfmt": "^0.40.0",
     "react-email": "^6.11.1",
