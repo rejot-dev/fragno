@@ -158,7 +158,7 @@ type PageCollections = {
     deliveredAt: Date | null;
     consumedByStepKey: string | null;
   }>;
-  /** Integration connections as their latest state change reports them, disconnected ones included; name and authMethod are null until a change carries a label. */
+  /** Integration connections as their latest state change reports them, disconnected ones included; name and authMethod are null until a change carries a label. displayName is what people call the connection and kindLabel its kind, such as MCP. */
   connections: PageCollection<{
     connectionId: string;
     service: string;
@@ -168,8 +168,10 @@ type PageCollections = {
     authMethod: string | null;
     eventId: string;
     changedAt: Date;
+    displayName: string;
+    kindLabel: string;
   }>;
-  /** Pi agents as their events record them now; latestKind and latestAt are null for an agent with no recorded activity. definition holds description, permissions, and managedBy. */
+  /** Pi agents as their events record them now; latestKind and latestAt are null for an agent with no recorded activity. displayName is the name people read and activity what the agent does or did last, such as Answered. definition holds description, permissions, and managedBy. */
   agents: PageCollection<{
     agentName: string;
     definition: unknown;
@@ -180,6 +182,8 @@ type PageCollections = {
     queued: number;
     steering: number;
     paused: boolean;
+    displayName: string;
+    activity: string;
   }>;
   /** Turns agents ended, one row each; outcome is answered, cut-off, or failed. */
   agentTurns: PageCollection<{

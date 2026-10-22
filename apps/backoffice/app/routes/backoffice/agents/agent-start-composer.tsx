@@ -7,7 +7,8 @@ import {
 import { useState } from "react";
 import { useFetcher } from "react-router";
 
-import { formatPiAgentName } from "./agent-name";
+import { formatPiAgentName } from "@/fragno/pi/agent/pi-agent-name";
+
 import { AgentPermissions } from "./agent-permissions";
 
 type AgentStartComposerProps = {

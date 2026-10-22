@@ -35,7 +35,6 @@ import { InMemoryProjectConnectorObject } from "../../../../workers/project-conn
 import { InMemoryResendObject } from "../../../../workers/resend.do";
 import { InMemoryTelegramObject } from "../../../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../../../workers/upload.do";
-import { integrationConnectionName } from "./connection-display";
 
 const scenarioObjects = {
   API: (input) => new InMemoryApiObject(input),
@@ -127,7 +126,7 @@ test("the integrations section shows each connection's reported state and source
               connectionId: connection.connectionId,
               kind: connection.kind,
               state: connection.state,
-              name: integrationConnectionName(connection),
+              name: connection.displayName,
               authMethod: connection.authMethod,
             })),
           ).toEqual([

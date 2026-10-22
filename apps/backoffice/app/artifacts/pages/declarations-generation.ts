@@ -25,9 +25,9 @@ const COLLECTION_NOTES: Partial<Record<PageCollection, string>> = {
     "Automation routes; routeScheduleStates holds a scheduled route's next occurrence by the same id.",
   kvStore: "Values stored with the store provider.",
   connections:
-    "Integration connections as their latest state change reports them, disconnected ones included; name and authMethod are null until a change carries a label.",
+    "Integration connections as their latest state change reports them, disconnected ones included; name and authMethod are null until a change carries a label. displayName is what people call the connection and kindLabel its kind, such as MCP.",
   agents:
-    "Pi agents as their events record them now; latestKind and latestAt are null for an agent with no recorded activity. definition holds description, permissions, and managedBy.",
+    "Pi agents as their events record them now; latestKind and latestAt are null for an agent with no recorded activity. displayName is the name people read and activity what the agent does or did last, such as Answered. definition holds description, permissions, and managedBy.",
   agentTurns: "Turns agents ended, one row each; outcome is answered, cut-off, or failed.",
   workflowWaits:
     "Event types waiting runs wait for, one row each; runId is the run's id. interfaceStepKey names the completed step whose interface asks a person to answer, or is null.",

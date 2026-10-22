@@ -22,14 +22,9 @@ import {
   piAgentQueueStatus,
   type PiAgentListing,
 } from "../agents/agent-activity";
-import { formatPiAgentName } from "../agents/agent-name";
 import { piAgentsPath } from "../agents/path";
 import type { AutomationScriptSourceRecord } from "../automations/data";
-import {
-  IntegrationConnectionStateLight,
-  describeIntegrationConnectionKind,
-  integrationConnectionName,
-} from "../integrations/connection-display";
+import { IntegrationConnectionStateLight } from "../integrations/connection-display";
 import {
   integrationConnectionPath,
   integrationsScopeBasePath,
@@ -322,9 +317,9 @@ function AttentionItem({
       );
     case "connection-unavailable":
       return row(
-        integrationConnectionName(item.connection),
+        item.connection.displayName,
         <>
-          {describeIntegrationConnectionKind(item.connection)} connection is unavailable ·{" "}
+          {item.connection.kindLabel} connection is unavailable ·{" "}
           <span className="font-mono">{item.connection.connectionId}</span>
         </>,
         item.connection.changedAt,
@@ -573,11 +568,10 @@ function ConnectionsPanel({
               >
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-semibold text-[var(--bo-fg)] group-hover:underline">
-                    {integrationConnectionName(connection)}
+                    {connection.displayName}
                   </span>
                   <span className="block truncate text-xs text-[var(--bo-muted-2)]">
-                    {describeIntegrationConnectionKind(connection)} ·{" "}
-                    {formatRelativeTime(connection.changedAt, now)}
+                    {connection.kindLabel} · {formatRelativeTime(connection.changedAt, now)}
                   </span>
                 </span>
                 <IntegrationConnectionStateLight state={connection.state} />
@@ -676,7 +670,7 @@ function AgentsPanel({
     <Panel title="Agents" back={null} footer={<PanelFooter to={agentsPath} page="Agents" />}>
       <ul className="divide-y divide-[color:var(--bo-border)]">
         {agents.map((agent) => {
-          const agentName = formatPiAgentName(agent.agentName);
+          const agentName = agent.displayName;
           const queue = piAgentQueueStatus(agent);
           const turns = agent.turnsPerBucket.reduce((total, count) => total + count, 0);
           return (

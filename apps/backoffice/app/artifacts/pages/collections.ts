@@ -57,6 +57,8 @@ const PAGE_DERIVED_COLLECTIONS: {
     authMethod: { type: "string", nullable: true },
     eventId: { type: "string", nullable: false },
     changedAt: { type: "time", nullable: false },
+    displayName: { type: "string", nullable: false },
+    kindLabel: { type: "string", nullable: false },
   },
   agents: {
     agentName: { type: "string", nullable: false },
@@ -68,6 +70,8 @@ const PAGE_DERIVED_COLLECTIONS: {
     queued: { type: "number", nullable: false },
     steering: { type: "number", nullable: false },
     paused: { type: "boolean", nullable: false },
+    displayName: { type: "string", nullable: false },
+    activity: { type: "string", nullable: false },
   },
   agentTurns: {
     id: { type: "string", nullable: false },

@@ -11,6 +11,7 @@ import {
 import { createDerivedCollection } from "@/fragno/tanstack/derived-collection";
 
 import { BUILT_IN_PI_AGENT_DEFINITIONS } from "./agent-definitions";
+import { formatPiAgentName } from "./pi-agent-name";
 
 type StoredPiEvent = {
   id: string;
@@ -41,6 +42,10 @@ export type PiAgentRecord = {
   steering: number;
   /** Whether the agent was stopped and not resumed since. */
   paused: boolean;
+  /** The name people read, such as "Code Reviewer" for `code-reviewer`. */
+  displayName: string;
+  /** What the agent is doing, or else what it did last, such as "Answering" or "Answered". */
+  activity: string;
 };
 
 /** A turn that ended, keyed by the event that ended it. */
@@ -152,21 +157,48 @@ function currentPiAgents(events: readonly StoredPiEvent[]): PiAgentRecord[] {
     const stillWaiting = record
       ? [...record.waiting].filter(([requestId]) => !record.dequeued.has(requestId))
       : [];
+    const latestKind = record?.latest.kind ?? null;
+    const answering = record
+      ? [...record.started].some((requestId) => !record.ended.has(requestId))
+      : false;
+    const paused = record?.pause?.paused ?? false;
     return {
       agentName: definition.agentName,
       definition,
       builtIn,
-      latestKind: record?.latest.kind ?? null,
+      latestKind,
       latestAt: record?.latest.at.occurredAt ?? null,
-      answering: record
-        ? [...record.started].some((requestId) => !record.ended.has(requestId))
-        : false,
+      answering,
       queued: stillWaiting.filter(([, { steer }]) => !steer).length,
       steering: stillWaiting.filter(([, { steer }]) => steer).length,
-      paused: record?.pause?.paused ?? false,
+      paused,
+      displayName: formatPiAgentName(definition.agentName),
+      activity:
+        latestKind === null
+          ? "No recorded activity"
+          : answering
+            ? "Answering"
+            : paused
+              ? "Stopped"
+              : activityLabels[latestKind],
     };
   });
 }
+
+const activityLabels: Record<PiAgentActivityKind, string> = {
+  started: "Started a turn",
+  answered: "Answered",
+  "cut-off": "Turn cut off",
+  failed: "Turn failed",
+  queued: "Work queued",
+  dispatched: "Took queued work",
+  dropped: "Dropped queued work",
+  created: "Defined",
+  updated: "Definition updated",
+  deleted: "Deleted",
+  stopped: "Stopped",
+  resumed: "Resumed",
+};
 
 function endedPiAgentTurns(events: readonly StoredPiEvent[]): PiAgentTurnRecord[] {
   return events.flatMap((event) => {

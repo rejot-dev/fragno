@@ -3,28 +3,12 @@ import { formatRelativeTime } from "@fragno-private/design-system/relative-time"
 import { gte, type InitialQueryBuilder } from "@tanstack/react-db";
 
 import type { AutomationCollections } from "@/fragno/automation/tanstack/collections";
-import type { PiAgentActivityKind } from "@/fragno/backoffice-capabilities/capabilities/pi";
 import type { PiAgentRecord } from "@/fragno/pi/agent/pi-agent-records";
 
 import { dashboardBucketIndex } from "../dashboard/overview";
 
 /** An agent with the turns it ended in each hourly bucket of the window. */
 export type PiAgentListing = PiAgentRecord & { turnsPerBucket: number[] };
-
-const activityLabels: Record<PiAgentActivityKind, string> = {
-  started: "Started a turn",
-  answered: "Answered",
-  "cut-off": "Turn cut off",
-  failed: "Turn failed",
-  queued: "Work queued",
-  dispatched: "Took queued work",
-  dropped: "Dropped queued work",
-  created: "Defined",
-  updated: "Definition updated",
-  deleted: "Deleted",
-  stopped: "Stopped",
-  resumed: "Resumed",
-};
 
 /** Every turn ended since the window's first bucket began. */
 export function piAgentTurnsQuery(
@@ -56,16 +40,12 @@ export function piAgentListings(
   }));
 }
 
-/** What the agent is doing, or else what it did last. */
+/** What the agent is doing, or else what it did last and when. */
 export function describePiAgentActivity(agent: PiAgentRecord, now: number): string {
-  if (agent.latestKind === null || agent.latestAt === null) {
-    return "No recorded activity";
+  if (agent.latestAt === null || agent.answering || agent.paused) {
+    return agent.activity;
   }
-  return agent.answering
-    ? "Answering"
-    : agent.paused
-      ? "Stopped"
-      : `${activityLabels[agent.latestKind]} ${formatRelativeTime(agent.latestAt, now)}`;
+  return `${agent.activity} ${formatRelativeTime(agent.latestAt, now)}`;
 }
 
 /**

@@ -1,7 +1,8 @@
 import { BackofficeTabHeader } from "@fragno-private/design-system/tab-header";
 import type { ReactNode } from "react";
 
-import { formatPiAgentName } from "./agent-name";
+import { formatPiAgentName } from "@/fragno/pi/agent/pi-agent-name";
+
 import type { PiAgentDirectoryState } from "./agent-types";
 
 const OVERVIEW_TAB_ID = "all-agents";

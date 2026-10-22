@@ -1,8 +1,8 @@
 import {} from "@/backoffice-runtime/resolved-scope";
+import { formatPiAgentName } from "@/fragno/pi/agent/pi-agent-name";
 import { requireRouteScope } from "@/layouts/backoffice-shell-request.server";
 
 import type { Route } from "./+types/debug-agent-detail";
-import { formatPiAgentName } from "./agent-name";
 import { fetchPiManagerAgentDetail } from "./data";
 
 const stringifyJson = (value: unknown) =>
