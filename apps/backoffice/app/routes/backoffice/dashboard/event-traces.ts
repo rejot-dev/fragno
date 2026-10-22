@@ -8,9 +8,11 @@ import type {
 
 import { inArray, type InitialQueryBuilder } from "@tanstack/react-db";
 
-import type {
-  AutomationRouteDispatchOutcome,
-  AutomationRouteDispatchSkipReason,
+import {
+  type AutomationRouteDispatchOutcome,
+  type AutomationRouteDispatchSkipReason,
+  type AutomationRouteDispatchState,
+  readRouteDispatchState,
 } from "@/fragno/automation/route-dispatches-storage-runtime";
 import type { AutomationCollections } from "@/fragno/automation/tanstack/collections";
 
@@ -45,9 +47,30 @@ export function eventTraceDispatchesQuery(
     rootEventId: dispatch.rootEventId,
     routeId: dispatch.routeId,
     routeName: dispatch.routeName,
+    status: dispatch.status,
     outcome: dispatch.outcome,
+    failedAttempts: dispatch.failedAttempts,
+    error: dispatch.error,
     dispatchedAt: dispatch.dispatchedAt,
   }));
+}
+
+/** A synchronized dispatch row, as `eventTraceDispatchesQuery` selects it. */
+export type EventTraceDispatchRow = Omit<EventTraceDispatch, "state"> & {
+  status: string;
+  outcome: AutomationRouteDispatchOutcome | null;
+  failedAttempts: number;
+  error: string | null;
+};
+
+export function eventTraceDispatch({
+  status,
+  outcome,
+  failedAttempts,
+  error,
+  ...dispatch
+}: EventTraceDispatchRow): EventTraceDispatch {
+  return { ...dispatch, state: readRouteDispatchState({ status, outcome, failedAttempts, error }) };
 }
 
 export function eventTraceRunsQuery(
@@ -110,7 +133,8 @@ export type EventTraceDispatch = {
   rootEventId: string;
   routeId: string;
   routeName: string;
-  outcome: AutomationRouteDispatchOutcome;
+  state: AutomationRouteDispatchState;
+  /** When the event matched the route, before it acted. */
   dispatchedAt: Date;
 };
 
@@ -156,13 +180,13 @@ export type EventTrace = {
 };
 
 /**
- * Where the work an origin set in motion stands. Failed runs are counted apart from the state,
- * because a trace can hold a failed run and one that is still going.
+ * Where the work an origin set in motion stands. Failed runs and routes are counted apart from the
+ * state, because a trace can hold a failed run and one that is still going.
  */
 export type EventTraceOutcome =
   | { kind: "unhandled" }
-  | { kind: "in_progress"; state: "running" | "waiting"; failedRunCount: number }
-  | { kind: "settled"; settledAt: Date; failedRunCount: number };
+  | { kind: "in_progress"; state: "running" | "waiting"; failedCount: number }
+  | { kind: "settled"; settledAt: Date; failedCount: number };
 
 export type EventTraceSummary = {
   rootEventId: string;
@@ -231,6 +255,18 @@ function dispatchKey(routeId: string, eventId: string): string {
   return `${routeId}\u0000${eventId}`;
 }
 
+function completedOutcome({ state }: EventTraceDispatch): AutomationRouteDispatchOutcome | null {
+  return state.status === "completed" ? state.outcome : null;
+}
+
+/** The workflow run a route started, if it started one. */
+function startedRunKey(dispatch: EventTraceDispatch): string | null {
+  const outcome = completedOutcome(dispatch);
+  return outcome?.kind === "workflow_started"
+    ? runKey(outcome.workflowName, outcome.instanceId)
+    : null;
+}
+
 const RUN_STATUS: Record<WorkflowInstanceStatus, CausalFlameStatus> = {
   active: "running",
   waiting: "waiting",
@@ -238,6 +274,14 @@ const RUN_STATUS: Record<WorkflowInstanceStatus, CausalFlameStatus> = {
   complete: "ok",
   errored: "failed",
   terminated: "failed",
+};
+
+/** A route waiting for its next attempt is waiting; one that has not acted yet is about to. */
+const DISPATCH_STATUS: Record<AutomationRouteDispatchState["status"], CausalFlameStatus> = {
+  pending: "running",
+  retrying: "waiting",
+  completed: "ok",
+  failed: "failed",
 };
 
 const SKIP_REASON_LABEL: Record<AutomationRouteDispatchSkipReason, string> = {
@@ -248,6 +292,33 @@ const SKIP_REASON_LABEL: Record<AutomationRouteDispatchSkipReason, string> = {
 
 export function describeRouteDispatchSkipReason(reason: AutomationRouteDispatchSkipReason): string {
   return SKIP_REASON_LABEL[reason];
+}
+
+type RouteDispatchProgress = Exclude<AutomationRouteDispatchState, { status: "completed" }>;
+
+function dispatchProgressLabel(routeName: string, state: RouteDispatchProgress): string {
+  switch (state.status) {
+    case "pending":
+      return `${routeName} is about to act`;
+    case "retrying":
+      return `${routeName} is retrying`;
+    case "failed":
+      return `${routeName} failed`;
+  }
+  throw new Error("Unsupported automation route dispatch state.");
+}
+
+/** What a route that has not completed is doing, such as the error it will retry after. */
+export function describeRouteDispatchProgress(state: RouteDispatchProgress): string {
+  switch (state.status) {
+    case "pending":
+      return "Not attempted yet";
+    case "retrying":
+      return `Attempt ${state.failedAttempts} failed, retrying: ${state.error}`;
+    case "failed":
+      return `Gave up after ${state.failedAttempts} ${state.failedAttempts === 1 ? "attempt" : "attempts"}: ${state.error}`;
+  }
+  throw new Error("Unsupported automation route dispatch state.");
 }
 
 /** The trace node of a recorded workflow step, so views listing steps can point into the trace. */
@@ -282,11 +353,9 @@ export function projectEventTraceSummaries({
       const rootDispatches = [...(dispatchesByRoot.get(origin.id) ?? [])].sort(
         (left, right) => left.dispatchedAt.getTime() - right.dispatchedAt.getTime(),
       );
-      const rootRuns = rootDispatches.flatMap(({ outcome }) => {
-        const run =
-          outcome.kind === "workflow_started"
-            ? runsByKey.get(runKey(outcome.workflowName, outcome.instanceId))
-            : undefined;
+      const rootRuns = rootDispatches.flatMap((dispatch) => {
+        const key = startedRunKey(dispatch);
+        const run = key === null ? undefined : runsByKey.get(key);
         return run ? [run] : [];
       });
       return {
@@ -325,9 +394,10 @@ function traceEffects(
 ): string[] {
   const workers = [
     ...runs.map((run) => run.remoteWorkflowName ?? run.workflowName),
-    ...dispatches.flatMap(({ outcome }) =>
-      outcome.kind === "agent_notified" ? [`${outcome.agentName} agent`] : [],
-    ),
+    ...dispatches.flatMap((dispatch) => {
+      const outcome = completedOutcome(dispatch);
+      return outcome?.kind === "agent_notified" ? [`${outcome.agentName} agent`] : [];
+    }),
   ];
   if (workers.length > 0) {
     return distinct(workers);
@@ -336,7 +406,14 @@ function traceEffects(
     return distinct(derivedEvents.map((event) => event.eventType));
   }
   return distinct(
-    dispatches.flatMap(({ routeName, outcome }) => {
+    dispatches.flatMap(({ routeName, state }) => {
+      if (state.status === "failed") {
+        return [`${routeName} failed`];
+      }
+      if (state.status !== "completed") {
+        return [];
+      }
+      const { outcome } = state;
       switch (outcome.kind) {
         case "skipped":
           return [`${routeName} skipped`];
@@ -363,13 +440,16 @@ function traceOutcome(
   if (dispatches.length === 0 && derivedEvents.length === 0) {
     return { kind: "unhandled" };
   }
-  const statuses = runs.map((run) => RUN_STATUS[run.status]);
-  const failedRunCount = statuses.filter((status) => status === "failed").length;
+  const statuses = [
+    ...runs.map((run) => RUN_STATUS[run.status]),
+    ...dispatches.map(({ state }) => DISPATCH_STATUS[state.status]),
+  ];
+  const failedCount = statuses.filter((status) => status === "failed").length;
   if (statuses.includes("running") || statuses.includes("waiting")) {
     return {
       kind: "in_progress",
       state: statuses.includes("running") ? "running" : "waiting",
-      failedRunCount,
+      failedCount,
     };
   }
   const moments = [
@@ -378,7 +458,7 @@ function traceOutcome(
     ...dispatches.map((dispatch) => dispatch.dispatchedAt),
     ...runs.flatMap((run) => (run.completedAt === null ? [] : [run.completedAt])),
   ].map((moment) => moment.getTime());
-  return { kind: "settled", settledAt: new Date(Math.max(...moments)), failedRunCount };
+  return { kind: "settled", settledAt: new Date(Math.max(...moments)), failedCount };
 }
 
 /**
@@ -423,11 +503,9 @@ export function eventTraceRunIds({
   runs: readonly EventTraceRun[];
 }): string[] {
   const runsByKey = new Map(runs.map((run) => [runKey(run.workflowName, run.instanceId), run]));
-  return dispatches.flatMap(({ rootEventId: dispatchRootId, outcome }) => {
-    const run =
-      dispatchRootId === rootEventId && outcome.kind === "workflow_started"
-        ? runsByKey.get(runKey(outcome.workflowName, outcome.instanceId))
-        : undefined;
+  return dispatches.flatMap((dispatch) => {
+    const key = dispatch.rootEventId === rootEventId ? startedRunKey(dispatch) : null;
+    const run = key === null ? undefined : runsByKey.get(key);
     return run ? [run.id] : [];
   });
 }
@@ -463,9 +541,10 @@ export function projectEventTrace({
     ]),
   );
   const startedRunKeys = new Set(
-    traceDispatches.flatMap(({ outcome }) =>
-      outcome.kind === "workflow_started" ? [runKey(outcome.workflowName, outcome.instanceId)] : [],
-    ),
+    traceDispatches.flatMap((dispatch) => {
+      const key = startedRunKey(dispatch);
+      return key === null ? [] : [key];
+    }),
   );
   const records = new Map<string, EventTraceRecord>();
 
@@ -505,9 +584,20 @@ export function projectEventTrace({
   }
 
   function dispatchNodes(dispatch: EventTraceDispatch): CausalFlameNode[] {
-    const { outcome } = dispatch;
+    const { state } = dispatch;
     const id = `dispatch:${dispatch.id}`;
     const at = dispatch.dispatchedAt.getTime();
+    if (state.status !== "completed") {
+      records.set(id, { kind: "dispatch", dispatch });
+      return [
+        routeNode(id, dispatchProgressLabel(dispatch.routeName, state), {
+          detail: describeRouteDispatchProgress(state),
+          status: DISPATCH_STATUS[state.status],
+          at,
+        }),
+      ];
+    }
+    const { outcome } = state;
     switch (outcome.kind) {
       // The derived event is a node of its own, which already names the route.
       case "event_reclassified":

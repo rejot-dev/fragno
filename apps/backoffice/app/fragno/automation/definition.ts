@@ -22,7 +22,13 @@ import {
 import type { InstanceStatus } from "@fragno-dev/workflows/workflow";
 
 import { defineFragment } from "@fragno-dev/core";
-import { withDatabase, type TxResult } from "@fragno-dev/db";
+import {
+  type DatabaseHandlerTx,
+  defaultDurableHookRetryPolicy,
+  type DurableHookRetryPolicy,
+  withDatabase,
+  type TxResult,
+} from "@fragno-dev/db";
 import type { WorkflowsFragmentServices } from "@fragno-dev/workflows";
 
 import {
@@ -30,6 +36,7 @@ import {
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel, BackofficeForbiddenError } from "@/backoffice-runtime/kernel";
+import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { readSavedWorkflowProgram } from "@/fragno/codemode/workflow-program";
 import { piAgentActor } from "@/fragno/pi/agent/pi-agent-actor";
@@ -50,6 +57,7 @@ import {
   prepareCodemodeWorkflowInstance,
 } from "./engine/codemode-invocation";
 import {
+  AutomationEventDefinitionValidationError,
   buildAutomationEventDefinitionId,
   validateAutomationEventPayload,
 } from "./event-definitions";
@@ -58,11 +66,20 @@ import { createAutomationEventSourceServices } from "./event-sources-storage-run
 import { createAutomationEventServices } from "./events-storage-runtime";
 import { buildExternalIdentityBindingId, canLinkExternalIdentity } from "./external-identities";
 import { createExternalIdentityBindingServices } from "./external-identity-bindings-storage-runtime";
-import type { AutomationEventIngestionPayload, AutomationHookUnitOfWork } from "./internal-hooks";
+import type {
+  AutomationEventIngestionPayload,
+  AutomationHookUnitOfWork,
+  AutomationInternalHooks,
+  AutomationRouteDispatchPayload,
+} from "./internal-hooks";
 import { createAutomationProjectServices } from "./projects-storage-runtime";
 import {
   type AutomationRouteDispatchOutcome,
   createAutomationRouteDispatchServices,
+  isRouteDispatchSettled,
+  readRouteDispatchState,
+  recordMatchedRoute,
+  routeDispatchId,
 } from "./route-dispatches-storage-runtime";
 import { dispatchAutomationRouteSchedule } from "./route-scheduling-runtime";
 import {
@@ -198,20 +215,35 @@ type CommitRouteDispatch = <TResult, TRetrieveSuccessResult = TResult>(
   effect: (() => TxResult<TResult, TRetrieveSuccessResult>) | null,
 ) => Promise<void>;
 
-type AutomationStoreSnapshot = ReadonlyMap<string, string>;
-
 type RouteExecutionContext = {
   event: AutomationEvent;
   route: AutomationRouteDefinition;
   routingKey: string;
   workflows: AutomationWorkflowsService;
   commitDispatch: CommitRouteDispatch;
-  store: AutomationStoreSnapshot;
+  /** The stored value under `routeStoredInstanceKey`, when the route reads one. */
+  storedInstanceId: string | null;
   linkedUserId: string | null;
 };
 
 const routeRoutingKey = (event: AutomationEvent, route: AutomationRouteDefinition) =>
   `${event.id}:${route.id}`;
+
+/** The store entry holding a route's target workflow instance, when the route reads one. */
+function routeStoredInstanceKey(
+  event: AutomationEvent,
+  route: AutomationRouteDefinition,
+): string | null {
+  const { action } = route;
+  return action.kind === "send_workflow_event" && action.target.kind === "stored_instance_id"
+    ? renderAutomationTemplateValue(
+        action.target.keyTemplate,
+        event,
+        route.id,
+        routeRoutingKey(event, route),
+      )
+    : null;
+}
 
 /**
  * The event an action with its own authority acts on, and the execution it runs as. Null when a
@@ -417,6 +449,14 @@ const handleNotifyAgentRouteAction = async ({
 
 const MAX_AUTOMATION_EVENT_RECLASSIFICATION_CHAIN_LENGTH = 32;
 
+/** A reclassification that would cycle or chain too long; retrying the route cannot change it. */
+class AutomationEventReclassificationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AutomationEventReclassificationError";
+  }
+}
+
 function appendAutomationEventReclassificationIdentity(
   chain: readonly AutomationEventIdentity[],
   target: AutomationEventIdentity,
@@ -426,12 +466,12 @@ function appendAutomationEventReclassificationIdentity(
       (identity) => identity.source === target.source && identity.eventType === target.eventType,
     )
   ) {
-    throw new Error(
+    throw new AutomationEventReclassificationError(
       `AUTOMATION_EVENT_RECLASSIFICATION_CYCLE: ${target.source}/${target.eventType}`,
     );
   }
   if (chain.length >= MAX_AUTOMATION_EVENT_RECLASSIFICATION_CHAIN_LENGTH) {
-    throw new Error(
+    throw new AutomationEventReclassificationError(
       `AUTOMATION_EVENT_RECLASSIFICATION_CHAIN_LIMIT: maximum length ${MAX_AUTOMATION_EVENT_RECLASSIFICATION_CHAIN_LENGTH}`,
     );
   }
@@ -464,30 +504,12 @@ const handleSendWorkflowEventRouteAction = async ({
   routingKey,
   workflows,
   commitDispatch,
-  store,
+  storedInstanceId,
 }: RouteExecutionContext & { action: AutomationSendWorkflowEventAction }) => {
-  let instanceId = "";
-  switch (action.target.kind) {
-    case "instance_id":
-      instanceId = renderAutomationTemplateValue(
-        action.target.template,
-        event,
-        route.id,
-        routingKey,
-      );
-      break;
-
-    case "stored_instance_id": {
-      const storeKey = renderAutomationTemplateValue(
-        action.target.keyTemplate,
-        event,
-        route.id,
-        routingKey,
-      );
-      instanceId = store.get(storeKey) ?? "";
-      break;
-    }
-  }
+  const instanceId =
+    action.target.kind === "instance_id"
+      ? renderAutomationTemplateValue(action.target.template, event, route.id, routingKey)
+      : (storedInstanceId ?? "");
 
   if (!instanceId) {
     await commitDispatch({ kind: "skipped", reason: "workflow_instance_unresolved" }, null);
@@ -508,6 +530,29 @@ const handleSendWorkflowEventRouteAction = async ({
         payload: buildWorkflowEventPayload({ action, event }),
       }),
   );
+};
+
+/**
+ * Errors no retry can fix fail a route at once: invalid events, reclassification cycles, denied
+ * access, and missing targets. Anything else may be a dependency that is restarting. Errors that
+ * crossed an object boundary lost their class and are retried.
+ */
+function isRetryableRouteError(error: unknown): boolean {
+  if (error instanceof BackofficeForbiddenError) {
+    return error.reason === "authority-unavailable";
+  }
+  if (error instanceof BackofficeOperationError) {
+    return error.kind === "conflict" || error.kind === "operation_failed";
+  }
+  return !(
+    error instanceof AutomationEventDefinitionValidationError ||
+    error instanceof AutomationEventReclassificationError
+  );
+}
+
+const routeDispatchRetryPolicy: DurableHookRetryPolicy = {
+  ...defaultDurableHookRetryPolicy,
+  isRetryable: isRetryableRouteError,
 };
 
 export const automationFragmentDefinition = defineFragment<AutomationFragmentConfig>("automations")
@@ -664,60 +709,123 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
           handlerTx: this.handlerTx.bind(this),
         });
       }),
-      internalIngestEvent: defineHook(async function (payload: AutomationEventIngestionPayload) {
-        const event = payload.event;
-        const externalIdentityBindingId =
-          event.actors.initiator.scope === "external" &&
-          canLinkExternalIdentity(event.actors.initiator)
-            ? buildExternalIdentityBindingId(event.actors.initiator)
-            : "";
-        const { routes, store, linkedUserId } = await this.handlerTx({
-          name: "automations.internalIngestEvent",
-        })
-          .retrieve(({ forSchema }) => {
-            const uow = forSchema(automationFragmentSchema);
-            return uow
+      /**
+       * Matches an event to routes and hands each matched route a hook of its own, so a route that
+       * fails retries alone and its siblings neither wait for it nor act again.
+       */
+      internalIngestEvent: defineHook(async function ({
+        event,
+        reclassificationChain,
+        route,
+      }: AutomationEventIngestionPayload) {
+        const handlerTx: DatabaseHandlerTx<AutomationInternalHooks> = this.handlerTx.bind(this);
+        await handlerTx({ name: "automations.internalIngestEvent" })
+          .retrieve(({ forSchema }) =>
+            forSchema(automationFragmentSchema)
               .find("automation_route", (b) =>
                 b.whereIndex("primary").orderByIndex("idx_automation_route_priority_id", "asc"),
               )
-              .find("kv_store", (b) => b.whereIndex("primary"))
-              .findFirst("external_identity_binding", (b) =>
-                b.whereIndex("primary", (eb) => eb("id", "=", externalIdentityBindingId)),
-              );
+              .find("automation_route_dispatch", (b) =>
+                b.whereIndex("idx_automation_route_dispatch_eventId", (eb) =>
+                  eb("eventId", "=", event.id),
+                ),
+              ),
+          )
+          .mutate(({ forSchema, retrieveResult: [routeRows, dispatchRows] }) => {
+            const uow = forSchema(automationFragmentSchema);
+            const matchedRoutes = route
+              ? [route]
+              : routeRows
+                  .map(
+                    (row) =>
+                      ({
+                        id: row.id.externalId,
+                        name: row.name,
+                        enabled: row.enabled,
+                        priority: row.priority,
+                        trigger: row.trigger,
+                        action: row.action,
+                        description: row.description,
+                        nextOccurrenceAt: null,
+                      }) as AutomationRouteDefinition,
+                  )
+                  .filter(
+                    (candidate) =>
+                      candidate.enabled &&
+                      candidate.trigger.kind === "event" &&
+                      (candidate.trigger.source === event.source ||
+                        candidate.trigger.source === "*") &&
+                      (candidate.trigger.eventType === event.eventType ||
+                        candidate.trigger.eventType === "*") &&
+                      evaluateAutomationEventMatcher(candidate.trigger.matcher, event),
+                  );
+            // A replayed match, whose first commit landed before its hook completed, finds the
+            // routes it recorded then.
+            const recordedRouteIds = new Set(dispatchRows.map((dispatch) => dispatch.routeId));
+            for (const matched of matchedRoutes) {
+              if (recordedRouteIds.has(matched.id)) {
+                continue;
+              }
+              recordMatchedRoute(uow, { event, route: matched });
+              uow.triggerHook("internalDispatchRoute", {
+                event,
+                route: matched,
+                reclassificationChain,
+              });
+            }
           })
-          .transformRetrieve(([routeRows, storeRows, externalIdentityBinding]) => ({
-            routes: routeRows.map(
-              (route) =>
-                ({
-                  id: route.id.externalId,
-                  name: route.name,
-                  enabled: route.enabled,
-                  priority: route.priority,
-                  trigger: route.trigger,
-                  action: route.action,
-                  description: route.description,
-                  nextOccurrenceAt: null,
-                }) as AutomationRouteDefinition,
-            ),
-            store: new Map(storeRows.map((entry) => [entry.key, entry.value])),
-            linkedUserId:
-              externalIdentityBinding?.revokedAt === null ? externalIdentityBinding.userId : null,
-          }))
           .execute();
-        const routesToExecute = payload.route
-          ? [payload.route]
-          : routes.filter(
-              (route) =>
-                route.enabled &&
-                route.trigger.kind === "event" &&
-                (route.trigger.source === event.source || route.trigger.source === "*") &&
-                (route.trigger.eventType === event.eventType || route.trigger.eventType === "*") &&
-                evaluateAutomationEventMatcher(route.trigger.matcher, event),
-            );
-        const results = await Promise.allSettled(
-          routesToExecute.map(async (route) => {
+      }),
+      internalDispatchRoute: defineHook(
+        async function ({ event, route, reclassificationChain }: AutomationRouteDispatchPayload) {
+          const subject = { event, route };
+          try {
+            const externalIdentityBindingId =
+              event.actors.initiator.scope === "external" &&
+              canLinkExternalIdentity(event.actors.initiator)
+                ? buildExternalIdentityBindingId(event.actors.initiator)
+                : "";
+            const storedInstanceKey = routeStoredInstanceKey(event, route);
+            const { settled, storedInstanceId, linkedUserId } = await this.handlerTx({
+              name: "automations.internalDispatchRoute",
+            })
+              .retrieve(({ forSchema }) =>
+                forSchema(automationFragmentSchema)
+                  .findFirst("automation_route_dispatch", (b) =>
+                    b.whereIndex("primary", (eb) => eb("id", "=", routeDispatchId(subject))),
+                  )
+                  .findFirst("kv_store", (b) =>
+                    b.whereIndex("idx_kv_store_key", (eb) =>
+                      eb("key", "=", storedInstanceKey ?? ""),
+                    ),
+                  )
+                  .findFirst("external_identity_binding", (b) =>
+                    b.whereIndex("primary", (eb) => eb("id", "=", externalIdentityBindingId)),
+                  ),
+              )
+              .transformRetrieve(([dispatch, storedInstance, externalIdentityBinding]) => ({
+                settled: dispatch
+                  ? isRouteDispatchSettled(readRouteDispatchState(dispatch))
+                  : false,
+                storedInstanceId:
+                  storedInstanceKey === null ? null : (storedInstance?.value ?? null),
+                linkedUserId:
+                  externalIdentityBinding?.revokedAt === null
+                    ? externalIdentityBinding.userId
+                    : null,
+              }))
+              .execute();
+            if (settled) {
+              return;
+            }
+
             const commitDispatch: CommitRouteDispatch = async (outcome, effect) => {
-              const record = () => services.recordRouteDispatch({ event, route, outcome });
+              const record = () =>
+                services.updateRouteDispatch({
+                  ...subject,
+                  // Each attempt before this one threw.
+                  state: { status: "completed", outcome, failedAttempts: this.attempts },
+                });
               await (
                 effect === null
                   ? this.handlerTx().withServiceCalls(() => [record()] as const)
@@ -730,7 +838,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
               routingKey: routeRoutingKey(event, route),
               workflows: serviceDeps.workflows,
               commitDispatch,
-              store,
+              storedInstanceId,
               linkedUserId,
             };
             const action = route.action;
@@ -766,41 +874,42 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
                   event,
                   routeId: route.id,
                 });
-                const reclassificationChain = appendAutomationEventReclassificationIdentity(
-                  payload.reclassificationChain,
+                const nextReclassificationChain = appendAutomationEventReclassificationIdentity(
+                  reclassificationChain,
                   getAutomationEventIdentity(reclassifiedEvent),
                 );
                 await commitDispatch(
                   { kind: "event_reclassified", eventId: reclassifiedEvent.id },
-                  () => services.ingestEvent(reclassifiedEvent, reclassificationChain),
+                  () => services.ingestEvent(reclassifiedEvent, nextReclassificationChain),
                 );
                 break;
               }
             }
-          }),
-        );
-        const failures = results.flatMap((result, index) =>
-          result.status === "rejected"
-            ? [{ route: routesToExecute[index], cause: result.reason }]
-            : [],
-        );
-        if (failures.length === 1) {
-          const cause = failures[0].cause;
-          throw cause instanceof Error ? cause : new Error(String(cause));
-        }
-        if (failures.length > 1) {
-          throw new AggregateError(
-            failures.map(
-              ({ route, cause }) =>
-                new Error(
-                  `Automation route ${route.id} failed: ${cause instanceof Error ? cause.message : String(cause)}`,
-                  { cause },
-                ),
-            ),
-            `Automation event ${event.id} failed for routes: ${failures.map(({ route }) => route.id).join(", ")}`,
-          );
-        }
-      }),
+          } catch (error) {
+            // The processor gives up under the same rule, so `failed` is recorded on the last attempt.
+            const failedAttempts = this.attempts + 1;
+            const exhausted =
+              failedAttempts >= this.maxAttempts || !routeDispatchRetryPolicy.isRetryable(error);
+            await this.handlerTx()
+              .withServiceCalls(
+                () =>
+                  [
+                    services.updateRouteDispatch({
+                      ...subject,
+                      state: {
+                        status: exhausted ? "failed" : "retrying",
+                        failedAttempts,
+                        error: error instanceof Error ? error.message : String(error),
+                      },
+                    }),
+                  ] as const,
+              )
+              .execute();
+            throw error;
+          }
+        },
+        { retryPolicy: routeDispatchRetryPolicy },
+      ),
     };
   })
   .build();

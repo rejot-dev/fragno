@@ -17,6 +17,7 @@ import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
 import { createNodeBackofficeRuntimeConfiguration } from "@/backoffice-runtime/node/node-runtime-env";
 import {
+  eventTraceDispatch,
   eventTraceDispatchesQuery,
   eventTraceEventsQuery,
   eventTraceRunIds,
@@ -24,7 +25,7 @@ import {
   eventTraceStepsQuery,
   projectEventTrace,
   projectEventTraceSummaries,
-  type EventTraceDispatch,
+  type EventTraceDispatchRow,
   type EventTraceEvent,
   type EventTraceRun,
   type EventTraceStep,
@@ -210,11 +211,12 @@ test("events record the routes and workflows that caused them back to their orig
           const database = ctx.tanstack.automations.forOrg(scope.orgId);
           await database.sync();
           const { collections } = database;
-          const [events, dispatches, runs] = (await Promise.all([
+          const [events, dispatchRows, runs] = (await Promise.all([
             queryOnce((query) => eventTraceEventsQuery(query, collections)),
             queryOnce((query) => eventTraceDispatchesQuery(query, collections)),
             queryOnce((query) => eventTraceRunsQuery(query, collections)),
-          ])) as [EventTraceEvent[], EventTraceDispatch[], EventTraceRun[]];
+          ])) as [EventTraceEvent[], EventTraceDispatchRow[], EventTraceRun[]];
+          const dispatches = dispatchRows.map(eventTraceDispatch);
           const runIds = eventTraceRunIds({ rootEventId: webhookEventId, dispatches, runs });
           const steps = (await queryOnce((query) =>
             eventTraceStepsQuery(query, collections, runIds),
@@ -260,7 +262,7 @@ test("events record the routes and workflows that caused them back to their orig
             rootEventId: webhookEventId,
             headline: "#42 Flaky deploy check",
             effects: ["triage-issue"],
-            outcome: { kind: "settled", failedRunCount: 0 },
+            outcome: { kind: "settled", failedCount: 0 },
           });
         }),
         then.hooks.noFailed({ orgId: scope.orgId, fragments: ["automations"] }),
