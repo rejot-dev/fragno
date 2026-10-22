@@ -25,6 +25,7 @@ import { panelTableRowDefinition } from "./components/panel-table-row";
 import { progressDefinition } from "./components/progress";
 import { relativeTimeDefinition } from "./components/relative-time";
 import { rowListDefinition } from "./components/row-list";
+import { runStatusDefinition } from "./components/run-status";
 import { sectionDefinition } from "./components/section";
 import { selectDefinition } from "./components/select";
 import { sparkBarsDefinition } from "./components/spark-bars";
@@ -53,6 +54,7 @@ export const backofficeUiComponentDefinitions = {
   Metric: metricDefinition,
   Number: numberDefinition,
   Badge: badgeDefinition,
+  RunStatus: runStatusDefinition,
   Icon: iconDefinition,
   Link: linkDefinition,
   RelativeTime: relativeTimeDefinition,

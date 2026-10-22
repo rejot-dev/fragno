@@ -291,6 +291,12 @@ type BackofficeUiComponents = {
       tone: "info" | "live" | "waiting" | "failed" | "muted";
     }>,
   ): BackofficeUiElement;
+  /** Builds RunStatus. A workflow run's status as the dashboard shows it: Running, Paused, Waiting, Complete, Errored, or Terminated, each in its tone. Pass a run's status field as it is. */
+  runStatus(
+    props: BackofficeUiProps<{
+      status: "active" | "paused" | "waiting" | "complete" | "errored" | "terminated";
+    }>,
+  ): BackofficeUiElement;
   /** Builds Icon. Displays a small icon that marks a row's kind, such as alert-triangle for a failure, in a status tone; muted without one. */
   icon(
     props: BackofficeUiProps<{

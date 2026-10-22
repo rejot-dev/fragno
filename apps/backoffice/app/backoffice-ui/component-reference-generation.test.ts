@@ -34,6 +34,7 @@ describe("Backoffice UI builder declaration generation", () => {
       "Metric",
       "Number",
       "Badge",
+      "RunStatus",
       "Icon",
       "Link",
       "RelativeTime",
