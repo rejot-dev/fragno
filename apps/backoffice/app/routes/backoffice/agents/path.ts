@@ -19,8 +19,13 @@ const decodePathname = (pathname: string) => {
 const matchesBasePath = (pathname: string, basePath: string) =>
   pathname === basePath || pathname.startsWith(`${basePath}/`);
 
+/** The scope's agents list. */
+export function piAgentsPath(scope: BackofficeRouteScope): string {
+  return `/backoffice/agents/${backofficeRouteScopePath(scope)}/agents`;
+}
+
 export const isPiAgentsPath = (scope: BackofficeRouteScope, pathname: string) => {
-  const encodedBasePath = `/backoffice/agents/${backofficeRouteScopePath(scope)}/agents`;
+  const encodedBasePath = piAgentsPath(scope);
   const decodedBasePath = decodePathname(encodedBasePath);
   const normalizedPath = pathname.replace(/\/+$/, "");
   return (

@@ -127,9 +127,19 @@ const componentDemoInputs: ComponentDemoInput[] = [
     },
   },
   {
+    component: "Number",
+    category: "Data",
+    props: { value: 0.92, format: "percent", tone: "live" },
+  },
+  {
     component: "Badge",
     category: "Data",
     props: { label: "Live", tone: "live" },
+  },
+  {
+    component: "Icon",
+    category: "Data",
+    props: { name: "alert-triangle", tone: "failed" },
   },
   {
     component: "Link",

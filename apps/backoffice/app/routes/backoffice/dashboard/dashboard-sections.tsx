@@ -12,7 +12,6 @@ import {
   backofficeRouteScopeFromResolvedScope,
   type BackofficeScopeSelection,
 } from "@/backoffice-runtime/resolved-scope";
-import { backofficeRouteScopePath } from "@/backoffice-runtime/route-scope";
 import { WorkflowRunGeneratedInterface } from "@/components/backoffice/workflow-run-generated-interface";
 import type { AutomationBrowserCollections } from "@/fragno/automation/tanstack/browser-database";
 import type { RuntimeToolWorkflowDescriptor } from "@/fragno/runtime-tools/workflow-catalog";
@@ -23,6 +22,7 @@ import {
   type PiAgentListing,
 } from "../agents/agent-activity";
 import { formatPiAgentName } from "../agents/agent-name";
+import { piAgentsPath } from "../agents/path";
 import type { AutomationScriptSourceRecord } from "../automations/data";
 import { formatRelativeTime } from "../automations/formatting";
 import {
@@ -77,9 +77,7 @@ export function DashboardSections({
   agents: readonly PiAgentListing[];
 }) {
   const { selectedScope } = loaderData;
-  const agentsPath = `/backoffice/agents/${backofficeRouteScopePath(
-    backofficeRouteScopeFromResolvedScope(selectedScope),
-  )}/agents`;
+  const agentsPath = piAgentsPath(backofficeRouteScopeFromResolvedScope(selectedScope));
 
   return (
     <>

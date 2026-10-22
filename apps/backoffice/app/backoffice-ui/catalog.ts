@@ -11,11 +11,13 @@ import { dividerDefinition } from "./components/divider";
 import { fileUploadDefinition } from "./components/file-upload";
 import { gridDefinition } from "./components/grid";
 import { headingDefinition } from "./components/heading";
+import { iconDefinition } from "./components/icon";
 import { imageDefinition } from "./components/image";
 import { keyValueDefinition } from "./components/key-value";
 import { linkDefinition } from "./components/link";
 import { listDefinition } from "./components/list";
 import { metricDefinition } from "./components/metric";
+import { numberDefinition } from "./components/number";
 import { progressDefinition } from "./components/progress";
 import { relativeTimeDefinition } from "./components/relative-time";
 import { sectionDefinition } from "./components/section";
@@ -39,7 +41,9 @@ export const backofficeUiComponentDefinitions = {
   Image: imageDefinition,
   Callout: calloutDefinition,
   Metric: metricDefinition,
+  Number: numberDefinition,
   Badge: badgeDefinition,
+  Icon: iconDefinition,
   Link: linkDefinition,
   RelativeTime: relativeTimeDefinition,
   KeyValue: keyValueDefinition,

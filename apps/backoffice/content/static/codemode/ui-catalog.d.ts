@@ -9,17 +9,19 @@ type BackofficeUiFormSubmitProps = {
 };
 
 type BackofficeUiComponents = {
-  /** Builds Stack. Arranges generated Backoffice content vertically with a controlled gap. */
+  /** Builds Stack. Arranges generated Backoffice content in a column, or in a row such as an icon beside text; justify between pushes a row's last child to its end, such as a time. */
   stack(
     props: BackofficeUiProps<{
       gap: "sm" | "md" | "lg";
+      direction?: "column" | "row";
+      justify?: "start" | "between";
     }>,
     children: BackofficeUiElement[] | BackofficeUiRepeat,
   ): BackofficeUiElement;
-  /** Builds Grid. Arranges related report items in a responsive one-to-four-column grid. */
+  /** Builds Grid. Arranges related report items in a responsive one-to-four-column grid, or main-side: a wide column beside a narrow one on large screens, such as details beside connections. */
   grid(
     props: BackofficeUiProps<{
-      columns: 1 | 2 | 3 | 4;
+      columns: 1 | 2 | 3 | 4 | "main-side";
       gap: "sm" | "md" | "lg";
     }>,
     children: BackofficeUiElement[] | BackofficeUiRepeat,
@@ -97,6 +99,14 @@ type BackofficeUiComponents = {
       tone?: "info" | "live" | "waiting" | "failed" | "muted";
     }>,
   ): BackofficeUiElement;
+  /** Builds Number. Displays a number rounded for reading: integer, decimal with up to two fraction digits, or percent of a ratio, so 0.92 shows 92%; null shows a dash. */
+  number(
+    props: BackofficeUiProps<{
+      value: number | null;
+      format: "integer" | "decimal" | "percent";
+      tone?: "info" | "live" | "waiting" | "failed" | "muted";
+    }>,
+  ): BackofficeUiElement;
   /** Builds Badge. Displays a compact semantic status label. */
   badge(
     props: BackofficeUiProps<{
@@ -105,7 +115,34 @@ type BackofficeUiComponents = {
       tone: "info" | "live" | "waiting" | "failed" | "muted";
     }>,
   ): BackofficeUiElement;
-  /** Builds Link. Links to a workflow run (workflowName is the runner's internal name), an automation route, or an integration connection in the current scope. */
+  /** Builds Icon. Displays a small icon that marks a row's kind, such as alert-triangle for a failure, in a status tone; muted without one. */
+  icon(
+    props: BackofficeUiProps<{
+      name:
+        | "activity"
+        | "alert-circle"
+        | "alert-triangle"
+        | "bell"
+        | "calendar"
+        | "check"
+        | "check-circle"
+        | "clock"
+        | "edit-3"
+        | "inbox"
+        | "info"
+        | "link"
+        | "mail"
+        | "message-square"
+        | "pause-circle"
+        | "play-circle"
+        | "user"
+        | "users"
+        | "x-circle"
+        | "zap";
+      tone?: "info" | "live" | "waiting" | "failed" | "muted";
+    }>,
+  ): BackofficeUiElement;
+  /** Builds Link. Links to a workflow run (workflowName is the runner's internal name), an automation route, an integration connection, or the integrations or agents of the current scope. */
   link(
     props: BackofficeUiProps<{
       /** 1-200 characters */
@@ -127,6 +164,12 @@ type BackofficeUiComponents = {
             kind: "connection";
             /** 1-200 characters */
             id: string;
+          }
+        | {
+            kind: "integrations";
+          }
+        | {
+            kind: "agents";
           };
     }>,
   ): BackofficeUiElement;
