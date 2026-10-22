@@ -1,5 +1,5 @@
-import { generatePageDeclarations } from "@/artifacts/pages/declarations-generation";
-import { generateBackofficeUiBuilderDeclarations } from "@/backoffice-ui/component-reference-generation";
+import { generatePageSchemaDeclarations } from "@/artifacts/pages/declarations-generation";
+import { generateBackofficeUiCatalogDeclarations } from "@/backoffice-ui/component-reference-generation";
 import {
   createRuntimeToolReferences,
   renderCodemodeProviderNamespaceTypes,
@@ -12,7 +12,9 @@ const CODEMODE_TYPES_DIR_PATH = "/static/codemode";
 export const CODEMODE_SYSTEM_DTS_PATH = `${CODEMODE_TYPES_DIR_PATH}/system.d.ts`;
 export const CODEMODE_WORKFLOW_AUTHORING_DTS_PATH = `${CODEMODE_TYPES_DIR_PATH}/workflow-authoring.d.ts`;
 const CODEMODE_UI_DTS_PATH = `${CODEMODE_TYPES_DIR_PATH}/ui.d.ts`;
+const CODEMODE_UI_CATALOG_DTS_PATH = `${CODEMODE_TYPES_DIR_PATH}/ui-catalog.d.ts`;
 const CODEMODE_PAGE_DTS_PATH = `${CODEMODE_TYPES_DIR_PATH}/page.d.ts`;
+const CODEMODE_PAGE_SCHEMA_DTS_PATH = `${CODEMODE_TYPES_DIR_PATH}/page-schema.d.ts`;
 const CODEMODE_PROVIDER_TYPES_DIR_PATH = `${CODEMODE_TYPES_DIR_PATH}/providers`;
 
 const VALID_DECLARE_CONST_NAME = /^[A-Za-z_$][\w$]*$/u;
@@ -116,8 +118,8 @@ export function createCodemodeStaticTypeFiles({
         }),
       ),
     },
-    { path: CODEMODE_UI_DTS_PATH, content: generateBackofficeUiBuilderDeclarations() },
-    { path: CODEMODE_PAGE_DTS_PATH, content: generatePageDeclarations() },
+    { path: CODEMODE_UI_CATALOG_DTS_PATH, content: generateBackofficeUiCatalogDeclarations() },
+    { path: CODEMODE_PAGE_SCHEMA_DTS_PATH, content: generatePageSchemaDeclarations() },
     ...providerFiles,
   ];
 }
@@ -125,16 +127,18 @@ export function createCodemodeStaticTypeFiles({
 /** Generates the complete codemode declaration set for tests and in-memory consumers. */
 export function createCodemodeTypeFiles({
   families,
-  workflowAuthoringTypes,
+  authoredTypes,
 }: {
   families: readonly BackofficeRuntimeToolFamily[];
-  workflowAuthoringTypes: string;
+  /** The declarations written by hand rather than generated. */
+  authoredTypes: { workflowAuthoring: string; ui: string; page: string };
 }): CodemodeTypeFile[] {
   return [
     ...createCodemodeStaticTypeFiles({ families }),
-    {
-      path: CODEMODE_WORKFLOW_AUTHORING_DTS_PATH,
-      content: renderDtsContent(workflowAuthoringTypes.trimEnd()),
-    },
+    ...[
+      { path: CODEMODE_WORKFLOW_AUTHORING_DTS_PATH, content: authoredTypes.workflowAuthoring },
+      { path: CODEMODE_UI_DTS_PATH, content: authoredTypes.ui },
+      { path: CODEMODE_PAGE_DTS_PATH, content: authoredTypes.page },
+    ].map(({ path, content }) => ({ path, content: renderDtsContent(content.trimEnd()) })),
   ];
 }

@@ -14,7 +14,8 @@ then commit or discard it.
 
 When composing generated Backoffice UI:
 
-- Read `/static/skills/generating-backoffice-uis/SKILL.md` and `/static/codemode/ui.d.ts`.
+- Read `/static/skills/generating-backoffice-uis/SKILL.md`, `/static/codemode/ui.d.ts`, and
+  `/static/codemode/ui-catalog.d.ts`.
 - Set `ui.fileUpload` `scope` to `{ kind: "current" }` when the upload belongs to the workflow's
   current Backoffice context. The renderer resolves it to the authenticated org, project, or user
   scope.
