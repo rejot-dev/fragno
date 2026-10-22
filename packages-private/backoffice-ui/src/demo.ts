@@ -76,6 +76,52 @@ const componentDemoInputs: ComponentDemoInput[] = [
     },
   },
   {
+    component: "Panel",
+    category: "Layout",
+    props: backofficeUiComponentDefinitions.Panel.example,
+    children: {
+      "panel-copy": {
+        type: "Text",
+        props: { text: "A titled region of a page, flat under its rule.", tone: "muted" },
+        children: [],
+      },
+    },
+  },
+  {
+    component: "PanelTable",
+    category: "Data",
+    props: backofficeUiComponentDefinitions.PanelTable.example,
+    children: {
+      "panel-table-row": {
+        type: "PanelTableRow",
+        props: { title: "nightly-sync" },
+        children: [],
+      },
+    },
+  },
+  {
+    component: "PanelTableRow",
+    category: "Data",
+    props: backofficeUiComponentDefinitions.PanelTableRow.example,
+  },
+  {
+    component: "RowList",
+    category: "Data",
+    props: backofficeUiComponentDefinitions.RowList.example,
+    children: {
+      "row-list-row": {
+        type: "ListRow",
+        props: { title: "agensi", detail: "MCP", icon: "link" },
+        children: [],
+      },
+    },
+  },
+  {
+    component: "ListRow",
+    category: "Data",
+    props: backofficeUiComponentDefinitions.ListRow.example,
+  },
+  {
     component: "Divider",
     category: "Layout",
     props: { label: "Details" },

@@ -127,30 +127,41 @@ export default page.define(
       .where(({ run }) => gte(run.createdAt, day))
       .select(({ run }) => ({ total: count(run.id) }));
 
-    return ui.stack({ gap: "md" }, [
+    return ui.stack({ gap: "xl" }, [
       ui.metric({ label: "Runs today", value: started.value("total", 0) }),
-      ui.stack(
-        { gap: "sm" },
+      ui.panelTable(
+        {
+          title: "Automations",
+          columns: [{ label: "Runs · 24 hours" }, { label: "Last run", align: "end" }],
+          empty: "No workflow has run yet.",
+        },
         ui.each(health, (row) =>
-          ui.grid({ columns: 4, gap: "sm" }, [
-            ui.link({
-              label: row.workflow,
+          ui.panelTableRow(
+            {
+              title: row.workflow,
               to: {
                 kind: "run",
                 workflowName: row.latest[0].workflowName,
                 instanceId: row.latest[0].instanceId,
               },
-            }),
-            ui.sparkBars({
-              label: "Starts per hour",
-              rows: row.hourly,
-              axis: { field: "hour", intervals: hours },
-              value: "runs",
-            }),
-            ui.badge({ label: row.latest[0].status, tone: row.latest[0].tone }),
-            ui.relativeTime({ time: row.latest[0].updatedAt }),
-            ui.when(ui.is(row.errored, { gt: 0 }), ui.text({ text: "Has errored runs" })),
-          ]),
+            },
+            [
+              ui.sparkBars({
+                label: "Starts per hour",
+                rows: row.hourly,
+                axis: { field: "hour", intervals: hours },
+                value: "runs",
+              }),
+              ui.stack({ gap: "md", direction: "row" }, [
+                ui.when(
+                  ui.is(row.errored, { gt: 0 }),
+                  ui.badge({ label: "Errored runs", tone: "failed" }),
+                ),
+                ui.badge({ label: row.latest[0].status, tone: row.latest[0].tone }),
+                ui.relativeTime({ time: row.latest[0].updatedAt }),
+              ]),
+            ],
+          ),
         ),
       ),
     ]);
@@ -193,9 +204,9 @@ each callback, as above; a helper function that takes a source's fields needs a 
   renders and, when a value does not fit, shows what is wrong in its place.
 - A query goes in a prop that shows rows, such as `ui.table` `rows` or a chart's `rows`. Without
   `select`, a row carries every field of its collection, and a table's columns choose which to show.
-- `ui.each(query, (row) => element)` is the children of `ui.stack`, `ui.grid`, or `ui.section`: one
-  element per row. `row.field` reads a field, and `row.latest[0].status` reads into nested rows. A
-  nested `ui.each(row.hourly, ...)` reads only its own rows.
+- `ui.each(query, (row) => element)` is the children of `ui.rowList`, `ui.panelTable`, `ui.stack`,
+  or `ui.grid`: one element per row. `row.field` reads a field, and `row.latest[0].status` reads
+  into nested rows. A nested `ui.each(row.hourly, ...)` reads only its own rows.
 - `ui.when(ui.is(row.errored, { gt: 0 }), element)` shows an element while a live value matches.
 - `query.value(field, whenEmpty)` goes in a single-value prop, such as `ui.metric` `value`. It holds
   the field of the first row, or `whenEmpty` while the query has no rows; an aggregate over no rows
@@ -203,6 +214,19 @@ each callback, as above; a helper function that takes a source's fields needs a 
 
 ## Components for live data
 
+- Lay a page out as panels, as the home page does: `ui.panel({ title, link })` titles a region and
+  may close with a link, such as
+  `{ label: "Show more on the Integrations page", to: { kind: "integrations" } }`. Space panels with
+  `gap: "xl"`.
+- `ui.rowList({ empty }, ui.each(query, (row) => ui.listRow(...)))` lists rows divided by rules and
+  shows `empty` while the query has no rows. `ui.listRow({ title, to, detail, icon, tone }, [...])`
+  shows a title and a muted detail line, ends with its children, such as a badge and a time, and
+  links as a whole when `to` is set. A `tone` sets the icon on a tile, for rows that ask for
+  something. Row lists in one panel read as one list, so a panel can list several queries.
+- `ui.panelTable({ title, columns, empty }, ui.each(query, (row) => ui.panelTableRow(...)))` shows
+  rows that share columns; `ui.panelTableRow({ title, to }, [...])` holds one child per column.
+- Select labels people read beside the raw values queries compare, such as `statusLabel` beside
+  `status`; derived collections carry some, such as `displayName`.
 - `ui.link({ label, to })` opens a run (`{ kind: "run", workflowName, instanceId }`, where
   `workflowName` is the run's internal name), a route (`{ kind: "route", id }`), a connection
   (`{ kind: "connection", id }`), or the scope's integrations or agents (`{ kind: "integrations" }`,
@@ -210,10 +234,9 @@ each callback, as above; a helper function that takes a source's fields needs a 
 - `ui.relativeTime({ time })` shows "3m ago" or "in 2h" and moves with the page.
 - `ui.number({ value, format })` rounds as it shows; queries cannot round. A `percent` takes a
   ratio, such as `divide(workflow.completed, workflow.finished)`, and null shows a dash.
-- `ui.icon({ name, tone })` marks a row's kind. Lay a row out with
-  `ui.stack({ gap: "sm", direction: "row", justify: "between" }, [...])`, where `between` pushes the
-  last child, such as a time, to the end.
-- `ui.grid({ columns: "main-side", gap: "lg" }, [main, side])` sets details beside a narrow column,
+- `ui.stack({ gap: "md", direction: "row" }, [...])` sets children side by side, such as a badge
+  beside a time in a table cell.
+- `ui.grid({ columns: "main-side", gap: "xl" }, [main, side])` sets panels beside a narrow column,
   as the home page does.
 - `ui.sparkBars` and `ui.barChart` take `rows`, an `axis` naming the field along it, and the `value`
   field to size bars by; `ui.barChart` also stacks by a `series` field.

@@ -16,10 +16,15 @@ import { imageDefinition } from "./components/image";
 import { keyValueDefinition } from "./components/key-value";
 import { linkDefinition } from "./components/link";
 import { listDefinition } from "./components/list";
+import { listRowDefinition } from "./components/list-row";
 import { metricDefinition } from "./components/metric";
 import { numberDefinition } from "./components/number";
+import { panelDefinition } from "./components/panel";
+import { panelTableDefinition } from "./components/panel-table";
+import { panelTableRowDefinition } from "./components/panel-table-row";
 import { progressDefinition } from "./components/progress";
 import { relativeTimeDefinition } from "./components/relative-time";
+import { rowListDefinition } from "./components/row-list";
 import { sectionDefinition } from "./components/section";
 import { selectDefinition } from "./components/select";
 import { sparkBarsDefinition } from "./components/spark-bars";
@@ -34,6 +39,11 @@ export const backofficeUiComponentDefinitions = {
   Stack: stackDefinition,
   Grid: gridDefinition,
   Section: sectionDefinition,
+  Panel: panelDefinition,
+  PanelTable: panelTableDefinition,
+  PanelTableRow: panelTableRowDefinition,
+  RowList: rowListDefinition,
+  ListRow: listRowDefinition,
   Divider: dividerDefinition,
   Heading: headingDefinition,
   Text: textDefinition,
