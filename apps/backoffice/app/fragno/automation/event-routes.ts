@@ -5,6 +5,8 @@ import {
   type AutomationEventRecord,
   automationEventListInputSchema,
   automationEventListResultSchema,
+  automationEventRoutesListInputSchema,
+  automationEventRoutesListResultSchema,
 } from "@fragno-dev/backoffice-api/v0/events";
 import { getFragmentDurableHooks } from "@fragno-dev/db/durable-hooks";
 
@@ -12,6 +14,11 @@ import { defineRoutes } from "@fragno-dev/core";
 import { decodeCursor } from "@fragno-dev/db";
 
 import { automationFragmentDefinition } from "./definition";
+import { EVENTS_BY_TIME_INDEX } from "./events-storage-runtime";
+import {
+  eventRouteDispatchesOfRows,
+  ROUTES_BY_STATUS_INDEX,
+} from "./route-dispatches-storage-runtime";
 
 type AutomationEventRow = Omit<AutomationEvent, "id" | "occurredAt" | "causation"> & {
   id: { valueOf(): string };
@@ -114,6 +121,65 @@ export const automationEventRoutes = defineRoutes(automationFragmentDefinition).
     }),
     defineRoute({
       method: "GET",
+      path: "/event-routes",
+      queryParameters: ["status", "limit", "cursor"],
+      outputSchema: automationEventRoutesListResultSchema,
+      errorCodes: ["EVENT_ROUTES_LIST_INPUT_INVALID"],
+      handler: async function ({ query }, { json, error }) {
+        const limitRaw = query.get("limit")?.trim();
+        const parsed = automationEventRoutesListInputSchema.safeParse({
+          status: query.get("status")?.trim(),
+          limit: limitRaw ? Number(limitRaw) : undefined,
+        });
+        const cursorRaw = query.get("cursor")?.trim();
+        let cursor;
+        try {
+          cursor = cursorRaw ? decodeCursor(cursorRaw) : undefined;
+        } catch {
+          cursor = null;
+        }
+        if (
+          !parsed.success ||
+          cursor === null ||
+          (cursor &&
+            (cursor.indexName !== ROUTES_BY_STATUS_INDEX ||
+              cursor.orderDirection !== "desc" ||
+              cursor.pageSize <= 0 ||
+              cursor.pageSize > 500))
+        ) {
+          return error(
+            {
+              message:
+                "Event routes list needs a status of pending, retrying, completed, or failed, a limit of 1 to 500, and a cursor from a previous page.",
+              code: "EVENT_ROUTES_LIST_INPUT_INVALID",
+            },
+            400,
+          );
+        }
+
+        const result = await this.handlerTx()
+          .withServiceCalls(
+            () =>
+              [
+                services.listRoutesWithStatus({
+                  status: parsed.data.status,
+                  limit: parsed.data.limit ?? 100,
+                  cursor,
+                }),
+              ] as const,
+          )
+          .transform(({ serviceResult: [result] }) => result)
+          .execute();
+
+        return json({
+          routes: result.routes,
+          nextCursor: result.cursor?.encode(),
+          hasNextPage: result.hasNextPage,
+        });
+      },
+    }),
+    defineRoute({
+      method: "GET",
       path: "/events",
       queryParameters: ["limit", "cursor"],
       outputSchema: automationEventListResultSchema,
@@ -151,7 +217,7 @@ export const automationEventRoutes = defineRoutes(automationFragmentDefinition).
           cursor = cursorRaw ? decodeCursor(cursorRaw) : undefined;
           if (
             cursor &&
-            (cursor.indexName !== "idx_automation_event_occurredAt_id" ||
+            (cursor.indexName !== EVENTS_BY_TIME_INDEX ||
               cursor.orderDirection !== "desc" ||
               cursor.pageSize <= 0 ||
               cursor.pageSize > 500)
@@ -174,7 +240,12 @@ export const automationEventRoutes = defineRoutes(automationFragmentDefinition).
           .execute();
 
         return json({
-          events: result.events.map(automationEventRecord),
+          events: result.events.map((event) => ({
+            ...automationEventRecord(event),
+            routing: event.routesMatched
+              ? { status: "matched" as const, routes: eventRouteDispatchesOfRows(event.routes) }
+              : { status: "matching" as const },
+          })),
           nextCursor: result.cursor?.encode(),
           hasNextPage: result.hasNextPage,
         });

@@ -1,6 +1,10 @@
 import { assert, expect, test, vi } from "vitest";
 
-import { automationEventListResultSchema } from "@fragno-dev/backoffice-api/v0/events";
+import {
+  automationEventListResultSchema,
+  type AutomationEventRouting,
+  automationEventRoutesListResultSchema,
+} from "@fragno-dev/backoffice-api/v0/events";
 
 const workers = vi.hoisted(() => ({
   DurableObject: class {},
@@ -311,18 +315,61 @@ test("an agent reads where each route its event matched stands", async () => {
               ].join("\n"),
             );
 
+            // The list carries the same routing, and lists only events a route is failing on.
+            const listed = automationEventListResultSchema.parse(
+              JSON.parse((await bash.exec("events.list --format json")).stdout),
+            );
+            expect(listed.events.map((event) => [event.id, event.routing.status])).toEqual([
+              [`reclassified:reclassify:${eventId}`, "matched"],
+              [eventId, "matched"],
+            ]);
+            // Routes in one state list on their own, each with the event it matched.
+            const failing = automationEventRoutesListResultSchema.parse(
+              JSON.parse(
+                (await bash.exec("events.routes.list --status failed --format json")).stdout,
+              ),
+            );
+            const routing = JSON.parse(matched.stdout).routing as AutomationEventRouting;
+            assert(routing.status === "matched");
+            expect(failing).toEqual({
+              routes: [
+                { eventId, route: routing.routes.find((route) => route.routeId === "forward") },
+              ],
+              hasNextPage: false,
+            });
+            expect((await bash.exec("events.routes.list --status retrying")).stdout).toBe(
+              [
+                "event id\tmatched at\troute",
+                `${eventId}\t${failing.routes[0]?.route.matchedAt}\tdeliver (Deliver to a run that does not exist): retrying after 1 failed attempt, last error: INSTANCE_NOT_FOUND`,
+                "",
+              ].join("\n"),
+            );
+            expect(await bash.exec("events.routes.list --status pending")).toMatchObject({
+              exitCode: 0,
+              stdout: "No routes found.\n",
+            });
+            for (const args of ["", "--status broken"]) {
+              expect(await bash.exec(`events.routes.list ${args}`)).toMatchObject({
+                exitCode: 1,
+                stdout: "",
+              });
+            }
+            expect((await bash.exec("events.list")).stdout).toContain(
+              `reclassified:reclassify:${eventId}\t${listed.events[0]?.occurredAt}\tcustom\tcheck.reclassified\tno route`,
+            );
+
             // Only a route that failed for good can run again, and only one the event matched.
             expect(
-              await bash.exec(`events.retry-route --id ${eventId} --route deliver`),
+              await bash.exec(`events.routes.retry --event ${eventId} --route deliver`),
             ).toMatchObject({
               exitCode: 1,
               stderr: expect.stringContaining("Only a route that failed for good can be retried"),
             });
             expect(
-              await bash.exec(`events.retry-route --id ${eventId} --route unknown`),
+              await bash.exec(`events.routes.retry --event ${eventId} --route unknown`),
             ).toMatchObject({ exitCode: 1, stderr: "The event did not match this route.\n" });
             expect(
-              await bash.exec(`events.retry-route --id ${eventId} --route forward`),
+              await bash.exec(`events.routes.retry --event ${eventId} --route forward`),
             ).toMatchObject({
               exitCode: 0,
               stdout: "forward (Forward to another organization): pending, not attempted yet\n",

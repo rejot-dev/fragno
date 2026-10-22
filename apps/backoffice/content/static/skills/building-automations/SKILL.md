@@ -181,11 +181,18 @@ reclassifies the event, or forwards it to another scope.
 
 ## Diagnose a route that did not act
 
-When an automation did not do what it should for an event, read
-`/static/skills/building-automations/references/event-routing.md`, find the event with
-`events.list`, and read `events.get({ id })`. Its `routing` lists every route the event matched with
-its status, outcome, and last error. Fix the cause the error names before retrying a `failed` route
-with `events.retryRoute({ id, routeId })`, then read `events.get` again to confirm the outcome.
+When an automation did not do what it should for an event, or the user asks what is failing, read
+`/static/skills/building-automations/references/event-routing.md`, then:
+
+1. Find the route. `events.routesList({ status: "failed" })` lists the routes that failed for good
+   and `status: "retrying"` those still retrying, newest match first, each as `{ eventId, route }`;
+   keep the entries whose `route.routeId` is the route in question. Starting from a known event,
+   read its `routing` with `events.get({ id })`, or page `events.list`, which carries it too.
+2. Fix the cause `route.error` names, such as a permission missing from the route's grants, a
+   workflow run that does not exist, or an agent that was never prompted.
+3. Retry a `failed` route with `events.routesRetry({ eventId, routeId: route.routeId })`, which
+   needs `router.modify`, then read `events.get({ id: eventId })` for its outcome.
+
 **Complete when** each route the event matched is accounted for by its retrieved status and outcome,
 or by the exact error still blocking it.
 

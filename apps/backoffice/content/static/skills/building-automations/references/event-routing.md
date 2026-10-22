@@ -121,12 +121,19 @@ what each route it matched did, and the workflow runs those routes started show 
 Select the scope that owns the delivery before inspecting it. For forwarded events, inspect the
 source and target scopes separately.
 
-Use `events.list({ limit: 50 })` to retrieve a page, newest first. Match its records locally against
-the expected `source`, `eventType`, occurrence time, and delivery-specific payload identifiers.
-Continue with the returned `nextCursor` while `hasNextPage` is true and the relevant delivery has
-not been found. Keep the search bounded to the delivery's time window or an explicit page budget. If
-the search stops before covering that window, report the search boundary rather than claiming the
-event was never ingested.
+Use `events.list({ limit: 50 })` to retrieve a page, newest first; each event carries the same
+`routing` as `events.get`. Match the records locally against the expected `source`, `eventType`,
+occurrence time, and delivery-specific payload identifiers. Continue with the returned `nextCursor`
+while `hasNextPage` is true and the relevant delivery has not been found. Keep the search bounded to
+the delivery's time window or an explicit page budget. If the search stops before covering that
+window, report the search boundary rather than claiming the event was never ingested.
+
+To find what is going wrong without reading every event, use
+`events.routesList({ status: "failed" })`, then `status: "retrying"`. Each call lists the routes in
+one state, across every route and event in the scope, newest match first. Each entry is
+`{ eventId, route }`, where `route` has the shape of an entry in `routing.routes`, described below;
+keep the entries whose `route.routeId` is the route in question. It pages with `limit` and `cursor`
+like `events.list`. Reading events and their routes needs `events.read`.
 
 ## Correlate the evidence
 
@@ -146,15 +153,21 @@ the event matched, each with its `status`:
   event it produced. `failedAttempts` above zero means it only acted after retries.
 - `failed`: the route gave up on `error`, because no retry could fix it, such as a denied scope, or
   it ran out of attempts. Fix what it depends on, then run only this route again with
-  `events.retryRoute({ id, routeId })`. Only `failed` routes can be retried; a `retrying` route
-  retries by itself.
+  `events.routesRetry({ eventId, routeId })`. Only `failed` routes can be retried; a `retrying`
+  route retries by itself.
+
+Each route also has `routeName`, its name when it matched, since routes can be renamed or deleted
+later, and `matchedAt`.
 
 A retried route acts as it was when the event matched it: its action, such as the workflow file, the
 run it signals, or the agent it notifies, does not change. Its permissions are the route's current
 grants, and it must still be enabled. So granting a missing permission, creating the workflow run it
 targets, or prompting the agent once fixes a retry, but changing the route's action does not; fire a
-new event for that, which runs every route it matches, not only this one. `events.retryRoute`
-returns the route as `pending`; read `events.get` again for its outcome.
+new event for that, which runs every route it matches, not only this one.
+
+Retrying needs `router.modify`. `events.routesRetry` returns the route as `pending`, and it leaves
+the `failed` listing; read `events.get({ id: eventId })` again for its outcome. It returns `null`
+when the event does not exist or did not match that route, and fails when the route is not `failed`.
 
 An empty `routes` means no route matched; compare the event with each route's trigger and matcher.
 Follow each outcome to the work it names:
@@ -166,8 +179,15 @@ Follow each outcome to the work it names:
   set off. An event no step has taken yet is still pending.
 - `agent_notified`: the agent's answer is its own `pi` `turn.completed` event.
 - `event_reclassified` and `event_forwarded`: the event they name, with `events.get`; a forwarded
-  event lives in its target scope. Report ingestion and downstream execution separately, including
-  failures, pending work, and any missing evidence.
+  event lives in its target scope.
+- `skipped`: the route chose not to act, for the `reason` given. `workflow_instance_unresolved`: the
+  route's target rendered no workflow run, such as a `stored_instance_id` key with nothing stored
+  under it yet. `no_linked_external_sender`: the route acts for the event's external sender, who is
+  not linked to a Backoffice user. `caused_by_notified_agent`: the agent's own turns caused the
+  event, and an agent is never notified of those.
+
+Report ingestion and downstream execution separately, including failures, pending work, and any
+missing evidence.
 
 **Complete when** the owning scope, matching event IDs, relevant payloads, and downstream outcomes
 are supported by retrieved evidence, or the exact unverified boundary is stated.

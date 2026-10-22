@@ -8,6 +8,8 @@ type AutomationEventServiceContext = DatabaseServiceContext<Record<string, never
 
 const EVENTS_OF_TYPE_INDEX = "idx_automation_event_source_type_occurredAt";
 const EVENTS_OF_TYPE_PAGE_SIZE = 100;
+/** Cursors of `listEvents` name the index their page was read from. */
+export const EVENTS_BY_TIME_INDEX = "idx_automation_event_occurredAt_id";
 
 /** Our own cursors come back through callers, so one for another source or type is rejected. */
 function decodeEventsOfTypeCursor(input: { source: string; eventType: string; cursor: string }) {
@@ -70,9 +72,15 @@ export const createAutomationEventServices = (
         .retrieve((uow) =>
           uow.findWithCursor("automation_event", (b) => {
             const query = b
-              .whereIndex("idx_automation_event_occurredAt_id")
-              .orderByIndex("idx_automation_event_occurredAt_id", "desc")
-              .pageSize(effectiveLimit);
+              .whereIndex(EVENTS_BY_TIME_INDEX)
+              .orderByIndex(EVENTS_BY_TIME_INDEX, "desc")
+              .pageSize(effectiveLimit)
+              // Each event's matched routes come with it, so one read lists both.
+              .joinMany("routes", "automation_route_dispatch", (route) =>
+                route.onIndex("idx_automation_route_dispatch_eventId", (eb) =>
+                  eb("eventId", "=", eb.parent("id")),
+                ),
+              );
 
             return cursor ? query.after(cursor) : query;
           }),

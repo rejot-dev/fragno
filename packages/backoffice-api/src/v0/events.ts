@@ -142,7 +142,7 @@ export const automationEventListInputSchema = z.lazy(() =>
 
 export const automationEventListResultSchema = z.lazy(() =>
   z.object({
-    events: z.array(automationEventRecordSchema),
+    events: z.array(automationEventDetailSchema),
     nextCursor: z.string().optional(),
     hasNextPage: z.boolean(),
   }),
@@ -277,6 +277,28 @@ export const automationEventDetailSchema = z.lazy(() =>
 );
 
 export type AutomationEventDetail = z.infer<typeof automationEventDetailSchema>;
+
+export const automationEventRoutesListInputSchema = z.lazy(() =>
+  z.object({
+    /** The state of the routes to list, such as `failed` or `retrying`. */
+    status: z.enum(["pending", "retrying", "completed", "failed"]),
+    limit: z.number().int().positive().max(500).optional(),
+    cursor: z.string().trim().min(1).optional(),
+  }),
+);
+
+export type AutomationEventRoutesListInput = z.infer<typeof automationEventRoutesListInputSchema>;
+
+/** Routes in one state, each with the event it matched, by when it matched, newest first. */
+export const automationEventRoutesListResultSchema = z.lazy(() =>
+  z.object({
+    routes: z.array(z.object({ eventId: z.string(), route: automationEventRouteDispatchSchema })),
+    nextCursor: z.string().optional(),
+    hasNextPage: z.boolean(),
+  }),
+);
+
+export type AutomationEventRoutesListResult = z.infer<typeof automationEventRoutesListResultSchema>;
 
 const jsonSchemaDocumentSchema = z.lazy(() => z.record(z.string(), z.unknown()));
 
@@ -414,7 +436,8 @@ export const eventsOperations = {
     output: eventEmitOutputSchema,
   },
   "events.list": {
-    description: "List stored automation events in the current scope, newest first.",
+    description:
+      "List stored automation events in the current scope, newest first, each with the routes it matched and where they stand.",
     permissions: [BACKOFFICE_PERMISSION.events.read],
     input: eventListInputSchema,
     output: automationEventListResultSchema,
@@ -426,12 +449,19 @@ export const eventsOperations = {
     input: z.lazy(() => z.object({ id: z.string().trim().min(1) })),
     output: z.lazy(() => automationEventDetailSchema.nullable()),
   },
-  "events.retry-route": {
+  "events.routes.list": {
     description:
-      "Retry a route that failed for good on a stored event, with a fresh set of attempts. The route runs as it was when the event matched it, so retry after fixing what it depends on, such as a missing workflow run or permission; route edits apply only to new events. Returns the route, now pending, or null when the event did not match it.",
+      "List the routes in one state on stored events in the current scope, such as those that failed for good or are retrying, each with the event it matched, newest match first. Use events.get for the whole event.",
+    permissions: [BACKOFFICE_PERMISSION.events.read],
+    input: automationEventRoutesListInputSchema,
+    output: automationEventRoutesListResultSchema,
+  },
+  "events.routes.retry": {
+    description:
+      "Retry a route that failed for good on a stored event, with a fresh set of attempts. The route acts as it was when the event matched it, with the route's current permissions, so retry after fixing what it depends on, such as a missing workflow run or permission; changes to the route's action apply only to new events. Returns the route, now pending, or null when the event did not match it.",
     permissions: [BACKOFFICE_PERMISSION.router.modify],
     input: z.lazy(() =>
-      z.object({ id: z.string().trim().min(1), routeId: z.string().trim().min(1) }),
+      z.object({ eventId: z.string().trim().min(1), routeId: z.string().trim().min(1) }),
     ),
     output: z.lazy(() => automationEventRouteDispatchSchema.nullable()),
   },

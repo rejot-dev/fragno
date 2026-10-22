@@ -1,6 +1,8 @@
 import type { EventListInput } from "@fragno-dev/backoffice-api/v0/events";
 import {
   type AutomationEventDetail,
+  type AutomationEventRoutesListInput,
+  type AutomationEventRoutesListResult,
   automationEventListResultSchema,
   type AutomationEventRouteDispatch,
 } from "@fragno-dev/backoffice-api/v0/events";
@@ -33,8 +35,12 @@ export type AutomationEmitEventResult = {
 export type EventRuntime = {
   emitEvent: (input: EventEmitArgs) => Promise<AutomationEmitEventResult>;
   listEvents(input: EventListInput): Promise<z.infer<typeof automationEventListResultSchema>>;
+  listEventRoutes(input: AutomationEventRoutesListInput): Promise<AutomationEventRoutesListResult>;
   getEvent(input: { id: string }): Promise<AutomationEventDetail | null>;
-  retryRoute(input: { id: string; routeId: string }): Promise<AutomationEventRouteDispatch | null>;
+  retryEventRoute(input: {
+    eventId: string;
+    routeId: string;
+  }): Promise<AutomationEventRouteDispatch | null>;
 };
 
 type EventToolContext = BackofficeToolContext<{ event?: EventRuntime }>;
@@ -72,6 +78,27 @@ function formatRouteDispatch(route: AutomationEventRouteDispatch): string {
       return `${name}: completed, ${route.outcome.kind}${route.failedAttempts > 0 ? ` after ${attempts(route.failedAttempts)}` : ""}`;
   }
   throw new Error("Unsupported automation route dispatch status.");
+}
+
+/** What an event's routes add up to, for one row of `events.list`. */
+function summarizeEventRouting({ routing }: AutomationEventDetail): string {
+  if (routing.status === "matching") {
+    return "matching";
+  }
+  if (routing.routes.length === 0) {
+    return "no route";
+  }
+  const counts = new Map<string, number>();
+  for (const route of routing.routes) {
+    counts.set(route.status, (counts.get(route.status) ?? 0) + 1);
+  }
+  // What needs attention comes first.
+  return ["failed", "retrying", "pending", "completed"]
+    .flatMap((status) => {
+      const count = counts.get(status);
+      return count === undefined ? [] : [`${count} ${status}`];
+    })
+    .join(", ");
 }
 
 function formatEventRouting({ routing }: AutomationEventDetail): string[] {
@@ -155,7 +182,8 @@ const listEventsTool = defineBackofficeRuntimeTool({
     bash: {
       command: "events.list",
       help: {
-        summary: "events.list lists stored automation events in the current scope, newest first.",
+        summary:
+          "events.list lists stored automation events in the current scope, newest first, with where the routes each matched stand.",
         options: [
           {
             name: "limit",
@@ -187,12 +215,79 @@ const listEventsTool = defineBackofficeRuntimeTool({
         }
         const lines = result.events.length
           ? [
-              "id\toccurred at\tsource\tevent type",
+              "id\toccurred at\tsource\tevent type\troutes",
               ...result.events.map(
-                (event) => `${event.id}\t${event.occurredAt}\t${event.source}\t${event.eventType}`,
+                (event) =>
+                  `${event.id}\t${event.occurredAt}\t${event.source}\t${event.eventType}\t${summarizeEventRouting(event)}`,
               ),
             ]
           : ["No automation events found."];
+        if (result.hasNextPage && result.nextCursor) {
+          lines.push(`next cursor: ${result.nextCursor}`);
+        }
+        return { stdout: `${lines.join("\n")}\n` };
+      },
+    },
+  },
+});
+
+const listEventRoutesTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("events.routes.list"),
+  namespace: "events",
+  name: "routesList",
+  execute: async (input, context: EventToolContext) =>
+    await getEventRuntime(context.runtimes.event).listEventRoutes(input),
+  adapters: {
+    bash: {
+      command: "events.routes.list",
+      help: {
+        summary:
+          "events.routes.list lists the routes in one state on stored events, such as those that failed for good, newest match first.",
+        options: [
+          {
+            name: "status",
+            required: true,
+            valueRequired: true,
+            valueName: "status",
+            description: "failed, retrying, pending, or completed.",
+          },
+          {
+            name: "limit",
+            valueRequired: true,
+            valueName: "number",
+            description: "Page size (1–500; defaults to 100).",
+          },
+          {
+            name: "cursor",
+            valueRequired: true,
+            valueName: "cursor",
+            description: "Cursor returned by the previous page.",
+          },
+        ],
+        examples: [
+          "events.routes.list --status failed",
+          "events.routes.list --status retrying --format json",
+        ],
+      },
+      parse: defineCliArgsParser<AutomationEventRoutesListInput>("events.routes.list", {
+        status: { required: true },
+        limit: { kind: "integer" },
+        cursor: {},
+      }),
+      outputOptions: readEventOutputOptions,
+      format: (result, options) => {
+        if (options.format === "json" || options.print) {
+          return { data: result };
+        }
+        const lines = result.routes.length
+          ? [
+              "event id\tmatched at\troute",
+              ...result.routes.map(
+                ({ eventId, route }) =>
+                  `${eventId}\t${route.matchedAt}\t${formatRouteDispatch(route)}`,
+              ),
+            ]
+          : ["No routes found."];
         if (result.hasNextPage && result.nextCursor) {
           lines.push(`next cursor: ${result.nextCursor}`);
         }
@@ -261,38 +356,39 @@ const getEventTool = defineBackofficeRuntimeTool({
   },
 });
 
-const retryRouteTool = defineBackofficeRuntimeTool({
-  ...backofficeApiOperationToolFields("events.retry-route"),
+const retryEventRouteTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("events.routes.retry"),
   namespace: "events",
-  name: "retryRoute",
+  name: "routesRetry",
   execute: async (input, context: EventToolContext) =>
-    await getEventRuntime(context.runtimes.event).retryRoute(input),
+    await getEventRuntime(context.runtimes.event).retryEventRoute(input),
   adapters: {
     bash: {
-      command: "events.retry-route",
+      command: "events.routes.retry",
       help: {
         summary:
-          "events.retry-route runs a route that failed for good on a stored event again, as the route was when the event matched it.",
+          "events.routes.retry runs a route that failed for good on a stored event again, as the route was when the event matched it, with the route's current permissions.",
         options: [
           {
-            name: "id",
+            name: "event",
             required: true,
             valueRequired: true,
             valueName: "id",
-            description: "Stored event id.",
+            description: "Id of the stored event, as events.routes.list or events.list shows it.",
           },
           {
             name: "route",
             required: true,
             valueRequired: true,
             valueName: "id",
-            description: "Id of a route the event matched, from events.get.",
+            description:
+              "Id of a route the event matched, as events.routes.list or events.get shows it.",
           },
         ],
-        examples: ["events.retry-route --id event-1 --route deliver-to-run"],
+        examples: ["events.routes.retry --event event-1 --route deliver-to-run"],
       },
-      parse: defineCliArgsParser<{ id: string; routeId: string }>("events.retry-route", {
-        id: { required: true },
+      parse: defineCliArgsParser<{ eventId: string; routeId: string }>("events.routes.retry", {
+        eventId: { required: true, option: "event" },
         routeId: { required: true, option: "route" },
       }),
       format: (route, options) => {
@@ -312,7 +408,8 @@ export const eventRuntimeTools = [
   fireEventTool,
   listEventsTool,
   getEventTool,
-  retryRouteTool,
+  listEventRoutesTool,
+  retryEventRouteTool,
 ] as const;
 
 export const eventFireToolFamily = defineBackofficeRuntimeToolFamily({
@@ -324,13 +421,13 @@ export const eventFireToolFamily = defineBackofficeRuntimeToolFamily({
 /** Retrying a route runs its action, which needs the router.modify permission. */
 export const eventRetryToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "events",
-  tools: [retryRouteTool],
+  tools: [retryEventRouteTool],
   isAvailable: (context: EventToolContext) => !!context.runtimes.event,
 });
 
 /** Stored event reads use the events.read permission in the current scope. */
 export const eventReadToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "events",
-  tools: [listEventsTool, getEventTool],
+  tools: [listEventsTool, getEventTool, listEventRoutesTool],
   isAvailable: (context: EventToolContext) => !!context.runtimes.event,
 });

@@ -1,6 +1,9 @@
 import { assert, describe, expect, test, vi } from "vitest";
 
-import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
+import {
+  type AutomationEvent,
+  automationEventRoutesListResultSchema,
+} from "@fragno-dev/backoffice-api/v0/events";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 
 import { and, eq, queryOnce } from "@tanstack/react-db";
@@ -90,6 +93,16 @@ async function routeDispatchStates(ctx: BackofficeScenarioContext, eventId: stri
   return Object.fromEntries(
     dispatches.map((dispatch) => [dispatch.routeId, readRouteDispatchState(dispatch)]),
   );
+}
+
+/** The events whose routes failed for good, as `events.routes.list` lists them, newest first. */
+async function eventsWithFailedRoutes(ctx: BackofficeScenarioContext) {
+  const response = await ctx.runtime.objects.automations
+    .forOrg("org-1")
+    .http.fetch(new Request("https://automations.test/api/automations/event-routes?status=failed"));
+  assert(response.ok, await response.clone().text());
+  const { routes } = automationEventRoutesListResultSchema.parse(await response.json());
+  return routes.map(({ eventId }) => eventId);
 }
 
 const telegramTestCommandEntry = getStaticMarketplaceEntry({
@@ -923,6 +936,7 @@ describe("starter automation router scenarios", () => {
               (item) => item.hookName === "internalDispatchRoute",
             );
             expect(routeHooks).toMatchObject([{ status: "failed", attempts: 10, maxAttempts: 10 }]);
+            expect(await eventsWithFailedRoutes(ctx)).toEqual([event.id]);
           }),
 
           when.workflow.createInstance({
@@ -959,6 +973,7 @@ describe("starter automation router scenarios", () => {
                 failedAttempts: 0,
               },
             });
+            expect(await eventsWithFailedRoutes(ctx)).toEqual([]);
           }),
           then.workflow.instance({
             remoteWorkflowName: "missing-waiter",
