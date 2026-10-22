@@ -260,7 +260,10 @@ function sectionQueries({ spec, queries }: PageDefinition): Record<string, strin
   const sections: Record<string, string[]> = {};
   const visit = (id: string, section: string) => {
     const element = elements[id];
-    const label = element.type === "Section" ? String(element.props.label) : section;
+    const label =
+      element.type === "Panel" || element.type === "PanelTable"
+        ? String(element.props.title)
+        : section;
     const rows = element.props.rows as { $state?: unknown } | undefined;
     const query = queryAt(element.repeat?.statePath) ?? queryAt(rows?.$state);
     if (query !== undefined) {

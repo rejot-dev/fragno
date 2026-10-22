@@ -16,11 +16,15 @@ import { Icon } from "./components/icon.component";
 import { Image } from "./components/image.component";
 import { KeyValue } from "./components/key-value.component";
 import { Link } from "./components/link.component";
+import { ListRow } from "./components/list-row.component";
 import { List } from "./components/list.component";
 import { Metric } from "./components/metric.component";
 import { NumberValue } from "./components/number.component";
+import { PanelTable, PanelTableRow } from "./components/panel-table.component";
+import { Panel } from "./components/panel.component";
 import { Progress } from "./components/progress.component";
 import { RelativeTime } from "./components/relative-time.component";
+import { RowList } from "./components/row-list.component";
 import { Section } from "./components/section.component";
 import { Select } from "./components/select.component";
 import { SparkBars } from "./components/spark-bars.component";
@@ -40,6 +44,11 @@ const components: BackofficeUiComponents = {
   Stack,
   Grid,
   Section,
+  Panel,
+  PanelTable,
+  PanelTableRow,
+  RowList,
+  ListRow,
   Divider,
   Heading,
   Text,

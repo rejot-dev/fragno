@@ -6,7 +6,7 @@ const componentFixtures = [
   {
     component: "Stack",
     validProps: { gap: "md" },
-    invalidProps: { gap: "xl" },
+    invalidProps: { gap: "2xl" },
   },
   {
     component: "Grid",

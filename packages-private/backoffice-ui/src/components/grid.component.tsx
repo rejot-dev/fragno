@@ -14,6 +14,8 @@ const gridGapClass = {
   sm: "gap-2",
   md: "gap-3",
   lg: "gap-5",
+  // Between a page's panels.
+  xl: "gap-x-12 gap-y-10",
 } as const;
 
 export const Grid: ComponentFn<typeof backofficeUiCatalog, "Grid"> = ({ props, children }) => (

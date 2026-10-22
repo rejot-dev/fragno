@@ -6,6 +6,8 @@ const stackGapClass = {
   sm: "gap-2",
   md: "gap-3",
   lg: "gap-5",
+  // Between a page's panels.
+  xl: "gap-10",
 } as const;
 
 const stackDirectionClass = {

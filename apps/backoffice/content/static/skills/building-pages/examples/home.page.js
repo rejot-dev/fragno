@@ -6,6 +6,7 @@ export default page.define(
     collections,
     from,
     toArray,
+    unionAll,
     intervals,
     bucket,
     now,
@@ -77,6 +78,11 @@ export default page.define(
       .select(({ failing }) => ({
         workflow: failing.workflow,
         errored: failing.errored,
+        erroredLabel: caseWhen(
+          eq(failing.errored, 1),
+          "1 errored run",
+          concat(failing.errored, " errored runs"),
+        ),
         latest: toArray(
           from({ run: recentFailures })
             .where(({ run }) => eq(run.workflow, failing.workflow))
@@ -97,7 +103,8 @@ export default page.define(
       .orderBy(({ connection }) => connection.connectionId, "asc")
       .select(({ connection }) => ({
         id: connection.connectionId,
-        name: coalesce(connection.name, connection.connectionId),
+        name: connection.displayName,
+        detail: concat(connection.kindLabel, " connection is unavailable"),
         changedAt: connection.changedAt,
       }));
 
@@ -132,12 +139,29 @@ export default page.define(
               workflowName: run.workflowName,
               instanceId: run.instanceId,
               status: run.status,
-              tone: caseWhen(
+              statusLabel: caseWhen(
+                eq(run.status, "active"),
+                "Running",
+                eq(run.status, "complete"),
+                "Complete",
                 eq(run.status, "errored"),
-                "failed",
+                "Errored",
+                caseWhen(
+                  eq(run.status, "terminated"),
+                  "Terminated",
+                  eq(run.status, "paused"),
+                  "Paused",
+                  "Waiting",
+                ),
+              ),
+              tone: caseWhen(
+                eq(run.status, "active"),
+                "info",
                 eq(run.status, "complete"),
                 "live",
-                "waiting",
+                eq(run.status, "errored"),
+                "failed",
+                caseWhen(eq(run.status, "terminated"), "muted", "waiting"),
               ),
               updatedAt: run.updatedAt,
             })),
@@ -165,9 +189,11 @@ export default page.define(
       .orderBy(({ connection }) => connection.connectionId, "asc")
       .select(({ connection }) => ({
         id: connection.connectionId,
-        name: coalesce(connection.name, connection.connectionId),
+        name: connection.displayName,
+        kind: connection.kindLabel,
         state: connection.state,
-        tone: caseWhen(eq(connection.state, "ready"), "live", "failed"),
+        stateLabel: caseWhen(eq(connection.state, "ready"), "Ready", "Unavailable"),
+        tone: caseWhen(eq(connection.state, "ready"), "live", "waiting"),
         changedAt: connection.changedAt,
       }));
 
@@ -207,59 +233,30 @@ export default page.define(
         at: schedule.nextOccurrenceAt,
       }));
 
+    const turnCounts = from({ turn: collections.agentTurns })
+      .where(({ turn }) => gte(turn.endedAt, day))
+      .groupBy(({ turn }) => turn.agentName)
+      .select(({ turn }) => ({ agentName: turn.agentName, turns: count(turn.id) }));
+
     // The most recently active agents come first; agents without activity keep directory order.
     const agents = from({ agent: collections.agents })
+      .leftJoin({ counted: turnCounts }, ({ agent, counted }) =>
+        eq(agent.agentName, counted.agentName),
+      )
       .orderBy(({ agent }) => isNull(agent.latestAt), "asc")
       .orderBy(({ agent }) => agent.latestAt, "desc")
       .orderBy(({ agent }) => agent.builtIn, "desc")
       .orderBy(({ agent }) => agent.agentName, "asc")
-      .select(({ agent }) => {
+      .select(({ agent, counted }) => {
         // Steers join the running turn, so only queued work waits on a stop.
         const paused = caseWhen(agent.paused, " · paused", "");
         return {
           agentName: agent.agentName,
+          name: agent.displayName,
           description: agent.definition.description,
           latestKind: agent.latestKind,
           latestAt: agent.latestAt,
-          activity: caseWhen(
-            agent.answering,
-            "Answering",
-            agent.paused,
-            "Stopped",
-            isNull(agent.latestKind),
-            "No recorded activity",
-            caseWhen(
-              eq(agent.latestKind, "started"),
-              "Started a turn",
-              eq(agent.latestKind, "answered"),
-              "Answered",
-              eq(agent.latestKind, "cut-off"),
-              "Turn cut off",
-              caseWhen(
-                eq(agent.latestKind, "failed"),
-                "Turn failed",
-                eq(agent.latestKind, "queued"),
-                "Work queued",
-                eq(agent.latestKind, "dispatched"),
-                "Took queued work",
-                caseWhen(
-                  eq(agent.latestKind, "dropped"),
-                  "Dropped queued work",
-                  eq(agent.latestKind, "created"),
-                  "Defined",
-                  eq(agent.latestKind, "updated"),
-                  "Definition updated",
-                  caseWhen(
-                    eq(agent.latestKind, "deleted"),
-                    "Deleted",
-                    eq(agent.latestKind, "stopped"),
-                    "Stopped",
-                    "Resumed",
-                  ),
-                ),
-              ),
-            ),
-          ),
+          activity: agent.activity,
           queue: caseWhen(
             and(gt(agent.steering, 0), gt(agent.queued, 0)),
             concat(agent.steering, " steering · ", agent.queued, " queued", paused),
@@ -270,6 +267,7 @@ export default page.define(
             "",
           ),
           queueTone: caseWhen(and(agent.paused, gt(agent.queued, 0)), "waiting", "info"),
+          turns: coalesce(counted.turns, 0),
           hourly: toArray(
             from({ turn: collections.agentTurns })
               .where(({ turn }) => and(eq(turn.agentName, agent.agentName), gte(turn.endedAt, day)))
@@ -279,179 +277,233 @@ export default page.define(
         };
       });
 
-    return ui.stack({ gap: "lg" }, [
-      ui.section({ label: "Needs attention" }, [
-        ui.stack(
-          { gap: "sm" },
-          ui.each(awaitingInput, (run) =>
-            ui.stack({ gap: "sm", direction: "row", justify: "between" }, [
-              ui.stack({ gap: "sm", direction: "row" }, [
-                ui.icon({ name: "edit-3", tone: "waiting" }),
-                ui.link({
-                  label: run.workflow,
-                  to: { kind: "run", workflowName: run.workflowName, instanceId: run.instanceId },
-                }),
-                ui.text({ text: run.step, tone: "muted" }),
-              ]),
+    // Scheduled & waiting shows only while something is scheduled or waiting, as on the dashboard.
+    const upcomingIds = unionAll(
+      from({ run: waiting }).select(({ run }) => ({ id: run.instanceId })),
+      from({ route: schedules }).select(({ route }) => ({ id: route.id })),
+    );
+    const nothingNeedsAttention = ui.when(
+      ui.is(awaitingInput.value("workflow", ""), { not: true }),
+      ui.when(
+        ui.is(failing.value("workflow", ""), { not: true }),
+        ui.when(
+          ui.is(unavailable.value("id", ""), { not: true }),
+          ui.stack({ gap: "sm", direction: "row" }, [
+            ui.icon({ name: "check", tone: "live" }),
+            ui.text({
+              text: "Nothing needs attention. Runs are healthy and every connection is ready.",
+            }),
+          ]),
+        ),
+      ),
+    );
+    const upcoming = ui.panel({ title: "Scheduled & waiting" }, [
+      ui.rowList(
+        {},
+        ui.each(waiting, (run) =>
+          ui.listRow(
+            {
+              title: run.workflow,
+              to: { kind: "run", workflowName: run.workflowName, instanceId: run.instanceId },
+              detail: "Waiting for an event",
+              icon: "pause-circle",
+            },
+            [
+              ui.stack(
+                { gap: "sm", direction: "row" },
+                ui.each(run.waits, (wait) => ui.badge({ label: wait.eventType, tone: "waiting" })),
+              ),
               ui.relativeTime({ time: run.updatedAt }),
-            ]),
+            ],
           ),
         ),
-        ui.stack(
-          { gap: "sm" },
+      ),
+      ui.rowList(
+        {},
+        ui.each(schedules, (route) =>
+          ui.listRow(
+            {
+              title: route.name,
+              to: { kind: "route", id: route.id },
+              detail: "Scheduled route",
+              icon: "clock",
+            },
+            [ui.relativeTime({ time: route.at })],
+          ),
+        ),
+      ),
+    ]);
+
+    return ui.stack({ gap: "xl" }, [
+      ui.panel({ title: "Needs attention" }, [
+        nothingNeedsAttention,
+        ui.rowList(
+          {},
+          ui.each(awaitingInput, (run) =>
+            ui.listRow(
+              {
+                title: run.workflow,
+                to: { kind: "run", workflowName: run.workflowName, instanceId: run.instanceId },
+                detail: "Waiting for your input",
+                icon: "edit-3",
+                tone: "info",
+              },
+              [ui.relativeTime({ time: run.updatedAt })],
+            ),
+          ),
+        ),
+        ui.rowList(
+          {},
           ui.each(failing, (workflow) =>
-            ui.stack({ gap: "sm", direction: "row", justify: "between" }, [
-              ui.stack({ gap: "sm", direction: "row" }, [
-                ui.icon({ name: "alert-triangle", tone: "failed" }),
-                ui.link({
-                  label: workflow.workflow,
-                  to: {
-                    kind: "run",
-                    workflowName: workflow.latest[0].workflowName,
-                    instanceId: workflow.latest[0].instanceId,
-                  },
-                }),
-                ui.number({ value: workflow.errored, format: "integer", tone: "failed" }),
-                ui.text({ text: workflow.latest[0].error, tone: "muted" }),
-              ]),
-              ui.relativeTime({ time: workflow.latest[0].updatedAt }),
-            ]),
+            ui.listRow(
+              {
+                title: workflow.workflow,
+                to: {
+                  kind: "run",
+                  workflowName: workflow.latest[0].workflowName,
+                  instanceId: workflow.latest[0].instanceId,
+                },
+                detail: workflow.latest[0].error,
+                icon: "alert-triangle",
+                tone: "failed",
+              },
+              [
+                ui.badge({ label: workflow.erroredLabel, tone: "failed" }),
+                ui.relativeTime({ time: workflow.latest[0].updatedAt }),
+              ],
+            ),
           ),
         ),
-        ui.stack(
-          { gap: "sm" },
+        ui.rowList(
+          {},
           ui.each(unavailable, (connection) =>
-            ui.stack({ gap: "sm", direction: "row", justify: "between" }, [
-              ui.stack({ gap: "sm", direction: "row" }, [
-                ui.icon({ name: "alert-circle", tone: "failed" }),
-                ui.link({ label: connection.name, to: { kind: "connection", id: connection.id } }),
-                ui.text({ text: "Unavailable", tone: "muted" }),
-              ]),
-              ui.relativeTime({ time: connection.changedAt }),
-            ]),
+            ui.listRow(
+              {
+                title: connection.name,
+                to: { kind: "connection", id: connection.id },
+                detail: connection.detail,
+                icon: "link",
+                tone: "waiting",
+              },
+              [ui.relativeTime({ time: connection.changedAt })],
+            ),
           ),
         ),
       ]),
-      ui.grid({ columns: "main-side", gap: "lg" }, [
-        ui.stack({ gap: "lg" }, [
-          ui.section({ label: "Automations" }, [
-            ui.stack(
-              { gap: "sm" },
-              ui.each(health, (row) =>
-                ui.grid({ columns: 4, gap: "sm" }, [
-                  ui.link({
-                    label: row.workflow,
-                    to: {
-                      kind: "run",
-                      workflowName: row.latest[0].workflowName,
-                      instanceId: row.latest[0].instanceId,
-                    },
-                  }),
-                  ui.sparkBars({
-                    label: "Starts per hour",
-                    rows: row.hourly,
-                    axis: { field: "hour", intervals: hours },
-                    value: "runs",
-                  }),
+      ui.grid({ columns: "main-side", gap: "xl" }, [
+        ui.stack({ gap: "xl" }, [
+          ui.panelTable(
+            {
+              title: "Automations",
+              columns: [
+                { label: "Runs · 24 hours" },
+                { label: "Success", align: "end" },
+                { label: "Last run", align: "end" },
+              ],
+              empty: "No workflow has run in this scope yet.",
+            },
+            ui.each(health, (row) =>
+              ui.panelTableRow(
+                {
+                  title: row.workflow,
+                  to: {
+                    kind: "run",
+                    workflowName: row.latest[0].workflowName,
+                    instanceId: row.latest[0].instanceId,
+                  },
+                },
+                [
+                  ui.stack({ gap: "md", direction: "row" }, [
+                    ui.sparkBars({
+                      label: "Starts per hour",
+                      rows: row.hourly,
+                      axis: { field: "hour", intervals: hours },
+                      value: "runs",
+                    }),
+                    ui.number({ value: row.started, format: "integer", tone: "muted" }),
+                  ]),
                   ui.number({ value: row.successRate, format: "percent", tone: row.rateTone }),
-                  ui.badge({ label: row.latest[0].status, tone: row.latest[0].tone }),
-                ]),
+                  ui.stack({ gap: "md", direction: "row" }, [
+                    ui.badge({ label: row.latest[0].statusLabel, tone: row.latest[0].tone }),
+                    ui.relativeTime({ time: row.latest[0].updatedAt }),
+                  ]),
+                ],
               ),
             ),
-          ]),
-          ui.section({ label: "Events" }, [
-            ui.barChart({
-              label: "Events per hour",
-              rows: eventVolume,
-              axis: { field: "hour", intervals: hours },
-              value: "events",
-              series: "source",
-            }),
+          ),
+          ui.panel({ title: "Events" }, [
+            ui.when(
+              ui.is(eventVolume.value("source", "")),
+              ui.barChart({
+                label: "Events per hour",
+                rows: eventVolume,
+                axis: { field: "hour", intervals: hours },
+                value: "events",
+                series: "source",
+              }),
+            ),
+            ui.when(
+              ui.is(eventVolume.value("source", ""), { not: true }),
+              ui.text({ text: "No events arrived in the last 24 hours." }),
+            ),
           ]),
         ]),
-        ui.stack({ gap: "lg" }, [
-          ui.section({ label: "Connections" }, [
-            ui.stack(
-              { gap: "sm" },
-              ui.each(connections, (connection) =>
-                ui.stack({ gap: "sm", direction: "row", justify: "between" }, [
-                  ui.link({
-                    label: connection.name,
-                    to: { kind: "connection", id: connection.id },
-                  }),
-                  ui.badge({ label: connection.state, tone: connection.tone }),
-                ]),
+        ui.stack({ gap: "xl" }, [
+          ui.panel(
+            {
+              title: "Connections",
+              link: { label: "Show more on the Integrations page", to: { kind: "integrations" } },
+            },
+            [
+              ui.rowList(
+                { empty: "No connections yet. Ask your agent to add one." },
+                ui.each(connections, (connection) =>
+                  ui.listRow(
+                    {
+                      title: connection.name,
+                      to: { kind: "connection", id: connection.id },
+                      detail: connection.kind,
+                    },
+                    [
+                      ui.relativeTime({ time: connection.changedAt }),
+                      ui.badge({ label: connection.stateLabel, tone: connection.tone }),
+                    ],
+                  ),
+                ),
               ),
-            ),
-            ui.link({ label: "Show more on the Integrations page", to: { kind: "integrations" } }),
-          ]),
-          ui.section({ label: "Scheduled & waiting" }, [
-            ui.stack(
-              { gap: "sm" },
-              ui.each(waiting, (run) =>
-                ui.stack({ gap: "sm", direction: "row", justify: "between" }, [
-                  ui.stack({ gap: "sm", direction: "row" }, [
-                    ui.icon({ name: "pause-circle", tone: "waiting" }),
-                    ui.link({
-                      label: run.workflow,
-                      to: {
-                        kind: "run",
-                        workflowName: run.workflowName,
-                        instanceId: run.instanceId,
-                      },
-                    }),
-                    ui.stack(
-                      { gap: "sm", direction: "row" },
-                      ui.each(run.waits, (wait) =>
-                        ui.badge({ label: wait.eventType, tone: "waiting" }),
+            ],
+          ),
+          ui.when(ui.is(upcomingIds.value("id", "")), upcoming),
+          ui.panel(
+            {
+              title: "Agents",
+              link: { label: "Show more on the Agents page", to: { kind: "agents" } },
+            },
+            [
+              ui.rowList(
+                { empty: "No agents in this scope." },
+                ui.each(agents, (agent) =>
+                  ui.listRow(
+                    { title: agent.name, detail: agent.activity, icon: "message-square" },
+                    [
+                      ui.when(
+                        ui.is(agent.queue),
+                        ui.badge({ label: agent.queue, tone: agent.queueTone }),
                       ),
-                    ),
-                  ]),
-                  ui.relativeTime({ time: run.updatedAt }),
-                ]),
+                      ui.relativeTime({ time: agent.latestAt }),
+                      ui.sparkBars({
+                        label: "Turns per hour",
+                        rows: agent.hourly,
+                        axis: { field: "hour", intervals: hours },
+                        value: "turns",
+                      }),
+                      ui.number({ value: agent.turns, format: "integer", tone: "muted" }),
+                    ],
+                  ),
+                ),
               ),
-            ),
-            ui.stack(
-              { gap: "sm" },
-              ui.each(schedules, (route) =>
-                ui.stack({ gap: "sm", direction: "row", justify: "between" }, [
-                  ui.stack({ gap: "sm", direction: "row" }, [
-                    ui.icon({ name: "calendar" }),
-                    ui.link({ label: route.name, to: { kind: "route", id: route.id } }),
-                  ]),
-                  ui.relativeTime({ time: route.at }),
-                ]),
-              ),
-            ),
-          ]),
-          ui.section({ label: "Agents" }, [
-            ui.stack(
-              { gap: "sm" },
-              ui.each(agents, (agent) =>
-                ui.stack({ gap: "sm", direction: "row", justify: "between" }, [
-                  ui.stack({ gap: "sm", direction: "row" }, [
-                    ui.icon({ name: "message-square" }),
-                    ui.text({ text: agent.agentName }),
-                    ui.text({ text: agent.activity, tone: "muted" }),
-                    ui.relativeTime({ time: agent.latestAt }),
-                  ]),
-                  ui.stack({ gap: "sm", direction: "row" }, [
-                    ui.when(
-                      ui.is(agent.queue),
-                      ui.badge({ label: agent.queue, tone: agent.queueTone }),
-                    ),
-                    ui.sparkBars({
-                      label: "Turns per hour",
-                      rows: agent.hourly,
-                      axis: { field: "hour", intervals: hours },
-                      value: "turns",
-                    }),
-                  ]),
-                ]),
-              ),
-            ),
-            ui.link({ label: "Show more on the Agents page", to: { kind: "agents" } }),
-          ]),
+            ],
+          ),
         ]),
       ]),
     ]);

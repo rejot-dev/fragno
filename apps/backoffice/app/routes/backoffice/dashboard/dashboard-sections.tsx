@@ -1,6 +1,14 @@
 import type { AutomationRouteDefinition } from "@fragno-dev/backoffice-api/v0/automation";
 import type { WorkflowInstanceStatus } from "@fragno-dev/workflows/workflow";
 import { Icon, type IconName } from "@fragno-private/design-system/icon";
+import { ListRow, ListRowIcon, RowList } from "@fragno-private/design-system/list-row";
+import {
+  Panel,
+  PanelFooter,
+  PanelTable,
+  PanelTableRow,
+  panelRowTitleClassName,
+} from "@fragno-private/design-system/panel";
 import { formatRelativeTime } from "@fragno-private/design-system/relative-time";
 import { SparkBars } from "@fragno-private/design-system/spark-bars";
 import { StackedBarChart } from "@fragno-private/design-system/stacked-bar-chart";
@@ -78,7 +86,7 @@ export function DashboardSections({
     <>
       <AttentionPanel attention={dashboard.attention} now={now} selectedScope={selectedScope} />
 
-      <Panel title="Orchestration" back={null} footer={null}>
+      <Panel title="Orchestration" leading={null} footer={null}>
         <OrchestrationPanel
           collections={collections}
           routes={routes}
@@ -113,63 +121,30 @@ export function DashboardSections({
   );
 }
 
-// Sections are a titled rule over their content rather than cards, so the page stays flat.
-const sectionHeaderClassName =
-  "flex h-9 items-center gap-2 border-b border-[color:var(--bo-border)]";
-const sectionTitleClassName = "text-sm font-semibold text-[var(--bo-fg)]";
-const columnLabelClassName =
-  "text-[10px] font-normal tracking-[0.2em] text-[var(--bo-muted-2)] uppercase";
-
-function Panel({
-  title,
-  back,
-  footer,
-  children,
-}: {
-  title: string;
-  /** Where the header's back button leads while the panel shows a detail. */
-  back: string | null;
-  footer: ReactNode;
-  children: ReactNode;
-}) {
+/** Leads back from the detail a panel shows. */
+function BackLink({ to }: { to: string }) {
   return (
-    <section className="min-w-0">
-      <header className={sectionHeaderClassName}>
-        {back === null ? null : (
-          <Link
-            to={back}
-            preventScrollReset
-            aria-label="Back"
-            title="Back"
-            className="-ml-1.5 inline-flex size-7 shrink-0 items-center justify-center rounded-[4px] text-[var(--bo-muted)] hover:bg-[var(--bo-panel-2)] hover:text-[var(--bo-fg)]"
-          >
-            <Icon name="arrow-left" className="size-4" />
-          </Link>
-        )}
-        <h2 className={sectionTitleClassName}>{title}</h2>
-      </header>
-      {children}
-      {footer}
-    </section>
+    <Link
+      to={to}
+      preventScrollReset
+      aria-label="Back"
+      title="Back"
+      className="-ml-1.5 inline-flex size-7 shrink-0 items-center justify-center rounded-[4px] text-[var(--bo-muted)] hover:bg-[var(--bo-panel-2)] hover:text-[var(--bo-fg)]"
+    >
+      <Icon name="arrow-left" className="size-4" />
+    </Link>
   );
 }
-
-const panelFooterClassName =
-  "flex items-center gap-4 border-t border-[color:var(--bo-border)] py-2 text-xs";
 
 /** The panel's last row, which leads to the page that shows everything the panel summarizes. */
-function PanelFooter({ to, page }: { to: string; page: string }) {
+function ShowMoreFooter({ to, page }: { to: string; page: string }) {
   return (
-    <div className={panelFooterClassName}>
-      <Link to={to} className="ml-auto font-semibold text-[var(--bo-accent-fg)] hover:underline">
+    <PanelFooter>
+      <Link to={to} className="font-semibold text-[var(--bo-accent-fg)] hover:underline">
         Show more on the {page} page
       </Link>
-    </div>
+    </PanelFooter>
   );
-}
-
-function PanelEmpty({ children }: { children: ReactNode }) {
-  return <p className="py-5 text-sm text-pretty text-[var(--bo-muted)]">{children}</p>;
 }
 
 function TextLink({ to, children }: { to: string; children: ReactNode }) {
@@ -208,7 +183,7 @@ function AttentionPanel({
   selectedScope: BackofficeScopeSelection;
 }) {
   return (
-    <Panel title="Needs attention" back={null} footer={null}>
+    <Panel title="Needs attention" leading={null} footer={null}>
       {attention.length === 0 ? (
         <p className="flex items-center gap-2 py-5 text-sm text-[var(--bo-muted)]">
           <Icon name="check" className="size-4 text-[var(--bo-live)]" />
@@ -368,7 +343,9 @@ function WorkflowHealthPanel({
       <div ref={panelRef} className={`min-w-0 ${openedRunScrollMarginClassName}`}>
         <Panel
           title="Automations"
-          back={dashboardPath(backofficeRouteScopeFromResolvedScope(selectedScope))}
+          leading={
+            <BackLink to={dashboardPath(backofficeRouteScopeFromResolvedScope(selectedScope))} />
+          }
           footer={null}
         >
           <WorkflowRunDetail
@@ -383,113 +360,86 @@ function WorkflowHealthPanel({
   }
 
   const visibleWorkflows = showAll ? workflows : workflows.slice(0, COLLAPSED_WORKFLOW_COUNT);
+  const footer =
+    workflows.length > COLLAPSED_WORKFLOW_COUNT ? (
+      <PanelFooter>
+        <button
+          type="button"
+          onClick={() => {
+            setShowAll((current) => !current);
+          }}
+          className="font-semibold text-[var(--bo-accent-fg)] hover:underline"
+        >
+          {showAll ? "Show recent workflows" : `Show all ${workflows.length} workflows`}
+        </button>
+      </PanelFooter>
+    ) : null;
   return (
-    <section
-      ref={panelRef}
-      aria-label="Automations"
-      className={`min-w-0 ${openedRunScrollMarginClassName}`}
-    >
-      {workflows.length === 0 ? (
-        <>
-          <header className={sectionHeaderClassName}>
-            <h2 className={sectionTitleClassName}>Automations</h2>
-          </header>
-          <PanelEmpty>No workflow has run in this scope yet.</PanelEmpty>
-        </>
-      ) : (
-        <div className="backoffice-scroll overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="text-left">
-              <tr className="border-b border-[color:var(--bo-border)]">
-                <th scope="col" className={`h-9 pr-4 ${sectionTitleClassName}`}>
-                  Automations
-                </th>
-                <th scope="col" className={`h-9 px-3 ${columnLabelClassName}`}>
-                  Runs · {WINDOW_LABEL}
-                </th>
-                <th scope="col" className={`h-9 px-3 text-right ${columnLabelClassName}`}>
-                  Success
-                </th>
-                <th scope="col" className={`h-9 pl-3 text-right ${columnLabelClassName}`}>
-                  Last run
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[color:var(--bo-border)]">
-              {visibleWorkflows.map((workflow) => {
-                const finished = workflow.completedRuns + workflow.erroredRuns;
-                const light = runStatusLights[workflow.latestRun.status];
-                return (
-                  <tr key={workflow.workflow}>
-                    <td className="max-w-[18rem] py-2 pr-4">
-                      <Link
-                        to={dashboardRunPath(selectedScope, workflow.latestRun)}
-                        preventScrollReset
-                        className="block truncate font-semibold text-[var(--bo-fg)] hover:underline"
-                        title={workflow.workflow}
-                      >
-                        {workflow.workflow}
-                      </Link>
-                    </td>
-                    <td className="px-3 py-2">
-                      <span className="flex items-center gap-3">
-                        <SparkBars
-                          values={workflow.startsPerBucket}
-                          ariaLabel={`${workflow.workflow} runs over the last ${WINDOW_LABEL}`}
-                        />
-                        <span className="text-[var(--bo-muted)] tabular-nums">
-                          {workflow.startedRuns}
-                        </span>
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 text-right whitespace-nowrap tabular-nums">
-                      {finished === 0 ? (
-                        <span className="text-[var(--bo-muted-2)]">—</span>
-                      ) : (
-                        <span
-                          className={
-                            workflow.erroredRuns > 0
-                              ? "text-[var(--bo-failed)]"
-                              : "text-[var(--bo-live)]"
-                          }
-                        >
-                          {Math.round((workflow.completedRuns / finished) * 100)}%
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-2 pl-3 whitespace-nowrap">
-                      <span className="flex items-center justify-end gap-3">
-                        <BackofficeStatusLight tone={light.tone} dot={false}>
-                          {light.label}
-                        </BackofficeStatusLight>
-                        <span className="w-16 text-right text-xs text-[var(--bo-muted-2)] tabular-nums">
-                          {formatRelativeTime(workflow.latestRun.updatedAt, now)}
-                        </span>
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-      {workflows.length > COLLAPSED_WORKFLOW_COUNT ? (
-        <div className={panelFooterClassName}>
-          <button
-            type="button"
-            onClick={() => {
-              setShowAll((current) => !current);
-            }}
-            className="font-semibold text-[var(--bo-accent-fg)] hover:underline"
-          >
-            {showAll ? "Show recent workflows" : `Show all ${workflows.length} workflows`}
-          </button>
-        </div>
-      ) : null}
-    </section>
+    <div ref={panelRef} className={`min-w-0 ${openedRunScrollMarginClassName}`}>
+      <PanelTable
+        title="Automations"
+        columns={workflowColumns}
+        empty="No workflow has run in this scope yet."
+        footer={footer}
+      >
+        {visibleWorkflows.map((workflow) => {
+          const finished = workflow.completedRuns + workflow.erroredRuns;
+          const light = runStatusLights[workflow.latestRun.status];
+          return (
+            <PanelTableRow
+              key={workflow.workflow}
+              columns={workflowColumns}
+              title={
+                <Link
+                  to={dashboardRunPath(selectedScope, workflow.latestRun)}
+                  preventScrollReset
+                  className={panelRowTitleClassName}
+                  title={workflow.workflow}
+                >
+                  {workflow.workflow}
+                </Link>
+              }
+              cells={[
+                <>
+                  <SparkBars
+                    values={workflow.startsPerBucket}
+                    ariaLabel={`${workflow.workflow} runs over the last ${WINDOW_LABEL}`}
+                  />
+                  <span className="text-[var(--bo-muted)] tabular-nums">
+                    {workflow.startedRuns}
+                  </span>
+                </>,
+                finished === 0 ? (
+                  <span className="text-[var(--bo-muted-2)]">—</span>
+                ) : (
+                  <span
+                    className={`tabular-nums ${workflow.erroredRuns > 0 ? "text-[var(--bo-failed)]" : "text-[var(--bo-live)]"}`}
+                  >
+                    {Math.round((workflow.completedRuns / finished) * 100)}%
+                  </span>
+                ),
+                <>
+                  <BackofficeStatusLight tone={light.tone} dot={false}>
+                    {light.label}
+                  </BackofficeStatusLight>
+                  <span className="w-16 text-right text-xs text-[var(--bo-muted-2)] tabular-nums">
+                    {formatRelativeTime(workflow.latestRun.updatedAt, now)}
+                  </span>
+                </>,
+              ]}
+            />
+          );
+        })}
+      </PanelTable>
+    </div>
   );
 }
+
+const workflowColumns = [
+  { label: `Runs · ${WINDOW_LABEL}`, align: "start" },
+  { label: "Success", align: "end" },
+  { label: "Last run", align: "end" },
+] as const;
 
 // Buckets carry their date because a day-long window starts and ends at the same hour.
 const bucketLabelFormat = new Intl.DateTimeFormat("en-US", {
@@ -523,7 +473,7 @@ function EventVolumePanel({ eventVolume }: { eventVolume: BackofficeDashboard["e
   });
 
   return (
-    <Panel title="Events" back={null} footer={null}>
+    <Panel title="Events" leading={null} footer={null}>
       <div className="py-4">
         {eventVolume.sources.length === 0 ? (
           <p className="text-sm text-[var(--bo-muted)]">
@@ -553,33 +503,21 @@ function ConnectionsPanel({
   return (
     <Panel
       title="Connections"
-      back={null}
-      footer={<PanelFooter to={integrationsScopeBasePath(selectedScope)} page="Integrations" />}
+      leading={null}
+      footer={<ShowMoreFooter to={integrationsScopeBasePath(selectedScope)} page="Integrations" />}
     >
-      {dashboard.connections.length === 0 ? (
-        <PanelEmpty>No connections yet. Ask your agent to add one.</PanelEmpty>
-      ) : (
-        <ul className="divide-y divide-[color:var(--bo-border)]">
-          {dashboard.connections.map((connection) => (
-            <li key={connection.connectionId}>
-              <Link
-                to={integrationConnectionPath(selectedScope, connection.connectionId)}
-                className="group flex items-center gap-3 py-2.5"
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-semibold text-[var(--bo-fg)] group-hover:underline">
-                    {connection.displayName}
-                  </span>
-                  <span className="block truncate text-xs text-[var(--bo-muted-2)]">
-                    {connection.kindLabel} · {formatRelativeTime(connection.changedAt, now)}
-                  </span>
-                </span>
-                <IntegrationConnectionStateLight state={connection.state} />
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
+      <RowList empty="No connections yet. Ask your agent to add one.">
+        {dashboard.connections.map((connection) => (
+          <ListRow
+            key={connection.connectionId}
+            to={integrationConnectionPath(selectedScope, connection.connectionId)}
+            leading={null}
+            title={connection.displayName}
+            detail={`${connection.kindLabel} · ${formatRelativeTime(connection.changedAt, now)}`}
+            trailing={<IntegrationConnectionStateLight state={connection.state} />}
+          />
+        ))}
+      </RowList>
     </Panel>
   );
 }
@@ -594,67 +532,40 @@ function UpcomingPanel({
   selectedScope: BackofficeScopeSelection;
 }) {
   return (
-    <Panel title="Scheduled & waiting" back={null} footer={null}>
-      <ul className="divide-y divide-[color:var(--bo-border)]">
+    <Panel title="Scheduled & waiting" leading={null} footer={null}>
+      <RowList empty={null}>
         {upcoming.map((entry) =>
           entry.kind === "schedule" ? (
-            <UpcomingRow
+            <ListRow
               key={`schedule:${entry.routeId}`}
               to={dashboardSelectionPath(selectedScope, { kind: "route", id: entry.routeId })}
-              icon="clock"
+              leading={<ListRowIcon name="clock" tone={null} />}
               title={entry.name}
               detail="Scheduled route"
-              time={formatRelativeTime(entry.at, now)}
+              trailing={<UpcomingTime time={formatRelativeTime(entry.at, now)} />}
             />
           ) : (
-            <UpcomingRow
+            <ListRow
               key={`run:${entry.run.workflowName}:${entry.run.instanceId}`}
               to={dashboardRunPath(selectedScope, entry.run)}
-              icon="pause-circle"
+              leading={<ListRowIcon name="pause-circle" tone={null} />}
               title={entry.workflow}
               detail={
                 entry.waitingFor.length > 0
                   ? `Waiting for ${entry.waitingFor.join(", ")}`
                   : "Waiting"
               }
-              time={formatRelativeTime(entry.run.updatedAt, now)}
+              trailing={<UpcomingTime time={formatRelativeTime(entry.run.updatedAt, now)} />}
             />
           ),
         )}
-      </ul>
+      </RowList>
     </Panel>
   );
 }
 
-function UpcomingRow({
-  to,
-  icon,
-  title,
-  detail,
-  time,
-}: {
-  to: string;
-  icon: IconName;
-  title: string;
-  detail: string;
-  time: string;
-}) {
-  return (
-    <li>
-      <Link to={to} className="group flex items-start gap-3 py-2.5">
-        <Icon name={icon} className="mt-0.5 size-4 shrink-0 text-[var(--bo-muted-2)]" />
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-semibold text-[var(--bo-fg)] group-hover:underline">
-            {title}
-          </span>
-          <span className="block truncate font-mono text-[11px] text-[var(--bo-muted)]">
-            {detail}
-          </span>
-        </span>
-        <span className="shrink-0 text-xs text-[var(--bo-muted-2)] tabular-nums">{time}</span>
-      </Link>
-    </li>
-  );
+function UpcomingTime({ time }: { time: string }) {
+  return <span className="text-[var(--bo-muted-2)] tabular-nums">{time}</span>;
 }
 
 function AgentsPanel({
@@ -667,50 +578,46 @@ function AgentsPanel({
   agentsPath: string;
 }) {
   return (
-    <Panel title="Agents" back={null} footer={<PanelFooter to={agentsPath} page="Agents" />}>
-      <ul className="divide-y divide-[color:var(--bo-border)]">
+    <Panel title="Agents" leading={null} footer={<ShowMoreFooter to={agentsPath} page="Agents" />}>
+      <RowList empty={null}>
         {agents.map((agent) => {
-          const agentName = agent.displayName;
           const queue = piAgentQueueStatus(agent);
           const turns = agent.turnsPerBucket.reduce((total, count) => total + count, 0);
           return (
-            <li key={agent.agentName}>
-              <Link
-                to={`${agentsPath}/${encodeURIComponent(agent.agentName)}`}
-                className="group flex items-center gap-3 py-2.5"
-              >
-                <Icon name="message-square" className="size-4 shrink-0 text-[var(--bo-muted-2)]" />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-semibold text-[var(--bo-fg)] group-hover:underline">
-                    {agentName}
-                  </span>
-                  <span
-                    className={`block truncate text-xs ${agent.answering ? "text-[var(--bo-live)]" : "text-[var(--bo-muted-2)]"}`}
-                  >
-                    {describePiAgentActivity(agent, now)}
-                  </span>
+            <ListRow
+              key={agent.agentName}
+              to={`${agentsPath}/${encodeURIComponent(agent.agentName)}`}
+              leading={<ListRowIcon name="message-square" tone={null} />}
+              title={agent.displayName}
+              detail={
+                <span className={agent.answering ? "text-[var(--bo-live)]" : undefined}>
+                  {describePiAgentActivity(agent, now)}
                 </span>
-                {queue ? (
-                  <BackofficeStatusLight tone={queue.tone} dot={false} role="status">
-                    {queue.label}
-                  </BackofficeStatusLight>
-                ) : null}
-                {agent.latestAt !== null ? (
-                  <span className="flex shrink-0 items-center gap-2">
-                    <SparkBars
-                      values={agent.turnsPerBucket}
-                      ariaLabel={`${agentName} turns over the last ${WINDOW_LABEL}`}
-                    />
-                    <span className="w-6 text-right text-xs text-[var(--bo-muted)] tabular-nums">
-                      {turns}
+              }
+              trailing={
+                <>
+                  {queue ? (
+                    <BackofficeStatusLight tone={queue.tone} dot={false} role="status">
+                      {queue.label}
+                    </BackofficeStatusLight>
+                  ) : null}
+                  {agent.latestAt !== null ? (
+                    <span className="flex shrink-0 items-center gap-2">
+                      <SparkBars
+                        values={agent.turnsPerBucket}
+                        ariaLabel={`${agent.displayName} turns over the last ${WINDOW_LABEL}`}
+                      />
+                      <span className="w-6 text-right text-xs text-[var(--bo-muted)] tabular-nums">
+                        {turns}
+                      </span>
                     </span>
-                  </span>
-                ) : null}
-              </Link>
-            </li>
+                  ) : null}
+                </>
+              }
+            />
           );
         })}
-      </ul>
+      </RowList>
     </Panel>
   );
 }

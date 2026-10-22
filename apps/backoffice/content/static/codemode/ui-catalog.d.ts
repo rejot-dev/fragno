@@ -9,20 +9,20 @@ type BackofficeUiFormSubmitProps = {
 };
 
 type BackofficeUiComponents = {
-  /** Builds Stack. Arranges generated Backoffice content in a column, or in a row such as an icon beside text; justify between pushes a row's last child to its end, such as a time. */
+  /** Builds Stack. Arranges generated Backoffice content in a column, or in a row such as an icon beside text; justify between pushes a row's last child to its end, such as a time. Gap xl spaces a page's panels. */
   stack(
     props: BackofficeUiProps<{
-      gap: "sm" | "md" | "lg";
+      gap: "sm" | "md" | "lg" | "xl";
       direction?: "column" | "row";
       justify?: "start" | "between";
     }>,
     children: BackofficeUiElement[] | BackofficeUiRepeat,
   ): BackofficeUiElement;
-  /** Builds Grid. Arranges related report items in a responsive one-to-four-column grid, or main-side: a wide column beside a narrow one on large screens, such as details beside connections. */
+  /** Builds Grid. Arranges related report items in a responsive one-to-four-column grid, or main-side: a wide column beside a narrow one on large screens, such as details beside connections. Gap xl spaces a page's panels. */
   grid(
     props: BackofficeUiProps<{
       columns: 1 | 2 | 3 | 4 | "main-side";
-      gap: "sm" | "md" | "lg";
+      gap: "sm" | "md" | "lg" | "xl";
     }>,
     children: BackofficeUiElement[] | BackofficeUiRepeat,
   ): BackofficeUiElement;
@@ -31,6 +31,182 @@ type BackofficeUiComponents = {
     props: BackofficeUiProps<{
       /** 1-80 characters */
       label?: string;
+      tone?: "info" | "live" | "waiting" | "failed" | "muted";
+    }>,
+    children: BackofficeUiElement[] | BackofficeUiRepeat,
+  ): BackofficeUiElement;
+  /** Builds Panel. A titled region of a page: its title over a rule, then its content, and optionally a closing link to where everything it summarizes lives. Pages are built of panels; put a rowList or content in each. */
+  panel(
+    props: BackofficeUiProps<{
+      /** 1-80 characters */
+      title: string;
+      link?: {
+        /** 1-120 characters */
+        label: string;
+        to:
+          | {
+              kind: "run";
+              /** 1-200 characters */
+              workflowName: string;
+              /** 1-200 characters */
+              instanceId: string;
+            }
+          | {
+              kind: "route";
+              /** 1-200 characters */
+              id: string;
+            }
+          | {
+              kind: "connection";
+              /** 1-200 characters */
+              id: string;
+            }
+          | {
+              kind: "integrations";
+            }
+          | {
+              kind: "agents";
+            };
+      };
+    }>,
+    children: BackofficeUiElement[] | BackofficeUiRepeat,
+  ): BackofficeUiElement;
+  /** Builds PanelTable. A panel of rows that share columns, such as ui.each(rows, (row) => ui.panelTableRow(...)). Its title heads the first column, which holds each row's title; columns label the cells after it. Shows empty under its header while there are no rows. */
+  panelTable(
+    props: BackofficeUiProps<{
+      /** 1-80 characters */
+      title: string;
+      /** at most 11 items */
+      columns: {
+        /** 1-80 characters */
+        label: string;
+        align?: "start" | "end";
+      }[];
+      /** 1-200 characters */
+      empty: string;
+      link?: {
+        /** 1-120 characters */
+        label: string;
+        to:
+          | {
+              kind: "run";
+              /** 1-200 characters */
+              workflowName: string;
+              /** 1-200 characters */
+              instanceId: string;
+            }
+          | {
+              kind: "route";
+              /** 1-200 characters */
+              id: string;
+            }
+          | {
+              kind: "connection";
+              /** 1-200 characters */
+              id: string;
+            }
+          | {
+              kind: "integrations";
+            }
+          | {
+              kind: "agents";
+            };
+      };
+    }>,
+    children: BackofficeUiElement[] | BackofficeUiRepeat,
+  ): BackofficeUiElement;
+  /** Builds PanelTableRow. One row of a panelTable: its title, linked when to is set, then one child per column, such as sparkBars, a number, or a row of a badge and a relativeTime. */
+  panelTableRow(
+    props: BackofficeUiProps<{
+      /** 1-200 characters */
+      title: string;
+      to?:
+        | {
+            kind: "run";
+            /** 1-200 characters */
+            workflowName: string;
+            /** 1-200 characters */
+            instanceId: string;
+          }
+        | {
+            kind: "route";
+            /** 1-200 characters */
+            id: string;
+          }
+        | {
+            kind: "connection";
+            /** 1-200 characters */
+            id: string;
+          }
+        | {
+            kind: "integrations";
+          }
+        | {
+            kind: "agents";
+          };
+    }>,
+    children: BackofficeUiElement[] | BackofficeUiRepeat,
+  ): BackofficeUiElement;
+  /** Builds RowList. Lists rows divided by rules, such as ui.each(rows, (row) => ui.listRow(...)). Shows empty in their place when there are no rows, or nothing without it; row lists that follow one another read as one list. */
+  rowList(
+    props: BackofficeUiProps<{
+      /** 1-200 characters */
+      empty?: string;
+    }>,
+    children: BackofficeUiElement[] | BackofficeUiRepeat,
+  ): BackofficeUiElement;
+  /** Builds ListRow. One row of a rowList: an icon, its title, a muted detail line, and its children at the end, such as a relativeTime, badge, or sparkBars. With to, the whole row is a link, so its children hold no links. A tone puts the icon on a tile in that tone, for rows that ask for something. */
+  listRow(
+    props: BackofficeUiProps<{
+      /** 1-200 characters */
+      title: string;
+      to?:
+        | {
+            kind: "run";
+            /** 1-200 characters */
+            workflowName: string;
+            /** 1-200 characters */
+            instanceId: string;
+          }
+        | {
+            kind: "route";
+            /** 1-200 characters */
+            id: string;
+          }
+        | {
+            kind: "connection";
+            /** 1-200 characters */
+            id: string;
+          }
+        | {
+            kind: "integrations";
+          }
+        | {
+            kind: "agents";
+          };
+      /** at most 500 characters */
+      detail?: string;
+      icon?:
+        | "activity"
+        | "alert-circle"
+        | "alert-triangle"
+        | "bell"
+        | "calendar"
+        | "check"
+        | "check-circle"
+        | "clock"
+        | "edit-3"
+        | "inbox"
+        | "info"
+        | "link"
+        | "mail"
+        | "message-square"
+        | "pause-circle"
+        | "play-circle"
+        | "user"
+        | "users"
+        | "x-circle"
+        | "zap";
       tone?: "info" | "live" | "waiting" | "failed" | "muted";
     }>,
     children: BackofficeUiElement[] | BackofficeUiRepeat,
