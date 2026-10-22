@@ -9,6 +9,7 @@ import { registerSandboxHttpRoutes } from "./http/sandbox-http-routes";
 export { CodemodeCompiler } from "./compiler/codemode-compiler-entrypoint";
 export { CodemodeExecutor } from "./execution/codemode-executor-entrypoint";
 export { Sandbox } from "./sandbox/sandbox.do";
+export { SandboxBackofficeEgress } from "./sandbox/sandbox-backoffice-egress";
 
 const app = new Hono<SandboxBridgeHonoEnv>();
 app.get("/health", (context) => context.json({ ok: true }));

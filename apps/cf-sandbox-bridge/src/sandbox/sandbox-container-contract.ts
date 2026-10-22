@@ -1,3 +1,10 @@
+/**
+ * Sandboxes reach Backoffice at this origin. Every sandbox's container intercepts it into Backoffice,
+ * so it works without a public route from the container to Backoffice.
+ */
+export const SANDBOX_BACKOFFICE_HOST = "backoffice.internal";
+export const SANDBOX_BACKOFFICE_ORIGIN = `http://${SANDBOX_BACKOFFICE_HOST}`;
+
 /** Images a sandbox can start from. A saved workspace stays on the image it was created from. */
 export const SANDBOX_IMAGES = ["workspace", "debian"] as const;
 export type SandboxImage = (typeof SANDBOX_IMAGES)[number];

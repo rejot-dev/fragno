@@ -89,6 +89,25 @@ type, and latest snapshot. The Durable Object holds a lease and the current cont
 metadata: an alarm keeps the container running until the manager stops it, or until the lease
 expires if the manager never does.
 
+### Reaching Backoffice from a sandbox
+
+Every `start()` registers an outbound HTTP intercept for `backoffice.internal`
+(`SANDBOX_BACKOFFICE_ORIGIN` in `sandbox-container-contract.ts`). Inside the container that name
+resolves, and its requests go to the `SandboxBackofficeEgress` entrypoint instead of the Internet.
+The entrypoint forwards `/api/file-links/` paths to the `BACKOFFICE` service binding,
+`rejot-backoffice-web`, and answers 404 for every other path. Backoffice file links therefore work
+from sandboxes without a public route to Backoffice, and without passing Cloudflare zone
+protections.
+
+- Cloudflare Backoffice, deployed or in `pnpm preview:containers`, builds file-link URLs on this
+  origin. In preview, the Vite plugin runs the bridge beside the web Worker, so the binding reaches
+  the local Backoffice.
+- Node Backoffice uses the deployed bridge, whose binding reaches the deployed Backoffice, so it
+  builds file-link URLs on `DOCS_PUBLIC_BASE_URL` instead. Its sandboxes reach a local Backoffice
+  only through a public tunnel.
+- The binding makes the bridge and `rejot-backoffice-web` depend on each other. Both already exist,
+  so either deploys first; sandbox file links work once both are deployed.
+
 `./Dockerfile` builds the `workspace` image: Debian Trixie with Node.js 24, Python 3.13, `uv`,
 `git`, `ripgrep`, `curl`, `wget`, `jq`, `procps`, and `gawk`. Commands run as `root`. With the
 `durable_object` scheduling policy, every container process has root capabilities regardless of its
@@ -105,6 +124,7 @@ src/
 │   └── sandbox-http-routes.ts          # authenticate → Sandbox Durable Object RPC
 ├── sandbox/
 │   ├── sandbox.do.ts                   # container lifecycle, commands, and snapshots
+│   ├── sandbox-backoffice-egress.ts    # sandbox requests to backoffice.internal → Backoffice
 │   ├── sandbox-command-supervisor.ts   # command deadlines, process groups, and output budgets
 │   └── sandbox-container-contract.ts   # requests and outcomes shared with Backoffice
 └── compiler/
