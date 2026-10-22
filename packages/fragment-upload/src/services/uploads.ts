@@ -1,6 +1,6 @@
 import type { TableToInsertValues } from "@fragno-dev/db/query";
 
-import type { DatabaseServiceContext, TypedUnitOfWork } from "@fragno-dev/db";
+import type { DatabaseServiceContext, HookFn, TypedUnitOfWork } from "@fragno-dev/db";
 
 import type { FileHookPayload, UploadTimeoutPayload } from "../config";
 import { uploadSchema } from "../schema";
@@ -44,12 +44,12 @@ export type StagedPreparedFileUpload = CreateUploadInput & {
 };
 
 type UploadHooks = {
-  onFileReady: (payload: FileHookPayload) => void | Promise<void>;
-  onFileTextIndexRequested: (payload: FileHookPayload) => void | Promise<void>;
-  onUploadFailed: (payload: FileHookPayload) => void | Promise<void>;
-  onFileDeleted: (payload: FileHookPayload) => void | Promise<void>;
-  cleanupStorageObject: (payload: FileHookPayload) => void | Promise<void>;
-  onUploadTimeout: (payload: UploadTimeoutPayload) => void | Promise<void>;
+  onFileReady: HookFn<FileHookPayload>;
+  onFileTextIndexRequested: HookFn<FileHookPayload>;
+  onUploadFailed: HookFn<FileHookPayload>;
+  onFileDeleted: HookFn<FileHookPayload>;
+  cleanupStorageObject: HookFn<FileHookPayload>;
+  onUploadTimeout: HookFn<UploadTimeoutPayload>;
 };
 
 type UploadServiceContext = DatabaseServiceContext<UploadHooks>;

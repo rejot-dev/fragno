@@ -1,6 +1,6 @@
 import { defineFragment } from "@fragno-dev/core";
 import type { InstantiatedFragmentFromDefinition } from "@fragno-dev/core";
-import { withDatabase } from "@fragno-dev/db";
+import { withDatabase, type HookFn } from "@fragno-dev/db";
 import type { workflowsFragmentDefinition } from "@fragno-dev/workflows";
 
 import type { WorkflowUsageAgentDefinition, WorkflowUsageSessionCompletedPayload } from "./dsl";
@@ -21,7 +21,7 @@ export type WorkflowUsageWorkflowsService = Pick<
 >;
 
 export type WorkflowUsageHooks = {
-  onSessionCompleted: (payload: WorkflowUsageSessionCompletedPayload) => void;
+  onSessionCompleted: HookFn<WorkflowUsageSessionCompletedPayload>;
 };
 
 /**
