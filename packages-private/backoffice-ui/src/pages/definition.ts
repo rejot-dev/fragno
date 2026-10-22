@@ -6,6 +6,7 @@ import { parseBackofficeUiResult } from "../result";
 import { pageQueriesError } from "./query";
 
 export const PAGE_LIMITS = {
+  titleLength: 80,
   queries: 16,
   values: 32,
   /** Every query a bound query is made of: itself, its subqueries, nested rows, and branches. */
@@ -110,8 +111,9 @@ type PageSelectQuery = Extract<PageQuery, { kind: "select" }>;
 /** One field of a query's first row, such as a count for a metric. */
 export type PageValue = { query: string; field: string; whenEmpty: PageLiteral };
 
-/** A built page: named live queries and values, and the interface bound to them. */
+/** A built page: its title, named live queries and values, and the interface bound to them. */
 export type PageDefinition = {
+  title: string;
   queries: Record<string, PageQuery>;
   values: Record<string, PageValue>;
   spec: BackofficeUiSpec;
@@ -138,7 +140,7 @@ export function pageValuePath(value: string): string {
 }
 
 /** Builds of an older version fail validation, so the system rebuilds them from source. */
-export const PAGE_DEFINITION_VERSION = 3;
+export const PAGE_DEFINITION_VERSION = 4;
 
 const nameSchema = z
   .string()
@@ -286,6 +288,11 @@ function jsonDepthExceeds(value: unknown, limit: number): boolean {
 /** A definition's shape; which aliases and fields its queries read is checked once it parses. */
 const pageFileSchema = z.strictObject({
   version: z.literal(PAGE_DEFINITION_VERSION),
+  title: z
+    .string()
+    .trim()
+    .min(1, 'Name the page, such as "Home".')
+    .max(PAGE_LIMITS.titleLength, `At most ${PAGE_LIMITS.titleLength} characters.`),
   queries: namedSchema(querySchema, PAGE_LIMITS.queries),
   values: namedSchema(
     z.strictObject({ query: z.string(), field: z.string(), whenEmpty: literalSchema }),
@@ -311,7 +318,7 @@ export function parsePageDefinition(
     const path = issue.path.map(String).join(".");
     return { kind: "invalid", message: path ? `${path}: ${issue.message}` : issue.message };
   }
-  const { queries, values, spec } = file.data;
+  const { title, queries, values, spec } = file.data;
   try {
     checkPage(queries, values, collections);
   } catch (error) {
@@ -339,7 +346,7 @@ export function parsePageDefinition(
       message: `spec: ${unbound.join(", ")} name no query or value of this page.`,
     };
   }
-  return { kind: "valid", definition: { queries, values, spec: ui.value.$ui.spec } };
+  return { kind: "valid", definition: { title, queries, values, spec: ui.value.$ui.spec } };
 }
 
 /** A problem in a page definition, named by where it sits, such as `queries.q0.where.0: …`. */
@@ -590,7 +597,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 /** State paths the spec reads, in props, conditions, and repeats, that name no query or value. */
 function unboundStatePaths(
   spec: BackofficeUiSpec,
-  { queries, values }: Omit<PageDefinition, "spec">,
+  { queries, values }: Pick<PageDefinition, "queries" | "values">,
 ): string[] {
   const unbound = new Set<string>();
   const check = (path: string) => {

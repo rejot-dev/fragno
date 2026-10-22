@@ -3,6 +3,7 @@
 
 /** The most a page asks for; a build beyond them fails. */
 type PageLimits = {
+  titleLength: 80;
   queries: 16;
   values: 32;
   queryParts: 16;
@@ -15,7 +16,7 @@ type PageLimits = {
 };
 
 /** The version of the definition page.define writes. */
-type PageDefinitionVersion = 3;
+type PageDefinitionVersion = 4;
 
 type PageCollections = {
   projects: PageCollection<{

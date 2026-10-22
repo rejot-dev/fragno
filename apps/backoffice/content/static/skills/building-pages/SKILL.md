@@ -52,6 +52,7 @@ module that reads them.
 
 ```js
 export default page.define(
+  { title: "Automations" },
   ({
     collections,
     from,
@@ -169,9 +170,9 @@ export default page.define(
 );
 ```
 
-Return the root element from the callback; `page.define` renders it. Write expressions inline in
-each callback, as above; a helper function that takes a source's fields needs a JSDoc type to pass
-`js.check`.
+The title heads the page. Return the root element from the callback; `page.define` renders it. Write
+expressions inline in each callback, as above; a helper function that takes a source's fields needs
+a JSDoc type to pass `js.check`.
 
 ## Queries
 

@@ -28,7 +28,9 @@ function HomePage({ scope }: { scope: StoryScope }) {
   const sources = useMemo(() => storySources(scope), [scope]);
   return (
     <div className={`${backofficePageColumnClassName} flex flex-col gap-4`}>
-      <h1 className="text-lg font-semibold text-[var(--bo-fg)]">home</h1>
+      <h1 className="text-lg font-semibold text-[var(--bo-fg)]">
+        {built.kind === "valid" ? built.definition.title : "home"}
+      </h1>
       {built.kind === "invalid" ? (
         <BackofficeSystemState
           tone="error"

@@ -208,8 +208,11 @@ const PAGE_BUILDER_SOURCE = String.raw`({ functions, aggregates, version }) => (
 
   const context = Object.freeze({ collections, from, toArray, unionAll, now: time(0), intervals, bucket, ...operators });
 
-  const define = (build) => {
-    if (typeof build !== "function") fail("page.define(build) expects a function that returns the page's root ui element.");
+  const define = (options, build) => {
+    if (!isRecord(options) || typeof options.title !== "string") {
+      fail("page.define(options, build) expects options such as { title: \"Home\" } first.");
+    }
+    if (typeof build !== "function") fail("page.define(options, build) expects build, a function that returns the page's root ui element.");
     const root = build(context);
     const queryNames = new Map();
     const valueNames = new Map();
@@ -241,7 +244,7 @@ const PAGE_BUILDER_SOURCE = String.raw`({ functions, aggregates, version }) => (
       binding = null;
     }
     if (Object.keys(rendered.state).length > 0) fail("Pages show data; they do not collect ui.form input.");
-    return { version, queries: fileQueries, values: fileValues, spec: rendered.spec };
+    return { version, title: options.title, queries: fileQueries, values: fileValues, spec: rendered.spec };
   };
 
   return Object.freeze({ define });

@@ -1,4 +1,4 @@
-import type { PageDefinition } from "@fragno-private/backoffice-ui/pages/definition";
+import type { PageDefinition, PageLoad } from "@fragno-private/backoffice-ui/pages/definition";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { Suspense, use } from "react";
@@ -19,23 +19,26 @@ import { loadPageRoute } from "./load.server";
 export async function loader({ request, context, params }: Route.LoaderArgs) {
   const name = params["*"];
   const result = await loadPageRoute({ request, context, name });
-  return data(
-    { title: name.split("/").at(-1) ?? name, result },
-    { status: result.kind === "missing" ? 404 : 200 },
-  );
+  return data({ name, result }, { status: result.kind === "missing" ? 404 : 200 });
+}
+
+/** A built page names itself; until it builds, its file name stands in. */
+function pageTitle(name: string, result: PageLoad): string {
+  return result.kind === "ready" ? result.definition.title : (name.split("/").at(-1) ?? name);
 }
 
 export function meta({ loaderData }: Route.MetaArgs) {
-  return [{ title: `${loaderData?.title ?? "Page"} · Pages` }];
+  const title = loaderData ? pageTitle(loaderData.name, loaderData.result) : "Page";
+  return [{ title: `${title} · Pages` }];
 }
 
 export default function PageRoute({ loaderData }: Route.ComponentProps) {
-  const { title, result } = loaderData;
+  const { name, result } = loaderData;
   const loading = <BackofficeSystemState tone="loading" title="Synchronizing automation data." />;
 
   return (
     <div className={`${backofficePageBodyClassName} flex flex-col gap-4`}>
-      <h1 className="text-lg font-semibold text-[var(--bo-fg)]">{title}</h1>
+      <h1 className="text-lg font-semibold text-[var(--bo-fg)]">{pageTitle(name, result)}</h1>
       {result.kind === "missing" ? (
         <BackofficeSystemState tone="empty" label="Not found" title="This page does not exist." />
       ) : result.kind === "failed" ? (

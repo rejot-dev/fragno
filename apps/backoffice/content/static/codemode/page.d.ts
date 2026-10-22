@@ -200,6 +200,7 @@ type PageContext = {
 /** A built page: its queries as JSON and the interface bound to them. */
 type PageDefinition = {
   version: PageDefinitionVersion;
+  title: string;
   queries: Record<string, unknown>;
   values: Record<
     string,
@@ -209,6 +210,13 @@ type PageDefinition = {
 };
 
 declare const page: {
-  /** Builds the page file: build returns the root ui element, with queries in its props. At most PageLimits["queries"] queries. */
-  define(build: (context: PageContext) => BackofficeUiElement): PageDefinition;
+  /**
+   * Builds the page file. The title, at most PageLimits["titleLength"] characters, heads the page;
+   * build returns the root ui element, with queries in its props. At most PageLimits["queries"]
+   * queries.
+   */
+  define(
+    options: { title: string },
+    build: (context: PageContext) => BackofficeUiElement,
+  ): PageDefinition;
 };
