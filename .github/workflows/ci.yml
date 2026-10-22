@@ -62,5 +62,12 @@ jobs:
           pnpm exec turbo run ${{ github.event_name == 'pull_request' && 'test:changed --affected'
           || 'test' }} --concurrency=80%
 
+      # Backoffice's `test:changed` skips the slow Cloudflare project, so pull requests run it here.
+      - name: Run Backoffice Cloudflare tests
+        if: github.event_name == 'pull_request'
+        run:
+          pnpm exec turbo run test:cloudflare --affected --filter=@fragno-apps/backoffice-rr
+          --concurrency=80%
+
       - name: Run Backoffice bridge scenarios
         run: pnpm exec turbo run test:bridge --filter=@fragno-apps/backoffice-rr --concurrency=80%

@@ -125,8 +125,11 @@ or a non-code file changed. Markdown is ignored unless a trigger matches.
 
 Selection follows imports, so a Backoffice test that reaches a file another way needs that file in
 `forceRerunTriggers` in `apps/backoffice/vitest.config.ts`. This covers `?raw` and
-`import.meta.glob` imports, files read with `fs`, and tests that run code in a subprocess. The
-script also receives `--full-project=cloudflare`, because Backoffice's Workers load Durable Objects
-from the Wrangler entry point, not from test imports.
+`import.meta.glob` imports, files read with `fs`, and tests that run code in a subprocess.
+
+Backoffice's `test:changed` never runs the `cloudflare` Vitest project (`*.cloudflare.test.ts`),
+because it is slow. Its Workers load Durable Objects from the Wrangler entry point, so import-graph
+selection cannot narrow it; it would always run in full. CI runs it on pull requests through
+`test:cloudflare`.
 
 Backoffice's `test:changed` is never cached: a cache hit would replay a partial run as a pass.

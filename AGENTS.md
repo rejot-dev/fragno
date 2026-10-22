@@ -99,6 +99,8 @@ We use Turborepo + PNPM. Verify your work with:
 changes reach. Run every test with `pnpm exec turbo test --output-logs=errors-only` when you need
 the full suite, such as after changing repository-root files, which make no package affected.
 
+`pnpm test:changed` skips Backoffice's slow Cloudflare tests (`*.cloudflare.test.ts`); CI runs them.
+
 E.g.
 
 - `pnpm exec turbo build --filter=@fragno-dev/db --output-logs=errors-only`

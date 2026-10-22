@@ -24,6 +24,10 @@
     "test:changed": {
       "dependsOn": ["^build", "static:generate"]
     },
+    "test:cloudflare": {
+      "dependsOn": ["^build", "static:generate"],
+      "outputs": []
+    },
     "test:bridge": {
       "dependsOn": ["^build", "static:generate"]
     },

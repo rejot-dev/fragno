@@ -8,12 +8,6 @@ import { fileURLToPath } from "node:url";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const packagePath = relative(repositoryRoot, process.cwd()).split(sep).join("/");
-// Projects whose tests reach code outside their import graph, such as Workers loaded from the
-// Wrangler entry point, always run in full.
-const fullProjects = process.argv
-  .slice(2)
-  .filter((argument) => argument.startsWith("--full-project="))
-  .map((argument) => argument.slice("--full-project=".length));
 const importGraphExtensions = new Set([
   ".ts",
   ".tsx",
@@ -24,8 +18,14 @@ const importGraphExtensions = new Set([
   ".mjs",
   ".cjs",
 ]);
-// Coverage of a partial run is meaningless and slows it down.
-const vitestOptions = ["--run", "--passWithNoTests", "--coverage.enabled=false"];
+// Coverage of a partial run is meaningless and slows it down. Arguments pass through to Vitest,
+// such as `--project` filters.
+const vitestOptions = [
+  "--run",
+  "--passWithNoTests",
+  "--coverage.enabled=false",
+  ...process.argv.slice(2),
+];
 
 function git(args) {
   const result = spawnSync("git", args, { cwd: repositoryRoot, encoding: "utf8" });
@@ -100,19 +100,6 @@ function fullRunReason(files) {
   return null;
 }
 
-/** `vitest related` selects listed test files directly, so full projects share one run. */
-function testFiles(project) {
-  const result = spawnSync(
-    "pnpm",
-    ["exec", "vitest", "list", `--project=${project}`, "--filesOnly", "--json"],
-    { encoding: "utf8" },
-  );
-  if (result.status !== 0) {
-    throw new Error(`vitest list --project=${project} failed: ${result.stderr.trim()}`);
-  }
-  return JSON.parse(result.stdout).map((test) => test.file);
-}
-
 function run(args) {
   const result = spawnSync("pnpm", ["exec", ...args], { stdio: "inherit" });
   if (result.error) {
@@ -139,16 +126,7 @@ function runChangedTests() {
   }
   console.log(`Running tests related to ${ownFiles.length} changed files since ${base}.`);
   // `forceRerunTriggers` widens this to the full suite for files the import graph cannot see.
-  return run([
-    "vitest",
-    "related",
-    ...vitestOptions,
-    ...ownFiles,
-    // Markdown reaches tests only through `forceRerunTriggers`, which already run every test.
-    ...(ownFiles.every((file) => extname(file) === ".md")
-      ? []
-      : fullProjects.flatMap((project) => testFiles(project))),
-  ]);
+  return run(["vitest", "related", ...vitestOptions, ...ownFiles]);
 }
 
 process.exit(runChangedTests());
