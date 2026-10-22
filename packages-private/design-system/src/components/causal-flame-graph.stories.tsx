@@ -79,57 +79,80 @@ const githubIssueTriage = node(
   {
     detail: "issues.opened delivery 7f3c…a91",
     children: [
-      node(
-        "reclassified:promote-issue-opened:github-delivery-1",
-        "event",
-        "github · issues.opened",
-        at(ms(180)),
-        {
-          detail: "via route Promote opened issues",
-          children: [
-            node("dispatch:assist", "route", "Assist the sender skipped", at(ms(230)), {
-              status: "skipped",
-              detail: "No external sender linked to a user",
-            }),
-            node("triage-issue-42", "workflow", "triage-issue", ran(ms(240), s(7.4)), {
-              detail: "codemode-script · triage-issue-42",
-              children: [
-                node("triage-issue-42/do:classify", "step", "classify issue", at(s(1.9)), {
-                  detail: "Committed after one attempt",
-                }),
-                node("triage-issue-42/do:label", "step", "apply labels", at(s(2.6))),
-                node("evt-triaged", "event", "github · issue.triaged", at(s(2.7)), {
-                  detail: "fired by triage-issue",
-                  children: [
-                    node("forwarded:evt-triaged", "event", "project · issue.triaged", at(s(3.0)), {
-                      detail: "via route Forward to Launch Plan",
-                      children: [
-                        node("notify-team-42", "workflow", "notify-team", ran(s(3.1), s(5.8)), {
-                          children: [
-                            node("notify/do:compose", "step", "compose message", at(s(4.9))),
-                            node("notify/do:send", "step", "send to Telegram", at(s(5.7))),
-                          ],
-                        }),
-                      ],
-                    }),
-                  ],
-                }),
-                node("triage-issue-42/do:comment", "step", "post summary comment", at(s(7.2))),
-              ],
-            }),
-            node("sync-linear-42", "workflow", "sync-to-linear", ran(ms(260), s(2.2)), {
-              status: "failed",
-              detail: "Linear API returned 401 after 3 attempts",
-              children: [
-                node("sync/do:create", "step", "create Linear issue", at(s(2.1)), {
-                  status: "failed",
-                  detail: "401 Unauthorized",
-                }),
-              ],
-            }),
-          ],
-        },
-      ),
+      node("dispatch:promote", "route", "Promote opened issues", at(ms(170)), {
+        detail: "Reclassified the event",
+        children: [
+          node("reclassified:promote", "event", "github · issues.opened", at(ms(180)), {
+            children: [
+              node("dispatch:assist", "route", "Assist the sender", at(ms(230)), {
+                status: "skipped",
+                detail: "Skipped: No external sender linked to a user",
+              }),
+              node("dispatch:triage", "route", "Triage issues", at(ms(232)), {
+                detail: "Started a run",
+                children: [
+                  node("triage-issue-42", "workflow", "triage-issue", ran(ms(240), s(7.4)), {
+                    children: [
+                      node("triage-issue-42/do:classify", "step", "classify issue", at(s(1.9)), {
+                        detail: "Committed after one attempt",
+                      }),
+                      node("triage-issue-42/do:label", "step", "apply labels", at(s(2.6))),
+                      node("evt-triaged", "event", "github · issue.triaged", at(s(2.7)), {
+                        detail: "fired by triage-issue",
+                        children: [
+                          node("dispatch:notify", "route", "Notify the team", at(s(2.8)), {
+                            detail: "Started a run",
+                            children: [
+                              node(
+                                "notify-team-42",
+                                "workflow",
+                                "notify-team",
+                                ran(s(3.1), s(5.8)),
+                                {
+                                  children: [
+                                    node(
+                                      "notify/do:compose",
+                                      "step",
+                                      "compose message",
+                                      at(s(4.9)),
+                                    ),
+                                    node("notify/do:send", "step", "send to Telegram", at(s(5.7))),
+                                  ],
+                                },
+                              ),
+                            ],
+                          }),
+                        ],
+                      }),
+                      node(
+                        "triage-issue-42/do:comment",
+                        "step",
+                        "post summary comment",
+                        at(s(7.2)),
+                      ),
+                    ],
+                  }),
+                ],
+              }),
+              node("dispatch:sync", "route", "Sync to Linear", at(ms(234)), {
+                detail: "Started a run",
+                children: [
+                  node("sync-linear-42", "workflow", "sync-to-linear", ran(ms(260), s(2.2)), {
+                    status: "failed",
+                    detail: "Linear API returned 401 after 3 attempts",
+                    children: [
+                      node("sync/do:create", "step", "create Linear issue", at(s(2.1)), {
+                        status: "failed",
+                        detail: "401 Unauthorized",
+                      }),
+                    ],
+                  }),
+                ],
+              }),
+            ],
+          }),
+        ],
+      }),
     ],
   },
 );
@@ -388,4 +411,100 @@ export function TraceWithRunSteps() {
       />
     </div>
   );
+}
+
+// One event matched by three routes within a few milliseconds, as automations fan it out.
+const fanOut = node("fanout-test", "event", "custom · fanout.test", at(ms(0)), {
+  children: [
+    node("dispatch:reclassify", "route", "Reclassify", at(ms(20)), {
+      detail: "Reclassified the event",
+      children: [
+        node("reclassified", "event", "custom · fanout.reclassified", at(ms(20)), {
+          detail: "via Reclassify",
+        }),
+      ],
+    }),
+    node("dispatch:send", "route", "Send to late workflow", at(ms(20)), {
+      detail: "Delivered fanout-ready to run fanout-waiter-1",
+    }),
+    node("dispatch:forward", "route", "Forward elsewhere", at(ms(21)), {
+      status: "failed",
+      detail: "Gave up after 1 attempt: Forwarded event exceeds its retained scope ceiling.",
+    }),
+    node("dispatch:triage", "route", "Start triage", at(ms(22)), {
+      children: [node("run:triage", "workflow", "triage", ran(ms(30), s(2.4)))],
+    }),
+  ],
+});
+
+export function FanOut() {
+  return <Frame title="custom · fanout.test" root={fanOut} />;
+}
+
+// The same fan-out when every route acts at once, so the whole trace spans milliseconds.
+const instantFanOut = { ...fanOut, children: fanOut.children.slice(0, 3) };
+
+export function FanOutWithinMilliseconds() {
+  return <Frame title="custom · fanout.test" root={instantFanOut} />;
+}
+
+// A route that matched seconds after its event, so its mark sits at the end of the axis.
+export function LateRoute() {
+  return (
+    <Frame
+      title="custom · fanout.forbidden"
+      root={node("forbidden", "event", "custom · fanout.forbidden", at(s(0)), {
+        children: [
+          node("dispatch:echo", "route", "Echo", at(s(0.2)), { detail: "Forwarded to org:acme" }),
+          node("dispatch:forward", "route", "Forward elsewhere", at(s(3)), {
+            status: "failed",
+            detail: "Gave up after 1 attempt: Forwarded event exceeds its retained scope ceiling.",
+          }),
+        ],
+      })}
+    />
+  );
+}
+
+// One route hands the event to a run that was already waiting; the trace shows only what the
+// event set off in it, from when it took the event until it waits for the next one.
+const deliveredToWaitingRun = node(
+  "assistant-requested",
+  "event",
+  "custom · assistant.requested",
+  at(ms(0)),
+  {
+    children: [
+      node("dispatch:log", "route", "Log assistant requests", at(ms(14)), {
+        detail: "Delivered assistant.requested to run assistant-request-log-v2",
+        children: [
+          node(
+            "delivery:log",
+            "workflow",
+            "assistant-request-log",
+            {
+              kind: "span",
+              activity: "work",
+              queuedAt: ms(27),
+              startedAt: ms(119),
+              endedAt: ms(224),
+            },
+            {
+              detail: "Took assistant.requested",
+              children: [node("step:write", "step", "write request 0", work(ms(130), ms(224)))],
+            },
+          ),
+        ],
+      }),
+      node("dispatch:notify", "route", "Notify the assistant", at(ms(14)), {
+        status: "failed",
+        detail:
+          "Gave up after 1 attempt: Delegated automation 'automation-route:notify-assistant' is not granted pi.modify.",
+      }),
+    ],
+  },
+);
+
+export function DeliveredToWaitingRun() {
+  return <Frame title="custom · assistant.requested" root={deliveredToWaitingRun} />;
 }

@@ -71,13 +71,24 @@ export type CausalFlameLayout = {
 export const CAUSAL_FLAME_AXIS_HEADROOM = 1.16;
 // Instants and short bars still claim room for their label, so neighbours never cover it.
 const LABEL_SLOT = 0.15;
-// A failure's message follows its label, so it gets more room.
-const FAILURE_LABEL_SLOT = 0.32;
+// A failure's message, or what a route did, follows its label, so it gets more room.
+const DETAIL_LABEL_SLOT = 0.32;
 // Labels of bars that begin past this point go before the bar, so they stay on the axis.
 const LABEL_FLIP_POSITION = 0.8;
 // Even an instant step in a lane keeps a sliver, so it stays visible and clickable.
 const LANE_SLOT = 0.006;
 const ROW_GAP = 0.004;
+// What an instant causes at the same moment still sits a little after it, so depth stays visible.
+const INSTANT_INDENT = 0.012;
+// A tree of instants alone, such as an event its routes all acted on at once, is drawn over at
+// least this long, so instants milliseconds apart cluster instead of spreading across the axis.
+// Anything that takes time keeps the whole axis, so its duration stays readable.
+const INSTANTS_MIN_SCALE_MS = 1_000;
+
+/** Whether a bar names what it did inline, after its label: a route's outcome, or a failure. */
+export function causalFlameShowsDetail(node: CausalFlameNode): boolean {
+  return node.detail !== null && (node.kind === "route" || node.status === "failed");
+}
 
 /** A run's steps that take time read as one lane of segments under the run. */
 function sitsInLane(node: CausalFlameNode): boolean {
@@ -120,6 +131,10 @@ export function causalFlameIsLive(root: CausalFlameNode): boolean {
   return isOpen(root) || root.children.some(causalFlameIsLive);
 }
 
+function onlyInstants(node: CausalFlameNode): boolean {
+  return node.timing.kind === "instant" && node.children.every(onlyInstants);
+}
+
 function recordedMoments(node: CausalFlameNode): number[] {
   const timing = node.timing;
   const own =
@@ -140,7 +155,11 @@ export function newestCausalFlameMoment(root: CausalFlameNode): number {
 export function causalFlameScale(root: CausalFlameNode, now: number): WorkflowTimeScale {
   const moments = recordedMoments(root);
   const startedAt = Math.min(...moments);
-  const endedAt = Math.max(...moments, causalFlameIsLive(root) ? now : startedAt);
+  const endedAt = Math.max(
+    ...moments,
+    causalFlameIsLive(root) ? now : startedAt,
+    onlyInstants(root) ? startedAt + INSTANTS_MIN_SCALE_MS : startedAt,
+  );
   return timeScaleOverMoments(startedAt, endedAt, moments);
 }
 
@@ -297,8 +316,10 @@ export function causalFlameTicks(scale: WorkflowTimeScale): CausalFlameTick[] {
 }
 
 /**
- * Packs the tree into rows like a flame chart. Every node sits below its parent, in the first row
- * where nothing already claims its time range, so a causal chain reads top to bottom.
+ * Lays the tree out in rows like a flame chart, so a causal chain reads top to bottom. Events,
+ * routes, and workflows each get a row of their own, so an event its routes fan out from reads as
+ * siblings rather than as a chain. A run's steps pack into the rows below it, in the first row where
+ * nothing already claims their time range.
  */
 export function layoutCausalFlame(
   root: CausalFlameNode,
@@ -313,8 +334,15 @@ export function layoutCausalFlame(
     return (claimed[row] ?? []).every((slot) => to + gap <= slot.from || from >= slot.to + gap);
   }
 
-  function place(node: CausalFlameNode, parent: Pick<CausalFlameBar, "node" | "row"> | null) {
-    const queuedFrom = causalFlamePosition(scale, causalFlameNodeStart(node));
+  function place(
+    node: CausalFlameNode,
+    parent: Pick<CausalFlameBar, "node" | "row" | "queuedFrom"> | null,
+  ) {
+    const startsAt = causalFlamePosition(scale, causalFlameNodeStart(node));
+    const queuedFrom =
+      parent !== null && node.timing.kind === "instant" && parent.node.timing.kind === "instant"
+        ? Math.max(startsAt, parent.queuedFrom + INSTANT_INDENT)
+        : startsAt;
     const from =
       node.timing.kind === "span" ? causalFlamePosition(scale, node.timing.startedAt) : queuedFrom;
     const to = Math.max(causalFlamePosition(scale, causalFlameNodeEnd(node, now)), from);
@@ -323,8 +351,7 @@ export function layoutCausalFlame(
       : from > LABEL_FLIP_POSITION
         ? "start"
         : "end";
-    const labelSlot =
-      node.status === "failed" && node.detail !== null ? FAILURE_LABEL_SLOT : LABEL_SLOT;
+    const labelSlot = causalFlameShowsDetail(node) ? DETAIL_LABEL_SLOT : LABEL_SLOT;
     const claim =
       labelSide === "inside"
         ? { from: queuedFrom, to: Math.max(to, queuedFrom + LANE_SLOT) }
@@ -332,7 +359,7 @@ export function layoutCausalFlame(
           ? { from: Math.max(Math.min(queuedFrom, from - labelSlot), 0), to }
           : { from: queuedFrom, to: Math.min(Math.max(to, from + labelSlot), 1) };
 
-    let row = parent === null ? 0 : parent.row + 1;
+    let row = parent === null ? 0 : node.kind === "step" ? parent.row + 1 : claimed.length;
     while (!fits(row, claim.from, claim.to, labelSide === "inside" ? 0 : ROW_GAP)) {
       row += 1;
     }
