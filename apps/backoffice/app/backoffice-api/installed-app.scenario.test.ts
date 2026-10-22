@@ -880,7 +880,7 @@ describe("installed-app event delivery SQLite scenarios", () => {
                 {
                   permission: "events.read",
                   operations: expect.arrayContaining([
-                    "List stored automation events in the current scope, newest first.",
+                    "List stored automation events in the current scope, newest first, each with the routes it matched and where they stand.",
                   ]),
                 },
               ],
