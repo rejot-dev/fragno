@@ -205,21 +205,9 @@ const literalSchema = z.union([z.string(), z.number(), z.boolean(), z.null()], {
   error: "Expected a string, finite number, boolean, or null.",
 });
 
-/**
- * Expressions at each depth, so a definition nested deeper than the limit fails where it crosses
- * it instead of exhausting the stack.
- */
-const expressionSchemas: z.ZodType<PageExpression>[] = [];
-
-function expressionSchema(depth: number): z.ZodType<PageExpression> {
-  if (depth > PAGE_LIMITS.expressionDepth) {
-    return z.never({ error: `Expressions nest at most ${PAGE_LIMITS.expressionDepth} deep.` });
-  }
-  if (expressionSchemas[depth]) {
-    return expressionSchemas[depth];
-  }
-  const inner = z.lazy(() => expressionSchema(depth + 1));
-  expressionSchemas[depth] = z.discriminatedUnion("kind", [
+/** An expression's shape; how deep expressions nest is checked over the parsed queries. */
+const expressionSchema: z.ZodType<PageExpression> = z.lazy(() =>
+  z.discriminatedUnion("kind", [
     z.strictObject({
       kind: z.literal("ref"),
       path: z.tuple([z.string(), z.string()], z.string()),
@@ -243,7 +231,7 @@ function expressionSchema(depth: number): z.ZodType<PageExpression> {
         name: z.enum(Object.keys(PAGE_QUERY_FUNCTIONS) as [PageQueryFunction], {
           error: `Use one of: ${Object.keys(PAGE_QUERY_FUNCTIONS).join(", ")}.`,
         }),
-        args: z.array(inner),
+        args: z.array(expressionSchema),
       })
       .superRefine(({ name, args }, context) => {
         const [minimum, maximum] = PAGE_QUERY_FUNCTIONS[name].arity;
@@ -260,12 +248,12 @@ function expressionSchema(depth: number): z.ZodType<PageExpression> {
       name: z.enum(PAGE_QUERY_AGGREGATES, {
         error: `Use one of: ${PAGE_QUERY_AGGREGATES.join(", ")}.`,
       }),
-      arg: inner,
+      arg: expressionSchema,
     }),
     z
       .strictObject({
         kind: z.literal("bucket"),
-        time: inner,
+        time: expressionSchema,
         every: z
           .int()
           .min(
@@ -278,29 +266,16 @@ function expressionSchema(depth: number): z.ZodType<PageExpression> {
         (bucket) => mostIntervals(bucket) <= PAGE_LIMITS.buckets,
         `A bucketed window has at most ${PAGE_LIMITS.buckets} buckets, counting the one now falls in.`,
       ),
-  ]);
-  return expressionSchemas[depth];
-}
+  ]),
+);
 
 const limitMessage = `Expected null or a whole number 1-${PAGE_LIMITS.rowsPerQuery}.`;
 
 const queryPartsMessage = `A query is made of at most ${PAGE_LIMITS.queryParts} queries, counting subqueries, toArray, and union branches.`;
 
-/**
- * Queries at each depth; a query nested deeper than the parts a query may have fails there. The
- * part budget itself, which counts siblings too, is checked over the parsed queries.
- */
-const querySchemas: z.ZodType<PageQuery>[] = [];
-
-function querySchema(depth: number): z.ZodType<PageQuery> {
-  if (depth > PAGE_LIMITS.queryParts) {
-    return z.never({ error: queryPartsMessage });
-  }
-  if (querySchemas[depth]) {
-    return querySchemas[depth];
-  }
-  const inner = z.lazy(() => querySchema(depth + 1));
-  const expression = expressionSchema(0);
+/** A query's shape; the parts a query is made of are counted over the parsed queries. */
+const querySchema: z.ZodType<PageQuery> = z.lazy(() => {
+  const expression = expressionSchema;
   const source = z.discriminatedUnion("kind", [
     z.strictObject({
       kind: z.literal("collection"),
@@ -310,9 +285,9 @@ function querySchema(depth: number): z.ZodType<PageQuery> {
           `"${String(issue.input)}" is not a page collection. Use one of: ${Object.keys(PAGE_COLLECTIONS).join(", ")}.`,
       }),
     }),
-    z.strictObject({ kind: z.literal("query"), alias: nameSchema, query: inner }),
+    z.strictObject({ kind: z.literal("query"), alias: nameSchema, query: querySchema }),
   ]);
-  querySchemas[depth] = z.discriminatedUnion("kind", [
+  return z.discriminatedUnion("kind", [
     z.strictObject({
       kind: z.literal("select"),
       from: source,
@@ -321,7 +296,7 @@ function querySchema(depth: number): z.ZodType<PageQuery> {
       groupBy: z.array(expression),
       having: z.array(expression),
       select: namedSchema(
-        z.union([z.strictObject({ kind: z.literal("toArray"), query: inner }), expression]),
+        z.union([z.strictObject({ kind: z.literal("toArray"), query: querySchema }), expression]),
         64,
       ).nullable(),
       orderBy: z.array(z.strictObject({ expression, direction: z.enum(["asc", "desc"]) })),
@@ -334,18 +309,41 @@ function querySchema(depth: number): z.ZodType<PageQuery> {
     z.strictObject({
       kind: z.literal("union"),
       branches: z
-        .array(inner)
+        .array(querySchema)
         .min(2, `A union has 2-${PAGE_LIMITS.unionBranches} branches.`)
         .max(PAGE_LIMITS.unionBranches, `A union has 2-${PAGE_LIMITS.unionBranches} branches.`),
     }),
   ]);
-  return querySchemas[depth];
+});
+
+/**
+ * How deep a definition's queries may nest as JSON: each query part adds at most four levels, as
+ * a join's source does, and each expression level two, as a function's arguments do. Deeper JSON
+ * breaks a limit, so it fails before parsing walks it and exhausts the stack.
+ */
+const QUERIES_JSON_DEPTH = 4 * PAGE_LIMITS.queryParts + 2 * PAGE_LIMITS.expressionDepth + 8;
+
+function jsonDepthExceeds(value: unknown, limit: number): boolean {
+  const pending: [unknown, number][] = [[value, 0]];
+  while (pending.length > 0) {
+    const [item, depth] = pending.pop()!;
+    if (item === null || typeof item !== "object") {
+      continue;
+    }
+    if (depth > limit) {
+      return true;
+    }
+    for (const child of Object.values(item)) {
+      pending.push([child, depth + 1]);
+    }
+  }
+  return false;
 }
 
 /** A definition's shape; which aliases and fields its queries read is checked once it parses. */
 const pageFileSchema = z.strictObject({
   version: z.literal(PAGE_DEFINITION_VERSION),
-  queries: namedSchema(querySchema(0), PAGE_LIMITS.queries),
+  queries: namedSchema(querySchema, PAGE_LIMITS.queries),
   values: namedSchema(
     z.strictObject({ query: z.string(), field: z.string(), whenEmpty: literalSchema }),
     PAGE_LIMITS.values,
@@ -355,6 +353,12 @@ const pageFileSchema = z.strictObject({
 
 /** Validates what `page.define` returned, or what a cached build holds. */
 export function parsePageDefinition(json: unknown): PageParseResult {
+  if (isRecord(json) && jsonDepthExceeds(json.queries, QUERIES_JSON_DEPTH)) {
+    return {
+      kind: "invalid",
+      message: `queries: Queries nest deeper than a page allows: ${PAGE_LIMITS.queryParts} parts to a query, and expressions ${PAGE_LIMITS.expressionDepth} deep.`,
+    };
+  }
   const file = pageFileSchema.safeParse(json);
   if (!file.success) {
     const [issue] = file.error.issues;
@@ -430,10 +434,14 @@ function checkPage(queries: Record<string, PageQuery>, values: Record<string, Pa
   }
 }
 
-/** Which clause an expression sits in decides whether aggregates may appear in it. */
+/**
+ * Which clause an expression sits in decides whether aggregates may appear in it; depth counts
+ * the expressions around it.
+ */
 type ExpressionContext = {
   sources: Sources;
   aggregates: "allowed" | "forbidden";
+  depth: number;
 };
 
 /**
@@ -490,11 +498,15 @@ function checkSelectQuery(
   for (const [index, join] of query.joins.entries()) {
     addSource(join.source, `${path}.joins.${index}.source`, sources, budget);
     // TanStack checks that each side of the condition reads one side of the join.
-    checkExpression(join.on, `${path}.joins.${index}.on`, { sources, aggregates: "forbidden" });
+    checkExpression(join.on, `${path}.joins.${index}.on`, {
+      sources,
+      aggregates: "forbidden",
+      depth: 0,
+    });
   }
 
-  const plain: ExpressionContext = { sources, aggregates: "forbidden" };
-  const aggregated: ExpressionContext = { sources, aggregates: "allowed" };
+  const plain: ExpressionContext = { sources, aggregates: "forbidden", depth: 0 };
+  const aggregated: ExpressionContext = { sources, aggregates: "allowed", depth: 0 };
   for (const [key, context] of [
     ["where", plain],
     ["groupBy", plain],
@@ -566,6 +578,10 @@ function addSource(
 }
 
 function checkExpression(expression: PageExpression, path: string, context: ExpressionContext) {
+  if (context.depth > PAGE_LIMITS.expressionDepth) {
+    fail(path, `Expressions nest at most ${PAGE_LIMITS.expressionDepth} deep.`);
+  }
+  const inner = { ...context, depth: context.depth + 1 };
   switch (expression.kind) {
     case "ref": {
       const [alias, field, ...nested] = expression.path;
@@ -590,17 +606,17 @@ function checkExpression(expression: PageExpression, path: string, context: Expr
     }
     case "fn":
       for (const [index, arg] of expression.args.entries()) {
-        checkExpression(arg, `${path}.args.${index}`, context);
+        checkExpression(arg, `${path}.args.${index}`, inner);
       }
       return;
     case "aggregate":
       if (context.aggregates === "forbidden") {
         fail(path, "Aggregates belong in select, having, or orderBy, outside other aggregates.");
       }
-      checkExpression(expression.arg, `${path}.arg`, { ...context, aggregates: "forbidden" });
+      checkExpression(expression.arg, `${path}.arg`, { ...inner, aggregates: "forbidden" });
       return;
     case "bucket":
-      checkExpression(expression.time, `${path}.time`, context);
+      checkExpression(expression.time, `${path}.time`, inner);
       return;
     case "value":
     case "now":
