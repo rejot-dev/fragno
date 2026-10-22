@@ -1,4 +1,9 @@
-import type { CodemodeHost } from "@fragno-dev/codemode/execution/codemode-activation-contract";
+import { AsyncLocalStorage } from "node:async_hooks";
+
+import type {
+  CodemodeHost,
+  CodemodeWorkflowHost,
+} from "@fragno-dev/codemode/execution/codemode-activation-contract";
 import { createCodemodeHost } from "@fragno-dev/codemode/host/codemode-host-capabilities";
 import { sanitizeToolName, type ResolvedProvider } from "@fragno-dev/codemode/runtime-api";
 
@@ -14,12 +19,43 @@ import type {
   CodemodeRunOrigin,
 } from "./codemode-fragment";
 
+/**
+ * Names a run to its Codemode object, with the run whose tool call started it. A child runs on its
+ * parent's slot, which the parent does not use while it waits, so nested runs cannot exhaust their
+ * scope's slots.
+ */
+export type CodemodeRunLease = { key: string; parentKey: string | null };
+
+/** A run's host, and the lease that relates the runs its tools start to it. */
+export type CodemodeRunHost = { host: CodemodeHost; lease: CodemodeRunLease };
+
+// Tool calls run on the caller's side, so the caller, not the guest, knows which run started one.
+const runningTool = new AsyncLocalStorage<string>();
+
+/** Creates a run's host; a run that its tools start, such as through js.run, is its child. */
+export function createCodemodeRunHost(
+  providers: readonly ResolvedProvider[],
+  step: CodemodeWorkflowHost | null,
+): CodemodeRunHost {
+  const lease = { key: crypto.randomUUID(), parentKey: runningTool.getStore() ?? null };
+  const toolsOfRun = providers.map((provider) => ({
+    ...provider,
+    fns: Object.fromEntries(
+      Object.entries(provider.fns).map(([name, fn]) => [
+        name,
+        (...args: unknown[]) => runningTool.run(lease.key, () => fn(...args)),
+      ]),
+    ),
+  }));
+  return { host: createCodemodeHost(toolsOfRun, step), lease };
+}
+
 /** Runs code on behalf of one execution; callers name only what they run. */
 export type CodemodeRunner = {
   run<TActivation extends CodemodeRunActivation>(
     activation: TActivation,
     origin: CodemodeRunOrigin,
-    host: CodemodeHost,
+    runHost: CodemodeRunHost,
   ): Promise<CodemodeExecution<TActivation>>;
 };
 
@@ -36,7 +72,8 @@ export function codemodeRunnerFor(
     scopeRestriction: backofficeExecutionScopeRestriction(execution),
   };
   return {
-    run: (activation, origin, host) => codemode.execute(activation, { ...context, origin }, host),
+    run: (activation, origin, { host, lease }) =>
+      codemode.execute(activation, { ...context, origin }, host, lease),
   };
 }
 
@@ -60,8 +97,9 @@ export async function executeCodemodeInObject<
   signal: AbortSignal | null,
 ): Promise<CodemodeExecution<TActivation>> {
   signal?.throwIfAborted();
-  const host = createCodemodeHost(providers, null);
-  const execution = codemode.run(activation, origin, host);
+  const runHost = createCodemodeRunHost(providers, null);
+  const { host } = runHost;
+  const execution = codemode.run(activation, origin, runHost);
   if (signal === null) {
     return await execution;
   }

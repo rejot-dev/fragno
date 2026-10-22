@@ -1,6 +1,5 @@
 import { CODEMODE_LIMITS } from "@fragno-dev/codemode/codemode-limits";
 import { decodeCodemodeError } from "@fragno-dev/codemode/execution/codemode-errors";
-import { createCodemodeHost } from "@fragno-dev/codemode/host/codemode-host-capabilities";
 import {
   RemoteWorkflowSuspendedError,
   type RemoteWorkflowAllowedHook,
@@ -20,7 +19,11 @@ import type {
   CodemodeRunCompletion,
   CodemodeRunOrigin,
 } from "./codemode-fragment";
-import { codemodeProviderManifest, type CodemodeRunner } from "./codemode-object-execute";
+import {
+  codemodeProviderManifest,
+  createCodemodeRunHost,
+  type CodemodeRunner,
+} from "./codemode-object-execute";
 import { createBackofficeCodemodeResolvedProviders } from "./execute";
 import { BackofficeWorkflowStepHost } from "./workflow-host";
 import type { CodemodeWorkflowProgram } from "./workflow-program";
@@ -58,7 +61,7 @@ async function runCodemodeWorkflowTick<TParams>(
 ): Promise<WorkflowTickCompletion> {
   const { program, event, remote, codemode, origin, families, toolContext, dependencies } = input;
   const providers = createBackofficeCodemodeResolvedProviders({ families, toolContext });
-  const host = createCodemodeHost(
+  const runHost = createCodemodeRunHost(
     providers,
     new BackofficeWorkflowStepHost(remote, input.allowedHooks),
   );
@@ -74,10 +77,10 @@ async function runCodemodeWorkflowTick<TParams>(
         event: { ...event, id: event.id ?? event.instanceId },
       },
       origin,
-      host,
+      runHost,
     ));
   } finally {
-    await host.close();
+    await runHost.host.close();
   }
   return completion;
 }

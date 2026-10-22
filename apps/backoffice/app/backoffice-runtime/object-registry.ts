@@ -121,6 +121,7 @@ import type {
   CodemodeRunPage,
   CodemodeRunPageInput,
 } from "@/fragno/codemode/codemode-fragment";
+import type { CodemodeRunLease } from "@/fragno/codemode/codemode-object-execute";
 import type {
   DurableHookQueueEntry,
   DurableHookQueueOptions,
@@ -470,6 +471,7 @@ export type CodemodeObject = WarmableObject &
       activation: TActivation,
       context: CodemodeRunContext,
       host: CodemodeHost,
+      lease: CodemodeRunLease,
     ): Promise<CodemodeExecution<TActivation>>;
     getRun(runId: string): Promise<CodemodeRun | null>;
     listRuns(input: CodemodeRunPageInput): Promise<CodemodeRunPage>;
