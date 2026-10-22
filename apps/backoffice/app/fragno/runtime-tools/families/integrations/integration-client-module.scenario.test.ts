@@ -51,7 +51,7 @@ async function terminal(ctx: BackofficeScenarioContext) {
   return (await createInteractiveBashHost({ context })).bash;
 }
 
-test("a generated MCP client is imported by codemode, saved modules, and pinned workflows", async () => {
+test("a generated MCP client is imported by inline codemode, saved modules, and saved workflows that pin it", async () => {
   const mcpServer = createTestMcpServer({
     protocolVersion: "2026-07-28",
     enableJsonResponse: true,
@@ -121,16 +121,26 @@ if (!result.isError) console.log(result.structuredContent.echoed);`,
           given.codemode.writeFile({
             orgId: scope.orgId,
             path: "/workspace/automations/echo-client.workflow.js",
-            content: `defineWorkflow({ name: "echo-client" }, async (_event, step) => {
-  const echoed = async (text) => {
-    const { echo } = await import(${JSON.stringify(clientPath)});
-    return (await echo({ text })).structuredContent;
-  };
+            content: `import { echo } from "../integrations/tools.js";
+
+export default defineWorkflow({ name: "echo-client" }, async (_event, step) => {
+  const echoed = async (text) => (await echo({ text })).structuredContent;
   const first = await step.do("first", async () => await echoed("first"));
   await step.sleep("pause", "1 minute");
   const second = await step.do("second", async () => await echoed("second"));
   return { first, second };
 });`,
+          }),
+          given.codemode.writeFile({
+            orgId: scope.orgId,
+            path: "/workspace/automations/unexported.workflow.js",
+            content: `const unexported = defineWorkflow({ name: "unexported" }, async () => undefined);`,
+          }),
+          given.codemode.writeFile({
+            orgId: scope.orgId,
+            path: "/workspace/automations/legacy.workflow.js",
+            content: `// Saved before workflow files were modules.
+  defineWorkflow ({ name: "legacy" }, async (_event, step) => await step.do("run", async () => "ran"));`,
           }),
           given.codemode.writeFile({
             orgId: scope.orgId,
@@ -251,8 +261,42 @@ console.log(Object.keys(tools).join(","));`,
                   code: 'async () => await import("/workspace/integrations/missing.js")',
                 }),
               ).rejects.toThrow("'/workspace/integrations/missing.js' cannot be read");
+              // Inline code is one expression, where a static import cannot compile.
+              await expect(
+                ctx.runCodemode({
+                  scope,
+                  code: `import { echo } from ${JSON.stringify(clientPath)};\nasync () => await echo({ text: "inline" })`,
+                }),
+              ).rejects.toThrow(`await import(${JSON.stringify(clientPath)})`);
             },
           ),
+          then.assert(
+            "a saved workflow without a default export is refused before it is scheduled",
+            async (ctx) => {
+              await expect(
+                ctx.runCodemode({
+                  scope,
+                  code: `async () => await workflow.createInstance({
+                    path: "/workspace/automations/unexported.workflow.js",
+                    instanceId: "unexported-1",
+                  })`,
+                }),
+              ).rejects.toThrow("export default defineWorkflow(...)");
+            },
+          ),
+          // A file saved before workflows were modules runs as if it exported its workflow.
+          when.codemode.run({
+            scope,
+            code: `async () => await workflow.createInstance({
+              path: "/workspace/automations/legacy.workflow.js",
+              instanceId: "legacy-1",
+            })`,
+          }),
+          then.workflow.instance({
+            remoteWorkflowName: "legacy",
+            status: "complete",
+            output: "ran",
+          }),
           when.codemode.run({
             scope,
             code: `async () => await workflow.createInstance({

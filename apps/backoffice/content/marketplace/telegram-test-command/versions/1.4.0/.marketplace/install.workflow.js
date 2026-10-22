@@ -1,4 +1,4 @@
-defineWorkflow(
+export default defineWorkflow(
   { name: "install-telegram-test-command" },
   async (/** @type {WorkflowEvent<any>} */ event, step) => {
     const workflowScriptPath =

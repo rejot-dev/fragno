@@ -27,6 +27,7 @@ import {
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
 import { defineCodemodeWorkflowRun, runBackofficeCodemodeWorkflow } from "./workflow-execute";
+import { testWorkflowProgram } from "./workflow-program.test-utils";
 
 const codemode = codemodeRunnerFor(
   createCloudflareBackofficeObjectRegistry(env as CloudflareEnv).codemode.singleton().commands,
@@ -67,7 +68,6 @@ const createSystemWorkflowOptions = () => ({
   origin: { kind: "inline" } as const,
   families: runtimeToolFamilies,
   toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
-  modules: {},
 });
 
 describe("codemode workflow execution", () => {
@@ -75,7 +75,7 @@ describe("codemode workflow execution", () => {
     const Workflow = defineRemoteWorkflow(
       { name: "codemode-checkpointed", checkpoint: "step" },
       defineCodemodeWorkflowRun<undefined, number>(
-        `async (_event, step) => {
+        testWorkflowProgram(`async (_event, step) => {
           const first = await step.do("first", async (tx) => {
             tx.emit({ phase: "checkpoint-effect" });
             return 1;
@@ -83,7 +83,7 @@ describe("codemode workflow execution", () => {
           const second = await step.do("second", async () =>
             await step.do("first", async () => first + 1));
           return await step.do("third", async () => second + 1);
-        }`,
+        }`),
         codemode,
         createSystemWorkflowOptions(),
       ),
@@ -146,7 +146,7 @@ describe("codemode workflow execution", () => {
     const Workflow = defineRemoteWorkflow(
       { name: "codemode-e2e-complete" },
       defineCodemodeWorkflowRun<{ value: number }, { nested: number }>(
-        `async (event, step) => {
+        testWorkflowProgram(`async (event, step) => {
           const seed = await step.do("seed", async (tx) => {
             tx.emit({ phase: "seeded", value: event.payload.value });
             return event.payload.value;
@@ -157,7 +157,7 @@ describe("codemode workflow execution", () => {
           });
 
           return { nested };
-        }`,
+        }`),
         codemode,
         createSystemWorkflowOptions(),
       ),
@@ -207,11 +207,11 @@ describe("codemode workflow execution", () => {
     const Workflow = defineRemoteWorkflow(
       { name: "codemode-e2e-define-workflow" },
       defineCodemodeWorkflowRun<{ value: number }, { value: number; doubled: number }>(
-        `defineWorkflow({ name: "script-local-name" }, async (event, step) => {
+        testWorkflowProgram(`async (event, step) => {
           const value = await step.do("compute", async () => event.payload.value + 1);
           const doubled = await step.do("double", async () => value * 2);
           return { value, doubled };
-        });`,
+        }`),
         codemode,
         createSystemWorkflowOptions(),
       ),
@@ -254,12 +254,12 @@ describe("codemode workflow execution", () => {
     const Workflow = defineRemoteWorkflow(
       { name: "codemode-e2e-fetch-sealed" },
       defineCodemodeWorkflowRun(
-        `async (_event, step) => {
+        testWorkflowProgram(`async (_event, step) => {
           return await step.do("fetch", async () => {
             const res = await fetch("https://example.com/dolphins");
             return await res.text();
           });
-        }`,
+        }`),
         codemode,
         createSystemWorkflowOptions(),
       ),
@@ -288,16 +288,15 @@ describe("codemode workflow execution", () => {
       { name: "codemode-wrapper-sleep" },
       async (event, remote) => {
         const result = await runBackofficeCodemodeWorkflow({
-          code: `async (_event, step) => {
+          program: testWorkflowProgram(`async (_event, step) => {
           await step.sleep("pause", "3 seconds");
           return "done";
-        }`,
+        }`),
           event,
           remote,
           codemode,
           allowedHooks: [],
           origin: { kind: "inline" } as const,
-          modules: {},
           families: runtimeToolFamilies,
           toolContext: createTrustedSystemBackofficeToolContext({
             runtimes: {},
@@ -342,10 +341,10 @@ describe("codemode workflow execution", () => {
     const Workflow = defineRemoteWorkflow(
       { name: "codemode-e2e-sleep" },
       defineCodemodeWorkflowRun<unknown, string>(
-        `async (_event, step) => {
+        testWorkflowProgram(`async (_event, step) => {
           await step.sleep("pause", "3 seconds");
           return await step.do("after-sleep", async () => "done");
-        }`,
+        }`),
         codemode,
         createSystemWorkflowOptions(),
       ),
@@ -403,7 +402,7 @@ describe("codemode workflow execution", () => {
     const Workflow = defineRemoteWorkflow(
       { name: "codemode-e2e-previous-emissions" },
       defineCodemodeWorkflowRun<unknown, unknown[]>(
-        `async (_event, step) => {
+        testWorkflowProgram(`async (_event, step) => {
           return await step.do(
             "recover",
             { retries: { limit: 1, delay: "0 ms" } },
@@ -416,7 +415,7 @@ describe("codemode workflow execution", () => {
               return previous.map((emission) => emission.payload);
             },
           );
-        }`,
+        }`),
         codemode,
         createSystemWorkflowOptions(),
       ),
@@ -463,16 +462,15 @@ describe("codemode workflow execution", () => {
     const Workflow = defineRemoteWorkflow(
       { name: "codemode-e2e-providers" },
       defineCodemodeWorkflowRun<{ value: number }, { value: number }>(
-        `async (event, step) => {
+        testWorkflowProgram(`async (event, step) => {
           return await step.do("tool", async () => {
             return await math.twice({ value: event.payload.value });
           });
-        }`,
+        }`),
         codemode,
         {
           allowedHooks: [],
           origin: { kind: "inline" } as const,
-          modules: {},
           families: [
             defineBackofficeRuntimeToolFamily({
               namespace: "math",
@@ -509,7 +507,7 @@ describe("codemode workflow execution", () => {
     const Workflow = defineRemoteWorkflow(
       { name: "codemode-e2e-volatile-worker" },
       defineCodemodeWorkflowRun<unknown, { before: number; after: number }>(
-        `async (_event, step) => {
+        testWorkflowProgram(`async (_event, step) => {
           globalThis.__fragnoVolatileWorkerState ??= 0;
 
           const before = await step.do("before", async () => {
@@ -525,7 +523,7 @@ describe("codemode workflow execution", () => {
           });
 
           return { before, after };
-        }`,
+        }`),
         codemode,
         createSystemWorkflowOptions(),
       ),
@@ -601,7 +599,7 @@ describe("codemode workflow execution", () => {
         const Workflow = defineRemoteWorkflow(
           { name: "codemode-e2e-wait" },
           defineCodemodeWorkflowRun<unknown, { approved: boolean; preservedDate: boolean }>(
-            `async (event, step) => {
+            testWorkflowProgram(`async (event, step) => {
           const approval = await step.waitForEvent("approval", {
             type: "approval",
             onConsume: async (tx, received) => {
@@ -613,7 +611,7 @@ describe("codemode workflow execution", () => {
             approved: approval.payload.approved,
             preservedDate: approval.timestamp instanceof Date,
           }));
-        }`,
+        }`),
             codemode,
             createSystemWorkflowOptions(),
           ),
@@ -728,7 +726,7 @@ describe("codemode workflow execution", () => {
         const Workflow = defineRemoteWorkflow(
           { name: "codemode-on-event" },
           defineCodemodeWorkflowRun<unknown, unknown[]>(
-            `async (_event, step) => {
+            testWorkflowProgram(`async (_event, step) => {
               return await step.do("interactive", async (tx) => {
                 const received = [];
                 let delivered;
@@ -744,12 +742,11 @@ describe("codemode workflow execution", () => {
                 await firstDelivery;
                 return received;
               });
-            }`,
+            }`),
             codemode,
             {
               allowedHooks: [],
               origin: { kind: "inline" },
-              modules: {},
               families: [
                 defineBackofficeRuntimeToolFamily({ namespace: "probe", tools: [sendTool] }),
               ],
@@ -798,7 +795,7 @@ describe("codemode workflow execution", () => {
     const Workflow = defineRemoteWorkflow(
       { name: "codemode-e2e-create-child" },
       defineCodemodeWorkflowRun<unknown, { childId: string }>(
-        `async (_event, step) => {
+        testWorkflowProgram(`async (_event, step) => {
           await step.do("create-child", async (tx) => {
             tx.workflowServiceCalls(() => [
               {
@@ -810,7 +807,7 @@ describe("codemode workflow execution", () => {
             ]);
           });
           return { childId: "codemode-child-created-1" };
-        }`,
+        }`),
         codemode,
         createSystemWorkflowOptions(),
       ),
@@ -853,7 +850,7 @@ describe("codemode workflow execution", () => {
           >;
         }
       >(
-        `async (_event, step) => {
+        testWorkflowProgram(`async (_event, step) => {
           const all = await Promise.all([
             step.do("all alpha", async () => "A"),
             step.do("all beta", async () => "B"),
@@ -895,7 +892,7 @@ describe("codemode workflow execution", () => {
           });
 
           return { all, raceReturn, anyReturn, settled };
-        }`,
+        }`),
         codemode,
         createSystemWorkflowOptions(),
       ),
@@ -1024,15 +1021,19 @@ describe("codemode workflow execution", () => {
     const allowedHooks: RemoteWorkflowAllowedHook[] = [];
     const Workflow = defineRemoteWorkflow<"codemode-remote-hook", { fail: boolean }>(
       { name: "codemode-remote-hook" },
-      defineCodemodeWorkflowRun<{ fail: boolean }, string>(hookCode, codemode, {
-        ...createSystemWorkflowOptions(),
-        allowedHooks,
-      }),
+      defineCodemodeWorkflowRun<{ fail: boolean }, string>(
+        testWorkflowProgram(hookCode),
+        codemode,
+        {
+          ...createSystemWorkflowOptions(),
+          allowedHooks,
+        },
+      ),
     );
     const DeniedWorkflow = defineRemoteWorkflow<"codemode-remote-hook-denied", { fail: boolean }>(
       { name: "codemode-remote-hook-denied" },
       defineCodemodeWorkflowRun<{ fail: boolean }, string>(
-        hookCode,
+        testWorkflowProgram(hookCode),
         codemode,
         createSystemWorkflowOptions(),
       ),
@@ -1132,17 +1133,16 @@ describe("codemode workflow execution", () => {
     const Workflow = defineRemoteWorkflow(
       { name: "codemode-e2e-mutate-unsupported" },
       defineCodemodeWorkflowRun(
-        `async (_event, step) => {
+        testWorkflowProgram(`async (_event, step) => {
           await step.do("mutate", async (tx) => {
             tx.mutate(() => {});
             return "unreachable";
           });
-        }`,
+        }`),
         codemode,
         {
           allowedHooks: [],
           origin: { kind: "inline" } as const,
-          modules: {},
           families: runtimeToolFamilies,
           toolContext: createTrustedSystemBackofficeToolContext({
             runtimes: {},

@@ -29,7 +29,7 @@ const createAutomation = async ({
   } as unknown as AutomationWorkflowsService;
 
   const sourceReader = createTestAutomationSourceReader({
-    [scheduledAction.workflowScriptPath]: `defineWorkflow({ name: "scheduled-route" }, async (event) => event.payload);`,
+    [scheduledAction.workflowScriptPath]: `export default defineWorkflow({ name: "scheduled-route" }, async (event) => event.payload);`,
   });
 
   return createAutomationFragment(

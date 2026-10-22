@@ -25,7 +25,7 @@ describe("runtime-tool workflow catalog", () => {
   it("links direct and supported scoped provider calls to their durable steps", () => {
     const visualization = visualizeWorkflowSource(
       "automations/runtime-tools.workflow.js",
-      `defineWorkflow({ name: "runtime-tools" }, async (event, step) => {
+      `export default defineWorkflow({ name: "runtime-tools" }, async (event, step) => {
         const org = context.org(event.payload.orgId);
         const project = context.project(event.payload.projectId);
         const user = context.user(event.payload.userId);

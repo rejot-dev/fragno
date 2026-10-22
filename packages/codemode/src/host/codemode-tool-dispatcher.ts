@@ -25,7 +25,6 @@ const RESERVED_PROVIDER_NAMES = new Set([
   "logs",
   "logBytes",
   "captureLog",
-  "workflowProgram",
   "suspensionKey",
   "isSuspension",
   "unwrap",

@@ -134,7 +134,7 @@ describe("project automation event routing", () => {
     await projectFileSystem.mkdir("/workspace/automations", { recursive: true });
     await projectFileSystem.writeFile(
       "/workspace/automations/project-store.workflow.js",
-      `defineWorkflow({ name: "project-store" }, async (event) => event.payload);`,
+      `export default defineWorkflow({ name: "project-store" }, async (event) => event.payload);`,
     );
 
     const projectAutomations = runtime.objects.automations.for({

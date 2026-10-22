@@ -33,6 +33,7 @@ import {
   createAutomationsRouteCaller,
   createWorkflowsRouteCaller,
 } from "@/fragno/automation/route-callers";
+import { inlineWorkflowProgram } from "@/fragno/codemode/workflow-program";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
 import { getStaticMarketplaceEntry } from "@/fragno/marketplace/static-entries";
 
@@ -935,9 +936,11 @@ describe("Automations authorized HTTP context", () => {
         context: { execution },
       });
       const prepared = prepareCodemodeWorkflowInstance({
-        modules: {},
-        code: `defineWorkflow({ name: "pi-user-workflow" }, async () => undefined);`,
-        filename: "/pi/session-1/tool-call-1.workflow.js",
+        program: inlineWorkflowProgram({
+          filename: "/pi/session-1/tool-call-1.workflow.js",
+          code: `defineWorkflow({ name: "pi-user-workflow" }, async () => undefined);`,
+          modules: {},
+        }),
         instanceId: "unused",
       });
       const params = createCodemodeWorkflowInstanceInput({

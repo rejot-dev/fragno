@@ -89,7 +89,7 @@ const authorityEvent = ({
   causation: { kind: "origin" },
 });
 
-const workflowSource = `defineWorkflow(
+const workflowSource = `export default defineWorkflow(
   { name: "authority-mode" },
   async (event, step) => {
     const eventId = event.id;
@@ -105,7 +105,7 @@ const workflowSource = `defineWorkflow(
 );
 `;
 
-const liveGrantWorkflowSource = `defineWorkflow(
+const liveGrantWorkflowSource = `export default defineWorkflow(
   { name: "live-automation-grant" },
   async (_event, step) => {
     await step.do("write before grant revocation", async () => {

@@ -421,8 +421,7 @@ describe("Pi execCodeMode tool", () => {
     const workflow = defineRemoteWorkflow({ name: "codemode-script" }, async (event, remote) => {
       const params = codemodeWorkflowParamsSchema.parse(event.payload);
       const result = await runBackofficeCodemodeWorkflow({
-        code: params.program.code,
-        modules: params.program.modules,
+        program: params.program,
         dependencies: params.program.dependencies,
         event: {
           id: event.instanceId,

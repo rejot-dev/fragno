@@ -1,4 +1,4 @@
-defineWorkflow({ name: "telegram-test-command" }, async (event, step) => {
+export default defineWorkflow({ name: "telegram-test-command" }, async (event, step) => {
   const automationEvent = /** @type {WorkflowEvent<{chatId: string}>} */ (event);
   const chatId = automationEvent.payload.chatId;
 

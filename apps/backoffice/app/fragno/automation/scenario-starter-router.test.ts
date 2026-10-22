@@ -447,7 +447,7 @@ describe("starter automation router scenarios", () => {
           given.direct.file({
             orgId: "org-1",
             path: "/workspace/automations/custom-alpha.workflow.js",
-            content: `defineWorkflow(
+            content: `export default defineWorkflow(
   { name: "custom-alpha" },
   async (event, step) => {
     const automationEvent = event;
@@ -591,7 +591,7 @@ describe("starter automation router scenarios", () => {
           given.direct.file({
             orgId: "org-1",
             path: "/workspace/automations/valid-matched-route.workflow.js",
-            content: `defineWorkflow(
+            content: `export default defineWorkflow(
   { name: "valid-matched-route" },
   async (event) => ({ eventId: event.id }),
 );`,
@@ -688,7 +688,7 @@ describe("starter automation router scenarios", () => {
           given.direct.file({
             orgId: "org-1",
             path: "/workspace/automations/fanout-retry-waiter.workflow.js",
-            content: `defineWorkflow(
+            content: `export default defineWorkflow(
   { name: "fanout-retry-waiter" },
   async (_event, step) => {
     const signal = await step.waitForEvent("route signal", {
@@ -847,7 +847,7 @@ describe("starter automation router scenarios", () => {
           given.direct.file({
             orgId: "org-1",
             path: "/workspace/automations/custom-waiter.workflow.js",
-            content: `defineWorkflow(
+            content: `export default defineWorkflow(
   { name: "custom-waiter" },
   async (_event, step) => {
     const signal = await step.waitForEvent("custom-signal", {

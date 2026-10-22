@@ -61,7 +61,7 @@ const scenarioObjects = {
 const WORKFLOW_PATH = "/workspace/automations/ship-order.workflow.js";
 const INSTANCE_ID = "ship-order-run";
 
-const SHIP_ORDER_WORKFLOW = `defineWorkflow({ name: "ship-order" }, async (event, step) => {
+const SHIP_ORDER_WORKFLOW = `export default defineWorkflow({ name: "ship-order" }, async (event, step) => {
   const order = await step.do("load order", async () => ({ total: event.payload.total }));
   if (order.total > 100) {
     await step.do("escalate", async () => "escalated");

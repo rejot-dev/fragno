@@ -114,13 +114,13 @@ const newestRunPage = `export default page.define(({ collections, from }) =>
 `;
 
 const workflows = {
-  "automations/ship-order.workflow.js": `defineWorkflow({ name: "ship-order" }, async (event, step) => {
+  "automations/ship-order.workflow.js": `export default defineWorkflow({ name: "ship-order" }, async (event, step) => {
   await step.do("ship", async () => "shipped");
 });`,
-  "automations/await-shipment.workflow.js": `defineWorkflow({ name: "await-shipment" }, async (event, step) => {
+  "automations/await-shipment.workflow.js": `export default defineWorkflow({ name: "await-shipment" }, async (event, step) => {
   await step.waitForEvent("shipment", { type: "shipped", timeout: "7 days" });
 });`,
-  "automations/charge-card.workflow.js": `defineWorkflow({ name: "charge-card" }, async (event, step) => {
+  "automations/charge-card.workflow.js": `export default defineWorkflow({ name: "charge-card" }, async (event, step) => {
   await step.do("charge", { retries: { limit: 0, delay: 0 } }, async () => {
     throw new Error("card declined");
   });

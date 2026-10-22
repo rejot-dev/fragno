@@ -54,9 +54,10 @@ reclassifies the event, or forwards it to another scope.
    destination, matcher, projection, or scope template.
 
    Use stable, namespaced ids. For `start_workflow`, make `workflowScriptPath` point to a saved file
-   containing exactly one statically named `defineWorkflow(...)`. Backoffice validates the authored
-   name from the file and keeps workflow-host routing internal. **Complete when** every trigger,
-   action, file path, and instance-id template has one unambiguous value.
+   whose default export is its one statically named workflow: `export default defineWorkflow(...)`.
+   Backoffice validates the authored name from the file and keeps workflow-host routing internal.
+   **Complete when** every trigger, action, file path, and instance-id template has one unambiguous
+   value.
 
 3. Check prerequisites. For each external service the automation will call, find its connection with
    `integrations.list` and inspect it with `integrations.get({ connectionId })`. Set up what is
@@ -67,14 +68,16 @@ reclassifies the event, or forwards it to another scope.
 4. Create the required artifacts in dependency order: destination event definitions or saved
    workflows, then routes.
 
-   Save workflow implementations in `/workspace/automations/` with a `.workflow.js` suffix:
+   Save workflow implementations in `/workspace/automations/` with a `.workflow.js` suffix. A saved
+   workflow is a module: it imports saved modules, such as integration clients, with static `import`
+   statements, and `js.check` checks it as the runner loads it.
 
    ```js
    async () => {
      const path = "/workspace/automations/telegram-hello.workflow.js";
      await state.writeFile({
        path,
-       content: `defineWorkflow(
+       content: `export default defineWorkflow(
    { name: "telegram-hello" },
    async (event, step) => {
     return await step.do("capture-event", async () => {

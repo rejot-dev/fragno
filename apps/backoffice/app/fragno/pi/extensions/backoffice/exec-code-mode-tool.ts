@@ -15,6 +15,7 @@ import {
   runBackofficeCodemode,
   type BackofficeCodemodeExecuteResult,
 } from "@/fragno/codemode/execute";
+import { inlineWorkflowProgram } from "@/fragno/codemode/workflow-program";
 import type { BackofficeAgentContext } from "@/fragno/pi/agent/backoffice-agent-context";
 import type {
   InternalAutomationWorkflowRuntime,
@@ -159,10 +160,12 @@ export function createExecCodeModeTool(agent: BackofficeAgentContext) {
           try {
             const instanceId = hashToolCallId(`${agent.agentName}--${taskId}`);
             const prepared = prepareCodemodeWorkflowInstance({
-              code,
-              modules: result.modules,
+              program: inlineWorkflowProgram({
+                filename: `/pi/${agent.agentName}/${taskId}.workflow.js`,
+                code,
+                modules: result.modules,
+              }),
               dependencies,
-              filename: `/pi/${agent.agentName}/${taskId}.workflow.js`,
               instanceId,
             });
             if (prepared.remoteWorkflowName !== result.workflowDefinition.name) {

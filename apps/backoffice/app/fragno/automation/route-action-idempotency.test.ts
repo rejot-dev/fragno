@@ -98,7 +98,7 @@ describe("automation route action idempotency", () => {
         ownerScope: { kind: "org", orgId: "org_123" },
         readAutomationSource: createTestAutomationSourceReader({
           "/workspace/automations/idempotent.workflow.js":
-            'defineWorkflow({ name: "idempotent" }, async () => ({ ok: true }));',
+            'export default defineWorkflow({ name: "idempotent" }, async () => ({ ok: true }));',
         }),
       },
       {

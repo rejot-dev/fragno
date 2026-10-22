@@ -1,4 +1,4 @@
-defineWorkflow({ name: "telegram-user-linking" }, async (event, step) => {
+export default defineWorkflow({ name: "telegram-user-linking" }, async (event, step) => {
   const automationEvent = /** @type {WorkflowEvent<{chatId: string}>} */ (event);
   const workflowInstanceId = event.instanceId;
   const chatId = automationEvent.payload.chatId;

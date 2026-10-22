@@ -182,8 +182,7 @@ export const defineCodemodeWorkflow = (config: CodemodeWorkflowConfig) =>
         import("./codemode"),
       ]);
       const result = await executeWorkflowCodemodeAutomation({
-        script: params.program.code,
-        modules: params.program.modules,
+        program: params.program,
         dependencies: params.program.dependencies,
         context,
         // Each tick is a run of the workflow's scope, billed like any other run there.

@@ -90,16 +90,16 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const SCHEDULED_AT = "2030-01-01T00:00:00.000Z";
 
 const workflows = {
-  "automations/ship-order.workflow.js": `defineWorkflow({ name: "ship-order" }, async (event, step) => {
+  "automations/ship-order.workflow.js": `export default defineWorkflow({ name: "ship-order" }, async (event, step) => {
   await step.do("ship", async () => "shipped");
   return "shipped";
 });`,
-  "automations/charge-card.workflow.js": `defineWorkflow({ name: "charge-card" }, async (event, step) => {
+  "automations/charge-card.workflow.js": `export default defineWorkflow({ name: "charge-card" }, async (event, step) => {
   await step.do("charge", { retries: { limit: 0, delay: 0 } }, async () => {
     throw new Error("card declined");
   });
 });`,
-  "automations/approve-refund.workflow.js": `defineWorkflow({ name: "approve-refund" }, async (event, step) => {
+  "automations/approve-refund.workflow.js": `export default defineWorkflow({ name: "approve-refund" }, async (event, step) => {
   await step.do("ask for approval", async () => ({
     $ui: {
       version: 1,
@@ -112,7 +112,7 @@ const workflows = {
   }));
   await step.waitForEvent("approval", { type: "refund-approved", timeout: "7 days" });
 });`,
-  "automations/await-shipment.workflow.js": `defineWorkflow({ name: "await-shipment" }, async (event, step) => {
+  "automations/await-shipment.workflow.js": `export default defineWorkflow({ name: "await-shipment" }, async (event, step) => {
   await step.waitForEvent("shipment", { type: "shipped", timeout: "7 days" });
 });`,
 };

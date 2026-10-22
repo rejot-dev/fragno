@@ -583,10 +583,13 @@ describe("fragment HTTP authority scenarios", () => {
             remoteWorkflowName: "cli-scope-ceiling",
             params: {
               program: {
-                code: 'defineWorkflow({ name: "cli-scope-ceiling" }, async (event, step) => { await step.sleep("wait", "1 hour"); });',
+                filename: "/workspace/automations/cli-scope-ceiling.workflow.js",
+                modules: {
+                  "/workspace/automations/cli-scope-ceiling.workflow.js":
+                    'export default defineWorkflow({ name: "cli-scope-ceiling" }, async (event, step) => { await step.sleep("wait", "1 hour"); });',
+                },
                 dependencies: {},
                 workflowName: "cli-scope-ceiling",
-                filename: "/workspace/automations/cli-scope-ceiling.workflow.js",
               },
               trigger: { type: "manual", payload: {} },
               // A caller cannot erase its credential ceiling in persisted workflow parameters.

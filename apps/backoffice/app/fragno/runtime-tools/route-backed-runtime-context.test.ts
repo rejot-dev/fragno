@@ -93,10 +93,10 @@ describe("createRouteBackedRuntimeContext", () => {
   test("uses a new workflow source reader for a different scoped context", async () => {
     const runtime = createRuntime();
     const parentBackend = createTestAutomationSourceReader({
-      "/workspace/automations/parent.workflow.js": `defineWorkflow({ name: "parent-workflow" }, async () => undefined);`,
+      "/workspace/automations/parent.workflow.js": `export default defineWorkflow({ name: "parent-workflow" }, async () => undefined);`,
     });
     const childBackend = createTestAutomationSourceReader({
-      "/workspace/automations/child.workflow.js": `defineWorkflow({ name: "child-workflow" }, async () => undefined);`,
+      "/workspace/automations/child.workflow.js": `export default defineWorkflow({ name: "child-workflow" }, async () => undefined);`,
     });
     const parentReadSource = vi.fn(parentBackend);
     const childReadSource = vi.fn(childBackend);
@@ -139,7 +139,7 @@ describe("createRouteBackedRuntimeContext", () => {
   test("reuses the workflow source reader when the scope is unchanged", async () => {
     const runtime = createRuntime();
     const sourceReader = createTestAutomationSourceReader({
-      "/workspace/automations/same-scope.workflow.js": `defineWorkflow({ name: "same-scope-workflow" }, async () => undefined);`,
+      "/workspace/automations/same-scope.workflow.js": `export default defineWorkflow({ name: "same-scope-workflow" }, async () => undefined);`,
     });
     const readSource = vi.fn(sourceReader);
     const scope = { kind: "system" as const };

@@ -1,6 +1,6 @@
 /// <reference path="/static/codemode/workflow-authoring.d.ts" />
 
-defineWorkflow(
+export default defineWorkflow(
   { name: "install-github-channel" },
   async (/** @type {WorkflowEvent<any>} */ event, step) => {
     if (event.payload.targetScope.kind !== "org") {

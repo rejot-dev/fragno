@@ -213,8 +213,9 @@ call.
 
 A connection's client (step 5) exports one async function per action, typed with JSDoc from the
 action contracts; `exports` maps each function `name` to its `actionId`. Every function calls
-`integrations.execute`, with the same validation and permissions. Import the client by its absolute
-path; saved modules may also import it relatively, and `js.check` checks callers against its types.
+`integrations.execute`, with the same validation and permissions. Saved modules, including workflow
+files, import it with a static `import`, by absolute or relative path; inline code loads it with
+`await import(...)` by absolute path. `js.check` checks callers against its types.
 
 Put your own helpers in a separate module that imports the client: regeneration replaces the client,
 and generation refuses to replace any file it did not generate.

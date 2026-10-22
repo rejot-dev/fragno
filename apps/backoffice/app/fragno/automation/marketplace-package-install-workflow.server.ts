@@ -31,6 +31,7 @@ import {
 } from "@/backoffice-runtime/context";
 import type { BackofficeObjectHandle, UploadObject } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
+import { readSavedWorkflowProgram } from "@/fragno/codemode/workflow-program";
 import {
   isMarketplaceInternalPackagePath,
   MARKETPLACE_INSTALL_WORKFLOW_PATH,
@@ -746,11 +747,19 @@ export function defineMarketplacePackageInstallWorkflow(
             });
             let prepared;
             try {
-              prepared = prepareCodemodeWorkflowInstance({
-                code,
+              const path = `/${MARKETPLACE_INSTALL_WORKFLOW_PATH}`;
+              const program = await readSavedWorkflowProgram({
+                path,
                 // The workflow comes from the package, not the workspace it installs into.
-                modules: {},
-                filename: MARKETPLACE_INSTALL_WORKFLOW_PATH,
+                readFile: async (modulePath) => {
+                  if (modulePath !== path) {
+                    throw new Error("Marketplace installation workflows import no modules.");
+                  }
+                  return code;
+                },
+              });
+              prepared = prepareCodemodeWorkflowInstance({
+                program,
                 instanceId: installationWorkflowInstanceId,
               });
             } catch (error) {

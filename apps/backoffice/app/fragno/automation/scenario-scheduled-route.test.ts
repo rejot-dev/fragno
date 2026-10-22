@@ -441,7 +441,7 @@ describe("scheduled automation route scenario", () => {
           given.direct.file({
             orgId: "org-1",
             path: "/workspace/automations/scheduled-digest.workflow.js",
-            content: `defineWorkflow(
+            content: `export default defineWorkflow(
   { name: "scheduled-digest" },
   async (event, step) => {
     const route = event.payload;

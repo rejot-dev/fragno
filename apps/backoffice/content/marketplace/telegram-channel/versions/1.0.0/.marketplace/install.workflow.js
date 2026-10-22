@@ -1,6 +1,6 @@
 /// <reference path="/static/codemode/workflow-authoring.d.ts" />
 
-defineWorkflow(
+export default defineWorkflow(
   { name: "install-telegram-channel" },
   async (/** @type {WorkflowEvent<any>} */ event, step) => {
     const userLinkingWorkflowScriptPath =

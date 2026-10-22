@@ -16,6 +16,7 @@ import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import { CODEMODE_CAPABILITY_ACTOR } from "@/fragno/automation/engine/codemode-invocation";
 import { codemodeRunnerFor } from "@/fragno/codemode/codemode-object-execute";
 import { createTestStateBackend } from "@/fragno/codemode/state-backend.test-utils";
+import { inlineWorkflowProgram } from "@/fragno/codemode/workflow-program";
 import { EMPTY_BASH_HOST_CONTEXT } from "@/fragno/runtime-tools/bash-host.test-utils";
 import { createUnavailableAutomationRouterRuntime } from "@/fragno/runtime-tools/families/automations-routing";
 import type { BackofficeCapabilitiesRuntime } from "@/fragno/runtime-tools/families/backoffice-capabilities";
@@ -51,7 +52,6 @@ describe("executeWorkflowCodemodeAutomation", () => {
       { name: "codemode-workflow-capabilities-test" },
       async (workflowEvent, remote) =>
         await executeWorkflowCodemodeAutomation({
-          modules: {},
           codemode,
           origin: { kind: "inline" },
           workflowEvent,
@@ -59,7 +59,10 @@ describe("executeWorkflowCodemodeAutomation", () => {
           context: createAutomationContext(event, {
             backofficeRuntime: createRecordingBackofficeRuntime(calls),
           }),
-          script: `defineWorkflow(
+          program: inlineWorkflowProgram({
+            filename: "/workflow.js",
+            modules: {},
+            code: `defineWorkflow(
             { name: "list-capabilities" },
             async (event, step) => {
               return await step.do("list capabilities", async () => ({
@@ -68,6 +71,7 @@ describe("executeWorkflowCodemodeAutomation", () => {
               }));
             },
           );`,
+          }),
         }),
     );
     const harness = await createWorkflowsTestHarness({
@@ -117,10 +121,12 @@ describe("executeWorkflowCodemodeAutomation", () => {
       remoteWorkflowName: "invalid-capability-grant",
       params: {
         program: {
-          code: `defineWorkflow({ name: "invalid-capability-grant" }, async () => undefined);`,
+          filename: "/workspace/automations/invalid-capability-grant.workflow.js",
+          modules: {
+            "/workspace/automations/invalid-capability-grant.workflow.js": `export default defineWorkflow({ name: "invalid-capability-grant" }, async () => undefined);`,
+          },
           dependencies: {},
           workflowName: "invalid-capability-grant",
-          filename: "/workspace/automations/invalid-capability-grant.workflow.js",
         },
         trigger: { type: "manual", payload: {} },
         execution: {
@@ -171,13 +177,15 @@ describe("executeWorkflowCodemodeAutomation", () => {
       { name: "codemode-workflow-egress-test" },
       async (workflowEvent, remote) =>
         await executeWorkflowCodemodeAutomation({
-          modules: {},
           codemode,
           origin: { kind: "inline" },
           workflowEvent,
           remote,
           context: createAutomationContext(event),
-          script: `defineWorkflow(
+          program: inlineWorkflowProgram({
+            filename: "/workflow.js",
+            modules: {},
+            code: `defineWorkflow(
             { name: "blocked-workflow-egress" },
             async (_event, step) => {
               return await step.do("blocked fetch", async () => {
@@ -186,6 +194,7 @@ describe("executeWorkflowCodemodeAutomation", () => {
               });
             },
           );`,
+          }),
         }),
     );
     const harness = await createWorkflowsTestHarness({

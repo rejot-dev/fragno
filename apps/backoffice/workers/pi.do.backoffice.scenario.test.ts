@@ -605,7 +605,7 @@ for (const revocation of ["restricted", "disabled", "deleted"] as const) {
           given.direct.file({
             orgId: "org-1",
             path: workflowPath,
-            content: `defineWorkflow({ name: "delegated-pi" }, async (event, step) => {
+            content: `export default defineWorkflow({ name: "delegated-pi" }, async (event, step) => {
               return await step.do("run linked-user turn", async () => await pi.runPrompt({
                 agentName: "assistant",
                 requestId: event.instanceId + ":prompt",
@@ -887,7 +887,7 @@ for (const leaveOrganization of [false, true]) {
     const scope = { kind: "user", userId: "member" } as const;
     const execution = createBackofficeUserExecution({ scope, userId: "member" });
     const promptOperation = "pi.runPrompt";
-    const savedWorkflowCode = `defineWorkflow({ name: "saved-sentence-checker" }, async (event, step) => {
+    const savedWorkflowCode = `export default defineWorkflow({ name: "saved-sentence-checker" }, async (event, step) => {
       await step.waitForEvent("wait for sentence", { type: "sentence" });
       return await step.do("submit sentence", async () => await ${promptOperation}({
         agentName: "assistant",
