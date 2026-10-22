@@ -180,25 +180,30 @@ test.each([true, false])(
     );
     const socket = await connection;
     const closed = new Promise<number>((resolve) => socket.once("close", resolve));
-    let session: RpcSession;
     class ExecutionTarget extends RpcTarget implements CodemodeExecutionCapability {
       async execute(request: Parameters<CodemodeExecutionCapability["execute"]>[0]) {
         assert(request.protocolVersion === 2);
-        if (bridgeInitiatesClose) {
-          setImmediate(() => {
-            void session.drain().then(() => socket.close(1000, "Codemode activation ended"));
-          });
-        }
         return { status: "completed" as const, value: 42, logs: [], workflowDefinition: null };
       }
     }
+    // The bridge's result is only sent once Node pulls it, so close right after that frame.
+    const bridgeSocket = {
+      send(text: string) {
+        socket.send(text);
+        if (bridgeInitiatesClose && text.startsWith('["resolve",')) {
+          socket.close(1000, "Codemode activation ended");
+        }
+      },
+      close: socket.close.bind(socket),
+      addEventListener: socket.addEventListener.bind(socket),
+    };
     const transport = new CodemodeWebSocketTransport(
-      socket,
+      bridgeSocket,
       () => socket.bufferedAmount,
       () => {},
       () => 0,
     );
-    session = new RpcSession(transport, new ExecutionTarget(), CODEMODE_RPC_OPTIONS);
+    new RpcSession(transport, new ExecutionTarget(), CODEMODE_RPC_OPTIONS);
     await expect(execution).resolves.toMatchObject({ status: "completed", value: 42 });
     const code = await closed;
     assert(code === 1000, `Expected normal WebSocket closure (1000), received ${code}`);
