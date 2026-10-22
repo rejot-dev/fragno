@@ -1477,7 +1477,8 @@ test("a notify_agent route delivers events as turns but never the agent's own wo
     defineBackofficeScenario({
       name: "Pi agent notifications",
       piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
-      options: { drain: false },
+      // The forward-turn route stays failed.
+      options: { drain: false, allowFailedDurableHooks: true },
       objects: {
         ...scenarioObjects,
         PI: ({ state, runtime, openPiSessionStore, piAgentIdFromConfig, nowEpochMs }) => {
@@ -1540,6 +1541,33 @@ test("a notify_agent route delivers events as turns but never the agent's own wo
           enabled: true,
           priority: 1000,
           trigger: { kind: "event", source: "assistant", eventType: "answered", matcher: null },
+          action: notifyAssistant,
+        }),
+        // Fails on each turn, so each turn's failure is announced, still naming the agent.
+        given.router.route({
+          orgId,
+          id: "forward-turn",
+          name: "Forward the assistant's turns to another organization",
+          enabled: true,
+          priority: 1000,
+          trigger: { kind: "event", source: "pi", eventType: "turn.completed", matcher: null },
+          action: {
+            kind: "forward_event",
+            targetScope: { kind: "org", orgIdTemplate: "other-org" },
+          },
+        }),
+        given.router.route({
+          orgId,
+          id: "notify-on-failure",
+          name: "Notify the assistant of failed routes",
+          enabled: true,
+          priority: 1000,
+          trigger: {
+            kind: "event",
+            source: "automations",
+            eventType: "route.failed",
+            matcher: null,
+          },
           action: notifyAssistant,
         }),
       ],
@@ -1624,12 +1652,16 @@ test("a notify_agent route delivers events as turns but never the agent's own wo
                     : outcome.kind === "skipped"
                       ? `skipped: ${outcome.reason}`
                       : outcome.kind;
-                return `${routeId} ${eventId}: ${done}`;
+                // Failure announcements are named by a random suffix.
+                const event = eventId.replace(/^(route-failed:[^:]+):.*$/, "$1");
+                return `${routeId} ${event}: ${done}`;
               })
               .sort((left, right) => left.localeCompare(right)),
           ).toEqual([
             "notify-on-answer reclassified:reclassify-turn:pi:assistant:ended:route:notify-on-order:order-1: skipped: caused_by_notified_agent",
             "notify-on-answer reclassified:reclassify-turn:pi:assistant:ended:start: skipped: caused_by_notified_agent",
+            "notify-on-failure route-failed:forward-turn: skipped: caused_by_notified_agent",
+            "notify-on-failure route-failed:forward-turn: skipped: caused_by_notified_agent",
             "notify-on-order order-1: notified assistant",
             "notify-on-turn pi:assistant:ended:route:notify-on-order:order-1: skipped: caused_by_notified_agent",
             "notify-on-turn pi:assistant:ended:start: skipped: caused_by_notified_agent",

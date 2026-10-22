@@ -651,8 +651,8 @@ export function projectEventTrace({
       label: dispatch.routeName,
       timing: { kind: "instant", at: dispatch.dispatchedAt.getTime() },
     } as const;
-    // The events this route caused: what it reclassified the event into, or, once it failed,
-    // the route.failed events announcing it.
+    // The events this route caused: what it reclassified the event into, and the route.failed
+    // events announcing each time it failed, which stay after a retry succeeds.
     const caused = traceEvents
       .filter(
         (event) =>
@@ -683,21 +683,21 @@ export function projectEventTrace({
           ...route,
           detail: "Started a run",
           status: "ok",
-          children: [runNode(dispatch, outcome)],
+          children: [runNode(dispatch, outcome), ...caused],
         };
       case "workflow_event_sent":
         return {
           ...route,
           detail: `Delivered ${outcome.eventType} to run ${outcome.instanceId}`,
           status: "ok",
-          children: deliveredRunNodes(dispatch, outcome),
+          children: [...deliveredRunNodes(dispatch, outcome), ...caused],
         };
       case "event_forwarded":
         return {
           ...route,
           detail: `Forwarded to ${backofficeScopePathSegment(outcome.scope)}`,
           status: "ok",
-          children: [],
+          children: caused,
         };
       case "agent_notified":
         return {
@@ -705,14 +705,14 @@ export function projectEventTrace({
           // Turns are queued and answered later, so an answer roots a trace of its own.
           detail: `Notified ${outcome.agentName}; its answer starts its own trace`,
           status: "ok",
-          children: [],
+          children: caused,
         };
       case "skipped":
         return {
           ...route,
           detail: `Skipped: ${describeRouteDispatchSkipReason(outcome.reason)}`,
           status: "skipped",
-          children: [],
+          children: caused,
         };
     }
     throw new Error("Unsupported automation route dispatch outcome.");

@@ -963,9 +963,14 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
                   ] as const,
               )
               .mutate(({ forSchema, serviceIntermediateResult: [update] }) => {
-                // A route that fails on such an announcement announces nothing, so failures
-                // cannot feed each other.
-                if (!exhausted || !update.settles || isRouteFailedEvent(event)) {
+                // A route that fails on an announcement, or on an event reclassified from one,
+                // announces nothing, so failures cannot feed each other.
+                if (
+                  !exhausted ||
+                  !update.settles ||
+                  isRouteFailedEvent(event) ||
+                  reclassificationChain.some(isRouteFailedEvent)
+                ) {
                   return;
                 }
                 ingestAutomationEvent(

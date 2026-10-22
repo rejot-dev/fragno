@@ -1009,6 +1009,28 @@ describe("starter automation router scenarios", () => {
             });
             expect(await eventsWithFailedRoutes(ctx)).toEqual([]);
           }),
+          then.assert("the trace keeps the failure next to the delivery", async (ctx) => {
+            const database = ctx.tanstack.automations.forOrg("org-1");
+            await database.sync();
+            const { collections } = database;
+            const [events, dispatchRows] = (await Promise.all([
+              queryOnce((query) => eventTraceEventsQuery(query, collections)),
+              queryOnce((query) => eventTraceDispatchesQuery(query, collections)),
+            ])) as [EventTraceEvent[], EventTraceDispatchRow[]];
+            const trace = projectEventTrace({
+              rootEventId: event.id,
+              events,
+              dispatches: dispatchRows.map(eventTraceDispatch),
+              runs: [],
+              steps: [],
+              deliveries: [],
+            });
+            expect(trace && outline(trace.root)).toEqual([
+              "event custom · fanout.exhausted [ok]",
+              "  route Send to a workflow that is never created [ok] (Delivered fanout-ready to run missing-waiter-1)",
+              "    event automations · route.failed [ok]",
+            ]);
+          }),
           then.workflow.instance({
             remoteWorkflowName: "missing-waiter",
             instanceId: "missing-waiter-1",
@@ -1095,6 +1117,11 @@ describe("starter automation router scenarios", () => {
               "automations",
               "route.failed",
             ),
+          ),
+          // Fails on the alert reclassified from the announcement, which must not announce
+          // itself either, or each failure would raise another alert.
+          given.router.route(
+            sendToFinishedRun("relay-alert", "Relay the alert", "custom", "route.alert"),
           ),
         ],
 
@@ -1184,6 +1211,7 @@ describe("starter automation router scenarios", () => {
               "    event automations · route.failed [ok]",
               "      route Raise an alert for a failed route [ok] (Reclassified the event)",
               "        event custom · route.alert [ok]",
+              `          route Relay the alert [failed] (${gaveUp})`,
               `      route Tell the finished run [failed] (${gaveUp})`,
             ]);
             const summaries = projectEventTraceSummaries({
@@ -1193,10 +1221,10 @@ describe("starter automation router scenarios", () => {
               limit: 10,
             });
             expect(summaries.find((summary) => summary.rootEventId === event.id)).toMatchObject({
-              outcome: { kind: "settled", failedCount: 2 },
+              outcome: { kind: "settled", failedCount: 3 },
             });
           }),
-          then.assert("neither failed route retried", async (ctx) => {
+          then.assert("no failed route retried", async (ctx) => {
             const queue = await ctx.runtime.objects.automations
               .forOrg("org-1")
               .commands.getDurableHookQueue("automation", { pageSize: 100 });
@@ -1205,6 +1233,7 @@ describe("starter automation router scenarios", () => {
                 .filter((item) => item.hookName === "internalDispatchRoute")
                 .filter((item) => item.status !== "completed"),
             ).toMatchObject([
+              { status: "failed", attempts: 1 },
               { status: "failed", attempts: 1 },
               { status: "failed", attempts: 1 },
             ]);
