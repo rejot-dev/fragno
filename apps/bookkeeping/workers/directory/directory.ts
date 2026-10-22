@@ -1,0 +1,353 @@
+import type { OrganizationRole } from "@fragno-dev/backoffice-api/v0/organization";
+import { DurableObject } from "cloudflare:workers";
+
+import { applyMigrations } from "../migrations";
+import directoryMigration from "./migrations/0001-directory.sql?raw";
+
+/** A firm keeps the books of its clients; a client is one business whose books it keeps. */
+export type OrganizationKind = "firm" | "client";
+
+/** A Backoffice organization Bookkeeping is installed in; clients name the firm that created them. */
+export type Organization = { id: string; slug: string; name: string } & (
+  | { kind: "firm" }
+  | { kind: "client"; firmId: string }
+);
+
+/** Someone's membership, as Backoffice last confirmed it at `confirmedAt` (epoch milliseconds). */
+export type Membership = { roles: OrganizationRole[]; confirmedAt: number };
+
+export type OrganizationMembership = Membership & { organization: Organization };
+
+/** What Backoffice confirmed about one person in one organization. */
+export type MembershipConfirmation = Membership & {
+  /** The organization as Backoffice named it then. */
+  organization: Pick<Organization, "id" | "slug" | "name">;
+  /** The Backoffice user's ID. */
+  userId: string;
+};
+
+/** An invitation Bookkeeping created in Backoffice, to an organization it knows. */
+export type Invitation = {
+  /** The Backoffice invitation's ID. */
+  id: string;
+  organization: Organization;
+  email: string;
+  roles: OrganizationRole[];
+  /** The inviting person's name. */
+  invitedBy: string;
+  /** When Backoffice stops accepting it, in epoch milliseconds. */
+  expiresAt: number;
+};
+
+/** The books of one business; `id` is its Backoffice project's, which names its books. */
+export type Administration = { id: string; clientId: string; slug: string; name: string };
+
+type OrganizationRow = {
+  id: string;
+  slug: string;
+  name: string;
+  kind: OrganizationKind;
+  firmId: string | null;
+};
+type MembershipRow = OrganizationRow & { roles: string; confirmedAt: number };
+type InvitationRow = OrganizationRow & {
+  invitationId: string;
+  email: string;
+  roles: string;
+  invitedBy: string;
+  expiresAt: number;
+};
+
+const ORGANIZATION_COLUMNS = `o."id", o."slug", o."name", o."kind", o."firmId"`;
+const MEMBERSHIP_QUERY = `SELECT ${ORGANIZATION_COLUMNS}, m."roles", m."confirmedAt"
+  FROM "membership" m JOIN "organization" o ON o."id" = m."organizationId"`;
+const INVITATION_QUERY = `SELECT ${ORGANIZATION_COLUMNS}, i."id" AS "invitationId", i."email",
+    i."roles", i."invitedBy", i."expiresAt"
+  FROM "invitation" i JOIN "organization" o ON o."id" = i."organizationId"`;
+
+function toOrganization(row: OrganizationRow): Organization {
+  const { id, slug, name } = row;
+  // The table's CHECK constraint pairs every client with its firm.
+  return row.kind === "firm"
+    ? { id, slug, name, kind: "firm" }
+    : { id, slug, name, kind: "client", firmId: row.firmId! };
+}
+
+// Roles are written only from Backoffice responses, parsed at the edge.
+function parseRoles(roles: string): OrganizationRole[] {
+  return JSON.parse(roles) as OrganizationRole[];
+}
+
+function toMembership(row: MembershipRow): OrganizationMembership {
+  return {
+    organization: toOrganization(row),
+    roles: parseRoles(row.roles),
+    confirmedAt: row.confirmedAt,
+  };
+}
+
+function toInvitation(row: InvitationRow): Invitation {
+  return {
+    id: row.invitationId,
+    organization: toOrganization(row),
+    email: row.email,
+    roles: parseRoles(row.roles),
+    invitedBy: row.invitedBy,
+    expiresAt: row.expiresAt,
+  };
+}
+
+/**
+ * The organizations Bookkeeping knows, a read-only copy of their memberships, the invitations it
+ * created, and its clients' administrations. Backoffice is authoritative: Bookkeeping records what
+ * Backoffice confirms and forgets what Backoffice refuses.
+ */
+export class Directory extends DurableObject<CloudflareEnv> {
+  constructor(ctx: DurableObjectState, env: CloudflareEnv) {
+    super(ctx, env);
+    void ctx.blockConcurrencyWhile(async () => {
+      applyMigrations(ctx, [directoryMigration]);
+    });
+  }
+
+  findOrganization(slug: string): Organization | null {
+    const [row] = this.ctx.storage.sql
+      .exec<OrganizationRow>(
+        `SELECT ${ORGANIZATION_COLUMNS} FROM "organization" o WHERE o."slug" = ?`,
+        slug,
+      )
+      .toArray();
+    return row ? toOrganization(row) : null;
+  }
+
+  findMembership(input: { organizationId: string; userId: string }): Membership | null {
+    const [row] = this.ctx.storage.sql
+      .exec<MembershipRow>(
+        `${MEMBERSHIP_QUERY} WHERE m."organizationId" = ? AND m."userId" = ?`,
+        input.organizationId,
+        input.userId,
+      )
+      .toArray();
+    return row ? { roles: parseRoles(row.roles), confirmedAt: row.confirmedAt } : null;
+  }
+
+  /** The organizations the user belongs to, firms first, then by name. */
+  listMemberships(userId: string): OrganizationMembership[] {
+    return this.ctx.storage.sql
+      .exec<MembershipRow>(
+        `${MEMBERSHIP_QUERY} WHERE m."userId" = ?
+         ORDER BY o."kind" = 'client', o."name", o."slug"`,
+        userId,
+      )
+      .toArray()
+      .map(toMembership);
+  }
+
+  /** Every firm Bookkeeping created, by name. */
+  listFirms(): Organization[] {
+    return this.ctx.storage.sql
+      .exec<OrganizationRow>(
+        `SELECT ${ORGANIZATION_COLUMNS} FROM "organization" o
+         WHERE o."kind" = 'firm' ORDER BY o."name", o."slug"`,
+      )
+      .toArray()
+      .map(toOrganization);
+  }
+
+  /** A firm's clients, by name. */
+  listClients(firmId: string): Organization[] {
+    return this.ctx.storage.sql
+      .exec<OrganizationRow>(
+        `SELECT ${ORGANIZATION_COLUMNS} FROM "organization" o
+         WHERE o."firmId" = ? ORDER BY o."name", o."slug"`,
+        firmId,
+      )
+      .toArray()
+      .map(toOrganization);
+  }
+
+  /** What Bookkeeping tells Backoffice about one of its organizations. */
+  describeOrganization(
+    id: string,
+  ): (Pick<Organization, "id" | "slug" | "name" | "kind"> & { memberCount: number }) | null {
+    const [row] = this.ctx.storage.sql
+      .exec<OrganizationRow & { memberCount: number }>(
+        `SELECT ${ORGANIZATION_COLUMNS},
+           (SELECT COUNT(*) FROM "membership" m WHERE m."organizationId" = o."id") AS "memberCount"
+         FROM "organization" o WHERE o."id" = ?`,
+        id,
+      )
+      .toArray();
+    return row
+      ? { id: row.id, slug: row.slug, name: row.name, kind: row.kind, memberCount: row.memberCount }
+      : null;
+  }
+
+  /**
+   * Records an organization Bookkeeping provisioned, with the owner Backoffice made of it, or none
+   * when it already existed. Recording it again, after a retried provisioning, keeps its kind and
+   * firm.
+   */
+  recordProvisioned(input: { organization: Organization; ownerUserId: string | null }): void {
+    const { organization } = input;
+    this.ctx.storage.transactionSync(() => {
+      this.ctx.storage.sql.exec(
+        `INSERT INTO "organization" ("id", "slug", "name", "kind", "firmId")
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT ("id") DO UPDATE SET "slug" = excluded."slug", "name" = excluded."name"`,
+        organization.id,
+        organization.slug,
+        organization.name,
+        organization.kind,
+        organization.kind === "client" ? organization.firmId : null,
+      );
+      if (input.ownerUserId !== null) {
+        this.#recordMembership(organization.id, {
+          userId: input.ownerUserId,
+          roles: ["owner"],
+          confirmedAt: Date.now(),
+        });
+      }
+    });
+  }
+
+  /** Records what Backoffice confirmed about one person in an organization Bookkeeping knows. */
+  confirmMembership(confirmation: MembershipConfirmation): void {
+    this.ctx.storage.transactionSync(() => {
+      this.#renameOrganization(confirmation.organization);
+      this.#recordMembership(confirmation.organization.id, confirmation);
+    });
+  }
+
+  /**
+   * Replaces the copy of an organization's memberships with Backoffice's full list of its members,
+   * confirmed at `confirmedAt`. Anyone missing from it was removed.
+   */
+  confirmMembers(input: {
+    organizationId: string;
+    members: Pick<MembershipConfirmation, "userId" | "roles">[];
+    confirmedAt: number;
+  }): void {
+    this.ctx.storage.transactionSync(() => {
+      this.ctx.storage.sql.exec(
+        `DELETE FROM "membership" WHERE "organizationId" = ?
+         AND "userId" NOT IN (SELECT "value" FROM json_each(?))`,
+        input.organizationId,
+        JSON.stringify(input.members.map(({ userId }) => userId)),
+      );
+      for (const { userId, roles } of input.members) {
+        this.#recordMembership(input.organizationId, {
+          userId,
+          roles,
+          confirmedAt: input.confirmedAt,
+        });
+      }
+    });
+  }
+
+  /**
+   * Backoffice no longer lets the user into the organization: they were removed, or Bookkeeping
+   * was uninstalled there.
+   */
+  removeMembership(input: { organizationId: string; userId: string }): void {
+    this.ctx.storage.sql.exec(
+      `DELETE FROM "membership" WHERE "organizationId" = ? AND "userId" = ?`,
+      input.organizationId,
+      input.userId,
+    );
+  }
+
+  /** Records an invitation Backoffice created; recording it again changes nothing. */
+  addInvitation(input: Omit<Invitation, "organization"> & { organizationId: string }): void {
+    this.ctx.storage.sql.exec(
+      `INSERT INTO "invitation" ("id", "organizationId", "email", "roles", "invitedBy", "expiresAt")
+       VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT ("id") DO NOTHING`,
+      input.id,
+      input.organizationId,
+      input.email,
+      JSON.stringify(input.roles),
+      input.invitedBy,
+      input.expiresAt,
+    );
+  }
+
+  findInvitation(id: string): Invitation | null {
+    const [row] = this.ctx.storage.sql
+      .exec<InvitationRow>(`${INVITATION_QUERY} WHERE i."id" = ?`, id)
+      .toArray();
+    return row ? toInvitation(row) : null;
+  }
+
+  /** The invitations Bookkeeping created to an organization, pending or not. */
+  listInvitations(organizationId: string): Invitation[] {
+    return this.ctx.storage.sql
+      .exec<InvitationRow>(`${INVITATION_QUERY} WHERE i."organizationId" = ?`, organizationId)
+      .toArray()
+      .map(toInvitation);
+  }
+
+  /** It was accepted, or Backoffice no longer offers it. */
+  removeInvitation(id: string): void {
+    this.ctx.storage.sql.exec(`DELETE FROM "invitation" WHERE "id" = ?`, id);
+  }
+
+  /** Records an administration once its books are open; recording it again changes nothing. */
+  recordAdministration(administration: Administration): void {
+    this.ctx.storage.sql.exec(
+      `INSERT INTO "administration" ("id", "clientId", "slug", "name") VALUES (?, ?, ?, ?)
+       ON CONFLICT ("id") DO NOTHING`,
+      administration.id,
+      administration.clientId,
+      administration.slug,
+      administration.name,
+    );
+  }
+
+  /** The client's administrations, by name. */
+  listAdministrations(clientId: string): Administration[] {
+    return this.ctx.storage.sql
+      .exec<Administration>(
+        `SELECT "id", "clientId", "slug", "name" FROM "administration"
+         WHERE "clientId" = ? ORDER BY "name", "slug"`,
+        clientId,
+      )
+      .toArray();
+  }
+
+  findAdministration(input: { clientId: string; slug: string }): Administration | null {
+    const [row] = this.ctx.storage.sql
+      .exec<Administration>(
+        `SELECT "id", "clientId", "slug", "name" FROM "administration"
+         WHERE "clientId" = ? AND "slug" = ?`,
+        input.clientId,
+        input.slug,
+      )
+      .toArray();
+    return row ?? null;
+  }
+
+  #renameOrganization(organization: Pick<Organization, "id" | "slug" | "name">): void {
+    this.ctx.storage.sql.exec(
+      `UPDATE "organization" SET "slug" = ?, "name" = ? WHERE "id" = ?`,
+      organization.slug,
+      organization.name,
+      organization.id,
+    );
+  }
+
+  #recordMembership(
+    organizationId: string,
+    membership: Omit<MembershipConfirmation, "organization">,
+  ): void {
+    this.ctx.storage.sql.exec(
+      `INSERT INTO "membership" ("organizationId", "userId", "roles", "confirmedAt")
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT ("organizationId", "userId") DO UPDATE SET "roles" = excluded."roles",
+         "confirmedAt" = excluded."confirmedAt"`,
+      organizationId,
+      membership.userId,
+      JSON.stringify(membership.roles),
+      membership.confirmedAt,
+    );
+  }
+}

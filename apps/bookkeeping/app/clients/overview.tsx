@@ -6,21 +6,21 @@ import { BackofficeSystemState } from "@fragno-private/design-system/system-stat
 import { env } from "cloudflare:workers";
 import { Link, useOutletContext } from "react-router";
 
+import { canManage, requireOrganization } from "../organizations/access.server";
 import type { Route } from "./+types/overview";
-import { canManage, requireWorkspace } from "./access.server";
-import type { WorkspaceOutletContext } from "./layout";
+import type { ClientOutletContext } from "./layout";
 
 export function meta() {
   return [{ title: "Overview · Bookkeeping" }];
 }
 
 export async function loader({ request, params }: Route.LoaderArgs) {
-  const { membership } = await requireWorkspace(request, params.slug);
+  const { organization, roles } = await requireOrganization(request, params.slug, "client");
   return {
-    administrations: await env.WORKSPACES.getByName("workspaces").listAdministrations(
-      membership.workspace.id,
+    administrations: await env.DIRECTORY.getByName("directory").listAdministrations(
+      organization.id,
     ),
-    canCreate: canManage(membership.roles),
+    canCreate: canManage(roles),
   };
 }
 
@@ -28,10 +28,10 @@ export function headers() {
   return { "Cache-Control": "private, no-store" };
 }
 
-export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) {
-  const { user, workspace } = useOutletContext<WorkspaceOutletContext>();
+export default function ClientOverview({ loaderData }: Route.ComponentProps) {
+  const { user, client } = useOutletContext<ClientOutletContext>();
   const { administrations, canCreate } = loaderData;
-  const base = `/w/${workspace.slug}`;
+  const base = `/w/${client.slug}`;
   const create = canCreate && (
     <ButtonLink variant="accent" to={`${base}/administrations/new`}>
       New administration
@@ -40,9 +40,9 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
   return (
     <div className="space-y-6">
       <BackofficePageHeader
-        title={workspace.name}
+        title={client.name}
         description={`Welcome, ${user.name}. Each administration holds the books of one business.`}
-        breadcrumbs={[{ label: workspace.name, to: base }, { label: "Overview" }]}
+        breadcrumbs={[{ label: client.name, to: base }, { label: "Overview" }]}
         actions={create}
       />
       {administrations.length === 0 ? (
@@ -52,7 +52,7 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
           title="Set up your books"
           description={
             canCreate
-              ? "Create an administration for your business to start its books."
+              ? "Create an administration for the business to start its books."
               : "No administrations yet. An owner or admin of this workspace creates them."
           }
           actions={create}

@@ -31,9 +31,9 @@ owner:
 | Product data and onboarding progress                              | The app                                                     | Its domain records and durable progress                                      |
 | Project-backed domain objects, when needed                        | Backoffice owns the project; the app owns the domain object | The returned project ID and the app's own object data                        |
 
-Choose the tenancy the product actually needs. Bookkeeping supports organization workspaces only;
-Backoffice also supports personal installations and private app scopes. An app's UI “workspace” is
-not necessarily Backoffice's `kind: "app"` scope.
+Choose the tenancy the product actually needs. Bookkeeping's tenants are organizations only: firms,
+and the clients each firm creates. Backoffice also supports personal installations and private app
+scopes. An app's UI “workspace” is not necessarily Backoffice's `kind: "app"` scope.
 
 Use Backoffice IDs for authority and persistence references. Keep local session-user IDs distinct
 from Backoffice user IDs; a matching email or organization slug is not an identity binding. Use

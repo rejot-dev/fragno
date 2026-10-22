@@ -11,10 +11,10 @@ import { z } from "zod";
 
 import { createProvisioningClient } from "../../workers/backoffice/client";
 import { FUNCTIONAL_CURRENCIES, type FunctionalCurrency } from "../../workers/books/currencies";
-import type { Administration } from "../../workers/workspaces/workspaces";
+import type { Administration } from "../../workers/directory/directory";
 import { assertSameOrigin } from "../auth/session.server";
-import { callBackoffice, canManage, requireWorkspace } from "../workspace/access.server";
-import type { WorkspaceOutletContext } from "../workspace/layout";
+import type { ClientOutletContext } from "../clients/layout";
+import { callBackoffice, canManage, requireOrganization } from "../organizations/access.server";
 import type { Route } from "./+types/new";
 
 export function meta() {
@@ -34,25 +34,25 @@ const administrationSchema = z.object({
   functionalCurrency: z.enum(CURRENCIES, "Choose a currency."),
 });
 
-function workspaces() {
-  return env.WORKSPACES.getByName("workspaces");
+function directory() {
+  return env.DIRECTORY.getByName("directory");
 }
 
 async function requireManager(request: Request, slug: string) {
-  const context = await requireWorkspace(request, slug);
-  if (!canManage(context.membership.roles)) {
+  const context = await requireOrganization(request, slug, "client");
+  if (!canManage(context.roles)) {
     throw new Response("Only owners and admins create administrations.", { status: 403 });
   }
   return context;
 }
 
 export async function loader({ request, params }: Route.LoaderArgs) {
-  const { membership } = await requireManager(request, params.slug);
-  const existing = await workspaces().listAdministrations(membership.workspace.id);
+  const { organization } = await requireManager(request, params.slug);
+  const existing = await directory().listAdministrations(organization.id);
   return {
     externalId: crypto.randomUUID(),
-    // A workspace's first administration is usually its business.
-    suggestedName: existing.length === 0 ? membership.workspace.name : "",
+    // A client's first administration is usually its business.
+    suggestedName: existing.length === 0 ? organization.name : "",
   };
 }
 
@@ -61,7 +61,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
  * is idempotent, so submitting the form again after a failure finishes the steps left.
  */
 export async function action({ request, params }: Route.ActionArgs) {
-  const { user, membership } = await requireManager(request, params.slug);
+  const { user, organization } = await requireManager(request, params.slug);
   assertSameOrigin(request);
   const parsed = administrationSchema.safeParse(Object.fromEntries(await request.formData()));
   if (!parsed.success) {
@@ -73,7 +73,7 @@ export async function action({ request, params }: Route.ActionArgs) {
     project = await callBackoffice(async () => {
       const provisioning = await createProvisioningClient(env);
       return await provisioning.call("projects.provision", {
-        organizationId: membership.workspace.id,
+        organizationId: organization.id,
         externalProjectId: externalId,
         name,
         createdByUserId: user.backofficeUserId,
@@ -88,11 +88,11 @@ export async function action({ request, params }: Route.ActionArgs) {
   await env.BOOKS.getByName(project.projectId).open({ name, functionalCurrency });
   const administration: Administration = {
     id: project.projectId,
-    workspaceId: membership.workspace.id,
+    clientId: organization.id,
     slug: project.slug,
     name,
   };
-  await workspaces().recordAdministration(administration);
+  await directory().recordAdministration(administration);
   throw redirect(`/w/${params.slug}/a/${administration.slug}`);
 }
 
@@ -102,14 +102,14 @@ export function headers() {
 
 export default function NewAdministration({ loaderData, actionData }: Route.ComponentProps) {
   const navigation = useNavigation();
-  const { workspace } = useOutletContext<WorkspaceOutletContext>();
-  const base = `/w/${workspace.slug}`;
+  const { client } = useOutletContext<ClientOutletContext>();
+  const base = `/w/${client.slug}`;
   return (
     <div className="space-y-6">
       <BackofficePageHeader
         title="New administration"
         description="An administration holds the books of one business."
-        breadcrumbs={[{ label: workspace.name, to: base }, { label: "New administration" }]}
+        breadcrumbs={[{ label: client.name, to: base }, { label: "New administration" }]}
       />
       <div className="max-w-2xl">
         <FormContainer title="Administration">

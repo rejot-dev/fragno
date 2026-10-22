@@ -1,14 +1,15 @@
 # Bookkeeping
 
 Minimal React Router framework app deployed to Cloudflare Workers, built on Backoffice: people sign
-in with Backoffice accounts, each workspace is a Backoffice organization, and each administration in
-it, the books of one business, is a Backoffice project. SQLite Durable Objects hold Bookkeeping's
-state; no D1 database or external auth service is required:
+in with Backoffice accounts. Operators (we, running Bookkeeping) create accounting firms; a firm
+creates its clients and keeps their books. Each firm and each client is a Backoffice organization,
+and each administration in a client, the books of one business, is a Backoffice project. SQLite
+Durable Objects hold Bookkeeping's state; no D1 database or external auth service is required:
 
 - `Auth` (`auth`): Better Auth's users, sessions, and Backoffice accounts.
-- `Workspaces` (`workspaces`): each workspace's administrations, and the read-only copy of
-  Bookkeeping's Backoffice organizations, their members, and the invitations Bookkeeping created.
-- `Workflows` (`workflows`): the Fragno workflows fragment, which runs the sign-up wizard.
+- `Directory` (`directory`): the read-only copy of Bookkeeping's Backoffice organizations, firms and
+  clients, their members, and the invitations Bookkeeping created; and each client's
+  administrations.
 - `Books` (one per administration, named by its Backoffice project's ID): the administration's
   books.
 
@@ -35,14 +36,26 @@ credentials as described below.
 pnpm dev
 ```
 
-Routes: `/` (public frontpage), `/login` (get started), `/help` (help signing in), `/signup`
-(redirects to `/login`), `/name` (asks a new person's name), `/start` (where signing in lands),
-`/welcome` (the sign-up wizard), `/invitations/:invitationId` (join a workspace), `/w/:slug`
-(workspace overview and its administrations), `/w/:slug/administrations/new` (create one),
-`/w/:slug/a/:administration` (an administration's books), `/w/:slug/members` (members and
-invitations), `/w/:slug/account` (profile and logout), and Better Auth's `/api/auth/*` endpoints.
-The workspace uses a collapsible desktop sidebar, mobile navigation, and a workspace switcher.
-Workspace routes require a session and the person's membership. Pages that require a session send
+Routes:
+
+| Path                                                         | What                                                                     |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------ |
+| `/`                                                          | Public frontpage                                                         |
+| `/login`, `/help`                                            | Signing in, and help with signing in; `/signup` redirects to `/login`    |
+| `/name`                                                      | Asks a new person's name                                                 |
+| `/start`                                                     | Where signing in lands: the only place, a choice of places, or no access |
+| `/account`                                                   | Who is signed in, and logging out                                        |
+| `/invitations/:invitationId`                                 | Joining a firm or a client                                               |
+| `/operator`                                                  | Every firm, for operators only; `/operator/firms/new` creates one        |
+| `/f/:slug`                                                   | A firm's clients; `/f/:slug/clients/new` creates one                     |
+| `/f/:slug/members`                                           | The firm's members and invitations                                       |
+| `/w/:slug`                                                   | A client's workspace: its administrations                                |
+| `/w/:slug/administrations/new`, `/w/:slug/a/:administration` | Creating an administration, and its books                                |
+| `/w/:slug/members`                                           | The client's members and invitations                                     |
+| `/api/auth/*`                                                | Better Auth, served by the `Auth` object                                 |
+
+The operator, firm, and client areas share a frame: a collapsible desktop sidebar, mobile
+navigation, and a switcher between every place the person can go. Pages that require a session send
 signed-out visitors to `/login?returnTo=<page>`, and people without a name to
 `/name?returnTo=<page>`; both continue to that page, and only to Bookkeeping's own pages. Signed-in
 visitors at `/login` continue to its `returnTo`. When Backoffice no longer accepts Bookkeeping's
@@ -61,7 +74,7 @@ Bookkeeping. They enter their email and the 6-digit code Backoffice emails them 
 name; a new address gets an account. They then return here signed in, and get a local Bookkeeping
 account on their first sign-in. `backoffice:connect` registers the branding, with `/logo.svg` and
 `/help` from `public/` and `app/public/help.tsx`. The same authorization also lets Bookkeeping's
-server act for that person in their workspaces (see [Workspaces](#workspaces)).
+server act for that person in their firms and clients (see [Firms and clients](#firms-and-clients)).
 
 `pnpm --dir apps/bookkeeping backoffice:connect` sets all of these up (see
 [Registering with Backoffice](#registering-with-backoffice)). To configure them by hand, set these
@@ -73,6 +86,7 @@ values in `.dev.vars` (never commit credentials):
 - `BACKOFFICE_OAUTH_CLIENT_SECRET`: the initial secret returned when creating that confidential
   client.
 - `BOOKKEEPING_BASE_URL`: the Bookkeeping origin, e.g. `http://127.0.0.1:4173`.
+- `BOOKKEEPING_OPERATOR_USER_IDS`: comma-separated Backoffice user IDs of the operators.
 
 Create a dedicated confidential client in the **Backoffice terminal**, in System context, as a
 global administrator (not in your host shell):
@@ -119,7 +133,9 @@ pnpm --dir apps/bookkeeping backoffice:connect
 The script signs in through the Backoffice CLI, creates Bookkeeping's OAuth client (or repairs the
 one in `.dev.vars`: callback URL, scopes, and client credentials), registers the app with `org.read`
 and the actions declared in `workers/backoffice/actions.ts`, and writes the client ID, secret, and
-both origins to `.dev.vars`. Bookkeeping is registered as a first-party app with every provisioning
+both origins to `.dev.vars`. It adds the signed-in administrator to `BOOKKEEPING_OPERATOR_USER_IDS`,
+keeping the IDs already there; user IDs differ per Backoffice server, so remove old ones after
+switching servers. Bookkeeping is registered as a first-party app with every provisioning
 permission: Backoffice skips its consent screen and permission review, and Bookkeeping may create
 organizations and administrations in Backoffice, and create, send, and accept invitations for its
 users (see Backoffice's `app/fragno/apps/README.md`). It reads both origins from `.dev.vars` and
@@ -127,31 +143,52 @@ defaults to `http://127.0.0.1:5173` and `http://127.0.0.1:4173`; pass `--backoff
 `--bookkeeping-url` to change them, which also moves the callback and the action endpoint. The app
 is registered as `app#bookkeeping`; pass `--slug` to choose another permanent name. Rerunning
 converges on the same client and app, updating its requested permissions and actions in place; as a
-first-party app, Bookkeeping has new permissions in every workspace within a minute. Action changes
-apply automatically to existing installations; pass `--change-approval installation` to make each
-installation's owner approve them. Production requires HTTPS.
+first-party app, Bookkeeping has new permissions in every organization within a minute. Action
+changes apply automatically to existing installations; pass `--change-approval installation` to make
+each installation's owner approve them. Production requires HTTPS.
 
-## Workspaces
+## Firms and clients
 
-A workspace is a Backoffice organization with Bookkeeping installed. Backoffice owns it, its
-members, and their roles (owner, admin, member); Bookkeeping keeps a read-only copy in the
-`Workspaces` object and never changes membership itself. Everyone in a workspace can open its books.
+Bookkeeping has three layers, as Brand Intelligence does with ReJot, partners, and brand brains:
 
-**Creating one.** Someone without a workspace lands in the sign-up wizard at `/welcome`, a
-`create-workspace` workflow (`workers/workflows/create-workspace.ts`), once they have given their
-name. It asks their business's name, then creates the Backoffice organization with
-`organizations.provision`, which installs Bookkeeping there for them as its owner, and records the
-workspace. Answers wait durably, so people can leave and come back. Creating the organization
-retries while Backoffice is unreachable; if it still fails, **Try again** retries that step with the
-answers given.
+- **Operators** run Bookkeeping. An operator is a person whose Backoffice user ID is in
+  `BOOKKEEPING_OPERATOR_USER_IDS`; to anyone else, `/operator` does not exist.
+- **Firms** are accounting firms: Backoffice organizations Bookkeeping records with kind `firm`.
+- **Clients** are the businesses whose books a firm keeps: Backoffice organizations Bookkeeping
+  records with kind `client` and the firm that created them.
 
-**Access.** Each workspace request checks the person's membership. A membership Backoffice confirmed
-in the last minute is trusted; otherwise Bookkeeping exchanges the person's Backoffice token for a
-credential in that organization (`POST /api/backoffice/execution-token`) and reads their roles with
-`org.get`. When Backoffice refuses, because they were removed or Bookkeeping was uninstalled,
-Bookkeeping forgets their membership and answers 404; nothing is deleted. While Backoffice is
-unreachable, unconfirmed access answers 503. Members pages list members with `org.members.list` as
-the viewer and refresh the copy, showing the names people gave Bookkeeping.
+Backoffice owns the organizations, their members, and their roles (owner, admin, member);
+Bookkeeping keeps a read-only copy in the `Directory` object and never changes membership itself.
+The link from a client to its firm is Bookkeeping's alone: Backoffice does not know it, and grants
+the firm nothing in the client. People sign up only through invitations: someone who signs in
+without one has no access yet.
+
+**Creating a firm.** At `/operator/firms/new`, an operator gives the firm's name and the email of
+its owner, who need not have signed in yet. Backoffice only makes someone who has authorized
+Bookkeeping an owner, so Bookkeeping provisions the firm with `organizations.provision` and the
+operator as owner, then invites the real owner with role `owner` as the operator. The operator stays
+an owner, to help; apps cannot remove members. Resubmitting the form after a failure finds the same
+firm and the same pending invitation.
+
+**Creating a client.** Any firm member creates a client at `/f/:slug/clients/new`. Bookkeeping
+provisions its organization with the creator as owner, records it under the firm, and opens its
+members page to invite the client. Being a member of a firm does not open its clients: the firm's
+dashboard lists every client, and its members open those they belong to. External IDs are prefixed
+with the kind (`firm:`, `client:`), so a firm and a client never share one.
+
+**Access.** Each request to a firm or client checks the person's membership, and that the slug is of
+that kind. A membership Backoffice confirmed in the last minute is trusted; otherwise Bookkeeping
+exchanges the person's Backoffice token for a credential in that organization
+(`POST /api/backoffice/execution-token`) and reads their roles with `org.get`. When Backoffice
+refuses, because they were removed or Bookkeeping was uninstalled, Bookkeeping forgets their
+membership and answers 404; nothing is deleted. While Backoffice is unreachable, unconfirmed access
+answers 503. Installed apps cannot ask which organizations someone belongs to, so `/start` and the
+switcher show the memberships Bookkeeping recorded: from creating an organization, accepting an
+invitation, or a confirmed visit.
+
+**Members.** A firm's and a client's members pages list members with `org.members.list` and pending
+invitations with `org.invitations.list`, as the viewer, and replace the copy's memberships with the
+list. Members show the names people gave Bookkeeping.
 
 **Inviting.** Owners and admins invite on the members page: Bookkeeping creates the invitation with
 `invitations.create` as the inviter, so Backoffice applies their current role (only owners invite
@@ -161,30 +198,30 @@ then emails the invitation in Bookkeeping's name with `invitations.send`, linkin
 email, as a local Backoffice without Resend cannot. The invited person signs in there, with
 Backoffice's sign-in page already showing the invited address; someone signed in with another
 address is offered to log out first. They then join: Bookkeeping calls `invitations.accept`, and
-Backoffice checks that the invitation is for their verified address. Invitations are sent only from
-Bookkeeping; someone invited in Backoffice itself finds the workspace once they open it.
+Backoffice checks that the invitation is for their verified address. Invitations made in Backoffice
+itself show on the members page without a link; their invitees find the organization once they open
+it.
 
 ### Backoffice actions
 
-Backoffice calls Bookkeeping too: a workspace's members and agents run `organization.get` through
-the `app#bookkeeping` integration connection, e.g.
+Backoffice calls Bookkeeping too: an organization's members and agents run `organization.get`
+through the `app#bookkeeping` integration connection, e.g.
 `integrations.execute --connection-id 'app#bookkeeping' --action-id organization.get --input-json '{}'`,
 or through a client from `integrations.generateClient`. `workers/backoffice/actions.ts` serves
 `POST /api/backoffice/actions`: it verifies Backoffice's per-request token with
-`createAppActionVerifier`, then describes the workspace of the organization the request was signed
-for.
+`createAppActionVerifier`, then describes the firm or client the request was signed for.
 
 ## Administrations
 
-An administration is the books of one business. A workspace can have several, e.g. for a holding and
-its subsidiaries; everyone in the workspace opens them, and owners and admins create them at
-`/w/:slug/administrations/new` with a name and the currency the books are kept in. Creating one:
+An administration is the books of one business. A client can have several, e.g. for a holding and
+its subsidiaries; everyone in the client's workspace opens them, and owners and admins create them
+at `/w/:slug/administrations/new` with a name and the currency the books are kept in. Creating one:
 
 1. creates its Backoffice project with `projects.provision`, as the person creating it, so
    Backoffice agents can work on the administration in that project;
 2. opens its books in a new `Books` object named by the project's ID (`workers/books`; see its
    README);
-3. records it in the `Workspaces` object, which lists a workspace's administrations.
+3. records it in the `Directory` object, which lists a client's administrations.
 
 The form carries an identifier chosen when it was shown, and each step is idempotent, so submitting
 it again after a failure, such as Backoffice being unreachable, finishes the steps left instead of
@@ -198,21 +235,24 @@ administration.
 feature: a page sits with its server code and scenario tests, and each Durable Object has its own
 folder with its migrations.
 
-| Path                  | Holds                                                                |
-| --------------------- | -------------------------------------------------------------------- |
-| `app/auth`            | the session, the auth client, and the sign-in button every area uses |
-| `app/public`          | signed-out pages: home, login, signup, help                          |
-| `app/welcome`         | the sign-up wizard                                                   |
-| `app/invitations`     | joining a workspace                                                  |
-| `app/administrations` | creating and opening an administration                               |
-| `app/workspace`       | `/start` and `/w/:slug`; `access.server.ts` checks membership        |
-| `workers/worker.ts`   | the Worker's `fetch` entry, which exports the Durable Objects        |
-| `workers/auth`        | the `Auth` object                                                    |
-| `workers/workspaces`  | the `Workspaces` object                                              |
-| `workers/workflows`   | the `Workflows` object and the `create-workspace` workflow           |
-| `workers/backoffice`  | Backoffice's API client and the actions Backoffice calls             |
-| `workers/books`       | the `Books` object and its schema                                    |
-| `scenario/`           | the scenario test harness                                            |
+| Path                  | Holds                                                                 |
+| --------------------- | --------------------------------------------------------------------- |
+| `app/auth`            | the session, the auth client, and signing in and out                  |
+| `app/public`          | pages outside the areas: home, login, help, name, account             |
+| `app/shell`           | the frame every area shares, its modes, and the places someone can go |
+| `app/organizations`   | `/start`, access confirmation, and provisioning firms and clients     |
+| `app/operator`        | the operator's area: every firm, and creating firms                   |
+| `app/firms`           | a firm's area: its clients, creating clients, and its members         |
+| `app/clients`         | a client's workspace: its administrations and its members             |
+| `app/administrations` | creating and opening an administration                                |
+| `app/members`         | a firm's or client's team: members, invitations, and inviting         |
+| `app/invitations`     | inviting someone, and accepting an invitation                         |
+| `workers/worker.ts`   | the Worker's `fetch` entry, which exports the Durable Objects         |
+| `workers/auth`        | the `Auth` object                                                     |
+| `workers/directory`   | the `Directory` object                                                |
+| `workers/backoffice`  | Backoffice's API client and the actions Backoffice calls              |
+| `workers/books`       | the `Books` object and its schema                                     |
+| `scenario/`           | the scenario test harness                                             |
 
 ## Checks
 
@@ -222,8 +262,8 @@ pnpm test
 pnpm build
 ```
 
-Scenario tests (`*.scenario.test.ts`) run Bookkeeping's pages, Durable Objects, and workflows in
-Node with `scenario/bookkeeping-scenario.ts`:
+Scenario tests (`*.scenario.test.ts`) run Bookkeeping's pages and Durable Objects in Node with
+`scenario/bookkeeping-scenario.ts`:
 
 - Durable Objects run their Cloudflare code unchanged on `FakeDurableObjectState`: `storage.sql` on
   in-memory SQLite, KV, transactions, alarms, and `blockConcurrencyWhile`. Calls cross a fake RPC
@@ -234,8 +274,8 @@ Node with `scenario/bookkeeping-scenario.ts`:
   `@fragno-dev/backoffice-api`'s schemas; requests to any other origin fail.
 - Browsers keep cookies and run Bookkeeping's routes through React Router's static handler, so
   layout loaders, actions, and redirects behave as in production.
-- `drain()` fires due alarms, which run workflows and durable hooks; `advanceTime()` moves the
-  clock.
+- `practice()` sets up an operator, a firm whose owner accepted the invitation, and its first
+  client; `advanceTime()` moves the clock.
 
 ## Deployment
 
@@ -247,18 +287,21 @@ pnpm exec wrangler secret put BOOKKEEPING_BASE_URL
 pnpm exec wrangler secret put BACKOFFICE_BASE_URL
 pnpm exec wrangler secret put BACKOFFICE_OAUTH_CLIENT_ID
 pnpm exec wrangler secret put BACKOFFICE_OAUTH_CLIENT_SECRET
+pnpm exec wrangler secret put BOOKKEEPING_OPERATOR_USER_IDS
 pnpm deploy
 ```
 
 Set `BOOKKEEPING_BASE_URL` to the final HTTPS origin (your Workers URL or custom domain). Do not use
-the example secret in production. Deployments create the SQLite Durable Object namespaces.
+the example secret in production. Deployments create the SQLite Durable Object namespaces. The `v4`
+migration deletes the former `Workspaces` and `Workflows` objects and their data, which self-serve
+sign-up created.
 
 ## Schema
 
 Each Durable Object applies versioned SQL migrations in order before serving requests; each one
 commits atomically with its version. They use Fragno's Kysely Durable Object dialect, which does not
 support Better Auth migration introspection, so schema changes are new migration files rather than
-edits to existing ones. The workflows fragment migrates its own tables.
+edits to existing ones.
 
 Each object's migrations are numbered files in its `migrations/` folder. An object records how many
 it has applied, not their names.
@@ -267,6 +310,6 @@ it has applied, not their names.
   sessions, and accounts.
 - `0002-organizations.sql` and `0003-backoffice-owner.sql`: Bookkeeping's former organizations and
   their links to Backoffice, which `0004-drop-organizations.sql` drops.
-- `workers/workspaces/migrations/0001-workspaces.sql`: the `Workspaces` object's copy, and
-  `0002-administrations.sql` its administrations.
+- `workers/directory/migrations/0001-directory.sql`: the `Directory` object's organizations,
+  memberships, invitations, and administrations.
 - `Books` applies `bookkeepingSchema` from `workers/books/schema.ts` as its first migration.

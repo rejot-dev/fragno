@@ -7,8 +7,7 @@
   "durable_objects": {
     "bindings": [
       { "name": "AUTH", "class_name": "Auth" },
-      { "name": "WORKSPACES", "class_name": "Workspaces" },
-      { "name": "WORKFLOWS", "class_name": "Workflows" },
+      { "name": "DIRECTORY", "class_name": "Directory" },
       { "name": "BOOKS", "class_name": "Books" },
     ],
   },
@@ -16,6 +15,12 @@
     { "tag": "v1", "new_sqlite_classes": ["Auth"] },
     { "tag": "v2", "new_sqlite_classes": ["Workspaces", "Workflows"] },
     { "tag": "v3", "new_sqlite_classes": ["Books"] },
+    // Firms and their clients replace self-serve workspaces and the sign-up wizard that made them.
+    {
+      "tag": "v4",
+      "new_sqlite_classes": ["Directory"],
+      "deleted_classes": ["Workspaces", "Workflows"],
+    },
   ],
   "observability": { "enabled": true },
 }

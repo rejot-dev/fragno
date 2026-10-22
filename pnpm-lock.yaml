@@ -606,9 +606,6 @@ importers:
       '@fragno-dev/db':
         specifier: workspace:*
         version: link:../../packages/fragno-db
-      '@fragno-dev/workflows':
-        specifier: workspace:*
-        version: link:../../packages/fragment-workflows
       '@fragno-private/design-system':
         specifier: workspace:*
         version: link:../../packages-private/design-system

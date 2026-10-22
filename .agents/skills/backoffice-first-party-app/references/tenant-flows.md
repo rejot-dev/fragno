@@ -13,19 +13,29 @@ membership. Use the current contract rather than resurrecting those historical e
 
 ## Create a tenant
 
-[Bookkeeping's wizard](../../../../apps/bookkeeping/workers/workflows/create-workspace.ts) asks for
-the business name, then:
+Bookkeeping's tenants come in layers: its operators create accounting firms, and a firm's members
+create its clients.
+[Its provisioning](../../../../apps/bookkeeping/app/organizations/provision.server.ts) serves both:
 
-1. Calls `organizations.provision` with a stable `externalOrganizationId`, the organization name,
-   and `ownerUserId` from the signed-in user's Backoffice subject.
+1. Calls `organizations.provision` with a stable `externalOrganizationId`, prefixed with the kind so
+   two kinds never share one, the organization name, and `ownerUserId` from the signed-in user's
+   Backoffice subject.
 2. Receives Backoffice's `organizationId` and slug. Backoffice has created the organization,
    installed the calling app with its requested permissions owner-wide, and claimed that
    installation for the external identifier.
-3. Records the returned organization as the local workspace and its confirmed owner membership.
+3. Records the returned organization with its kind and, for a client, its firm, and the creator's
+   confirmed owner membership.
+
+Backoffice does not know the link from a client to its firm, and grants the firm nothing in the
+client: firm members reach a client as its members. Operators are an allowlist of Backoffice user
+IDs in the app's configuration.
 
 The owner must already have authorized this app's OAuth client. The app secret is not permission to
 impersonate an arbitrary Backoffice user. Sign-up itself creates no organization; provisioning is an
-explicit product onboarding action.
+explicit product onboarding action. To create an organization for someone who has not signed in yet,
+as [Bookkeeping's new-firm page](../../../../apps/bookkeeping/app/operator/new-firm.tsx) does,
+provision it with the acting user as owner and invite the real owner with role `owner`. The acting
+user stays an owner, because apps cannot remove members.
 
 Use one stable external identifier across retries, including failures between remote provisioning
 and local persistence. Backoffice derives identities from the app and external identifier; consume
@@ -33,11 +43,11 @@ the returned IDs instead of reproducing its hashing algorithm. A retry resumes p
 cross-service transaction. Uninstall wins: reprovisioning an explicitly uninstalled organization
 returns conflict instead of reinstalling it.
 
-For a multi-step wizard, run Fragno Workflows in the app. Bookkeeping mounts the fragment in a
-separate [Workflows Durable Object](../../../../apps/bookkeeping/workers/workflows/workflows.ts),
-waits durably for answers, and uses the workflow instance ID as the external organization ID. Retry
-unknown outcomes with the same ID; surface explicit refusals. Preserve answers across retries and
-make late duplicate submissions after completion return the finished destination.
+A single form carries an external ID chosen when it was shown, so resubmitting it after a failure
+finds what the first submission made. For a multi-step wizard, run Fragno Workflows in the app, wait
+durably for answers, and use the workflow instance ID as the external organization ID. Retry unknown
+outcomes with the same ID; surface explicit refusals. Preserve answers across retries and make late
+duplicate submissions after completion return the finished destination.
 
 For **linking an existing organization** instead of creating one, read the app-initiated install and
 claim flow in
@@ -48,11 +58,12 @@ authority. This branch is separate from new-tenant provisioning.
 
 ## Confirm access by pulling authority
 
-Read [the access boundary](../../../../apps/bookkeeping/app/workspace/access.server.ts) and its
-[scenarios](../../../../apps/bookkeeping/app/workspace/access.scenario.test.ts). Keep a read-only
-projection keyed by Backoffice organization and user IDs. For each protected request:
+Read [the access boundary](../../../../apps/bookkeeping/app/organizations/access.server.ts) and its
+[scenarios](../../../../apps/bookkeeping/app/organizations/access.scenario.test.ts). Keep a
+read-only projection keyed by Backoffice organization and user IDs. For each protected request:
 
-1. Require the local session and resolve the target workspace.
+1. Require the local session and resolve the target organization, refusing one of another kind than
+   the route serves.
 2. Trust membership only within its explicit confirmation lifetime. Bookkeeping uses 60 seconds,
    which is also its maximum stale local-access window after removal.
 3. Once stale or absent, obtain the user's OAuth token, exchange for that organization's execution
@@ -67,11 +78,11 @@ Bookkeeping lets all members read books and only owners/admins invite or create 
 provisioning project endpoint verifies an authorized member, so the stricter product manager rule
 belongs in the app.
 
-Use `org.members.list` as the viewer and follow its cursors to refresh member listings. A local
-projection is not automatically a global directory of every Backoffice organization. Bookkeeping
-starts with organizations it created or knows, and invitations sent through the app. If discovery of
-externally installed tenants or external invitations is required, design that read path explicitly;
-do not claim the cache already supplies it.
+Use `org.members.list` and `org.invitations.list` as the viewer and follow their cursors to refresh
+member listings. A local projection is not automatically a global directory of every Backoffice
+organization. Bookkeeping starts with organizations it created or knows, and invitations sent
+through the app. If discovery of externally installed tenants or external invitations is required,
+design that read path explicitly; do not claim the cache already supplies it.
 
 This is pull-based confirmation, not webhook replication. Keep that simpler boundary until a product
 requirement demands push delivery. Fresh local membership can remain usable during an outage only
@@ -96,7 +107,8 @@ project rename/deletion into its administration record.
 
 ## Invite and accept through Backoffice
 
-Read [members](../../../../apps/bookkeeping/app/workspace/members.tsx) and
+Read [members](../../../../apps/bookkeeping/app/members/members.server.ts),
+[inviting](../../../../apps/bookkeeping/app/invitations/invite.server.ts), and
 [invitation acceptance](../../../../apps/bookkeeping/app/invitations/invitation.tsx):
 
 1. As the app, call provisioning `invitations.create` with the organization, the signed-in inviter's

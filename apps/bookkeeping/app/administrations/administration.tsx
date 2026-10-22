@@ -3,19 +3,19 @@ import { BackofficeSystemState } from "@fragno-private/design-system/system-stat
 import { env } from "cloudflare:workers";
 import { useOutletContext } from "react-router";
 
-import { requireWorkspace } from "../workspace/access.server";
-import type { WorkspaceOutletContext } from "../workspace/layout";
+import type { ClientOutletContext } from "../clients/layout";
+import { requireOrganization } from "../organizations/access.server";
 import type { Route } from "./+types/administration";
 
 export function meta({ loaderData }: Route.MetaArgs) {
   return [{ title: `${loaderData?.books.name ?? "Administration"} · Bookkeeping` }];
 }
 
-/** Everyone in the workspace opens its administrations' books. */
+/** Everyone in the client's workspace opens its administrations' books. */
 export async function loader({ request, params }: Route.LoaderArgs) {
-  const { membership } = await requireWorkspace(request, params.slug);
-  const administration = await env.WORKSPACES.getByName("workspaces").findAdministration({
-    workspaceId: membership.workspace.id,
+  const { organization } = await requireOrganization(request, params.slug, "client");
+  const administration = await env.DIRECTORY.getByName("directory").findAdministration({
+    clientId: organization.id,
     slug: params.administration,
   });
   if (!administration) {
@@ -32,14 +32,14 @@ export function headers() {
 }
 
 export default function AdministrationPage({ loaderData }: Route.ComponentProps) {
-  const { workspace } = useOutletContext<WorkspaceOutletContext>();
+  const { client } = useOutletContext<ClientOutletContext>();
   const { books } = loaderData;
   return (
     <div className="space-y-6">
       <BackofficePageHeader
         title={books.name}
         description={`Books kept in ${books.functionalCurrency}.`}
-        breadcrumbs={[{ label: workspace.name, to: `/w/${workspace.slug}` }, { label: books.name }]}
+        breadcrumbs={[{ label: client.name, to: `/w/${client.slug}` }, { label: books.name }]}
       />
       <BackofficeSystemState
         tone="empty"
