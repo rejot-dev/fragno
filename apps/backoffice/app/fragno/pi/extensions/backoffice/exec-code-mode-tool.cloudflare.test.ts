@@ -1,7 +1,7 @@
 // The Workers test pool loads the main module on first Durable Object access; load it untimed.
 import "../../../../../workers/vitest-env";
 
-import { describe, expect, test, assert } from "vitest";
+import { afterAll, describe, expect, test, assert } from "vitest";
 
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
@@ -20,6 +20,7 @@ import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-servi
 import { parseBackofficeUiResult } from "@/backoffice-ui/result";
 import { codemodeWorkflowParamsSchema } from "@/fragno/automation/engine/codemode-invocation";
 import { AutomationWorkflowRuntimeRequestError } from "@/fragno/automation/workflow-route-runtime";
+import { drainCodemodeAlarms } from "@/fragno/codemode/codemode-alarms.test-support";
 import { codemodeRunnerFor } from "@/fragno/codemode/codemode-object-execute";
 import {
   MemoryUploadObject,
@@ -119,6 +120,8 @@ const createPiWorkflowRuntime = (
 });
 
 describe("Pi execCodeMode tool", () => {
+  afterAll(drainCodemodeAlarms);
+
   test("its parameter schema rejects empty programs and accepts immediate and durable ones", () => {
     const validate = new Ajv().compile(execCodeModeParametersSchema);
 
