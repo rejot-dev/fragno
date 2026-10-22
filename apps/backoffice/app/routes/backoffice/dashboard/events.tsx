@@ -161,6 +161,9 @@ function EventsClient({ selectedScope }: { selectedScope: BackofficeScopeSelecti
   );
 }
 
+/** One empty list for queries without data, so memoized projections keep their inputs. */
+const NO_ROWS: never[] = [];
+
 function EventTracesWorkspace({
   selectedScope,
   collections,
@@ -177,10 +180,13 @@ function EventTracesWorkspace({
   const runsQuery = useLiveQuery({ query: (query) => eventTraceRunsQuery(query, collections) });
   // Synchronized rows are written by the automations fragment, so their JSON columns and status
   // strings hold the shapes it persists.
-  const events = (eventsQuery.data ?? []) as EventTraceEvent[];
+  const events = (eventsQuery.data ?? NO_ROWS) as EventTraceEvent[];
   const dispatchRows = dispatchesQuery.data as EventTraceDispatchRow[] | undefined;
-  const dispatches = useMemo(() => (dispatchRows ?? []).map(eventTraceDispatch), [dispatchRows]);
-  const runs = (runsQuery.data ?? []) as EventTraceRun[];
+  const dispatches = useMemo(
+    () => (dispatchRows ?? NO_ROWS).map(eventTraceDispatch),
+    [dispatchRows],
+  );
+  const runs = (runsQuery.data ?? NO_ROWS) as EventTraceRun[];
 
   const summaries = useMemo(
     () => projectEventTraceSummaries({ events, dispatches, runs, limit: TRACE_LIMIT }),
@@ -196,11 +202,11 @@ function EventTracesWorkspace({
   const stepsQuery = useLiveQuery({
     query: (query) => eventTraceStepsQuery(query, collections, runIds),
   });
-  const steps = (stepsQuery.data ?? []) as EventTraceStep[];
+  const steps = (stepsQuery.data ?? NO_ROWS) as EventTraceStep[];
   const deliveriesQuery = useLiveQuery({
     query: (query) => eventTraceDeliveriesQuery(query, collections, runIds),
   });
-  const deliveries = (deliveriesQuery.data ?? []) as EventTraceDelivery[];
+  const deliveries = (deliveriesQuery.data ?? NO_ROWS) as EventTraceDelivery[];
   const trace = useMemo(
     () =>
       openedTrace === null
