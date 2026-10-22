@@ -282,8 +282,8 @@ function renderCodemodeCall(
 
 /** Registers `/backoffice` and tools for Backoffice state, local files, search, and codemode. */
 export default function registerBackofficeExtension(pi: ExtensionAPI) {
-  // Own the native registration so Backoffice can expose it through localCodemode and restore it on exit.
-  void createCodemodeExtension()(pi);
+  // Registering `codemode` at load would replace Pi's built-in codemode extension. Backoffice only
+  // overrides it at runtime; project extensions load before built-ins, so that override wins.
   let backofficeToolsActive = false;
 
   function registerBackofficeTools(cwd: string) {

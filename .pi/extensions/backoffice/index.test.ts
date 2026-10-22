@@ -151,6 +151,8 @@ describe("Backoffice extension scenarios", () => {
   beforeAll(async () => {
     directory = await mkdtemp(join(tmpdir(), "pi-backoffice-codemode-"));
     process.env["BACKOFFICE_AUTH_FILE"] = join(directory, "backoffice-auth.json");
+    // The MCP extension reads mcp.json from this variable, not from the session's agentDir.
+    process.env["PI_CODING_AGENT_DIR"] = directory;
     ({ default: registerBackofficeExtension } = await import("./index.js"));
   });
 
@@ -254,10 +256,10 @@ describe("Backoffice extension scenarios", () => {
       noThemes: true,
       noContextFiles: true,
       extensionFactories: [
-        nativeCodemodeExtension,
-        createMcpExtension({ createTransport }),
         registerBackofficeExtension,
         registerCloudflareMcpCommand,
+        createMcpExtension({ createTransport }),
+        nativeCodemodeExtension,
       ],
     });
     await resourceLoader.reload();
@@ -456,10 +458,10 @@ describe("Backoffice extension scenarios", () => {
         noThemes: true,
         noContextFiles: true,
         extensionFactories: [
-          nativeCodemodeExtension,
-          createMcpExtension({ createTransport }),
           registerBackofficeExtension,
           registerCloudflareMcpCommand,
+          createMcpExtension({ createTransport }),
+          nativeCodemodeExtension,
         ],
       },
     });
@@ -527,9 +529,9 @@ describe("Backoffice extension scenarios", () => {
           noThemes: true,
           noContextFiles: true,
           extensionFactories: [
-            nativeCodemodeExtension,
-            createMcpExtension({ createTransport }),
             registerBackofficeExtension,
+            createMcpExtension({ createTransport }),
+            nativeCodemodeExtension,
           ],
         },
       });
@@ -729,9 +731,9 @@ describe("Backoffice extension scenarios", () => {
           noThemes: true,
           noContextFiles: true,
           extensionFactories: [
-            nativeCodemodeExtension,
-            createMcpExtension({ createTransport }),
             registerBackofficeExtension,
+            createMcpExtension({ createTransport }),
+            nativeCodemodeExtension,
           ],
         },
       });
