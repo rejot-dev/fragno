@@ -11,6 +11,7 @@ import {
   requireSessionUser,
 } from "../auth/session.server";
 import { SignInButton } from "../auth/sign-in-button";
+import { SignOutButton } from "../auth/sign-out-button";
 import { callBackoffice } from "../workspace/access.server";
 import type { Route } from "./+types/invitation";
 
@@ -27,6 +28,10 @@ async function findOpenInvitation(invitationId: string) {
   return invitation && invitation.expiresAt > Date.now() ? invitation : null;
 }
 
+/**
+ * Shows the invitation before signing in, so the invited person knows what they join. Its ID is
+ * the secret: only the invited address receives the link.
+ */
 export async function loader({ request, params }: Route.LoaderArgs) {
   const invitation = await findOpenInvitation(params.invitationId);
   if (!invitation) {
@@ -101,16 +106,30 @@ export default function Invitation({ loaderData, actionData, params }: Route.Com
       </section>
     );
   }
+  const { workspaceName, invitedBy, email, signedInAs } = loaderData;
+  const forSomeoneElse = signedInAs !== null && signedInAs.toLowerCase() !== email.toLowerCase();
   return (
     <section className="auth">
-      <h1>Join {loaderData.workspaceName}</h1>
+      <h1>Join {workspaceName}</h1>
       <p>
-        {loaderData.invitedBy} invited {loaderData.email} to keep the books of{" "}
-        {loaderData.workspaceName} together in Bookkeeping.
+        {invitedBy} invited {email} to keep the books of {workspaceName} together in Bookkeeping.
       </p>
-      {loaderData.signedInAs === null ? (
-        <SignInButton returnTo={`/invitations/${params.invitationId}`} />
-      ) : (
+      {signedInAs === null && (
+        <>
+          <SignInButton returnTo={`/invitations/${params.invitationId}`} email={email} />
+          <p className="text-sm">Sign in with {email}.</p>
+        </>
+      )}
+      {forSomeoneElse && (
+        <>
+          <p>
+            You're signed in as {signedInAs}. Log out and sign in with {email} to accept the
+            invitation.
+          </p>
+          <SignOutButton then={`/invitations/${params.invitationId}`} />
+        </>
+      )}
+      {signedInAs !== null && !forSomeoneElse && (
         <Form method="post" className="space-y-3">
           <Button
             type="submit"
@@ -118,9 +137,9 @@ export default function Invitation({ loaderData, actionData, params }: Route.Com
             className="w-full"
             disabled={navigation.state !== "idle"}
           >
-            Join {loaderData.workspaceName}
+            Join {workspaceName}
           </Button>
-          <p className="text-sm">You're signed in as {loaderData.signedInAs}.</p>
+          <p className="text-sm">You're signed in as {signedInAs}.</p>
         </Form>
       )}
       {actionData?.error && (
