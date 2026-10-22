@@ -15,6 +15,7 @@ import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-ser
 import type { AutomationWorkflowsService } from "./definition";
 import { CODEMODE_WORKFLOW } from "./engine/codemode-invocation";
 import { createAutomationFragment } from "./index";
+import { recordMatchedRoute, routeDispatchId } from "./route-dispatches-storage-runtime";
 import { automationFragmentSchema } from "./schema";
 import { createTestAutomationSourceReader } from "./test-automation-source-reader.test-utils";
 
@@ -651,5 +652,74 @@ describe("automation route action idempotency", () => {
       id: "forwarded-route-event-1",
       scope: { kind: "org", orgId: "org_456" },
     });
+  });
+
+  test("replaying a route that failed for good leaves its hook failed, so it can be retried", async () => {
+    const automations = createAutomationFragment(
+      {
+        builtInEventDefinitions: [],
+        ownerScope: { kind: "org", orgId: "org_123" },
+        readAutomationSource: createTestAutomationSourceReader({}),
+      },
+      {
+        databaseAdapter: new InMemoryAdapter({ idSeed: "failed-route-replay" }),
+        dbRoundtripGuard: true,
+        outbox: { enabled: true },
+      },
+      { workflows: noOpWorkflows },
+    );
+    const route = reclassificationRoute({
+      id: "failed-route",
+      source: "custom",
+      eventType: "ready",
+      targetSource: "custom",
+      targetEventType: "relayed",
+    });
+    const routeId = routeDispatchId({ eventId: event.id, routeId: route.id });
+
+    // The route's failure committed, but its hook stopped before settling, so it runs again.
+    await automations.inContext(async function () {
+      await this.handlerTx()
+        .mutate(({ forSchema }) => {
+          recordMatchedRoute(forSchema(automationFragmentSchema), { event, route });
+        })
+        .execute();
+    });
+    await automations.callServices(() =>
+      automations.services.updateRouteDispatch({
+        event,
+        route,
+        state: { status: "failed", failedAttempts: 1, error: "denied" },
+      }),
+    );
+    await automations.inContext(async function () {
+      await this.handlerTx()
+        .mutate(({ forSchema }) => {
+          forSchema(automationFragmentSchema).triggerHook(
+            "internalDispatchRoute",
+            { event, route, reclassificationChain: [{ source: "custom", eventType: "ready" }] },
+            { id: routeId },
+          );
+        })
+        .execute();
+    });
+    await drainDurableHooks(automations);
+
+    const { hookService, namespace } = getDurableHooksService(automations);
+    const hooks = await automations.inContext(async function () {
+      return await this.handlerTx()
+        .withServiceCalls(() => [hookService.getHooksByNamespacePage(namespace)] as const)
+        .transform(({ serviceResult: [result] }) => result.items)
+        .execute();
+    });
+    // Failed at once with the recorded error, without acting or retrying.
+    expect(hooks.filter((hook) => hook.hookName === "internalDispatchRoute")).toMatchObject([
+      { status: "failed", attempts: 1, error: "denied" },
+    ]);
+    expect(
+      await automations.callServices(() =>
+        automations.services.listEventRouteDispatches({ eventId: event.id }),
+      ),
+    ).toMatchObject([{ routeId: route.id, status: "failed", error: "denied" }]);
   });
 });

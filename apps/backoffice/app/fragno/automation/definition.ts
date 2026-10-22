@@ -77,7 +77,6 @@ import { createAutomationProjectServices } from "./projects-storage-runtime";
 import {
   buildRouteFailedEvent,
   createAutomationRouteDispatchServices,
-  isRouteDispatchSettled,
   isRouteFailedEvent,
   readRouteDispatchState,
   recordMatchedRoute,
@@ -547,6 +546,14 @@ function isWorkflowRunFinishedError(error: unknown): boolean {
   return error instanceof Error && error.message === "INSTANCE_TERMINAL";
 }
 
+/** A replayed route that already failed for good, with the error it failed on. */
+class AutomationRouteFailedError extends Error {
+  constructor(error: string) {
+    super(error);
+    this.name = "AutomationRouteFailedError";
+  }
+}
+
 /** A finished workflow run never takes another event, so no retry can deliver one to it. */
 class AutomationWorkflowRunFinishedError extends Error {
   constructor(instanceId: string, options?: ErrorOptions) {
@@ -565,7 +572,11 @@ class AutomationWorkflowRunFinishedError extends Error {
  * finished run, which is known by its message.
  */
 function isRetryableRouteError(error: unknown): boolean {
-  if (error instanceof AutomationWorkflowRunFinishedError || isWorkflowRunFinishedError(error)) {
+  if (
+    error instanceof AutomationRouteFailedError ||
+    error instanceof AutomationWorkflowRunFinishedError ||
+    isWorkflowRunFinishedError(error)
+  ) {
     return false;
   }
   if (error instanceof BackofficeForbiddenError) {
@@ -826,7 +837,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
                 ? buildExternalIdentityBindingId(event.actors.initiator)
                 : "";
             const storedInstanceKey = routeStoredInstanceKey(event, route);
-            const { settled, storedInstanceId, linkedUserId } = await this.handlerTx({
+            const { recorded, storedInstanceId, linkedUserId } = await this.handlerTx({
               name: "automations.internalDispatchRoute",
             })
               .retrieve(({ forSchema }) =>
@@ -846,9 +857,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
                   ),
               )
               .transformRetrieve(([dispatch, storedInstance, externalIdentityBinding]) => ({
-                settled: dispatch
-                  ? isRouteDispatchSettled(readRouteDispatchState(dispatch))
-                  : false,
+                recorded: dispatch ? readRouteDispatchState(dispatch) : null,
                 storedInstanceId:
                   storedInstanceKey === null ? null : (storedInstance?.value ?? null),
                 linkedUserId:
@@ -857,7 +866,12 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
                     : null,
               }))
               .execute();
-            if (settled) {
+            // A replay finds the state the route settled with first. One that failed fails its hook
+            // again, so a hook that stopped after recording the failure can still be retried.
+            if (recorded?.status === "failed") {
+              throw new AutomationRouteFailedError(recorded.error);
+            }
+            if (recorded?.status === "completed") {
               return;
             }
 
