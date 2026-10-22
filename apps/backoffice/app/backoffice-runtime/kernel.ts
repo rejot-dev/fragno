@@ -522,22 +522,29 @@ export class BackofficeKernel {
       return;
     }
 
+    // A user may reach every scope they can access. Membership is not checked here: every action
+    // in the target scope resolves the user's permissions there, which denies foreign organizations.
+    if (principal?.scope === "internal" && principal.type === "user") {
+      const targetOwner = backofficeScopeRootOwner(targetScope);
+      if (
+        targetOwner !== null &&
+        (targetOwner.kind === "org" || targetOwner.userId === principal.id)
+      ) {
+        return;
+      }
+    }
+
     if (ownerScope.kind === "org") {
       if (backofficeScopeContains(ownerScope, targetScope)) {
         return;
       }
 
-      if (targetScope.kind === "user" && principal !== null) {
-        const targetsAuthenticatedUser =
-          principal.scope === "internal" &&
-          principal.type === "user" &&
-          principal.id === targetScope.userId;
-        const internalServiceCanEnterUserScope =
-          resolveBackofficeInternalServiceAuthorityRole(principal) !== null;
-
-        if (targetsAuthenticatedUser || internalServiceCanEnterUserScope) {
-          return;
-        }
+      if (
+        targetScope.kind === "user" &&
+        principal !== null &&
+        resolveBackofficeInternalServiceAuthorityRole(principal) !== null
+      ) {
+        return;
       }
     }
 

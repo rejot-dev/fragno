@@ -69,6 +69,8 @@ test("Codemode execution retains unavailable-tool diagnostics without granting c
       setup: ({ given }) => [
         given.auth.user({ id: "owner" }),
         given.auth.organization({ id: "acme", ownerUserId: "owner" }),
+        given.auth.user({ id: "stranger" }),
+        given.auth.organization({ id: "globex", ownerUserId: "stranger" }),
       ],
       steps: ({ when, then }) => [
         when.project.create({
@@ -204,6 +206,44 @@ test("Codemode execution retains unavailable-tool diagnostics without granting c
             },
           });
         }),
+        then.assert(
+          "a user's project turn reaches the user's organizations, but not foreign ones",
+          async (ctx) => {
+            const scope: BackofficeContextScope = {
+              kind: "project",
+              owner,
+              projectId: ctx.vars.projectId,
+            };
+            const tool = executionTool(
+              ctx,
+              createBackofficeUserExecution({ scope, userId: "owner" }),
+            );
+            const own = await tool.execute(
+              { code: 'async () => await context.org("acme").projects.list({})' },
+              { taskId: "own-org" } as never,
+              BACKGROUND_CONTEXT,
+            );
+            expect(own).toMatchObject({
+              isError: false,
+              details: {
+                result: { projects: [{ projectId: ctx.vars.projectId, name: "Existing" }] },
+              },
+            });
+            const foreign = await tool.execute(
+              { code: 'async () => await context.org("globex").projects.list({})' },
+              { taskId: "foreign-org" } as never,
+              BACKGROUND_CONTEXT,
+            );
+            expect(foreign).toMatchObject({
+              isError: true,
+              details: {
+                errorDetails: {
+                  message: expect.stringContaining("Permission denied for projects.list"),
+                },
+              },
+            });
+          },
+        ),
         then.assert("credential restrictions still reject switching to the owner", async (ctx) => {
           const scope: BackofficeContextScope = {
             kind: "project",
