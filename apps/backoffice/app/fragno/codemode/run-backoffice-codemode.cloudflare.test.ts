@@ -1,7 +1,7 @@
 // The Workers test pool loads the main module on first Durable Object access; load it untimed.
 import "../../../workers/vitest-env";
 
-import { describe, expect, test, assert } from "vitest";
+import { afterAll, describe, expect, test, assert } from "vitest";
 
 import {
   type BackofficeContextScope,
@@ -31,6 +31,7 @@ import type {
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import { createRouteBackedAutomationStoreRuntime } from "@/fragno/automation/bindings-route-runtime";
+import { drainCodemodeAlarms } from "@/fragno/codemode/codemode-alarms.test-support";
 import { codemodeRunnerFor } from "@/fragno/codemode/codemode-object-execute";
 import { runBackofficeCodemode } from "@/fragno/codemode/execute";
 import {
@@ -69,6 +70,8 @@ const codemode = codemodeRunnerFor(
 );
 
 describe("runBackofficeCodemode", () => {
+  afterAll(drainCodemodeAlarms);
+
   test("returns a compile error when the Codemode object has no compiler", async () => {
     const runtime = await createInMemoryBackofficeRuntime({
       objects: localObjects,

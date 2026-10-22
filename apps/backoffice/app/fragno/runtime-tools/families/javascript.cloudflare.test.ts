@@ -1,13 +1,14 @@
 // The Workers test pool loads the main module on first Durable Object access; load it untimed.
 import "../../../../workers/vitest-env";
 
-import { assert, describe, expect, test } from "vitest";
+import { afterAll, assert, describe, expect, test } from "vitest";
 
 import { env } from "cloudflare:workers";
 import { InMemoryFs } from "just-bash";
 
 import { createCloudflareBackofficeObjectRegistry } from "@/backoffice-runtime/cloudflare-durable-object-factory";
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
+import { drainCodemodeAlarms } from "@/fragno/codemode/codemode-alarms.test-support";
 import { codemodeRunnerFor } from "@/fragno/codemode/codemode-object-execute";
 import { runBackofficeJavaScriptModule } from "@/fragno/codemode/javascript-module-execute";
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
@@ -31,6 +32,8 @@ function createTestJavaScriptStateBackend(fileSystem: InMemoryFs): BackofficeSta
 }
 
 describe("JavaScript file execution in workerd", () => {
+  afterAll(drainCodemodeAlarms);
+
   test("runs a saved JavaScript file without type checking", async () => {
     const fileSystem = new InMemoryFs();
     await fileSystem.mkdir("/workspace/scripts", { recursive: true });
