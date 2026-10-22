@@ -177,13 +177,11 @@ test("interruption preserves host retry scheduling without falsely committing to
       objects: scenarioObjects,
       name: "interrupted step retries through the Node runner",
       env: {
-        codemode: {
-          remoteExecutor: (activation, host) =>
-            execute(
-              activation.kind === "module-build" ? activation : { ...activation, timeoutMs: 750 },
-              host,
-            ),
-        },
+        codemode: (activation, host) =>
+          execute(
+            activation.kind === "module-build" ? activation : { ...activation, timeoutMs: 750 },
+            host,
+          ),
       },
       files: backofficeFiles.workspaceStarter({
         "automations/remote-interrupted.workflow.js": `defineWorkflow({ name: "remote-interrupted" }, async (_event, step) => {

@@ -95,9 +95,6 @@ export async function readSavedModuleImports(input: {
 
   function addModule(path: string, code: string, fail: (message: string) => Error) {
     sourceBytes += new TextEncoder().encode(code).byteLength;
-    if (Object.keys(modules).length >= CODEMODE_LIMITS.maxSourceModules) {
-      throw fail(`A program can import at most ${CODEMODE_LIMITS.maxSourceModules} modules.`);
-    }
     if (sourceBytes > CODEMODE_LIMITS.maxSourceBytes) {
       throw fail("CODEMODE_SOURCE_LIMIT_EXCEEDED");
     }

@@ -1,7 +1,7 @@
 import { afterAll, assert, beforeAll, describe, test, vi } from "vitest";
 
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
-import type { CodemodeRemoteExecutor } from "@fragno-dev/codemode/execution/codemode-activation-contract";
+import type { CodemodeExecutor } from "@fragno-dev/codemode/execution/codemode-activation-contract";
 import { createCodemodeNodeExecutor } from "@fragno-dev/codemode/remote/codemode-node-executor";
 import { createCodemodeTestServer } from "@fragno-dev/codemode/testing/codemode-test-server";
 import { createElement } from "react";
@@ -130,13 +130,13 @@ const workflows = {
 /** The test bridge, unless an outage is in progress. */
 function codemodeEnv() {
   const executor = createCodemodeNodeExecutor(codemodeServer);
-  const remoteExecutor: CodemodeRemoteExecutor = async (activation, host) => {
+  const codemode: CodemodeExecutor = async (activation, host) => {
     if (outage !== null) {
-      throw new Error(outage);
+      return { status: "interrupted", cause: outage };
     }
     return await executor(activation, host);
   };
-  return { codemode: { remoteExecutor } };
+  return { codemode };
 }
 
 function startRun(workflow: string, instanceId: string) {

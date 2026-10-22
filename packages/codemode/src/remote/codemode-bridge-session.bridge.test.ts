@@ -12,11 +12,10 @@ import { CODEMODE_LIMITS } from "../codemode-limits";
 import {
   CODEMODE_EXECUTION_HTTP_PATH,
   type CodemodeExecutionCapability,
-  type CodemodeRemoteExecutor,
+  type CodemodeExecutor,
   type CodemodeWorkflowHost,
   type CodemodeWorkflowTransactionHost,
 } from "../execution/codemode-activation-contract";
-import { CodemodeInterruptedError } from "../execution/codemode-errors";
 import { codemodeWorkerBundleSchema } from "../execution/codemode-worker-bundle";
 import { createCodemodeHost } from "../host/codemode-host-capabilities";
 import { createCodemodeTestServer } from "../testing/codemode-test-server";
@@ -27,7 +26,7 @@ import {
 import { createCodemodeNodeExecutor } from "./codemode-node-executor";
 
 let server: Awaited<ReturnType<typeof createCodemodeTestServer>>;
-let execute: CodemodeRemoteExecutor;
+let execute: CodemodeExecutor;
 beforeAll(async () => {
   server = await createCodemodeTestServer();
   execute = createCodemodeNodeExecutor(server);
@@ -205,7 +204,7 @@ test("generic module bundles accept consumer invocations with fresh inputs and p
     ).toMatchObject({ status: "completed", value: 10 });
     expect(compilations).toBe(1);
   } finally {
-    buildHost.close();
+    await buildHost.close();
     await buildServer.close();
   }
 });
@@ -248,129 +247,6 @@ test("oversized module-build results return a failed completion without breaking
   }
 });
 
-test.each(["resolve", "reject"] as const)(
-  "bridge admission spans completed guests and pending host calls until they %s",
-  async (settlement) => {
-    let compilerCalls = 0;
-    const limitedServer = await createCodemodeTestServer(() => async () => {
-      compilerCalls++;
-      throw new Error("Precompiled execution must not enter the compiler");
-    });
-    const clients = [
-      createCodemodeNodeExecutor(limitedServer),
-      createCodemodeNodeExecutor(limitedServer),
-    ];
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    let started = 0;
-    const activation = {
-      kind: "compiled" as const,
-      bundle: codemodeWorkerBundleSchema.parse({
-        mainModule: "script.js",
-        modules: { "script.js": "export default {};" },
-        runtime: { compatibilityDate: "2026-05-07", compatibilityFlags: ["nodejs_compat"] },
-      }),
-      invocation:
-        'async () => { store.write("held").catch(() => {}); await store.write("ready"); return 42; }',
-      input: null,
-      providers: base.providers,
-      timeoutMs: 10_000,
-    };
-    const hosts = Array.from({ length: CODEMODE_LIMITS.maxBridgeActivations }, () =>
-      createCodemodeHost(
-        [
-          {
-            name: "store",
-            fns: {
-              write: async (value) => {
-                if (value === "ready") {
-                  return "ready";
-                }
-                started++;
-                await gate;
-                if (settlement === "reject") {
-                  throw new Error("Delayed host failure");
-                }
-                return "released";
-              },
-            },
-          },
-        ],
-        null,
-      ),
-    );
-    const url = new URL(CODEMODE_EXECUTION_HTTP_PATH, limitedServer.url);
-    url.protocol = "ws:";
-    const sockets = hosts.map(
-      () =>
-        new WebSocket(url.href, { headers: { Authorization: `Bearer ${limitedServer.apiKey}` } }),
-    );
-    const connections = await Promise.all(
-      sockets.map(async (socket, index) => {
-        const host = hosts[index];
-        await once(socket, "open");
-        const transport = new CodemodeWebSocketTransport(
-          socket,
-          () => socket.bufferedAmount,
-          () => host.close(),
-          () => 0,
-        );
-        const session = new RpcSession<CodemodeExecutionCapability>(
-          transport,
-          undefined,
-          CODEMODE_RPC_OPTIONS,
-        );
-        return { host, transport, bridge: session.getRemoteMain() };
-      }),
-    );
-    const running = connections.map(({ host, bridge }) =>
-      bridge.execute(
-        { protocolVersion: 2, executionId: crypto.randomUUID(), activation },
-        host.capabilities,
-      ),
-    );
-    const finished = Promise.allSettled(running);
-    try {
-      for (const result of await finished) {
-        assert(result.status === "fulfilled");
-        expect(result.value).toMatchObject({ status: "completed", value: 42 });
-      }
-      expect(started).toBe(CODEMODE_LIMITS.maxBridgeActivations);
-      expect(
-        await clients[0](
-          { ...activation, providers: [], invocation: "() => 7" },
-          createCodemodeHost([], null),
-        ),
-      ).toMatchObject({
-        status: "failed",
-        error: { message: "CODEMODE_BRIDGE_ACTIVATION_LIMIT_EXCEEDED" },
-      });
-      expect(compilerCalls).toBe(0);
-      release();
-      await Promise.all(hosts.map((host) => host.settle()));
-      expect(
-        await clients[1](
-          { ...activation, providers: [], invocation: "() => 7" },
-          createCodemodeHost([], null),
-        ),
-      ).toMatchObject({ status: "completed", value: 7 });
-      expect(compilerCalls).toBe(0);
-    } finally {
-      release();
-      await finished;
-      for (const { host, transport, bridge } of connections) {
-        host.close();
-        transport.abort(new Error("Test finished"));
-        bridge[Symbol.dispose]();
-      }
-      await Promise.all(hosts.map((host) => host.settle()));
-      await limitedServer.close();
-    }
-  },
-);
-
 test("precompiled guests cannot bypass their host-owned wall deadline", async () => {
   const host = createCodemodeHost([], null);
   try {
@@ -389,13 +265,17 @@ test("precompiled guests cannot bypass their host-owned wall deadline", async ()
         },
         createCodemodeHost([], null),
       ),
-    ).rejects.toThrow("CODEMODE_EXECUTION_INTERRUPTED");
+      // A deadline is the guest's own outcome; only a lost bridge reaches Node as an interruption.
+    ).resolves.toMatchObject({
+      status: "failed",
+      error: { kind: "interrupted", message: "CODEMODE_ACTIVATION_TIMED_OUT" },
+    });
   } finally {
-    host.close();
+    await host.close();
   }
 });
 
-test("the bridge rejects mismatched application versions and accepts only one execution per socket", async () => {
+test("the bridge fails mismatched application versions and accepts only one execution per socket", async () => {
   let compilations = 0;
   const versionServer = await createCodemodeTestServer((compile) => async (input) => {
     compilations += 1;
@@ -412,7 +292,7 @@ test("the bridge rejects mismatched application versions and accepts only one ex
     const transport = new CodemodeWebSocketTransport(
       socket,
       () => socket.bufferedAmount,
-      () => host.close(),
+      () => void host.close(),
       () => 0,
     );
     const session = new RpcSession<CodemodeExecutionCapability>(
@@ -427,23 +307,25 @@ test("the bridge rejects mismatched application versions and accepts only one ex
       activation: { ...base, kind: "immediate" as const, providers: [], code: "42" },
     };
     try {
+      // Node reads any rejection as a lost session, so contract failures are answered instead.
       await expect(
         bridge.execute({ ...request, protocolVersion: 1 } as never, host.capabilities),
-      ).rejects.toThrow();
+      ).resolves.toMatchObject({ status: "failed", error: { name: "ZodError" } });
       expect(compilations).toEqual(0);
       await expect(bridge.execute(request, host.capabilities)).resolves.toMatchObject({
         status: "completed",
         value: 42,
       });
-      await expect(bridge.execute(request, host.capabilities)).rejects.toThrow(
-        "CODEMODE_INVALID_START",
-      );
+      await expect(bridge.execute(request, host.capabilities)).resolves.toMatchObject({
+        status: "failed",
+        error: { message: "CODEMODE_INVALID_START" },
+      });
       assert(compilations === 1);
     } finally {
       bridge[Symbol.dispose]();
     }
   } finally {
-    host.close();
+    await host.close();
     socket.terminate();
     await versionServer.close();
   }
@@ -681,10 +563,10 @@ test.each(["immediate", "workflow"] as const)(
       value: {
         allowed: { saved: true },
         denied: [
-          "CODEMODE_TOOL_NOT_ALLOWED",
-          "CODEMODE_TOOL_NOT_ALLOWED",
-          "CODEMODE_TOOL_NOT_ALLOWED",
-          "CODEMODE_TOOL_NOT_ALLOWED",
+          "Unknown tool: secret",
+          "Unknown tool: allowed-tool",
+          "Unknown tool: allowed tool",
+          "Unknown tool: Allowed_tool",
           "Unknown tool: missing",
         ],
       },
@@ -711,7 +593,7 @@ test.each(["immediate", "workflow"] as const)(
     );
     expect(completion).toMatchObject({
       status: "failed",
-      error: { message: "CODEMODE_TOOL_NOT_ALLOWED" },
+      error: { message: "Unknown tool: write" },
     });
     expect(host.writes).toEqual([]);
   },
@@ -936,7 +818,7 @@ test("guest-forged suspension cannot schedule work without a Node host decision"
 });
 
 test.each(["resolve", "reject"] as const)(
-  "timed-out activations retain compiler admission until stalled calls %s",
+  "timed-out activations hold compiler admission, so newcomers wait until stalled calls %s",
   async (settlement) => {
     let resumeCompilation!: () => void;
     const compilerGate = new Promise<void>((resolve) => {
@@ -966,37 +848,29 @@ test.each(["resolve", "reject"] as const)(
               code: 'async () => await store.write("must not execute after timeout")',
             },
             providerHost(null, writes),
-          ).then(
-            () => null,
-            (error: unknown) => error,
           ),
         ),
       );
       await expect.poll(() => compilationCount).toBe(CODEMODE_LIMITS.maxBridgeCompilations);
-      for (const error of await activations) {
-        expect(error).toBeInstanceOf(CodemodeInterruptedError);
+      for (const completion of await activations) {
+        expect(completion).toMatchObject({
+          status: "failed",
+          error: { message: "CODEMODE_ACTIVATION_TIMED_OUT" },
+        });
       }
       const replacement = {
         ...base,
         kind: "immediate" as const,
         code: 'async () => await store.write("recovered")',
       };
-      for (let attempt = 0; attempt < 3; attempt++) {
-        expect(await executeLimited(replacement, providerHost(null, writes))).toMatchObject({
-          status: "failed",
-          error: { message: "CODEMODE_COMPILATION_LIMIT_EXCEEDED" },
-        });
-      }
+      const recovered = executeLimited(replacement, providerHost(null, writes));
+      // The newcomer queues behind compilations that the timed-out activations still hold.
+      await new Promise((resolve) => setTimeout(resolve, 200));
       expect(compilationCount).toBe(CODEMODE_LIMITS.maxBridgeCompilations);
       expect(writes).toEqual([]);
       stalled = false;
       resumeCompilation();
-      await expect
-        .poll(async () => {
-          const completion = await executeLimited(replacement, providerHost(null, writes));
-          return completion.status === "failed" ? completion.error.message : completion.status;
-        })
-        .toBe("completed");
+      expect(await recovered).toMatchObject({ status: "completed" });
       expect(writes).toEqual(["recovered"]);
     } finally {
       resumeCompilation();
@@ -1073,6 +947,7 @@ test.each(["completed", "failed", "suspended"] as const)(
               providerHost(),
             );
       expect(completion.status).toBe(status);
+      assert(completion.status !== "interrupted");
       expect(completion.logs.map(({ channel, text }) => [channel, text])).toEqual([
         ["codemode", warning],
         ["codemode", "Logs truncated."],
@@ -1099,7 +974,8 @@ test.each([0, 1])(
         { ...base, kind: "immediate", code: "() => 42" },
         providerHost(),
       );
-      expect(completion).toMatchObject({ status: "completed", value: 42 });
+      assert(completion.status === "completed");
+      assert.equal(completion.value, 42);
       expect(completion.logs.map((line) => line.text)).toEqual(
         overflow ? ["Logs truncated."] : [warning],
       );
@@ -1108,6 +984,71 @@ test.each([0, 1])(
     }
   },
 );
+test("a full compile queue declines newcomers, which the caller reads as interrupted", async () => {
+  let resumeCompilation!: () => void;
+  const compilerGate = new Promise<void>((resolve) => {
+    resumeCompilation = resolve;
+  });
+  let compilations = 0;
+  const limitedServer = await createCodemodeTestServer((compile) => async (input) => {
+    compilations += 1;
+    await compilerGate;
+    return await compile(input);
+  });
+  const executeLimited = createCodemodeNodeExecutor(limitedServer);
+  const activation = { ...base, kind: "immediate" as const, code: "() => 42" };
+  try {
+    const admitted = Array.from(
+      {
+        length: CODEMODE_LIMITS.maxBridgeCompilations + CODEMODE_LIMITS.maxQueuedBridgeCompilations,
+      },
+      () => executeLimited(activation, providerHost()),
+    );
+    await expect.poll(() => compilations).toBe(CODEMODE_LIMITS.maxBridgeCompilations);
+    // The bridge's queue is not observable from Node; give the waiters time to join it.
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    await expect(executeLimited(activation, providerHost())).resolves.toEqual({
+      status: "interrupted",
+      cause: "CODEMODE_COMPILER_BUSY",
+    });
+    resumeCompilation();
+    for (const completion of await Promise.all(admitted)) {
+      expect(completion).toMatchObject({ status: "completed", value: 42 });
+    }
+  } finally {
+    resumeCompilation();
+    await limitedServer.close();
+  }
+});
+test("a completion waits until its host's revocation holds", async () => {
+  const host = providerHost();
+  let finishRevocation!: () => void;
+  const revocation = new Promise<void>((resolve) => {
+    finishRevocation = resolve;
+  });
+  let revoking = false;
+  // Over Workers RPC, the caller's host revokes its tools on a later round trip.
+  const remoteHost = {
+    ...host,
+    async close() {
+      revoking = true;
+      await revocation;
+      await host.close();
+    },
+  };
+  let settled = false;
+  const completion = execute(
+    { ...base, kind: "immediate", code: 'async () => await store.write("done")' },
+    remoteHost,
+  ).finally(() => {
+    settled = true;
+  });
+  await expect.poll(() => revoking).toBe(true);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert(!settled, "the completion must not outrun revocation");
+  finishRevocation();
+  expect(await completion).toMatchObject({ status: "completed", value: "done" });
+});
 test("log floods fail with bounded output", async () => {
   const completion = await execute(
     {
@@ -1117,9 +1058,7 @@ test("log floods fail with bounded output", async () => {
     },
     providerHost(),
   );
-  expect(completion).toMatchObject({
-    status: "failed",
-    error: { message: "CODEMODE_LOG_LIMIT_EXCEEDED" },
-  });
+  assert(completion.status === "failed");
+  assert.equal(completion.error.message, "CODEMODE_LOG_LIMIT_EXCEEDED");
   expect(completion.logs.length).toBeLessThanOrEqual(1000);
 });

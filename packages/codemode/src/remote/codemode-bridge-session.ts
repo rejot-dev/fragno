@@ -5,22 +5,24 @@ import {
   codemodeExecutionRequestSchema,
   type CodemodeActivation,
   type CodemodeCapabilities,
-  type CodemodeCompletion,
+  type CodemodeBridgeAnswer,
   type CodemodeExecutionCapability,
 } from "../execution/codemode-activation-contract";
 import { CodemodeInterruptedError, encodeCodemodeError } from "../execution/codemode-errors";
-import {
-  executeCodemodeActivation,
-  type CodemodeActivationServices,
-} from "../execution/execute-codemode-activation";
-import { restrictCodemodeProvider } from "../host/codemode-host-capabilities";
+import type { CodemodeActivationServices } from "../execution/execute-codemode-activation";
 import { assertCodemodeRpcPayloadSize } from "../transport/codemode-rpc-payload";
 import {
   CODEMODE_RPC_OPTIONS,
   CodemodeWebSocketTransport,
 } from "../transport/codemode-websocket-transport";
-import { reserveCodemodeBridgeActivation } from "./codemode-bridge-activation-admission";
-import { createCodemodeBridgeHost } from "./codemode-bridge-host";
+import {
+  codemodeActivationWallTimeMs,
+  runCodemodeBridgeActivation,
+} from "./codemode-bridge-execution";
+
+function invalidCodemodeRequest(error: unknown): CodemodeBridgeAnswer {
+  return { status: "failed", error: encodeCodemodeError(error), logs: [] };
+}
 
 /** Accepts one authenticated Cap'n Web session; activation execution owns compilation and guest loading. */
 export function acceptCodemodeBridgeSession(
@@ -37,7 +39,7 @@ export function acceptCodemodeBridgeSession(
     kind: CodemodeActivation["kind"];
     workflowInstanceId: string | null;
   } | null = null;
-  let outcome: CodemodeCompletion["status"] | "interrupted" = "interrupted";
+  let outcome: CodemodeBridgeAnswer["status"] | "interrupted" = "interrupted";
   let session: RpcSession | null = null;
   const transport = new CodemodeWebSocketTransport(
     {
@@ -74,72 +76,55 @@ export function acceptCodemodeBridgeSession(
     async execute(
       input: Parameters<CodemodeExecutionCapability["execute"]>[0],
       capabilities: CodemodeCapabilities,
-    ): Promise<CodemodeCompletion> {
+    ): Promise<CodemodeBridgeAnswer> {
+      // The bridge answers every call; Node reads a rejection as a lost session and retries it.
       if (identity) {
-        throw new Error("CODEMODE_INVALID_START");
+        return invalidCodemodeRequest(new Error("CODEMODE_INVALID_START"));
       }
       abort.signal.throwIfAborted();
-      const { executionId, activation } = codemodeExecutionRequestSchema.parse(input);
+      const request = codemodeExecutionRequestSchema.safeParse(input);
+      if (!request.success) {
+        return invalidCodemodeRequest(request.error);
+      }
+      const { executionId, activation } = request.data;
       identity = {
         executionId,
         kind: activation.kind,
         workflowInstanceId: activation.kind === "workflow" ? activation.event.instanceId : null,
       };
       clearTimeout(deadline);
-      deadline = setTimeout(
-        () => {
-          transport.abort(new CodemodeInterruptedError("CODEMODE_ACTIVATION_TIMED_OUT"));
-        },
-        activation.kind === "workflow" || activation.kind === "compiled"
-          ? activation.timeoutMs
-          : CODEMODE_LIMITS.activationTimeoutMs,
-      );
-      // Narrow both providers and tools; host lifecycle methods and original dispatchers stay private.
-      const targets: CodemodeCapabilities = {
-        dispatchers: Object.fromEntries(
-          (activation.kind === "module-build" ? [] : activation.providers).map(
-            ({ name, tools }) => [
-              name,
-              restrictCodemodeProvider(capabilities.dispatchers[name], tools),
-            ],
-          ),
-        ),
-        stepTarget: activation.kind === "workflow" ? capabilities.stepTarget : null,
-      };
-      const task = (async (): Promise<CodemodeCompletion> => {
+      // Activation deadlines end the guest, not the session, so Node receives a definitive
+      // completion; only a lost session reaches Node as an interruption.
+      const interruption = new AbortController();
+      function interruptOnSessionEnd() {
+        interruption.abort(abort.signal.reason);
+      }
+      abort.signal.addEventListener("abort", interruptOnSessionEnd, { once: true });
+      deadline = setTimeout(() => {
+        interruption.abort(new CodemodeInterruptedError("CODEMODE_ACTIVATION_TIMED_OUT"));
+      }, codemodeActivationWallTimeMs(activation));
+      const task = (async (): Promise<CodemodeBridgeAnswer> => {
+        const completion = await runCodemodeBridgeActivation(
+          activation,
+          capabilities,
+          services,
+          ctx,
+          interruption.signal,
+          (error) => {
+            interruption.abort(error);
+          },
+        );
+        abort.signal.removeEventListener("abort", interruptOnSessionEnd);
+        if (activation.kind !== "module-build") {
+          return completion;
+        }
         try {
-          const host = createCodemodeBridgeHost(targets);
-          const releaseActivation = reserveCodemodeBridgeActivation();
-          function revokeBridgeHost() {
-            host.close();
-          }
-          abort.signal.addEventListener("abort", revokeBridgeHost, { once: true });
-          try {
-            abort.signal.throwIfAborted();
-            const completion = await executeCodemodeActivation(
-              activation,
-              services,
-              host.capabilities,
-              abort.signal,
-              (error) => {
-                transport.abort(error);
-              },
-            );
-            if (activation.kind === "module-build") {
-              assertCodemodeRpcPayloadSize(completion);
-            }
-            return completion;
-          } finally {
-            abort.signal.removeEventListener("abort", revokeBridgeHost);
-            host.close();
-            // Completion can reach Node's bounded drain while this isolate retains its lease.
-            ctx.waitUntil(host.settle().finally(releaseActivation));
-          }
+          assertCodemodeRpcPayloadSize(completion);
+          return completion;
         } catch (error) {
           return { status: "failed", error: encodeCodemodeError(error), logs: [] };
         }
       })();
-      // Guest execution and forwarded host calls retain admission until actual bridge-side settlement.
       ctx.waitUntil(task.then(() => {}));
       const completion = await task;
       abort.signal.throwIfAborted();

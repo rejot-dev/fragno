@@ -133,7 +133,7 @@ export async function createLocalBackofficeRuntime(
         },
       }),
     kernelObserver: options.kernelObserver ?? noopBackofficeKernelObserver,
-    codemodeEnv: options.runtimeEnv.codemode,
+    codemodeExecutor: options.runtimeEnv.codemode,
     workerTypeChecker: options.workerTypeChecker ?? null,
     reson8: options.runtimeEnv.RESON8_API_KEY
       ? createReson8Server(options.runtimeEnv.RESON8_API_KEY)

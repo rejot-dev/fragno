@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, test, vi, assert } from "vitest";
 
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
+import {
+  codemodeExecutionService,
+  createCodemodeServiceExecutor,
+} from "@fragno-dev/codemode/remote/codemode-service-executor";
 import { env } from "cloudflare:workers";
 
 import { unavailableBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
@@ -27,6 +31,11 @@ import { InMemoryUploadObject } from "../../../workers/upload.do";
 import { AUTOMATION_SYSTEM_INITIATOR } from "./actors";
 import { createAutomationRuntimeExecution } from "./authority";
 import { createAutomationsRouteCaller } from "./route-callers";
+
+// The test setup serves the bridge's executor in-process behind this binding.
+const testCodemodeExecutor = createCodemodeServiceExecutor(
+  codemodeExecutionService((env as CloudflareEnv).CODEMODE_EXECUTOR),
+);
 
 const localObjects = {
   AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
@@ -91,7 +100,7 @@ describe("project automation event routing", () => {
 
     runtime = await createInMemoryBackofficeRuntime({
       objects: localObjects,
-      env: { codemode: env },
+      env: { codemode: testCodemodeExecutor },
     });
 
     const orgAutomations = runtime.objects.automations.forOrg(orgId);
@@ -254,7 +263,7 @@ describe("project automation event routing", () => {
     const orgId = "org-1";
     runtime = await createInMemoryBackofficeRuntime({
       objects: localObjects,
-      env: { codemode: env },
+      env: { codemode: testCodemodeExecutor },
     });
 
     const orgAutomations = runtime.objects.automations.forOrg(orgId);
@@ -317,7 +326,7 @@ describe("project automation event routing", () => {
     const orgId = "org-1";
     runtime = await createInMemoryBackofficeRuntime({
       objects: localObjects,
-      env: { codemode: env },
+      env: { codemode: testCodemodeExecutor },
     });
 
     const orgAutomations = runtime.objects.automations.forOrg(orgId);

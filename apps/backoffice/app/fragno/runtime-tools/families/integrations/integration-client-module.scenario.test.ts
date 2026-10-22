@@ -101,7 +101,7 @@ test("a generated MCP client is imported by codemode, saved modules, and pinned 
               fetch: async (input, init) => await mcpServer.fetch(new Request(input, init)),
             }),
         },
-        env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(codemodeServer) } },
+        env: { codemode: createCodemodeNodeExecutor(codemodeServer) },
         // The second workflow instance runs the edited client and fails.
         options: { allowErroredWorkflows: true },
         setup: ({ given }) => [

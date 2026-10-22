@@ -3,9 +3,14 @@ import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/share
 import type {
   CodemodeActivation,
   CodemodeCompletion,
+  CodemodeInterruption,
   CodemodeSuspensionReason,
 } from "@fragno-dev/codemode/execution/codemode-activation-contract";
 import type { CodemodeWireError } from "@fragno-dev/codemode/execution/codemode-error-contract";
+import {
+  CodemodeInterruptedError,
+  encodeCodemodeError,
+} from "@fragno-dev/codemode/execution/codemode-errors";
 import type { CodemodeLogLine } from "@fragno-dev/codemode/runtime-api";
 import { column, idColumn, schema, type Column, type FragnoId } from "@fragno-dev/db/schema";
 
@@ -21,11 +26,14 @@ import {
 /** The Codemode object owns every activation's guest; a workflow activation is one runner tick. */
 export type CodemodeRunActivation = CodemodeActivation;
 
-/** Only a workflow tick suspends; the object fails any other activation that tries. */
+/**
+ * Only a workflow tick suspends or is interrupted, because only its runner tries it again; the
+ * object fails any other activation that would.
+ */
 export type CodemodeRunCompletion<
   TActivation extends CodemodeRunActivation = CodemodeRunActivation,
 > = TActivation extends { kind: "workflow" }
-  ? CodemodeCompletion
+  ? CodemodeCompletion | CodemodeInterruption
   : Exclude<CodemodeCompletion, { status: "suspended" }>;
 
 /** The run identity links a caller's result to its retained history. */
@@ -253,11 +261,18 @@ const codemodeFragmentDefinition = defineFragment<CodemodeFragmentConfig>("codem
             ? { status: "completed", logs: completion.logs }
             : completion.status === "failed"
               ? { status: "failed", error: completion.error, logs: completion.logs }
-              : {
-                  status: "suspended",
-                  reason: serializeCodemodeRunSuspensionReason(completion.reason),
-                  logs: completion.logs,
-                };
+              : completion.status === "interrupted"
+                ? {
+                    // History shows the tick as failed; its runner tries it again.
+                    status: "failed",
+                    error: encodeCodemodeError(new CodemodeInterruptedError(completion.cause)),
+                    logs: [],
+                  }
+                : {
+                    status: "suspended",
+                    reason: serializeCodemodeRunSuspensionReason(completion.reason),
+                    logs: completion.logs,
+                  };
         return this.serviceTx(codemodeSchema)
           .retrieve((uow) =>
             uow.findFirst("run", (b) => b.whereIndex("primary", (eb) => eb("id", "=", runId))),

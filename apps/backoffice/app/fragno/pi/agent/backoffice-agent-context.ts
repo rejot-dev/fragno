@@ -128,7 +128,7 @@ export function createBackofficeAgentContext(input: {
     return {
       execution,
       instructions: turn.agent.instructions,
-      codemode: runtime.codemodeEnv
+      codemode: runtime.codemodeExecutor
         ? codemodeRunnerFor(
             kernel.scoped("CODEMODE", config.scope, runtime.objects.codemode).commands,
             execution,

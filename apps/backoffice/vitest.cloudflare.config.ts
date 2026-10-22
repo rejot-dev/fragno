@@ -40,7 +40,7 @@ export default defineProject({
     globals: true,
     setupFiles: [
       "./workers/vitest-console-setup.ts",
-      "./workers/vitest-compiler-setup.ts",
+      "./workers/vitest-codemode-executor-setup.ts",
       "./workers/vitest-codemode-setup.ts",
     ],
     testTimeout: 15_000,

@@ -40,7 +40,7 @@ const createRuntime = (): BackofficeRuntimeServices => {
     objects,
     authorityResolver: unrestrictedBackofficeAuthorityResolver,
     kernelObserver: noopBackofficeKernelObserver,
-    codemodeEnv: null,
+    codemodeExecutor: null,
     workerTypeChecker: null,
     reson8: null,
     adapters: {} as BackofficeRuntimeServices["adapters"],

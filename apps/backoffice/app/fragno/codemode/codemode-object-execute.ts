@@ -70,7 +70,7 @@ export async function executeCodemodeInObject<
     rejectCancelled = reject;
   });
   const cancel = () => {
-    host.close();
+    void host.close();
     rejectCancelled(signal.reason);
   };
   signal.addEventListener("abort", cancel, { once: true });

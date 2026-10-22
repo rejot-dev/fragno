@@ -2,9 +2,6 @@ import {
   type BackofficeContextScope,
   backofficeScopeProjectOwner,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import type { WorkerCompiler } from "@fragno-dev/codemode/compiler/compile-worker";
-import { createWorkerCompilerServiceClient } from "@fragno-dev/codemode/compiler/compiler-service-client";
-import type { CodemodeRemoteExecutor } from "@fragno-dev/codemode/execution/codemode-activation-contract";
 import type { CodemodeWireError } from "@fragno-dev/codemode/execution/codemode-error-contract";
 import { encodeCodemodeError } from "@fragno-dev/codemode/execution/codemode-errors";
 import {
@@ -33,17 +30,6 @@ import {
   type CodemodeRunner,
 } from "./codemode-object-execute";
 import { readSavedModuleImports } from "./saved-module-imports";
-
-export type BackofficeCodemodeEnv =
-  | LocalBackofficeCodemodeEnv
-  | { remoteExecutor: CodemodeRemoteExecutor };
-
-/** Guests have no network egress; internet access goes through authorized `web.*` tools. */
-export type LocalBackofficeCodemodeEnv = {
-  LOADER: WorkerLoader;
-  CODEMODE_COMPILER?: Fetcher;
-  compileWorker?: WorkerCompiler;
-};
 
 export type RunBackofficeCodemodeInput = {
   code: string;
@@ -186,17 +172,6 @@ export function createBackofficeCodemodeResolvedProviders({
     ...createBackofficeCodemodeProviders({ families, context: toolContext, toolCalls }),
     createBackofficeScopedCodemodeProvider({ families, context: toolContext, toolCalls }),
   ].map((provider) => resolveProvider(provider));
-}
-
-/** Resolves the in-process test compiler or private production compiler service. */
-export function resolveBackofficeWorkerCompiler(env: LocalBackofficeCodemodeEnv): WorkerCompiler {
-  if (env.compileWorker) {
-    return env.compileWorker;
-  }
-  if (env.CODEMODE_COMPILER) {
-    return createWorkerCompilerServiceClient(env.CODEMODE_COMPILER);
-  }
-  throw new Error("Backoffice codemode compiler service is not configured.");
 }
 
 export const runBackofficeCodemode = async ({

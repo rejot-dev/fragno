@@ -1,8 +1,9 @@
-import type { BackofficeCodemodeEnv } from "@/fragno/codemode/execute";
+import type { CodemodeExecutor } from "@fragno-dev/codemode/execution/codemode-activation-contract";
 
 /** Runtime bindings and configuration consumed by Backoffice objects and codemode execution. */
 export type BackofficeRuntimeEnv = {
-  codemode: BackofficeCodemodeEnv | null;
+  /** Runs guests in the codemode bridge; guests have no network egress beyond `web.*` tools. */
+  codemode: CodemodeExecutor | null;
   DOCS_PUBLIC_BASE_URL?: string;
   TURNSTILE_SITEKEY?: string;
   GITHUB_CLIENT_ID?: string;

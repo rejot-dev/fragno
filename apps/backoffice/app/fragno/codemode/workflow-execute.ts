@@ -15,7 +15,11 @@ import type {
   BackofficeToolContext,
 } from "@/fragno/runtime-tools/runtime-tools";
 
-import type { CodemodeRunOrigin } from "./codemode-fragment";
+import type {
+  CodemodeRunActivation,
+  CodemodeRunCompletion,
+  CodemodeRunOrigin,
+} from "./codemode-fragment";
 import { codemodeProviderManifest, type CodemodeRunner } from "./codemode-object-execute";
 import { createBackofficeCodemodeResolvedProviders } from "./execute";
 import { BackofficeWorkflowStepHost } from "./workflow-host";
@@ -38,6 +42,10 @@ export type BackofficeCodemodeWorkflowOptions = {
   origin: CodemodeRunOrigin;
 };
 
+type WorkflowTickCompletion = CodemodeRunCompletion<
+  Extract<CodemodeRunActivation, { kind: "workflow" }>
+>;
+
 type WorkflowExecutionInput<TParams> = {
   code: string;
   event: CodemodeWorkflowEvent<TParams>;
@@ -46,9 +54,9 @@ type WorkflowExecutionInput<TParams> = {
 } & BackofficeCodemodeWorkflowOptions;
 
 /** Runs one runner tick as a Codemode run; the step host stays here and only its capabilities travel. */
-async function executeBackofficeCodemodeWorkflow<TParams, TOutput>(
+async function runCodemodeWorkflowTick<TParams>(
   input: WorkflowExecutionInput<TParams>,
-): Promise<TOutput> {
+): Promise<WorkflowTickCompletion> {
   const { modules, event, remote, codemode, origin, families, toolContext, dependencies } = input;
   const providers = createBackofficeCodemodeResolvedProviders({ families, toolContext });
   const host = createCodemodeHost(
@@ -71,30 +79,44 @@ async function executeBackofficeCodemodeWorkflow<TParams, TOutput>(
       host,
     ));
   } finally {
-    host.close();
+    await host.close();
   }
+  return completion;
+}
+
+/** Hands a tick's completion to the runner: its output, or a suspension, interruption, or guest error. */
+function workflowTickOutput(
+  completion: WorkflowTickCompletion,
+  remote: RemoteWorkflowStepHost,
+): unknown {
   if (completion.status === "suspended") {
     throw new RemoteWorkflowSuspendedError(completion.reason);
+  }
+  if (completion.status === "interrupted") {
+    // Without an outcome from the bridge the tick may not have run, so the runner tries it again.
+    return remote.interruptTick(completion.cause);
   }
   if (completion.status === "failed") {
     throw decodeCodemodeError(completion.error);
   }
-  // Workflow output remains opaque until the runner's registered output schema validates it.
-  return completion.value as TOutput;
+  return completion.value;
 }
 
-/** Runs one activation; suspension stays visible to the workflow runner rather than becoming an error string. */
+/** Runs one activation; guest errors become the result, while suspensions and interruptions reach the runner. */
 export async function runBackofficeCodemodeWorkflow<TParams = unknown, TOutput = unknown>(
   input: WorkflowExecutionInput<TParams>,
 ): Promise<BackofficeCodemodeWorkflowResult<TOutput>> {
+  let completion;
   try {
-    return { result: await executeBackofficeCodemodeWorkflow<TParams, TOutput>(input) };
+    completion = await runCodemodeWorkflowTick(input);
   } catch (error) {
-    if (error instanceof RemoteWorkflowSuspendedError) {
-      throw error;
-    }
     return { error: error instanceof Error ? error.message : String(error) };
   }
+  if (completion.status === "failed") {
+    return { error: decodeCodemodeError(completion.error).message };
+  }
+  // Workflow output remains opaque until the runner's registered output schema validates it.
+  return { result: workflowTickOutput(completion, input.remote) as TOutput };
 }
 
 /** Re-evaluates workflow source on each runner tick using Node-owned checkpoints. */
@@ -104,11 +126,8 @@ export function defineCodemodeWorkflowRun<TParams = unknown, TOutput = unknown>(
   options: BackofficeCodemodeWorkflowOptions,
 ): RemoteWorkflowRunFn<TParams, TOutput> {
   return async (event, remote) =>
-    await executeBackofficeCodemodeWorkflow<TParams, TOutput>({
-      code,
-      event,
+    workflowTickOutput(
+      await runCodemodeWorkflowTick({ code, event, remote, codemode, ...options }),
       remote,
-      codemode,
-      ...options,
-    });
+    ) as TOutput;
 }

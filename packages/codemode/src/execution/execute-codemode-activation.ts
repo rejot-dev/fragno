@@ -165,14 +165,16 @@ export async function executeCodemodeActivation(
     }, CODEMODE_LIMITS.compileTimeoutMs);
     const compile = services.compile;
     try {
-      compiled = await runWithCodemodeCompilerAdmission(() =>
-        compile({
-          files,
-          entryPoint:
-            activation.kind === "module-build" ? activation.entry.slice(1) : "executor.js",
-          dependencies: activation.dependencies,
-          runtime: CODEMODE_WORKER_RUNTIME,
-        }),
+      compiled = await runWithCodemodeCompilerAdmission(
+        () =>
+          compile({
+            files,
+            entryPoint:
+              activation.kind === "module-build" ? activation.entry.slice(1) : "executor.js",
+            dependencies: activation.dependencies,
+            runtime: CODEMODE_WORKER_RUNTIME,
+          }),
+        signal,
       );
     } finally {
       clearTimeout(compileDeadline);

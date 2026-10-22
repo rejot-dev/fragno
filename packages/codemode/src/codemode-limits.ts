@@ -9,16 +9,10 @@ export const CODEMODE_LIMITS = {
   maxSessionBytes: 64 * 1024 * 1024,
   // Counts an activation's code together with its source modules.
   maxSourceBytes: 1024 * 1024,
-  maxSourceModules: 64,
   maxBundleBytes: 32 * 1024 * 1024,
   maxDepth: 64,
   maxEntries: 10_000,
-  maxCalls: 64,
-  maxHandles: 512,
   maxRpcReferences: 1024,
-  maxMessages: 20_000,
-  maxProviders: 128,
-  maxDependencies: 128,
   maxLogs: 1_000,
   maxLogBytes: 128 * 1024,
   connectTimeoutMs: 10_000,
@@ -26,9 +20,11 @@ export const CODEMODE_LIMITS = {
   compileTimeoutMs: 60_000,
   activationTimeoutMs: 125_000,
   hostDrainTimeoutMs: 5_000,
-  maxNodeActivations: 32,
-  maxBridgeActivations: 16,
+  // Bounds one compiling isolate's memory; compilations beyond it wait their turn. Not yet measured:
+  // tune it from out-of-memory restarts under concurrent dependency-heavy builds.
   maxBridgeCompilations: 8,
+  // Compilations beyond this many waiters are turned away at once; each waiter polls on a timer.
+  maxQueuedBridgeCompilations: 32,
   cpuMs: 5_000,
   subRequests: 1_000,
 } as const;

@@ -1,3 +1,4 @@
+import { CODEMODE_LIMITS } from "@fragno-dev/codemode/codemode-limits";
 import { runWithCodemodeCompilerAdmission } from "@fragno-dev/codemode/compiler/codemode-compiler-admission";
 import {
   createCompileWorkerServiceResponse,
@@ -9,6 +10,11 @@ import {
 
 type CompilerExecutionContext = Pick<ExecutionContext, "waitUntil">;
 
+/** A waiting operation leaves the queue when its caller disconnects or its compile budget ends. */
+function compilerAdmissionSignal(request: Request): AbortSignal {
+  return AbortSignal.any([request.signal, AbortSignal.timeout(CODEMODE_LIMITS.compileTimeoutMs)]);
+}
+
 /** Compiles a streamed project; HTTP and service-binding RPC share admission and disconnect cleanup. */
 export async function compileCodemodeWorkerRequest(
   request: Request,
@@ -17,7 +23,7 @@ export async function compileCodemodeWorkerRequest(
   const compilation = runWithCodemodeCompilerAdmission(async () => {
     const { buildWorkerProject } = await import("./build-worker-project");
     return await buildWorkerProject(await readCompileWorkerServiceRequest(request));
-  });
+  }, compilerAdmissionSignal(request));
   // Keep cleanup alive after the caller disconnects, just as for WebSocket activations.
   ctx.waitUntil(compilation.catch(() => {}));
   try {
@@ -35,7 +41,7 @@ export async function typeCheckCodemodeFilesRequest(
   const checking = runWithCodemodeCompilerAdmission(async () => {
     const { typeCheckProject } = await import("./type-check-project");
     return await typeCheckProject(await readTypeCheckFilesServiceRequest(request));
-  });
+  }, compilerAdmissionSignal(request));
   ctx.waitUntil(checking.catch(() => {}));
   try {
     return createTypeCheckFilesServiceResponse(await checking);

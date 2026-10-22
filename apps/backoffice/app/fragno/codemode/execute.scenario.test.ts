@@ -64,7 +64,7 @@ test("Codemode execution retains unavailable-tool diagnostics without granting c
     defineBackofficeScenario({
       objects: allLocalObjects,
       name: "codemode failure diagnostics",
-      env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
+      env: { codemode: createCodemodeNodeExecutor(server) },
       vars: () => ({ projectId: "", failedRunId: "" }),
       setup: ({ given }) => [
         given.auth.user({ id: "owner" }),

@@ -100,6 +100,14 @@
       "types": "./dist/remote/codemode-node-executor.d.ts",
       "default": "./dist/remote/codemode-node-executor.js"
     },
+    "./remote/codemode-bridge-execution": {
+      "types": "./dist/remote/codemode-bridge-execution.d.ts",
+      "default": "./dist/remote/codemode-bridge-execution.js"
+    },
+    "./remote/codemode-service-executor": {
+      "types": "./dist/remote/codemode-service-executor.d.ts",
+      "default": "./dist/remote/codemode-service-executor.js"
+    },
     "./remote/codemode-bridge-session": {
       "types": "./dist/remote/codemode-bridge-session.d.ts",
       "default": "./dist/remote/codemode-bridge-session.js"

@@ -7,7 +7,6 @@ import type { WorkflowDuration, WorkflowStepConfig } from "@fragno-dev/workflows
 import { RpcTarget, type RpcStub } from "capnweb";
 import { z } from "zod";
 
-import { CODEMODE_LIMITS } from "../codemode-limits";
 import {
   codemodeCallbackResultSchema,
   codemodeDurationSchema,
@@ -46,9 +45,6 @@ function assertCodemodeHostOpen(lifetime: HostLifetime) {
 }
 function registerCodemodeRevocation(lifetime: HostLifetime, revoke: () => void) {
   assertCodemodeHostOpen(lifetime);
-  if (lifetime.revocations.size >= CODEMODE_LIMITS.maxHandles) {
-    throw new Error("CODEMODE_HOST_HANDLE_LIMIT_EXCEEDED");
-  }
   lifetime.revocations.add(revoke);
   return function releaseCodemodeCapability() {
     revoke();
@@ -57,9 +53,6 @@ function registerCodemodeRevocation(lifetime: HostLifetime, revoke: () => void) 
 }
 function trackCodemodeHostCall<T>(lifetime: HostLifetime, operation: () => Promise<T>): Promise<T> {
   assertCodemodeHostOpen(lifetime);
-  if (lifetime.pending.size >= CODEMODE_LIMITS.maxCalls) {
-    throw new Error("CODEMODE_ACTIVE_CALL_LIMIT_EXCEEDED");
-  }
   const task = operation();
   lifetime.pending.add(task);
   void task.then(
@@ -113,7 +106,10 @@ class CodemodeProviderTarget extends RpcTarget implements CodemodeProviderCapabi
   }
 }
 
-/** Enforces exact advertised tool names before forwarding; the original provider never reaches the guest. */
+/**
+ * Enforces exact advertised tool names before forwarding; the original provider never reaches the
+ * guest. An unadvertised tool is unknown to the guest, whether or not its host has one by that name.
+ */
 export function restrictCodemodeProvider(
   provider: CodemodeProviderCapability,
   tools: readonly string[],
@@ -124,7 +120,7 @@ export function restrictCodemodeProvider(
       if (!allowedTools.has(tool)) {
         return {
           status: "error",
-          error: encodeCodemodeError(new Error("CODEMODE_TOOL_NOT_ALLOWED")),
+          error: encodeCodemodeError(new Error(`Unknown tool: ${tool}`)),
         };
       }
       return await provider.call(tool, args);
@@ -369,7 +365,7 @@ export function createCodemodeHost(
       dispatchers,
       stepTarget: workflow ? createCodemodeStep(lifetime, workflow, null).target : null,
     },
-    close() {
+    async close() {
       if (lifetime.closed) {
         return;
       }

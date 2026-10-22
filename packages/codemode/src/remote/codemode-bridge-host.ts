@@ -1,6 +1,5 @@
 import { RpcTarget } from "capnweb";
 
-import { CODEMODE_LIMITS } from "../codemode-limits";
 import type {
   CodemodeCapabilities,
   CodemodeHost,
@@ -16,9 +15,6 @@ export function createCodemodeBridgeHost(source: CodemodeCapabilities): Codemode
   function trackBridgeHostCall<T>(operation: () => Promise<T>): Promise<T> {
     if (closed) {
       throw new Error("CODEMODE_HOST_CLOSED");
-    }
-    if (pending.size >= CODEMODE_LIMITS.maxCalls) {
-      throw new Error("CODEMODE_ACTIVE_CALL_LIMIT_EXCEEDED");
     }
     const task = (async () => await operation())();
     pending.add(task);
@@ -107,7 +103,7 @@ export function createCodemodeBridgeHost(source: CodemodeCapabilities): Codemode
       ),
       stepTarget: source.stepTarget === null ? null : forwardStep(source.stepTarget),
     },
-    close() {
+    async close() {
       closed = true;
     },
     async settle() {

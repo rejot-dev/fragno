@@ -7,6 +7,11 @@ import {
   type BackofficeContextScope,
   backofficeScopePathSegment,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  codemodeExecutionService,
+  createCodemodeInProcessExecutor,
+  createCodemodeServiceExecutor,
+} from "@fragno-dev/codemode/remote/codemode-service-executor";
 import { env } from "cloudflare:workers";
 
 import { unrestrictedBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
@@ -47,6 +52,11 @@ import { InMemoryAutomationsObject } from "../../../workers/automations.do";
 import { InMemoryCodemodeObject } from "../../../workers/codemode.do";
 import { InMemoryMcpObject } from "../../../workers/mcp.do";
 
+// The test setup serves the bridge's executor in-process behind this binding.
+const testCodemodeExecutor = createCodemodeServiceExecutor(
+  codemodeExecutionService((env as CloudflareEnv).CODEMODE_EXECUTOR),
+);
+
 const localObjects = {
   AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
   CODEMODE: (input) => new InMemoryCodemodeObject(input),
@@ -62,7 +72,13 @@ describe("runBackofficeCodemode", () => {
   test("returns a compile error when the Codemode object has no compiler", async () => {
     const runtime = await createInMemoryBackofficeRuntime({
       objects: localObjects,
-      env: { codemode: { LOADER: env.LOADER } },
+      env: {
+        codemode: createCodemodeInProcessExecutor({
+          // The test pool's Worker Loader, absent from production configuration.
+          loader: (env as typeof env & { LOADER: WorkerLoader }).LOADER,
+          compile: null,
+        }),
+      },
     });
     try {
       const result = await runBackofficeCodemode({
@@ -78,11 +94,11 @@ describe("runBackofficeCodemode", () => {
       expect(result).toEqual({
         runId: expect.any(String),
         result: undefined,
-        error: "Backoffice codemode compiler service is not configured.",
+        error: "CODEMODE_COMPILER_UNAVAILABLE",
         errorDetails: {
           kind: "error",
           name: "Error",
-          message: "Backoffice codemode compiler service is not configured.",
+          message: "CODEMODE_COMPILER_UNAVAILABLE",
           details: null,
           metadata: null,
         },
@@ -591,7 +607,7 @@ describe("runBackofficeCodemode", () => {
   test("runs route-backed event emit tools through codemode handles", async () => {
     const runtime = await createInMemoryBackofficeRuntime({
       objects: localObjects,
-      env: { codemode: env },
+      env: { codemode: testCodemodeExecutor },
       authorityResolver: unrestrictedBackofficeAuthorityResolver,
     });
     try {
@@ -644,7 +660,7 @@ describe("runBackofficeCodemode", () => {
   test("runs project-scoped automation store tools through codemode handles", async () => {
     const runtime = await createInMemoryBackofficeRuntime({
       objects: localObjects,
-      env: { codemode: env },
+      env: { codemode: testCodemodeExecutor },
     });
     try {
       const kernel = new BackofficeKernel(runtime.services);
@@ -815,7 +831,7 @@ const createScopedMcpRuntimeServices = (
     adapters: {} as BackofficeRuntimeServices["adapters"],
     authorityResolver: unrestrictedBackofficeAuthorityResolver,
     kernelObserver: noopBackofficeKernelObserver,
-    codemodeEnv: null,
+    codemodeExecutor: null,
     workerTypeChecker: null,
     reson8: null,
     config: {

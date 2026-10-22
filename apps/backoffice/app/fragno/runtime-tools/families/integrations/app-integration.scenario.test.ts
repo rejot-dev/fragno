@@ -211,7 +211,7 @@ test("an installed app's declared actions run on its server, signed per call and
               await ledger.handle(options.runtime, new Request(input, init)),
           }),
       },
-      env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(codemodeServer) } },
+      env: { codemode: createCodemodeNodeExecutor(codemodeServer) },
       setup: ({ given }) => [
         given.auth.user({ id: "global-admin", role: "admin" }),
         given.auth.user({ id: "owner" }),

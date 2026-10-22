@@ -194,11 +194,7 @@ export const createRouteBackedRuntimeContext = ({
     execution.scope,
     runtime.objects.automations,
   );
-  const codemodeEnv = runtime.codemodeEnv;
-  const canCompileJavaScript =
-    codemodeEnv !== null &&
-    ("remoteExecutor" in codemodeEnv ||
-      Boolean(codemodeEnv.CODEMODE_COMPILER || codemodeEnv.compileWorker));
+  const codemodeExecutor = runtime.codemodeExecutor;
   // Resolved per use: a local runtime instantiates an object as soon as its handle is created.
   const codemodeObject = () =>
     kernel.scoped("CODEMODE", execution.scope, runtime.objects.codemode).commands;
@@ -500,19 +496,14 @@ export const createRouteBackedRuntimeContext = ({
           }
         : null,
     javascript:
-      runtime.workerTypeChecker || codemodeEnv
+      runtime.workerTypeChecker || codemodeExecutor
         ? {
             runtime: {
               ...createJavaScriptRuntime({
                 getStateBackend: async () => javaScriptStateBackend,
                 typeCheckFiles: runtime.workerTypeChecker,
-                executeModule: codemodeEnv
+                executeModule: codemodeExecutor
                   ? async (program, toolContext) => {
-                      if (program.kind === "source" && !canCompileJavaScript) {
-                        throw new Error(
-                          "JavaScript source execution requires a compiler; run a built JSON module instead.",
-                        );
-                      }
                       const { runBackofficeJavaScriptModule } =
                         await import("@/fragno/codemode/javascript-module-execute");
                       return await runBackofficeJavaScriptModule({
@@ -525,7 +516,7 @@ export const createRouteBackedRuntimeContext = ({
                   : null,
               }),
               // Without an executor there are no runs to read.
-              readRunLogs: codemodeEnv
+              readRunLogs: codemodeExecutor
                 ? async ({ runId }) => {
                     const run = await codemodeObject().getRun(runId);
                     if (!run) {
@@ -547,7 +538,7 @@ export const createRouteBackedRuntimeContext = ({
                   }
                 : null,
               buildFile:
-                canCompileJavaScript && codemodeEnv && execution.scope.kind !== "system"
+                codemodeExecutor && execution.scope.kind !== "system"
                   ? async (input) => {
                       try {
                         return await buildJavaScriptModuleFile({
