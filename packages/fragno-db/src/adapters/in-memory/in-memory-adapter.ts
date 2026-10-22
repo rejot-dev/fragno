@@ -64,7 +64,11 @@ export class InMemoryAdapter implements DatabaseAdapter<InMemoryUowConfig> {
       {
         clock: this.options.clock,
         idGenerator: this.options.idGenerator,
-        internalIdGenerator: this.options.internalIdGenerator,
+        // The resolved generator always exists, but the shared tables number their own rows unless a
+        // caller supplied one; passing the unused default would restart ids that rows already hold.
+        ...(this.options.internalIdGeneratorProvided
+          ? { internalIdGenerator: this.options.internalIdGenerator }
+          : {}),
         enforceConstraints: this.options.enforceConstraints,
         btreeOrder: this.options.btreeOrder,
         namingStrategy: this.namingStrategy,
