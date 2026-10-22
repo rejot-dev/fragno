@@ -110,12 +110,13 @@ type BackofficeUiValue<TValue> =
         : TValue);
 type BackofficeUiProps<TProps> = { [TKey in keyof TProps]: BackofficeUiValue<TProps[TKey]> };
 /** One row of ui.each. Its fields, and their nested fields, are live values of the row. */
-type BackofficeUiRow<TRow> = BackofficeUiLive<TRow> &
-  (TRow extends readonly unknown[]
-    ? { readonly [index: number]: BackofficeUiRow<TRow[number]> }
-    : TRow extends object
-      ? { readonly [TKey in keyof TRow]-?: BackofficeUiRow<TRow[TKey]> }
-      : unknown);
+type BackofficeUiRow<TRow> = BackofficeUiLive<TRow> & BackofficeUiRowFields<NonNullable<TRow>>;
+// Checks the row without null, which would otherwise widen a nullable row's fields to unknown.
+type BackofficeUiRowFields<TRow> = TRow extends readonly unknown[]
+  ? { readonly [index: number]: BackofficeUiRow<TRow[number]> }
+  : TRow extends object
+    ? { readonly [TKey in keyof TRow]-?: BackofficeUiRow<TRow[TKey]> }
+    : unknown;
 declare const backofficeUiRepeat: unique symbol;
 /** A container's children repeated once per row; see ui.each. */
 type BackofficeUiRepeat = { readonly [backofficeUiRepeat]: true };

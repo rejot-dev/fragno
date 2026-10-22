@@ -262,7 +262,8 @@ const PAGE_BUILDER_SOURCE = String.raw`({ collections, functions, aggregates, li
     const since = expressions.get(options.since);
     if (!since || !("now" in since) || since.now >= 0) fail("intervals since is a time before now, such as now.minus(\"24 hours\").");
     if (every < limits.minimumBucketMs) fail("intervals every is at least one minute.");
-    if (Math.ceil(-since.now / every) > limits.buckets) fail("intervals covers at most " + limits.buckets + " intervals; widen every or shorten since.");
+    // Counts the interval now falls in too, as the host's mostIntervals does.
+    if (Math.ceil(-since.now / every) + 1 > limits.buckets) fail("intervals covers at most " + limits.buckets + " intervals, counting the one now falls in; widen every or shorten since.");
     const handle = Object.freeze({});
     windows.set(handle, { every, since: since.now });
     // A chart's axis shows every interval, including those no row falls in.

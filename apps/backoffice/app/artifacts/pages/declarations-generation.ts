@@ -140,7 +140,10 @@ type PageContext = {
   ): PageUnion<PageRowOf<TQueries[number]>>;
   /** The moment the page renders; it moves every minute. */
   now: PageTime;
-  /** every-long intervals from since through now; at most ${PAGE_LIMITS.buckets}. */
+  /**
+   * every-long intervals from since through now, including the one now falls in, so 24 hours of
+   * 1 hour is 25; at most ${PAGE_LIMITS.buckets}.
+   */
   intervals(options: { every: PageDuration; since: PageTime }): PageIntervals;
   /** The start of the interval a time falls in, or null before the first. */
   bucket(time: PageExpression<Date | null>, intervals: PageIntervals): PageExpression<Date | null>;

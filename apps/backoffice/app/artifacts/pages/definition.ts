@@ -2,7 +2,7 @@ import type { AnyColumn, AnyTable } from "@fragno-dev/db/schema";
 import { workflowsSchema } from "@fragno-dev/workflows/schema";
 
 import type { BackofficeUiSpec } from "@/backoffice-ui/catalog";
-import { INTERVAL_LIMITS } from "@/backoffice-ui/components/intervals";
+import { INTERVAL_LIMITS, mostIntervals } from "@/backoffice-ui/components/intervals";
 import { parseBackofficeUiResult } from "@/backoffice-ui/result";
 import { automationFragmentSchema } from "@/fragno/automation/schema";
 import type { AutomationCollections } from "@/fragno/automation/tanstack/collections";
@@ -742,8 +742,11 @@ function readExpression(
       if (typeof since !== "number" || !Number.isFinite(since) || since >= 0) {
         fail(`${path}.since`, "Expected a negative offset from now in milliseconds.");
       }
-      if (Math.ceil(-since / every) > PAGE_LIMITS.buckets) {
-        fail(path, `A bucketed window has at most ${PAGE_LIMITS.buckets} buckets.`);
+      if (mostIntervals({ every, since }) > PAGE_LIMITS.buckets) {
+        fail(
+          path,
+          `A bucketed window has at most ${PAGE_LIMITS.buckets} buckets, counting the one now falls in.`,
+        );
       }
       return {
         bucket: readExpression(record.bucket, `${path}.bucket`, context, depth + 1),
