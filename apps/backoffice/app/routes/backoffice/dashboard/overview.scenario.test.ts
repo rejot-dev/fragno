@@ -33,7 +33,7 @@ import { InMemoryProjectConnectorObject } from "../../../../workers/project-conn
 import { InMemoryResendObject } from "../../../../workers/resend.do";
 import { InMemoryTelegramObject } from "../../../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../../../workers/upload.do";
-import { piAgentEventsQuery, piAgentQueueStatus, projectPiAgents } from "../agents/agent-activity";
+import { piAgentListings, piAgentQueueStatus, piAgentTurnsQuery } from "../agents/agent-activity";
 import {
   automationWorkflowRunsFromRecords,
   workflowRunRecordsQuery,
@@ -213,22 +213,37 @@ async function readDashboard(ctx: BackofficeScenarioContext) {
   const { collections } = database;
   const now = ctx.runtime.now();
   const since = new Date(dashboardBucketStarts(now)[0] ?? now);
-  const [runs, waitingRuns, events, connections, agentEvents, routeRecords, activeWorkflows] =
-    await Promise.all([
-      queryOnce((query) => dashboardRunsQuery(query, collections)),
-      queryOnce((query) => workflowRunRecordsQuery(query, collections, { type: "waiting" })),
-      queryOnce((query) => dashboardEventsQuery(query, collections, since)),
-      queryOnce((query) =>
-        query
-          .from({ connection: collections.connections })
-          .where(({ connection }) => not(eq(connection.state, "disconnected")))
-          .orderBy(({ connection }) => connection.service, "asc")
-          .orderBy(({ connection }) => connection.connectionId, "asc"),
-      ),
-      queryOnce((query) => piAgentEventsQuery(query, collections)),
-      queryOnce((query) => automationRoutesQuery(query, collections)),
-      queryOnce((query) => orchestrationActiveWorkflowsQuery(query, collections)),
-    ]);
+  const [
+    runs,
+    waitingRuns,
+    events,
+    connections,
+    agents,
+    agentTurns,
+    routeRecords,
+    activeWorkflows,
+  ] = await Promise.all([
+    queryOnce((query) => dashboardRunsQuery(query, collections)),
+    queryOnce((query) => workflowRunRecordsQuery(query, collections, { type: "waiting" })),
+    queryOnce((query) => dashboardEventsQuery(query, collections, since)),
+    queryOnce((query) =>
+      query
+        .from({ connection: collections.connections })
+        .where(({ connection }) => not(eq(connection.state, "disconnected")))
+        .orderBy(({ connection }) => connection.service, "asc")
+        .orderBy(({ connection }) => connection.connectionId, "asc"),
+    ),
+    queryOnce((query) =>
+      query
+        .from({ agent: collections.agents })
+        .orderBy(({ agent }) => agent.latestAt, { direction: "desc", nulls: "last" })
+        .orderBy(({ agent }) => agent.builtIn, "desc")
+        .orderBy(({ agent }) => agent.agentName, "asc"),
+    ),
+    queryOnce((query) => piAgentTurnsQuery(query, collections, since)),
+    queryOnce((query) => automationRoutesQuery(query, collections)),
+    queryOnce((query) => orchestrationActiveWorkflowsQuery(query, collections)),
+  ]);
   const routes = automationRoutesFromRecords(routeRecords);
   const dashboard = projectBackofficeDashboard({
     now,
@@ -279,15 +294,14 @@ async function readDashboard(ctx: BackofficeScenarioContext) {
         .map(({ id, recentCount }) => `${id} ×${recentCount}`)
         .sort(),
     },
-    agents: projectPiAgents({
-      events: agentEvents,
-      bucketStarts: dashboard.eventVolume.bucketStarts,
-    }).map(({ definition, activity }) => {
-      const recorded = activity
-        ? `${activity.latest.kind}, ${activity.turns} turns in ${activity.turnsPerBucket.filter((count) => count > 0).length} hours`
-        : "no activity";
-      const queue = piAgentQueueStatus(activity);
-      return `${definition.agentName} (${definition.description.slice(0, 20)}): ${recorded}${queue ? `; ${queue.label}` : ""}`;
+    agents: piAgentListings(agents, agentTurns, dashboard.eventVolume.bucketStarts).map((agent) => {
+      const turns = agent.turnsPerBucket.reduce((total, count) => total + count, 0);
+      const recorded =
+        agent.latestKind === null
+          ? "no activity"
+          : `${agent.latestKind}, ${turns} turns in ${agent.turnsPerBucket.filter((count) => count > 0).length} hours`;
+      const queue = piAgentQueueStatus(agent);
+      return `${agent.agentName} (${agent.definition.description.slice(0, 20)}): ${recorded}${queue ? `; ${queue.label}` : ""}`;
     }),
     connections: dashboard.connections.map(
       ({ connectionId, state }) => `${connectionId}: ${state}`,

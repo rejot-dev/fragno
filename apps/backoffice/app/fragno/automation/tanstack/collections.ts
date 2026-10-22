@@ -9,6 +9,11 @@ import {
 import type { Collection } from "@tanstack/react-db";
 
 import {
+  createPiAgentCollections,
+  type PiAgentRecord,
+  type PiAgentTurnRecord,
+} from "@/fragno/pi/agent/pi-agent-records";
+import {
   createIntegrationConnectionsCollection,
   type IntegrationConnectionRecord,
 } from "@/fragno/runtime-tools/families/integrations/integration-connections";
@@ -47,6 +52,8 @@ export type AutomationTableCollections = {
 /** The synchronized tables, and what Backoffice derives from them. */
 export type AutomationCollections = AutomationTableCollections & {
   connections: Collection<IntegrationConnectionRecord, string>;
+  agents: Collection<PiAgentRecord, string>;
+  agentTurns: Collection<PiAgentTurnRecord, string>;
 };
 
 type AutomationCoordinator = FragnoOutboxCoordinator<
@@ -57,7 +64,11 @@ export function createAutomationCollections(
   coordinator: AutomationCoordinator,
 ): AutomationCollections {
   const tables = createAutomationTableCollections(coordinator);
-  return { ...tables, connections: createIntegrationConnectionsCollection(tables) };
+  return {
+    ...tables,
+    connections: createIntegrationConnectionsCollection(tables),
+    ...createPiAgentCollections(tables),
+  };
 }
 
 function createAutomationTableCollections(

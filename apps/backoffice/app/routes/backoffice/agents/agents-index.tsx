@@ -68,16 +68,10 @@ export default function BackofficePiAgentsIndex() {
   );
 }
 
-function AgentCard({
-  agent: { definition, activity },
-  now,
-  to,
-}: {
-  agent: PiAgentListing;
-  now: number;
-  to: string;
-}) {
-  const queue = piAgentQueueStatus(activity);
+function AgentCard({ agent, now, to }: { agent: PiAgentListing; now: number; to: string }) {
+  const { definition } = agent;
+  const queue = piAgentQueueStatus(agent);
+  const turns = agent.turnsPerBucket.reduce((total, count) => total + count, 0);
   return (
     <Link
       to={to}
@@ -88,11 +82,11 @@ function AgentCard({
           {formatPiAgentName(definition.agentName)}
         </h3>
         <span className="flex shrink-0 flex-col items-end gap-1.5">
-          {activity?.answering ? (
+          {agent.answering ? (
             <BackofficeStatusLight tone="live" role="status">
               Answering
             </BackofficeStatusLight>
-          ) : activity?.paused ? (
+          ) : agent.paused ? (
             <BackofficeStatusLight tone="waiting" role="status">
               Stopped
             </BackofficeStatusLight>
@@ -113,15 +107,15 @@ function AgentCard({
       />
       <div className="mt-4 flex items-center justify-between gap-3 text-xs">
         <span className="min-w-0 truncate text-[var(--bo-muted)]">
-          {describePiAgentActivity(activity, now)}
+          {describePiAgentActivity(agent, now)}
         </span>
-        {activity ? (
+        {agent.latestAt !== null ? (
           <span className="flex shrink-0 items-center gap-2 text-[var(--bo-muted-2)] tabular-nums">
             <SparkBars
-              values={activity.turnsPerBucket}
+              values={agent.turnsPerBucket}
               ariaLabel={`${formatPiAgentName(definition.agentName)} turns over the last 24 hours`}
             />
-            {activity.turns} {activity.turns === 1 ? "turn" : "turns"} · 24h
+            {turns} {turns === 1 ? "turn" : "turns"} · 24h
           </span>
         ) : null}
       </div>
