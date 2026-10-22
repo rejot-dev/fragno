@@ -517,28 +517,55 @@ const handleSendWorkflowEventRouteAction = async ({
     return;
   }
 
-  await commitDispatch(
-    {
-      kind: "workflow_event_sent",
-      workflowName: CODEMODE_WORKFLOW,
-      instanceId,
-      eventType: action.eventType,
-    },
-    () =>
-      workflows.sendEvent(CODEMODE_WORKFLOW, instanceId, {
-        id: `${route.id}:${event.id}`,
-        type: action.eventType,
-        payload: buildWorkflowEventPayload({ action, event }),
-      }),
-  );
+  try {
+    await commitDispatch(
+      {
+        kind: "workflow_event_sent",
+        workflowName: CODEMODE_WORKFLOW,
+        instanceId,
+        eventType: action.eventType,
+      },
+      () =>
+        workflows.sendEvent(CODEMODE_WORKFLOW, instanceId, {
+          id: `${route.id}:${event.id}`,
+          type: action.eventType,
+          payload: buildWorkflowEventPayload({ action, event }),
+        }),
+    );
+  } catch (error) {
+    if (isWorkflowRunFinishedError(error)) {
+      throw new AutomationWorkflowRunFinishedError(instanceId, { cause: error });
+    }
+    throw error;
+  }
 };
+
+/** The workflows service rejects an event for a run that already finished with this message. */
+function isWorkflowRunFinishedError(error: unknown): boolean {
+  return error instanceof Error && error.message === "INSTANCE_TERMINAL";
+}
+
+/** A finished workflow run never takes another event, so no retry can deliver one to it. */
+class AutomationWorkflowRunFinishedError extends Error {
+  constructor(instanceId: string, options?: ErrorOptions) {
+    super(
+      `Workflow run ${instanceId} has finished, so it can no longer receive events (INSTANCE_TERMINAL).`,
+      options,
+    );
+    this.name = "AutomationWorkflowRunFinishedError";
+  }
+}
 
 /**
  * Errors no retry can fix fail a route at once: invalid events, reclassification cycles, denied
- * access, and missing targets. Anything else may be a dependency that is restarting. Errors that
- * crossed an object boundary lost their class and are retried.
+ * access, missing targets, and workflow runs that finished. Anything else may be a dependency that
+ * is restarting. Errors that crossed an object boundary lost their class and are retried, except a
+ * finished run, which is known by its message.
  */
 function isRetryableRouteError(error: unknown): boolean {
+  if (error instanceof AutomationWorkflowRunFinishedError || isWorkflowRunFinishedError(error)) {
+    return false;
+  }
   if (error instanceof BackofficeForbiddenError) {
     return error.reason === "authority-unavailable";
   }

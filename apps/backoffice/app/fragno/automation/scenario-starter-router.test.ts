@@ -986,6 +986,86 @@ describe("starter automation router scenarios", () => {
     );
   });
 
+  test("a route sending to a finished run fails at once", async () => {
+    const event = customAutomationEvent({
+      id: "late-signal-1",
+      eventType: "late.signal",
+      payload: { value: "too late" },
+    });
+
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        objects: scenarioObjects,
+        name: "a route to a finished run fails at once",
+        // The route that sends to the finished run stays failed.
+        options: { allowFailedDurableHooks: true },
+
+        files: backofficeFiles.workspaceStarter(),
+
+        setup: ({ given }) => [
+          given.organization.exists({ id: "org-1", name: "Ada Labs" }),
+          given.direct.file({
+            orgId: "org-1",
+            path: "/workspace/automations/finished-run.workflow.js",
+            content: `defineWorkflow({ name: "finished-run" }, async () => ({ done: true }));`,
+          }),
+          given.router.route({
+            orgId: "org-1",
+            id: "send-to-finished-run",
+            name: "Send to a finished run",
+            enabled: true,
+            trigger: { kind: "event", source: "custom", eventType: "late.signal", matcher: null },
+            priority: 50,
+            action: {
+              kind: "send_workflow_event",
+              target: { kind: "instance_id", template: "finished-run-1" },
+              eventType: "late-signal",
+              payload: "$event",
+            },
+          }),
+        ],
+
+        steps: ({ when, then, runner }) => [
+          when.workflow.createInstance({
+            orgId: "org-1",
+            remoteWorkflowName: "finished-run",
+            instanceId: "finished-run-1",
+            path: "/workspace/automations/finished-run.workflow.js",
+            event: customAutomationEvent({ id: "finished-run-bootstrap" }),
+          }),
+          then.workflow.instance({
+            remoteWorkflowName: "finished-run",
+            instanceId: "finished-run-1",
+            status: "complete",
+            output: { done: true },
+          }),
+
+          when.automation.ingestEvent(event),
+          runner.drain(),
+
+          then.assert("the route failed on its first attempt, without retrying", async (ctx) => {
+            expect(await routeDispatchStates(ctx, event.id)).toEqual({
+              "send-to-finished-run": {
+                status: "failed",
+                failedAttempts: 1,
+                error:
+                  "Workflow run finished-run-1 has finished, so it can no longer receive events (INSTANCE_TERMINAL).",
+              },
+            });
+            const queue = await ctx.runtime.objects.automations
+              .forOrg("org-1")
+              .commands.getDurableHookQueue("automation", { pageSize: 100 });
+            expect(
+              queue.items.filter(
+                (item) => item.hookName === "internalDispatchRoute" && item.status !== "completed",
+              ),
+            ).toMatchObject([{ status: "failed", attempts: 1 }]);
+          }),
+        ],
+      }),
+    );
+  });
+
   test("send_workflow_event routes wake a workflow from a stored instance id", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({

@@ -151,10 +151,10 @@ the event matched, each with its `status`:
   such as a workflow run that does not exist yet, retry for up to roughly fifty minutes.
 - `completed`: `outcome` says what the route did, such as the workflow run it started or the derived
   event it produced. `failedAttempts` above zero means it only acted after retries.
-- `failed`: the route gave up on `error`, because no retry could fix it, such as a denied scope, or
-  it ran out of attempts. Fix what it depends on, then run only this route again with
-  `events.routesRetry({ eventId, routeId })`. Only `failed` routes can be retried; a `retrying`
-  route retries by itself.
+- `failed`: the route gave up on `error`, because no retry could fix it, such as a denied scope or a
+  workflow run that has finished (`INSTANCE_TERMINAL`), or it ran out of attempts. Fix what it
+  depends on, then run only this route again with `events.routesRetry({ eventId, routeId })`. Only
+  `failed` routes can be retried; a `retrying` route retries by itself.
 
 Each route also has `routeName`, its name when it matched, since routes can be renamed or deleted
 later, and `matchedAt`.
