@@ -73,7 +73,8 @@ function base64UrlDecode(value: string): Uint8Array {
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
 
-function resolveInternalContextSecret(
+/** Upload file links also sign with this secret, separated from internal requests by their own prefix. */
+export function resolveBackofficeInternalRequestSecret(
   env: Pick<BackofficeRuntimeEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">,
 ): string {
   const configuredSecret = env.BACKOFFICE_INTERNAL_REQUEST_SECRET?.trim();
@@ -94,7 +95,7 @@ async function importInternalContextSigningKey(
 ): Promise<CryptoKey> {
   return await crypto.subtle.importKey(
     "raw",
-    Uint8Array.from(new TextEncoder().encode(resolveInternalContextSecret(env))).buffer,
+    Uint8Array.from(new TextEncoder().encode(resolveBackofficeInternalRequestSecret(env))).buffer,
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign", "verify"],

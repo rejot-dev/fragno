@@ -404,6 +404,7 @@ describe("Upload Durable Object", () => {
         }),
       }),
       expect.any(Object),
+      { secret: expect.any(String), audience: "v1:org:acme" },
     );
   });
 

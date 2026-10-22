@@ -99,6 +99,54 @@ export const uploadStorageConfigureInputSchema = z
   )
   .meta({ id: "UploadStorageConfigureInput" });
 
+const fileLinkInputSchema = z.lazy(() =>
+  z.object({
+    path: z
+      .string()
+      .trim()
+      .min(1)
+      .describe(
+        "A /workspace file path, a folder ending in /, or a glob with * or ?, for example /workspace/data/*.csv.",
+      ),
+    expiresInSeconds: z
+      .number()
+      .int()
+      .min(60)
+      .max(3_600)
+      .optional()
+      .describe("How long the link works. Defaults to 900 seconds."),
+  }),
+);
+
+const fileLinkSchema = z.lazy(() =>
+  z.discriminatedUnion("format", [
+    z.object({
+      format: z.literal("file").describe("The URL's body is the file itself."),
+      url: z
+        .string()
+        .describe(
+          "Use unchanged in a sandbox command; its host may resolve only inside sandboxes.",
+        ),
+      path: z.string(),
+      expiresAt: z.iso.datetime(),
+    }),
+    z.object({
+      format: z.literal("tar").describe("The URL's body is a tar archive of the matching files."),
+      url: z
+        .string()
+        .describe(
+          "Use unchanged in a sandbox command; its host may resolve only inside sandboxes.",
+        ),
+      glob: z.string(),
+      root: z.string().describe("The /workspace folder that archive entry names are relative to."),
+      expiresAt: z.iso.datetime(),
+    }),
+  ]),
+);
+
+export type FileLinkInput = z.output<typeof fileLinkInputSchema>;
+export type FileLink = z.output<typeof fileLinkSchema>;
+
 export const uploadOperations = {
   "upload.storage.get": {
     description:
@@ -149,6 +197,20 @@ export const uploadOperations = {
     permissions: [BACKOFFICE_PERMISSION.upload.modify],
     input: uploadPreparedInputSchema,
     output: uploadedFileReferenceSchema,
+  },
+  "upload.createDownloadLink": {
+    description:
+      'Create a temporary URL that sandbox commands use to read workspace files without credentials; it may not work outside sandboxes. A file path links the file: `curl -sS --fail-with-body "$url" -o file`. A folder or glob links an uncompressed tar archive of up to 500 matching files named relative to `root`: `curl -sS --fail-with-body "$url" | tar -x -C dir`. When the archive response has an X-Next-Cursor header, request the URL again with ?cursor=<value> for the next files. Anyone holding the URL can read these files until it expires.',
+    permissions: [BACKOFFICE_PERMISSION.upload.read],
+    input: fileLinkInputSchema,
+    output: fileLinkSchema,
+  },
+  "upload.createUploadLink": {
+    description:
+      'Create a temporary URL that sandbox commands use to write workspace files without credentials; it may not work outside sandboxes. Writes replace existing files. Each file may be at most 1.9 MB. A file path accepts the file: `curl -sS --fail-with-body -H "Expect:" -T file "$url"`. A folder or glob accepts an uncompressed tar archive of at most 200 regular files and 25 MB, without symlinks, whose entry names are relative to `root` and must match: `tar -ch -C dir . | curl -sS --fail-with-body -H "Expect:" -T - "$url"`. Push only the files the task produced, never a whole project; an archive is written all-or-nothing. A successful write returns `{"fileCount","sizeBytes"}`. Anyone holding the URL can write these files until it expires.',
+    permissions: [BACKOFFICE_PERMISSION.upload.modify],
+    input: fileLinkInputSchema,
+    output: fileLinkSchema,
   },
   "upload.prepared.discard": {
     description: "Discard a temporary prepared private upload.",

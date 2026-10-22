@@ -1,15 +1,19 @@
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type {
+  FileLink,
+  FileLinkInput,
   PreparedUploadedFileReference,
   UploadedFileReference,
   uploadStorageConfigureInputSchema,
   uploadStorageSchema,
 } from "@fragno-dev/backoffice-api/v0/upload";
+import { getStaticGlobPrefix } from "@fragno-dev/upload/text-index";
 import { z } from "zod";
 
 import type { FetchObject, UploadObject } from "@/backoffice-runtime/object-registry";
 import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
-import type { UploadAdminConfigResponse } from "@/fragno/upload";
+import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
+import { UPLOAD_PROVIDER_DATABASE, type UploadAdminConfigResponse } from "@/fragno/upload";
 import { bytesToBase64 } from "@/lib/base64";
 
 export type UploadReadPreparedInput = {
@@ -55,7 +59,12 @@ type UploadStorageRuntime = {
   ): Promise<UploadStorage>;
 };
 
-export type UploadRuntime = UploadPreparedRuntime & UploadStorageRuntime;
+type UploadLinkRuntime = {
+  createDownloadLink(input: FileLinkInput): Promise<FileLink>;
+  createUploadLink(input: FileLinkInput): Promise<FileLink>;
+};
+
+export type UploadRuntime = UploadPreparedRuntime & UploadStorageRuntime & UploadLinkRuntime;
 
 const DEFAULT_MAX_READ_BYTES = 10 * 1_024 * 1_024;
 const MAX_READ_BYTES = 50 * 1_024 * 1_024;
@@ -289,3 +298,85 @@ export const createUploadRuntime = (object: FetchObject): UploadPreparedRuntime 
     },
   };
 };
+
+const WORKSPACE_ROOT = "/workspace/";
+const DEFAULT_FILE_LINK_SECONDS = 15 * 60;
+
+/** Folders and wildcard paths link many files; any other path links exactly one file. */
+function workspaceFileLinkTarget(path: string) {
+  const workspacePath = path === "/workspace" ? WORKSPACE_ROOT : path;
+  if (!workspacePath.startsWith(WORKSPACE_ROOT)) {
+    throw new BackofficeOperationError("invalid_request", "File links address /workspace paths.");
+  }
+  const key = workspacePath.slice(WORKSPACE_ROOT.length);
+  if (key === "" || key.endsWith("/")) {
+    return { kind: "glob" as const, glob: `${key}**` };
+  }
+  return /[*?]/u.test(key)
+    ? { kind: "glob" as const, glob: key }
+    : { kind: "file" as const, fileKey: key };
+}
+
+/** Links reach the workspace through the `/api/file-links` route at the origin sandboxes use. */
+export function createUploadLinkRuntime({
+  object,
+  scope,
+  baseUrl,
+}: {
+  object: FetchObject;
+  scope: BackofficeContextScope;
+  baseUrl: string | null;
+}): UploadLinkRuntime {
+  async function createLink(
+    access: "read" | "write",
+    { path, expiresInSeconds = DEFAULT_FILE_LINK_SECONDS }: FileLinkInput,
+  ): Promise<FileLink> {
+    if (!baseUrl) {
+      throw new BackofficeOperationError(
+        "operation_failed",
+        "File links need DOCS_PUBLIC_BASE_URL to be configured.",
+      );
+    }
+    const target = workspaceFileLinkTarget(path);
+    const response = await callUpload(
+      (request) => object.fetch(request),
+      `/file-links?provider=${UPLOAD_PROVIDER_DATABASE}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: UPLOAD_PROVIDER_DATABASE,
+          access,
+          target,
+          expiresInSeconds,
+        }),
+      },
+    );
+    const { token, expiresAt } = z
+      .object({ token: z.string(), expiresAt: z.iso.datetime() })
+      .parse(await response.json());
+    const url = new URL(
+      `api/file-links/${backofficeContextScopeRoutePath(scope)}/${UPLOAD_PROVIDER_DATABASE}/${token}`,
+      baseUrl,
+    );
+    return target.kind === "file"
+      ? {
+          format: "file",
+          url: url.toString(),
+          path: `${WORKSPACE_ROOT}${target.fileKey}`,
+          expiresAt,
+        }
+      : {
+          format: "tar",
+          url: `${url}/archive.tar`,
+          glob: `${WORKSPACE_ROOT}${target.glob}`,
+          root: `${WORKSPACE_ROOT}${getStaticGlobPrefix(target.glob)}`,
+          expiresAt,
+        };
+  }
+
+  return {
+    createDownloadLink: async (input) => await createLink("read", input),
+    createUploadLink: async (input) => await createLink("write", input),
+  };
+}

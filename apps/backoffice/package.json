@@ -139,6 +139,7 @@
     "auth": "^1.7.1",
     "esbuild": "^0.28.1",
     "happy-dom": "^20.3.3",
+    "modern-tar": "^0.8.6",
     "oxfmt": "^0.40.0",
     "react-email": "^6.11.1",
     "tailwindcss": "^4.1.18",

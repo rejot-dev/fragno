@@ -1,3 +1,4 @@
+import { SANDBOX_BACKOFFICE_ORIGIN } from "@fragno-apps/cf-sandbox-bridge/sandbox/sandbox-container-contract";
 import type { WorkerTypeChecker } from "@fragno-dev/codemode/compiler/compile-worker";
 import { createWorkerTypeCheckerServiceClient } from "@fragno-dev/codemode/compiler/compiler-service-client";
 import type { CodemodeExecutor } from "@fragno-dev/codemode/execution/codemode-activation-contract";
@@ -37,6 +38,8 @@ export type AuthEmailVerificationRuntimeConfig =
 
 export type BackofficeRuntimeConfig = {
   docsPublicBaseUrl?: string;
+  /** Where sandbox commands reach Backoffice file links, or null when they cannot. */
+  sandboxBackofficeBaseUrl: string | null;
   authEmailVerification: AuthEmailVerificationRuntimeConfig;
   signUpInvitationsEnabled: boolean;
   /** Print outgoing email to the terminal, and skip delivery while Resend is unconfigured. */
@@ -144,6 +147,8 @@ const createCloudflareBackofficeRuntimeConfig = (env: CloudflareEnv): Backoffice
   ...(env.DOCS_PUBLIC_BASE_URL?.trim()
     ? { docsPublicBaseUrl: env.DOCS_PUBLIC_BASE_URL.trim() }
     : {}),
+  // SANDBOX binds the bridge's Sandbox, whose containers intercept this origin into this deployment.
+  sandboxBackofficeBaseUrl: `${SANDBOX_BACKOFFICE_ORIGIN}/`,
   authEmailVerification: parseAuthEmailVerificationRuntimeConfig({
     enabled: env.AUTH_EMAIL_VERIFICATION_ENABLED,
     publicBaseUrl: env.DOCS_PUBLIC_BASE_URL,

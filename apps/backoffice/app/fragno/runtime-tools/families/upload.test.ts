@@ -80,6 +80,8 @@ const createRuntime = (): UploadRuntime => {
     discardPrepared,
     getStorage: unused,
     configureStorage: unused,
+    createDownloadLink: unused,
+    createUploadLink: unused,
   };
 };
 
@@ -89,6 +91,8 @@ describe("Upload runtime tools", () => {
       "readPrepared",
       "commitPrepared",
       "discardPrepared",
+      "createDownloadLink",
+      "createUploadLink",
       "getStorage",
       "configureStorage",
     ]);
