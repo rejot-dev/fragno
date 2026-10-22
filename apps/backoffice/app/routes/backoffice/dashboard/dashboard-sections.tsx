@@ -1,5 +1,5 @@
 import type { AutomationRouteDefinition } from "@fragno-dev/backoffice-api/v0/automation";
-import type { WorkflowInstanceStatus } from "@fragno-dev/workflows/workflow";
+import { RunStatusLight } from "@fragno-private/backoffice-ui/run-status-light";
 import { Icon, type IconName } from "@fragno-private/design-system/icon";
 import { ListRow, ListRowIcon, RowList } from "@fragno-private/design-system/list-row";
 import {
@@ -13,7 +13,6 @@ import { formatRelativeTime } from "@fragno-private/design-system/relative-time"
 import { SparkBars } from "@fragno-private/design-system/spark-bars";
 import { StackedBarChart } from "@fragno-private/design-system/stacked-bar-chart";
 import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
-import type { BackofficeStatusTone } from "@fragno-private/design-system/status-tone";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router";
 
@@ -306,15 +305,6 @@ function AttentionItem({
   throw new Error("Unsupported dashboard attention item.");
 }
 
-const runStatusLights = {
-  active: { label: "Running", tone: "info" },
-  paused: { label: "Paused", tone: "waiting" },
-  waiting: { label: "Waiting", tone: "waiting" },
-  complete: { label: "Complete", tone: "live" },
-  errored: { label: "Errored", tone: "failed" },
-  terminated: { label: "Terminated", tone: "muted" },
-} as const satisfies Record<WorkflowInstanceStatus, { label: string; tone: BackofficeStatusTone }>;
-
 function WorkflowHealthPanel({
   workflows,
   now,
@@ -384,7 +374,6 @@ function WorkflowHealthPanel({
       >
         {visibleWorkflows.map((workflow) => {
           const finished = workflow.completedRuns + workflow.erroredRuns;
-          const light = runStatusLights[workflow.latestRun.status];
           return (
             <PanelTableRow
               key={workflow.workflow}
@@ -419,9 +408,7 @@ function WorkflowHealthPanel({
                   </span>
                 ),
                 <>
-                  <BackofficeStatusLight tone={light.tone} dot={false}>
-                    {light.label}
-                  </BackofficeStatusLight>
+                  <RunStatusLight status={workflow.latestRun.status} />
                   <span className="w-16 text-right text-xs text-[var(--bo-muted-2)] tabular-nums">
                     {formatRelativeTime(workflow.latestRun.updatedAt, now)}
                   </span>

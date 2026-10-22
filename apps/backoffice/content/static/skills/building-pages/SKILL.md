@@ -105,13 +105,6 @@ export default page.define(
               workflowName: run.workflowName,
               instanceId: run.instanceId,
               status: run.status,
-              tone: caseWhen(
-                eq(run.status, "errored"),
-                "failed",
-                eq(run.status, "complete"),
-                "live",
-                "waiting",
-              ),
               updatedAt: run.updatedAt,
             })),
         ),
@@ -158,7 +151,7 @@ export default page.define(
                   ui.is(row.errored, { gt: 0 }),
                   ui.badge({ label: "Errored runs", tone: "failed" }),
                 ),
-                ui.badge({ label: row.latest[0].status, tone: row.latest[0].tone }),
+                ui.runStatus({ status: row.latest[0].status }),
                 ui.relativeTime({ time: row.latest[0].updatedAt }),
               ]),
             ],
@@ -197,7 +190,7 @@ a JSDoc type to pass `js.check`.
   time with its interval's start. Repeat the bucket in `groupBy`, `select`, and `orderBy`, and pass
   the same intervals to a chart's `axis` so intervals without rows show.
 - JSON fields read nested values by property, such as `route.trigger.kind`.
-- `caseWhen` with a default keeps its literal values, so it can choose a tone, as `tone` does above.
+- `caseWhen` with a default keeps its literal values, so it can choose a tone or a label.
 
 ## Binding results
 
@@ -226,8 +219,8 @@ a JSDoc type to pass `js.check`.
   something. Row lists in one panel read as one list, so a panel can list several queries.
 - `ui.panelTable({ title, columns, empty }, ui.each(query, (row) => ui.panelTableRow(...)))` shows
   rows that share columns; `ui.panelTableRow({ title, to }, [...])` holds one child per column.
-- Select labels people read beside the raw values queries compare, such as `statusLabel` beside
-  `status`; derived collections carry some, such as `displayName`.
+- Select labels people read beside the raw values queries compare, such as `erroredLabel` beside
+  `errored`; derived collections carry some, such as `displayName`.
 - `ui.link({ label, to })` opens a run (`{ kind: "run", workflowName, instanceId }`, where
   `workflowName` is the run's internal name), a route (`{ kind: "route", id }`), a connection
   (`{ kind: "connection", id }`), or the scope's integrations or agents (`{ kind: "integrations" }`,
@@ -241,7 +234,9 @@ a JSDoc type to pass `js.check`.
   as the home page does.
 - `ui.sparkBars` and `ui.barChart` take `rows`, an `axis` naming the field along it, and the `value`
   field to size bars by; `ui.barChart` also stacks by a `series` field.
-- `ui.badge({ label, tone })` shows a status light.
+- `ui.runStatus({ status })` shows a run's status as the dashboard does, such as "Running" or
+  "Errored"; pass the run's `status` as it is.
+- `ui.badge({ label, tone })` shows any other status light.
 
 ## Supported today
 

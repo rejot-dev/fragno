@@ -3,6 +3,7 @@ import {
   PAGE_LIMITS,
   type PageFieldType,
 } from "@fragno-private/backoffice-ui/pages/definition";
+import { RUN_STATUSES } from "@fragno-private/backoffice-ui/run-status";
 
 import { PAGE_COLLECTIONS, type PageCollection } from "./collections";
 
@@ -34,15 +35,24 @@ const COLLECTION_NOTES: Partial<Record<PageCollection, string>> = {
 };
 
 /**
+ * Fields whose writer stores only these values, declared as their union so a page can pass them to
+ * components that take one of them, such as ui.runStatus.
+ */
+const FIELD_VALUES: Partial<Record<PageCollection, Record<string, readonly string[]>>> = {
+  workflowInstances: { status: RUN_STATUSES },
+};
+
+/**
  * Declares what page.d.ts reads from the host: every collection's row type, the limits a page
  * stays within, and the version page.define writes.
  */
 export function generatePageSchemaDeclarations(): string {
   const collections = (Object.keys(PAGE_COLLECTIONS) as PageCollection[]).map((collection) => {
-    const fields = PAGE_COLLECTIONS[collection].map(
-      ({ name, type, nullable }) =>
-        `    ${name}: ${FIELD_TYPES[type]}${nullable ? " | null" : ""};`,
-    );
+    const fields = PAGE_COLLECTIONS[collection].map(({ name, type, nullable }) => {
+      const values = FIELD_VALUES[collection]?.[name];
+      const declared = values ? values.map((value) => JSON.stringify(value)).join(" | ") : null;
+      return `    ${name}: ${declared ?? FIELD_TYPES[type]}${nullable ? " | null" : ""};`;
+    });
     const note = COLLECTION_NOTES[collection];
     return [
       ...(note ? [`  /** ${note} */`] : []),

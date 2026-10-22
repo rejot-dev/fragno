@@ -25,6 +25,7 @@ import { Panel } from "./components/panel.component";
 import { Progress } from "./components/progress.component";
 import { RelativeTime } from "./components/relative-time.component";
 import { RowList } from "./components/row-list.component";
+import { RunStatus } from "./components/run-status.component";
 import { Section } from "./components/section.component";
 import { Select } from "./components/select.component";
 import { SparkBars } from "./components/spark-bars.component";
@@ -58,6 +59,7 @@ const components: BackofficeUiComponents = {
   Metric,
   Number: NumberValue,
   Badge,
+  RunStatus,
   Icon,
   Link,
   RelativeTime,

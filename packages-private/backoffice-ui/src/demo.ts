@@ -183,6 +183,11 @@ const componentDemoInputs: ComponentDemoInput[] = [
     props: { label: "Live", tone: "live" },
   },
   {
+    component: "RunStatus",
+    category: "Data",
+    props: backofficeUiComponentDefinitions.RunStatus.example,
+  },
+  {
     component: "Icon",
     category: "Data",
     props: { name: "alert-triangle", tone: "failed" },

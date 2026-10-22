@@ -114,7 +114,7 @@ type PageCollections = {
     workflowName: string;
     remoteWorkflowName: string | null;
     instanceId: string;
-    status: string;
+    status: "active" | "paused" | "waiting" | "complete" | "errored" | "terminated";
     runGeneration: number;
     createdAt: Date;
     updatedAt: Date;

@@ -21,6 +21,8 @@
     "./render-context": "./src/render-context.tsx",
     "./renderer": "./src/renderer.tsx",
     "./result": "./src/result.ts",
+    "./run-status": "./src/components/run-status.ts",
+    "./run-status-light": "./src/components/run-status-light.tsx",
     "./workflow-interaction": "./src/workflow-interaction.tsx",
     "./pages/definition": "./src/pages/definition.ts",
     "./pages/query": "./src/pages/query.ts",
@@ -48,6 +50,7 @@
     "zod": "^4.5.4"
   },
   "devDependencies": {
+    "@fragno-dev/workflows": "workspace:*",
     "@fragno-private/typescript-config": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
     "@storybook/react-vite": "^10.6.0",
