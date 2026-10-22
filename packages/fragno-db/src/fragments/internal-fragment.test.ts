@@ -10,7 +10,6 @@ import { SqlAdapter } from "../adapters/generic-sql/generic-sql-adapter";
 import type { FragnoPublicConfigWithDatabase } from "../db-fragment-definition-builder";
 import { getRegistryForAdapterSync } from "../internal/adapter-registry";
 import { dbNow } from "../query/db-now";
-import { ExponentialBackoffRetryPolicy, NoRetryPolicy } from "../query/unit-of-work/retry-policy";
 import type { FragnoId } from "../schema/create";
 import {
   internalFragmentDef,
@@ -403,115 +402,6 @@ describe("Hook Service", () => {
     expect(result).toBeDefined();
     assert(result?.status === "processing");
     expect(result?.lastAttemptAt).toBeInstanceOf(Date);
-  });
-
-  it("should mark a hook event as failed with retry scheduled", async () => {
-    const nonce = "test-nonce-4";
-    let eventId: FragnoId;
-
-    await fragment.inContext(async function () {
-      const createdId = await this.handlerTx()
-        .mutate(({ forSchema }) => {
-          const uow = forSchema(internalSchema);
-          return uow.create("fragno_hooks", {
-            namespace: "test-namespace",
-            hookName: "onFail",
-            payload: { test: "data" },
-            status: "pending",
-            attempts: 0,
-            maxAttempts: 5,
-            lastAttemptAt: null,
-            nextRetryAt: null,
-            error: null,
-            nonce,
-          });
-        })
-        .execute();
-      eventId = createdId;
-    });
-
-    const retryPolicy = new ExponentialBackoffRetryPolicy({ maxRetries: 3 });
-
-    await fragment.inContext(async function () {
-      await this.handlerTx()
-        .withServiceCalls(
-          () =>
-            [
-              fragment.services.hookService.markHookFailed(eventId, "Test error", 0, retryPolicy),
-            ] as const,
-        )
-        .execute();
-    });
-
-    const result = await fragment.inContext(async function () {
-      return await this.handlerTx()
-        .withServiceCalls(() => [fragment.services.hookService.getHookById(eventId)] as const)
-        .transform(({ serviceResult: [event] }) => event)
-        .execute();
-    });
-
-    expect(result).toBeDefined();
-    assert(result?.status === "pending");
-    assert(result?.attempts === 1);
-    assert(result?.error === "Test error");
-    expect(result?.nextRetryAt).toBeInstanceOf(Date);
-    expect(result?.lastAttemptAt).toBeInstanceOf(Date);
-  });
-
-  it("should mark a hook event as permanently failed when max attempts reached", async () => {
-    const nonce = "test-nonce-5";
-    let eventId: FragnoId;
-
-    await fragment.inContext(async function () {
-      const createdId = await this.handlerTx()
-        .mutate(({ forSchema }) => {
-          const uow = forSchema(internalSchema);
-          return uow.create("fragno_hooks", {
-            namespace: "test-namespace",
-            hookName: "onMaxFail",
-            payload: { test: "data" },
-            status: "pending",
-            attempts: 0,
-            maxAttempts: 1,
-            lastAttemptAt: null,
-            nextRetryAt: null,
-            error: null,
-            nonce,
-          });
-        })
-        .execute();
-      eventId = createdId;
-    });
-
-    const retryPolicy = new NoRetryPolicy();
-
-    await fragment.inContext(async function () {
-      await this.handlerTx()
-        .withServiceCalls(
-          () =>
-            [
-              fragment.services.hookService.markHookFailed(
-                eventId,
-                "Max attempts reached",
-                0,
-                retryPolicy,
-              ),
-            ] as const,
-        )
-        .execute();
-    });
-
-    const result = await fragment.inContext(async function () {
-      return await this.handlerTx()
-        .withServiceCalls(() => [fragment.services.hookService.getHookById(eventId)] as const)
-        .transform(({ serviceResult: [event] }) => event)
-        .execute();
-    });
-
-    expect(result).toBeDefined();
-    assert(result?.status === "failed");
-    assert(result?.attempts === 1);
-    assert(result?.error === "Max attempts reached");
   });
 
   it("should claim only ready pending events and mark them processing", async () => {

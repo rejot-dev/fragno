@@ -22,7 +22,6 @@ import {
 import type { OutboxObservationHub } from "../outbox/outbox-observation-hub";
 import type { Cursor } from "../query/cursor";
 import { dbNow, type DbNow } from "../query/db-now";
-import type { RetryPolicy } from "../query/unit-of-work/retry-policy";
 import { FragnoId } from "../schema/create";
 import {
   internalSchema,
@@ -486,46 +485,6 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
               return pendingNextAt <= processingNextAt ? pendingNextAt : processingNextAt;
             },
           )
-          .build();
-      },
-
-      /**
-       * Mark a hook event as failed and schedule next retry.
-       */
-      markHookFailed(eventId: FragnoId, error: string, attempts: number, retryPolicy: RetryPolicy) {
-        const newAttempts = attempts + 1;
-        const shouldRetry = retryPolicy.shouldRetry(newAttempts - 1);
-        const now = dbNow();
-
-        return this.serviceTx(internalSchema, { name: "internal.hooks.markFailed" })
-          .mutate(({ uow }) => {
-            if (shouldRetry) {
-              const delayMs = retryPolicy.getDelayMs(newAttempts - 1);
-              const nextRetryAt = now.plus({ ms: delayMs });
-              uow.update("fragno_hooks", eventId, (b) =>
-                b
-                  .set({
-                    status: "pending",
-                    attempts: newAttempts,
-                    lastAttemptAt: now,
-                    nextRetryAt,
-                    error,
-                  })
-                  .check(),
-              );
-            } else {
-              uow.update("fragno_hooks", eventId, (b) =>
-                b
-                  .set({
-                    status: "failed",
-                    attempts: newAttempts,
-                    lastAttemptAt: now,
-                    error,
-                  })
-                  .check(),
-              );
-            }
-          })
           .build();
       },
 
