@@ -13,7 +13,11 @@ import {
 } from "@earendil-works/pi-ai/providers/faux";
 import { createInMemoryTransportPair } from "@earendil-works/pi-mcp/testing";
 
-import { getCurrentTools, getSystemMessageText } from "@earendil-works/pi-ai";
+import {
+  getCurrentSystemMessage,
+  getCurrentTools,
+  getSystemMessageText,
+} from "@earendil-works/pi-ai";
 import {
   createAgentSession,
   createAgentSessionFromServices,
@@ -634,7 +638,7 @@ describe("Backoffice extension scenarios", () => {
         undefined,
         { cwd: directory },
       );
-      expect(systemPromptOptions.forceSystemPrompt).toBeUndefined();
+      expect(systemPromptOptions.customPrompt).toBeUndefined();
       faux.setResponses([
         (context) => {
           assert(
@@ -644,9 +648,11 @@ describe("Backoffice extension scenarios", () => {
                 message.content.some((block) => block.type === "text" && block.text === diagnosis),
             ),
           );
-          const leadingPrompt = context.messages[0];
-          assert(leadingPrompt?.role === "system");
-          expect(getSystemMessageText(leadingPrompt)).not.toContain(
+          // The Backoffice turn recorded its preamble; exiting patches the transcript's prompt.
+          const currentPrompt = getCurrentSystemMessage(context.messages);
+          assert(currentPrompt);
+          expect(getSystemMessageText(currentPrompt)).toContain("operating inside pi");
+          expect(getSystemMessageText(currentPrompt)).not.toContain(
             "Follow the scoped Backoffice instructions.",
           );
           const names = getCurrentTools(context.messages).map((tool) => tool.name);
@@ -756,7 +762,7 @@ describe("Backoffice extension scenarios", () => {
     },
   );
 
-  test("keeps the scoped prompt and distinguishes remote execution from local MCP codemode", async () => {
+  test("keeps the scoped prompt in options that prompt-rebuilding providers forward", async () => {
     expect(session.getActiveToolNames()).toContain("backofficeCodemode");
     expect(session.getActiveToolNames()).toContain("localCodemode");
     const { systemPromptOptions } = await session.extensionRunner.emitBeforeAgentStart(
@@ -766,20 +772,39 @@ describe("Backoffice extension scenarios", () => {
         cwd: directory,
         contextFiles: [{ path: "AGENTS.md", content: "Local-only project instructions" }],
         sections: { mcp_servers: "Cloudflare MCP tools" },
+        skills: [
+          {
+            name: "local-skill",
+            description: "Local-only skill",
+            filePath: join(directory, "SKILL.md"),
+            baseDir: directory,
+            sourceInfo: {
+              path: join(directory, "SKILL.md"),
+              source: "local",
+              scope: "project",
+              origin: "top-level",
+            },
+            disableModelInvocation: false,
+          },
+        ],
       },
     );
-    expect(systemPromptOptions.forceSystemPrompt).toContain(
+    // pi-claude-bridge rebuilds Claude Code's prompt from these options and ignores a forced one.
+    expect(systemPromptOptions.forceSystemPrompt).toBeUndefined();
+    expect(systemPromptOptions.customPrompt).toContain(
       "Follow the scoped Backoffice instructions.",
     );
-    expect(systemPromptOptions.forceSystemPrompt).toContain("mcp__cloudflare_observability");
-    expect(systemPromptOptions.forceSystemPrompt).toContain(
+    expect(systemPromptOptions.customPrompt).toContain("mcp__cloudflare_observability");
+    expect(systemPromptOptions.customPrompt).toContain(
       "Use backofficeCodemode for remote Backoffice execution",
     );
-    expect(systemPromptOptions.forceSystemPrompt).toContain(
+    expect(systemPromptOptions.customPrompt).toContain(
       "Use localCodemode for local Pi and MCP tool scripts",
     );
-    expect(systemPromptOptions.forceSystemPrompt).toContain("Act through backofficeCodemode.");
-    expect(systemPromptOptions.forceSystemPrompt).not.toContain("execCodeMode");
-    expect(systemPromptOptions.forceSystemPrompt).not.toContain("Local-only project instructions");
+    expect(systemPromptOptions.customPrompt).toContain("Act through backofficeCodemode.");
+    expect(systemPromptOptions.customPrompt).not.toContain("execCodeMode");
+    expect(systemPromptOptions.contextFiles).toEqual([]);
+    expect(systemPromptOptions.skills).toEqual([]);
+    expect(systemPromptOptions.sections["mcp_servers"]).toContain("mcp__cloudflare_observability");
   });
 });

@@ -660,13 +660,19 @@ export default function registerBackofficeExtension(pi: ExtensionAPI) {
     synchronizeBackofficeMode(ctx);
   });
 
-  pi.on("before_agent_start", (_event, ctx) => {
+  pi.on("before_agent_start", (event, ctx) => {
     const session = findBackofficeSession(ctx);
-    return session
-      ? {
-          systemPrompt: `${session.systemPrompt.replaceAll("execCodeMode", "backofficeCodemode")}\n\nUse backofficeCodemode for remote Backoffice execution: submit a complete async arrow function or defineWorkflow program using the active scope's state APIs. Use localCodemode for local Pi and MCP tool scripts: submit a JavaScript body using tools, searchTools(), and describeNamespace("mcp__cloudflare_observability") to inspect Cloudflare Workers logs and observability data. localCodemode does not expose Backoffice state or defineWorkflow. If Cloudflare authentication is required, ask the user to run /mcp login cloudflare-observability.`,
-        }
-      : undefined;
+    if (!session) {
+      return;
+    }
+    // Edit the structured options instead of returning a forced prompt: providers that
+    // rebuild the prompt from these options, such as pi-claude-bridge, drop a forced one.
+    // customPrompt replaces Pi's default preamble, tools, rules, and docs; the local
+    // project's context files and skills do not apply to the remote scope.
+    const options = event.systemPromptOptions;
+    options.customPrompt = `${session.systemPrompt.replaceAll("execCodeMode", "backofficeCodemode")}\n\nUse backofficeCodemode for remote Backoffice execution: submit a complete async arrow function or defineWorkflow program using the active scope's state APIs. Use localCodemode for local Pi and MCP tool scripts: submit a JavaScript body using tools, searchTools(), and describeNamespace("mcp__cloudflare_observability") to inspect Cloudflare Workers logs and observability data. localCodemode does not expose Backoffice state or defineWorkflow. If Cloudflare authentication is required, ask the user to run /mcp login cloudflare-observability.`;
+    options.contextFiles = [];
+    options.skills = [];
   });
 
   pi.registerCommand("backoffice", {
