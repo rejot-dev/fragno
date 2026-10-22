@@ -1,7 +1,7 @@
+import type { PageLoad } from "@fragno-private/backoffice-ui/pages/definition";
 import type { RouterContextProvider } from "react-router";
 
 import { loadPage } from "@/artifacts/pages/build.server";
-import type { PageLoad } from "@/artifacts/pages/definition";
 import { backofficeRuntimeScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { requireScopeSelection } from "@/layouts/backoffice-shell-request.server";

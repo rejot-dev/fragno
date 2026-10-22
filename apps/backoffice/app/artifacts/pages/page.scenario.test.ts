@@ -4,6 +4,20 @@ import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import type { CodemodeExecutor } from "@fragno-dev/codemode/execution/codemode-activation-contract";
 import { createCodemodeNodeExecutor } from "@fragno-dev/codemode/remote/codemode-node-executor";
 import { createCodemodeTestServer } from "@fragno-dev/codemode/testing/codemode-test-server";
+import type { BackofficeUiLinkTarget } from "@fragno-private/backoffice-ui/link";
+import {
+  pageDataPath,
+  pageValuePath,
+  type PageDefinition,
+  type PageLoad,
+} from "@fragno-private/backoffice-ui/pages/definition";
+import {
+  pageQuery,
+  pageRows,
+  pageValue,
+  type PageData,
+} from "@fragno-private/backoffice-ui/pages/query";
+import { BackofficeUiStoreRenderer } from "@fragno-private/backoffice-ui/renderer";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
@@ -15,8 +29,6 @@ import { artifactBuildPath } from "@/artifacts/build-cache.server";
 import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import type { BackofficeUiLinkTarget } from "@/backoffice-ui/components/link";
-import { BackofficeUiStoreRenderer } from "@/backoffice-ui/renderer";
 import {
   backofficeFiles,
   defineBackofficeScenario,
@@ -25,9 +37,7 @@ import {
 } from "@/fragno/automation/scenario";
 
 import { loadPage } from "./build.server";
-import { pageDataPath, pageValuePath, type PageDefinition, type PageLoad } from "./definition";
 import { checkPageSource } from "./page-source.test-support";
-import { pageQuery, pageRows, pageValue, type PageData } from "./query";
 
 const workers = vi.hoisted(() => ({
   DurableObject: class {},

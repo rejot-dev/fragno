@@ -1,7 +1,7 @@
+import { backofficeUiBuilderComponents } from "@fragno-private/backoffice-ui/builder";
+import { backofficeUiComponentDefinitions } from "@fragno-private/backoffice-ui/catalog";
 import type { z } from "zod";
 
-import { backofficeUiBuilderComponents } from "@/backoffice-ui/builder";
-import { backofficeUiComponentDefinitions } from "@/backoffice-ui/catalog";
 import {
   jsonSchemaToTypeScript,
   type JsonSchemaObject,

@@ -3,6 +3,18 @@ import { afterAll, assert, beforeAll, describe, test, vi } from "vitest";
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import { createCodemodeNodeExecutor } from "@fragno-dev/codemode/remote/codemode-node-executor";
 import { createCodemodeTestServer } from "@fragno-dev/codemode/testing/codemode-test-server";
+import {
+  pageDataPath,
+  pageValuePath,
+  type PageDefinition,
+} from "@fragno-private/backoffice-ui/pages/definition";
+import {
+  pageQuery,
+  pageRows,
+  pageValue,
+  type PageData,
+} from "@fragno-private/backoffice-ui/pages/query";
+import { BackofficeUiStoreRenderer } from "@fragno-private/backoffice-ui/renderer";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
@@ -11,13 +23,10 @@ import { createStateStore } from "@json-render/react";
 import { eq, not, queryOnce } from "@tanstack/react-db";
 
 import { loadPage } from "@/artifacts/pages/build.server";
-import { pageDataPath, pageValuePath, type PageDefinition } from "@/artifacts/pages/definition";
 import { checkPageSource } from "@/artifacts/pages/page-source.test-support";
-import { pageQuery, pageRows, pageValue, type PageData } from "@/artifacts/pages/query";
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
-import { BackofficeUiStoreRenderer } from "@/backoffice-ui/renderer";
 import { GENERAL_SKILL_CONTENT } from "@/files/content/skills";
 import {
   backofficeFiles,

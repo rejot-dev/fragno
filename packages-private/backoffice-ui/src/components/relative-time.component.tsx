@@ -1,6 +1,6 @@
-import type { ComponentFn } from "@json-render/react";
+import { formatRelativeTime } from "@fragno-private/design-system/relative-time";
 
-import { formatRelativeTime } from "@/routes/backoffice/automations/formatting";
+import type { ComponentFn } from "@json-render/react";
 
 import type { backofficeUiCatalog } from "../catalog";
 import { useBackofficeUiRenderContext } from "../render-context";

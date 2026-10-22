@@ -1,3 +1,7 @@
+import {
+  parseBackofficeUiResult,
+  type BackofficeUiParseResult,
+} from "@fragno-private/backoffice-ui/result";
 import { Button } from "@fragno-private/design-system/button";
 import { ChatActivityStep } from "@fragno-private/design-system/chat-activity";
 import type { IconName } from "@fragno-private/design-system/icon";
@@ -5,8 +9,6 @@ import { LabeledSection } from "@fragno-private/design-system/labeled-section";
 import { ScrollablePre } from "@fragno-private/design-system/scrollable-pre";
 import { SectionDisclosure } from "@fragno-private/design-system/section-disclosure";
 import { useState } from "react";
-
-import { parseBackofficeUiResult, type BackofficeUiParseResult } from "@/backoffice-ui/result";
 
 import type { ToolCallPart } from "./agent-turn";
 import type { PiToolCallArtifact } from "./assistant-runtime";

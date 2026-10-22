@@ -7,6 +7,7 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { createWorkflowsTestHarness } from "@fragno-dev/workflows/test";
 import { defineRemoteWorkflow } from "@fragno-dev/workflows/workflow";
+import { parseBackofficeUiResult } from "@fragno-private/backoffice-ui/result";
 import Ajv from "ajv";
 import { env } from "cloudflare:workers";
 
@@ -17,7 +18,6 @@ import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { createBackofficeUserExecution } from "@/backoffice-runtime/context";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
-import { parseBackofficeUiResult } from "@/backoffice-ui/result";
 import { codemodeWorkflowParamsSchema } from "@/fragno/automation/engine/codemode-invocation";
 import { AutomationWorkflowRuntimeRequestError } from "@/fragno/automation/workflow-route-runtime";
 import { drainCodemodeAlarms } from "@/fragno/codemode/codemode-alarms.test-support";

@@ -73,6 +73,7 @@
     "@fragno-dev/upload": "workspace:*",
     "@fragno-dev/workflow-visualizer-tokens": "workspace:*",
     "@fragno-dev/workflows": "workspace:*",
+    "@fragno-private/backoffice-ui": "workspace:*",
     "@fragno-private/design-system": "workspace:*",
     "@hono/node-server": "^1.19.14",
     "@journeyapps/wa-sqlite": "^1.4.1",

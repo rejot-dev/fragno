@@ -1,3 +1,4 @@
+import { parseBackofficeUiResult } from "@fragno-private/backoffice-ui/result";
 import { Icon } from "@fragno-private/design-system/icon";
 
 import type {
@@ -15,7 +16,6 @@ import type {
 } from "@fragno-dev/workflow-visualizer-tokens";
 
 import type { BackofficeRoutableResolvedScope } from "@/backoffice-runtime/resolved-scope";
-import { parseBackofficeUiResult } from "@/backoffice-ui/result";
 import type { ResolvedWorkflowRuntimeToolCall } from "@/fragno/runtime-tools/workflow-catalog";
 
 import { GraphBadge } from "./graph-badge";

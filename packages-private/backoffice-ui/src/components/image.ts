@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { absoluteFilePathSchema } from "@/file-collection/absolute-file-path";
+import { absoluteFilePathSchema } from "../absolute-file-path";
 
 export const imageDefinition = {
   props: z.strictObject({

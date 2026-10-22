@@ -1,8 +1,7 @@
 import { normalizeCode } from "@fragno-dev/codemode/runtime-api";
 
-import { pageBuilderSource } from "@/artifacts/pages/builder";
-
 import { backofficeUiComponentDefinitions } from "./catalog";
+import { pageBuilderSource } from "./pages/builder";
 import { BACKOFFICE_UI_LIMITS } from "./result";
 
 /** Each catalog component is built by its lower-camel name, e.g. `ui.keyValue` builds `KeyValue`. */
@@ -234,6 +233,9 @@ const builderConfig = JSON.stringify({
   maxElements: BACKOFFICE_UI_LIMITS.elements,
 });
 
+/** An expression for the `ui` and `page` builders, which share the handles `ui.render` resolves. */
+export const backofficeUiBuildersSource = `((live) => ((ui) => ({ ui, page: ${pageBuilderSource}(ui, live) }))((${BACKOFFICE_UI_BUILDER_SOURCE})(${builderConfig})(live)))(new WeakMap())`;
+
 /**
  * Gives a codemode program the `ui` and `page` builders without changing the guest protocol.
  * Saved modules it imports have their own scope, so they reach the builders as globals.
@@ -241,7 +243,7 @@ const builderConfig = JSON.stringify({
 export function withBackofficeUiBuilder(code: string) {
   const program = normalizeCode(code.trim().replace(/;*$/u, ""));
   // The program starts on the first line so compiler diagnostics keep the author's line numbers.
-  return `((live) => ((ui) => ((page) => (globalThis.ui = ui, globalThis.page = page, ${program}\n))(${pageBuilderSource}(ui, live)))((${BACKOFFICE_UI_BUILDER_SOURCE})(${builderConfig})(live)))(new WeakMap())`;
+  return `((builders) => (globalThis.ui = builders.ui, globalThis.page = builders.page, ${program}\n))(${backofficeUiBuildersSource})`;
 }
 
 // Saved modules live under /static and /workspace, so these paths cannot collide with them.
@@ -260,7 +262,7 @@ export function withBackofficeUiBuilderModule(program: {
     entry: UI_BUILDER_ENTRY_MODULE,
     modules: {
       ...program.modules,
-      [UI_BUILDER_GLOBALS_MODULE]: `const live = new WeakMap();\nconst ui = (${BACKOFFICE_UI_BUILDER_SOURCE})(${builderConfig})(live);\nglobalThis.ui = ui;\nglobalThis.page = ${pageBuilderSource}(ui, live);\n`,
+      [UI_BUILDER_GLOBALS_MODULE]: `const builders = ${backofficeUiBuildersSource};\nglobalThis.ui = builders.ui;\nglobalThis.page = builders.page;\n`,
       [UI_BUILDER_ENTRY_MODULE]: `import ${JSON.stringify(UI_BUILDER_GLOBALS_MODULE)};\nexport { default } from ${JSON.stringify(program.entry)};\n`,
     },
   };

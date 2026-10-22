@@ -1,7 +1,7 @@
+import type { BackofficeUiStateChange } from "@fragno-private/backoffice-ui/renderer";
+
 import { setByPath } from "@json-render/core";
 import { createCollection, localStorageCollectionOptions } from "@tanstack/react-db";
-
-import type { BackofficeUiStateChange } from "@/backoffice-ui/renderer";
 
 const WORKFLOW_UI_DRAFTS_STORAGE_KEY = "fragno-backoffice-workflow-ui-drafts";
 

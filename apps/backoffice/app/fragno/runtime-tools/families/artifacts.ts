@@ -1,7 +1,6 @@
 import type { artifactPageBuildInputSchema } from "@fragno-dev/backoffice-api/v0/artifacts";
+import type { PageLoad } from "@fragno-private/backoffice-ui/pages/definition";
 import type { z } from "zod";
-
-import type { PageLoad } from "@/artifacts/pages/definition";
 
 import {
   backofficeApiOperationToolFields,

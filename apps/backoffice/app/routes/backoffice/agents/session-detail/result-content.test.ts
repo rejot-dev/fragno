@@ -1,9 +1,8 @@
 import { describe, expect, test } from "vitest";
 
+import { parseBackofficeUiResult } from "@fragno-private/backoffice-ui/result";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-
-import { parseBackofficeUiResult } from "@/backoffice-ui/result";
 
 import { ToolResultContent } from "./tool-result-content";
 

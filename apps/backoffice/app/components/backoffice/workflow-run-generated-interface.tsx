@@ -1,6 +1,10 @@
+import {
+  BackofficeUiErrorBoundary,
+  BackofficeUiRenderer,
+} from "@fragno-private/backoffice-ui/renderer";
+
 import { backofficeRuntimeScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scope";
-import { BackofficeUiErrorBoundary, BackofficeUiRenderer } from "@/backoffice-ui/renderer";
 import { sendBackofficeWorkflowEvent } from "@/backoffice-ui/workflow-events.client";
 import { FileImageScopeProvider } from "@/components/backoffice/file-image";
 import {

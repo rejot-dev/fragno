@@ -1,3 +1,5 @@
+import { absoluteFilePathSchema } from "@fragno-private/backoffice-ui/absolute-file-path";
+import { FileImageProvider } from "@fragno-private/backoffice-ui/file-image";
 import { ButtonLink } from "@fragno-private/design-system/button";
 import { Icon } from "@fragno-private/design-system/icon";
 import { ImagePreview } from "@fragno-private/design-system/image-preview";
@@ -5,7 +7,6 @@ import { ImagePreviewCard } from "@fragno-private/design-system/image-preview-ca
 import { createContext, useContext, type ReactNode } from "react";
 
 import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scope";
-import { absoluteFilePathSchema } from "@/file-collection/absolute-file-path";
 import {
   filesExplorerPathFromScopePath,
   filesPreviewPath,
@@ -21,7 +22,11 @@ export function FileImageScopeProvider({
   scope: BackofficeResolvedScope;
   children: ReactNode;
 }) {
-  return <FileImageScopeContext.Provider value={scope}>{children}</FileImageScopeContext.Provider>;
+  return (
+    <FileImageScopeContext.Provider value={scope}>
+      <FileImageProvider component={FileImage}>{children}</FileImageProvider>
+    </FileImageScopeContext.Provider>
+  );
 }
 
 export function FileImage({ path, alt }: { path: string; alt: string }) {

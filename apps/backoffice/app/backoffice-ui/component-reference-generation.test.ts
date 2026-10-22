@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
-import { backofficeUiComponentDefinitions } from "./catalog";
+import { backofficeUiComponentDefinitions } from "@fragno-private/backoffice-ui/catalog";
+
 import { generateBackofficeUiCatalogDeclarations } from "./component-reference-generation";
 
 describe("Backoffice UI builder declaration generation", () => {

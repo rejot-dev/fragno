@@ -1,0 +1,71 @@
+{
+  "name": "@fragno-private/backoffice-ui",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Backoffice generated interfaces: the json-render catalog and renderer, the guest-side ui builder, and pages built on live queries.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "packages-private/backoffice-ui"
+  },
+  "type": "module",
+  "exports": {
+    "./styles.css": "./src/styles.css",
+    "./absolute-file-path": "./src/absolute-file-path.ts",
+    "./builder": "./src/builder.ts",
+    "./catalog": "./src/catalog.ts",
+    "./demo": "./src/demo.ts",
+    "./file-image": "./src/file-image.tsx",
+    "./generated-ui-upload-scope": "./src/generated-ui-upload-scope.ts",
+    "./link": "./src/components/link.ts",
+    "./render-context": "./src/render-context.tsx",
+    "./renderer": "./src/renderer.tsx",
+    "./result": "./src/result.ts",
+    "./workflow-interaction": "./src/workflow-interaction.tsx",
+    "./pages/definition": "./src/pages/definition.ts",
+    "./pages/query": "./src/pages/query.ts",
+    "./pages/view": "./src/pages/view.tsx"
+  },
+  "scripts": {
+    "types:check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "format:package": "node ../../scripts/run-package-quality.mjs format",
+    "format:check:package": "node ../../scripts/run-package-quality.mjs format:check",
+    "lint:package": "node ../../scripts/run-package-quality.mjs lint",
+    "lint:fix:package": "node ../../scripts/run-package-quality.mjs lint:fix"
+  },
+  "dependencies": {
+    "@fragno-dev/backoffice-api": "workspace:*",
+    "@fragno-dev/codemode": "workspace:*",
+    "@fragno-dev/upload": "workspace:*",
+    "@fragno-private/design-system": "workspace:*",
+    "@json-render/core": "0.20.0",
+    "@json-render/react": "0.20.0",
+    "@tanstack/react-db": "0.5.11",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@fragno-private/typescript-config": "workspace:*",
+    "@fragno-private/vitest-config": "workspace:*",
+    "@storybook/react-vite": "^10.6.0",
+    "@tailwindcss/vite": "^4.2.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "happy-dom": "^20.3.3",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-router": "^8.2.0",
+    "storybook": "^10.6.0",
+    "tailwindcss": "^4.1.18",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router": "^8.0.0"
+  }
+}

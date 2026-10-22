@@ -6,9 +6,9 @@ import {
   type RemoteWorkflowStepHost,
 } from "@fragno-dev/workflows/remote-workflow";
 import type { RemoteWorkflowRunFn, WorkflowEvent } from "@fragno-dev/workflows/workflow";
+import { withBackofficeUiBuilderModule } from "@fragno-private/backoffice-ui/builder";
 
 import type { NpmDependencyMap } from "@/backoffice-runtime/dynamic-workers/npm-dependencies";
-import { withBackofficeUiBuilderModule } from "@/backoffice-ui/builder";
 import type {
   BackofficeRuntimeToolFamily,
   BackofficeToolContext,

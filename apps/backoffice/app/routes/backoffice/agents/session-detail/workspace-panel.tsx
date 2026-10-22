@@ -1,3 +1,4 @@
+import { parseBackofficeUiResult } from "@fragno-private/backoffice-ui/result";
 import {
   ChatWorkspacePanel,
   ChatWorkspaceScroll,
@@ -18,7 +19,6 @@ import {
   backofficeRuntimeScopeFromResolvedScope,
   type BackofficeResolvedScope,
 } from "@/backoffice-runtime/resolved-scope";
-import { parseBackofficeUiResult } from "@/backoffice-ui/result";
 import { sendBackofficeWorkflowEvent } from "@/backoffice-ui/workflow-events.client";
 import type { ResolvedWorkflowRuntimeToolCall } from "@/fragno/runtime-tools/workflow-catalog";
 import { useLinkedScrollViewports } from "@/routes/backoffice/automations/script-view/linked-scroll";
