@@ -1,6 +1,6 @@
-import type { StepNode, WorkflowChildNode } from "@fragno-dev/workflow-visualizer-tokens";
+import { parseBackofficeUiResult } from "@fragno-private/backoffice-ui/result";
 
-import { parseBackofficeUiResult } from "@/backoffice-ui/result";
+import type { StepNode, WorkflowChildNode } from "@fragno-dev/workflow-visualizer-tokens";
 
 import type { WorkflowStepRunState } from "./workflow-run-presentation";
 import { workflowUiEventBindings } from "./workflow-ui-event-state";

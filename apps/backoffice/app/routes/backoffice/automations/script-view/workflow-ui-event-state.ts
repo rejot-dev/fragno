@@ -1,6 +1,6 @@
-import { setByPath } from "@json-render/core";
+import type { BackofficeUiResultV1 } from "@fragno-private/backoffice-ui/result";
 
-import type { BackofficeUiResultV1 } from "@/backoffice-ui/result";
+import { setByPath } from "@json-render/core";
 
 import type { WorkflowRunEvent } from "./workflow-run-presentation";
 

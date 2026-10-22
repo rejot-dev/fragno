@@ -3,6 +3,7 @@ import type {
   AutomationEventMatcher,
   AutomationRouteDefinition,
 } from "@fragno-dev/backoffice-api/v0/automation";
+import type { PageLoad } from "@fragno-private/backoffice-ui/pages/definition";
 import { Icon } from "@fragno-private/design-system/icon";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { UnderlineTab, UnderlineTabList } from "@fragno-private/design-system/underline-tabs";
@@ -13,8 +14,7 @@ import { Streamdown } from "streamdown";
 import { visualizeWorkflowSource } from "@fragno-dev/workflow-visualizer-tokens";
 
 import { artifactKind } from "@/artifacts/kinds";
-import type { PageLoad } from "@/artifacts/pages/definition";
-import { PageView } from "@/artifacts/pages/view";
+import { BackofficePageView } from "@/artifacts/pages/view";
 import type { AutomationCollections } from "@/fragno/automation/tanstack/collections";
 import type { ResolvedWorkflowRuntimeToolCall } from "@/fragno/runtime-tools/workflow-catalog";
 import { parseFrontmatter } from "@/lib/frontmatter";
@@ -376,7 +376,7 @@ function BuiltPage({
       />
     );
   }
-  return <PageView definition={loaded.definition} collections={collections} />;
+  return <BackofficePageView definition={loaded.definition} collections={collections} />;
 }
 
 const TextRenderer: FilesContentRenderer = {

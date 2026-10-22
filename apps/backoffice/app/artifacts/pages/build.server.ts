@@ -1,4 +1,6 @@
 import type { JsonValue } from "@fragno-dev/backoffice-api/v0/shared/json";
+import { withBackofficeUiBuilder } from "@fragno-private/backoffice-ui/builder";
+import { parsePageDefinition, type PageLoad } from "@fragno-private/backoffice-ui/pages/definition";
 
 import {
   artifactBuildKey,
@@ -12,7 +14,6 @@ import {
 } from "@/backoffice-runtime/context";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
-import { withBackofficeUiBuilder } from "@/backoffice-ui/builder";
 import { codemodeRunnerFor } from "@/fragno/codemode/codemode-object-execute";
 import { runBackofficeCodemode } from "@/fragno/codemode/execute";
 import {
@@ -22,7 +23,7 @@ import {
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 
-import { parsePageDefinition, type PageLoad } from "./definition";
+import { PAGE_COLLECTIONS } from "./collections";
 
 const BUILD_TIMEOUT_MS = 10_000;
 
@@ -65,7 +66,7 @@ export async function loadPage({
     return cached;
   }
   // A current build that no longer validates was edited by hand, so it is rebuilt.
-  const cachedDefinition = cached ? parsePageDefinition(cached.output) : null;
+  const cachedDefinition = cached ? parsePageDefinition(cached.output, PAGE_COLLECTIONS) : null;
   if (cachedDefinition?.kind === "valid") {
     return { kind: "ready", definition: cachedDefinition.definition };
   }
@@ -147,7 +148,7 @@ function buildOutcome(result: unknown): ArtifactBuildOutcome {
   if (!built.ok) {
     return { kind: "failed", message: built.message };
   }
-  const parsed = parsePageDefinition(built.definition);
+  const parsed = parsePageDefinition(built.definition, PAGE_COLLECTIONS);
   return parsed.kind === "valid"
     ? // Codemode results cross the guest boundary as JSON.
       { kind: "built", output: built.definition as JsonValue }
@@ -158,7 +159,7 @@ function loadOutcome(outcome: ArtifactBuildOutcome): PageLoad {
   if (outcome.kind === "failed") {
     return outcome;
   }
-  const parsed = parsePageDefinition(outcome.output);
+  const parsed = parsePageDefinition(outcome.output, PAGE_COLLECTIONS);
   return parsed.kind === "valid"
     ? { kind: "ready", definition: parsed.definition }
     : { kind: "failed", message: parsed.message };

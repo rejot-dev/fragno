@@ -1,4 +1,5 @@
-import { parseBackofficeUiResult } from "@/backoffice-ui/result";
+import { parseBackofficeUiResult } from "@fragno-private/backoffice-ui/result";
+
 import type {
   AutomationWorkflowRun,
   WorkflowRunStep,

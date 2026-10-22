@@ -2,9 +2,9 @@ import {
   BackofficeUiErrorBoundary,
   BackofficeUiRenderer,
   type BackofficeUiStateChange,
-} from "@/backoffice-ui/renderer";
-import { parseBackofficeUiResult } from "@/backoffice-ui/result";
-import type { WorkflowUiInteractionHost } from "@/backoffice-ui/workflow-interaction";
+} from "@fragno-private/backoffice-ui/renderer";
+import { parseBackofficeUiResult } from "@fragno-private/backoffice-ui/result";
+import type { WorkflowUiInteractionHost } from "@fragno-private/backoffice-ui/workflow-interaction";
 
 export type WorkflowEventSender = (input: {
   eventId: string;

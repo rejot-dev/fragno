@@ -2,11 +2,10 @@
 
 import { afterEach, describe, expect, test, assert } from "vitest";
 
+import { parseBackofficeUiResult } from "@fragno-private/backoffice-ui/result";
 import { createElement } from "react";
 
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-
-import { parseBackofficeUiResult } from "@/backoffice-ui/result";
 
 import { ResultContent } from "./result-content";
 import { ToolResultContent } from "./tool-result-content";

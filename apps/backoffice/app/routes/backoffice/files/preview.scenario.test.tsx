@@ -7,14 +7,14 @@ const workers = vi.hoisted(() => ({
 }));
 vi.mock("cloudflare:workers", () => workers);
 
+import { BackofficeUiRenderer } from "@fragno-private/backoffice-ui/renderer";
+import { parseBackofficeUiResult } from "@fragno-private/backoffice-ui/result";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
 
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scope";
-import { BackofficeUiRenderer } from "@/backoffice-ui/renderer";
-import { parseBackofficeUiResult } from "@/backoffice-ui/result";
 import { FileImageScopeProvider } from "@/components/backoffice/file-image";
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
 import { behindBackofficeLayout } from "@/layouts/backoffice-layout.test-support";

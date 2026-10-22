@@ -9,9 +9,9 @@ import {
   type ExecuteResult,
   type ResolvedProvider,
 } from "@fragno-dev/codemode/runtime-api";
+import { withBackofficeUiBuilder } from "@fragno-private/backoffice-ui/builder";
 
 import type { NpmDependencyMap } from "@/backoffice-runtime/dynamic-workers/npm-dependencies";
-import { withBackofficeUiBuilder } from "@/backoffice-ui/builder";
 import { BackofficeToolUnavailableError } from "@/fragno/runtime-tools/runtime-errors";
 import {
   createBackofficeCodemodeProviders,

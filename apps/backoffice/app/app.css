@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "@fragno-private/design-system/theme.css";
+@import "@fragno-private/backoffice-ui/styles.css";
 
 @source "../node_modules/streamdown/dist/*.js";
 

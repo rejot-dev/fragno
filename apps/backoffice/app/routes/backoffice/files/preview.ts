@@ -1,5 +1,6 @@
+import { absoluteFilePathSchema } from "@fragno-private/backoffice-ui/absolute-file-path";
+
 import { backofficeRuntimeScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
-import { absoluteFilePathSchema } from "@/file-collection/absolute-file-path";
 import { inferFileContentType } from "@/file-collection/file-content-type";
 import { requireScopeSelection } from "@/layouts/backoffice-shell-request.server";
 import { rasterImageContentType } from "@/lib/raster-image-content-type";

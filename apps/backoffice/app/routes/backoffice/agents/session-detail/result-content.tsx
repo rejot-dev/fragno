@@ -1,9 +1,11 @@
+import {
+  BackofficeUiErrorBoundary,
+  BackofficeUiRenderer,
+} from "@fragno-private/backoffice-ui/renderer";
+import type { BackofficeUiParseResult } from "@fragno-private/backoffice-ui/result";
 import { ScrollablePre } from "@fragno-private/design-system/scrollable-pre";
 import { SectionDisclosure } from "@fragno-private/design-system/section-disclosure";
 import type { ReactNode } from "react";
-
-import { BackofficeUiErrorBoundary, BackofficeUiRenderer } from "@/backoffice-ui/renderer";
-import type { BackofficeUiParseResult } from "@/backoffice-ui/result";
 
 import { formatResultValue } from "./tool-arguments";
 

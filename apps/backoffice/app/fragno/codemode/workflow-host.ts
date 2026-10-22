@@ -18,8 +18,7 @@ import {
   type WorkflowStepTx,
   type WorkflowStepWorkflowOperation,
 } from "@fragno-dev/workflows/workflow";
-
-import { parseBackofficeUiResult } from "@/backoffice-ui/result";
+import { parseBackofficeUiResult } from "@fragno-private/backoffice-ui/result";
 
 const unsupportedRemoteTxFeature = (feature: string): never => {
   throw new Error(`REMOTE_WORKFLOW_TX_${feature}_UNSUPPORTED`);

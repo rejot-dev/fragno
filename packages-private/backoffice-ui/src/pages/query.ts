@@ -39,18 +39,16 @@ import {
   type Source,
 } from "@tanstack/react-db";
 
-import { intervalStarts } from "@/backoffice-ui/components/intervals";
-
-import {
-  PAGE_COLLECTIONS,
-  type PageCollection,
-  type PageExpression,
-  type PageLiteral,
-  type PageQuery,
-  type PageQueryAggregate,
-  type PageQueryFunction,
-  type PageQuerySource,
-  type PageValue,
+import { intervalStarts } from "../components/intervals";
+import type {
+  PageCollectionFields,
+  PageExpression,
+  PageLiteral,
+  PageQuery,
+  PageQueryAggregate,
+  PageQueryFunction,
+  PageQuerySource,
+  PageValue,
 } from "./definition";
 
 // The file was validated against these functions' arities, so they are called untyped.
@@ -91,8 +89,8 @@ const FUNCTIONS = {
 
 const AGGREGATES = { count, sum, avg, min, max } as unknown as Record<PageQueryAggregate, Operator>;
 
-/** The collections a page reads, by name, as TanStack accepts any query source. */
-type PageCollections = Record<PageCollection, Source[string]>;
+/** The host's collections a page reads, by name, as TanStack accepts any query source. */
+export type PageSources = Readonly<Record<string, Source[string]>>;
 
 /** TanStack's refs by alias; aliases and fields come from the validated file, not from types. */
 type Refs = Record<string, unknown>;
@@ -126,7 +124,7 @@ type DynamicBuilder = {
 /** Builds the TanStack DB live query a page query describes, with times relative to `now`. */
 export function pageQuery(
   builder: InitialQueryBuilder,
-  collections: PageCollections,
+  collections: PageSources,
   query: PageQuery,
   now: number,
 ) {
@@ -138,7 +136,7 @@ export function pageQuery(
 
 function buildQuery(
   builder: DynamicBuilder,
-  collections: PageCollections,
+  collections: PageSources,
   query: PageQuery,
   now: number,
   outer: Scope,
@@ -245,13 +243,16 @@ function compileBucket(time: unknown, expression: { every: number; since: number
  * grouping, joins, and how a toArray(...) query correlates, as it builds a live query, before any row
  * arrives, so empty collections stand in for the synchronized ones.
  */
-export function pageQueriesError(queries: Record<string, PageQuery>): string | null {
-  const collections = {} as PageCollections;
-  for (const id of Object.keys(PAGE_COLLECTIONS) as PageCollection[]) {
-    collections[id] = createCollection(
-      localOnlyCollectionOptions({ id, getKey: (row: { id: string }) => row.id }),
-    );
-  }
+export function pageQueriesError(
+  queries: Record<string, PageQuery>,
+  fields: PageCollectionFields,
+): string | null {
+  const collections: PageSources = Object.fromEntries(
+    Object.keys(fields).map((id) => [
+      id,
+      createCollection(localOnlyCollectionOptions({ id, getKey: (row: { id: string }) => row.id })),
+    ]),
+  );
   for (const [name, query] of Object.entries(queries)) {
     try {
       const live = createLiveQueryCollection({

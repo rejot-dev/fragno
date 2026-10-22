@@ -1,4 +1,5 @@
-import type { BackofficeUiResultV1 } from "@/backoffice-ui/result";
+import type { BackofficeUiResultV1 } from "@fragno-private/backoffice-ui/result";
+
 import type { WorkflowRunReference } from "@/routes/backoffice/automations/script-view/workflow-run-presentation";
 
 import type { WorkflowGraphProjection } from "./workflow-graph-projection";

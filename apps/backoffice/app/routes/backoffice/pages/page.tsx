@@ -1,10 +1,10 @@
+import type { PageDefinition } from "@fragno-private/backoffice-ui/pages/definition";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { Suspense, use } from "react";
 import { data } from "react-router";
 
-import type { PageDefinition } from "@/artifacts/pages/definition";
-import { PageView } from "@/artifacts/pages/view";
+import { BackofficePageView } from "@/artifacts/pages/view";
 import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
 import { backofficePageBodyClassName } from "@/components/backoffice/page-body";
 import {
@@ -70,7 +70,7 @@ function PageClient({ definition }: { definition: PageDefinition }) {
   }
   const source = automationCollectionSource.source;
   return (
-    <PageView
+    <BackofficePageView
       key={describeAutomationCollectionSource(source).resourceKey}
       definition={definition}
       collections={use(getAutomationBrowserDatabase(source)).collections}

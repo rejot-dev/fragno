@@ -3,13 +3,13 @@ import { assert, expect, expectTypeOf, test } from "vitest";
 import { defineScenario, runScenario } from "@fragno-dev/workflows/scenario";
 import { createWorkflowsTestRuntime } from "@fragno-dev/workflows/test";
 import { defineRemoteWorkflow } from "@fragno-dev/workflows/workflow";
+import { parseBackofficeUiResult } from "@fragno-private/backoffice-ui/result";
 import { env } from "cloudflare:workers";
 
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
 import { createCloudflareBackofficeObjectRegistry } from "@/backoffice-runtime/cloudflare-durable-object-factory";
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
-import { parseBackofficeUiResult } from "@/backoffice-ui/result";
 import type {
   CodemodeExecution,
   CodemodeRunFinishedHookPayload,

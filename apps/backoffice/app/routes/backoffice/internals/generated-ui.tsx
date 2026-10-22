@@ -1,9 +1,14 @@
+import {
+  BACKOFFICE_UI_COMPONENT_DEMOS,
+  type BackofficeUiDemoCategory,
+} from "@fragno-private/backoffice-ui/demo";
+import {
+  BackofficeUiErrorBoundary,
+  BackofficeUiRenderer,
+} from "@fragno-private/backoffice-ui/renderer";
 import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
 import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
 import { useOutletContext } from "react-router";
-
-import { BACKOFFICE_UI_COMPONENT_DEMOS, type BackofficeUiDemoCategory } from "@/backoffice-ui/demo";
-import { BackofficeUiErrorBoundary, BackofficeUiRenderer } from "@/backoffice-ui/renderer";
 
 import { internalsScopeBasePath } from "./internals-scope";
 import type { InternalsLayoutContext } from "./layout";

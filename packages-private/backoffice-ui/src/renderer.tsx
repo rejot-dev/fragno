@@ -33,13 +33,13 @@ export class BackofficeUiErrorBoundary extends Component<
   BackofficeUiErrorBoundaryProps,
   BackofficeUiErrorBoundaryState
 > {
-  state: BackofficeUiErrorBoundaryState = { failed: false };
+  override state: BackofficeUiErrorBoundaryState = { failed: false };
 
   static getDerivedStateFromError(): BackofficeUiErrorBoundaryState {
     return { failed: true };
   }
 
-  render() {
+  override render() {
     return this.state.failed ? this.props.fallback : this.props.children;
   }
 }

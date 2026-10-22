@@ -1,6 +1,7 @@
 import { ButtonLink, IconButton } from "@fragno-private/design-system/button";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
 import { Icon } from "@fragno-private/design-system/icon";
+import { formatRelativeTime } from "@fragno-private/design-system/relative-time";
 import {
   Component,
   Suspense,
@@ -23,7 +24,6 @@ import {
   type AutomationBrowserDatabase,
   type AutomationCollectionSource,
 } from "@/fragno/automation/tanstack/browser-database";
-import { formatRelativeTime } from "@/routes/backoffice/automations/formatting";
 import {
   latestWorkflowRunGeneratedUi,
   type WorkflowRunEvent,

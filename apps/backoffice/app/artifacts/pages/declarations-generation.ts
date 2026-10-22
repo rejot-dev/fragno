@@ -1,10 +1,10 @@
 import {
-  PAGE_COLLECTIONS,
   PAGE_DEFINITION_VERSION,
   PAGE_LIMITS,
-  type PageCollection,
   type PageFieldType,
-} from "./definition";
+} from "@fragno-private/backoffice-ui/pages/definition";
+
+import { PAGE_COLLECTIONS, type PageCollection } from "./collections";
 
 const FIELD_TYPES: Record<PageFieldType, string> = {
   string: "string",

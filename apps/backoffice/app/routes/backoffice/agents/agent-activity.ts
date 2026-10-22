@@ -1,10 +1,11 @@
+import { formatRelativeTime } from "@fragno-private/design-system/relative-time";
+
 import { gte, type InitialQueryBuilder } from "@tanstack/react-db";
 
 import type { AutomationCollections } from "@/fragno/automation/tanstack/collections";
 import type { PiAgentActivityKind } from "@/fragno/backoffice-capabilities/capabilities/pi";
 import type { PiAgentRecord } from "@/fragno/pi/agent/pi-agent-records";
 
-import { formatRelativeTime } from "../automations/formatting";
 import { dashboardBucketIndex } from "../dashboard/overview";
 
 /** An agent with the turns it ended in each hourly bucket of the window. */

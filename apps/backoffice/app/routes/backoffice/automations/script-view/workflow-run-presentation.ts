@@ -5,13 +5,15 @@ import {
 } from "@fragno-dev/workflows/step-emission-control";
 import { parseStepKey, ROOT_STEP_SCOPE } from "@fragno-dev/workflows/step-identity";
 import type { WorkflowInstanceStatus } from "@fragno-dev/workflows/workflow";
+import {
+  parseBackofficeUiResult,
+  type BackofficeUiParseResult,
+} from "@fragno-private/backoffice-ui/result";
 
 import type {
   StepNode,
   WorkflowVisualizationSnapshot,
 } from "@fragno-dev/workflow-visualizer-tokens";
-
-import { parseBackofficeUiResult, type BackofficeUiParseResult } from "@/backoffice-ui/result";
 
 const ACTIVE_WORKFLOW_STATUSES = new Set(["active", "waiting", "paused"]);
 

@@ -1,0 +1,3 @@
+/* Imported by the app's stylesheet after the design system's theme, so Tailwind sees the classes
+   used inside this package's components. */
+@source "./";

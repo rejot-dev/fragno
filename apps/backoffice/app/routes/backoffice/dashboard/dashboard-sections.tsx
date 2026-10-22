@@ -1,6 +1,7 @@
 import type { AutomationRouteDefinition } from "@fragno-dev/backoffice-api/v0/automation";
 import type { WorkflowInstanceStatus } from "@fragno-dev/workflows/workflow";
 import { Icon, type IconName } from "@fragno-private/design-system/icon";
+import { formatRelativeTime } from "@fragno-private/design-system/relative-time";
 import { SparkBars } from "@fragno-private/design-system/spark-bars";
 import { StackedBarChart } from "@fragno-private/design-system/stacked-bar-chart";
 import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
@@ -24,7 +25,6 @@ import {
 import { formatPiAgentName } from "../agents/agent-name";
 import { piAgentsPath } from "../agents/path";
 import type { AutomationScriptSourceRecord } from "../automations/data";
-import { formatRelativeTime } from "../automations/formatting";
 import {
   IntegrationConnectionStateLight,
   describeIntegrationConnectionKind,

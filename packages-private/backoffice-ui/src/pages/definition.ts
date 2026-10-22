@@ -1,32 +1,9 @@
-import type { AnyColumn, AnyTable } from "@fragno-dev/db/schema";
-import { workflowsSchema } from "@fragno-dev/workflows/schema";
 import { z } from "zod";
 
-import type { BackofficeUiSpec } from "@/backoffice-ui/catalog";
-import { INTERVAL_LIMITS, mostIntervals } from "@/backoffice-ui/components/intervals";
-import { parseBackofficeUiResult } from "@/backoffice-ui/result";
-import { automationFragmentSchema } from "@/fragno/automation/schema";
-import type {
-  AutomationDerivedRows,
-  AutomationTableCollections,
-} from "@/fragno/automation/tanstack/collections";
-
+import type { BackofficeUiSpec } from "../catalog";
+import { INTERVAL_LIMITS, mostIntervals } from "../components/intervals";
+import { parseBackofficeUiResult } from "../result";
 import { pageQueriesError } from "./query";
-
-/** The synchronized tables a page query can read from, by the collection that mirrors each. */
-const PAGE_TABLES = {
-  projects: automationFragmentSchema.tables.project,
-  routes: automationFragmentSchema.tables.automation_route,
-  routeScheduleStates: automationFragmentSchema.tables.automation_route_schedule_state,
-  routeDispatches: automationFragmentSchema.tables.automation_route_dispatch,
-  events: automationFragmentSchema.tables.automation_event,
-  eventSources: automationFragmentSchema.tables.automation_event_source,
-  eventDefinitions: automationFragmentSchema.tables.automation_event_definition,
-  kvStore: automationFragmentSchema.tables.kv_store,
-  workflowInstances: workflowsSchema.tables.workflow_instance,
-  workflowSteps: workflowsSchema.tables.workflow_step,
-  workflowEvents: workflowsSchema.tables.workflow_event,
-} satisfies Partial<Record<keyof AutomationTableCollections, AnyTable>>;
 
 export const PAGE_LIMITS = {
   queries: 16,
@@ -50,114 +27,11 @@ export type PageField = {
   nullable: boolean;
 };
 
-type PageFieldTypeOf<TValue> = [TValue] extends [Date]
-  ? "time"
-  : [TValue] extends [string]
-    ? "string"
-    : [TValue] extends [number]
-      ? "number"
-      : [TValue] extends [boolean]
-        ? "boolean"
-        : [TValue] extends [bigint]
-          ? "bigint"
-          : "json";
-
-/** A derived row's fields as pages read them; the compiler checks each against the row type. */
-type DerivedPageFields<TRow> = {
-  [TField in keyof TRow]-?: {
-    type: PageFieldTypeOf<NonNullable<TRow[TField]>>;
-    nullable: null extends TRow[TField] ? true : false;
-  };
-};
-
-const PAGE_DERIVED_COLLECTIONS: {
-  [TCollection in keyof AutomationDerivedRows]: DerivedPageFields<
-    AutomationDerivedRows[TCollection]
-  >;
-} = {
-  connections: {
-    connectionId: { type: "string", nullable: false },
-    service: { type: "string", nullable: false },
-    kind: { type: "string", nullable: false },
-    state: { type: "string", nullable: false },
-    name: { type: "string", nullable: true },
-    authMethod: { type: "string", nullable: true },
-    eventId: { type: "string", nullable: false },
-    changedAt: { type: "time", nullable: false },
-  },
-  agents: {
-    agentName: { type: "string", nullable: false },
-    definition: { type: "json", nullable: false },
-    builtIn: { type: "boolean", nullable: false },
-    latestKind: { type: "string", nullable: true },
-    latestAt: { type: "time", nullable: true },
-    answering: { type: "boolean", nullable: false },
-    queued: { type: "number", nullable: false },
-    steering: { type: "number", nullable: false },
-    paused: { type: "boolean", nullable: false },
-  },
-  agentTurns: {
-    id: { type: "string", nullable: false },
-    agentName: { type: "string", nullable: false },
-    outcome: { type: "string", nullable: false },
-    endedAt: { type: "time", nullable: false },
-  },
-  workflowWaits: {
-    id: { type: "string", nullable: false },
-    runId: { type: "string", nullable: false },
-    eventType: { type: "string", nullable: false },
-    interfaceStepKey: { type: "string", nullable: true },
-  },
-};
-
-export type PageCollection = keyof typeof PAGE_TABLES | keyof AutomationDerivedRows;
-
 /**
- * The fields of every collection a page query can read: the synchronized tables, whose underscore
- * columns are the database's bookkeeping, and what Backoffice derives from them.
+ * The fields of each collection a page can read, by the collection's name. The host decides which
+ * collections exist; pages read only these.
  */
-export const PAGE_COLLECTIONS = Object.fromEntries([
-  ...Object.entries(PAGE_TABLES).map(([collection, table]) => [
-    collection,
-    Object.entries(table.columns as Record<string, AnyColumn>)
-      .filter(([name]) => !name.startsWith("_"))
-      .map(([name, column]) => ({ name, type: fieldType(column), nullable: column.isNullable })),
-  ]),
-  ...Object.entries(PAGE_DERIVED_COLLECTIONS).map(([collection, fields]) => [
-    collection,
-    Object.entries(fields as Record<string, Omit<PageField, "name">>).map(([name, field]) => ({
-      name,
-      ...field,
-    })),
-  ]),
-]) as Record<PageCollection, PageField[]>;
-
-function fieldType(column: AnyColumn): PageFieldType {
-  if (column.role === "reference" || column.type.startsWith("varchar(")) {
-    return "string";
-  }
-  switch (column.type) {
-    case "string":
-    case "text":
-      return "string";
-    case "integer":
-    case "decimal":
-      return "number";
-    case "bigint":
-      return "bigint";
-    case "bool":
-      return "boolean";
-    case "date":
-    case "timestamp":
-      return "time";
-    case "json":
-      return "json";
-    case "binary":
-      return "binary";
-    default:
-      throw new Error(`Unknown column type ${column.type}.`);
-  }
-}
+export type PageCollectionFields = Readonly<Record<string, readonly PageField[]>>;
 
 export const PAGE_QUERY_FUNCTIONS = {
   eq: { arity: [2, 2] },
@@ -208,9 +82,9 @@ export type PageExpression =
 /** A selected field: an expression, or the rows of a query correlated with the selecting row. */
 export type PageSelection = PageExpression | { kind: "toArray"; query: PageQuery };
 
-/** What a query reads: a synchronized collection, or another query's rows. */
+/** What a query reads: one of the host's collections, or another query's rows. */
 export type PageQuerySource =
-  | { kind: "collection"; alias: string; collection: PageCollection }
+  | { kind: "collection"; alias: string; collection: string }
   | { kind: "query"; alias: string; query: PageQuery };
 
 /**
@@ -353,14 +227,7 @@ const queryPartsMessage = `A query is made of at most ${PAGE_LIMITS.queryParts} 
 const querySchema: z.ZodType<PageQuery> = z.lazy(() => {
   const expression = expressionSchema;
   const source = z.discriminatedUnion("kind", [
-    z.strictObject({
-      kind: z.literal("collection"),
-      alias: nameSchema,
-      collection: z.enum(Object.keys(PAGE_COLLECTIONS) as [PageCollection], {
-        error: (issue) =>
-          `"${String(issue.input)}" is not a page collection. Use one of: ${Object.keys(PAGE_COLLECTIONS).join(", ")}.`,
-      }),
-    }),
+    z.strictObject({ kind: z.literal("collection"), alias: nameSchema, collection: z.string() }),
     z.strictObject({ kind: z.literal("query"), alias: nameSchema, query: querySchema }),
   ]);
   return z.discriminatedUnion("kind", [
@@ -427,8 +294,11 @@ const pageFileSchema = z.strictObject({
   spec: z.unknown(),
 });
 
-/** Validates what `page.define` returned, or what a cached build holds. */
-export function parsePageDefinition(json: unknown): PageParseResult {
+/** Validates what `page.define` returned, or what a cached build holds, against the host's collections. */
+export function parsePageDefinition(
+  json: unknown,
+  collections: PageCollectionFields,
+): PageParseResult {
   if (isRecord(json) && jsonDepthExceeds(json.queries, QUERIES_JSON_DEPTH)) {
     return {
       kind: "invalid",
@@ -443,7 +313,7 @@ export function parsePageDefinition(json: unknown): PageParseResult {
   }
   const { queries, values, spec } = file.data;
   try {
-    checkPage(queries, values);
+    checkPage(queries, values, collections);
   } catch (error) {
     if (error instanceof PageDefinitionError) {
       return { kind: "invalid", message: error.message };
@@ -458,7 +328,7 @@ export function parsePageDefinition(json: unknown): PageParseResult {
   if (ui.kind === "invalid") {
     return { kind: "invalid", message: `spec: ${ui.message}` };
   }
-  const uncompiled = pageQueriesError(queries);
+  const uncompiled = pageQueriesError(queries, collections);
   if (uncompiled !== null) {
     return { kind: "invalid", message: uncompiled };
   }
@@ -485,15 +355,24 @@ type QueryField = { name: string; json: boolean };
 /** What each alias an expression may read names, and the fields it carries. */
 type Sources = ReadonlyMap<string, { label: string; fields: QueryField[] }>;
 
-/** Counts the parts of one bound query, so nesting cannot multiply the work a page asks for. */
-type QueryBudget = { parts: number };
+/**
+ * What checking one bound query tracks: the collections it may read, and the parts it is made of,
+ * so nesting cannot multiply the work a page asks for.
+ */
+type QueryBudget = { collections: PageCollectionFields; parts: number };
 
 /** Checks what each query reads and that each value names a field of its query. */
-function checkPage(queries: Record<string, PageQuery>, values: Record<string, PageValue>) {
+function checkPage(
+  queries: Record<string, PageQuery>,
+  values: Record<string, PageValue>,
+  collections: PageCollectionFields,
+) {
   const fields = new Map(
     Object.entries(queries).map(([name, query]) => [
       name,
-      checkQuery(query, `queries.${name}`, new Map(), { parts: 0 }).map(({ name }) => name),
+      checkQuery(query, `queries.${name}`, new Map(), { collections, parts: 0 }).map(
+        ({ name }) => name,
+      ),
     ]),
   );
   for (const [name, { query, field }] of Object.entries(values)) {
@@ -646,10 +525,14 @@ function addSource(
     sources.set(alias, { label: `The query under ${alias}`, fields });
     return;
   }
-  const fields = PAGE_COLLECTIONS[source.collection].map(({ name, type }) => ({
-    name,
-    json: type === "json",
-  }));
+  const collection = budget.collections[source.collection];
+  if (!collection) {
+    fail(
+      `${path}.collection`,
+      `"${source.collection}" is not a page collection. Use one of: ${Object.keys(budget.collections).join(", ")}.`,
+    );
+  }
+  const fields = collection.map(({ name, type }) => ({ name, json: type === "json" }));
   sources.set(alias, { label: source.collection, fields });
 }
 

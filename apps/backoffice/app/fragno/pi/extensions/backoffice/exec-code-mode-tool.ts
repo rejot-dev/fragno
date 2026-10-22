@@ -1,11 +1,11 @@
 import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { formatCodemodeLogLine } from "@fragno-dev/codemode/runtime-api";
+import { parseBackofficeUiResult } from "@fragno-private/backoffice-ui/result";
 import { Type } from "typebox";
 
 import { copyJson } from "@earendil-works/chord";
 import { defineTool } from "@earendil-works/pi-durable";
 
-import { parseBackofficeUiResult } from "@/backoffice-ui/result";
 import {
   createCodemodeWorkflowInstanceInput,
   prepareCodemodeWorkflowInstance,
