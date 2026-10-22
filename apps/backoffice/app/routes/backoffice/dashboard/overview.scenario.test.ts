@@ -2,7 +2,7 @@ import { assert, describe, test, vi } from "vitest";
 
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 
-import { queryOnce } from "@tanstack/react-db";
+import { eq, not, queryOnce } from "@tanstack/react-db";
 
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
@@ -44,7 +44,6 @@ import {
 } from "./orchestration-graph";
 import {
   dashboardBucketStarts,
-  dashboardConnectionEventsQuery,
   dashboardEventsQuery,
   dashboardRunsQuery,
   projectBackofficeDashboard,
@@ -214,12 +213,18 @@ async function readDashboard(ctx: BackofficeScenarioContext) {
   const { collections } = database;
   const now = ctx.runtime.now();
   const since = new Date(dashboardBucketStarts(now)[0] ?? now);
-  const [runs, waitingRuns, events, connectionEvents, agentEvents, routeRecords, activeWorkflows] =
+  const [runs, waitingRuns, events, connections, agentEvents, routeRecords, activeWorkflows] =
     await Promise.all([
       queryOnce((query) => dashboardRunsQuery(query, collections)),
       queryOnce((query) => workflowRunRecordsQuery(query, collections, { type: "waiting" })),
       queryOnce((query) => dashboardEventsQuery(query, collections, since)),
-      queryOnce((query) => dashboardConnectionEventsQuery(query, collections)),
+      queryOnce((query) =>
+        query
+          .from({ connection: collections.connections })
+          .where(({ connection }) => not(eq(connection.state, "disconnected")))
+          .orderBy(({ connection }) => connection.service, "asc")
+          .orderBy(({ connection }) => connection.connectionId, "asc"),
+      ),
       queryOnce((query) => piAgentEventsQuery(query, collections)),
       queryOnce((query) => automationRoutesQuery(query, collections)),
       queryOnce((query) => orchestrationActiveWorkflowsQuery(query, collections)),
@@ -230,7 +235,7 @@ async function readDashboard(ctx: BackofficeScenarioContext) {
     runs,
     waitingRuns: automationWorkflowRunsFromRecords(waitingRuns),
     events,
-    connectionEvents,
+    connections,
     routes,
   });
   // Catalogs are left out so the graph holds only what this scope's data puts there.

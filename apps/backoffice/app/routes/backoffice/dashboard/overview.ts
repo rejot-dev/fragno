@@ -1,10 +1,10 @@
 import type { AutomationRouteDefinition } from "@fragno-dev/backoffice-api/v0/automation";
 import type { WorkflowInstanceStatus } from "@fragno-dev/workflows/workflow";
 
-import { eq, gte, type InitialQueryBuilder } from "@tanstack/react-db";
+import { gte, type InitialQueryBuilder } from "@tanstack/react-db";
 
 import type { AutomationCollections } from "@/fragno/automation/tanstack/collections";
-import { INTEGRATIONS_EVENT_SOURCE } from "@/fragno/runtime-tools/families/integrations/integration-events";
+import type { IntegrationConnectionRecord } from "@/fragno/runtime-tools/families/integrations/integration-connections";
 import {
   currentWorkflowWaitingEventTypes,
   latestWorkflowRunGeneratedUi,
@@ -12,11 +12,6 @@ import {
   type WorkflowRunGeneratedUi,
   type WorkflowRunStep,
 } from "@/routes/backoffice/automations/script-view/workflow-run-presentation";
-import {
-  currentIntegrationConnections,
-  integrationConnectionStateChanges,
-  type IntegrationConnectionStateChange,
-} from "@/routes/backoffice/integrations/connection-overview";
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -76,24 +71,6 @@ export function dashboardEventsQuery(
     }));
 }
 
-/** Every connection state change ever reported; the latest one per connection is its state. */
-export function dashboardConnectionEventsQuery(
-  query: InitialQueryBuilder,
-  collections: Pick<AutomationCollections, "events">,
-) {
-  return query
-    .from({ event: collections.events })
-    .where(({ event }) => eq(event.source, INTEGRATIONS_EVENT_SOURCE))
-    .select(({ event }) => ({
-      id: event.id,
-      source: event.source,
-      eventType: event.eventType,
-      payload: event.payload,
-      subject: event.subject,
-      occurredAt: event.occurredAt,
-    }));
-}
-
 type DashboardRunRecord = {
   id: string;
   instanceId: string;
@@ -108,12 +85,6 @@ type DashboardRunRecord = {
 };
 
 type DashboardEventRecord = { source: string; eventType: string; occurredAt: Date };
-
-type DashboardConnectionEventRecord = DashboardEventRecord & {
-  id: string;
-  payload: unknown;
-  subject: unknown;
-};
 
 /** The run a dashboard row opens. */
 export type DashboardRunReference = {
@@ -137,7 +108,7 @@ export type DashboardAttention =
       latestRun: DashboardRunReference;
       error: string | null;
     }
-  | { kind: "connection-unavailable"; connection: IntegrationConnectionStateChange };
+  | { kind: "connection-unavailable"; connection: IntegrationConnectionRecord };
 
 export type DashboardWorkflowHealth = {
   workflow: string;
@@ -165,7 +136,7 @@ export type BackofficeDashboard = {
     sources: { source: string; count: number }[];
     countsByBucket: Record<string, number>[];
   };
-  connections: IntegrationConnectionStateChange[];
+  connections: readonly IntegrationConnectionRecord[];
   upcoming: DashboardUpcoming[];
 };
 
@@ -214,14 +185,15 @@ export function projectBackofficeDashboard({
   runs,
   waitingRuns,
   events,
-  connectionEvents,
+  connections,
   routes,
 }: {
   now: number;
   runs: readonly DashboardRunRecord[];
   waitingRuns: readonly AutomationWorkflowRun[];
   events: readonly DashboardEventRecord[];
-  connectionEvents: readonly DashboardConnectionEventRecord[];
+  /** The scope's connections that are not disconnected, in the order the panel lists them. */
+  connections: readonly IntegrationConnectionRecord[];
   routes: readonly AutomationRouteDefinition[];
 }): BackofficeDashboard {
   const bucketStarts = dashboardBucketStarts(now);
@@ -306,10 +278,6 @@ export function projectBackofficeDashboard({
   const upcomingTime = (entry: DashboardUpcoming) =>
     entry.kind === "schedule" ? entry.at.getTime() : entry.run.updatedAt.getTime();
   upcoming.sort((left, right) => upcomingTime(left) - upcomingTime(right));
-
-  const connections = currentIntegrationConnections(
-    integrationConnectionStateChanges(connectionEvents),
-  ).filter((connection) => connection.state !== "disconnected");
 
   const windowEvents = events.filter((event) => inWindow(event.occurredAt));
   const countsByBucket = bucketStarts.map((): Record<string, number> => ({}));

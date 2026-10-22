@@ -327,7 +327,7 @@ function AttentionItem({
           {describeIntegrationConnectionKind(item.connection)} connection is unavailable ·{" "}
           <span className="font-mono">{item.connection.connectionId}</span>
         </>,
-        item.connection.occurredAt,
+        item.connection.changedAt,
         <TextLink to={integrationConnectionPath(selectedScope, item.connection.connectionId)}>
           Fix
         </TextLink>,
@@ -577,7 +577,7 @@ function ConnectionsPanel({
                   </span>
                   <span className="block truncate text-xs text-[var(--bo-muted-2)]">
                     {describeIntegrationConnectionKind(connection)} ·{" "}
-                    {formatRelativeTime(connection.occurredAt, now)}
+                    {formatRelativeTime(connection.changedAt, now)}
                   </span>
                 </span>
                 <IntegrationConnectionStateLight state={connection.state} />
