@@ -93,6 +93,10 @@ export type IntegrationConnectionRecord = {
   authMethod: IntegrationConnectionLabel["authMethod"];
   eventId: string;
   changedAt: Date;
+  /** The name people know the connection by: its label's, or else one read off its address. */
+  displayName: string;
+  /** What kind of connection it is, such as "MCP" or "Native · telegram". */
+  kindLabel: string;
 };
 
 /**
@@ -111,16 +115,21 @@ function currentIntegrationConnections(
       latest.set(change.connectionId, { ...current, label: change.label });
     }
   }
-  return [...latest.values()].map((change) => ({
-    connectionId: change.connectionId,
-    service: change.service,
-    kind: change.kind,
-    state: change.state,
-    name: change.label?.name ?? null,
-    authMethod: change.label?.authMethod ?? null,
-    eventId: change.eventId,
-    changedAt: change.occurredAt,
-  }));
+  return [...latest.values()].map((change) => {
+    const name = change.label?.name ?? null;
+    return {
+      connectionId: change.connectionId,
+      service: change.service,
+      kind: change.kind,
+      state: change.state,
+      name,
+      authMethod: change.label?.authMethod ?? null,
+      eventId: change.eventId,
+      changedAt: change.occurredAt,
+      displayName: integrationConnectionName({ ...change, name }),
+      kindLabel: describeIntegrationConnectionKind(change),
+    };
+  });
 }
 
 /** Every connection the scope's integration events report, as it currently stands. */
@@ -134,4 +143,43 @@ export function createIntegrationConnectionsCollection(
     getKey: (connection) => connection.connectionId,
     derive: (events) => currentIntegrationConnections(integrationConnectionStateChanges(events)),
   });
+}
+
+const integrationConnectionKindLabels = {
+  api: "API",
+  webhook: "Webhook",
+  mcp: "MCP",
+  connector: "Connector",
+  native: "Native",
+} as const satisfies Record<IntegrationConnectionKind, string>;
+
+/** API, webhook, and MCP addresses are their own names; other kinds also name the service. */
+export function describeIntegrationConnectionKind(
+  connection: Pick<IntegrationConnectionRecord, "kind" | "service">,
+) {
+  const label = integrationConnectionKindLabels[connection.kind];
+  return connection.kind === "connector" || connection.kind === "native"
+    ? `${label} · ${connection.service}`
+    : label;
+}
+
+/**
+ * The name the connection's events carry. Without one, connector addresses are opaque encodings
+ * and native slots are named after their service, so both fall back to the service.
+ */
+function integrationConnectionName(
+  connection: Pick<IntegrationConnectionRecord, "connectionId" | "kind" | "service" | "name">,
+) {
+  if (connection.name !== null) {
+    return connection.name;
+  }
+  const [namespace, localId] = splitConnectionId(connection.connectionId);
+  return connection.kind === "connector" || namespace === "backoffice"
+    ? connection.service
+    : localId;
+}
+
+function splitConnectionId(connectionId: string) {
+  const separator = connectionId.indexOf("#");
+  return [connectionId.slice(0, separator), connectionId.slice(separator + 1)] as const;
 }

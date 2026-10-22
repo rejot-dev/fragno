@@ -4,9 +4,9 @@ import { BackofficeSystemState } from "@fragno-private/design-system/system-stat
 import { Link, useOutletContext } from "react-router";
 
 import { backofficePageBodyClassName } from "@/components/backoffice/page-body";
+import { formatPiAgentName } from "@/fragno/pi/agent/pi-agent-name";
 
 import { describePiAgentActivity, piAgentQueueStatus, type PiAgentListing } from "./agent-activity";
-import { formatPiAgentName } from "./agent-name";
 import { AgentPermissions } from "./agent-permissions";
 import type { PiAgentsOutletContext } from "./agent-types";
 import { AgentsHeader } from "./agents-header";

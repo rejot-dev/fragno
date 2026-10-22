@@ -24,11 +24,11 @@ import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocatio
 import type { AutomationBrowserCollections } from "@/fragno/automation/tanstack/browser-database";
 import { useAutomationBrowserCollections } from "@/fragno/automation/tanstack/use-automation-browser-collections";
 import type { PiAgentCompactionStatus } from "@/fragno/pi/agent/pi-agent-contract";
+import { formatPiAgentName } from "@/fragno/pi/agent/pi-agent-name";
 import { requireRouteScope } from "@/layouts/backoffice-shell-request.server";
 
 import type { Route } from "./+types/agent-detail";
 import { isPiConversationSubmission } from "./agent-conversation-submission";
-import { formatPiAgentName } from "./agent-name";
 import { AgentPermissions } from "./agent-permissions";
 import { AgentStartComposer } from "./agent-start-composer";
 import type { PiAgentsOutletContext } from "./agent-types";

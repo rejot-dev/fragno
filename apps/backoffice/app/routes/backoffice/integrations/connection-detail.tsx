@@ -10,6 +10,7 @@ import {
 } from "@/backoffice-runtime/kernel";
 import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
 import {
+  describeIntegrationConnectionKind,
   integrationConnectionStateChanges,
   integrationEventsQuery,
 } from "@/fragno/runtime-tools/families/integrations/integration-connections";
@@ -24,7 +25,6 @@ import { ApiConnectionDetails } from "./api-connection-details";
 import {
   DetailSection,
   IntegrationConnectionStateLight,
-  describeIntegrationConnectionKind,
   integrationAuthMethodLabels,
 } from "./connection-display";
 import { ConnectorConnectionDetails } from "./connector-connection-details";

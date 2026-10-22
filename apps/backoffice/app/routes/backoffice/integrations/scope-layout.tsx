@@ -25,12 +25,7 @@ import { requireScopeSelection } from "@/layouts/backoffice-shell-request.server
 
 import { formatTimestamp } from "../automations/formatting";
 import type { Route } from "./+types/scope-layout";
-import {
-  IntegrationConnectionStateLight,
-  describeIntegrationConnectionKind,
-  integrationAuthMethodLabels,
-  integrationConnectionName,
-} from "./connection-display";
+import { IntegrationConnectionStateLight, integrationAuthMethodLabels } from "./connection-display";
 import { integrationConnectionPath, integrationsScopeBasePath } from "./connection-paths";
 import type { IntegrationsLayoutContext } from "./layout-context";
 import { NativeServices } from "./native-services";
@@ -197,7 +192,7 @@ function IntegrationsWorkspace({
   const hiddenCount = showDisconnected ? 0 : (countsQuery.data?.disconnected ?? 0);
   const connectionTabs = visibleConnections.map((connection) => ({
     connectionId: connection.connectionId,
-    label: integrationConnectionName(connection),
+    label: connection.displayName,
   }));
 
   return (
@@ -315,7 +310,7 @@ function ConnectionsTable({
                     className="group block min-w-0"
                   >
                     <span className="block truncate font-semibold text-[var(--bo-fg)] group-hover:underline">
-                      {integrationConnectionName(connection)}
+                      {connection.displayName}
                     </span>
                     <span className="block truncate font-mono text-[11px] text-[var(--bo-muted)]">
                       {connection.connectionId}
@@ -323,7 +318,7 @@ function ConnectionsTable({
                   </Link>
                 </td>
                 <td className="px-3 py-2 whitespace-nowrap text-[var(--bo-muted)]">
-                  {describeIntegrationConnectionKind(connection)}
+                  {connection.kindLabel}
                 </td>
                 <td className="px-3 py-2 whitespace-nowrap text-[var(--bo-muted)]">
                   {authMethod ? integrationAuthMethodLabels[authMethod] : "—"}

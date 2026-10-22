@@ -31,14 +31,6 @@ export function IntegrationConnectionStateLight({
   );
 }
 
-export const integrationConnectionKindLabels = {
-  api: "API",
-  webhook: "Webhook",
-  mcp: "MCP",
-  connector: "Connector",
-  native: "Native",
-} as const satisfies Record<IntegrationConnectionRecord["kind"], string>;
-
 /** A titled block of the connection detail panel. */
 export function DetailSection({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -84,34 +76,3 @@ export const integrationAuthMethodLabels = {
   signature: "Signature",
   "app-installation": "App installation",
 } as const satisfies Record<IntegrationAuthMethod, string>;
-
-/** API, webhook, and MCP addresses are their own names; other kinds also name the service. */
-export function describeIntegrationConnectionKind(
-  connection: Pick<IntegrationConnectionRecord, "kind" | "service">,
-) {
-  const label = integrationConnectionKindLabels[connection.kind];
-  return connection.kind === "connector" || connection.kind === "native"
-    ? `${label} · ${connection.service}`
-    : label;
-}
-
-/**
- * The name the connection's events carry. Without one, connector addresses are opaque encodings
- * and native slots are named after their service, so both fall back to the service.
- */
-export function integrationConnectionName(
-  connection: Pick<IntegrationConnectionRecord, "connectionId" | "kind" | "service" | "name">,
-) {
-  if (connection.name !== null) {
-    return connection.name;
-  }
-  const [namespace, localId] = splitConnectionId(connection.connectionId);
-  return connection.kind === "connector" || namespace === "backoffice"
-    ? connection.service
-    : localId;
-}
-
-function splitConnectionId(connectionId: string) {
-  const separator = connectionId.indexOf("#");
-  return [connectionId.slice(0, separator), connectionId.slice(separator + 1)] as const;
-}

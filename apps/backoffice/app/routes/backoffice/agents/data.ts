@@ -19,11 +19,10 @@ import type {
   PiAgentCompactionStatus,
   PiAvailableModel,
 } from "@/fragno/pi/agent/pi-agent-contract";
+import { formatPiAgentName } from "@/fragno/pi/agent/pi-agent-name";
 import type { createPiManagerFragment } from "@/fragno/pi/manager/pi-manager-fragment";
 import { captureBackofficeServerEvent } from "@/posthog.server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
-
-import { formatPiAgentName } from "./agent-name";
 
 type PiManagerFragment = ReturnType<typeof createPiManagerFragment>;
 
