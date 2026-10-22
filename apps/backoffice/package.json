@@ -10,6 +10,7 @@
   "scripts": {
     "auth:migration:generate": "auth generate --config scripts/better-auth-cli.ts --output workers/auth/migrations/better-auth.sql --yes",
     "admin:grant": "bash scripts/grant-admin.sh",
+    "do:reset": "bash scripts/reset-dev-durable-objects.sh",
     "oauth:test": "node scripts/test-oauth-client.mjs",
     "build": "react-router build",
     "build:node": "BACKOFFICE_TARGET=node react-router build --config vite.node.config.ts && vite build --config vite.node-server.config.ts",
