@@ -534,17 +534,26 @@ describe("workspace pages", () => {
               assert.match(markup, /value: Invalid input/);
             },
           ),
+          then.assert("merged queries that share an alias fail the build", async (ctx) => {
+            const { verifyError } = await writePage(
+              ctx,
+              automationsPage.replaceAll("waiting", "run").replaceAll("failed", "run"),
+            );
+            assert.include(verifyError, "The query from item cannot run in TanStack DB");
+            assert.include(verifyError, '"run"');
+          }),
           then.assert(
-            "merged queries that share an alias fail verification with the fix",
+            "nested rows that do not match the selecting row by eq fail the build",
             async (ctx) => {
               const { verifyError } = await writePage(
                 ctx,
-                automationsPage.replaceAll("waiting", "run").replaceAll("failed", "run"),
+                automationsPage.replace(
+                  ".where(({ run }) => eq(run.workflow, workflow.workflow))",
+                  ".where(({ run }) => gte(run.workflow, workflow.workflow))",
+                ),
               );
-              assert.include(
-                verifyError,
-                'unionAll(...queries) merges queries with distinct aliases; "run" names a source of more than one',
-              );
+              assert.include(verifyError, "The query from workflow cannot run in TanStack DB");
+              assert.include(verifyError, '"latest"');
             },
           ),
         ],
@@ -573,8 +582,7 @@ describe("workspace pages", () => {
 `,
             );
             assert.include(diagnostics.join("\n"), "Property 'statsu' does not exist");
-            const fieldError =
-              'run.statsu: workflowInstances has no "statsu" field. Fields: id, workflowName';
+            const fieldError = 'workflowInstances has no "statsu" field. Fields: id, workflowName';
             assert.include(verifyError, fieldError);
             const loaded = await loadBuiltPage(ctx);
             assert(loaded.kind === "failed", JSON.stringify(loaded));
@@ -595,7 +603,7 @@ describe("workspace pages", () => {
         setup: ({ given }) => [given.organization.exists({ id: orgId, name: "Ada Labs" })],
         steps: ({ then }) => [
           then.assert("the verification and the route name the field and the fix", async (ctx) => {
-            // TanStack DB rejects this only once the browser runs the query.
+            // TanStack DB rejects it as the build compiles the query, before any row arrives.
             const { diagnostics, verifyError } = await writePage(
               ctx,
               `export default page.define(({ collections, from, count }) =>
@@ -613,8 +621,9 @@ describe("workspace pages", () => {
             );
             assert.deepEqual(diagnostics, [], diagnostics.join("\n"));
             const ungrouped =
-              "The query from events is grouped, but select series reads event.eventType, which is neither grouped nor aggregated; add it to groupBy, or aggregate it, such as max(event.eventType).";
+              "The query from events is grouped, so it selects and filters only its group keys";
             assert.include(verifyError, ungrouped);
+            assert.include(verifyError, "'series'");
             const loaded = await loadBuiltPage(ctx);
             assert(loaded.kind === "failed", JSON.stringify(loaded));
             assert.include(loaded.message, ungrouped);
