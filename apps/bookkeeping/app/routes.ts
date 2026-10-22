@@ -6,6 +6,7 @@ export default [
     route("signup", "public/signup.tsx"),
     route("login", "public/login.tsx"),
     route("help", "public/help.tsx"),
+    route("name", "public/name.tsx"),
     route("welcome", "welcome/welcome.tsx"),
     route("invitations/:invitationId", "invitations/invitation.tsx"),
   ]),

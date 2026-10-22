@@ -85,7 +85,7 @@ export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
           />
         </div>
         <ButtonLink variant="secondary" to={`${base}/account`} className="max-w-48">
-          <span className="truncate">{user.name || user.email}</span>
+          <span className="truncate">{user.name}</span>
         </ButtonLink>
       </header>
       <div className="border-b border-[var(--bo-border)] min-[960px]:hidden">

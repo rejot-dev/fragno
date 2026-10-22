@@ -38,7 +38,12 @@ test("an owner invites a colleague, who follows the emailed link, signs in with 
         },
       },
     });
-    expect(await charles.signIn("charles@example.test", invitationPath)).toMatchObject({
+    // He gives his name before he joins, then comes back to the invitation.
+    const named = await charles.signIn("charles@example.test", invitationPath);
+    expect(named).toMatchObject({
+      path: `/name?returnTo=${encodeURIComponent(invitationPath)}`,
+    });
+    expect(await charles.submit(named.path, { name: "Charles Babbage" })).toMatchObject({
       path: invitationPath,
       loaderData: { "invitations/invitation": { signedInAs: "charles@example.test" } },
     });
@@ -62,7 +67,7 @@ test("an owner invites a colleague, who follows the emailed link, signs in with 
         "workspace/members": {
           members: [
             { name: "Ada Lovelace", email: "ada@example.test", roles: ["owner"] },
-            { name: "", email: "charles@example.test", roles: ["member"] },
+            { name: "Charles Babbage", email: "charles@example.test", roles: ["member"] },
           ],
           invitations: [],
         },
@@ -84,8 +89,13 @@ test("an invitation works only for its address, and only owners and admins invit
     });
     const invitationPath = new URL((forDora.actionData as { link: string }).link).pathname;
 
+    scenario.backoffice.addUser({ email: "eve@example.test", name: "Eve" });
     const eve = scenario.browser();
-    await eve.signIn("eve@example.test", invitationPath);
+    expect(await eve.signIn("eve@example.test", invitationPath)).toMatchObject({
+      loaderData: {
+        "invitations/invitation": { email: "dora@example.test", signedInAs: "eve@example.test" },
+      },
+    });
     expect(await eve.submit(invitationPath, {})).toMatchObject({
       path: invitationPath,
       actionData: {
@@ -97,6 +107,7 @@ test("an invitation works only for its address, and only owners and admins invit
       "ada@example.test",
     ]);
 
+    scenario.backoffice.addUser({ email: "dora@example.test", name: "Dora" });
     const dora = scenario.browser();
     await dora.signIn("dora@example.test", invitationPath);
     await dora.submit(invitationPath, {});
@@ -129,6 +140,7 @@ test("when Backoffice cannot email, the owner sends the invitation link themselv
     expect(invited.actionData).toMatchObject({ status: "invited", emailed: false });
     expect(scenario.backoffice.sentInvitations).toEqual([]);
 
+    scenario.backoffice.addUser({ email: "charles@example.test", name: "Charles Babbage" });
     const charles = scenario.browser();
     const invitationPath = new URL((invited.actionData as { link: string }).link).pathname;
     await charles.signIn("charles@example.test", invitationPath);

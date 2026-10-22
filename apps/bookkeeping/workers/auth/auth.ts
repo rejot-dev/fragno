@@ -153,7 +153,8 @@ export class Auth extends DurableObject<CloudflareEnv> {
 
   /**
    * The names Bookkeeping's users gave it, by Backoffice user ID. Backoffice's member lists have
-   * no name for people who signed up with an email code.
+   * no name for people who signed up with an email code. Anyone who never signed in to
+   * Bookkeeping, or has not given a name yet, is absent.
    */
   findNames(backofficeUserIds: string[]): Record<string, string> {
     // One JSON parameter: Durable Object SQLite binds at most 100 values per statement.
@@ -165,7 +166,9 @@ export class Auth extends DurableObject<CloudflareEnv> {
         JSON.stringify(backofficeUserIds),
       )
       .toArray();
-    return Object.fromEntries(rows.map(({ accountId, name }) => [accountId, name]));
+    return Object.fromEntries(
+      rows.filter(({ name }) => name.trim() !== "").map(({ accountId, name }) => [accountId, name]),
+    );
   }
 
   /** Bookkeeping keeps the name people give it; Backoffice's sign-up asks only for an email. */

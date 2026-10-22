@@ -13,11 +13,22 @@ export function currentPath(request: Request): string {
   return url.pathname + url.search;
 }
 
-/** The signed-in person. Without a session, they sign in and come back here. */
+/**
+ * The signed-in person. Without a session, they sign in and come back here; without a name, they
+ * give one first.
+ */
 export async function requireSessionUser(request: Request): Promise<SessionUser> {
   const user = await getSessionUser(request);
   if (!user) {
     throw redirect(`/login?returnTo=${encodeURIComponent(currentPath(request))}`);
+  }
+  return requireName(request, user);
+}
+
+/** Someone without a name gives one first, then comes back here. */
+export function requireName(request: Request, user: SessionUser): SessionUser {
+  if (user.name.trim() === "") {
+    throw redirect(`/name?returnTo=${encodeURIComponent(currentPath(request))}`);
   }
   return user;
 }

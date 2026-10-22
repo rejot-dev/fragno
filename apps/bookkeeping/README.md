@@ -36,17 +36,18 @@ pnpm dev
 ```
 
 Routes: `/` (public frontpage), `/login` (get started), `/help` (help signing in), `/signup`
-(redirects to `/login`), `/start` (where signing in lands), `/welcome` (the sign-up wizard),
-`/invitations/:invitationId` (join a workspace), `/w/:slug` (workspace overview and its
-administrations), `/w/:slug/administrations/new` (create one), `/w/:slug/a/:administration` (an
-administration's books), `/w/:slug/members` (members and invitations), `/w/:slug/account` (profile
-and logout), and Better Auth's `/api/auth/*` endpoints. The workspace uses a collapsible desktop
-sidebar, mobile navigation, and a workspace switcher. Workspace routes require a session and the
-person's membership. Pages that require a session send signed-out visitors to
-`/login?returnTo=<page>`, which continues to that page, and only to Bookkeeping's own pages.
-Signed-in visitors at `/login` continue to its `returnTo`. When Backoffice no longer accepts
-Bookkeeping's authorization, the page sends them to `/login?reauthorize=1&returnTo=<page>` to sign
-in again. Personalized route responses are marked private and non-cacheable.
+(redirects to `/login`), `/name` (asks a new person's name), `/start` (where signing in lands),
+`/welcome` (the sign-up wizard), `/invitations/:invitationId` (join a workspace), `/w/:slug`
+(workspace overview and its administrations), `/w/:slug/administrations/new` (create one),
+`/w/:slug/a/:administration` (an administration's books), `/w/:slug/members` (members and
+invitations), `/w/:slug/account` (profile and logout), and Better Auth's `/api/auth/*` endpoints.
+The workspace uses a collapsible desktop sidebar, mobile navigation, and a workspace switcher.
+Workspace routes require a session and the person's membership. Pages that require a session send
+signed-out visitors to `/login?returnTo=<page>`, and people without a name to
+`/name?returnTo=<page>`; both continue to that page, and only to Bookkeeping's own pages. Signed-in
+visitors at `/login` continue to its `returnTo`. When Backoffice no longer accepts Bookkeeping's
+authorization, the page sends them to `/login?reauthorize=1&returnTo=<page>` to sign in again.
+Personalized route responses are marked private and non-cacheable.
 
 Signing in requires JavaScript. An administration's books open empty; transaction, accounting, and
 reporting functionality are not implemented.
@@ -137,12 +138,12 @@ members, and their roles (owner, admin, member); Bookkeeping keeps a read-only c
 `Workspaces` object and never changes membership itself. Everyone in a workspace can open its books.
 
 **Creating one.** Someone without a workspace lands in the sign-up wizard at `/welcome`, a
-`create-workspace` workflow (`workers/workflows/create-workspace.ts`). It asks their name when
-Backoffice has none, which is the case after an email-code sign-up, then their business's name. It
-then creates the Backoffice organization with `organizations.provision`, which installs Bookkeeping
-there for them as its owner, and records the workspace. Answers wait durably, so people can leave
-and come back. Creating the organization retries while Backoffice is unreachable; if it still fails,
-**Try again** retries that step with the answers given.
+`create-workspace` workflow (`workers/workflows/create-workspace.ts`), once they have given their
+name. It asks their business's name, then creates the Backoffice organization with
+`organizations.provision`, which installs Bookkeeping there for them as its owner, and records the
+workspace. Answers wait durably, so people can leave and come back. Creating the organization
+retries while Backoffice is unreachable; if it still fails, **Try again** retries that step with the
+answers given.
 
 **Access.** Each workspace request checks the person's membership. A membership Backoffice confirmed
 in the last minute is trusted; otherwise Bookkeeping exchanges the person's Backoffice token for a

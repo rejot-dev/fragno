@@ -101,7 +101,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
   const names = await env.AUTH.getByName("auth").findNames(listed.map(({ userId }) => userId));
   const members: WorkspaceMember[] = listed.map((member) => ({
     userId: member.userId,
-    name: names[member.userId] || member.name,
+    name: names[member.userId] ?? member.name,
     email: member.email,
     roles: parseRoles(member.roles),
   }));
@@ -160,7 +160,7 @@ export async function action({ request, params }: Route.ActionArgs) {
     workspaceId: membership.workspace.id,
     email: invitation.email,
     roles: parseRoles(invitation.roles),
-    invitedBy: user.name || user.email,
+    invitedBy: user.name,
     expiresAt: Date.parse(invitation.expiresAt),
   });
   return {

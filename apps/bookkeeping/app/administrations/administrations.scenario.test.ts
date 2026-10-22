@@ -19,6 +19,7 @@ async function charlesJoins(scenario: BookkeepingScenario, ada: ScenarioBrowser)
     role: "member",
   });
   const invitationPath = new URL((invited.actionData as { link: string }).link).pathname;
+  scenario.backoffice.addUser({ email: "charles@example.test", name: "Charles Babbage" });
   const charles = scenario.browser();
   await charles.signIn("charles@example.test", invitationPath);
   await charles.submit(invitationPath, {});

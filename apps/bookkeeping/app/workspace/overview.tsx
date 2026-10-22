@@ -41,7 +41,7 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
     <div className="space-y-6">
       <BackofficePageHeader
         title={workspace.name}
-        description={`Welcome${user.name ? `, ${user.name}` : ""}. Each administration holds the books of one business.`}
+        description={`Welcome, ${user.name}. Each administration holds the books of one business.`}
         breadcrumbs={[{ label: workspace.name, to: base }, { label: "Overview" }]}
         actions={create}
       />

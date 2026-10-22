@@ -14,20 +14,13 @@ export function meta() {
   return [{ title: "Welcome · Bookkeeping" }];
 }
 
-const answerSchema = z.discriminatedUnion("intent", [
-  z.object({
-    intent: z.literal("name"),
-    name: z.string().trim().min(1, "Enter your name.").max(100, "Use at most 100 characters."),
-  }),
-  z.object({
-    intent: z.literal("business-name"),
-    businessName: z
-      .string()
-      .trim()
-      .min(1, "Enter your business's name.")
-      .max(160, "Use at most 160 characters."),
-  }),
-]);
+const businessNameSchema = z.object({
+  businessName: z
+    .string()
+    .trim()
+    .min(1, "Enter your business's name.")
+    .max(160, "Use at most 160 characters."),
+});
 
 function workflows() {
   return env.WORKFLOWS.getByName("workflows");
@@ -57,14 +50,11 @@ export async function action({ request }: Route.ActionArgs) {
     await workflows().retryWizard(user.id);
     throw redirect("/welcome");
   }
-  const parsed = answerSchema.safeParse(form);
+  const parsed = businessNameSchema.safeParse(form);
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Check your answer." };
   }
-  const answer: WizardAnswer =
-    parsed.data.intent === "name"
-      ? { type: "name", payload: { name: parsed.data.name } }
-      : { type: "business-name", payload: { businessName: parsed.data.businessName } };
+  const answer: WizardAnswer = { type: "business-name", payload: parsed.data };
   await workflows().answerWizard({ userId: user.id, answer });
   throw redirect("/welcome");
 }
@@ -73,35 +63,19 @@ export function headers() {
   return { "Cache-Control": "private, no-store" };
 }
 
-function Question({
-  intent,
-  title,
-  description,
-  label,
-  autoComplete,
-  error,
-}: {
-  intent: "name" | "business-name";
-  title: string;
-  description: string;
-  label: string;
-  autoComplete: string;
-  error: string | null;
-}) {
+function BusinessNameQuestion({ error }: { error: string | null }) {
   const navigation = useNavigation();
-  const field = intent === "name" ? "name" : "businessName";
   return (
     <Form method="post" className="space-y-5">
       <div className="space-y-2">
-        <h1>{title}</h1>
-        <p>{description}</p>
+        <h1>What's your business called?</h1>
+        <p>We'll set up a workspace for its books. You can invite others to it later.</p>
       </div>
-      <input type="hidden" name="intent" value={intent} />
-      <Field label={label}>
+      <Field label="Business name">
         <Input
           className="w-full"
-          name={field}
-          autoComplete={autoComplete}
+          name="businessName"
+          autoComplete="organization"
           required
           autoFocus
           aria-invalid={error ? true : undefined}
@@ -151,28 +125,9 @@ export default function Welcome({ loaderData, actionData }: Route.ComponentProps
   const error = actionData?.error ?? null;
   return (
     <section className="auth">
-      {wizard.step === "name" && (
-        <Question
-          intent="name"
-          title="Welcome! What's your name?"
-          description="It's how you'll appear to the people you work with."
-          label="Your name"
-          autoComplete="name"
-          error={error}
-        />
-      )}
-      {wizard.step === "business-name" && (
-        <Question
-          intent="business-name"
-          title="What's your business called?"
-          description="We'll set up a workspace for its books. You can invite others to it later."
-          label="Business name"
-          autoComplete="organization"
-          error={error}
-        />
-      )}
+      {wizard.step === "business-name" && <BusinessNameQuestion error={error} />}
       {wizard.step === "next-question" && (
-        <Working title="One moment…" description="Your next question is on its way." />
+        <Working title="One moment…" description="Your first question is on its way." />
       )}
       {wizard.step === "setting-up" && (
         <Working title="Setting up your workspace…" description="This takes a few seconds." />
