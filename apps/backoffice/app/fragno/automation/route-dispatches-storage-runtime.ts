@@ -1,6 +1,7 @@
 import type { AutomationRouteDefinition } from "@fragno-dev/backoffice-api/v0/automation";
 import {
   type AutomationEvent,
+  automationEventParentOf,
   type AutomationEventRouteDispatch,
   automationEventRootId,
   type AutomationRouteDispatchOutcome,
@@ -9,6 +10,7 @@ import {
 
 import type { Cursor, DatabaseServiceContext, TxResult } from "@fragno-dev/db";
 
+import { AUTOMATION_SYSTEM_INITIATOR } from "./actors";
 import type { AutomationHookUnitOfWork } from "./internal-hooks";
 import { automationFragmentSchema } from "./schema";
 
@@ -136,6 +138,51 @@ export function recordMatchedRoute(uow: AutomationHookUnitOfWork, subject: Route
 
 type AutomationRouteDispatchServiceContext = DatabaseServiceContext<Record<string, never>>;
 
+export const AUTOMATION_ROUTE_FAILED_SOURCE = "automations" as const;
+export const AUTOMATION_ROUTE_FAILED_EVENT_TYPE = "route.failed" as const;
+
+export function isRouteFailedEvent(event: Pick<AutomationEvent, "source" | "eventType">) {
+  return (
+    event.source === AUTOMATION_ROUTE_FAILED_SOURCE &&
+    event.eventType === AUTOMATION_ROUTE_FAILED_EVENT_TYPE
+  );
+}
+
+/**
+ * Announces that a route failed for good on an event, as an event the route caused, so other
+ * routes can act on it and traces show it under the route.
+ */
+export function buildRouteFailedEvent({
+  event,
+  route,
+  failedAttempts,
+  error,
+}: {
+  event: AutomationEvent;
+  route: Pick<AutomationRouteDefinition, "id" | "name">;
+  failedAttempts: number;
+  error: string;
+}): AutomationEvent {
+  return {
+    // A retried route can fail again, and each failure is its own event.
+    id: `route-failed:${route.id}:${crypto.randomUUID()}`,
+    scope: event.scope,
+    scopeRestriction: event.scopeRestriction,
+    source: AUTOMATION_ROUTE_FAILED_SOURCE,
+    eventType: AUTOMATION_ROUTE_FAILED_EVENT_TYPE,
+    occurredAt: new Date().toISOString(),
+    payload: {
+      route: { id: route.id, name: route.name },
+      event: { id: event.id, source: event.source, eventType: event.eventType },
+      error,
+      failedAttempts,
+    },
+    actors: { initiator: AUTOMATION_SYSTEM_INITIATOR, principal: null, delegation: [] },
+    subject: null,
+    causation: { kind: "route", routeId: route.id, parent: automationEventParentOf(event) },
+  };
+}
+
 /** Cursors of `listRoutesWithStatus` name this index. */
 export const ROUTES_BY_STATUS_INDEX = "idx_automation_route_dispatch_status_dispatchedAt";
 
@@ -231,7 +278,7 @@ export const createAutomationRouteDispatchServices = (
     },
     /**
      * A replayed route, such as one whose completion committed before its hook did, keeps the
-     * state it settled with first.
+     * state it settled with first. Reads whether this update is the one that settles the route.
      */
     updateRouteDispatch({
       state,
@@ -245,13 +292,17 @@ export const createAutomationRouteDispatchServices = (
             b.whereIndex("primary", (eb) => eb("id", "=", subjectDispatchId(subject))),
           ),
         )
-        .mutate(({ uow, retrieveResult: [row] }) => {
+        .transformRetrieve(([row]) => ({
+          row,
+          settles: !!row && !isRouteDispatchSettled(readRouteDispatchState(row)),
+        }))
+        .mutate(({ uow, retrieveResult: { row, settles } }) => {
           if (!row) {
             throw new Error(
               `Automation route ${subject.route.id} has no dispatch for event ${subject.event.id}.`,
             );
           }
-          if (isRouteDispatchSettled(readRouteDispatchState(row))) {
+          if (!settles) {
             return;
           }
           uow.update("automation_route_dispatch", row.id, (b) =>

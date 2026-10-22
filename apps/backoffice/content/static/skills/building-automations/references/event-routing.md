@@ -189,5 +189,14 @@ Follow each outcome to the work it names:
 Report ingestion and downstream execution separately, including failures, pending work, and any
 missing evidence.
 
+## Act when a route fails
+
+Each time a route fails for good, the scope records an `automations` `route.failed` event, caused by
+that route, so it appears under the route in the event's trace. Its payload is
+`{ route: { id, name }, event: { id, source, eventType }, error, failedAttempts }`. Route it like
+any event to be told about failures, for example with `notify_agent`, or match `$.payload.route.id`
+to watch one route. A retried route that fails again records another. A route that fails while
+handling a `route.failed` event records none, so failures cannot feed each other.
+
 **Complete when** the owning scope, matching event IDs, relevant payloads, and downstream outcomes
 are supported by retrieved evidence, or the exact unverified boundary is stated.

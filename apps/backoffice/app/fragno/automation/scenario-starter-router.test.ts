@@ -2,13 +2,24 @@ import { assert, describe, expect, test, vi } from "vitest";
 
 import {
   type AutomationEvent,
+  automationEventListResultSchema,
   automationEventRoutesListResultSchema,
 } from "@fragno-dev/backoffice-api/v0/events";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import type { CausalFlameNode } from "@fragno-private/design-system/causal-flame-graph-model";
 
 import { and, eq, queryOnce } from "@tanstack/react-db";
 
 import { getStaticMarketplaceEntry } from "@/fragno/marketplace/static-entries";
+import {
+  eventTraceDispatch,
+  eventTraceDispatchesQuery,
+  eventTraceEventsQuery,
+  projectEventTrace,
+  projectEventTraceSummaries,
+  type EventTraceDispatchRow,
+  type EventTraceEvent,
+} from "@/routes/backoffice/dashboard/event-traces";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
   class MockDurableObject {
@@ -103,6 +114,29 @@ async function eventsWithFailedRoutes(ctx: BackofficeScenarioContext) {
   assert(response.ok, await response.clone().text());
   const { routes } = automationEventRoutesListResultSchema.parse(await response.json());
   return routes.map(({ eventId }) => eventId);
+}
+
+/** The `automations` `route.failed` events stored in org-1, newest first. */
+async function routeFailedEvents(ctx: BackofficeScenarioContext) {
+  const response = await ctx.runtime.objects.automations
+    .forOrg("org-1")
+    .http.fetch(new Request("https://automations.test/api/automations/events?limit=100"));
+  assert(response.ok, await response.clone().text());
+  const { events } = automationEventListResultSchema.parse(await response.json());
+  return events.filter(
+    (event) => event.source === "automations" && event.eventType === "route.failed",
+  );
+}
+
+/** One line per node, siblings in label order, as in the event causation scenario. */
+function outline(node: CausalFlameNode, depth = 0): string[] {
+  const detail = node.detail === null ? "" : ` (${node.detail})`;
+  return [
+    `${"  ".repeat(depth)}${node.kind} ${node.label} [${node.status}]${detail}`,
+    ...[...node.children]
+      .sort((left, right) => left.label.localeCompare(right.label))
+      .flatMap((child) => outline(child, depth + 1)),
+  ];
 }
 
 const telegramTestCommandEntry = getStaticMarketplaceEntry({
@@ -986,18 +1020,35 @@ describe("starter automation router scenarios", () => {
     );
   });
 
-  test("a route sending to a finished run fails at once", async () => {
+  test("a route sending to a finished run fails at once and announces its failure", async () => {
     const event = customAutomationEvent({
       id: "late-signal-1",
       eventType: "late.signal",
       payload: { value: "too late" },
     });
+    const finishedRunError =
+      "Workflow run finished-run-1 has finished, so it can no longer receive events (INSTANCE_TERMINAL).";
+    const sendToFinishedRun = (id: string, name: string, source: string, eventType: string) =>
+      ({
+        orgId: "org-1",
+        id,
+        name,
+        enabled: true,
+        trigger: { kind: "event", source, eventType, matcher: null },
+        priority: 50,
+        action: {
+          kind: "send_workflow_event",
+          target: { kind: "instance_id", template: "finished-run-1" },
+          eventType: "late-signal",
+          payload: "$event",
+        },
+      }) as const;
 
     await runBackofficeScenario(
       defineBackofficeScenario({
         objects: scenarioObjects,
-        name: "a route to a finished run fails at once",
-        // The route that sends to the finished run stays failed.
+        name: "a route to a finished run fails and announces it",
+        // Both routes that send to the finished run stay failed.
         options: { allowFailedDurableHooks: true },
 
         files: backofficeFiles.workspaceStarter(),
@@ -1009,20 +1060,42 @@ describe("starter automation router scenarios", () => {
             path: "/workspace/automations/finished-run.workflow.js",
             content: `defineWorkflow({ name: "finished-run" }, async () => ({ done: true }));`,
           }),
+          given.router.route(
+            sendToFinishedRun(
+              "send-to-finished-run",
+              "Send to a finished run",
+              "custom",
+              "late.signal",
+            ),
+          ),
           given.router.route({
             orgId: "org-1",
-            id: "send-to-finished-run",
-            name: "Send to a finished run",
+            id: "raise-failure-alert",
+            name: "Raise an alert for a failed route",
             enabled: true,
-            trigger: { kind: "event", source: "custom", eventType: "late.signal", matcher: null },
-            priority: 50,
+            trigger: {
+              kind: "event",
+              source: "automations",
+              eventType: "route.failed",
+              matcher: null,
+            },
+            priority: 40,
             action: {
-              kind: "send_workflow_event",
-              target: { kind: "instance_id", template: "finished-run-1" },
-              eventType: "late-signal",
-              payload: "$event",
+              kind: "reclassify_event",
+              source: "custom",
+              eventType: "route.alert",
+              payload: { kind: "projection", fields: { routeId: "$.payload.route.id" } },
             },
           }),
+          // Fails on the announcement too, which must not announce itself.
+          given.router.route(
+            sendToFinishedRun(
+              "alert-finished-run",
+              "Tell the finished run",
+              "automations",
+              "route.failed",
+            ),
+          ),
         ],
 
         steps: ({ when, then, runner }) => [
@@ -1043,23 +1116,98 @@ describe("starter automation router scenarios", () => {
           when.automation.ingestEvent(event),
           runner.drain(),
 
-          then.assert("the route failed on its first attempt, without retrying", async (ctx) => {
+          then.assert("the route failed on its first attempt", async (ctx) => {
             expect(await routeDispatchStates(ctx, event.id)).toEqual({
               "send-to-finished-run": {
                 status: "failed",
                 failedAttempts: 1,
-                error:
-                  "Workflow run finished-run-1 has finished, so it can no longer receive events (INSTANCE_TERMINAL).",
+                error: finishedRunError,
               },
             });
+          }),
+          then.assert("its failure was announced once, under the route", async (ctx) => {
+            const announcements = await routeFailedEvents(ctx);
+            expect(announcements).toMatchObject([
+              {
+                payload: {
+                  route: { id: "send-to-finished-run", name: "Send to a finished run" },
+                  event: { id: event.id, source: "custom", eventType: "late.signal" },
+                  error: finishedRunError,
+                  failedAttempts: 1,
+                },
+                causation: {
+                  kind: "route",
+                  routeId: "send-to-finished-run",
+                  parent: { eventId: event.id },
+                },
+              },
+            ]);
+            const [announcement] = announcements;
+            assert(announcement);
+            expect(await routeDispatchStates(ctx, announcement.id)).toEqual({
+              "raise-failure-alert": {
+                status: "completed",
+                outcome: {
+                  kind: "event_reclassified",
+                  eventId: `reclassified:raise-failure-alert:${announcement.id}`,
+                },
+                failedAttempts: 0,
+              },
+              "alert-finished-run": {
+                status: "failed",
+                failedAttempts: 1,
+                error: finishedRunError,
+              },
+            });
+          }),
+          then.assert("the trace shows each failure under its route", async (ctx) => {
+            const database = ctx.tanstack.automations.forOrg("org-1");
+            await database.sync();
+            const { collections } = database;
+            const [events, dispatchRows] = (await Promise.all([
+              queryOnce((query) => eventTraceEventsQuery(query, collections)),
+              queryOnce((query) => eventTraceDispatchesQuery(query, collections)),
+            ])) as [EventTraceEvent[], EventTraceDispatchRow[]];
+            const dispatches = dispatchRows.map(eventTraceDispatch);
+            const trace = projectEventTrace({
+              rootEventId: event.id,
+              events,
+              dispatches,
+              runs: [],
+              steps: [],
+              deliveries: [],
+            });
+            const gaveUp = `Gave up after 1 attempt: ${finishedRunError}`;
+            expect(trace && outline(trace.root)).toEqual([
+              "event custom · late.signal [ok]",
+              `  route Send to a finished run [failed] (${gaveUp})`,
+              "    event automations · route.failed [ok]",
+              "      route Raise an alert for a failed route [ok] (Reclassified the event)",
+              "        event custom · route.alert [ok]",
+              `      route Tell the finished run [failed] (${gaveUp})`,
+            ]);
+            const summaries = projectEventTraceSummaries({
+              events,
+              dispatches,
+              runs: [],
+              limit: 10,
+            });
+            expect(summaries.find((summary) => summary.rootEventId === event.id)).toMatchObject({
+              outcome: { kind: "settled", failedCount: 2 },
+            });
+          }),
+          then.assert("neither failed route retried", async (ctx) => {
             const queue = await ctx.runtime.objects.automations
               .forOrg("org-1")
               .commands.getDurableHookQueue("automation", { pageSize: 100 });
             expect(
-              queue.items.filter(
-                (item) => item.hookName === "internalDispatchRoute" && item.status !== "completed",
-              ),
-            ).toMatchObject([{ status: "failed", attempts: 1 }]);
+              queue.items
+                .filter((item) => item.hookName === "internalDispatchRoute")
+                .filter((item) => item.status !== "completed"),
+            ).toMatchObject([
+              { status: "failed", attempts: 1 },
+              { status: "failed", attempts: 1 },
+            ]);
           }),
         ],
       }),

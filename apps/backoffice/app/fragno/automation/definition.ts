@@ -75,8 +75,10 @@ import type {
 } from "./internal-hooks";
 import { createAutomationProjectServices } from "./projects-storage-runtime";
 import {
+  buildRouteFailedEvent,
   createAutomationRouteDispatchServices,
   isRouteDispatchSettled,
+  isRouteFailedEvent,
   readRouteDispatchState,
   recordMatchedRoute,
   routeDispatchId,
@@ -930,7 +932,9 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
             const failedAttempts = this.attempts + 1;
             const exhausted =
               failedAttempts >= this.maxAttempts || !routeDispatchRetryPolicy.isRetryable(error);
-            await this.handlerTx()
+            const message = error instanceof Error ? error.message : String(error);
+            const handlerTx: DatabaseHandlerTx<AutomationInternalHooks> = this.handlerTx.bind(this);
+            await handlerTx()
               .withServiceCalls(
                 () =>
                   [
@@ -939,11 +943,22 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
                       state: {
                         status: exhausted ? "failed" : "retrying",
                         failedAttempts,
-                        error: error instanceof Error ? error.message : String(error),
+                        error: message,
                       },
                     }),
                   ] as const,
               )
+              .mutate(({ forSchema, serviceIntermediateResult: [update] }) => {
+                // A route that fails on such an announcement announces nothing, so failures
+                // cannot feed each other.
+                if (!exhausted || !update.settles || isRouteFailedEvent(event)) {
+                  return;
+                }
+                ingestAutomationEvent(
+                  forSchema(automationFragmentSchema),
+                  buildRouteFailedEvent({ event, route, failedAttempts, error: message }),
+                );
+              })
               .execute();
             throw error;
           }
