@@ -153,6 +153,16 @@ describe("runtime tool reference generation", () => {
           bashOptions: ["id"],
         },
         {
+          id: "events.retry-route",
+          namespace: "events",
+          codemodeProvider: "events",
+          codemodeTool: "retryRoute",
+          inputType: "EventsRetryRouteInput",
+          outputType: "EventsRetryRouteOutput",
+          bashCommand: "events.retry-route",
+          bashOptions: ["id", "route"],
+        },
+        {
           id: "events.catalog.list",
           namespace: "events",
           codemodeProvider: "events",

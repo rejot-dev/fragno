@@ -34,6 +34,7 @@ export type EventRuntime = {
   emitEvent: (input: EventEmitArgs) => Promise<AutomationEmitEventResult>;
   listEvents(input: EventListInput): Promise<z.infer<typeof automationEventListResultSchema>>;
   getEvent(input: { id: string }): Promise<AutomationEventDetail | null>;
+  retryRoute(input: { id: string; routeId: string }): Promise<AutomationEventRouteDispatch | null>;
 };
 
 type EventToolContext = BackofficeToolContext<{ event?: EventRuntime }>;
@@ -260,12 +261,70 @@ const getEventTool = defineBackofficeRuntimeTool({
   },
 });
 
-/** Event runtime tools expose emission and current-scope stored event reads. */
-export const eventRuntimeTools = [fireEventTool, listEventsTool, getEventTool] as const;
+const retryRouteTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("events.retry-route"),
+  namespace: "events",
+  name: "retryRoute",
+  execute: async (input, context: EventToolContext) =>
+    await getEventRuntime(context.runtimes.event).retryRoute(input),
+  adapters: {
+    bash: {
+      command: "events.retry-route",
+      help: {
+        summary:
+          "events.retry-route runs a route that failed for good on a stored event again, as the route was when the event matched it.",
+        options: [
+          {
+            name: "id",
+            required: true,
+            valueRequired: true,
+            valueName: "id",
+            description: "Stored event id.",
+          },
+          {
+            name: "route",
+            required: true,
+            valueRequired: true,
+            valueName: "id",
+            description: "Id of a route the event matched, from events.get.",
+          },
+        ],
+        examples: ["events.retry-route --id event-1 --route deliver-to-run"],
+      },
+      parse: defineCliArgsParser<{ id: string; routeId: string }>("events.retry-route", {
+        id: { required: true },
+        routeId: { required: true, option: "route" },
+      }),
+      format: (route, options) => {
+        if (!route) {
+          return { stderr: "The event did not match this route.\n", exitCode: 1 };
+        }
+        return options.format === "json"
+          ? { data: route }
+          : { stdout: `${formatRouteDispatch(route)}\n` };
+      },
+    },
+  },
+});
+
+/** Event runtime tools expose emission, current-scope stored event reads, and route retries. */
+export const eventRuntimeTools = [
+  fireEventTool,
+  listEventsTool,
+  getEventTool,
+  retryRouteTool,
+] as const;
 
 export const eventFireToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "events",
   tools: [fireEventTool],
+  isAvailable: (context: EventToolContext) => !!context.runtimes.event,
+});
+
+/** Retrying a route runs its action, which needs the router.modify permission. */
+export const eventRetryToolFamily = defineBackofficeRuntimeToolFamily({
+  namespace: "events",
+  tools: [retryRouteTool],
   isAvailable: (context: EventToolContext) => !!context.runtimes.event,
 });
 

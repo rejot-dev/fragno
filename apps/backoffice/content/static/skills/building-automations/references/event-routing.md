@@ -145,8 +145,10 @@ the event matched, each with its `status`:
 - `completed`: `outcome` says what the route did, such as the workflow run it started or the derived
   event it produced. `failedAttempts` above zero means it only acted after retries.
 - `failed`: the route gave up on `error`, because no retry could fix it, such as a denied scope, or
-  it ran out of attempts. It does not run again for this event, and a new event runs every route it
-  matches, not only this one.
+  it ran out of attempts. Fix what it depends on, such as a missing workflow run, file, or
+  permission, then run only this route again with `events.retryRoute({ id, routeId })`. It runs as
+  it was when the event matched it, so edits to the route apply only to new events; a new event runs
+  every route it matches, not only this one.
 
 An empty `routes` means no route matched; compare the event with each route's trigger and matcher.
 Follow `workflow_started` outcomes to the workflow instance they name. Report ingestion and

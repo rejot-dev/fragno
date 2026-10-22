@@ -32,7 +32,12 @@ import {
   type BackofficeCapabilitiesRuntime,
 } from "./families/backoffice-capabilities";
 import { cloudflareToolFamily, type CloudflareRuntime } from "./families/cloudflare";
-import { eventFireToolFamily, eventReadToolFamily, type EventRuntime } from "./families/event";
+import {
+  eventFireToolFamily,
+  eventReadToolFamily,
+  eventRetryToolFamily,
+  type EventRuntime,
+} from "./families/event";
 import { eventCatalogToolFamily, type EventCatalogRuntime } from "./families/event-catalog";
 import { formsToolFamily, type FormsRuntime } from "./families/forms";
 import {
@@ -117,6 +122,7 @@ export const runtimeToolFamilies = [
   hooksToolFamily,
   eventFireToolFamily,
   eventReadToolFamily,
+  eventRetryToolFamily,
   eventCatalogToolFamily,
   formsToolFamily,
   cloudflareToolFamily,

@@ -310,6 +310,33 @@ test("an agent reads where each route its event matched stands", async () => {
                 "reclassify (Reclassify the check): completed, event_reclassified",
               ].join("\n"),
             );
+
+            // Only a route that failed for good can run again, and only one the event matched.
+            expect(
+              await bash.exec(`events.retry-route --id ${eventId} --route deliver`),
+            ).toMatchObject({
+              exitCode: 1,
+              stderr: expect.stringContaining("Only a route that failed for good can be retried"),
+            });
+            expect(
+              await bash.exec(`events.retry-route --id ${eventId} --route unknown`),
+            ).toMatchObject({ exitCode: 1, stderr: "The event did not match this route.\n" });
+            expect(
+              await bash.exec(`events.retry-route --id ${eventId} --route forward`),
+            ).toMatchObject({
+              exitCode: 0,
+              stdout: "forward (Forward to another organization): pending, not attempted yet\n",
+            });
+            await ctx.drain();
+            // The retried route ran again from a fresh count, as it was when the event matched.
+            const retried = await bash.exec(`events.get --id ${eventId} --format json`);
+            expect(
+              (
+                JSON.parse(retried.stdout) as {
+                  routing: { routes: Array<{ routeId: string }> };
+                }
+              ).routing.routes.find((route) => route.routeId === "forward"),
+            ).toMatchObject({ status: "failed", failedAttempts: 1 });
           },
         ),
       ],

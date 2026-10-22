@@ -2753,6 +2753,45 @@
     ]
   },
   {
+    "command": "events.retry-route",
+    "summary": "events.retry-route runs a route that failed for good on a stored event again, as the route was when the event matched it.",
+    "options": [
+      {
+        "name": "id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Stored event id."
+      },
+      {
+        "name": "route",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Id of a route the event matched, from events.get."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "events.catalog.list",
     "summary": "events.catalog.list lists known automation event source/type pairs.",
     "options": [

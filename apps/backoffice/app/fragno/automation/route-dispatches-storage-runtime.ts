@@ -7,7 +7,7 @@ import {
   type AutomationRouteDispatchState,
 } from "@fragno-dev/backoffice-api/v0/events";
 
-import type { DatabaseServiceContext } from "@fragno-dev/db";
+import type { DatabaseServiceContext, TxResult } from "@fragno-dev/db";
 
 import type { AutomationHookUnitOfWork } from "./internal-hooks";
 import { automationFragmentSchema } from "./schema";
@@ -70,15 +70,52 @@ type RouteDispatchSubject = {
   route: Pick<AutomationRouteDefinition, "id" | "name">;
 };
 
-export function routeDispatchId({ event, route }: RouteDispatchSubject): string {
+/** Names both a route's dispatch row and the durable hook that runs the route. */
+export function routeDispatchId({
+  eventId,
+  routeId,
+}: {
+  eventId: string;
+  routeId: string;
+}): string {
   // Both ids may contain colons; the route id's length says where it ends.
-  return `${route.id.length}:${route.id}:${event.id}`;
+  return `${routeId.length}:${routeId}:${eventId}`;
 }
+
+function subjectDispatchId({ event, route }: RouteDispatchSubject): string {
+  return routeDispatchId({ eventId: event.id, routeId: route.id });
+}
+
+function routeDispatchOfRow(row: {
+  routeId: string;
+  routeName: string;
+  dispatchedAt: Date;
+  status: string;
+  outcome: AutomationRouteDispatchOutcome | null;
+  failedAttempts: number;
+  error: string | null;
+}): AutomationEventRouteDispatch {
+  return {
+    ...readRouteDispatchState(row),
+    routeId: row.routeId,
+    routeName: row.routeName,
+    matchedAt: row.dispatchedAt.toISOString(),
+  };
+}
+
+/**
+ * Whether a route was queued to act on its event again. `not_found` also covers a route whose hook
+ * is gone, so no retry can run it.
+ */
+export type AutomationRouteRetry =
+  | { status: "retried"; route: AutomationEventRouteDispatch }
+  | { status: "not_failed" }
+  | { status: "not_found" };
 
 /** Records that an event matched a route, before the route acts. */
 export function recordMatchedRoute(uow: AutomationHookUnitOfWork, subject: RouteDispatchSubject) {
   uow.create("automation_route_dispatch", {
-    id: routeDispatchId(subject),
+    id: subjectDispatchId(subject),
     eventId: subject.event.id,
     rootEventId: automationEventRootId(subject.event),
     routeId: subject.route.id,
@@ -108,15 +145,52 @@ export const createAutomationRouteDispatchServices = (
         )
         .transformRetrieve(([rows]) =>
           rows
-            .map(
-              (row): AutomationEventRouteDispatch => ({
-                ...readRouteDispatchState(row),
-                routeId: row.routeId,
-                routeName: row.routeName,
-                matchedAt: row.dispatchedAt.toISOString(),
-              }),
-            )
+            .map(routeDispatchOfRow)
             .sort((left, right) => left.routeId.localeCompare(right.routeId)),
+        )
+        .build();
+    },
+    /**
+     * Runs a route that failed for good on an event again. `retryHook` queues the route's durable
+     * hook again; the route reads as pending only when its hook will run, so a hook that already
+     * runs or completed is left alone, even when recording its failure did not commit.
+     */
+    retryRouteDispatch<
+      THookRetry,
+      THookRetryIntent extends { status: "retried" | "not_failed" | "not_found" },
+    >({
+      eventId,
+      routeId,
+      retryHook,
+    }: {
+      eventId: string;
+      routeId: string;
+      retryHook: (hookId: string) => TxResult<THookRetry, THookRetryIntent>;
+    }) {
+      const id = routeDispatchId({ eventId, routeId });
+      return this.serviceTx(automationFragmentSchema)
+        .withServiceCalls(() => [retryHook(id)] as const)
+        .retrieve((uow) =>
+          uow.findFirst("automation_route_dispatch", (b) =>
+            b.whereIndex("primary", (eb) => eb("id", "=", id)),
+          ),
+        )
+        .mutate(
+          ({
+            uow,
+            retrieveResult: [row],
+            serviceIntermediateResult: [hookRetry],
+          }): AutomationRouteRetry => {
+            if (!row || hookRetry.status === "not_found") {
+              return { status: "not_found" };
+            }
+            if (hookRetry.status === "not_failed") {
+              return { status: "not_failed" };
+            }
+            const pending = routeDispatchStateColumns({ status: "pending" });
+            uow.update("automation_route_dispatch", row.id, (b) => b.set(pending).check());
+            return { status: "retried", route: routeDispatchOfRow({ ...row, ...pending }) };
+          },
         )
         .build();
     },
@@ -133,7 +207,7 @@ export const createAutomationRouteDispatchServices = (
       return this.serviceTx(automationFragmentSchema)
         .retrieve((uow) =>
           uow.findFirst("automation_route_dispatch", (b) =>
-            b.whereIndex("primary", (eb) => eb("id", "=", routeDispatchId(subject))),
+            b.whereIndex("primary", (eb) => eb("id", "=", subjectDispatchId(subject))),
           ),
         )
         .mutate(({ uow, retrieveResult: [row] }) => {
