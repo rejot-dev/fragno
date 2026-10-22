@@ -4,6 +4,7 @@ import {
   type AutomationEventCausation,
   automationEventDetailSchema,
   automationEventListResultSchema,
+  automationEventRouteDispatchSchema,
   automationEventParentOf,
 } from "@fragno-dev/backoffice-api/v0/events";
 import {
@@ -104,6 +105,21 @@ export function createEventRuntime(options: CreateEventRuntimeOptions): EventRun
       }
       if (response.type === "json") {
         return automationEventDetailSchema.parse(response.data);
+      }
+      throw new BackofficeOperationError(
+        backofficeOperationErrorKindForStatus(response.status),
+        `Events backend returned ${response.status}${response.type === "error" ? `: ${response.error.message}` : ""}`,
+      );
+    },
+    retryRoute: async ({ id, routeId }) => {
+      const response = await callRoute("POST", "/events/:eventId/routes/:routeId/retry", {
+        pathParams: { eventId: id, routeId },
+      });
+      if (response.type === "error" && response.status === 404) {
+        return null;
+      }
+      if (response.type === "json") {
+        return automationEventRouteDispatchSchema.parse(response.data);
       }
       throw new BackofficeOperationError(
         backofficeOperationErrorKindForStatus(response.status),
@@ -218,6 +234,9 @@ export function createUnavailableEventRuntime(
       throw new Error(message);
     },
     getEvent: async () => {
+      throw new Error(message);
+    },
+    retryRoute: async () => {
       throw new Error(message);
     },
   };

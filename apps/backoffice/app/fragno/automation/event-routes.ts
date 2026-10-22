@@ -1,10 +1,12 @@
 import {
   type AutomationEvent,
   automationEventDetailSchema,
+  automationEventRouteDispatchSchema,
   type AutomationEventRecord,
   automationEventListInputSchema,
   automationEventListResultSchema,
 } from "@fragno-dev/backoffice-api/v0/events";
+import { getFragmentDurableHooks } from "@fragno-dev/db/durable-hooks";
 
 import { defineRoutes } from "@fragno-dev/core";
 import { decodeCursor } from "@fragno-dev/db";
@@ -39,7 +41,7 @@ export function automationEventRecord(
 }
 
 export const automationEventRoutes = defineRoutes(automationFragmentDefinition).create(
-  ({ defineRoute, services }) => [
+  ({ defineRoute, services, deps }) => [
     defineRoute({
       method: "GET",
       path: "/events/:eventId",
@@ -65,6 +67,49 @@ export const automationEventRoutes = defineRoutes(automationFragmentDefinition).
           ...automationEventRecord(event),
           routing: event.routesMatched ? { status: "matched", routes } : { status: "matching" },
         });
+      },
+    }),
+    defineRoute({
+      method: "POST",
+      path: "/events/:eventId/routes/:routeId/retry",
+      outputSchema: automationEventRouteDispatchSchema,
+      errorCodes: ["ROUTE_DISPATCH_NOT_FOUND", "ROUTE_DISPATCH_NOT_FAILED"],
+      handler: async function ({ pathParams }, { json, error }) {
+        const { namespace, hookService } = getFragmentDurableHooks(deps);
+        const retry = await this.handlerTx()
+          .withServiceCalls(
+            () =>
+              [
+                services.retryRouteDispatch({
+                  ...pathParams,
+                  retryHook: (hookId) => hookService.retryFailedHook(namespace, hookId),
+                }),
+              ] as const,
+          )
+          .transform(({ serviceResult: [result] }) => result)
+          .execute();
+
+        switch (retry.status) {
+          case "retried":
+            return json(retry.route);
+          case "not_found":
+            return error(
+              {
+                message: "Automation event has no route dispatch to retry for this route.",
+                code: "ROUTE_DISPATCH_NOT_FOUND",
+              },
+              404,
+            );
+          case "not_failed":
+            return error(
+              {
+                message: "Only a route that failed for good can be retried.",
+                code: "ROUTE_DISPATCH_NOT_FAILED",
+              },
+              409,
+            );
+        }
+        throw new Error("Unsupported automation route retry status.");
       },
     }),
     defineRoute({

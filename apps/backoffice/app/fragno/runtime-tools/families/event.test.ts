@@ -4,7 +4,12 @@ import {
   createTrustedSystemBackofficeToolContext,
   getAvailableRuntimeTools,
 } from "../runtime-tools";
-import { eventFireToolFamily, eventReadToolFamily, eventRuntimeTools } from "./event";
+import {
+  eventFireToolFamily,
+  eventReadToolFamily,
+  eventRetryToolFamily,
+  eventRuntimeTools,
+} from "./event";
 import { eventCatalogToolFamily } from "./event-catalog";
 
 describe("event runtime tools", () => {
@@ -13,18 +18,29 @@ describe("event runtime tools", () => {
       "events.fire",
       "events.list",
       "events.get",
+      "events.retry-route",
     ]);
   });
 
   test("only exposes tools backed by an available runtime", () => {
-    const families = [eventFireToolFamily, eventReadToolFamily, eventCatalogToolFamily];
+    const families = [
+      eventFireToolFamily,
+      eventReadToolFamily,
+      eventRetryToolFamily,
+      eventCatalogToolFamily,
+    ];
     const availableToolIds = (runtimes: Record<string, unknown>) =>
       getAvailableRuntimeTools({
         families,
         context: createTrustedSystemBackofficeToolContext({ runtimes }),
       }).map((tool) => tool.id);
 
-    expect(availableToolIds({ event: {} })).toEqual(["events.fire", "events.list", "events.get"]);
+    expect(availableToolIds({ event: {} })).toEqual([
+      "events.fire",
+      "events.list",
+      "events.get",
+      "events.retry-route",
+    ]);
     expect(availableToolIds({ eventCatalog: {} })).toEqual([
       "events.catalog.list",
       "events.catalog.get",

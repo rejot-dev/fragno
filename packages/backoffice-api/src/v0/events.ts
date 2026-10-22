@@ -230,34 +230,36 @@ const automationRouteDispatchOutcomeSchema: z.ZodType<AutomationRouteDispatchOut
   ]),
 );
 
-const automationEventRouteDispatchSchema: z.ZodType<AutomationEventRouteDispatch> = z.lazy(() => {
-  const route = {
-    routeId: z.string(),
-    routeName: z.string(),
-    matchedAt: z.iso.datetime(),
-  };
-  return z.discriminatedUnion("status", [
-    z.strictObject({ ...route, status: z.literal("pending") }),
-    z.strictObject({
-      ...route,
-      status: z.literal("retrying"),
-      failedAttempts: z.number().int().positive(),
-      error: z.string(),
-    }),
-    z.strictObject({
-      ...route,
-      status: z.literal("completed"),
-      outcome: automationRouteDispatchOutcomeSchema,
-      failedAttempts: z.number().int().nonnegative(),
-    }),
-    z.strictObject({
-      ...route,
-      status: z.literal("failed"),
-      failedAttempts: z.number().int().positive(),
-      error: z.string(),
-    }),
-  ]);
-});
+export const automationEventRouteDispatchSchema: z.ZodType<AutomationEventRouteDispatch> = z.lazy(
+  () => {
+    const route = {
+      routeId: z.string(),
+      routeName: z.string(),
+      matchedAt: z.iso.datetime(),
+    };
+    return z.discriminatedUnion("status", [
+      z.strictObject({ ...route, status: z.literal("pending") }),
+      z.strictObject({
+        ...route,
+        status: z.literal("retrying"),
+        failedAttempts: z.number().int().positive(),
+        error: z.string(),
+      }),
+      z.strictObject({
+        ...route,
+        status: z.literal("completed"),
+        outcome: automationRouteDispatchOutcomeSchema,
+        failedAttempts: z.number().int().nonnegative(),
+      }),
+      z.strictObject({
+        ...route,
+        status: z.literal("failed"),
+        failedAttempts: z.number().int().positive(),
+        error: z.string(),
+      }),
+    ]);
+  },
+);
 
 const automationEventRoutingSchema: z.ZodType<AutomationEventRouting> = z.lazy(() =>
   z.discriminatedUnion("status", [
@@ -423,6 +425,15 @@ export const eventsOperations = {
     permissions: [BACKOFFICE_PERMISSION.events.read],
     input: z.lazy(() => z.object({ id: z.string().trim().min(1) })),
     output: z.lazy(() => automationEventDetailSchema.nullable()),
+  },
+  "events.retry-route": {
+    description:
+      "Retry a route that failed for good on a stored event, with a fresh set of attempts. The route runs as it was when the event matched it, so retry after fixing what it depends on, such as a missing workflow run or permission; route edits apply only to new events. Returns the route, now pending, or null when the event did not match it.",
+    permissions: [BACKOFFICE_PERMISSION.router.modify],
+    input: z.lazy(() =>
+      z.object({ id: z.string().trim().min(1), routeId: z.string().trim().min(1) }),
+    ),
+    output: z.lazy(() => automationEventRouteDispatchSchema.nullable()),
   },
   "events.catalog.list": {
     description:

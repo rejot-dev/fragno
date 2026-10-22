@@ -777,11 +777,12 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
                 continue;
               }
               recordMatchedRoute(uow, { event, route: matched });
-              uow.triggerHook("internalDispatchRoute", {
-                event,
-                route: matched,
-                reclassificationChain,
-              });
+              uow.triggerHook(
+                "internalDispatchRoute",
+                { event, route: matched, reclassificationChain },
+                // Named after the dispatch, so a failed route can find its hook to retry it.
+                { id: routeDispatchId({ eventId: event.id, routeId: matched.id }) },
+              );
             }
           })
           .execute();
@@ -802,7 +803,9 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
               .retrieve(({ forSchema }) =>
                 forSchema(automationFragmentSchema)
                   .findFirst("automation_route_dispatch", (b) =>
-                    b.whereIndex("primary", (eb) => eb("id", "=", routeDispatchId(subject))),
+                    b.whereIndex("primary", (eb) =>
+                      eb("id", "=", routeDispatchId({ eventId: event.id, routeId: route.id })),
+                    ),
                   )
                   .findFirst("kv_store", (b) =>
                     b.whereIndex("idx_kv_store_key", (eb) =>

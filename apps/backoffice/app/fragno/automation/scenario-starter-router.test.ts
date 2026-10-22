@@ -45,6 +45,7 @@ import { InMemoryMcpObject } from "../../../workers/mcp.do";
 import { InMemoryResendObject } from "../../../workers/resend.do";
 import { InMemoryTelegramObject } from "../../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../../workers/upload.do";
+import { CODEMODE_WORKFLOW } from "./engine/codemode-invocation";
 import type { AutomationRouteDispatchPayload } from "./internal-hooks";
 import { readRouteDispatchState } from "./route-dispatches-storage-runtime";
 import {
@@ -851,7 +852,7 @@ describe("starter automation router scenarios", () => {
     );
   });
 
-  test("a route whose workflow never appears gives up after its last attempt", async () => {
+  test("a route that gave up runs again once retried after its workflow appears", async () => {
     const event = customAutomationEvent({
       id: "fanout-exhausted-1",
       eventType: "fanout.exhausted",
@@ -861,13 +862,26 @@ describe("starter automation router scenarios", () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         objects: scenarioObjects,
-        name: "give up on a route after its retries",
-        options: { allowFailedDurableHooks: true },
+        name: "retry a route after it gave up",
 
         files: backofficeFiles.workspaceStarter(),
 
         setup: ({ given }) => [
           given.organization.exists({ id: "org-1", name: "Ada Labs" }),
+          given.direct.file({
+            orgId: "org-1",
+            path: "/workspace/automations/missing-waiter.workflow.js",
+            content: `defineWorkflow(
+  { name: "missing-waiter" },
+  async (_event, step) => {
+    const signal = await step.waitForEvent("route signal", {
+      type: "fanout-ready",
+      timeout: "15 minutes",
+    });
+    return { received: signal.payload.payload.value };
+  },
+);`,
+          }),
           given.router.route({
             orgId: "org-1",
             id: "fanout-send-to-missing-workflow",
@@ -889,7 +903,7 @@ describe("starter automation router scenarios", () => {
           }),
         ],
 
-        steps: ({ when, then }) => [
+        steps: ({ when, then, runner }) => [
           when.automation.ingestEvent(event),
           // Each advance outlasts one backoff, which never exceeds 15 minutes.
           ...Array.from({ length: 9 }, () => when.time.advance("15 minutes")),
@@ -909,6 +923,48 @@ describe("starter automation router scenarios", () => {
               (item) => item.hookName === "internalDispatchRoute",
             );
             expect(routeHooks).toMatchObject([{ status: "failed", attempts: 10, maxAttempts: 10 }]);
+          }),
+
+          when.workflow.createInstance({
+            orgId: "org-1",
+            remoteWorkflowName: "missing-waiter",
+            instanceId: "missing-waiter-1",
+            path: "/workspace/automations/missing-waiter.workflow.js",
+            event: customAutomationEvent({ id: "missing-waiter-bootstrap" }),
+          }),
+          then.assert("retrying the route queues it again", async (ctx) => {
+            const response = await ctx.runtime.objects.automations
+              .forOrg("org-1")
+              .http.fetch(
+                new Request(
+                  `https://automations.test/api/automations/events/${event.id}/routes/fanout-send-to-missing-workflow/retry`,
+                  { method: "POST" },
+                ),
+              );
+            assert(response.status === 200);
+            expect(await response.json()).toMatchObject({ status: "pending" });
+          }),
+          runner.drain(),
+
+          then.assert("the retried route delivered the event", async (ctx) => {
+            expect(await routeDispatchStates(ctx, event.id)).toEqual({
+              "fanout-send-to-missing-workflow": {
+                status: "completed",
+                outcome: {
+                  kind: "workflow_event_sent",
+                  workflowName: CODEMODE_WORKFLOW,
+                  instanceId: "missing-waiter-1",
+                  eventType: "fanout-ready",
+                },
+                failedAttempts: 0,
+              },
+            });
+          }),
+          then.workflow.instance({
+            remoteWorkflowName: "missing-waiter",
+            instanceId: "missing-waiter-1",
+            status: "complete",
+            output: { received: "ready" },
           }),
         ],
       }),

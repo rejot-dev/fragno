@@ -1,4 +1,5 @@
 import type { AutomationEventCausation } from "@fragno-dev/backoffice-api/v0/events";
+import { Button } from "@fragno-private/design-system/button";
 import { CausalFlameGraph } from "@fragno-private/design-system/causal-flame-graph";
 import {
   causalFlameNodeAt,
@@ -15,7 +16,7 @@ import type { BackofficeStatusTone } from "@fragno-private/design-system/status-
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { formatWorkflowDuration } from "@fragno-private/design-system/workflow-run-timeline-model";
 import { Fragment, Suspense, use, useMemo, useState, type ReactNode } from "react";
-import { Link, useSearchParams, type ShouldRevalidateFunctionArgs } from "react-router";
+import { Link, useFetcher, useSearchParams, type ShouldRevalidateFunctionArgs } from "react-router";
 
 import { useLiveQuery } from "@tanstack/react-db";
 
@@ -67,6 +68,7 @@ import {
   dashboardSelectedTraceNode,
   withSelectedTraceNode,
 } from "./path";
+import { retryEventRoute, type RouteRetryActionData } from "./route-retry.server";
 import { WorkflowRunDetail } from "./workflow-run-detail";
 
 const TRACE_LIMIT = 100;
@@ -79,6 +81,18 @@ const sectionTitleClassName = "text-sm font-semibold text-[var(--bo-fg)]";
 /** Traces come from synchronized collections; the loader only selects scope. */
 export async function loader({ context }: Route.LoaderArgs) {
   return { selectedScope: requireScopeSelection(context) };
+}
+
+/** The only write here retries a route; its new state arrives through the synchronized rows. */
+export async function action({ request, context }: Route.ActionArgs) {
+  const formData = await request.formData();
+  if (formData.get("intent") !== "retry-route") {
+    return { ok: false, message: "Unknown events action." } satisfies RouteRetryActionData;
+  }
+  return await retryEventRoute(context, {
+    eventId: String(formData.get("eventId") ?? ""),
+    routeId: String(formData.get("routeId") ?? ""),
+  });
 }
 
 /** Opening a trace only changes the URL. */
@@ -1006,6 +1020,44 @@ function describeDispatchOutcome({ state }: EventTraceDispatch): string {
 }
 
 function DispatchDetail({ dispatch }: { dispatch: EventTraceDispatch }) {
+  return (
+    <>
+      <DispatchFacts dispatch={dispatch} />
+      {dispatch.state.status === "failed" ? <RetryRouteForm dispatch={dispatch} /> : null}
+    </>
+  );
+}
+
+function RetryRouteForm({ dispatch }: { dispatch: EventTraceDispatch }) {
+  const fetcher = useFetcher<RouteRetryActionData>();
+  const submitting = fetcher.state !== "idle";
+  return (
+    <fetcher.Form
+      method="post"
+      className="flex flex-col gap-2 border-t border-[color:var(--bo-border)] py-3"
+    >
+      <input type="hidden" name="intent" value="retry-route" />
+      <input type="hidden" name="eventId" value={dispatch.eventId} />
+      <input type="hidden" name="routeId" value={dispatch.routeId} />
+      <p className="text-xs text-[var(--bo-muted)]">
+        The route runs again as it was when the event matched it. Fix what it depends on first;
+        changes to the route apply to new events.
+      </p>
+      <div className="flex items-center gap-3">
+        <Button variant="secondary" type="submit" disabled={submitting}>
+          {submitting ? "Retrying…" : "Retry route"}
+        </Button>
+        {fetcher.data && !fetcher.data.ok ? (
+          <span role="alert" className="text-xs text-[var(--bo-failed)]">
+            {fetcher.data.message}
+          </span>
+        ) : null}
+      </div>
+    </fetcher.Form>
+  );
+}
+
+function DispatchFacts({ dispatch }: { dispatch: EventTraceDispatch }) {
   return (
     <Facts
       facts={[
