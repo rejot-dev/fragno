@@ -54,7 +54,7 @@ export default page.define(
   ({
     collections,
     from,
-    many,
+    toArray,
     eq,
     gte,
     coalesce,
@@ -94,7 +94,7 @@ export default page.define(
       .select(({ workflow }) => ({
         workflow: workflow.workflow,
         errored: workflow.errored,
-        latest: many(
+        latest: toArray(
           from({ run: runs })
             .where(({ run }) => eq(run.workflow, workflow.workflow))
             .orderBy(({ run }) => run.updatedAt, "desc")
@@ -113,7 +113,7 @@ export default page.define(
               updatedAt: run.updatedAt,
             })),
         ),
-        hourly: many(
+        hourly: toArray(
           from({ run: runs })
             .where(({ run }) => eq(run.workflow, workflow.workflow))
             .where(({ run }) => gte(run.createdAt, day))
@@ -164,18 +164,19 @@ each callback, as above; a helper function that takes a source's fields needs a 
 ## Queries
 
 - `from({ alias: source })` starts a query; a source is a collection or another query. `join` keeps
-  matching rows and `leftJoin` keeps every row; both match with `eq(field, field)`, such as
+  matching rows and `leftJoin` keeps every row; both match with `eq(left, right)`, where one side
+  reads the sources before the join and the other the joined source, such as
   `eq(run.id, step.instanceRef)`.
 - `where`, `groupBy`, `having`, `select`, `orderBy`, and `limit` follow TanStack DB. Call `orderBy`
   again for ties; `limit` needs an `orderBy`.
 - Joined and grouped queries `select` the fields they show.
 - `count`, `sum`, `avg`, `min`, and `max` belong in `select`, `having`, and `orderBy`. Count a
   condition with `sum(caseWhen(eq(run.status, "errored"), 1, 0))`.
-- `many(query)` is a `select` field holding the rows of `query` for each selecting row. The query
+- `toArray(query)` is a `select` field holding the rows of `query` for each selecting row. The query
   starts with `from`, not `unionAll`, and its `where` matches the selecting row with `eq`, such as
   `eq(run.workflow, workflow.workflow)` above; its own aliases differ from the selecting row's. A
-  grouped query cannot select `many`: group in a query, then read it with `from`, as `health` reads
-  `workflows`.
+  grouped query cannot select `toArray`: group in a query, then read it with `from`, as `health`
+  reads `workflows`.
 - `unionAll(a, b, ...)` lists the rows of queries that select the same fields under distinct
   aliases, such as waiting and errored runs. Order or limit it by reading it with `from`.
 - Times are relative to `now`, such as `now.minus("7 days")`; the page moves `now` every minute.

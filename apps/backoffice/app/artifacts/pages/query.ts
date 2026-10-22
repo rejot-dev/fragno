@@ -14,6 +14,8 @@ import {
   gte,
   ilike,
   inArray,
+  JoinConditionMustBeEqualityError,
+  JoinError,
   isNull,
   length,
   like,
@@ -88,7 +90,7 @@ type Refs = Record<string, unknown>;
 
 /**
  * Resolves an alias to its refs. A nested query reads its own aliases first, then those of the
- * rows around it, which is how `many` correlates with the selecting row.
+ * rows around it, which is how `toArray` correlates with the selecting row.
  */
 type Scope = (alias: string) => unknown;
 
@@ -96,7 +98,7 @@ type Scope = (alias: string) => unknown;
 type DynamicQuery = {
   join(
     source: Record<string, unknown>,
-    on: (refs: Refs) => unknown,
+    on: (refs: Refs) => never,
     type: "inner" | "left",
   ): DynamicQuery;
   where(callback: (refs: Refs) => unknown): DynamicQuery;
@@ -145,20 +147,16 @@ function buildQuery(
   const compile = (refs: Refs) => (expression: PageExpression) =>
     compileExpression(expression, scope(refs), now);
   // Sources do not read the rows around them; the validator keeps their aliases to themselves.
-  const source = ({ alias, ...read }: PageQuerySource) => ({
-    [alias]:
-      "collection" in read
+  const source = (read: PageQuerySource) => ({
+    [read.alias]:
+      read.kind === "collection"
         ? collections[read.collection]
         : buildQuery(builder, collections, read.query, now, outer),
   });
 
   let built = builder.from(source(query.from));
   for (const join of query.joins) {
-    built = built.join(
-      source(join.source),
-      (refs) => eq(...(join.on.map(compile(refs)) as [never, never])),
-      join.type,
-    );
+    built = built.join(source(join.source), (refs) => compile(refs)(join.on) as never, join.type);
   }
   for (const where of query.where) {
     built = built.where((refs) => compile(refs)(where));
@@ -175,8 +173,8 @@ function buildQuery(
       Object.fromEntries(
         Object.entries(select).map(([name, selection]) => [
           name,
-          "many" in selection
-            ? toArray(buildQuery(builder, collections, selection.many, now, scope(refs)) as never)
+          selection.kind === "toArray"
+            ? toArray(buildQuery(builder, collections, selection.query, now, scope(refs)) as never)
             : compile(refs)(selection),
         ]),
       ),
@@ -193,29 +191,34 @@ function buildQuery(
 
 function compileExpression(expression: PageExpression, scope: Scope, now: number): unknown {
   const compile = (inner: PageExpression) => compileExpression(inner, scope, now);
-  if ("ref" in expression) {
-    const [alias, ...path] = expression.ref;
-    return path.reduce<unknown>(
-      (ref, segment) => (ref as Record<string, unknown>)[segment],
-      scope(alias),
-    );
+  switch (expression.kind) {
+    case "ref": {
+      const [alias, ...path] = expression.path;
+      return path.reduce<unknown>(
+        (ref, segment) => (ref as Record<string, unknown>)[segment],
+        scope(alias),
+      );
+    }
+    case "value":
+      return expression.value;
+    case "now":
+      return new Date(now + expression.offset);
+    case "fn":
+      return FUNCTIONS[expression.name](...expression.args.map(compile));
+    case "aggregate":
+      return AGGREGATES[expression.name](compile(expression.arg));
+    case "bucket":
+      return compileBucket(compile(expression.time), expression, now);
   }
-  if ("value" in expression) {
-    return expression.value;
-  }
-  if ("now" in expression) {
-    return new Date(now + expression.now);
-  }
-  if ("fn" in expression) {
-    return FUNCTIONS[expression.fn](...expression.args.map(compile));
-  }
-  if ("aggregate" in expression) {
-    return AGGREGATES[expression.aggregate](compile(expression.arg));
-  }
-  // TanStack has no date truncation, so a bucket is the start of the newest interval it reached.
-  // The oldest interval starts before `since`, so its condition is `since` itself: earlier times
-  // reach no condition and have no bucket.
-  const time = compile(expression.bucket);
+  throw new Error("Unsupported page expression.");
+}
+
+/**
+ * TanStack has no date truncation, so a bucket is the start of the newest interval it reached.
+ * The oldest interval starts before `since`, so its condition is `since` itself: earlier times
+ * reach no condition and have no bucket.
+ */
+function compileBucket(time: unknown, expression: { every: number; since: number }, now: number) {
   const starts = intervalStarts(now, expression).map((start) => new Date(start));
   const since = new Date(now + expression.since);
   return caseWhen(
@@ -230,7 +233,7 @@ function compileExpression(expression: PageExpression, scope: Scope, now: number
 
 /**
  * Why TanStack DB cannot run one of a page's queries, or null. TanStack checks its rules, such as
- * grouping and how a many(...) query correlates, as it builds a live query, before any row
+ * grouping, joins, and how a toArray(...) query correlates, as it builds a live query, before any row
  * arrives, so empty collections stand in for the synchronized ones.
  */
 export function pageQueriesError(queries: Record<string, PageQuery>): string | null {
@@ -258,7 +261,7 @@ function queryLabel(query: PageQuery): string {
   if (query.kind === "union") {
     return `The unionAll of ${query.branches.map(queryLabel).join(" and ").replaceAll("The query", "the query")}`;
   }
-  return `The query from ${"collection" in query.from ? query.from.collection : query.from.alias}`;
+  return `The query from ${query.from.kind === "collection" ? query.from.collection : query.from.alias}`;
 }
 
 /**
@@ -268,7 +271,10 @@ function queryLabel(query: PageQuery): string {
 function compileErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   if (error instanceof NonAggregateExpressionNotInGroupByError) {
-    return `is grouped, so it selects and filters only its group keys, aggregates such as max(run.status), and functions of those. To select many(...), group in a query and select from its rows with from. TanStack DB: ${message}`;
+    return `is grouped, so it selects and filters only its group keys, aggregates such as max(run.status), and functions of those. To select toArray(...), group in a query and select from its rows with from. TanStack DB: ${message}`;
+  }
+  if (error instanceof JoinConditionMustBeEqualityError || error instanceof JoinError) {
+    return `joins on eq(left, right), where one side reads the rows before the join and the other the joined source, such as eq(run.id, step.instanceRef). TanStack DB: ${message}`;
   }
   if (error instanceof LimitOffsetRequireOrderByError) {
     return "sets a limit without orderBy; order it so the rows it keeps are deterministic.";
@@ -282,7 +288,7 @@ export type PageData = PageLiteral | PageData[] | { [field: string]: PageData };
 /**
  * Rows keep their types, nested rows included; components check the props they are bound to as
  * they render. TanStack adds `$`-prefixed virtual fields, which describe sync state, to each row
- * it returns but not to rows nested by many(...). Page names cannot start with `$`, while JSON
+ * it returns but not to rows nested by toArray(...). Page names cannot start with `$`, while JSON
  * values, such as a payload's `$schema`, can, so only a row's own fields are dropped.
  */
 export function pageRows(rows: readonly object[]): PageData[] {
