@@ -145,14 +145,29 @@ the event matched, each with its `status`:
 - `completed`: `outcome` says what the route did, such as the workflow run it started or the derived
   event it produced. `failedAttempts` above zero means it only acted after retries.
 - `failed`: the route gave up on `error`, because no retry could fix it, such as a denied scope, or
-  it ran out of attempts. Fix what it depends on, such as a missing workflow run, file, or
-  permission, then run only this route again with `events.retryRoute({ id, routeId })`. It runs as
-  it was when the event matched it, so edits to the route apply only to new events; a new event runs
-  every route it matches, not only this one.
+  it ran out of attempts. Fix what it depends on, then run only this route again with
+  `events.retryRoute({ id, routeId })`. Only `failed` routes can be retried; a `retrying` route
+  retries by itself.
+
+A retried route acts as it was when the event matched it: its action, such as the workflow file, the
+run it signals, or the agent it notifies, does not change. Its permissions are the route's current
+grants, and it must still be enabled. So granting a missing permission, creating the workflow run it
+targets, or prompting the agent once fixes a retry, but changing the route's action does not; fire a
+new event for that, which runs every route it matches, not only this one. `events.retryRoute`
+returns the route as `pending`; read `events.get` again for its outcome.
 
 An empty `routes` means no route matched; compare the event with each route's trigger and matcher.
-Follow `workflow_started` outcomes to the workflow instance they name. Report ingestion and
-downstream execution separately, including failures, pending work, and any missing evidence.
+Follow each outcome to the work it names:
+
+- `workflow_started`: the run `instanceId` names, with `workflow.getInstance` and
+  `workflow.getHistory`.
+- `workflow_event_sent`: the run that was sent the event. In its `workflow.getHistory`, the event
+  with id `<routeId>:<eventId>` names the step that took it; the steps after it are what the event
+  set off. An event no step has taken yet is still pending.
+- `agent_notified`: the agent's answer is its own `pi` `turn.completed` event.
+- `event_reclassified` and `event_forwarded`: the event they name, with `events.get`; a forwarded
+  event lives in its target scope. Report ingestion and downstream execution separately, including
+  failures, pending work, and any missing evidence.
 
 **Complete when** the owning scope, matching event IDs, relevant payloads, and downstream outcomes
 are supported by retrieved evidence, or the exact unverified boundary is stated.
