@@ -40,7 +40,7 @@ import {
   requireScopeSelection,
 } from "@/layouts/backoffice-shell-request.server";
 
-import { piAgentEventsQuery, projectPiAgents } from "../agents/agent-activity";
+import { piAgentListings, piAgentTurnsQuery } from "../agents/agent-activity";
 import { createAutomationProject, loadAutomationScriptSource } from "../automations/data.server";
 import {
   automationWorkflowRunsFromRecords,
@@ -321,8 +321,17 @@ function DashboardWorkspace({
         .orderBy(({ connection }) => connection.service, "asc")
         .orderBy(({ connection }) => connection.connectionId, "asc"),
   });
-  const agentEventsQuery = useLiveQuery({
-    query: (query) => piAgentEventsQuery(query, collections),
+  // The most recently active agents come first; agents without activity keep directory order.
+  const agentsQuery = useLiveQuery({
+    query: (query) =>
+      query
+        .from({ agent: collections.agents })
+        .orderBy(({ agent }) => agent.latestAt, { direction: "desc", nulls: "last" })
+        .orderBy(({ agent }) => agent.builtIn, "desc")
+        .orderBy(({ agent }) => agent.agentName, "asc"),
+  });
+  const agentTurnsQuery = useLiveQuery({
+    query: (query) => piAgentTurnsQuery(query, collections, new Date(windowStart)),
   });
   const routesState = useAutomationRoutes(collections);
   const waitingRuns = useMemo(
@@ -344,14 +353,22 @@ function DashboardWorkspace({
 
   const agents = useMemo(
     () =>
-      projectPiAgents({
-        events: agentEventsQuery.data ?? [],
-        bucketStarts: dashboard.eventVolume.bucketStarts,
-      }),
-    [agentEventsQuery.data, dashboard.eventVolume.bucketStarts],
+      piAgentListings(
+        agentsQuery.data ?? [],
+        agentTurnsQuery.data ?? [],
+        dashboard.eventVolume.bucketStarts,
+      ),
+    [agentsQuery.data, agentTurnsQuery.data, dashboard.eventVolume.bucketStarts],
   );
 
-  const queries = [runsQuery, waitingRunsQuery, eventsQuery, connectionsQuery, agentEventsQuery];
+  const queries = [
+    runsQuery,
+    waitingRunsQuery,
+    eventsQuery,
+    connectionsQuery,
+    agentsQuery,
+    agentTurnsQuery,
+  ];
   if (queries.some((query) => query.isError) || routesState.status === "error") {
     return (
       <BackofficeSystemState

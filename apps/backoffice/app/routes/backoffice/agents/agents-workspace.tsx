@@ -9,7 +9,7 @@ import { useClock } from "@/components/backoffice/use-clock";
 import { useAutomationBrowserCollections } from "@/fragno/automation/tanstack/use-automation-browser-collections";
 
 import { dashboardBucketStarts } from "../dashboard/overview";
-import { piAgentEventsQuery, projectPiAgents } from "./agent-activity";
+import { piAgentListings, piAgentTurnsQuery } from "./agent-activity";
 import type { PiAgentDirectoryState, PiAgentsOutletContext } from "./agent-types";
 import {
   createSessionWorkspaceState,
@@ -98,24 +98,33 @@ function usePiAgentDirectory(): PiAgentDirectoryState {
   const now = useClock(CLOCK_TICK_MS);
   // Every moment of an hour has that hour's window, so the projection only reruns when one begins.
   const hourStart = dashboardBucketStarts(now).at(-1) ?? now;
-  const eventsQuery = useLiveQuery({
-    query: (query) => (collections ? piAgentEventsQuery(query, collections) : undefined),
+  const bucketStarts = useMemo(() => dashboardBucketStarts(hourStart), [hourStart]);
+  const windowStart = bucketStarts[0] ?? hourStart;
+  // Built-in agents come first, then the others by name.
+  const agentsQuery = useLiveQuery({
+    query: (query) =>
+      collections
+        ? query
+            .from({ agent: collections.agents })
+            .orderBy(({ agent }) => agent.builtIn, "desc")
+            .orderBy(({ agent }) => agent.agentName, "asc")
+        : undefined,
+  });
+  const turnsQuery = useLiveQuery({
+    query: (query) =>
+      collections ? piAgentTurnsQuery(query, collections, new Date(windowStart)) : undefined,
   });
   const agents = useMemo(
-    () =>
-      projectPiAgents({
-        events: eventsQuery.data ?? [],
-        bucketStarts: dashboardBucketStarts(hourStart),
-      }),
-    [eventsQuery.data, hourStart],
+    () => piAgentListings(agentsQuery.data ?? [], turnsQuery.data ?? [], bucketStarts),
+    [agentsQuery.data, turnsQuery.data, bucketStarts],
   );
   if (error !== null) {
     return { status: "unavailable", message: error };
   }
-  if (eventsQuery.isError) {
+  if (agentsQuery.isError || turnsQuery.isError) {
     return { status: "unavailable", message: "Agent events could not be read." };
   }
-  if (!collections || !eventsQuery.isReady) {
+  if (!collections || !agentsQuery.isReady || !turnsQuery.isReady) {
     return { status: "loading" };
   }
   return { status: "ready", agents, now };

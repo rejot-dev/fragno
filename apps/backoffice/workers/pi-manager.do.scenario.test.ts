@@ -32,7 +32,7 @@ import {
   type ConversationView,
   type LiveState,
 } from "@earendil-works/pi-durable";
-import { queryOnce } from "@tanstack/react-db";
+import { eq, queryOnce } from "@tanstack/react-db";
 
 import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import {
@@ -57,7 +57,6 @@ import {
   PI_NOTIFICATION_ENTRY_KIND,
   renderPiNotificationRequest,
 } from "@/fragno/pi/agent/pi-agent-notification-entry";
-import { piAgentEventsQuery, projectPiAgents } from "@/routes/backoffice/agents/agent-activity";
 import {
   eventTraceDispatch,
   eventTraceDispatchesQuery,
@@ -1068,12 +1067,19 @@ test("an agent's turns and queue are recorded as they move, so its events say wh
   async function assistantState(ctx: BackofficeScenarioContext) {
     const database = ctx.tanstack.automations.forOrg(orgId);
     await database.sync();
-    const events = await queryOnce((query) => piAgentEventsQuery(query, database.collections));
-    const activity = projectPiAgents({ events, bucketStarts: [] }).find(
-      ({ definition }) => definition.agentName === "assistant",
-    )?.activity;
-    return activity
-      ? { answering: activity.answering, paused: activity.paused, ...activity.waiting }
+    const assistant = await queryOnce((query) =>
+      query
+        .from({ agent: database.collections.agents })
+        .where(({ agent }) => eq(agent.agentName, "assistant"))
+        .findOne(),
+    );
+    return assistant && assistant.latestAt !== null
+      ? {
+          answering: assistant.answering,
+          paused: assistant.paused,
+          queued: assistant.queued,
+          steering: assistant.steering,
+        }
       : null;
   }
 
@@ -1335,13 +1341,14 @@ test("a backfill records what the agent events lack, once, so they list the defi
 
             const database = ctx.tanstack.automations.forOrg(orgId);
             await database.sync();
-            const events = await queryOnce((query) =>
-              piAgentEventsQuery(query, database.collections),
+            const agents = await queryOnce((query) =>
+              query
+                .from({ agent: database.collections.agents })
+                .orderBy(({ agent }) => agent.builtIn, "desc")
+                .orderBy(({ agent }) => agent.agentName, "asc"),
             );
             expect(
-              projectPiAgents({ events, bucketStarts: [] }).map(
-                ({ definition }) => `${definition.agentName}: ${definition.description}`,
-              ),
+              agents.map(({ definition }) => `${definition.agentName}: ${definition.description}`),
             ).toEqual([
               `assistant: ${BUILT_IN_PI_AGENT_DEFINITIONS[0]?.description}`,
               "drafter: Drafts replies.",

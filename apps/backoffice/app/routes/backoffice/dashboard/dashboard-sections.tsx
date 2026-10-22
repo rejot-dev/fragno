@@ -672,20 +672,17 @@ function AgentsPanel({
   now: number;
   agentsPath: string;
 }) {
-  // The most recently active agents come first; agents without activity keep directory order.
-  const lastActive = ({ activity }: PiAgentListing) =>
-    activity?.latest.occurredAt.getTime() ?? Number.NEGATIVE_INFINITY;
-  const sortedAgents = [...agents].sort((left, right) => lastActive(right) - lastActive(left));
   return (
     <Panel title="Agents" back={null} footer={<PanelFooter to={agentsPath} page="Agents" />}>
       <ul className="divide-y divide-[color:var(--bo-border)]">
-        {sortedAgents.map(({ definition, activity }) => {
-          const agentName = formatPiAgentName(definition.agentName);
-          const queue = piAgentQueueStatus(activity);
+        {agents.map((agent) => {
+          const agentName = formatPiAgentName(agent.agentName);
+          const queue = piAgentQueueStatus(agent);
+          const turns = agent.turnsPerBucket.reduce((total, count) => total + count, 0);
           return (
-            <li key={definition.agentName}>
+            <li key={agent.agentName}>
               <Link
-                to={`${agentsPath}/${encodeURIComponent(definition.agentName)}`}
+                to={`${agentsPath}/${encodeURIComponent(agent.agentName)}`}
                 className="group flex items-center gap-3 py-2.5"
               >
                 <Icon name="message-square" className="size-4 shrink-0 text-[var(--bo-muted-2)]" />
@@ -694,9 +691,9 @@ function AgentsPanel({
                     {agentName}
                   </span>
                   <span
-                    className={`block truncate text-xs ${activity?.answering ? "text-[var(--bo-live)]" : "text-[var(--bo-muted-2)]"}`}
+                    className={`block truncate text-xs ${agent.answering ? "text-[var(--bo-live)]" : "text-[var(--bo-muted-2)]"}`}
                   >
-                    {describePiAgentActivity(activity, now)}
+                    {describePiAgentActivity(agent, now)}
                   </span>
                 </span>
                 {queue ? (
@@ -704,14 +701,14 @@ function AgentsPanel({
                     {queue.label}
                   </BackofficeStatusLight>
                 ) : null}
-                {activity ? (
+                {agent.latestAt !== null ? (
                   <span className="flex shrink-0 items-center gap-2">
                     <SparkBars
-                      values={activity.turnsPerBucket}
+                      values={agent.turnsPerBucket}
                       ariaLabel={`${agentName} turns over the last ${WINDOW_LABEL}`}
                     />
                     <span className="w-6 text-right text-xs text-[var(--bo-muted)] tabular-nums">
-                      {activity.turns}
+                      {turns}
                     </span>
                   </span>
                 ) : null}
