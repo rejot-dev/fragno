@@ -4,13 +4,12 @@ import type { WorkflowInstanceStatus } from "@fragno-dev/workflows/workflow";
 import { gte, type InitialQueryBuilder } from "@tanstack/react-db";
 
 import type { AutomationCollections } from "@/fragno/automation/tanstack/collections";
+import type { WorkflowWaitRecord } from "@/fragno/automation/tanstack/workflow-waits";
 import type { IntegrationConnectionRecord } from "@/fragno/runtime-tools/families/integrations/integration-connections";
-import {
-  currentWorkflowWaitingEventTypes,
-  latestWorkflowRunGeneratedUi,
-  type AutomationWorkflowRun,
-  type WorkflowRunGeneratedUi,
-  type WorkflowRunStep,
+import type {
+  AutomationWorkflowRun,
+  WorkflowRunGeneratedUi,
+  WorkflowRunStep,
 } from "@/routes/backoffice/automations/script-view/workflow-run-presentation";
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -184,13 +183,16 @@ export function projectBackofficeDashboard({
   now,
   runs,
   waitingRuns,
+  waits,
   events,
   connections,
   routes,
 }: {
   now: number;
   runs: readonly DashboardRunRecord[];
+  /** Waiting runs in full, as the interface of one that awaits input renders them. */
   waitingRuns: readonly AutomationWorkflowRun[];
+  waits: readonly WorkflowWaitRecord[];
   events: readonly DashboardEventRecord[];
   /** The scope's connections that are not disconnected, in the order the panel lists them. */
   connections: readonly IntegrationConnectionRecord[];
@@ -238,18 +240,21 @@ export function projectBackofficeDashboard({
   // A waiting run asks a person only when it shows an interface for the events it waits on.
   const awaitingInput: DashboardAttention[] = [];
   const upcoming: DashboardUpcoming[] = [];
+  const waitsByRun = groupBy(waits, (wait) => wait.runId);
   for (const run of waitingRuns) {
-    const waitingFor = currentWorkflowWaitingEventTypes(run.workflowSteps);
-    const generatedUi = latestWorkflowRunGeneratedUi({
-      output: run.output,
-      steps: run.workflowSteps,
-    });
-    if (generatedUi?.type === "step" && waitingFor.length > 0) {
+    const runWaits = waitsByRun.get(run.id) ?? [];
+    const waitingFor = runWaits.map((wait) => wait.eventType);
+    const interfaceStepKey = runWaits[0]?.interfaceStepKey ?? null;
+    const interfaceStep =
+      interfaceStepKey === null
+        ? undefined
+        : run.workflowSteps.find((step) => step.stepKey === interfaceStepKey);
+    if (interfaceStep) {
       awaitingInput.push({
         kind: "awaiting-input",
         workflow: workflowDisplayName(run),
         run,
-        generatedUi,
+        generatedUi: { type: "step", step: interfaceStep },
       });
     } else {
       upcoming.push({

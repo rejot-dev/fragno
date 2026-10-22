@@ -9,9 +9,9 @@ description:
 # Building pages
 
 A page is an artifact: one source module, `<name>.page.js` anywhere under `/workspace`, that
-default-exports `page.define(...)`: live queries over the scope's synchronized collections, written
-in TanStack DB's query style and placed in a `ui` interface. When the page is opened, the system
-builds the source into the mirrored path under `/workspace/.build`, such as
+default-exports `page.define(...)`: live queries over the scope's collections, written in TanStack
+DB's query style and placed in a `ui` interface. When the page is opened, the system builds the
+source into the mirrored path under `/workspace/.build`, such as
 `/workspace/.build/reports/operations.page.json`, and rebuilds it whenever the source changes; the
 page runs the queries in the browser and re-renders as the data changes.
 
@@ -19,8 +19,9 @@ page runs the queries in the browser and re-renders as the data changes.
 
 1. **Ground.** Read `/static/codemode/page.d.ts` for the query functions,
    `/static/codemode/page-schema.d.ts` for the collections, their fields, and the limits, and
-   `/static/codemode/ui-catalog.d.ts` for the components. Complete when every field you plan to show
-   belongs to its collection in `PageCollections`.
+   `/static/codemode/ui-catalog.d.ts` for the components. For a dashboard, read
+   `/static/skills/building-pages/examples/home.page.js`, which rebuilds the scope's home page.
+   Complete when every field you plan to show belongs to its collection in `PageCollections`.
 2. **Write the source.** Save the module with `state.writeFile`, following the example below.
    Complete when it default-exports `page.define(...)` and is pure, as the Source section defines.
 3. **Check.** Run `js.check({ path })` on the source. Complete when it reports no diagnostics.
@@ -220,7 +221,8 @@ each callback, as above; a helper function that takes a source's fields needs a 
 
 ## Supported today
 
-Pages show the synchronized collections. When the user asks for forms, data the collections do not
-hold, or Backoffice's own judgments, such as what a waiting run waits for, whether it awaits input,
-or a connection's current state, build the closest page and tell them which part pages cannot
-express yet.
+Pages show the synchronized collections and what Backoffice derives from them: `connections` holds
+each connection's current state, `agents` each agent's activity and queue, `agentTurns` the turns
+agents ended, and `workflowWaits` what waiting runs wait for and whether they ask a person. The home
+page example reads all four. When the user asks for forms, data the collections do not hold, or the
+orchestration graph, build the closest page and tell them which part pages cannot express yet.

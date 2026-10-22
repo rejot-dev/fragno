@@ -19,6 +19,7 @@ import {
 } from "@/fragno/runtime-tools/families/integrations/integration-connections";
 
 import { automationFragmentSchema } from "../schema";
+import { createWorkflowWaitsCollection, type WorkflowWaitRecord } from "./workflow-waits";
 
 type TableCollection<TTable extends AnyTable> = Collection<FragnoCollectionRow<TTable>, string>;
 
@@ -49,11 +50,20 @@ export type AutomationTableCollections = {
   workflowStepEmissions: TableCollection<(typeof workflowsSchema.tables)["workflow_step_emission"]>;
 };
 
+/** The rows Backoffice derives from the synchronized tables, by collection. */
+export type AutomationDerivedRows = {
+  connections: IntegrationConnectionRecord;
+  agents: PiAgentRecord;
+  agentTurns: PiAgentTurnRecord;
+  workflowWaits: WorkflowWaitRecord;
+};
+
 /** The synchronized tables, and what Backoffice derives from them. */
 export type AutomationCollections = AutomationTableCollections & {
-  connections: Collection<IntegrationConnectionRecord, string>;
-  agents: Collection<PiAgentRecord, string>;
-  agentTurns: Collection<PiAgentTurnRecord, string>;
+  [TCollection in keyof AutomationDerivedRows]: Collection<
+    AutomationDerivedRows[TCollection],
+    string
+  >;
 };
 
 type AutomationCoordinator = FragnoOutboxCoordinator<
@@ -68,6 +78,7 @@ export function createAutomationCollections(
     ...tables,
     connections: createIntegrationConnectionsCollection(tables),
     ...createPiAgentCollections(tables),
+    workflowWaits: createWorkflowWaitsCollection(tables),
   };
 }
 

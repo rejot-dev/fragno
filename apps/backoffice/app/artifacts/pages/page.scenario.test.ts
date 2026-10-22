@@ -7,7 +7,6 @@ import { createCodemodeTestServer } from "@fragno-dev/codemode/testing/codemode-
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
-import * as ts from "typescript";
 
 import { createStateStore } from "@json-render/react";
 import { queryOnce } from "@tanstack/react-db";
@@ -18,7 +17,6 @@ import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeUiLinkTarget } from "@/backoffice-ui/components/link";
 import { BackofficeUiStoreRenderer } from "@/backoffice-ui/renderer";
-import { STATIC_CODEMODE_CONTENT } from "@/files/content/static-codemode";
 import {
   backofficeFiles,
   defineBackofficeScenario,
@@ -28,6 +26,7 @@ import {
 
 import { loadPage } from "./build.server";
 import { pageDataPath, pageValuePath, type PageDefinition, type PageLoad } from "./definition";
+import { checkPageSource } from "./page-source.test-support";
 import { pageQuery, pageRows, pageValue, type PageData } from "./query";
 
 const workers = vi.hoisted(() => ({
@@ -286,45 +285,6 @@ function startRun(workflow: string, instanceId: string) {
   } as const;
 }
 
-/**
- * Type-checks a page source against the static codemode declarations with js.check's
- * options; scenarios have no compiler service to run js.check itself.
- */
-function checkPageSource(source: string): string[] {
-  const files = new Map<string, string>([
-    ...Object.entries(STATIC_CODEMODE_CONTENT).map(
-      ([path, content]) => [`/static/${path}`, String(content)] as const,
-    ),
-    [SOURCE_PATH, source] as const,
-  ]);
-  const options: ts.CompilerOptions = {
-    allowJs: true,
-    checkJs: true,
-    noEmit: true,
-    strict: true,
-    target: ts.ScriptTarget.ESNext,
-    module: ts.ModuleKind.ESNext,
-    moduleResolution: ts.ModuleResolutionKind.Bundler,
-    skipLibCheck: true,
-    types: [],
-  };
-  const host = ts.createCompilerHost(options);
-  const program = ts.createProgram([...files.keys()], options, {
-    ...host,
-    fileExists: (name) => files.has(name) || host.fileExists(name),
-    readFile: (name) => files.get(name) ?? host.readFile(name),
-    getSourceFile: (name, languageVersion, onError) => {
-      const content = files.get(name);
-      return content === undefined
-        ? host.getSourceFile(name, languageVersion, onError)
-        : ts.createSourceFile(name, content, languageVersion);
-    },
-  });
-  return ts
-    .getPreEmitDiagnostics(program)
-    .map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"));
-}
-
 /** Saves the source as an agent does. */
 async function writeSource(ctx: BackofficeScenarioContext, source: string) {
   await ctx.runCodemode({
@@ -346,7 +306,7 @@ async function writePage(ctx: BackofficeScenarioContext, source: string) {
   // The tool's output schema has validated the result.
   const built = build.result as { status: "built" } | { status: "failed"; message: string };
   return {
-    diagnostics: checkPageSource(source),
+    diagnostics: checkPageSource(SOURCE_PATH, source),
     verifyError: built.status === "failed" ? built.message : null,
   };
 }

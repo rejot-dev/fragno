@@ -1,4 +1,4 @@
-const skillModules = import.meta.glob<string>("../../../content/static/skills/**/*.md", {
+const skillModules = import.meta.glob<string>("../../../content/static/skills/**/*.{md,js}", {
   eager: true,
   query: "?raw",
   import: "default",

@@ -310,6 +310,9 @@ function DashboardWorkspace({
   const waitingRunsQuery = useLiveQuery({
     query: (query) => workflowRunRecordsQuery(query, collections, { type: "waiting" }),
   });
+  const waitsQuery = useLiveQuery({
+    query: (query) => query.from({ wait: collections.workflowWaits }),
+  });
   const eventsQuery = useLiveQuery({
     query: (query) => dashboardEventsQuery(query, collections, new Date(windowStart)),
   });
@@ -344,11 +347,20 @@ function DashboardWorkspace({
         now,
         runs: runsQuery.data ?? [],
         waitingRuns,
+        waits: waitsQuery.data ?? [],
         events: eventsQuery.data ?? [],
         connections: connectionsQuery.data ?? [],
         routes: routesState.routes,
       }),
-    [now, runsQuery.data, waitingRuns, eventsQuery.data, connectionsQuery.data, routesState.routes],
+    [
+      now,
+      runsQuery.data,
+      waitingRuns,
+      waitsQuery.data,
+      eventsQuery.data,
+      connectionsQuery.data,
+      routesState.routes,
+    ],
   );
 
   const agents = useMemo(
@@ -364,6 +376,7 @@ function DashboardWorkspace({
   const queries = [
     runsQuery,
     waitingRunsQuery,
+    waitsQuery,
     eventsQuery,
     connectionsQuery,
     agentsQuery,

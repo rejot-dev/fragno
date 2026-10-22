@@ -1,5 +1,5 @@
-// Generated from the synchronized collections and the page limits; page.d.ts declares the
-// page builder that reads them.
+// Generated from the page collections and the page limits; page.d.ts declares the page
+// builder that reads them.
 
 /** The most a page asks for; a build beyond them fails. */
 type PageLimits = {
@@ -157,5 +157,42 @@ type PageCollections = {
     createdAt: Date;
     deliveredAt: Date | null;
     consumedByStepKey: string | null;
+  }>;
+  /** Integration connections as their latest state change reports them, disconnected ones included; name and authMethod are null until a change carries a label. */
+  connections: PageCollection<{
+    connectionId: string;
+    service: string;
+    kind: string;
+    state: string;
+    name: string | null;
+    authMethod: string | null;
+    eventId: string;
+    changedAt: Date;
+  }>;
+  /** Pi agents as their events record them now; latestKind and latestAt are null for an agent with no recorded activity. definition holds description, permissions, and managedBy. */
+  agents: PageCollection<{
+    agentName: string;
+    definition: unknown;
+    builtIn: boolean;
+    latestKind: string | null;
+    latestAt: Date | null;
+    answering: boolean;
+    queued: number;
+    steering: number;
+    paused: boolean;
+  }>;
+  /** Turns agents ended, one row each; outcome is answered, cut-off, or failed. */
+  agentTurns: PageCollection<{
+    id: string;
+    agentName: string;
+    outcome: string;
+    endedAt: Date;
+  }>;
+  /** Event types waiting runs wait for, one row each; runId is the run's id. interfaceStepKey names the completed step whose interface asks a person to answer, or is null. */
+  workflowWaits: PageCollection<{
+    id: string;
+    runId: string;
+    eventType: string;
+    interfaceStepKey: string | null;
   }>;
 };
