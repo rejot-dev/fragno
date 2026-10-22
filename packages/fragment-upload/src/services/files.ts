@@ -1,4 +1,4 @@
-import type { DatabaseServiceContext } from "@fragno-dev/db";
+import type { DatabaseServiceContext, HookFn } from "@fragno-dev/db";
 
 import type {
   FileHookPayload,
@@ -45,11 +45,11 @@ type FileHookSource = {
 };
 
 type UploadHooks = {
-  onFileReady: (payload: FileHookPayload) => void | Promise<void>;
-  onUploadFailed: (payload: FileHookPayload) => void | Promise<void>;
-  onFileDeleted: (payload: FileHookPayload) => void | Promise<void>;
-  cleanupStorageObject: (payload: FileHookPayload) => void | Promise<void>;
-  onUploadTimeout: (payload: UploadTimeoutPayload) => void | Promise<void>;
+  onFileReady: HookFn<FileHookPayload>;
+  onUploadFailed: HookFn<FileHookPayload>;
+  onFileDeleted: HookFn<FileHookPayload>;
+  cleanupStorageObject: HookFn<FileHookPayload>;
+  onUploadTimeout: HookFn<UploadTimeoutPayload>;
 };
 
 type UploadServiceContext = DatabaseServiceContext<UploadHooks>;

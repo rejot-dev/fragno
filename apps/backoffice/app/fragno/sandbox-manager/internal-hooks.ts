@@ -1,3 +1,5 @@
+import type { HookFn } from "@fragno-dev/db";
+
 import type { SandboxLifecycleEvent, SandboxLifecycleWorkflowParams } from "./contracts";
 
 export type EnqueueSandboxLifecycleWorkflowPayload = {
@@ -6,8 +8,6 @@ export type EnqueueSandboxLifecycleWorkflowPayload = {
 };
 
 export type SandboxManagerInternalHooks = {
-  enqueueSandboxLifecycleWorkflow: (
-    payload: EnqueueSandboxLifecycleWorkflowPayload,
-  ) => Promise<void> | void;
-  deliverLifecycleEvent: (event: SandboxLifecycleEvent) => Promise<void> | void;
+  enqueueSandboxLifecycleWorkflow: HookFn<EnqueueSandboxLifecycleWorkflowPayload>;
+  deliverLifecycleEvent: HookFn<SandboxLifecycleEvent>;
 };

@@ -1,7 +1,7 @@
 import type { AutomationRouteDefinition } from "@fragno-dev/backoffice-api/v0/automation";
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 
-import type { DatabaseServiceContext, TypedUnitOfWork } from "@fragno-dev/db";
+import type { DatabaseServiceContext, HookFn, TypedUnitOfWork } from "@fragno-dev/db";
 
 import type { AutomationEventIdentity } from "./contracts";
 import { automationFragmentSchema } from "./schema";
@@ -33,10 +33,8 @@ export type AutomationRouteScheduleDispatchPayload =
  * prevents unrelated feature runtimes from importing one another when a new hook is added.
  */
 export type AutomationInternalHooks = {
-  internalIngestEvent: (payload: AutomationEventIngestionPayload) => Promise<void> | void;
-  internalDispatchRouteSchedule: (
-    payload: AutomationRouteScheduleDispatchPayload,
-  ) => Promise<void> | void;
+  internalIngestEvent: HookFn<AutomationEventIngestionPayload>;
+  internalDispatchRouteSchedule: HookFn<AutomationRouteScheduleDispatchPayload>;
 };
 
 export type AutomationHookServiceContext = DatabaseServiceContext<AutomationInternalHooks>;
