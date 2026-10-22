@@ -9,7 +9,8 @@
   "type": "module",
   "scripts": {
     "auth:migration:generate": "auth generate --config scripts/better-auth-cli.ts --output workers/auth/migrations/better-auth.sql --yes",
-    "admin:grant": "bash scripts/grant-admin.sh",
+    "admin:grant": "tsx scripts/grant-admin.ts",
+    "dev-account:create": "tsx scripts/create-dev-account.ts",
     "do:reset": "bash scripts/reset-dev-durable-objects.sh",
     "oauth:test": "node scripts/test-oauth-client.mjs",
     "build": "react-router build",
