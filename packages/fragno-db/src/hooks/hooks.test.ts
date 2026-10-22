@@ -11,10 +11,15 @@ import type { FragnoPublicConfigWithDatabase } from "../db-fragment-definition-b
 import { internalFragmentDef, internalSchema } from "../fragments/internal-fragment";
 import { getRegistryForAdapterSync } from "../internal/adapter-registry";
 import { ConcurrencyConflictError } from "../query/unit-of-work/execute-unit-of-work";
-import { ExponentialBackoffRetryPolicy, NoRetryPolicy } from "../query/unit-of-work/retry-policy";
 import { FragnoId } from "../schema/create";
-import { DurableHooksLogger } from "./durable-hooks-logger";
 import {
+  defaultDurableHookRetryPolicy,
+  type DurableHookRetryPolicy,
+} from "./durable-hook-retry-policy";
+import { DurableHooksLogger } from "./durable-hooks-logger";
+import { registerDurableHooksRuntime } from "./durable-hooks-runtime";
+import {
+  defineDurableHook,
   prepareHookMutations,
   processHooks,
   createDurableHooksRunner,
@@ -28,6 +33,8 @@ import {
 } from "./hooks";
 
 const TEST_NS = "test";
+
+const noRetries: DurableHookRetryPolicy = { ...defaultDurableHookRetryPolicy, maxAttempts: 1 };
 
 type OptionsWithAdapter = FragnoPublicConfigWithDatabase & {
   databaseAdapter: SqlAdapter;
@@ -89,7 +96,7 @@ describe("Hook System", () => {
 
     it("should create hook records for triggered hooks", async () => {
       const hooks: HooksMap = {
-        onTest: vi.fn(),
+        onTest: defineDurableHook(vi.fn()),
       };
       const onSuccess = vi.fn();
       const onBeforeMutate = vi.fn();
@@ -106,11 +113,7 @@ describe("Hook System", () => {
             uow.triggerHook("onTest", { data: "test" });
 
             // Prepare hook mutations
-            prepareHookMutations(
-              uow,
-              internalFragment,
-              new ExponentialBackoffRetryPolicy({ maxRetries: 5 }),
-            );
+            prepareHookMutations(uow, internalFragment);
           })
           .execute();
       });
@@ -134,7 +137,7 @@ describe("Hook System", () => {
         hookName: "onTest",
         payload: { data: "test" },
         attempts: 0,
-        maxAttempts: 5,
+        maxAttempts: defaultDurableHookRetryPolicy.maxAttempts,
       });
     });
 
@@ -148,7 +151,7 @@ describe("Hook System", () => {
         runAttempt: async (_attempt, execute) => await execute(),
       };
       const hooks: HooksMap = {
-        onTraced: vi.fn(),
+        onTraced: defineDurableHook(vi.fn()),
       };
 
       await internalFragment.inContext(async function () {
@@ -156,12 +159,7 @@ describe("Hook System", () => {
           .mutate(({ forSchema }) => {
             const uow = forSchema(internalSchema, hooks);
             uow.triggerHook("onTraced", { data: "test" });
-            prepareHookMutations(
-              uow,
-              internalFragment,
-              new ExponentialBackoffRetryPolicy({ maxRetries: 5 }),
-              instrumentation,
-            );
+            prepareHookMutations(uow, internalFragment, instrumentation);
           })
           .execute();
       });
@@ -193,7 +191,7 @@ describe("Hook System", () => {
         runAttempt: async (_attempt, execute) => await execute(),
       };
       const hooks: HooksMap = {
-        onTraced: vi.fn(),
+        onTraced: defineDurableHook(vi.fn()),
       };
 
       await expect(
@@ -202,12 +200,7 @@ describe("Hook System", () => {
             .mutate(({ forSchema }) => {
               const uow = forSchema(internalSchema, hooks);
               uow.triggerHook("onTraced", { data: "test" });
-              prepareHookMutations(
-                uow,
-                internalFragment,
-                new ExponentialBackoffRetryPolicy({ maxRetries: 5 }),
-                instrumentation,
-              );
+              prepareHookMutations(uow, internalFragment, instrumentation);
             })
             .execute();
         }),
@@ -231,7 +224,7 @@ describe("Hook System", () => {
         runAttempt: async (_attempt, execute) => await execute(),
       };
       const hooks: HooksMap = {
-        onExplicitContext: vi.fn(),
+        onExplicitContext: defineDurableHook(vi.fn()),
       };
 
       await internalFragment.inContext(async function () {
@@ -243,12 +236,7 @@ describe("Hook System", () => {
               { data: "test" },
               { propagationContext: explicitContext },
             );
-            prepareHookMutations(
-              uow,
-              internalFragment,
-              new ExponentialBackoffRetryPolicy({ maxRetries: 5 }),
-              instrumentation,
-            );
+            prepareHookMutations(uow, internalFragment, instrumentation);
           })
           .execute();
       });
@@ -270,7 +258,7 @@ describe("Hook System", () => {
       const namespace = internalFragment.$internal.deps.namespace ?? internalSchema.name;
       const hookId = "hook-id-1";
       const hooks: HooksMap = {
-        onId: vi.fn(),
+        onId: defineDurableHook(vi.fn()),
       };
 
       await internalFragment.inContext(async function () {
@@ -280,11 +268,7 @@ describe("Hook System", () => {
 
             uow.triggerHook("onId", { data: "test" }, { id: hookId });
 
-            prepareHookMutations(
-              uow,
-              internalFragment,
-              new ExponentialBackoffRetryPolicy({ maxRetries: 5 }),
-            );
+            prepareHookMutations(uow, internalFragment);
           })
           .execute();
       });
@@ -306,7 +290,7 @@ describe("Hook System", () => {
       const namespace = internalFragment.$internal.deps.namespace ?? internalSchema.name;
       const hookId = "hook-id-conflict";
       const hooks: HooksMap = {
-        onIdConflict: vi.fn(),
+        onIdConflict: defineDurableHook(vi.fn()),
       };
 
       await internalFragment.inContext(async function () {
@@ -316,11 +300,7 @@ describe("Hook System", () => {
 
             uow.triggerHook("onIdConflict", { data: "first" }, { id: hookId });
 
-            prepareHookMutations(
-              uow,
-              internalFragment,
-              new ExponentialBackoffRetryPolicy({ maxRetries: 5 }),
-            );
+            prepareHookMutations(uow, internalFragment);
           })
           .execute();
       });
@@ -333,11 +313,7 @@ describe("Hook System", () => {
 
               uow.triggerHook("onIdConflict", { data: "second" }, { id: hookId });
 
-              prepareHookMutations(
-                uow,
-                internalFragment,
-                new ExponentialBackoffRetryPolicy({ maxRetries: 5 }),
-              );
+              prepareHookMutations(uow, internalFragment);
             })
             .execute();
         }),
@@ -356,19 +332,18 @@ describe("Hook System", () => {
       expect(events[0]?.id.externalId).toBe(hookId);
     });
 
-    it("should set maxAttempts to 1 when retry policy does not retry", async () => {
+    it("should record the maxAttempts of the retry policy its namespace defines", async () => {
       const hooks: HooksMap = {
-        onNoRetry: vi.fn(),
+        onSingleAttempt: defineDurableHook(vi.fn(), { retryPolicy: noRetries }),
       };
+      registerDurableHooksRuntime({ hooks, namespace: TEST_NS, internalFragment, handlerTx });
 
       await internalFragment.inContext(async function () {
         await this.handlerTx()
           .mutate(({ forSchema }) => {
             const uow = forSchema(internalSchema, hooks);
-
-            uow.triggerHook("onNoRetry", { data: "test" });
-
-            prepareHookMutations(uow, internalFragment, new NoRetryPolicy());
+            uow.triggerHook("onSingleAttempt", { data: "test" });
+            prepareHookMutations(uow, internalFragment);
           })
           .execute();
       });
@@ -386,48 +361,9 @@ describe("Hook System", () => {
       assert(events[0]?.maxAttempts === 1);
     });
 
-    it("should use custom retry policy from trigger options", async () => {
-      const hooks: HooksMap = {
-        onCustomRetry: vi.fn(),
-      };
-
-      await internalFragment.inContext(async function () {
-        await this.handlerTx()
-          .mutate(({ forSchema }) => {
-            const uow = forSchema(internalSchema, hooks);
-
-            uow.triggerHook(
-              "onCustomRetry",
-              { data: "test" },
-              {
-                retryPolicy: new NoRetryPolicy(),
-              },
-            );
-
-            prepareHookMutations(
-              uow,
-              internalFragment,
-              new ExponentialBackoffRetryPolicy({ maxRetries: 10 }),
-            );
-          })
-          .execute();
-      });
-
-      const events = await internalFragment.inContext(async function () {
-        return await this.handlerTx()
-          .withServiceCalls(
-            () => [internalFragment.services.hookService.getHooksByNamespace(TEST_NS)] as const,
-          )
-          .transform(({ serviceResult: [result] }) => result)
-          .execute();
-      });
-
-      assert(events[0]?.maxAttempts === 1);
-    });
-
     it("should set nextRetryAt when processAt is in the future", async () => {
       const hooks: HooksMap = {
-        onScheduled: vi.fn(),
+        onScheduled: defineDurableHook(vi.fn()),
       };
       const futureTime = new Date(Date.now() + 60000);
 
@@ -438,11 +374,7 @@ describe("Hook System", () => {
 
             uow.triggerHook("onScheduled", { data: "test" }, { processAt: futureTime });
 
-            prepareHookMutations(
-              uow,
-              internalFragment,
-              new ExponentialBackoffRetryPolicy({ maxRetries: 5 }),
-            );
+            prepareHookMutations(uow, internalFragment);
           })
           .execute();
       });
@@ -463,7 +395,7 @@ describe("Hook System", () => {
 
     it("should keep processAt in the past while remaining immediately eligible", async () => {
       const hooks: HooksMap = {
-        onImmediate: vi.fn(),
+        onImmediate: defineDurableHook(vi.fn()),
       };
       const pastTime = new Date(Date.now() - 60000);
 
@@ -474,11 +406,7 @@ describe("Hook System", () => {
 
             uow.triggerHook("onImmediate", { data: "test" }, { processAt: pastTime });
 
-            prepareHookMutations(
-              uow,
-              internalFragment,
-              new ExponentialBackoffRetryPolicy({ maxRetries: 5 }),
-            );
+            prepareHookMutations(uow, internalFragment);
           })
           .execute();
       });
@@ -500,7 +428,7 @@ describe("Hook System", () => {
     it("should preserve full hookName in queued hooks log summary when it contains colons", async () => {
       const hookName = "on:segment:created";
       const hooks: HooksMap = {
-        [hookName]: vi.fn(),
+        [hookName]: defineDurableHook(vi.fn()),
       };
       const debugSpy = vi.spyOn(DurableHooksLogger, "debug").mockImplementation(() => {});
 
@@ -510,11 +438,7 @@ describe("Hook System", () => {
             .mutate(({ forSchema }) => {
               const uow = forSchema(internalSchema, hooks);
               uow.triggerHook(hookName, { data: "test" });
-              prepareHookMutations(
-                uow,
-                internalFragment,
-                new ExponentialBackoffRetryPolicy({ maxRetries: 5 }),
-              );
+              prepareHookMutations(uow, internalFragment);
             })
             .execute();
         });
@@ -586,7 +510,7 @@ describe("Hook System", () => {
         capturedActiveContext = this.capturePropagationContext();
       });
       const hooks: HooksMap = {
-        onSuccess: hookFn,
+        onSuccess: defineDurableHook(hookFn),
       };
       const propagationContext = {
         traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
@@ -630,7 +554,6 @@ describe("Hook System", () => {
         namespace,
         internalFragment,
         handlerTx,
-        defaultRetryPolicy: new ExponentialBackoffRetryPolicy({ maxRetries: 3 }),
         instrumentation,
       });
 
@@ -639,7 +562,7 @@ describe("Hook System", () => {
           namespace,
           hookName: "onSuccess",
           attempt: 1,
-          maxAttempts: 5,
+          maxAttempts: defaultDurableHookRetryPolicy.maxAttempts,
           propagationContext,
         }),
         expect.any(Function),
@@ -691,11 +614,10 @@ describe("Hook System", () => {
         };
 
         await processHooksToCompletion({
-          hooks: { onSkipped: hookFn },
+          hooks: { onSkipped: defineDurableHook(hookFn, { retryPolicy: noRetries }) },
           namespace,
           internalFragment,
           handlerTx,
-          defaultRetryPolicy: new NoRetryPolicy(),
           instrumentation,
         });
 
@@ -727,11 +649,10 @@ describe("Hook System", () => {
       };
 
       await processHooksToCompletion({
-        hooks: { onRepeated: hookFn },
+        hooks: { onRepeated: defineDurableHook(hookFn, { retryPolicy: noRetries }) },
         namespace,
         internalFragment,
         handlerTx,
-        defaultRetryPolicy: new NoRetryPolicy(),
         instrumentation,
       });
 
@@ -763,11 +684,10 @@ describe("Hook System", () => {
       };
 
       await processHooksToCompletion({
-        hooks: { onFailure: hookFn },
+        hooks: { onFailure: defineDurableHook(hookFn, { retryPolicy: noRetries }) },
         namespace,
         internalFragment,
         handlerTx,
-        defaultRetryPolicy: new NoRetryPolicy(),
         instrumentation,
       });
 
@@ -799,11 +719,10 @@ describe("Hook System", () => {
 
       let processingSettled = false;
       const processing = processHooksToCompletion({
-        hooks: { onDeferred: hookFn },
+        hooks: { onDeferred: defineDurableHook(hookFn, { retryPolicy: noRetries }) },
         namespace,
         internalFragment,
         handlerTx,
-        defaultRetryPolicy: new NoRetryPolicy(),
         instrumentation,
       }).finally(() => {
         processingSettled = true;
@@ -839,7 +758,7 @@ describe("Hook System", () => {
       });
 
       const hooks: HooksMap = {
-        onConflict: hookFn,
+        onConflict: defineDurableHook(hookFn),
       };
 
       await internalFragment.inContext(async function () {
@@ -870,7 +789,6 @@ describe("Hook System", () => {
           namespace,
           internalFragment,
           handlerTx,
-          defaultRetryPolicy: new ExponentialBackoffRetryPolicy({ maxRetries: 3 }),
         }),
       ).rejects.toThrow(ConcurrencyConflictError);
 
@@ -896,7 +814,7 @@ describe("Hook System", () => {
       const namespace = "test-failure";
       const hookFn = vi.fn().mockRejectedValue(new Error("Hook failed"));
       const hooks: HooksMap = {
-        onFailure: hookFn,
+        onFailure: defineDurableHook(hookFn),
       };
 
       let eventId: FragnoId;
@@ -927,7 +845,6 @@ describe("Hook System", () => {
         namespace,
         internalFragment,
         handlerTx,
-        defaultRetryPolicy: new ExponentialBackoffRetryPolicy({ maxRetries: 3 }),
       });
 
       expect(hookFn).toHaveBeenCalledOnce();
@@ -951,7 +868,7 @@ describe("Hook System", () => {
       const namespace = "test-max-retries";
       const hookFn = vi.fn().mockRejectedValue(new Error("Permanent failure"));
       const hooks: HooksMap = {
-        onMaxRetries: hookFn,
+        onMaxRetries: defineDurableHook(hookFn, { retryPolicy: noRetries }),
       };
 
       let eventId: FragnoId;
@@ -982,7 +899,6 @@ describe("Hook System", () => {
         namespace,
         internalFragment,
         handlerTx,
-        defaultRetryPolicy: new NoRetryPolicy(),
       });
 
       const result = await internalFragment.inContext(async function () {
@@ -999,10 +915,85 @@ describe("Hook System", () => {
       assert(result?.error === "Permanent failure");
     });
 
-    it("should handle missing hooks gracefully", async () => {
+    it("should retry by the hook's own policy after a jittered, capped backoff", async () => {
+      const namespace = "test-hook-retry-policy";
+      const hookFn = vi.fn().mockRejectedValue(new Error("Dependency unavailable"));
+      const retryPolicy: DurableHookRetryPolicy = {
+        maxAttempts: 4,
+        initialDelayMs: 1_000,
+        backoffMultiplier: 2,
+        maxDelayMs: 1_500,
+        isRetryable: () => true,
+      };
+
+      let eventId: FragnoId;
+      await internalFragment.inContext(async function () {
+        eventId = await this.handlerTx()
+          .mutate(({ forSchema }) =>
+            forSchema(internalSchema).create("fragno_hooks", {
+              namespace,
+              hookName: "onRetry",
+              payload: {},
+              status: "pending",
+              attempts: 2,
+              // Recorded under an earlier policy; the definition's policy governs.
+              maxAttempts: 1,
+              lastAttemptAt: null,
+              nextRetryAt: null,
+              error: null,
+              nonce: "test-nonce",
+            }),
+          )
+          .execute();
+      });
+
+      await processHooksToCompletion({
+        hooks: { onRetry: defineDurableHook(hookFn, { retryPolicy }) },
+        namespace,
+        internalFragment,
+        handlerTx,
+      });
+
+      const result = await getHook(eventId!);
+      assert(result?.status === "pending");
+      assert(result.attempts === 3);
+      assert(result.maxAttempts === 4);
+      assert(result.lastAttemptAt && result.nextRetryAt);
+      // The third failure backs off min(1000 * 2^2, 1500) ms, drawn from its upper half.
+      const delayMs = result.nextRetryAt.getTime() - result.lastAttemptAt.getTime();
+      expect(delayMs).toBeGreaterThanOrEqual(750);
+      expect(delayMs).toBeLessThanOrEqual(1_500);
+    });
+
+    it("should fail a hook at once when its policy deems the error not retryable", async () => {
+      const namespace = "test-hook-not-retryable";
+      class InvalidPayloadError extends Error {}
+      const hookFn = vi.fn().mockRejectedValue(new InvalidPayloadError("Payload is invalid"));
+      const retryPolicy: DurableHookRetryPolicy = {
+        ...defaultDurableHookRetryPolicy,
+        isRetryable: (error) => !(error instanceof InvalidPayloadError),
+      };
+      const eventId = await createPendingHook(namespace, "onInvalid");
+
+      await processHooksToCompletion({
+        hooks: { onInvalid: defineDurableHook(hookFn, { retryPolicy }) },
+        namespace,
+        internalFragment,
+        handlerTx,
+      });
+
+      expect(await getHook(eventId)).toMatchObject({
+        status: "failed",
+        attempts: 1,
+        maxAttempts: defaultDurableHookRetryPolicy.maxAttempts,
+        error: "Payload is invalid",
+      });
+    });
+
+    it("should retry hooks missing from the hooks map", async () => {
       const namespace = "test-missing-hook";
       const hooks: HooksMap = {
-        onExisting: vi.fn(),
+        onExisting: defineDurableHook(vi.fn(), { retryPolicy: noRetries }),
       };
 
       let eventId: FragnoId;
@@ -1033,7 +1024,6 @@ describe("Hook System", () => {
         namespace,
         internalFragment,
         handlerTx,
-        defaultRetryPolicy: new NoRetryPolicy(),
       });
 
       const result = await internalFragment.inContext(async function () {
@@ -1045,7 +1035,10 @@ describe("Hook System", () => {
           .execute();
       });
 
-      assert(result?.status === "failed");
+      // A later deploy may define the hook, so it retries under the default policy.
+      assert(result?.status === "pending");
+      assert(result?.attempts === 1);
+      assert(result?.maxAttempts === defaultDurableHookRetryPolicy.maxAttempts);
       assert(result?.error === "Hook 'onMissing' not found in hooks map");
     });
 
@@ -1053,7 +1046,7 @@ describe("Hook System", () => {
       const namespace = "test-stuck-processing";
       const hookFn = vi.fn();
       const hooks: HooksMap = {
-        onStuck: hookFn,
+        onStuck: defineDurableHook(hookFn),
       };
       const onStuckProcessingHooks = vi.fn();
 
@@ -1117,9 +1110,9 @@ describe("Hook System", () => {
       const hook2 = vi.fn();
       const hook3 = vi.fn();
       const hooks: HooksMap = {
-        onHook1: hook1,
-        onHook2: hook2,
-        onHook3: hook3,
+        onHook1: defineDurableHook(hook1),
+        onHook2: defineDurableHook(hook2),
+        onHook3: defineDurableHook(hook3),
       };
 
       await internalFragment.inContext(async function () {
@@ -1171,7 +1164,6 @@ describe("Hook System", () => {
         namespace,
         internalFragment,
         handlerTx,
-        defaultRetryPolicy: new ExponentialBackoffRetryPolicy({ maxRetries: 3 }),
       });
 
       expect(hook1).toHaveBeenCalledWith({ id: 1 });
@@ -1198,9 +1190,9 @@ describe("Hook System", () => {
       const hook2 = vi.fn().mockRejectedValue(new Error("Hook 2 failed"));
       const hook3 = vi.fn();
       const hooks: HooksMap = {
-        onHook1: hook1,
-        onHook2: hook2,
-        onHook3: hook3,
+        onHook1: defineDurableHook(hook1),
+        onHook2: defineDurableHook(hook2),
+        onHook3: defineDurableHook(hook3),
       };
 
       await internalFragment.inContext(async function () {
@@ -1252,7 +1244,6 @@ describe("Hook System", () => {
         namespace,
         internalFragment,
         handlerTx,
-        defaultRetryPolicy: new ExponentialBackoffRetryPolicy({ maxRetries: 3 }),
       });
 
       expect(hook1).toHaveBeenCalledOnce();
@@ -1281,7 +1272,7 @@ describe("Hook System", () => {
       const namespace = "test-no-events";
       const hookFn = vi.fn();
       const hooks: HooksMap = {
-        onTest: hookFn,
+        onTest: defineDurableHook(hookFn),
       };
 
       await processHooksToCompletion({
@@ -1289,7 +1280,6 @@ describe("Hook System", () => {
         namespace,
         internalFragment,
         handlerTx,
-        defaultRetryPolicy: new ExponentialBackoffRetryPolicy({ maxRetries: 3 }),
       });
 
       expect(hookFn).not.toHaveBeenCalled();
@@ -1332,11 +1322,10 @@ describe("Hook System", () => {
       };
 
       const runner = createDurableHooksRunner({
-        hooks: { onQueued: hookFn },
+        hooks: { onQueued: defineDurableHook(hookFn) },
         namespace,
         internalFragment,
         handlerTx,
-        defaultRetryPolicy: new NoRetryPolicy(),
       });
 
       await enqueueHook(1);
@@ -1393,11 +1382,10 @@ describe("Hook System", () => {
       };
 
       const runner = createDurableHooksRunner({
-        hooks: { onQueued: hookFn },
+        hooks: { onQueued: defineDurableHook(hookFn) },
         namespace,
         internalFragment,
         handlerTx,
-        defaultRetryPolicy: new NoRetryPolicy(),
       });
 
       await enqueueHooks(1, 1);

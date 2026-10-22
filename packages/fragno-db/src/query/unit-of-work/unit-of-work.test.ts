@@ -5,6 +5,7 @@ import { SqliteDialect } from "kysely";
 
 import { BetterSQLite3DriverConfig } from "../../adapters/generic-sql/driver-config";
 import { SqlAdapter } from "../../adapters/generic-sql/generic-sql-adapter";
+import { defineDurableHook } from "../../hooks/hooks";
 import { column, schema, idColumn, FragnoId } from "../../schema/create";
 import { createIndexedBuilder } from "../condition-builder";
 import { Cursor } from "../cursor";
@@ -2191,7 +2192,7 @@ describe("triggerHook namespace resolution", () => {
     uow.registerSchema(hooksSchema, null);
 
     const hooks = {
-      onTest: (_payload: { value: string }) => {},
+      onTest: defineDurableHook((_payload: { value: string }) => {}),
     };
 
     const typedUow = uow.forSchema(hooksSchema, hooks);
