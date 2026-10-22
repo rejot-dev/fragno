@@ -988,7 +988,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
 
       // Define hooks type
       type TestHooks = {
-        onUserCreated: (payload: { email: string }) => void | Promise<void>;
+        onUserCreated: HookFn<{ email: string }>;
       };
 
       // Create a fragment with hooks
@@ -1364,7 +1364,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         driverConfig: new BetterSQLite3DriverConfig(),
       });
       type TraceHooks = {
-        onTrace: (payload: Record<string, never>) => void | Promise<void>;
+        onTrace: HookFn<Record<string, never>>;
       };
       let executeEnqueue: (() => Promise<unknown>) | undefined;
       const definition = defineFragment("request-hook-propagation")
@@ -1459,10 +1459,10 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       );
 
       type HooksA = {
-        onAlpha: (payload: { value: string }) => void | Promise<void>;
+        onAlpha: HookFn<{ value: string }>;
       };
       type HooksB = {
-        onBeta: (payload: { value: string }) => void | Promise<void>;
+        onBeta: HookFn<{ value: string }>;
       };
 
       const namespaceA = sanitizeNamespace(schemaA.name);
@@ -1623,14 +1623,14 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       );
 
       type HooksA = {
-        onAlpha: (payload: { value: string }) => void | Promise<void>;
+        onAlpha: HookFn<{ value: string }>;
       };
       type HooksB = {
-        onBeta: (payload: { value: string }) => void | Promise<void>;
+        onBeta: HookFn<{ value: string }>;
       };
 
       const hooksB: HooksB = {
-        onBeta: () => Promise.resolve(),
+        onBeta: hooks.defineDurableHook(() => Promise.resolve()),
       };
 
       const namespaceA = sanitizeNamespace(schemaA.name);
@@ -1774,14 +1774,14 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       );
 
       type HooksA = {
-        onAlpha: (payload: { value: string }) => void | Promise<void>;
+        onAlpha: HookFn<{ value: string }>;
       };
       type HooksB = {
-        onBeta: (payload: { value: string }) => void | Promise<void>;
+        onBeta: HookFn<{ value: string }>;
       };
 
       const hooksB: HooksB = {
-        onBeta: () => Promise.resolve(),
+        onBeta: hooks.defineDurableHook(() => Promise.resolve()),
       };
 
       const namespaceA = sanitizeNamespace(schemaA.name);
@@ -1914,7 +1914,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       const mockAdapter = createMockAdapter();
 
       type TestHooks = {
-        onUserCreated: (payload: { email: string }) => void | Promise<void>;
+        onUserCreated: HookFn<{ email: string }>;
       };
 
       const definition = withDatabase(testSchema)(defineFragment("db-frag-plan-mode"))

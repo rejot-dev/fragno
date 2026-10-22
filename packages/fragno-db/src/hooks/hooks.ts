@@ -6,11 +6,16 @@ import type {
   ExecuteTxOptions,
   HandlerTxBuilder,
 } from "../query/unit-of-work/execute-unit-of-work";
-import type { RetryPolicy } from "../query/unit-of-work/retry-policy";
-import { ExponentialBackoffRetryPolicy } from "../query/unit-of-work/retry-policy";
 import type { IUnitOfWork } from "../query/unit-of-work/unit-of-work";
 import type { FragnoId } from "../schema/create";
+import {
+  assertDurableHookRetryPolicy,
+  defaultDurableHookRetryPolicy,
+  durableHookRetryDelayMs,
+  type DurableHookRetryPolicy,
+} from "./durable-hook-retry-policy";
 import { DurableHooksLogger, type DurableHooksLoggerConfig } from "./durable-hooks-logger";
+import { getDurableHooksRuntimeByNamespace } from "./durable-hooks-runtime";
 
 /**
  * Context available in hook functions via `this`.
@@ -39,7 +44,7 @@ export interface HookContext {
    */
   attempts: number;
   /**
-   * Maximum attempts configured for this hook event.
+   * Maximum attempts allowed by this hook's retry policy.
    */
   maxAttempts: number;
   /**
@@ -87,7 +92,33 @@ const assertHookStatus = (value: unknown): HookStatus => {
  * A hook function signature.
  * Hooks receive a typed payload and access context via `this`.
  */
-export type HookFn<TPayload = unknown> = (payload: TPayload) => void | Promise<void>;
+export type HookFn<TPayload = unknown> = ((payload: TPayload) => void | Promise<void>) & {
+  readonly retryPolicy: DurableHookRetryPolicy;
+};
+
+export type DefineDurableHookOptions = {
+  /** Defaults to `defaultDurableHookRetryPolicy`. */
+  retryPolicy?: DurableHookRetryPolicy;
+};
+
+/** Pairs a hook function with the retry policy the processor applies to its failed attempts. */
+export function defineDurableHook<TPayload>(
+  hook: (this: HookContext, payload: TPayload) => void | Promise<void>,
+  { retryPolicy = defaultDurableHookRetryPolicy }: DefineDurableHookOptions = {},
+): HookFn<TPayload> {
+  assertDurableHookRetryPolicy(retryPolicy);
+  return Object.assign(
+    function (this: HookContext, payload: TPayload) {
+      return hook.call(this, payload);
+    },
+    { retryPolicy },
+  );
+}
+
+/** A queued hook whose definition is missing may be defined by a later deploy, so it keeps retrying. */
+function resolveDurableHookRetryPolicy(hook: HookFn | undefined): DurableHookRetryPolicy {
+  return hook?.retryPolicy ?? defaultDurableHookRetryPolicy;
+}
 
 /**
  * Map of hook names to hook functions.
@@ -152,11 +183,6 @@ export interface DurableHooksInstrumentation {
  * Options for triggering a hook.
  */
 export interface TriggerHookOptions {
-  /**
-   * Optional retry policy override for this specific hook trigger.
-   * If not provided, uses the default retry policy.
-   */
-  retryPolicy?: RetryPolicy;
   /**
    * Optional hook event ID. When provided, the hook insert will fail if a hook
    * with the same ID already exists.
@@ -231,7 +257,6 @@ export interface HookProcessorConfig<THooks extends HooksMap = HooksMap> {
    * Post-commit durable hooks notifier.
    */
   notifier?: HookNotifier;
-  defaultRetryPolicy?: RetryPolicy;
   /**
    * Optional durable-hook context propagation and attempt instrumentation.
    */
@@ -434,18 +459,14 @@ function captureDurableHookPropagationContext(
  * in the same transaction as the user's mutations.
  *
  * Each triggered hook carries its own namespace (set at trigger-time), so this
- * function works regardless of which fragment's handler is executing. When a
- * `config` is provided its `defaultRetryPolicy` is used as fallback.
+ * function works regardless of which fragment's handler is executing.
  */
 export function prepareHookMutations(
   uow: Pick<IUnitOfWork, "getTriggeredHooks" | "forSchema" | "idempotencyKey">,
-  _internalFragment: InternalFragmentInstance,
-  defaultRetryPolicy?: RetryPolicy,
+  internalFragment: InternalFragmentInstance,
   instrumentation?: DurableHooksInstrumentation,
   ambientContext: DurableHookPropagationContext | null = null,
 ): void {
-  const retryPolicy = defaultRetryPolicy ?? new ExponentialBackoffRetryPolicy({ maxRetries: 5 });
-
   const triggeredHooks = uow.getTriggeredHooks();
 
   if (triggeredHooks.length === 0) {
@@ -481,8 +502,13 @@ export function prepareHookMutations(
   const internalUow = uow.forSchema(internalSchema);
 
   for (const hook of triggeredHooks) {
-    const hookRetryPolicy = hook.options?.retryPolicy ?? retryPolicy;
-    const maxAttempts = hookRetryPolicy.shouldRetry(4) ? 5 : 1;
+    // Hooks of another fragment's namespace are queued here too; its runtime knows their policy.
+    // The processor records the policy it actually applies after each attempt.
+    const maxAttempts = resolveDurableHookRetryPolicy(
+      getDurableHooksRuntimeByNamespace(hook.namespace, internalFragment)?.config.hooks?.[
+        hook.hookName
+      ],
+    ).maxAttempts;
     const rawProcessAt = hook.options?.processAt ?? null;
     const processAt: Date | DbNow | null =
       rawProcessAt === null ? null : isDbNow(rawProcessAt) ? rawProcessAt : new Date(rawProcessAt);
@@ -519,11 +545,10 @@ export async function processHooks<THooks extends HooksMap>(
   config: HookProcessorConfig<THooks>,
   { claimLimit = MAX_ACTIVE_DURABLE_HOOKS }: { claimLimit?: number } = {},
 ): Promise<DurableHooksRun> {
-  const { hooks, namespace, internalFragment, defaultRetryPolicy } = config;
+  const { hooks, namespace, internalFragment } = config;
   if (!hooks) {
     throw new Error("Hook processor hooks not initialized.");
   }
-  const retryPolicy = defaultRetryPolicy ?? new ExponentialBackoffRetryPolicy({ maxRetries: 5 });
   const stuckProcessingTimeoutMinutes = resolveStuckProcessingTimeoutMinutes(
     config.stuckProcessingTimeoutMinutes,
   );
@@ -621,6 +646,8 @@ export async function processHooks<THooks extends HooksMap>(
       claimedEvents.map(async (event) => {
         const hookFn = hooks[event.hookName];
         const missingHookError = `Hook '${event.hookName}' not found in hooks map`;
+        const retryPolicy = resolveDurableHookRetryPolicy(hookFn);
+        const { maxAttempts } = retryPolicy;
 
         try {
           const attempt: DurableHookAttempt = {
@@ -629,7 +656,7 @@ export async function processHooks<THooks extends HooksMap>(
             hookName: event.hookName,
             idempotencyKey: event.idempotencyKey,
             attempt: event.attempts + 1,
-            maxAttempts: event.maxAttempts,
+            maxAttempts,
             createdAt: event.createdAt,
             propagationContext: event.propagationContext,
           };
@@ -646,7 +673,7 @@ export async function processHooks<THooks extends HooksMap>(
                 hookName: event.hookName,
                 status: event.status,
                 attempts: event.attempts,
-                maxAttempts: event.maxAttempts,
+                maxAttempts,
                 createdAt: event.createdAt.toISOString(),
                 nextRetryAt: event.nextRetryAt ? event.nextRetryAt.toISOString() : null,
                 lastAttemptAt: event.lastAttemptAt ? event.lastAttemptAt.toISOString() : null,
@@ -658,7 +685,7 @@ export async function processHooks<THooks extends HooksMap>(
               hookName: event.hookName,
               status: event.status,
               attempts: event.attempts,
-              maxAttempts: event.maxAttempts,
+              maxAttempts,
               propagationContext: event.propagationContext,
               capturePropagationContext: () =>
                 captureInstrumentedPropagationContext(
@@ -705,7 +732,7 @@ export async function processHooks<THooks extends HooksMap>(
                 eventId: event.id,
                 hookName: event.hookName,
                 attempts: event.attempts,
-                maxAttempts: event.maxAttempts,
+                maxAttempts,
                 createdAt: event.createdAt.toISOString(),
               },
             });
@@ -720,12 +747,14 @@ export async function processHooks<THooks extends HooksMap>(
               },
             });
           }
+          const attempts = event.attempts + 1;
           return {
             eventId: event.id,
             status: "failed" as const,
             error: errorMessage,
-            attempts: event.attempts,
-            maxAttempts: event.maxAttempts,
+            attempts,
+            maxAttempts,
+            retryDelayMs: durableHookRetryDelayMs(retryPolicy, attempts, error),
           };
         }
       }),
@@ -752,45 +781,32 @@ export async function processHooks<THooks extends HooksMap>(
               continue;
             }
 
-            const { eventId, status } = processedEvent.value;
+            const processed = processedEvent.value;
 
-            if (status === "completed") {
-              uow.update("fragno_hooks", eventId, (b) =>
+            if (processed.status === "completed") {
+              uow.update("fragno_hooks", processed.eventId, (b) =>
                 b.set({ status: "completed", lastAttemptAt: now }).check(),
               );
               continue;
             }
 
-            const { error, attempts } = processedEvent.value;
-            const newAttempts = attempts + 1;
-            const shouldRetry = retryPolicy.shouldRetry(newAttempts - 1);
-
-            if (shouldRetry) {
-              const delayMs = retryPolicy.getDelayMs(newAttempts - 1);
-              const nextRetryAt = now.plus({ ms: delayMs });
-              uow.update("fragno_hooks", eventId, (b) =>
-                b
-                  .set({
-                    status: "pending",
-                    attempts: newAttempts,
-                    lastAttemptAt: now,
-                    nextRetryAt,
-                    error,
-                  })
-                  .check(),
-              );
-            } else {
-              uow.update("fragno_hooks", eventId, (b) =>
-                b
-                  .set({
-                    status: "failed",
-                    attempts: newAttempts,
-                    lastAttemptAt: now,
-                    error,
-                  })
-                  .check(),
-              );
-            }
+            const { eventId, error, attempts, maxAttempts, retryDelayMs } = processed;
+            uow.update("fragno_hooks", eventId, (b) =>
+              b
+                .set(
+                  retryDelayMs === null
+                    ? { status: "failed", attempts, maxAttempts, lastAttemptAt: now, error }
+                    : {
+                        status: "pending",
+                        attempts,
+                        maxAttempts,
+                        lastAttemptAt: now,
+                        nextRetryAt: now.plus({ ms: retryDelayMs }),
+                        error,
+                      },
+                )
+                .check(),
+            );
           }
         })
         .execute();

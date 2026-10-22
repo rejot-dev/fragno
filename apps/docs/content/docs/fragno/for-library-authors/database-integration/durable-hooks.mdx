@@ -366,6 +366,40 @@ will not fire.
 If a hook execution fails, it will be retried with an exponential backoff policy. This makes hooks
 safe for "at least once" delivery, as long as your hook implementation is **idempotent**.
 
+Each hook owns its retry policy. Without one, `defineHook` uses `defaultDurableHookRetryPolicy`: up
+to 10 attempts, waiting 1 second after the first failure and three times longer after each further
+failure, capped at 15 minutes. That spans roughly half an hour to fifty minutes, long enough to
+outlast a restart or deploy of the service the hook calls. Each wait is drawn at random from the
+upper half of its backoff, so hooks that failed together don't all retry at the same moment.
+
+Pass a policy to `defineHook` to change it. `isRetryable` decides whether another attempt could
+succeed; return `false` for errors no retry can fix, and the hook fails at once instead of using up
+its attempts:
+
+```typescript
+import { defaultDurableHookRetryPolicy } from "@fragno-dev/db";
+
+.provideHooks(({ defineHook, config }) => ({
+  onSubscribe: defineHook(
+    async function (payload: { email: string }) {
+      await config.onSubscribe?.({ idempotencyKey: this.idempotencyKey, email: payload.email });
+    },
+    {
+      retryPolicy: {
+        ...defaultDurableHookRetryPolicy,
+        maxAttempts: 5,
+        isRetryable: (error) => !(error instanceof InvalidEmailError),
+      },
+    },
+  ),
+}))
+```
+
+The processor applies the hook definition's current policy after every failed attempt, so a changed
+policy also governs hooks queued before the change. `this.maxAttempts` and the stored `maxAttempts`
+report that policy's limit. A queued hook whose definition no longer exists retries under the
+default policy, in case a later deploy defines it again.
+
 Use the `idempotencyKey` to make idempotency easy:
 
 - store processed idempotency keys in your external system

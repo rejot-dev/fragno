@@ -118,6 +118,7 @@ export type {
 } from "./outbox/outbox";
 
 export type {
+  DefineDurableHookOptions,
   HookContext,
   HooksMap,
   HookFn,
@@ -125,6 +126,10 @@ export type {
   HookPayload,
   TriggerHookOptions,
 } from "./hooks/hooks";
+export {
+  defaultDurableHookRetryPolicy,
+  type DurableHookRetryPolicy,
+} from "./hooks/durable-hook-retry-policy";
 export { defineSyncCommands } from "./sync/commands";
 export type {
   DurableHookRecord,

@@ -5,8 +5,7 @@ import { SqliteDialect } from "kysely";
 
 import { internalSchema } from "../../fragments/internal-fragment";
 import type { InternalFragmentInstance } from "../../fragments/internal-fragment";
-import { prepareHookMutations, type HooksMap } from "../../hooks/hooks";
-import { ExponentialBackoffRetryPolicy } from "../../query/unit-of-work/retry-policy";
+import { defineDurableHook, prepareHookMutations, type HooksMap } from "../../hooks/hooks";
 import { column, idColumn, referenceColumn, schema } from "../../schema/create";
 import { BetterSQLite3DriverConfig } from "./driver-config";
 import { SqlAdapter } from "./generic-sql-adapter";
@@ -114,7 +113,7 @@ describe("SqlAdapter SQLite", () => {
   it("should fail inserting duplicate triggered hook ids", async () => {
     const hookId = "hook-duplicate-id";
     const hooks: HooksMap = {
-      onTest: () => {},
+      onTest: defineDurableHook(() => {}),
     };
 
     const internalFragmentStub = {
@@ -126,11 +125,7 @@ describe("SqlAdapter SQLite", () => {
         .createUnitOfWork(testSchema, "namespace", name)
         .forSchema(testSchema, hooks);
       uow.triggerHook("onTest", { data: name }, { id: hookId });
-      prepareHookMutations(
-        uow,
-        internalFragmentStub,
-        new ExponentialBackoffRetryPolicy({ maxRetries: 5 }),
-      );
+      prepareHookMutations(uow, internalFragmentStub);
       return uow;
     };
 

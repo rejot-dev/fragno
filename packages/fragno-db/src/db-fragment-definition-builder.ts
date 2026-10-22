@@ -24,7 +24,9 @@ import {
   registerDurableHooksRuntime,
 } from "./hooks/durable-hooks-runtime";
 import {
+  defineDurableHook,
   prepareHookMutations,
+  type DefineDurableHookOptions,
   type HooksMap,
   type HookFn,
   type HookContext,
@@ -1068,7 +1070,8 @@ export class DatabaseFragmentDefinitionBuilder<
 
   /**
    * Define durable hooks for this fragment.
-   * Hooks are automatically persisted and retried on failure.
+   * Hooks are automatically persisted and retried on failure, following the `retryPolicy` passed
+   * to `defineHook` or `defaultDurableHookRetryPolicy`.
    *
    * @param fn - Function that receives defineHook helper and returns a hooks map
    * @returns Builder with hooks type set
@@ -1092,6 +1095,7 @@ export class DatabaseFragmentDefinitionBuilder<
       serviceDeps: TServiceDependencies;
       defineHook: <TPayload>(
         hook: (this: HookContext, payload: TPayload) => void | Promise<void>,
+        options?: DefineDurableHookOptions,
       ) => HookFn<TPayload>;
     }) => TNewHooks,
   ): DatabaseFragmentDefinitionBuilder<
@@ -1107,12 +1111,6 @@ export class DatabaseFragmentDefinitionBuilder<
     THandlerThisContext,
     TInternalRoutes
   > {
-    const defineHook = <TPayload>(
-      hook: (this: HookContext, payload: TPayload) => void | Promise<void>,
-    ): HookFn<TPayload> => {
-      return hook;
-    };
-
     // Store the hooks factory - it will be called in build() with config/options
     const hooksFactory = (context: HooksFactoryContext<TConfig>) => {
       return fn({
@@ -1121,7 +1119,7 @@ export class DatabaseFragmentDefinitionBuilder<
         deps: context.deps as TDeps,
         services: context.services as BoundServices<TBaseServices & TServices>,
         serviceDeps: context.serviceDeps as TServiceDependencies,
-        defineHook,
+        defineHook: defineDurableHook,
       });
     };
 
@@ -1477,7 +1475,6 @@ export class DatabaseFragmentDefinitionBuilder<
                   prepareHookMutations(
                     uow,
                     hooksConfig.internalFragment,
-                    hooksConfig.defaultRetryPolicy,
                     hooksConfig.instrumentation,
                     getHookPropagationContext(),
                   );
@@ -1717,7 +1714,6 @@ export class DatabaseFragmentDefinitionBuilder<
                 prepareHookMutations(
                   uow,
                   internalFragment,
-                  hooksConfig?.defaultRetryPolicy,
                   hooksConfig?.instrumentation,
                   ambientPropagationContext,
                 );

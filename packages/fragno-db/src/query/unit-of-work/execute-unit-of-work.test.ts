@@ -3,7 +3,7 @@ import { describe, it, expect, expectTypeOf, vi, assert } from "vitest";
 import { InMemoryAdapter } from "../../adapters/in-memory/in-memory-adapter";
 import type { InternalFragmentInstance } from "../../fragments/internal-fragment";
 import { internalSchema } from "../../fragments/internal-fragment.schema";
-import { prepareHookMutations } from "../../hooks/hooks";
+import { defineDurableHook, prepareHookMutations, type HookFn } from "../../hooks/hooks";
 import { schema, idColumn, FragnoId } from "../../schema/create";
 import {
   createServiceTxBuilder,
@@ -2289,13 +2289,13 @@ describe("Unified Tx API", () => {
 
       // Define hooks type for this test
       type TestHooks = {
-        onSubscribe: (payload: { email: string }) => void;
+        onSubscribe: HookFn<{ email: string }>;
       };
 
       const hooks: TestHooks = {
-        onSubscribe: (payload: { email: string }) => {
+        onSubscribe: defineDurableHook((payload: { email: string }) => {
           console.log(`onSubscribe: ${payload.email}`);
-        },
+        }),
       };
 
       // Service that retrieves a user and triggers a hook in mutate
@@ -2358,13 +2358,13 @@ describe("Unified Tx API", () => {
 
       // Define hooks type for this test
       type TestHooks = {
-        onUserUpdated: (payload: { userId: string }) => void;
+        onUserUpdated: HookFn<{ userId: string }>;
       };
 
       const hooks: TestHooks = {
-        onUserUpdated: (payload: { userId: string }) => {
+        onUserUpdated: defineDurableHook((payload: { userId: string }) => {
           console.log(`onUserUpdated: ${payload.userId}`);
-        },
+        }),
       };
 
       // Service that uses raw retrieve results (no transformRetrieve) and triggers hook
@@ -2412,17 +2412,17 @@ describe("Unified Tx API", () => {
         setupCrossSchemaHookTest();
 
       type HooksA = {
-        onAlpha: (payload: { value: string }) => void;
+        onAlpha: HookFn<{ value: string }>;
       };
       type HooksB = {
-        onBeta: (payload: { value: string }) => void;
+        onBeta: HookFn<{ value: string }>;
       };
 
       const hooksA: HooksA = {
-        onAlpha: (_payload) => {},
+        onAlpha: defineDurableHook(() => {}),
       };
       const hooksB: HooksB = {
-        onBeta: (_payload) => {},
+        onBeta: defineDurableHook(() => {}),
       };
 
       let currentUow: IUnitOfWork | null = null;
@@ -2476,17 +2476,17 @@ describe("Unified Tx API", () => {
         setupCrossSchemaHookTest();
 
       type HooksA = {
-        onAlpha: (payload: { value: string }) => void;
+        onAlpha: HookFn<{ value: string }>;
       };
       type HooksB = {
-        onBeta: (payload: { value: string }) => void;
+        onBeta: HookFn<{ value: string }>;
       };
 
       const hooksA: HooksA = {
-        onAlpha: (_payload) => {},
+        onAlpha: defineDurableHook(() => {}),
       };
       const hooksB: HooksB = {
-        onBeta: (_payload) => {},
+        onBeta: defineDurableHook(() => {}),
       };
 
       let currentUow: IUnitOfWork | null = null;
