@@ -88,7 +88,8 @@ export type OrganizationInvitationLinkPage = z.output<typeof organizationInvitat
 /** Organization operations act on the scoped organization as the calling user. */
 export const organizationOperations = {
   "org.get": {
-    description: "Read the current organization and your roles in it.",
+    description:
+      "Read the current organization and your roles in it. List every organization you belong to with account.orgs.list.",
     permissions: [BACKOFFICE_PERMISSION.org.read],
     input: z.void(),
     output: organizationMembershipRecordSchema,

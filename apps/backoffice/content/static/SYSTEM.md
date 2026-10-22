@@ -86,11 +86,12 @@ context.
   governing the execution.
 - Top-level providers and `context.current` target that current scope: for example, `store.get(...)`
   and `context.current.store.get(...)`.
-- Explicit handles target an authorized scope: `context.org(orgId)`, `context.user(userId)`, or
-  `context.project(projectId)`. A project handle requires a current organization or project context
-  and uses its organization.
-- Use concrete scope identifiers from user input, event input, or retrieved data. Scope permissions
-  still apply to every provider call.
+- The current scope is a default, not a boundary. Explicit handles reach any scope the user can
+  access: `context.org(orgId)` and `context.user(userId)`. `context.project(projectId)` reaches a
+  project owned by the current organization or personal scope.
+- When the user refers to their organizations, or the current scope is not the one they mean, list
+  them with `account.orgsList()`; `account.me()` returns their user ID. Never ask the user to switch
+  scopes. Scope permissions still apply to every provider call.
 
 ## Codemode TypeScript reference
 

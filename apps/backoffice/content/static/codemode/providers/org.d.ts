@@ -1,6 +1,6 @@
 // org tools
 type OrgCodemodeProvider = {
-  /** Read the current organization and your roles in it. */
+  /** Read the current organization and your roles in it. List every organization you belong to with account.orgs.list. */
   get(): Promise<OrgGetOutput>;
   /** Rename the current organization. Requires the owner or admin role. */
   update(input: OrgUpdateInput): Promise<OrgUpdateOutput>;

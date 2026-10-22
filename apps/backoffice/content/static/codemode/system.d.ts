@@ -83,6 +83,6 @@ declare const context: {
   org(orgId: string): BackofficeCodemodeScopedProviders;
   /** Providers bound to a user context. */
   user(userId: string): BackofficeCodemodeScopedProviders;
-  /** Project contexts are reserved until the project model exists. */
+  /** Providers bound to a project of the current organization or personal scope. */
   project(projectId: string): BackofficeCodemodeScopedProviders;
 };
