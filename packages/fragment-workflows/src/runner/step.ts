@@ -164,6 +164,33 @@ function buildErrorFromSnapshot(snapshot: WorkflowStepSnapshot): Error {
   return error;
 }
 
+/** One step's buffered writes, so an attempt that must leave no trace can be undone. */
+function captureStepWrites(state: RunnerState, stepKey: string) {
+  return {
+    snapshot: state.stepsByKey.get(stepKey),
+    create: state.mutations.stepCreates.get(stepKey),
+    update: state.mutations.stepUpdates.get(stepKey),
+  };
+}
+
+function restoreStepWrites(
+  state: RunnerState,
+  stepKey: string,
+  writes: ReturnType<typeof captureStepWrites>,
+) {
+  restoreEntry(state.stepsByKey, stepKey, writes.snapshot);
+  restoreEntry(state.mutations.stepCreates, stepKey, writes.create);
+  restoreEntry(state.mutations.stepUpdates, stepKey, writes.update);
+}
+
+function restoreEntry<T>(map: Map<string, T>, key: string, value: T | undefined) {
+  if (value === undefined) {
+    map.delete(key);
+  } else {
+    map.set(key, value);
+  }
+}
+
 export class RunnerStep implements WorkflowStep {
   readonly #state: RunnerState;
   readonly #taskKind: RunnerTaskKind;
@@ -178,6 +205,7 @@ export class RunnerStep implements WorkflowStep {
   readonly #workflowsByName: Map<string, WorkflowRegistryEntry>;
   readonly #checkpoint: "step" | undefined;
   #concurrencyConflict: BufferedPumpScopeAlreadyOpenError | null = null;
+  #tickInterruption: Error | null = null;
   #completedTopLevelSteps = 0;
 
   constructor(options: RunnerStepOptions) {
@@ -198,6 +226,11 @@ export class RunnerStep implements WorkflowStep {
   }
 
   #createStepIdentity(type: string, name: string): WorkflowStepIdentity {
+    // Every step helper starts here; once the host reports the tick interrupted, workflow code that
+    // swallowed the report cannot record more progress.
+    if (this.#tickInterruption) {
+      throw this.#tickInterruption;
+    }
     const parent = this.#scopeStorage.getStore()?.identity ?? null;
     const baseKey = buildStepKey(type, name);
     const scopeKey = parent?.stepKey ?? ROOT_STEP_SCOPE;
@@ -353,6 +386,14 @@ export class RunnerStep implements WorkflowStep {
     return this.#concurrencyConflict;
   }
 
+  /**
+   * Why the remote host reported this tick as unable to run. Like a concurrency conflict, the
+   * runner reads it here, so workflow code cannot forge or swallow it through thrown errors.
+   */
+  get tickInterruption(): Error | null {
+    return this.#tickInterruption;
+  }
+
   #openEmissionScope<TScope>(open: () => TScope): TScope {
     try {
       return open();
@@ -410,6 +451,12 @@ export class RunnerStep implements WorkflowStep {
           parentScope,
           async () => await this.waitForEvent<T>(name, options),
         ),
+      interruptTick: (cause: string): never => {
+        const interruption = new Error(cause);
+        interruption.name = "WorkflowTickInterrupted";
+        this.#tickInterruption ??= interruption;
+        throw interruption;
+      },
     };
   }
 
@@ -556,6 +603,7 @@ export class RunnerStep implements WorkflowStep {
       },
     };
 
+    const writesBeforeAttempt = captureStepWrites(this.#state, stepKey);
     this.#upsertStep(
       stepKey,
       this.#prepareWaitingDraft(identity, {
@@ -600,6 +648,13 @@ export class RunnerStep implements WorkflowStep {
         epoch: emissionScope.meta.epoch,
         progress: null,
       });
+    }
+
+    // The host reported that this tick did not run, so the attempt never happened: it keeps neither
+    // its outcome nor its attempt count, and the rerun starts the step afresh.
+    if (this.#tickInterruption) {
+      restoreStepWrites(this.#state, stepKey, writesBeforeAttempt);
+      throw this.#tickInterruption;
     }
 
     if (!callbackThrew) {

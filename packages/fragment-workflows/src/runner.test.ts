@@ -2319,6 +2319,7 @@ describe("Workflows Runner", () => {
         payload: { ...buildPayload(instance!, "create"), timestamp: harness.clock.now() },
         createExecutionId: () => `execution-${(allocatedExecutions += 1)}`,
         createEpoch: () => `epoch-${allocatedExecutions}`,
+        random: Math.random,
         stepEmissions,
       });
     });

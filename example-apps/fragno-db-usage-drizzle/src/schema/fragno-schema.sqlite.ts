@@ -537,7 +537,8 @@ export const workflow_instance_workflows = sqliteTable("workflow_instance_workfl
   errorName: text("errorName"),
   errorMessage: text("errorMessage"),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
-  _version: integer("_version").notNull().default(0)
+  _version: integer("_version").notNull().default(0),
+  interruptedTicks: integer("interruptedTicks").notNull().default(0)
 }, (table) => [
   uniqueIndex("uidx_workflow_instance_idx_workflow_instance_workflowNa12b3a436").on(table.workflowName, table.instanceId),
   index("idx_workflow_instance_idx_workflow_instance_list_workfl9c4bc4aa").on(table.workflowName, table.createdAt, table.instanceId, table.remoteWorkflowName, table.status),
@@ -677,5 +678,5 @@ export const workflows_schema = {
   workflow_step_emission_workflowsRelations: workflow_step_emission_workflowsRelations,
   workflow_step_emission: workflow_step_emission_workflows,
   workflow_step_emissionRelations: workflow_step_emission_workflowsRelations,
-  schemaVersion: 7
+  schemaVersion: 8
 }

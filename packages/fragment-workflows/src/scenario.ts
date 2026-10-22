@@ -704,6 +704,7 @@ export type WorkflowScenarioStep<
   | WorkflowScenarioRejectControlStep<TRegistry, TVars>
   | WorkflowScenarioWaitForEmissionStep<TRegistry, TVars, TFragments>
   | WorkflowScenarioDrainHooksStep
+  | WorkflowScenarioAdvanceTimeAndDrainHooksStep<TRegistry, TVars>
   | WorkflowScenarioRestartStep
   | WorkflowScenarioCallRouteStep<TVars>
   | WorkflowScenarioConcurrentStep<string, TRegistry, TVars, TFragments, TClients>
@@ -987,6 +988,18 @@ export type WorkflowScenarioDrainHooksStep = {
   type: "drainHooks";
 };
 
+/**
+ * Moves the clock, then lets due durable hooks drive ticks with their stored payloads. Hooks see the
+ * moved clock only with the in-memory adapter, whose database time is the scenario clock.
+ */
+export type WorkflowScenarioAdvanceTimeAndDrainHooksStep<
+  TRegistry extends WorkflowsRegistry,
+  TVars extends WorkflowScenarioVars,
+> = {
+  type: "advanceTimeAndDrainHooks";
+  advanceBy: ScenarioInput<WorkflowDuration, TRegistry, TVars>;
+};
+
 export type WorkflowScenarioRestartStep = {
   type: "restart";
   runner?: string;
@@ -1221,6 +1234,9 @@ const createScenarioRunnerSteps = <
       input: StepInput<WorkflowScenarioAdvanceTimeAndRunUntilIdleStep<TRegistry, TVars>>,
     ) => stampRunner(raw.advanceTimeAndRunUntilIdle(input)),
     drainHooks: () => stampRunner(raw.drainHooks()),
+    advanceTimeAndDrainHooks: (
+      input: StepInput<WorkflowScenarioAdvanceTimeAndDrainHooksStep<TRegistry, TVars>>,
+    ) => stampRunner(raw.advanceTimeAndDrainHooks(input)),
     restart: () => stampRunner(raw.restart()),
     waitForEmission: (
       input: StepInput<WorkflowScenarioWaitForEmissionStep<TRegistry, TVars, TFragments>>,
@@ -1519,6 +1535,12 @@ const createRawScenarioStepBuilders = <
   }),
   drainHooks: (): WorkflowScenarioDrainHooksStep => ({
     type: "drainHooks",
+  }),
+  advanceTimeAndDrainHooks: (
+    input: StepInput<WorkflowScenarioAdvanceTimeAndDrainHooksStep<TRegistry, TVars>>,
+  ): WorkflowScenarioAdvanceTimeAndDrainHooksStep<TRegistry, TVars> => ({
+    type: "advanceTimeAndDrainHooks",
+    ...input,
   }),
   restart: (): WorkflowScenarioRestartStep => ({
     type: "restart",
@@ -3112,6 +3134,11 @@ export async function runScenario<
           break;
         }
         case "drainHooks": {
+          await currentRunner.drainHooks();
+          break;
+        }
+        case "advanceTimeAndDrainHooks": {
+          context.clock.advanceBy(await resolveScenarioInput(step.advanceBy, context));
           await currentRunner.drainHooks();
           break;
         }

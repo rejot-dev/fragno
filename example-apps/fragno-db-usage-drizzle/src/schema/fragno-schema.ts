@@ -529,7 +529,8 @@ export const workflow_instance_workflows = schema_workflows.table("workflow_inst
   errorName: varchar("errorName", { length: 191 }),
   errorMessage: varchar("errorMessage", { length: 191 }),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-  _version: integer("_version").notNull().default(0)
+  _version: integer("_version").notNull().default(0),
+  interruptedTicks: integer("interruptedTicks").notNull().default(0)
 }, (table) => [
   uniqueIndex("idx_workflow_instance_workflowName_instanceId").on(table.workflowName, table.instanceId),
   index("idx_workflow_instance_list").on(table.workflowName, table.createdAt, table.instanceId, table.remoteWorkflowName, table.status)
@@ -665,5 +666,5 @@ export const workflows_schema = {
   workflow_step_emission_workflowsRelations: workflow_step_emission_workflowsRelations,
   workflow_step_emission: workflow_step_emission_workflows,
   workflow_step_emissionRelations: workflow_step_emission_workflowsRelations,
-  schemaVersion: 7
+  schemaVersion: 8
 }

@@ -353,6 +353,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           workflows: config.workflows ?? {},
           createExecutionId: () => config.runtime.random.uuid(),
           createEpoch: () => config.runtime.random.uuid(),
+          random: () => config.runtime.random.float(),
           stepEmissions: deps.stepEmissions,
           payload: { ...payload, timestamp },
         });
