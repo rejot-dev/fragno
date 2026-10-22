@@ -2,6 +2,7 @@ import type { AutomationActors } from "@fragno-dev/backoffice-api/v0/automation"
 import {
   type AutomationEvent,
   type AutomationEventCausation,
+  automationEventDetailSchema,
   automationEventListResultSchema,
   automationEventParentOf,
 } from "@fragno-dev/backoffice-api/v0/events";
@@ -102,9 +103,7 @@ export function createEventRuntime(options: CreateEventRuntimeOptions): EventRun
         return null;
       }
       if (response.type === "json") {
-        return automationEventListResultSchema._zod.innerType.shape.events.element.parse(
-          response.data,
-        );
+        return automationEventDetailSchema.parse(response.data);
       }
       throw new BackofficeOperationError(
         backofficeOperationErrorKindForStatus(response.status),

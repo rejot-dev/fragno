@@ -189,3 +189,130 @@ test("stored event commands read scoped SQLite records with text, JSON, and curs
     }),
   );
 });
+
+test("an agent reads where each route its event matched stands", async () => {
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      objects: scenarioObjects,
+      name: "Route states on a stored event",
+      // The route forwarding outside the agent's scope fails for good.
+      options: { allowFailedDurableHooks: true },
+      setup: ({ given }) => [
+        given.organization.exists({ id: "org-1", slug: "event-tools", name: "Event tools" }),
+      ],
+      steps: ({ then }) => [
+        then.assert(
+          "the event is matching until its routes are recorded, then shows each route",
+          async (ctx) => {
+            const scope = { kind: "user", userId: "user-1" } as const;
+            const context = createRouteBackedRuntimeContext({
+              emitter: { kind: "caller" },
+              runtime: ctx.runtime.services,
+              kernel: new BackofficeKernel(ctx.runtime.services),
+              execution: createBackofficeSystemExecution(scope),
+            });
+            assert(context.stateBackend);
+            const { bash } = await createInteractiveBashHost({
+              context: { ...context, stateBackend: context.stateBackend },
+            });
+            const trigger = { kind: "event", source: "custom", eventType: "check.requested" };
+            for (const route of [
+              {
+                id: "deliver",
+                name: "Deliver to a run that does not exist",
+                trigger,
+                action: {
+                  kind: "send_workflow_event",
+                  target: { kind: "instance_id", template: "missing-run" },
+                  eventType: "check",
+                },
+              },
+              {
+                id: "forward",
+                name: "Forward to another organization",
+                trigger,
+                action: {
+                  kind: "forward_event",
+                  targetScope: { kind: "org", orgIdTemplate: "org-2" },
+                },
+              },
+              {
+                id: "reclassify",
+                name: "Reclassify the check",
+                trigger,
+                action: {
+                  kind: "reclassify_event",
+                  source: "custom",
+                  eventType: "check.reclassified",
+                  payload: { kind: "projection", fields: { value: "$.payload.value" } },
+                },
+              },
+            ]) {
+              const created = await bash.exec(`router.create --json '${JSON.stringify(route)}'`);
+              expect(created.exitCode, created.stderr).toBe(0);
+            }
+
+            const fired = await bash.exec(
+              `events.fire --source custom --event-type check.requested --payload-json '{"value":"ready"}' --format json`,
+            );
+            expect(fired.exitCode, fired.stderr).toBe(0);
+            const { eventId } = JSON.parse(fired.stdout) as { eventId: string };
+
+            const matching = await bash.exec(`events.get --id ${eventId} --format json`);
+            expect(matching.exitCode, matching.stderr).toBe(0);
+            expect(JSON.parse(matching.stdout)).toMatchObject({ routing: { status: "matching" } });
+            expect((await bash.exec(`events.get --id ${eventId}`)).stdout).toContain(
+              "routes\nnot matched yet; run events.get again shortly\n",
+            );
+
+            await ctx.drain();
+
+            const matched = await bash.exec(`events.get --id ${eventId} --format json`);
+            expect(matched.exitCode, matched.stderr).toBe(0);
+            const matchedAt = expect.any(String);
+            expect(JSON.parse(matched.stdout).routing).toEqual({
+              status: "matched",
+              routes: [
+                {
+                  routeId: "deliver",
+                  routeName: "Deliver to a run that does not exist",
+                  matchedAt,
+                  status: "retrying",
+                  failedAttempts: 1,
+                  error: "INSTANCE_NOT_FOUND",
+                },
+                {
+                  routeId: "forward",
+                  routeName: "Forward to another organization",
+                  matchedAt,
+                  status: "failed",
+                  failedAttempts: 1,
+                  error: "automation.forward-event cannot use org:org-2 within user:user-1.",
+                },
+                {
+                  routeId: "reclassify",
+                  routeName: "Reclassify the check",
+                  matchedAt,
+                  status: "completed",
+                  outcome: {
+                    kind: "event_reclassified",
+                    eventId: `reclassified:reclassify:${eventId}`,
+                  },
+                  failedAttempts: 0,
+                },
+              ],
+            });
+            expect((await bash.exec(`events.get --id ${eventId}`)).stdout).toContain(
+              [
+                "routes",
+                "deliver (Deliver to a run that does not exist): retrying after 1 failed attempt, last error: INSTANCE_NOT_FOUND",
+                "forward (Forward to another organization): failed for good after 1 failed attempt: automation.forward-event cannot use org:org-2 within user:user-1.",
+                "reclassify (Reclassify the check): completed, event_reclassified",
+              ].join("\n"),
+            );
+          },
+        ),
+      ],
+    }),
+  );
+});

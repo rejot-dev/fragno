@@ -113,8 +113,8 @@ or forwarded, are never delivered to it.
 ## Catalog versus delivery
 
 `events.catalogList` and `events.catalogGet` describe event types and their schemas. `events.list`
-and `events.get` inspect stored occurrences. A stored event proves ingestion; use correlated
-durable-hook or workflow results to establish downstream completion.
+and `events.get` inspect stored occurrences. A stored event proves ingestion; its `routing` shows
+what each route it matched did, and the workflow runs those routes started show the rest.
 
 ## Scope and pagination
 
@@ -135,9 +135,22 @@ subject. Compare the actual envelope with the route matcher and any payload proj
 webhooks, match the original event's `endpointId`, `deliveryId`, and `hookId`; correlate projected
 identifiers with the expected reclassified records.
 
-Inspect the matching hook's result or the workflow instance selected by the route's instance-ID
-template. Report ingestion and downstream execution separately, including failures, pending work,
-and any missing evidence.
+The event's `routing` is `matching` until its routes are recorded, shortly after it is stored; read
+it again rather than concluding no route matched. Once `matched`, `routing.routes` lists every route
+the event matched, each with its `status`:
+
+- `pending`: about to act.
+- `retrying`: an attempt threw `error` and the route will try again. Errors that could clear up,
+  such as a workflow run that does not exist yet, retry for up to roughly fifty minutes.
+- `completed`: `outcome` says what the route did, such as the workflow run it started or the derived
+  event it produced. `failedAttempts` above zero means it only acted after retries.
+- `failed`: the route gave up on `error`, because no retry could fix it, such as a denied scope, or
+  it ran out of attempts. It does not run again for this event, and a new event runs every route it
+  matches, not only this one.
+
+An empty `routes` means no route matched; compare the event with each route's trigger and matcher.
+Follow `workflow_started` outcomes to the workflow instance they name. Report ingestion and
+downstream execution separately, including failures, pending work, and any missing evidence.
 
 **Complete when** the owning scope, matching event IDs, relevant payloads, and downstream outcomes
 are supported by retrieved evidence, or the exact unverified boundary is stated.

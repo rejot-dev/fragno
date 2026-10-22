@@ -148,6 +148,134 @@ export const automationEventListResultSchema = z.lazy(() =>
   }),
 );
 
+/**
+ * Why a matched route did nothing. `no_linked_external_sender`: a linked-user route only acts for
+ * an external sender linked to a user, and the event had none. `workflow_instance_unresolved`: the
+ * route's target instance id rendered empty. `caused_by_notified_agent`: the agent's own turns
+ * produced the event, and notifying it would let the agent wake itself.
+ */
+export type AutomationRouteDispatchSkipReason =
+  | "no_linked_external_sender"
+  | "workflow_instance_unresolved"
+  | "caused_by_notified_agent";
+
+/**
+ * What a matched route did with an event. Derived events also record the route in their own
+ * causation.
+ */
+export type AutomationRouteDispatchOutcome =
+  | { kind: "workflow_started"; workflowName: string; instanceId: string }
+  | { kind: "workflow_event_sent"; workflowName: string; instanceId: string; eventType: string }
+  | { kind: "event_forwarded"; eventId: string; scope: BackofficeContextScope }
+  | { kind: "event_reclassified"; eventId: string }
+  | { kind: "agent_notified"; agentName: string }
+  | { kind: "skipped"; reason: AutomationRouteDispatchSkipReason };
+
+/**
+ * Where a matched route stands. `failedAttempts` counts the attempts that threw; a completed route
+ * keeps the count, so one that only acted after retries stays visible. `retrying` and `failed`
+ * keep the last error; `failed` is final, because no retry can fix the error or the route ran out
+ * of attempts.
+ */
+export type AutomationRouteDispatchState =
+  | { status: "pending" }
+  | { status: "retrying"; failedAttempts: number; error: string }
+  | { status: "completed"; outcome: AutomationRouteDispatchOutcome; failedAttempts: number }
+  | { status: "failed"; failedAttempts: number; error: string };
+
+/** One route an event matched, and where it stands. */
+export type AutomationEventRouteDispatch = AutomationRouteDispatchState & {
+  routeId: string;
+  /** The route's name when it matched; routes can be renamed or deleted after they act. */
+  routeName: string;
+  matchedAt: string;
+};
+
+/**
+ * Which routes an event matched. Routes are matched shortly after an event is stored, so a
+ * `matching` event's routes are not known yet.
+ */
+export type AutomationEventRouting =
+  | { status: "matching" }
+  | { status: "matched"; routes: AutomationEventRouteDispatch[] };
+
+const automationRouteDispatchOutcomeSchema: z.ZodType<AutomationRouteDispatchOutcome> = z.lazy(() =>
+  z.discriminatedUnion("kind", [
+    z.strictObject({
+      kind: z.literal("workflow_started"),
+      workflowName: z.string(),
+      instanceId: z.string(),
+    }),
+    z.strictObject({
+      kind: z.literal("workflow_event_sent"),
+      workflowName: z.string(),
+      instanceId: z.string(),
+      eventType: z.string(),
+    }),
+    z.strictObject({
+      kind: z.literal("event_forwarded"),
+      eventId: z.string(),
+      scope: backofficeContextScopeSchema,
+    }),
+    z.strictObject({ kind: z.literal("event_reclassified"), eventId: z.string() }),
+    z.strictObject({ kind: z.literal("agent_notified"), agentName: z.string() }),
+    z.strictObject({
+      kind: z.literal("skipped"),
+      reason: z.enum([
+        "no_linked_external_sender",
+        "workflow_instance_unresolved",
+        "caused_by_notified_agent",
+      ]),
+    }),
+  ]),
+);
+
+const automationEventRouteDispatchSchema: z.ZodType<AutomationEventRouteDispatch> = z.lazy(() => {
+  const route = {
+    routeId: z.string(),
+    routeName: z.string(),
+    matchedAt: z.iso.datetime(),
+  };
+  return z.discriminatedUnion("status", [
+    z.strictObject({ ...route, status: z.literal("pending") }),
+    z.strictObject({
+      ...route,
+      status: z.literal("retrying"),
+      failedAttempts: z.number().int().positive(),
+      error: z.string(),
+    }),
+    z.strictObject({
+      ...route,
+      status: z.literal("completed"),
+      outcome: automationRouteDispatchOutcomeSchema,
+      failedAttempts: z.number().int().nonnegative(),
+    }),
+    z.strictObject({
+      ...route,
+      status: z.literal("failed"),
+      failedAttempts: z.number().int().positive(),
+      error: z.string(),
+    }),
+  ]);
+});
+
+const automationEventRoutingSchema: z.ZodType<AutomationEventRouting> = z.lazy(() =>
+  z.discriminatedUnion("status", [
+    z.strictObject({ status: z.literal("matching") }),
+    z.strictObject({
+      status: z.literal("matched"),
+      routes: z.array(automationEventRouteDispatchSchema),
+    }),
+  ]),
+);
+
+/** A stored event with what the routes it matched did with it. */
+export const automationEventDetailSchema = z.lazy(() =>
+  automationEventRecordSchema._zod.innerType.extend({ routing: automationEventRoutingSchema }),
+);
+
+export type AutomationEventDetail = z.infer<typeof automationEventDetailSchema>;
+
 const jsonSchemaDocumentSchema = z.lazy(() => z.record(z.string(), z.unknown()));
 
 export const automationEventDefinitionSchema = z.lazy(() =>
@@ -290,12 +418,11 @@ export const eventsOperations = {
     output: automationEventListResultSchema,
   },
   "events.get": {
-    description: "Get one stored automation event by id in the current scope.",
+    description:
+      "Get one stored automation event by id in the current scope, with each route it matched and where that route stands: about to act, retrying after an error, completed with what it did, or failed for good.",
     permissions: [BACKOFFICE_PERMISSION.events.read],
     input: z.lazy(() => z.object({ id: z.string().trim().min(1) })),
-    output: z.lazy(() =>
-      automationEventListResultSchema._zod.innerType.shape.events.element.nullable(),
-    ),
+    output: z.lazy(() => automationEventDetailSchema.nullable()),
   },
   "events.catalog.list": {
     description:
