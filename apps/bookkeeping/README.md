@@ -47,6 +47,7 @@ Routes:
 | `/account`                                                   | Who is signed in, and logging out                                        |
 | `/invitations/:invitationId`                                 | Joining a firm or a client                                               |
 | `/operator`                                                  | Every firm, for operators only; `/operator/firms/new` creates one        |
+| `/operator/members`                                          | The operators, and inviting more                                         |
 | `/f/:slug`                                                   | A firm's clients; `/f/:slug/clients/new` creates one                     |
 | `/f/:slug/members`                                           | The firm's members and invitations                                       |
 | `/w/:slug`                                                   | A client's workspace: its administrations                                |
@@ -86,7 +87,8 @@ values in `.dev.vars` (never commit credentials):
 - `BACKOFFICE_OAUTH_CLIENT_SECRET`: the initial secret returned when creating that confidential
   client.
 - `BOOKKEEPING_BASE_URL`: the Bookkeeping origin, e.g. `http://127.0.0.1:4173`.
-- `BOOKKEEPING_OPERATOR_USER_IDS`: comma-separated Backoffice user IDs of the operators.
+- `BOOKKEEPING_OPERATOR_ORGANIZATION_ID`: the Backoffice organization whose members are the
+  operators.
 
 Create a dedicated confidential client in the **Backoffice terminal**, in System context, as a
 global administrator (not in your host shell):
@@ -133,26 +135,29 @@ pnpm --dir apps/bookkeeping backoffice:connect
 The script signs in through the Backoffice CLI, creates Bookkeeping's OAuth client (or repairs the
 one in `.dev.vars`: callback URL, scopes, and client credentials), registers the app with `org.read`
 and the actions declared in `workers/backoffice/actions.ts`, and writes the client ID, secret, and
-both origins to `.dev.vars`. It adds the signed-in administrator to `BOOKKEEPING_OPERATOR_USER_IDS`,
-keeping the IDs already there; user IDs differ per Backoffice server, so remove old ones after
-switching servers. Bookkeeping is registered as a first-party app with every provisioning
-permission: Backoffice skips its consent screen and permission review, and Bookkeeping may create
-organizations and administrations in Backoffice, and create, send, and accept invitations for its
-users (see Backoffice's `app/fragno/apps/README.md`). It reads both origins from `.dev.vars` and
-defaults to `http://127.0.0.1:5173` and `http://127.0.0.1:4173`; pass `--backoffice-url` or
-`--bookkeeping-url` to change them, which also moves the callback and the action endpoint. The app
-is registered as `app#bookkeeping`; pass `--slug` to choose another permanent name. Rerunning
-converges on the same client and app, updating its requested permissions and actions in place; as a
-first-party app, Bookkeeping has new permissions in every organization within a minute. Action
-changes apply automatically to existing installations; pass `--change-approval installation` to make
-each installation's owner approve them. Production requires HTTPS.
+both origins to `.dev.vars`. It then finds or creates the operator organization (slug
+`bookkeeping-operators`; pass `--operators-slug` to choose another) with the signed-in administrator
+as owner, installs Bookkeeping there, and writes its ID to `BOOKKEEPING_OPERATOR_ORGANIZATION_ID`.
+Bookkeeping is registered as a first-party app with every provisioning permission: Backoffice skips
+its consent screen and permission review, and Bookkeeping may create organizations and
+administrations in Backoffice, and create, send, and accept invitations for its users (see
+Backoffice's `app/fragno/apps/README.md`). It reads both origins from `.dev.vars` and defaults to
+`http://127.0.0.1:5173` and `http://127.0.0.1:4173`; pass `--backoffice-url` or `--bookkeeping-url`
+to change them, which also moves the callback and the action endpoint. The app is registered as
+`app#bookkeeping`; pass `--slug` to choose another permanent name. Rerunning converges on the same
+client and app, updating its requested permissions and actions in place; as a first-party app,
+Bookkeeping has new permissions in every organization within a minute. Action changes apply
+automatically to existing installations; pass `--change-approval installation` to make each
+installation's owner approve them. Production requires HTTPS.
 
 ## Firms and clients
 
 Bookkeeping has three layers, as Brand Intelligence does with ReJot, partners, and brand brains:
 
-- **Operators** run Bookkeeping. An operator is a person whose Backoffice user ID is in
-  `BOOKKEEPING_OPERATOR_USER_IDS`; to anyone else, `/operator` does not exist.
+- **Operators** run Bookkeeping. They are the members of the operator organization, the Backoffice
+  organization in `BOOKKEEPING_OPERATOR_ORGANIZATION_ID`, which Backoffice's administrator creates
+  with `backoffice:connect`. Bookkeeping records it with kind `operator`. To anyone else,
+  `/operator` does not exist. Operators invite more operators at `/operator/members`.
 - **Firms** are accounting firms: Backoffice organizations Bookkeeping records with kind `firm`.
 - **Clients** are the businesses whose books a firm keeps: Backoffice organizations Bookkeeping
   records with kind `client` and the firm that created them.
@@ -164,11 +169,13 @@ the firm nothing in the client. People sign up only through invitations: someone
 without one has no access yet.
 
 **Creating a firm.** At `/operator/firms/new`, an operator gives the firm's name and the email of
-its owner, who need not have signed in yet. Backoffice only makes someone who has authorized
-Bookkeeping an owner, so Bookkeeping provisions the firm with `organizations.provision` and the
-operator as owner, then invites the real owner with role `owner` as the operator. The operator stays
-an owner, to help; apps cannot remove members. Resubmitting the form after a failure finds the same
-firm and the same pending invitation.
+its owner, who need not have signed in yet. Bookkeeping provisions it with
+`organizations.provisionForInvitee`: Backoffice creates the firm with no members and a pending owner
+invitation from the operator, who does not become a member, and installs Bookkeeping there.
+Bookkeeping then sends the invitation as any other. Operators open a firm only if its owners invite
+them. An operator who names their own email owns the firm instead, provisioned with
+`organizations.provision`. Resubmitting the form after a failure finds the same firm and the same
+pending invitation.
 
 **Creating a client.** Any firm member creates a client at `/f/:slug/clients/new`. Bookkeeping
 provisions its organization with the creator as owner, records it under the firm, and opens its
@@ -241,7 +248,7 @@ folder with its migrations.
 | `app/public`          | pages outside the areas: home, login, help, name, account             |
 | `app/shell`           | the frame every area shares, its modes, and the places someone can go |
 | `app/organizations`   | `/start`, access confirmation, and provisioning firms and clients     |
-| `app/operator`        | the operator's area: every firm, and creating firms                   |
+| `app/operator`        | the operator's area: every firm, creating firms, and the operators    |
 | `app/firms`           | a firm's area: its clients, creating clients, and its members         |
 | `app/clients`         | a client's workspace: its administrations and its members             |
 | `app/administrations` | creating and opening an administration                                |
@@ -287,7 +294,7 @@ pnpm exec wrangler secret put BOOKKEEPING_BASE_URL
 pnpm exec wrangler secret put BACKOFFICE_BASE_URL
 pnpm exec wrangler secret put BACKOFFICE_OAUTH_CLIENT_ID
 pnpm exec wrangler secret put BACKOFFICE_OAUTH_CLIENT_SECRET
-pnpm exec wrangler secret put BOOKKEEPING_OPERATOR_USER_IDS
+pnpm exec wrangler secret put BOOKKEEPING_OPERATOR_ORGANIZATION_ID
 pnpm deploy
 ```
 
@@ -311,5 +318,5 @@ it has applied, not their names.
 - `0002-organizations.sql` and `0003-backoffice-owner.sql`: Bookkeeping's former organizations and
   their links to Backoffice, which `0004-drop-organizations.sql` drops.
 - `workers/directory/migrations/0001-directory.sql`: the `Directory` object's organizations,
-  memberships, invitations, and administrations.
+  memberships, invitations, and administrations, and `0002-operators.sql` the `operator` kind.
 - `Books` applies `bookkeepingSchema` from `workers/books/schema.ts` as its first migration.

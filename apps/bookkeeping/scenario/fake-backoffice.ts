@@ -200,6 +200,31 @@ export class FakeBackoffice {
 
   /** An owner changes things in Backoffice's own UI. */
   readonly admin = {
+    /**
+     * A global administrator creates an organization owned by these people and installs Bookkeeping
+     * there, as `backoffice:connect` does for the operators. Returns its ID.
+     */
+    createOrganization: (name: string, ownerEmails: string[]): string => {
+      const now = new Date().toISOString();
+      const slug = nextSlug(
+        name,
+        [...this.#organizations.values()].map(({ slug }) => slug),
+      );
+      const organization: Organization = {
+        id: crypto.randomUUID(),
+        externalId: `admin:${slug}`,
+        name,
+        slug,
+        createdAt: now,
+        members: new Map(
+          ownerEmails.map((email) => [this.userId(email), { roles: ["owner"], joinedAt: now }]),
+        ),
+        installation: "active",
+        projects: new Map(),
+      };
+      this.#organizations.set(organization.id, organization);
+      return organization.id;
+    },
     addMember: (slug: string, email: string, roles: Role[]) => {
       this.#organizationBySlug(slug).members.set(this.userId(email), {
         roles,
@@ -456,6 +481,68 @@ export class FakeBackoffice {
             organizationId: organization.id,
             slug: organization.slug,
             created: true,
+          }),
+        );
+      }
+      case "organizations.provisionForInvitee": {
+        const input = backofficeProvisioningOperations[operationId].input.parse(body);
+        if (!this.#consents.has(input.invitedByUserId)) {
+          throw new ApiError(
+            "forbidden",
+            `User '${input.invitedByUserId}' has not authorized this app.`,
+          );
+        }
+        const existing = [...this.#organizations.values()].find(
+          (org) => org.externalId === input.externalOrganizationId,
+        );
+        const now = new Date().toISOString();
+        const organization: Organization = existing ?? {
+          id: crypto.randomUUID(),
+          externalId: input.externalOrganizationId,
+          name: input.name,
+          slug: nextSlug(
+            input.name,
+            [...this.#organizations.values()].map(({ slug }) => slug),
+          ),
+          createdAt: now,
+          // The inviting user does not become a member.
+          members: new Map(),
+          installation: "active",
+          projects: new Map(),
+        };
+        this.#organizations.set(organization.id, organization);
+        const hasOwner = [...organization.members.values()].some(({ roles }) =>
+          roles.includes("owner"),
+        );
+        let ownerInvitation: Invitation | null = null;
+        if (!hasOwner) {
+          const pending = this.#pendingInvitations(organization).find(({ roles }) =>
+            roles.includes("owner"),
+          );
+          if (pending && pending.email !== input.ownerEmail) {
+            throw new ApiError("conflict", "The owner invitation is pending for another address.");
+          }
+          ownerInvitation = pending ?? {
+            id: randomToken(),
+            organizationId: organization.id,
+            inviterId: input.invitedByUserId,
+            email: input.ownerEmail,
+            roles: ["owner"],
+            status: "pending",
+            expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+            createdAt: now,
+          };
+          this.#invitations.set(ownerInvitation.id, ownerInvitation);
+        }
+        return Response.json(
+          backofficeProvisioningOperations[operationId].output.parse({
+            organizationId: organization.id,
+            slug: organization.slug,
+            created: existing === undefined,
+            ownerInvitation: ownerInvitation && {
+              invitationId: ownerInvitation.id,
+              expiresAt: ownerInvitation.expiresAt,
+            },
           }),
         );
       }

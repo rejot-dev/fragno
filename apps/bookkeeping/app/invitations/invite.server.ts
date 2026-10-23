@@ -4,7 +4,7 @@ import { env } from "cloudflare:workers";
 
 import type { SessionUser } from "../../workers/auth/auth";
 import { createProvisioningClient } from "../../workers/backoffice/client";
-import type { Organization } from "../../workers/directory/directory";
+import type { Invitation, Organization } from "../../workers/directory/directory";
 import { isOutcomeUnknown } from "../organizations/access.server";
 
 export type InvitationResult =
@@ -84,18 +84,32 @@ export async function invite(input: {
     }
     throw error;
   }
-  await env.DIRECTORY.getByName("directory").addInvitation({
+  return await deliverInvitation({
     id: created.invitationId,
-    organizationId: input.organization.id,
+    organization: input.organization,
     email: created.email,
     roles: input.roles,
     invitedBy: input.inviter.name,
     expiresAt: Date.parse(created.expiresAt),
   });
+}
+
+/**
+ * Keeps an invitation Backoffice created, for the page that accepts it, and has Backoffice email
+ * it. Both are idempotent, so delivering it again changes nothing.
+ */
+export async function deliverInvitation(
+  invitation: Invitation,
+): Promise<Extract<InvitationResult, { status: "invited" }>> {
+  const { organization, ...kept } = invitation;
+  await env.DIRECTORY.getByName("directory").addInvitation({
+    ...kept,
+    organizationId: organization.id,
+  });
   return {
     status: "invited",
-    email: created.email,
-    link: invitationLink(created.invitationId),
-    emailed: await emailInvitation(created.invitationId),
+    email: invitation.email,
+    link: invitationLink(invitation.id),
+    emailed: await emailInvitation(invitation.id),
   };
 }

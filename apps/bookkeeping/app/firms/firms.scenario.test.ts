@@ -21,13 +21,11 @@ test("an operator creates a firm for its owner, who accepts the emailed invitati
         status: "created",
         name: "Lovelace & Co",
         path: "/f/lovelace-co",
-        invitation: { email: "ada@example.test", link, emailed: true },
+        owner: { status: "invited", email: "ada@example.test", link, emailed: true },
       },
     });
-    // Backoffice made the operator its owner, so the operator could invite Ada as owner.
-    expect(scenario.backoffice.organization("lovelace-co").members).toEqual(
-      new Map([["grace@bookkeeping.test", ["owner"]]]),
-    );
+    // Until Ada accepts, the firm has no members: the operator only invited her.
+    expect(scenario.backoffice.organization("lovelace-co").members).toEqual(new Map());
     expect(scenario.backoffice.pendingInvitations("lovelace-co")).toEqual([
       { email: "ada@example.test", roles: ["owner"], inviter: "grace@bookkeeping.test" },
     ]);
@@ -53,13 +51,10 @@ test("an operator creates a firm for its owner, who accepts the emailed invitati
       loaderData: { "firms/dashboard": { firmName: "Lovelace & Co", clients: [] } },
     });
     expect(scenario.backoffice.organization("lovelace-co").members).toEqual(
-      new Map([
-        ["grace@bookkeeping.test", ["owner"]],
-        ["ada@example.test", ["owner"]],
-      ]),
+      new Map([["ada@example.test", ["owner"]]]),
     );
-    // The operator stays an owner, to help.
-    expect(await grace.navigate("/f/lovelace-co")).toMatchObject({ status: 200 });
+    // The firm is Ada's: the operator does not open it.
+    expect(await grace.navigate("/f/lovelace-co")).toMatchObject({ status: 404 });
 
     // Ada's only organization opens when she signs in.
     expect(await ada.navigate("/start")).toMatchObject({ path: "/f/lovelace-co" });
@@ -117,43 +112,60 @@ test("only operators reach the operator's pages and create firms", async () => {
   });
 });
 
-test("an operator lands on the firms, which lists every firm and opens their own", async () => {
+test("an operator lands on the firms, which lists every firm, opening none they were not invited to", async () => {
   await runBookkeepingScenario(async (scenario) => {
     const grace = await scenario.signUp("grace@bookkeeping.test", "Grace Hopper");
     const alan = await scenario.signUp("alan@bookkeeping.test", "Alan Turing");
     scenario.setOperators("grace@bookkeeping.test", "alan@bookkeeping.test");
-    // With nowhere else to go, signing in opens the firms.
-    expect(await grace.navigate("/start")).toMatchObject({
+    // Backoffice's administrator made her an operator, so Bookkeeping learns so when she opens
+    // the operator's pages, as `backoffice:connect` tells her to.
+    expect(await grace.navigate("/operator")).toMatchObject({
       path: "/operator",
       loaderData: {
         "operator/layout": {
-          place: { mode: "operator", name: "Bookkeeping", path: "/operator" },
+          place: { mode: "operator", name: "Bookkeeping operators", path: "/operator" },
           places: [{ mode: "operator", path: "/operator" }],
-          user: { name: "Grace Hopper", role: "Operator" },
+          user: { name: "Grace Hopper", role: "Owner" },
         },
         "operator/firms": { firms: [] },
       },
     });
+    // With nowhere else to go, signing in opens the firms.
+    expect(await grace.navigate("/start")).toMatchObject({ path: "/operator" });
 
     await scenario.createFirm(grace, "Lovelace & Co", "ada@example.test");
     await scenario.createFirm(alan, "Enigma Accounting", "joan@example.test");
     expect(await grace.navigate("/operator")).toMatchObject({
       loaderData: {
         "operator/layout": {
-          places: [
-            { mode: "operator", path: "/operator" },
-            { mode: "firm", name: "Lovelace & Co", path: "/f/lovelace-co" },
-          ],
+          places: [{ mode: "operator", path: "/operator" }],
         },
         "operator/firms": {
           firms: [
             { name: "Enigma Accounting", path: "/f/enigma-accounting", member: false },
-            { name: "Lovelace & Co", path: "/f/lovelace-co", member: true },
+            { name: "Lovelace & Co", path: "/f/lovelace-co", member: false },
           ],
         },
       },
     });
     expect(await grace.navigate("/f/enigma-accounting")).toMatchObject({ status: 404 });
+    // A firm's owner may invite an operator, who then opens it as any member does.
+    const { browser: ada } = await scenario.acceptInvitation("ada@example.test", "Ada Lovelace");
+    const path = await scenario.invite(ada, "/f/lovelace-co", "grace@bookkeeping.test", "admin");
+    await scenario.acceptInvitation("grace@bookkeeping.test", "Grace Hopper", {
+      browser: grace,
+      path,
+    });
+    expect(await grace.navigate("/operator")).toMatchObject({
+      loaderData: {
+        "operator/firms": {
+          firms: [
+            { name: "Enigma Accounting", member: false },
+            { name: "Lovelace & Co", member: true },
+          ],
+        },
+      },
+    });
     // The operator's page and a firm make two places, so signing in offers the choice.
     expect(await grace.navigate("/start")).toMatchObject({ path: "/start" });
   });
@@ -185,14 +197,15 @@ test("trying again after a failure creates one client", async () => {
       path: "/w/analytical-engines/members",
       status: 200,
     });
-    assert(scenario.backoffice.organizationCount() === 2);
+    // The operators, the firm, and the client.
+    assert(scenario.backoffice.organizationCount() === 3);
     expect(await ada.navigate(firmPath)).toMatchObject({
       loaderData: { "firms/dashboard": { clients: [{ name: "Analytical Engines" }] } },
     });
   });
 });
 
-test("trying again after inviting failed creates one firm and one invitation", async () => {
+test("trying again after a lost answer creates one firm and one invitation", async () => {
   await runBookkeepingScenario(async (scenario) => {
     const grace = await scenario.signUp("grace@bookkeeping.test", "Grace Hopper");
     scenario.setOperators("grace@bookkeeping.test");
@@ -200,19 +213,24 @@ test("trying again after inviting failed creates one firm and one invitation", a
     const { externalId } = form.loaderData["operator/new-firm"] as { externalId: string };
     const submission = { externalId, name: "Lovelace & Co", ownerEmail: "ada@example.test" };
 
-    // Backoffice creates the invitation, but Bookkeeping never hears so.
-    scenario.backoffice.failNextResponse("invitations.create");
+    // Backoffice creates the firm and its owner invitation, but Bookkeeping never hears so.
+    scenario.backoffice.failNextResponse("organizations.provisionForInvitee");
     expect(await grace.submit("/operator/firms/new", submission)).toMatchObject({
       actionData: {
         status: "failed",
         externalId,
-        error: "Lovelace & Co was created, but its owner was not invited yet. Try again shortly.",
+        error: "Creating the firm didn't work. Try again shortly.",
       },
     });
     expect(await grace.submit("/operator/firms/new", submission)).toMatchObject({
-      actionData: { status: "created", path: "/f/lovelace-co", invitation: { emailed: true } },
+      actionData: {
+        status: "created",
+        path: "/f/lovelace-co",
+        owner: { status: "invited", emailed: true },
+      },
     });
-    assert(scenario.backoffice.organizationCount() === 1);
+    // The operators, and the firm.
+    assert(scenario.backoffice.organizationCount() === 2);
     expect(scenario.backoffice.pendingInvitations("lovelace-co")).toHaveLength(1);
     expect(scenario.backoffice.sentInvitations).toHaveLength(1);
     const { page } = await scenario.acceptInvitation("ada@example.test", "Ada Lovelace");
@@ -232,9 +250,9 @@ test("when Backoffice cannot email, the operator shares the invitation link", as
       name: "Lovelace & Co",
       ownerEmail: "ada@example.test",
     });
-    expect(created).toMatchObject({ actionData: { invitation: { emailed: false } } });
+    expect(created).toMatchObject({ actionData: { owner: { status: "invited", emailed: false } } });
     expect(scenario.backoffice.sentInvitations).toEqual([]);
-    const { link } = (created.actionData as { invitation: { link: string } }).invitation;
+    const { link } = (created.actionData as { owner: { link: string } }).owner;
     const accepted = await scenario.acceptInvitation("ada@example.test", "Ada Lovelace", {
       path: new URL(link).pathname,
     });
@@ -255,7 +273,7 @@ test("an operator who names themselves owns the firm without an invitation", asy
         ownerEmail: "grace@bookkeeping.test",
       }),
     ).toMatchObject({
-      actionData: { status: "created", path: "/f/hopper-books", invitation: null },
+      actionData: { status: "created", path: "/f/hopper-books", owner: { status: "you" } },
     });
     expect(scenario.backoffice.pendingInvitations("hopper-books")).toEqual([]);
     expect(await grace.navigate("/f/hopper-books")).toMatchObject({ status: 200 });

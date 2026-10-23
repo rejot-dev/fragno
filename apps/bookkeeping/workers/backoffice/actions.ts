@@ -14,7 +14,7 @@ export const BOOKKEEPING_BACKOFFICE_ACTIONS: AppAction[] = [
     id: "organization.get",
     label: "Describe the organization",
     description:
-      "Name, slug, kind (an accounting firm, or a client whose books a firm keeps), and member count of the organization in Bookkeeping.",
+      "Name, slug, kind (the operators who run Bookkeeping, an accounting firm, or a client whose books a firm keeps), and member count of the organization in Bookkeeping.",
     inputSchema: { type: "object", additionalProperties: false },
     outputSchema: {
       type: "object",
@@ -22,7 +22,7 @@ export const BOOKKEEPING_BACKOFFICE_ACTIONS: AppAction[] = [
         id: { type: "string" },
         name: { type: "string" },
         slug: { type: "string" },
-        kind: { type: "string", enum: ["firm", "client"] },
+        kind: { type: "string", enum: ["operator", "firm", "client"] },
         memberCount: { type: "integer" },
       },
       required: ["id", "name", "slug", "kind", "memberCount"],

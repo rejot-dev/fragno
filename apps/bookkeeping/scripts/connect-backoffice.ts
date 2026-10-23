@@ -95,10 +95,14 @@ function runCli(args: string[], output: "inherit" | "capture") {
   return result.stdout;
 }
 
-/** Runs codemode in System scope; the CLI exits non-zero when the code throws. */
-function execSystem<T>(baseUrl: string, code: string, result: z.ZodType<T>): T {
-  const stdout = runCli(["exec", "system", code, "--base-url", baseUrl], "capture");
+/** Runs codemode in a scope, e.g. `system`; the CLI exits non-zero when the code throws. */
+function execIn<T>(scope: string, baseUrl: string, code: string, result: z.ZodType<T>): T {
+  const stdout = runCli(["exec", scope, code, "--base-url", baseUrl], "capture");
   return z.object({ result }).parse(JSON.parse(stdout)).result;
+}
+
+function execSystem<T>(baseUrl: string, code: string, result: z.ZodType<T>): T {
+  return execIn("system", baseUrl, code, result);
 }
 
 const { values: flags } = parseArgs({
@@ -107,6 +111,7 @@ const { values: flags } = parseArgs({
     "bookkeeping-url": { type: "string" },
     name: { type: "string", default: "Bookkeeping" },
     slug: { type: "string", default: "bookkeeping" },
+    "operators-slug": { type: "string", default: "bookkeeping-operators" },
     "change-approval": { type: "string", default: "automatic" },
     help: { type: "boolean", short: "h" },
   },
@@ -118,8 +123,9 @@ if (flags.help) {
   console.log(`Usage: pnpm --dir apps/bookkeeping backoffice:connect [options]
 
 Signs in to Backoffice with the Backoffice CLI (a global administrator is required), creates or
-repairs Bookkeeping's OAuth client, registers the app as first-party with its actions, and updates
-apps/bookkeeping/.dev.vars. Rerunning converges on the same client and app.
+repairs Bookkeeping's OAuth client, registers the app as first-party with its actions, creates the
+operator organization with the administrator as owner and installs Bookkeeping there, and updates
+apps/bookkeeping/.dev.vars. Rerunning converges on the same client, app, and organization.
 
 Options:
   --backoffice-url URL     Backoffice origin (default: this worktree's local Backoffice,
@@ -127,6 +133,7 @@ Options:
   --bookkeeping-url URL    Bookkeeping origin (default: BOOKKEEPING_BASE_URL or http://127.0.0.1:4173)
   --name NAME              OAuth client name for a new client (default: Bookkeeping)
   --slug SLUG              Permanent app slug, addressed as app#SLUG (default: bookkeeping)
+  --operators-slug SLUG    The operator organization's slug (default: bookkeeping-operators)
   --change-approval MODE   automatic (default) or installation`);
   process.exit(0);
 }
@@ -151,6 +158,7 @@ const TRUST = {
   kind: "first-party",
   provisioningPermissions: [
     "organizations.provision",
+    "organizations.provisionForInvitee",
     "projects.provision",
     "invitations.create",
     "invitations.send",
@@ -173,7 +181,7 @@ const actions = {
 
 console.log(`Backoffice:  ${backofficeUrl}\nBookkeeping: ${bookkeepingUrl}\n`);
 
-console.log("1/4 Building the Backoffice CLI");
+console.log("1/5 Building the Backoffice CLI");
 const build = spawnSync(
   "pnpm",
   [
@@ -190,7 +198,7 @@ if (build.status !== 0) {
   throw new Error("Building the Backoffice CLI failed.");
 }
 
-console.log("\n2/4 Signing in to Backoffice");
+console.log("\n2/5 Signing in to Backoffice");
 // The CLI prints the approval link and code; the user opens it themselves.
 runCli(["login", "--base-url", backofficeUrl], "inherit");
 const account = execSystem(
@@ -200,7 +208,7 @@ const account = execSystem(
 );
 console.log(`Signed in as ${account.email} (user ID ${account.userId})`);
 
-console.log("\n3/4 Creating or repairing the OAuth client");
+console.log("\n3/5 Creating or repairing the OAuth client");
 // An app keeps the OAuth client it was registered with, so the client of the app holding the slug
 // wins over the stored one. A stored client from another Backoffice server is not found here, so
 // without such an app a new one is created.
@@ -299,7 +307,7 @@ console.log(
   `${client.created ? "Created" : "Verified"} OAuth client ${client.clientId}${client.clientSecret && !client.created ? " (rotated its secret)" : ""}`,
 );
 
-console.log("\n4/4 Registering the app and its actions");
+console.log("\n4/5 Registering the app and its actions");
 const app = execSystem(
   backofficeUrl,
   `async () => {
@@ -364,13 +372,57 @@ console.log(
   `${app.created ? "Registered" : "Verified"} app#${app.slug} (app ID ${app.appId}, actions revision ${app.actionsRevision}${app.actionsChanged ? ", updated" : ""}${app.permissionsChanged ? ", requested permissions updated" : ""})`,
 );
 
+console.log("\n5/5 Creating or finding the operator organization");
+// Its members operate Bookkeeping. Backoffice's administrator creates it: Bookkeeping can only
+// provision organizations for people who already signed in to it.
+const operators = execSystem(
+  backofficeUrl,
+  `async () => {
+    const want = ${JSON.stringify({ slug: flags["operators-slug"], ownerEmail: account.email })};
+    let cursor = null;
+    do {
+      const page = await admin.orgList({ pageSize: 100, cursor });
+      const existing = page.organizations.find((organization) => organization.slug === want.slug);
+      if (existing) return { organizationId: existing.organizationId, created: false };
+      cursor = page.nextCursor;
+    } while (cursor);
+    const created = await admin.orgCreate({
+      name: "Bookkeeping operators",
+      slug: want.slug,
+      ownerEmail: want.ownerEmail,
+    });
+    return { organizationId: created.organizationId, created: true };
+  }`,
+  z.object({ organizationId: z.string().min(1), created: z.boolean() }),
+);
+let installed;
+try {
+  installed = execIn(
+    `org:${flags["operators-slug"]}`,
+    backofficeUrl,
+    `async () => {
+      const appId = ${JSON.stringify(app.appId)};
+      if ((await apps.getInstallation({ appId }))?.status === "active") return false;
+      const registered = await apps.get({ appId });
+      await apps.install({
+        appId,
+        grantedPermissions: registered.requestedPermissions,
+        actionsRevision: registered.actionsRevision,
+      });
+      return true;
+    }`,
+    z.boolean(),
+  );
+} catch {
+  throw new Error(
+    `Installing Bookkeeping in ${flags["operators-slug"]} failed. ${account.email} must be an owner or admin of that organization; pass --operators-slug to use another.`,
+  );
+}
+console.log(
+  `${operators.created ? "Created" : "Found"} org:${flags["operators-slug"]} (organization ID ${operators.organizationId}), with Bookkeeping ${installed ? "installed" : "already installed"}`,
+);
+
 const betterAuthSecret = devVars.get("BETTER_AUTH_SECRET") ?? "";
-// The administrator operates their local Bookkeeping. User IDs differ per Backoffice server, so
-// the ID is added to the ones already there, which may belong to colleagues.
-const operators = (devVars.get("BOOKKEEPING_OPERATOR_USER_IDS") ?? "")
-  .split(",")
-  .map((id) => id.trim())
-  .filter((id) => id !== "");
 writeDevVars({
   ...(betterAuthSecret.length >= 32 && !betterAuthSecret.startsWith("replace-")
     ? {}
@@ -378,14 +430,15 @@ writeDevVars({
   BOOKKEEPING_BASE_URL: bookkeepingUrl,
   BACKOFFICE_BASE_URL: backofficeUrl,
   BACKOFFICE_OAUTH_CLIENT_ID: client.clientId,
-  BOOKKEEPING_OPERATOR_USER_IDS: [...new Set([...operators, account.userId])].join(","),
+  BOOKKEEPING_OPERATOR_ORGANIZATION_ID: operators.organizationId,
   ...(client.clientSecret ? { BACKOFFICE_OAUTH_CLIENT_SECRET: client.clientSecret } : {}),
 });
 
 console.log(`\nUpdated ${devVarsPath}; ${account.email} is a Bookkeeping operator.
 
 Next:
-  1. Restart Bookkeeping so it reads the new .dev.vars, and open ${bookkeepingUrl}.
+  1. Restart Bookkeeping so it reads the new .dev.vars, and open ${bookkeepingUrl}/operator.
+     Invite other operators there, under Operators.
   2. Sign in as ${account.email}, and create the first firm at
      ${bookkeepingUrl}/operator/firms/new. Bookkeeping invites its owner by email.${
        account.emailVerified

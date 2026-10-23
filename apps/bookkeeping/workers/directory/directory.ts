@@ -3,15 +3,23 @@ import { DurableObject } from "cloudflare:workers";
 
 import { applyMigrations } from "../migrations";
 import directoryMigration from "./migrations/0001-directory.sql?raw";
+import operatorsMigration from "./migrations/0002-operators.sql?raw";
 
-/** A firm keeps the books of its clients; a client is one business whose books it keeps. */
-export type OrganizationKind = "firm" | "client";
+/**
+ * Operators run Bookkeeping; a firm keeps the books of its clients; a client is one business whose
+ * books it keeps.
+ */
+export type OrganizationKind = "operator" | "firm" | "client";
 
 /** A Backoffice organization Bookkeeping is installed in; clients name the firm that created them. */
 export type Organization = { id: string; slug: string; name: string } & (
+  | { kind: "operator" }
   | { kind: "firm" }
   | { kind: "client"; firmId: string }
 );
+
+/** The organizations Bookkeeping creates; Backoffice's administrator creates the operators'. */
+export type ProvisionedOrganization = Extract<Organization, { kind: "firm" | "client" }>;
 
 /** Someone's membership, as Backoffice last confirmed it at `confirmedAt` (epoch milliseconds). */
 export type Membership = { roles: OrganizationRole[]; confirmedAt: number };
@@ -68,9 +76,9 @@ const INVITATION_QUERY = `SELECT ${ORGANIZATION_COLUMNS}, i."id" AS "invitationI
 function toOrganization(row: OrganizationRow): Organization {
   const { id, slug, name } = row;
   // The table's CHECK constraint pairs every client with its firm.
-  return row.kind === "firm"
-    ? { id, slug, name, kind: "firm" }
-    : { id, slug, name, kind: "client", firmId: row.firmId! };
+  return row.kind === "client"
+    ? { id, slug, name, kind: "client", firmId: row.firmId! }
+    : { id, slug, name, kind: row.kind };
 }
 
 // Roles are written only from Backoffice responses, parsed at the edge.
@@ -106,7 +114,7 @@ export class Directory extends DurableObject<CloudflareEnv> {
   constructor(ctx: DurableObjectState, env: CloudflareEnv) {
     super(ctx, env);
     void ctx.blockConcurrencyWhile(async () => {
-      applyMigrations(ctx, [directoryMigration]);
+      applyMigrations(ctx, [directoryMigration, operatorsMigration]);
     });
   }
 
@@ -115,6 +123,18 @@ export class Directory extends DurableObject<CloudflareEnv> {
       .exec<OrganizationRow>(
         `SELECT ${ORGANIZATION_COLUMNS} FROM "organization" o WHERE o."slug" = ?`,
         slug,
+      )
+      .toArray();
+    return row ? toOrganization(row) : null;
+  }
+
+  /** The operator organization, once an operator's membership was confirmed. */
+  findOperators(id: string): Organization | null {
+    const [row] = this.ctx.storage.sql
+      .exec<OrganizationRow>(
+        `SELECT ${ORGANIZATION_COLUMNS} FROM "organization" o
+         WHERE o."id" = ? AND o."kind" = 'operator'`,
+        id,
       )
       .toArray();
     return row ? toOrganization(row) : null;
@@ -131,12 +151,13 @@ export class Directory extends DurableObject<CloudflareEnv> {
     return row ? { roles: parseRoles(row.roles), confirmedAt: row.confirmedAt } : null;
   }
 
-  /** The organizations the user belongs to, firms first, then by name. */
+  /** The organizations the user belongs to: operators, then firms, then clients, by name. */
   listMemberships(userId: string): OrganizationMembership[] {
     return this.ctx.storage.sql
       .exec<MembershipRow>(
         `${MEMBERSHIP_QUERY} WHERE m."userId" = ?
-         ORDER BY o."kind" = 'client', o."name", o."slug"`,
+         ORDER BY CASE o."kind" WHEN 'operator' THEN 0 WHEN 'firm' THEN 1 ELSE 2 END,
+           o."name", o."slug"`,
         userId,
       )
       .toArray()
@@ -185,10 +206,13 @@ export class Directory extends DurableObject<CloudflareEnv> {
 
   /**
    * Records an organization Bookkeeping provisioned, with the owner Backoffice made of it, or none
-   * when it already existed. Recording it again, after a retried provisioning, keeps its kind and
-   * firm.
+   * while its owner is invited or when it already existed. Recording it again, after a retried
+   * provisioning, keeps its kind and firm.
    */
-  recordProvisioned(input: { organization: Organization; ownerUserId: string | null }): void {
+  recordProvisioned(input: {
+    organization: ProvisionedOrganization;
+    ownerUserId: string | null;
+  }): void {
     const { organization } = input;
     this.ctx.storage.transactionSync(() => {
       this.ctx.storage.sql.exec(
@@ -208,6 +232,25 @@ export class Directory extends DurableObject<CloudflareEnv> {
           confirmedAt: Date.now(),
         });
       }
+    });
+  }
+
+  /**
+   * Records an operator's membership Backoffice confirmed. Bookkeeping learns of the operator
+   * organization this way: Backoffice's administrator creates it, not Bookkeeping.
+   */
+  confirmOperator(confirmation: MembershipConfirmation): void {
+    const { id, slug, name } = confirmation.organization;
+    this.ctx.storage.transactionSync(() => {
+      this.ctx.storage.sql.exec(
+        `INSERT INTO "organization" ("id", "slug", "name", "kind", "firmId")
+         VALUES (?, ?, ?, 'operator', NULL)
+         ON CONFLICT ("id") DO UPDATE SET "slug" = excluded."slug", "name" = excluded."name"`,
+        id,
+        slug,
+        name,
+      );
+      this.#recordMembership(id, confirmation);
     });
   }
 

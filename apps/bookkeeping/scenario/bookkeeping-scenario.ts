@@ -197,7 +197,7 @@ export class BookkeepingScenario {
       BACKOFFICE_BASE_URL: BACKOFFICE_ORIGIN,
       BACKOFFICE_OAUTH_CLIENT_ID: this.backoffice.client.id,
       BACKOFFICE_OAUTH_CLIENT_SECRET: this.backoffice.client.secret,
-      BOOKKEEPING_OPERATOR_USER_IDS: "",
+      BOOKKEEPING_OPERATOR_ORGANIZATION_ID: "",
     };
     const env = { ...vars } as unknown as CloudflareEnv;
     const bindings = {
@@ -217,12 +217,15 @@ export class BookkeepingScenario {
     return new ScenarioBrowser(this);
   }
 
-  /** Makes these people, by their Backoffice accounts, Bookkeeping's operators. */
+  /**
+   * Backoffice's administrator creates the operator organization, owned by these people, as
+   * `backoffice:connect` does, and Bookkeeping is configured with it.
+   */
   setOperators(...emails: string[]): void {
-    const operators = emails.map((email) => this.backoffice.userId(email)).join(",");
+    const id = this.backoffice.admin.createOrganization("Bookkeeping operators", emails);
     // Pages read `cloudflare:workers`, which holds a copy of the vars, and objects read `env`.
-    this.env.BOOKKEEPING_OPERATOR_USER_IDS = operators;
-    workerEnv.BOOKKEEPING_OPERATOR_USER_IDS = operators;
+    this.env.BOOKKEEPING_OPERATOR_ORGANIZATION_ID = id;
+    workerEnv.BOOKKEEPING_OPERATOR_ORGANIZATION_ID = id;
   }
 
   /** A new person signs in and gives their name, as the pages lead them. */
