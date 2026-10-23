@@ -43,7 +43,7 @@ Routes:
 | `/`                                                          | Public frontpage                                                         |
 | `/login`, `/help`                                            | Signing in, and help with signing in; `/signup` redirects to `/login`    |
 | `/name`                                                      | Asks a new person's name                                                 |
-| `/start`                                                     | Where signing in lands: the only place, a choice of places, or no access |
+| `/start`                                                     | Where signing in lands: one place, or a choice of places and invitations |
 | `/account`                                                   | Who is signed in, and logging out                                        |
 | `/invitations/:invitationId`                                 | Joining a firm or a client                                               |
 | `/operator`                                                  | Every firm, for operators only; `/operator/firms/new` creates one        |
@@ -205,9 +205,9 @@ then emails the invitation in Bookkeeping's name with `invitations.send`, linkin
 email, as a local Backoffice without Resend cannot. The invited person signs in there, with
 Backoffice's sign-in page already showing the invited address; someone signed in with another
 address is offered to log out first. They then join: Bookkeeping calls `invitations.accept`, and
-Backoffice checks that the invitation is for their verified address. Invitations made in Backoffice
-itself show on the members page without a link; their invitees find the organization once they open
-it.
+Backoffice checks that the invitation is for their verified address. Someone who signs in without
+the link finds their unexpired invitations on `/start`. Invitations made in Backoffice itself show
+on the members page without a link; their invitees find the organization once they open it.
 
 ### Backoffice actions
 

@@ -4,7 +4,6 @@ import { env } from "cloudflare:workers";
 import { Form, Link, redirect, useNavigation } from "react-router";
 
 import { createProvisioningClient } from "../../workers/backoffice/client";
-import type { Invitation } from "../../workers/directory/directory";
 import {
   assertSameOrigin,
   getSessionUser,
@@ -17,6 +16,7 @@ import { isOutcomeUnknown, parseRoles } from "../organizations/access.server";
 import { organizationPath } from "../organizations/paths";
 import { highestRole, ROLE_LABELS } from "../organizations/roles";
 import type { Route } from "./+types/invitation";
+import { invitedTo } from "./invited-to";
 
 export function meta() {
   return [{ title: "Invitation · Bookkeeping" }];
@@ -31,14 +31,6 @@ function directory() {
 async function findOpenInvitation(invitationId: string) {
   const invitation = await directory().findInvitation(invitationId);
   return invitation && invitation.expiresAt > Date.now() ? invitation : null;
-}
-
-/** What the invitation is to, such as "the accounting firm Lovelace & Co". */
-function invitedTo({ kind, name }: Invitation["organization"]): string {
-  if (kind === "operator") {
-    return `${name}, the team that runs Bookkeeping`;
-  }
-  return kind === "firm" ? `the accounting firm ${name}` : `the books of ${name}`;
 }
 
 /**
