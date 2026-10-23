@@ -245,12 +245,14 @@ test("agents are defined through the manager, checked on write, and keep their c
           }
         }),
         then.assert("define agents and list them with the built-in ones", async ({ runtime }) => {
-          for (const definition of [
-            reviewer,
-            { ...reviewer, agentName: "offline", model: "faux/missing", instructions: "" },
-          ]) {
+          // Creation names the model each agent resolves to: the preferred one for a null model.
+          for (const [definition, resolvedModel] of [
+            [reviewer, "faux/faux-1"],
+            [{ ...reviewer, agentName: "offline", model: "faux/missing", instructions: "" }, null],
+          ] as const) {
             const created = await managerRequest(runtime, scope, "/agents", definition);
             assert.equal(created.status, 201, await created.clone().text());
+            expect(await created.json()).toMatchObject({ ...definition, resolvedModel });
           }
           const duplicate = await managerRequest(runtime, scope, "/agents", reviewer);
           assert.equal(duplicate.status, 409);

@@ -29,7 +29,8 @@ await pi.createAgent({
 - `agentName`: a lowercase letter, then lowercase letters, digits, or hyphens. Names are unique in a
   scope; `assistant` is taken.
 - `description` tells people and other agents what the agent is for.
-- `model` is `provider/modelId`, or null for the preferred available model.
+- `model` is `provider/modelId`, or null for the preferred available model. The created agent's
+  `resolvedModel` names the model it runs, so you can tell whoever asked which one that is.
 - `permissions`: use `["*"]` unless you want to limit the agent. Each turn already runs with the
   prompter's permissions; these grants only narrow them, so `["*"]` narrows nothing. To limit the
   agent, list `namespace.*` or `namespace.permission` entries from the permission catalog. At least

@@ -246,6 +246,8 @@ All paths below are mounted at `/api/pi-manager` inside the manager object:
   from that registry.
 - `GET /agents`: every definition with `provisioned` (`false` until its first turn), and invalid
   definitions.
+- `POST /agents`: creates a definition, answering it with `resolvedModel`, the model it runs: its
+  `model`, the first available model for null, or null when that model is unavailable.
 - `GET /agents/:agentName`: one definition and whether it is provisioned.
 - `POST /agents/:agentName/prompts`: `{ requestId, content, whenBusy, whenPaused, model }`,
   answering `{ requestId, status }` or `409 AGENT_BUSY` for a refused `reject`; see Queue. `model`
