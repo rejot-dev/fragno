@@ -4,6 +4,10 @@ import {
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { RouterContextProvider } from "react-router";
 
+import {
+  type BackofficeIdentityDirectory,
+  resolveAdministeredMemberId,
+} from "@/backoffice-runtime/authority-resolver";
 import { resolveBackofficeUserAuthorityRole } from "@/backoffice-runtime/authority-roles";
 import {
   createBackofficeRequestExecution,
@@ -11,50 +15,62 @@ import {
   type BackofficeRequestExecution,
 } from "@/backoffice-runtime/context";
 import { BackofficeForbiddenError, isBackofficeForbiddenError } from "@/backoffice-runtime/kernel";
+import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { BackofficeAuthPrincipal } from "./contracts";
 import { authorizeBackofficePrincipal, requireBackofficePrincipal } from "./request-auth.server";
 
-const assertAuthenticatedUserCanAccessScope = (
+type AdministeredMemberDirectory = Pick<BackofficeIdentityDirectory, "findAdministeredMember">;
+
+/**
+ * Verifies the principal's access to the scope and creates its request execution. Only a scope
+ * another user owns asks Auth, once, whether the principal administers that user; the execution
+ * carries the answer, so its actions never ask again.
+ */
+export const createBackofficeExecutionForPrincipal = async (
   auth: BackofficeAuthPrincipal,
   scope: BackofficeContextScope,
-) => {
+  identities: AdministeredMemberDirectory,
+): Promise<BackofficeRequestExecution> => {
   if (auth.auth.scopeRestriction && !backofficeScopeContains(auth.auth.scopeRestriction, scope)) {
     throw new BackofficeForbiddenError("Credential scope does not permit the requested scope.");
   }
-  const role = resolveBackofficeUserAuthorityRole(
-    {
-      userId: auth.user.id,
-      role: auth.user.role,
-      organizationId: auth.auth.organization?.id ?? null,
-    },
-    scope,
-  );
-  if (role) {
-    return;
+  const authority = {
+    userId: auth.user.id,
+    role: auth.user.role,
+    organizationId: auth.auth.organization?.id ?? null,
+    administeredMemberId: await resolveAdministeredMemberId(identities, auth.user.id, scope),
+  };
+  if (!resolveBackofficeUserAuthorityRole(authority, scope)) {
+    throw new BackofficeForbiddenError(
+      scope.kind === "system" ? "System context requires an admin user." : "Forbidden",
+    );
   }
-
-  throw new BackofficeForbiddenError(
-    scope.kind === "system" ? "System context requires an admin user." : "Forbidden",
-  );
-};
-
-export const createBackofficeExecutionForPrincipal = (
-  auth: BackofficeAuthPrincipal,
-  scope: BackofficeContextScope,
-): BackofficeRequestExecution => {
-  assertAuthenticatedUserCanAccessScope(auth, scope);
   return createBackofficeRequestExecution({
     scope,
     userId: auth.user.id,
     verifiedRequestAuthority: {
-      role: auth.user.role,
-      organizationId: auth.auth.organization?.id ?? null,
+      role: authority.role,
+      organizationId: authority.organizationId,
+      administeredMemberId: authority.administeredMemberId,
       expiresAt: auth.auth.expiresAt,
       scopeRestriction: auth.auth.scopeRestriction,
     },
   });
 };
+
+/** Reads Auth only when a request names another user's personal scope. */
+export function routerContextIdentities(
+  routerContext: Readonly<RouterContextProvider>,
+): AdministeredMemberDirectory {
+  return {
+    findAdministeredMember: async (input) =>
+      await routerContext
+        .get(BackofficeWorkerContext)
+        .runtime.objects.auth.singleton()
+        .commands.findAdministeredMember(input),
+  };
+}
 
 export const requireBackofficeContext = async (
   request: Request,
@@ -62,7 +78,11 @@ export const requireBackofficeContext = async (
   scope: BackofficeContextScope,
 ): Promise<BackofficeRequestExecution> => {
   const auth = await requireBackofficePrincipal(request, routerContext);
-  return createBackofficeExecutionForPrincipal(auth, scope);
+  return await createBackofficeExecutionForPrincipal(
+    auth,
+    scope,
+    routerContextIdentities(routerContext),
+  );
 };
 
 type BackofficeContextAuthorization =
@@ -74,14 +94,19 @@ type AuthorizedBackofficePrincipal = Extract<
   { ok: true }
 >;
 
-function authorizePrincipalForBackofficeScope(
+async function authorizePrincipalForBackofficeScope(
   authorization: AuthorizedBackofficePrincipal,
   scope: BackofficeContextScope,
-): BackofficeContextAuthorization {
+  identities: AdministeredMemberDirectory,
+): Promise<BackofficeContextAuthorization> {
   try {
     return {
       ok: true,
-      execution: createBackofficeExecutionForPrincipal(authorization.principal, scope),
+      execution: await createBackofficeExecutionForPrincipal(
+        authorization.principal,
+        scope,
+        identities,
+      ),
       headers: authorization.headers,
     };
   } catch (error) {
@@ -105,6 +130,10 @@ export async function authorizeBackofficeContext(
 ): Promise<BackofficeContextAuthorization> {
   const authorization = await authorizeBackofficePrincipal(request, routerContext);
   return authorization.ok
-    ? authorizePrincipalForBackofficeScope(authorization, scope)
+    ? await authorizePrincipalForBackofficeScope(
+        authorization,
+        scope,
+        routerContextIdentities(routerContext),
+      )
     : authorization;
 }

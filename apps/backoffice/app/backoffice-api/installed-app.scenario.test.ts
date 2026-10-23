@@ -1247,7 +1247,7 @@ describe("installed-app event delivery SQLite scenarios", () => {
       ),
     ]);
   });
-  test("a member installs Bookkeeping for themselves, and only they and Bookkeeping reach their personal scope", async () => {
+  test("a member installs Bookkeeping for themselves, and only they, their organization's owner, and Bookkeeping reach their personal scope", async () => {
     await runInstalledAppScenario("Bookkeeping is installed in a personal scope", (then) => [
       then(
         "the member installs Bookkeeping in their personal scope, which nobody else can choose for them",
@@ -1303,7 +1303,7 @@ describe("installed-app event delivery SQLite scenarios", () => {
         },
       ),
       then(
-        "Bookkeeping acts in the personal scope and its workspace there, as itself or for the member only",
+        "Bookkeeping acts in the personal scope and its workspace there, as itself or for the member and their organization's owner",
         async (ctx) => {
           const personal = { kind: "user", userId: ctx.vars.memberId } as const;
           const workspace = { kind: "app", owner: personal, appId: ctx.vars.appId } as const;
@@ -1326,8 +1326,8 @@ describe("installed-app event delivery SQLite scenarios", () => {
             scope: personal,
           });
 
-          // The organization's installation does not reach its members' personal scopes, and
-          // nobody else can authorize Bookkeeping in the member's.
+          // The organization's installation does not reach its members' personal scopes, but the
+          // organization's owner, who acts in the member's, may authorize Bookkeeping there.
           await expectDenied(
             await exchange(ctx, ctx.vars.installationToken, {
               kind: "user",
@@ -1338,12 +1338,13 @@ describe("installed-app event delivery SQLite scenarios", () => {
           );
           const ownerToken = await authorizeBookkeeping(ctx, ctx.vars.ownerCookie);
           for (const scope of [personal, workspace]) {
-            await expectDenied(await exchange(ctx, ownerToken, scope), 403, "scope_unavailable");
+            const response = await exchange(ctx, ownerToken, scope);
+            assert.equal(response.status, 200, await response.clone().text());
           }
         },
       ),
       then(
-        "only the member opens the workspace and manages the installation, and uninstalling closes both",
+        "the member and the organization's owner open the workspace, only the member manages the installation, and uninstalling closes both",
         async (ctx) => {
           const personal = { kind: "user", userId: ctx.vars.memberId } as const;
           expect(
@@ -1351,13 +1352,11 @@ describe("installed-app event delivery SQLite scenarios", () => {
           ).toMatchObject({
             selectedScope: { kind: "app", owner: personal, appId: ctx.vars.appId },
           });
-          const hidden = await openWorkspaceDashboard(
-            ctx,
-            ctx.vars.ownerCookie,
-            `user:${ctx.vars.memberId}`,
-          );
-          assert(hidden instanceof Response);
-          assert.equal(hidden.status, 404);
+          expect(
+            await openWorkspaceDashboard(ctx, ctx.vars.ownerCookie, `user:${ctx.vars.memberId}`),
+          ).toMatchObject({
+            selectedScope: { kind: "app", owner: personal, appId: ctx.vars.appId },
+          });
 
           const manage = async (userId: string, command: string) => {
             const context = createRouteBackedRuntimeContext({

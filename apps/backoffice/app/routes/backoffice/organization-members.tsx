@@ -1,4 +1,4 @@
-import { Button } from "@fragno-private/design-system/button";
+import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { cn } from "@fragno-private/design-system/cn";
 import { FormContainer } from "@fragno-private/design-system/form-container";
 import { Input } from "@fragno-private/design-system/input";
@@ -14,8 +14,10 @@ import {
 
 import { authClient } from "@/fragno/auth/auth-client";
 import { loadOrganizationMembers } from "@/fragno/auth/auth-directory.server";
+import { administersMembers } from "@/fragno/auth/contracts";
 
 import type { Route } from "./+types/organization-members";
+import { dashboardPath } from "./dashboard/path";
 import type { OrganizationLayoutContext } from "./organization-layout";
 import { ROLE_OPTIONS, formatDate, formatRoles, getErrorMessage } from "./organization-utils";
 
@@ -38,8 +40,8 @@ export default function BackofficeOrganizationMembers() {
   const posthog = usePostHog();
   const { organization, member, me } = useOutletContext<OrganizationLayoutContext>();
   const currentUserId = me.user.id;
-  const canManageMembers =
-    me.user.role === "admin" || member.roles.some((role) => role === "owner" || role === "admin");
+  const administersOrganization = administersMembers(member.roles);
+  const canManageMembers = me.user.role === "admin" || administersOrganization;
 
   const membersData = useLoaderData<typeof loader>();
   const members = membersData.members;
@@ -158,6 +160,7 @@ export default function BackofficeOrganizationMembers() {
                       member={memberEntry}
                       isSelf={Boolean(currentUserId && memberEntry.userId === currentUserId)}
                       canManageMembers={canManageMembers}
+                      canOpenWorkspace={administersOrganization}
                       onUpdateRoles={handleUpdateMemberRoles}
                       onRemove={handleRemoveMember}
                     />
@@ -199,12 +202,15 @@ function OrganizationMemberRow({
   member,
   isSelf,
   canManageMembers,
+  canOpenWorkspace,
   onUpdateRoles,
   onRemove,
 }: {
   member: OrganizationMember;
   isSelf: boolean;
   canManageMembers: boolean;
+  /** Owners and admins act in their members' personal workspaces. */
+  canOpenWorkspace: boolean;
   onUpdateRoles: (memberId: string, roles: string[]) => Promise<void>;
   onRemove: (memberId: string) => Promise<void>;
 }) {
@@ -324,6 +330,14 @@ function OrganizationMemberRow({
         {canManageMembers ? (
           <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-2">
+              {canOpenWorkspace && !isSelf ? (
+                <ButtonLink
+                  variant="secondary"
+                  to={dashboardPath({ kind: "user", userId: member.userId })}
+                >
+                  Open workspace
+                </ButtonLink>
+              ) : null}
               <Button
                 variant="accent"
                 type="button"

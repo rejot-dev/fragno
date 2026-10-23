@@ -165,6 +165,12 @@ one (`app/fragno/auth/browser-credential.server.ts`). The Better Auth session's
 `activeOrganizationId` remembers the organization of the last token, so a replacement keeps it; a
 `preferred` exchange uses it and a `required` exchange moves it.
 
+Owners and admins of an organization act in its members' personal workspaces. Tokens do not record
+this: when a request names another user's personal scope, its execution boundary asks Auth once
+whether the user administers an organization that user belongs to, and the request's verified
+authority carries the answer. Requests in the user's own scopes never ask, and leaving the
+organization ends access on the next request.
+
 ## Versioned HTTP API
 
 `/api/v0/…` (`app/backoffice-api/backoffice-api-router.ts`) serves the `@fragno-dev/backoffice-api`

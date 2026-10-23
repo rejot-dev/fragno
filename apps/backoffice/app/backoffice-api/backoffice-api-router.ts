@@ -93,9 +93,10 @@ async function authorizeApiRequest(
     try {
       return {
         ok: true,
-        execution: createBackofficeExecutionForPrincipal(
+        execution: await createBackofficeExecutionForPrincipal(
           principalFromBackofficeJwt(credential, "bearer"),
           scope,
+          runtime.objects.auth.singleton().commands,
         ),
         emittedEventSource: undefined,
       };

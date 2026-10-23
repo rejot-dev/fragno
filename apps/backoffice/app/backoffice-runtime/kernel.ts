@@ -437,17 +437,6 @@ export class BackofficeKernel {
         "context-access-denied",
       );
     }
-
-    // Only the owning user acts in what a user owns.
-    const owner = backofficeScopeRootOwner(execution.scope);
-    if (
-      owner?.kind === "user" &&
-      execution.actors.principal?.scope === "internal" &&
-      execution.actors.principal.type === "user" &&
-      execution.actors.principal.id !== owner.userId
-    ) {
-      throw new BackofficeForbiddenError("Forbidden", "context-access-denied");
-    }
   }
 
   #isTrustedSystemExecution(execution: BackofficeExecutionContext) {
@@ -522,16 +511,15 @@ export class BackofficeKernel {
       return;
     }
 
-    // A user may reach every scope they can access. Membership is not checked here: every action
-    // in the target scope resolves the user's permissions there, which denies foreign organizations.
-    if (principal?.scope === "internal" && principal.type === "user") {
-      const targetOwner = backofficeScopeRootOwner(targetScope);
-      if (
-        targetOwner !== null &&
-        (targetOwner.kind === "org" || targetOwner.userId === principal.id)
-      ) {
-        return;
-      }
+    // A user may reach every scope they can access. Neither membership nor administration is
+    // checked here: every action in the target scope resolves the user's permissions there, which
+    // denies foreign organizations and the personal scopes of users they do not administer.
+    if (
+      principal?.scope === "internal" &&
+      principal.type === "user" &&
+      backofficeScopeRootOwner(targetScope) !== null
+    ) {
+      return;
     }
 
     if (ownerScope.kind === "org") {

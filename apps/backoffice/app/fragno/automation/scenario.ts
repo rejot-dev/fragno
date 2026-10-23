@@ -3116,6 +3116,7 @@ const buildStepBuilders = <
                   verifiedRequestAuthority: {
                     role: "user",
                     organizationId: orgId,
+                    administeredMemberId: null,
                     expiresAt: new Date(Date.now() + 60_000),
                     scopeRestriction: null,
                   },

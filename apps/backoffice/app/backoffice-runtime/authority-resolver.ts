@@ -7,6 +7,7 @@ import {
   type BackofficePermissionRequirement,
 } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import {
+  type BackofficeContextScope,
   backofficeScopeContains,
   backofficeScopeOrganization,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
@@ -15,10 +16,12 @@ import {
   type BackofficeExecutionContext,
   type BackofficeRequestExecution,
 } from "@/backoffice-runtime/context";
-import type { Role, UserAuthorityFacts } from "@/fragno/auth/contracts";
+import type { AdministeredMember, UserAuthorityFacts } from "@/fragno/auth/contracts";
 import { automationRouteIdFromActor } from "@/fragno/automation/authority";
 
 import {
+  backofficeScopeOtherUserId,
+  type BackofficeUserAuthority,
   getBackofficeAuthorityRoleGrants,
   resolveBackofficeInternalServiceAuthorityRole,
   resolveBackofficeUserAuthorityRole,
@@ -86,7 +89,31 @@ export type BackofficeIdentityDirectory = {
     userId: string;
     organizationId?: string;
   }): Promise<UserAuthorityFacts>;
+  findAdministeredMember(input: {
+    administratorId: string;
+    memberId: string;
+  }): Promise<AdministeredMember | null>;
 };
+
+/**
+ * Live: the other user owning the scope, when this user owns or administers an organization that
+ * user belongs to. No Auth read happens in scopes this user owns or that no user owns.
+ */
+export async function resolveAdministeredMemberId(
+  identities: Pick<BackofficeIdentityDirectory, "findAdministeredMember">,
+  userId: string,
+  scope: BackofficeContextScope,
+): Promise<string | null> {
+  const otherUserId = backofficeScopeOtherUserId(userId, scope);
+  if (otherUserId === null) {
+    return null;
+  }
+  const member = await identities.findAdministeredMember({
+    administratorId: userId,
+    memberId: otherUserId,
+  });
+  return member?.userId ?? null;
+}
 
 const noPermissions = [] as const satisfies readonly BackofficePermissionRequirement[];
 
@@ -95,11 +122,7 @@ type CreateBackofficeAuthorityResolverOptions = {
 };
 
 const resolveUserAuthorityPermissions = (
-  authority: Readonly<{
-    userId: string;
-    role: Role;
-    organizationId: string | null;
-  }>,
+  authority: BackofficeUserAuthority,
   execution: BackofficeExecutionContext,
 ): readonly BackofficePermissionRequirement[] => {
   const role = resolveBackofficeUserAuthorityRole(authority, execution.scope);
@@ -132,9 +155,11 @@ const resolveVerifiedRequestAuthorityPermissions = ({
  * Resolves authority from verified access-token claims or current production identity state.
  *
  * Immediate user-request actions trust the role and organization snapshot in the verified JWT
- * until its expiry, avoiding an Auth round-trip for each sensitive action. Deferred executions carry no
- * token authority and instead reevaluate current user state through the identity directory. Trusted
- * runtime actor types resolve to explicit roles with only the finite grants in `authority-roles.ts`.
+ * until its expiry, and the administered member their execution boundary verified, avoiding an Auth
+ * round-trip for each sensitive action.
+ * Deferred executions carry no token authority and instead reevaluate current user state through
+ * the identity directory. Trusted runtime actor types resolve to explicit roles with only the finite
+ * grants in `authority-roles.ts`.
  */
 export const createBackofficeAuthorityResolver = (
   identities: BackofficeIdentityDirectory,
@@ -166,10 +191,13 @@ export const createBackofficeAuthorityResolver = (
       }
 
       const organizationId = backofficeScopeOrganization(execution.scope)?.orgId;
-      const currentUser = await identities.getUserAuthorityFacts({
-        userId: principal.id,
-        ...(organizationId ? { organizationId } : {}),
-      });
+      const [currentUser, administeredMemberId] = await Promise.all([
+        identities.getUserAuthorityFacts({
+          userId: principal.id,
+          ...(organizationId ? { organizationId } : {}),
+        }),
+        resolveAdministeredMemberId(identities, principal.id, execution.scope),
+      ]);
       if (!currentUser.active || !currentUser.role) {
         return noPermissions;
       }
@@ -179,6 +207,7 @@ export const createBackofficeAuthorityResolver = (
           userId: principal.id,
           role: currentUser.role,
           organizationId: organizationId && currentUser.organizationMember ? organizationId : null,
+          administeredMemberId,
         },
         execution,
       );

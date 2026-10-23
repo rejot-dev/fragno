@@ -118,8 +118,18 @@ describe("requireBackofficeContext", () => {
       },
     });
 
+    // The administrator owns or administers no organization of user-1.
+    const routerContext = {
+      get: () => ({
+        runtime: {
+          objects: {
+            auth: { singleton: () => ({ commands: { findAdministeredMember: async () => null } }) },
+          },
+        },
+      }),
+    };
     await expect(
-      requireBackofficeContext(new Request("https://backoffice.example/"), {} as never, {
+      requireBackofficeContext(new Request("https://backoffice.example/"), routerContext as never, {
         kind: "user",
         userId: "user-1",
       }),

@@ -70,6 +70,7 @@ describe("BackofficeShell resolved scope", () => {
       <BackofficeShell
         me={null}
         resolvedScope={resolvedScope}
+        administeredMember={null}
         accessTokenExpiresAt={null}
         automationCollectionSource={{
           status: "unavailable",

@@ -51,6 +51,10 @@ class MemoryIdentityDirectory implements BackofficeIdentityDirectory {
         : false,
     };
   }
+
+  async findAdministeredMember() {
+    return null;
+  }
 }
 
 const principal = {
@@ -87,6 +91,7 @@ describe("createBackofficeAuthorityResolver", () => {
       userId: principal.id,
       role: "admin" as const,
       organizationId: "org-1",
+      administeredMemberId: null,
       expiresAtEpochMs: 2_000,
     };
 
@@ -164,6 +169,7 @@ describe("createBackofficeAuthorityResolver", () => {
             userId: principal.id,
             role: "user",
             organizationId: "org-1",
+            administeredMemberId: null,
             expiresAtEpochMs: 2_000,
           },
         },

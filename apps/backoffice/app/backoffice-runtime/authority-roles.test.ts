@@ -68,6 +68,7 @@ describe("Backoffice authority role grants", () => {
       "system-administrator",
       "organization-member",
       "user-owner",
+      "member-administrator",
       "automation",
       "capability",
       "pi-agent",
@@ -141,6 +142,7 @@ describe("Backoffice authority role grants", () => {
       "system-administrator",
       "organization-member",
       "user-owner",
+      "member-administrator",
       "automation",
       "capability",
       "pi-agent",
@@ -154,47 +156,111 @@ describe("Backoffice authority role grants", () => {
 
   test.each([
     [
-      { userId: "admin-1", role: "admin" as const, organizationId: null },
+      {
+        userId: "admin-1",
+        role: "admin" as const,
+        organizationId: null,
+        administeredMemberId: null,
+      },
       { kind: "system" as const },
       "system-administrator",
     ],
     [
-      { userId: "admin-1", role: "admin" as const, organizationId: null },
+      {
+        userId: "admin-1",
+        role: "admin" as const,
+        organizationId: null,
+        administeredMemberId: null,
+      },
       { kind: "org" as const, orgId: "org-1" },
       null,
     ],
     [
-      { userId: "admin-1", role: "admin" as const, organizationId: null },
+      {
+        userId: "admin-1",
+        role: "admin" as const,
+        organizationId: null,
+        administeredMemberId: null,
+      },
       { kind: "user" as const, userId: "admin-1" },
       "system-administrator",
     ],
     [
-      { userId: "admin-1", role: "admin" as const, organizationId: null },
+      {
+        userId: "admin-1",
+        role: "admin" as const,
+        organizationId: null,
+        administeredMemberId: null,
+      },
       { kind: "user" as const, userId: "user-1" },
       null,
     ],
     [
-      { userId: "user-1", role: "user" as const, organizationId: null },
+      { userId: "user-1", role: "user" as const, organizationId: null, administeredMemberId: null },
       { kind: "system" as const },
       null,
     ],
     [
-      { userId: "user-1", role: "user" as const, organizationId: null },
+      { userId: "user-1", role: "user" as const, organizationId: null, administeredMemberId: null },
       { kind: "user" as const, userId: "user-1" },
       "user-owner",
     ],
     [
-      { userId: "user-1", role: "user" as const, organizationId: null },
+      { userId: "user-1", role: "user" as const, organizationId: null, administeredMemberId: null },
       { kind: "user" as const, userId: "user-2" },
       null,
     ],
     [
-      { userId: "user-1", role: "user" as const, organizationId: "org-1" },
+      {
+        userId: "user-1",
+        role: "user" as const,
+        organizationId: null,
+        administeredMemberId: "user-2",
+      },
+      {
+        kind: "project" as const,
+        owner: { kind: "user" as const, userId: "user-2" },
+        projectId: "project-1",
+      },
+      "member-administrator",
+    ],
+    [
+      {
+        userId: "user-1",
+        role: "user" as const,
+        organizationId: null,
+        administeredMemberId: "user-2",
+      },
+      { kind: "user" as const, userId: "user-3" },
+      null,
+    ],
+    [
+      {
+        userId: "admin-1",
+        role: "admin" as const,
+        organizationId: null,
+        administeredMemberId: "user-1",
+      },
+      { kind: "user" as const, userId: "user-1" },
+      "member-administrator",
+    ],
+    [
+      {
+        userId: "user-1",
+        role: "user" as const,
+        organizationId: "org-1",
+        administeredMemberId: null,
+      },
       { kind: "org" as const, orgId: "org-1" },
       "organization-member",
     ],
     [
-      { userId: "user-1", role: "user" as const, organizationId: "org-1" },
+      {
+        userId: "user-1",
+        role: "user" as const,
+        organizationId: "org-1",
+        administeredMemberId: null,
+      },
       {
         kind: "project" as const,
         owner: { kind: "org" as const, orgId: "org-1" },
@@ -203,7 +269,7 @@ describe("Backoffice authority role grants", () => {
       "organization-member",
     ],
     [
-      { userId: "user-1", role: "user" as const, organizationId: null },
+      { userId: "user-1", role: "user" as const, organizationId: null, administeredMemberId: null },
       { kind: "org" as const, orgId: "org-1" },
       null,
     ],

@@ -250,7 +250,7 @@ describe("Workspace package runtime scenarios", () => {
                 emitter: { kind: "caller" },
                 runtime: ctx.runtime.services,
                 kernel: new BackofficeKernel(ctx.runtime.services),
-                execution: createBackofficeExecutionForPrincipal(
+                execution: await createBackofficeExecutionForPrincipal(
                   {
                     user: { id: "owner-1", email: "owner@example.test", role: "user" },
                     auth: {
@@ -261,6 +261,7 @@ describe("Workspace package runtime scenarios", () => {
                     },
                   },
                   { kind: "user", userId: "owner-1" },
+                  ctx.runtime.objects.auth.singleton().commands,
                 ),
               });
               const { bash } = await createInteractiveBashHost({ context });
@@ -342,10 +343,11 @@ describe("Workspace package runtime scenarios", () => {
               emitter: { kind: "caller" },
               runtime: ctx.runtime.services,
               kernel: new BackofficeKernel(ctx.runtime.services),
-              execution: createBackofficeExecutionForPrincipal(principal, {
-                kind: "user",
-                userId: "owner-1",
-              }),
+              execution: await createBackofficeExecutionForPrincipal(
+                principal,
+                { kind: "user", userId: "owner-1" },
+                ctx.runtime.objects.auth.singleton().commands,
+              ),
             });
             const result = await (
               await createInteractiveBashHost({ context })

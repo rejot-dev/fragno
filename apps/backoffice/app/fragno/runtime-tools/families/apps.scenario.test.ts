@@ -87,6 +87,7 @@ function appContext(
         verifiedRequestAuthority: {
           role: "admin",
           organizationId: "org-1",
+          administeredMemberId: null,
           expiresAt: new Date(ctx.runtime.now() + 60_000),
           scopeRestriction: { kind: "org", orgId: "org-1" },
         },

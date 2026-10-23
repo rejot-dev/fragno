@@ -223,6 +223,7 @@ beforeEach(() => {
       verifiedRequestAuthority: {
         role: "user",
         organizationId: "org-1",
+        administeredMemberId: null,
         expiresAt: new Date("2030-01-01T00:00:00.000Z"),
         scopeRestriction: null,
       },

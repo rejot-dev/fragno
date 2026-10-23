@@ -84,6 +84,7 @@ describe("Backoffice settings authority inspection", () => {
           userId: "user-1",
           role: "user",
           organizationId: "org-1",
+          administeredMemberId: null,
           expiresAtEpochMs: Date.parse("2027-01-01T00:00:00.000Z"),
         },
       }),
