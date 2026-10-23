@@ -4,6 +4,11 @@ import { webhookAuthConfigSchema } from "./webhooks/auth";
 import { webhookVerificationConfigSchema } from "./webhooks/verification";
 
 export interface ApiFragmentConfig {
+  /**
+   * How long webhook deliveries are kept after their `onWebhookReceived` hook succeeds; unprocessed
+   * deliveries are kept until it does. Storing a delivery deletes a batch of expired ones.
+   */
+  webhookDeliveryRetentionMs: number;
   /** Optional URL allow-list. If omitted, only http(s) URL syntax is checked. */
   allowedBaseUrls?: (url: URL) => boolean;
   /** Allows OAuth callback URLs. OAuth start is rejected when this policy is omitted. */
@@ -267,6 +272,18 @@ export const webhookEndpointOutputSchema = z.object({
   updatedAt: z.union([z.string(), z.date()]).optional(),
 });
 
+/** A delivery as received; repeated deliveries with the same endpoint and ID share its `hookId`. */
+export const webhookDeliveryOutputSchema = z.object({
+  endpointId: z.string(),
+  deliveryId: z.string(),
+  hookId: z.string(),
+  receivedAt: z.string(),
+  headers: z.record(z.string(), z.string()).describe("Authentication values are redacted."),
+  query: z.record(z.string(), z.string()).describe("Authentication values are redacted."),
+  body: z.record(z.string(), z.unknown()),
+  contentType: z.string().nullable(),
+});
+
 export const createWebhookEndpointInputSchema = z.object({
   name: z.string().min(1),
   status: webhookEndpointStatusSchema.default("active"),
@@ -299,5 +316,6 @@ export type WebhookEndpointAuthInput = z.infer<typeof webhookEndpointAuthInputSc
 export type WebhookEndpointInput = z.infer<typeof createWebhookEndpointInputSchema>;
 export type UpdateWebhookEndpointInput = z.infer<typeof updateWebhookEndpointInputSchema>;
 export type WebhookEndpoint = z.infer<typeof webhookEndpointOutputSchema>;
+export type WebhookDelivery = z.infer<typeof webhookDeliveryOutputSchema>;
 export type WebhookRejectionCode = z.infer<typeof webhookRejectionCodeSchema>;
 export type WebhookDeliveryEvidence = z.infer<typeof webhookDeliveryEvidenceSchema>;

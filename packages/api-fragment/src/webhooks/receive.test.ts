@@ -3,14 +3,16 @@ import { assert, beforeEach, describe, expect, test, vi } from "vitest";
 import { createDurableHooksProcessor } from "@fragno-dev/db/dispatchers/node";
 
 import { instantiate } from "@fragno-dev/core";
+import { internalSchema } from "@fragno-dev/db";
 import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 
-import type { WebhookDeliveryIdentity } from "../api-types";
+import type { WebhookDelivery, WebhookDeliveryIdentity } from "../api-types";
 import { bytesToHex, signHmacBytes, utf8Bytes } from "../crypto";
-import { apiFragmentDefinition, type WebhookReceivedPayload } from "../definition";
+import { apiFragmentDefinition } from "../definition";
 import { apiRoutesFactory } from "../routes";
 
 const onWebhookReceived = vi.fn();
+const DELIVERY_RETENTION_MS = 60_000;
 
 const buildApiTest = async () => {
   const setup = await buildDatabaseFragmentsTest()
@@ -20,6 +22,7 @@ const buildApiTest = async () => {
       "api",
       instantiate(apiFragmentDefinition)
         .withConfig({
+          webhookDeliveryRetentionMs: DELIVERY_RETENTION_MS,
           onWebhookReceived,
         })
         .withRoutes([apiRoutesFactory]),
@@ -99,7 +102,7 @@ describe("webhook receiving", () => {
         query: {},
         body: { ok: true },
         contentType: "application/json",
-      }) satisfies Partial<WebhookReceivedPayload>,
+      }) satisfies Partial<WebhookDelivery>,
       expect.objectContaining({
         idempotencyKey: expect.any(String),
         hookId: expect.any(Object),
@@ -559,6 +562,147 @@ describe("webhook receiving", () => {
     await setup.test.cleanup();
   });
 
+  test("keeps deliveries until their retention after processing passes", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = Date.parse("2026-01-01T00:00:00.000Z");
+    vi.setSystemTime(start);
+    try {
+      const setup = await buildApiTest();
+      const fragment = setup.fragments.api.fragment;
+      await createNoneWebhookEndpoint(setup, "retained");
+      const deliver = async (eventId: string) => {
+        const response = await fragment.handler(
+          webhookRequest("retained", {
+            method: "POST",
+            headers: { "content-type": "application/json", "x-event-id": eventId },
+            body: JSON.stringify({ eventId }),
+          }),
+        );
+        assert(response.status === 202);
+      };
+      const readDelivery = (deliveryId: string) =>
+        fragment.callRoute("GET", "/webhooks/endpoints/:endpointId/deliveries/:deliveryId", {
+          pathParams: { endpointId: "retained", deliveryId },
+        });
+
+      await deliver("evt_old");
+      // A delivery whose hook has not run is kept however long ago it arrived.
+      vi.setSystemTime(start + 2 * DELIVERY_RETENTION_MS);
+      await deliver("evt_new");
+      const pending = await readDelivery("evt_old");
+      assert(pending.type === "json");
+      expect(pending.data).toMatchObject({
+        deliveryId: "evt_old",
+        receivedAt: "2026-01-01T00:00:00.000Z",
+        body: { eventId: "evt_old" },
+        contentType: "application/json",
+      });
+
+      await drainDurableHooks(fragment);
+      expect(onWebhookReceived.mock.calls.map(([delivery]) => delivery.deliveryId)).toEqual([
+        "evt_old",
+        "evt_new",
+      ]);
+
+      vi.setSystemTime(start + 3 * DELIVERY_RETENTION_MS + 1);
+      await deliver("evt_latest");
+      for (const deliveryId of ["evt_old", "evt_new"]) {
+        const expired = await readDelivery(deliveryId);
+        assert(expired.type === "error");
+        assert(expired.error.code === "WEBHOOK_DELIVERY_NOT_FOUND");
+      }
+      assert((await readDelivery("evt_latest")).type === "json");
+
+      await setup.test.cleanup();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("a replayed hook whose completion was lost neither reruns nor fails", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = Date.parse("2026-01-01T00:00:00.000Z");
+    vi.setSystemTime(start);
+    try {
+      const setup = await buildApiTest();
+      const { fragment, db } = setup.fragments.api;
+      await createNoneWebhookEndpoint(setup, "replayed");
+      const deliver = async (eventId: string) => {
+        const response = await fragment.handler(
+          webhookRequest("replayed", {
+            method: "POST",
+            headers: { "x-event-id": eventId },
+            body: "{}",
+          }),
+        );
+        assert(response.status === 202);
+      };
+      const readHooks = async () => {
+        const [hooks] = await db
+          .createUnitOfWork("read-hooks")
+          .forSchema(internalSchema)
+          .find("fragno_hooks", (b) => b.whereIndex("primary"))
+          .executeRetrieve();
+        return hooks.filter((hook) => hook.hookName === "onWebhookReceived");
+      };
+      // The callback committed, but the processor stopped before settling the hook, which stale
+      // recovery later replays.
+      const loseCompletion = async () => {
+        const [hook] = await readHooks();
+        assert(hook);
+        const uow = db.createUnitOfWork("lose-completion").forSchema(internalSchema);
+        uow.update("fragno_hooks", hook.id, (b) =>
+          b.set({ status: "processing", lastAttemptAt: new Date(start) }),
+        );
+        assert((await uow.executeMutations()).success);
+      };
+
+      await deliver("evt_replayed");
+      await drainDurableHooks(fragment);
+      await loseCompletion();
+      vi.setSystemTime(start + 11 * 60_000);
+      await drainDurableHooks(fragment);
+      expect(onWebhookReceived).toHaveBeenCalledOnce();
+
+      // A later delivery deletes the processed one before the replay finds it.
+      await loseCompletion();
+      await deliver("evt_later");
+      const expired = await fragment.callRoute(
+        "GET",
+        "/webhooks/endpoints/:endpointId/deliveries/:deliveryId",
+        { pathParams: { endpointId: "replayed", deliveryId: "evt_replayed" } },
+      );
+      assert(expired.type === "error");
+      assert(expired.error.code === "WEBHOOK_DELIVERY_NOT_FOUND");
+      await drainDurableHooks(fragment);
+
+      expect(onWebhookReceived.mock.calls.map(([delivery]) => delivery.deliveryId)).toEqual([
+        "evt_replayed",
+        "evt_later",
+      ]);
+      expect(await readHooks()).toMatchObject([
+        { status: "completed", attempts: 0 },
+        { status: "completed", attempts: 0 },
+      ]);
+
+      await setup.test.cleanup();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("rejects a retention that is not a positive whole number of milliseconds", () => {
+    for (const webhookDeliveryRetentionMs of [0, -1, 1.5, Number.NaN]) {
+      expect(() =>
+        instantiate(apiFragmentDefinition)
+          .withConfig({ webhookDeliveryRetentionMs })
+          .withRoutes([apiRoutesFactory])
+          .withOptions({ databaseAdapter: undefined })
+          .build(),
+      ).toThrow("webhookDeliveryRetentionMs must be a positive whole number");
+    }
+  });
+
   test("does not dedupe different delivery IDs with the same body", async () => {
     const setup = await buildApiTest();
     const fragment = setup.fragments.api.fragment;
@@ -603,7 +747,7 @@ describe("webhook receiving", () => {
     const secondFinished = Promise.withResolvers<void>();
     const completionOrder: string[] = [];
 
-    onWebhookReceived.mockImplementation(async (payload: WebhookReceivedPayload) => {
+    onWebhookReceived.mockImplementation(async (payload: WebhookDelivery) => {
       if (payload.deliveryId === "evt_1") {
         firstStarted.resolve();
         await releaseFirst.promise;

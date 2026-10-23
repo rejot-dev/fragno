@@ -103,6 +103,7 @@ const buildApiTest = async (
       "api",
       instantiate(apiFragmentDefinition)
         .withConfig({
+          webhookDeliveryRetentionMs: 60_000,
           allowedBaseUrls: options.allowedBaseUrls,
           ...(allowedOAuthRedirectUris ? { allowedOAuthRedirectUris } : {}),
           fetch: fetchRecorder.fetcher,

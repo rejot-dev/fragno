@@ -19,6 +19,7 @@ import {
   oauthStartInputSchema,
   tokenAuthInputSchema,
   updateWebhookEndpointInputSchema,
+  webhookDeliveryOutputSchema,
   webhookEndpointOutputSchema,
   webhookRejectionCodeSchema,
   type WebhookDeliveryIdentity,
@@ -31,6 +32,7 @@ import {
   apiFragmentDefinition,
   type ApiHooksMap,
   type WebhookEndpointHookSnapshot,
+  webhookDeliveryOfRow,
 } from "./definition";
 import { apiSchema } from "./schema";
 import {
@@ -53,6 +55,8 @@ import {
 } from "./webhooks/verification";
 
 const CONNECTIONS_PAGE_SIZE = 50;
+/** More than one, so a backlog of expired deliveries drains while new ones arrive. */
+const EXPIRED_WEBHOOK_DELIVERIES_DELETED_PER_DELIVERY = 10;
 const webhookEndpointsOutputSchema = z.object({ endpoints: z.array(webhookEndpointOutputSchema) });
 const oauthStartOutputSchema = z.object({ authorizationUrl: z.string(), state: z.string() });
 const oauthCallbackOutputSchema = z.object({ authenticated: z.boolean(), mode: z.string() });
@@ -318,7 +322,7 @@ function recordWebhookRequestOutcome(
 }
 
 export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
-  ({ services, defineRoute, config }) => [
+  ({ services, defineRoute, config, deps }) => [
     defineRoute({
       method: "PUT",
       path: "/webhooks/endpoints/:endpointId",
@@ -464,6 +468,33 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
 
     defineRoute({
       method: "GET",
+      path: "/webhooks/endpoints/:endpointId/deliveries/:deliveryId",
+      outputSchema: webhookDeliveryOutputSchema,
+      errorCodes: ["WEBHOOK_DELIVERY_NOT_FOUND"],
+      handler: async function ({ pathParams }, { json, error }) {
+        const hookId = await webhookHookId(pathParams.endpointId, pathParams.deliveryId);
+        const [delivery] = await this.handlerTx()
+          .retrieve(({ forSchema }) =>
+            forSchema(apiSchema).findFirst("webhookDelivery", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", hookId)),
+            ),
+          )
+          .execute();
+        if (!delivery) {
+          return error(
+            {
+              code: "WEBHOOK_DELIVERY_NOT_FOUND",
+              message: "Webhook delivery not found; it was never received or has expired",
+            },
+            404,
+          );
+        }
+        return json(webhookDeliveryOfRow(delivery));
+      },
+    }),
+
+    defineRoute({
+      method: "GET",
       path: "/webhooks/endpoints/:endpointId/events",
       errorCodes: [
         "WEBHOOK_ENDPOINT_NOT_FOUND",
@@ -579,6 +610,8 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
         "WEBHOOK_DELIVERY_ID_INVALID",
       ],
       handler: async function ({ pathParams, headers, query, rawBody, request }, { json, error }) {
+        const receivedAt = new Date();
+        const expiredBefore = new Date(receivedAt.getTime() - deps.webhookDeliveryRetentionMs);
         let result: WebhookReceiveResult;
         try {
           result = await this.handlerTx()
@@ -591,9 +624,18 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
                   b.whereIndex("idx_webhook_secret_endpoint_ref", (eb) =>
                     eb("endpointId", "=", pathParams.endpointId),
                   ),
+                )
+                .find("webhookDelivery", (b) =>
+                  b
+                    .whereIndex("idx_webhook_delivery_processedAt", (eb) =>
+                      eb("processedAt", "<", expiredBefore),
+                    )
+                    .orderByIndex("idx_webhook_delivery_processedAt", "asc")
+                    .select(["id"])
+                    .pageSize(EXPIRED_WEBHOOK_DELIVERIES_DELETED_PER_DELIVERY),
                 ),
             )
-            .transformRetrieve(async ([endpoint, secrets]) => {
+            .transformRetrieve(async ([endpoint, secrets, expiredDeliveries]) => {
               if (!endpoint) {
                 return { ok: false as const, code: "WEBHOOK_ENDPOINT_NOT_FOUND" as const };
               }
@@ -664,6 +706,7 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
                 deliveryId: deliveryId.deliveryId,
                 hookId: await webhookHookId(pathParams.endpointId, deliveryId.deliveryId),
                 body: body.body,
+                expiredDeliveryIds: expiredDeliveries.map((delivery) => delivery.id),
               };
             })
             .mutate(({ forSchema, retrieveResult }) => {
@@ -689,18 +732,24 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
                 ),
               );
 
+              // A repeated delivery collides on its hook ID, which the caller accepts.
+              uow.create("webhookDelivery", {
+                id: retrieveResult.hookId,
+                endpointId: pathParams.endpointId,
+                deliveryId: retrieveResult.deliveryId,
+                receivedAt,
+                headers: recordFromHeaders(headers, sensitiveHeaderNames),
+                query: recordFromSearchParams(query, sensitiveQueryNames),
+                body: retrieveResult.body,
+                contentType: headers.get("content-type"),
+              });
+              uow.deleteMany("webhookDelivery", retrieveResult.expiredDeliveryIds);
               uow.triggerHook(
                 "onWebhookReceived",
                 {
                   endpointId: pathParams.endpointId,
                   deliveryId: retrieveResult.deliveryId,
                   hookId: retrieveResult.hookId,
-                  receivedAt: new Date().toISOString(),
-                  headers: recordFromHeaders(headers, sensitiveHeaderNames),
-                  query: recordFromSearchParams(query, sensitiveQueryNames),
-                  rawBody: rawBody ?? "",
-                  body: retrieveResult.body,
-                  contentType: headers.get("content-type"),
                 },
                 { id: retrieveResult.hookId },
               );

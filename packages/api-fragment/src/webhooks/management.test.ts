@@ -17,7 +17,7 @@ const buildApiTest = async () => {
     .withFragment(
       "api",
       instantiate(apiFragmentDefinition)
-        .withConfig({ onWebhookEndpointChanged })
+        .withConfig({ webhookDeliveryRetentionMs: 60_000, onWebhookEndpointChanged })
         .withRoutes([apiRoutesFactory]),
     )
     .build();
