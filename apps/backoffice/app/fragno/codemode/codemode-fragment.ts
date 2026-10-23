@@ -149,7 +149,7 @@ export type CodemodeRunDetail = CodemodeRun & {
 };
 
 export const CODEMODE_RUN_ORDER_INDEX = "idx_codemode_run_createdAt";
-const CODEMODE_TOOL_CALL_ORDER_INDEX = "idx_codemode_tool_call_run_calledAt";
+const CODEMODE_TOOL_CALL_ORDER_INDEX = "idx_codemode_tool_call_run_sequence";
 const CODEMODE_RUN_MAX_TOOL_CALLS = 200;
 const CODEMODE_RUN_RETENTION_DAYS = 7;
 // Activations end within minutes, so a run's calls are settled long before they expire.
@@ -204,6 +204,8 @@ const codemodeSchema = schema("codemode", (s) =>
         )
         .addColumn("provider", column("string"))
         .addColumn("tool", column("string"))
+        // Orders a run's calls as its guest made them; parallel calls share a calledAt.
+        .addColumn("sequence", column("integer"))
         .addColumn("input", column("string"))
         .addColumn(
           "status",
@@ -220,7 +222,7 @@ const codemodeSchema = schema("codemode", (s) =>
         // Set exactly when status leaves running.
         .addColumn("output", column("string").nullable())
         .addColumn("settledAt", column("timestamp").nullable())
-        .createIndex(CODEMODE_TOOL_CALL_ORDER_INDEX, ["runId", "calledAt", "id"]),
+        .createIndex(CODEMODE_TOOL_CALL_ORDER_INDEX, ["runId", "sequence"]),
     ),
 );
 
@@ -420,12 +422,19 @@ const codemodeFragmentDefinition = defineFragment<CodemodeFragmentConfig>("codem
           .build();
       },
 
-      startToolCall: function (runId: string, call: CodemodeToolCall, input: string) {
+      /** `sequence` is the call's position among its run's calls, counting from 0. */
+      startToolCall: function (
+        runId: string,
+        sequence: number,
+        call: CodemodeToolCall,
+        input: string,
+      ) {
         return this.serviceTx(codemodeSchema)
           .mutate(({ uow }) =>
             uow
               .create("tool_call", {
                 runId,
+                sequence,
                 ...call,
                 input,
                 status: "running",

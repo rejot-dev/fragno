@@ -321,11 +321,14 @@ export class InMemoryCodemodeObject extends RpcTarget implements CodemodeObject 
     // Each call is stored as it starts and again as it settles, so history shows a run's calls
     // while it is still running.
     const redacted = new Set(redactedResults);
+    let calls = 0;
     const recordedHost = observeCodemodeToolCalls(
       host,
       async function recordToolCall(call, input, invoke) {
+        // Taken before any await, so parallel calls keep the order the guest made them in.
+        const sequence = calls++;
         const callId = await fragment.callServices(() =>
-          fragment.services.startToolCall(runId, call, summarizeToolValue(input)),
+          fragment.services.startToolCall(runId, sequence, call, summarizeToolValue(input)),
         );
         let settlement: { status: "succeeded" | "failed"; output: string };
         try {
