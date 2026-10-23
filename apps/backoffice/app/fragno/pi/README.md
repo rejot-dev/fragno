@@ -139,9 +139,9 @@ request ID it already has. A steer that reaches the agent after its turn ended r
 instead of joining another sender's turn.
 
 A request's submission reads `{ type: "input", status: "queued", requestId }` until Pi has its turn,
-and `{ type: "input", status: "dropped", requestId, reason }` once dropped; waiting for a queued
-prompt also waits for its dispatch. Once its turn is dispatched, a request's submission is its
-turn's, so every notification a turn handled answers with that turn's submission.
+and `{ type: "input", status: "dropped", requestId, reason }` once dropped. Once its turn is
+dispatched, a request's submission is its turn's, so every notification a turn handled answers with
+that turn's submission.
 
 Every change publishes the agent's waiting items and whether its queue is paused, with the agent
 row's version as their revision, to the manager object's in-memory queue channel. The view stream
@@ -263,8 +263,6 @@ All paths below are mounted at `/api/pi-manager` inside the manager object:
   it; see Notifications.
 - `GET /agents/:agentName/submissions/:requestId`: Pi's submission record, or the queue's record of
   an item Pi does not have; see Queue.
-- `GET /agents/:agentName/submissions/:requestId/wait?waitMs=...`: bounded, commit-driven wait for a
-  queued prompt's dispatch and its submission's settlement.
 - `GET /agents/:agentName/view`: Pi's committed active structural conversation view.
 - `GET /agents/:agentName/view-stream`: NDJSON `snapshot` and `update` frames of that view,
   interleaved with `queue` frames listing the items waiting in the agent's queue; see Queue.

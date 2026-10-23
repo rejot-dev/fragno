@@ -144,23 +144,6 @@ export type PiAgentQueueSubmission =
   | { type: "input"; status: "queued"; requestId: string }
   | { type: "input"; status: "dropped"; requestId: string; reason: string };
 
-export const PI_AGENT_SUBMISSION_WAIT_MAX_MS = 25_000;
-
-/** A bounded wait keeps infrastructure cancellation from leaving an unbounded agent waiter. */
-export const piAgentSubmissionWaitRequestSchema = z.object({
-  waitMs: z.number().int().min(1).max(PI_AGENT_SUBMISSION_WAIT_MAX_MS),
-});
-export const piAgentSubmissionWaitSchema = z.discriminatedUnion("status", [
-  z.object({ status: z.literal("pending"), submission: z.null() }),
-  z.object({ status: z.literal("settled"), submission: z.unknown() }),
-]);
-export type PiAgentSubmissionWait =
-  | { status: "pending"; submission: null }
-  | {
-      status: "settled";
-      submission: SubmissionRecord | Extract<PiAgentQueueSubmission, { status: "dropped" }>;
-    };
-
 /** Public manual compaction state omits internal durable checkpoints and task inputs. */
 export const piAgentCompactionStatusSchema = z.object({
   taskId: z.number().int().positive(),
@@ -229,12 +212,6 @@ export type PiAgent = {
   getView(config: PiAgentConfig): Promise<unknown>;
   watchView(config: PiAgentConfig): Promise<ReadableStream<Uint8Array>>;
   getSubmission(config: PiAgentConfig, requestId: string): Promise<SubmissionRecord | null>;
-  /** Waits for the request to be submitted, as a queued prompt is later, and then to settle. */
-  waitForSubmission(
-    config: PiAgentConfig,
-    requestId: string,
-    request: z.infer<typeof piAgentSubmissionWaitRequestSchema>,
-  ): Promise<PiAgentSubmissionWait>;
   listEntries(
     config: PiAgentConfig,
     request: z.infer<typeof piAgentEntryPageRequestSchema>,

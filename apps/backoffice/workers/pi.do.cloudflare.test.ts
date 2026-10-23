@@ -119,6 +119,18 @@ function seededTurn(config: PiAgentConfig): PiAgentTurn {
     },
   };
 }
+/** Polls, since the agent's own alarm may still be running the turn. */
+async function expectSubmissionDone(organizationId: string, requestId: string) {
+  await expect
+    .poll(
+      async () =>
+        await (
+          await managerRequest(organizationId, `/agents/assistant/submissions/${requestId}`)
+        ).json(),
+    )
+    .toMatchObject({ requestId, status: "done" });
+}
+
 describe("Pi durable agent scenarios", () => {
   test("provisions an org agent with its first turn, runs tools, and reconnects after eviction", async () => {
     const organizationId = `pi-org-${crypto.randomUUID()}`;
@@ -137,17 +149,8 @@ describe("Pi durable agent scenarios", () => {
     const receipt = await submitted.json<{ requestId: string; status: string }>();
     expect(receipt).toEqual({ requestId: "prompt-1", status: "queued" });
     const agent = (env as CloudflareEnv).PI.getByName(piAgentObjectName(config));
-    const waiting = managerRequest(
-      organizationId,
-      "/agents/assistant/submissions/prompt-1/wait?waitMs=5000",
-    );
     await runDurableObjectAlarm(agent);
-    const waited = await waiting;
-    expect(waited.status, await waited.clone().text()).toBe(200);
-    expect(await waited.json()).toMatchObject({
-      status: "settled",
-      submission: { requestId: "prompt-1", status: "done" },
-    });
+    await expectSubmissionDone(organizationId, "prompt-1");
 
     const after = await (
       await managerRequest(organizationId, "/agents/assistant")
@@ -278,14 +281,13 @@ describe("Pi durable agent scenarios", () => {
       );
       // Submission schedules a real alarm, which may already be running; wait for the prompt to
       // settle rather than assuming this alarm call performs the turn.
-      const waiting = request(`/agents/assistant/submissions/${prompt.requestId}/wait?waitMs=5000`);
       await runDurableObjectAlarm(agent);
-      const waited = await waiting;
-      assert.equal(waited.status, 200, await waited.clone().text());
-      expect(await waited.json()).toMatchObject({
-        status: "settled",
-        submission: { status: "done" },
-      });
+      await expect
+        .poll(
+          async () =>
+            await (await request(`/agents/assistant/submissions/${prompt.requestId}`)).json(),
+        )
+        .toMatchObject({ status: "done" });
       const view = await (await request("/agents/assistant/view")).json<ConversationView>();
       expect(JSON.stringify(view.entries)).toContain("durable answer");
       expect(view.entries.filter((entry) => entry.kind === "pi.user")).toHaveLength(1);
@@ -335,17 +337,8 @@ describe("Pi durable agent scenarios", () => {
     await evictDurableObject(agent);
     // The woken object schedules its own alarm for now, which may resume the input before this
     // alarm call does; wait for the input to settle either way.
-    const waiting = managerRequest(
-      organizationId,
-      "/agents/assistant/submissions/recovery-1/wait?waitMs=5000",
-    );
     await runDurableObjectAlarm(agent);
-    const waited = await waiting;
-    expect(waited.status, await waited.clone().text()).toBe(200);
-    expect(await waited.json()).toMatchObject({
-      status: "settled",
-      submission: { status: "done", requestId: "recovery-1" },
-    });
+    await expectSubmissionDone(organizationId, "recovery-1");
     const view = await (
       await managerRequest(organizationId, "/agents/assistant/view")
     ).json<ConversationView>();

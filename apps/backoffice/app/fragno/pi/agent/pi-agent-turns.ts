@@ -1,5 +1,3 @@
-import { awaitWithContext } from "@earendil-works/chord/context";
-
 import { copyJson, type Context } from "@earendil-works/chord";
 import {
   defineDoc,
@@ -10,7 +8,6 @@ import {
   type Harness,
   type SettledSubmissionRecord,
   type Storage,
-  type SubmissionRecord,
 } from "@earendil-works/pi-durable";
 
 import type { PiAgentTurn } from "./pi-agent-contract";
@@ -137,38 +134,6 @@ export async function recordPiAgentCompactionTurn(
   await harness.commit(async (tx) => {
     (await tx.doc(PiAgentTurnsDoc)).latest = storedTurn(turn);
   }, context);
-}
-
-/** Resolves with the root conversation's submission for the request once there is one. */
-export async function waitForPiAgentSubmission(
-  harness: Harness,
-  storage: Pick<Storage, "submissionByRequest">,
-  requestId: string,
-  context: Context,
-): Promise<SubmissionRecord> {
-  let unsubscribe = () => {};
-  const submitted = new Promise<SubmissionRecord>((resolve) => {
-    unsubscribe = harness.subscribeCommits((publication) => {
-      for (const change of publication.changes) {
-        if (
-          change.type === "submission" &&
-          change.value.conversationId === ROOT_CONVERSATION_ID &&
-          change.value.requestId === requestId
-        ) {
-          resolve(change.value);
-        }
-      }
-    });
-  });
-  try {
-    // Subscribing before reading catches a submission committed while the read runs.
-    return (
-      (await storage.submissionByRequest(ROOT_CONVERSATION_ID, requestId, context)) ??
-      (await awaitWithContext(submitted, context))
-    );
-  } finally {
-    unsubscribe();
-  }
 }
 
 /** A running root run whose turn record is missing has no authority, which fails closed. */

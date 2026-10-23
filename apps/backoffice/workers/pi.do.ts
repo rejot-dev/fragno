@@ -34,7 +34,6 @@ import {
   piAgentNotificationSchema,
   piAgentObjectName,
   piAgentPromptSchema,
-  piAgentSubmissionWaitRequestSchema,
   piAgentTurnSchema,
   piAgentWorkSchema,
   PiConversationViewDamagedError,
@@ -42,7 +41,6 @@ import {
   type PiAgentCompactionStatus,
   type PiAgentNotification,
   type PiAgentPrompt,
-  type PiAgentSubmissionWait,
   type PiAgentTurn,
   type PiAgentWork,
 } from "@/fragno/pi/agent/pi-agent-contract";
@@ -64,7 +62,6 @@ import {
   recordAdmittedPiAgentTurn,
   recordPiAgentCompactionTurn,
   recordPiAgentTurn,
-  waitForPiAgentSubmission,
   withdrawPiAgentTurn,
 } from "@/fragno/pi/agent/pi-agent-turns";
 import { createPiPostHogExtension } from "@/fragno/pi/extensions/posthog/posthog-extension";
@@ -354,39 +351,6 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
     return (await storage.submissionByRequest(root.id, requestId, BACKGROUND_CONTEXT)) ?? null;
   }
 
-  async waitForSubmission(
-    config: PiAgentConfig,
-    requestId: string,
-    rawRequest: z.infer<typeof piAgentSubmissionWaitRequestSchema>,
-  ): Promise<PiAgentSubmissionWait> {
-    const request = piAgentSubmissionWaitRequestSchema.parse(rawRequest);
-    const { storage, harness } = await this.#requireAgent(config);
-    const controller = new AbortController();
-    const timeoutReason = new Error("PI_AGENT_SUBMISSION_WAIT_TIMED_OUT");
-    const timer = setTimeout(() => {
-      controller.abort(timeoutReason);
-    }, request.waitMs);
-    const context = withAbortSignal(controller.signal, BACKGROUND_CONTEXT);
-    try {
-      const record = await waitForPiAgentSubmission(harness, storage, requestId, context);
-      if (record.status === "done" || record.status === "unanswered") {
-        return { status: "settled", submission: record };
-      }
-      const submission = await harness.submission(record.id, context);
-      if (!submission) {
-        return { status: "pending", submission: null };
-      }
-      return { status: "settled", submission: await submission.wait(context) };
-    } catch (cause) {
-      if (controller.signal.aborted && controller.signal.reason === timeoutReason) {
-        return { status: "pending", submission: null };
-      }
-      throw cause;
-    } finally {
-      clearTimeout(timer);
-    }
-  }
-
   async listEntries(
     config: PiAgentConfig,
     rawRequest: z.infer<typeof piAgentEntryPageRequestSchema>,
@@ -602,13 +566,6 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
   }
   async getSubmission(config: PiAgentConfig, requestId: string): Promise<SubmissionRecord | null> {
     return await this.#object.getSubmission(config, requestId);
-  }
-  async waitForSubmission(
-    config: PiAgentConfig,
-    requestId: string,
-    request: z.infer<typeof piAgentSubmissionWaitRequestSchema>,
-  ): Promise<PiAgentSubmissionWait> {
-    return await this.#object.waitForSubmission(config, requestId, request);
   }
   async listEntries(config: PiAgentConfig, request: z.infer<typeof piAgentEntryPageRequestSchema>) {
     return await this.#object.listEntries(config, request);
