@@ -4,6 +4,8 @@ import { Buffer } from "node:buffer";
 
 import { integrationSetupProgressSchema } from "@fragno-dev/backoffice-api/v0/integrations";
 
+import { queryOnce } from "@tanstack/react-db";
+
 const workers = vi.hoisted(() => ({
   DurableObject: class {},
   RpcTarget: class {},
@@ -53,8 +55,9 @@ const scenarioObjects = {
 
 const owner = { kind: "user", userId: "connector-owner" } as const;
 const stranger = { kind: "user", userId: "connector-stranger" } as const;
-// Discovery offers the preassigned `backoffice` name for the gateway's only Gmail provider.
-const target = encodeConnectorConnectionId(["named", "project-1", "gmail-provider", "backoffice"]);
+// Discovery preassigns the service as the name for the gateway's only Gmail provider.
+const target = encodeConnectorConnectionId(["named", "project-1", "gmail-provider", "gmail"]);
+const workTarget = encodeConnectorConnectionId(["named", "project-1", "gmail-provider", "work"]);
 // The removed account-ID form: a flags byte, then the account ID as a NUL-terminated JSON string.
 const accountAddress = `connector#a_${Buffer.from([0, ...Buffer.from('"gmail-account"\0')]).toString("base64url")}`;
 
@@ -156,6 +159,49 @@ test("Connector setup resumes consent across restarts and binds the account only
         });
         expect(run.result).toEqual({ error: "Connector integration connection ID is invalid." });
       }),
+      then.assert("an account under another name starts its own consent", async (ctx) => {
+        const run = await ctx.runCodemode({
+          scope: owner,
+          code: `async () => await integrations.setup({ kind: "input", connectionId: ${JSON.stringify(workTarget)}, input: { start: true } })`,
+        });
+        const progress = integrationSetupProgressSchema.parse(run.result);
+        assert(progress.status === "needs-authorization");
+        const requestId = new URL(progress.authorizationUrl).pathname.split("/").at(-1);
+        assert(requestId);
+        gateway.authorize(requestId, "work-account");
+        const checked = await ctx.runCodemode({
+          scope: owner,
+          code: `async () => await integrations.setup({ kind: "check", connectionId: ${JSON.stringify(workTarget)} })`,
+        });
+        expect(checked.result).toMatchObject({ status: "ready" });
+      }),
+      runner.drain(),
+      then.assert(
+        "the overview titles accounts by service, adding names other than the default",
+        async (ctx) => {
+          const database = ctx.tanstack.automations.forScope(owner);
+          await database.drain();
+          const connections = await queryOnce((query) =>
+            query
+              .from({ connection: database.collections.connections })
+              .orderBy(({ connection }) => connection.displayName, "asc"),
+          );
+          expect(
+            connections.map(({ connectionId, displayName, kindLabel }) => ({
+              connectionId,
+              displayName,
+              kindLabel,
+            })),
+          ).toEqual([
+            { connectionId: target, displayName: "gmail", kindLabel: "Connector · gmail" },
+            {
+              connectionId: workTarget,
+              displayName: "gmail · work",
+              kindLabel: "Connector · gmail",
+            },
+          ]);
+        },
+      ),
     ],
   }));
 });

@@ -148,7 +148,7 @@ Copy opaque addresses from discovery and listing; do not base64-encode the old J
 canonical encoder in `connector-connection-id.ts` packs lowercase canonical UUIDs into 16 bytes and
 preserves every other component as a UTF-8 JSON string. A flags byte identifies packed UUIDs; JSON
 strings are NUL-terminated, since JSON escapes embedded NUL and lone UTF-16 surrogates. The entire
-payload uses unpadded base64url. Two UUID selectors and the name `backoffice` produce a 74-character
+payload uses unpadded base64url. Two UUID selectors and the name `gmail` produce a 67-character
 address.
 
 Whitespace, case, quotes, Unicode, and additional `#` characters inside source components remain
@@ -159,10 +159,11 @@ address contains a user selector: the established execution scope owns every rea
 in another user's scope selects that user's source, not the original user's data.
 
 Discovery groups provider configurations by their authoritative service IDs, such as `gmail`, rather
-than publishing `connector` as a service. It offers a preassigned `backoffice` name for each
+than publishing `connector` as a service. It offers the service ID as a preassigned name for each
 provider as a concrete setup target. This is a source alias, not a reservation, generated account
 ID, or facade-owned binding. Advanced callers can select another exact name. Configured listing
-publishes each account under its named address.
+publishes each account under its named address. The integrations overview titles a Connector
+connection by its service, adding the name only when it differs from the service.
 
 Listing always forwards exactly one native page and its cursor.
 
@@ -516,18 +517,18 @@ integrations.execute --connection-id 'backoffice#telegram' \
 The input file contains a chat ID the bot can reach and the message fields `actions` reports.
 
 In a user scope, first discover and copy the real project/provider target. The illustrative token
-below encodes `project-1`, `gmail-provider`, and `backoffice`; replace it with the discovered
-target. Each submission is independent:
+below encodes `project-1`, `gmail-provider`, and `gmail`; replace it with the discovered target.
+Each submission is independent:
 
 ```sh
 integrations.discover --json
-integrations.setup --connection-id 'connector#n_ACJwcm9qZWN0LTEiACJnbWFpbC1wcm92aWRlciIAImJhY2tvZmZpY2UiAA' --json
-integrations.setup --connection-id 'connector#n_ACJwcm9qZWN0LTEiACJnbWFpbC1wcm92aWRlciIAImJhY2tvZmZpY2UiAA' \
+integrations.setup --connection-id 'connector#n_ACJwcm9qZWN0LTEiACJnbWFpbC1wcm92aWRlciIAImdtYWlsIgA' --json
+integrations.setup --connection-id 'connector#n_ACJwcm9qZWN0LTEiACJnbWFpbC1wcm92aWRlciIAImdtYWlsIgA' \
   --input-json '{"start":true}' --json
 
 # Complete browser consent, then check the same source-backed address.
-integrations.setup --connection-id 'connector#n_ACJwcm9qZWN0LTEiACJnbWFpbC1wcm92aWRlciIAImJhY2tvZmZpY2UiAA' --json
-integrations.execute --connection-id 'connector#n_ACJwcm9qZWN0LTEiACJnbWFpbC1wcm92aWRlciIAImJhY2tvZmZpY2UiAA' \
+integrations.setup --connection-id 'connector#n_ACJwcm9qZWN0LTEiACJnbWFpbC1wcm92aWRlciIAImdtYWlsIgA' --json
+integrations.execute --connection-id 'connector#n_ACJwcm9qZWN0LTEiACJnbWFpbC1wcm92aWRlciIAImdtYWlsIgA' \
   --action-id gmail.search_threads --input-json '{"query":"is:unread"}' --json
 ```
 

@@ -363,7 +363,7 @@ export function createConnectorIntegration({
               "named",
               discovery.projectId,
               provider.id,
-              "backoffice",
+              service,
             ]),
           })),
         automationEvents: [],

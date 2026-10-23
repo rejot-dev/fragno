@@ -164,19 +164,23 @@ export function describeIntegrationConnectionKind(
 }
 
 /**
- * The name the connection's events carry. Without one, connector addresses are opaque encodings
- * and native slots are named after their service, so both fall back to the service.
+ * The name the connection's events carry. Connector names only select an account behind an opaque
+ * address, so the service leads, followed by any name other than the default, the service itself.
+ * Unnamed native slots are named after their service.
  */
 function integrationConnectionName(
   connection: Pick<IntegrationConnectionRecord, "connectionId" | "kind" | "service" | "name">,
 ) {
+  if (connection.kind === "connector") {
+    return connection.name === null || connection.name === connection.service
+      ? connection.service
+      : `${connection.service} · ${connection.name}`;
+  }
   if (connection.name !== null) {
     return connection.name;
   }
   const [namespace, localId] = splitConnectionId(connection.connectionId);
-  return connection.kind === "connector" || namespace === "backoffice"
-    ? connection.service
-    : localId;
+  return namespace === "backoffice" ? connection.service : localId;
 }
 
 function splitConnectionId(connectionId: string) {
