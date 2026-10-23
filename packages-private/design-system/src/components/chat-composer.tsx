@@ -1,3 +1,4 @@
+import { Menu } from "@base-ui/react/menu";
 import type { ComponentProps, ReactNode } from "react";
 
 import { cn } from "../cn";
@@ -69,6 +70,124 @@ export function ChatComposerModel({ children }: { children: string }) {
     <span className="hidden max-w-44 truncate px-2 text-[10px] text-[var(--bo-muted-2)] sm:block">
       {children}
     </span>
+  );
+}
+
+export type ChatComposerModelOption<TValue extends string> = { value: TValue; label: string };
+
+const MODEL_MENU_ITEM_CLASS_NAME =
+  "flex min-h-9 cursor-default items-center gap-2 px-2.5 text-left text-xs text-[var(--bo-muted)] transition-[background-color,color,scale] duration-150 ease-out outline-none active:scale-[0.98] data-[highlighted]:bg-[var(--bo-panel-2)] data-[highlighted]:text-[var(--bo-fg)] data-[checked]:text-[var(--bo-fg)]";
+
+function ChatComposerModelMenuGroup<TValue extends string>({
+  heading,
+  value,
+  options,
+  onValueChange,
+}: {
+  heading: string;
+  value: TValue;
+  options: readonly ChatComposerModelOption<TValue>[];
+  onValueChange: (value: TValue) => void;
+}) {
+  return (
+    <Menu.Group>
+      <Menu.GroupLabel className="px-2.5 py-1 text-[9px] font-semibold tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
+        {heading}
+      </Menu.GroupLabel>
+      <Menu.RadioGroup
+        value={value}
+        onValueChange={(nextValue: unknown) => {
+          const option = options.find((candidate) => candidate.value === nextValue);
+          if (option) {
+            onValueChange(option.value);
+          }
+        }}
+        className="space-y-0.5"
+      >
+        {options.map((option) => (
+          <Menu.RadioItem
+            key={option.value}
+            value={option.value}
+            className={MODEL_MENU_ITEM_CLASS_NAME}
+          >
+            <span className="min-w-0 flex-1 truncate">{option.label}</span>
+            <span className="flex size-4 shrink-0 items-center justify-center">
+              <Menu.RadioItemIndicator className="text-[var(--bo-accent-fg)]">
+                <Icon name="check" className="size-4" />
+              </Menu.RadioItemIndicator>
+            </span>
+          </Menu.RadioItem>
+        ))}
+      </Menu.RadioGroup>
+    </Menu.Group>
+  );
+}
+
+/**
+ * Chooses the model answering and how hard it reasons, in place of the model label. Offer only the
+ * efforts the chosen model supports. Choosing keeps the menu open, so both can be chosen at once.
+ */
+export function ChatComposerModelMenu<TModel extends string, TEffort extends string>({
+  disabled,
+  model,
+  models,
+  onModelChange,
+  effort,
+  efforts,
+  onEffortChange,
+}: {
+  disabled: boolean;
+  model: TModel;
+  models: readonly ChatComposerModelOption<TModel>[];
+  onModelChange: (model: TModel) => void;
+  effort: TEffort;
+  efforts: readonly ChatComposerModelOption<TEffort>[];
+  onEffortChange: (effort: TEffort) => void;
+}) {
+  const modelLabel = models.find((option) => option.value === model)?.label ?? model;
+  const effortLabel = efforts.find((option) => option.value === effort)?.label ?? effort;
+  return (
+    <Menu.Root modal={false}>
+      <Menu.Trigger
+        type="button"
+        disabled={disabled}
+        aria-label={`Model: ${modelLabel}, reasoning effort: ${effortLabel}`}
+        title="Choose model and reasoning effort"
+        className="group inline-flex min-h-8 max-w-52 min-w-0 items-center gap-1 px-2 text-[10px] text-[var(--bo-muted-2)] transition-[color,scale] duration-150 ease-out outline-none hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:not-disabled:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-35 data-[popup-open]:text-[var(--bo-fg)]"
+      >
+        <span className="min-w-0 truncate">{modelLabel}</span>
+        <span aria-hidden className="shrink-0 text-[var(--bo-muted-2)]">
+          ·
+        </span>
+        <span className="shrink-0">{effortLabel}</span>
+        <Icon
+          name="chevron-down"
+          className="size-3 shrink-0 transition-transform duration-150 ease-out group-data-[popup-open]:rotate-180"
+        />
+      </Menu.Trigger>
+      <Menu.Portal>
+        <Menu.Positioner side="top" align="start" sideOffset={8} className="z-50">
+          <Menu.Popup
+            data-backoffice-root
+            className="bo-popover-surface w-56 origin-bottom-left space-y-2 bg-[var(--bo-panel)] p-2 text-[var(--bo-fg)] outline-none"
+          >
+            <ChatComposerModelMenuGroup
+              heading="Model"
+              value={model}
+              options={models}
+              onValueChange={onModelChange}
+            />
+            <Menu.Separator className="mx-1 h-px bg-[var(--bo-border)]" />
+            <ChatComposerModelMenuGroup
+              heading="Reasoning effort"
+              value={effort}
+              options={efforts}
+              onValueChange={onEffortChange}
+            />
+          </Menu.Popup>
+        </Menu.Positioner>
+      </Menu.Portal>
+    </Menu.Root>
   );
 }
 
