@@ -117,7 +117,7 @@ import type {
   CodemodeExecution,
   CodemodeRunActivation,
   CodemodeRunContext,
-  CodemodeRun,
+  CodemodeRunDetail,
   CodemodeRunPage,
   CodemodeRunPageInput,
 } from "@/fragno/codemode/codemode-fragment";
@@ -461,9 +461,9 @@ export type BillingObject = {
 };
 
 /**
- * Executes activations through the codemode bridge and records each one as a run; a workflow
- * activation is one runner tick. Starts and outcomes of runs other than ticks become `codemode`
- * events in the same scope's Automations object.
+ * Executes activations through the codemode bridge and records each one as a run, with the tool
+ * calls its guest makes; a workflow activation is one runner tick. Starts and outcomes of runs other
+ * than ticks become `codemode` events in the same scope's Automations object.
  */
 export type CodemodeObject = WarmableObject &
   DurableHookCommands & {
@@ -472,8 +472,10 @@ export type CodemodeObject = WarmableObject &
       context: CodemodeRunContext,
       host: CodemodeHost,
       lease: CodemodeRunLease,
+      // `provider.tool` names whose results the run's history keeps as `[redacted]`.
+      redactedResults: readonly string[],
     ): Promise<CodemodeExecution<TActivation>>;
-    getRun(runId: string): Promise<CodemodeRun | null>;
+    getRun(runId: string): Promise<CodemodeRunDetail | null>;
     listRuns(input: CodemodeRunPageInput): Promise<CodemodeRunPage>;
   };
 

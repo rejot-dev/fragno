@@ -24,7 +24,7 @@ import {
   createCodemodeRunHost,
   type CodemodeRunner,
 } from "./codemode-object-execute";
-import { createBackofficeCodemodeResolvedProviders } from "./execute";
+import { createBackofficeCodemodeRunTools } from "./execute";
 import { BackofficeWorkflowStepHost } from "./workflow-host";
 import type { CodemodeWorkflowProgram } from "./workflow-program";
 
@@ -60,9 +60,9 @@ async function runCodemodeWorkflowTick<TParams>(
   input: WorkflowExecutionInput<TParams>,
 ): Promise<WorkflowTickCompletion> {
   const { program, event, remote, codemode, origin, families, toolContext, dependencies } = input;
-  const providers = createBackofficeCodemodeResolvedProviders({ families, toolContext });
+  const tools = createBackofficeCodemodeRunTools({ families, toolContext });
   const runHost = createCodemodeRunHost(
-    providers,
+    tools,
     new BackofficeWorkflowStepHost(remote, input.allowedHooks),
   );
   let completion;
@@ -72,7 +72,7 @@ async function runCodemodeWorkflowTick<TParams>(
         kind: "workflow",
         ...withBackofficeUiBuilderModule({ entry: program.filename, modules: program.modules }),
         dependencies: dependencies ?? {},
-        providers: codemodeProviderManifest(providers),
+        providers: codemodeProviderManifest(tools.providers),
         timeoutMs: CODEMODE_LIMITS.activationTimeoutMs,
         event: { ...event, id: event.id ?? event.instanceId },
       },

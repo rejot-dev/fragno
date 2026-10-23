@@ -1,4 +1,4 @@
-import { createBackofficeCodemodeResolvedProviders } from "@/fragno/codemode/execute";
+import { createBackofficeCodemodeRunTools } from "@/fragno/codemode/execute";
 import type {
   JavaScriptModuleExecution,
   JavaScriptModuleProgram,
@@ -31,7 +31,7 @@ export async function runBackofficeJavaScriptModule({
   toolContext,
 }: RunBackofficeJavaScriptModuleInput): Promise<JavaScriptModuleExecution> {
   const toolCalls: BackofficeRuntimeToolCall[] = [];
-  const providers = createBackofficeCodemodeResolvedProviders({ families, toolContext, toolCalls });
+  const tools = createBackofficeCodemodeRunTools({ families, toolContext, toolCalls });
   const origin = { kind: "file", path: program.path } as const;
   const { runId, completion } =
     program.kind === "bundle"
@@ -39,7 +39,7 @@ export async function runBackofficeJavaScriptModule({
           bundle: program.bundle,
           invocation: null,
           input: null,
-          providers,
+          tools,
           codemode,
           origin,
           signal: null,
@@ -51,11 +51,11 @@ export async function runBackofficeJavaScriptModule({
             entry: program.path,
             modules: program.modules,
             dependencies: {},
-            providers: codemodeProviderManifest(providers),
+            providers: codemodeProviderManifest(tools.providers),
             timeoutMs: 30_000,
           },
           origin,
-          providers,
+          tools,
           null,
         );
   return completion.status === "failed"

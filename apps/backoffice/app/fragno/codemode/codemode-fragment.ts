@@ -11,6 +11,7 @@ import {
   CodemodeInterruptedError,
   encodeCodemodeError,
 } from "@fragno-dev/codemode/execution/codemode-errors";
+import type { CodemodeToolCall } from "@fragno-dev/codemode/host/codemode-host-capabilities";
 import type { CodemodeLogLine } from "@fragno-dev/codemode/runtime-api";
 import { column, idColumn, schema, type Column, type FragnoId } from "@fragno-dev/db/schema";
 
@@ -102,6 +103,7 @@ export type CodemodeFragmentConfig = {
 type CodemodeHooksMap = {
   onRunStarted: HookFn<CodemodeRunStartedHookPayload>;
   onRunFinished: HookFn<CodemodeRunFinishedHookPayload>;
+  expireRunToolCalls: HookFn<{ runId: string }>;
 };
 
 /** A run is persisted before its guest starts; a run without an outcome never reported finishing. */
@@ -122,8 +124,37 @@ export type CodemodeRunPage = {
   hasNextPage: boolean;
 };
 
+/**
+ * A run's tool call, recorded when the guest makes it; a run can end before its calls settle. Input
+ * and output are bounded summaries, and the output of a failed call is its error message.
+ */
+export type CodemodeRunToolCall = CodemodeToolCall & { input: string; calledAt: string } & (
+    | { status: "running" }
+    | CodemodeToolCallSettlement
+  );
+
+export type CodemodeToolCallSettlement = {
+  status: "succeeded" | "failed";
+  output: string;
+  settledAt: string;
+};
+
+/**
+ * A run with everything it recorded. Guests are short, so the calls come whole; a guest stuck in a
+ * loop of calls is cut off at the first {@link CODEMODE_RUN_MAX_TOOL_CALLS}.
+ */
+export type CodemodeRunDetail = CodemodeRun & {
+  toolCalls: CodemodeRunToolCall[];
+  toolCallsTruncated: boolean;
+};
+
 export const CODEMODE_RUN_ORDER_INDEX = "idx_codemode_run_createdAt";
+const CODEMODE_TOOL_CALL_ORDER_INDEX = "idx_codemode_tool_call_run_calledAt";
+const CODEMODE_RUN_MAX_TOOL_CALLS = 200;
 const CODEMODE_RUN_RETENTION_DAYS = 7;
+// Activations end within minutes, so a run's calls are settled long before they expire.
+const CODEMODE_TOOL_CALL_RETENTION_DAYS = 7;
+const CODEMODE_TOOL_CALL_EXPIRY_BATCH_SIZE = 100;
 // Each new run removes a bounded batch of expired runs, so retention needs no scheduler.
 const CODEMODE_RUN_EXPIRY_BATCH_SIZE = 32;
 
@@ -161,8 +192,64 @@ const codemodeSchema = schema("codemode", (s) =>
     )
     .alterTable("run", (t) => t.dropColumn("billingOrganizationId"))
 
-    .alterTable("run", (t) => t.addColumn("workflowInstanceId", column("string").nullable())),
+    .alterTable("run", (t) => t.addColumn("workflowInstanceId", column("string").nullable()))
+    .addTable("tool_call", (t) =>
+      t
+        .addColumn("id", idColumn())
+        // Not a reference: calls and runs expire independently, so neither waits on the other.
+        .addColumn("runId", column("string"))
+        .addColumn(
+          "scope",
+          column("json") as Column<"json", CodemodeToolCall["scope"], CodemodeToolCall["scope"]>,
+        )
+        .addColumn("provider", column("string"))
+        .addColumn("tool", column("string"))
+        .addColumn("input", column("string"))
+        .addColumn(
+          "status",
+          column("string") as Column<
+            "string",
+            CodemodeRunToolCall["status"],
+            CodemodeRunToolCall["status"]
+          >,
+        )
+        .addColumn(
+          "calledAt",
+          column("timestamp").defaultTo((b) => b.now()),
+        )
+        // Set exactly when status leaves running.
+        .addColumn("output", column("string").nullable())
+        .addColumn("settledAt", column("timestamp").nullable())
+        .createIndex(CODEMODE_TOOL_CALL_ORDER_INDEX, ["runId", "calledAt", "id"]),
+    ),
 );
+
+function codemodeRunToolCallFromRecord(record: {
+  scope: CodemodeToolCall["scope"];
+  provider: string;
+  tool: string;
+  input: string;
+  status: CodemodeRunToolCall["status"];
+  output: string | null;
+  calledAt: Date;
+  settledAt: Date | null;
+}): CodemodeRunToolCall {
+  const call = {
+    scope: record.scope,
+    provider: record.provider,
+    tool: record.tool,
+    input: record.input,
+    calledAt: record.calledAt.toISOString(),
+  };
+  return record.status === "running"
+    ? { ...call, status: "running" }
+    : {
+        ...call,
+        status: record.status,
+        output: record.output!,
+        settledAt: record.settledAt!.toISOString(),
+      };
+}
 
 function codemodeRunActivationIdentity(record: {
   activationKind: CodemodeActivationKind;
@@ -203,6 +290,31 @@ const codemodeFragmentDefinition = defineFragment<CodemodeFragmentConfig>("codem
     }),
     onRunFinished: defineHook(async function (payload) {
       await config.onRunFinished(payload, this);
+    }),
+    expireRunToolCalls: defineHook(async function ({ runId }) {
+      // Bounded batches keep a run with many calls from becoming one oversized transaction.
+      let deleted: number;
+      do {
+        deleted = await this.handlerTx()
+          .retrieve(({ forSchema }) =>
+            forSchema(codemodeSchema).find("tool_call", (b) =>
+              b
+                .whereIndex(CODEMODE_TOOL_CALL_ORDER_INDEX, (eb) => eb("runId", "=", runId))
+                .pageSize(CODEMODE_TOOL_CALL_EXPIRY_BATCH_SIZE)
+                .select(["id"]),
+            ),
+          )
+          .mutate(({ forSchema, retrieveResult: [calls] }) => {
+            if (calls.length > 0) {
+              forSchema(codemodeSchema).deleteMany(
+                "tool_call",
+                calls.map((call) => call.id),
+              );
+            }
+            return calls.length;
+          })
+          .execute();
+      } while (deleted === CODEMODE_TOOL_CALL_EXPIRY_BATCH_SIZE);
     }),
   }))
   .providesBaseService(({ defineService }) =>
@@ -250,6 +362,11 @@ const codemodeFragmentDefinition = defineFragment<CodemodeFragmentConfig>("codem
               runId,
               startedAt: startedAt.toISOString(),
             });
+            uow.triggerHook(
+              "expireRunToolCalls",
+              { runId },
+              { processAt: uow.now().plus({ days: CODEMODE_TOOL_CALL_RETENTION_DAYS }) },
+            );
             return runId;
           })
           .build();
@@ -303,12 +420,54 @@ const codemodeFragmentDefinition = defineFragment<CodemodeFragmentConfig>("codem
           .build();
       },
 
+      startToolCall: function (runId: string, call: CodemodeToolCall, input: string) {
+        return this.serviceTx(codemodeSchema)
+          .mutate(({ uow }) =>
+            uow
+              .create("tool_call", {
+                runId,
+                ...call,
+                input,
+                status: "running",
+                output: null,
+                settledAt: null,
+              })
+              .valueOf(),
+          )
+          .build();
+      },
+
+      settleToolCall: function (
+        callId: string,
+        settlement: Omit<CodemodeToolCallSettlement, "settledAt">,
+      ) {
+        return this.serviceTx(codemodeSchema)
+          .mutate(({ uow }) => {
+            uow.update("tool_call", callId, (b) => b.set({ ...settlement, settledAt: uow.now() }));
+          })
+          .build();
+      },
+
       getRun: function (runId: string) {
         return this.serviceTx(codemodeSchema)
           .retrieve((uow) =>
-            uow.findFirst("run", (b) => b.whereIndex("primary", (eb) => eb("id", "=", runId))),
+            uow
+              .findFirst("run", (b) => b.whereIndex("primary", (eb) => eb("id", "=", runId)))
+              .findWithCursor("tool_call", (b) =>
+                b
+                  .whereIndex(CODEMODE_TOOL_CALL_ORDER_INDEX, (eb) => eb("runId", "=", runId))
+                  .orderByIndex(CODEMODE_TOOL_CALL_ORDER_INDEX, "asc")
+                  .pageSize(CODEMODE_RUN_MAX_TOOL_CALLS),
+              ),
           )
-          .transformRetrieve(([run]) => (run ? codemodeRunFromRecord(run) : null))
+          .transformRetrieve(
+            ([run, toolCalls]): CodemodeRunDetail | null =>
+              run && {
+                ...codemodeRunFromRecord(run),
+                toolCalls: toolCalls.items.map(codemodeRunToolCallFromRecord),
+                toolCallsTruncated: toolCalls.hasNextPage,
+              },
+          )
           .build();
       },
 

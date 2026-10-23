@@ -82,7 +82,8 @@ export const codemodeCapability: BackofficeCapability = {
         source: CODEMODE_AUTOMATION_SOURCE,
         eventType: CODEMODE_AUTOMATION_EVENT_RUN_COMPLETED,
         label: "Codemode run completed",
-        description: "Fires after a run's code finishes. js.logs shows its console logs.",
+        description:
+          "Fires after a run's code finishes. js.runs.get shows its console logs and tool calls.",
         payloadSchema: runCompletedPayloadSchema,
         subjectSchema: runSubjectSchema,
         example: {
@@ -96,7 +97,7 @@ export const codemodeCapability: BackofficeCapability = {
         eventType: CODEMODE_AUTOMATION_EVENT_RUN_FAILED,
         label: "Codemode run failed",
         description:
-          "Fires after a run fails to compile, throws, or is interrupted, with its error. js.logs shows its console logs.",
+          "Fires after a run fails to compile, throws, or is interrupted, with its error. js.runs.get shows its console logs and tool calls.",
         payloadSchema: runFailedPayloadSchema,
         subjectSchema: runSubjectSchema,
         example: {

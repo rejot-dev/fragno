@@ -2,7 +2,6 @@ import type { CompiledWorker } from "@fragno-dev/codemode/compiler/compile-worke
 import type { WorkerBundle } from "@fragno-dev/codemode/compiler/worker-bundle";
 import { decodeCodemodeError } from "@fragno-dev/codemode/execution/codemode-errors";
 import { codemodeWorkerBundleSchema } from "@fragno-dev/codemode/execution/codemode-worker-bundle";
-import type { ResolvedProvider } from "@fragno-dev/codemode/runtime-api";
 import { z } from "zod";
 
 import type {
@@ -14,6 +13,7 @@ import {
   codemodeProviderManifest,
   executeCodemodeInObject,
   type CodemodeRunner,
+  type CodemodeRunTools,
 } from "./codemode-object-execute";
 
 /** Bundles an ES module without executing it or choosing a consumer-specific entrypoint. */
@@ -35,7 +35,7 @@ export async function buildBackofficeJavaScriptModule(input: {
       dependencies: input.dependencies,
     },
     { kind: "file", path: input.entry },
-    [],
+    { providers: [], redactedResults: [] },
     null,
   );
   if (completion.status === "failed") {
@@ -51,7 +51,7 @@ type CompiledModuleExecutionInput = {
   bundle: WorkerBundle;
   invocation: string | null;
   input: unknown;
-  providers: ResolvedProvider[];
+  tools: CodemodeRunTools;
   codemode: CodemodeRunner;
   origin: CodemodeRunOrigin;
   signal: AbortSignal | null;
@@ -79,11 +79,11 @@ export async function executeBackofficeCompiledModule(
       bundle: input.bundle,
       invocation: input.invocation,
       input: input.input,
-      providers: codemodeProviderManifest(input.providers),
+      providers: codemodeProviderManifest(input.tools.providers),
       timeoutMs: 10_000,
     },
     input.origin,
-    input.providers,
+    input.tools,
     input.signal,
   );
 }

@@ -15,6 +15,7 @@ import {
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
 import { isBackofficeUnavailableError, type BackofficeKernel } from "@/backoffice-runtime/kernel";
+import type { CodemodeObject } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { createStaticFileCollection } from "@/file-collection/create-static-file-collection";
 import { createBackofficeStaticFileCollection } from "@/files/content/static";
@@ -33,7 +34,7 @@ import { readBackofficeAutomationSource } from "@/fragno/automation/read-backoff
 import { createRouteBackedAutomationRouterRuntime } from "@/fragno/automation/routing-route-runtime";
 import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
 import { usageBillingForScope } from "@/fragno/billing/usage-billing";
-import type { CodemodeRunContext } from "@/fragno/codemode/codemode-fragment";
+import type { CodemodeRun, CodemodeRunContext } from "@/fragno/codemode/codemode-fragment";
 import { codemodeRunnerFor } from "@/fragno/codemode/codemode-object-execute";
 import { createRuntimeStateBackend } from "@/fragno/codemode/runtime-state-backend";
 import {
@@ -58,7 +59,10 @@ import {
 import { createFormsRuntime } from "@/fragno/runtime-tools/families/forms-runtime";
 import { createIntegrationsRuntime } from "@/fragno/runtime-tools/families/integrations/integrations-runtime";
 import { createInternalRuntime } from "@/fragno/runtime-tools/families/internal";
-import { createJavaScriptRuntime } from "@/fragno/runtime-tools/families/javascript-runtime";
+import {
+  createJavaScriptRuntime,
+  type JavaScriptRunHistory,
+} from "@/fragno/runtime-tools/families/javascript-runtime";
 import { createMarketplaceRuntime } from "@/fragno/runtime-tools/families/marketplace-runtime";
 import { createOrganizationRuntime } from "@/fragno/runtime-tools/families/organization-runtime";
 import {
@@ -146,6 +150,62 @@ function coversCodemodeRun(reader: BackofficeExecutionContext, run: CodemodeRunC
     readerCeiling === null ||
     (run.scopeRestriction !== null && backofficeScopeContains(readerCeiling, run.scopeRestriction));
   return samePrincipal && delegationPrefix && ceilingCovers;
+}
+
+function createCodemodeRunHistory(
+  reader: BackofficeExecutionContext,
+  codemode: () => CodemodeObject,
+): JavaScriptRunHistory {
+  function summarizeRun(run: CodemodeRun) {
+    return {
+      runId: run.id,
+      activation:
+        run.activationKind === "workflow"
+          ? { kind: "workflow" as const, workflowInstanceId: run.workflowInstanceId }
+          : { kind: run.activationKind },
+      origin: run.origin,
+      startedAt: run.createdAt,
+    };
+  }
+  return {
+    async listRuns(input) {
+      const page = await codemode().listRuns(
+        input.cursor === undefined
+          ? { page: "first", pageSize: input.limit ?? 20 }
+          : { page: "next", cursor: input.cursor },
+      );
+      return {
+        runs: page.runs
+          .filter((run) => coversCodemodeRun(reader, run))
+          .map((run) => ({ ...summarizeRun(run), status: run.status })),
+        nextCursor: page.hasNextPage ? page.cursor : null,
+      };
+    },
+    async getRun({ runId }) {
+      const run = await codemode().getRun(runId);
+      if (!run) {
+        throw new Error(
+          `CODEMODE_RUN_NOT_FOUND: ${runId} does not exist in this scope or expired after 7 days.`,
+        );
+      }
+      if (!coversCodemodeRun(reader, run)) {
+        throw new Error(
+          `CODEMODE_RUN_FORBIDDEN: ${runId} ran with authority this caller does not hold.`,
+        );
+      }
+      const detail = {
+        ...summarizeRun(run),
+        toolCalls: run.toolCalls,
+        toolCallsTruncated: run.toolCallsTruncated,
+      };
+      if (run.status === "running") {
+        return { ...detail, status: "running" };
+      }
+      return run.status === "failed"
+        ? { ...detail, status: "failed", logs: run.logs, error: run.error.message }
+        : { ...detail, status: run.status, logs: run.logs };
+    },
+  };
 }
 
 function userPrincipalId(execution: BackofficeExecutionContext): string | null {
@@ -514,26 +574,8 @@ export const createRouteBackedRuntimeContext = ({
                   : null,
               }),
               // Without an executor there are no runs to read.
-              readRunLogs: codemodeExecutor
-                ? async ({ runId }) => {
-                    const run = await codemodeObject().getRun(runId);
-                    if (!run) {
-                      throw new Error(
-                        `CODEMODE_RUN_NOT_FOUND: ${runId} does not exist in this scope or expired after 7 days.`,
-                      );
-                    }
-                    if (!coversCodemodeRun(execution, run)) {
-                      throw new Error(
-                        `CODEMODE_RUN_FORBIDDEN: ${runId} ran with authority this caller does not hold.`,
-                      );
-                    }
-                    if (run.status === "running") {
-                      return { runId, status: "running" };
-                    }
-                    return run.status === "failed"
-                      ? { runId, status: "failed", logs: run.logs, error: run.error.message }
-                      : { runId, status: run.status, logs: run.logs };
-                  }
+              runHistory: codemodeExecutor
+                ? createCodemodeRunHistory(execution, codemodeObject)
                 : null,
               buildFile:
                 codemodeExecutor && execution.scope.kind !== "system"

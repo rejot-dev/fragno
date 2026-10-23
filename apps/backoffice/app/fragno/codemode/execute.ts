@@ -4,11 +4,7 @@ import {
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { CodemodeWireError } from "@fragno-dev/codemode/execution/codemode-error-contract";
 import { encodeCodemodeError } from "@fragno-dev/codemode/execution/codemode-errors";
-import {
-  resolveProvider,
-  type ExecuteResult,
-  type ResolvedProvider,
-} from "@fragno-dev/codemode/runtime-api";
+import { resolveProvider, type ExecuteResult } from "@fragno-dev/codemode/runtime-api";
 import { withBackofficeUiBuilder } from "@fragno-private/backoffice-ui/builder";
 
 import type { NpmDependencyMap } from "@/backoffice-runtime/dynamic-workers/npm-dependencies";
@@ -28,6 +24,7 @@ import {
   codemodeProviderManifest,
   executeCodemodeInObject,
   type CodemodeRunner,
+  type CodemodeRunTools,
 } from "./codemode-object-execute";
 import { readSavedModuleImports } from "./saved-module-imports";
 
@@ -52,7 +49,7 @@ export type BackofficeCodemodeWorkflowDefinition = {
 };
 
 export type BackofficeCodemodeExecuteResult = ExecuteResult & {
-  /** Leads to the run's retained record and its `codemode` events. */
+  /** Leads to the run's retained record: its logs and tool calls. */
   runId: string;
   errorDetails: CodemodeWireError | null;
   toolCalls: BackofficeRuntimeToolCall[];
@@ -163,15 +160,22 @@ const createBackofficeScopedCodemodeProvider = ({
   },
 });
 
-export function createBackofficeCodemodeResolvedProviders({
+export function createBackofficeCodemodeRunTools({
   families,
   toolContext,
   toolCalls,
-}: BackofficeCodemodeProvidersInput): ResolvedProvider[] {
-  return [
-    ...createBackofficeCodemodeProviders({ families, context: toolContext, toolCalls }),
-    createBackofficeScopedCodemodeProvider({ families, context: toolContext, toolCalls }),
-  ].map((provider) => resolveProvider(provider));
+}: BackofficeCodemodeProvidersInput): CodemodeRunTools {
+  return {
+    providers: [
+      ...createBackofficeCodemodeProviders({ families, context: toolContext, toolCalls }),
+      createBackofficeScopedCodemodeProvider({ families, context: toolContext, toolCalls }),
+    ].map((provider) => resolveProvider(provider)),
+    redactedResults: families.flatMap((family) =>
+      family.tools
+        .filter((tool) => tool.resultLogging === "redacted")
+        .map((tool) => `${tool.namespace}.${tool.name}`),
+    ),
+  };
 }
 
 export const runBackofficeCodemode = async ({
@@ -192,7 +196,7 @@ export const runBackofficeCodemode = async ({
         program: { kind: "inline", code },
       })
     : { modules: {} };
-  const providers = createBackofficeCodemodeResolvedProviders({ families, toolContext, toolCalls });
+  const tools = createBackofficeCodemodeRunTools({ families, toolContext, toolCalls });
   const { runId, completion } = await executeCodemodeInObject(
     codemode,
     {
@@ -200,11 +204,11 @@ export const runBackofficeCodemode = async ({
       code: withBackofficeUiBuilder(code),
       modules,
       dependencies: dependencies ?? {},
-      providers: codemodeProviderManifest(providers),
+      providers: codemodeProviderManifest(tools.providers),
       timeoutMs: timeout ?? 30_000,
     },
     { kind: "inline" },
-    providers,
+    tools,
     null,
   );
   if (completion.status === "failed") {

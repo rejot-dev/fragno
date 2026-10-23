@@ -26,15 +26,28 @@ import type {
  */
 export type CodemodeRunLease = { key: string; parentKey: string | null };
 
-/** A run's host, and the lease that relates the runs its tools start to it. */
-export type CodemodeRunHost = { host: CodemodeHost; lease: CodemodeRunLease };
+/**
+ * The tools a run's guest can call, and the `provider.tool` names whose results its history must not
+ * keep, such as a credential a tool returns once.
+ */
+export type CodemodeRunTools = {
+  providers: readonly ResolvedProvider[];
+  redactedResults: readonly string[];
+};
+
+/** A run's host, the lease that relates the runs its tools start to it, and its redactions. */
+export type CodemodeRunHost = {
+  host: CodemodeHost;
+  lease: CodemodeRunLease;
+  redactedResults: readonly string[];
+};
 
 // Tool calls run on the caller's side, so the caller, not the guest, knows which run started one.
 const runningTool = new AsyncLocalStorage<string>();
 
 /** Creates a run's host; a run that its tools start, such as through js.run, is its child. */
 export function createCodemodeRunHost(
-  providers: readonly ResolvedProvider[],
+  { providers, redactedResults }: CodemodeRunTools,
   step: CodemodeWorkflowHost | null,
 ): CodemodeRunHost {
   const lease = { key: crypto.randomUUID(), parentKey: runningTool.getStore() ?? null };
@@ -47,7 +60,7 @@ export function createCodemodeRunHost(
       ]),
     ),
   }));
-  return { host: createCodemodeHost(toolsOfRun, step), lease };
+  return { host: createCodemodeHost(toolsOfRun, step), lease, redactedResults };
 }
 
 /** Runs code on behalf of one execution; callers name only what they run. */
@@ -72,8 +85,8 @@ export function codemodeRunnerFor(
     scopeRestriction: backofficeExecutionScopeRestriction(execution),
   };
   return {
-    run: (activation, origin, { host, lease }) =>
-      codemode.execute(activation, { ...context, origin }, host, lease),
+    run: (activation, origin, { host, lease, redactedResults }) =>
+      codemode.execute(activation, { ...context, origin }, host, lease, redactedResults),
   };
 }
 
@@ -93,11 +106,11 @@ export async function executeCodemodeInObject<
   codemode: CodemodeRunner,
   activation: TActivation,
   origin: CodemodeRunOrigin,
-  providers: ResolvedProvider[],
+  tools: CodemodeRunTools,
   signal: AbortSignal | null,
 ): Promise<CodemodeExecution<TActivation>> {
   signal?.throwIfAborted();
-  const runHost = createCodemodeRunHost(providers, null);
+  const runHost = createCodemodeRunHost(tools, null);
   const { host } = runHost;
   const execution = codemode.run(activation, origin, runHost);
   if (signal === null) {

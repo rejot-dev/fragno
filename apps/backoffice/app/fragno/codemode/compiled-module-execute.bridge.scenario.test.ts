@@ -89,23 +89,26 @@ for (const interruption of ["parent cancellation", "activation deadline"] as con
                 },
                 invocation: 'async () => await workspace.readTextFile("/workspace/guidance.txt")',
                 input: null,
-                providers: [
-                  {
-                    name: "workspace",
-                    fns: {
-                      readTextFile: async () => {
-                        notifyReadStarted();
-                        await blocked;
-                        try {
-                          return await context.stateBackend.readFile("/workspace/guidance.txt");
-                        } finally {
-                          settled = true;
-                          notifyReadSettled();
-                        }
+                tools: {
+                  providers: [
+                    {
+                      name: "workspace",
+                      fns: {
+                        readTextFile: async () => {
+                          notifyReadStarted();
+                          await blocked;
+                          try {
+                            return await context.stateBackend.readFile("/workspace/guidance.txt");
+                          } finally {
+                            settled = true;
+                            notifyReadSettled();
+                          }
+                        },
                       },
                     },
-                  },
-                ],
+                  ],
+                  redactedResults: [],
+                },
                 codemode: codemodeRunnerFor(
                   runtime.objects.codemode.forOrg("org-1").commands,
                   createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
@@ -242,17 +245,20 @@ test("remote compiled execution keeps its full guest timeout after a delayed Web
                 },
                 invocation: 'async () => await workspace.readTextFile("/workspace/guidance.txt")',
                 input: null,
-                providers: [
-                  {
-                    name: "workspace",
-                    fns: {
-                      readTextFile: async () => {
-                        await new Promise<void>((resolve) => setTimeout(resolve, 9_000));
-                        return await context.stateBackend.readFile("/workspace/guidance.txt");
+                tools: {
+                  providers: [
+                    {
+                      name: "workspace",
+                      fns: {
+                        readTextFile: async () => {
+                          await new Promise<void>((resolve) => setTimeout(resolve, 9_000));
+                          return await context.stateBackend.readFile("/workspace/guidance.txt");
+                        },
                       },
                     },
-                  },
-                ],
+                  ],
+                  redactedResults: [],
+                },
                 codemode: codemodeRunnerFor(
                   runtime.objects.codemode.forOrg("org-1").commands,
                   createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
