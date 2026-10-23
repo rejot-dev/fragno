@@ -169,6 +169,11 @@ export const serveCommand = define({
       type: "string",
       description: "Default link key (env: GITHUB_APP_DEFAULT_LINK_KEY)",
     },
+    "webhook-delivery-retention-hours": {
+      type: "number",
+      description:
+        "Hours to keep received webhook deliveries, default 168 (env: GITHUB_APP_WEBHOOK_DELIVERY_RETENTION_HOURS)",
+    },
     "token-cache-ttl": {
       type: "number",
       description: "Token cache TTL in seconds (env: GITHUB_APP_TOKEN_CACHE_TTL_SECONDS)",

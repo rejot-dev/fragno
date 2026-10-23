@@ -1,4 +1,8 @@
-import { column, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
+import { column, idColumn, referenceColumn, schema, type Column } from "@fragno-dev/db/schema";
+
+/** GitHub sends every webhook body as a JSON object; the receive route rejects anything else. */
+const webhookPayloadColumn = () =>
+  column("json") as unknown as Column<"json", Record<string, unknown>, Record<string, unknown>>;
 
 export const githubAppSchema = schema("github-app-fragment", (s) => {
   return s
@@ -78,5 +82,21 @@ export const githubAppSchema = schema("github-app-fragment", (s) => {
         .createIndex("idx_oauth_state_subject", ["subjectId"])
         .createIndex("idx_oauth_state_expires", ["expiresAt"])
         .createIndex("uniq_oauth_state", ["id"], { unique: true });
+    })
+    .addTable("webhook_delivery", (t) => {
+      return (
+        t
+          // GitHub's delivery ID, so a redelivery collides with the stored delivery.
+          .addColumn("id", idColumn())
+          .addColumn("event", column("string"))
+          .addColumn("action", column("string").nullable())
+          .addColumn("installationId", column("string"))
+          .addColumn("receivedAt", column("timestamp"))
+          .addColumn("payload", webhookPayloadColumn())
+          // Null until the delivery's hook succeeds; retention counts from here, so a delivery is
+          // never deleted before it is processed.
+          .addColumn("processedAt", column("timestamp").nullable())
+          .createIndex("idx_webhook_delivery_processedAt", ["processedAt"])
+      );
     });
 });

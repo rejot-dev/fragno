@@ -2,7 +2,7 @@ import type { GitHubAppFragmentConfig } from "@fragno-dev/github-app-fragment";
 
 import type { GitHubConfig } from "@/fragno/github";
 
-export type RuntimeGitHubConfig = GitHubConfig & {
+export type RuntimeGitHubConfig = Omit<GitHubConfig, "webhookDeliveryRetentionMs"> & {
   privateKeySource: "env" | "file";
 };
 
@@ -172,7 +172,13 @@ export const resolveGitHubConfig = (
   };
 };
 
-export const extractFragmentConfig = (config: RuntimeGitHubConfig): GitHubAppFragmentConfig => ({
+/** The GitHub App as this environment configures it; the GitHub object adds its own policies. */
+export type GitHubAppEnvironmentConfig = Omit<
+  GitHubAppFragmentConfig,
+  "webhookDeliveryRetentionMs"
+>;
+
+export const extractFragmentConfig = (config: RuntimeGitHubConfig): GitHubAppEnvironmentConfig => ({
   appId: config.appId,
   appSlug: config.appSlug,
   clientId: config.clientId,
@@ -188,7 +194,7 @@ export const extractFragmentConfig = (config: RuntimeGitHubConfig): GitHubAppFra
   tokenCacheTtlSeconds: config.tokenCacheTtlSeconds,
 });
 
-export const configsEqual = (a: GitHubAppFragmentConfig, b: GitHubAppFragmentConfig) =>
+export const configsEqual = (a: GitHubAppEnvironmentConfig, b: GitHubAppEnvironmentConfig) =>
   a.appId === b.appId &&
   a.appSlug === b.appSlug &&
   a.clientId === b.clientId &&

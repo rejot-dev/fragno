@@ -4,7 +4,6 @@ import { DurableObject } from "cloudflare:workers";
 import {
   getGitHubAppFromFragment,
   GITHUB_APP_FALLBACK_LINK_KEY,
-  type GitHubAppFragmentConfig,
   type GitHubRepositoryLinkStatus,
 } from "@fragno-dev/github-app-fragment";
 
@@ -26,7 +25,12 @@ import {
 import { encodeGitHubRepositoryConnectionId } from "@/fragno/runtime-tools/families/integrations/github-integration";
 import { recordIntegrationConnectionState } from "@/fragno/runtime-tools/families/integrations/integration-events";
 
-import { configsEqual, extractFragmentConfig, resolveGitHubConfig } from "./github.shared";
+import {
+  configsEqual,
+  extractFragmentConfig,
+  resolveGitHubConfig,
+  type GitHubAppEnvironmentConfig,
+} from "./github.shared";
 import type {
   BackofficeFragmentDurableObject,
   BackofficeObjectState,
@@ -36,8 +40,11 @@ import { createCloudflareBackofficeObjectContext } from "./lib/cloudflare-backof
 
 type StoredGitHubConfig = {
   scope: Extract<BackofficeContextScope, { kind: "org" }>;
-  source: GitHubAppFragmentConfig;
+  source: GitHubAppEnvironmentConfig;
 };
+
+/** Processed deliveries stay readable for agents and debugging; their automation events outlive them. */
+const GITHUB_WEBHOOK_DELIVERY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 function connectionStateOfLink(status: GitHubRepositoryLinkStatus) {
   switch (status) {
@@ -60,7 +67,7 @@ export class InMemoryGitHubObject implements GitHubObject {
   readonly #runtimeServices: BackofficeRuntimeServices;
   readonly #host: BackofficeFragmentDurableObject<
     StoredGitHubConfig,
-    GitHubAppFragmentConfig,
+    GitHubAppEnvironmentConfig,
     GitHubFragment
   >;
   readonly #configResolution: ReturnType<typeof resolveGitHubConfig>;
@@ -102,6 +109,7 @@ export class InMemoryGitHubObject implements GitHubObject {
         createGitHubServer(
           {
             ...config,
+            webhookDeliveryRetentionMs: GITHUB_WEBHOOK_DELIVERY_RETENTION_MS,
             fetch: fetchImpl,
             onRepositoryLinkStatusChanged: async (payload, context) => {
               // Integrations link only under the default key; other keys are not connections.

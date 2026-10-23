@@ -19,6 +19,7 @@ describe("github-app fragment dependencies", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
+      webhookDeliveryRetentionMs: 60_000,
     });
 
     try {

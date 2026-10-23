@@ -1,10 +1,25 @@
+import { z } from "zod";
+
 import { defineRoutes } from "@fragno-dev/core";
 import { isUniqueConstraintError } from "@fragno-dev/db";
 
 import { githubAppFragmentDefinition } from "../github/definition";
-import type { WebhookProcessingPayload } from "../github/webhook-processing";
+import type { GitHubAppWebhookDelivery } from "../github/types";
+import { webhookDeliveryOfRow } from "../github/webhook-processing";
 import { githubAppSchema } from "../schema";
 import { isRecord, toDebugSignature, toStringValue } from "./shared";
+
+/** More than one, so a backlog of expired deliveries drains while new ones arrive. */
+const EXPIRED_DELIVERIES_DELETED_PER_DELIVERY = 10;
+
+const webhookDeliveryOutputSchema = z.object({
+  deliveryId: z.string(),
+  event: z.string(),
+  action: z.string().nullable(),
+  installationId: z.string(),
+  receivedAt: z.string(),
+  payload: z.record(z.string(), z.unknown()),
+}) satisfies z.ZodType<GitHubAppWebhookDelivery>;
 
 export const githubAppWebhookRoutesFactory = defineRoutes(githubAppFragmentDefinition).create(
   ({ config, defineRoute, deps }) => {
@@ -116,36 +131,78 @@ export const githubAppWebhookRoutesFactory = defineRoutes(githubAppFragmentDefin
             );
           }
 
-          const now = new Date();
+          const receivedAt = new Date();
+          const expiredBefore = new Date(receivedAt.getTime() - deps.webhookDeliveryRetentionMs);
           logWebhook?.("accepted", {
             deliveryId,
             event,
             action,
             installationId,
           });
-          const webhookPayload: WebhookProcessingPayload = {
-            deliveryId,
-            event,
-            action,
-            installationId,
-            payload,
-            receivedAt: now.toISOString(),
-          };
 
           try {
             await this.handlerTx()
-              .mutate(({ forSchema }) => {
+              .retrieve(({ forSchema }) =>
+                forSchema(githubAppSchema).find("webhook_delivery", (b) =>
+                  b
+                    .whereIndex("idx_webhook_delivery_processedAt", (eb) =>
+                      eb("processedAt", "<", expiredBefore),
+                    )
+                    .orderByIndex("idx_webhook_delivery_processedAt", "asc")
+                    .select(["id"])
+                    .pageSize(EXPIRED_DELIVERIES_DELETED_PER_DELIVERY),
+                ),
+              )
+              .mutate(({ forSchema, retrieveResult: [expiredDeliveries] }) => {
                 const uow = forSchema(githubAppSchema);
-                uow.triggerHook("processWebhook", webhookPayload, { id: deliveryId });
+                uow.create("webhook_delivery", {
+                  id: deliveryId,
+                  event,
+                  action,
+                  installationId,
+                  receivedAt,
+                  payload,
+                });
+                uow.deleteMany(
+                  "webhook_delivery",
+                  expiredDeliveries.map((delivery) => delivery.id),
+                );
+                uow.triggerHook("processWebhook", { deliveryId }, { id: deliveryId });
               })
               .execute();
           } catch (err) {
+            // GitHub redelivers with the same delivery ID, which the stored delivery already has.
             if (!isUniqueConstraintError(err)) {
               throw err;
             }
           }
 
           return empty(204);
+        },
+      }),
+      defineRoute({
+        method: "GET",
+        path: "/webhooks/deliveries/:deliveryId",
+        outputSchema: webhookDeliveryOutputSchema,
+        errorCodes: ["WEBHOOK_DELIVERY_NOT_FOUND"],
+        handler: async function ({ pathParams }, { json, error }) {
+          const [delivery] = await this.handlerTx()
+            .retrieve(({ forSchema }) =>
+              forSchema(githubAppSchema).findFirst("webhook_delivery", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "=", pathParams.deliveryId)),
+              ),
+            )
+            .execute();
+          if (!delivery) {
+            return error(
+              {
+                message: "Webhook delivery not found; it was never received or has expired.",
+                code: "WEBHOOK_DELIVERY_NOT_FOUND",
+              },
+              { status: 404 },
+            );
+          }
+          return json(webhookDeliveryOfRow(delivery));
         },
       }),
     ];

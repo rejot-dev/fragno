@@ -44,6 +44,7 @@ describe("github-app repository API route", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: privateKey.export({ type: "pkcs1", format: "pem" }),
       webhookSecret: "secret",
+      webhookDeliveryRetentionMs: 60_000,
       fetch: fetchMock,
     });
     const { callRoute, db } = fragments.githubApp;

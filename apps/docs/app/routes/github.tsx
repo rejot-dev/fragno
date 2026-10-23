@@ -47,6 +47,7 @@ const features: Feature[] = [
 ];
 
 const routeSurface = `POST /webhooks
+GET  /webhooks/deliveries/:deliveryId
 GET  /installations
 GET  /installations/:installationId/repos
 POST /installations/:installationId/sync
@@ -66,6 +67,7 @@ const config: GitHubAppFragmentConfig = {
   appSlug: process.env.GITHUB_APP_SLUG ?? "",
   privateKeyPem: process.env.GITHUB_APP_PRIVATE_KEY ?? "",
   webhookSecret: process.env.GITHUB_APP_WEBHOOK_SECRET ?? "",
+  webhookDeliveryRetentionMs: 7 * 24 * 60 * 60 * 1000,
 };
 
 export const githubFragment = createGitHubAppFragment(config, {
@@ -95,6 +97,7 @@ const webhookSnippet = `const githubFragment = createGitHubAppFragment(
     appSlug: process.env.GITHUB_APP_SLUG ?? "",
     privateKeyPem: process.env.GITHUB_APP_PRIVATE_KEY ?? "",
     webhookSecret: process.env.GITHUB_APP_WEBHOOK_SECRET ?? "",
+    webhookDeliveryRetentionMs: 7 * 24 * 60 * 60 * 1000,
     webhook: (register) => {
       register("installation.deleted", async (event, idempotencyKey) => {
         const installationId = event.payload.installation?.id;

@@ -10,6 +10,8 @@ import type { GitHubRepositoryLinkStatusChangedPayload } from "./repository-link
 
 export type GitHubAppFragmentDependencies = {
   githubApiClient: ReturnType<typeof createGitHubApiClient>;
+  /** `config.webhookDeliveryRetentionMs`, checked to be a positive whole number. */
+  webhookDeliveryRetentionMs: number;
 };
 
 type InstallationRow = TableToColumnValues<(typeof githubAppSchema)["tables"]["installation"]>;

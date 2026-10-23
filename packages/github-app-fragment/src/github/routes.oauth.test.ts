@@ -89,6 +89,7 @@ describe("github-app OAuth routes", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: "test-key",
       webhookSecret: "secret",
+      webhookDeliveryRetentionMs: 60_000,
       apiBaseUrl: "https://api.github.test",
       webBaseUrl: "https://github.test",
     });
@@ -151,6 +152,7 @@ describe("github-app OAuth routes", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: "test-key",
       webhookSecret: "secret",
+      webhookDeliveryRetentionMs: 60_000,
     });
 
     try {
@@ -176,6 +178,7 @@ describe("github-app OAuth routes", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: "test-key",
       webhookSecret: "secret",
+      webhookDeliveryRetentionMs: 60_000,
     });
 
     try {
@@ -223,6 +226,7 @@ describe("github-app OAuth routes", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: "test-key",
       webhookSecret: "secret",
+      webhookDeliveryRetentionMs: 60_000,
     });
 
     try {

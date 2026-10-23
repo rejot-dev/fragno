@@ -12,7 +12,7 @@ export type GitHubAppWebhookMeta = {
   action: string | null;
   installationId: string;
   hookId: string;
-  receivedAt?: string | null;
+  receivedAt: string;
 };
 
 export type GitHubAppWebhookHandler<TEventName extends EmitterWebhookEventName | "*"> = (
@@ -40,6 +40,11 @@ export type GitHubAppFragmentConfig = {
   callbackUrl: string;
   privateKeyPem: string;
   webhookSecret: string;
+  /**
+   * How long webhook deliveries are kept after their hook succeeds; unprocessed deliveries are kept
+   * until it does. Storing a delivery deletes a batch of expired ones.
+   */
+  webhookDeliveryRetentionMs: number;
   webhookDebug?: boolean;
   apiBaseUrl?: string;
   apiVersion?: string;
@@ -61,3 +66,13 @@ export type GitHubAppFragmentConfig = {
 };
 
 export type GitHubAppFragmentPublicClientConfig = FragnoPublicClientConfig;
+
+/** A webhook delivery as GitHub sent it, kept for the configured retention. */
+export type GitHubAppWebhookDelivery = {
+  deliveryId: string;
+  event: string;
+  action: string | null;
+  installationId: string;
+  receivedAt: string;
+  payload: Record<string, unknown>;
+};

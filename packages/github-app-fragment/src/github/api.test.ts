@@ -156,6 +156,7 @@ describe("createGitHubApiClient", () => {
         callbackUrl: "https://example.com/github/callback",
         privateKeyPem: createPrivateKey(),
         webhookSecret: "secret",
+        webhookDeliveryRetentionMs: 60_000,
       },
       { fetch: fetchMock },
     );
@@ -214,6 +215,7 @@ describe("createGitHubApiClient", () => {
         callbackUrl: "https://example.com/github/callback",
         privateKeyPem: createPrivateKey(),
         webhookSecret: "secret",
+        webhookDeliveryRetentionMs: 60_000,
         apiBaseUrl: "https://github.company.com/api/v3",
       },
       { fetch: fetchMock },
@@ -243,6 +245,7 @@ describe("createGitHubApiClient", () => {
         callbackUrl: "https://example.com/github/callback",
         privateKeyPem: createPrivateKey(),
         webhookSecret: "secret",
+        webhookDeliveryRetentionMs: 60_000,
       },
       { fetch: fetchMock },
     );
@@ -273,6 +276,7 @@ describe("createGitHubApiClient", () => {
         callbackUrl: "https://example.com/github/callback",
         privateKeyPem: createPrivateKey(),
         webhookSecret: "secret",
+        webhookDeliveryRetentionMs: 60_000,
       },
       { fetch: fetchMock },
     );
@@ -360,6 +364,7 @@ describe("createGitHubApiClient", () => {
         callbackUrl: "https://example.com/github/callback",
         privateKeyPem: createPrivateKey(),
         webhookSecret: "secret",
+        webhookDeliveryRetentionMs: 60_000,
       },
       { fetch: fetchMock },
     );
@@ -390,6 +395,7 @@ describe("createGitHubApiClient", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: secret,
+      webhookDeliveryRetentionMs: 60_000,
     });
 
     await expect(

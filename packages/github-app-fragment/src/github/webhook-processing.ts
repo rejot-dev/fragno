@@ -2,22 +2,20 @@ import type { HookContext } from "@fragno-dev/db";
 
 import type { EmitterWebhookEvent } from "@octokit/webhooks";
 
+import { githubAppSchema } from "../schema";
 import { syncInstallationFromGitHub } from "./installation-sync";
 import type { GitHubAppFragmentServices } from "./services";
 import type {
   GitHubAppFragmentConfig,
   GitHubAppWebhookConfig,
+  GitHubAppWebhookDelivery,
   GitHubAppWebhookMeta,
   GitHubAppWebhookOn,
 } from "./types";
 
+/** Names the stored delivery, whose body the hook reads when it runs. */
 export type WebhookProcessingPayload = {
   deliveryId: string;
-  event: string;
-  action: string | null;
-  installationId: string;
-  payload: Record<string, unknown>;
-  receivedAt?: string | null;
 };
 
 /** Events that change the installation or its repositories, which GitHub reports on request. */
@@ -29,11 +27,11 @@ type InternalWebhookHandler = (
   meta: GitHubAppWebhookMeta,
 ) => void | Promise<void>;
 
-const toEmitterWebhookEvent = (data: WebhookProcessingPayload): EmitterWebhookEvent => {
+const toEmitterWebhookEvent = (delivery: GitHubAppWebhookDelivery): EmitterWebhookEvent => {
   return {
-    id: data.deliveryId,
-    name: data.event as EmitterWebhookEvent["name"],
-    payload: data.payload as EmitterWebhookEvent["payload"],
+    id: delivery.deliveryId,
+    name: delivery.event as EmitterWebhookEvent["name"],
+    payload: delivery.payload as EmitterWebhookEvent["payload"],
   } as EmitterWebhookEvent;
 };
 
@@ -97,42 +95,77 @@ const createWebhookEventDispatcher = (configureOn?: GitHubAppWebhookConfig) => {
   };
 };
 
-const resolveReceivedAt = (receivedAt?: string | null) => {
-  if (!receivedAt) {
-    return new Date();
-  }
-  const parsed = new Date(receivedAt);
-  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
-};
-
 export const createWebhookProcessor = (
   config: Pick<GitHubAppFragmentConfig, "webhook">,
   services: GitHubAppFragmentServices,
 ) => {
   const dispatchWebhookEvent = createWebhookEventDispatcher(config.webhook);
 
-  return async function processWebhook(this: HookContext, data: WebhookProcessingPayload) {
+  return async function processWebhook(
+    this: HookContext,
+    { deliveryId }: WebhookProcessingPayload,
+  ) {
+    const row = await this.handlerTx()
+      .retrieve(({ forSchema }) =>
+        forSchema(githubAppSchema).findFirst("webhook_delivery", (b) =>
+          b.whereIndex("primary", (eb) => eb("id", "=", deliveryId)),
+        ),
+      )
+      .transformRetrieve(([row]) => row)
+      .execute();
+    // The hook completes in a later transaction than `processedAt`, so a lost completion replays
+    // it. Cleanup deletes only processed deliveries, so a missing one was processed too.
+    if (row?.processedAt !== null) {
+      return;
+    }
+    const delivery = webhookDeliveryOfRow(row);
+
     const meta: GitHubAppWebhookMeta = {
-      deliveryId: data.deliveryId,
-      event: data.event,
-      action: data.action,
-      installationId: data.installationId,
+      deliveryId,
+      event: delivery.event,
+      action: delivery.action,
+      installationId: delivery.installationId,
       hookId: this.hookId.toString(),
-      receivedAt: data.receivedAt ?? null,
+      receivedAt: delivery.receivedAt,
     };
     // Deliveries arrive in any order, so they prompt a sync instead of applying their payload.
-    if (INSTALLATION_EVENTS.has(data.event)) {
+    if (INSTALLATION_EVENTS.has(delivery.event)) {
       const synced = await syncInstallationFromGitHub(
         this.handlerTx.bind(this),
         services,
-        data.installationId,
-        resolveReceivedAt(data.receivedAt),
+        delivery.installationId,
+        new Date(delivery.receivedAt),
       );
       // Throwing retries the delivery; a 404 already recorded the deletion.
       if (!synced.ok && synced.code === "GITHUB_API_ERROR") {
         throw new Error(synced.message);
       }
     }
-    await dispatchWebhookEvent(toEmitterWebhookEvent(data), this.idempotencyKey, meta);
+    await dispatchWebhookEvent(toEmitterWebhookEvent(delivery), this.idempotencyKey, meta);
+    await this.handlerTx()
+      .mutate(({ forSchema }) => {
+        forSchema(githubAppSchema).update("webhook_delivery", deliveryId, (b) =>
+          b.set({ processedAt: new Date() }),
+        );
+      })
+      .execute();
   };
 };
+
+export function webhookDeliveryOfRow(row: {
+  id: { toString(): string };
+  event: string;
+  action: string | null;
+  installationId: string;
+  receivedAt: Date;
+  payload: Record<string, unknown>;
+}): GitHubAppWebhookDelivery {
+  return {
+    deliveryId: row.id.toString(),
+    event: row.event,
+    action: row.action,
+    installationId: row.installationId,
+    receivedAt: row.receivedAt.toISOString(),
+    payload: row.payload,
+  };
+}

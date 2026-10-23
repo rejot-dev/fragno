@@ -106,6 +106,7 @@ describe("github-app pull request routes", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
+      webhookDeliveryRetentionMs: 60_000,
     });
 
     try {
@@ -132,6 +133,7 @@ describe("github-app pull request routes", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
+      webhookDeliveryRetentionMs: 60_000,
     });
 
     try {
@@ -158,6 +160,7 @@ describe("github-app pull request routes", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
+      webhookDeliveryRetentionMs: 60_000,
     });
 
     try {
@@ -192,6 +195,7 @@ describe("github-app pull request routes", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
+      webhookDeliveryRetentionMs: 60_000,
     });
 
     try {
@@ -263,6 +267,7 @@ describe("github-app pull request routes", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
+      webhookDeliveryRetentionMs: 60_000,
     });
 
     try {
@@ -348,6 +353,7 @@ describe("github-app pull request routes", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
+      webhookDeliveryRetentionMs: 60_000,
     });
 
     try {
@@ -402,6 +408,7 @@ describe("github-app pull request routes", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
+      webhookDeliveryRetentionMs: 60_000,
     });
 
     try {
@@ -428,6 +435,7 @@ describe("github-app pull request routes", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
+      webhookDeliveryRetentionMs: 60_000,
     });
 
     try {
@@ -476,6 +484,7 @@ describe("github-app pull request routes", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
+      webhookDeliveryRetentionMs: 60_000,
     });
 
     try {
@@ -524,6 +533,7 @@ describe("github-app pull request routes", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
+      webhookDeliveryRetentionMs: 60_000,
     });
 
     try {
@@ -586,6 +596,7 @@ describe("github-app pull request routes", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
+      webhookDeliveryRetentionMs: 60_000,
     });
 
     try {
@@ -639,6 +650,7 @@ describe("github-app pull request routes", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
+      webhookDeliveryRetentionMs: 60_000,
     });
 
     try {
@@ -665,6 +677,7 @@ describe("github-app pull request routes", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
+      webhookDeliveryRetentionMs: 60_000,
     });
 
     try {
@@ -691,6 +704,7 @@ describe("github-app pull request routes", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
+      webhookDeliveryRetentionMs: 60_000,
     });
 
     try {
@@ -739,6 +753,7 @@ describe("github-app pull request routes", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
+      webhookDeliveryRetentionMs: 60_000,
     });
 
     try {
@@ -787,6 +802,7 @@ describe("github-app pull request routes", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
+      webhookDeliveryRetentionMs: 60_000,
     });
 
     try {
@@ -849,6 +865,7 @@ describe("github-app pull request routes", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
+      webhookDeliveryRetentionMs: 60_000,
     });
 
     try {
@@ -910,6 +927,7 @@ describe("github-app pull request routes", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
+      webhookDeliveryRetentionMs: 60_000,
     });
 
     try {
@@ -983,6 +1001,7 @@ describe("github-app pull request routes", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
+      webhookDeliveryRetentionMs: 60_000,
     });
 
     try {
@@ -1071,6 +1090,7 @@ describe("github-app pull request routes", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
+      webhookDeliveryRetentionMs: 60_000,
     });
 
     try {

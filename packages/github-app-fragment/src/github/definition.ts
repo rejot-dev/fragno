@@ -19,9 +19,21 @@ export const githubAppFragmentDefinition = defineFragment<GitHubAppFragmentConfi
   "github-app-fragment",
 )
   .extend(withDatabase(githubAppSchema))
-  .withDependencies(({ config }) => ({
-    githubApiClient: createGitHubApiClient(config, { fetch: config.fetch }),
-  }))
+  // Dependencies are built only for server instances; clients read the routes without a config.
+  .withDependencies(({ config }) => {
+    if (
+      !Number.isSafeInteger(config.webhookDeliveryRetentionMs) ||
+      config.webhookDeliveryRetentionMs <= 0
+    ) {
+      throw new Error(
+        `webhookDeliveryRetentionMs must be a positive whole number of milliseconds, got ${config.webhookDeliveryRetentionMs}.`,
+      );
+    }
+    return {
+      githubApiClient: createGitHubApiClient(config, { fetch: config.fetch }),
+      webhookDeliveryRetentionMs: config.webhookDeliveryRetentionMs,
+    };
+  })
   .providesBaseService(({ deps, defineService }) => createGitHubServices(deps, defineService))
   .provideHooks<GitHubAppHooksMap>(({ defineHook, config, services }) => ({
     processWebhook: defineHook(createWebhookProcessor({ webhook: config.webhook }, services)),

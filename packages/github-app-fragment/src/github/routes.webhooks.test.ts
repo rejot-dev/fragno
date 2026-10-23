@@ -2,6 +2,7 @@ import { describe, expect, it, vi, assert } from "vitest";
 
 import { createHmac, generateKeyPairSync } from "crypto";
 
+import { internalSchema } from "@fragno-dev/db";
 import { drainDurableHooks } from "@fragno-dev/test";
 
 import { githubAppSchema } from "../schema";
@@ -76,6 +77,7 @@ describe("github-app webhooks", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
+      webhookDeliveryRetentionMs: 60_000,
     });
 
     try {
@@ -107,6 +109,7 @@ describe("github-app webhooks", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
+      webhookDeliveryRetentionMs: 60_000,
     });
 
     try {
@@ -137,6 +140,7 @@ describe("github-app webhooks", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
+      webhookDeliveryRetentionMs: 60_000,
     });
 
     try {
@@ -168,6 +172,7 @@ describe("github-app webhooks", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
+      webhookDeliveryRetentionMs: 60_000,
     });
 
     try {
@@ -199,6 +204,7 @@ describe("github-app webhooks", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
+      webhookDeliveryRetentionMs: 60_000,
     });
 
     try {
@@ -228,6 +234,7 @@ describe("github-app webhooks", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
+      webhookDeliveryRetentionMs: 60_000,
     });
 
     try {
@@ -257,6 +264,7 @@ describe("github-app webhooks", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
+      webhookDeliveryRetentionMs: 60_000,
     });
 
     try {
@@ -292,6 +300,8 @@ describe("github-app webhooks", () => {
     owner: { login: "octo" },
   });
 
+  const retentionMs = 60_000;
+
   /** A harness whose GitHub answers from `installations`, delivering signed webhooks to it. */
   async function webhookScenario(
     installations: Map<string, FakeGitHubInstallation>,
@@ -305,24 +315,45 @@ describe("github-app webhooks", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: testPrivateKeyPem,
       webhookSecret: "secret",
+      webhookDeliveryRetentionMs: retentionMs,
       fetch: createFakeGitHub(installations),
       webhook,
     });
     let delivery = 0;
+    /** Accepts a delivery without running its hook. */
+    async function receive(event: string, action: string, payload: Record<string, unknown>) {
+      delivery += 1;
+      const body = JSON.stringify({ action, ...payload });
+      const response = await getHandler(harness.fragments.githubApp)(
+        createWebhookRequest(body, {
+          "x-hub-signature-256": createSignature("secret", body),
+          "x-github-delivery": `delivery-${delivery}`,
+          "x-github-event": event,
+        }),
+      );
+      assert(response.status === 204);
+    }
     return {
       ...harness,
+      receive,
       async deliver(event: string, action: string, payload: Record<string, unknown>) {
-        delivery += 1;
-        const body = JSON.stringify({ action, ...payload });
-        const response = await getHandler(harness.fragments.githubApp)(
-          createWebhookRequest(body, {
-            "x-hub-signature-256": createSignature("secret", body),
-            "x-github-delivery": `delivery-${delivery}`,
-            "x-github-event": event,
-          }),
-        );
-        assert(response.status === 204);
+        await receive(event, action, payload);
         await drainDurableHooks(harness.fragments.githubApp.fragment);
+      },
+      async hooks() {
+        const [rows] = await harness.fragments.githubApp.db
+          .createUnitOfWork("read-hooks")
+          .forSchema(internalSchema)
+          .find("fragno_hooks", (b) => b.whereIndex("primary"))
+          .executeRetrieve();
+        return rows;
+      },
+      async readDelivery(deliveryId: string) {
+        return await getHandler(harness.fragments.githubApp)(
+          new Request(
+            `https://example.com/api/github-app-fragment/webhooks/deliveries/${deliveryId}`,
+          ),
+        );
       },
       async installation(installationId: string) {
         const [rows] = await harness.fragments.githubApp.db
@@ -345,6 +376,119 @@ describe("github-app webhooks", () => {
       },
     };
   }
+
+  it("keeps deliveries until their retention after processing passes", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = Date.parse("2026-01-01T00:00:00.000Z");
+    vi.setSystemTime(start);
+    const onPush = vi.fn<(event: { id: string }) => Promise<void>>(async () => {});
+    const scenario = await webhookScenario(new Map(), (register) => register("push", onPush));
+    try {
+      const push = { installation: { id: 123 }, ref: "refs/heads/main" };
+      await scenario.receive("push", "", push);
+      // A delivery whose hook has not run is kept however long ago it arrived.
+      vi.setSystemTime(start + 2 * retentionMs);
+      await scenario.receive("push", "", push);
+      const pending = await scenario.readDelivery("delivery-1");
+      assert(pending.status === 200);
+      expect(await pending.json()).toEqual({
+        deliveryId: "delivery-1",
+        event: "push",
+        action: "",
+        installationId: "123",
+        receivedAt: "2026-01-01T00:00:00.000Z",
+        payload: { action: "", ...push },
+      });
+
+      await drainDurableHooks(scenario.fragments.githubApp.fragment);
+      expect(onPush.mock.calls.map(([event]) => event.id).sort()).toEqual([
+        "delivery-1",
+        "delivery-2",
+      ]);
+
+      vi.setSystemTime(start + 3 * retentionMs + 1);
+      await scenario.deliver("push", "", push);
+      for (const deliveryId of ["delivery-1", "delivery-2"]) {
+        await assertErrorResponse(
+          await scenario.readDelivery(deliveryId),
+          404,
+          "WEBHOOK_DELIVERY_NOT_FOUND",
+        );
+      }
+      assert((await scenario.readDelivery("delivery-3")).status === 200);
+    } finally {
+      vi.useRealTimers();
+      await scenario.test.cleanup();
+    }
+  });
+
+  it("a replayed hook whose completion was lost neither reruns nor fails", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = Date.parse("2026-01-01T00:00:00.000Z");
+    vi.setSystemTime(start);
+    const onPush = vi.fn<(event: { id: string }) => Promise<void>>(async () => {});
+    const scenario = await webhookScenario(new Map(), (register) => register("push", onPush));
+    // The handler committed, but the processor stopped before settling the hook, which stale
+    // recovery later replays.
+    async function loseCompletion() {
+      const [hook] = await scenario.hooks();
+      assert(hook);
+      const uow = scenario.fragments.githubApp.db
+        .createUnitOfWork("lose-completion")
+        .forSchema(internalSchema);
+      uow.update("fragno_hooks", hook.id, (b) =>
+        b.set({ status: "processing", lastAttemptAt: new Date(start) }),
+      );
+      assert((await uow.executeMutations()).success);
+    }
+    try {
+      const push = { installation: { id: 123 }, ref: "refs/heads/main" };
+      await scenario.deliver("push", "", push);
+      await loseCompletion();
+      vi.setSystemTime(start + 11 * 60_000);
+      await drainDurableHooks(scenario.fragments.githubApp.fragment);
+      expect(onPush).toHaveBeenCalledOnce();
+
+      // A later delivery deletes the processed one before the replay finds it.
+      await loseCompletion();
+      await scenario.receive("push", "", push);
+      await assertErrorResponse(
+        await scenario.readDelivery("delivery-1"),
+        404,
+        "WEBHOOK_DELIVERY_NOT_FOUND",
+      );
+      await drainDurableHooks(scenario.fragments.githubApp.fragment);
+
+      expect(onPush.mock.calls.map(([event]) => event.id).sort()).toEqual([
+        "delivery-1",
+        "delivery-2",
+      ]);
+      expect(await scenario.hooks()).toMatchObject([
+        { hookName: "processWebhook", status: "completed", attempts: 0 },
+        { hookName: "processWebhook", status: "completed", attempts: 0 },
+      ]);
+    } finally {
+      vi.useRealTimers();
+      await scenario.test.cleanup();
+    }
+  });
+
+  it("rejects a retention that is not a positive whole number of milliseconds", async () => {
+    for (const webhookDeliveryRetentionMs of [0, -1, 1.5, Number.NaN]) {
+      await expect(
+        buildHarness({
+          appId: "42",
+          appSlug: "test-app",
+          clientId: "test-client-id",
+          clientSecret: "test-client-secret",
+          callbackUrl: "https://example.com/github/callback",
+          privateKeyPem: testPrivateKeyPem,
+          webhookSecret: "secret",
+          webhookDeliveryRetentionMs,
+        }),
+      ).rejects.toThrow("webhookDeliveryRetentionMs must be a positive whole number");
+    }
+  });
 
   it("installation deliveries store the installation GitHub reports, not their payload", async () => {
     const github: FakeGitHubInstallation = {

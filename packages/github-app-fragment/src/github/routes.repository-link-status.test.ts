@@ -44,6 +44,7 @@ describe("github-app repository link status", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: testPrivateKeyPem,
       webhookSecret,
+      webhookDeliveryRetentionMs: 60_000,
       onRepositoryLinkStatusChanged,
       fetch: createFakeGitHub(new Map([["1", github]])),
     });

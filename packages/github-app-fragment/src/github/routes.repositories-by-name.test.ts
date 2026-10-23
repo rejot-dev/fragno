@@ -10,6 +10,7 @@ const config = {
   callbackUrl: "https://example.com/github/callback",
   privateKeyPem: "test-key",
   webhookSecret: "secret",
+  webhookDeliveryRetentionMs: 60_000,
 };
 const pathParams = { owner: "octo", repo: "repo" };
 
