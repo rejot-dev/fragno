@@ -391,6 +391,7 @@ test("codemode runs are retained with their outcome until a later run expires th
 });
 
 test("a run's tool calls and their I/O are readable while it runs and expire with it", async () => {
+  let secretsIssued = 0;
   let openGate = () => {};
   const gateOpened = new Promise<void>((resolve) => {
     openGate = resolve;
@@ -420,7 +421,10 @@ test("a run's tool calls and their I/O are readable while it runs and expire wit
           requiredPermissions: [],
           inputSchema: z.object({}),
           outputSchema: z.object({ secret: z.string() }),
-          execute: async () => ({ secret: "s3cret" }),
+          execute: async () => {
+            secretsIssued++;
+            return { secret: "s3cret" };
+          },
         },
         "redacted",
       ),
@@ -537,6 +541,40 @@ test("a run's tool calls and their I/O are readable while it runs and expire wit
           ).exec(`js.runs.get ${runId}`);
           assert.notEqual(foreign.exitCode, 0);
           expect(foreign.stderr).toContain("CODEMODE_RUN_FORBIDDEN");
+        }),
+        then.assert("a guest's forged scoped calls fail without running", async (ctx) => {
+          const issuedBefore = secretsIssued;
+          const forging = await runBackofficeCodemode({
+            code: `async () => {
+              const malformed = await __dispatchers.__context.call("callScoped", [{
+                scope: { kind: "current", extra: true },
+                namespace: "gate",
+                toolName: "secret",
+                args: [{}],
+              }]);
+              const unknown = await __dispatchers.__context.call("callUnscoped", [{}]);
+              await context.current.gate.secret({});
+              return [malformed, unknown].map((result) => result.status === "error" && result.error.message);
+            }`,
+            codemode: codemodeRunnerFor(
+              ctx.runtime.objects.codemode.forOrg("org-1").commands,
+              execution,
+            ),
+            families: [gate],
+            toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
+          });
+          assert.equal(forging.error, undefined);
+          expect(forging.result).toEqual([
+            expect.stringContaining("Invalid scoped tool call"),
+            "Unknown tool: callUnscoped",
+          ]);
+          assert.equal(secretsIssued - issuedBefore, 1);
+          const run = await (
+            await bash(ctx.runtime)
+          ).exec(`js.runs.get ${forging.runId} --format json`);
+          expect(JSON.parse(run.stdout).toolCalls).toMatchObject([
+            { scope: { kind: "current" }, provider: "gate", tool: "secret", status: "succeeded" },
+          ]);
         }),
         then.assert("a run that loops past 200 calls shows the first 200", async (ctx) => {
           const looping = await runBackofficeCodemode({
