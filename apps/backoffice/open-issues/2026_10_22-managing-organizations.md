@@ -21,9 +21,9 @@ Backoffice gains one relationship between scopes, not three concepts: "operator"
 others and is managed by none. A solo bookkeeper works through an organization of one, which can
 grow into a team without moving its clients.
 
-This is a proposal; nothing is implemented. It builds on
-[provisioning for an invited owner](2026_10_21-provision-organization-for-invited-owner.md), and
-replaces its motivating workaround.
+This is a proposal; the relationship is not implemented. Two pieces it builds on are:
+`organizations.provisionForInvitee` (Linear BO-8) creates an organization for an owner who has not
+signed in yet, and Bookkeeping's operators are the members of an operator organization.
 
 ## Motivation
 
@@ -31,6 +31,8 @@ MI already has these layers, and each one works around Backoffice:
 
 - **Operators are an allowlist.** `MI_OPERATOR_USER_IDS` lists Backoffice user IDs in an env var.
   Adding an operator is a deployment; Backoffice cannot see or audit who operates the app.
+  Bookkeeping already replaced its allowlist with an operator organization, which needs nothing from
+  this proposal.
 - **The partner link lives only in MI.** MI's `Directory` stores each brand brain's `partnerId`.
   Backoffice does not know that Smaac manages the brand brain, so it cannot grant Smaac anything.
 - **Managing means owning.** To reach a client's organization, partner staff must be its members.
@@ -113,29 +115,22 @@ credentials already issued.
 
 ### Provisioning
 
-`organizations.provision` replaces `ownerUserId` with an explicit owner and managing scope. Fields
-are never optional; `null` says "none".
+`organizations.provision` (owned by a user) and `organizations.provisionForInvitee` (owned by an
+invited email) both gain a managing scope, and a third operation provisions a managed organization
+with no owner. Fields are never optional; `null` says "none".
 
 ```ts
-{
-  externalOrganizationId: string;
-  name: string;
-  managedBy: {
-    scope: BackofficeManagingScope;
-    roleCeiling: "admin" | "member";
-    // An owner or admin of the managing organization who authorized the app. Recorded as the
-    // organization's creator and the installation's installer; they do not become a member.
-    byUserId: string;
-  } | null;
-  owner:
-    | { userId: string } // a user who authorized the app, as today's ownerUserId
-    | { email: string; invitedByUserId: string } // from the invited-owner proposal
-    | null; // only when managedBy is set
-}
+managedBy: {
+  scope: BackofficeManagingScope;
+  roleCeiling: "admin" | "member";
+  // An owner or admin of the managing organization who authorized the app. Recorded as the
+  // organization's creator and the installation's installer; they do not become a member.
+  byUserId: string;
+} | null;
 ```
 
-The result adds `managedBy: BackofficeManagingScope | null` and
-`ownerInvitation: { invitationId, expiresAt } | null`.
+Their results add `managedBy: BackofficeManagingScope | null`. Old clients parse results strictly,
+so the new fields need new operations or a coordinated update of every first-party app.
 
 Provisioning under a scope requires the app to be actively installed there. Repeated calls with the
 same external ID return the existing organization; one that names a different managing scope answers
@@ -169,30 +164,33 @@ Neither is needed for the apps to work.
 
 ## How the apps use it
 
-**Operator organization.** `backoffice:connect` creates or reuses the app's operator organization,
-installs the app there with the administrator as owner, and writes its ID to the app's vars
-(`BOOKKEEPING_OPERATOR_ORGANIZATION_ID`, replacing the `BOOKKEEPING_OPERATOR_USER_IDS` and
-`MI_OPERATOR_USER_IDS` allowlists). An operator is a confirmed member of `org:<operator>`, checked
-like any other membership, and is added by invitation. Backoffice needs no operator concept.
+**Operator organization.** Bookkeeping already has one: `backoffice:connect` creates or reuses it,
+installs the app there with the administrator as owner, and writes its ID to
+`BOOKKEEPING_OPERATOR_ORGANIZATION_ID`. An operator is a confirmed member of `org:<operator>`,
+checked like any other membership, and is added by invitation. MI's `MI_OPERATOR_USER_IDS` should
+follow. Backoffice needs no operator concept; this proposal makes the operator organization the
+managing scope of the firms.
 
 **Bookkeeping** already has the three layers with an app-local firm link, as MI does. With this
 proposal:
 
 - `/operator`: firms, from `managed.list` in `org:<operator>`. Creating a firm provisions it managed
-  by `org:<operator>` with `roleCeiling: "admin"` and `owner: { email }`, then sends the owner
-  invitation. We help firms as admins, never as owners.
+  by `org:<operator>` with `roleCeiling: "admin"` through `organizations.provisionForInvitee`, then
+  sends the owner invitation. We help firms as admins, never as owners; today operators don't open
+  firms at all unless invited.
 - `/f/:slug`: the firm's clients, from `managed.list` in `org:<firm>`, and the firm's members.
-  Creating a client provisions it managed by `org:<firm>` with `owner: { email } | null`. Every firm
+  Creating a client provisions it managed by `org:<firm>`, for an invited owner or none. Every firm
   member opens every client; firm staff do not become client members.
 - `/w/:slug`: the client's workspace, with its administrations, which the firm reaches as O's
   projects. `requireOrganization` accepts `access: { kind: "managing" }`.
-- The `Directory` object keeps each organization's kind (firm, client), which Bookkeeping owns, and
-  its `firmId` becomes a cache of `managedBy` from `org.get`, which Backoffice owns.
+- The `Directory` object keeps each organization's kind (operator, firm, client), which Bookkeeping
+  owns, and its `firmId` becomes a cache of `managedBy` from `org.get`, which Backoffice owns.
 
 **MI.** Partners are provisioned managed by `org:<operator>`, and brand brains by `org:<partner>`.
 MI's `Directory.partnerId` becomes a cache of `managedBy`. Operators and partner creators stop being
-owners: the invited-owner workaround and the permanent co-owners go away. Today's "partner
-membership does not open brand brains" becomes `roleCeiling` and is MI's choice per relationship.
+owners: partners are provisioned for their invited owner, and partner staff reach brand brains
+through management. Today's "partner membership does not open brand brains" becomes `roleCeiling`
+and is MI's choice per relationship.
 
 ## Decided
 
@@ -225,9 +223,8 @@ membership does not open brand brains" becomes `roleCeiling` and is MI's choice 
 
 ## Phasing
 
-1. **The relationship, provisioning, `org.get`, `managed.list`.** Includes the owner union from the
-   invited-owner proposal. MI and Bookkeeping can model all three layers. Access to clients still
-   needs membership, through invitations.
+1. **The relationship, provisioning, `org.get`, `managed.list`.** MI and Bookkeeping can model all
+   three layers in Backoffice. Access to clients still needs membership, through invitations.
 2. **Access through management**, in the credential exchange, the kernel and `invitations.create`.
    Firm staff stop being client members; MI's co-owners go away.
 3. **Backoffice UI** for the relationship, and ending it.
