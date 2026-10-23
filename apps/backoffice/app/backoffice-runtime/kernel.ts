@@ -511,15 +511,21 @@ export class BackofficeKernel {
       return;
     }
 
-    // A user may reach every scope they can access. Neither membership nor administration is
-    // checked here: every action in the target scope resolves the user's permissions there, which
-    // denies foreign organizations and the personal scopes of users they do not administer.
-    if (
-      principal?.scope === "internal" &&
-      principal.type === "user" &&
-      backofficeScopeRootOwner(targetScope) !== null
-    ) {
-      return;
+    // A user may reach every scope they can access. Membership is not checked here: every action
+    // in the target scope resolves the user's permissions there, which denies foreign organizations.
+    // Some writes, like forwarded events, resolve no permissions in their target, so a user reaches
+    // only their own personal scopes and, as an administrator, those of the member they work for.
+    if (principal?.scope === "internal" && principal.type === "user") {
+      const targetOwner = backofficeScopeRootOwner(targetScope);
+      const executionOwner = backofficeScopeRootOwner(ownerScope);
+      if (
+        targetOwner !== null &&
+        (targetOwner.kind === "org" ||
+          targetOwner.userId === principal.id ||
+          (executionOwner?.kind === "user" && targetOwner.userId === executionOwner.userId))
+      ) {
+        return;
+      }
     }
 
     if (ownerScope.kind === "org") {
