@@ -73,7 +73,11 @@ const createPiRuntime = (): PiManagerRuntime => {
       provisioned: false,
       view: null,
     }),
-    createAgent: async ({ managedBy, ...definition }) => ({ ...definition, managedBy }),
+    createAgent: async ({ managedBy, ...definition }) => ({
+      ...definition,
+      managedBy,
+      resolvedModel: definition.model,
+    }),
     updateAgent: async ({ managedBy, ...definition }) => ({ ...definition, managedBy }),
     deleteAgent: async () => undefined,
     submitPrompt: async () => ({ requestId: "request-1", status: "queued" }),

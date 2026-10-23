@@ -109,9 +109,24 @@ function expandPiAgentPermissions(grants: readonly string[]): BackofficePermissi
 }
 
 /**
+ * The available model a defined agent runs: its definition's, or the first available one when it
+ * names none, which is the preference order. Null when that model is not available.
+ */
+export function piDefinedAgentModel(
+  definition: PiAgentDefinition,
+  availableModels: readonly PiAvailableModel[],
+): PiAvailableModel | null {
+  const requested = definition.model;
+  return (
+    (requested === null
+      ? availableModels[0]
+      : availableModels.find((available) => piAgentModelRef(available) === requested)) ?? null
+  );
+}
+
+/**
  * A built-in agent runs the model its prompt chose, which null leaves as the conversation's. A
- * defined agent runs its definition's, where none means the first available model, which is the
- * preference order.
+ * defined agent runs its definition's.
  */
 function resolvePiAgentModel(
   definition: PiAgentDefinition,
@@ -124,11 +139,7 @@ function resolvePiAgentModel(
     }
     return { type: "model", model: chosen };
   }
-  const requested = definition.model;
-  const model =
-    requested === null
-      ? availableModels[0]
-      : availableModels.find((available) => piAgentModelRef(available) === requested);
+  const model = piDefinedAgentModel(definition, availableModels);
   return model
     ? {
         type: "model",

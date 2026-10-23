@@ -1,5 +1,6 @@
 import { awaitWithContext } from "@earendil-works/chord/context";
 import {
+  type PiAgentCreated,
   type PiAgentDefinition,
   type PiAgentDefinitionCreate,
   type PiManagerAgent,
@@ -139,7 +140,7 @@ export async function watchPiManagerAgent(input: {
 export type PiManagerRuntime = {
   listAgents(): Promise<PiManagerAgentDirectory>;
   getAgent(input: PiManagerAgentInput): Promise<PiManagerAgentDetail>;
-  createAgent(input: PiAgentDefinitionCreate): Promise<PiAgentDefinition>;
+  createAgent(input: PiAgentDefinitionCreate): Promise<PiAgentCreated>;
   updateAgent(input: PiAgentDefinitionCreate): Promise<PiAgentDefinition>;
   deleteAgent(input: PiManagerAgentInput): Promise<void>;
   submitPrompt(input: PiManagerSubmitPromptInput): Promise<PiPromptReceipt>;
@@ -289,7 +290,7 @@ export function createPiManagerRuntime(input: {
       };
     },
     async createAgent(definition) {
-      return await request<PiAgentDefinition>("/agents", definition);
+      return await request<PiAgentCreated>("/agents", definition);
     },
     async updateAgent({ agentName, ...definition }) {
       return await request<PiAgentDefinition>(agentRoute(agentName), definition, "PUT");

@@ -124,6 +124,8 @@ type PiCreateAgentOutput = {
       }
     | AutomationRouteManagedBy
     | null;
+  /** The model the agent runs, as provider/modelId: its `model`, or the preferred available model when `model` is null. Null when that model is not available. */
+  resolvedModel: string | null;
 };
 type PiUpdateAgentInput = {
   description: string;

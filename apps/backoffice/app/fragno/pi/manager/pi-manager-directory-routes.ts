@@ -1,4 +1,5 @@
 import {
+  piAgentCreatedSchema,
   piAgentDefinitionCreateSchema,
   piAgentDefinitionSchema,
   piAgentDefinitionUpdateSchema,
@@ -9,7 +10,11 @@ import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
 
-import { builtInPiAgentDefinition } from "@/fragno/pi/agent/agent-definitions";
+import {
+  builtInPiAgentDefinition,
+  piAgentModelRef,
+  piDefinedAgentModel,
+} from "@/fragno/pi/agent/agent-definitions";
 import { piAvailableModelSchema } from "@/fragno/pi/agent/pi-agent-contract";
 
 import { piManagerDefinition } from "./pi-manager-definition";
@@ -54,7 +59,7 @@ export const piManagerDirectoryRoutes = defineRoutes(piManagerDefinition).create
       inputSchema: piAgentDefinitionCreateSchema._zod.innerType.extend({
         provenance: turnProvenanceSchema,
       }),
-      outputSchema: piAgentDefinitionSchema,
+      outputSchema: piAgentCreatedSchema,
       errorCodes: ["AGENT_EXISTS"],
       handler: async function ({ input }, { json, error }) {
         const { provenance, ...definition } = await input.valid();
@@ -69,7 +74,11 @@ export const piManagerDirectoryRoutes = defineRoutes(piManagerDefinition).create
           .withServiceCalls(() => [services.createAgentDefinition(definition, provenance)])
           .transform(({ serviceResult: [created] }) => created)
           .execute();
-        return created ? json(created, 201) : conflict;
+        if (!created) {
+          return conflict;
+        }
+        const model = piDefinedAgentModel(created, await config.supportedAvailableModels());
+        return json({ ...created, resolvedModel: model ? piAgentModelRef(model) : null }, 201);
       },
     }),
     defineRoute({

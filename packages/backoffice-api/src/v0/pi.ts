@@ -108,6 +108,20 @@ export const piAgentDefinitionCreateSchema = z.lazy(() =>
 
 export type PiAgentDefinitionCreate = z.infer<typeof piAgentDefinitionCreateSchema>;
 
+/** A created definition, and the model it resolves to, which a null `model` leaves unnamed. */
+export const piAgentCreatedSchema = z.lazy(() =>
+  piAgentDefinitionSchema._zod.innerType.extend({
+    resolvedModel: z
+      .string()
+      .nullable()
+      .describe(
+        "The model the agent runs, as provider/modelId: its `model`, or the preferred available model when `model` is null. Null when that model is not available.",
+      ),
+  }),
+);
+
+export type PiAgentCreated = z.infer<typeof piAgentCreatedSchema>;
+
 /** A defined agent; its durable conversation is provisioned by its first turn. */
 export const piManagerAgentSchema = z.lazy(() =>
   piAgentDefinitionSchema._zod.innerType.extend({
@@ -305,7 +319,7 @@ export const piOperations = {
       'Define an agent in the current scope. Use permissions ["*"] unless the agent should be limited: each turn already runs with the prompter\'s permissions, and the grants only narrow them.',
     permissions: [BACKOFFICE_PERMISSION.pi.manage],
     input: z.lazy(() => piAgentDefinitionCreateSchema._zod.innerType.strict()),
-    output: piAgentDefinitionSchema,
+    output: piAgentCreatedSchema,
   },
   "pi.agent.update": {
     description:
