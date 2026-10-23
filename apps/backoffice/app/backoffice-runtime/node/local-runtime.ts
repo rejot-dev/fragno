@@ -116,6 +116,8 @@ export async function createLocalBackofficeRuntime(
               {
                 getUserAuthorityFacts: async (input) =>
                   await objects.auth.singleton().commands.getUserAuthorityFacts(input),
+                findAdministeredMember: async (input) =>
+                  await objects.auth.singleton().commands.findAdministeredMember(input),
               },
               { now: () => objectFactory.now() },
             ),

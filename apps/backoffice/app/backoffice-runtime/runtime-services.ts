@@ -195,6 +195,8 @@ export const createCloudflareBackofficeRuntimeServices = (
           fallbackResolver: createBackofficeAuthorityResolver({
             getUserAuthorityFacts: async (input) =>
               await objects.auth.singleton().commands.getUserAuthorityFacts(input),
+            findAdministeredMember: async (input) =>
+              await objects.auth.singleton().commands.findAdministeredMember(input),
           }),
           lookupRoute: async ({ scope, routeId }) =>
             await objects.automations.for(scope).commands.getRouteForAuthority({ id: routeId }),

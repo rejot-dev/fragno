@@ -57,6 +57,8 @@ import type {
   ProvisioningApp,
 } from "@/fragno/auth/app-provisioning";
 import {
+  type AdministeredMember,
+  administersMembers,
   type AuthHookContext,
   type AuthUser,
   type BackofficeCliOAuthConfig,
@@ -640,6 +642,37 @@ const findStoreUserByEmail = async (
     where: [{ field: "email", value: userEmail.trim().toLowerCase() }],
   });
 
+async function findAdministeredMember(
+  adapter: BetterAuthAdapter,
+  input: { administratorId: string; memberId: string },
+): Promise<AdministeredMember | null> {
+  const [administratorMemberships, memberMemberships, member] = await Promise.all([
+    adapter.findMany<StoreMember>({
+      model: "member",
+      where: [{ field: "userId", value: input.administratorId }],
+    }),
+    adapter.findMany<StoreMember>({
+      model: "member",
+      where: [{ field: "userId", value: input.memberId }],
+    }),
+    findStoreUser(adapter, input.memberId),
+  ]);
+  const administeredOrganizationIds = new Set(
+    administratorMemberships
+      .filter((membership) => administersMembers(splitOrganizationRoles(membership.role)))
+      .map((membership) => membership.organizationId),
+  );
+  if (
+    !member ||
+    !memberMemberships.some((membership) =>
+      administeredOrganizationIds.has(membership.organizationId),
+    )
+  ) {
+    return null;
+  }
+  return { userId: member.id, email: member.email };
+}
+
 async function resolveBackofficeUserTokenGrant(
   adapter: BetterAuthAdapter,
   input: {
@@ -671,10 +704,16 @@ async function resolveBackofficeUserTokenGrant(
     };
   }
 
-  // What a user owns is only ever available to that user.
+  // What a user owns is available to that user and to administrators of their organizations.
   const requestedOwner = input.scope && backofficeScopeRootOwner(input.scope);
   if (input.scope && requestedOwner?.kind === "user") {
-    if (requestedOwner.userId !== storedUser.id) {
+    if (
+      requestedOwner.userId !== storedUser.id &&
+      !(await findAdministeredMember(adapter, {
+        administratorId: storedUser.id,
+        memberId: requestedOwner.userId,
+      }))
+    ) {
       throw new BackofficeUserTokenGrantForbiddenError(
         "The requested user scope is not available to this user.",
       );
@@ -2422,6 +2461,14 @@ export class InMemoryAuthObject implements AuthObject {
     };
   }
 
+  async findAdministeredMember(input: {
+    administratorId: string;
+    memberId: string;
+  }): Promise<AdministeredMember | null> {
+    const { adapter } = await this.#authContext();
+    return await findAdministeredMember(adapter, input);
+  }
+
   async getUserOrganizationAuthorityFacts(
     input: UserOrganizationAuthorityInput,
   ): Promise<UserOrganizationAuthorityFacts> {
@@ -2769,6 +2816,10 @@ export class Auth extends DurableObject<CloudflareEnv> implements AuthObject {
 
   async getUserAuthorityFacts(input: { userId: string; organizationId?: string }) {
     return await this.#object.getUserAuthorityFacts(input);
+  }
+
+  async findAdministeredMember(input: { administratorId: string; memberId: string }) {
+    return await this.#object.findAdministeredMember(input);
   }
 
   async getUserOrganizationAuthorityFacts(input: UserOrganizationAuthorityInput) {

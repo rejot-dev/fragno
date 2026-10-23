@@ -76,6 +76,10 @@ class UnavailableLocalDurableObject {
     } as const;
   }
 
+  async findAdministeredMember() {
+    return null;
+  }
+
   async getUserOrganizationAuthorityFacts() {
     return {
       active: false,

@@ -398,6 +398,7 @@ describe("Marketplace package publication scenarios", () => {
                       verifiedRequestAuthority: {
                         role: "user",
                         organizationId: null,
+                        administeredMemberId: null,
                         expiresAt: new Date(Date.now() + 60_000),
                         scopeRestriction: USER_SCOPE,
                       },

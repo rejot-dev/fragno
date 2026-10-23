@@ -57,6 +57,7 @@ import type {
 import type { BackofficeAppsCommands } from "@/fragno/apps/contracts";
 import type { AuthAppProvisioningCommands } from "@/fragno/auth/app-provisioning";
 import type {
+  AdministeredMember,
   BackofficeCliOAuthConfig,
   BackofficeMeData,
   Organization,
@@ -344,6 +345,11 @@ export type AuthObject = DurableHookCommands &
       userId: string;
       organizationId?: string;
     }): Promise<UserAuthorityFacts>;
+    /** Live: whether the administrator owns or administers an organization the member belongs to. */
+    findAdministeredMember(input: {
+      administratorId: string;
+      memberId: string;
+    }): Promise<AdministeredMember | null>;
     /** Resolves live user status and roles for exactly one organization, without session metadata. */
     getUserOrganizationAuthorityFacts(
       input: UserOrganizationAuthorityInput,

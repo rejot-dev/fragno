@@ -7,7 +7,7 @@ import {
   type BackofficeScopeSelection,
 } from "@/backoffice-runtime/resolved-scope";
 import { scheduleBackofficeTokenRefresh } from "@/fragno/auth/browser-auth.client";
-import type { BackofficeMeData } from "@/fragno/auth/contracts";
+import type { AdministeredMember, BackofficeMeData } from "@/fragno/auth/contracts";
 
 import { BackofficeClsDebugger } from "./cls-debugger";
 import { CurrentBackofficeProvider } from "./current-context";
@@ -27,6 +27,7 @@ type BackofficeShellProps = {
   children: ReactNode;
   me: BackofficeMeData | null;
   resolvedScope: BackofficeShellResolvedScope | null;
+  administeredMember: AdministeredMember | null;
   accessTokenExpiresAt: string | null;
   automationCollectionSource: CurrentBackofficeContext["automationCollectionSource"] | null;
   projectCollectionSource: CurrentBackofficeContext["projectCollectionSource"];
@@ -36,6 +37,7 @@ type BackofficeShellProps = {
 function backofficeTerminalScopeSelection(
   scope: BackofficeShellResolvedScope,
   me: BackofficeMeData | null,
+  administeredMember: AdministeredMember | null,
 ): BackofficeScopeSelection {
   switch (scope.kind) {
     case "system":
@@ -45,17 +47,22 @@ function backofficeTerminalScopeSelection(
     case "project":
       return {
         ...scope,
-        label: `${backofficeTerminalScopeSelection(scope.owner, me).label} / ${scope.project.name}`,
+        label: `${backofficeTerminalScopeSelection(scope.owner, me, administeredMember).label} / ${scope.project.name}`,
       };
     case "user":
       return {
         ...scope,
-        label: me?.user.id === scope.userId ? (me.user.email ?? scope.userId) : scope.userId,
+        label:
+          me?.user.id === scope.userId
+            ? (me.user.email ?? scope.userId)
+            : administeredMember?.userId === scope.userId
+              ? administeredMember.email
+              : scope.userId,
       };
     case "app":
       return {
         ...scope,
-        label: `${backofficeTerminalScopeSelection(scope.owner, me).label} / ${scope.appId}`,
+        label: `${backofficeTerminalScopeSelection(scope.owner, me, administeredMember).label} / ${scope.appId}`,
       };
   }
 
@@ -88,6 +95,7 @@ function BackofficeShellFrame({
   children,
   me,
   resolvedScope,
+  administeredMember,
   accessTokenExpiresAt,
   automationCollectionSource,
   projectCollectionSource,
@@ -97,7 +105,9 @@ function BackofficeShellFrame({
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const pageColumnRef = useRef<HTMLDivElement>(null);
   const routeScope = resolvedScope ? backofficeRouteScopeFromResolvedScope(resolvedScope) : null;
-  const terminalScope = resolvedScope ? backofficeTerminalScopeSelection(resolvedScope, me) : null;
+  const terminalScope = resolvedScope
+    ? backofficeTerminalScopeSelection(resolvedScope, me, administeredMember)
+    : null;
   useEffect(() => {
     if (!accessTokenExpiresAt) {
       return undefined;
@@ -155,6 +165,7 @@ function BackofficeShellFrame({
         <BackofficeTopBar
           me={me}
           resolvedScope={resolvedScope}
+          administeredMember={administeredMember}
           projectCollectionSource={projectCollectionSource}
           isLoading={isLoading}
           sidebarCollapsed={sidebarCollapsed}

@@ -14,7 +14,7 @@ import {
   backofficeRouteScopeFromResolvedScope,
   type BackofficeResolvedScope,
 } from "@/backoffice-runtime/resolved-scope";
-import type { BackofficeMeData, Organization } from "@/fragno/auth/contracts";
+import type { AdministeredMember, BackofficeMeData, Organization } from "@/fragno/auth/contracts";
 
 import { backofficeScopeOptions } from "./scope-options";
 import { scopeSwitchPath } from "./scope-switch-path";
@@ -102,16 +102,19 @@ const scopeColor = (
 const currentScopeLabel = (
   scope: BackofficeResolvedScope<Organization>,
   me: BackofficeMeData,
+  administeredMember: AdministeredMember | null,
 ): string => {
   switch (scope.kind) {
     case "system":
       return "System";
     case "project":
-      return currentScopeLabel(scope.owner, me);
+      return currentScopeLabel(scope.owner, me, administeredMember);
     case "org":
       return scope.organization.name;
     case "user":
-      return me.user.email ?? scope.userId;
+      return administeredMember?.userId === scope.userId
+        ? administeredMember.email
+        : (me.user.email ?? scope.userId);
     case "app":
       return scope.appId;
     default:
@@ -122,10 +125,12 @@ const currentScopeLabel = (
 export function BackofficeScopeMenu({
   me,
   currentScope,
+  administeredMember,
   sidebarCollapsed,
 }: {
   me: BackofficeMeData | null;
   currentScope: BackofficeResolvedScope<Organization> | null;
+  administeredMember: AdministeredMember | null;
   sidebarCollapsed: boolean;
 }) {
   const location = useLocation();
@@ -133,12 +138,20 @@ export function BackofficeScopeMenu({
     return null;
   }
 
-  const options: ScopeMenuOption[] = backofficeScopeOptions(me).map((option) => ({
-    ...option,
-    id: scopeOptionId(option.scope),
-  }));
+  const options: ScopeMenuOption[] = [
+    ...backofficeScopeOptions(me),
+    // The member's workspace stays listed while the user works in it.
+    ...(administeredMember
+      ? [
+          {
+            label: administeredMember.email,
+            scope: { kind: "user" as const, userId: administeredMember.userId },
+          },
+        ]
+      : []),
+  ].map((option) => ({ ...option, id: scopeOptionId(option.scope) }));
   const selectedId = scopeOptionId(currentScope);
-  const triggerLabel = currentScopeLabel(currentScope, me);
+  const triggerLabel = currentScopeLabel(currentScope, me, administeredMember);
 
   return (
     <SelectorMenu>

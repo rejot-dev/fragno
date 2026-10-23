@@ -381,6 +381,7 @@ describe("Automations authorized HTTP context", () => {
           scopeRestriction: null,
           role: "user",
           organizationId: scope.orgId,
+          administeredMemberId: null,
           expiresAt: new Date("2099-01-01T00:00:00.000Z"),
         },
       });

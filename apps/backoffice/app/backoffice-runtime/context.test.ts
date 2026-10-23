@@ -42,6 +42,7 @@ describe("Backoffice execution context", () => {
           scopeRestriction: null,
           role: "admin",
           organizationId: "org-1",
+          administeredMemberId: null,
           expiresAt,
         },
       }),

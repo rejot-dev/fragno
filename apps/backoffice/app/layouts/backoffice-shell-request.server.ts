@@ -5,6 +5,8 @@ import {
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { createContext, type RouterContext, type RouterContextProvider } from "react-router";
 
+import type { BackofficeIdentityDirectory } from "@/backoffice-runtime/authority-resolver";
+import { backofficeScopeOtherUserId } from "@/backoffice-runtime/authority-roles";
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import { isBackofficeForbiddenError } from "@/backoffice-runtime/kernel";
 import {
@@ -16,9 +18,13 @@ import {
   type BackofficeRoutableScopeSelection,
   type BackofficeScopeSelection,
 } from "@/backoffice-runtime/resolved-scope";
-import { createBackofficeExecutionForPrincipal } from "@/fragno/auth/backoffice-principal.server";
+import {
+  createBackofficeExecutionForPrincipal,
+  routerContextIdentities,
+} from "@/fragno/auth/backoffice-principal.server";
 import { reopenWithBackofficeCredential } from "@/fragno/auth/browser-credential.server";
 import type {
+  AdministeredMember,
   BackofficeAuthPrincipal,
   BackofficeMeData,
   Organization,
@@ -58,6 +64,8 @@ export type BackofficeShellRequest = {
   principal: BackofficeAuthPrincipal;
   /** The scope the shell renders: the route's own, or the default when the route's does not resolve. */
   resolvedScope: BackofficePageResolvedScope;
+  /** Whose personal workspace the shell renders, when it is a member's the user administers. */
+  administeredMember: AdministeredMember | null;
   route: BackofficeRouteScope;
   accessTokenExpiresAt: Date;
 };
@@ -99,14 +107,23 @@ export async function establishBackofficeShellRequest(
 
   // Every user has a personal scope, so it is the default even while an organization is active.
   const defaultScope: BackofficePageResolvedScope = { kind: "user", userId: me.user.id };
+  const administeredMembers = administeredMemberLookup(context);
+  // A user enters their own personal scope and those of the members they administer.
+  const findAdministeredMember = async (userId: string) =>
+    await administeredMembers.findAdministeredMember({
+      administratorId: me.user.id,
+      memberId: userId,
+    });
+  const canEnterPersonalScope = async (userId: string) =>
+    userId === me.user.id || (await findAdministeredMember(userId)) !== null;
   // Throwing here would replace the whole layout; sections report the 502 from their loaders.
   let projectLookupFailure = null as string | null;
   const pageScope = await resolveBackofficePageScope({
     params,
     organizations: me.organizations.map(({ organization }) => organization),
     isAppInstalled: async (owner, appId) => {
-      // Another user's installations are not looked up, so their apps cannot be probed.
-      if (owner.kind === "user" && owner.userId !== me.user.id) {
+      // Other users' installations are not looked up, so their apps cannot be probed.
+      if (owner.kind === "user" && !(await canEnterPersonalScope(owner.userId))) {
         return false;
       }
       const installation = await context
@@ -116,9 +133,9 @@ export async function establishBackofficeShellRequest(
       return installation?.status === "active";
     },
     findProject: async (owner, slug): Promise<BackofficeNamedProject | null> => {
-      // Another user's projects are not looked up, so their slugs cannot be probed.
+      // Other users' projects are not looked up, so their slugs cannot be probed.
       const rootOwner = backofficeScopeRootOwner(owner);
-      if (rootOwner.kind === "user" && rootOwner.userId !== me.user.id) {
+      if (rootOwner.kind === "user" && !(await canEnterPersonalScope(rootOwner.userId))) {
         return null;
       }
       const lookup = await lookupAutomationProject(
@@ -156,16 +173,20 @@ export async function establishBackofficeShellRequest(
         cause: pageScope satisfies never,
       });
   }
-  // Administrators may act in any user's scope, but sections show only what the user owns, and
-  // they hide System scope from everyone else rather than refusing it.
+  // Sections hide the personal scopes the user cannot enter and, from everyone but system
+  // administrators, System scope, rather than refusing them.
   const routeOwner = routeScope && backofficeScopeRootOwner(routeScope);
   if (
-    (routeOwner?.kind === "user" && routeOwner.userId !== me.user.id) ||
+    (routeOwner?.kind === "user" && !(await canEnterPersonalScope(routeOwner.userId))) ||
     (routeScope?.kind === "system" && !isBackofficeSystemAdministrator(me.user))
   ) {
     routeScope = null;
   }
   const resolvedScope = routeScope ?? defaultScope;
+  const administeredMemberId = backofficeScopeOtherUserId(me.user.id, resolvedScope);
+  const administeredMember = administeredMemberId
+    ? await findAdministeredMember(administeredMemberId)
+    : null;
 
   const destinationOrganizationId =
     backofficeScopeOrganization(resolvedScope)?.organization.id ?? null;
@@ -187,9 +208,10 @@ export async function establishBackofficeShellRequest(
   if (routeScope) {
     let execution: BackofficeExecutionContext;
     try {
-      execution = createBackofficeExecutionForPrincipal(
+      execution = await createBackofficeExecutionForPrincipal(
         principal,
         backofficeRuntimeScopeFromResolvedScope(routeScope),
+        administeredMembers,
       );
     } catch (error) {
       if (isBackofficeForbiddenError(error)) {
@@ -201,7 +223,7 @@ export async function establishBackofficeShellRequest(
       status: "resolved",
       resolvedScope: routeScope,
       execution,
-      selection: scopeSelectionOf(routeScope, me.user),
+      selection: scopeSelectionOf(routeScope, administeredMember?.email ?? userScopeLabel(me.user)),
     };
   }
 
@@ -209,15 +231,36 @@ export async function establishBackofficeShellRequest(
     me,
     principal,
     resolvedScope,
+    administeredMember,
     route,
     accessTokenExpiresAt: authenticatedRequest.accessTokenExpiresAt,
   });
   return await next();
 }
 
+/** Asks Auth about each member at most once per request, however many checks name them. */
+function administeredMemberLookup(
+  context: Readonly<RouterContextProvider>,
+): Pick<BackofficeIdentityDirectory, "findAdministeredMember"> {
+  const identities = routerContextIdentities(context);
+  const lookups = new Map<string, Promise<AdministeredMember | null>>();
+  return {
+    findAdministeredMember: async (input) => {
+      const key = `${input.administratorId}:${input.memberId}`;
+      let lookup = lookups.get(key);
+      if (!lookup) {
+        lookup = identities.findAdministeredMember(input);
+        lookups.set(key, lookup);
+      }
+      return await lookup;
+    },
+  };
+}
+
+/** `personalScopeLabel` names the user whose personal scope the scope is or belongs to. */
 function scopeSelectionOf(
   scope: BackofficePageResolvedScope,
-  user: BackofficeMeData["user"],
+  personalScopeLabel: string,
 ): BackofficeScopeSelection {
   return {
     ...mapBackofficeScopeNames(scope, {
@@ -226,13 +269,13 @@ function scopeSelectionOf(
       }),
       project: ({ project }) => ({ project: backofficeProjectIdentity(project) }),
     }),
-    label: scopeSelectionLabel(scope, user),
+    label: scopeSelectionLabel(scope, personalScopeLabel),
   };
 }
 
 function scopeSelectionLabel(
   scope: BackofficePageResolvedScope,
-  user: BackofficeMeData["user"],
+  personalScopeLabel: string,
 ): string {
   switch (scope.kind) {
     // The route's execution established that System scope belongs to an administrator.
@@ -241,7 +284,7 @@ function scopeSelectionLabel(
     case "org":
       return scope.organization.name ?? scope.organization.id;
     case "user":
-      return userScopeLabel(user);
+      return personalScopeLabel;
     case "app":
       return scope.appId;
     case "project":

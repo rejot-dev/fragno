@@ -13,6 +13,7 @@ import {
   backofficeRouteScopePath,
   type BackofficeRouteScope,
 } from "@/backoffice-runtime/route-scope";
+import type { AdministeredMember } from "@/fragno/auth/contracts";
 
 import { scopeSwitchPath } from "./scope-switch-path";
 
@@ -27,12 +28,20 @@ export type BackofficeProjectMenuOwner = Extract<
   { kind: "project" }
 >["owner"];
 
-function ownerDescription(owner: BackofficeProjectMenuOwner): { name: string; scope: string } {
+function ownerDescription(
+  owner: BackofficeProjectMenuOwner,
+  administeredMember: AdministeredMember | null,
+): { name: string; scope: string } {
   switch (owner.kind) {
     case "org":
       return { name: "This organization", scope: "the organization scope" };
     case "user":
-      return { name: "Your personal workspace", scope: "your personal scope" };
+      return administeredMember?.userId === owner.userId
+        ? {
+            name: `${administeredMember.email}'s personal workspace`,
+            scope: `${administeredMember.email}'s personal scope`,
+          }
+        : { name: "Your personal workspace", scope: "your personal scope" };
     case "app":
       return { name: "This app", scope: "the app's workspace" };
     default:
@@ -42,19 +51,21 @@ function ownerDescription(owner: BackofficeProjectMenuOwner): { name: string; sc
 
 export function BackofficeProjectMenu({
   owner,
+  administeredMember,
   currentProject,
   projects,
   projectsError,
   projectsLoading,
 }: {
   owner: BackofficeProjectMenuOwner;
+  administeredMember: AdministeredMember | null;
   currentProject: BackofficeProjectOption | null;
   projects: BackofficeProjectOption[];
   projectsError: string | null;
   projectsLoading: boolean;
 }) {
   const location = useLocation();
-  const description = ownerDescription(owner);
+  const description = ownerDescription(owner, administeredMember);
   const createProjectPath = `/backoffice/dashboard/${backofficeRouteScopePath(owner)}?createProject=1`;
 
   return (

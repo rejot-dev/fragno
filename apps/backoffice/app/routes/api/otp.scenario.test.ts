@@ -475,6 +475,7 @@ describe("OTP public boundary security scenarios", () => {
                 verifiedRequestAuthority: {
                   role: "user",
                   organizationId: "victim-org",
+                  administeredMemberId: null,
                   expiresAt: new Date(Date.now() + 60_000),
                   scopeRestriction: null,
                 },
@@ -547,6 +548,7 @@ describe("OTP public boundary security scenarios", () => {
                   verifiedRequestAuthority: {
                     role: "user",
                     organizationId: "owner-org",
+                    administeredMemberId: null,
                     expiresAt: new Date(Date.now() + 60_000),
                     scopeRestriction: null,
                   },

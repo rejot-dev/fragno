@@ -9,7 +9,7 @@ import {
   type BackofficeResolvedScope,
 } from "@/backoffice-runtime/resolved-scope";
 import type { AutomationCollectionSourceState } from "@/components/backoffice/current-context-state";
-import type { BackofficeMeData, Organization } from "@/fragno/auth/contracts";
+import type { AdministeredMember, BackofficeMeData, Organization } from "@/fragno/auth/contracts";
 import {
   getAutomationBrowserDatabase,
   type AutomationCollectionSource,
@@ -32,6 +32,7 @@ const EMPTY_PROJECTS: BackofficeProjectOption[] = [];
 type BackofficeTopBarProps = {
   me: BackofficeMeData | null;
   resolvedScope: BackofficeResolvedScope<Organization, BackofficeNamedProject> | null;
+  administeredMember: AdministeredMember | null;
   projectCollectionSource: AutomationCollectionSourceState | null;
   isLoading?: boolean;
   sidebarCollapsed: boolean;
@@ -41,16 +42,19 @@ type BackofficeTopBarProps = {
 
 function LocalFirstBackofficeProjectMenu({
   owner,
+  administeredMember,
   currentProject,
   sourceState,
 }: {
   owner: BackofficeProjectMenuOwner;
+  administeredMember: AdministeredMember | null;
   currentProject: BackofficeProjectOption | null;
   sourceState: AutomationCollectionSourceState | null;
 }) {
   const loadingMenu = (
     <BackofficeProjectMenu
       owner={owner}
+      administeredMember={administeredMember}
       currentProject={currentProject}
       projects={EMPTY_PROJECTS}
       projectsError={null}
@@ -61,6 +65,7 @@ function LocalFirstBackofficeProjectMenu({
     return (
       <BackofficeProjectMenu
         owner={owner}
+        administeredMember={administeredMember}
         currentProject={currentProject}
         projects={EMPTY_PROJECTS}
         projectsError={sourceState?.message ?? "Project synchronization is unavailable."}
@@ -76,6 +81,7 @@ function LocalFirstBackofficeProjectMenu({
       <Suspense fallback={loadingMenu}>
         <SynchronizedBackofficeProjectMenu
           owner={owner}
+          administeredMember={administeredMember}
           currentProject={currentProject}
           source={sourceState.source}
         />
@@ -86,10 +92,12 @@ function LocalFirstBackofficeProjectMenu({
 
 function SynchronizedBackofficeProjectMenu({
   owner,
+  administeredMember,
   currentProject,
   source,
 }: {
   owner: BackofficeProjectMenuOwner;
+  administeredMember: AdministeredMember | null;
   currentProject: BackofficeProjectOption | null;
   source: AutomationCollectionSource;
 }) {
@@ -103,6 +111,7 @@ function SynchronizedBackofficeProjectMenu({
   return (
     <BackofficeProjectMenu
       owner={owner}
+      administeredMember={administeredMember}
       currentProject={currentProject}
       projects={projects}
       projectsError={projectsState.status === "error" ? projectsState.message : null}
@@ -114,6 +123,7 @@ function SynchronizedBackofficeProjectMenu({
 export function BackofficeTopBar({
   me,
   resolvedScope,
+  administeredMember,
   projectCollectionSource,
   isLoading,
   sidebarCollapsed,
@@ -133,6 +143,7 @@ export function BackofficeTopBar({
           <BackofficeScopeMenu
             me={me}
             currentScope={resolvedScope}
+            administeredMember={administeredMember}
             sidebarCollapsed={sidebarCollapsed}
           />
         </div>
@@ -141,6 +152,7 @@ export function BackofficeTopBar({
           <div className="flex min-w-0 flex-1 items-stretch min-[960px]:w-72 min-[960px]:flex-none min-[960px]:border-r min-[960px]:border-[color:var(--bo-border)]">
             <LocalFirstBackofficeProjectMenu
               owner={backofficeRouteScopeFromResolvedScope(projectOwner)}
+              administeredMember={administeredMember}
               currentProject={
                 resolvedScope.kind === "project"
                   ? { slug: resolvedScope.project.slug, label: resolvedScope.project.name }

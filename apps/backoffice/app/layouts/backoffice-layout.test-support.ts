@@ -80,6 +80,7 @@ export function provideBackofficeShellRequest(
       auth: { scopeRestriction: null, transport: "cookie", expiresAt: accessTokenExpiresAt },
     } as unknown as BackofficeAuthPrincipal,
     resolvedScope: routeScope ?? defaultScope,
+    administeredMember: null,
     route: routeScope
       ? {
           status: "resolved",

@@ -26,7 +26,7 @@ export default function BackofficeLayoutRoute(props: Route.ComponentProps) {
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const shellRequest = getBackofficeShellRequest(context);
-  const { me, resolvedScope } = shellRequest;
+  const { me, resolvedScope, administeredMember } = shellRequest;
   const accessTokenExpiresAt = shellRequest.accessTokenExpiresAt.toISOString();
 
   const automationCollectionSourcePromise = fetchAutomationCollectionSource(
@@ -73,6 +73,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     me,
     accessTokenExpiresAt,
     resolvedScope,
+    administeredMember,
     automationCollectionSource,
     projectCollectionSource,
   };

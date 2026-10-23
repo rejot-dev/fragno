@@ -17,6 +17,7 @@ const verifiedRequestAuthority = {
   scopeRestriction: null,
   role: "user" as const,
   organizationId: "acme-org",
+  administeredMemberId: null,
   expiresAt: new Date("2099-01-01T00:00:00.000Z"),
 };
 const orgExecution = createBackofficeRequestExecution({

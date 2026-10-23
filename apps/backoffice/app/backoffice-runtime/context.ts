@@ -38,6 +38,11 @@ export type BackofficeVerifiedRequestAuthority = Readonly<{
   userId: string;
   role: Role;
   organizationId: string | null;
+  /**
+   * The other user whose personal scope the request names, verified by the request's execution
+   * boundary to belong to an organization this user owns or administers.
+   */
+  administeredMemberId: string | null;
   expiresAtEpochMs: number;
   scopeRestriction: BackofficeContextScope | null;
 }>;
@@ -48,6 +53,7 @@ export const backofficeVerifiedRequestAuthoritySchema: z.ZodType<BackofficeVerif
     userId: z.string().trim().min(1),
     role: z.enum(["user", "admin"]),
     organizationId: z.string().trim().min(1).nullable(),
+    administeredMemberId: z.string().trim().min(1).nullable(),
     expiresAtEpochMs: z.number().int().positive(),
     scopeRestriction: backofficeContextScopeSchema.nullable(),
   });
@@ -168,6 +174,7 @@ export function createBackofficeRequestExecution({
   verifiedRequestAuthority: Readonly<{
     role: Role;
     organizationId: string | null;
+    administeredMemberId: string | null;
     expiresAt: Date;
     scopeRestriction: BackofficeContextScope | null;
   }>;
@@ -185,6 +192,7 @@ export function createBackofficeRequestExecution({
       userId,
       role: verifiedRequestAuthority.role,
       organizationId: verifiedRequestAuthority.organizationId,
+      administeredMemberId: verifiedRequestAuthority.administeredMemberId,
       expiresAtEpochMs: verifiedRequestAuthority.expiresAt.getTime(),
       scopeRestriction: verifiedRequestAuthority.scopeRestriction,
     },

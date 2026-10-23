@@ -4,7 +4,10 @@ import { OverflowTabRow } from "@fragno-private/design-system/overflow-tab-row";
 import { useOutletContext } from "react-router";
 
 import { resolveBackofficeUserAuthorityRole } from "@/backoffice-runtime/authority-roles";
-import { createBackofficeExecutionForPrincipal } from "@/fragno/auth/backoffice-principal.server";
+import {
+  createBackofficeExecutionForPrincipal,
+  routerContextIdentities,
+} from "@/fragno/auth/backoffice-principal.server";
 import { requireBackofficePrincipal } from "@/fragno/auth/request-auth.server";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
@@ -42,13 +45,19 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     userId: auth.user.id,
     role: auth.user.role,
     organizationId,
+    // These are the user's own scopes, which no organization administration reaches into.
+    administeredMemberId: null,
   };
   const { runtime } = context.get(BackofficeWorkerContext);
 
   const scopes = await Promise.all(
     permissionScopeDefinitions(auth.user.id, auth.user.role, organizationId).map(
       async ({ key, scope }) => {
-        const execution = createBackofficeExecutionForPrincipal(auth, scope);
+        const execution = await createBackofficeExecutionForPrincipal(
+          auth,
+          scope,
+          routerContextIdentities(context),
+        );
         const principal = execution.actors.principal;
         if (!principal) {
           throw new Error("User authority inspection requires a principal.");

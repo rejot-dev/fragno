@@ -196,6 +196,20 @@ export type UserOrganizationAuthorityFacts = Readonly<{
   organizationRoles: readonly string[] | null;
 }>;
 
+/**
+ * A user whose personal workspace another user may act in, because that user is an owner or admin
+ * of an organization they both belong to.
+ */
+export type AdministeredMember = Readonly<{
+  userId: string;
+  email: string;
+}>;
+
+/** Whether an organization's member with these roles may act in its members' personal workspaces. */
+export function administersMembers(roles: readonly string[]): boolean {
+  return roles.some((role) => role === "owner" || role === "admin");
+}
+
 export type VerifyUserEmailInput = {
   userId: string;
   expectedEmail?: string;

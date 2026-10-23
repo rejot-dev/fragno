@@ -6,7 +6,12 @@ import {
   type BackofficePermissionNamespace,
   type BackofficePermissionRequirement,
 } from "@fragno-dev/backoffice-api/v0/shared/permissions";
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  type BackofficeContextScope,
+  type BackofficeScope,
+  type BackofficeScopeNames,
+  backofficeScopeRootOwner,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import type { Role } from "@/fragno/auth/contracts";
 
@@ -57,6 +62,47 @@ type BackofficePermissionDecisions = {
 };
 
 /**
+ * What a person may do in a personal workspace they act in: their own, or a member's whose
+ * organization they administer.
+ */
+const PERSONAL_WORKSPACE_PERMISSION_DECISIONS = {
+  projects: { create: "grant", read: "grant" },
+  account: { read: "grant", manage: "grant" },
+  admin: {
+    appsManage: "deny",
+    appsRead: "deny",
+    oauthClientsManage: "deny",
+    oauthClientsRead: "deny",
+    signUpInvitationsManage: "deny",
+    organizationsManage: "deny",
+    usersManage: "deny",
+  },
+  apps: { read: "deny", manage: "deny" },
+  capabilities: { read: "grant" },
+  cloudflare: { browserRun: "grant" },
+  connections: { manage: "grant", read: "grant" },
+  events: { emit: "grant", manage: "grant", read: "grant", route: "deny" },
+  forms: { create: "grant", read: "grant", update: "grant" },
+  hooks: { read: "grant" },
+  identity: { link: "deny", bind: "deny", read: "grant", resolve: "deny", revoke: "deny" },
+  integrations: { read: "grant", manage: "grant", execute: "grant" },
+  internal: { manage: "deny" },
+  org: { read: "deny", manage: "deny" },
+  // Curating the public Marketplace stays with system administrators.
+  marketplace: { read: "grant", publish: "grant", feature: "deny" },
+  models: { classify: "grant", generateImage: "grant" },
+  packages: { read: "grant", install: "grant" },
+  otp: { create: "grant" },
+  pi: { manage: "grant", modify: "grant", read: "grant" },
+  reson8: { transcribe: "grant" },
+  router: { modify: "grant", read: "grant" },
+  sandbox: { modify: "grant", read: "grant" },
+  store: { modify: "grant", read: "grant" },
+  upload: { modify: "grant", read: "grant" },
+  workflow: { executeCode: "grant", modify: "grant", read: "grant" },
+} as const satisfies BackofficePermissionDecisions;
+
+/**
  * Roles for human users, chosen per scope by `resolveBackofficeUserAuthorityRole`.
  *
  * `user-owner` and `organization-member` are the same non-admin user in different scopes:
@@ -65,6 +111,10 @@ type BackofficePermissionDecisions = {
  * non-administration permission; organization members additionally link and resolve external
  * identities, route events, and receive live organization-role permissions. Admins resolve to
  * `system-administrator` in either scope.
+ *
+ * `member-administrator` is an owner or admin of an organization, in the personal scope of one of
+ * its members. They act there as the member would, so members share their personal workspace with
+ * the people who administer their organizations.
  *
  * `app-workspace-observer` is anyone with a role in the scope that installed an app, inside that
  * app's workspace: the app keeps its data there, so people may read but not change it.
@@ -105,42 +155,9 @@ export const USER_AUTHORITY_ROLE_PERMISSION_DECISIONS = {
     upload: { modify: "grant", read: "grant" },
     workflow: { executeCode: "grant", modify: "grant", read: "grant" },
   },
-  "user-owner": {
-    projects: { create: "grant", read: "grant" },
-    account: { read: "grant", manage: "grant" },
-    admin: {
-      appsManage: "deny",
-      appsRead: "deny",
-      oauthClientsManage: "deny",
-      oauthClientsRead: "deny",
-      signUpInvitationsManage: "deny",
-      organizationsManage: "deny",
-      usersManage: "deny",
-    },
-    apps: { read: "deny", manage: "deny" },
-    capabilities: { read: "grant" },
-    cloudflare: { browserRun: "grant" },
-    connections: { manage: "grant", read: "grant" },
-    events: { emit: "grant", manage: "grant", read: "grant", route: "deny" },
-    forms: { create: "grant", read: "grant", update: "grant" },
-    hooks: { read: "grant" },
-    identity: { link: "deny", bind: "deny", read: "grant", resolve: "deny", revoke: "deny" },
-    integrations: { read: "grant", manage: "grant", execute: "grant" },
-    internal: { manage: "deny" },
-    org: { read: "deny", manage: "deny" },
-    // Curating the public Marketplace stays with system administrators.
-    marketplace: { read: "grant", publish: "grant", feature: "deny" },
-    models: { classify: "grant", generateImage: "grant" },
-    packages: { read: "grant", install: "grant" },
-    otp: { create: "grant" },
-    pi: { manage: "grant", modify: "grant", read: "grant" },
-    reson8: { transcribe: "grant" },
-    router: { modify: "grant", read: "grant" },
-    sandbox: { modify: "grant", read: "grant" },
-    store: { modify: "grant", read: "grant" },
-    upload: { modify: "grant", read: "grant" },
-    workflow: { executeCode: "grant", modify: "grant", read: "grant" },
-  },
+  "user-owner": PERSONAL_WORKSPACE_PERMISSION_DECISIONS,
+  // Administering an organization reaches its members' personal workspaces as their owners would.
+  "member-administrator": PERSONAL_WORKSPACE_PERMISSION_DECISIONS,
   "organization-member": {
     projects: { create: "grant", read: "grant" },
     account: { read: "grant", manage: "grant" },
@@ -244,6 +261,9 @@ const USER_AUTHORITY_ROLE_GRANTS = {
   "user-owner": grantedPermissionRequirements(
     USER_AUTHORITY_ROLE_PERMISSION_DECISIONS["user-owner"],
   ),
+  "member-administrator": grantedPermissionRequirements(
+    USER_AUTHORITY_ROLE_PERMISSION_DECISIONS["member-administrator"],
+  ),
   "organization-member": grantedPermissionRequirements(
     USER_AUTHORITY_ROLE_PERMISSION_DECISIONS["organization-member"],
   ),
@@ -315,27 +335,45 @@ export const BACKOFFICE_AUTHORITY_ROLE_GRANTS = {
 
 type BackofficeAuthorityRole = keyof typeof BACKOFFICE_AUTHORITY_ROLE_GRANTS;
 
+/** The verified or current facts that decide a user's role in a scope. */
+export type BackofficeUserAuthority = Readonly<{
+  userId: string;
+  role: Role;
+  organizationId: string | null;
+  /**
+   * A member of an organization this user owns or administers, whose personal workspace they may
+   * act in: verified once per request at its execution boundary, or read live for deferred work.
+   */
+  administeredMemberId: string | null;
+}>;
+
+/** The user who owns the scope, when that is someone other than `userId`. */
+export function backofficeScopeOtherUserId(
+  userId: string,
+  scope: BackofficeScope<BackofficeScopeNames>,
+): string | null {
+  const owner = backofficeScopeRootOwner(scope);
+  return owner?.kind === "user" && owner.userId !== userId ? owner.userId : null;
+}
+
 /**
  * Maps verified or current user facts to the one Backoffice role available in a scope. A project
  * answers to its owner, so a person's role in a project is their role in the owning scope.
  */
 export const resolveBackofficeUserAuthorityRole = (
-  authority: Readonly<{
-    userId: string;
-    role: Role;
-    organizationId: string | null;
-  }>,
+  authority: BackofficeUserAuthority,
   scope: BackofficeContextScope,
 ): BackofficeUserAuthorityRole | null => {
   switch (scope.kind) {
     case "system":
       return authority.role === "admin" ? "system-administrator" : null;
-    // A system administrator may administer shared scopes, but not another user's private scope.
+    // System administration does not reach another user's private scope; administering an
+    // organization the user belongs to does.
     case "user":
-      if (scope.userId !== authority.userId) {
-        return null;
+      if (scope.userId === authority.userId) {
+        return authority.role === "admin" ? "system-administrator" : "user-owner";
       }
-      return authority.role === "admin" ? "system-administrator" : "user-owner";
+      return scope.userId === authority.administeredMemberId ? "member-administrator" : null;
     case "org":
       if (authority.organizationId !== scope.orgId) {
         return null;

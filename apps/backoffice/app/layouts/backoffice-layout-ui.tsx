@@ -28,6 +28,7 @@ export default function BackofficeLayout({
     me,
     accessTokenExpiresAt,
     resolvedScope,
+    administeredMember,
     automationCollectionSource,
     projectCollectionSource,
   } = loaderData;
@@ -51,6 +52,7 @@ export default function BackofficeLayout({
     <BackofficeShell
       me={me}
       resolvedScope={resolvedScope}
+      administeredMember={administeredMember}
       accessTokenExpiresAt={accessTokenExpiresAt}
       automationCollectionSource={automationCollectionSource}
       projectCollectionSource={projectCollectionSource}
@@ -96,6 +98,7 @@ export function ErrorBoundary() {
     <BackofficeShell
       me={layoutData?.me ?? null}
       resolvedScope={layoutData?.resolvedScope ?? null}
+      administeredMember={layoutData?.administeredMember ?? null}
       accessTokenExpiresAt={layoutData?.accessTokenExpiresAt ?? null}
       automationCollectionSource={layoutData?.automationCollectionSource ?? null}
       projectCollectionSource={layoutData?.projectCollectionSource ?? null}

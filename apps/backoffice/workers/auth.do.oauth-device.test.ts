@@ -309,6 +309,19 @@ describe("Backoffice OAuth device authorization", () => {
     });
     expect(projectResult.scope).toEqual(projectScope);
 
+    // The organization's owner reaches the personal scopes of its members.
+    await signedUp.auth.commands.applyScenarioFixture({
+      users: [{ id: "member-1", email: "member@example.test", role: "user", status: "active" }],
+      members: [{ organizationId: signedUp.organizationId, userId: "member-1", roles: ["member"] }],
+    });
+    const memberScope = { kind: "user" as const, userId: "member-1" };
+    const memberResult = await signedUp.auth.commands.exchangeBackofficeExecutionToken({
+      requestUrl: `${baseUrl}/api/backoffice/execution-token`,
+      oauthAccessToken: oauthToken.access_token,
+      scope: memberScope,
+    });
+    expect(memberResult.scope).toEqual(memberScope);
+
     await signedUp.auth.commands.applyScenarioFixture({
       users: [
         {
