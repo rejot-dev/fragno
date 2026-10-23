@@ -8,6 +8,8 @@ import {
   backofficeProvisioningOperations,
   type BackofficeProvisioningOperationId,
   type CreateInvitationInput,
+  type ProvisionOrganizationForInviteeInput,
+  type ProvisionOrganizationForInviteeResult,
   type ProvisionOrganizationInput,
   type ProvisionOrganizationResult,
   type ProvisionProjectInput,
@@ -37,27 +39,24 @@ type ProvisioningApp = Pick<
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Creates the organization, then installs the app there with everything it requests and links the
+ * Installs the app in a provisioned organization with everything it requests, and links the
  * installation to the app's organization. Each step is idempotent, so a retry after a failure
  * finishes the ones left. An owner who uninstalled the app decided against it: provisioning does
  * not install it again.
  */
-async function provisionOrganization(
+async function installProvisioned(
   runtime: BackofficeRuntimeServices,
   app: ProvisioningApp,
-  input: ProvisionOrganizationInput,
-): Promise<AppProvisioningResult<ProvisionOrganizationResult>> {
-  const provisioned = await runtime.objects.auth.singleton().commands.provisionAppOrganization({
-    appId: app.id,
-    oauthClientId: app.oauthClientId,
-    ...input,
-  });
-  if (!provisioned.ok) {
-    return provisioned;
-  }
+  input: {
+    organizationId: string;
+    externalOrganizationId: string;
+    name: string;
+    installedByUserId: string;
+  },
+): Promise<AppProvisioningResult<null>> {
   const installations = runtime.objects.appInstallations.for({
     kind: "org",
-    orgId: provisioned.value.organizationId,
+    orgId: input.organizationId,
   }).commands;
   let installation = await installations.getInstallation({ appId: app.id });
   if (installation?.status === "uninstalled") {
@@ -76,7 +75,7 @@ async function provisionOrganization(
         appId: app.id,
         grantedPermissions: app.requestedPermissions,
         resourceScope: { kind: "owner" },
-        installedByUserId: input.ownerUserId,
+        installedByUserId: input.installedByUserId,
         actionsRevision: app.actionsRevision,
       }),
     );
@@ -93,7 +92,58 @@ async function provisionOrganization(
   if (!claimed.ok) {
     return { ok: false, error: { code: "conflict", message: claimed.error.message } };
   }
-  return provisioned;
+  return { ok: true, value: null };
+}
+
+/** Creates the organization for an owner who authorized the app, then installs the app there. */
+async function provisionOrganization(
+  runtime: BackofficeRuntimeServices,
+  app: ProvisioningApp,
+  input: ProvisionOrganizationInput,
+): Promise<AppProvisioningResult<ProvisionOrganizationResult>> {
+  const provisioned = await runtime.objects.auth.singleton().commands.provisionAppOrganization({
+    appId: app.id,
+    oauthClientId: app.oauthClientId,
+    ...input,
+  });
+  if (!provisioned.ok) {
+    return provisioned;
+  }
+  const installed = await installProvisioned(runtime, app, {
+    organizationId: provisioned.value.organizationId,
+    externalOrganizationId: input.externalOrganizationId,
+    name: input.name,
+    installedByUserId: input.ownerUserId,
+  });
+  return installed.ok ? provisioned : installed;
+}
+
+/**
+ * Creates the organization with a pending owner invitation, then installs the app there as the
+ * inviting user, so the app can send the invitation and accept it once the owner signs in.
+ */
+async function provisionOrganizationForInvitee(
+  runtime: BackofficeRuntimeServices,
+  app: ProvisioningApp,
+  input: ProvisionOrganizationForInviteeInput,
+): Promise<AppProvisioningResult<ProvisionOrganizationForInviteeResult>> {
+  const provisioned = await runtime.objects.auth
+    .singleton()
+    .commands.provisionAppOrganizationForInvitee({
+      appId: app.id,
+      oauthClientId: app.oauthClientId,
+      ...input,
+    });
+  if (!provisioned.ok) {
+    return provisioned;
+  }
+  const installed = await installProvisioned(runtime, app, {
+    organizationId: provisioned.value.organizationId,
+    externalOrganizationId: input.externalOrganizationId,
+    name: input.name,
+    installedByUserId: input.invitedByUserId,
+  });
+  return installed.ok ? provisioned : installed;
 }
 
 /** Apps reach only organizations where they are installed. */
@@ -243,6 +293,7 @@ const provisioningHandlers: {
   ) => Promise<AppProvisioningResult<z.input<ProvisioningOperations[TId]["output"]>>>;
 } = {
   "organizations.provision": provisionOrganization,
+  "organizations.provisionForInvitee": provisionOrganizationForInvitee,
   "projects.provision": provisionProject,
   "invitations.create": createInvitation,
   "invitations.send": sendInvitation,

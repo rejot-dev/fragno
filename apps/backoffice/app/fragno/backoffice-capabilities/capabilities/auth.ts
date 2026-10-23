@@ -18,6 +18,10 @@ export const PROVISIONING_AUTOMATION_EVENTS = {
     eventType: "organization.provisioned",
     label: "Organization provisioned",
   },
+  "organizations.provisionForInvitee": {
+    eventType: "organization.provisionedForInvitee",
+    label: "Organization provisioned for an invited owner",
+  },
   "projects.provision": { eventType: "project.provisioned", label: "Project provisioned" },
   "invitations.create": { eventType: "invitation.created", label: "Invitation created" },
   "invitations.send": { eventType: "invitation.sent", label: "Invitation sent" },

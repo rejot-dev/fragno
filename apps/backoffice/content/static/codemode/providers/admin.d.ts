@@ -339,6 +339,7 @@ type AppTrust =
       kind: "first-party";
       provisioningPermissions: (
         | "organizations.provision"
+        | "organizations.provisionForInvitee"
         | "projects.provision"
         | "invitations.create"
         | "invitations.send"

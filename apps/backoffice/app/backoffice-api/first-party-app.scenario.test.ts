@@ -72,6 +72,7 @@ const branding = {
 };
 const everyProvisioningPermission = [
   "organizations.provision",
+  "organizations.provisionForInvitee",
   "projects.provision",
   "invitations.create",
   "invitations.send",
@@ -837,5 +838,190 @@ test("an owner links an existing organization to a first-party app without revie
         });
       },
     ),
+  ]);
+});
+
+/** Someone signs up to Backoffice with a password; returns their session cookie and user ID. */
+async function signUpWithPassword(ctx: Ctx, email: string, name: string) {
+  const response = await ctx.runtime.objects.auth.singleton().http.fetch(
+    new Request(`${origin}/api/auth/sign-up/email`, {
+      method: "POST",
+      headers: { origin, "content-type": "application/json" },
+      body: JSON.stringify({ email, password: "password123", name }),
+    }),
+  );
+  assert.equal(response.status, 200, await response.clone().text());
+  const cookie = response.headers.getSetCookie()[0]?.split(";", 1)[0] ?? "";
+  return { cookie, userId: await sessionUserId(ctx, cookie) };
+}
+
+/** The signed-in member changes their own roles in the organization, as the members page does. */
+async function setOwnRoles(ctx: Ctx, user: { cookie: string; userId: string }, roles: string[]) {
+  const auth = ctx.runtime.objects.auth.singleton().http;
+  const headers = { origin, cookie: user.cookie, "content-type": "application/json" };
+  const listed = await auth.fetch(
+    new Request(`${origin}/api/auth/organization/list-members?organizationId=${ctx.vars.orgId}`, {
+      headers,
+    }),
+  );
+  assert.equal(listed.status, 200, await listed.clone().text());
+  const { members } = (await listed.json()) as { members: { id: string; userId: string }[] };
+  const memberId = members.find((member) => member.userId === user.userId)?.id;
+  const updated = await auth.fetch(
+    new Request(`${origin}/api/auth/organization/update-member-role`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ organizationId: ctx.vars.orgId, memberId, role: roles.join(",") }),
+    }),
+  );
+  assert.equal(updated.status, 200, await updated.clone().text());
+}
+
+test("Bookkeeping provisions an organization for an owner who never signed in, who owns it once they accept", async () => {
+  await runFirstPartyScenario("first-party provisioning for an invitee", (then) => [
+    then(
+      "an operator who signed in to Bookkeeping has it create a firm with a pending owner invitation, and no members",
+      async (ctx) => {
+        const operator = await signUpWithPassword(ctx, "operator@bookkeeping.test", "Operator");
+        ctx.vars.ownerCookie = operator.cookie;
+        ctx.vars.ownerId = operator.userId;
+        await authorizeBookkeeping(ctx, operator.cookie);
+
+        const client = provisioning(ctx);
+        const input = {
+          externalOrganizationId: "bk-firm-1",
+          name: "Lovelace & Co",
+          ownerEmail: "Ada@Example.test",
+          invitedByUserId: operator.userId,
+        };
+        const provisioned = await client.call("organizations.provisionForInvitee", input);
+        expect(provisioned).toEqual({
+          organizationId: expect.any(String),
+          slug: "lovelace-co",
+          created: true,
+          ownerInvitation: { invitationId: expect.any(String), expiresAt: expect.any(String) },
+        });
+        ctx.vars.orgId = provisioned.organizationId;
+        // Provisioning it again returns the same pending invitation, but not to another address.
+        expect(await client.call("organizations.provisionForInvitee", input)).toEqual({
+          ...provisioned,
+          created: false,
+        });
+        await expectApiError(
+          client.call("organizations.provisionForInvitee", {
+            ...input,
+            ownerEmail: "someone@example.test",
+          }),
+          "conflict",
+        );
+        // The operator invited, but is not a member.
+        expect(
+          await ctx.runtime.objects.auth.singleton().commands.getScenarioMemberRoles({
+            organizationId: ctx.vars.orgId,
+            userId: operator.userId,
+          }),
+        ).toBeNull();
+        expect(
+          await ctx.runtime.objects.appInstallations
+            .forOrg(ctx.vars.orgId)
+            .commands.getInstallation({ appId: ctx.vars.appId }),
+        ).toMatchObject({
+          status: "active",
+          externalAccount: { id: "bk-firm-1", label: "Lovelace & Co" },
+        });
+        // Someone who never signed in to Bookkeeping cannot invite through it.
+        await expectApiError(
+          client.call("organizations.provisionForInvitee", {
+            ...input,
+            externalOrganizationId: "bk-firm-2",
+            invitedByUserId: ctx.vars.existingUserId,
+          }),
+          "forbidden",
+        );
+        expect(
+          (await listSystemEvents(ctx)).filter(
+            (event) => event.eventType === "organization.provisionedForInvitee",
+          ),
+        ).toHaveLength(2);
+      },
+    ),
+    then(
+      "the invited owner gets the email, signs in to Bookkeeping, and accepts to own the firm",
+      async (ctx) => {
+        const client = provisioning(ctx);
+        const { ownerInvitation } = await client.call("organizations.provisionForInvitee", {
+          externalOrganizationId: "bk-firm-1",
+          name: "Lovelace & Co",
+          ownerEmail: "ada@example.test",
+          invitedByUserId: ctx.vars.ownerId,
+        });
+        assert(ownerInvitation);
+        const { invitationId } = ownerInvitation;
+        const url = `${branding.homeUrl}/invitations/${invitationId}`;
+        expect(await client.call("invitations.send", { invitationId, url })).toEqual({
+          email: "ada@example.test",
+        });
+        expect(ctx.fakes.resend?.queueEmailCalls.at(-1)).toMatchObject({
+          input: {
+            to: "ada@example.test",
+            subject: "Operator invited you to Lovelace & Co on Bookkeeping",
+          },
+        });
+
+        const ada = await signUpWithPassword(ctx, "ada@example.test", "Ada");
+        await authorizeBookkeeping(ctx, ada.cookie);
+        await ctx.runtime.objects.auth
+          .singleton()
+          .commands.verifyAdminUserEmail({ email: "ada@example.test" });
+        expect(
+          await client.call("invitations.accept", { invitationId, userId: ada.userId }),
+        ).toMatchObject({
+          organization: { organizationId: ctx.vars.orgId, name: "Lovelace & Co" },
+          roles: ["owner"],
+        });
+        // An owner who is also an admin still owns it, so provisioning it again invites no one,
+        // not even the operator, who would otherwise take ownership without Ada's approval.
+        await setOwnRoles(ctx, ada, ["admin", "owner"]);
+        expect(
+          await client.call("organizations.provisionForInvitee", {
+            externalOrganizationId: "bk-firm-1",
+            name: "Lovelace & Co",
+            ownerEmail: "operator@bookkeeping.test",
+            invitedByUserId: ctx.vars.ownerId,
+          }),
+        ).toMatchObject({ created: false, ownerInvitation: null });
+        // As its owner, Ada invites colleagues through Bookkeeping.
+        expect(
+          await client.call("invitations.create", {
+            organizationId: ctx.vars.orgId,
+            inviterUserId: ada.userId,
+            email: "charles@example.test",
+            roles: ["admin"],
+          }),
+        ).toMatchObject({ email: "charles@example.test", roles: ["admin"] });
+      },
+    ),
+    then("an expired owner invitation is replaced when provisioned again", async (ctx) => {
+      const client = provisioning(ctx);
+      const input = {
+        externalOrganizationId: "bk-firm-3",
+        name: "Hopper Books",
+        ownerEmail: "grace@example.test",
+        invitedByUserId: ctx.vars.ownerId,
+      };
+      const first = await client.call("organizations.provisionForInvitee", input);
+      // Auth reads `Date`, not the scenario's clock; invitations last 48 hours.
+      vi.useFakeTimers({ toFake: ["Date"], now: Date.now() + 49 * 60 * 60 * 1_000 });
+      let second;
+      try {
+        // Bookkeeping's own token expired too.
+        ctx.vars.token = await requestClientCredentialsToken(ctx);
+        second = await provisioning(ctx).call("organizations.provisionForInvitee", input);
+      } finally {
+        vi.useRealTimers();
+      }
+      expect(second).toMatchObject({ organizationId: first.organizationId, created: false });
+      expect(second.ownerInvitation?.invitationId).not.toBe(first.ownerInvitation?.invitationId);
+    }),
   ]);
 });

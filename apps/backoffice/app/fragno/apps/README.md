@@ -392,7 +392,7 @@ system administrator says otherwise:
 
 ```bash
 admin.apps.update-trust --app-id APP_ID --trust-json \
-  '{"kind":"first-party","provisioningPermissions":["organizations.provision","projects.provision","invitations.create","invitations.send","invitations.accept"],
+  '{"kind":"first-party","provisioningPermissions":["organizations.provision","organizations.provisionForInvitee","projects.provision","invitations.create","invitations.send","invitations.accept"],
     "branding":{"displayName":"Bookkeeping","logoUrl":"https://bookkeeping.example/logo.svg","accentColor":"#2f6f4e",
       "homeUrl":"https://bookkeeping.example","supportUrl":"https://bookkeeping.example/help"}}'
 ```
@@ -429,16 +429,24 @@ a call returns what the first one made, with `created: false` where it creates. 
 is unknown can therefore be retried. The contract and a client live in
 `@fragno-dev/backoffice-api/v0/provisioning` and `createBackofficeProvisioningClient`.
 
-| Operation                 | Does                                                                                                                                                          |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `organizations.provision` | Creates an organization owned by a user who authorized the app, installs the app there with every requested permission, owner-wide, and claims it for the app |
-| `projects.provision`      | Creates a project in an organization where the app is installed, as a member who authorized the app                                                           |
-| `invitations.create`      | Invites an email address to an organization where the app is installed, as a member who authorized the app                                                    |
-| `invitations.send`        | Emails a pending invitation in the app's name, linking to the app's page for accepting it                                                                     |
-| `invitations.accept`      | Accepts an invitation for the user it is addressed to, in an organization where the app is installed                                                          |
+| Operation                           | Does                                                                                                                                                                                                    |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `organizations.provision`           | Creates an organization owned by a user who authorized the app, installs the app there with every requested permission, owner-wide, and claims it for the app                                           |
+| `organizations.provisionForInvitee` | Creates an organization with no members and a pending owner invitation to an email address, from a user who authorized the app, and installs and claims the app there as `organizations.provision` does |
+| `projects.provision`                | Creates a project in an organization where the app is installed, as a member who authorized the app                                                                                                     |
+| `invitations.create`                | Invites an email address to an organization where the app is installed, as a member who authorized the app                                                                                              |
+| `invitations.send`                  | Emails a pending invitation in the app's name, linking to the app's page for accepting it                                                                                                               |
+| `invitations.accept`                | Accepts an invitation for the user it is addressed to, in an organization where the app is installed                                                                                                    |
 
 - **The app's users.** An app names only Backoffice users who authorized its OAuth client, which
   everyone who signs in to it has. It cannot reach other Backoffice users.
+- **Owners who have not signed in yet.** `organizations.provisionForInvitee` invites the owner by
+  email instead of naming a user. The inviting user must have authorized the app; they are recorded
+  as the organization's creator and the installation's installer, but do not become a member. Until
+  the owner accepts, the organization has no members: only the app's installation and the invitation
+  reach it. Provisioning it again returns the pending invitation, a new one once it expired, or none
+  once it has an owner; another address while one is pending answers `409`. The invitation lasts 48
+  hours, as members' own invitations do.
 - **The app's identifiers.** Organizations and projects get IDs derived from the app and its
   identifier (`app/fragno/apps/provisioned-id.ts`), so a repeated call finds them by primary key.
   Nothing else records them. A project's ID also derives from its organization, so the same
@@ -458,10 +466,10 @@ is unknown can therefore be retried. The contract and a client live in
 - **Uninstalling wins.** If the organization's owners uninstalled the app, provisioning that
   organization again answers `409` instead of installing it again.
 - **Audit.** Every completed call is recorded as a System event from source `provisioning`
-  (`organization.provisioned`, `project.provisioned`, `invitation.created`, `invitation.sent`,
-  `invitation.accepted`), with the app as initiator and the input and result as payload.
-  Administrators read them with `events.list` in System context. The event is recorded after the
-  operation, so a retry after a failure in between records it again.
+  (`organization.provisioned`, `organization.provisionedForInvitee`, `project.provisioned`,
+  `invitation.created`, `invitation.sent`, `invitation.accepted`), with the app as initiator and the
+  input and result as payload. Administrators read them with `events.list` in System context. The
+  event is recorded after the operation, so a retry after a failure in between records it again.
 
 Errors use the API's envelope: `400` for an invitation link outside the app, `401` for a missing or
 invalid token, `403` for a third-party app, a missing provisioning permission, a user who has not
