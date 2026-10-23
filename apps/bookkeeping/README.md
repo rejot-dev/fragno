@@ -204,10 +204,12 @@ then emails the invitation in Bookkeeping's name with `invitations.send`, linkin
 `/invitations/:invitationId`; the page shows the link too, to send by hand when Backoffice cannot
 email, as a local Backoffice without Resend cannot. The invited person signs in there, with
 Backoffice's sign-in page already showing the invited address; someone signed in with another
-address is offered to log out first. They then join: Bookkeeping calls `invitations.accept`, and
-Backoffice checks that the invitation is for their verified address. Someone who signs in without
-the link finds their unexpired invitations on `/start`. Invitations made in Backoffice itself show
-on the members page without a link; their invitees find the organization once they open it.
+address is offered to log out first, and Backoffice then asks them to sign in rather than return the
+other account, since the invited address is the login hint. They then join: Bookkeeping calls
+`invitations.accept`, and Backoffice checks that the invitation is for their verified address.
+Someone who signs in without the link finds their unexpired invitations on `/start`. Invitations
+made in Backoffice itself show on the members page without a link; their invitees find the
+organization once they open it.
 
 ### Backoffice actions
 

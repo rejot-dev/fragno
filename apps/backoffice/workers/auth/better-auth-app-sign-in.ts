@@ -1,7 +1,7 @@
 import { defineRequestState } from "@better-auth/core/context";
 import type { AppBranding } from "@fragno-dev/backoffice-api/v0/apps";
 import type { BetterAuthPlugin } from "better-auth";
-import { APIError, createAuthMiddleware } from "better-auth/api";
+import { APIError, createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
 import { emailOTP } from "better-auth/plugins/email-otp";
 
 import type { GenericEndpointContext } from "@better-auth/core";
@@ -28,6 +28,11 @@ const appSignInRequest = defineRequestState<AppBranding | null>(() => null);
  * Backoffice. A correct code proves the address, so it signs in its user or creates one already
  * verified, and anyone may sign up this way. Outside an app's request, Backoffice's sign-in and
  * invitation-only sign-up stay as they are.
+ *
+ * An app that names an address with `login_hint` while someone else is signed in to Backoffice gets
+ * the sign-in page, as with `prompt=login`, instead of that account: logging out of an app leaves
+ * Backoffice's session, and first-party apps are approved without a review, so the person could
+ * otherwise never reach the account the app asked for.
  *
  * The OAuth Provider verifies the request's signed `oauth_query` before this plugin's hook runs, so
  * the plugin must come after it.
@@ -84,6 +89,26 @@ export function createBackofficeAppSignInPlugins(input: {
       },
       hooks: {
         before: [
+          {
+            matcher(context) {
+              return context.path === "/oauth2/authorize";
+            },
+            handler: createAuthMiddleware(async function signInAsHintedAccount(context) {
+              const query = context.query ?? {};
+              const hinted =
+                typeof query.login_hint === "string" ? query.login_hint.trim().toLowerCase() : null;
+              const session = hinted === null ? null : await getSessionFromCtx(context);
+              const prompt = typeof query.prompt === "string" ? query.prompt : "";
+              return {
+                context: {
+                  query:
+                    session !== null && session.user.email !== hinted
+                      ? { ...query, prompt: `${prompt} login`.trim() }
+                      : query,
+                },
+              };
+            }),
+          },
           {
             matcher(context) {
               return (
