@@ -18,6 +18,7 @@ import { createApiFragment } from "@fragno-dev/api-fragment/server";
 const oauthRedirectUri = "https://app.example.com/api/integrations/oauth/callback";
 const api = createApiFragment(
   {
+    webhookDeliveryRetentionMs: 7 * 24 * 60 * 60 * 1000,
     allowedBaseUrls: (url) => url.hostname.endsWith(".example.com"),
     allowedOAuthRedirectUris: (url) => url.toString() === oauthRedirectUri,
     onConnectionReadinessChanged: async ({ connectionId, ready }) => {
@@ -76,6 +77,13 @@ Webhook endpoints:
 - `GET /webhooks/endpoints/:endpointId/events` - answer configured GET verification challenges.
 - `POST /webhooks/endpoints/:endpointId/events` - answer configured POST verification challenges or
   accept a delivery.
+- `GET /webhooks/endpoints/:endpointId/deliveries/:deliveryId` - read a stored delivery.
+
+Accepted deliveries are kept until `webhookDeliveryRetentionMs` after their `onWebhookReceived` hook
+succeeds; a delivery whose hook is pending or failed is kept. Storing a delivery deletes a batch of
+expired ones, so storage stays bounded without a scheduler. A hook replayed after its callback
+succeeded, such as after the processor stopped before recording the hook's completion, does not call
+`onWebhookReceived` again.
 
 Each endpoint's `deliveries` reports the last accepted request (a delivery or an answered challenge)
 and the last rejected one with its error code. Any configuration write clears both, so they describe
@@ -231,7 +239,8 @@ selected value as `text/plain`.
   `{ change: "updated", endpointId, endpoint, previousStatus }`, or
   `{ change: "deleted", endpointId }`. Compare `previousStatus` with `endpoint.status` to tell
   whether a write changed if the endpoint accepts deliveries.
-- `onWebhookReceived` receives the authenticated webhook payload and its derived delivery ID.
+- `onWebhookReceived` receives the stored delivery: its endpoint, delivery and hook IDs, redacted
+  headers and query, JSON body, and content type.
 
 Durable hook callbacks, including `onWebhookReceived`, may execute concurrently and may complete out
 of delivery order. Use the delivery ID for idempotency and use an upstream sequence or version when

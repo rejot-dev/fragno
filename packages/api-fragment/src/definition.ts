@@ -4,6 +4,7 @@ import { withDatabase, type HookContext, type HookFn, type TypedUnitOfWork } fro
 import type {
   ApiFragmentConfig as BaseApiFragmentConfig,
   ApiRequestInput,
+  WebhookDelivery,
   WebhookEndpoint,
 } from "./api-types";
 import { apiSchema } from "./schema";
@@ -55,16 +56,11 @@ interface InternalAuthExpiredPayload {
   expiresAt: string;
 }
 
+/** Names the stored delivery; the endpoint and delivery IDs let hook queues be read at a glance. */
 interface InternalWebhookReceivedPayload {
   endpointId: string;
   deliveryId: string;
   hookId: string;
-  receivedAt: string;
-  headers: Record<string, string>;
-  query: Record<string, string>;
-  rawBody: string;
-  body: Record<string, unknown>;
-  contentType: string | null;
 }
 
 export interface WebhookEndpointHookSnapshot {
@@ -87,17 +83,6 @@ export type WebhookEndpointChangedPayload =
     }
   | { change: "deleted"; endpointId: string };
 
-export interface WebhookReceivedPayload {
-  endpointId: string;
-  deliveryId: string;
-  hookId: string;
-  receivedAt: string;
-  headers: Record<string, string>;
-  query: Record<string, string>;
-  body: Record<string, unknown>;
-  contentType: string | null;
-}
-
 export interface ApiFragmentHooksConfig {
   onConnectionChanged?: (
     payload: ApiConnectionChangedPayload,
@@ -119,10 +104,7 @@ export interface ApiFragmentHooksConfig {
     payload: WebhookEndpointChangedPayload,
     context: HookContext,
   ) => Promise<void> | void;
-  onWebhookReceived?: (
-    payload: WebhookReceivedPayload,
-    context: HookContext,
-  ) => Promise<void> | void;
+  onWebhookReceived?: (payload: WebhookDelivery, context: HookContext) => Promise<void> | void;
 }
 
 export type ApiFragmentConfig = BaseApiFragmentConfig & ApiFragmentHooksConfig;
@@ -171,8 +153,42 @@ function connectionHookSnapshot(connection: {
   };
 }
 
+export function webhookDeliveryOfRow(row: {
+  id: { toString(): string };
+  endpointId: string;
+  deliveryId: string;
+  receivedAt: Date;
+  headers: Record<string, string>;
+  query: Record<string, string>;
+  body: Record<string, unknown>;
+  contentType: string | null;
+}): WebhookDelivery {
+  return {
+    endpointId: row.endpointId,
+    deliveryId: row.deliveryId,
+    hookId: row.id.toString(),
+    receivedAt: row.receivedAt.toISOString(),
+    headers: row.headers,
+    query: row.query,
+    body: row.body,
+    contentType: row.contentType,
+  };
+}
+
 export const apiFragmentDefinition = defineFragment<ApiFragmentConfig>("api-fragment")
   .extend(withDatabase(apiSchema))
+  // Dependencies are built only for server instances; clients read the routes without a config.
+  .withDependencies(({ config }) => {
+    if (
+      !Number.isSafeInteger(config.webhookDeliveryRetentionMs) ||
+      config.webhookDeliveryRetentionMs <= 0
+    ) {
+      throw new Error(
+        `webhookDeliveryRetentionMs must be a positive whole number of milliseconds, got ${config.webhookDeliveryRetentionMs}.`,
+      );
+    }
+    return { webhookDeliveryRetentionMs: config.webhookDeliveryRetentionMs };
+  })
   .provideHooks<ApiHooksMap>(({ defineHook, config }) => ({
     onConnectionChanged: defineHook(async function (payload) {
       await config.onConnectionChanged?.(payload, this);
@@ -224,20 +240,28 @@ export const apiFragmentDefinition = defineFragment<ApiFragmentConfig>("api-frag
     onWebhookEndpointChanged: defineHook(async function (payload) {
       await config.onWebhookEndpointChanged?.(payload, this);
     }),
-    onWebhookReceived: defineHook(async function (payload) {
-      await config.onWebhookReceived?.(
-        {
-          endpointId: payload.endpointId,
-          deliveryId: payload.deliveryId,
-          hookId: payload.hookId,
-          receivedAt: payload.receivedAt,
-          headers: payload.headers,
-          query: payload.query,
-          body: payload.body,
-          contentType: payload.contentType,
-        },
-        this,
-      );
+    onWebhookReceived: defineHook(async function ({ hookId }) {
+      const delivery = await this.handlerTx()
+        .retrieve(({ forSchema }) =>
+          forSchema(apiSchema).findFirst("webhookDelivery", (b) =>
+            b.whereIndex("primary", (eb) => eb("id", "=", hookId)),
+          ),
+        )
+        .transformRetrieve(([delivery]) => delivery)
+        .execute();
+      // The hook completes in a later transaction than `processedAt`, so a lost completion replays
+      // it. Cleanup deletes only processed deliveries, so a missing one was processed too.
+      if (delivery?.processedAt !== null) {
+        return;
+      }
+      await config.onWebhookReceived?.(webhookDeliveryOfRow(delivery), this);
+      await this.handlerTx()
+        .mutate(({ forSchema }) => {
+          forSchema(apiSchema).update("webhookDelivery", hookId, (b) =>
+            b.set({ processedAt: new Date() }),
+          );
+        })
+        .execute();
     }),
   }))
   .providesBaseService(({ defineService, config }) =>

@@ -44,6 +44,9 @@ import {
   type ScopedFragmentDurableObjectRuntime,
 } from "./lib/scoped-fragment-durable-object";
 
+/** Processed deliveries stay readable for agents and debugging; their automation events outlive them. */
+const API_WEBHOOK_DELIVERY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+
 function scopeSubject(scope: BackofficeRoutableScope, subject?: Record<string, unknown>) {
   const organization = backofficeScopeOrganization(scope);
   return {
@@ -142,6 +145,7 @@ export class InMemoryApiObject extends RpcTarget implements ApiObject {
 
   #createConfig(ownerScope: BackofficeRoutableScope): ApiConfig {
     return {
+      webhookDeliveryRetentionMs: API_WEBHOOK_DELIVERY_RETENTION_MS,
       fetch: this.#fetch,
       allowedOAuthRedirectUris: (redirectUri) =>
         isScopedPublicOAuthRedirectUriAllowed({

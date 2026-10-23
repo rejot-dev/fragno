@@ -98,5 +98,21 @@ export const apiSchema = schema("api-fragment", (s) => {
         .addColumn("lastAcceptedAt", column("timestamp").nullable())
         .addColumn("lastRejectedAt", column("timestamp").nullable())
         .addColumn("lastRejectionCode", column("string").nullable()),
+    )
+    .addTable("webhookDelivery", (t) =>
+      t
+        // The delivery's hook ID, derived from the endpoint and the provider's delivery ID.
+        .addColumn("id", idColumn())
+        .addColumn("endpointId", column("string"))
+        .addColumn("deliveryId", column("string"))
+        .addColumn("receivedAt", column("timestamp"))
+        .addColumn("headers", jsonColumn<Record<string, string>>())
+        .addColumn("query", jsonColumn<Record<string, string>>())
+        .addColumn("body", jsonColumn<Record<string, unknown>>())
+        .addColumn("contentType", column("string").nullable())
+        // Null until the delivery's hook succeeds; retention counts from here, so a delivery is
+        // never deleted before it is processed.
+        .addColumn("processedAt", column("timestamp").nullable())
+        .createIndex("idx_webhook_delivery_processedAt", ["processedAt"]),
     );
 });

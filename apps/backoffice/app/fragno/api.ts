@@ -11,6 +11,7 @@ import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
 
 export type ApiConfig = Pick<
   ApiFragmentConfig,
+  | "webhookDeliveryRetentionMs"
   | "allowedBaseUrls"
   | "allowedOAuthRedirectUris"
   | "fetch"
@@ -27,6 +28,7 @@ export function createApiServer(
 ): ReturnType<typeof createApiFragment> {
   return createApiFragment(
     {
+      webhookDeliveryRetentionMs: config.webhookDeliveryRetentionMs,
       allowedBaseUrls: config.allowedBaseUrls,
       allowedOAuthRedirectUris: config.allowedOAuthRedirectUris,
       fetch: config.fetch,
@@ -95,6 +97,9 @@ export function createApiServer(
     });
     await ifMatchesRoute("GET", "/webhooks/endpoints/:endpointId", () => {
       access = BACKOFFICE_PERMISSION.connections.read;
+    });
+    await ifMatchesRoute("GET", "/webhooks/endpoints/:endpointId/deliveries/:deliveryId", () => {
+      access = BACKOFFICE_PERMISSION.events.read;
     });
     await ifMatchesRoute("PUT", "/webhooks/endpoints/:endpointId", () => {
       access = BACKOFFICE_PERMISSION.connections.manage;
