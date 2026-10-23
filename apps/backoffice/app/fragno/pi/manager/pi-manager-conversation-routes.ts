@@ -32,10 +32,21 @@ function withQueueFrames(
   let unwatch = () => {};
   return new ReadableStream<Uint8Array>({
     start(controller) {
-      unwatch = watchQueue(({ paused, items }) => {
+      const unwatchQueue = watchQueue(({ paused, items }) => {
         const frame: PiAgentViewStreamFrame = { type: "queue", paused, items };
         controller.enqueue(encoder.encode(`${JSON.stringify(frame)}\n`));
       });
+
+      // This appears to fix the bug on localhost where the stream is not loading.
+      const keepalive = setInterval(() => {
+        if ((controller.desiredSize ?? 0) > 0) {
+          controller.enqueue(encoder.encode("\n"));
+        }
+      }, 1_000);
+      unwatch = () => {
+        clearInterval(keepalive);
+        unwatchQueue();
+      };
     },
     // Reads until it can pass on a whole line, since a pull that enqueues nothing is not repeated.
     async pull(controller) {

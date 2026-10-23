@@ -1,5 +1,5 @@
 import { piAgentWatchFrameSchema, type PiAgentQueueEntry } from "@fragno-dev/backoffice-api/v0/pi";
-import { useEffect, useState } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 import { z } from "zod";
 
 import type { ConversationView } from "@earendil-works/pi-durable";
@@ -8,6 +8,9 @@ import type { PiAgentViewStreamFrame } from "@/fragno/pi/agent/pi-agent-contract
 
 const INITIAL_RECONNECT_DELAY_MS = 250;
 const MAX_RECONNECT_DELAY_MS = 5_000;
+// The server sends the view right after the headers, so a connection without one by then has
+// stalled; it would otherwise never fail and leave the conversation loading forever.
+const FIRST_VIEW_TIMEOUT_MS = 5_000;
 
 function parsePiSessionViewStreamLine(line: string): PiAgentViewStreamFrame {
   const parsed = piAgentWatchFrameSchema.parse(JSON.parse(line));
@@ -92,67 +95,130 @@ async function readPiSessionViewStreamFailure(response: Response) {
     : `The conversation is unavailable (status ${response.status}).`;
 }
 
+const CONNECTING: PiSessionViewStreamState = { status: "connecting" };
+
+/** One connection per stream, shared by everything showing that agent. */
+type SharedPiSessionViewStream = {
+  state: PiSessionViewStreamState;
+  listeners: Set<() => void>;
+  controller: AbortController;
+};
+
+// Browsers allow few connections per host over HTTP/1.1, and these streams never finish, so the
+// agents page and the agent drawer showing the same agent share one.
+const sharedPiSessionViewStreams = new Map<string, SharedPiSessionViewStream>();
+
+function subscribeToSharedPiSessionView(streamUrl: string, listener: () => void) {
+  let shared = sharedPiSessionViewStreams.get(streamUrl);
+  if (!shared) {
+    shared = { state: CONNECTING, listeners: new Set(), controller: new AbortController() };
+    sharedPiSessionViewStreams.set(streamUrl, shared);
+    void subscribeToPiSessionView(streamUrl, shared);
+  }
+  const subscribed = shared;
+  subscribed.listeners.add(listener);
+  return () => {
+    subscribed.listeners.delete(listener);
+    if (subscribed.listeners.size === 0) {
+      subscribed.controller.abort();
+      sharedPiSessionViewStreams.delete(streamUrl);
+    }
+  };
+}
+
+function setSharedPiSessionViewState(
+  shared: SharedPiSessionViewStream,
+  update: (current: PiSessionViewStreamState) => PiSessionViewStreamState,
+) {
+  const next = update(shared.state);
+  if (next === shared.state) {
+    return;
+  }
+  shared.state = next;
+  for (const listener of shared.listeners) {
+    listener();
+  }
+}
+
+/** Maintains one reconnecting NDJSON subscription for a durable Pi session. */
+async function subscribeToPiSessionView(streamUrl: string, shared: SharedPiSessionViewStream) {
+  const { signal } = shared.controller;
+  let reconnectDelayMs = INITIAL_RECONNECT_DELAY_MS;
+  while (!signal.aborted) {
+    const connection = new AbortController();
+    // How far a stalled connection got, since browsers report every abort alike.
+    let progress = "no response";
+    const stalled = setTimeout(() => {
+      connection.abort();
+    }, FIRST_VIEW_TIMEOUT_MS);
+    try {
+      const response = await fetch(streamUrl, {
+        headers: { accept: "application/x-ndjson" },
+        signal: AbortSignal.any([signal, connection.signal]),
+      });
+      progress = `status ${response.status}, no frames`;
+      if (!response.ok) {
+        if (
+          response.status === 401 ||
+          response.status === 403 ||
+          response.status === 404 ||
+          response.status === 409
+        ) {
+          const message = await readPiSessionViewStreamFailure(response);
+          // A view that already arrived stays readable when a reconnect is refused.
+          setSharedPiSessionViewState(shared, (current) =>
+            current.status === "ready" ? current : { status: "failed", message },
+          );
+          return;
+        }
+        throw new Error(`Pi session view stream failed with status ${response.status}.`);
+      }
+      reconnectDelayMs = INITIAL_RECONNECT_DELAY_MS;
+      // Each connection starts with the queue, which waits here for the first view.
+      let queue: PiAgentQueueState = { paused: false, items: [] };
+      await consumePiSessionViewNdjson(response, (frame) => {
+        if (frame.type === "queue") {
+          queue = { paused: frame.paused, items: frame.items };
+          progress = `status ${response.status}, queue frame only`;
+          setSharedPiSessionViewState(shared, (current) =>
+            current.status === "ready" ? { ...current, queue } : current,
+          );
+          return;
+        }
+        clearTimeout(stalled);
+        setSharedPiSessionViewState(shared, () => ({ status: "ready", view: frame.view, queue }));
+      });
+    } catch (cause) {
+      if (signal.aborted) {
+        return;
+      }
+      if (connection.signal.aborted) {
+        console.error(
+          `Pi session view stream sent no view within ${FIRST_VIEW_TIMEOUT_MS}ms (${progress}); reconnecting.`,
+        );
+      } else {
+        console.error("Pi session view stream disconnected.", cause);
+      }
+    } finally {
+      clearTimeout(stalled);
+    }
+    await waitForPiSessionViewReconnect(reconnectDelayMs, signal);
+    reconnectDelayMs = Math.min(reconnectDelayMs * 2, MAX_RECONNECT_DELAY_MS);
+  }
+}
+
 /**
- * Maintains one reconnecting NDJSON subscription for the selected durable Pi session. Its first
- * frame is the whole conversation view, so the page needs no server-loaded copy.
+ * The agent's live conversation from its view stream. Its first frame is the whole conversation
+ * view, so the page needs no server-loaded copy.
  */
 export function usePiSessionViewStream(streamUrl: string) {
-  const [state, setState] = useState<PiSessionViewStreamState>({ status: "connecting" });
-
-  useEffect(() => {
-    const controller = new AbortController();
-
-    async function subscribeToPiSessionView() {
-      let reconnectDelayMs = INITIAL_RECONNECT_DELAY_MS;
-      while (!controller.signal.aborted) {
-        try {
-          const response = await fetch(streamUrl, {
-            headers: { accept: "application/x-ndjson" },
-            signal: controller.signal,
-          });
-          if (!response.ok) {
-            if (
-              response.status === 401 ||
-              response.status === 403 ||
-              response.status === 404 ||
-              response.status === 409
-            ) {
-              const message = await readPiSessionViewStreamFailure(response);
-              // A view that already arrived stays readable when a reconnect is refused.
-              setState((current) =>
-                current.status === "ready" ? current : { status: "failed", message },
-              );
-              return;
-            }
-            throw new Error(`Pi session view stream failed with status ${response.status}.`);
-          }
-          reconnectDelayMs = INITIAL_RECONNECT_DELAY_MS;
-          // Each connection starts with the queue, which waits here for the first view.
-          let queue: PiAgentQueueState = { paused: false, items: [] };
-          await consumePiSessionViewNdjson(response, (frame) => {
-            if (frame.type === "queue") {
-              queue = { paused: frame.paused, items: frame.items };
-              setState((current) => (current.status === "ready" ? { ...current, queue } : current));
-              return;
-            }
-            setState({ status: "ready", view: frame.view, queue });
-          });
-        } catch (cause) {
-          if (controller.signal.aborted) {
-            return;
-          }
-          console.error("Pi session view stream disconnected.", cause);
-        }
-        await waitForPiSessionViewReconnect(reconnectDelayMs, controller.signal);
-        reconnectDelayMs = Math.min(reconnectDelayMs * 2, MAX_RECONNECT_DELAY_MS);
-      }
-    }
-
-    void subscribeToPiSessionView();
-    return () => {
-      controller.abort();
-    };
-  }, [streamUrl]);
-
-  return state;
+  const subscribe = useCallback(
+    (listener: () => void) => subscribeToSharedPiSessionView(streamUrl, listener),
+    [streamUrl],
+  );
+  return useSyncExternalStore(
+    subscribe,
+    () => sharedPiSessionViewStreams.get(streamUrl)?.state ?? CONNECTING,
+    () => CONNECTING,
+  );
 }
