@@ -11,10 +11,12 @@ import type { DatabaseServiceContext, HookFn, TypedUnitOfWork } from "@fragno-de
 import {
   admitPiAgentTurn,
   builtInPiAgentDefinition,
+  piPromptModel,
   type PiAgentAdmission,
 } from "@/fragno/pi/agent/agent-definitions";
 import type {
   PiAgent,
+  PiAgentModelChoice,
   PiAgentNotification,
   PiAgentPrompt,
   PiAgentQueueSubmission,
@@ -408,11 +410,13 @@ export function piAgentQueueServices(
     /**
      * Admits a prompt and places it. The first prompt provisions the agent. A request ID the queue
      * has seen keeps its first placement and never runs twice. `whenPaused: "resume"` resumes a
-     * paused queue, which then starts with its oldest item.
+     * paused queue, which then starts with its oldest item. `model` is the built-in agent's choice
+     * for the prompt's turn; null keeps the conversation's.
      */
     submitPrompt: function (input: {
       agentName: string;
       prompt: PiAgentPrompt;
+      model: PiAgentModelChoice | null;
       whenBusy: "followUp" | "steer" | "reject";
       whenPaused: "wait" | "resume";
       provenance: PiAgentTurnProvenance;
@@ -433,6 +437,7 @@ export function piAgentQueueServices(
             retrieveResult: [definitionRow, agent, [dispatched], queued, submitted],
           }):
             | Extract<PiAgentAdmission, { type: "error" }>
+            | Extract<ReturnType<typeof piPromptModel>, { type: "error" }>
             | { type: "busy" }
             | ({ type: "placed" } & PiAgentPlacement) => {
             if (submitted) {
@@ -444,11 +449,19 @@ export function piAgentQueueServices(
               };
             }
             const definition = definitionOf(agentName, definitionRow);
+            const chosen = definition
+              ? piPromptModel(definition, input.model, Boolean(agent), input.availableModels)
+              : null;
+            if (chosen?.type === "error") {
+              return chosen;
+            }
+            const model = chosen?.model ?? null;
             const admitted = admitPiAgentTurn(
               definition,
               agentName,
               input.provenance,
               input.availableModels,
+              model,
             );
             if (admitted.type === "error") {
               return admitted;
@@ -477,7 +490,7 @@ export function piAgentQueueServices(
               paused,
               item: {
                 requestId: prompt.requestId,
-                input: { type: "prompt", content: prompt.content },
+                input: { type: "prompt", content: prompt.content, model },
                 provenance: input.provenance,
               },
               turn: admitted.turn,
@@ -539,6 +552,7 @@ export function piAgentQueueServices(
               agentName,
               input.provenance,
               input.availableModels,
+              null,
             );
             if (admitted.type === "error") {
               return admitted;

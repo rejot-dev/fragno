@@ -50,7 +50,7 @@ function executionTool(ctx: BackofficeScenarioContext, execution: BackofficeExec
         actors: execution.actors,
         scopeRestriction: backofficeExecutionScopeRestriction(execution),
         agent: {
-          model: { provider: "test", modelId: "test" },
+          model: { provider: "test", modelId: "test", thinkingLevel: "low" },
           instructions: "",
           permissions: [...allBackofficePermissionRequirements],
         },

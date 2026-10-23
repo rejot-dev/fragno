@@ -1,5 +1,6 @@
 import {
   createModels,
+  getSupportedThinkingLevels,
   type Models,
   type ModelsImagesOptions,
   type MutableModels,
@@ -27,8 +28,6 @@ const PI_SUPPORTED_MODELS = [
   { provider: "anthropic", modelId: "claude-opus-5-5", label: "Claude Opus 5.5" },
   { provider: "google", modelId: "gemini-3.8-flash", label: "Gemini 3.8 Flash" },
 ] as const;
-
-export const PI_THINKING_LEVEL = "low";
 
 /** Builds durable Pi providers from Worker or Node credentials without filesystem auth lookup. */
 export function createPiModels(
@@ -119,6 +118,14 @@ export async function listAvailablePiModels(models: Models): Promise<readonly Pi
     const available = credentialAvailableModels.find(
       (model) => model.provider === supportedModel.provider && model.id === supportedModel.modelId,
     );
-    return available ? [{ ...supportedModel, contextWindow: available.contextWindow }] : [];
+    return available
+      ? [
+          {
+            ...supportedModel,
+            contextWindow: available.contextWindow,
+            thinkingLevels: getSupportedThinkingLevels(available),
+          },
+        ]
+      : [];
   });
 }

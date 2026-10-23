@@ -19,7 +19,13 @@ import { isPiAgentsPath } from "./path";
 beforeEach(() => {
   fetchPiManagerAvailableModelsMock.mockReset();
   fetchPiManagerAvailableModelsMock.mockResolvedValue([
-    { provider: "faux", modelId: "faux-1", label: "Faux 1", contextWindow: 128_000 },
+    {
+      provider: "faux",
+      modelId: "faux-1",
+      label: "Faux 1",
+      contextWindow: 128_000,
+      thinkingLevels: ["off"],
+    },
   ]);
 });
 

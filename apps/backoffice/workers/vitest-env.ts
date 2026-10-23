@@ -27,7 +27,13 @@ export class PiScenarioManager extends DurableObject<CloudflareEnv> {
       agent: (config): PiAgent =>
         env.PI.get(env.PI.idFromName(piAgentObjectName(config))) as unknown as PiAgent,
       supportedAvailableModels: async () => [
-        { provider: "faux", modelId: "faux-1", label: "Faux 1", contextWindow: 128_000 },
+        {
+          provider: "faux",
+          modelId: "faux-1",
+          label: "Faux 1",
+          contextWindow: 128_000,
+          thinkingLevels: ["off"],
+        },
       ],
       classifier: null,
       imageGenerator: null,

@@ -11,6 +11,7 @@ import type { HookHandlerTx } from "@fragno-dev/db";
 import { admitPiAgentTurn } from "@/fragno/pi/agent/agent-definitions";
 import {
   piAgentCompactionSchema,
+  piAgentModelChoiceSchema,
   piAgentNotificationSchema,
   piAgentPromptSchema,
   piAgentSubmissionWaitRequestSchema,
@@ -34,10 +35,13 @@ export const promptRequestSchema = z.object({
   content: piAgentPromptSchema.shape.content,
   whenBusy: piPromptWhenBusySchema.default("followUp"),
   whenPaused: promptWhenPausedSchema.default("wait"),
+  // A built-in agent's model for this prompt's turn; null keeps the conversation's.
+  model: piAgentModelChoiceSchema.nullable().default(null),
 });
 const promptSchema = piAgentPromptSchema.extend({
   whenBusy: piPromptWhenBusySchema,
   whenPaused: promptWhenPausedSchema,
+  model: piAgentModelChoiceSchema.nullable(),
   provenance: turnProvenanceSchema,
 });
 const compactionSchema = piAgentCompactionSchema.extend({ provenance: turnProvenanceSchema });
@@ -72,11 +76,13 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
       agentName: string,
       provenance: PiAgentTurnProvenance,
     ) {
+      // Compaction runs on the conversation's model, which a turn without a choice keeps.
       return admitPiAgentTurn(
         definition,
         agentName,
         provenance,
         await config.supportedAvailableModels(),
+        null,
       );
     }
 
@@ -98,9 +104,9 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
         path: "/agents/:agentName/prompts",
         inputSchema: promptSchema,
         outputSchema: piPromptReceiptOutputSchema,
-        errorCodes: ["AGENT_NOT_FOUND", "MODEL_UNAVAILABLE", "AGENT_BUSY"],
+        errorCodes: ["AGENT_NOT_FOUND", "MODEL_UNAVAILABLE", "MODEL_NOT_CHOOSABLE", "AGENT_BUSY"],
         handler: async function ({ pathParams, input }, { json, error }) {
-          const { provenance, whenBusy, whenPaused, ...prompt } = await input.valid();
+          const { provenance, whenBusy, whenPaused, model, ...prompt } = await input.valid();
           const { agentName } = pathParams;
           const availableModels = await config.supportedAvailableModels();
           const submitted = await this.handlerTx()
@@ -110,6 +116,7 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
                   services.submitPrompt({
                     agentName,
                     prompt,
+                    model,
                     whenBusy,
                     whenPaused,
                     provenance,

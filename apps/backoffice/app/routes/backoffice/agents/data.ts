@@ -17,6 +17,7 @@ import {
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import type {
   PiAgentCompactionStatus,
+  PiAgentModelChoice,
   PiAvailableModel,
 } from "@/fragno/pi/agent/pi-agent-contract";
 import { formatPiAgentName } from "@/fragno/pi/agent/pi-agent-name";
@@ -219,6 +220,8 @@ export async function submitPiManagerPrompt(
     content: string;
     whenBusy: z.infer<typeof piPromptWhenBusySchema>;
     whenPaused: "wait" | "resume";
+    /** A built-in agent's model for this turn; null keeps the conversation's. */
+    model: PiAgentModelChoice | null;
   },
 ): Promise<{ receipt: PiPromptReceipt; error: null } | { receipt: null; error: string }> {
   const { callRoute, execution } = await createPiManagerRouteCaller(request, context, scope);

@@ -23,6 +23,7 @@ import {
   type PiBilling,
 } from "@/fragno/pi/extensions/billing/billing-extension";
 
+import { PI_DEFINED_AGENT_THINKING_LEVEL } from "./agent-definitions";
 import { createAuthorizedPiModels } from "./authorized-models";
 import {
   createBackofficeAgentContext,
@@ -30,7 +31,7 @@ import {
 } from "./backoffice-agent-context";
 import { startReportingPiAgentTurns } from "./pi-agent-turn-events";
 import { readActivePiAgentTurn } from "./pi-agent-turns";
-import { createPiModels, PI_THINKING_LEVEL } from "./pi-models";
+import { createPiModels } from "./pi-models";
 
 /** What a runtime supplies to every agent it hosts; scenarios substitute scripted models. */
 export type PiAgentDependencies = {
@@ -168,7 +169,9 @@ export async function openPiAgentHarness(input: {
     report,
   });
   try {
-    await harness.root(BACKGROUND_CONTEXT, { agent: { thinkingLevel: PI_THINKING_LEVEL } });
+    await harness.root(BACKGROUND_CONTEXT, {
+      agent: { thinkingLevel: PI_DEFINED_AGENT_THINKING_LEVEL },
+    });
   } catch (cause) {
     await harness.close(BACKGROUND_CONTEXT);
     throw cause;

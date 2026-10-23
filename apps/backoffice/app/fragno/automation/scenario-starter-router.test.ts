@@ -1851,7 +1851,11 @@ describe("starter automation router scenarios", () => {
                 role: "principal",
               });
               expect(turn?.agent.instructions).toContain("AUTOMATICALLY sent back to its chat");
-              expect(turn?.agent.model).toEqual({ provider: "openai", modelId: "gpt-5.6-luna" });
+              expect(turn?.agent.model).toEqual({
+                provider: "openai",
+                modelId: "gpt-5.6-luna",
+                thinkingLevel: "low",
+              });
             },
           ),
           then.telegram.sentChatAction({

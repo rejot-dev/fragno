@@ -27,7 +27,13 @@ import { piManagerTurnRoutes } from "./pi-manager-turn-routes";
 
 const ORG_SCOPE: BackofficeContextScope = { kind: "org", orgId: "queue-org" };
 const AVAILABLE_MODELS = [
-  { provider: "faux", modelId: "faux-1", label: "Faux 1", contextWindow: 128_000 },
+  {
+    provider: "faux",
+    modelId: "faux-1",
+    label: "Faux 1",
+    contextWindow: 128_000,
+    thinkingLevels: ["off"],
+  },
 ] as const;
 
 type PromptInput = {
@@ -178,7 +184,7 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
           content: `Prompt ${prompt.requestId}.`,
           whenBusy: prompt.whenBusy ?? "followUp",
           whenPaused: prompt.whenPaused ?? "wait",
-
+          model: null,
           provenance: provenance(sender),
         },
       });

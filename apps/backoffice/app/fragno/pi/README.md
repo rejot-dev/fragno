@@ -41,6 +41,16 @@ require `pi.manage`, so only they can change what an agent is told; input is val
 the directory holds no unusable definitions. Deleting a definition keeps the `agent` provisioning
 row and its conversation.
 
+A turn names the model it runs with and its reasoning effort, or none, which keeps the
+conversation's; the agent object configures a named one on the conversation when it admits the turn,
+so Pi's `pi.agent` document is where a conversation's model lives. Defined agents name their
+definition's model at `low` on every turn. The built-in `assistant` has no definition to update, so
+its prompts choose instead: a prompt's `model` is checked against the available models and the
+efforts each supports, kept on its queue item, and named by its turn. A prompt that chooses none
+keeps the conversation's model, and the first one starts the conversation on GPT-6.1 Sol at
+`medium`, or on the first available model where Sol is unavailable, as in scenarios without an
+OpenAI key. Notifications and compactions keep the conversation's model.
+
 Each admission reads the definition and renders its instructions as the `agent` prompt section after
 Backoffice guidance and a one-line `identity` section naming the agent, so changes apply from the
 next turn. Grants are expanded at admission, so a grant whose permissions were removed from the
@@ -232,15 +242,17 @@ event to that agent.
 All paths below are mounted at `/api/pi-manager` inside the manager object:
 
 - `GET /models`: the `PI_SUPPORTED_MODELS` entries whose provider credentials are available from the
-  same registry used by agents, with each model's context window from that registry.
+  same registry used by agents, with each model's context window and supported reasoning efforts
+  from that registry.
 - `GET /agents`: every definition with `provisioned` (`false` until its first turn), and invalid
   definitions.
 - `GET /agents/:agentName`: one definition and whether it is provisioned.
-- `POST /agents/:agentName/prompts`: `{ requestId, content, whenBusy, whenPaused }`, answering
-  `{ requestId, status }` or `409 AGENT_BUSY` for a refused `reject`; see Queue. The first prompt
-  provisions the agent. Usage belongs to its scope's root owner, an organization or a user. System
-  work has no customer. Reusing a request ID reuses the submission rather than generating another
-  answer.
+- `POST /agents/:agentName/prompts`: `{ requestId, content, whenBusy, whenPaused, model }`,
+  answering `{ requestId, status }` or `409 AGENT_BUSY` for a refused `reject`; see Queue. `model`
+  is `{ provider, modelId, thinkingLevel }` or `null`; only built-in agents choose one, and others
+  answer `400 MODEL_NOT_CHOOSABLE`; see Agent definitions. The first prompt provisions the agent.
+  Usage belongs to its scope's root owner, an organization or a user. System work has no customer.
+  Reusing a request ID reuses the submission rather than generating another answer.
 - `POST /agents/:agentName/notifications`: `{ routeId, event }`, answering `204` or
   `404 AGENT_NOT_STARTED`. Automations routes and workflow replies, whose `routeId` is `null`, call
   it; see Notifications.
