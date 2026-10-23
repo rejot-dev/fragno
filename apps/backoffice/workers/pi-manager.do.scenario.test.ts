@@ -752,15 +752,6 @@ test("a prompt whose agent is deleted while it waits is dropped, and its submiss
           expect(
             await (await managerRequest(runtime, scope, "/agents/clerk/submissions/second")).json(),
           ).toEqual(dropped);
-          expect(
-            await (
-              await managerRequest(
-                runtime,
-                scope,
-                "/agents/clerk/submissions/second/wait?waitMs=1000",
-              )
-            ).json(),
-          ).toEqual({ status: "settled", submission: dropped });
           // The queue records the work leaving it, so nothing reads as still waiting.
           expect(
             (await automationEvents(runtime, scope))
@@ -1889,44 +1880,6 @@ test("a busy agent sees events as they arrive and handles each sender's in a tur
   );
 });
 
-test("the Pi manager long-polls a server-side submission waiter", async () => {
-  const scope: BackofficeContextScope = { kind: "org", orgId: "submission-wait-org" };
-  await runBackofficeScenario(
-    defineBackofficeScenario({
-      name: "wait for durable Pi submission settlement",
-      piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
-      options: { drain: false },
-      objects: { ...scenarioObjects, ...objectOverrides },
-      steps: ({ then }) => [
-        then.assert(
-          "resolve the manager request when the submission settles",
-          async ({ runtime }) => {
-            const submitted = await prompt(runtime, scope, {
-              requestId: "waited-prompt",
-              content: "Echo and answer.",
-            });
-            assert.equal(submitted.status, 202, await submitted.clone().text());
-
-            const waiting = managerRequest(
-              runtime,
-              scope,
-              "/agents/assistant/submissions/waited-prompt/wait?waitMs=5000",
-            );
-            const draining = runtime.drain();
-            const response = await waiting;
-            assert.equal(response.status, 200, await response.clone().text());
-            expect(await response.json()).toMatchObject({
-              status: "settled",
-              submission: { status: "done", requestId: "waited-prompt" },
-            });
-            await draining;
-          },
-        ),
-      ],
-    }),
-  );
-});
-
 test("the local Pi view stream publishes durable generation partials before completion", async () => {
   const scope: BackofficeContextScope = { kind: "org", orgId: "streaming-org" };
   await runBackofficeScenario(
@@ -1978,13 +1931,6 @@ test("the local Pi view stream publishes durable generation partials before comp
           expect(await readPiViewStreamFrame(reader, streamState)).toMatchObject({
             type: "snapshot",
           });
-          const pending = await managerRequest(
-            runtime,
-            scope,
-            "/agents/assistant/submissions/streamed-prompt/wait?waitMs=1",
-          );
-          assert.equal(pending.status, 200, await pending.clone().text());
-          expect(await pending.json()).toEqual({ status: "pending", submission: null });
           const draining = runtime.drain();
           let sawUncommittedPartial = false;
           let completedView: ConversationView | null = null;

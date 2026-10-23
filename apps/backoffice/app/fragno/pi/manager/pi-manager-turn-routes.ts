@@ -14,8 +14,6 @@ import {
   piAgentModelChoiceSchema,
   piAgentNotificationSchema,
   piAgentPromptSchema,
-  piAgentSubmissionWaitRequestSchema,
-  piAgentSubmissionWaitSchema,
   piAgentTurnSchema,
 } from "@/fragno/pi/agent/pi-agent-contract";
 
@@ -213,44 +211,6 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
           }
           await config.agent(agent).reset(agent);
           return empty(204);
-        },
-      }),
-      defineRoute({
-        method: "GET",
-        path: "/agents/:agentName/submissions/:requestId/wait",
-        queryParameters: ["waitMs"],
-        outputSchema: piAgentSubmissionWaitSchema,
-        errorCodes: ["AGENT_NOT_STARTED", "SUBMISSION_NOT_FOUND", "INVALID_WAIT_DURATION"],
-        handler: async function ({ pathParams, query }, { json, error }) {
-          const wait = piAgentSubmissionWaitRequestSchema.safeParse({
-            waitMs: Number(query.get("waitMs")),
-          });
-          if (!wait.success) {
-            return error(
-              {
-                code: "INVALID_WAIT_DURATION",
-                message: "Pi submission wait duration is invalid.",
-              },
-              400,
-            );
-          }
-          const { agent, record } = await findSubmission(() => this.handlerTx(), pathParams);
-          if (!agent) {
-            return error({ code: "AGENT_NOT_STARTED", message: "Pi agent has no turns yet." }, 404);
-          }
-          if (record?.type === "held" && record.submission.status === "dropped") {
-            return json({ status: "settled", submission: record.submission });
-          }
-          // A queued request reaches Pi only once its turn is dispatched, which the wait covers;
-          // a turn's submission answers for every item it handled.
-          const requestId = record?.type === "turn" ? record.turnRequestId : pathParams.requestId;
-          if (!record && !(await config.agent(agent).getSubmission(agent, requestId))) {
-            return error(
-              { code: "SUBMISSION_NOT_FOUND", message: "Pi submission was not found." },
-              404,
-            );
-          }
-          return json(await config.agent(agent).waitForSubmission(agent, requestId, wait.data));
         },
       }),
       defineRoute({

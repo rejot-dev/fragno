@@ -120,7 +120,6 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
       });
     },
     getSubmission: async (_config, requestId) => submissions.get(requestId) ?? null,
-    waitForSubmission: async () => ({ status: "pending", submission: null }),
     getView: unused,
     // One view frame, and the conversation stays open as a real agent's does.
     watchView: async () =>

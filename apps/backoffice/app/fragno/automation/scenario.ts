@@ -1222,12 +1222,6 @@ const createFakePiManagerApi = (
     async getSubmission(config, requestId) {
       return requireAgent(config).submissions.get(requestId) ?? null;
     },
-    async waitForSubmission(config, requestId) {
-      const submission = requireAgent(config).submissions.get(requestId);
-      return submission
-        ? { status: "settled", submission }
-        : { status: "pending", submission: null };
-    },
     async listEntries(config) {
       requireAgent(config);
       // The fake never compacts, so no history precedes its active context.
