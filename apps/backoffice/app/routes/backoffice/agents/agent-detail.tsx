@@ -1,4 +1,5 @@
 import type { PiManagerAgent, PiPromptReceipt } from "@fragno-dev/backoffice-api/v0/pi";
+import { ChatComposerModel } from "@fragno-private/design-system/chat-composer";
 import { ChatWorkspaceSplit } from "@fragno-private/design-system/chat-workspace-split";
 import { PaneMessage } from "@fragno-private/design-system/pane-message";
 import { usePostHog } from "@posthog/react/slim";
@@ -23,12 +24,20 @@ import { eq, inArray, useLiveQuery } from "@tanstack/react-db";
 import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
 import type { AutomationBrowserCollections } from "@/fragno/automation/tanstack/browser-database";
 import { useAutomationBrowserCollections } from "@/fragno/automation/tanstack/use-automation-browser-collections";
-import type { PiAgentCompactionStatus } from "@/fragno/pi/agent/pi-agent-contract";
+import type { PiAgentCompactionStatus, PiThinkingLevel } from "@/fragno/pi/agent/pi-agent-contract";
 import { formatPiAgentName } from "@/fragno/pi/agent/pi-agent-name";
 import { requireRouteScope } from "@/layouts/backoffice-shell-request.server";
 
 import type { Route } from "./+types/agent-detail";
 import { isPiConversationSubmission } from "./agent-conversation-submission";
+import {
+  AgentModelMenu,
+  agentModelChoiceFormFields,
+  agentModelChoiceFromFormData,
+  availableAgentModelChoice,
+  defaultAgentModelChoice,
+  type AgentModelChoice,
+} from "./agent-model-menu";
 import { AgentPermissions } from "./agent-permissions";
 import { AgentStartComposer } from "./agent-start-composer";
 import type { PiAgentsOutletContext } from "./agent-types";
@@ -130,6 +139,7 @@ export async function action(args: Route.ActionArgs): Promise<PiAgentActionData>
     content: content.trim(),
     whenBusy: "steer",
     whenPaused: "resume",
+    model: agentModelChoiceFromFormData(formData),
   });
   return result.error === null
     ? { ok: true, intent, receipt: result.receipt }
@@ -340,6 +350,7 @@ export default function BackofficeOrganizationPiAgentDetail({
         />
         <AgentStartComposer
           agentName={agent.agentName}
+          builtIn={agent.managedBy?.kind === "built-in"}
           description={agent.description}
           permissions={agent.permissions}
           usageLabel={usageLabel}
@@ -420,6 +431,8 @@ function BackofficeOrganizationPiAgent({
   } = useOutletContext<PiAgentsOutletContext>();
   const agentPath = `${basePath}/${encodeURIComponent(agent.agentName)}`;
   const fetcher = useFetcher<PiAgentActionData>();
+  // Null until the reader picks one; their messages then carry it.
+  const [pickedModel, setPickedModel] = useState<AgentModelChoice | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const [composerAction, setComposerAction] = useState<ComposerAction>("message");
   const [pendingCompactionTaskId, setPendingCompactionTaskId] = useState<number | null>(null);
@@ -527,6 +540,32 @@ function BackofficeOrganizationPiAgent({
     (item) => item.id === workspaceState.selectedItemId,
   );
 
+  // The definition can change models between turns; the conversation's stored agent is current.
+  // Pi's agent document stores the conversation's model as a provider and model id.
+  const conversationAgent = view.docs["pi.agent"] as
+    | { model?: { provider: string; modelId: string }; thinkingLevel?: PiThinkingLevel }
+    | undefined;
+  const conversationModel = conversationAgent?.model;
+  const sessionModel = availableModelOptions.find(
+    (model) =>
+      model.provider === conversationModel?.provider && model.modelId === conversationModel.modelId,
+  );
+  const modelLabel = sessionModel?.label ?? conversationModel?.modelId ?? null;
+  // Built-in agents run the model their messages choose. The menu starts on the conversation's,
+  // and on the default when that is no longer available, which the next message then switches to.
+  const conversationChoice =
+    conversationModel && conversationAgent?.thinkingLevel
+      ? availableAgentModelChoice(
+          { ...conversationModel, thinkingLevel: conversationAgent.thinkingLevel },
+          availableModelOptions,
+        )
+      : null;
+  const builtIn = agent.managedBy?.kind === "built-in";
+  const shownModel = builtIn
+    ? (pickedModel ?? conversationChoice ?? defaultAgentModelChoice(availableModelOptions))
+    : null;
+  const sentModel = pickedModel ?? (conversationChoice ? null : shownModel);
+
   const handleSend = useCallback(
     async (message: AppendMessage) => {
       const text = getAppendMessageText(message);
@@ -539,7 +578,14 @@ function BackofficeOrganizationPiAgent({
           agent_running: running,
         });
       }
-      void fetcher.submit({ intent: "send", content: text }, { method: "post" });
+      void fetcher.submit(
+        {
+          intent: "send",
+          content: text,
+          ...(sentModel ? agentModelChoiceFormFields(sentModel) : {}),
+        },
+        { method: "post" },
+      );
       if (initialPromptError) {
         setSearchParams(
           (current) => {
@@ -551,7 +597,7 @@ function BackofficeOrganizationPiAgent({
         );
       }
     },
-    [posthog, fetcher, initialPromptError, running, agent.agentName, setSearchParams],
+    [posthog, fetcher, initialPromptError, running, agent.agentName, setSearchParams, sentModel],
   );
 
   // The agent's queue and Pi's `pi.inbox` own what waits; this adapter keeps the composer usable
@@ -679,17 +725,6 @@ function BackofficeOrganizationPiAgent({
     setComposerAction("message");
   }, [posthog, fetcher, running, agent.agentName]);
 
-  // The definition can change models between turns; the conversation's stored agent is current.
-  // Pi's agent document stores the conversation's model choice as a provider and model id.
-  const conversationModel = (
-    view.docs["pi.agent"] as { model?: { provider: string; modelId: string } } | undefined
-  )?.model;
-  const sessionModel = availableModelOptions.find(
-    (model) =>
-      model.provider === conversationModel?.provider && model.modelId === conversationModel.modelId,
-  );
-  const modelLabel = sessionModel?.label ?? conversationModel?.modelId ?? null;
-
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
@@ -729,7 +764,17 @@ function BackofficeOrganizationPiAgent({
                 queueLabels={conversationQueue.labels}
                 paused={agentQueue.paused && agentQueue.items.length > 0}
                 onResume={handleResume}
-                modelLabel={modelLabel}
+                model={
+                  shownModel ? (
+                    <AgentModelMenu
+                      choice={shownModel}
+                      availableModels={availableModelOptions}
+                      onChoose={setPickedModel}
+                    />
+                  ) : modelLabel === null ? null : (
+                    <ChatComposerModel>{modelLabel}</ChatComposerModel>
+                  )
+                }
                 needsNudge={false}
                 onCompact={handleCompact}
                 onClear={handleClear}
@@ -751,7 +796,7 @@ function BackofficeOrganizationPiAgent({
                 compactionNotice={compactionNotice}
                 contextUsage={{
                   tokens: contextTokens,
-                  window: sessionModel?.contextWindow ?? null,
+                  window: (shownModel?.model ?? sessionModel)?.contextWindow ?? null,
                 }}
                 activeContextStartMessageId={activeContextStartMessageId}
                 hasMoreHistory={history.hasMore}

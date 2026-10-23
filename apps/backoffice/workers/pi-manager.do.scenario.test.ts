@@ -72,7 +72,13 @@ import { InMemoryPiObject } from "./pi.do";
 const scenarioObjects = allLocalObjects;
 
 const PI_SCENARIO_AVAILABLE_MODELS = [
-  { provider: "faux", modelId: "faux-1", label: "Faux 1", contextWindow: 128_000 },
+  {
+    provider: "faux",
+    modelId: "faux-1",
+    label: "Faux 1",
+    contextWindow: 128_000,
+    thinkingLevels: ["off"],
+  },
 ] as const;
 
 const scopes = [
@@ -2182,6 +2188,113 @@ test("clearing an agent's context starts its next turn fresh and keeps earlier e
           expect(modelContexts[1]).not.toContain("First answer.");
           expect(userEntryTexts(await readView(runtime, scope))).toEqual(["Start the new topic."]);
         }),
+      ],
+    }),
+  );
+});
+
+test("the assistant runs each message with the model it chose, and later ones keep it", async () => {
+  const scope: BackofficeContextScope = { kind: "org", orgId: "model-choice-org" };
+  const calls: string[] = [];
+  const answer: FauxResponseStep = (_context, options, _state, model) => {
+    calls.push(`${model.id}:${options?.reasoning ?? "off"}`);
+    return fauxAssistantMessage([fauxText("Answered.")]);
+  };
+  const thinker = {
+    provider: "faux",
+    modelId: "faux-thinker",
+    label: "Faux Thinker",
+    contextWindow: 128_000,
+    thinkingLevels: ["low", "medium", "high"],
+  } as const;
+  async function send(
+    runtime: InMemoryBackofficeRuntime,
+    input: { requestId: string; agentName?: string; model: unknown },
+  ) {
+    const { agentName = "assistant", ...body } = input;
+    return await managerRequest(runtime, scope, `/agents/${agentName}/prompts`, {
+      ...body,
+      content: "Answer.",
+    });
+  }
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "assistant model choice",
+      options: { drain: false },
+      piAvailableModels: [...PI_SCENARIO_AVAILABLE_MODELS, thinker],
+      objects: {
+        ...scenarioObjects,
+        PI: ({ state, runtime, openPiSessionStore, piAgentIdFromConfig, nowEpochMs }) => {
+          const faux = fauxProvider({
+            models: [{ id: "faux-1" }, { id: "faux-thinker", reasoning: true }],
+          });
+          faux.setResponses([answer, answer, answer]);
+          const models = createModels();
+          models.setProvider(faux.provider);
+          return new InMemoryPiObject({
+            state,
+            dependencies: createScriptedPiAgentDependencies(models),
+            runtime,
+            openStorage: openPiSessionStore,
+            idFromConfig: piAgentIdFromConfig,
+            nowEpochMs,
+          });
+        },
+      },
+      setup: ({ given }) => [given.organization.exists({ id: scope.orgId })],
+      steps: ({ then }) => [
+        then.assert(
+          "without GPT-6.1 Sol, a first message that chooses nothing starts on the first model at medium",
+          async ({ runtime }) => {
+            const first = await send(runtime, { requestId: "first", model: null });
+            assert.equal(first.status, 202, await first.clone().text());
+            await runtime.drain();
+            expect(calls).toEqual(["faux-1:medium"]);
+          },
+        ),
+        then.assert("refuse choices the agent could not run", async ({ runtime }) => {
+          const created = await managerRequest(runtime, scope, "/agents", {
+            agentName: "reviewer",
+            description: "Reviews changes.",
+            model: null,
+            permissions: ["upload.read"],
+            instructions: "",
+            managedBy: null,
+          });
+          assert.equal(created.status, 201, await created.clone().text());
+          const refusals = [
+            ["reviewer", { ...thinker, thinkingLevel: "high" }, "MODEL_NOT_CHOOSABLE"],
+            [
+              "assistant",
+              { ...thinker, modelId: "missing", thinkingLevel: "high" },
+              "MODEL_UNAVAILABLE",
+            ],
+            ["assistant", { ...thinker, thinkingLevel: "max" }, "MODEL_UNAVAILABLE"],
+          ] as const;
+          for (const [agentName, { provider, modelId, thinkingLevel }, code] of refusals) {
+            const refused = await send(runtime, {
+              agentName,
+              requestId: `refused-${agentName}-${modelId}-${thinkingLevel}`,
+              model: { provider, modelId, thinkingLevel },
+            });
+            expect(await refused.json()).toMatchObject({ code });
+          }
+        }),
+        then.assert(
+          "a message runs the model it chose, and the next one keeps it",
+          async ({ runtime }) => {
+            const chosen = await send(runtime, {
+              requestId: "chosen",
+              model: { provider: "faux", modelId: "faux-thinker", thinkingLevel: "high" },
+            });
+            assert.equal(chosen.status, 202, await chosen.clone().text());
+            await runtime.drain();
+            const kept = await send(runtime, { requestId: "kept", model: null });
+            assert.equal(kept.status, 202, await kept.clone().text());
+            await runtime.drain();
+            expect(calls).toEqual(["faux-1:medium", "faux-thinker:high", "faux-thinker:high"]);
+          },
+        ),
       ],
     }),
   );

@@ -1,7 +1,6 @@
 import { automationActorsSchema } from "@fragno-dev/backoffice-api/v0/automation";
 import { automationEventSchema } from "@fragno-dev/backoffice-api/v0/events";
 import {
-  piAgentModelSchema,
   type PiAgentConfig,
   type PiAgentMessagePage,
   type PiAgentQueueEntry,
@@ -11,6 +10,7 @@ import { backofficePermissionRequirementSchema } from "@fragno-dev/backoffice-ap
 import { backofficeContextScopeSchema } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
+import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import type {
   ConversationView,
   Cursor,
@@ -20,12 +20,34 @@ import type {
 
 import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
 
+/** Pi's reasoning efforts, from none to the most a model offers. */
+export const piThinkingLevelSchema = z.enum([
+  "off",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+] as const satisfies readonly ModelThinkingLevel[]);
+export type PiThinkingLevel = z.infer<typeof piThinkingLevelSchema>;
+
+/** A model, by provider and model ID, and how hard it reasons. */
+export const piAgentModelChoiceSchema = z.object({
+  provider: z.string().min(1),
+  modelId: z.string().min(1),
+  thinkingLevel: piThinkingLevelSchema,
+});
+export type PiAgentModelChoice = z.infer<typeof piAgentModelChoiceSchema>;
+
 /** One supported chat model whose provider credentials are available to durable Pi. */
 export const piAvailableModelSchema = z.object({
   provider: z.string().min(1),
   modelId: z.string().min(1),
   label: z.string().min(1),
   contextWindow: z.number().int().positive(),
+  /** The reasoning efforts the model supports, in increasing order. */
+  thinkingLevels: z.array(piThinkingLevelSchema).min(1).readonly(),
 });
 export type PiAvailableModel = z.infer<typeof piAvailableModelSchema>;
 
@@ -99,7 +121,10 @@ export const piAgentTurnSchema = z.object({
   actors: automationActorsSchema,
   scopeRestriction: backofficeContextScopeSchema.nullable(),
   agent: z.object({
-    model: piAgentModelSchema,
+    // Null keeps the conversation's model. Turns recorded before efforts were chosen ran at low.
+    model: piAgentModelChoiceSchema
+      .extend({ thinkingLevel: piThinkingLevelSchema.default("low") })
+      .nullable(),
     instructions: z.string(),
     permissions: z.array(backofficePermissionRequirementSchema),
   }),

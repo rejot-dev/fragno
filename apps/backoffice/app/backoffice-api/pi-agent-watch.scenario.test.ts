@@ -71,7 +71,13 @@ test("an integrator watches an agent answer live through the API", async () => {
       defineBackofficeScenario<Vars>({
         name: "watch a Pi agent through the Backoffice API",
         piAvailableModels: [
-          { provider: "faux", modelId: "faux-1", label: "Faux 1", contextWindow: 128_000 },
+          {
+            provider: "faux",
+            modelId: "faux-1",
+            label: "Faux 1",
+            contextWindow: 128_000,
+            thinkingLevels: ["off"],
+          },
         ],
         options: { sqliteDataDirectory: directory, drain: false },
         env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false" },

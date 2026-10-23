@@ -242,12 +242,22 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
       await this.#state.storage.setAlarm(this.#nowEpochMs());
       await recordPiAgentTurn(harness, prompt.requestId, turn, BACKGROUND_CONTEXT);
       try {
-        const { model } = await root.agent(BACKGROUND_CONTEXT);
+        // The conversation keeps its model and effort for turns that name none.
+        const chosen = turn.agent.model;
+        const current = await root.agent(BACKGROUND_CONTEXT);
         if (
-          model?.provider !== turn.agent.model.provider ||
-          model.modelId !== turn.agent.model.modelId
+          chosen &&
+          (current.model?.provider !== chosen.provider ||
+            current.model.modelId !== chosen.modelId ||
+            current.thinkingLevel !== chosen.thinkingLevel)
         ) {
-          await root.configure({ model: turn.agent.model }, BACKGROUND_CONTEXT);
+          await root.configure(
+            {
+              model: { provider: chosen.provider, modelId: chosen.modelId },
+              thinkingLevel: chosen.thinkingLevel,
+            },
+            BACKGROUND_CONTEXT,
+          );
         }
         await root.submit(
           { type: "input", requestId: prompt.requestId, content: prompt.content, whenBusy },

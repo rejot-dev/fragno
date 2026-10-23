@@ -2,16 +2,23 @@ import type { AutomationRouteManagedBy } from "@fragno-dev/backoffice-api/v0/aut
 import type { PiAgentDefinition } from "@fragno-dev/backoffice-api/v0/pi";
 import { column, idColumn, schema, type Column } from "@fragno-dev/db/schema";
 
-import type { PiAgentNotification, PiAgentTurn } from "@/fragno/pi/agent/pi-agent-contract";
+import type {
+  PiAgentModelChoice,
+  PiAgentNotification,
+  PiAgentTurn,
+} from "@/fragno/pi/agent/pi-agent-contract";
 
 const jsonColumn = <T>() => column("json") as Column<"json", T, T>;
 
 /** Who asked for a queued item; the queue admits its turn when the item runs. */
 export type PiAgentTurnProvenance = Pick<PiAgentTurn, "actors" | "scopeRestriction">;
 
-/** What a queued item asks the agent for. */
+/**
+ * What a queued item asks the agent for. A prompt's model is the one its turn runs with, which
+ * null leaves as the conversation's.
+ */
 export type PiAgentQueueInput =
-  | { type: "prompt"; content: string }
+  | { type: "prompt"; content: string; model: PiAgentModelChoice | null }
   | { type: "notification"; notification: PiAgentNotification };
 
 /**

@@ -75,7 +75,13 @@ import { InMemoryPiObject } from "./pi.do";
 const scenarioObjects = allLocalObjects;
 
 const PI_SCENARIO_AVAILABLE_MODELS = [
-  { provider: "faux", modelId: "faux-1", label: "Faux 1", contextWindow: 128_000 },
+  {
+    provider: "faux",
+    modelId: "faux-1",
+    label: "Faux 1",
+    contextWindow: 128_000,
+    thinkingLevels: ["off"],
+  },
 ] as const;
 
 /** Every agent object gets its own copy of the scripted responses. */
@@ -1624,6 +1630,7 @@ test("Cloudflare backend analytics delivers verified outcomes and Pi usage witho
                   content: "PRIVATE_USER_PROMPT",
                   whenBusy: "reject",
                   whenPaused: "wait",
+                  model: null,
                 },
               );
               expect(admission).toMatchObject({
@@ -1640,6 +1647,7 @@ test("Cloudflare backend analytics delivers verified outcomes and Pi usage witho
                   content: "PRIVATE_REJECTED_PROMPT",
                   whenBusy: "reject",
                   whenPaused: "wait",
+                  model: null,
                 },
               );
               assert(rejected.error !== null);
@@ -1701,6 +1709,7 @@ test("Cloudflare backend analytics delivers verified outcomes and Pi usage witho
                   content: "PRIVATE_SECOND_PROMPT",
                   whenBusy: "followUp",
                   whenPaused: "wait",
+                  model: null,
                 },
               );
               await shutdownCloudflarePostHog(failedDeliveryClient);

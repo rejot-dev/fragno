@@ -1158,7 +1158,8 @@ const createFakePiManagerApi = (
     const reply = assistantText({ agentName: config.agentName, content: prompt.content });
     const submissionId = runPromptCalls.length + 1;
     const answerEntryId = `answer-${submissionId}`;
-    fake.model = turn.agent.model;
+    // Like Pi, the conversation keeps its model for turns that name none.
+    fake.model = turn.agent.model ?? fake.model;
     fake.assistantText = reply;
     fake.answerEntryId = answerEntryId;
     fake.submissions.set(prompt.requestId, {
@@ -4345,6 +4346,7 @@ const createFakeObjectOverrides = async (fakes: ScenarioFakes): Promise<LocalBac
                 modelId: "gpt-5.6-luna",
                 label: "GPT-5.6 Luna",
                 contextWindow: 400_000,
+                thinkingLevels: ["off", "low", "medium", "high", "xhigh", "max"],
               },
             ]
           : async () => piAvailableModels ?? [],

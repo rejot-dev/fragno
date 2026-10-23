@@ -3,7 +3,6 @@ import {
   ChatComposer,
   ChatComposerButton,
   ChatComposerDictationButton,
-  ChatComposerModel,
   ChatComposerQueueItem,
   ChatComposerSplit,
   ChatComposerStatus,
@@ -24,7 +23,7 @@ import {
 import { ContextUsageMeter } from "@fragno-private/design-system/context-usage-meter";
 import { OperationNotice } from "@fragno-private/design-system/operation-notice";
 import { RadioMenu, type RadioMenuOption } from "@fragno-private/design-system/radio-menu";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 
 import {
   ComposerPrimitive,
@@ -157,7 +156,7 @@ export function SessionThread({
   queueLabels,
   paused,
   onResume,
-  modelLabel,
+  model,
   needsNudge,
   onCompact,
   onClear,
@@ -189,7 +188,8 @@ export function SessionThread({
   /** Stopping the agent paused its queue with items waiting; sending anything resumes it. */
   paused: boolean;
   onResume: () => unknown;
-  modelLabel: string | null;
+  /** The model answering, or a control choosing it; null shows none. */
+  model: ReactNode;
   needsNudge: boolean;
   onCompact: () => unknown;
   /** Starts the agent on a new, empty context; earlier messages stay in its history. */
@@ -385,9 +385,7 @@ export function SessionThread({
                     <ChatComposerToolbar
                       start={
                         <>
-                          {modelLabel === null ? null : (
-                            <ChatComposerModel>{modelLabel}</ChatComposerModel>
-                          )}
+                          {model}
                           <ContextUsageMeter
                             tokens={contextUsage.tokens}
                             contextWindow={contextUsage.window}

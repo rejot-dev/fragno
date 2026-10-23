@@ -113,7 +113,7 @@ function seededTurn(config: PiAgentConfig): PiAgentTurn {
     }).actors,
     scopeRestriction: null,
     agent: {
-      model: { provider: "faux", modelId: "faux-1" },
+      model: { provider: "faux", modelId: "faux-1", thinkingLevel: "low" },
       instructions: "",
       permissions: [...allBackofficePermissionRequirements],
     },
@@ -160,7 +160,13 @@ describe("Pi durable agent scenarios", () => {
     expect(JSON.stringify(view.entries)).toContain("durable tool result");
     expect(JSON.stringify(view.entries)).toContain("durable answer");
     expect(await (await managerRequest(organizationId, "/models")).json()).toEqual([
-      { provider: "faux", modelId: "faux-1", label: "Faux 1", contextWindow: 128_000 },
+      {
+        provider: "faux",
+        modelId: "faux-1",
+        label: "Faux 1",
+        contextWindow: 128_000,
+        thinkingLevels: ["off"],
+      },
     ]);
     const history = await (
       await managerRequest(

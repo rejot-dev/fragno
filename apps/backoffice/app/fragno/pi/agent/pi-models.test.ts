@@ -17,19 +17,33 @@ describe("listAvailablePiModels", () => {
     });
 
     expect(await listAvailablePiModels(models)).toEqual([
-      { provider: "openai", modelId: "gpt-6-luna", label: "GPT-6 Luna", contextWindow: 272_000 },
-      { provider: "openai", modelId: "gpt-6.1-sol", label: "GPT-6.1 Sol", contextWindow: 272_000 },
+      {
+        provider: "openai",
+        modelId: "gpt-6-luna",
+        label: "GPT-6 Luna",
+        contextWindow: 272_000,
+        thinkingLevels: ["off", "low", "medium", "high", "xhigh", "max"],
+      },
+      {
+        provider: "openai",
+        modelId: "gpt-6.1-sol",
+        label: "GPT-6.1 Sol",
+        contextWindow: 272_000,
+        thinkingLevels: ["low", "medium", "high", "xhigh", "max"],
+      },
       {
         provider: "anthropic",
         modelId: "claude-opus-5-5",
         label: "Claude Opus 5.5",
         contextWindow: 1_000_000,
+        thinkingLevels: ["low", "medium", "high", "xhigh", "max"],
       },
       {
         provider: "google",
         modelId: "gemini-3.8-flash",
         label: "Gemini 3.8 Flash",
         contextWindow: 1_048_576,
+        thinkingLevels: ["low", "medium", "high"],
       },
     ]);
   });

@@ -1,7 +1,7 @@
 import type { PiAgentDefinition } from "@fragno-dev/backoffice-api/v0/pi";
 
 import { admitPiAgentTurn } from "./agent-definitions";
-import type { PiAgentTurn, PiAvailableModel } from "./pi-agent-contract";
+import type { PiAgentModelChoice, PiAgentTurn, PiAvailableModel } from "./pi-agent-contract";
 
 /** Who asks for a turn: its actors and scope restriction, which its authority derives from. */
 type PiAgentSender = Pick<PiAgentTurn, "actors" | "scopeRestriction">;
@@ -33,13 +33,16 @@ export function mayJoinPiAgentTurn(running: PiAgentSender, joining: PiAgentSende
  * 1. Oldest first: items are handled in the order they arrived.
  * 2. One sender per turn: items from different senders run in separate turns.
  * 3. Group notifications: notifications waiting from the same sender are handled together.
- * 4. One prompt per turn: each prompt gets its own turn.
+ * 4. One prompt per turn: each prompt gets its own turn, with the model it chose.
  *
  * Admission depends on the agent's definition and models alone, so a head that cannot be admitted
  * means nothing waiting can run.
  */
 export function nextPiAgentQueueTurn<
-  TItem extends { input: { type: "prompt" | "notification" }; provenance: PiAgentSender },
+  TItem extends {
+    input: { type: "prompt"; model: PiAgentModelChoice | null } | { type: "notification" };
+    provenance: PiAgentSender;
+  },
 >(
   queued: readonly TItem[],
   definition: PiAgentDefinition | null,
@@ -53,7 +56,13 @@ export function nextPiAgentQueueTurn<
   if (!head) {
     return { type: "idle" };
   }
-  const admitted = admitPiAgentTurn(definition, agentName, head.provenance, availableModels);
+  const admitted = admitPiAgentTurn(
+    definition,
+    agentName,
+    head.provenance,
+    availableModels,
+    head.input.type === "prompt" ? head.input.model : null,
+  );
   if (admitted.type === "error") {
     return { type: "drop", reason: admitted.message };
   }
