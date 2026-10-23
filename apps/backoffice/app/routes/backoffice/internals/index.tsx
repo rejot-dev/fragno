@@ -65,6 +65,14 @@ function internalDestinations(
       to: `${internalsBasePath}/durable-hooks`,
     },
     {
+      id: "codemode",
+      name: "Codemode runs",
+      description:
+        "Review codemode runs in this scope and the tool calls each one made, with their input and output.",
+      status: "Available",
+      to: `${internalsBasePath}/codemode`,
+    },
+    {
       id: "workflows",
       name: "Workflows",
       description:
