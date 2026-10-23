@@ -5,9 +5,9 @@ import { BackofficeSystemState } from "@fragno-private/design-system/system-stat
 import { env } from "cloudflare:workers";
 import { Link } from "react-router";
 
+import { requireOperator } from "../organizations/access.server";
 import { organizationPath } from "../organizations/paths";
 import type { Route } from "./+types/firms";
-import { requireOperator } from "./operator.server";
 
 export function meta() {
   return [{ title: "Firms · Bookkeeping" }];
@@ -18,7 +18,7 @@ export function meta() {
  * created; another operator's firm opens only after its owners invite them.
  */
 export async function loader({ request }: Route.LoaderArgs) {
-  const user = await requireOperator(request);
+  const { user } = await requireOperator(request);
   const directory = env.DIRECTORY.getByName("directory");
   const [firms, memberships] = await Promise.all([
     directory.listFirms(),

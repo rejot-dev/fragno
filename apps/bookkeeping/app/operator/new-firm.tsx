@@ -7,11 +7,11 @@ import { Form, Link, useNavigation } from "react-router";
 import { z } from "zod";
 
 import { assertSameOrigin } from "../auth/session.server";
-import { invite } from "../invitations/invite.server";
+import { deliverInvitation } from "../invitations/invite.server";
+import { requireOperator } from "../organizations/access.server";
 import { organizationPath } from "../organizations/paths";
-import { provisionOrganization } from "../organizations/provision.server";
+import { provisionFirmForInvitee, provisionOrganization } from "../organizations/provision.server";
 import type { Route } from "./+types/new-firm";
-import { requireOperator } from "./operator.server";
 
 export function meta() {
   return [{ title: "New firm · Bookkeeping" }];
@@ -31,71 +31,78 @@ export async function loader({ request }: Route.LoaderArgs) {
 
 const BREADCRUMBS = [{ label: "Operator", to: "/operator" }, { label: "New firm" }];
 
-/** The invitation for the firm's owner; null when the operator is the owner. */
-type OwnerInvitation = { email: string; link: string; emailed: boolean } | null;
+/** Who owns the new firm: the operator, someone invited, or someone who already accepted. */
+type FirmOwner =
+  | { status: "you" }
+  | { status: "invited"; email: string; link: string; emailed: boolean }
+  | { status: "joined" };
+
+function failed(externalId: string, error: string) {
+  return { status: "failed", externalId, error } as const;
+}
 
 /**
- * Creates a firm's organization and invites its owner, who need not have signed in yet. Backoffice
- * only makes someone who has authorized Bookkeeping an owner, so the operator owns it first and
- * invites the owner as themselves; the operator stays an owner too. Submitting the form again
- * after a failure finishes the same firm and reuses the invitation.
+ * Creates a firm and invites its owner, who need not have signed in yet. Backoffice creates the
+ * firm with no members and a pending owner invitation from the operator, who does not become a
+ * member: operators run Bookkeeping, not its firms. An operator who names themselves owns the firm
+ * instead. Submitting the form again after a failure finishes the same firm and reuses the
+ * invitation.
  */
 export async function action({ request }: Route.ActionArgs) {
-  const operator = await requireOperator(request);
+  const { user: operator } = await requireOperator(request);
   assertSameOrigin(request);
   const form = Object.fromEntries(await request.formData());
   const parsed = firmSchema.safeParse(form);
   if (!parsed.success) {
-    return {
-      status: "failed",
-      externalId: z.uuid().catch(crypto.randomUUID()).parse(form.externalId),
-      error: parsed.error.issues[0]?.message ?? "Check the form.",
-    } as const;
+    return failed(
+      z.uuid().catch(crypto.randomUUID()).parse(form.externalId),
+      parsed.error.issues[0]?.message ?? "Check the form.",
+    );
   }
   const { externalId, name, ownerEmail } = parsed.data;
-  const provisioned = await provisionOrganization({
+  const unavailable = "Creating the firm didn't work. Try again shortly.";
+  if (ownerEmail === operator.email.toLowerCase()) {
+    const provisioned = await provisionOrganization({
+      externalId,
+      name,
+      kind: "firm",
+      ownerUserId: operator.backofficeUserId,
+    });
+    if (provisioned.status !== "provisioned") {
+      return failed(
+        externalId,
+        provisioned.status === "refused" ? provisioned.message : unavailable,
+      );
+    }
+    const { kind, slug } = provisioned.organization;
+    const owner: FirmOwner = { status: "you" };
+    return { status: "created", name, path: organizationPath(kind, slug), owner } as const;
+  }
+  const provisioned = await provisionFirmForInvitee({
     externalId,
     name,
-    kind: "firm",
-    ownerUserId: operator.backofficeUserId,
+    ownerEmail,
+    invitedByUserId: operator.backofficeUserId,
   });
-  if (provisioned.status === "unavailable") {
-    return {
-      status: "failed",
-      externalId,
-      error: "Creating the firm didn't work. Try again shortly.",
-    } as const;
+  if (provisioned.status !== "provisioned") {
+    return failed(externalId, provisioned.status === "refused" ? provisioned.message : unavailable);
   }
-  if (provisioned.status === "refused") {
-    return { status: "failed", externalId, error: provisioned.message } as const;
-  }
-  const { organization } = provisioned;
+  const { organization, ownerInvitation } = provisioned;
   const path = organizationPath(organization.kind, organization.slug);
-  if (ownerEmail === operator.email.toLowerCase()) {
-    return { status: "created", name, path, invitation: null } as const;
+  if (ownerInvitation === null) {
+    const owner: FirmOwner = { status: "joined" };
+    return { status: "created", name, path, owner } as const;
   }
-  const invited = await invite({
+  const { email, link, emailed } = await deliverInvitation({
+    id: ownerInvitation.id,
     organization,
-    inviter: operator,
     email: ownerEmail,
     roles: ["owner"],
+    invitedBy: operator.name,
+    expiresAt: ownerInvitation.expiresAt,
   });
-  if (invited.status === "unavailable") {
-    return {
-      status: "failed",
-      externalId,
-      error: `${name} was created, but its owner was not invited yet. Try again shortly.`,
-    } as const;
-  }
-  if (invited.status === "refused") {
-    return { status: "failed", externalId, error: invited.message } as const;
-  }
-  const invitation: OwnerInvitation = {
-    email: invited.email,
-    link: invited.link,
-    emailed: invited.emailed,
-  };
-  return { status: "created", name, path, invitation } as const;
+  const owner: FirmOwner = { status: "invited", email, link, emailed };
+  return { status: "created", name, path, owner } as const;
 }
 
 export function headers() {
@@ -113,7 +120,7 @@ export default function NewFirm({ loaderData, actionData }: Route.ComponentProps
     <div className="space-y-6">
       <BackofficePageHeader
         title="New firm"
-        description="Its owner gets an invitation by email. You become an owner too, so you can help."
+        description="Its owner gets an invitation by email. You don't become a member: the firm is theirs."
         breadcrumbs={BREADCRUMBS}
       />
       <div className="max-w-2xl">
@@ -147,34 +154,35 @@ export default function NewFirm({ loaderData, actionData }: Route.ComponentProps
   );
 }
 
-function Created({
-  name,
-  path,
-  invitation,
-}: {
-  name: string;
-  path: string;
-  invitation: OwnerInvitation;
-}) {
-  // Backoffice queues the email; it may still not arrive, so the link is always there to share.
-  let next = "You are its owner.";
-  if (invitation !== null) {
-    next = invitation.emailed
-      ? `We emailed ${invitation.email} an invitation to own it. If it doesn't arrive, send them this link:`
-      : `We couldn't email ${invitation.email} their invitation. Send them this link:`;
+/** What happens next for the firm's owner. */
+function nextStep(owner: FirmOwner): string {
+  if (owner.status === "you") {
+    return "You are its owner.";
   }
+  if (owner.status === "joined") {
+    return "Its owner already accepted the invitation.";
+  }
+  // Backoffice queues the email; it may still not arrive, so the link is always there to share.
+  return owner.emailed
+    ? `We emailed ${owner.email} an invitation to own it. If it doesn't arrive, send them this link:`
+    : `We couldn't email ${owner.email} their invitation. Send them this link:`;
+}
+
+function Created({ name, path, owner }: { name: string; path: string; owner: FirmOwner }) {
   return (
     <div className="space-y-6">
       <BackofficePageHeader title="New firm" breadcrumbs={BREADCRUMBS} />
       <div role="status" className="max-w-2xl space-y-3 text-sm">
         <p className="font-medium">{name} was created.</p>
-        <p>{next}</p>
-        {invitation !== null && (
-          <Input className="w-full" readOnly value={invitation.link} aria-label="Invitation link" />
+        <p>{nextStep(owner)}</p>
+        {owner.status === "invited" && (
+          <Input className="w-full" readOnly value={owner.link} aria-label="Invitation link" />
         )}
-        <p>
-          <Link to={path}>Open {name}</Link>
-        </p>
+        {owner.status === "you" && (
+          <p>
+            <Link to={path}>Open {name}</Link>
+          </p>
+        )}
       </div>
     </div>
   );

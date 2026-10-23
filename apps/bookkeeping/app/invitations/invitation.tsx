@@ -35,6 +35,9 @@ async function findOpenInvitation(invitationId: string) {
 
 /** What the invitation is to, such as "the accounting firm Lovelace & Co". */
 function invitedTo({ kind, name }: Invitation["organization"]): string {
+  if (kind === "operator") {
+    return `${name}, the team that runs Bookkeeping`;
+  }
   return kind === "firm" ? `the accounting firm ${name}` : `the books of ${name}`;
 }
 

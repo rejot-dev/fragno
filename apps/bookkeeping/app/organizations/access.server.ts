@@ -104,6 +104,29 @@ export async function connectAsUser(
 }
 
 /**
+ * The person's membership as Backoffice confirms it now, with the organization as Backoffice names
+ * it; null when Backoffice refuses them, because they were removed or Bookkeeping was uninstalled.
+ */
+async function confirmWithBackoffice(request: Request, organizationId: string) {
+  const backoffice = await connectAsUser(request, organizationId);
+  if (!backoffice) {
+    return null;
+  }
+  const confirmed = await callBackoffice(() =>
+    backoffice.call({ kind: "org", orgId: organizationId }, "org.get"),
+  );
+  return {
+    organization: {
+      id: confirmed.organization.organizationId,
+      slug: confirmed.organization.slug,
+      name: confirmed.organization.name,
+    },
+    roles: parseRoles(confirmed.roles),
+    confirmedAt: Date.now(),
+  };
+}
+
+/**
  * The signed-in person in the organization at `slug`, which must be of `kind`. A membership
  * Backoffice confirmed within the last minute is trusted; otherwise Backoffice confirms it again,
  * with their current roles, or Bookkeeping forgets it: they were removed, or Bookkeeping was
@@ -112,7 +135,7 @@ export async function connectAsUser(
 export async function requireOrganization(
   request: Request,
   slug: string,
-  kind: OrganizationKind,
+  kind: Exclude<OrganizationKind, "operator">,
 ): Promise<OrganizationContext> {
   const user = await requireSessionUser(request);
   const organization = await directory().findOrganization(slug);
@@ -126,28 +149,57 @@ export async function requireOrganization(
   if (known && Date.now() - known.confirmedAt < CONFIRMATION_LIFETIME_MS) {
     return { user, organization, roles: known.roles };
   }
-  const backoffice = await connectAsUser(request, organization.id);
-  if (!backoffice) {
+  const confirmed = await confirmWithBackoffice(request, organization.id);
+  if (!confirmed) {
     await directory().removeMembership({
       organizationId: organization.id,
       userId: user.backofficeUserId,
     });
     throw organizationNotFound();
   }
-  const confirmed = await callBackoffice(() =>
-    backoffice.call({ kind: "org", orgId: organization.id }, "org.get"),
-  );
-  const roles = parseRoles(confirmed.roles);
-  const current = {
-    id: confirmed.organization.organizationId,
-    slug: confirmed.organization.slug,
-    name: confirmed.organization.name,
+  await directory().confirmMembership({ ...confirmed, userId: user.backofficeUserId });
+  return {
+    user,
+    organization: { ...organization, ...confirmed.organization },
+    roles: confirmed.roles,
   };
-  await directory().confirmMembership({
-    organization: current,
-    userId: user.backofficeUserId,
-    roles,
-    confirmedAt: Date.now(),
-  });
-  return { user, organization: { ...organization, ...current }, roles };
+}
+
+/**
+ * The signed-in person as an operator: a member of the operator organization, which Backoffice's
+ * administrator created for Bookkeeping. Membership is confirmed as for any organization; to
+ * anyone else, the operator's pages do not exist.
+ */
+export async function requireOperator(request: Request): Promise<OrganizationContext> {
+  const user = await requireSessionUser(request);
+  const operatorsId = env.BOOKKEEPING_OPERATOR_ORGANIZATION_ID;
+  if (operatorsId === "") {
+    throw organizationNotFound();
+  }
+  const operators = await directory().findOperators(operatorsId);
+  const known =
+    operators &&
+    (await directory().findMembership({
+      organizationId: operators.id,
+      userId: user.backofficeUserId,
+    }));
+  if (operators && known && Date.now() - known.confirmedAt < CONFIRMATION_LIFETIME_MS) {
+    return { user, organization: operators, roles: known.roles };
+  }
+  const confirmed = await confirmWithBackoffice(request, operatorsId);
+  if (!confirmed) {
+    if (operators) {
+      await directory().removeMembership({
+        organizationId: operators.id,
+        userId: user.backofficeUserId,
+      });
+    }
+    throw organizationNotFound();
+  }
+  await directory().confirmOperator({ ...confirmed, userId: user.backofficeUserId });
+  return {
+    user,
+    organization: { ...confirmed.organization, kind: "operator" },
+    roles: confirmed.roles,
+  };
 }

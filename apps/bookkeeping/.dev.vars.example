@@ -3,5 +3,6 @@ BOOKKEEPING_BASE_URL=http://127.0.0.1:4173
 BACKOFFICE_BASE_URL=http://127.0.0.1:5173
 BACKOFFICE_OAUTH_CLIENT_ID=replace-with-backoffice-client-id
 BACKOFFICE_OAUTH_CLIENT_SECRET=replace-with-backoffice-client-secret
-# Comma-separated Backoffice user IDs of the people who operate Bookkeeping and create firms.
-BOOKKEEPING_OPERATOR_USER_IDS=
+# The Backoffice organization whose members operate Bookkeeping and create firms; set by
+# backoffice:connect.
+BOOKKEEPING_OPERATOR_ORGANIZATION_ID=

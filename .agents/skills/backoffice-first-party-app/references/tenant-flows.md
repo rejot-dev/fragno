@@ -28,15 +28,22 @@ create its clients.
    confirmed owner membership.
 
 Backoffice does not know the link from a client to its firm, and grants the firm nothing in the
-client: firm members reach a client as its members. Operators are an allowlist of Backoffice user
-IDs in the app's configuration.
+client: firm members reach a client as its members. Operators are the members of an operator
+organization, which Backoffice's administrator creates with
+[the setup script](../../../../apps/bookkeeping/scripts/connect-backoffice.ts) and the app confirms
+like any other membership. Don't keep an allowlist of user IDs in configuration: it can't be audited
+in Backoffice, and changing it needs a deployment.
 
 The owner must already have authorized this app's OAuth client. The app secret is not permission to
 impersonate an arbitrary Backoffice user. Sign-up itself creates no organization; provisioning is an
 explicit product onboarding action. To create an organization for someone who has not signed in yet,
-as [Bookkeeping's new-firm page](../../../../apps/bookkeeping/app/operator/new-firm.tsx) does,
-provision it with the acting user as owner and invite the real owner with role `owner`. The acting
-user stays an owner, because apps cannot remove members.
+as [Bookkeeping's new-firm page](../../../../apps/bookkeeping/app/operator/new-firm.tsx) does, call
+`organizations.provisionForInvitee` with their email and the acting user, who must have authorized
+the app. Backoffice creates the organization with no members and a pending owner invitation from the
+acting user, who does not become a member; send it with `invitations.send` and accept it with
+`invitations.accept` as any other. Provisioning it again returns the pending invitation, a new one
+once it expired, or none once the owner accepted. Don't provision with the acting user as owner and
+invite the real owner: apps cannot remove members, so the acting user would stay an owner.
 
 Use one stable external identifier across retries, including failures between remote provisioning
 and local persistence. Backoffice derives identities from the app and external identifier; consume

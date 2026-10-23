@@ -11,10 +11,11 @@ export default [
     route("start", "organizations/start.tsx"),
     route("invitations/:invitationId", "invitations/invitation.tsx"),
   ]),
-  // Operators run Bookkeeping and create firms.
+  // Operators run Bookkeeping and create firms; they are the operator organization's members.
   route("operator", "operator/layout.tsx", [
     index("operator/firms.tsx"),
     route("firms/new", "operator/new-firm.tsx"),
+    route("members", "operator/members.tsx"),
   ]),
   // An accounting firm: its clients and its team.
   route("f/:slug", "firms/layout.tsx", [
