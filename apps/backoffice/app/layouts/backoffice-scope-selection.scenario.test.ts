@@ -30,6 +30,7 @@ import { loader as filesScopeLoader } from "@/routes/backoffice/files/scope-layo
 import { loader as integrationsScopeLoader } from "@/routes/backoffice/integrations/scope-layout";
 import { loader as myListingsLoader } from "@/routes/backoffice/marketplace/my-listings";
 import { loader as marketplaceScopeLoader } from "@/routes/backoffice/marketplace/scope-layout";
+import { loader as pageLoader } from "@/routes/backoffice/pages/page";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
 import { establishBackofficeAuthenticatedRequest } from "./backoffice-authenticated-request.server";
@@ -68,6 +69,15 @@ const pages = {
     loaders: [marketplaceScopeLoader, myListingsLoader],
   },
   dashboard: { section: "dashboard", leaf: "", loaders: [dashboardLoader] },
+  // The page loader reports a missing page as data, and the scope lies within its orchestration.
+  "workspace page": {
+    section: "dashboard",
+    leaf: "/pages/home",
+    loaders: [
+      async (args: Parameters<typeof pageLoader>[0]) =>
+        (await pageLoader({ ...args, params: { ...args.params, "*": "home" } })).data.orchestration,
+    ],
+  },
 } satisfies Record<string, { section: string; leaf: string; loaders: SectionLoader[] }>;
 type PageName = keyof typeof pages;
 

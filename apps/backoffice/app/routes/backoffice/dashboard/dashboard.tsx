@@ -37,6 +37,7 @@ import {
   automationWorkflowRunsFromRecords,
   workflowRunRecordsQuery,
 } from "../automations/script-view/use-script-workflow-runs";
+import { loadPageSources, type PageSources } from "../pages/load.server";
 import type { Route } from "./+types/dashboard";
 import { AutomationBrowserPersistenceDiagnosticPanel } from "./browser-persistence-diagnostics";
 import { DashboardSections, type DashboardLoaderData } from "./dashboard-sections";
@@ -65,7 +66,8 @@ export async function loader({ context, url }: Route.LoaderArgs) {
       "PI_MANAGER",
       backofficeRuntimeScopeFromResolvedScope(orchestration.selectedScope),
     ),
-  } satisfies DashboardLoaderData;
+    pageSources: loadPageSources(context),
+  } satisfies DashboardLoaderData & { pageSources: Promise<PageSources> };
 }
 
 export const shouldRevalidate = shouldRevalidateOrchestration;
@@ -124,7 +126,13 @@ export default function BackofficeDashboard({ loaderData }: Route.ComponentProps
   const overviewPath = dashboardPath(
     backofficeRouteScopeFromResolvedScope(loaderData.selectedScope),
   );
-  const header = <DashboardTabs selectedScope={loaderData.selectedScope} active="overview" />;
+  const header = (
+    <DashboardTabs
+      selectedScope={loaderData.selectedScope}
+      active={{ kind: "overview" }}
+      pageSources={loaderData.pageSources}
+    />
+  );
   if (searchParams.get(CREATE_PROJECT_PARAM) === "1") {
     return (
       <>

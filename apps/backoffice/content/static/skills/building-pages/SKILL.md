@@ -32,9 +32,10 @@ page runs the queries in the browser and re-renders as the data changes.
    the query breaks.
 
 5. **Hand off.** Give the user the source path. Selecting it in Files shows the live page on its
-   Page tab; the page also opens at `/backoffice/pages/<scope>/<path>`, where `<scope>` is the scope
-   segment of their Files URL and `<path>` is the source's path under `/workspace` without
-   `.page.js`. Complete when the user has the path.
+   Page tab; the dashboard's "+" tab lists every page, and a page opens as a dashboard tab at
+   `/backoffice/dashboard/<scope>/pages/<path>`, where `<scope>` is the scope segment of their Files
+   URL and `<path>` is the source's path under `/workspace` without `.page.js`. Complete when the
+   user has the path.
 
 ## Branches
 

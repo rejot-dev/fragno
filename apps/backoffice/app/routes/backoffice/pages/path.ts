@@ -3,15 +3,23 @@ import {
   backofficeRouteScopeFromResolvedScope,
   type BackofficeResolvedScope,
 } from "@/backoffice-runtime/resolved-scope";
-import { backofficeRouteScopePath } from "@/backoffice-runtime/route-scope";
+
+import { dashboardPath } from "../dashboard/path";
 
 const WORKSPACE = "/workspace/";
 
-/** Where a page opens: `/workspace/reports/operations.page.js` at `…/pages/<scope>/reports/operations`. */
-export function pagePath(scope: BackofficeResolvedScope, sourcePath: string): string {
-  const name = artifactName(sourcePath.slice(WORKSPACE.length), "page");
-  const scopePath = backofficeRouteScopePath(backofficeRouteScopeFromResolvedScope(scope));
-  return `/backoffice/pages/${scopePath}/${name.split("/").map(encodeURIComponent).join("/")}`;
+/** Every page source of a workspace, at any depth. */
+export const PAGE_SOURCES_GLOB = `${WORKSPACE}**/${artifactSourcePath("*", "page")}`;
+
+/** What a page is called in routes and menus: `/workspace/reports/operations.page.js` is `reports/operations`. */
+export function pageName(sourcePath: string): string {
+  return artifactName(sourcePath.slice(WORKSPACE.length), "page");
+}
+
+/** Pages open as a dashboard tab: `reports/operations` at `…/dashboard/<scope>/pages/reports/operations`. */
+export function pagePath(scope: BackofficeResolvedScope, name: string): string {
+  const dashboard = dashboardPath(backofficeRouteScopeFromResolvedScope(scope));
+  return `${dashboard}/pages/${name.split("/").map(encodeURIComponent).join("/")}`;
 }
 
 /** The workspace source a page route names, or null when no file could have that name. */

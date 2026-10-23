@@ -36,6 +36,7 @@ import {
 import { requireScopeSelection } from "@/layouts/backoffice-shell-request.server";
 
 import { formatTimestamp } from "../automations/formatting";
+import { loadPageSources } from "../pages/load.server";
 import type { Route } from "./+types/events";
 import { DashboardTabs } from "./dashboard-tabs";
 import {
@@ -82,7 +83,10 @@ const sectionTitleClassName = "text-sm font-semibold text-[var(--bo-fg)]";
 
 /** Traces come from synchronized collections; the loader only selects scope. */
 export async function loader({ context }: Route.LoaderArgs) {
-  return { selectedScope: requireScopeSelection(context) };
+  return {
+    selectedScope: requireScopeSelection(context),
+    pageSources: loadPageSources(context),
+  };
 }
 
 /** The only write here retries a route; its new state arrives through the synchronized rows. */
@@ -115,7 +119,7 @@ export function meta({ loaderData }: Route.MetaArgs) {
 }
 
 export default function BackofficeDashboardEvents({ loaderData }: Route.ComponentProps) {
-  const { selectedScope } = loaderData;
+  const { selectedScope, pageSources } = loaderData;
   const loading = (
     <BackofficeSystemState
       tone="loading"
@@ -126,7 +130,11 @@ export default function BackofficeDashboardEvents({ loaderData }: Route.Componen
 
   return (
     <>
-      <DashboardTabs selectedScope={selectedScope} active="events" />
+      <DashboardTabs
+        selectedScope={selectedScope}
+        active={{ kind: "events" }}
+        pageSources={pageSources}
+      />
       <div className={pageClassName}>
         <h1 className="sr-only">Events in {selectedScope.label}</h1>
         <ClientOnly fallback={loading}>
