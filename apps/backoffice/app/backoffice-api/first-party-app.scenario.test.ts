@@ -142,7 +142,8 @@ async function requestClientCredentialsToken(ctx: Ctx): Promise<string> {
 }
 
 /** The user signs in to Bookkeeping, and Backoffice records their consent without asking. */
-async function authorizeBookkeeping(ctx: Ctx, cookie: string) {
+/** Bookkeeping sends a browser to Backoffice's authorization; returns where it lands. */
+async function startAuthorization(ctx: Ctx, cookie: string, params: Record<string, string>) {
   const authorization = await ctx.runtime.objects.auth.singleton().http.fetch(
     new Request(
       `${origin}/api/auth/oauth2/authorize?${new URLSearchParams({
@@ -155,12 +156,17 @@ async function authorizeBookkeeping(ctx: Ctx, cookie: string) {
         code_challenge: createHash("sha256")
           .update(randomBytes(32).toString("base64url"))
           .digest("base64url"),
+        ...params,
       })}`,
       { headers: { cookie, accept: "text/html" } },
     ),
   );
   assert.equal(authorization.status, 302, await authorization.clone().text());
-  const url = new URL(authorization.headers.get("location") ?? "", origin);
+  return new URL(authorization.headers.get("location") ?? "", origin);
+}
+
+async function authorizeBookkeeping(ctx: Ctx, cookie: string) {
+  const url = await startAuthorization(ctx, cookie, {});
   assert.equal(url.pathname, "/backoffice/oauth/consent");
   const request = new Request(url, { headers: { cookie } });
   const approved = await consentLoader({
@@ -968,6 +974,15 @@ test("Bookkeeping provisions an organization for an owner who never signed in, w
           },
         });
 
+        // Signed in to Backoffice as the operator, Bookkeeping's sign-in for Ada asks to sign in,
+        // instead of returning the operator; the operator's own sign-in still goes straight back.
+        expect(
+          await startAuthorization(ctx, ctx.vars.ownerCookie, { login_hint: "Ada@Example.test" }),
+        ).toMatchObject({ pathname: "/backoffice/login" });
+        const operatorSignIn = await startAuthorization(ctx, ctx.vars.ownerCookie, {
+          login_hint: "operator@bookkeeping.test",
+        });
+        expect(operatorSignIn.origin + operatorSignIn.pathname).toBe(redirectUri);
         const ada = await signUpWithPassword(ctx, "ada@example.test", "Ada");
         await authorizeBookkeeping(ctx, ada.cookie);
         await ctx.runtime.objects.auth

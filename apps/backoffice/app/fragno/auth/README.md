@@ -212,6 +212,11 @@ between a 6-digit code and the account's password.
   as Better Auth does.
 - **The authorization continues at once.** The new session lets the OAuth Provider resume the app's
   request, and the consent page approves first-party apps, so people land back in the app.
+- **An app's `login_hint` for another account asks to sign in.** When any app names an address while
+  someone else is signed in to Backoffice, authorization proceeds as with `prompt=login`. Logging
+  out of an app leaves Backoffice's session, so without this a person who signed in to the app with
+  the wrong account would be returned as that account again, with no way to switch. Signing in as
+  anyone, even the same account, then continues the request.
 
 Users manage their own authorizations at `/backoffice/settings/authorized-applications`, accessible
 from the account menu and Settings. Listing is credential-free and cursor-bound to the session user.
