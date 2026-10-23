@@ -14,7 +14,12 @@ import {
   backofficeRouteScopeFromResolvedScope,
   type BackofficeResolvedScope,
 } from "@/backoffice-runtime/resolved-scope";
-import type { AdministeredMember, BackofficeMeData, Organization } from "@/fragno/auth/contracts";
+import {
+  type AdministeredMember,
+  administersMembers,
+  type BackofficeMeData,
+  type Organization,
+} from "@/fragno/auth/contracts";
 
 import { backofficeScopeOptions } from "./scope-options";
 import { scopeSwitchPath } from "./scope-switch-path";
@@ -152,6 +157,10 @@ export function BackofficeScopeMenu({
   ].map((option) => ({ ...option, id: scopeOptionId(option.scope) }));
   const selectedId = scopeOptionId(currentScope);
   const triggerLabel = currentScopeLabel(currentScope, me, administeredMember);
+  // Members are listed, paginated, on each organization's members page rather than here.
+  const administeredOrganizations = me.organizations
+    .filter(({ member }) => administersMembers(member.roles))
+    .map(({ organization }) => organization);
 
   return (
     <SelectorMenu>
@@ -196,6 +205,20 @@ export function BackofficeScopeMenu({
             </SelectorMenuGroup>
           );
         })}
+        {administeredOrganizations.length > 0 ? (
+          <SelectorMenuGroup label="Member workspaces">
+            {administeredOrganizations.map((organization) => (
+              <SelectorMenuOption
+                key={organization.id}
+                to={`/backoffice/organizations/${encodeURIComponent(organization.slug)}/members`}
+                label={`${organization.name} members`}
+                description="Open a member's personal workspace"
+                badge={null}
+                current={false}
+              />
+            ))}
+          </SelectorMenuGroup>
+        ) : null}
       </SelectorMenuPopup>
     </SelectorMenu>
   );
