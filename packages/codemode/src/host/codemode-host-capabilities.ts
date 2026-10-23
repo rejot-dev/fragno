@@ -129,6 +129,101 @@ export function restrictCodemodeProvider(
   return new RestrictedCodemodeProviderTarget();
 }
 
+// Names are bounded because longer ones reach no tool or scope, so such a call is not worth observing.
+/** The scope a guest's `context` handle names; `current` is the run's own scope. */
+const codemodeToolCallScopeSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("current") }),
+  z.strictObject({ kind: z.literal("org"), orgId: z.string().max(256) }),
+  z.strictObject({ kind: z.literal("user"), userId: z.string().max(256) }),
+  z.strictObject({ kind: z.literal("project"), projectId: z.string().max(256) }),
+]);
+
+// The guest API's scoped handles call every tool through `__context.callScoped`.
+const codemodeScopedCallSchema = z.object({
+  scope: codemodeToolCallScopeSchema,
+  namespace: z.string().max(256),
+  toolName: z.string().max(256),
+  args: z.array(z.unknown()),
+});
+
+/** A tool call as its guest named it. */
+export type CodemodeToolCall = {
+  scope: z.infer<typeof codemodeToolCallScopeSchema>;
+  provider: string;
+  tool: string;
+};
+
+/**
+ * Wraps one tool call; it must return the call's result for the guest. The input is the tool's
+ * first argument, the only one tools read.
+ */
+export type CodemodeToolCallObserver = (
+  call: CodemodeToolCall,
+  input: unknown,
+  invoke: () => Promise<CodemodeToolResult>,
+) => Promise<CodemodeToolResult>;
+
+function codemodeToolCallOf(
+  provider: string,
+  tool: string,
+  args: unknown[],
+): { call: CodemodeToolCall; input: unknown } | null {
+  if (provider !== "__context") {
+    return { call: { scope: { kind: "current" }, provider, tool }, input: args[0] };
+  }
+  // getCurrentScope only reads the run's scope; a malformed scoped call names no tool to run.
+  const scoped = tool === "callScoped" ? codemodeScopedCallSchema.safeParse(args[0]) : null;
+  return scoped?.success
+    ? {
+        call: {
+          scope: scoped.data.scope,
+          provider: scoped.data.namespace,
+          tool: scoped.data.toolName,
+        },
+        input: scoped.data.args[0],
+      }
+    : null;
+}
+
+/**
+ * Shows a host's owner every tool call its guest makes, as the call happens. Scoped calls are
+ * reported as the tool they name. Workflow step operations are not tool calls.
+ */
+export function observeCodemodeToolCalls(
+  host: CodemodeHost,
+  observe: CodemodeToolCallObserver,
+): CodemodeHost {
+  class ObservedCodemodeProviderTarget extends RpcTarget implements CodemodeProviderCapability {
+    readonly #name: string;
+    readonly #provider: CodemodeProviderCapability;
+    constructor(name: string, provider: CodemodeProviderCapability) {
+      super();
+      this.#name = name;
+      this.#provider = provider;
+    }
+    async call(tool: string, args: unknown[]): Promise<CodemodeToolResult> {
+      const invoke = () => this.#provider.call(tool, args);
+      const observed = codemodeToolCallOf(this.#name, tool, args);
+      return observed === null
+        ? await invoke()
+        : await observe(observed.call, observed.input, invoke);
+    }
+  }
+  return {
+    capabilities: {
+      dispatchers: Object.fromEntries(
+        Object.entries(host.capabilities.dispatchers).map(([name, provider]) => [
+          name,
+          new ObservedCodemodeProviderTarget(name, provider),
+        ]),
+      ),
+      stepTarget: host.capabilities.stepTarget,
+    },
+    close: () => host.close(),
+    settle: () => host.settle(),
+  };
+}
+
 function createCodemodeTransaction(
   lifetime: HostLifetime,
   source: CodemodeWorkflowTransactionHost,
