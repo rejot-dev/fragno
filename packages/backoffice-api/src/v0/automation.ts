@@ -135,11 +135,18 @@ type AutomationUserRouteGrants = readonly BackofficePermissionRequirement[] | "i
  * A delegate is an additional capability boundary, not an impersonated principal. The kernel
  * requires both the principal and every delegate to grant an operation, so delegation can narrow
  * authority but can never give the principal permissions they do not already have.
+ *
+ * A personal (user) scope's scheduled routes may use `delegated-user` with explicit grants, which
+ * saving the route checks against its author: the route's own action then acts for the scope's
+ * owner. Schedule events themselves name no user, so nothing reclassified or forwarded from them
+ * does. Other scopes have no user to act for on a schedule, so their scheduled routes must use
+ * `organization-automation`.
  */
 export type AutomationAuthorityMode =
   | {
       /**
-       * Run on behalf of the internal user principal carried by the triggering event.
+       * Run on behalf of the internal user principal carried by the triggering event. A personal
+       * scope's scheduled route acts for the scope's owner instead.
        *
        * The user remains the principal and the stable route automation identity is appended as a
        * delegate. For each protected operation, the authority resolver looks up the user's current
@@ -352,10 +359,6 @@ export const isAutomationActorProvenancePath = (path: string) =>
   path.startsWith("$.actors.") ||
   path.startsWith("$.actors[");
 
-/** Scheduled routes have no triggering user, so only organization authority can start workflows. */
-export const AUTOMATION_ROUTE_AUTHORITY_ERROR_MESSAGE =
-  "Scheduled workflows and agent notifications require organization-automation authority. Linked-user authority requires an external sender; delegated-user authority requires a user principal.";
-
 const automationActorMatcherSchema: z.ZodType<AutomationActorMatcher> = z.lazy(() =>
   z.discriminatedUnion("participation", [
     z.discriminatedUnion("scope", [
@@ -506,13 +509,6 @@ const automationRouteGrantsSchema = z.lazy(() =>
   }),
 ) satisfies z.ZodType<readonly BackofficePermissionRequirement[]>;
 
-const organizationAutomationAuthoritySchema = z.lazy(() =>
-  z.strictObject({
-    kind: z.literal("organization-automation"),
-    grants: automationRouteGrantsSchema,
-  }),
-);
-
 const automationAuthorityModeSchema = z.lazy(() =>
   z.discriminatedUnion("kind", [
     z.strictObject({
@@ -523,7 +519,10 @@ const automationAuthorityModeSchema = z.lazy(() =>
       kind: z.literal("linked-user"),
       grants: z.union([automationRouteGrantsSchema, z.literal("inherit")]),
     }),
-    organizationAutomationAuthoritySchema,
+    z.strictObject({
+      kind: z.literal("organization-automation"),
+      grants: automationRouteGrantsSchema,
+    }),
   ]),
 );
 
@@ -688,47 +687,6 @@ const automationRouteTriggerSchema: z.ZodType<AutomationRouteTrigger> = z
   )
   .meta({ id: "AutomationRouteTrigger", codemodeInputId: "AutomationRouteTriggerInput" });
 
-const automationRouteConfigurationSchema = z.lazy(() =>
-  z.union(
-    [
-      z.object({
-        trigger: automationRouteEventTriggerSchema,
-        action: automationRouteActionSchema,
-      }),
-      z.object({
-        trigger: automationRouteScheduleTriggerSchema,
-        action: z.union([
-          automationStartWorkflowActionSchema._zod.innerType.extend({
-            authority: organizationAutomationAuthoritySchema,
-          }),
-          automationSendWorkflowEventActionSchema,
-          automationForwardEventActionSchema,
-          automationReclassifyEventActionSchema,
-          automationNotifyAgentActionSchema._zod.innerType.extend({
-            authority: organizationAutomationAuthoritySchema,
-          }),
-        ]),
-      }),
-    ],
-    {
-      error: (issue) => {
-        const configuration = z
-          .object({
-            trigger: automationRouteScheduleTriggerSchema,
-            action: automationRouteActionSchema,
-          })
-          .safeParse(issue.input);
-        const authority = configuration.success
-          ? automationRouteActionAuthority(configuration.data.action)
-          : null;
-        return authority && authority.kind !== "organization-automation"
-          ? AUTOMATION_ROUTE_AUTHORITY_ERROR_MESSAGE
-          : undefined;
-      },
-    },
-  ),
-);
-
 export const automationRouteSchema: z.ZodType<AutomationRouteDefinition> = z
   .lazy(() =>
     z.object({
@@ -746,16 +704,16 @@ export const automationRouteSchema: z.ZodType<AutomationRouteDefinition> = z
   .meta({ id: "AutomationRoute" });
 
 export const automationRouteCreateInputSchema = z.lazy(() =>
-  z
-    .object({
-      id: z.string().trim().min(1),
-      name: z.string().trim().min(1),
-      enabled: z.boolean().default(true),
-      priority: z.number().int().default(1000),
-      description: z.string().nullable().optional(),
-      managedBy: automationRouteManagedBySchema.nullable().optional(),
-    })
-    .and(automationRouteConfigurationSchema),
+  z.object({
+    id: z.string().trim().min(1),
+    name: z.string().trim().min(1),
+    enabled: z.boolean().default(true),
+    priority: z.number().int().default(1000),
+    description: z.string().nullable().optional(),
+    managedBy: automationRouteManagedBySchema.nullable().optional(),
+    trigger: automationRouteTriggerSchema,
+    action: automationRouteActionSchema,
+  }),
 );
 
 const automationRouteUpdateObjectSchema = z.lazy(() =>

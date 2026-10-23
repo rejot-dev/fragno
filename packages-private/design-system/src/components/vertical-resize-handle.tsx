@@ -35,9 +35,10 @@ export function VerticalResizeHandle({
       onDoubleClick={onDoubleClick}
       onKeyDown={onKeyDown}
       onPointerDown={onPointerDown}
-      className={`group relative z-30 h-full w-px shrink-0 cursor-col-resize bg-[var(--bo-border-strong)] outline-none focus-visible:bg-[var(--bo-accent)] ${visibleFrom === "md" ? "hidden md:block" : visibleFrom === "lg" ? "hidden lg:block" : "hidden xl:block"}`}
+      className={`relative z-30 h-full w-px shrink-0 cursor-col-resize bg-[var(--bo-border-strong)] transition-colors duration-150 outline-none hover:bg-[color-mix(in_srgb,var(--bo-border-strong),var(--bo-fg)_20%)] focus-visible:bg-[color-mix(in_srgb,var(--bo-border-strong),var(--bo-fg)_20%)] active:bg-[color-mix(in_srgb,var(--bo-border-strong),var(--bo-fg)_20%)] ${visibleFrom === "md" ? "hidden md:block" : visibleFrom === "lg" ? "hidden lg:block" : "hidden xl:block"}`}
     >
-      <span className="absolute inset-y-0 -left-5 w-10 bg-transparent transition-[background-color] duration-150 group-hover:bg-[color:var(--bo-accent-bg)]/45" />
+      {/* A wider, invisible grab area; only the line itself darkens. */}
+      <span className="absolute inset-y-0 -left-2 w-4" />
     </div>
   );
 }

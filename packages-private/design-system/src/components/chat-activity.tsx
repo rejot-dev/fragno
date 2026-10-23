@@ -148,7 +148,7 @@ export function ChatActivity({
     <Collapsible.Root
       open={open}
       onOpenChange={setReaderOpen}
-      className="bo-chat-enter min-w-0 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] transition-[border-color] duration-200 data-[open]:border-[color:var(--bo-border-strong)]"
+      className="bo-chat-enter min-w-0 rounded-[4px] border border-[color:var(--bo-selected-border)] bg-[var(--bo-selected-bg)] shadow-[var(--bo-selected-shadow)] transition-[border-color] duration-200 data-[open]:border-[color:var(--bo-border-strong)]"
     >
       <div className="flex min-w-0 items-center">
         <Collapsible.Trigger className="group/activity flex min-h-11 min-w-0 flex-1 items-center gap-3 px-3 text-left text-xs outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:ring-inset">

@@ -17,12 +17,8 @@ export function ChatComposer({
     <form
       aria-disabled={disabled}
       {...props}
-      className={cn(
-        "border bg-[var(--bo-panel-2)] p-2 transition-[border-color,opacity] duration-150",
-        disabled
-          ? "cursor-not-allowed border-[color:var(--bo-border)] opacity-50"
-          : "border-[color:var(--bo-border-strong)]",
-      )}
+      // Shares the selected navigation item's surface, like the other prompt fields.
+      className={cn("bo-input p-2", disabled && "cursor-not-allowed opacity-50")}
     />
   );
 }
@@ -204,7 +200,12 @@ export function ChatComposerStatus({ working, children }: { working: boolean; ch
 
 /** Holds a button and the menu that switches what it does, as one split button. */
 export function ChatComposerSplit({ children }: { children: ReactNode }) {
-  return <div className="flex items-stretch">{children}</div>;
+  // The split carries the shadow so it falls once behind both halves, not into the seam.
+  return (
+    <div className="flex items-stretch rounded-[4px] shadow-[var(--bo-selected-shadow)]">
+      {children}
+    </div>
+  );
 }
 
 /**
@@ -223,10 +224,10 @@ export function ChatComposerDictationButton({
       type={type}
       {...props}
       className={cn(
-        "inline-flex min-h-10 w-10 items-center justify-center border transition-[border-color,color,scale] duration-150 ease-out active:not-disabled:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-35",
+        "inline-flex min-h-10 w-10 items-center justify-center rounded-[4px] shadow-[var(--bo-selected-shadow)] transition-[background-color,color,scale] duration-150 ease-out focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none active:not-disabled:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-35",
         state === "idle"
-          ? "border-[color:var(--bo-border-strong)] bg-[var(--bo-panel)] text-[var(--bo-muted)] hover:border-[color:var(--bo-accent)] hover:text-[var(--bo-fg)]"
-          : "border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]",
+          ? "bg-[var(--bo-selected-bg)] text-[var(--bo-muted)] hover:bg-[var(--bo-panel-2)] hover:text-[var(--bo-fg)]"
+          : "bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]",
       )}
     >
       {state === "listening" ? (
@@ -239,8 +240,9 @@ export function ChatComposerDictationButton({
 }
 
 /**
- * Accent sends to the agent; neutral interrupts it. A joined button is the first half of a
- * ChatComposerSplit and drops its right border into the menu trigger's.
+ * Accent sends to the agent and never looks disabled, so the primary action stays legible while
+ * there is nothing to send yet; neutral interrupts it. A joined button is the first half of a
+ * ChatComposerSplit, which carries the shadow and rounds only its outer corners.
  */
 export function ChatComposerButton({
   tone,
@@ -256,11 +258,11 @@ export function ChatComposerButton({
       type={type}
       {...props}
       className={cn(
-        "inline-flex min-h-10 items-center border text-xs font-semibold transition-[border-color,scale] duration-150 ease-out active:not-disabled:scale-[0.96] disabled:cursor-not-allowed",
+        "inline-flex min-h-10 items-center text-sm font-semibold transition-[background-color,color,scale] duration-150 ease-out focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none active:not-disabled:scale-[0.96]",
         tone === "accent"
-          ? "border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 text-[var(--bo-accent-fg)] hover:border-[color:var(--bo-accent-strong)] disabled:opacity-35"
-          : "border-[color:var(--bo-border-strong)] bg-[var(--bo-panel)] px-3 text-[var(--bo-fg)] hover:border-[color:var(--bo-failed)]",
-        joined ? "border-r-0" : null,
+          ? "bg-[var(--bo-fg)] px-4 text-[var(--bo-panel)] hover:not-disabled:bg-[color-mix(in_srgb,var(--bo-fg)_82%,var(--bo-panel))]"
+          : "bg-[var(--bo-selected-bg)] px-3 text-[var(--bo-fg)] hover:text-[var(--bo-failed)] disabled:cursor-not-allowed",
+        joined ? "rounded-l-[4px]" : "rounded-[4px] shadow-[var(--bo-selected-shadow)]",
       )}
     />
   );

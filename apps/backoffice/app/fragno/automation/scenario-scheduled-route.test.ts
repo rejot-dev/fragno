@@ -4,9 +4,17 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import {
+  BACKOFFICE_PERMISSION,
+  type BackofficePermissionRequirement,
+} from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import Database from "better-sqlite3";
 
-import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
+import {
+  type BackofficeExecutionContext,
+  createBackofficeSystemExecution,
+  createBackofficeUserExecution,
+} from "@/backoffice-runtime/context";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
   class MockDurableObject {
@@ -36,10 +44,17 @@ import { InMemoryBillingObject } from "../../../workers/billing.do";
 import { InMemoryCodemodeObject } from "../../../workers/codemode.do";
 import { InMemoryFormsObject } from "../../../workers/forms.do";
 import { InMemoryMcpObject } from "../../../workers/mcp.do";
+import { InMemoryResendObject } from "../../../workers/resend.do";
 import { InMemoryTelegramObject } from "../../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../../workers/upload.do";
+import { createAutomationsRouteCaller } from "./route-callers";
 import { createRouteBackedAutomationRouterRuntime } from "./routing-route-runtime";
-import { backofficeFiles, defineBackofficeScenario, runBackofficeScenario } from "./scenario";
+import {
+  type BackofficeScenarioContext,
+  backofficeFiles,
+  defineBackofficeScenario,
+  runBackofficeScenario,
+} from "./scenario";
 
 const scenarioObjects = {
   API: (input) => new InMemoryApiObject(input),
@@ -51,6 +66,7 @@ const scenarioObjects = {
   CODEMODE: (input) => new InMemoryCodemodeObject(input),
   FORMS: (input) => new InMemoryFormsObject(input),
   MCP: (input) => new InMemoryMcpObject(input),
+  RESEND: (input) => new InMemoryResendObject(input),
   TELEGRAM: (input) => new InMemoryTelegramObject(input),
   UPLOAD: (input) => new InMemoryUploadObject(input),
 } satisfies LocalBackofficeObjects;
@@ -512,6 +528,197 @@ describe("scheduled automation route scenario", () => {
           }),
           then.hooks.noPending({ orgId: "org-1", fragments: ["automations"] }),
           then.hooks.noFailed({ orgId: "org-1", fragments: ["automations"] }),
+        ],
+      }),
+    );
+  });
+
+  test("a personal schedule acts for its owner only within grants its author holds", async () => {
+    const scope = { kind: "user", userId: "user-1" } as const;
+    const owner = createBackofficeUserExecution({ scope, userId: "user-1" });
+    // The owner acting through a delegate that may only change routes, like a narrowed agent.
+    const routerOnly = {
+      ...owner,
+      actors: {
+        ...owner.actors,
+        delegation: [
+          {
+            scope: "internal",
+            type: "automation",
+            id: "automation-route:router-only",
+            role: "delegate",
+          },
+        ],
+      },
+    } as const;
+    const routesFor = (ctx: BackofficeScenarioContext, execution: BackofficeExecutionContext) =>
+      createAutomationsRouteCaller({
+        object: ctx.runtime.objects.automations.for(scope),
+        context: { execution, propagationContext: null },
+      });
+    const personalDigest = (id: string, grants: BackofficePermissionRequirement[] | "inherit") => ({
+      id,
+      name: "Personal digest",
+      enabled: true,
+      priority: 1000,
+      trigger: {
+        kind: "schedule" as const,
+        cadence: { kind: "once" as const, at: new Date(Date.now() + 60_000).toISOString() },
+      },
+      action: {
+        kind: "start_workflow" as const,
+        authority: { kind: "delegated-user" as const, grants },
+        workflowScriptPath: "/workspace/automations/personal-digest.workflow.js",
+        instanceIdTemplate: `${id}-\${event.payload.id}`,
+      },
+    });
+    const workflowSource = `export default defineWorkflow(
+  { name: "personal-digest" },
+  async (event, step) => {
+    await step.do("write the owner's store", async () => {
+      await store.set({ key: \`digest/\${event.payload.id}\`, value: "written" });
+    });
+  },
+);
+`;
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        objects: scenarioObjects,
+        name: "personal schedules act for their owner within their author's grants",
+        files: backofficeFiles.workspaceStarter({
+          "automations/personal-digest.workflow.js": workflowSource,
+        }),
+        setup: ({ given }) => [given.auth.user({ id: "user-1", role: "user" })],
+        steps: ({ when, then }) => [
+          then.assert("the owner narrows a delegate to changing routes", async (ctx) => {
+            await expect(
+              routesFor(ctx, owner)("POST", "/routes", {
+                body: {
+                  id: "router-only",
+                  name: "Router only",
+                  enabled: true,
+                  priority: 1000,
+                  trigger: {
+                    kind: "event",
+                    source: "manual",
+                    eventType: "router.requested",
+                    matcher: null,
+                  },
+                  action: {
+                    kind: "start_workflow",
+                    authority: {
+                      kind: "delegated-user",
+                      grants: [BACKOFFICE_PERMISSION.router.modify],
+                    },
+                    workflowScriptPath: "/workspace/automations/personal-digest.workflow.js",
+                    instanceIdTemplate: "router-only-${event.id}",
+                  },
+                },
+              }),
+            ).resolves.toMatchObject({ type: "json" });
+          }),
+          then.assert(
+            "the narrowed delegate cannot schedule work it may not do itself",
+            async (ctx) => {
+              const routes = routesFor(ctx, routerOnly);
+              await expect(
+                routes("POST", "/routes", {
+                  body: personalDigest("forbidden-digest", [BACKOFFICE_PERMISSION.store.modify]),
+                }),
+              ).resolves.toMatchObject({ type: "error", status: 403 });
+              await expect(
+                routes("POST", "/routes", { body: personalDigest("inherited-digest", "inherit") }),
+              ).resolves.toMatchObject({
+                type: "error",
+                status: 400,
+                error: { code: "ROUTE_AUTHORITY_INVALID" },
+              });
+            },
+          ),
+          then.assert(
+            "the narrowed delegate routes a reclassified schedule to inherited authority",
+            async (ctx) => {
+              const routes = routesFor(ctx, routerOnly);
+              await expect(
+                routes("POST", "/routes", {
+                  body: {
+                    id: "smuggled-digest",
+                    name: "Smuggled digest",
+                    enabled: true,
+                    priority: 1000,
+                    trigger: {
+                      kind: "event",
+                      source: "personal",
+                      eventType: "digest.requested",
+                      matcher: null,
+                    },
+                    action: {
+                      kind: "start_workflow",
+                      authority: { kind: "delegated-user", grants: "inherit" },
+                      workflowScriptPath: "/workspace/automations/personal-digest.workflow.js",
+                      instanceIdTemplate: "smuggled-digest-${event.id}",
+                    },
+                  },
+                }),
+              ).resolves.toMatchObject({ type: "json" });
+              await expect(
+                routes("POST", "/routes", {
+                  body: {
+                    ...personalDigest("reclassified-digest", []),
+                    action: {
+                      kind: "reclassify_event",
+                      source: "personal",
+                      eventType: "digest.requested",
+                      payload: { kind: "projection", fields: { id: "$.payload.id" } },
+                    },
+                  },
+                }),
+              ).resolves.toMatchObject({ type: "json" });
+            },
+          ),
+          then.assert("the owner schedules a digest", async (ctx) => {
+            await expect(
+              routesFor(ctx, owner)("POST", "/routes", {
+                body: personalDigest("personal-digest", [BACKOFFICE_PERMISSION.store.modify]),
+              }),
+            ).resolves.toMatchObject({ type: "json" });
+          }),
+          when.time.advance("2 minutes"),
+          then.assert("only the owner's schedule wrote the owner's store", async (ctx) => {
+            const routes = routesFor(ctx, createBackofficeSystemExecution(scope));
+            await expect(
+              routes("GET", "/store/get", { query: { key: "digest/personal-digest" } }),
+            ).resolves.toMatchObject({ type: "json", data: { value: "written" } });
+            // The reclassified schedule names no user, so the inherited route has none to act for.
+            const events = await routes("GET", "/events", { query: {} });
+            assert(events.type === "json");
+            const reclassified = events.data.events.find(
+              (event) => event.source === "personal" && event.eventType === "digest.requested",
+            );
+            assert(reclassified, "the schedule was reclassified");
+            expect(reclassified.actors.principal).toBeNull();
+            await expect(
+              routes("GET", "/events/:eventId", { pathParams: { eventId: reclassified.id } }),
+            ).resolves.toMatchObject({
+              type: "json",
+              data: {
+                routing: {
+                  status: "matched",
+                  routes: [
+                    { routeId: "smuggled-digest", error: "delegated-user-principal-required" },
+                  ],
+                },
+              },
+            });
+            await expect(
+              routes("GET", "/store/get", { query: { key: "digest/reclassified-digest" } }),
+            ).resolves.toMatchObject({ type: "error", status: 404 });
+            for (const routeId of ["forbidden-digest", "inherited-digest"]) {
+              await expect(
+                routes("GET", "/routes/:routeId", { pathParams: { routeId } }),
+              ).resolves.toMatchObject({ type: "error", status: 404 });
+            }
+          }),
         ],
       }),
     );

@@ -94,11 +94,13 @@ export default [
           index("routes/backoffice/agents/agents-index.tsx"),
           route(":agentName", "routes/backoffice/agents/agent-detail.tsx"),
           route(":agentName/view-stream", "routes/backoffice/agents/agent-view-stream.ts"),
+          route(":agentName/drawer", "routes/backoffice/agents/agent-drawer-data.ts"),
           route(":agentName/entries", "routes/backoffice/agents/agent-entries.ts"),
           route(":agentName/export", "routes/backoffice/agents/agent-export.ts"),
           route(":agentName.jsonl", "routes/backoffice/agents/agent-export.ts", {
             id: "agents/agent-jsonl",
           }),
+          route(":agentName/compactions", "routes/backoffice/agents/agent-compactions.ts"),
           route(":agentName/compactions/:taskId", "routes/backoffice/agents/agent-compaction.ts"),
           route(":agentName/debug", "routes/backoffice/agents/debug-agent-detail.tsx"),
         ]),

@@ -1,6 +1,5 @@
 import { backofficeScopeProjectOwner } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
-import { Icon } from "@fragno-private/design-system/icon";
 import { Suspense, use } from "react";
 
 import {
@@ -17,7 +16,7 @@ import {
 import { useAutomationProjects } from "@/fragno/automation/tanstack/use-automation-projects";
 
 import { BackofficeAccountMenu } from "./account-menu";
-import { GLOBAL_WORKFLOW_DRAWER_ID } from "./global-workflow-drawer";
+import { AGENT_DRAWER_ID } from "./agent-drawer";
 import { BackofficePresenceIndicator } from "./presence-indicator";
 import {
   BackofficeProjectMenu,
@@ -36,8 +35,8 @@ type BackofficeTopBarProps = {
   projectCollectionSource: AutomationCollectionSourceState | null;
   isLoading?: boolean;
   sidebarCollapsed: boolean;
-  workflowDrawerOpen?: boolean;
-  onWorkflowDrawerToggle?: () => void;
+  agentDrawerOpen?: boolean;
+  onAgentDrawerToggle?: () => void;
 };
 
 function LocalFirstBackofficeProjectMenu({
@@ -127,14 +126,14 @@ export function BackofficeTopBar({
   projectCollectionSource,
   isLoading,
   sidebarCollapsed,
-  workflowDrawerOpen = false,
-  onWorkflowDrawerToggle,
+  agentDrawerOpen = false,
+  onAgentDrawerToggle,
 }: BackofficeTopBarProps) {
   const routeScope = resolvedScope ? backofficeRouteScopeFromResolvedScope(resolvedScope) : null;
   const projectOwner = resolvedScope && backofficeScopeProjectOwner(resolvedScope);
 
   return (
-    <header className="sticky top-0 z-30 border-b border-[color:var(--bo-border)] bg-[color:var(--bo-bg)]">
+    <header className="sticky top-0 z-30 border-b border-[color:var(--bo-border)] bg-[color:var(--bo-top-bar-bg)]">
       <div className="flex h-16 items-stretch">
         {/* Tracks the sidebar's width below it, including its collapse transition. */}
         <div
@@ -173,18 +172,31 @@ export function BackofficeTopBar({
           </div>
         </div>
 
-        {onWorkflowDrawerToggle ? (
+        {onAgentDrawerToggle ? (
           <button
             type="button"
-            aria-label={workflowDrawerOpen ? "Close activity" : "Open activity"}
-            aria-expanded={workflowDrawerOpen}
-            aria-controls={GLOBAL_WORKFLOW_DRAWER_ID}
+            aria-label={agentDrawerOpen ? "Close agent" : "Open agent"}
+            aria-expanded={agentDrawerOpen}
+            aria-controls={AGENT_DRAWER_ID}
             aria-keyshortcuts="Meta+I Control+I"
-            title={`${workflowDrawerOpen ? "Close" : "Open"} activity (⌘I)`}
-            onClick={onWorkflowDrawerToggle}
-            className={`flex w-16 shrink-0 cursor-pointer items-center justify-center border-l border-[color:var(--bo-border)] transition-[background-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:ring-inset ${workflowDrawerOpen ? "bg-[color:var(--bo-sidebar-bg)] text-[var(--bo-fg)]" : "text-[var(--bo-muted)] hover:bg-[var(--bo-panel-2)] hover:text-[var(--bo-fg)]"}`}
+            title={`${agentDrawerOpen ? "Close" : "Open"} agent (⌘I)`}
+            onClick={onAgentDrawerToggle}
+            className={`flex w-16 shrink-0 cursor-pointer items-center justify-center border-l border-[color:var(--bo-border)] transition-[background-color,color] duration-150 ease-out outline-none ${agentDrawerOpen ? "bg-[color:var(--bo-sidebar-bg)]" : "hover:bg-[var(--bo-panel-2)]"}`}
           >
-            <Icon name="bell" className="size-4" strokeWidth={1.75} />
+            <span className="flex size-8 items-center justify-center rounded-full bg-[linear-gradient(135deg,var(--bo-accent)_-40%,var(--bo-fg)_65%)] text-xs leading-none font-bold tracking-tight text-[var(--bo-panel)] shadow-md ring-4 inset-shadow-[0_1px_0_rgb(255_255_255/0.25)] ring-[color:var(--bo-fg)]/15">
+              A
+              <svg
+                viewBox="0 0 8 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                strokeLinecap="round"
+                className="ml-px h-[0.78em] w-auto"
+                aria-hidden="true"
+              >
+                <path d="M1.5 1.5c1.5 0 2.5.5 2.5 2 0-1.5 1-2 2.5-2M4 3.5v9M1.5 14.5c1.5 0 2.5-.5 2.5-2 0 1.5 1 2 2.5 2" />
+              </svg>
+            </span>
           </button>
         ) : null}
       </div>

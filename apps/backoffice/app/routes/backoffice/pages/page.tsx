@@ -1,5 +1,6 @@
 import type { PageDefinition, PageLoad } from "@fragno-private/backoffice-ui/pages/definition";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
+import { PaneSpinner } from "@fragno-private/design-system/pane-message";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { Suspense, use } from "react";
 import { data } from "react-router";
@@ -48,7 +49,7 @@ export function meta({ loaderData }: Route.MetaArgs) {
 
 export default function PageRoute({ loaderData }: Route.ComponentProps) {
   const { name, result, orchestration, pageSources } = loaderData;
-  const loading = <BackofficeSystemState tone="loading" title="Synchronizing automation data." />;
+  const loading = <PaneSpinner label="Synchronizing automation data" />;
 
   return (
     <>

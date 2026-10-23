@@ -22,7 +22,7 @@ export function ChatViewport(props: ElementProps) {
   return (
     <div
       {...props}
-      className="backoffice-scroll flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain scroll-smooth px-3 sm:px-6"
+      className="backoffice-scroll-invisible flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain scroll-smooth px-3 sm:px-6"
     />
   );
 }

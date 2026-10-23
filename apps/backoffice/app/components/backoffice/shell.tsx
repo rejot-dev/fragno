@@ -9,11 +9,11 @@ import {
 import { scheduleBackofficeTokenRefresh } from "@/fragno/auth/browser-auth.client";
 import type { AdministeredMember, BackofficeMeData } from "@/fragno/auth/contracts";
 
+import { AgentDrawer } from "./agent-drawer";
 import { BackofficeClsDebugger } from "./cls-debugger";
 import { CurrentBackofficeProvider } from "./current-context";
 import type { CurrentBackofficeContext } from "./current-context-state";
 import { GlobalHotkeysProvider, useGlobalHotkey } from "./global-hotkeys";
-import { GLOBAL_WORKFLOW_DRAWER_ID, GlobalWorkflowDrawer } from "./global-workflow-drawer";
 import { QuakeTerminal } from "./quake-terminal";
 import { BackofficeSidebarNav } from "./sidebar-nav";
 import { BackofficeTopBar } from "./top-bar";
@@ -91,6 +91,16 @@ export function BackofficeShell(props: BackofficeShellProps) {
   );
 }
 
+const SIDEBAR_COLLAPSED_STORAGE_KEY = "backoffice:sidebar-collapsed";
+
+function readStoredSidebarCollapsed(): boolean {
+  try {
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
 function BackofficeShellFrame({
   children,
   me,
@@ -101,9 +111,10 @@ function BackofficeShellFrame({
   projectCollectionSource,
   isLoading,
 }: BackofficeShellProps) {
-  const [workflowDrawerOpen, setWorkflowDrawerOpen] = useState(false);
+  const [agentDrawerOpen, setAgentDrawerOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const pageColumnRef = useRef<HTMLDivElement>(null);
+  const sidebarRestoredRef = useRef(false);
+  const [sidebarRestoring, setSidebarRestoring] = useState(true);
   const routeScope = resolvedScope ? backofficeRouteScopeFromResolvedScope(resolvedScope) : null;
   const terminalScope = resolvedScope
     ? backofficeTerminalScopeSelection(resolvedScope, me, administeredMember)
@@ -116,26 +127,36 @@ function BackofficeShellFrame({
       window.location.replace("/backoffice/login");
     });
   }, [accessTokenExpiresAt]);
+  // Restored after mount so the server and the first client render agree; saved on every change
+  // after that.
   useEffect(() => {
-    if (!workflowDrawerOpen) {
-      return undefined;
-    }
-    // Only presses on the page column dismiss the drawer: popups opened from inside the drawer are
-    // portaled outside the shell and must not close it, and the toggle handles its own click.
-    const closeOnOutsidePress = (event: PointerEvent) => {
-      const target = event.target as Element;
-      if (
-        pageColumnRef.current?.contains(target) &&
-        !target.closest(`[aria-controls="${GLOBAL_WORKFLOW_DRAWER_ID}"]`)
-      ) {
-        setWorkflowDrawerOpen(false);
+    if (!sidebarRestoredRef.current) {
+      sidebarRestoredRef.current = true;
+      if (readStoredSidebarCollapsed()) {
+        setSidebarCollapsed(true);
       }
-    };
-    document.addEventListener("pointerdown", closeOnOutsidePress);
+      return;
+    }
+    try {
+      window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(sidebarCollapsed));
+    } catch {
+      // Remembering the sidebar is optional when storage is unavailable.
+    }
+  }, [sidebarCollapsed]);
+  // Transitions stay off until a frame has painted the restored sidebar, so a saved collapse
+  // snaps into place instead of replaying its animation on load.
+  useEffect(() => {
+    let paintedFrame = 0;
+    const restoredFrame = requestAnimationFrame(() => {
+      paintedFrame = requestAnimationFrame(() => {
+        setSidebarRestoring(false);
+      });
+    });
     return () => {
-      document.removeEventListener("pointerdown", closeOnOutsidePress);
+      cancelAnimationFrame(restoredFrame);
+      cancelAnimationFrame(paintedFrame);
     };
-  }, [workflowDrawerOpen]);
+  }, []);
   useGlobalHotkey({
     id: "toggle-sidebar",
     key: "b",
@@ -146,21 +167,22 @@ function BackofficeShellFrame({
     },
   });
   useGlobalHotkey({
-    id: "toggle-recent-workflows",
+    id: "toggle-agent-drawer",
     key: "i",
     modifiers: { primary: true },
     handler() {
-      setWorkflowDrawerOpen((open) => !open);
+      setAgentDrawerOpen((open) => !open);
     },
   });
 
   return (
     <div
       data-backoffice-root
+      data-sidebar-restoring={sidebarRestoring || undefined}
       className="relative isolate flex min-h-screen bg-[var(--bo-bg)] text-[var(--bo-fg)]"
     >
       <BackofficeClsDebugger />
-      <div ref={pageColumnRef} className="relative flex min-w-0 flex-1 flex-col">
+      <div className="relative flex min-w-0 flex-1 flex-col">
         <div className="bo-grid-backdrop pointer-events-none absolute inset-0" />
         <BackofficeTopBar
           me={me}
@@ -169,9 +191,9 @@ function BackofficeShellFrame({
           projectCollectionSource={projectCollectionSource}
           isLoading={isLoading}
           sidebarCollapsed={sidebarCollapsed}
-          workflowDrawerOpen={workflowDrawerOpen}
-          onWorkflowDrawerToggle={() => {
-            setWorkflowDrawerOpen((open) => !open);
+          agentDrawerOpen={agentDrawerOpen}
+          onAgentDrawerToggle={() => {
+            setAgentDrawerOpen((open) => !open);
           }}
         />
         <div className="flex min-w-0 flex-1">
@@ -185,11 +207,12 @@ function BackofficeShellFrame({
           </main>
         </div>
       </div>
-      <GlobalWorkflowDrawer
-        open={workflowDrawerOpen}
-        sourceState={automationCollectionSource}
+      <AgentDrawer
+        open={agentDrawerOpen}
+        // Agents read their directory from the scope's synchronized automation collections.
+        resolvedScope={automationCollectionSource ? resolvedScope : null}
         onClose={() => {
-          setWorkflowDrawerOpen(false);
+          setAgentDrawerOpen(false);
         }}
       />
       {terminalScope ? <QuakeTerminal pageScope={terminalScope} me={me} /> : null}

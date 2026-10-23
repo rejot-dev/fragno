@@ -3,6 +3,7 @@ import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
 import { Field } from "@fragno-private/design-system/field";
 import { Input } from "@fragno-private/design-system/input";
+import { PaneSpinner } from "@fragno-private/design-system/pane-message";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { TextArea } from "@fragno-private/design-system/text-area";
 import { Suspense, use, useMemo, useSyncExternalStore } from "react";
@@ -232,20 +233,18 @@ function DashboardSynchronizationLoading() {
   );
 
   return (
-    <BackofficeSystemState
-      tone="loading"
-      label="Synchronizing"
-      title="Synchronizing automation activity…"
-      description={
-        progress
-          ? `${progress.percent}%`
-          : "Connecting routes, workflows, scripts, and runtime state for this scope."
-      }
-    >
+    <>
+      <PaneSpinner
+        label={
+          progress
+            ? `Synchronizing automation activity, ${progress.percent}%`
+            : "Synchronizing automation activity"
+        }
+      />
       {import.meta.env.DEV && resourceKey ? (
         <AutomationBrowserPersistenceDiagnosticPanel resourceKey={resourceKey} />
       ) : null}
-    </BackofficeSystemState>
+    </>
   );
 }
 
@@ -367,13 +366,7 @@ function DashboardWorkspace({
     );
   }
   if (queries.some((query) => !query.isReady) || routesState.status === "loading") {
-    return (
-      <BackofficeSystemState
-        tone="loading"
-        label="Synchronizing"
-        title="Synchronizing automation activity…"
-      />
-    );
+    return <PaneSpinner label="Synchronizing automation activity" />;
   }
 
   return (

@@ -1,5 +1,6 @@
 import { Checkbox } from "@fragno-private/design-system/checkbox";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
+import { PaneSpinner } from "@fragno-private/design-system/pane-message";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { BackofficeTabHeader } from "@fragno-private/design-system/tab-header";
 import { Suspense, use, useState, type ReactNode } from "react";
@@ -56,11 +57,7 @@ export default function BackofficeIntegrationsScopeLayout({ loaderData }: Route.
   const { selectedScope } = loaderData;
   const loading = (
     <IntegrationsPage selectedScope={selectedScope} connectionTabs={[]}>
-      <BackofficeSystemState
-        tone="loading"
-        label="Synchronizing"
-        title="Synchronizing connection events…"
-      />
+      <PaneSpinner label="Synchronizing connection events" />
     </IntegrationsPage>
   );
 

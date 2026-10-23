@@ -2,10 +2,6 @@ import { BackofficeSystemState } from "./system-state";
 
 export default { title: "Feedback/System state" };
 
-export function Loading() {
-  return <BackofficeSystemState tone="loading" title="Loading automations" />;
-}
-
 export function Empty() {
   return (
     <BackofficeSystemState
