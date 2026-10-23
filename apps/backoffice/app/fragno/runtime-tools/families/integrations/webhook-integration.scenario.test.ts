@@ -399,6 +399,36 @@ test("an endpoint's deliveries are reclassified into its own cataloged events", 
           where: { source: "acme", eventType: "record.created" },
           expected: { payload: { recordId: "rec-1", data: {} } },
         }),
+        then.assert(
+          "the stored delivery keeps its envelope; delivery.get reads its body",
+          async (ctx) => {
+            const received = (await automationEvents(ctx)).find(
+              (event) => event.source === "api" && event.eventType === "webhook.received",
+            );
+            expect(received?.payload).toEqual({
+              endpointId: "acme",
+              deliveryId: "evt-acme-1",
+              hookId: expect.stringMatching(/^webhook_/),
+              receivedAt: expect.any(String),
+              contentType: "application/json",
+            });
+            const run = await ctx.runCodemode({
+              scope,
+              code: `async () => await integrations.execute({
+              connectionId: "webhook#acme",
+              actionId: "delivery.get",
+              input: { deliveryId: "evt-acme-1" },
+            })`,
+              assertToolCalls: ["integrations.execute"],
+            });
+            expect(run.result).toMatchObject({
+              endpointId: "acme",
+              deliveryId: "evt-acme-1",
+              contentType: "application/json",
+              body: delivery,
+            });
+          },
+        ),
         then.hooks.noPending({ orgId, fragments: ["api", "automations"] }),
         then.hooks.noFailed({ orgId, fragments: ["api", "automations"] }),
       ],

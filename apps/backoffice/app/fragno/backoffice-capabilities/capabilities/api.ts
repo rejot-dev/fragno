@@ -48,8 +48,16 @@ export const apiCapability: BackofficeCapability = {
         source: AUTOMATION_SOURCE,
         eventType: "webhook.received",
         label: "API webhook received",
-        description: "Fires when an API webhook endpoint receives and authenticates a delivery.",
+        description:
+          "Fires when an API webhook endpoint receives and authenticates a delivery. Routes see the whole delivery; the stored event omits its headers, query, and body. Read them with the webhook connection's delivery.get action while the endpoint's retention keeps them.",
         payloadSchema: apiWebhookReceivedPayloadSchema,
+        storedPayload: ({ endpointId, deliveryId, hookId, receivedAt, contentType }) => ({
+          endpointId,
+          deliveryId,
+          hookId,
+          receivedAt,
+          contentType,
+        }),
         subjectSchema: apiWebhookSubjectSchema,
         example: {
           endpointId: "stripe",

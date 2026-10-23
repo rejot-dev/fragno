@@ -53,6 +53,11 @@ input envelope. Every named path must resolve, and the projected payload must sa
 destination schema. Match on optional provider fields before projecting them when their absence
 would make the route invalid for that delivery.
 
+Deliveries such as `github.webhook.received` and `api.webhook.received` are stored without their
+body: routes see the whole delivery, but stored events keep only its identifying fields. Project
+every field later steps need into the derived event. The connection's `delivery.get` action reads a
+delivery for a week after it is processed.
+
 The derived event preserves scope, occurrence time, actors, and subject. Its ID is
 `reclassified:<routeId>:<originalEventId>`, so replaying the same route and input is idempotent.
 Keep reclassification chains acyclic and ensure each route's output cannot match its own trigger,

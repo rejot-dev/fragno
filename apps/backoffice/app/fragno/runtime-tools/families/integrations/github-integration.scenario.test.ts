@@ -5,6 +5,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { automationEventListResultSchema } from "@fragno-dev/backoffice-api/v0/events";
 import { createRouteCaller } from "@fragno-dev/core/api";
 
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
@@ -91,6 +92,13 @@ type FakeGitHub = {
 const project = { id: 101, name: "project", full_name: "acme/project", private: false };
 const web = { id: 102, name: "web", full_name: "acme/web", private: true };
 const githubAccount = { login: "acme", id: 77, type: "Organization" };
+const pullRequestOpened = {
+  action: "opened",
+  installation: { id: Number(installationId) },
+  repository: { ...project, owner: { login: "acme", id: 77 } },
+  pull_request: { id: 1, number: 7, title: "Add webhook support", state: "open" },
+  sender: { login: "octo-dev", id: 10 },
+};
 
 async function runGitHubIntegrationScenario<TVars extends Record<string, unknown>>(
   defineScenario: (github: FakeGitHub) => Omit<BackofficeScenarioDefinitionInput<TVars>, "objects">,
@@ -227,6 +235,7 @@ async function deliverGitHubWebhook(
   payload: Record<string, unknown>,
 ) {
   const body = JSON.stringify(payload);
+  const deliveryId = `delivery-${event}-${crypto.randomUUID()}`;
   const key = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(webhookSecret),
@@ -240,7 +249,7 @@ async function deliverGitHubWebhook(
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-github-delivery": `delivery-${event}-${crypto.randomUUID()}`,
+        "x-github-delivery": deliveryId,
         "x-github-event": event,
         "x-hub-signature-256": `sha256=${bytesToHex(new Uint8Array(signature))}`,
       },
@@ -248,6 +257,7 @@ async function deliverGitHubWebhook(
     }),
   );
   expect(response.ok, await response.clone().text()).toBe(true);
+  return deliveryId;
 }
 
 /** Runs the setup callback's completion as the member who returns from GitHub. */
@@ -275,6 +285,7 @@ async function completeInstall(ctx: BackofficeScenarioContext, state: string) {
 }
 
 test("a repository becomes a connection after the GitHub App is installed, linked, used, and unlinked", async () => {
+  let pullRequestDeliveryId = "";
   await runGitHubIntegrationScenario((github) => ({
     name: "GitHub repository connections through the integrations facade",
     setup: ({ given }) => [
@@ -418,6 +429,7 @@ test("a repository becomes a connection after the GitHub App is installed, linke
           { id: "pulls.list" },
           { id: "repository.access-token.create" },
           { id: "api.request" },
+          { id: "delivery.get" },
         ]);
         github.tokenRequests = [];
         expect(
@@ -455,13 +467,7 @@ test("a repository becomes a connection after the GitHub App is installed, linke
           connectionId: "github#acme/project",
           checks: [{ id: "pulls.read", status: "passed" }],
         });
-        await deliverGitHubWebhook(ctx, "pull_request", {
-          action: "opened",
-          installation: { id: Number(installationId) },
-          repository: { ...project, owner: { login: "acme", id: 77 } },
-          pull_request: { id: 1, number: 7, title: "Add webhook support", state: "open" },
-          sender: { login: "octo-dev", id: 10 },
-        });
+        pullRequestDeliveryId = await deliverGitHubWebhook(ctx, "pull_request", pullRequestOpened);
       }),
       runner.drain(),
       then.automation.event({
@@ -471,6 +477,38 @@ test("a repository becomes a connection after the GitHub App is installed, linke
           subject: { connectionId: "github#acme/project", pullRequestNumber: "7" },
         },
       }),
+      then.assert(
+        "the stored event keeps the envelope; delivery.get reads the body",
+        async (ctx) => {
+          const response = await ctx.runtime.objects.automations
+            .for(scope)
+            .http.fetch(new Request("https://automations.test/api/automations/events?limit=500"));
+          const { events } = automationEventListResultSchema.parse(await response.json());
+          const received = events.find(
+            (event) =>
+              event.source === "github" && event.payload.deliveryId === pullRequestDeliveryId,
+          );
+          expect(received?.payload).toEqual({
+            deliveryId: pullRequestDeliveryId,
+            githubEvent: "pull_request",
+            action: "opened",
+            installationId,
+            issue: null,
+            pullRequest: { number: 7, title: "Add webhook support" },
+          });
+          const system = await createTerminal(ctx, createBackofficeSystemExecution(scope));
+          expect(
+            await system.json(
+              `integrations.execute --connection-id 'github#acme/project' --action-id delivery.get --input-json '${JSON.stringify({ deliveryId: pullRequestDeliveryId })}'`,
+            ),
+          ).toMatchObject({
+            deliveryId: pullRequestDeliveryId,
+            event: "pull_request",
+            action: "opened",
+            payload: pullRequestOpened,
+          });
+        },
+      ),
       then.assert("GitHub suspends the installation", async (ctx) => {
         github.suspended = true;
         await deliverGitHubWebhook(ctx, "installation", {

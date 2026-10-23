@@ -1,6 +1,7 @@
 import {
   apiConnectionSlugSchema,
   webhookDeliveryIdentitySchema,
+  webhookDeliveryOutputSchema,
   webhookEndpointAuthInputSchema,
   webhookEndpointOutputSchema,
   type WebhookDeliveryEvidence,
@@ -12,6 +13,7 @@ import type {
   IntegrationAuthMethod,
   IntegrationInspection,
 } from "@fragno-dev/backoffice-api/v0/integrations";
+import { jsonValueSchema } from "@fragno-dev/backoffice-api/v0/shared/json";
 import {
   BACKOFFICE_PERMISSION,
   type BackofficePermissionRequirement,
@@ -87,6 +89,24 @@ const webhookDescribeActionDefinition = checkedIntegrationActionDefinition({
     "Read the endpoint's webhook URL, status, contract, and latest delivery outcomes. Stored secrets are named by reference, never returned.",
   input: z.strictObject({}),
   output: webhookEndpointDescriptionSchema,
+});
+const webhookDeliveryGetInputSchema = z.strictObject({
+  deliveryId: z
+    .string()
+    .trim()
+    .min(1)
+    .describe("The provider's delivery ID, the deliveryId of an api.webhook.received event."),
+});
+const webhookDeliveryGetOutputSchema = webhookDeliveryOutputSchema.extend({
+  body: z.record(z.string(), jsonValueSchema),
+});
+const webhookDeliveryGetActionDefinition = checkedIntegrationActionDefinition({
+  id: "delivery.get",
+  label: "Read delivery",
+  description:
+    "Read a delivery this endpoint accepted, with its redacted headers and query and its JSON body. Stored api.webhook.received events omit them. Deliveries are kept for a week after they are processed.",
+  input: webhookDeliveryGetInputSchema,
+  output: webhookDeliveryGetOutputSchema,
 });
 const deliveryCheckIdentity = { id: "delivery.received", label: "Receive a delivery" };
 const rejectionReasons: Record<WebhookRejectionCode, string> = {
@@ -344,7 +364,35 @@ export function createWebhookIntegration({
         fail(response);
       }
     }
-    return { publicBaseUrl, publicUrl, endpoint, endpoints, activate, reconfigure, remove };
+    async function delivery(endpointId: string, deliveryId: string) {
+      const response = await invoke(
+        BACKOFFICE_PERMISSION.events.read,
+        { endpointId, deliveryId },
+        () =>
+          callRoute("GET", "/webhooks/endpoints/:endpointId/deliveries/:deliveryId", {
+            pathParams: { endpointId, deliveryId },
+          }),
+      );
+      if (response.type === "json" && isSuccessStatus(response.status)) {
+        return webhookDeliveryGetOutputSchema.parse(response.data);
+      }
+      if (response.type === "error" && response.error.code === "WEBHOOK_DELIVERY_NOT_FOUND") {
+        throw new Error(
+          `Delivery ${deliveryId} was not accepted by this endpoint or has expired; deliveries are kept for a week after they are processed.`,
+        );
+      }
+      return fail(response);
+    }
+    return {
+      publicBaseUrl,
+      publicUrl,
+      endpoint,
+      endpoints,
+      activate,
+      reconfigure,
+      remove,
+      delivery,
+    };
   }
 
   function describeSetup(publicUrl: string) {
@@ -594,6 +642,13 @@ export function createWebhookIntegration({
                   deliveryIdentity: endpoint.deliveryIdentity,
                   deliveries: endpoint.deliveries,
                 } satisfies z.output<typeof webhookEndpointDescriptionSchema>;
+              },
+            },
+            {
+              definition: webhookDeliveryGetActionDefinition(),
+              async invoke(input) {
+                const { deliveryId } = webhookDeliveryGetInputSchema.parse(input);
+                return await access.delivery(localId, deliveryId);
               },
             },
           ];

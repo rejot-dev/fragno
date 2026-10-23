@@ -97,6 +97,11 @@ type BackofficeAutomationEventDescriptor = {
   actorSchema?: z.ZodType;
   subjectSchema?: z.ZodType;
   example?: unknown;
+  /**
+   * Shrinks the validated payload a stored event keeps, for deliveries whose body the receiving
+   * integration retains. Routes still see the whole payload. Omitted, events are stored whole.
+   */
+  storedPayload?: (payload: Record<string, unknown>) => Record<string, unknown>;
 };
 
 /** Declares a user-facing event producer independently from lifecycle events a capability emits. */

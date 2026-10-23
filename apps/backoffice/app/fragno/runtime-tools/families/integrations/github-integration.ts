@@ -99,6 +99,29 @@ const githubApiRequestActionDefinition = checkedIntegrationActionDefinition({
   input: githubApiRequestInputSchema,
   output: githubApiRequestOutputSchema,
 });
+const githubDeliveryGetInputSchema = z.strictObject({
+  deliveryId: z
+    .string()
+    .trim()
+    .min(1)
+    .describe("GitHub's delivery ID, the deliveryId of a github.webhook.received event."),
+});
+const githubDeliveryOutputSchema = z.strictObject({
+  deliveryId: z.string(),
+  event: z.string(),
+  action: z.string().nullable(),
+  installationId: z.string(),
+  receivedAt: z.string(),
+  payload: z.record(z.string(), jsonValueSchema).describe("The body GitHub sent."),
+});
+const githubDeliveryGetActionDefinition = checkedIntegrationActionDefinition({
+  id: "delivery.get",
+  label: "Read webhook delivery",
+  description:
+    "Read a GitHub webhook delivery this organization received, with the body GitHub sent. Stored github.webhook.received events omit it. Deliveries are kept for a week after they are processed.",
+  input: githubDeliveryGetInputSchema,
+  output: githubDeliveryOutputSchema,
+});
 const githubRepositoryReadCheck = { id: "pulls.read", label: "Read pull requests" };
 
 type GitHubCallRoute = ReturnType<typeof createRouteCaller<GitHubFragment>>;
@@ -386,7 +409,23 @@ export function createGitHubIntegration({
       return fail(response);
     }
 
+    async function delivery(deliveryId: string) {
+      const response = await invoke(BACKOFFICE_PERMISSION.events.read, { deliveryId }, () =>
+        callRoute("GET", "/webhooks/deliveries/:deliveryId", { pathParams: { deliveryId } }),
+      );
+      if (response.type === "json" && isSuccessStatus(response.status)) {
+        return githubDeliveryOutputSchema.parse(response.data);
+      }
+      if (response.type === "error" && response.error.code === "WEBHOOK_DELIVERY_NOT_FOUND") {
+        throw new Error(
+          `GitHub delivery ${deliveryId} was not received or has expired; deliveries are kept for a week after they are processed.`,
+        );
+      }
+      return fail(response);
+    }
+
     return {
+      delivery,
       createAccessToken,
       requestApi,
       readRepositoryAccess,
@@ -588,6 +627,12 @@ export function createGitHubIntegration({
               definition: githubApiRequestActionDefinition(),
               async invoke(input) {
                 return await access.requestApi(fullName, githubApiRequestInputSchema.parse(input));
+              },
+            },
+            {
+              definition: githubDeliveryGetActionDefinition(),
+              async invoke(input) {
+                return await access.delivery(githubDeliveryGetInputSchema.parse(input).deliveryId);
               },
             },
           ];

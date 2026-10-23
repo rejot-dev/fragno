@@ -90,6 +90,21 @@ const githubPayloadSchema = z.object({
   raw: z.record(z.string(), z.unknown()),
 });
 
+/** Keeps the delivery's identity and what names it, such as `#42 Flaky deploy check`. */
+function storedGitHubPayload(payload: Record<string, unknown>) {
+  // The automation fragment validated the payload against `githubPayloadSchema` before storing it.
+  const { deliveryId, githubEvent, action, installationId, issue, pullRequest } =
+    payload as z.infer<typeof githubPayloadSchema>;
+  return {
+    deliveryId,
+    githubEvent,
+    action,
+    installationId,
+    issue: issue ? { number: issue.number, title: issue.title } : null,
+    pullRequest: pullRequest ? { number: pullRequest.number, title: pullRequest.title } : null,
+  };
+}
+
 const GITHUB_AUTOMATION_SOURCE = "github" as const;
 const GITHUB_AUTOMATION_EVENT_WEBHOOK_RECEIVED = "webhook.received" as const;
 
@@ -131,8 +146,10 @@ export const githubCapability: BackofficeCapability = {
         source: GITHUB_AUTOMATION_SOURCE,
         eventType: GITHUB_AUTOMATION_EVENT_WEBHOOK_RECEIVED,
         label: "GitHub webhook received",
-        description: "Fires when a GitHub App webhook is received for an organization.",
+        description:
+          "Fires when a GitHub App webhook is received for an organization. Routes see the whole delivery; the stored event keeps only deliveryId, githubEvent, action, installationId, and the number and title of issue and pullRequest. Read the delivery with a GitHub connection's delivery.get action while GitHub's retention keeps it.",
         payloadSchema: githubPayloadSchema,
+        storedPayload: storedGitHubPayload,
         actorSchema: githubActorSchema,
         subjectSchema: githubSubjectSchema,
         example: {
