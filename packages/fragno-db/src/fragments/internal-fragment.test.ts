@@ -473,7 +473,8 @@ describe("Hook Service", () => {
     const claimed = await fragment.inContext(async function () {
       return await this.handlerTx()
         .withServiceCalls(
-          () => [fragment.services.hookService.claimDueHookEvents(namespace, null, 100)] as const,
+          () =>
+            [fragment.services.hookService.claimDueHookEvents(namespace, null, 100, null)] as const,
         )
         .transform(({ serviceResult: [result] }) => result.events)
         .execute();
@@ -544,7 +545,8 @@ describe("Hook Service", () => {
     const claimed = await fragment.inContext(async function () {
       return await this.handlerTx()
         .withServiceCalls(
-          () => [fragment.services.hookService.claimDueHookEvents(namespace, null, 100)] as const,
+          () =>
+            [fragment.services.hookService.claimDueHookEvents(namespace, null, 100, null)] as const,
         )
         .transform(({ serviceResult: [result] }) => result.events)
         .execute();
@@ -602,7 +604,7 @@ describe("Hook Service", () => {
         .withServiceCalls(
           () =>
             [
-              fragment.services.hookService.claimDueHookEvents(namespace, staleBefore, 100),
+              fragment.services.hookService.claimDueHookEvents(namespace, staleBefore, 100, null),
             ] as const,
         )
         .transform(({ serviceResult: [result] }) => result)
@@ -689,7 +691,9 @@ describe("Hook Service", () => {
       return await this.handlerTx()
         .withServiceCalls(
           () =>
-            [fragment.services.hookService.claimDueHookEvents(namespace, staleBefore, 3)] as const,
+            [
+              fragment.services.hookService.claimDueHookEvents(namespace, staleBefore, 3, null),
+            ] as const,
         )
         .transform(({ serviceResult: [result] }) => result)
         .execute();
@@ -711,6 +715,92 @@ describe("Hook Service", () => {
     const pendingEvents = events.filter((event) => pendingExternalIds.has(event.id.externalId));
     expect(pendingEvents.filter((event) => event.status === "processing")).toHaveLength(1);
     expect(pendingEvents.filter((event) => event.status === "pending")).toHaveLength(1);
+  });
+
+  it("keeps a hook re-triggered under an expired hook's ID while a stale claim deletes", async () => {
+    const namespace = "claim-expired-reused-id";
+    const hookId = "reused-hook-id";
+    const completedBefore = dbNow().plus({ minutes: -60 });
+
+    function claim(onAfterRetrieve?: () => Promise<void>) {
+      return fragment.inContext(async function () {
+        return await this.handlerTx({ onAfterRetrieve })
+          .withServiceCalls(
+            () =>
+              [
+                fragment.services.hookService.claimDueHookEvents(
+                  namespace,
+                  null,
+                  100,
+                  completedBefore,
+                ),
+              ] as const,
+          )
+          .transform(({ serviceResult: [result] }) => result.events)
+          .execute();
+      });
+    }
+
+    function triggerHook(hookName: string) {
+      return fragment.inContext(async function () {
+        return await this.handlerTx()
+          .mutate(({ forSchema }) =>
+            forSchema(internalSchema).create("fragno_hooks", {
+              id: hookId,
+              namespace,
+              hookName,
+              payload: {},
+              status: "pending",
+              attempts: 0,
+              maxAttempts: 5,
+              lastAttemptAt: null,
+              nextRetryAt: null,
+              error: null,
+              nonce: `nonce-${hookName}`,
+            }),
+          )
+          .execute();
+      });
+    }
+
+    // Real hooks reach completed through updates, so the expired row has moved past version 0.
+    const expiredId = await triggerHook("onExpired");
+    await fragment.inContext(async function () {
+      await this.handlerTx()
+        .mutate(({ forSchema }) =>
+          forSchema(internalSchema).update("fragno_hooks", expiredId, (b) =>
+            b.set({ status: "completed", lastAttemptAt: new Date(Date.now() - 3 * 3_600_000) }),
+          ),
+        )
+        .execute();
+    });
+
+    let paused = false;
+    const staleClaim = claim(async () => {
+      if (paused) {
+        return;
+      }
+      paused = true;
+      await claim();
+      await triggerHook("onReplacement");
+    });
+
+    const claimedEvents = await staleClaim;
+
+    expect(claimedEvents.map((event) => [event.id.externalId, event.hookName])).toEqual([
+      [hookId, "onReplacement"],
+    ]);
+    const hooks = await fragment.inContext(async function () {
+      return await this.handlerTx()
+        .withServiceCalls(
+          () => [fragment.services.hookService.getHooksByNamespace(namespace)] as const,
+        )
+        .transform(({ serviceResult: [result] }) => result)
+        .execute();
+    });
+    expect(hooks.map((hook) => [hook.hookName, hook.status])).toEqual([
+      ["onReplacement", "processing"],
+    ]);
   });
 
   it("should return now when pending hooks have no nextRetryAt", async () => {

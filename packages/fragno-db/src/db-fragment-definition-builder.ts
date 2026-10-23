@@ -1515,6 +1515,7 @@ export class DatabaseFragmentDefinitionBuilder<
           );
         },
         stuckProcessingTimeoutMinutes: durableHooksOptions?.stuckProcessingTimeoutMinutes,
+        completedHookRetentionMinutes: durableHooksOptions?.completedHookRetentionMinutes,
         onStuckProcessingHooks: durableHooksOptions?.onStuckProcessingHooks,
       };
       hooksConfig.runner = createDurableHooksRunner(hooksConfig);

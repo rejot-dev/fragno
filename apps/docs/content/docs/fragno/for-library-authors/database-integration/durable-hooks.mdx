@@ -361,6 +361,26 @@ When hooks are re-queued they may run again, so hook implementations must remain
 `stuckProcessingTimeoutMinutes` is set to `false`, no stuck-processing checks run and the callback
 will not fire.
 
+## Completed hook retention
+
+Completed hooks are deleted once their last attempt is older than `completedHookRetentionMinutes`, 7
+days by default. Each claim of due hooks deletes up to 100 of them in the same transaction, so no
+separate cleanup job is needed. Pending, processing, and failed hooks are kept, so failed hooks stay
+available for inspection and retry. Set `false` to keep completed hooks forever.
+
+```typescript
+const fragment = instantiate(fragmentDef)
+  .withOptions({
+    databaseAdapter,
+    durableHooks: { completedHookRetentionMinutes: 30 * 24 * 60 },
+  })
+  .build();
+```
+
+A hook `id` passed to `triggerHook` rejects a duplicate trigger only while the hook is kept. When a
+hook ID deduplicates provider redeliveries, keep the retention longer than the provider's redelivery
+window, or deduplicate on a row of your own.
+
 ## Retry behavior
 
 If a hook execution fails, it will be retried with an exponential backoff policy. This makes hooks

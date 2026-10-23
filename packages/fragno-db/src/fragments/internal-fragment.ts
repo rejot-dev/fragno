@@ -128,6 +128,8 @@ type DurableHookRetry =
   | { status: "not_found" };
 
 const DEFAULT_HOOKS_PAGE_SIZE = 50;
+/** Each claim deletes at most this many expired hooks, so a backlog drains across claims. */
+const COMPLETED_HOOKS_DELETED_PER_CLAIM = 100;
 
 const resolveHookPageSize = (pageSize?: number): number => {
   if (typeof pageSize !== "number" || !Number.isInteger(pageSize) || pageSize <= 0) {
@@ -300,11 +302,21 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
       /**
        * Claim at most `limit` due hook events and mark them as processing atomically.
        * Stuck attempts are recovered before newly pending events consume the remaining capacity.
+       * Completed hooks last attempted before `completedBefore` are deleted in the same
+       * transaction, a batch at a time, so retention needs no scheduler of its own.
        */
-      claimDueHookEvents(namespace: string, staleBefore: DbNow | null, limit: number) {
+      claimDueHookEvents(
+        namespace: string,
+        staleBefore: DbNow | null,
+        limit: number,
+        completedBefore: DbNow | null,
+      ) {
         const now = dbNow();
         const stuckStatus = staleBefore ? "processing" : "__disabled__";
         const stuckBefore = staleBefore ?? now;
+        // Sentinel to keep the query shape stable when retention is disabled.
+        const expiredStatus = completedBefore ? "completed" : "__disabled__";
+        const expiredBefore = completedBefore ?? now;
 
         return this.serviceTx(internalSchema, { name: "internal.hooks.claimDue" })
           .retrieve((uow) =>
@@ -331,9 +343,21 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
                     ),
                   )
                   .pageSize(limit),
+              )
+              .find("fragno_hooks", (b) =>
+                b
+                  .whereIndex("idx_namespace_status_last_attempt", (eb) =>
+                    eb.and(
+                      eb("namespace", "=", namespace),
+                      eb("status", "=", expiredStatus),
+                      eb("lastAttemptAt", "<=", expiredBefore),
+                    ),
+                  )
+                  .select(["id"])
+                  .pageSize(COMPLETED_HOOKS_DELETED_PER_CLAIM),
               ),
           )
-          .transformRetrieve(([pendingEvents, stuckEvents]) => {
+          .transformRetrieve(([pendingEvents, stuckEvents, expiredEvents]) => {
             const toHookEvent = (event: (typeof pendingEvents)[number]) => ({
               id: event.id,
               hookName: event.hookName,
@@ -357,6 +381,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
                 ...selectedStuckEvents.map((event) => ({ kind: "stuck" as const, event })),
                 ...selectedPendingEvents.map((event) => ({ kind: "pending" as const, event })),
               ],
+              expiredEventIds: expiredEvents.map((event) => event.id),
               pendingCount: selectedPendingEvents.length,
               stuckEvents: selectedStuckEvents.map((event) => ({
                 id: event.id,
@@ -381,6 +406,12 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
                   .check(),
               );
             }
+            // Checked, because the delete matches external IDs: once a concurrent claim deletes an
+            // expired hook, a trigger may reuse its explicit ID, and the replacement starts at a
+            // lower version, so this claim conflicts and retries instead of deleting it. A
+            // replacement that already failed an attempt is back at the expired hook's version and
+            // would still be deleted; matching internal IDs would close that gap.
+            uow.deleteMany("fragno_hooks", retrieveResult.expiredEventIds, (b) => b.check());
           })
           .transform(({ retrieveResult }) => ({
             events: retrieveResult.claimedEvents.map(({ event }) => ({
