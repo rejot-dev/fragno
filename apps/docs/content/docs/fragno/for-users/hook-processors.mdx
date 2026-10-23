@@ -32,6 +32,8 @@ Durable hook processing is designed for at-least-once delivery and idempotent ha
 - Each event is executed outside the transaction, then marked `completed` or `failed`.
 - Failures are retried with the hook's retry policy, using jittered exponential backoff.
 - Events stuck in `processing` too long are re-queued (default 10 minutes).
+- Completed events are deleted once they are older than `completedHookRetentionMinutes` (default 7
+  days); failed events are kept.
 
 Dispatchers use `getNextWakeAt()` to decide when work is due. If there is nothing scheduled, they
 sleep. If work is due, they run due hooks. The hook processor is the full loop: a dispatcher plus

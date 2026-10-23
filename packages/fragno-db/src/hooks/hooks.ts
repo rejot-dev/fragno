@@ -185,7 +185,8 @@ export interface DurableHooksInstrumentation {
 export interface TriggerHookOptions {
   /**
    * Optional hook event ID. When provided, the hook insert will fail if a hook
-   * with the same ID already exists.
+   * with the same ID already exists. Completed hooks are deleted after their retention
+   * (`completedHookRetentionMinutes`), so the ID rejects duplicates only until then.
    */
   id?: string | FragnoId;
   /**
@@ -272,6 +273,14 @@ export interface HookProcessorConfig<THooks extends HooksMap = HooksMap> {
    */
   stuckProcessingTimeoutMinutes?: StuckHookProcessingTimeoutMinutes;
   /**
+   * Delete completed hooks once their last attempt is at least this many minutes old. Pending,
+   * processing, and failed hooks are kept. A hook ID rejects duplicate triggers only while its hook
+   * is kept. Use `false` to keep completed hooks forever. Values <= 0 are treated as `false`.
+   *
+   * Default: 7 days.
+   */
+  completedHookRetentionMinutes?: CompletedHookRetentionMinutes;
+  /**
    * Called when stuck processing hooks are detected and re-queued.
    * Invoked after the hooks are moved back to `pending`.
    */
@@ -279,6 +288,8 @@ export interface HookProcessorConfig<THooks extends HooksMap = HooksMap> {
 }
 
 export type StuckHookProcessingTimeoutMinutes = number | false;
+
+export type CompletedHookRetentionMinutes = number | false;
 
 export type StuckHookProcessingEvent = {
   id: FragnoId;
@@ -304,6 +315,14 @@ export type DurableHooksProcessingOptions = {
    * Default: 10 minutes.
    */
   stuckProcessingTimeoutMinutes?: StuckHookProcessingTimeoutMinutes;
+  /**
+   * Delete completed hooks once their last attempt is at least this many minutes old. Pending,
+   * processing, and failed hooks are kept. A hook ID rejects duplicate triggers only while its hook
+   * is kept. Use `false` to keep completed hooks forever. Values <= 0 are treated as `false`.
+   *
+   * Default: 7 days.
+   */
+  completedHookRetentionMinutes?: CompletedHookRetentionMinutes;
   /**
    * Automatically schedule hook processing after successful mutations.
    * Defaults to true. Set false to disable auto scheduling (manual drain only).
@@ -331,6 +350,20 @@ export type HookHandlerTx = (
 
 const DEFAULT_STUCK_PROCESSING_TIMEOUT_MINUTES = 10;
 const MAX_ACTIVE_DURABLE_HOOKS = 16;
+
+const DEFAULT_COMPLETED_HOOK_RETENTION_MINUTES = 7 * 24 * 60;
+
+function resolveCompletedHookRetentionMinutes(
+  value: CompletedHookRetentionMinutes | undefined,
+): number | false {
+  if (value === false) {
+    return false;
+  }
+  if (typeof value === "number") {
+    return value > 0 ? value : false;
+  }
+  return DEFAULT_COMPLETED_HOOK_RETENTION_MINUTES;
+}
 
 function resolveStuckProcessingTimeoutMinutes(
   value: StuckHookProcessingTimeoutMinutes | undefined,
@@ -556,6 +589,13 @@ export async function processHooks<THooks extends HooksMap>(
   const staleBefore = includeStuckProcessing
     ? dbNow().plus({ minutes: -stuckProcessingTimeoutMinutes })
     : null;
+  const completedHookRetentionMinutes = resolveCompletedHookRetentionMinutes(
+    config.completedHookRetentionMinutes,
+  );
+  const completedBefore =
+    completedHookRetentionMinutes === false
+      ? null
+      : dbNow().plus({ minutes: -completedHookRetentionMinutes });
   let claimedEvents: Array<{
     id: FragnoId;
     hookName: string;
@@ -583,6 +623,7 @@ export async function processHooks<THooks extends HooksMap>(
               namespace,
               staleBefore,
               claimLimit,
+              completedBefore,
             ),
           ] as const,
       )

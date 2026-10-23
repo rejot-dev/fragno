@@ -1104,6 +1104,70 @@ describe("Hook System", () => {
       assert(result?.status === "completed");
     });
 
+    it("deletes completed hooks once they are older than the retention", async () => {
+      const namespace = "test-completed-retention";
+      const otherNamespace = "test-completed-retention-other";
+      const hoursAgo = (hours: number) => new Date(Date.now() - hours * 60 * 60_000);
+      const hook = (
+        hookNamespace: string,
+        status: "completed" | "failed",
+        lastAttemptAt: Date,
+        nonce: string,
+      ) => ({
+        namespace: hookNamespace,
+        hookName: "onDone",
+        payload: { nonce },
+        status,
+        attempts: 1,
+        maxAttempts: 5,
+        lastAttemptAt,
+        nextRetryAt: null,
+        error: status === "failed" ? "boom" : null,
+        nonce,
+      });
+
+      await internalFragment.inContext(async function () {
+        await this.handlerTx()
+          .mutate(({ forSchema }) => {
+            const uow = forSchema(internalSchema);
+            uow.create("fragno_hooks", hook(namespace, "completed", hoursAgo(3), "expired"));
+            uow.create("fragno_hooks", hook(namespace, "completed", hoursAgo(1), "retained"));
+            uow.create("fragno_hooks", hook(namespace, "failed", hoursAgo(3), "failed"));
+            uow.create("fragno_hooks", hook(otherNamespace, "completed", hoursAgo(3), "other"));
+          })
+          .execute();
+      });
+      const remainingNonces = async (hookNamespace: string) =>
+        await internalFragment.inContext(async function () {
+          return await this.handlerTx()
+            .withServiceCalls(
+              () =>
+                [internalFragment.services.hookService.getHooksByNamespace(hookNamespace)] as const,
+            )
+            .transform(({ serviceResult: [events] }) => events.map((event) => event.nonce).sort())
+            .execute();
+        });
+
+      await processHooksToCompletion({
+        hooks: {},
+        namespace,
+        internalFragment,
+        handlerTx,
+        completedHookRetentionMinutes: false,
+      });
+      expect(await remainingNonces(namespace)).toEqual(["expired", "failed", "retained"]);
+
+      await processHooksToCompletion({
+        hooks: {},
+        namespace,
+        internalFragment,
+        handlerTx,
+        completedHookRetentionMinutes: 2 * 60,
+      });
+      expect(await remainingNonces(namespace)).toEqual(["failed", "retained"]);
+      expect(await remainingNonces(otherNamespace)).toEqual(["other"]);
+    });
+
     it("should process multiple hooks in parallel", async () => {
       const namespace = "test-parallel";
       const hook1 = vi.fn();
