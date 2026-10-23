@@ -32,6 +32,7 @@ export function DashboardTabs({
         },
       ]}
       ariaLabel="Dashboard"
+      trailing={null}
       options={null}
     />
   );

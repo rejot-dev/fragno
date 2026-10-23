@@ -87,6 +87,7 @@ export default function AuthorizedApplications({
               },
             ]}
             ariaLabel="Settings sections"
+            trailing={null}
           />
         </div>
       </section>

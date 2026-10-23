@@ -15,10 +15,13 @@ export const backofficePageColumnClassName = "mx-auto w-full max-w-[96rem]";
 export function BackofficeTabHeader({
   items,
   ariaLabel,
+  trailing,
   options,
 }: {
   items: readonly OverflowTabRowItem[];
   ariaLabel: string;
+  /** Follows the last tab, such as a `TabPinMenu`. */
+  trailing: ReactNode | null;
   options: ReactNode | null;
 }) {
   return (
@@ -26,7 +29,12 @@ export function BackofficeTabHeader({
       {/* Tabs sit on the bottom edge so the selected underline lands on the header divider. */}
       <div className={`${backofficePageColumnClassName} flex h-16 items-end gap-3 px-2 sm:px-4`}>
         <div className="-mb-px min-w-0 flex-1">
-          <OverflowTabRow items={items} ariaLabel={ariaLabel} variant="underline" />
+          <OverflowTabRow
+            items={items}
+            ariaLabel={ariaLabel}
+            variant="underline"
+            trailing={trailing}
+          />
         </div>
         {options ? (
           <div className="flex shrink-0 items-center gap-2 self-center sm:gap-3">{options}</div>

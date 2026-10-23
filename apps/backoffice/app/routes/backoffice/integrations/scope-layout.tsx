@@ -113,6 +113,7 @@ function IntegrationsPage({
           })),
         ]}
         ariaLabel="Integrations"
+        trailing={null}
         options={null}
       />
       <div className={`${backofficePageBodyClassName} flex flex-col gap-4`}>

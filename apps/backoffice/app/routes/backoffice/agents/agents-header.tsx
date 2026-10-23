@@ -38,5 +38,5 @@ export function AgentsHeader({
     })),
   ];
 
-  return <BackofficeTabHeader items={items} ariaLabel="Agents" options={options} />;
+  return <BackofficeTabHeader items={items} ariaLabel="Agents" trailing={null} options={options} />;
 }
