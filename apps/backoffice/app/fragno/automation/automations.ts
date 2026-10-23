@@ -574,6 +574,7 @@ export const createAutomationsRuntime = (
         eventType: definition.eventType,
         enabled: true,
         payloadSchema: definition.payloadSchema,
+        storedPayload: definition.storedPayload ?? null,
       })),
       env: config.env,
       runtime: config.runtime,

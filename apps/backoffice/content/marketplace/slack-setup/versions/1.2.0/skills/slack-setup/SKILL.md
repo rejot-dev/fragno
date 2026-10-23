@@ -230,9 +230,12 @@ the reason when it was rejected, and `not-checked` before any arrived. A signatu
 means the stored signing secret is not this Slack app's.
 
 When the user asks whether a Slack message arrived, list the newest `api` `webhook.received` events
-with `events.list` and find the one whose payload has `endpointId: "slack"`. Confirm receipt from
-its `body.event`, including event type, channel, and message text when present. Keep authorization
-tokens, signatures, raw headers, and unrelated payload fields out of the response.
+with `events.list` and find the one whose payload has `endpointId: "slack"`. Stored events omit the
+delivery body, so read it with
+`integrations.execute({ connectionId: "webhook#slack", actionId: "delivery.get", input: { deliveryId } })`,
+passing the event's `deliveryId`. Deliveries are kept for a week after they are processed. Confirm
+receipt from its `body.event`, including event type, channel, and message text when present. Keep
+authorization tokens, signatures, raw headers, and unrelated payload fields out of the response.
 
 A received event proves ingestion only. State clearly when no automation exists yet to reply.
 Sending a reply requires `chat.postMessage`, normally using `body.event.channel`; use

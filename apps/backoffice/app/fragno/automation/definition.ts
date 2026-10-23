@@ -137,10 +137,13 @@ export type AutomationWorkflowsService = Pick<
 
 export interface AutomationFragmentConfig {
   readAutomationSource?: AutomationSourceReader;
-  builtInEventDefinitions: readonly Pick<
+  builtInEventDefinitions: readonly (Pick<
     AutomationEventDefinition,
     "source" | "eventType" | "enabled" | "payloadSchema"
-  >[];
+  > & {
+    /** Shrinks the validated payload a stored event keeps; routes still see the whole payload. */
+    storedPayload: ((payload: Record<string, unknown>) => Record<string, unknown>) | null;
+  })[];
   env?: CloudflareEnv;
   runtime?: BackofficeRuntimeServices;
   ownerScope: BackofficeContextScope;
@@ -162,6 +165,11 @@ type IngestAutomationEventOptions = {
    * the intended route even if it is later changed or deleted.
    */
   route?: AutomationRouteDefinition;
+  /**
+   * Shrinks the payload the stored event keeps, for deliveries whose body the receiving integration
+   * retains. Routing reads the hook's copy of the event, so it still sees the whole payload.
+   */
+  storedPayload?: ((payload: Record<string, unknown>) => Record<string, unknown>) | null;
 };
 
 const ingestAutomationEvent = (
@@ -170,6 +178,7 @@ const ingestAutomationEvent = (
   {
     reclassificationChain = [getAutomationEventIdentity(event)],
     route,
+    storedPayload = null,
   }: IngestAutomationEventOptions = {},
 ) => {
   const now = uow.now();
@@ -187,7 +196,8 @@ const ingestAutomationEvent = (
     source: validatedEvent.source,
     eventType: validatedEvent.eventType,
     occurredAt,
-    payload: validatedEvent.payload,
+    payload:
+      storedPayload === null ? validatedEvent.payload : storedPayload(validatedEvent.payload),
     actors: validatedEvent.actors,
     subject: validatedEvent.subject ?? null,
     causation: validatedEvent.causation,
@@ -725,13 +735,14 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
             if (existingEvent) {
               return;
             }
-            const definition =
-              builtInEventDefinitionsById.get(
-                buildAutomationEventDefinitionId(event.source, event.eventType),
-              ) ?? storedDefinition;
+            const builtInDefinition = builtInEventDefinitionsById.get(
+              buildAutomationEventDefinitionId(event.source, event.eventType),
+            );
+            const definition = builtInDefinition ?? storedDefinition;
             validateAutomationEventPayload({ event, definition });
             ingestAutomationEvent(uow as AutomationHookUnitOfWork, event, {
               reclassificationChain,
+              storedPayload: builtInDefinition?.storedPayload ?? null,
             });
           })
           .transform(() => buildIngestResult(event))

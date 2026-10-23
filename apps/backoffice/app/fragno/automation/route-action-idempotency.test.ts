@@ -250,6 +250,7 @@ describe("automation route action idempotency", () => {
             source: "github",
             eventType: "issues.opened",
             enabled: true,
+            storedPayload: null,
             payloadSchema: {
               type: "object",
               properties: { value: { type: "string" } },
@@ -333,6 +334,7 @@ describe("automation route action idempotency", () => {
             source: "github",
             eventType: "push",
             enabled: true,
+            storedPayload: null,
             payloadSchema: {
               type: "object",
               properties: { ref: { type: "string" } },

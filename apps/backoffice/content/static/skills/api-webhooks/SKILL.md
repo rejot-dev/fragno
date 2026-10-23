@@ -136,3 +136,8 @@ When setup is still waiting, list the missing inputs.
 `api.webhook.received` carries `endpointId`, `deliveryId`, `hookId`, `receivedAt`, redacted
 `headers` and `query`, the parsed JSON `body`, and `contentType`. Repeated deliveries with the same
 endpoint and delivery ID share one `hookId`; use it, or the event ID, for idempotency.
+
+Routes match and project from the whole envelope, but the stored event omits `headers`, `query`, and
+`body`, so `events.list` and `events.get` do not show them. Read them with the connection's
+`delivery.get` action and the event's `deliveryId`; deliveries are kept for a week after they are
+processed.
