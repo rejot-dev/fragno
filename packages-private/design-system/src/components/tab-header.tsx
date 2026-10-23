@@ -25,14 +25,16 @@ export function BackofficeTabHeader({
   options: ReactNode | null;
 }) {
   return (
-    <header className="flex-none border-b border-[color:var(--bo-border)] bg-[var(--bo-panel)]">
-      {/* Tabs sit on the bottom edge so the selected underline lands on the header divider. */}
-      <div className={`${backofficePageColumnClassName} flex h-16 items-end gap-3 px-2 sm:px-4`}>
+    <header className="flex-none border-b border-[color:var(--bo-border)] bg-[color:var(--bo-bg)]">
+      {/* pt-4 and the tabs' min-h-11 match the sidebar's py-4 and its items' height, so tabs line
+          up with the navigation; -mb-px drops them over the divider so the selected tab opens onto
+          the page beneath. */}
+      <div className={`${backofficePageColumnClassName} flex items-end gap-3 px-2 pt-4 sm:px-4`}>
         <div className="-mb-px min-w-0 flex-1">
           <OverflowTabRow
             items={items}
             ariaLabel={ariaLabel}
-            variant="underline"
+            variant="browser"
             trailing={trailing}
           />
         </div>

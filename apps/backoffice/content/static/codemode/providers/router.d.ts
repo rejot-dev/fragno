@@ -599,64 +599,6 @@ type AutomationWorkflowEventStoredInstanceIdTarget = {
   kind: "stored_instance_id";
   keyTemplate: string;
 };
-type AutomationRouteActionInput =
-  | AutomationStartWorkflowActionInput
-  | AutomationSendWorkflowEventActionInput
-  | AutomationForwardEventActionInput
-  | AutomationReclassifyEventActionInput
-  | AutomationNotifyAgentActionInput;
-type AutomationSendWorkflowEventActionInput = {
-  kind: "send_workflow_event";
-  target: AutomationWorkflowEventTarget;
-  eventType: string;
-  payload?: unknown;
-};
-type AutomationForwardEventActionInput = {
-  kind: "forward_event";
-  targetScope: AutomationRouteScopeTemplate;
-  idTemplate?: string;
-};
-type AutomationReclassifyEventActionInput = {
-  kind: "reclassify_event";
-  source: string;
-  eventType: string;
-  payload: AutomationEventPayloadProjection;
-};
-type AutomationStartWorkflowActionInput = {
-  kind: "start_workflow";
-  authority:
-    | {
-        kind: "delegated-user";
-        grants: BackofficePermissionRequirement[] | "inherit";
-      }
-    | {
-        kind: "linked-user";
-        grants: BackofficePermissionRequirement[] | "inherit";
-      }
-    | {
-        kind: "organization-automation";
-        grants: BackofficePermissionRequirement[];
-      };
-  workflowScriptPath: string;
-  instanceIdTemplate: string;
-};
-type AutomationNotifyAgentActionInput = {
-  kind: "notify_agent";
-  agentName: string;
-  authority:
-    | {
-        kind: "delegated-user";
-        grants: BackofficePermissionRequirement[] | "inherit";
-      }
-    | {
-        kind: "linked-user";
-        grants: BackofficePermissionRequirement[] | "inherit";
-      }
-    | {
-        kind: "organization-automation";
-        grants: BackofficePermissionRequirement[];
-      };
-};
 type AutomationRouteTriggerInput =
   | {
       kind: "event";
@@ -678,70 +620,79 @@ type AutomationRouteTriggerInput =
             timeZone?: string;
           };
     };
+type AutomationRouteActionInput =
+  | AutomationStartWorkflowActionInput
+  | AutomationSendWorkflowEventActionInput
+  | AutomationForwardEventActionInput
+  | AutomationReclassifyEventActionInput
+  | AutomationNotifyAgentActionInput;
+type AutomationStartWorkflowActionInput = {
+  kind: "start_workflow";
+  authority:
+    | {
+        kind: "delegated-user";
+        grants: BackofficePermissionRequirement[] | "inherit";
+      }
+    | {
+        kind: "linked-user";
+        grants: BackofficePermissionRequirement[] | "inherit";
+      }
+    | {
+        kind: "organization-automation";
+        grants: BackofficePermissionRequirement[];
+      };
+  workflowScriptPath: string;
+  instanceIdTemplate: string;
+};
+type AutomationSendWorkflowEventActionInput = {
+  kind: "send_workflow_event";
+  target: AutomationWorkflowEventTarget;
+  eventType: string;
+  payload?: unknown;
+};
+type AutomationForwardEventActionInput = {
+  kind: "forward_event";
+  targetScope: AutomationRouteScopeTemplate;
+  idTemplate?: string;
+};
+type AutomationReclassifyEventActionInput = {
+  kind: "reclassify_event";
+  source: string;
+  eventType: string;
+  payload: AutomationEventPayloadProjection;
+};
+type AutomationNotifyAgentActionInput = {
+  kind: "notify_agent";
+  agentName: string;
+  authority:
+    | {
+        kind: "delegated-user";
+        grants: BackofficePermissionRequirement[] | "inherit";
+      }
+    | {
+        kind: "linked-user";
+        grants: BackofficePermissionRequirement[] | "inherit";
+      }
+    | {
+        kind: "organization-automation";
+        grants: BackofficePermissionRequirement[];
+      };
+};
 type RouterListOutput = AutomationRoute[];
 type RouterGetInput = {
   id: string;
 };
 type RouterGetOutput = AutomationRoute | null;
-type RouterCreateInput =
-  | {
-      id: string;
-      name: string;
-      enabled?: boolean;
-      priority?: number;
-      description?: string | null;
-      managedBy?: AutomationRouteManagedBy | null;
-      trigger: {
-        kind: "event";
-        source: string;
-        eventType: string;
-        matcher?: AutomationEventMatcher | null;
-      };
-      action: AutomationRouteActionInput;
-    }
-  | {
-      id: string;
-      name: string;
-      enabled?: boolean;
-      priority?: number;
-      description?: string | null;
-      managedBy?: AutomationRouteManagedBy | null;
-      trigger: {
-        kind: "schedule";
-        cadence:
-          | {
-              kind: "once";
-              /** ISO 8601 datetime string. */
-              at: string;
-            }
-          | {
-              kind: "cron";
-              expression: string;
-              timeZone?: string;
-            };
-      };
-      action:
-        | {
-            kind: "start_workflow";
-            authority: {
-              kind: "organization-automation";
-              grants: BackofficePermissionRequirement[];
-            };
-            workflowScriptPath: string;
-            instanceIdTemplate: string;
-          }
-        | AutomationSendWorkflowEventActionInput
-        | AutomationForwardEventActionInput
-        | AutomationReclassifyEventActionInput
-        | {
-            kind: "notify_agent";
-            agentName: string;
-            authority: {
-              kind: "organization-automation";
-              grants: BackofficePermissionRequirement[];
-            };
-          };
-    };
+type RouterCreateInput = {
+  id: string;
+  name: string;
+  enabled?: boolean;
+  priority?: number;
+  description?: string | null;
+  managedBy?: AutomationRouteManagedBy | null;
+  trigger: AutomationRouteTriggerInput;
+  action: AutomationRouteActionInput;
+};
 type RouterCreateOutput = AutomationRoute;
 type RouterUpdateInput = {
   id: string;

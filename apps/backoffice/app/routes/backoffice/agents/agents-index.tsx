@@ -1,3 +1,4 @@
+import { PaneSpinner } from "@fragno-private/design-system/pane-message";
 import { SparkBars } from "@fragno-private/design-system/spark-bars";
 import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
@@ -47,11 +48,7 @@ export default function BackofficePiAgentsIndex() {
           ) : (
             <div className="mt-8">
               {directory.status === "loading" ? (
-                <BackofficeSystemState
-                  tone="loading"
-                  label="Synchronizing"
-                  title="Synchronizing agents…"
-                />
+                <PaneSpinner label="Synchronizing agents" />
               ) : (
                 <BackofficeSystemState
                   tone="error"

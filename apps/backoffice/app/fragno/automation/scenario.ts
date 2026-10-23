@@ -353,6 +353,7 @@ type BackofficeScenarioFilePreset = {
 export type BackofficeScenarioFileSystems = {
   forOrg(orgId?: string): IFileSystem;
   forProject(projectId: string): IFileSystem;
+  forUser(userId: string): IFileSystem;
   listOrgIds(): string[];
   rememberOrgPaths(orgId: string, paths: readonly string[]): void;
   diff(
@@ -1645,6 +1646,7 @@ const createScenarioFileSystems = (
 ): BackofficeScenarioFileSystems => {
   const byOrg = new Map<string, IFileSystem>();
   const byProject = new Map<string, IFileSystem>();
+  const byUser = new Map<string, IFileSystem>();
   const rememberedOrgPaths = new Map<string, Set<string>>();
 
   const getScopedFs = (map: Map<string, IFileSystem>, key: string) => {
@@ -1664,6 +1666,7 @@ const createScenarioFileSystems = (
   return {
     forOrg,
     forProject: (projectId) => getScopedFs(byProject, projectId),
+    forUser: (userId) => getScopedFs(byUser, userId),
     listOrgIds: () => Array.from(orgIds),
     rememberOrgPaths: (orgId, paths) => {
       const rememberedPaths = rememberedOrgPaths.get(orgId) ?? new Set<string>();
@@ -4594,7 +4597,9 @@ export const runBackofficeScenario = async <TVars extends ScenarioVars = Scenari
       await (
         execution.scope.kind === "project"
           ? files.forProject(execution.scope.projectId)
-          : files.forOrg(execution.scope.kind === "org" ? execution.scope.orgId : undefined)
+          : execution.scope.kind === "user"
+            ? files.forUser(execution.scope.userId)
+            : files.forOrg(execution.scope.kind === "org" ? execution.scope.orgId : undefined)
       ).readFile(path, "utf-8"),
     objects: { ...scenario.objects, ...(await createFakeObjectOverrides(fakes)) },
     piAvailableModels: scenario.piAvailableModels,

@@ -3,20 +3,15 @@ import type {
   AutomationAuthorityMode,
 } from "@fragno-dev/backoffice-api/v0/automation";
 import {
-  AUTOMATION_ROUTE_AUTHORITY_ERROR_MESSAGE,
   type AutomationActorIdentityMatcher,
   type AutomationActorMatcher,
   type AutomationEventMatcher,
   type AutomationEventPayloadProjection,
-  type AutomationNotifyAgentAction,
   type AutomationRouteAction,
   automationRouteActionAuthority,
-  type AutomationRouteEventTrigger,
-  type AutomationRouteScheduleTrigger,
   type AutomationRouteScopeTemplate,
   type AutomationRouteTrigger,
   type AutomationSendWorkflowEventAction,
-  type AutomationStartWorkflowAction,
   isAutomationActorProvenancePath,
 } from "@fragno-dev/backoffice-api/v0/automation";
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
@@ -27,38 +22,54 @@ import type {
   BackofficeScopeIdNames,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
-type AutomationAuthorityAction = AutomationStartWorkflowAction | AutomationNotifyAgentAction;
-
-type AutomationRouteConfiguration =
-  | { trigger: AutomationRouteEventTrigger; action: AutomationRouteAction }
-  | {
-      trigger: AutomationRouteScheduleTrigger;
-      action:
-        | Exclude<AutomationRouteAction, AutomationAuthorityAction>
-        | (AutomationAuthorityAction & {
-            authority: Extract<AutomationAuthorityMode, { kind: "organization-automation" }>;
-          });
-    };
-
 export class AutomationRouteAuthorityError extends Error {
-  static readonly message = AUTOMATION_ROUTE_AUTHORITY_ERROR_MESSAGE;
-
   constructor() {
-    super(AutomationRouteAuthorityError.message);
+    super(
+      "Scheduled workflows and agent notifications require organization-automation authority, or delegated-user authority with explicit grants in a personal scope. Linked-user authority requires an external sender.",
+    );
     this.name = "AutomationRouteAuthorityError";
   }
 }
 
-export function assertAutomationRouteAuthorityMatchesTrigger(configuration: {
+/**
+ * The user a scheduled route's own action acts for: a personal scope's owner, for delegated-user
+ * routes whose explicit grants were checked against the route's author when it was saved. Inherited
+ * grants were not checked, so they would let an author restricted by a delegate schedule anything
+ * the owner may do. Schedule events name no user, so nothing derived from them acts for the owner.
+ */
+export function scheduledRouteUserId({
+  ownerScope,
+  trigger,
+  authority,
+}: {
+  ownerScope: BackofficeContextScope;
+  trigger: AutomationRouteTrigger;
+  authority: AutomationAuthorityMode;
+}): string | null {
+  return trigger.kind === "schedule" &&
+    ownerScope.kind === "user" &&
+    authority.kind === "delegated-user" &&
+    authority.grants !== "inherit"
+    ? ownerScope.userId
+    : null;
+}
+
+/** Rejects scheduled authority modes that have no user to act for in the route's scope. */
+export function assertAutomationRouteAuthorityMatchesScope({
+  ownerScope,
+  trigger,
+  action,
+}: {
+  ownerScope: BackofficeContextScope;
   trigger: AutomationRouteTrigger;
   action: AutomationRouteAction;
-}): asserts configuration is AutomationRouteConfiguration {
-  const authority = automationRouteActionAuthority(configuration.action);
-  // A schedule has no user principal for delegated or linked authority to act for.
+}): void {
+  const authority = automationRouteActionAuthority(action);
   if (
-    configuration.trigger.kind === "schedule" &&
+    trigger.kind === "schedule" &&
     authority &&
-    authority.kind !== "organization-automation"
+    authority.kind !== "organization-automation" &&
+    scheduledRouteUserId({ ownerScope, trigger, authority }) === null
   ) {
     throw new AutomationRouteAuthorityError();
   }

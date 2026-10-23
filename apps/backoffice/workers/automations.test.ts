@@ -197,16 +197,23 @@ describe("readBackofficeAutomationSource", () => {
 
 describe("Automations authorized HTTP context", () => {
   test("allows a user-scoped automation to mutate its store", async () => {
-    const runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
+    const runtime = await createInMemoryBackofficeRuntime({
+      objects: {
+        ...localObjects,
+        AUTH: () =>
+          ({
+            async getUserAuthorityFacts() {
+              return { active: true, role: "user", organizationMember: false };
+            },
+          }) as never,
+      },
+    });
 
     try {
       const scope = { kind: "user" as const, userId: "user-1" };
       const execution = createAutomationRuntimeExecution({
         authority: {
-          mode: {
-            kind: "organization-automation",
-            grants: [BACKOFFICE_PERMISSION.store.modify],
-          },
+          mode: { kind: "delegated-user", grants: [BACKOFFICE_PERMISSION.store.modify] },
           automationId: "automation-route:user-action",
         },
         event: {
@@ -217,16 +224,7 @@ describe("Automations authorized HTTP context", () => {
           eventType: "user.action",
           occurredAt: "2026-07-28T00:00:00.000Z",
           payload: {},
-          actors: {
-            initiator: {
-              scope: "internal",
-              type: "user",
-              id: scope.userId,
-              role: "initiator",
-            },
-            principal: null,
-            delegation: [],
-          },
+          actors: createBackofficeUserExecution({ scope, userId: scope.userId }).actors,
           subject: { userId: scope.userId },
           causation: { kind: "origin" },
         },
@@ -256,7 +254,7 @@ describe("Automations authorized HTTP context", () => {
           action: {
             kind: "start_workflow",
             authority: {
-              kind: "organization-automation",
+              kind: "delegated-user",
               grants: [BACKOFFICE_PERMISSION.store.modify],
             },
             workflowScriptPath: "/workspace/automations/user-action.workflow.js",

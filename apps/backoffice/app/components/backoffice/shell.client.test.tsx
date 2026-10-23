@@ -21,7 +21,7 @@ vi.mock("./global-hotkeys", () => ({
   GlobalHotkeysProvider: ({ children }: { children: ReactNode }) => children,
   useGlobalHotkey: () => undefined,
 }));
-vi.mock("./global-workflow-drawer", () => ({ GlobalWorkflowDrawer: () => null }));
+vi.mock("./agent-drawer", () => ({ AGENT_DRAWER_ID: "agent-drawer", AgentDrawer: () => null }));
 vi.mock("./quake-terminal", () => ({
   QuakeTerminal: (props: unknown) => {
     terminalMock(props);

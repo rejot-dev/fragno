@@ -1,6 +1,12 @@
 /* Theme tokens (--bo-*) are defined centrally in theme.css. This file holds
    component styles only. */
 
+/* Clicking a control never outlines it. Keyboard focus keeps the browser outline and each
+   control's focus-visible ring, so people navigating without a pointer can see where they are. */
+[data-backoffice-root] *:focus:not(:focus-visible) {
+  outline: none;
+}
+
 .bo-control-surface {
   box-shadow: var(--bo-control-shadow);
 }
@@ -237,10 +243,6 @@
   border-radius: 999px;
   background: currentcolor;
   box-shadow: 0 0 0 3px color-mix(in srgb, currentcolor 15%, transparent);
-}
-
-.bo-system-state[data-tone="loading"] .bo-system-state-label {
-  color: var(--bo-accent);
 }
 
 .bo-system-state[data-tone="empty"] .bo-fragment-mark {

@@ -3,10 +3,10 @@ import type { ReactNode } from "react";
 import { cn } from "../cn";
 import { BackofficeFragmentMark } from "./fragment-mark";
 
-type BackofficeSystemStateTone = "loading" | "empty" | "error";
+// Loading shows a PaneSpinner instead: a pending pane has nothing yet to explain.
+type BackofficeSystemStateTone = "empty" | "error";
 
 const DEFAULT_LABELS: Record<BackofficeSystemStateTone, string> = {
-  loading: "Synchronizing",
   empty: "No data",
   error: "Connection failed",
 };
@@ -34,7 +34,6 @@ export function BackofficeSystemState({
   return (
     <section
       role={tone === "error" ? "alert" : "status"}
-      aria-live={tone === "loading" ? "polite" : undefined}
       data-tone={tone}
       className={cn(
         "bo-panel-surface bo-system-state bg-[var(--bo-panel)] p-4",
@@ -43,7 +42,7 @@ export function BackofficeSystemState({
     >
       <div className="flex items-start gap-3">
         <div className="flex size-10 shrink-0 items-center justify-center rounded-[4px] bg-[var(--bo-panel-2)] shadow-[inset_0_0_0_1px_var(--bo-border)]">
-          <BackofficeFragmentMark animated={tone === "loading"} size="md" />
+          <BackofficeFragmentMark size="md" />
         </div>
         <div className="min-w-0 flex-1">
           <p className="bo-system-state-label text-xs font-semibold text-[var(--bo-muted-2)]">

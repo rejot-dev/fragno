@@ -6,6 +6,7 @@ import {
   type AutomationRouteCreateInput,
   type AutomationRouteUpdateInput,
 } from "@fragno-dev/backoffice-api/v0/automation";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 
@@ -18,7 +19,7 @@ import {
   validateAutomationScheduleCadence,
 } from "./route-triggers";
 import {
-  assertAutomationRouteAuthorityMatchesTrigger,
+  assertAutomationRouteAuthorityMatchesScope,
   assertAutomationRouteDoesNotReclassifyItself,
 } from "./routing";
 import { automationFragmentSchema } from "./schema";
@@ -62,6 +63,7 @@ export const createAutomationRouteServices = (
   defineService: <TService>(
     service: TService & ThisType<AutomationRouteServiceContext>,
   ) => TService,
+  { ownerScope }: { ownerScope: BackofficeContextScope },
 ) =>
   defineService({
     listRoutes() {
@@ -106,6 +108,11 @@ export const createAutomationRouteServices = (
       if (route.trigger.kind === "schedule") {
         validateAutomationScheduleCadence(route.trigger.cadence);
       }
+      assertAutomationRouteAuthorityMatchesScope({
+        ownerScope,
+        trigger: route.trigger,
+        action: route.action,
+      });
       assertAutomationRouteDoesNotReclassifyItself({
         routeId: route.id,
         trigger: route.trigger,
@@ -206,7 +213,11 @@ export const createAutomationRouteServices = (
             JSON.stringify(merged.action) !== JSON.stringify(current.action) ||
             JSON.stringify(merged.trigger) !== JSON.stringify(current.trigger);
           if (configurationChanged || (merged.enabled && !current.enabled)) {
-            assertAutomationRouteAuthorityMatchesTrigger(merged);
+            assertAutomationRouteAuthorityMatchesScope({
+              ownerScope,
+              trigger: merged.trigger,
+              action: merged.action,
+            });
           }
           assertAutomationRouteDoesNotReclassifyItself({
             routeId: merged.id,

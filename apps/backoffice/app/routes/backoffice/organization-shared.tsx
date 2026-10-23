@@ -1,7 +1,8 @@
 import { ButtonLink } from "@fragno-private/design-system/button";
 import { cn } from "@fragno-private/design-system/cn";
+import { OverflowTabRow } from "@fragno-private/design-system/overflow-tab-row";
 import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
-import { Link, isRouteErrorResponse } from "react-router";
+import { isRouteErrorResponse } from "react-router";
 
 import type { ActionNotice, OrganizationTab } from "./organization-utils";
 import { getRouteErrorMessage, getBackofficeOrganizationNotFound } from "./route-errors";
@@ -71,23 +72,12 @@ export function OrganizationTabs({
   ];
 
   return (
-    <div
-      role="tablist"
-      aria-label="Organization management tabs"
-      className="flex flex-wrap items-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2"
-    >
-      {tabs.map((tab) => {
-        const isActive = activeTab === tab.id;
-        const className = isActive
-          ? "border border-[color:var(--bo-selected-border)] bg-[var(--bo-selected-bg)] shadow-[var(--bo-selected-shadow)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-fg)]"
-          : "border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]";
-
-        return (
-          <Link key={tab.id} to={tab.to} role="tab" aria-selected={isActive} className={className}>
-            {tab.label}
-          </Link>
-        );
-      })}
+    <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2">
+      <OverflowTabRow
+        items={tabs.map((tab) => ({ ...tab, active: tab.id === activeTab }))}
+        ariaLabel="Organization management tabs"
+        trailing={null}
+      />
     </div>
   );
 }

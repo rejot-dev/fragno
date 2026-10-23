@@ -8,3 +8,8 @@
 html:has([data-integrations-workspace]) {
   scrollbar-gutter: stable;
 }
+
+/* The shell sets this until the saved sidebar state has painted, so it does not animate on load. */
+[data-sidebar-restoring] * {
+  transition: none !important;
+}

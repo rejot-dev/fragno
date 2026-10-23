@@ -1,46 +1,15 @@
-import {
-  backofficeScopeRootOwner,
-  backofficeScopePathSegment,
-} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { Outlet, type ShouldRevalidateFunctionArgs } from "react-router";
 
-import { backofficeContextScopeLabel } from "@/backoffice-runtime/context";
 import { backofficeRouteScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
-import { requireRouteScope } from "@/layouts/backoffice-shell-request.server";
-import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { Route } from "./+types/organization-layout";
 import { isPiConversationSubmission } from "./agent-conversation-submission";
-import { fetchPiManagerAvailableModels } from "./data";
+import { loadPiLayoutData } from "./layout-data.server";
 import { isPiAgentsPath } from "./path";
 import { PiErrorBoundary, type PiLayoutContext } from "./shared";
 
 export async function loader({ request, context }: Route.LoaderArgs) {
-  const { resolvedScope, execution } = requireRouteScope(context);
-
-  const availableModelOptions = await fetchPiManagerAvailableModels(
-    request,
-    context,
-    execution.scope,
-  );
-
-  const owner = backofficeScopeRootOwner(resolvedScope);
-  const usageLabel =
-    owner === null
-      ? "System work"
-      : owner.kind === "user"
-        ? "Personal usage"
-        : `Usage: ${owner.organization.name}`;
-
-  return {
-    resolvedScope,
-    scopeLabel: backofficeContextScopeLabel(execution.scope),
-    usageLabel,
-    availableModelOptions,
-    dictationMountRoute: context.get(BackofficeWorkerContext).runtime.reson8
-      ? `/api/reson8/${backofficeScopePathSegment(execution.scope)}`
-      : null,
-  };
+  return await loadPiLayoutData(request, context);
 }
 
 export function shouldRevalidate({

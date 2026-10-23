@@ -5,6 +5,8 @@ import type {
 } from "@fragno-dev/backoffice-api/v0/automation";
 import type { PageLoad } from "@fragno-private/backoffice-ui/pages/definition";
 import { Icon } from "@fragno-private/design-system/icon";
+import { PaneSpinner } from "@fragno-private/design-system/pane-message";
+import { Spinner } from "@fragno-private/design-system/spinner";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { UnderlineTab, UnderlineTabList } from "@fragno-private/design-system/underline-tabs";
 import { useEffect, useState, type ReactNode } from "react";
@@ -129,8 +131,9 @@ function WorkflowStartRouteSummary({ routing }: { routing: WorkflowFileRouting }
   }
   if (routing.status === "loading") {
     return (
-      <div className="mb-3 shrink-0 border border-dashed border-[color:var(--bo-border-strong)] bg-[var(--bo-panel)] px-3 py-2.5 text-xs text-[var(--bo-muted)]">
-        Synchronizing workflow routes…
+      <div role="status" className="mb-3 flex shrink-0 justify-center py-2.5">
+        <Spinner />
+        <span className="sr-only">Synchronizing workflow routes</span>
       </div>
     );
   }
@@ -321,7 +324,7 @@ function PageFileContent({ source, page }: { source: string; page: FilesPagePrev
     );
   }
   if (page.status === "loading") {
-    return <BackofficeSystemState tone="loading" title="Synchronizing automation data." />;
+    return <PaneSpinner label="Synchronizing automation data" />;
   }
   if (page.status === "error") {
     return (
@@ -367,7 +370,7 @@ function BuiltPage({
   const loaded = fetcher.data?.result;
   const orchestration = fetcher.data?.orchestration;
   if (!loaded || !orchestration || fetcher.state === "loading") {
-    return <BackofficeSystemState tone="loading" title="Building page." />;
+    return <PaneSpinner label="Building page" />;
   }
   if (loaded.kind === "missing") {
     return <BackofficeSystemState tone="empty" title="This page no longer exists." />;

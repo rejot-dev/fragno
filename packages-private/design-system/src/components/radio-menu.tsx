@@ -11,13 +11,13 @@ export type RadioMenuOption<TValue extends string> = {
   disabled: boolean;
 };
 
-// accent sits flush against an accent button, as the second half of a split button; control is a
-// standalone toolbar control showing the given icon.
+// accent sits flush against an accent button, as the second half of a split button, and like it
+// never looks disabled; control is a standalone toolbar control showing the given icon.
 type RadioMenuTrigger = { kind: "accent" } | { kind: "control"; icon: IconName };
 
 const TRIGGER_CLASS_NAMES: Record<RadioMenuTrigger["kind"], string> = {
   accent:
-    "min-h-10 w-9 border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)] hover:bg-[var(--bo-panel)] focus-visible:ring-[color:var(--bo-accent)]/25 disabled:cursor-not-allowed disabled:opacity-35 data-[popup-open]:bg-[var(--bo-panel)]",
+    "min-h-10 w-9 rounded-r-[4px] border-l border-[color:var(--bo-panel)]/20 bg-[var(--bo-fg)] text-[var(--bo-panel)] hover:not-disabled:bg-[color-mix(in_srgb,var(--bo-fg)_82%,var(--bo-panel))] focus-visible:ring-[color:var(--bo-accent)]/30 data-[popup-open]:bg-[color-mix(in_srgb,var(--bo-fg)_82%,var(--bo-panel))]",
   control:
     "bo-control-surface size-10 bg-[var(--bo-panel)] text-[var(--bo-muted)] hover:bg-[var(--bo-panel-2)] hover:text-[var(--bo-fg)] focus-visible:ring-[color:var(--bo-accent)]/30 data-[popup-open]:bg-[var(--bo-accent-bg)] data-[popup-open]:text-[var(--bo-accent-fg)]",
 };

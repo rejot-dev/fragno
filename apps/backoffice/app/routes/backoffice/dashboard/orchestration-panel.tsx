@@ -4,6 +4,7 @@ import type {
   OrchestrationGraphItem,
 } from "@fragno-private/design-system/orchestration-graph-model";
 import { OrchestrationLayeredGraph } from "@fragno-private/design-system/orchestration-layered-graph";
+import { PaneSpinner } from "@fragno-private/design-system/pane-message";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router";
@@ -255,7 +256,7 @@ export function ScopeOrchestration({
     );
   }
   if (routesState.status === "loading" || !eventsQuery.isReady) {
-    return <BackofficeSystemState tone="loading" title="Synchronizing routes and events…" />;
+    return <PaneSpinner label="Synchronizing routes and events" />;
   }
   return (
     <OrchestrationPanel

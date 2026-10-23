@@ -48,6 +48,9 @@ export function ButtonLink({
   return <Link className={buttonClassName(variant, className)} {...props} />;
 }
 
+const ICON_BUTTON =
+  "inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-[4px] text-[var(--bo-muted)] transition-[background-color,color,scale] duration-150 ease-out hover:bg-[var(--bo-panel-2)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none active:scale-[0.94] disabled:cursor-not-allowed disabled:opacity-60";
+
 // Square, borderless control for toolbar and chrome actions. The label is required because the
 // icon alone gives screen readers nothing; it is also the tooltip unless a title (for example one
 // naming a keyboard shortcut) overrides it.
@@ -67,13 +70,28 @@ export function IconButton({
       type={type}
       aria-label={label}
       title={title}
-      className={cn(
-        "inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-[4px] text-[var(--bo-muted)] transition-[background-color,color,scale] duration-150 ease-out hover:bg-[var(--bo-panel-2)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none active:scale-[0.94] disabled:cursor-not-allowed disabled:opacity-60",
-        className,
-      )}
+      className={cn(ICON_BUTTON, className)}
       {...props}
     >
       {children}
     </button>
+  );
+}
+
+// IconButton's navigation counterpart, for chrome that opens a page rather than acting in place.
+export function IconButtonLink({
+  label,
+  title = label,
+  children,
+  className,
+  ...props
+}: Omit<ComponentProps<typeof Link>, "aria-label" | "children"> & {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <Link aria-label={label} title={title} className={cn(ICON_BUTTON, className)} {...props}>
+      {children}
+    </Link>
   );
 }

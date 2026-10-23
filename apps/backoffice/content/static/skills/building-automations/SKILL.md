@@ -95,7 +95,10 @@ reclassifies the event, or forwards it to another scope.
    ### Grants
 
    Choose authority from the workflow's user source:
-   - `delegated-user`: the triggering event already carries an internal user principal.
+   - `delegated-user`: the triggering event already carries an internal user principal. In a
+     personal scope, a scheduled route may use `delegated-user` with an explicit grant array to act
+     for the scope's owner. Scheduled routes cannot use `"inherit"`, and events reclassified or
+     forwarded from a schedule carry no user.
    - `linked-user`: resolve the external initiator's active user binding.
 
    For either user-backed mode, use `grants: "inherit"` when the workflow should retain the user's

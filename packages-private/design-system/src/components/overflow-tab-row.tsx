@@ -58,7 +58,7 @@ const moreTriggerClassName = (variant: OverflowTabRowVariant, active: boolean) =
   if (variant === "browser") {
     return cn(
       browserTabClassName(active ? "selected" : "idle"),
-      "group data-[popup-open]:border-[color:var(--bo-border)] data-[popup-open]:border-b-transparent data-[popup-open]:bg-[var(--bo-panel)] data-[popup-open]:text-[var(--bo-fg)] data-[popup-open]:shadow-[var(--bo-selected-shadow)]",
+      "group data-[popup-open]:border-[color:var(--bo-border)] data-[popup-open]:border-b-transparent data-[popup-open]:bg-[var(--bo-bg)] data-[popup-open]:text-[var(--bo-fg)] data-[popup-open]:shadow-[var(--bo-selected-shadow)]",
     );
   }
 

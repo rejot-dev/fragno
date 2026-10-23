@@ -93,7 +93,7 @@ function writeStoredWorkspaceState(
 }
 
 /** The scope's agents as its synchronized `pi` events record them. */
-function usePiAgentDirectory(): PiAgentDirectoryState {
+export function usePiAgentDirectory(): PiAgentDirectoryState {
   const { collections, error } = useAutomationBrowserCollections();
   const now = useClock(CLOCK_TICK_MS);
   // Every moment of an hour has that hour's window, so the projection only reruns when one begins.

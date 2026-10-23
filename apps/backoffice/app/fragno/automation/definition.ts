@@ -44,6 +44,7 @@ import { piAgentActor } from "@/fragno/pi/agent/pi-agent-actor";
 import { createPiManagerRuntime } from "@/fragno/pi/manager/pi-manager-runtime";
 
 import {
+  actForScheduledRouteUser,
   automationRouteAuthority,
   createAutomationRuntimeExecution,
   linkAutomationEventToUser,
@@ -90,6 +91,7 @@ import {
   renderAutomationRawTemplateValue,
   renderAutomationScopeTemplate,
   renderAutomationTemplateValue,
+  scheduledRouteUserId,
   type StarterAutomationRoutesSeedResult,
 } from "./routing";
 import { createAutomationRouteServices } from "./routing-storage-runtime";
@@ -259,7 +261,8 @@ function routeStoredInstanceKey(
 
 /**
  * The event an action with its own authority acts on, and the execution it runs as. Null when a
- * linked-user route receives an event from a sender with no linked user.
+ * linked-user route receives an event from a sender with no linked user. Only the route's own action
+ * acts for a derived principal; the event it received, and everything routed from it, does not.
  */
 function routeActionExecution({
   authority,
@@ -272,6 +275,11 @@ function routeActionExecution({
   route: AutomationRouteDefinition;
   linkedUserId: string | null;
 }): { event: AutomationEvent; execution: BackofficeExecutionContext } | null {
+  const scheduledUserId = scheduledRouteUserId({
+    ownerScope: event.scope,
+    trigger: route.trigger,
+    authority,
+  });
   const actingEvent =
     authority.kind === "linked-user"
       ? linkedUserId &&
@@ -279,7 +287,9 @@ function routeActionExecution({
         event.actors.principal === null
         ? linkAutomationEventToUser({ event, userId: linkedUserId })
         : null
-      : event;
+      : scheduledUserId
+        ? actForScheduledRouteUser({ event, userId: scheduledUserId })
+        : event;
   if (!actingEvent) {
     return null;
   }
@@ -335,10 +345,9 @@ const handleStartWorkflowRouteAction = async ({
     readFile: async (path) => await readAutomationSource({ execution, path }),
   });
   const prepared = prepareCodemodeWorkflowInstance({ program, instanceId });
+  // A principal the route derived reaches the workflow with the route as its delegate.
   const triggerEvent =
-    action.authority.kind === "linked-user"
-      ? { ...workflowEvent, actors: execution.actors }
-      : workflowEvent;
+    workflowEvent === event ? workflowEvent : { ...workflowEvent, actors: execution.actors };
   const workflowInput = createCodemodeWorkflowInstanceInput({
     prepared,
     trigger: { type: "event", event: triggerEvent },
@@ -620,7 +629,9 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
     const projectServices = createAutomationProjectServices(defineService, {
       ownerScope: config.ownerScope,
     });
-    const routeServices = createAutomationRouteServices(defineService);
+    const routeServices = createAutomationRouteServices(defineService, {
+      ownerScope: config.ownerScope,
+    });
     const eventServices = createAutomationEventServices(defineService);
     const eventSourceServices = createAutomationEventSourceServices(defineService);
     const eventDefinitionServices = createAutomationEventDefinitionServices(defineService);

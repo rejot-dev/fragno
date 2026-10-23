@@ -26,7 +26,8 @@ export type AutomationAuthorityModeFailureReason =
   | "delegated-user-principal-required"
   | "delegated-user-principal-invalid"
   | "linked-user-external-initiator-required"
-  | "linked-user-principal-forbidden";
+  | "linked-user-principal-forbidden"
+  | "scheduled-user-principal-forbidden";
 
 export class AutomationAuthorityModeError extends Error {
   constructor(readonly reason: AutomationAuthorityModeFailureReason) {
@@ -183,6 +184,26 @@ export function linkAutomationEventToUser({
         id: userId,
         role: "principal",
       },
+    }),
+  };
+}
+
+/** Names the user a scheduled route's own action acts for on the schedule event it received. */
+export function actForScheduledRouteUser({
+  event,
+  userId,
+}: {
+  event: AutomationEvent;
+  userId: string;
+}): AutomationEvent {
+  if (event.actors.principal !== null) {
+    throw new AutomationAuthorityModeError("scheduled-user-principal-forbidden");
+  }
+  return {
+    ...event,
+    actors: automationActorsSchema.parse({
+      ...event.actors,
+      principal: { scope: "internal", type: "user", id: userId, role: "principal" },
     }),
   };
 }

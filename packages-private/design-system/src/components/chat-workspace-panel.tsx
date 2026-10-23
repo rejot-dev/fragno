@@ -2,6 +2,7 @@ import type { ReactNode, Ref } from "react";
 
 import { IconButton } from "./button";
 import { Icon } from "./icon";
+import { Spinner } from "./spinner";
 
 /** The workspace beside a conversation, showing one item it produced, such as a workflow. */
 export function ChatWorkspacePanel({
@@ -55,7 +56,7 @@ export function ChatWorkspaceScroll({ children }: { children: ReactNode }) {
   );
 }
 
-/** A thin bar over the workspace content while its data is synchronizing or after that failed. */
+/** Over the workspace content: a spinner while its data is synchronizing, a bar after that failed. */
 export function ChatWorkspaceStatus({
   tone,
   children,
@@ -81,13 +82,10 @@ export function ChatWorkspaceStatus({
     <div
       data-workspace-status="loading"
       role="status"
-      className="flex min-h-8 shrink-0 items-center gap-2 border-b border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 text-xs text-[var(--bo-muted)]"
+      className="flex min-h-8 shrink-0 items-center justify-center"
     >
-      <span
-        aria-hidden="true"
-        className="size-1.5 shrink-0 animate-pulse rounded-full bg-[var(--bo-accent)]"
-      />
-      {children}
+      <Spinner />
+      <span className="sr-only">{children}</span>
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { PaneSpinner } from "@fragno-private/design-system/pane-message";
 import { WorkflowRunTimeline } from "@fragno-private/design-system/workflow-run-timeline";
 import { useMemo, useState, type ReactNode } from "react";
 
@@ -51,11 +52,12 @@ export function WorkflowRunDetail({
     return <p className="py-5 text-sm text-[var(--bo-failed)]">{run.error}</p>;
   }
   if (!run.instance || !run.timeline) {
+    if (run.isLoading) {
+      return <PaneSpinner label="Synchronizing the workflow run" />;
+    }
     return (
       <p className="py-5 text-sm text-[var(--bo-muted)]">
-        {run.isLoading
-          ? "Synchronizing the workflow run…"
-          : `There is no run ${reference.instanceId} of ${reference.workflowName} in this scope.`}
+        {`There is no run ${reference.instanceId} of ${reference.workflowName} in this scope.`}
       </p>
     );
   }

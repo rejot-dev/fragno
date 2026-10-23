@@ -1,6 +1,7 @@
 import { ButtonLink } from "@fragno-private/design-system/button";
+import { OverflowTabRow } from "@fragno-private/design-system/overflow-tab-row";
 import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
-import { Link, isRouteErrorResponse } from "react-router";
+import { isRouteErrorResponse } from "react-router";
 
 import { getRouteErrorMessage, getBackofficeOrganizationNotFound } from "../../route-errors";
 import type { UploadConfigurableProvider, UploadTab } from "./layout-context";
@@ -54,38 +55,13 @@ export function UploadWorkspaceTabs({
   ];
 
   return (
-    <nav
-      aria-label="Upload workspace tabs"
-      className="flex flex-wrap items-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2"
-    >
-      {tabs.map((tab) => {
-        const isActive = activeTab === tab.id;
-        const className = isActive
-          ? "border border-[color:var(--bo-selected-border)] bg-[var(--bo-selected-bg)] shadow-[var(--bo-selected-shadow)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-fg)]"
-          : tab.disabled
-            ? "cursor-not-allowed border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted-2)] opacity-60"
-            : "border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]";
-
-        if (tab.disabled) {
-          return (
-            <span key={tab.id} aria-disabled="true" className={className}>
-              {tab.label}
-            </span>
-          );
-        }
-
-        return (
-          <Link
-            key={tab.id}
-            to={tab.to}
-            className={className}
-            aria-current={isActive ? "page" : undefined}
-          >
-            {tab.label}
-          </Link>
-        );
-      })}
-    </nav>
+    <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2">
+      <OverflowTabRow
+        items={tabs.map((tab) => ({ ...tab, active: tab.id === activeTab }))}
+        ariaLabel="Upload workspace tabs"
+        trailing={null}
+      />
+    </div>
   );
 }
 

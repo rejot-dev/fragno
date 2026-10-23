@@ -1,5 +1,6 @@
 import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { ButtonLink } from "@fragno-private/design-system/button";
+import { OverflowTabRow } from "@fragno-private/design-system/overflow-tab-row";
 import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useEffect } from "react";
@@ -177,30 +178,17 @@ function DurableHooksObjectPicker({
       <p className="mt-1 text-sm text-[var(--bo-muted)]">
         Objects are filtered by the scope policy in the Backoffice object registry.
       </p>
-      <div
-        role="tablist"
-        aria-label="Durable hook objects"
-        className="mt-3 flex flex-wrap items-center gap-2"
-      >
-        {options.map((option) => {
-          const isActive = option.id === selectedObjectId;
-          return (
-            <Link
-              key={option.id}
-              to={option.to}
-              role="tab"
-              aria-label={`${option.label} · ${option.binding}`}
-              aria-selected={isActive}
-              className={
-                isActive
-                  ? "border border-[color:var(--bo-selected-border)] bg-[var(--bo-selected-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-fg)] uppercase shadow-[var(--bo-selected-shadow)]"
-                  : "border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-              }
-            >
-              {option.label}
-            </Link>
-          );
-        })}
+      <div className="mt-3">
+        <OverflowTabRow
+          items={options.map((option) => ({
+            id: option.id,
+            label: option.label,
+            to: option.to,
+            active: option.id === selectedObjectId,
+          }))}
+          ariaLabel="Durable hook objects"
+          trailing={null}
+        />
       </div>
     </section>
   );

@@ -197,7 +197,7 @@ export function FilesExplorerView({
             />
           </aside>
 
-          <div className="flex min-h-0 min-w-0 flex-col bg-[var(--bo-panel)]">
+          <div className="flex min-h-0 min-w-0 flex-col bg-[var(--bo-bg)]">
             {contentSearch ? (
               <div className="shrink-0 border-b border-[var(--bo-border)] bg-[var(--bo-panel-2)] p-3 md:p-4">
                 <Form method="get" className="relative">
@@ -525,7 +525,7 @@ function RootSelectionState({
   const Heading = getHeadingComponent(headingLevel);
 
   return (
-    <section className="flex min-h-full items-center justify-center bg-[var(--bo-panel)] p-6">
+    <section className="flex min-h-full items-center justify-center bg-[var(--bo-bg)] p-6">
       <div className="max-w-sm text-center">
         <div className="bo-control-surface mx-auto flex size-12 items-center justify-center bg-[var(--bo-panel-2)] text-[var(--bo-accent)]">
           <Icon name={icon} className="size-5" />

@@ -5,11 +5,12 @@ import {
 import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 
 import type { PiAgentModelChoice, PiAgentTurn, PiAvailableModel } from "./pi-agent-contract";
+import { MAIN_PI_AGENT_NAME } from "./pi-agent-name";
 
 /** Defined by Backoffice in every scope; a scope cannot create, replace, or delete them. */
 export const BUILT_IN_PI_AGENT_DEFINITIONS: readonly PiAgentDefinition[] = [
   {
-    agentName: "assistant",
+    agentName: MAIN_PI_AGENT_NAME,
     description:
       "General-purpose Backoffice assistant that works with everything the person prompting it may use.",
     model: null,

@@ -11,6 +11,7 @@ import { ClientOnly } from "@fragno-private/design-system/client-only";
 import { cn } from "@fragno-private/design-system/cn";
 import { CopyButton } from "@fragno-private/design-system/copy-button";
 import { Icon } from "@fragno-private/design-system/icon";
+import { PaneSpinner } from "@fragno-private/design-system/pane-message";
 import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
 import type { BackofficeStatusTone } from "@fragno-private/design-system/status-tone";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
@@ -120,13 +121,7 @@ export function meta({ loaderData }: Route.MetaArgs) {
 
 export default function BackofficeDashboardEvents({ loaderData }: Route.ComponentProps) {
   const { selectedScope, pageSources } = loaderData;
-  const loading = (
-    <BackofficeSystemState
-      tone="loading"
-      label="Synchronizing"
-      title="Synchronizing automation events…"
-    />
-  );
+  const loading = <PaneSpinner label="Synchronizing automation events" />;
 
   return (
     <>
@@ -241,13 +236,7 @@ function EventTracesWorkspace({
     );
   }
   if (queries.some((query) => !query.isReady)) {
-    return (
-      <BackofficeSystemState
-        tone="loading"
-        label="Synchronizing"
-        title="Synchronizing automation events…"
-      />
-    );
+    return <PaneSpinner label="Synchronizing automation events" />;
   }
   if (summaries.length === 0) {
     return (

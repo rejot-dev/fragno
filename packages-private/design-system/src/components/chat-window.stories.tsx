@@ -16,7 +16,7 @@ import {
 import { ChatWorkspacePanel, ChatWorkspaceStatus } from "./chat-workspace-panel";
 import { ChatWorkspaceSplit } from "./chat-workspace-split";
 import { OperationNotice } from "./operation-notice";
-import { PaneMessage } from "./pane-message";
+import { PaneMessage, PaneSpinner } from "./pane-message";
 import { UnderlineToggleButton } from "./underline-tabs";
 
 export default { title: "Agents/Chat window" };
@@ -171,7 +171,7 @@ export function Failed() {
 export function Loading() {
   return (
     <Frame>
-      <PaneMessage tone="muted">Loading conversation…</PaneMessage>
+      <PaneSpinner label="Loading conversation" />
     </Frame>
   );
 }

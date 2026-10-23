@@ -201,6 +201,8 @@
    theme, so the brand hue is defined once above. */
 [data-backoffice-root] {
   --bo-bg: #fbf9f8;
+  /* Resolved here, so surfaces that redefine --bo-bg (the side drawer) still match the top bar. */
+  --bo-top-bar-bg: var(--bo-bg);
   --bo-sidebar-bg: #f8f5f2;
   --bo-selected-bg: #ffffff;
   --bo-selected-border: #ece9e6;

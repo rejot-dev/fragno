@@ -29,7 +29,8 @@ export function ChatUserMessage({
       data-chat-turn-start
       className="bo-chat-enter group relative mb-7 flex justify-end pl-6 sm:pl-24"
     >
-      <div className="max-w-[92%] border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-4 py-3 text-sm leading-6 text-[var(--bo-fg)] sm:max-w-[88%]">
+      {/* The selected navigation item's surface, so what the reader wrote reads as theirs. */}
+      <div className="max-w-[92%] rounded-[4px] border border-[color:var(--bo-selected-border)] bg-[var(--bo-selected-bg)] px-4 py-3 text-sm leading-6 text-[var(--bo-fg)] shadow-[var(--bo-selected-shadow)] sm:max-w-[88%]">
         {children}
         {time === null ? null : (
           <MessageTime
@@ -59,11 +60,9 @@ export function ChatAssistantMessage({
   return (
     <div {...props} className="bo-chat-enter group relative mb-9 min-w-0">
       <div className="mb-2 flex items-center gap-2">
-        <span className="text-[10px] font-semibold tracking-[0.12em] text-[var(--bo-fg)] uppercase">
-          {author.name}
-        </span>
+        <span className="text-sm font-semibold text-[var(--bo-fg)]">{author.name}</span>
         {author.time === null ? null : (
-          <MessageTime time={author.time} className="text-[10px] text-[var(--bo-muted-2)]" />
+          <MessageTime time={author.time} className="text-xs text-[var(--bo-muted-2)]" />
         )}
       </div>
       <div className="space-y-3 text-sm leading-7 text-[var(--bo-muted)]">{children}</div>
@@ -74,7 +73,7 @@ export function ChatAssistantMessage({
 
 export function ChatStoppedNotice() {
   return (
-    <p className="inline-flex items-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-xs text-[var(--bo-muted-2)]">
+    <p className="inline-flex items-center gap-2 rounded-[4px] border border-[color:var(--bo-selected-border)] bg-[var(--bo-selected-bg)] px-3 py-2 text-xs text-[var(--bo-muted-2)] shadow-[var(--bo-selected-shadow)]">
       <span aria-hidden="true" className="size-1.5 rounded-full bg-[var(--bo-muted-2)]" />
       Response stopped
     </p>
