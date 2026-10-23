@@ -6,10 +6,11 @@ exact inputs and results, and the
 for cross-service behavior. The client uses `POST /api/v0/provisioning/<operationId>` with the app's
 client-credentials OAuth token, not an execution token or a scope argument.
 
-The current operations are `organizations.provision`, `projects.provision`, `invitations.create`,
-`invitations.send`, and `invitations.accept`. The earlier hidden-user provisioning and
-membership-sync design was replaced: users now sign in through Backoffice, and Backoffice owns
-membership. Use the current contract rather than resurrecting those historical endpoints.
+The current operations are `organizations.provision`, `organizations.provisionForInvitee`,
+`projects.provision`, `invitations.create`, `invitations.send`, and `invitations.accept`. The
+earlier hidden-user provisioning and membership-sync design was replaced: users now sign in through
+Backoffice, and Backoffice owns membership. Use the current contract rather than resurrecting those
+historical endpoints.
 
 ## Create a tenant
 

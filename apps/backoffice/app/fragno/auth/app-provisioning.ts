@@ -6,6 +6,8 @@ import type {
 import type {
   AcceptInvitationInput,
   CreateInvitationInput,
+  ProvisionOrganizationForInviteeInput,
+  ProvisionOrganizationForInviteeResult,
   ProvisionOrganizationInput,
   ProvisionOrganizationResult,
 } from "@fragno-dev/backoffice-api/v0/provisioning";
@@ -43,6 +45,9 @@ export type AuthAppProvisioningCommands = {
   provisionAppOrganization(
     input: ProvisioningApp & ProvisionOrganizationInput,
   ): Promise<AppProvisioningResult<ProvisionOrganizationResult>>;
+  provisionAppOrganizationForInvitee(
+    input: ProvisioningApp & ProvisionOrganizationForInviteeInput,
+  ): Promise<AppProvisioningResult<ProvisionOrganizationForInviteeResult>>;
   /** Whether the user authorized the app and is a member of the organization. */
   confirmAppOrganizationMember(input: {
     oauthClientId: string;

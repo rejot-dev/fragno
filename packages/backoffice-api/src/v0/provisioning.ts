@@ -13,6 +13,7 @@ import {
 export const backofficeProvisioningPermissionSchema = z.lazy(() =>
   z.enum([
     "organizations.provision",
+    "organizations.provisionForInvitee",
     "projects.provision",
     "invitations.create",
     "invitations.send",
@@ -51,6 +52,46 @@ export const provisionOrganizationResultSchema = z
   )
   .meta({ id: "ProvisionOrganizationResult" });
 export type ProvisionOrganizationResult = z.output<typeof provisionOrganizationResultSchema>;
+
+export const provisionOrganizationForInviteeInputSchema = z
+  .lazy(() =>
+    z.strictObject({
+      externalOrganizationId: externalIdSchema,
+      name: z.string().trim().min(1).max(191),
+      ownerEmail: z
+        .string()
+        .trim()
+        .toLowerCase()
+        .pipe(z.email())
+        .describe("Who is invited to own it; they need not have a Backoffice account yet."),
+      invitedByUserId: userIdSchema.describe(
+        "A user who authorized the app and invites the owner. They do not become a member.",
+      ),
+    }),
+  )
+  .meta({ id: "ProvisionOrganizationForInviteeInput" });
+export type ProvisionOrganizationForInviteeInput = z.output<
+  typeof provisionOrganizationForInviteeInputSchema
+>;
+
+export const provisionOrganizationForInviteeResultSchema = z
+  .lazy(() =>
+    z.strictObject({
+      organizationId: z.string().min(1),
+      slug: z.string().min(1),
+      created: z.boolean(),
+      ownerInvitation: z
+        .strictObject({ invitationId: z.string().min(1), expiresAt: z.iso.datetime() })
+        .nullable()
+        .describe(
+          "The pending owner invitation to send and accept; null once the organization has an owner.",
+        ),
+    }),
+  )
+  .meta({ id: "ProvisionOrganizationForInviteeResult" });
+export type ProvisionOrganizationForInviteeResult = z.output<
+  typeof provisionOrganizationForInviteeResultSchema
+>;
 
 export const provisionProjectInputSchema = z
   .lazy(() =>
@@ -162,6 +203,13 @@ export const backofficeProvisioningOperations = {
     permission: "organizations.provision",
     input: provisionOrganizationInputSchema,
     output: provisionOrganizationResultSchema,
+  },
+  "organizations.provisionForInvitee": {
+    description:
+      "Create a Backoffice organization for one of the app's organizations, with no members and a pending owner invitation to an email address, from a user who authorized the app, and install the app there as organizations.provision does. Send and accept the invitation with invitations.send and invitations.accept. Provisioning it again returns the pending invitation, a new one once it expired, or none once the organization has an owner.",
+    permission: "organizations.provisionForInvitee",
+    input: provisionOrganizationForInviteeInputSchema,
+    output: provisionOrganizationForInviteeResultSchema,
   },
   "projects.provision": {
     description:

@@ -10,9 +10,12 @@ import {
 import {
   acceptInvitationInputSchema,
   createInvitationInputSchema,
+  provisionOrganizationForInviteeInputSchema,
   provisionOrganizationInputSchema,
   type AcceptInvitationInput,
   type CreateInvitationInput,
+  type ProvisionOrganizationForInviteeInput,
+  type ProvisionOrganizationForInviteeResult,
   type ProvisionOrganizationInput,
   type ProvisionOrganizationResult,
 } from "@fragno-dev/backoffice-api/v0/provisioning";
@@ -276,6 +279,8 @@ const AUTH_SCHEMA_VERSION_STORAGE_KEY = "backoffice-auth-schema-version";
 const MAX_HOOK_ATTEMPTS = 10;
 const AUTH_HOOK_BATCH_SIZE = 25;
 const AUTH_HOOK_RETENTION_MS = 30 * 24 * 60 * 60 * 1_000;
+// Better Auth's default invitation lifetime, which members' own invitations get too.
+const APP_OWNER_INVITATION_LIFETIME_MS = 48 * 60 * 60 * 1_000;
 
 const grantBackofficeAdminInputSchema = z.object({
   email: z.string().trim().toLowerCase().pipe(z.email().max(191)),
@@ -1841,6 +1846,111 @@ export class InMemoryAuthObject implements AuthObject {
     return { ok: true, value: { organizationId, slug, created: true } };
   }
 
+  /**
+   * Creates an organization for an owner who may not have a Backoffice account yet: no members, and
+   * a pending owner invitation from a user who authorized the app, who does not become a member.
+   * Its ID is derived from the app's organization, so a repeated call finds it and returns its
+   * pending owner invitation, a new one once that expired, or none once it has an owner. Better
+   * Auth's invitation endpoint only lets members invite, so the rows are written here.
+   */
+  async provisionAppOrganizationForInvitee(
+    input: ProvisioningApp & ProvisionOrganizationForInviteeInput,
+  ): Promise<AppProvisioningResult<ProvisionOrganizationForInviteeResult>> {
+    const { appId, oauthClientId, ...organization } = input;
+    const parsed = provisionOrganizationForInviteeInputSchema.parse(organization);
+    if (!(await this.#hasAuthorizedApp(oauthClientId, parsed.invitedByUserId))) {
+      return {
+        ok: false,
+        error: {
+          code: "forbidden",
+          message: `User '${parsed.invitedByUserId}' has not authorized this app.`,
+        },
+      };
+    }
+    const organizationId = provisionedResourceId({
+      appId,
+      kind: "organization",
+      externalId: parsed.externalOrganizationId,
+    });
+    const { adapter } = await this.#authContext();
+    const existing = await this.#findAppOrganizationRecord({
+      appId,
+      externalOrganizationId: parsed.externalOrganizationId,
+    });
+    const slug = existing?.slug ?? (await this.#nextOrganizationSlug(parsed.name));
+    const ownerInvitation = await adapter.transaction(async (transaction) => {
+      const now = new Date();
+      if (!existing) {
+        await transaction.create({
+          model: "organization",
+          data: {
+            id: organizationId,
+            name: parsed.name,
+            slug,
+            createdBy: parsed.invitedByUserId,
+            createdAt: now,
+          },
+          forceAllowId: true,
+        });
+      }
+      // Roles are stored as comma-separated sets, so an owner may also hold other roles.
+      const isOwnerRole = (role: string) =>
+        splitOrganizationRoles(role).includes(BACKOFFICE_ORGANIZATION_OWNER_ROLE);
+      const members = await transaction.findMany<StoreMember>({
+        model: "member",
+        where: [{ field: "organizationId", value: organizationId }],
+      });
+      if (members.some((member) => isOwnerRole(member.role))) {
+        return null;
+      }
+      const invitations = await transaction.findMany<StoreInvitation>({
+        model: "invitation",
+        where: [
+          { field: "organizationId", value: organizationId },
+          { field: "status", value: "pending" },
+          { field: "expiresAt", operator: "gt", value: now },
+        ],
+      });
+      const pending = invitations.find((invitation) => isOwnerRole(invitation.role));
+      if (pending) {
+        return pending.email === parsed.ownerEmail ? pending : "invited-someone-else";
+      }
+      return await transaction.create<StoreInvitation>({
+        model: "invitation",
+        data: {
+          organizationId,
+          email: parsed.ownerEmail,
+          role: BACKOFFICE_ORGANIZATION_OWNER_ROLE,
+          status: "pending",
+          inviterId: parsed.invitedByUserId,
+          expiresAt: new Date(now.getTime() + APP_OWNER_INVITATION_LIFETIME_MS),
+          createdAt: now,
+        },
+      });
+    });
+    if (ownerInvitation === "invited-someone-else") {
+      return {
+        ok: false,
+        error: {
+          code: "conflict",
+          message: "The organization's owner invitation is pending for another address.",
+        },
+      };
+    }
+    return {
+      ok: true,
+      value: {
+        organizationId,
+        slug,
+        created: !existing,
+        ownerInvitation: ownerInvitation && {
+          invitationId: ownerInvitation.id,
+          expiresAt: toIsoString(toDate(ownerInvitation.expiresAt)),
+        },
+      },
+    };
+  }
+
   /** The organization an invitation is to, in any status; the app's installation there decides. */
   async findInvitation(input: { invitationId: string }): Promise<AppInvitation | null> {
     const { adapter } = await this.#authContext();
@@ -2681,6 +2791,12 @@ export class Auth extends DurableObject<CloudflareEnv> implements AuthObject {
     input: ProvisioningApp & ProvisionOrganizationInput,
   ): Promise<AppProvisioningResult<ProvisionOrganizationResult>> {
     return await this.#object.provisionAppOrganization(input);
+  }
+
+  async provisionAppOrganizationForInvitee(
+    input: ProvisioningApp & ProvisionOrganizationForInviteeInput,
+  ): Promise<AppProvisioningResult<ProvisionOrganizationForInviteeResult>> {
+    return await this.#object.provisionAppOrganizationForInvitee(input);
   }
 
   async confirmAppOrganizationMember(input: {

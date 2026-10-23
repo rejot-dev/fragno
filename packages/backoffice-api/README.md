@@ -171,6 +171,10 @@ const { organizationId } = await provisioning.call("organizations.provision", {
 });
 ```
 
+`organizations.provisionForInvitee` creates one for an owner who need not have a Backoffice account
+yet: the organization has no members and a pending owner invitation, which the app sends with
+`invitations.send` and accepts with `invitations.accept` once the owner signs in.
+
 Errors reject like `createBackofficeApiClient`'s.
 
 ## OpenAPI
