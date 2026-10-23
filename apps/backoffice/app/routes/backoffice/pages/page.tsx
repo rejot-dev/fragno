@@ -12,18 +12,26 @@ import {
   getAutomationBrowserDatabase,
 } from "@/fragno/automation/tanstack/browser-database";
 
+import { DashboardTabs } from "../dashboard/dashboard-tabs";
 import { loadOrchestration } from "../dashboard/orchestration-loader.server";
 import type { OrchestrationLoaderData } from "../dashboard/orchestration-panel";
 import { shouldRevalidateOrchestration } from "../dashboard/path";
 import type { Route } from "./+types/page";
-import { loadPageRoute } from "./load.server";
+import { loadPageRoute, loadPageSources } from "./load.server";
 
 // A missing page is data, not a thrown response, so previews that fetch this loader can show it.
 export async function loader({ request, context, params, url }: Route.LoaderArgs) {
   const name = params["*"];
-  const result = await loadPageRoute({ request, context, name });
-  const orchestration = await loadOrchestration({ context, url });
-  return data({ name, result, orchestration }, { status: result.kind === "missing" ? 404 : 200 });
+  const [result, orchestration] = await Promise.all([
+    loadPageRoute({ request, context, name }),
+    loadOrchestration({ context, url }),
+  ]);
+  // Started once the route has loaded: when it throws, such as for a scope that does not
+  // resolve, nothing would await the listing.
+  return data(
+    { name, result, orchestration, pageSources: loadPageSources(context) },
+    { status: result.kind === "missing" ? 404 : 200 },
+  );
 }
 
 export const shouldRevalidate = shouldRevalidateOrchestration;
@@ -39,29 +47,36 @@ export function meta({ loaderData }: Route.MetaArgs) {
 }
 
 export default function PageRoute({ loaderData }: Route.ComponentProps) {
-  const { name, result, orchestration } = loaderData;
+  const { name, result, orchestration, pageSources } = loaderData;
   const loading = <BackofficeSystemState tone="loading" title="Synchronizing automation data." />;
 
   return (
-    <div className={`${backofficePageBodyClassName} flex flex-col gap-4`}>
-      <h1 className="text-lg font-semibold text-[var(--bo-fg)]">{pageTitle(name, result)}</h1>
-      {result.kind === "missing" ? (
-        <BackofficeSystemState tone="empty" label="Not found" title="This page does not exist." />
-      ) : result.kind === "failed" ? (
-        <BackofficeSystemState
-          tone="error"
-          label="Invalid page"
-          title="This page could not be built."
-          description={result.message}
-        />
-      ) : (
-        <ClientOnly fallback={loading}>
-          <Suspense fallback={loading}>
-            <PageClient definition={result.definition} orchestration={orchestration} />
-          </Suspense>
-        </ClientOnly>
-      )}
-    </div>
+    <>
+      <DashboardTabs
+        selectedScope={orchestration.selectedScope}
+        active={{ kind: "page", name }}
+        pageSources={pageSources}
+      />
+      <div className={`${backofficePageBodyClassName} flex flex-col gap-4`}>
+        <h1 className="text-lg font-semibold text-[var(--bo-fg)]">{pageTitle(name, result)}</h1>
+        {result.kind === "missing" ? (
+          <BackofficeSystemState tone="empty" label="Not found" title="This page does not exist." />
+        ) : result.kind === "failed" ? (
+          <BackofficeSystemState
+            tone="error"
+            label="Invalid page"
+            title="This page could not be built."
+            description={result.message}
+          />
+        ) : (
+          <ClientOnly fallback={loading}>
+            <Suspense fallback={loading}>
+              <PageClient definition={result.definition} orchestration={orchestration} />
+            </Suspense>
+          </ClientOnly>
+        )}
+      </div>
+    </>
   );
 }
 

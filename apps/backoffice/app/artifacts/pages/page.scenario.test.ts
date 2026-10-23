@@ -35,6 +35,7 @@ import {
   runBackofficeScenario,
   type BackofficeScenarioContext,
 } from "@/fragno/automation/scenario";
+import { listPageSources } from "@/routes/backoffice/pages/load.server";
 
 import { loadPage } from "./build.server";
 import { checkPageSource } from "./page-source.test-support";
@@ -480,6 +481,21 @@ describe("workspace pages", () => {
               "Failing workflows": ["charge-card | 1"],
               "Runs per hour": ["1", "2"],
             });
+          }),
+          then.assert("the dashboard offers every page in the workspace", async (ctx) => {
+            await ctx.runCodemode({
+              scope,
+              code: `async () => await state.writeFile({ path: "/workspace/home.page.js", content: ${JSON.stringify(JSON.stringify(newestRunPage))} })`,
+            });
+            // Workflow sources and the cached build sit beside the pages without being pages.
+            assert.deepEqual(
+              await listPageSources({
+                runtime: ctx.runtime.services,
+                kernel: new BackofficeKernel(ctx.runtime.services),
+                execution: createBackofficeSystemExecution(scope),
+              }),
+              ["/workspace/home.page.js", SOURCE_PATH],
+            );
           }),
           then.assert("an edited source replaces the cached build", async (ctx) => {
             await writePage(ctx, newestRunPage);

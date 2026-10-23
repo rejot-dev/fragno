@@ -33,7 +33,7 @@ import {
 } from "@/fragno/upload/tanstack/browser-database";
 import { requireScopeSelection } from "@/layouts/backoffice-shell-request.server";
 
-import { pagePath } from "../pages/path";
+import { pageName, pagePath } from "../pages/path";
 import type { Route } from "./+types/explorer";
 import { loadFilesExplorerData, type FilesExplorerSourceSnapshot } from "./data";
 import type { FilesLayoutContext } from "./layout-context";
@@ -121,7 +121,7 @@ function SynchronizedAutomationRoutesFilesExplorer({
       pages={{
         status: "ready",
         collections,
-        pageHref: (sourcePath) => pagePath(props.selectedScope, sourcePath),
+        pageHref: (sourcePath) => pagePath(props.selectedScope, pageName(sourcePath)),
       }}
     />
   );
