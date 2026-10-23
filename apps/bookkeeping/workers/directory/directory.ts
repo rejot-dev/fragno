@@ -329,6 +329,21 @@ export class Directory extends DurableObject<CloudflareEnv> {
       .map(toInvitation);
   }
 
+  /**
+   * The unexpired invitations Bookkeeping created to `email`. Backoffice and Bookkeeping both keep
+   * emails lowercased. Backoffice may have withdrawn one since; accepting it says so.
+   */
+  listInvitationsTo(email: string, now: number): Invitation[] {
+    return this.ctx.storage.sql
+      .exec<InvitationRow>(
+        `${INVITATION_QUERY} WHERE i."email" = ? AND i."expiresAt" > ? ORDER BY i."expiresAt"`,
+        email,
+        now,
+      )
+      .toArray()
+      .map(toInvitation);
+  }
+
   /** It was accepted, or Backoffice no longer offers it. */
   removeInvitation(id: string): void {
     this.ctx.storage.sql.exec(`DELETE FROM "invitation" WHERE "id" = ?`, id);
