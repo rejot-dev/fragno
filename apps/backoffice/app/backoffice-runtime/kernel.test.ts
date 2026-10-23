@@ -566,7 +566,7 @@ describe("BackofficeKernel.invoke", () => {
 });
 
 describe("BackofficeKernel.assertScopedContextAccess", () => {
-  test("lets a user execution reach organization and user scopes, but not system scope", () => {
+  test("lets a user execution reach organizations and its own user scope, but not others' private or system scopes", () => {
     expect(() =>
       scopeKernel.assertScopedContextAccess(linkedExecution, {
         kind: "project",
@@ -581,14 +581,13 @@ describe("BackofficeKernel.assertScopedContextAccess", () => {
       }),
     ).not.toThrow();
 
-    // Membership in org-2, and administering user-2's organization, are decided when an action
-    // there resolves the user's permissions.
     expect(() =>
       scopeKernel.assertScopedContextAccess(linkedExecution, {
         kind: "user",
         userId: "user-2",
       }),
-    ).not.toThrow();
+    ).toThrow(BackofficeForbiddenError);
+    // Membership in org-2 is decided when an action there resolves the user's permissions.
     expect(() =>
       scopeKernel.assertScopedContextAccess(linkedExecution, {
         kind: "org",

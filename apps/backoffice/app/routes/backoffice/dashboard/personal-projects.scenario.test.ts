@@ -151,6 +151,14 @@ async function deferredPermissions(
   });
 }
 
+/** The `review.forwarded` events stored in the scope. */
+async function forwardedEvents(ctx: BackofficeScenarioContext, scope: BackofficeContextScope) {
+  const { events } = await ctx.runtime.objects.automations
+    .for(scope)
+    .commands.listEventsOfType({ source: "custom", eventType: "review.forwarded", cursor: null });
+  return events;
+}
+
 async function rejection(promise: Promise<unknown>): Promise<Response> {
   const thrown = await promise.then(
     () => null,
@@ -237,6 +245,7 @@ type MemberWorkspaceVars = {
   beaCookie: string;
   beaId: string;
   cyCookie: string;
+  cyId: string;
   acmeId: string;
   invitationId: string;
 };
@@ -255,6 +264,7 @@ test("an organization's owners and admins work in its members' personal workspac
         beaCookie: "",
         beaId: "",
         cyCookie: "",
+        cyId: "",
         acmeId: "",
         invitationId: "",
       }),
@@ -282,6 +292,7 @@ test("an organization's owners and admins work in its members' personal workspac
           for (const [session, id] of [
             [ctx.vars.adaSession, "adaId"],
             [ctx.vars.beaSession, "beaId"],
+            [ctx.vars.cyCookie, "cyId"],
           ] as const) {
             const response = await authRequest(ctx, "/get-session", session);
             ctx.vars[id] = z
@@ -361,6 +372,56 @@ test("an organization's owners and admins work in its members' personal workspac
               userId: ctx.vars.beaId,
             }),
           ).toContainEqual(BACKOFFICE_PERMISSION.projects.create);
+        }),
+        then.assert(
+          "Bea forwards events from Acme into her own workspace, but not into Cy's",
+          async (ctx) => {
+            const exchange = await authRequest(ctx, "/backoffice-token", ctx.vars.beaSession, {
+              selection: "required",
+              organizationId: ctx.vars.acmeId,
+            });
+            assert(exchange.ok, await exchange.clone().text());
+            const acmeCookie = [
+              ctx.vars.beaSession,
+              ...exchange.headers.getSetCookie().map((header) => header.split(";", 1)[0]),
+            ].join("; ");
+            const fire = (userId: string) =>
+              runTerminal(
+                ctx,
+                acmeCookie,
+                "/backoffice/terminal/org/acme",
+                `events.fire --source custom --event-type review.forwarded --target-scope-json '${JSON.stringify({ kind: "user", userId })}' --format json`,
+              );
+            const own = await fire(ctx.vars.beaId);
+            assert.isTrue(own.ok, own.output);
+            const foreign = await fire(ctx.vars.cyId);
+            assert.isFalse(foreign.ok, foreign.output);
+            expect(
+              await forwardedEvents(ctx, { kind: "user", userId: ctx.vars.beaId }),
+            ).toHaveLength(1);
+            expect(await forwardedEvents(ctx, { kind: "user", userId: ctx.vars.cyId })).toEqual([]);
+          },
+        ),
+        then.assert("Ada forwards events from Bea's workspace into Bea's project", async (ctx) => {
+          const project = await openPage(
+            ctx,
+            ctx.vars.adaCookie,
+            `/backoffice/dashboard/project/user:${ctx.vars.beaId}:taxes`,
+          );
+          assert(project.kind === "project");
+          const projectScope = {
+            kind: "project" as const,
+            owner: { kind: "user" as const, userId: ctx.vars.beaId },
+            projectId: project.project.id,
+          };
+          const result = await runTerminal(
+            ctx,
+            ctx.vars.adaCookie,
+            `/backoffice/terminal/user/${ctx.vars.beaId}`,
+            `events.fire --source custom --event-type review.forwarded --target-scope-json '${JSON.stringify(projectScope)}' --format json`,
+          );
+          assert.isTrue(result.ok, result.output);
+          expect(await forwardedEvents(ctx, projectScope)).toHaveLength(1);
         }),
         when.auth.removeMember({
           orgId: ({ vars }) => vars.acmeId,
