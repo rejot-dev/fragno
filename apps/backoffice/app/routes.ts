@@ -266,6 +266,10 @@ export default [
             route(":hookId", "routes/backoffice/internals/durable-hooks-scope-detail.tsx"),
           ],
         ),
+        route("codemode", "routes/backoffice/internals/codemode-runs.tsx", [
+          index("routes/backoffice/internals/codemode-runs-index.tsx"),
+          route(":runId", "routes/backoffice/internals/codemode-run-detail.tsx"),
+        ]),
         route("workflows", "routes/backoffice/internals/workflows-organization.tsx", [
           index("routes/backoffice/internals/workflows-organization-index.tsx"),
           route(
