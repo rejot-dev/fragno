@@ -129,7 +129,7 @@ export function restrictCodemodeProvider(
   return new RestrictedCodemodeProviderTarget();
 }
 
-// Names are bounded because longer ones reach no tool or scope, so such a call is not worth observing.
+// Names are bounded because longer ones name no tool or scope.
 /** The scope a guest's `context` handle names; `current` is the run's own scope. */
 const codemodeToolCallScopeSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("current") }),
@@ -138,8 +138,12 @@ const codemodeToolCallScopeSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("project"), projectId: z.string().max(256) }),
 ]);
 
-// The guest API's scoped handles call every tool through `__context.callScoped`.
-const codemodeScopedCallSchema = z.object({
+/**
+ * The payload of `__context.callScoped`, through which the guest API's scoped handles call every
+ * tool. Guests can send it themselves, so hosts parse it with this schema: a call that observation
+ * rejects must not run either.
+ */
+export const codemodeScopedCallSchema = z.object({
   scope: codemodeToolCallScopeSchema,
   namespace: z.string().max(256),
   toolName: z.string().max(256),
@@ -163,31 +167,45 @@ export type CodemodeToolCallObserver = (
   invoke: () => Promise<CodemodeToolResult>,
 ) => Promise<CodemodeToolResult>;
 
-function codemodeToolCallOf(
+type CodemodeProviderCall =
+  | { kind: "tool"; call: CodemodeToolCall; input: unknown }
+  // getCurrentScope only reads the run's scope.
+  | { kind: "scope-read" }
+  | { kind: "rejected"; error: Error };
+
+function classifyCodemodeProviderCall(
   provider: string,
   tool: string,
   args: unknown[],
-): { call: CodemodeToolCall; input: unknown } | null {
+): CodemodeProviderCall {
   if (provider !== "__context") {
-    return { call: { scope: { kind: "current" }, provider, tool }, input: args[0] };
+    return { kind: "tool", call: { scope: { kind: "current" }, provider, tool }, input: args[0] };
   }
-  // getCurrentScope only reads the run's scope; a malformed scoped call names no tool to run.
-  const scoped = tool === "callScoped" ? codemodeScopedCallSchema.safeParse(args[0]) : null;
-  return scoped?.success
-    ? {
-        call: {
-          scope: scoped.data.scope,
-          provider: scoped.data.namespace,
-          tool: scoped.data.toolName,
-        },
-        input: scoped.data.args[0],
-      }
-    : null;
+  if (tool === "getCurrentScope") {
+    return { kind: "scope-read" };
+  }
+  if (tool !== "callScoped") {
+    return { kind: "rejected", error: new Error(`Unknown tool: ${tool}`) };
+  }
+  const scoped = codemodeScopedCallSchema.safeParse(args[0]);
+  if (!scoped.success) {
+    return {
+      kind: "rejected",
+      error: new Error(`Invalid scoped tool call:\n${z.prettifyError(scoped.error)}`),
+    };
+  }
+  return {
+    kind: "tool",
+    call: { scope: scoped.data.scope, provider: scoped.data.namespace, tool: scoped.data.toolName },
+    input: scoped.data.args[0],
+  };
 }
 
 /**
  * Shows a host's owner every tool call its guest makes, as the call happens. Scoped calls are
- * reported as the tool they name. Workflow step operations are not tool calls.
+ * reported as the tool they name. A call that cannot be reported, such as a malformed scoped call,
+ * fails without reaching the host, so every tool that runs is observed. Workflow step operations
+ * are not tool calls.
  */
 export function observeCodemodeToolCalls(
   host: CodemodeHost,
@@ -203,10 +221,13 @@ export function observeCodemodeToolCalls(
     }
     async call(tool: string, args: unknown[]): Promise<CodemodeToolResult> {
       const invoke = () => this.#provider.call(tool, args);
-      const observed = codemodeToolCallOf(this.#name, tool, args);
-      return observed === null
-        ? await invoke()
-        : await observe(observed.call, observed.input, invoke);
+      const classified = classifyCodemodeProviderCall(this.#name, tool, args);
+      if (classified.kind === "rejected") {
+        return { status: "error", error: encodeCodemodeError(classified.error) };
+      }
+      return classified.kind === "tool"
+        ? await observe(classified.call, classified.input, invoke)
+        : await invoke();
     }
   }
   return {

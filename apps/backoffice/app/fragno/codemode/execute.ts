@@ -4,8 +4,10 @@ import {
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { CodemodeWireError } from "@fragno-dev/codemode/execution/codemode-error-contract";
 import { encodeCodemodeError } from "@fragno-dev/codemode/execution/codemode-errors";
+import { codemodeScopedCallSchema } from "@fragno-dev/codemode/host/codemode-host-capabilities";
 import { resolveProvider, type ExecuteResult } from "@fragno-dev/codemode/runtime-api";
 import { withBackofficeUiBuilder } from "@fragno-private/backoffice-ui/builder";
+import type { z } from "zod";
 
 import type { NpmDependencyMap } from "@/backoffice-runtime/dynamic-workers/npm-dependencies";
 import { BackofficeToolUnavailableError } from "@/fragno/runtime-tools/runtime-errors";
@@ -58,17 +60,7 @@ export type BackofficeCodemodeExecuteResult = ExecuteResult & {
   modules: Record<string, string>;
 };
 
-type ScopedCodemodeCallInput = {
-  scope:
-    | { kind: "current" }
-    | { kind: "org"; orgId: string }
-    | { kind: "user"; userId: string }
-    // The guest names only the project; its owner is the current scope's organization.
-    | { kind: "project"; projectId: string };
-  namespace: string;
-  toolName: string;
-  args: unknown[];
-};
+type ScopedCodemodeCallInput = z.infer<typeof codemodeScopedCallSchema>;
 
 const callScopedTool = async (
   input: ScopedCodemodeCallInput,
@@ -124,7 +116,7 @@ function codemodeCallScope(
   switch (requested.kind) {
     case "current":
       return current;
-    // A project handle names a project beside the current workspace.
+    // A project handle names only the project, beside the current workspace that owns it.
     case "project": {
       const owner = backofficeScopeProjectOwner(current);
       if (!owner) {
@@ -153,7 +145,7 @@ const createBackofficeScopedCodemodeProvider = ({
   fns: {
     getCurrentScope: async () => context.execution.scope,
     callScoped: async (rawInput: unknown) => {
-      const input = rawInput as ScopedCodemodeCallInput;
+      const input = codemodeScopedCallSchema.parse(rawInput);
       const scope = codemodeCallScope(input.scope, context.execution.scope);
       return await callScopedTool(input, context.createScopedContext(scope), families, toolCalls);
     },
