@@ -643,38 +643,31 @@ const findStoreUserByEmail = async (
   });
 
 async function findAdministeredMember(
-  adapter: BetterAuthAdapter,
+  database: Kysely<AuthDatabase>,
   input: { administratorId: string; memberId: string },
 ): Promise<AdministeredMember | null> {
-  const [administratorMemberships, memberMemberships, member] = await Promise.all([
-    adapter.findMany<StoreMember>({
-      model: "member",
-      where: [{ field: "userId", value: input.administratorId }],
-    }),
-    adapter.findMany<StoreMember>({
-      model: "member",
-      where: [{ field: "userId", value: input.memberId }],
-    }),
-    findStoreUser(adapter, input.memberId),
-  ]);
-  const administeredOrganizationIds = new Set(
-    administratorMemberships
-      .filter((membership) => administersMembers(splitOrganizationRoles(membership.role)))
-      .map((membership) => membership.organizationId),
-  );
-  if (
-    !member ||
-    !memberMemberships.some((membership) =>
-      administeredOrganizationIds.has(membership.organizationId),
+  // Joining reads only the organizations both users share, however many each belongs to.
+  const sharedMemberships = await database
+    .selectFrom("member as administrator")
+    .innerJoin(
+      "member as administered",
+      "administered.organizationId",
+      "administrator.organizationId",
     )
-  ) {
-    return null;
-  }
-  return { userId: member.id, email: member.email };
+    .innerJoin("user", "user.id", "administered.userId")
+    .select(["administrator.role", "user.id", "user.email"])
+    .where("administrator.userId", "=", input.administratorId)
+    .where("administered.userId", "=", input.memberId)
+    .execute();
+  const administered = sharedMemberships.find(({ role }) =>
+    administersMembers(splitOrganizationRoles(role)),
+  );
+  return administered ? { userId: administered.id, email: administered.email } : null;
 }
 
 async function resolveBackofficeUserTokenGrant(
   adapter: BetterAuthAdapter,
+  database: Kysely<AuthDatabase>,
   input: {
     userId: string;
     scope: BackofficeContextScope | null;
@@ -709,7 +702,7 @@ async function resolveBackofficeUserTokenGrant(
   if (input.scope && requestedOwner?.kind === "user") {
     if (
       requestedOwner.userId !== storedUser.id &&
-      !(await findAdministeredMember(adapter, {
+      !(await findAdministeredMember(database, {
         administratorId: storedUser.id,
         memberId: requestedOwner.userId,
       }))
@@ -990,7 +983,8 @@ export class InMemoryAuthObject implements AuthObject {
 
     const backofficeTokenPlugin = createBackofficeTokenPlugin({
       secureCookies,
-      resolveBackofficeUserTokenGrant,
+      resolveBackofficeUserTokenGrant: async (adapter, input) =>
+        await resolveBackofficeUserTokenGrant(adapter, this.#database, input),
     });
     const signUpInvitationPlugins = runtime.config.signUpInvitationsEnabled
       ? [
@@ -1583,7 +1577,8 @@ export class InMemoryAuthObject implements AuthObject {
     const objects = this.#runtime.objects;
     return await exchangeBackofficeExecutionToken(auth, parsed, {
       resolveClientPolicy: this.#resolveOAuthClientPolicy(auth, parsed.requestUrl),
-      resolveUserGrant: resolveBackofficeUserTokenGrant,
+      resolveUserGrant: async (adapter, input) =>
+        await resolveBackofficeUserTokenGrant(adapter, this.#database, input),
       resolveActiveInstallation: async function resolveActiveInstallation(input) {
         const installation = await objects.appInstallations
           .for(input.owner)
@@ -2465,8 +2460,8 @@ export class InMemoryAuthObject implements AuthObject {
     administratorId: string;
     memberId: string;
   }): Promise<AdministeredMember | null> {
-    const { adapter } = await this.#authContext();
-    return await findAdministeredMember(adapter, input);
+    await this.#ready;
+    return await findAdministeredMember(this.#database, input);
   }
 
   async getUserOrganizationAuthorityFacts(
