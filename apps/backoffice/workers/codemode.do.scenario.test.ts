@@ -428,6 +428,16 @@ test("a run's tool calls and their I/O are readable while it runs and expire wit
         },
         "redacted",
       ),
+      defineBackofficeRuntimeTool({
+        id: "gate.echo",
+        namespace: "gate",
+        name: "echo",
+        description: "Return the input.",
+        requiredPermissions: [],
+        inputSchema: z.object({ n: z.number() }),
+        outputSchema: z.object({ n: z.number() }),
+        execute: async (input) => input,
+      }),
     ],
   });
   let runId = "";
@@ -575,6 +585,29 @@ test("a run's tool calls and their I/O are readable while it runs and expire wit
           expect(JSON.parse(run.stdout).toolCalls).toMatchObject([
             { scope: { kind: "current" }, provider: "gate", tool: "secret", status: "succeeded" },
           ]);
+        }),
+        then.assert("parallel calls keep the order the guest made them in", async (ctx) => {
+          const parallel = await runBackofficeCodemode({
+            code: `async () => {
+              await Promise.all(Array.from({ length: 50 }, (_, n) => gate.echo({ n })));
+            }`,
+            codemode: codemodeRunnerFor(
+              ctx.runtime.objects.codemode.forOrg("org-1").commands,
+              execution,
+            ),
+            families: [gate],
+            toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
+          });
+          assert.equal(parallel.error, undefined);
+          const run = await (
+            await bash(ctx.runtime)
+          ).exec(`js.runs.get ${parallel.runId} --format json`);
+          const toolCalls: { input: string; calledAt: string }[] = JSON.parse(run.stdout).toolCalls;
+          // Without calls that start in the same millisecond, ordering by calledAt would pass too.
+          expect(new Set(toolCalls.map((call) => call.calledAt)).size).toBeLessThan(50);
+          expect(toolCalls.map((call) => JSON.parse(call.input).n)).toEqual(
+            Array.from({ length: 50 }, (_, n) => n),
+          );
         }),
         then.assert("a run that loops past 200 calls shows the first 200", async (ctx) => {
           const looping = await runBackofficeCodemode({
