@@ -462,8 +462,8 @@ export type BillingObject = {
 
 /**
  * Executes activations through the codemode bridge and records each one as a run, with the tool
- * calls its guest makes; a workflow activation is one runner tick. Starts and outcomes of runs other
- * than ticks become `codemode` events in the same scope's Automations object.
+ * calls its guest makes; a workflow activation is one runner tick. Failures of runs other than
+ * ticks become `codemode` events in the same scope's Automations object.
  */
 export type CodemodeObject = WarmableObject &
   DurableHookCommands & {

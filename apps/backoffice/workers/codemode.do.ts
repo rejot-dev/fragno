@@ -26,9 +26,7 @@ import {
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import {
-  CODEMODE_AUTOMATION_EVENT_RUN_COMPLETED,
   CODEMODE_AUTOMATION_EVENT_RUN_FAILED,
-  CODEMODE_AUTOMATION_EVENT_RUN_STARTED,
   CODEMODE_AUTOMATION_SOURCE,
 } from "@/fragno/backoffice-capabilities/capabilities/codemode";
 import { usageBillingForScope } from "@/fragno/billing/usage-billing";
@@ -161,10 +159,10 @@ class CodemodeActivationSlots {
  * A run's actors become the event's actors, so automations attribute it to whoever started the run.
  * The hook id is the event id: a retried delivery ingests the same event again.
  */
-function codemodeRunEvent(
+function codemodeRunFailedEvent(
   scope: BackofficeContextScope,
   hook: HookContext,
-  run: CodemodeRunStartedHookPayload | CodemodeRunFinishedHookPayload,
+  run: Extract<CodemodeRunFinishedHookPayload, { status: "failed" }>,
 ): AutomationEvent {
   // Billing is delivered to the payer's Billing object, not published to the scope's automations.
   // Hooks queued before ownership-based billing still carry the old selection.
@@ -176,7 +174,6 @@ function codemodeRunEvent(
   } = run as typeof run & {
     billingOrganizationId?: string | null;
   };
-  const finished = "finishedAt" in run ? run : null;
   const organization = backofficeScopeOrganization(scope);
   return {
     id: hook.hookId.toString(),
@@ -184,13 +181,8 @@ function codemodeRunEvent(
     scopeRestriction,
     scope,
     source: CODEMODE_AUTOMATION_SOURCE,
-    eventType:
-      finished === null
-        ? CODEMODE_AUTOMATION_EVENT_RUN_STARTED
-        : finished.status === "completed"
-          ? CODEMODE_AUTOMATION_EVENT_RUN_COMPLETED
-          : CODEMODE_AUTOMATION_EVENT_RUN_FAILED,
-    occurredAt: finished?.finishedAt ?? run.startedAt,
+    eventType: CODEMODE_AUTOMATION_EVENT_RUN_FAILED,
+    occurredAt: run.finishedAt,
     payload,
     actors,
     subject: {
@@ -259,12 +251,9 @@ export class InMemoryCodemodeObject extends RpcTarget implements CodemodeObject 
         { propagationContext: hook.capturePropagationContext() },
       );
     }
-    async function ingestRunEvent(
-      run: CodemodeRunStartedHookPayload | CodemodeRunFinishedHookPayload,
-      hook: HookContext,
-    ) {
-      // Without Automations there is nowhere to record run history.
-      if (!runtime.config.bindings.automations) {
+    // Only failures become events; run history and tool calls stay in this object's runs.
+    async function ingestRunFailed(run: CodemodeRunFinishedHookPayload, hook: HookContext) {
+      if (run.status !== "failed" || !runtime.config.bindings.automations) {
         return;
       }
       // A tick is an internal step of its workflow, and run events that start workflows would loop.
@@ -273,7 +262,7 @@ export class InMemoryCodemodeObject extends RpcTarget implements CodemodeObject 
       }
       await runtime.objects.automations
         .for(scope)
-        .commands.triggerIngestEvent(codemodeRunEvent(scope, hook, run), {
+        .commands.triggerIngestEvent(codemodeRunFailedEvent(scope, hook, run), {
           propagationContext: hook.capturePropagationContext(),
         });
     }
@@ -282,11 +271,8 @@ export class InMemoryCodemodeObject extends RpcTarget implements CodemodeObject 
       createRuntime: () =>
         createCodemodeFragment(
           {
-            onRunStarted: async function billAndIngestRunStarted(run, hook) {
-              await billRunStarted(run, hook);
-              await ingestRunEvent(run, hook);
-            },
-            onRunFinished: ingestRunEvent,
+            onRunStarted: billRunStarted,
+            onRunFinished: ingestRunFailed,
           },
           {
             databaseAdapter: implementation.fragmentDatabase.adapters.createAdapter({

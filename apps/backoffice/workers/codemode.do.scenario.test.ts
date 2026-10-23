@@ -237,7 +237,7 @@ test("codemode runs are retained with their outcome until a later run expires th
           assert.equal(writes.hasNextPage, false);
         }),
         then.assert(
-          "each run's start and outcome become codemode events attributed to its caller",
+          "only a failed run becomes a codemode event, attributed to its caller",
           async (ctx) => {
             await ctx.drain();
             const listed = await (
@@ -247,61 +247,22 @@ test("codemode runs are retained with their outcome until a later run expires th
             const events = automationEventListResultSchema
               .parse(JSON.parse(listed.stdout))
               .events.filter((event) => event.source === "codemode");
-            const runs = await ctx.runtime.objects.codemode
-              .forOrg("org-1")
-              .commands.listRuns({ page: "first", pageSize: 20 });
-            expect(runs.runs).toHaveLength(6);
-            for (const run of runs.runs) {
-              const forRun = events.filter((event) => event.subject?.runId === run.id);
-              expect(forRun.map((event) => event.eventType).sort()).toEqual([
-                run.status === "failed" ? "run.failed" : "run.completed",
-                "run.started",
-              ]);
-            }
-
-            const fileEvents = events.filter(
-              (event) => event.eventType !== "run.started" && event.actors.principal !== null,
-            );
-            expect(fileEvents).toEqual(
-              expect.arrayContaining([
-                expect.objectContaining({
-                  eventType: "run.completed",
-                  scope: { kind: "org", orgId: "org-1" },
-                  actors: execution.actors,
-                  payload: expect.objectContaining({
-                    activationKind: "module-build",
-                    origin: { kind: "file", path: "/workspace/scripts/report.js" },
+            expect(events).toEqual([
+              expect.objectContaining({
+                eventType: "run.failed",
+                scope: { kind: "org", orgId: "org-1" },
+                actors: execution.actors,
+                subject: { orgId: "org-1", runId: runIds.failing },
+                payload: expect.objectContaining({
+                  activationKind: "compiled",
+                  origin: { kind: "file", path: "/workspace/.build/failing.module.json" },
+                  error: expect.objectContaining({
+                    message: expect.stringContaining("Startup exploded"),
                   }),
                 }),
-                expect.objectContaining({
-                  eventType: "run.completed",
-                  actors: execution.actors,
-                  subject: { orgId: "org-1", runId: runIds.report },
-                  payload: expect.objectContaining({
-                    activationKind: "compiled",
-                    origin: { kind: "file", path: "/workspace/.build/report.module.json" },
-                  }),
-                }),
-                expect.objectContaining({
-                  eventType: "run.failed",
-                  actors: execution.actors,
-                  subject: { orgId: "org-1", runId: runIds.failing },
-                  payload: expect.objectContaining({
-                    activationKind: "compiled",
-                    origin: { kind: "file", path: "/workspace/.build/failing.module.json" },
-                    error: expect.objectContaining({
-                      message: expect.stringContaining("Startup exploded"),
-                    }),
-                  }),
-                }),
-              ]),
-            );
-            for (const event of events.filter((event) => event.eventType !== "run.started")) {
-              expect(event.payload).not.toHaveProperty("logs");
-              expect(Date.parse(String(event.payload.finishedAt))).toBeGreaterThanOrEqual(
-                Date.parse(String(event.payload.startedAt)),
-              );
-            }
+              }),
+            ]);
+            expect(events[0].payload).not.toHaveProperty("logs");
           },
         ),
         then.assert("js.runs.list lists only the runs its reader can read", async (ctx) => {
@@ -399,24 +360,11 @@ test("codemode runs are retained with their outcome until a later run expires th
               unrestrictedRestrictedRun: "allowed",
             });
 
-            await ctx.drain();
-            const listed = await (
-              await bash(ctx.runtime)
-            ).exec("events.list --limit 100 --format json");
-            const ceilings = automationEventListResultSchema
-              .parse(JSON.parse(listed.stdout))
-              .events.filter(
-                (event) =>
-                  event.subject?.runId === restrictedRun || event.subject?.runId === runIds.report,
-              )
-              .map((event) => [event.subject?.runId, event.eventType, event.scopeRestriction]);
-            expect(ceilings).toEqual(
-              expect.arrayContaining([
-                [restrictedRun, "run.started", restrictedExecution.scopeRestriction],
-                [restrictedRun, "run.completed", restrictedExecution.scopeRestriction],
-                [runIds.report, "run.completed", null],
-              ]),
+            const codemode = ctx.runtime.objects.codemode.forOrg("org-1").commands;
+            expect((await codemode.getRun(restrictedRun))?.scopeRestriction).toEqual(
+              restrictedExecution.scopeRestriction,
             );
+            expect((await codemode.getRun(runIds.report))?.scopeRestriction).toBeNull();
           },
         ),
         when.time.advance("6.5 days"),
