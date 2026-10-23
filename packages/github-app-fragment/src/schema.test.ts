@@ -9,7 +9,7 @@ describe("githubAppSchema", () => {
 
   it("defines the expected tables", () => {
     expect(Object.keys(githubAppSchema.tables).sort()).toEqual(
-      ["installation", "installation_repo", "oauth_state", "repo_link"].sort(),
+      ["installation", "installation_repo", "oauth_state", "repo_link", "webhook_delivery"].sort(),
     );
   });
 

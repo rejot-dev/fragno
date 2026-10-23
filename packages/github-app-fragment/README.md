@@ -127,6 +127,8 @@ const config: GitHubAppFragmentConfig = {
   callbackUrl: process.env.GITHUB_APP_CALLBACK_URL ?? "",
   privateKeyPem: process.env.GITHUB_APP_PRIVATE_KEY ?? "",
   webhookSecret: process.env.GITHUB_APP_WEBHOOK_SECRET ?? "",
+  // Received deliveries are kept this long; see "Webhook deliveries" below.
+  webhookDeliveryRetentionMs: 7 * 24 * 60 * 60 * 1000,
   webhook: (register) => {
     register("installation.deleted", async ({ payload }) => {
       // Optional: cleanup app-specific state when an installation is removed in GitHub.
@@ -169,6 +171,15 @@ suspended installation keeps its repositories, since GitHub issues no installati
 suspended, and an installation GitHub answers 404 for is marked `deleted`. Configured `webhook`
 handlers run after the sync.
 
+## Webhook deliveries
+
+The webhook route stores each verified delivery and processes it as a durable hook keyed by GitHub's
+delivery ID, so a redelivery is accepted once. Deliveries can be read back with
+`GET /webhooks/deliveries/:deliveryId` until `webhookDeliveryRetentionMs` after their hook succeeds;
+a delivery whose hook is pending or failed is kept. Storing a delivery deletes a batch of expired
+ones, so storage stays bounded without a scheduler. A hook replayed after its handlers succeeded,
+such as after the processor stopped before recording the hook's completion, does not run them again.
+
 ## Routes
 
 Repository links carry a link key, so one repository can be linked for several contexts. Routes that
@@ -177,6 +188,7 @@ accept `linkKey` fall back to the configured `defaultLinkKey`, or `default`.
 Webhooks and user authorization:
 
 - `POST /webhooks`
+- `GET /webhooks/deliveries/:deliveryId` — a stored delivery, until its retention ends
 - `POST /oauth/start`
 - `POST /oauth/complete`
 

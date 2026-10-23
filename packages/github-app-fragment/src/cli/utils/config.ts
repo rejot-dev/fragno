@@ -36,6 +36,28 @@ const resolveRequiredString = (
   return value;
 };
 
+const DEFAULT_WEBHOOK_DELIVERY_RETENTION_HOURS = 7 * 24;
+
+/** A blank value, such as an empty environment variable, means the default. */
+const resolveWebhookDeliveryRetentionMs = (ctx: CommandContext) => {
+  const flag = ctx.values["webhook-delivery-retention-hours"] as number | string | undefined;
+  const raw =
+    typeof flag === "number"
+      ? flag
+      : resolveString(ctx, {
+          key: "webhook-delivery-retention-hours",
+          env: "GITHUB_APP_WEBHOOK_DELIVERY_RETENTION_HOURS",
+        });
+  const hours =
+    parseNumber("webhook-delivery-retention-hours", raw) ??
+    DEFAULT_WEBHOOK_DELIVERY_RETENTION_HOURS;
+  const retentionMs = Math.round(hours * 60 * 60 * 1000);
+  if (retentionMs <= 0) {
+    throw new Error("webhook-delivery-retention-hours must be positive");
+  }
+  return retentionMs;
+};
+
 const parseNumber = (label: string, value: string | number | undefined) => {
   if (value === undefined) {
     return undefined;
@@ -138,6 +160,8 @@ export const resolveGitHubAppConfig = (ctx: CommandContext): GitHubAppFragmentCo
     process.env["GITHUB_APP_TOKEN_CACHE_TTL_SECONDS"];
   const tokenCacheTtlSeconds = parseNumber("token-cache-ttl", tokenCacheRaw);
 
+  const webhookDeliveryRetentionMs = resolveWebhookDeliveryRetentionMs(ctx);
+
   const webhookDebugRaw =
     (ctx.values["webhook-debug"] as boolean | string | undefined) ??
     process.env["GITHUB_APP_WEBHOOK_DEBUG"] ??
@@ -152,6 +176,7 @@ export const resolveGitHubAppConfig = (ctx: CommandContext): GitHubAppFragmentCo
     callbackUrl,
     privateKeyPem: normalizePem(privateKeyPem),
     webhookSecret,
+    webhookDeliveryRetentionMs,
     webhookDebug,
     apiBaseUrl: apiBaseUrl || undefined,
     apiVersion: apiVersion || undefined,

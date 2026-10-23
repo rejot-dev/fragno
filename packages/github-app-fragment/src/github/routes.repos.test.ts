@@ -12,6 +12,7 @@ const createConfig = () => ({
   callbackUrl: "https://example.com/github/callback",
   privateKeyPem: "test-key",
   webhookSecret: "secret",
+  webhookDeliveryRetentionMs: 60_000,
   defaultLinkKey: "default",
 });
 

@@ -91,6 +91,9 @@ const printServeHelp = () => {
   console.log("  --web-base-url         GitHub web base URL");
   console.log("  --default-link-key     Default link key");
   console.log("  --token-cache-ttl      Token cache TTL in seconds");
+  console.log(
+    "  --webhook-delivery-retention-hours  Hours to keep webhook deliveries (default 168)",
+  );
   console.log("");
 };
 

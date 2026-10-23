@@ -151,6 +151,7 @@ describe("github-app installation sync", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
+      webhookDeliveryRetentionMs: 60_000,
       onRepositoryLinkStatusChanged,
     });
 
@@ -294,6 +295,7 @@ describe("github-app installation sync", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
+      webhookDeliveryRetentionMs: 60_000,
     });
 
     try {
@@ -339,6 +341,7 @@ describe("github-app installation listing", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
+      webhookDeliveryRetentionMs: 60_000,
     });
 
     try {
@@ -385,6 +388,7 @@ describe("github-app installation listing", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
+      webhookDeliveryRetentionMs: 60_000,
     });
 
     try {

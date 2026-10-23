@@ -26,6 +26,7 @@ export type GitHubConfig = Pick<
   | "callbackUrl"
   | "privateKeyPem"
   | "webhookSecret"
+  | "webhookDeliveryRetentionMs"
   | "webhookDebug"
   | "apiBaseUrl"
   | "apiVersion"
@@ -51,6 +52,9 @@ export function createGitHubServer(
     let access: BackofficeFragmentHttpAccess = null;
     await ifMatchesRoute("POST", "/webhooks", () => {
       access = "public-ingress";
+    });
+    await ifMatchesRoute("GET", "/webhooks/deliveries/:deliveryId", () => {
+      access = BACKOFFICE_PERMISSION.events.read;
     });
     for (const path of [
       "/installations",
@@ -181,7 +185,7 @@ export const buildGitHubAutomationEvent = ({
     scope: { kind: "org", orgId },
     source: "github",
     eventType: "webhook.received",
-    occurredAt: meta.receivedAt ?? new Date().toISOString(),
+    occurredAt: meta.receivedAt,
     payload: {
       deliveryId: meta.deliveryId,
       githubEvent: event.name,
