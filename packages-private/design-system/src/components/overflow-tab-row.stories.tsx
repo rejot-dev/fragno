@@ -13,22 +13,38 @@ const items: OverflowTabRowItem[] = [
 ];
 
 export function Boxed() {
-  return <OverflowTabRow items={items} ariaLabel="Automation sections" variant="boxed" />;
+  return (
+    <OverflowTabRow items={items} ariaLabel="Automation sections" variant="boxed" trailing={null} />
+  );
 }
 
 export function Underline() {
-  return <OverflowTabRow items={items} ariaLabel="Automation sections" variant="underline" />;
+  return (
+    <OverflowTabRow
+      items={items}
+      ariaLabel="Automation sections"
+      variant="underline"
+      trailing={null}
+    />
+  );
 }
 
 export function Browser() {
-  return <OverflowTabRow items={items} ariaLabel="Automation sections" variant="browser" />;
+  return (
+    <OverflowTabRow
+      items={items}
+      ariaLabel="Automation sections"
+      variant="browser"
+      trailing={null}
+    />
+  );
 }
 
 // Narrow container so the overflow menu takes over the trailing tabs.
 export function Overflowing() {
   return (
     <div className="max-w-xs">
-      <OverflowTabRow items={items} ariaLabel="Automation sections" />
+      <OverflowTabRow items={items} ariaLabel="Automation sections" trailing={null} />
     </div>
   );
 }

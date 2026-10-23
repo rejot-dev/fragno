@@ -74,7 +74,12 @@ function MarketplaceWorkspaceHeader({
   return (
     <>
       <h1 className="sr-only">Marketplace for {selectedScope.label}</h1>
-      <BackofficeTabHeader items={tabs} ariaLabel="Marketplace workspace sections" options={null} />
+      <BackofficeTabHeader
+        items={tabs}
+        ariaLabel="Marketplace workspace sections"
+        trailing={null}
+        options={null}
+      />
     </>
   );
 }

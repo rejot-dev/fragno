@@ -104,6 +104,7 @@ function SettingsHeader() {
             },
           ]}
           ariaLabel="Settings sections"
+          trailing={null}
         />
       </div>
     </section>

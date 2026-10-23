@@ -22,5 +22,5 @@ export function AutomationSubpageTabs({
     active: activeTab === tab.id,
   }));
 
-  return <OverflowTabRow items={items} ariaLabel={ariaLabel} variant="underline" />;
+  return <OverflowTabRow items={items} ariaLabel={ariaLabel} variant="underline" trailing={null} />;
 }

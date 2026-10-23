@@ -76,6 +76,7 @@ export default function BackofficeComputersScopeLayout({ loaderData }: Route.Com
           { id: "sandboxes", label: "Sandboxes", to: sandboxesPath(routeScope), active: true },
         ]}
         ariaLabel="Computer kinds"
+        trailing={null}
         options={null}
       />
       <div className={`${backofficePageBodyClassName} flex flex-1 flex-col`}>
