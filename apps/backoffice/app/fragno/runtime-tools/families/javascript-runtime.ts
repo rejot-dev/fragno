@@ -1,3 +1,7 @@
+import type {
+  javascriptOperations,
+  JavaScriptRunsListInput,
+} from "@fragno-dev/backoffice-api/v0/javascript";
 import { CODEMODE_LIMITS } from "@fragno-dev/codemode/codemode-limits";
 import type {
   TypeCheckDiagnostic,
@@ -5,6 +9,7 @@ import type {
 } from "@fragno-dev/codemode/compiler/compile-worker";
 import type { WorkerBundle } from "@fragno-dev/codemode/compiler/worker-bundle";
 import type { CodemodeLogLine } from "@fragno-dev/codemode/runtime-api";
+import type { z } from "zod";
 
 import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
 import { isPathWithin, normalizeAbsolutePath } from "@/files/normalize-path";
@@ -52,7 +57,7 @@ export type JavaScriptCheckFileOutput = {
   diagnostics: TypeCheckDiagnostic[];
 };
 
-/** A recorded run's outcome; its run ID leads to the run's retained logs and `codemode` events. */
+/** A recorded run's outcome; its run ID leads to the run's retained logs and tool calls. */
 export type JavaScriptModuleExecution =
   | { status: "success"; runId: string; logs: CodemodeLogLine[] }
   | { status: "error"; runId: string; error: string; logs: CodemodeLogLine[] };
@@ -62,11 +67,19 @@ export type JavaScriptRunFileOutput =
   | (JavaScriptModuleExecution & { path: string })
   | { status: "rejected"; path: string; error: string };
 
-export type JavaScriptRunLogsOutput =
-  | { runId: string; status: "running" }
-  | { runId: string; status: "completed"; logs: CodemodeLogLine[] }
-  | { runId: string; status: "failed"; logs: CodemodeLogLine[]; error: string }
-  | { runId: string; status: "suspended"; logs: CodemodeLogLine[] };
+export type JavaScriptRunsListOutput = z.output<
+  (typeof javascriptOperations)["js.runs.list"]["output"]
+>;
+
+export type JavaScriptRunsGetOutput = z.output<
+  (typeof javascriptOperations)["js.runs.get"]["output"]
+>;
+
+/** The current scope's retained runs, readable only with at least each run's authority. */
+export type JavaScriptRunHistory = {
+  listRuns(input: JavaScriptRunsListInput): Promise<JavaScriptRunsListOutput>;
+  getRun(input: { runId: string }): Promise<JavaScriptRunsGetOutput>;
+};
 
 export type JavaScriptBuildFileInput = { path: string; out: string };
 
@@ -97,7 +110,7 @@ export type JavaScriptRuntime = {
         toolContext: CoreBackofficeToolContext,
       ) => Promise<JavaScriptRunFileOutput>)
     | null;
-  readRunLogs: ((input: { runId: string }) => Promise<JavaScriptRunLogsOutput>) | null;
+  runHistory: JavaScriptRunHistory | null;
 };
 
 function parseJavaScriptFilePath(path: string, kind: "source" | "run") {
@@ -159,7 +172,7 @@ export function createJavaScriptRuntime({
 }): JavaScriptRuntime {
   return {
     buildFile: null,
-    readRunLogs: null,
+    runHistory: null,
     checkFile: typeCheckFiles
       ? async function checkJavaScriptFile({ path }) {
           const sourcePath = parseJavaScriptFilePath(path, "source");

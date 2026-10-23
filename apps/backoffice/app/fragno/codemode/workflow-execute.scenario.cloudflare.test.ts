@@ -279,7 +279,9 @@ test("suspension history uses ISO timestamps while the live runner sleeps and re
               runAt: wakeAt.toISOString(),
             });
             const page = await object.listRuns({ page: "first", pageSize: 10 });
-            expect(page.runs).toEqual([run]);
+            // A listed run omits the tool calls that getRun reads with it.
+            const { toolCalls: _toolCalls, toolCallsTruncated: _truncated, ...listedRun } = run;
+            expect(page.runs).toEqual([listedRun]);
             const hooks = await object.getDurableHookQueue();
             const finishedHook = hooks.items.find((hook) => hook.hookName === "onRunFinished");
             assert(finishedHook);

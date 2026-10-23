@@ -222,7 +222,11 @@ test("codemode runs are retained with their outcome until a later run expires th
             ),
           );
           assert(builds.hasNextPage && builds.cursor !== null);
-          expect(await codemode.getRun(buildRunIds[1])).toEqual(builds.runs[0]);
+          expect(await codemode.getRun(buildRunIds[1])).toEqual({
+            ...builds.runs[0],
+            toolCalls: [],
+            toolCallsTruncated: false,
+          });
 
           // Setup wrote both scripts through immediate codemode in the same scope.
           const writes = await codemode.listRuns({ page: "next", cursor: builds.cursor });
@@ -300,26 +304,62 @@ test("codemode runs are retained with their outcome until a later run expires th
             }
           },
         ),
-        then.assert("js.run's run ID leads its principal to the run's logs", async (ctx) => {
-          const report = await (await bash(ctx.runtime)).exec(`js.logs ${runIds.report}`);
-          assert.equal(report.exitCode, 0, report.stderr);
-          assert.equal(report.stdout, "report ready\n");
-
-          // Lines are stored with their channel and labelled only when read as text.
-          const failing = await (await bash(ctx.runtime)).exec(`js.logs ${runIds.failing}`);
-          assert.equal(failing.exitCode, 1);
-          assert.equal(failing.stdout, "[error] about to explode\n");
-          expect(failing.stderr).toContain("Startup exploded");
-          const failingJson = await (
+        then.assert("js.runs.list lists only the runs its reader can read", async (ctx) => {
+          const listed = await (
             await bash(ctx.runtime)
-          ).exec(`js.logs ${runIds.failing} --format json`);
-          expect(JSON.parse(failingJson.stdout).logs).toEqual([
-            { at: expect.any(Number), channel: "error", text: "about to explode" },
-          ]);
+          ).exec("js.runs.list --limit 2 --format json");
+          assert.equal(listed.exitCode, 0, listed.stderr);
+          const firstPage = JSON.parse(listed.stdout);
+          expect(firstPage.runs).toEqual(
+            expect.arrayContaining([
+              {
+                runId: runIds.report,
+                status: "completed",
+                activation: { kind: "compiled" },
+                origin: { kind: "file", path: "/workspace/.build/report.module.json" },
+                startedAt: expect.any(String),
+              },
+              expect.objectContaining({ runId: runIds.failing, status: "failed" }),
+            ]),
+          );
+          const next = await (
+            await bash(ctx.runtime)
+          ).exec(`js.runs.list --cursor '${firstPage.nextCursor}' --format json`);
+          expect(JSON.parse(next.stdout).runs.map((run: { runId: string }) => run.runId)).toEqual(
+            [...buildRunIds].reverse(),
+          );
 
           const foreign = await (
             await bash(ctx.runtime, otherExecution)
-          ).exec(`js.logs ${runIds.report}`);
+          ).exec("js.runs.list --format json");
+          assert.equal(foreign.exitCode, 0, foreign.stderr);
+          expect(JSON.parse(foreign.stdout).runs).toEqual([]);
+        }),
+        then.assert("js.run's run ID leads its principal to the run's logs", async (ctx) => {
+          const report = await (await bash(ctx.runtime)).exec(`js.runs.get ${runIds.report}`);
+          assert.equal(report.exitCode, 0, report.stderr);
+          expect(report.stdout).toContain("\nlogs:\nreport ready\n\ntool calls:\n(none)\n");
+
+          // Lines are stored with their channel and labelled only when read as text.
+          const failing = await (await bash(ctx.runtime)).exec(`js.runs.get ${runIds.failing}`);
+          assert.equal(failing.exitCode, 1);
+          expect(failing.stdout).toContain("\nlogs:\n[error] about to explode\n");
+          expect(failing.stderr).toContain("Startup exploded");
+          const failingJson = await (
+            await bash(ctx.runtime)
+          ).exec(`js.runs.get ${runIds.failing} --format json`);
+          expect(JSON.parse(failingJson.stdout)).toMatchObject({
+            runId: runIds.failing,
+            status: "failed",
+            activation: { kind: "compiled" },
+            logs: [{ at: expect.any(Number), channel: "error", text: "about to explode" }],
+            toolCalls: [],
+            toolCallsTruncated: false,
+          });
+
+          const foreign = await (
+            await bash(ctx.runtime, otherExecution)
+          ).exec(`js.runs.get ${runIds.report}`);
           assert.notEqual(foreign.exitCode, 0);
           expect(foreign.stderr).toContain("CODEMODE_RUN_FORBIDDEN");
         }),
@@ -334,7 +374,7 @@ test("codemode runs are retained with their outcome until a later run expires th
               return z.object({ runId: z.string() }).parse(JSON.parse(ran.stdout)).runId;
             };
             const readAs = async (as: BackofficeExecutionContext, runId: string) => {
-              const read = await (await bash(ctx.runtime, as)).exec(`js.logs ${runId}`);
+              const read = await (await bash(ctx.runtime, as)).exec(`js.runs.get ${runId}`);
               if (read.exitCode === 0) {
                 return "allowed";
               }
@@ -393,7 +433,7 @@ test("codemode runs are retained with their outcome until a later run expires th
           // Builds and setup writes expired; the runs from day one and the new run remain.
           expect(runs.runs.map((run) => run.activationKind)).toEqual(Array(5).fill("compiled"));
           assert.equal(await codemode.getRun(buildRunIds[1]), null);
-          const expired = await (await bash(runtime)).exec(`js.logs ${buildRunIds[1]}`);
+          const expired = await (await bash(runtime)).exec(`js.runs.get ${buildRunIds[1]}`);
           assert.notEqual(expired.exitCode, 0);
           expect(expired.stderr).toContain("CODEMODE_RUN_NOT_FOUND");
         }),
@@ -401,6 +441,193 @@ test("codemode runs are retained with their outcome until a later run expires th
     }),
   );
 });
+
+test("a run's tool calls and their I/O are readable while it runs and expire with it", async () => {
+  let openGate = () => {};
+  const gateOpened = new Promise<void>((resolve) => {
+    openGate = resolve;
+  });
+  const gate = defineBackofficeRuntimeToolFamily({
+    namespace: "gate",
+    tools: [
+      defineBackofficeRuntimeTool({
+        id: "gate.wait",
+        namespace: "gate",
+        name: "wait",
+        description: "Wait until the test opens the gate.",
+        requiredPermissions: [],
+        inputSchema: z.object({}),
+        outputSchema: z.object({}),
+        execute: async () => {
+          await gateOpened;
+          return {};
+        },
+      }),
+      defineBackofficeRuntimeTool(
+        {
+          id: "gate.secret",
+          namespace: "gate",
+          name: "secret",
+          description: "Return a credential once.",
+          requiredPermissions: [],
+          inputSchema: z.object({}),
+          outputSchema: z.object({ secret: z.string() }),
+          execute: async () => ({ secret: "s3cret" }),
+        },
+        "redacted",
+      ),
+    ],
+  });
+  let runId = "";
+
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "codemode tool calls",
+      objects: scenarioObjects,
+      env: { codemode: createCodemodeNodeExecutor(server) },
+      setup: ({ given }) => [given.organization.exists({ id: "org-1" })],
+      steps: ({ when, then }) => [
+        then.assert("calls appear as the guest makes them, with their I/O", async (ctx) => {
+          const readCalls = async () => {
+            const read = await (await bash(ctx.runtime)).exec(`js.runs.get ${runId} --format json`);
+            assert.equal(read.exitCode, 0, read.stderr);
+            return JSON.parse(read.stdout).toolCalls;
+          };
+          const running = runBackofficeCodemode({
+            code: `async () => {
+              await events.list({ limit: 1 });
+              await context.org("org-1").events.list({ limit: 1 });
+              await js.runsGet({ runId: "missing-run" }).catch(() => null);
+              await gate.secret({});
+              await gate.wait({});
+            }`,
+            codemode: codemodeRunnerFor(
+              ctx.runtime.objects.codemode.forOrg("org-1").commands,
+              execution,
+            ),
+            families: [...runtimeToolFamilies, gate],
+            toolContext: createBackofficeToolContext(
+              createCodemodeRouteBackedRuntimeContext({
+                emitter: { kind: "caller" },
+                runtime: ctx.runtime.services,
+                kernel: new BackofficeKernel(ctx.runtime.services),
+                execution,
+              }),
+            ),
+          });
+          try {
+            await vi.waitFor(
+              async () => {
+                const listed = await (await bash(ctx.runtime)).exec("js.runs.list --format json");
+                const [run] = JSON.parse(listed.stdout).runs;
+                expect(run).toMatchObject({ status: "running" });
+                runId = run.runId;
+                expect(await readCalls()).toHaveLength(5);
+              },
+              { timeout: 5_000 },
+            );
+            const settled = { calledAt: expect.any(String), settledAt: expect.any(String) };
+            expect(await readCalls()).toEqual([
+              {
+                scope: { kind: "current" },
+                provider: "events",
+                tool: "list",
+                input: '{"limit":1}',
+                status: "succeeded",
+                output: expect.stringContaining('"hasNextPage":false'),
+                ...settled,
+              },
+              {
+                scope: { kind: "org", orgId: "org-1" },
+                provider: "events",
+                tool: "list",
+                input: '{"limit":1}',
+                status: "succeeded",
+                output: expect.stringContaining('"hasNextPage":false'),
+                ...settled,
+              },
+              {
+                scope: { kind: "current" },
+                provider: "js",
+                tool: "runsGet",
+                input: '{"runId":"missing-run"}',
+                status: "failed",
+                output: expect.stringContaining("CODEMODE_RUN_NOT_FOUND"),
+                ...settled,
+              },
+              {
+                scope: { kind: "current" },
+                provider: "gate",
+                tool: "secret",
+                input: "{}",
+                status: "succeeded",
+                output: "[redacted]",
+                ...settled,
+              },
+              {
+                scope: { kind: "current" },
+                provider: "gate",
+                tool: "wait",
+                input: "{}",
+                status: "running",
+                calledAt: expect.any(String),
+              },
+            ]);
+          } finally {
+            openGate();
+          }
+          const result = await running;
+          assert.equal(result.runId, runId);
+          expect((await readCalls())[4]).toMatchObject({
+            tool: "wait",
+            status: "succeeded",
+            output: "{}",
+          });
+
+          const foreign = await (
+            await bash(ctx.runtime, otherExecution)
+          ).exec(`js.runs.get ${runId}`);
+          assert.notEqual(foreign.exitCode, 0);
+          expect(foreign.stderr).toContain("CODEMODE_RUN_FORBIDDEN");
+        }),
+        then.assert("a run that loops past 200 calls shows the first 200", async (ctx) => {
+          const looping = await runBackofficeCodemode({
+            code: "async () => { for (let i = 0; i < 201; i++) await gate.secret({}); }",
+            codemode: codemodeRunnerFor(
+              ctx.runtime.objects.codemode.forOrg("org-1").commands,
+              execution,
+            ),
+            families: [gate],
+            toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
+          });
+          assert.equal(looping.error, undefined);
+          const run = await (
+            await bash(ctx.runtime)
+          ).exec(`js.runs.get ${looping.runId} --format json`);
+          const detail = JSON.parse(run.stdout);
+          expect(detail.toolCalls).toHaveLength(200);
+          assert.equal(detail.toolCallsTruncated, true);
+        }),
+        when.time.advance("6 days"),
+        then.assert("calls outlive their sixth day", async (ctx) => {
+          await ctx.drain();
+          const run = await (await bash(ctx.runtime)).exec(`js.runs.get ${runId} --format json`);
+          expect(JSON.parse(run.stdout).toolCalls).toHaveLength(5);
+        }),
+        when.time.advance("1 day"),
+        then.assert("a week later the calls are gone", async (ctx) => {
+          await ctx.drain();
+          const run = await (await bash(ctx.runtime)).exec(`js.runs.get ${runId} --format json`);
+          assert.equal(run.exitCode, 0, run.stderr);
+          expect(JSON.parse(run.stdout)).toMatchObject({
+            toolCalls: [],
+            toolCallsTruncated: false,
+          });
+        }),
+      ],
+    }),
+  );
+}, 30_000);
 
 test("codemode guests are attributed to their scope owner and builds remain unmetered", async () => {
   const userScope = { kind: "user", userId: "user-1" } as const;
@@ -588,7 +815,9 @@ test("each workflow tick is a billed run that publishes no run events", async ()
             }),
           ]);
 
-          const logs = await (await bash(ctx.runtime)).exec(`js.logs ${runs[1].id} --format json`);
+          const logs = await (
+            await bash(ctx.runtime)
+          ).exec(`js.runs.get ${runs[1].id} --format json`);
           assert.equal(logs.exitCode, 0, logs.stderr);
           expect(JSON.parse(logs.stdout)).toMatchObject({ runId: runs[1].id, status: "suspended" });
 

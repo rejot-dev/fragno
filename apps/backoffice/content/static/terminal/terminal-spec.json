@@ -4189,8 +4189,45 @@
     ]
   },
   {
-    "command": "js.logs",
-    "summary": "js.logs prints the console logs of a codemode run in the current scope.",
+    "command": "js.runs.list",
+    "summary": "js.runs.list lists codemode runs in the current scope, newest first.",
+    "options": [
+      {
+        "name": "limit",
+        "valueRequired": true,
+        "valueName": "number",
+        "description": "Page size (1-20; defaults to 20)."
+      },
+      {
+        "name": "cursor",
+        "valueRequired": true,
+        "valueName": "cursor",
+        "description": "Cursor returned by the previous page; it keeps that page's size."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "js.runs.get",
+    "summary": "js.runs.get shows a codemode run's outcome, console logs, and tool calls in the current scope.",
     "options": [
       {
         "name": "help",

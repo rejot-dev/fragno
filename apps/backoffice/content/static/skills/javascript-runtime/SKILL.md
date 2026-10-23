@@ -2,8 +2,8 @@
 name: javascript-runtime
 description: >
   Use js.check, js.build, and js.run to check saved JavaScript, compile reusable built modules,
-  execute source or bundles, diagnose build or startup errors, and review past runs' outcomes and
-  logs with js.logs. Load when a task uses the js.* runtime.
+  execute source or bundles, diagnose build or startup errors, and review runs' outcomes, logs, and
+  tool calls with js.runs.list and js.runs.get. Load when a task uses the js.* runtime.
 ---
 
 # JavaScript runtime
@@ -177,37 +177,36 @@ effectful work.
 
 ### Run history
 
-Every build and run, like immediate codemode, is recorded as a run in the current scope and emits
-`codemode` events: `run.started`, then `run.completed` or `run.failed`.
-
-| Field                                     | Contents                                                                                    |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `subject.runId`                           | Links a run's started and outcome events                                                    |
-| `payload.activationKind`                  | `module-build` (`js.build`), `module` (`js.run` source), `compiled` (`js.run` built module) |
-| `payload.origin`                          | `{ kind: "file", path }` for saved files; `{ kind: "inline" }` for immediate code           |
-| `payload.startedAt`, `payload.finishedAt` | Run timing; `finishedAt` is on outcome events only                                          |
-| `payload.error`                           | Why a `run.failed` run failed                                                               |
-| `actors`                                  | Whoever started the run                                                                     |
-
-To review runs you did not just start, use `events.list({ limit: 50 })` (newest first; requires
-`events.read`) and match `source === "codemode"` and `payload.origin.path` locally;
-`events.get({ id })` shows one event. Events arrive shortly after the run's state commits, so a run
-that just finished can appear a moment later. A `run.started` with no outcome event for its `runId`
-never reported finishing: treat its effects as unknown.
-
-Events omit console output. Read it with the run ID that `js.run` or `js.build` returned, or that an
-event names:
+Every build and run, like immediate codemode, is recorded as a run in the current scope. Use the run
+ID that `js.run` or `js.build` returned, or find one with `js.runs.list`:
 
 ```bash
-js.logs <run-id>
+js.runs.list           # newest first: run ID, start time, status, activation, origin
+js.runs.get <run-id>   # one run: its outcome, error, console logs, and tool calls
 ```
 
-`js.logs({ runId })` returns `status: "running"` without logs, or the finished run's `logs` (and
-`error` when it failed). Reading requires at least the authority the run had: the same principal, a
-delegation chain the run's chain extends (a delegate cannot read its principal's direct runs, while
-the principal can read its delegates' runs), and a scope restriction that contains the run's.
-Otherwise `js.logs` fails with `CODEMODE_RUN_FORBIDDEN`. Runs are kept for 7 days; an older run ID
-fails with `CODEMODE_RUN_NOT_FOUND`, while its events remain.
+| Field                | Contents                                                                                    |
+| -------------------- | ------------------------------------------------------------------------------------------- |
+| `status`             | `running`, `completed`, `failed`, or `suspended` (a workflow tick waiting)                  |
+| `activation`         | `module-build` (`js.build`), `module` (`js.run` source), `compiled` (`js.run` built module) |
+| `origin`             | `{ kind: "file", path }` for saved files; `{ kind: "inline" }` for immediate code           |
+| `logs`               | Console output, stored when the run finishes                                                |
+| `toolCalls`          | Calls in order, recorded as they happen, each with `input` and, once settled, `output`      |
+| `toolCallsTruncated` | `true` when the run made more than 200 calls; only the first 200 are listed                 |
+
+Call `input` and `output` are JSON cut to 500 characters; a failed call's output is its error, and
+tools that return credentials store `"[redacted]"`. A run still `running` after its caller stopped
+waiting never reported finishing: treat its effects as unknown. Its `toolCalls` show which tools it
+reached; a call still `running` may have taken effect.
+
+Reading a run requires at least the authority it had: the same principal, a delegation chain the
+run's chain extends (a delegate cannot read its principal's direct runs, while the principal can
+read its delegates' runs), and a scope restriction that contains the run's. Otherwise `js.runs.get`
+fails with `CODEMODE_RUN_FORBIDDEN`, and `js.runs.list` leaves the run out of its page. Runs are
+kept for 7 days; an older run ID fails with `CODEMODE_RUN_NOT_FOUND`.
+
+A failed run other than a workflow tick also emits a `codemode` `run.failed` event, with the error
+and `subject.runId`, for automations to react to.
 
 **Complete only when** the observed run succeeds and its expected logs or authorized effects are
 verified, or the observed failure and blocking requirement are reported.

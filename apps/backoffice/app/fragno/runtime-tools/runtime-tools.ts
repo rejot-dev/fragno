@@ -262,7 +262,8 @@ function runtimeToolInputMode(schema: z.ZodType): CodemodeToolDescriptor["inputM
   return schema._zod.def.type === "void" ? "none" : "value";
 }
 
-const summarizeToolValue = (value: unknown) => {
+/** Bounds a tool's input or output to what a log or history row can hold. */
+export function summarizeToolValue(value: unknown) {
   try {
     const summary = JSON.stringify(value);
     if (typeof summary === "string") {
@@ -274,7 +275,7 @@ const summarizeToolValue = (value: unknown) => {
 
   const summary = String(value);
   return summary.length > 500 ? `${summary.slice(0, 497)}...` : summary;
-};
+}
 
 function runtimeToolAuthorizationError(
   tool: AnyBackofficeRuntimeTool,

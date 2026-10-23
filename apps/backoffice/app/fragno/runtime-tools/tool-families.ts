@@ -50,7 +50,7 @@ import { internalWorkspaceToolFamily, type InternalRuntime } from "./families/in
 import {
   javaScriptBuildToolFamily,
   javaScriptCheckToolFamily,
-  javaScriptLogsToolFamily,
+  javaScriptRunHistoryToolFamily,
   javaScriptRunToolFamily,
 } from "./families/javascript";
 import type { JavaScriptRuntime } from "./families/javascript-runtime";
@@ -138,7 +138,7 @@ export const runtimeToolFamilies = [
   sandboxToolFamily,
   javaScriptCheckToolFamily,
   javaScriptRunToolFamily,
-  javaScriptLogsToolFamily,
+  javaScriptRunHistoryToolFamily,
   javaScriptBuildToolFamily,
   artifactsToolFamily,
   uploadToolFamily,

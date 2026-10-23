@@ -12,6 +12,7 @@ import {
   CodemodeInterruptedError,
   encodeCodemodeError,
 } from "@fragno-dev/codemode/execution/codemode-errors";
+import { observeCodemodeToolCalls } from "@fragno-dev/codemode/host/codemode-host-capabilities";
 import type { CodemodeLogLine } from "@fragno-dev/codemode/runtime-api";
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
@@ -40,7 +41,7 @@ import {
   type CodemodeRunCompletion,
   type CodemodeRunContext,
   type CodemodeRunFinishedHookPayload,
-  type CodemodeRun,
+  type CodemodeRunDetail,
   type CodemodeRunPage,
   type CodemodeRunPageInput,
   type CodemodeRunStartedHookPayload,
@@ -52,6 +53,7 @@ import {
   loadDurableHookQueue,
   type DurableHookQueueOptions,
 } from "@/fragno/durable-hooks";
+import { summarizeToolValue } from "@/fragno/runtime-tools/runtime-tools";
 
 import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
 import type { BackofficeObjectImplementation } from "./lib/backoffice-object-implementation";
@@ -314,6 +316,7 @@ export class InMemoryCodemodeObject extends RpcTarget implements CodemodeObject 
     context: CodemodeRunContext,
     host: CodemodeHost,
     lease: CodemodeRunLease,
+    redactedResults: readonly string[],
   ): Promise<CodemodeExecution<TActivation>> {
     const executor = this.#executor;
     if (!executor) {
@@ -329,9 +332,39 @@ export class InMemoryCodemodeObject extends RpcTarget implements CodemodeObject 
     const parentSlot = lease.parentKey === null ? undefined : this.#lentSlots.get(lease.parentKey);
     const release = await (parentSlot ?? this.#slots).acquire();
     this.#lentSlots.set(lease.key, new CodemodeActivationSlots(1));
+    // Each call is stored as it starts and again as it settles, so history shows a run's calls
+    // while it is still running.
+    const redacted = new Set(redactedResults);
+    const recordedHost = observeCodemodeToolCalls(
+      host,
+      async function recordToolCall(call, input, invoke) {
+        const callId = await fragment.callServices(() =>
+          fragment.services.startToolCall(runId, call, summarizeToolValue(input)),
+        );
+        let settlement: { status: "succeeded" | "failed"; output: string };
+        try {
+          const result = await invoke();
+          settlement =
+            result.status === "error"
+              ? { status: "failed", output: summarizeToolValue(result.error) }
+              : {
+                  status: "succeeded",
+                  output: redacted.has(`${call.provider}.${call.tool}`)
+                    ? "[redacted]"
+                    : summarizeToolValue(result.value),
+                };
+          return result;
+        } catch (error) {
+          settlement = { status: "failed", output: summarizeToolValue(encodeCodemodeError(error)) };
+          throw error;
+        } finally {
+          await fragment.callServices(() => fragment.services.settleToolCall(callId, settlement));
+        }
+      },
+    );
     let completion: CodemodeRunCompletion;
     try {
-      completion = await executeCodemodeRunActivation(executor, activation, host);
+      completion = await executeCodemodeRunActivation(executor, activation, recordedHost);
     } finally {
       this.#lentSlots.delete(lease.key);
       release();
@@ -343,7 +376,7 @@ export class InMemoryCodemodeObject extends RpcTarget implements CodemodeObject 
     return { runId, completion: completion as CodemodeRunCompletion<TActivation> };
   }
 
-  async getRun(runId: string): Promise<CodemodeRun | null> {
+  async getRun(runId: string): Promise<CodemodeRunDetail | null> {
     const fragment = this.#getFragment();
     return await fragment.callServices(() => fragment.services.getRun(runId));
   }
@@ -399,11 +432,12 @@ export class Codemode extends DurableObject<CloudflareEnv> implements CodemodeOb
     context: CodemodeRunContext,
     host: CodemodeHost,
     lease: CodemodeRunLease,
+    redactedResults: readonly string[],
   ): Promise<CodemodeExecution<TActivation>> {
-    return this.#object.execute(activation, context, host, lease);
+    return this.#object.execute(activation, context, host, lease, redactedResults);
   }
 
-  getRun(runId: string): Promise<CodemodeRun | null> {
+  getRun(runId: string): Promise<CodemodeRunDetail | null> {
     return this.#object.getRun(runId);
   }
 
