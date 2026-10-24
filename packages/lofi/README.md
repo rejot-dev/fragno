@@ -685,6 +685,15 @@ also writes the cursor once, so a catch-up commits once per batch instead of onc
 entry that fails, for example because a projection throws, rolls back its whole batch, and the next
 attempt starts from the batch's first entry.
 
+Every call to the database is a round trip to its worker, which in a busy page cost more than the
+statements themselves. Inside a transaction, statements that return no rows queue with their
+parameters written in as SQL literals, and go to the worker in one call together with the next read
+or the `COMMIT`; `BEGIN` goes with the first one. A batch takes two calls: one that begins it and
+reads the applied-through watermark, and one with its writes and the commit. A value whose literal
+SQLite could read back differently, such as a fraction or a number beyond 32 bits that is not a
+bigint, sends its statement on its own. Replaying a 6,559-entry Upload outbox took 273 calls instead
+of about 7,250, and 0.49 s instead of 0.72 s in headless Chrome.
+
 The writing tab tells the other tabs over a `BroadcastChannel` once a batch commits; `subscribe`
 fires in every tab. `execute` waits for the tab's pending replication writes, so a read never sees
 half of a batch.
@@ -714,8 +723,9 @@ changed since. A reconnect or a new writer catches up again without sending view
 - **Reads in other tabs during heavy writes.** OPFSCoopSyncVFS hands file access between
   connections. If reading tabs stall while the writing tab catches up, send their reads to the
   writing tab over the `BroadcastChannel` instead, as `@fragno-dev/tanstack-db-adapter` does.
-- **Catch-up speed.** Batches remove most commits, but every statement is still a round trip to the
-  worker.
+- **Catch-up speed.** A batch takes two worker calls, so the statements themselves and their parsing
+  are now most of the cost. Statements are not prepared once and reused, because the worker takes
+  only SQL text.
 - **Projection changes.** Changing projection code does not change the database name, so rows
   projected by the old code stay until a registered schema's version changes. A projection version
   in the database name would fix this.
