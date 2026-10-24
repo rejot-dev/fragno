@@ -6,6 +6,7 @@ import type { OutboxEntry, OutboxMutation, OutboxTruncateNotification } from "@f
 import { decodeOutboxPayload, resolveOutboxRefs } from "../outbox";
 import { assertNoUnresolvedDbNowMutations } from "../query/mutation-values";
 import type {
+  LofiCatchUpProgress,
   LofiClientOptions,
   LofiEphemeralMutationBatch,
   LofiEphemeralStreamPolicy,
@@ -36,7 +37,11 @@ type AppliedEntry = {
  * What the stream parser reports: an entry, or that it reported every entry received so far and
  * the next one waits on the network.
  */
-type OutboxStreamEvent = { type: "entry"; entry: OutboxStreamEntry } | { type: "waiting" };
+type OutboxStreamEvent =
+  | { type: "started"; catchUpTargetVersionstamp: string | null }
+  | { type: "entry"; entry: OutboxStreamEntry }
+  | { type: "caught-up" }
+  | { type: "waiting" };
 
 type OutboxFetchOptions = {
   cursor?: string;
@@ -83,6 +88,7 @@ export class LofiClient {
   private readonly onSyncComplete?: (result: LofiSyncResult) => void | Promise<void>;
   private readonly onError?: (error: unknown) => void;
   private readonly onStopped?: (error: unknown) => void;
+  private readonly onCatchUp?: (progress: LofiCatchUpProgress) => void;
   private readonly defaultSignal?: AbortSignal;
 
   private intervalId: ReturnType<typeof setInterval> | undefined;
@@ -122,6 +128,7 @@ export class LofiClient {
     this.onSyncComplete = options.onSyncComplete;
     this.onError = options.onError;
     this.onStopped = options.onStopped;
+    this.onCatchUp = options.onCatchUp;
     this.defaultSignal = options.signal;
   }
 
@@ -385,6 +392,8 @@ export class LofiClient {
         }
 
         let batch: OutboxStreamEntry[] = [];
+        // The versions this stream replays before it reaches the entries that existed at its start.
+        let catchUp: { from: bigint; to: bigint } | null = null;
         const applyBatch = async () => {
           const entries = batch;
           batch = [];
@@ -418,6 +427,12 @@ export class LofiClient {
             await this.onSyncApplied?.(syncResult);
           }
           await this.onSyncComplete?.(syncResult);
+          if (catchUp) {
+            this.onCatchUp?.({
+              status: "catching-up",
+              fraction: catchUpFraction(catchUp, transactionVersion(last.lastVersionstamp)),
+            });
+          }
         };
 
         // Applies what has arrived, up to `limit` entries at a time. During a catch-up the network
@@ -425,6 +440,26 @@ export class LofiClient {
         for await (const event of parseOutboxStream(response, signal)) {
           if (signal.aborted) {
             return;
+          }
+          if (event.type === "started") {
+            const target = event.catchUpTargetVersionstamp;
+            if (target !== null && (cursor === undefined || cursor < target)) {
+              catchUp = {
+                from: cursor === undefined ? -1n : transactionVersion(cursor),
+                to: transactionVersion(target),
+              };
+              this.onCatchUp?.({ status: "catching-up", fraction: 0 });
+            }
+            continue;
+          }
+          if (event.type === "caught-up") {
+            // The frame can arrive with the last entries, so they are applied before it is reported.
+            if (batch.length > 0) {
+              await applyBatch();
+            }
+            catchUp = null;
+            this.onCatchUp?.({ status: "caught-up" });
+            continue;
           }
           if (event.type === "entry") {
             batch.push(event.entry);
@@ -865,10 +900,13 @@ async function* parseOutboxStream(
             throw new Error("Duplicate Lofi outbox started frame.");
           }
           started = true;
+          yield { type: "started", catchUpTargetVersionstamp: frame.catchUpTargetVersionstamp };
         } else if (frame.type === "rotate") {
           rotated = true;
         } else if (frame.type === "entry") {
           yield { type: "entry", entry: frame.entry };
+        } else if (frame.type === "caught-up") {
+          yield { type: "caught-up" };
         }
       }
     }
@@ -883,6 +921,16 @@ async function* parseOutboxStream(
     }
     reader.releaseLock();
   }
+}
+
+/** The transaction version that leads a versionstamp; consecutive transactions count up by one. */
+function transactionVersion(versionstamp: string): bigint {
+  return BigInt(`0x${versionstamp.slice(0, 20)}`);
+}
+
+function catchUpFraction(catchUp: { from: bigint; to: bigint }, applied: bigint): number {
+  const fraction = Number(applied - catchUp.from) / Number(catchUp.to - catchUp.from);
+  return Math.min(1, Math.max(0, fraction));
 }
 
 class OutboxStreamReadError extends Error {

@@ -612,6 +612,23 @@ unsubscribe();
 await replica.close();
 ```
 
+`replica.getStatus()` says whether the replica holds the data the backend had when synchronization
+started, so views can wait for it instead of showing a partial history:
+
+```ts
+const stopWatching = replica.subscribeStatus(() => {
+  const status = replica.getStatus();
+  if (status.phase === "catching-up") {
+    // `fraction` is null until the server names how much there is to replay.
+    showProgress(status.fraction === null ? null : Math.floor(status.fraction * 100));
+  } else {
+    void load();
+  }
+  // The last synchronization failure, if any; the writing tab retries on its own.
+  showError(status.error);
+});
+```
+
 ### Layout
 
 - **Tables** are named like the backend's: `<table>_<namespace>`, where the namespace is the schema
@@ -672,6 +689,14 @@ The writing tab tells the other tabs over a `BroadcastChannel` once a batch comm
 fires in every tab. `execute` waits for the tab's pending replication writes, so a read never sees
 half of a batch.
 
+The writing tab also shares its status over the channel, and a tab that opens asks for it. The
+stream starts by naming the last entry that existed when it opened and marks when it has sent
+everything up to it. The writer estimates progress from the versionstamps it applied in between, and
+reports `caught-up` after the marker, once every entry before it has committed. A replica stays
+`caught-up` from then on, and remembers it in `lofi_meta`, so later sessions open `caught-up` too:
+its data is then a complete state of the backend, if an older one, and the stream replays what
+changed since. A reconnect or a new writer catches up again without sending views back to waiting.
+
 ### Risks and follow-ups
 
 - **The OPFS path has no automated test.** The scenario tests run the whole replica in Node against
@@ -708,6 +733,10 @@ half of a batch.
   writing tab can apply an entry between two of a reader's queries, so a view built from several
   queries can mix states. The next change notification reads again. A read transaction would need
   its own connection, because replication writes share the tab's.
+- **No indicator for a returning replica.** A replica that caught up in an earlier session shows its
+  older state at once, and nothing says how far behind it is while the stream replays the gap.
+- **Estimated progress.** `fraction` is the share of entries replayed, counted by the transaction
+  versions in their versionstamps. Entries differ in size, so it does not track the time left.
 - **Coarse refresh.** `subscribe` says only that something changed, not which tables. Sending the
   changed tables would let readers skip unrelated queries.
 - **JSON `null`.** A JSON column holding `null` is stored as SQL `NULL`, the same as a missing
