@@ -1,0 +1,29 @@
+{
+  "name": "@fragno-private/lofi-sqlite-import-benchmark",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "measure:remote": "node run-remote.ts",
+    "types:check": "tsc --noEmit",
+    "format:package": "node ../../scripts/run-package-quality.mjs format",
+    "format:check:package": "node ../../scripts/run-package-quality.mjs format:check",
+    "lint:package": "node ../../scripts/run-package-quality.mjs lint",
+    "lint:fix:package": "node ../../scripts/run-package-quality.mjs lint:fix"
+  },
+  "dependencies": {
+    "@fragno-dev/backoffice-api": "workspace:*",
+    "@fragno-dev/db": "workspace:*",
+    "@fragno-dev/lofi": "workspace:*",
+    "@journeyapps/wa-sqlite": "^1.4.1",
+    "@tanstack/browser-db-sqlite-persistence": "^0.2.36",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@fragno-private/typescript-config": "workspace:*",
+    "@types/node": "^22.19.7",
+    "typescript": "catalog:",
+    "vite": "catalog:"
+  }
+}
