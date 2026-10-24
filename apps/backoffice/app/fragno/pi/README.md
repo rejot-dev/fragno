@@ -171,7 +171,10 @@ settles with that turn. The event's subject names the agent and the prompt's req
 are the turn's execution actors, and its scope restriction is the turn's, so `turn.aborted` names
 who prompted the turn; `agent.stopped` names who stopped it. No turn event carries answer text:
 event readers need only `events.read`, while conversations stay behind `pi.read`, so a reader of the
-answer calls `pi.listMessages` with `before` one past the answer's entry ID.
+answer calls `pi.listMessages` with `before` one past the answer's entry ID. A workflow that submits
+a prompt waits for these events instead of the turn: a route sends them to it with
+`send_workflow_event`, as Telegram Channel's routes do with the prompt's request ID as the instance
+ID.
 
 Pi starts and settles submissions in its own commits, so the turns document is the outbox: a turn
 stays in `pending` until it settles, its events are ingested, keyed

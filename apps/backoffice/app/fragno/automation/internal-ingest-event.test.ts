@@ -61,7 +61,7 @@ const scenarioObjects = {
 const TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION = {
   targetScope: { kind: "org", orgId: "org-1" },
   slug: "telegram-channel",
-  version: "1.2.0",
+  version: "1.3.0",
   installationRoot: "/workspace",
 } as const;
 
@@ -159,10 +159,10 @@ describe("automation internal ingest scenarios", () => {
           then.telegram.noMessages(),
           then.assert("assert Pi was not called by legacy scripts", (ctx) => {
             const provisionedAgents = ctx.fakes.pi?.provisionedAgents ?? [];
-            const runPromptCalls = ctx.fakes.pi?.runPromptCalls ?? [];
-            if (provisionedAgents.length !== 0 || runPromptCalls.length !== 0) {
+            const turns = ctx.fakes.pi?.turns ?? [];
+            if (provisionedAgents.length !== 0 || turns.length !== 0) {
               throw new Error(
-                `Expected no Pi calls, got provisioned=${provisionedAgents.length}, turn=${runPromptCalls.length}.`,
+                `Expected no Pi calls, got provisioned=${provisionedAgents.length}, turn=${turns.length}.`,
               );
             }
           }),

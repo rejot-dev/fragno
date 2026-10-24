@@ -20,5 +20,11 @@ because Pi sessions were replaced by defined agents and earlier versions no long
 scope share the agent's conversation, so each message names its chat; each turn still runs with the
 linked user's permissions.
 
+Version 1.3.0 submits each message to the `telegram` agent and sleeps until its turn ends, because
+`pi.runPrompt` was removed and earlier versions no longer answer. Its routes send the agent's
+`turn.completed`, `turn.failed`, `turn.aborted`, and `queue.dropped` events back to the workflow run
+that submitted the prompt. For a completed turn, the run reads the answer with `pi.listMessages` as
+the linked user, who needs `pi.read`, and sends it to the chat.
+
 Install this item into an organization, project, or personal automation scope. Telegram connection
 availability is configured separately.
