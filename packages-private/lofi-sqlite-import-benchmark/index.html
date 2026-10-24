@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lofi SQLite import benchmark</title>
+    <style>
+      body {
+        font:
+          14px/1.4 system-ui,
+          sans-serif;
+        margin: 2rem;
+        max-width: 72rem;
+      }
+      button {
+        margin-right: 0.5rem;
+      }
+      table {
+        border-collapse: collapse;
+        margin: 0.5rem 0;
+      }
+      td,
+      th {
+        border: 1px solid #ccc;
+        padding: 0.2rem 0.5rem;
+        text-align: left;
+        font-variant-numeric: tabular-nums;
+      }
+      textarea {
+        width: 100%;
+        font-family: ui-monospace, monospace;
+      }
+      pre {
+        background: #f4f4f4;
+        padding: 0.5rem;
+        overflow: auto;
+        max-height: 30rem;
+      }
+      #errors {
+        color: #b00;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Lofi SQLite import benchmark</h1>
+    <p id="fixture">Loading fixture…</p>
+    <p>
+      <label
+        ><input id="views" type="checkbox" checked /> Project Backoffice's views (Pi agents, Pi
+        agent turns, integration connections)</label
+      >
+    </p>
+    <p>
+      <button id="import" disabled>Import</button>
+      <button id="download" disabled>Download only</button>
+      <button id="reset" disabled>Delete OPFS data</button>
+      <button id="copy" disabled>Copy results JSON</button>
+    </p>
+    <table id="stats"></table>
+    <pre id="errors"></pre>
+    <h2>SQL</h2>
+    <textarea id="sql" rows="4"></textarea>
+    <p><button id="run" disabled>Run</button> <span id="sql-timing"></span></p>
+    <pre id="sql-result"></pre>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

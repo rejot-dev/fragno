@@ -1,25 +1,13 @@
-import { FRAGNO_OUTBOX_PAGE_SIZE } from "@fragno-dev/db/outbox";
+import {
+  fetchFragnoInternalDescription,
+  FRAGNO_OUTBOX_PAGE_SIZE,
+  resolveFragnoInternalUrls,
+  type FragnoInternalDescription,
+} from "@fragno-dev/db/outbox";
 
 import type { FragnoOutboxCheckpoint } from "../checkpoint";
 import { FragnoOutboxProtocolError } from "../outbox-stream";
 import { rethrowOutboxNetworkFailure } from "../outbox-transport-error";
-
-export type FragnoInternalDescription = {
-  adapterIdentity: string;
-  currentVersionstamp: string | null;
-  fragments: Array<{ name: string; mountRoute: string }>;
-  schemas: Array<{
-    name: string;
-    namespace: string | null;
-    version: number;
-    tables: string[];
-  }>;
-  routes: {
-    internal: "/_internal";
-    outbox?: "/_internal/outbox";
-    outboxStream?: "/_internal/outbox/stream";
-  };
-};
 
 /** Typed Fetch access to the trusted Fragno internal routes used by outbox synchronization. */
 export class FragnoInternalFetcher {
@@ -30,28 +18,19 @@ export class FragnoInternalFetcher {
   readonly #outboxStreamUrl: URL;
 
   constructor(options: { baseUrl: string | URL; fetch: typeof globalThis.fetch }) {
-    const baseUrl = new URL(options.baseUrl, globalThis.location?.href);
-    if (baseUrl.protocol !== "http:" && baseUrl.protocol !== "https:") {
-      throw new Error("Fragno outbox synchronization requires an HTTP(S) base URL.");
-    }
-    baseUrl.hash = "";
-    baseUrl.pathname = baseUrl.pathname.replace(/\/+$/, "");
-
-    const internalUrl = new URL(baseUrl);
-    internalUrl.pathname = `${baseUrl.pathname}/_internal`;
-    const outboxStreamUrl = new URL(internalUrl);
-    outboxStreamUrl.pathname = `${internalUrl.pathname}/outbox/stream`;
-
-    this.baseUrl = baseUrl.toString();
+    const urls = resolveFragnoInternalUrls(options.baseUrl);
+    this.baseUrl = urls.baseUrl;
     this.#fetch = options.fetch;
-    this.#describeUrl = internalUrl;
-    this.#outboxStreamUrl = outboxStreamUrl;
+    this.#describeUrl = urls.internal;
+    this.#outboxStreamUrl = urls.outboxStream;
   }
 
   async describe(options: { signal?: AbortSignal } = {}): Promise<FragnoInternalDescription> {
-    const response = await this.#get(this.#describeUrl, options.signal);
-    const description = (await response.json()) as FragnoInternalDescription;
-    return description;
+    return await fetchFragnoInternalDescription({
+      internalUrl: this.#describeUrl,
+      fetch: this.#fetch,
+      signal: options.signal,
+    });
   }
 
   async openOutboxStream(options: {
@@ -87,13 +66,5 @@ export class FragnoInternalFetcher {
       throw new Error("Fragno outbox stream response has no body.");
     }
     return response.body;
-  }
-
-  async #get(url: URL, signal: AbortSignal | undefined): Promise<Response> {
-    const response = await this.#fetch(url, { signal });
-    if (!response.ok) {
-      throw new Error(`Fragno internal request failed: ${response.status} ${response.statusText}`);
-    }
-    return response;
   }
 }

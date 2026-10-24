@@ -4,6 +4,7 @@ import { cloneProjectionRowSnapshot } from "../../local/projection";
 import type {
   LofiAdapter,
   LofiMutation,
+  LofiOutboxWriter,
   LofiProjectionRowLookup,
   LofiProjectionRowSnapshot,
   LofiQueryEngineOptions,
@@ -54,6 +55,11 @@ export class StackedLofiAdapter
     this.base = options.base;
     this.overlay = options.overlay;
     this.schemaMap = schemaMap;
+  }
+
+  /** Each entry commits on its own, so a failed batch keeps the entries applied before it. */
+  applyOutboxBatch<T>(apply: (writer: LofiOutboxWriter) => Promise<T>): Promise<T> {
+    return apply(this);
   }
 
   async applyOutboxEntry(options: {

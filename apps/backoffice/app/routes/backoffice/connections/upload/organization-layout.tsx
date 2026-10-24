@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Outlet, redirect, useLoaderData, useMatches, type LoaderFunctionArgs } from "react-router";
 
 import type { UploadAdminConfigResponse } from "@/fragno/upload";
-import { fetchUploadAdapterIdentity } from "@/fragno/upload/tanstack/server";
+import { fetchUploadAdapterIdentity } from "@/fragno/upload/adapter-identity.server";
 
 import { uploadConnection } from "./connection.server";
 import type { UploadLayoutContext } from "./layout-context";

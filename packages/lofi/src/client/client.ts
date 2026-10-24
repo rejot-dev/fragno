@@ -6,11 +6,13 @@ import type { OutboxEntry, OutboxMutation, OutboxTruncateNotification } from "@f
 import { decodeOutboxPayload, resolveOutboxRefs } from "../outbox";
 import { assertNoUnresolvedDbNowMutations } from "../query/mutation-values";
 import type {
+  LofiCatchUpProgress,
   LofiClientOptions,
   LofiEphemeralMutationBatch,
   LofiEphemeralStreamPolicy,
   LofiMutation,
   LofiOutboxTransport,
+  LofiOutboxWriter,
   LofiSyncResult,
 } from "../types";
 
@@ -24,6 +26,22 @@ type OutboxPageResult = {
   entries: OutboxEntry[];
   lastVersionstamp?: string;
 };
+
+type AppliedEntry = {
+  applied: boolean;
+  appliedDurableMutations: number;
+  lastVersionstamp: string;
+};
+
+/**
+ * What the stream parser reports: an entry, or that it reported every entry received so far and
+ * the next one waits on the network.
+ */
+type OutboxStreamEvent =
+  | { type: "started"; catchUpTargetVersionstamp: string | null }
+  | { type: "entry"; entry: OutboxStreamEntry }
+  | { type: "caught-up" }
+  | { type: "waiting" };
 
 type OutboxFetchOptions = {
   cursor?: string;
@@ -69,6 +87,8 @@ export class LofiClient {
   private readonly onSyncApplied?: (result: LofiSyncResult) => void | Promise<void>;
   private readonly onSyncComplete?: (result: LofiSyncResult) => void | Promise<void>;
   private readonly onError?: (error: unknown) => void;
+  private readonly onStopped?: (error: unknown) => void;
+  private readonly onCatchUp?: (progress: LofiCatchUpProgress) => void;
   private readonly defaultSignal?: AbortSignal;
 
   private intervalId: ReturnType<typeof setInterval> | undefined;
@@ -107,6 +127,8 @@ export class LofiClient {
     this.onSyncApplied = options.onSyncApplied;
     this.onSyncComplete = options.onSyncComplete;
     this.onError = options.onError;
+    this.onStopped = options.onStopped;
+    this.onCatchUp = options.onCatchUp;
     this.defaultSignal = options.signal;
   }
 
@@ -271,30 +293,25 @@ export class LofiClient {
           break;
         }
 
-        for (const entry of page.entries) {
-          if (signal.aborted) {
-            return currentResult(true);
-          }
-
-          const result = await this.applyEntry({
-            entry,
-            cursorKey,
-            sourceKey,
-            previousReadCursor: cursor,
-            deliverEphemeral,
-          });
-
+        const results = await this.applyBatch({
+          entries: page.entries,
+          cursorKey,
+          sourceKey,
+          previousReadCursor: cursor,
+          deliverEphemeral,
+          signal,
+        });
+        for (const result of results) {
           lastVersionstamp = result.lastVersionstamp;
           cursor = result.lastVersionstamp;
-
           if (result.applied) {
             appliedEntries += 1;
             appliedDurableMutations += result.appliedDurableMutations;
           }
+        }
 
-          if (signal.aborted) {
-            return currentResult(true);
-          }
+        if (signal.aborted) {
+          return currentResult(true);
         }
 
         if (page.entries.length < this.limit) {
@@ -374,33 +391,90 @@ export class LofiClient {
           );
         }
 
-        for await (const entry of parseOutboxEntryStream(response, signal)) {
-          if (signal.aborted) {
-            return;
-          }
-
-          const result = await this.applyEntry({
-            entry,
+        let batch: OutboxStreamEntry[] = [];
+        // The versions this stream replays before it reaches the entries that existed at its start.
+        let catchUp: { from: bigint; to: bigint } | null = null;
+        const applyBatch = async () => {
+          const entries = batch;
+          batch = [];
+          const results = await this.applyBatch({
+            entries,
             cursorKey,
             sourceKey,
             previousReadCursor: cursor,
             deliverEphemeral: true,
+            signal,
           });
-          cursor = result.lastVersionstamp;
+          const last = results.at(-1);
+          if (!last) {
+            return;
+          }
+          cursor = last.lastVersionstamp;
+          const applied = results.filter((result) => result.applied);
           const syncResult: LofiSyncResult = {
-            appliedEntries: result.applied ? 1 : 0,
-            lastVersionstamp: result.lastVersionstamp,
+            appliedEntries: applied.length,
+            lastVersionstamp: last.lastVersionstamp,
             ...(this.ephemeralTableKeys.size > 0
-              ? { appliedDurableMutations: result.appliedDurableMutations }
+              ? {
+                  appliedDurableMutations: applied.reduce(
+                    (count, result) => count + result.appliedDurableMutations,
+                    0,
+                  ),
+                }
               : {}),
           };
-
-          if (result.applied) {
+          if (applied.length > 0) {
             await this.onSyncApplied?.(syncResult);
           }
           await this.onSyncComplete?.(syncResult);
+          if (catchUp) {
+            this.onCatchUp?.({
+              status: "catching-up",
+              fraction: catchUpFraction(catchUp, transactionVersion(last.lastVersionstamp)),
+            });
+          }
+        };
+
+        // Applies what has arrived, up to `limit` entries at a time. During a catch-up the network
+        // outpaces the adapter, so batches fill up; a live change is applied as soon as it arrives.
+        for await (const event of parseOutboxStream(response, signal)) {
+          if (signal.aborted) {
+            return;
+          }
+          if (event.type === "started") {
+            const target = event.catchUpTargetVersionstamp;
+            if (target !== null && (cursor === undefined || cursor < target)) {
+              catchUp = {
+                from: cursor === undefined ? -1n : transactionVersion(cursor),
+                to: transactionVersion(target),
+              };
+              this.onCatchUp?.({ status: "catching-up", fraction: 0 });
+            }
+            continue;
+          }
+          if (event.type === "caught-up") {
+            // The frame can arrive with the last entries, so they are applied before it is reported.
+            if (batch.length > 0) {
+              await applyBatch();
+            }
+            catchUp = null;
+            this.onCatchUp?.({ status: "caught-up" });
+            continue;
+          }
+          if (event.type === "entry") {
+            batch.push(event.entry);
+            if (batch.length < this.limit) {
+              continue;
+            }
+          }
+          if (batch.length > 0) {
+            await applyBatch();
+          }
         }
         // The parser completes normally only after a planned lease rotation.
+        if (batch.length > 0 && !signal.aborted) {
+          await applyBatch();
+        }
         continue;
       } catch (error) {
         if (signal.aborted || isAbortError(error)) {
@@ -418,23 +492,81 @@ export class LofiClient {
     }
   }
 
+  /**
+   * Applies consecutive entries in one adapter batch and returns what each did, stopping early on
+   * abort. The cursor is written once per batch. Callers report the results only after the batch
+   * commits, so nothing observes entries an adapter has not committed yet.
+   */
+  private async applyBatch({
+    entries,
+    cursorKey,
+    sourceKey,
+    previousReadCursor,
+    deliverEphemeral,
+    signal,
+  }: {
+    entries: readonly OutboxStreamEntry[];
+    cursorKey: string;
+    sourceKey: string;
+    previousReadCursor: string | undefined;
+    deliverEphemeral: boolean;
+    signal: AbortSignal;
+  }): Promise<AppliedEntry[]> {
+    try {
+      return await this.adapter.applyOutboxBatch(async (writer) => {
+        const results: AppliedEntry[] = [];
+        // Adapters that commit each entry on their own keep the entries before a failure, so the
+        // cursor records them; a batch that rolls back takes this write with it.
+        const writeCursor = async () => {
+          const last = results.at(-1);
+          const checkpoint = last && this.getSafeCheckpoint(last.lastVersionstamp);
+          if (checkpoint !== undefined) {
+            await writer.setMeta(cursorKey, checkpoint);
+          }
+        };
+        try {
+          for (const entry of entries) {
+            if (signal.aborted) {
+              break;
+            }
+            results.push(
+              await this.applyEntry({
+                entry,
+                writer,
+                sourceKey,
+                previousReadCursor: results.at(-1)?.lastVersionstamp ?? previousReadCursor,
+                deliverEphemeral,
+              }),
+            );
+          }
+        } catch (error) {
+          await writeCursor().catch(() => {});
+          throw error;
+        }
+        await writeCursor();
+        return results;
+      });
+    } catch (error) {
+      // The adapter may have kept none of the batch, so resume from its start; the adapter skips
+      // the entries it kept.
+      this.readCursor = previousReadCursor;
+      throw error;
+    }
+  }
+
   private async applyEntry({
     entry,
-    cursorKey,
+    writer,
     sourceKey,
     previousReadCursor,
     deliverEphemeral,
   }: {
     entry: OutboxStreamEntry;
-    cursorKey: string;
+    writer: LofiOutboxWriter;
     sourceKey: string;
     previousReadCursor: string | undefined;
     deliverEphemeral: boolean;
-  }): Promise<{
-    applied: boolean;
-    appliedDurableMutations: number;
-    lastVersionstamp: string;
-  }> {
+  }): Promise<AppliedEntry> {
     const operations = decodeOutboxEntry(entry);
     const resolvedOperations = operations.map((operation) =>
       operation.op === "truncate" || !entry.refMap
@@ -472,7 +604,7 @@ export class LofiClient {
 
     const durableResult =
       durableMutations.length > 0
-        ? await this.adapter.applyOutboxEntry({
+        ? await writer.applyOutboxEntry({
             sourceKey,
             versionstamp: entry.versionstamp,
             uowId: entry.uowId,
@@ -589,10 +721,6 @@ export class LofiClient {
     }
     applyEphemeralBatch(pendingEphemeralMutations);
 
-    const safeCheckpoint = this.getSafeCheckpoint(entry.versionstamp);
-    if (safeCheckpoint !== undefined) {
-      await this.adapter.setMeta(cursorKey, safeCheckpoint);
-    }
     this.readCursor = entry.versionstamp;
     this.readCursorInitialized = true;
 
@@ -662,6 +790,7 @@ export class LofiClient {
   private handleLoopError(error: unknown): void {
     this.stop();
     this.onError?.(error);
+    this.onStopped?.(error);
   }
 }
 
@@ -706,10 +835,10 @@ function toLofiMutation(mutation: OutboxMutation): LofiMutation {
   };
 }
 
-async function* parseOutboxEntryStream(
+async function* parseOutboxStream(
   response: Response,
   signal: AbortSignal,
-): AsyncGenerator<OutboxStreamEntry> {
+): AsyncGenerator<OutboxStreamEvent> {
   if (!response.body) {
     throw new Error("Invalid outbox stream response body");
   }
@@ -731,9 +860,19 @@ async function* parseOutboxEntryStream(
 
   try {
     while (!signal.aborted) {
+      // A read settles at once when the stream already holds data, so losing this race means the
+      // next frame waits on the network. A failed read is rethrown below.
+      const read = reader.read();
+      const notReceived = Symbol("not received");
+      if (
+        (await Promise.race([read, Promise.resolve(notReceived)]).catch(() => undefined)) ===
+        notReceived
+      ) {
+        yield { type: "waiting" };
+      }
       let chunk: ReadableStreamReadResult<Uint8Array>;
       try {
-        chunk = await reader.read();
+        chunk = await read;
       } catch (error) {
         if (signal.aborted || isAbortError(error)) {
           throw error;
@@ -761,10 +900,13 @@ async function* parseOutboxEntryStream(
             throw new Error("Duplicate Lofi outbox started frame.");
           }
           started = true;
+          yield { type: "started", catchUpTargetVersionstamp: frame.catchUpTargetVersionstamp };
         } else if (frame.type === "rotate") {
           rotated = true;
         } else if (frame.type === "entry") {
-          yield frame.entry;
+          yield { type: "entry", entry: frame.entry };
+        } else if (frame.type === "caught-up") {
+          yield { type: "caught-up" };
         }
       }
     }
@@ -779,6 +921,16 @@ async function* parseOutboxEntryStream(
     }
     reader.releaseLock();
   }
+}
+
+/** The transaction version that leads a versionstamp; consecutive transactions count up by one. */
+function transactionVersion(versionstamp: string): bigint {
+  return BigInt(`0x${versionstamp.slice(0, 20)}`);
+}
+
+function catchUpFraction(catchUp: { from: bigint; to: bigint }, applied: bigint): number {
+  const fraction = Number(applied - catchUp.from) / Number(catchUp.to - catchUp.from);
+  return Math.min(1, Math.max(0, fraction));
 }
 
 class OutboxStreamReadError extends Error {

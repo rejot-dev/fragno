@@ -28,11 +28,15 @@ const createStubBaseAdapter = (
     }),
   };
 
-  return {
+  const adapter = {
     applyOutboxEntry: async () => ({ applied: true }),
     getMeta: async () => undefined,
     setMeta: async () => {},
     createQueryEngine: () => query,
+  };
+  return {
+    ...adapter,
+    applyOutboxBatch: (apply) => apply(adapter),
   } as LofiAdapter & LofiQueryableAdapter;
 };
 

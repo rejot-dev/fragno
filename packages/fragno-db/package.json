@@ -33,6 +33,10 @@
       "types": "./dist/database-namespace.d.ts",
       "default": "./dist/database-namespace.js"
     },
+    "./naming": {
+      "types": "./dist/naming/sql-naming.d.ts",
+      "default": "./dist/naming/sql-naming.js"
+    },
     "./schema": {
       "types": "./dist/schema/create.d.ts",
       "default": "./dist/schema/create.js"

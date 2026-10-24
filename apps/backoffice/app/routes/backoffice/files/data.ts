@@ -10,8 +10,8 @@ import type {
 } from "@/components/backoffice/files-explorer";
 import type { FilesExplorerSearchGroup } from "@/components/backoffice/files-explorer/view";
 import type { FileTreeEntry } from "@/file-collection/file-collection";
-import type { UploadCollectionSource } from "@/fragno/upload/tanstack/browser-database";
-import { fetchUploadAdapterIdentity } from "@/fragno/upload/tanstack/server";
+import { fetchUploadAdapterIdentity } from "@/fragno/upload/adapter-identity.server";
+import type { UploadReplicaSource } from "@/fragno/upload/lofi/replica";
 
 import {
   createFilesOverviewCollections,
@@ -26,7 +26,7 @@ export type FilesExplorerSourceSnapshot = FilesExplorerSource & {
   synchronization?: {
     kind: "upload";
     provider: string;
-    source: UploadCollectionSource;
+    source: UploadReplicaSource;
   };
 };
 
@@ -225,7 +225,7 @@ async function attachClientSynchronization({
     const source = {
       scope,
       adapterIdentity: await fetchUploadAdapterIdentity(request, context, scope),
-    } satisfies UploadCollectionSource;
+    } satisfies UploadReplicaSource;
 
     return {
       sources: collections.map(({ registration, source: fileSource }) => {

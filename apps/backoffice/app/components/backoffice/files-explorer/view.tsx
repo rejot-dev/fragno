@@ -11,12 +11,7 @@ import { Form, Link, type To } from "react-router";
 import { artifactKind } from "@/artifacts/kinds";
 import type { FileTree, FileTreeEntry } from "@/file-collection/file-collection";
 
-import {
-  resolveFilesContentRenderer,
-  type FilesPagePreview,
-  type FilesPages,
-  type WorkflowFileRouting,
-} from "./content-renderers";
+import { resolveFilesContentRenderer, type WorkflowFileRouting } from "./content-renderers";
 
 type FilesExplorerRootKind = "static" | "upload" | "custom";
 type FilesExplorerPersistence = "ephemeral" | "persistent" | "session";
@@ -115,7 +110,8 @@ export type FilesExplorerViewProps = {
   emptySelection?: ReactNode;
   contentSearch?: FilesExplorerContentSearch;
   workflowRouting: WorkflowFileRouting;
-  pages: FilesPages;
+  /** Where a `/workspace` page file opens; null in hosts where pages do not open. */
+  pageHref: ((sourcePath: string) => string) | null;
 };
 
 export function FilesExplorerView({
@@ -136,7 +132,7 @@ export function FilesExplorerView({
   emptySelection = null,
   contentSearch,
   workflowRouting,
-  pages,
+  pageHref,
 }: FilesExplorerViewProps) {
   const [isMobileTreeCollapsed, setIsMobileTreeCollapsed] = useState(false);
   const { tree, selectedDetail } = useMemo(
@@ -248,7 +244,7 @@ export function FilesExplorerView({
                   rootIcon={rootIcon}
                   headingLevel={detailHeadingLevel}
                   workflowRouting={workflowRouting}
-                  pages={pages}
+                  pageHref={pageHref}
                 />
               ) : (
                 emptySelection
@@ -371,14 +367,14 @@ function ExplorerNodeDetailPanel({
   rootIcon,
   headingLevel,
   workflowRouting,
-  pages,
+  pageHref,
 }: {
   detail: ExplorerNodeDetail;
   buildFileHref?: (path: string, disposition: "attachment" | "inline") => string;
   rootIcon: IconName;
   headingLevel: 2 | 3 | 4;
   workflowRouting: WorkflowFileRouting;
-  pages: FilesPages;
+  pageHref: ((sourcePath: string) => string) | null;
 }) {
   const selectedWorkflowRouting: WorkflowFileRouting =
     workflowRouting.status === "ready"
@@ -391,17 +387,12 @@ function ExplorerNodeDetailPanel({
           ),
         }
       : workflowRouting;
-  const selectedPage: FilesPagePreview =
-    pages.status === "ready"
-      ? {
-          status: "ready",
-          collections: pages.collections,
-          href:
-            artifactKind(detail.node.path) === "page" && detail.node.path.startsWith("/workspace/")
-              ? pages.pageHref(detail.node.path)
-              : null,
-        }
-      : pages;
+  const selectedPageHref =
+    pageHref !== null &&
+    artifactKind(detail.node.path) === "page" &&
+    detail.node.path.startsWith("/workspace/")
+      ? pageHref(detail.node.path)
+      : null;
   const fileHrefs =
     detail.node.kind === "file" && buildFileHref
       ? {
@@ -416,7 +407,7 @@ function ExplorerNodeDetailPanel({
     textContent: detail.textContent,
     inlineHref: fileHrefs?.inline ?? null,
     workflowRouting: selectedWorkflowRouting,
-    page: selectedPage,
+    pageHref: selectedPageHref,
   };
   const contentRenderer = resolveFilesContentRenderer(contentPreview);
   const contentPreamble = contentRenderer?.renderBefore?.(contentPreview) ?? null;

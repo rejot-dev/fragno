@@ -31,6 +31,7 @@ export type {
   LofiTypedMutation,
   LofiOutboxTransport,
   LofiOutboxTransportOptions,
+  LofiOutboxWriter,
   LofiPollOutboxOptions,
   LofiQueryEngineOptions,
   LofiQueryableAdapter,
@@ -38,6 +39,7 @@ export type {
   LofiResolvedTypedMutation,
   LofiSchemaRegistration,
   LofiStreamOutboxOptions,
+  LofiCatchUpProgress,
   LofiSyncResult,
 } from "./types";
 

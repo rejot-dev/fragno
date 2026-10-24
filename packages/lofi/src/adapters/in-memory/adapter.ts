@@ -1,33 +1,24 @@
 import type { AnySchema, AnyTable } from "@fragno-dev/db/schema";
 
 import {
-  assertSynchronousProjectionResult,
   cloneProjectionRowSnapshot,
-  createMutationMatcher,
-  createProjectionReadApi,
-  createProjectionTx,
   createSchemaMaps,
   getKnownMutation,
-  getLocalMutationTarget,
-  getLocalReadTarget,
-  isThenable,
   mergeSchemaLists,
   normalizeLofiSchemaName,
-  resolveLofiSchemaName,
   projectionRowToRecord,
-  resolveProjectionReadPlan,
   withLofiSchemaName,
   type LofiSchemaNameAliases,
   type ProjectionQueuedMutation,
 } from "../../local/projection";
+import { runLocalProjections, type LocalProjectionTarget } from "../../local/run-projections";
 import { resolveMutationValues, resolveMutations } from "../../query/mutation-values";
 import type {
   AnyLofiLocalProjection,
   InMemoryLofiAdapterOptions,
   LofiAdapter,
-  LofiLocalProjectionRead,
   LofiMutation,
-  LofiProjectionReadRequest,
+  LofiOutboxWriter,
   LofiProjectionRowLookup,
   LofiProjectionRowSnapshot,
   LofiQueryEngineOptions,
@@ -162,6 +153,11 @@ export class InMemoryLofiAdapter
         endpointName: this.endpointName,
         schemas: allSchemas,
       });
+  }
+
+  /** Each entry commits on its own, so a failed batch keeps the entries applied before it. */
+  applyOutboxBatch<T>(apply: (writer: LofiOutboxWriter) => Promise<T>): Promise<T> {
+    return apply(this);
   }
 
   async applyOutboxEntry(options: {
@@ -336,13 +332,6 @@ export class InMemoryLofiAdapter
     }
 
     const projectionMutations: LofiMutation[] = [];
-    const projectionSource = {
-      sourceKey: source.sourceKey,
-      uowId: source.uowId,
-      versionstamp: source.versionstamp,
-    };
-    const read: LofiLocalProjectionRead = createProjectionReadApi();
-    const match = createMutationMatcher(mutations, this.schemaNameAliases);
 
     const ensureStageRow = async (options: {
       schemaName: string;
@@ -392,40 +381,19 @@ export class InMemoryLofiAdapter
       return load;
     };
 
-    const resolveRead = async ({
-      schema,
-      tableName,
-      externalId,
-    }: LofiProjectionReadRequest<unknown>): Promise<unknown> => {
-      const target = getLocalReadTarget({
-        schema,
-        tableName,
-        localSchemaMap: this.localSchemaMap,
-        localTableMap: this.localTableMap,
-        schemaNameAliases: this.schemaNameAliases,
-      });
+    const readRow = async (target: LocalProjectionTarget, externalId: string) => {
       const row = await ensureStageRow({
         schemaName: target.schema.name,
-        tableName,
+        tableName: target.table.name,
         externalId,
       });
       return row ? projectionRowToRecord(row, target.table) : undefined;
     };
 
-    const writeMutation = async (mutation: ProjectionQueuedMutation): Promise<void> => {
-      const targetSchema = this.localSchemaMap.get(
-        resolveLofiSchemaName(mutation.schema, this.schemaNameAliases),
-      );
-      if (!targetSchema) {
-        throw new Error(`Projection writes must target a local schema: ${mutation.schema}`);
-      }
-      const target = getLocalMutationTarget({
-        schema: targetSchema,
-        tableName: mutation.table,
-        localSchemaMap: this.localSchemaMap,
-        localTableMap: this.localTableMap,
-        schemaNameAliases: this.schemaNameAliases,
-      });
+    const writeMutation = async (
+      mutation: ProjectionQueuedMutation,
+      target: LocalProjectionTarget,
+    ): Promise<void> => {
       const key = rowKey(target.schema.name, mutation.table, mutation.externalId);
       const existing =
         mutation.op === "update"
@@ -472,41 +440,16 @@ export class InMemoryLofiAdapter
       }
     };
 
-    for (const projection of this.projections) {
-      let retrieved: unknown;
-      if (projection.retrieve) {
-        const readPlan = projection.retrieve({
-          mutations,
-          source: projectionSource,
-          match,
-          read,
-        });
-        assertSynchronousProjectionResult(readPlan, "retrieve");
-        if (readPlan === undefined) {
-          continue;
-        }
-        const resolved: unknown = resolveProjectionReadPlan(readPlan, resolveRead);
-        retrieved = isThenable(resolved) ? await resolved : resolved;
-      }
-
-      const tx = createProjectionTx({
-        versionstamp: source.versionstamp,
-        localSchemaMap: this.localSchemaMap,
-        localTableMap: this.localTableMap,
-        schemaNameAliases: this.schemaNameAliases,
-      });
-      const mutateResult = projection.mutate({
-        mutations,
-        source: projectionSource,
-        match,
-        retrieved,
-        tx,
-      });
-      assertSynchronousProjectionResult(mutateResult, "mutate");
-      for (const projectionMutation of tx.drainMutations()) {
-        await writeMutation(projectionMutation);
-      }
-    }
+    await runLocalProjections({
+      projections: this.projections,
+      mutations,
+      source,
+      localSchemaMap: this.localSchemaMap,
+      localTableMap: this.localTableMap,
+      schemaNameAliases: this.schemaNameAliases,
+      readRow,
+      writeMutation,
+    });
 
     return projectionMutations;
   }

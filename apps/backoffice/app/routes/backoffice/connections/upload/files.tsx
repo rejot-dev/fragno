@@ -1,5 +1,7 @@
+import type { LofiSqliteReplica } from "@fragno-dev/lofi/sqlite";
 import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
+import { BackofficeDownloadState } from "@fragno-private/design-system/download-state";
 import { Icon } from "@fragno-private/design-system/icon";
 import { Input } from "@fragno-private/design-system/input";
 import { formatBytes } from "@fragno-private/design-system/units";
@@ -28,9 +30,10 @@ import {
 } from "react-router";
 
 import { Collapsible, Progress } from "@base-ui/react";
-import { eq, useLiveQuery } from "@tanstack/react-db";
 
 import { isUploadDirectoryMarker } from "@/file-collection/create-upload-file-tree";
+import { LofiReplicaGate, useLofiSqliteReplicaStatus } from "@/fragno/lofi/replica-gate";
+import { useLofiSqliteRead } from "@/fragno/lofi/use-lofi-sqlite-read";
 import {
   UPLOAD_PROVIDER_DATABASE,
   UPLOAD_PROVIDER_R2,
@@ -39,12 +42,13 @@ import {
   type UploadProvider,
 } from "@/fragno/upload";
 import { createUploadClient } from "@/fragno/upload-client";
-import { toUploadFileRecord, type UploadFileRecord } from "@/fragno/upload/file-record";
+import type { UploadFileRecord } from "@/fragno/upload/file-record";
 import {
-  describeUploadCollectionSource,
-  getUploadBrowserDatabase,
-  type UploadCollectionSource,
-} from "@/fragno/upload/tanstack/browser-database";
+  describeUploadReplicaSource,
+  getUploadReplica,
+  readReadyUploadFiles,
+  type UploadReplicaSource,
+} from "@/fragno/upload/lofi/replica";
 
 import type { Route } from "./+types/files";
 import { uploadConnection } from "./connection.server";
@@ -678,7 +682,7 @@ export default function BackofficeOrganizationUploadFiles() {
     <ClientOnly fallback={UPLOAD_FILES_LOADING}>
       <Suspense fallback={UPLOAD_FILES_LOADING}>
         <SynchronizedUploadFiles
-          key={describeUploadCollectionSource(layoutContext.persistenceSource).resourceKey}
+          key={describeUploadReplicaSource(layoutContext.persistenceSource).resourceKey}
           source={layoutContext.persistenceSource}
         />
       </Suspense>
@@ -686,48 +690,51 @@ export default function BackofficeOrganizationUploadFiles() {
   );
 }
 
+const UPLOAD_FILES_DOWNLOAD_TITLE = "Downloading Upload files…";
+
 function UploadFilesLoading() {
   return (
-    <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
-      Loading local Upload file metadata…
+    <>
+      <BackofficeDownloadState title={UPLOAD_FILES_DOWNLOAD_TITLE} fraction={null} error={null} />
       <noscript>
-        <span className="mt-2 block text-red-700 dark:text-red-200">
+        <span className="mt-2 block text-sm text-red-700 dark:text-red-200">
           JavaScript is required to open Upload files.
         </span>
       </noscript>
-    </div>
+    </>
   );
 }
 
-function SynchronizedUploadFiles({ source }: { source: UploadCollectionSource }) {
-  const database = use(getUploadBrowserDatabase());
-  const collections = use(database.readyCollectionsFor(source));
-  const filesQuery = useLiveQuery({
-    query: (query) =>
-      query.from({ file: collections.files }).where(({ file }) => eq(file.status, "ready")),
-  });
-  const files = useMemo<UploadFileRecord[]>(() => {
-    const synchronizedFiles: UploadFileRecord[] = [];
+function SynchronizedUploadFiles({ source }: { source: UploadReplicaSource }) {
+  const replica = use(getUploadReplica(source));
 
-    for (const file of filesQuery.data ?? []) {
-      const synchronizedFile = toUploadFileRecord(file);
-      if (!isUploadDirectoryMarker(synchronizedFile)) {
-        synchronizedFiles.push(synchronizedFile);
-      }
-    }
+  return (
+    <LofiReplicaGate replica={replica} title={UPLOAD_FILES_DOWNLOAD_TITLE}>
+      <UploadReplicaFiles replica={replica} />
+    </LofiReplicaGate>
+  );
+}
 
-    return synchronizedFiles;
-  }, [filesQuery.data]);
-  const sourceError = filesQuery.isError ? collections.files.utils.getLastError() : undefined;
-  const filesError =
-    sourceError instanceof Error
-      ? sourceError.message
-      : filesQuery.isError
-        ? "Upload file metadata synchronization failed."
-        : null;
-  if (!filesQuery.isReady && files.length === 0) {
-    return <UploadFilesLoading />;
+function UploadReplicaFiles({ replica }: { replica: LofiSqliteReplica }) {
+  const status = useLofiSqliteReplicaStatus(replica);
+  const reading = useLofiSqliteRead(replica, "", (replica) => readReadyUploadFiles(replica, null));
+  const files = useMemo<UploadFileRecord[]>(
+    () =>
+      reading.status === "ready"
+        ? reading.data.filter((file) => !isUploadDirectoryMarker(file))
+        : [],
+    [reading],
+  );
+  // The replica has caught up, so the first read takes milliseconds.
+  if (reading.status === "loading") {
+    return null;
   }
+  const filesError =
+    reading.status === "error"
+      ? "Upload file metadata could not be read. Reload to try again."
+      : status.error !== null
+        ? `Upload file synchronization failed and is retrying: ${status.error}`
+        : null;
 
   return <UploadFilesView files={files} filesError={filesError} />;
 }

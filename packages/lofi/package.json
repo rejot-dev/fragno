@@ -32,6 +32,14 @@
     "./scenario": {
       "types": "./dist/scenario.d.ts",
       "default": "./dist/scenario.js"
+    },
+    "./sqlite": {
+      "types": "./dist/sqlite.d.ts",
+      "default": "./dist/sqlite.js"
+    },
+    "./sqlite/testing": {
+      "types": "./dist/sqlite/testing.d.ts",
+      "default": "./dist/sqlite/testing.js"
     }
   },
   "scripts": {
@@ -58,9 +66,26 @@
   "devDependencies": {
     "@fragno-private/typescript-config": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
+    "@journeyapps/wa-sqlite": "^1.4.1",
+    "@tanstack/browser-db-sqlite-persistence": "^0.2.36",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.19.7",
     "@vitest/coverage-istanbul": "^4.1.0",
+    "better-sqlite3": "^12.6.2",
+    "kysely": "^0.28.10",
     "tsdown": "^0.22.4",
     "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "@journeyapps/wa-sqlite": "^1.4.1",
+    "@tanstack/browser-db-sqlite-persistence": "^0.2.36"
+  },
+  "peerDependenciesMeta": {
+    "@journeyapps/wa-sqlite": {
+      "optional": true
+    },
+    "@tanstack/browser-db-sqlite-persistence": {
+      "optional": true
+    }
   }
 }

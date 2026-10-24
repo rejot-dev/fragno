@@ -24,6 +24,7 @@ export type LofiPollOutboxOptions = {
   pollIntervalMs?: number;
   outboxStreamUrl?: never;
   streamReconnectIntervalMs?: never;
+  onCatchUp?: never;
 };
 
 export type LofiStreamOutboxOptions = {
@@ -31,7 +32,22 @@ export type LofiStreamOutboxOptions = {
   outboxStreamUrl?: string;
   streamReconnectIntervalMs?: number;
   pollIntervalMs?: never;
+  /**
+   * Reports each stream's catch-up: when the server names the entries a new stream must replay,
+   * after every batch of them is applied, and once they all are. A reconnected stream catches up
+   * again.
+   */
+  onCatchUp?: (progress: LofiCatchUpProgress) => void;
 };
+
+/**
+ * How far a stream has replayed the entries that existed when it opened. `fraction` estimates the
+ * share applied from versionstamps, between 0 and 1. `caught-up` follows only after every one of
+ * them is applied.
+ */
+export type LofiCatchUpProgress =
+  | { status: "catching-up"; fraction: number }
+  | { status: "caught-up" };
 
 export type LofiOutboxTransportOptions = LofiPollOutboxOptions | LofiStreamOutboxOptions;
 
@@ -74,6 +90,8 @@ export type LofiClientBaseOptions = {
   onSyncApplied?: (result: LofiSyncResult) => void | Promise<void>;
   onSyncComplete?: (result: LofiSyncResult) => void | Promise<void>;
   onError?: (error: unknown) => void;
+  /** Called after `onError` when the error ends the sync loop; stream reconnects do not end it. */
+  onStopped?: (error: unknown) => void;
   signal?: AbortSignal;
 };
 
@@ -391,10 +409,20 @@ export type LofiAdapter = {
     uowId: string;
     mutations: LofiMutation[];
   }): Promise<{ applied: boolean }>;
+  /**
+   * Applies consecutive outbox entries, and the batch's cursor write, through `writer`, which is
+   * valid only until `apply` settles. An adapter may commit the batch as one transaction. When the
+   * batch fails, it keeps either none of it or the writes made before the failure, so callers resume
+   * from before the batch and rely on the adapter to skip the entries it kept.
+   */
+  applyOutboxBatch<T>(apply: (writer: LofiOutboxWriter) => Promise<T>): Promise<T>;
   applyMutations?(mutations: LofiMutation[]): Promise<void>;
   getMeta(key: string): Promise<string | undefined>;
   setMeta(key: string, value: string): Promise<void>;
 };
+
+/** Writes one batch of outbox entries; see `LofiAdapter.applyOutboxBatch`. */
+export type LofiOutboxWriter = Pick<LofiAdapter, "applyOutboxEntry" | "setMeta">;
 
 export type IndexedDbAdapterOptions = {
   dbName?: string;
