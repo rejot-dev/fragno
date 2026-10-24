@@ -132,8 +132,11 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
   // An alarm waiting for the agent's work to stop follows its wakeups and its session's end.
   readonly #waiters = new Set<PiAgentWaiter>();
   // Only the manager knows the queue; it publishes every change, and before each viewer connects.
+  // Hibernation forgets it, so the first publication after waking is taken whatever its revision.
   #queue: PiAgentWaitingQueue | null = null;
   readonly #viewers = new Set<PiAgentViewer>();
+  // Viewers a hibernated object kept, which lost their watch with its memory, until it opens again.
+  readonly #restoredViewers = new Set<PiAgentViewer>();
   // One watch serves every viewer, so each commit is encoded once. It stays open until it ends.
   #viewWatch: Promise<WatchHandle<ConversationView>> | null = null;
 
@@ -241,6 +244,8 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
           waiter.closed(end);
         }
       });
+      // Before anything else uses the agent, so no commit can reach the viewers as ops they miss.
+      await this.#serveRestoredViewers(opened.harness);
       return opened;
     })();
     this.#opening = opening;
@@ -500,31 +505,32 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
       return;
     }
     this.#queue = queue;
-    this.#broadcast({ type: "queue", paused: queue.paused, items: queue.items });
+    // Queue frames do not build on the view, so viewers still waiting for theirs get them too.
+    this.#broadcast({ type: "queue", paused: queue.paused, items: queue.items }, [
+      ...this.#viewers,
+      ...this.#restoredViewers,
+    ]);
   }
 
-  #broadcast(frame: PiAgentViewFrame) {
-    if (this.#viewers.size === 0) {
-      return;
-    }
-    const message = JSON.stringify(frame);
-    for (const viewer of this.#viewers) {
+  #broadcast(frame: PiAgentViewFrame, viewers: Iterable<PiAgentViewer>) {
+    let message: string | null = null;
+    for (const viewer of viewers) {
+      message ??= JSON.stringify(frame);
       viewer.send(message);
     }
   }
 
   // Concurrent connections share the opening watch; a watch that failed or ended is opened again.
-  #watchView(provisioned: ProvisionedPiAgent) {
+  #watchView(harness: Harness) {
     if (this.#viewWatch) {
       return this.#viewWatch;
     }
     const watching = (async () => {
-      const { harness } = await this.#open(provisioned);
       const watch = await (await harness.root(BACKGROUND_CONTEXT)).watch(BACKGROUND_CONTEXT);
       // Each frame's ops turn the previous frame's view into this one's, so viewers that start
       // from any delivered view stay exact.
       watch.start(async (_view, ops) => {
-        this.#broadcast({ type: "ops", ops });
+        this.#broadcast({ type: "ops", ops }, this.#viewers);
       });
       // The watch ends with the agent's session, as when the object closes; viewers reconnect.
       void watch.closed.then(() => {
@@ -575,15 +581,11 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
         viewer.close(PI_AGENT_WATCH_REFUSED, "Pi agent has no turns yet.");
         return () => {};
       }
-      watching = this.#watchView(this.#provisioned);
+      const { harness } = await this.#open(this.#provisioned);
+      watching = this.#watchView(harness);
       watch = await watching;
     } catch (cause) {
-      if (cause instanceof PathError) {
-        viewer.close(PI_AGENT_WATCH_REFUSED, PiConversationViewDamagedError.publicMessage);
-      } else {
-        this.#dependencies.report(cause, this.#provisioned?.config ?? null);
-        viewer.close(1011, "The conversation is unavailable.");
-      }
+      this.#closeUnservedViewer(viewer, cause);
       return () => {};
     }
     if (this.#viewWatch !== watching) {
@@ -606,6 +608,54 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
     return () => {
       this.#viewers.delete(viewer);
     };
+  }
+
+  /**
+   * Takes back a viewer that had its view when the object hibernated. Once the agent opens, the
+   * viewer gets the whole view again, then every change, until the returned function disconnects it.
+   */
+  restoreViewer(viewer: PiAgentViewer): () => void {
+    this.#restoredViewers.add(viewer);
+    // An agent opened before the viewer came back serves it now; an opening one serves it once open.
+    if (this.#opened) {
+      void this.#serveRestoredViewers(this.#opened.harness);
+    }
+    return () => {
+      this.#restoredViewers.delete(viewer);
+      this.#viewers.delete(viewer);
+    };
+  }
+
+  // Recovery on opening may commit what the viewers never saw, so each starts again from a whole view.
+  async #serveRestoredViewers(harness: Harness): Promise<void> {
+    if (this.#restoredViewers.size === 0) {
+      return;
+    }
+    let watch: WatchHandle<ConversationView>;
+    try {
+      watch = await this.#watchView(harness);
+    } catch (cause) {
+      for (const viewer of this.#restoredViewers) {
+        this.#closeUnservedViewer(viewer, cause);
+      }
+      this.#restoredViewers.clear();
+      return;
+    }
+    const message = JSON.stringify({ type: "view", view: watch.value } satisfies PiAgentViewFrame);
+    for (const viewer of this.#restoredViewers) {
+      viewer.send(message);
+      this.#viewers.add(viewer);
+    }
+    this.#restoredViewers.clear();
+  }
+
+  #closeUnservedViewer(viewer: PiAgentViewer, cause: unknown) {
+    if (cause instanceof PathError) {
+      viewer.close(PI_AGENT_WATCH_REFUSED, PiConversationViewDamagedError.publicMessage);
+    } else {
+      this.#dependencies.report(cause, this.#provisioned?.config ?? null);
+      viewer.close(1011, "The conversation is unavailable.");
+    }
   }
 
   async reset(config: PiAgentConfig): Promise<void> {
@@ -753,9 +803,25 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
   }
 }
 
+/** A view socket as the agent sends to it; a socket that closes meanwhile drops what it is sent. */
+function piAgentSocketViewer(socket: WebSocket): PiAgentViewer {
+  return {
+    send(message) {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(message);
+      }
+    },
+    close(code, reason) {
+      socket.close(code, reason);
+    },
+  };
+}
+
 /** One durable agent per object; scoped managers own agent discovery. */
 export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
   readonly #object: InMemoryPiObject;
+  // View sockets hibernate with the object, so they outlive this map, which `ctx` restores.
+  readonly #disconnects = new Map<WebSocket, Promise<() => void>>();
 
   constructor(
     state: DurableObjectState,
@@ -794,6 +860,15 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
       idFromConfig: (config) => env.PI.idFromName(piAgentObjectName(config)),
       nowEpochMs: Date.now,
     });
+    // An object woken from hibernation still has the view sockets it accepted; each had its view.
+    // Only sockets with their view stay accepted while the object can hibernate: one that has none
+    // yet is still connecting, which keeps the object awake, or was closed instead.
+    for (const socket of state.getWebSockets()) {
+      this.#disconnects.set(
+        socket,
+        Promise.resolve(this.#object.restoreViewer(piAgentSocketViewer(socket))),
+      );
+    }
   }
 
   async initialize(config: PiAgentConfig): Promise<void> {
@@ -872,32 +947,30 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
       );
     }
     const { 0: client, 1: server } = new WebSocketPair();
-    server.accept();
-    let open = true;
-    const connected = this.#object.connectViewer(
-      {
-        send(message) {
-          // A watch can still deliver while its socket closes.
-          if (open) {
-            server.send(message);
-          }
-        },
-        close(code, reason) {
-          open = false;
-          server.close(code, reason);
-        },
-      },
-      viewing,
-    );
-    function disconnect() {
-      open = false;
-      void connected.then((stop) => {
-        stop();
-      });
-    }
-    server.addEventListener("close", disconnect);
-    server.addEventListener("error", disconnect);
+    // Hibernatable: an idle agent's open sockets do not keep the object in memory.
+    this.ctx.acceptWebSocket(server);
+    this.#disconnects.set(server, this.#object.connectViewer(piAgentSocketViewer(server), viewing));
     return new Response(null, { status: 101, webSocket: client });
+  }
+  // Viewers send nothing; the socket carries only the agent's frames.
+  async webSocketMessage(): Promise<void> {}
+  async webSocketClose(socket: WebSocket, code: number, reason: string): Promise<void> {
+    this.#disconnect(socket);
+    try {
+      socket.close(code, reason);
+    } catch {
+      // A code such as 1005 cannot be sent back, and a socket may already have closed.
+    }
+  }
+  async webSocketError(socket: WebSocket): Promise<void> {
+    this.#disconnect(socket);
+  }
+  #disconnect(socket: WebSocket) {
+    const disconnecting = this.#disconnects.get(socket);
+    this.#disconnects.delete(socket);
+    void disconnecting?.then((disconnect) => {
+      disconnect();
+    });
   }
   async reset(config: PiAgentConfig): Promise<void> {
     await this.#object.reset(config);
