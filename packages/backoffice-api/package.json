@@ -1,6 +1,6 @@
 {
   "name": "@fragno-dev/backoffice-api",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Versioned contract for the Backoffice HTTP API: operations, zod schemas, and OpenAPI.",
   "homepage": "https://fragno.dev",
   "license": "MIT",
