@@ -34,7 +34,7 @@ describe("rebaseSubmitQueue", () => {
   it("applies truncate IDs before advancing the rebase cursor", async () => {
     const meta = new Map<string, string>();
     const applyOutboxEntry = vi.fn(async () => ({ applied: true }));
-    const adapter: LofiAdapter = {
+    const adapter: Omit<LofiAdapter, "applyOutboxBatch"> = {
       applyOutboxEntry,
       getMeta: async (key) => meta.get(key),
       setMeta: async (key, value) => {
@@ -77,7 +77,7 @@ describe("rebaseSubmitQueue", () => {
 
   it("removes confirmed commands after applying server entries", async () => {
     const meta = new Map<string, string>();
-    const adapter: LofiAdapter = {
+    const adapter: Omit<LofiAdapter, "applyOutboxBatch"> = {
       applyOutboxEntry: vi.fn(async () => ({ applied: true })),
       getMeta: async (key) => meta.get(key),
       setMeta: async (key, value) => {
