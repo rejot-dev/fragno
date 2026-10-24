@@ -1,11 +1,11 @@
 import type { BackofficeMeData } from "@/fragno/auth/contracts";
-import type { UploadCollectionSource } from "@/fragno/upload/tanstack/browser-database";
+import type { UploadReplicaSource } from "@/fragno/upload/lofi/replica";
 
 type BackofficeOrganization = BackofficeMeData["organizations"][number]["organization"];
 
 export type UploadLayoutContext = {
   origin: string;
   organization: BackofficeOrganization;
-  persistenceSource: UploadCollectionSource | null;
+  persistenceSource: UploadReplicaSource | null;
   persistenceError: string | null;
 };
