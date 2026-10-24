@@ -49,6 +49,8 @@ export type LofiSqliteReplica = {
   query<TColumns extends Record<string, LofiSqliteResultColumn>>(
     query: LofiSqliteQuery<TColumns>,
   ): Promise<LofiSqliteQueryRow<TColumns>[]>;
+  /** Runs `read` in a read transaction on this tab's connection, after its pending replication writes. */
+  read: SqliteLofiAdapter["read"];
   /** Calls `listener` after any tab applies outbox entries to this replica. */
   subscribe(listener: () => void): () => void;
   /**
@@ -237,6 +239,7 @@ export async function openLofiSqliteReplica(
     async query(query) {
       return decodeLofiSqliteQueryRows(query, await adapter.execute(query.sql, query.params));
     },
+    read: (read) => adapter.read(read),
     subscribe(listener) {
       listeners.add(listener);
       return () => {

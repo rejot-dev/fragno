@@ -763,6 +763,93 @@ changed since. A reconnect or a new writer catches up again without sending view
 - **JSON `null`.** A JSON column holding `null` is stored as SQL `NULL`, the same as a missing
   value.
 
+## ZQL views (experimental)
+
+`@fragno-dev/lofi/zql` runs [ZQL](https://zero.rocicorp.dev/docs/reading-data) queries against the
+SQLite replica and keeps their results up to date incrementally (IVM) as outbox entries arrive,
+instead of running them again. The replica and the IVM operators live in a dedicated worker, where
+OPFS can be read synchronously: operators read rows from SQLite as they need them, so memory grows
+with the open views, not with the replicated tables.
+
+The worker opens the replica, with the same options as `openLofiSqliteReplica`:
+
+```ts
+// replica.worker.ts
+import { serveLofiZqlWorker } from "@fragno-dev/lofi/zql/worker";
+
+void serveLofiZqlWorker({
+  baseUrl: "/api/my-fragment",
+  fetch: fetch.bind(globalThis),
+  schemas: [{ schema: appSchema }],
+  localSchemas: [],
+  projections: [],
+  ephemeralTables: [],
+  onError: (error) => console.error(error),
+  retryDelayMs: 5_000,
+});
+```
+
+The page connects once the worker has opened the replica, and queries it. A view's result is
+maintained while the view has listeners:
+
+```ts
+import { connectLofiZql } from "@fragno-dev/lofi/zql";
+
+const worker = new Worker(new URL("./replica.worker.ts", import.meta.url), { type: "module" });
+// Rejects if the replica fails to open.
+const replica = await connectLofiZql({ port: worker, schemas: [{ schema: appSchema }] });
+const app = replica.forSchema(appSchema);
+
+const $posts = app.store(
+  app.query.posts
+    .whereExists("author", (author) => author.where("active", true))
+    .related("author")
+    .orderBy("title", "asc")
+    .limit(20),
+);
+$posts.subscribe((result) => {
+  // { status: "loading" } | { status: "ready", data } | { status: "error", message }
+});
+```
+
+`replica.getStatus()` and `replica.subscribeStatus()` report the worker's replica status, as
+`LofiSqliteReplica`'s do, so a page can wait for the catch-up before showing views.
+
+Tables and columns are named as in the Fragno schema, and rows hold the replica's values: the
+external `id` (the primary key), `_internalId`, `_version`, dates and timestamps as epoch
+milliseconds, and references as the referenced row's `_internalId`. Each reference column gives a
+`one` relationship named like Fragno's forward relation (`authorId` → `author`). Binary columns are
+left out, and an integer beyond `Number.MAX_SAFE_INTEGER` fails the view. Because the replica holds
+whole tables, `NOT EXISTS` is allowed.
+
+### How views stay current
+
+The IVM operators are Zero's, vendored from [rocicorp/mono](https://github.com/rocicorp/mono) into
+`src/zql/vendor` by `scripts/vendor-zql.mjs`, which also lists the two patches applied to them.
+zqlite's `TableSource` reads the replica through a synchronous wa-sqlite connection.
+
+An operator pushing a change reads other rows, and must see the database as it was before that
+change. The replica has already committed the whole batch by then. So temporary triggers on this
+tab's connection record each touched row's values from before the batch, and the worker, holding a
+read lock, rewinds every source to those rows in an in-memory overlay and pushes the changes one at
+a time. Writes by another tab's connection are not recorded; `PRAGMA data_version` shows them, and
+the tab's views are built again instead.
+
+### Risks and follow-ups
+
+- **Reading tabs rebuild.** Only the writing tab updates views incrementally. Other tabs rebuild
+  every view after each batch and send every view again, even unchanged ones. Sending the writer's
+  recorded changes to them over the `BroadcastChannel` would let them push instead.
+- **Whole results cross to the page.** The worker posts a view's full data whenever it changes. For
+  large views, posting the changes and applying them in the page would cost less.
+- **No `many` relationships.** Only references give relationships, so a user's posts are queried
+  from `posts` by `authorId`, not with `related("posts")`.
+- **Relationship name collisions.** Fragno renames a forward relation whose name another reference
+  column already produced (`author2`); the ZQL types do not.
+- **No optimistic writes or submit.** As with the replica, views show server state only.
+- **Upstream drift.** The vendored engine is pinned to the commit in `src/zql/vendor/UPSTREAM`.
+  Re-run the script to update it; it fails when a patch no longer applies.
+
 ## Notes
 
 - `endpointName` must match between `LofiClient` and `IndexedDbAdapter`.
@@ -813,6 +900,10 @@ export const schema = schema("app", (s) =>
 - `@fragno-dev/lofi/sqlite/testing`: `openLofiSqliteMemoryFiles` opens replicas in Node on
   wa-sqlite's in-memory VFS, and `waitForLofiSqliteReplica` waits until a replica reaches a
   versionstamp - for scenario tests of apps that read a replica.
+- `@fragno-dev/lofi/zql`: `connectLofiZql`, `lofiZqlSchema` - live ZQL views of the replica, queried
+  from the page.
+- `@fragno-dev/lofi/zql/worker`: `serveLofiZqlWorker`, `serveLofiZql`, `wrapWaSqliteDatabase` - the
+  worker that maintains them.
 - `LofiOverlayManager` - overlay manager that rebuilds queued optimistic commands.
 - Outbox helpers: `decodeOutboxPayload`, `resolveOutboxRefs`, `outboxMutationsToUowOperations`.
 - Types: `LofiClientOptions`, `LofiAdapter`, `LofiMutation`, `LofiQueryInterface`, and more.

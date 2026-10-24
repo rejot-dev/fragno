@@ -170,6 +170,24 @@ export class SqliteLofiAdapter implements LofiAdapter {
     return this.#serialize(() => this.#database.execute(sql, params));
   }
 
+  /**
+   * Runs `read` in a transaction between replication writes. Once `read` has read, the connection
+   * holds its lock until `read` settles, so no connection writes meanwhile.
+   */
+  read<T>(read: (database: LofiSqliteDatabase) => Promise<T>): Promise<T> {
+    return this.#serialize(async () => {
+      await this.#database.execute("BEGIN");
+      try {
+        const result = await read(this.#database);
+        await this.#database.execute("COMMIT");
+        return result;
+      } catch (error) {
+        await this.#database.execute("ROLLBACK").catch(() => {});
+        throw error;
+      }
+    });
+  }
+
   applyOutboxEntry(options: OutboxEntryOptions): Promise<{ applied: boolean }> {
     return this.#transaction(async () => {
       const appliedThrough = this.#readAppliedThrough();

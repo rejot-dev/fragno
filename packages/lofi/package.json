@@ -40,6 +40,14 @@
     "./sqlite/testing": {
       "types": "./dist/sqlite/testing.d.ts",
       "default": "./dist/sqlite/testing.js"
+    },
+    "./zql": {
+      "types": "./dist/zql.d.ts",
+      "default": "./dist/zql.js"
+    },
+    "./zql/worker": {
+      "types": "./dist/zql-worker.d.ts",
+      "default": "./dist/zql-worker.js"
     }
   },
   "scripts": {
@@ -54,9 +62,14 @@
     "lint:fix:package": "node ../../scripts/run-package-quality.mjs lint:fix"
   },
   "dependencies": {
+    "@badrap/valita": "0.5.5",
+    "@databases/escape-identifier": "^1.0.3",
+    "@databases/sql": "^3.3.0",
     "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",
     "@fragno-dev/node": "workspace:*",
+    "@rocicorp/logger": "^6.2.0",
+    "compare-utf8": "^0.2.3",
     "fake-indexeddb": "^6.1.0",
     "gunshi": "^0.26.3",
     "idb": "^8.0.3",

@@ -8,6 +8,8 @@ export default defineConfig({
     "./src/scenario.ts",
     "./src/sqlite.ts",
     "./src/sqlite/testing.ts",
+    "./src/zql.ts",
+    "./src/zql-worker.ts",
   ],
   dts: true,
   unbundle: true,

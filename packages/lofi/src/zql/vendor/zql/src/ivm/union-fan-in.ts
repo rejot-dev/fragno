@@ -1,0 +1,396 @@
+// Vendored from rocicorp/mono@945ce619249e63381fb51d46c12f0d9e80024860 packages/zql/src/ivm/union-fan-in.ts. Do not edit; run scripts/vendor-zql.mjs.
+// @ts-nocheck
+import {assert} from '../../../shared/src/asserts.ts';
+import {emptyArray} from '../../../shared/src/sentinels.ts';
+import type {Writable} from '../../../shared/src/writable.ts';
+import {ChangeIndex} from './change-index.ts';
+import {ChangeType} from './change-type.ts';
+import type {Change} from './change.ts';
+import type {Constraint} from './constraint.ts';
+import type {Node} from './data.ts';
+import {
+  throwOutput,
+  type FetchRequest,
+  type Input,
+  type InputBase,
+  type Operator,
+  type Output,
+} from './operator.ts';
+import {
+  makeAddEmptyRelationships,
+  mergeEmpty,
+  mergeRelationships,
+  pushAccumulatedChanges,
+  pushWitnessDeltas,
+} from './push-accumulated.ts';
+import type {SourceSchema} from './schema.ts';
+import type {Stream} from './stream.ts';
+import type {UnionFanOut} from './union-fan-out.ts';
+
+export class UnionFanIn implements Operator {
+  readonly #inputs: readonly Input[];
+  readonly #schema: SourceSchema;
+  #fanOutPushStarted: boolean = false;
+  #fanOutReconcileStarted: boolean = false;
+  #output: Output = throwOutput;
+  #accumulatedPushes: Change[] = [];
+  readonly #branchRels: ReadonlySet<string>;
+
+  constructor(fanOut: UnionFanOut, inputs: Input[]) {
+    this.#inputs = inputs;
+    const fanOutSchema = fanOut.getSchema();
+    fanOut.setFanIn(this);
+    assert(fanOutSchema.sort !== undefined, 'UnionFanIn requires sorted input');
+
+    const schema: Writable<SourceSchema> = {
+      tableName: fanOutSchema.tableName,
+      columns: fanOutSchema.columns,
+      primaryKey: fanOutSchema.primaryKey,
+      relationships: {
+        ...fanOutSchema.relationships,
+      },
+      isHidden: fanOutSchema.isHidden,
+      system: fanOutSchema.system,
+      compareRows: fanOutSchema.compareRows,
+      sort: fanOutSchema.sort,
+    };
+
+    // now go through inputs and merge relationships
+    const relationshipsFromBranches: Set<string> = new Set();
+    for (const input of inputs) {
+      const inputSchema = input.getSchema();
+      assert(
+        schema.tableName === inputSchema.tableName,
+        `Table name mismatch in union fan-in: ${schema.tableName} !== ${inputSchema.tableName}`,
+      );
+      assert(
+        schema.primaryKey === inputSchema.primaryKey,
+        `Primary key mismatch in union fan-in`,
+      );
+      assert(
+        schema.system === inputSchema.system,
+        `System mismatch in union fan-in: ${schema.system} !== ${inputSchema.system}`,
+      );
+      assert(
+        schema.compareRows === inputSchema.compareRows,
+        `compareRows mismatch in union fan-in`,
+      );
+      assert(schema.sort === inputSchema.sort, `Sort mismatch in union fan-in`);
+
+      for (const [relName, relSchema] of Object.entries(
+        inputSchema.relationships,
+      )) {
+        if (relName in fanOutSchema.relationships) {
+          continue;
+        }
+
+        // All branches will have unique relationship names except for relationships
+        // that come in from `fanOut`.
+        assert(
+          !relationshipsFromBranches.has(relName),
+          `Relationship ${relName} exists in multiple upstream inputs to union fan-in`,
+        );
+        schema.relationships[relName] = relSchema;
+        relationshipsFromBranches.add(relName);
+      }
+
+      input.setOutput(this);
+    }
+
+    this.#schema = schema;
+    this.#inputs = inputs;
+    this.#branchRels = relationshipsFromBranches;
+  }
+
+  destroy(): void {
+    for (const input of this.#inputs) {
+      input.destroy();
+    }
+  }
+
+  fetch(req: FetchRequest): Stream<Node | 'yield'> {
+    const iterables = this.#inputs.map(input => input.fetch(req));
+    const compareRows = this.#schema.compareRows;
+    const compare = req.reverse
+      ? (l: Node, r: Node) => compareRows(r.row, l.row)
+      : (l: Node, r: Node) => compareRows(l.row, r.row);
+    const relNames = Object.keys(this.#schema.relationships);
+    return mapNodes(mergeFetches(iterables, compare), node => {
+      const relationships = {...node.relationships};
+      mergeEmpty(relationships, relNames);
+      return {row: node.row, relationships};
+    });
+  }
+
+  getSchema(): SourceSchema {
+    return this.#schema;
+  }
+
+  push(change: Change, pusher: InputBase): Stream<'yield'> {
+    if (!this.#fanOutPushStarted) {
+      return this.#pushInternalChange(change, pusher);
+    }
+    this.#accumulatedPushes.push(change);
+    return emptyArray;
+  }
+
+  /**
+   * An internal change means that a change was received inside the fan-out/fan-in sub-graph.
+   *
+   * These changes always come from children of a flip-join as no other push generating operators
+   * currently exist between union-fan-in and union-fan-out. All other pushes
+   * enter into union-fan-out before reaching union-fan-in.
+   *
+   * - normal joins for `exists` come before `union-fan-out`
+   * - joins for `related` come after `union-fan-out`
+   * - take comes after `union-fan-out`
+   *
+   * The algorithm for deciding whether or not to forward a push that came from inside the ufo/ufi sub-graph:
+   * 1. If the change is a `child` change we can forward it. This is because all child branches in the ufo/ufi sub-graph are unique.
+   * 2. If the change is `add` we can forward it iff no `fetches` for the row return any results.
+   *    If another branch has it, the add was already emitted in the past.
+   * 3. If the change is `remove` we can forward it iff no `fetches` for the row return any results.
+   *    If no other branches have the change, the remove can be sent as the value is no longer present.
+   *    If other branches have it, the last branch the processes the remove will send the remove.
+   * 4. Edits will always come through as child changes as flip join will flip them into children.
+   *    An edit that would result in a remove or add will have been split into an add/remove pair rather than being an edit.
+   */
+  *#pushInternalChange(change: Change, pusher: InputBase): Stream<'yield'> {
+    if (change[ChangeIndex.TYPE] === ChangeType.CHILD) {
+      yield* this.#output.push(change, this);
+      return;
+    }
+
+    assert(
+      change[ChangeIndex.TYPE] === ChangeType.ADD ||
+        change[ChangeIndex.TYPE] === ChangeType.REMOVE,
+      () =>
+        `UnionFanIn: expected add or remove change type, got ${change[ChangeIndex.TYPE]}`,
+    );
+
+    let hadMatch = false;
+    for (const input of this.#inputs) {
+      if (input === pusher) {
+        hadMatch = true;
+        continue;
+      }
+
+      const constraint: Writable<Constraint> = {};
+      for (const key of this.#schema.primaryKey) {
+        constraint[key] = change[ChangeIndex.NODE].row[key];
+      }
+      const fetchResult = input.fetch({
+        constraint,
+      });
+
+      // `fetch` interleaves 'yield' sentinels for cooperative multitasking.
+      // They must be forwarded, not just skipped: this probe runs inside a
+      // push, and the sentinel is the source offering the scheduler a breath.
+      // They must also not be mistaken for rows -- reading one as a row is
+      // what broke this before, since an empty branch that happened to yield
+      // looked like a branch holding the row, silently dropping the
+      // add/remove and desyncing a downstream `Take`'s push and fetch paths.
+      let otherBranchHasRow = false;
+      for (const node of fetchResult) {
+        if (node === 'yield') {
+          yield node;
+          continue;
+        }
+        otherBranchHasRow = true;
+        break;
+      }
+
+      if (otherBranchHasRow) {
+        // Another branch has the row, so it stays. What changed is that it
+        // gained or lost the pusher's witnesses: say so as child changes.
+        yield* pushWitnessDeltas(
+          change[ChangeIndex.NODE],
+          change[ChangeIndex.TYPE],
+          name => this.#branchRels.has(name),
+          this.#output,
+          this,
+        );
+        return;
+      }
+    }
+
+    assert(hadMatch, 'Pusher was not one of the inputs to union-fan-in!');
+
+    // No other branches have the row, so we can push the change.
+    yield* this.#output.push(change, this);
+  }
+
+  fanOutStartedPushing() {
+    assert(
+      this.#fanOutPushStarted === false,
+      'UnionFanIn: fanOutStartedPushing called while already pushing',
+    );
+    this.#fanOutPushStarted = true;
+  }
+
+  fanOutDonePushing(fanOutChangeType: ChangeType): Stream<'yield'> {
+    assert(
+      this.#fanOutPushStarted,
+      'UnionFanIn: fanOutDonePushing called without fanOutStartedPushing',
+    );
+    this.#fanOutPushStarted = false;
+    if (this.#inputs.length === 0) {
+      return emptyArray;
+    }
+
+    if (this.#accumulatedPushes.length === 0) {
+      // It is possible for no forks to pass along the push.
+      // E.g., if no filters match in any fork.
+      return emptyArray;
+    }
+
+    return pushAccumulatedChanges(
+      this.#accumulatedPushes,
+      this.#output,
+      this,
+      fanOutChangeType,
+      mergeRelationships,
+      makeAddEmptyRelationships(this.#schema),
+      name => this.#branchRels.has(name),
+    );
+  }
+
+  fanOutStartedReconciling() {
+    assert(
+      this.#fanOutReconcileStarted === false,
+      'UnionFanIn: fanOutStartedReconciling called while already reconciling',
+    );
+    this.#fanOutReconcileStarted = true;
+  }
+
+  *fanOutDoneReconciling(): Stream<'yield'> {
+    assert(
+      this.#fanOutReconcileStarted,
+      'UnionFanIn: fanOutDoneReconciling called without fanOutStartedReconciling',
+    );
+    this.#fanOutReconcileStarted = false;
+    if (this.#inputs.length === 0) {
+      return;
+    }
+    if (this.#output.reconcile) {
+      yield* this.#output.reconcile(this);
+    }
+  }
+
+  setOutput(output: Output): void {
+    this.#output = output;
+  }
+
+  *reconcile(_pusher: InputBase): Stream<'yield'> {
+    if (this.#fanOutReconcileStarted) {
+      return;
+    }
+    if (this.#output.reconcile) {
+      yield* this.#output.reconcile(this);
+    }
+  }
+}
+
+function* mapNodes(
+  nodes: Iterable<Node | 'yield'>,
+  f: (n: Node) => Node,
+): Stream<Node | 'yield'> {
+  for (const n of nodes) {
+    yield n === 'yield' ? n : f(n);
+  }
+}
+
+export function* mergeFetches(
+  fetches: Iterable<Node | 'yield'>[],
+  comparator: (l: Node, r: Node) => number,
+): IterableIterator<Node | 'yield'> {
+  const iterators = fetches.map(i => i[Symbol.iterator]());
+  let threw = false;
+  try {
+    const current: (Node | null)[] = [];
+    let lastNodeYielded: Node | undefined;
+    for (let i = 0; i < iterators.length; i++) {
+      const iter = iterators[i];
+      let result = iter.next();
+      // yield yields when initializing
+      while (!result.done && result.value === 'yield') {
+        yield result.value;
+        result = iter.next();
+      }
+      current[i] = result.done ? null : (result.value as Node);
+    }
+    while (current.some(c => c !== null)) {
+      const min = current.reduce(
+        (acc: [Node, number] | undefined, c, i): [Node, number] | undefined => {
+          if (c === null) {
+            return acc;
+          }
+          if (acc === undefined || comparator(c, acc[0]) < 0) {
+            return [c, i];
+          }
+          return acc;
+        },
+        undefined,
+      );
+
+      assert(min !== undefined, 'min is undefined');
+      const [minNode, minIndex] = min;
+      const iter = iterators[minIndex];
+      let result = iter.next();
+      while (!result.done && result.value === 'yield') {
+        yield result.value;
+        result = iter.next();
+      }
+      current[minIndex] = result.done ? null : (result.value as Node);
+      if (
+        lastNodeYielded !== undefined &&
+        comparator(lastNodeYielded, minNode) === 0
+      ) {
+        continue;
+      }
+      // The same row from another branch is at the head of that branch's
+      // stream. Union its relationships in (first branch wins a conflict)
+      // instead of dropping it, so a fetched row carries what a pushed one does.
+      let merged = minNode;
+      for (let j = 0; j < iterators.length; j++) {
+        let head = current[j];
+        while (head !== null && comparator(head, minNode) === 0) {
+          merged = {
+            row: merged.row,
+            relationships: {...head.relationships, ...merged.relationships},
+          };
+          let r = iterators[j].next();
+          while (!r.done && r.value === 'yield') {
+            yield r.value;
+            r = iterators[j].next();
+          }
+          head = current[j] = r.done ? null : (r.value as Node);
+        }
+      }
+      lastNodeYielded = minNode;
+      yield merged;
+    }
+  } catch (e) {
+    threw = true;
+    for (const iter of iterators) {
+      try {
+        iter.throw?.(e);
+      } catch (_cleanupError) {
+        // error in the iter.throw cleanup,
+        // catch so other iterators are cleaned up
+      }
+    }
+    throw e;
+  } finally {
+    if (!threw) {
+      for (const iter of iterators) {
+        try {
+          iter.return?.();
+        } catch (_cleanupError) {
+          // error in the iter.return cleanup,
+          // catch so other iterators are cleaned up
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,34 @@
+// Vendored from rocicorp/mono@945ce619249e63381fb51d46c12f0d9e80024860 packages/zql/src/ivm/maybe-split-and-push-edit-change.ts. Do not edit; run scripts/vendor-zql.mjs.
+// @ts-nocheck
+import {emptyArray} from '../../../shared/src/sentinels.ts';
+import type {Row} from '../../../zero-protocol/src/data.ts';
+import {ChangeIndex} from './change-index.ts';
+import {makeAddChange, makeRemoveChange, type EditChange} from './change.ts';
+import type {InputBase, Output} from './operator.ts';
+
+/**
+ * This takes an {@link EditChange} and a predicate that determines if a row
+ * should be present based on the row's data. It then splits the change and
+ * pushes the appropriate changes to the output based on the predicate.
+ */
+export function maybeSplitAndPushEditChange(
+  change: EditChange,
+  predicate: (row: Row) => boolean,
+  output: Output,
+  pusher: InputBase,
+) {
+  const oldWasPresent = predicate(change[ChangeIndex.OLD_NODE].row);
+  const newIsPresent = predicate(change[ChangeIndex.NODE].row);
+
+  if (oldWasPresent && newIsPresent) {
+    return output.push(change, pusher);
+  }
+  if (oldWasPresent && !newIsPresent) {
+    return output.push(makeRemoveChange(change[ChangeIndex.OLD_NODE]), pusher);
+  }
+  if (!oldWasPresent && newIsPresent) {
+    return output.push(makeAddChange(change[ChangeIndex.NODE]), pusher);
+  }
+
+  return emptyArray;
+}
