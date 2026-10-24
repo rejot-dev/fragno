@@ -74,6 +74,8 @@ export type LofiClientBaseOptions = {
   onSyncApplied?: (result: LofiSyncResult) => void | Promise<void>;
   onSyncComplete?: (result: LofiSyncResult) => void | Promise<void>;
   onError?: (error: unknown) => void;
+  /** Called after `onError` when the error ends the sync loop; stream reconnects do not end it. */
+  onStopped?: (error: unknown) => void;
   signal?: AbortSignal;
 };
 
