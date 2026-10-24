@@ -1,6 +1,5 @@
-import { createHash } from "node:crypto";
-
 import type { AnySchema, AnyTable } from "../schema/create";
+import { sha1Hex } from "./sha1-hex";
 
 export type NamespaceScope = "suffix" | "schema";
 
@@ -33,7 +32,7 @@ const MAX_IDENTIFIER_LENGTH = 63;
 const HASH_LENGTH = 8;
 
 const withHash = (value: string) => {
-  const hash = createHash("sha1").update(value).digest("hex").slice(0, 8);
+  const hash = sha1Hex(value).slice(0, 8);
   return `${value}_${hash}`;
 };
 
@@ -41,7 +40,7 @@ const truncateWithHash = (value: string) => {
   if (value.length <= MAX_IDENTIFIER_LENGTH) {
     return value;
   }
-  const hash = createHash("sha1").update(value).digest("hex").slice(0, HASH_LENGTH);
+  const hash = sha1Hex(value).slice(0, HASH_LENGTH);
   return `${value.slice(0, MAX_IDENTIFIER_LENGTH - HASH_LENGTH)}${hash}`;
 };
 

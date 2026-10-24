@@ -97,7 +97,7 @@ export const FRAGNO_OUTBOX_LOCAL_SCHEMA_VERSION = 2;
 
 const FRAGNO_OUTBOX_STARTUP_TIMEOUT_MS = 5_000;
 
-export type { FragnoInternalDescription } from "./coordinator/fragno-internal-fetcher";
+export type { FragnoInternalDescription } from "@fragno-dev/db/outbox";
 
 export async function fetchFragnoOutboxDescription(options: {
   baseUrl: string | URL;

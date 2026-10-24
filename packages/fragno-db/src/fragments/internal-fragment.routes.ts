@@ -3,6 +3,7 @@ import { defineRoutes } from "@fragno-dev/core";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 
 import type { DatabaseHandlerTx } from "../db-fragment-definition-builder";
+import type { FragnoInternalDescription } from "../outbox/internal-describe";
 import { FRAGNO_OUTBOX_PAGE_SIZE } from "../outbox/outbox";
 import type { OutboxStreamFrame } from "../outbox/outbox-stream";
 import { submitSyncRequest, type SyncRequestRecord } from "../sync/submit";
@@ -13,23 +14,6 @@ import {
   internalSchema,
   type InternalFragmentInstance,
 } from "./internal-fragment";
-
-type InternalDescribeResponse = {
-  adapterIdentity: string;
-  currentVersionstamp: string | null;
-  fragments: Array<{ name: string; mountRoute: string }>;
-  schemas: Array<{
-    name: string;
-    namespace: string | null;
-    version: number;
-    tables: string[];
-  }>;
-  routes: {
-    internal: "/_internal";
-    outbox?: "/_internal/outbox";
-    outboxStream?: "/_internal/outbox/stream";
-  };
-};
 
 type InternalDescribeError = {
   error: {
@@ -169,7 +153,7 @@ export const createInternalFragmentDescribeRoutes = () =>
           );
         }
 
-        const response: InternalDescribeResponse = {
+        const response: FragnoInternalDescription = {
           adapterIdentity,
           currentVersionstamp,
           fragments: outboxEnabled ? registry.listOutboxFragments() : [],

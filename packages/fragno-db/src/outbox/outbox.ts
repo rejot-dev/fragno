@@ -1,6 +1,13 @@
 import type { MutationOperation } from "../query/unit-of-work/mutation-recorder";
 import type { AnyColumn, AnySchema, AnyTable, FragnoId, FragnoReference } from "../schema/create";
 
+export {
+  fetchFragnoInternalDescription,
+  resolveFragnoInternalUrls,
+  type FragnoInternalDescription,
+  type FragnoInternalUrls,
+} from "./internal-describe";
+
 export const FRAGNO_OUTBOX_PAGE_SIZE = 50;
 
 export type OutboxConfig = {
