@@ -1,6 +1,6 @@
 import { Outlet, redirect, useLoaderData, type LoaderFunctionArgs } from "react-router";
 
-import { fetchUploadAdapterIdentity } from "@/fragno/upload/tanstack/server";
+import { fetchUploadAdapterIdentity } from "@/fragno/upload/adapter-identity.server";
 
 import { uploadConnection } from "./connection.server";
 import type { UploadLayoutContext } from "./layout-context";

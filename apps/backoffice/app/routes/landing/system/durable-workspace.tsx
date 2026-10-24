@@ -177,7 +177,7 @@ export function DurableWorkspace() {
           rootSelection="detail"
           detailHeadingLevel={3}
           workflowRouting={{ status: "unavailable" }}
-          pages={{ status: "unavailable" }}
+          pageHref={null}
         />
       </div>
     </section>

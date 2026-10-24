@@ -3,50 +3,26 @@ import type {
   AutomationEventMatcher,
   AutomationRouteDefinition,
 } from "@fragno-dev/backoffice-api/v0/automation";
-import type { PageLoad } from "@fragno-private/backoffice-ui/pages/definition";
+import { ButtonLink } from "@fragno-private/design-system/button";
 import { Icon } from "@fragno-private/design-system/icon";
-import { PaneSpinner } from "@fragno-private/design-system/pane-message";
 import { Spinner } from "@fragno-private/design-system/spinner";
-import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { UnderlineTab, UnderlineTabList } from "@fragno-private/design-system/underline-tabs";
-import { useEffect, useState, type ReactNode } from "react";
-import { useFetcher } from "react-router";
+import { useState, type ReactNode } from "react";
 import { Streamdown } from "streamdown";
 
 import { visualizeWorkflowSource } from "@fragno-dev/workflow-visualizer-tokens";
 
 import { artifactKind } from "@/artifacts/kinds";
-import { BackofficePageView } from "@/artifacts/pages/view";
-import type { AutomationCollections } from "@/fragno/automation/tanstack/collections";
 import type { ResolvedWorkflowRuntimeToolCall } from "@/fragno/runtime-tools/workflow-catalog";
 import { parseFrontmatter } from "@/lib/frontmatter";
 import { formatTimestampInTimeZone } from "@/routes/backoffice/automations/formatting";
 import { ScriptWorkflowGraph } from "@/routes/backoffice/automations/script-view/workflow-graph";
-import type { OrchestrationLoaderData } from "@/routes/backoffice/dashboard/orchestration-panel";
 
 export type WorkflowFileRouting =
   | { status: "unavailable" }
   | { status: "loading" }
   | { status: "error"; message: string }
   | { status: "ready"; routes: readonly AutomationRouteDefinition[] };
-
-/** What a host gives page previews: the scope's live data and where each page opens. */
-export type FilesPages =
-  | { status: "unavailable" }
-  | { status: "loading" }
-  | { status: "error"; message: string }
-  | {
-      status: "ready";
-      collections: AutomationCollections;
-      pageHref: (sourcePath: string) => string;
-    };
-
-/** The selected file's page; its href is null outside `/workspace`, where pages do not open. */
-export type FilesPagePreview =
-  | { status: "unavailable" }
-  | { status: "loading" }
-  | { status: "error"; message: string }
-  | { status: "ready"; collections: AutomationCollections; href: string | null };
 
 export type FilesContentPreview = {
   title: string;
@@ -56,7 +32,8 @@ export type FilesContentPreview = {
   /** Same-origin URL serving the file bytes for embedding; null when the host has no file route. */
   inlineHref: string | null;
   workflowRouting: WorkflowFileRouting;
-  page: FilesPagePreview;
+  /** Where the selected page opens; null outside `/workspace` and in hosts without pages. */
+  pageHref: string | null;
 };
 
 type FilesContentRenderer = {
@@ -281,116 +258,26 @@ const PageRenderer: FilesContentRenderer = {
   },
 };
 
+/** Pages render with live data on their own route, which the preview links to. */
 function PageFilePreview({ preview }: { preview: FilesContentPreview }) {
-  const source = preview.textContent ?? "";
-
   return (
-    <Tabs.Root defaultValue="page" className="flex h-full min-h-0 flex-col">
-      <UnderlineTabList aria-label="Page preview views" className="shrink-0">
-        <UnderlineTab value="page">
-          <Icon name="layout" />
-          Page
-        </UnderlineTab>
-        <UnderlineTab value="source">
-          <Icon name="code" />
-          Source
-        </UnderlineTab>
-      </UnderlineTabList>
-
-      <Tabs.Panel value="page" className="backoffice-scroll min-h-0 flex-1 overflow-auto pt-3">
-        <PageFileContent source={source} page={preview.page} />
-      </Tabs.Panel>
-      <Tabs.Panel value="source" className="min-h-0 flex-1 pt-3">
-        <pre
-          aria-label="Page source"
-          tabIndex={0}
-          className="backoffice-scroll h-full overflow-auto overscroll-contain px-1 font-mono text-[12px] leading-6 whitespace-pre-wrap text-[var(--bo-fg)] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--bo-accent)]"
-        >
-          <code>{source}</code>
-        </pre>
-      </Tabs.Panel>
-    </Tabs.Root>
-  );
-}
-
-function PageFileContent({ source, page }: { source: string; page: FilesPagePreview }) {
-  if (page.status === "unavailable") {
-    return (
-      <BackofficeSystemState
-        tone="empty"
-        label="No live data"
-        title="Pages render with live data in a workspace's own files."
-      />
-    );
-  }
-  if (page.status === "loading") {
-    return <PaneSpinner label="Synchronizing automation data" />;
-  }
-  if (page.status === "error") {
-    return (
-      <BackofficeSystemState
-        tone="error"
-        title="Automation data could not be synchronized."
-        description={page.message}
-      />
-    );
-  }
-  if (page.href === null) {
-    return (
-      <BackofficeSystemState
-        tone="empty"
-        label="Not a workspace page"
-        title="Pages open from files in /workspace."
-      />
-    );
-  }
-  return <BuiltPage source={source} href={page.href} collections={page.collections} />;
-}
-
-/** Loads the page route again whenever the source changes, since its build depends on it. */
-function BuiltPage({
-  source,
-  href,
-  collections,
-}: {
-  source: string;
-  href: string;
-  collections: AutomationCollections;
-}) {
-  const fetcher = useFetcher<{
-    name: string;
-    result: PageLoad;
-    orchestration: OrchestrationLoaderData;
-  }>();
-  const { load } = fetcher;
-  useEffect(() => {
-    void load(href);
-  }, [href, load, source]);
-
-  const loaded = fetcher.data?.result;
-  const orchestration = fetcher.data?.orchestration;
-  if (!loaded || !orchestration || fetcher.state === "loading") {
-    return <PaneSpinner label="Building page" />;
-  }
-  if (loaded.kind === "missing") {
-    return <BackofficeSystemState tone="empty" title="This page no longer exists." />;
-  }
-  if (loaded.kind === "failed") {
-    return (
-      <BackofficeSystemState
-        tone="error"
-        label="Invalid page"
-        title="This page could not be built."
-        description={loaded.message}
-      />
-    );
-  }
-  return (
-    <BackofficePageView
-      definition={loaded.definition}
-      collections={collections}
-      orchestration={orchestration}
-    />
+    <div className="flex h-full min-h-0 flex-col">
+      {preview.pageHref === null ? null : (
+        <div className="mb-3 shrink-0">
+          <ButtonLink to={preview.pageHref} variant="secondary">
+            <Icon name="layout" />
+            Open page
+          </ButtonLink>
+        </div>
+      )}
+      <pre
+        aria-label="Page source"
+        tabIndex={0}
+        className="backoffice-scroll min-h-0 flex-1 overflow-auto overscroll-contain px-1 font-mono text-[12px] leading-6 whitespace-pre-wrap text-[var(--bo-fg)] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--bo-accent)]"
+      >
+        <code>{preview.textContent ?? ""}</code>
+      </pre>
+    </div>
   );
 }
 

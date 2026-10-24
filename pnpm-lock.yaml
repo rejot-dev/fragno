@@ -294,6 +294,9 @@ importers:
       '@fragno-dev/github-app-fragment':
         specifier: workspace:*
         version: link:../../packages/github-app-fragment
+      '@fragno-dev/lofi':
+        specifier: workspace:*
+        version: link:../../packages/lofi
       '@fragno-dev/mcp-fragment':
         specifier: workspace:*
         version: link:../../packages/mcp-fragment

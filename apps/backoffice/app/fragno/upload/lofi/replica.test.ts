@@ -1,10 +1,10 @@
 import { assert, describe, it } from "vitest";
 
-import { describeUploadCollectionSource } from "./browser-database";
+import { describeUploadReplicaSource } from "./replica";
 
-describe("Upload collection source", () => {
+describe("Upload replica source", () => {
   it("scopes the Fragno base URL to the complete Backoffice scope", () => {
-    const description = describeUploadCollectionSource({
+    const description = describeUploadReplicaSource({
       scope: {
         kind: "project",
         owner: { kind: "org", orgId: "org:with/slash" },
@@ -21,10 +21,10 @@ describe("Upload collection source", () => {
     assert.equal(baseUrl.search, "");
   });
 
-  it("isolates browser resources when the adapter identity changes", () => {
+  it("opens a new replica when the adapter identity changes", () => {
     const scope = { kind: "org" as const, orgId: "org-1" };
-    const first = describeUploadCollectionSource({ scope, adapterIdentity: "adapter-1" });
-    const second = describeUploadCollectionSource({ scope, adapterIdentity: "adapter-2" });
+    const first = describeUploadReplicaSource({ scope, adapterIdentity: "adapter-1" });
+    const second = describeUploadReplicaSource({ scope, adapterIdentity: "adapter-2" });
 
     assert.notEqual(first.resourceKey, second.resourceKey);
     assert.equal(first.baseUrl, second.baseUrl);

@@ -77,6 +77,10 @@ import {
 } from "@/fragno/codemode/execute";
 import { createRuntimeStateBackend } from "@/fragno/codemode/runtime-state-backend";
 import { readSavedWorkflowProgram } from "@/fragno/codemode/workflow-program";
+import {
+  createScenarioReplicaDatabase,
+  type ScenarioReplicaDatabase,
+} from "@/fragno/lofi/scenario-replica-database";
 import type { MarketplaceStaticEntry } from "@/fragno/marketplace/contracts";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
 import { isMarketplaceInternalPackagePath } from "@/fragno/marketplace/package-files";
@@ -104,6 +108,7 @@ import {
   createScenarioCollectionDatabase,
   type ScenarioCollectionDatabase,
 } from "@/fragno/tanstack/scenario-collection-database";
+import { UPLOAD_REPLICA_SCHEMAS } from "@/fragno/upload/lofi/replica";
 import { bytesToBase64 } from "@/lib/base64";
 import type { CreateSandboxRuntimeProviders } from "@/sandbox/contracts";
 
@@ -368,6 +373,13 @@ export type BackofficeScenarioTanStack = {
   cleanup(): Promise<void>;
 };
 
+/** SQLite replicas of the scopes' Upload outboxes, as browsers open them. */
+export type BackofficeScenarioLofi = {
+  upload: ScenarioReplicaDatabase;
+  syncAll(): Promise<void>;
+  cleanup(): Promise<void>;
+};
+
 export type BackofficeScenarioContext<TVars extends ScenarioVars = ScenarioVars> = {
   name: string;
   runtime: InMemoryBackofficeRuntime;
@@ -375,6 +387,7 @@ export type BackofficeScenarioContext<TVars extends ScenarioVars = ScenarioVars>
   vars: TVars;
   fakes: ScenarioFakes;
   tanstack: BackofficeScenarioTanStack;
+  lofi: BackofficeScenarioLofi;
   codemodeRuns: ScenarioCodemodeRun[];
   kernelActions: readonly BackofficeKernelAction[];
   journal: ScenarioJournal;
@@ -1787,6 +1800,28 @@ const createScenarioAutomationTanStackFetch = (
   };
 };
 
+const uploadScopedBaseUrl = (scope: BackofficeContextScope) =>
+  `http://scenario.local/api/upload-scoped/${backofficeContextScopeRoutePath(scope)}`;
+
+/** Forwards like `routes/api/upload-scoped.ts`, without its authentication. */
+const createScenarioUploadFetch = (
+  runtime: InMemoryBackofficeRuntime,
+  scope: BackofficeContextScope,
+): typeof fetch => {
+  return async (input, init) => {
+    const request = new Request(input, init);
+    const requestUrl = new URL(request.url);
+    const forwardedUrl = new URL(
+      `http://scenario.local/api/upload${internalRouteSuffix(requestUrl)}`,
+    );
+    forwardedUrl.search = requestUrl.search;
+
+    const kernel = new BackofficeKernel(runtime.services);
+    const upload = kernel.scoped("UPLOAD", scope, runtime.objects.upload);
+    return await upload.http.fetch(new Request(forwardedUrl.toString(), request));
+  };
+};
+
 const createScenarioTanStack = (runtime: InMemoryBackofficeRuntime): BackofficeScenarioTanStack => {
   const automations = createScenarioCollectionDatabase({
     name: "Automation collections",
@@ -1805,6 +1840,21 @@ const createScenarioTanStack = (runtime: InMemoryBackofficeRuntime): BackofficeS
     cleanup: async () => {
       await automations.cleanup();
     },
+  };
+};
+
+const createScenarioLofi = (runtime: InMemoryBackofficeRuntime): BackofficeScenarioLofi => {
+  const upload = createScenarioReplicaDatabase({
+    name: "Upload replica",
+    schemas: UPLOAD_REPLICA_SCHEMAS,
+    drainRuntime: () => runtime.drain(),
+    baseUrl: uploadScopedBaseUrl,
+    createFetch: (scope) => createScenarioUploadFetch(runtime, scope),
+  });
+  return {
+    upload,
+    syncAll: () => upload.syncAll(),
+    cleanup: () => upload.cleanup(),
   };
 };
 
@@ -4601,6 +4651,7 @@ export const runBackofficeScenario = async <TVars extends ScenarioVars = Scenari
   const journal: ScenarioJournal = { entries: [] };
   const vars = scenario.vars?.() ?? ({} as TVars);
   const tanstack = createScenarioTanStack(runtime);
+  const lofi = createScenarioLofi(runtime);
 
   let ctx: BackofficeScenarioContext<TVars>;
   ctx = {
@@ -4610,14 +4661,18 @@ export const runBackofficeScenario = async <TVars extends ScenarioVars = Scenari
     vars,
     fakes,
     tanstack,
+    lofi,
     codemodeRuns: [],
     kernelActions,
     journal,
-    drain: () => tanstack.drainAll(),
+    drain: async () => {
+      await tanstack.drainAll();
+      await lofi.syncAll();
+    },
     runCodemode: (input) => runScenarioCodemode(ctx, input),
     cleanup: async () => {
       try {
-        await tanstack.cleanup();
+        await Promise.all([tanstack.cleanup(), lofi.cleanup()]);
       } finally {
         await runtime.cleanup();
       }
