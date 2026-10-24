@@ -8,10 +8,8 @@ object with one ongoing root conversation, compacted automatically, that runs on
   `singleton`, `forOrg`, and `forUser` selectors. Its embedded Fragno fragment stores agent
   definitions and records which agents have been provisioned.
 - `workers/pi.do.ts`: one `PI` object per agent, addressed by `piAgentObjectName` from its scope and
-  agent name.
-- `workers/lib/pi-session-store.ts`: Cloudflare SQLite implementation of Pi Durable's
-  `SqliteDatabase` contract. Pi owns transcripts, submissions, documents, and tasks in `pi_*`
-  tables.
+  agent name. Pi Durable's `openDurableObjectSqliteStorage` keeps transcripts, submissions,
+  documents, and tasks in the object's SQLite database, in `pi_*` tables.
 
 `workers/` holds only Cloudflare-specific code. Everything that also runs locally lives here,
 organized around Pi Durable:
