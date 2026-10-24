@@ -20,6 +20,7 @@ import { migrate, withDatabase, type TypedUnitOfWork } from "@fragno-dev/db";
 
 import { defineLocalProjection } from "../local/projection";
 import {
+  LOFI_SQLITE_ENDPOINT_NAME,
   openLofiSqliteReplica,
   type LofiSqliteReplica,
   type LofiSqliteReplicaOptions,
@@ -276,6 +277,23 @@ afterEach(async () => {
     await cleanup();
   }
 });
+
+/** The server's outbox entries at or below the versionstamp the tab's replica has applied through. */
+async function appliedEntries(
+  server: BetterSqlite3.Database,
+  tab: LofiSqliteReplica,
+): Promise<number> {
+  const [row] = await tab.execute(`SELECT "value" FROM "lofi_meta" WHERE "key" = ?`, [
+    `applied-through:${LOFI_SQLITE_ENDPOINT_NAME}::outbox`,
+  ]);
+  if (!row) {
+    return 0;
+  }
+  const { count } = server
+    .prepare(`SELECT count(*) AS "count" FROM "fragno_db_outbox" WHERE "versionstamp" <= ?`)
+    .get(row["value"]) as { count: number };
+  return count;
+}
 
 async function runReplicaScenario(scenario: {
   serverSchemas: AnySchema[];
@@ -682,16 +700,14 @@ describe("SQLite replica", () => {
         }),
         waitForRows("a", `SELECT "email" FROM "users_app"`, [{ email: "ada@example.com" }]),
         waitForRows("a", `SELECT count(*) AS "count" FROM "typing_app"`, [{ count: 0 }]),
-        assertStep(async ({ tabs, errors }) => {
+        assertStep(async ({ server, tabs, errors }) => {
           expect(errors).toEqual([]);
           const tab = tabs.get("a")!;
           expect(
             await tab.execute(`SELECT "name" FROM sqlite_master WHERE "name" = 'notes_other'`),
           ).toEqual([]);
           // The skipped entry still counts as processed, so the cursor moves past it.
-          expect(await tab.execute(`SELECT count(*) AS "count" FROM "lofi_inbox"`)).toEqual([
-            { count: 2 },
-          ]);
+          assert.strictEqual(await appliedEntries(server, tab), 2);
         }),
       ],
     });
@@ -710,14 +726,12 @@ describe("SQLite replica", () => {
           uow.create("posts", { authorId: vars["users"]![0]!, title: "Hello" });
         }),
         waitForError("Unknown outbox table: app.posts"),
-        assertStep(async ({ tabs }) => {
+        assertStep(async ({ server, tabs }) => {
           const tab = tabs.get("a")!;
           expect(await tab.execute(`SELECT "email" FROM "users_app"`)).toEqual([
             { email: "ada@example.com" },
           ]);
-          expect(await tab.execute(`SELECT count(*) AS "count" FROM "lofi_inbox"`)).toEqual([
-            { count: 1 },
-          ]);
+          assert.strictEqual(await appliedEntries(server, tab), 1);
         }),
       ],
     });
@@ -847,11 +861,57 @@ describe("SQLite replica", () => {
           uow.create("posts", { authorId: vars["users"]![0]!, title: "Two" });
         }),
         waitForError("Projection update check failed"),
-        assertStep(async ({ tabs }) => {
+        assertStep(async ({ server, tabs }) => {
           const tab = tabs.get("a")!;
           expect(await tab.execute(`SELECT "title" FROM "posts_app"`)).toEqual([{ title: "One" }]);
-          expect(await tab.execute(`SELECT count(*) AS "count" FROM "lofi_inbox"`)).toEqual([
-            { count: 2 },
+          assert.strictEqual(await appliedEntries(server, tab), 2);
+        }),
+      ],
+    });
+  });
+
+  it("skips entries it applied when an open ephemeral stream held its cursor back", async () => {
+    // A typing row opens a stream that never ends, so the stored cursor stays before it.
+    const replicaWithStream = replica({
+      ephemeralTables: [
+        {
+          schema: "app",
+          table: "typing",
+          stream: { key: (values) => String(values["userEmail"]), boundary: () => "start" },
+        },
+      ],
+      localSchemas: [{ schema: statsSchema }],
+      projections: [countPostsPerAuthor],
+    });
+    await runReplicaScenario({
+      serverSchemas: [appSchema],
+      statementDelayMs: 0,
+      steps: [
+        openTab("a", replicaWithStream),
+        write(appSchema, "users", (uow) => {
+          uow.create("users", user("ada@example.com"));
+        }),
+        write(appSchema, "typing", (uow) => {
+          uow.create("typing", { userEmail: "ada@example.com" });
+        }),
+        write(appSchema, "first", (uow, vars) => {
+          uow.create("posts", { authorId: vars["users"]![0]!, title: "One" });
+        }),
+        waitForRows("a", `SELECT "posts" FROM "authorStats_stats"`, [{ posts: 1 }]),
+        closeTab("a"),
+        // The next writer resumes before the typing row, so the first post arrives again.
+        openTab("b", replicaWithStream),
+        write(appSchema, "second", (uow, vars) => {
+          uow.create("posts", { authorId: vars["users"]![0]!, title: "Two" });
+        }),
+        waitForRows("b", `SELECT "title" FROM "posts_app" ORDER BY "title"`, [
+          { title: "One" },
+          { title: "Two" },
+        ]),
+        assertStep(async ({ tabs, errors }) => {
+          expect(errors).toEqual([]);
+          expect(await tabs.get("b")!.execute(`SELECT "posts" FROM "authorStats_stats"`)).toEqual([
+            { posts: 2 },
           ]);
         }),
       ],
@@ -891,11 +951,9 @@ describe("SQLite replica", () => {
           { email: "bob@example.com" },
           { email: "cy@example.com" },
         ]),
-        assertStep(async ({ tabs, errors }) => {
+        assertStep(async ({ server, tabs, errors }) => {
           expect(errors).toEqual([]);
-          expect(
-            await tabs.get("c")!.execute(`SELECT count(*) AS "count" FROM "lofi_inbox"`),
-          ).toEqual([{ count: 3 }]);
+          assert.strictEqual(await appliedEntries(server, tabs.get("c")!), 3);
         }),
       ],
     });
@@ -940,12 +998,10 @@ describe("SQLite replica", () => {
           expect(usersAtClose.get("a")).toBeLessThan(entries);
         }),
         waitForRows("reader", `SELECT count(*) AS "count" FROM "users_app"`, [{ count: entries }]),
-        assertStep(async ({ tabs, errors }) => {
+        assertStep(async ({ server, tabs, errors }) => {
           expect(errors).toEqual([]);
           const tab = tabs.get("reader")!;
-          expect(await tab.execute(`SELECT count(*) AS "count" FROM "lofi_inbox"`)).toEqual([
-            { count: entries },
-          ]);
+          assert.strictEqual(await appliedEntries(server, tab), entries);
           expect(
             await tab.execute(`SELECT count(DISTINCT "email") AS "count" FROM "users_app"`),
           ).toEqual([{ count: entries }]);
