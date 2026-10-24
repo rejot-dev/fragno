@@ -1,0 +1,230 @@
+// Vendored from rocicorp/mono@945ce619249e63381fb51d46c12f0d9e80024860 packages/zql/src/ivm/operator.ts. Do not edit; run scripts/vendor-zql.mjs.
+// @ts-nocheck
+import type {JSONValue} from '../../../shared/src/json.ts';
+import type {Row} from '../../../zero-protocol/src/data.ts';
+import type {NoSubqueryCondition} from '../builder/filter.ts';
+import type {Change} from './change.ts';
+import type {Constraint} from './constraint.ts';
+import type {Node} from './data.ts';
+import type {SourceSchema} from './schema.ts';
+import type {Stream} from './stream.ts';
+
+export {skipYields} from './skip-yields.ts';
+
+/**
+ * Input to an operator.
+ */
+export interface InputBase {
+  /** The schema of the data this input returns. */
+  getSchema(): SourceSchema;
+
+  /**
+   * Completely destroy the input. Destroying an input
+   * causes it to call destroy on its upstreams, fully
+   * cleaning up a pipeline.
+   */
+  destroy(): void;
+}
+
+export interface Input extends InputBase {
+  /** Tell the input where to send its output. */
+  setOutput(output: Output): void;
+
+  /**
+   * Fetch data. May modify the data in place.
+   * Returns nodes sorted in order of `SourceSchema.compareRows`.
+   *
+   * The stream may contain 'yield' to yield control to the caller for purposes
+   * of responsiveness.
+   *
+   * Contract:
+   * - During fetch: If an input yields 'yield', 'yield' must be yielded to the
+   * caller of fetch immediately.
+   * - During push: If a fetch to an input consumed by the push logic yields
+   * 'yield', it must be yielded to the caller of push immediately.
+   * - During reconcile: If a fetch to an input consumed by reconcile logic
+   * yields 'yield', it must be yielded to the caller of reconcile immediately.
+   */
+  fetch(req: FetchRequest): Stream<Node | 'yield'>;
+}
+
+/**
+ * A single multi-row IN clause: a non-empty list of Constraints all
+ * sharing the same column shape. Sources treat it as
+ * `(col_a, col_b, …) IN VALUES (…)`.
+ *
+ * Caller invariants (sources rely on these — they are not re-checked):
+ * - **Unique entries.** TableSource gets set semantics for free from SQL
+ *   `IN`; MemorySource fans sub-fetches out per entry, so duplicates
+ *   would yield the same row N times. FlippedJoin groups by canonical
+ *   parent-key (`flipped-join.ts:#fetchBatched`) before emitting.
+ * - **Key-compatible with `req.constraint`.** Entries that contradict
+ *   `constraint` should be dropped upstream. FlippedJoin filters
+ *   incompatible children via `constraintsAreCompatible` before adding
+ *   them to a batch.
+ */
+export type MultiConstraint = readonly Constraint[];
+
+export type FetchRequest = {
+  readonly constraint?: Constraint | undefined;
+
+  /**
+   * List of multi-row IN clauses, all ANDed together (and ANDed with
+   * `constraint` if both are provided). Each entry is a `MultiConstraint`
+   * over its own set of columns.
+   *
+   * Used by FlippedJoin to push child→parent fetches into a single
+   * batched statement, and to AND together constraints contributed by
+   * chained FlippedJoins (e.g. `assigneeID IN (…) AND creatorID IN (…)`).
+   */
+  readonly multiConstraints?: readonly MultiConstraint[] | undefined;
+
+  /** If supplied, `start.row` must have previously been output by fetch or push. */
+  readonly start?: Start | undefined;
+
+  /** Whether to fetch in reverse order of the SourceSchema's sort. */
+  readonly reverse?: boolean | undefined;
+
+  /**
+   * The caller only counts the nodes. An operator that knows the count may
+   * then yield that many placeholder nodes instead of fetching the rows.
+   * `Cap` does this from its state.
+   */
+  readonly countOnly?: boolean | undefined;
+
+  /**
+   * Additional predicate the consumer wants the source/intermediate operators
+   * to apply to the fetched rows. The receiver must AND this with whatever
+   * filtering it already applies. Sources may use this to drive index
+   * selection (e.g. PK lookup) the same way they use the connection-time
+   * filter.
+   *
+   * Always a `NoSubqueryCondition` — anything passed via `req.filter` must
+   * already have had correlated subqueries stripped (see `transformFilters`).
+   *
+   * Contract:
+   * - The only operator that *introduces* `req.filter` is `FilterStart`. It
+   *   AND-merges its static condition with whatever `req.filter` it receives
+   *   and forwards the merged value upstream. No other operator should
+   *   construct a `req.filter`.
+   * - "Pass-through" fetch operators (`Skip`, `Take`, `Join`, `FlippedJoin`,
+   *   `UnionFanIn`, `UnionFanOut`) MUST preserve `req.filter` when forwarding
+   *   to their input — typically via `{...req, ...overrides}` spread. Dropping
+   *   it silently regresses predicate pushdown for queries below the
+   *   forwarding operator.
+   * - Operators that *initiate* internal fetches (e.g., `Join.#pushChildChange`,
+   *   `FlippedJoin.#pushChildChange`, `UnionFanIn.#pushInternalChange`,
+   *   `Take`'s push-time bound recomputation) construct fresh
+   *   `FetchRequest`s without `req.filter`, and that is correct: there is no
+   *   inbound consumer-side filter at those call sites. Any `FilterStart`
+   *   that sits between such an internal fetch and the source will still
+   *   apply its own condition on the way through, so the source still gets
+   *   the right WHERE.
+   * - `Cap` is *not* a pass-through: it intentionally builds fresh
+   *   `{constraint}` requests when replaying tracked PKs and drops any
+   *   incoming `req.filter`. This is sound only because `Cap`'s sole
+   *   consumer in production is a `Join`'s child fetch (see
+   *   `Join.#processParentNode` in `join.ts`), which itself never carries
+   *   `req.filter` — Join's child fetches are constructed with just
+   *   `{constraint}` derived from join keys. If `Cap` is ever wired below
+   *   something that does push a `req.filter`, this carve-out becomes a
+   *   correctness bug.
+   */
+  readonly filter?: NoSubqueryCondition | undefined;
+};
+
+export type Start = {
+  readonly row: Row;
+  readonly basis: 'at' | 'after';
+};
+
+/**
+ * An output for an operator. Typically another Operator in an IVM pipeline,
+ * but can also be a terminal sink (such as a View or test consumer).
+ */
+export interface Output {
+  /**
+   * Phase 1 of two-phase push: pushes incremental changes to data previously
+   * received with fetch(). Consumers must apply all pushed changes or the
+   * incremental result will be incorrect.
+   *
+   * Callers must maintain some invariants for correct operation:
+   * - Only add rows which do not already exist (by deep equality).
+   * - Only remove rows which do exist (by deep equality).
+   *
+   * Implementations can yield 'yield' to yield control to the caller for
+   * purposes of responsiveness.
+   *
+   * Yield contract:
+   * - During a push: If a push call to an output yields 'yield', it must be
+   *   yielded to the caller of push immediately.
+   */
+  push(change: Change, pusher: InputBase): Stream<'yield'>;
+
+  /**
+   * Phase 2 of two-phase push: invoked after Phase 1 changes have propagated.
+   * Bounded operators (such as Take or Cap) use this signal to refill deficits,
+   * emit refilled rows downstream via push(), and update their bounds.
+   *
+   * Implementations can yield 'yield' to yield control to the caller for
+   * purposes of responsiveness.
+   *
+   * Yield contract:
+   * - During reconcile: If an internal fetch, push, or downstream reconcile call
+   *   yields 'yield', it must be yielded to the caller of reconcile immediately.
+   *
+   * This method is optional on Output to allow terminal sinks (such as UI views
+   * or custom third-party sinks) that only consume changes to omit it without
+   * breaking compatibility. Intermediate operators must check
+   * `if (this.#output.reconcile)` before forwarding.
+   */
+  reconcile?(pusher: InputBase): Stream<'yield'>;
+}
+
+/**
+ * An implementation of Output that throws if pushed to. It is used as the
+ * initial value for an operator's output before it is set.
+ */
+export const throwOutput: Output = {
+  push(_change: Change): Stream<'yield'> {
+    throw new Error('Output not set');
+  },
+  reconcile(): Stream<'yield'> {
+    throw new Error('Output not set');
+  },
+};
+
+/**
+ * Operators are arranged into IVM pipelines.
+ * They are stateful.
+ * Each operator is an input to the next operator in the chain and an output
+ * to the previous.
+ */
+export interface Operator extends Input, Output {
+  /**
+   * Intermediate pipeline operators MUST implement reconcile so that Phase 2
+   * reconciliation reaches all bounded operators in the pipeline and is never
+   * accidentally swallowed.
+   */
+  reconcile(pusher: InputBase): Stream<'yield'>;
+}
+
+/**
+ * Operators get access to storage that they can store their internal
+ * state in.
+ */
+export interface Storage {
+  set(key: string, value: JSONValue): void;
+  get(key: string, def?: JSONValue): JSONValue | undefined;
+  /**
+   * If options is not specified, defaults to scanning all entries.
+   */
+  scan(options?: {prefix: string}): Stream<[string, JSONValue]>;
+  del(key: string): void;
+  /**
+   * Called by the operator that owns the storage when the operator is
+   * destroyed. Releases anything the storage holds outside of the operator
+   * (e.g. rows in a shared database). The storage is not used afterwards.
+   */
+  destroy(): void;
+}

@@ -1,0 +1,113 @@
+// Vendored from rocicorp/mono@945ce619249e63381fb51d46c12f0d9e80024860 packages/zql/src/ivm/fan-in.ts. Do not edit; run scripts/vendor-zql.mjs.
+// @ts-nocheck
+import {assert} from '../../../shared/src/asserts.ts';
+import {emptyIterator} from '../../../shared/src/iterables.ts';
+import {emptyArray, identity} from '../../../shared/src/sentinels.ts';
+import type {ChangeType} from './change-type.ts';
+import {type Change} from './change.ts';
+import {type Node} from './data.ts';
+import type {FanOut} from './fan-out.ts';
+import {
+  throwFilterOutput,
+  type FilterInput,
+  type FilterOperator,
+  type FilterOutput,
+} from './filter-operators.ts';
+import type {InputBase} from './operator.ts';
+import {pushAccumulatedChanges} from './push-accumulated.ts';
+import type {SourceSchema} from './schema.ts';
+import type {Stream} from './stream.ts';
+
+/**
+ * The FanIn operator merges multiple streams into one.
+ * It eliminates duplicates and must be paired with a fan-out operator
+ * somewhere upstream of the fan-in.
+ *
+ *  issue
+ *    |
+ * fan-out
+ * /      \
+ * a      b
+ *  \    /
+ * fan-in
+ *   |
+ */
+export class FanIn implements FilterOperator {
+  readonly #inputs: readonly FilterInput[];
+  readonly #schema: SourceSchema;
+  #output: FilterOutput = throwFilterOutput;
+  #accumulatedPushes: Change[] = [];
+
+  constructor(fanOut: FanOut, inputs: FilterInput[]) {
+    this.#inputs = inputs;
+    this.#schema = fanOut.getSchema();
+    for (const input of inputs) {
+      input.setFilterOutput(this);
+      assert(this.#schema === input.getSchema(), `Schema mismatch in fan-in`);
+    }
+  }
+
+  setFilterOutput(output: FilterOutput): void {
+    this.#output = output;
+  }
+
+  destroy(): void {
+    for (const input of this.#inputs) {
+      input.destroy();
+    }
+  }
+
+  getSchema() {
+    return this.#schema;
+  }
+
+  beginFilter(): void {
+    this.#output.beginFilter();
+  }
+
+  endFilter(): void {
+    this.#output.endFilter();
+  }
+
+  filter(node: Node): IterableIterator<'yield', boolean> {
+    return this.#output.filter(node);
+  }
+
+  push(change: Change) {
+    this.#accumulatedPushes.push(change);
+    return emptyArray;
+  }
+
+  fanOutDonePushingToAllBranches(fanOutChangeType: ChangeType) {
+    if (this.#inputs.length === 0) {
+      assert(
+        this.#accumulatedPushes.length === 0,
+        'If there are no inputs then fan-in should not receive any pushes.',
+      );
+      return emptyIterator;
+    }
+
+    return pushAccumulatedChanges(
+      this.#accumulatedPushes,
+      this.#output,
+      this,
+      fanOutChangeType,
+      identity,
+      identity,
+    );
+  }
+
+  reconcile(_pusher: InputBase): Stream<'yield'> {
+    // Reconcile is coordinated by FanOut, which calls fanOutDoneReconciling after all branches complete.
+    return emptyArray;
+  }
+
+  *fanOutDoneReconciling(): Stream<'yield'> {
+    if (this.#inputs.length === 0) {
+      return;
+    }
+    if (this.#output.reconcile) {
+      yield* this.#output.reconcile(this);
+    }
+  }
+}

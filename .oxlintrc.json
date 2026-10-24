@@ -29,7 +29,8 @@
     "**/.astro/**",
     "**/next-env.d.ts",
     "**/content/static/**",
-    "packages/docs/.source/**"
+    "packages/docs/.source/**",
+    "**/src/zql/vendor/**"
   ],
   "rules": {
     "typescript/await-thenable": "error",

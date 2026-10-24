@@ -1,0 +1,198 @@
+// Vendored from rocicorp/mono@945ce619249e63381fb51d46c12f0d9e80024860 packages/zql/src/query/query-delegate.ts. Do not edit; run scripts/vendor-zql.mjs.
+// @ts-nocheck
+import type {AST} from '../../../zero-protocol/src/ast.ts';
+import type {ErroredQuery} from '../../../zero-protocol/src/custom-queries.ts';
+import type {Schema} from '../../../zero-types/src/schema.ts';
+import type {BuilderDelegate} from '../builder/builder.ts';
+import type {Format, ViewFactory} from '../ivm/view.ts';
+import type {MetricsDelegate} from './metrics-delegate.ts';
+import type {CustomQueryID} from './named.ts';
+import type {
+  HumanReadable,
+  MaterializeOptions,
+  PreloadOptions,
+  Query,
+  RunOptions,
+} from './query.ts';
+import type {TTL} from './ttl.ts';
+import type {TypedView} from './typed-view.ts';
+
+export type CommitListener = () => void;
+/**
+ * `got` reports what the client knows about the query's server result:
+ * - `true`: the server confirmed the complete result on this connection.
+ * - `false`: the result is not (or no longer) known to be complete.
+ * - `'cached'`: the store holds the server-confirmed complete result from a
+ *   previous session (the persisted got-queries key exists and the server has
+ *   not yet reconciled the got set on this connection). Never satisfies
+ *   complete-waiters — freshness stays a promise only the connection can keep.
+ */
+export type GotCallback = (
+  got: boolean | 'cached',
+  error?: ErroredQuery,
+) => void;
+
+export interface NewQueryDelegate {
+  newQuery<
+    TTable extends keyof TSchema['tables'] & string,
+    TSchema extends Schema,
+    TReturn,
+  >(
+    schema: TSchema,
+    table: TTable,
+    ast: AST,
+    format: Format,
+  ): Query<TTable, TSchema, TReturn>;
+}
+
+/**
+ * Builds and hydrates a deferred pipeline. Returns the function that exposes
+ * the result. See {@link QueryDelegate.onPipelinesReady}.
+ */
+export type AttachPipeline = () => () => void;
+
+/**
+ * Interface for delegates that support materializing, running, and preloading queries.
+ * This interface contains the methods needed to execute queries and manage their lifecycle.
+ */
+export interface QueryDelegate extends BuilderDelegate, MetricsDelegate {
+  addServerQuery(ast: AST, ttl: TTL, gotCallback?: GotCallback): () => void;
+
+  addCustomQuery(
+    ast: AST,
+    customQueryID: CustomQueryID,
+    ttl: TTL,
+    gotCallback?: GotCallback,
+  ): () => void;
+
+  updateServerQuery(ast: AST, ttl: TTL): void;
+
+  updateCustomQuery(customQueryID: CustomQueryID, ttl: TTL): void;
+
+  flushQueryChanges(): void;
+
+  onTransactionCommit(cb: CommitListener): () => void;
+
+  /**
+   * batchViewUpdates is used to allow the view to batch multiple view updates together.
+   * Normally, `applyViewUpdates` is called directly but for some cases, SolidJS for example,
+   * the updates are wrapped in a batch to avoid multiple re-renders.
+   */
+  batchViewUpdates<T>(applyViewUpdates: () => T): T;
+
+  /**
+   * Asserts that the `RunOptions` provided to the `run` method are supported in
+   * this context. For example, in a custom mutator, the `{type: 'complete'}`
+   * option is not supported and this will throw.
+   */
+  assertValidRunOptions(options?: RunOptions): void;
+
+  /**
+   * Client queries start off as false (`unknown`) and are set to true when the
+   * server sends the gotQueries message.
+   *
+   * For things like ZQLite the default is true (aka `complete`) because the
+   * data is always available.
+   */
+  readonly defaultQueryComplete: boolean;
+
+  /**
+   * Whether query pipelines can be built against the sources right now.
+   *
+   * When `false`, `materialize` registers the query with the server as usual
+   * but returns a view over an empty placeholder input. The pipeline is built
+   * and the view hydrated when the delegate invokes the callbacks registered
+   * with {@link onPipelinesReady}. Zero uses this during cold boot so the
+   * replica is loaded into the IVM sources once, instead of being pushed row
+   * by row through every already-materialized pipeline.
+   *
+   */
+  readonly pipelinesReady: boolean;
+
+  /**
+   * Register a callback to build a deferred pipeline when the delegate is
+   * able to build pipelines. Callbacks are invoked in registration order
+   * inside `batchViewUpdates`.
+   *
+   * `attach` builds and hydrates the pipeline and returns a `release`
+   * function. The delegate may spread the `attach` calls over several tasks
+   * so the event loop is not starved, but it calls every `release` and then
+   * notifies its commit listeners in one synchronous batch once all of them
+   * have attached. {@link pipelinesReady} stays `false` until that batch, so
+   * a query materialized in the meantime is deferred as well and joins it.
+   *
+   * Nothing about a successfully attached view (rows, `complete`, `cached`)
+   * may become observable before its `release` is called, so views hydrated
+   * together are exposed together. An `attach` that throws has no `release`:
+   * the view reports the error, and any rows it was pushed before failing are
+   * flushed by the same commit.
+   *
+   * Returns a function that unregisters the callback (used when the view is
+   * destroyed before the pipeline is built).
+   */
+  onPipelinesReady(attach: AttachPipeline): () => void;
+
+  /** Using the default view factory creates a TypedView */
+  materialize<
+    TTable extends keyof TSchema['tables'] & string,
+    TSchema extends Schema,
+    TReturn,
+  >(
+    query: Query<TTable, TSchema, TReturn>,
+    factory?: undefined,
+    options?: MaterializeOptions,
+  ): TypedView<HumanReadable<TReturn>>;
+
+  materialize<
+    TTable extends keyof TSchema['tables'] & string,
+    TSchema extends Schema,
+    TReturn,
+    T,
+  >(
+    query: Query<TTable, TSchema, TReturn>,
+    factory?: ViewFactory<TTable, TSchema, TReturn, T>,
+    options?: MaterializeOptions,
+  ): T;
+
+  /**
+   * Materialize a query into a custom view using a provided factory function.
+   */
+  materialize<
+    TTable extends keyof TSchema['tables'] & string,
+    TSchema extends Schema,
+    TReturn,
+    T,
+  >(
+    query: Query<TTable, TSchema, TReturn>,
+    factory?: ViewFactory<TTable, TSchema, TReturn, T>,
+    options?: MaterializeOptions,
+  ): T;
+
+  /**
+   * Run a query and return the results as a Promise.
+   */
+  run<
+    TTable extends keyof TSchema['tables'] & string,
+    TSchema extends Schema,
+    TReturn,
+  >(
+    query: Query<TTable, TSchema, TReturn>,
+    options?: RunOptions,
+  ): Promise<HumanReadable<TReturn>>;
+
+  /**
+   * Preload a query's data without materializing a view.
+   */
+  preload<
+    TTable extends keyof TSchema['tables'] & string,
+    TSchema extends Schema,
+    TReturn,
+  >(
+    query: Query<TTable, TSchema, TReturn>,
+    options?: PreloadOptions,
+  ): {
+    cleanup: () => void;
+    complete: Promise<void>;
+    cached: Promise<void>;
+  };
+}

@@ -1,0 +1,1236 @@
+// Vendored from rocicorp/mono@945ce619249e63381fb51d46c12f0d9e80024860 packages/zqlite/src/table-source.ts. Do not edit; run scripts/vendor-zql.mjs.
+// @ts-nocheck
+import type {LogContext} from '@rocicorp/logger';
+import SQLite3Database from '../../../zqlite-shims.ts';
+import type {LogConfig} from '../../otel/src/log-options.ts';
+import {assert, unreachable} from '../../shared/src/asserts.ts';
+import {getOrInsertComputed} from '../../shared/src/map.ts';
+import {must} from '../../shared/src/must.ts';
+import {assignProperty} from '../../shared/src/objects.ts';
+import type {Writable} from '../../shared/src/writable.ts';
+import type {Condition, Ordering} from '../../zero-protocol/src/ast.ts';
+import type {Row, Value} from '../../zero-protocol/src/data.ts';
+import type {PrimaryKey} from '../../zero-protocol/src/primary-key.ts';
+import type {
+  SchemaValue,
+  ValueType,
+} from '../../zero-schema/src/table-schema.ts';
+import type {DebugDelegate} from '../../zql/src/builder/debug-delegate.ts';
+import {
+  createPredicate,
+  transformFilters,
+  type NoSubqueryCondition as StrictNoSubqueryCondition,
+} from '../../zql/src/builder/filter.ts';
+import {ChangeType} from '../../zql/src/ivm/change-type.ts';
+import {
+  makeComparator,
+  type Comparator,
+  type Node,
+} from '../../zql/src/ivm/data.ts';
+import {
+  generateWithOverlay,
+  generateWithOverlayUnordered,
+  generateWithStart,
+  genPushAndWriteWithSplitEdit,
+  type Connection,
+  type Overlay,
+} from '../../zql/src/ivm/memory-source.ts';
+import {type FetchRequest} from '../../zql/src/ivm/operator.ts';
+import type {SourceSchema} from '../../zql/src/ivm/schema.ts';
+import {SourceChangeIndex} from '../../zql/src/ivm/source-change-index.ts';
+import {
+  type Source,
+  type SourceChange,
+  type SourceInput,
+} from '../../zql/src/ivm/source.ts';
+import type {Stream} from '../../zql/src/ivm/stream.ts';
+import {assertOrderingIncludesPK} from '../../zql/src/query/complete-ordering.ts';
+import type {BatchCursor, Database, Statement} from '../../../zqlite-database.ts';
+import {FetchSQLCache, type FetchSQL} from './fetch-sql.ts';
+import {recordIndexUsage} from '../../../zqlite-shims.ts';
+import {compile, format, sql} from './internal/sql.ts';
+import {StatementCache} from './internal/statement-cache.ts';
+import {
+  generateWithPendingDelta,
+  generateWithPendingDeltaUnordered,
+  NOT_OVERRIDDEN,
+  PendingDelta,
+} from './pending-delta.ts';
+import {toSQLiteType} from './query-builder.ts';
+
+type Statements = {
+  readonly cache: StatementCache;
+  readonly insert: Statement;
+  readonly delete: Statement;
+  readonly update: Statement | undefined;
+};
+
+let eventCount = 0;
+
+// A fetch reads its rows in batches that start at one row and double up to the
+// maximum. Take, Cap and EXISTS often stop after a row or two, and the rows a
+// batch reads ahead are work SQLite does for nothing; doubling keeps them
+// fewer than the rows consumed.
+const FIRST_BATCH_ROWS = 1;
+const MAX_BATCH_ROWS = 128;
+
+export type TableSourceOptions = {
+  /**
+   * When set, a pushed change that the filters of every connection reject
+   * is neither pushed nor applied to the backing table, on the grounds that
+   * no connection can observe it. This departs from the `Source.push`
+   * contract (a push commits the change to the source), so it is only
+   * appropriate when the caller does not read the table through any other
+   * path and replaces the table's contents afterwards, as the view-syncer's
+   * pipeline driver does when it advances to the next snapshot.
+   */
+  skipUnobservableChanges?: boolean | undefined;
+
+  /**
+   * When set, pushed changes are held in an in-memory {@link PendingDelta}
+   * merged into every read instead of being written to the backing table.
+   * The delta is dropped when the source moves to the next snapshot. This is
+   * the initial mode; see {@link TableSource.setDeferWrites}.
+   */
+  deferWrites?: boolean | undefined;
+};
+
+/**
+ * A source that is backed by a SQLite table.
+ *
+ * Values are written to the backing table _after_ being vended by the source.
+ *
+ * This ordering of events is to ensure self joins function properly. That is,
+ * we can't reveal a value to an output before it has been pushed to that output.
+ *
+ * The code is fairly straightforward except for:
+ * 1. Dealing with a `fetch` that has a basis of `before`.
+ * 2. Dealing with compound orders that have differing directions (a ASC, b DESC, c ASC)
+ *
+ * See comments in relevant functions for more details.
+ */
+export class TableSource implements Source {
+  readonly #dbCache = new WeakMap<Database, Statements>();
+  readonly #rawColumns = new WeakMap<Statement, readonly RawColumn[]>();
+  readonly #connections: Connection[] = [];
+  readonly #table: string;
+  readonly #columns: Record<string, SchemaValue>;
+  // Maps sorted columns JSON string (e.g. '["a","b"]) to Set of columns.
+  readonly #uniqueIndexes: Map<string, Set<string>>;
+  readonly #primaryKey: PrimaryKey;
+  readonly #logConfig: LogConfig;
+  readonly #lc: LogContext;
+  readonly #shouldYield: () => boolean;
+  readonly #skipUnobservableChanges: boolean;
+  readonly #primaryKeySort: Ordering;
+  #stmts: Statements;
+  #overlay?: Overlay | undefined;
+  #pushEpoch = 0;
+  /**
+   * When present, derivation is read-only: changes accumulate here instead of
+   * being written to (and later rolled back out of) the backing snapshot. See
+   * {@link PendingDelta}.
+   */
+  #delta: PendingDelta | undefined;
+  #rowsRead = 0;
+
+  /**
+   * @param shouldYield a function called after each row is read from the database,
+   * which should return true if the source should yield the special 'yield' value
+   * to yield control back to the caller at the end of the pipeline.  Can
+   * also throw an error to abort the pipeline processing.
+   */
+  constructor(
+    logContext: LogContext,
+    logConfig: LogConfig,
+    db: Database,
+    tableName: string,
+    columns: Record<string, SchemaValue>,
+    primaryKey: PrimaryKey,
+    shouldYield = () => false,
+    options: TableSourceOptions = {},
+  ) {
+    this.#lc = logContext;
+    this.#logConfig = logConfig;
+    this.#table = tableName;
+    this.#columns = columns;
+    this.#uniqueIndexes = getUniqueIndexes(db, tableName);
+    this.#primaryKey = primaryKey;
+    this.#primaryKeySort = primaryKey.map(k => [k, 'asc']);
+    this.#stmts = this.#getStatementsFor(db);
+    this.#shouldYield = shouldYield;
+    this.#skipUnobservableChanges = options.skipUnobservableChanges ?? false;
+    this.#delta = options.deferWrites
+      ? new PendingDelta(primaryKey)
+      : undefined;
+
+    const primaryKeyStr = JSON.stringify(primaryKey.toSorted());
+    assert(
+      this.#uniqueIndexes.has(primaryKeyStr),
+      `primary key ${primaryKeyStr} does not have a UNIQUE index`,
+    );
+  }
+
+  /**
+   * The number of rows read from SQLite by fetches, over the lifetime of this
+   * source. Rows that SQLite scans and filters out itself are not counted.
+   */
+  get rowsRead(): number {
+    return this.#rowsRead;
+  }
+
+  get tableSchema() {
+    return {
+      name: this.#table,
+      columns: this.#columns,
+      primaryKey: this.#primaryKey,
+    };
+  }
+
+  /**
+   * Sets the db (snapshot) to use, to facilitate the Snapshotter leapfrog
+   * algorithm for concurrent traversal of historic timelines.
+   */
+  setDB(db: Database) {
+    this.#stmts = this.#getStatementsFor(db);
+    // The new snapshot already contains everything the batch was standing in
+    // for, so the batch is done.
+    this.#delta?.clear();
+  }
+
+  /**
+   * Sets whether the changes pushed from now on are held in memory (see
+   * {@link TableSourceOptions.deferWrites}) or written to the backing
+   * snapshot. The two must not be mixed within one snapshot, so this may only
+   * be called before the first push after construction or {@link setDB}. To
+   * switch to writing through partway, see {@link writePendingChanges}.
+   */
+  setDeferWrites(deferWrites: boolean) {
+    assert(
+      this.#delta === undefined || this.#delta.isEmpty,
+      'Cannot change how writes are applied while changes are pending',
+    );
+    if (!deferWrites) {
+      this.#delta = undefined;
+    } else {
+      this.#delta ??= new PendingDelta(this.#primaryKey);
+    }
+  }
+
+  /**
+   * Drops the changes held in memory (see {@link setDeferWrites}), for an
+   * advancement that has been abandoned. The source then no longer reflects
+   * the changes pushed to it, so it must not be read again until it has moved
+   * to another snapshot ({@link setDB}), if it is used again at all.
+   */
+  discardPendingChanges(): void {
+    this.#delta?.clear();
+  }
+
+  /**
+   * Writes the changes held in memory (see {@link setDeferWrites}) to the
+   * backing snapshot, which is left as if they had been written through (in
+   * the source's columns), and writes the changes pushed from then on through
+   * to it. Yields when the
+   * source's `shouldYield` says to, and must not be interleaved with a push.
+   */
+  *writePendingChanges(): Stream<'yield'> {
+    const delta = this.#delta;
+    if (delta === undefined) {
+      return;
+    }
+    // The rows the delta holds satisfy the table's unique keys, but one may
+    // take a unique value from another row that the delta also changed. So
+    // every row it touched is deleted before any is inserted.
+    for (const key of delta.touchedKeys()) {
+      this.#stmts.delete.run(
+        ...toSQLiteTypes(this.#primaryKey, key, this.#columns),
+      );
+      if (this.#shouldYield()) {
+        yield 'yield';
+      }
+    }
+    const columns = Object.keys(this.#columns);
+    for (const row of delta.liveRows()) {
+      this.#stmts.insert.run(...toSQLiteTypes(columns, row, this.#columns));
+      if (this.#shouldYield()) {
+        yield 'yield';
+      }
+    }
+    this.#delta = undefined;
+  }
+
+  /**
+   * Fragno patch: makes reads show `row` in place of the backing table's row with the primary key
+   * of `key`, or no row when `row` is undefined, until {@link setDB}. Requires `deferWrites`.
+   */
+  restoreRowsBeforeBatch(rows: Iterable<readonly [key: Row, row: Row | undefined]>): void {
+    const delta = must(this.#delta, 'restoreRowsBeforeBatch requires deferWrites');
+    for (const [key, row] of rows) {
+      if (row === undefined) {
+        delta.delete(key);
+      } else {
+        delta.set(row);
+      }
+    }
+  }
+
+  #getStatementsFor(db: Database) {
+    const cached = this.#dbCache.get(db);
+    if (cached) {
+      return cached;
+    }
+
+    const stmts = {
+      cache: new StatementCache(db),
+      insert: db.prepare(
+        compile(
+          sql`INSERT INTO ${sql.ident(this.#table)} (${sql.join(
+            Object.keys(this.#columns).map(c => sql.ident(c)),
+            ', ',
+          )}) VALUES (${sql.__dangerous__rawValue(
+            Array.from({length: Object.keys(this.#columns).length})
+              .fill('?')
+              .join(','),
+          )})`,
+        ),
+      ),
+      delete: db.prepare(
+        compile(
+          sql`DELETE FROM ${sql.ident(this.#table)} WHERE ${sql.join(
+            this.#primaryKey.map(k => sql`${sql.ident(k)}=?`),
+            ' AND ',
+          )}`,
+        ),
+      ),
+      // If all the columns are part of the primary key, we cannot use UPDATE.
+      update:
+        Object.keys(this.#columns).length > this.#primaryKey.length
+          ? db.prepare(
+              compile(
+                sql`UPDATE ${sql.ident(this.#table)} SET ${sql.join(
+                  nonPrimaryKeys(this.#columns, this.#primaryKey).map(
+                    c => sql`${sql.ident(c)}=?`,
+                  ),
+                  ',',
+                )} WHERE ${sql.join(
+                  this.#primaryKey.map(k => sql`${sql.ident(k)}=?`),
+                  ' AND ',
+                )}`,
+              ),
+            )
+          : undefined,
+    };
+    this.#dbCache.set(db, stmts);
+    return stmts;
+  }
+
+  get #allColumns() {
+    return sql.join(
+      Object.keys(this.#columns).map(c => sql.ident(c)),
+      sql`,`,
+    );
+  }
+
+  #getSchema(connection: Connection, unordered: boolean): SourceSchema {
+    return {
+      tableName: this.#table,
+      columns: this.#columns,
+      primaryKey: this.#primaryKey,
+      sort: unordered ? undefined : connection.sort,
+      relationships: {},
+      isHidden: false,
+      system: 'client',
+      compareRows: connection.compareRows,
+    };
+  }
+
+  connect(
+    sort: Ordering | undefined,
+    filters?: Condition,
+    splitEditKeys?: Set<string>,
+    debug?: DebugDelegate,
+  ) {
+    const transformedFilters = transformFilters(filters);
+    const unordered = sort === undefined;
+    // PK comparator is used for source-level overlay matching (remove by PK
+    // equality) even when no ordering is requested.
+    const primaryKeySort: Ordering = this.#primaryKeySort;
+
+    const fetchSQL = new FetchSQLCache(
+      this.#table,
+      this.#columns,
+      transformedFilters.filters,
+      sort,
+    );
+    const input: SourceInput = {
+      getSchema: () => schema,
+      fetch: req => this.#fetch(req, connection, fetchSQL),
+      setOutput: output => {
+        connection.output = output;
+      },
+      destroy: () => {
+        const idx = this.#connections.indexOf(connection);
+        assert(idx !== -1, 'Connection not found');
+        this.#connections.splice(idx, 1);
+      },
+      fullyAppliedFilters: !transformedFilters.conditionsRemoved,
+    };
+
+    const connection: Connection = {
+      input,
+      debug,
+      output: undefined,
+      sort,
+      splitEditKeys,
+      filters: transformedFilters.filters
+        ? {
+            condition: transformedFilters.filters,
+            predicate: createPredicate(transformedFilters.filters),
+          }
+        : undefined,
+      compareRows: sort ? makeComparator(sort) : makeComparator(primaryKeySort),
+      lastPushedEpoch: 0,
+    };
+    const schema = this.#getSchema(connection, unordered);
+    if (!unordered) {
+      assertOrderingIncludesPK(sort, this.#primaryKey);
+    }
+
+    this.#connections.push(connection);
+    return input;
+  }
+
+  toSQLiteRow(row: Row): Row {
+    return Object.fromEntries(
+      Object.entries(row).map(([key, value]) => [
+        key,
+        toSQLiteType(value, this.#columns[key].type),
+      ]),
+    ) as Row;
+  }
+
+  *#fetch(
+    req: FetchRequest,
+    connection: Connection,
+    fetchSQL: FetchSQLCache,
+  ): Stream<Node | 'yield'> {
+    const {sort, debug} = connection;
+
+    const rows = this.#queryRows(fetchSQL.get(req), debug);
+    const overlayPredicate = mergeOverlayPredicate(
+      connection.filters?.predicate,
+      req.filter,
+    );
+    try {
+      if (sort) {
+        const comparator = makeComparator(sort, req.reverse);
+        yield* generateWithStart(
+          generateWithYields(
+            generateWithOverlay(
+              req.start?.row,
+              this.#withPendingDelta(
+                rows,
+                req,
+                overlayPredicate,
+                sort,
+                comparator,
+              ),
+              req.constraint,
+              this.#overlay,
+              connection.lastPushedEpoch,
+              comparator,
+              // SQL does the ordering and constraining, so the row stream is
+              // already in the connection's sort order: the splice comparator
+              // and the `startAt` comparator coincide here.
+              comparator,
+              overlayPredicate,
+              req.multiConstraints,
+            ),
+            this.#shouldYield,
+          ),
+          req.start,
+          comparator,
+        );
+      } else {
+        yield* generateWithYields(
+          generateWithOverlayUnordered(
+            this.#withPendingDelta(
+              rows,
+              req,
+              overlayPredicate,
+              undefined,
+              undefined,
+            ),
+            req.constraint,
+            this.#overlay,
+            connection.lastPushedEpoch,
+            this.#primaryKey,
+            overlayPredicate,
+            req.multiConstraints,
+          ),
+          this.#shouldYield,
+        );
+      }
+    } finally {
+      // The generators above do not close `rows` when they are abandoned
+      // partway, which leaves its statement open.
+      rows.return();
+    }
+  }
+
+  /**
+   * The rows of `queries`, run one after another as `buildSelectQueries`
+   * requires. Each statement is run only once the previous one is exhausted,
+   * so a fetch that stops early never runs the rest.
+   */
+  *#queryRows(
+    queries: readonly FetchSQL[],
+    debug: DebugDelegate | undefined,
+  ): Generator<Row, void, undefined> {
+    const {cache} = this.#stmts;
+    for (const sqlAndBindings of queries) {
+      // The text of a fetch shape is the same string every time, so it needs
+      // no normalizing.
+      const cachedStatement = cache.getExact(sqlAndBindings.text);
+      const cursor = cachedStatement.statement.batches(sqlAndBindings.values);
+      try {
+        debug?.initQuery(this.#table, sqlAndBindings.text);
+        yield* this.#readRows(
+          cursor,
+          this.#rawColumnsFor(cachedStatement.statement),
+          sqlAndBindings.text,
+          debug,
+        );
+      } finally {
+        // Ensure the SQLite cursor is closed.
+        cursor.close();
+        recordIndexUsage(cachedStatement.statement, this.#table);
+        if (debug) {
+          let totalNvisit = 0;
+          const planLines: string[] = [];
+          for (let i = 0; ; i++) {
+            const nvisit = cachedStatement.statement.scanStatus(
+              i,
+              SQLite3Database.SQLITE_SCANSTAT_NVISIT,
+              1,
+            );
+            if (nvisit === undefined) {
+              break;
+            }
+            totalNvisit += Number(nvisit);
+            const explain = cachedStatement.statement.scanStatus(
+              i,
+              SQLite3Database.SQLITE_SCANSTAT_EXPLAIN,
+              1,
+            );
+            if (typeof explain === 'string' && explain.length > 0) {
+              planLines.push(explain);
+            }
+          }
+          if (totalNvisit !== 0) {
+            debug.recordNVisit(this.#table, sqlAndBindings.text, totalNvisit);
+          }
+          if (planLines.length > 0) {
+            debug.recordExplain(this.#table, sqlAndBindings.text, planLines);
+          }
+          cachedStatement.statement.scanStatusReset();
+        }
+        cache.return(cachedStatement);
+      }
+    }
+  }
+
+  /**
+   * Splices the batch overlay into a base row stream, if there is one. When
+   * derivation is not deferred, or the batch is empty -- every fetch during
+   * hydration, and every fetch before the first change of a pass -- this is
+   * the identity and the source behaves exactly as it did before.
+   *
+   * `predicate` is the connection's filters ANDed with `req.filter`, which
+   * SQL applies to the base rows. `sort` and `compare` are absent for
+   * unordered fetches, where nothing downstream depends on position.
+   */
+  #withPendingDelta(
+    baseRows: IterableIterator<Row>,
+    req: FetchRequest,
+    predicate: ((row: Row) => boolean) | undefined,
+    sort: Ordering | undefined,
+    compare: Comparator | undefined,
+  ): IterableIterator<Row> {
+    const delta = this.#delta;
+    if (delta === undefined || delta.isEmpty) {
+      return baseRows;
+    }
+    const deltaRows = delta.rowsFor(
+      sort ?? this.#primaryKeySort,
+      req.constraint,
+      sort ? req.reverse : false,
+      predicate,
+      req.multiConstraints,
+      sort ? req.start?.row : undefined,
+    );
+    return compare
+      ? generateWithPendingDelta(baseRows, deltaRows, delta, compare)
+      : generateWithPendingDeltaUnordered(baseRows, deltaRows, delta);
+  }
+
+  #rawColumnsFor(statement: Statement): readonly RawColumn[] {
+    return getOrInsertComputed(this.#rawColumns, statement, () =>
+      statement
+        .columns()
+        .map(({name}) => rawColumn(this.#columns, name, this.#table)),
+    );
+  }
+
+  *#readRows(
+    cursor: BatchCursor,
+    columns: readonly RawColumn[],
+    query: string,
+    debug: DebugDelegate | undefined,
+  ): IterableIterator<Row> {
+    for (let capacity = FIRST_BATCH_ROWS; ;) {
+      const {ivmSampling, slowRowThreshold} = this.#logConfig;
+      const sampled = ivmSampling > 0 && ++eventCount % ivmSampling === 0;
+      const start = sampled ? performance.now() : 0;
+      const values = cursor.next(capacity);
+      const n = values.length / columns.length;
+      if (sampled) {
+        const duration = performance.now() - start;
+        // slowRowThreshold is per row: scale it by the rows actually read.
+        if (duration > slowRowThreshold * Math.max(n, 1)) {
+          this.#lc.warn?.(
+            `table-source.next took too long for ${query}. Are you missing an index? duration: ${duration}ms`,
+          );
+        }
+      }
+      if (n === 0) {
+        return;
+      }
+      // Rows are converted only when they are consumed, so rows read ahead
+      // and never used cost no conversion and cannot fail the fetch.
+      for (let r = 0; r < n; r++) {
+        const row = fromSQLiteRawRow(
+          columns,
+          values,
+          this.#table,
+          r * columns.length,
+        );
+        this.#rowsRead++;
+        debug?.rowVended(this.#table, query, row);
+        yield row;
+      }
+      capacity = Math.min(capacity * 2, MAX_BATCH_ROWS);
+    }
+  }
+
+  *push(change: SourceChange): Stream<'yield'> {
+    for (const result of this.genPush(change)) {
+      if (result === 'yield') {
+        yield result;
+      }
+    }
+  }
+
+  /**
+   * The number of rows held in memory for changes that have been pushed but
+   * not written, i.e. with `deferWrites`, since the last {@link setDB}.
+   */
+  get pendingRows(): number {
+    return this.#delta?.size ?? 0;
+  }
+
+  /** Estimated bytes retained by deferred changes and their indexes. */
+  get pendingBytes(): number {
+    return this.#delta?.estimatedBytes ?? 0;
+  }
+
+  /**
+   * Returns whether any connected pipeline could observe the given row.
+   * If false, this row is completely invisible to this TableSource's connections.
+   */
+  mayAcceptRow(row: Row): boolean {
+    if (!this.#skipUnobservableChanges || this.#connections.length === 0) {
+      return true;
+    }
+    for (const conn of this.#connections) {
+      if (!conn.filters || conn.filters.predicate(row)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  #mayAcceptChange(change: SourceChange): boolean {
+    if (!this.#skipUnobservableChanges || this.#connections.length === 0) {
+      return true;
+    }
+    const row = change[SourceChangeIndex.ROW];
+    if (this.mayAcceptRow(row)) {
+      return true;
+    }
+    if (change[SourceChangeIndex.TYPE] === ChangeType.EDIT) {
+      const oldRow = change[SourceChangeIndex.OLD_ROW];
+      if (oldRow && this.mayAcceptRow(oldRow)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  *genPush(change: SourceChange): Stream<'yield' | undefined> {
+    if (this.#skipUnobservableChanges && !this.#mayAcceptChange(change)) {
+      // No connection can observe this row, so only a REMOVE needs to be
+      // applied to the snapshot.
+      if (change[SourceChangeIndex.TYPE] === ChangeType.REMOVE) {
+        this.#writeChange(change);
+      }
+      return;
+    }
+
+    const setOverlay = (o: Overlay | undefined) => (this.#overlay = o);
+    const writeChange = (c: SourceChange) => this.#writeChange(c);
+
+    // Note: TableSource intentionally does not implement checkExists (which MemorySource
+    // uses for defensive asserts like "Row already exists" and "Row not found"):
+    //
+    // 1. Edit detection does not rely on checkExists:
+    //    Edits are detected upstream in PipelineDriver by matching row primary keys
+    //    against prevValues (via deepEqual on PK columns) and emitting SourceChangeEdit.
+    //
+    // 2. Upstream guarantees and error handling:
+    //    - Replicated streams from Postgres WAL / SnapshotDiff guarantee transactional
+    //      consistency, ordering, and row existence.
+    //    - PipelineDriver.#advance reconciles incoming row keys against both the prev
+    //      snapshot and pending delta, guaranteeing that any existing primary key is
+    //      emitted as an EDIT rather than an ADD.
+    //    - In write-through mode, SQLite's native PRIMARY KEY or UNIQUE constraints
+    //      immediately fail if a duplicate INSERT is attempted.
+    //    - In deferred-writes mode, writePendingChanges() deletes touched primary keys
+    //      before inserting (to handle unique-index permutations), meaning an erroneous
+    //      duplicate ADD would act as a replacement. We intentionally do not execute a
+    //      synchronous SQLite SELECT existence probe on every ADD to catch a theoretical
+    //      upstream bug, which is instead guarded by unit tests.
+    //    - Deletes of non-existent rows in SQLite are safe no-ops (0 rows affected).
+    //
+    // Omitting checkExists avoids executing expensive synchronous SQLite SELECT queries on every
+    // pushed row change, eliminating a major bottleneck in push advancement.
+    yield* genPushAndWriteWithSplitEdit(
+      this.#connections,
+      change,
+      undefined,
+      setOverlay,
+      writeChange,
+      () => ++this.#pushEpoch,
+    );
+  }
+
+  #writeChange(change: SourceChange) {
+    const delta = this.#delta;
+    if (delta !== undefined) {
+      this.#writeChangeToDelta(delta, change);
+      return;
+    }
+    switch (change[SourceChangeIndex.TYPE]) {
+      case ChangeType.ADD:
+        this.#stmts.insert.run(
+          ...toSQLiteTypes(
+            // TODO(arv): Compute this once!
+            Object.keys(this.#columns),
+            change[SourceChangeIndex.ROW],
+            this.#columns,
+          ),
+        );
+        break;
+      case ChangeType.REMOVE:
+        this.#stmts.delete.run(
+          ...toSQLiteTypes(
+            this.#primaryKey,
+            change[SourceChangeIndex.ROW],
+            this.#columns,
+          ),
+        );
+        break;
+      case ChangeType.EDIT: {
+        // If the PK is the same, use UPDATE.
+        if (
+          canUseUpdate(
+            change[SourceChangeIndex.OLD_ROW],
+            change[SourceChangeIndex.ROW],
+            this.#columns,
+            this.#primaryKey,
+          )
+        ) {
+          const mergedRow = {
+            ...change[SourceChangeIndex.OLD_ROW],
+            ...change[SourceChangeIndex.ROW],
+          };
+          const params = [
+            ...nonPrimaryValues(this.#columns, this.#primaryKey, mergedRow),
+            ...toSQLiteTypes(this.#primaryKey, mergedRow, this.#columns),
+          ];
+          must(this.#stmts.update).run(params);
+        } else {
+          this.#stmts.delete.run(
+            ...toSQLiteTypes(
+              this.#primaryKey,
+              change[SourceChangeIndex.OLD_ROW],
+              this.#columns,
+            ),
+          );
+          this.#stmts.insert.run(
+            ...toSQLiteTypes(
+              Object.keys(this.#columns),
+              change[SourceChangeIndex.ROW],
+              this.#columns,
+            ),
+          );
+        }
+
+        break;
+      }
+      default:
+        unreachable(change);
+    }
+  }
+
+  /**
+   * Reconciles a set of rows that the caller found in the *backing snapshot*
+   * with the changes this source has applied but not written.
+   *
+   * A view-syncer computes the rows a replicated change collides with -- by
+   * change-log key for a delete, by every unique key for a set -- against the
+   * snapshot it is reading. When derivation writes through, that snapshot has
+   * already absorbed the earlier changes of the same advancement, so the
+   * probe sees them. When derivation is deferred they live here instead, and
+   * the probe has to be brought up to date or the source is pushed a change
+   * that contradicts its own state (a delete of a row the batch already
+   * removed, an edit whose old row is stale).
+   *
+   * Two ways the batch can disagree with the probe, both handled here: a
+   * probed row may have been removed, or may have been edited (so the
+   * caller's copy is stale, or it no longer collides at all).
+   *
+   * The batch cannot have edited a row the probe missed *into* collision. The
+   * change log keeps one entry per row key, so every row the batch holds is
+   * that row's value at the advancement's target version, as is `next`, and
+   * two distinct rows of one version cannot share a non-null unique key.
+   *
+   * Returns `base` untouched when derivation is not deferred, which is what
+   * makes this a no-op for the write-through path.
+   */
+  reconcilePendingConflicts(
+    base: readonly Row[],
+    next: Row | null,
+    rowKey: SQLiteRow,
+    uniqueKeys: readonly (readonly string[])[],
+  ): readonly Row[] {
+    const delta = this.#delta;
+    if (delta === undefined || delta.isEmpty) {
+      return base;
+    }
+
+    // The change-log key uses SQLite values, while pending rows use ZQL
+    // values. It is the upstream replica identity, which may include columns
+    // the source does not sync. The batch cannot have changed those (nor can a
+    // write-through `UPDATE`), so only the synced columns are compared.
+    const deleteKey = next === null ? this.#syncedDeleteKey(rowKey) : undefined;
+    const out: Row[] = [];
+    for (const row of base) {
+      const pending = delta.get(row);
+      const current = pending === NOT_OVERRIDDEN ? row : pending;
+      if (current === undefined) {
+        continue; // the batch removed it
+      }
+      if (
+        deleteKey !== undefined
+          ? !deleteKey.every(([col, value]) =>
+              sqliteValuesEqual(current[col], value, this.#columns[col].type),
+            )
+          : !collides(
+              current,
+              must(next),
+              uniqueKeys,
+              this.#primaryKey,
+              this.#columns,
+            )
+      ) {
+        continue; // the batch edited it out of collision
+      }
+      out.push(current);
+    }
+    return out;
+  }
+
+  #syncedDeleteKey(rowKey: SQLiteRow): [string, Value][] {
+    const synced: Writable<SQLiteRow> = {};
+    for (const [col, value] of Object.entries(rowKey)) {
+      if (Object.hasOwn(this.#columns, col)) {
+        synced[col] = value;
+      }
+    }
+    return Object.entries(fromSQLiteTypes(this.#columns, synced, this.#table));
+  }
+
+  /**
+   * The batch-overlay counterpart of {@link #writeChange}. It must reproduce
+   * that method's semantics exactly, including its treatment of an edit that
+   * cannot be expressed as an `UPDATE` -- a changed primary key, or a table
+   * whose columns are all part of the key -- as a delete followed by an
+   * insert.
+   */
+  #writeChangeToDelta(delta: PendingDelta, change: SourceChange) {
+    switch (change[SourceChangeIndex.TYPE]) {
+      case ChangeType.ADD:
+        delta.set(change[SourceChangeIndex.ROW]);
+        break;
+      case ChangeType.REMOVE:
+        delta.delete(change[SourceChangeIndex.ROW]);
+        break;
+      case ChangeType.EDIT: {
+        const oldRow = change[SourceChangeIndex.OLD_ROW];
+        const row = change[SourceChangeIndex.ROW];
+        if (canUseUpdate(oldRow, row, this.#columns, this.#primaryKey)) {
+          // `UPDATE` sets only the non-primary columns, so the row keeps any
+          // column the change did not mention.
+          delta.set({...oldRow, ...row});
+        } else {
+          delta.delete(oldRow);
+          delta.set(row);
+        }
+        break;
+      }
+      default:
+        unreachable(change);
+    }
+  }
+
+  #getRowStmtCache = new Map<string, string>();
+
+  #getRowStmt(keyCols: string[]): string {
+    const keyString = JSON.stringify(keyCols);
+    return getOrInsertComputed(this.#getRowStmtCache, keyString, () =>
+      compile(
+        sql`SELECT ${this.#allColumns} FROM ${sql.ident(
+          this.#table,
+        )} WHERE ${sql.join(
+          keyCols.map(k => sql`${sql.ident(k)}=?`),
+          sql` AND`,
+        )}`,
+      ),
+    );
+  }
+
+  /**
+   * Retrieves a row from the backing DB by a unique key, or `undefined` if such a
+   * row does not exist. This is not used in the IVM pipeline but is useful
+   * for retrieving data that is consistent with the state (and type
+   * semantics) of the pipeline. Note that this key may not necessarily correspond
+   * to the `primaryKey` with which this TableSource.
+   */
+  getRow(rowKey: Row): Row | undefined {
+    const keyCols = Object.keys(rowKey);
+
+    const stmt = this.#getRowStmt(keyCols);
+    const row = this.#stmts.cache.use(stmt, ({statement}) => {
+      const values = statement
+        .safeIntegers(true)
+        .raw(true)
+        .get<SQLiteValue[] | undefined>(
+          ...toSQLiteTypes(keyCols, rowKey, this.#columns),
+        );
+      recordIndexUsage(statement, this.#table);
+      return values === undefined
+        ? undefined
+        : fromSQLiteRawRow(this.#rawColumnsFor(statement), values, this.#table);
+    });
+
+    const delta = this.#delta;
+    if (delta === undefined || delta.isEmpty) {
+      return row;
+    }
+    if (row !== undefined) {
+      // The batch may have edited or removed the base row out from under this
+      // lookup. Its own primary key is what identifies it in the batch.
+      const overridden = delta.get(row);
+      if (overridden === NOT_OVERRIDDEN) {
+        return row;
+      }
+      if (
+        overridden !== undefined &&
+        keyCols.every(c => overridden[c] === rowKey[c])
+      ) {
+        return overridden;
+      }
+    }
+    // The base match is absent, removed, or no longer matches this key. Another
+    // pending row may now own the key.
+    return delta.getByColumns(keyCols, rowKey);
+  }
+}
+
+function mergeOverlayPredicate(
+  connPredicate: ((row: Row) => boolean) | undefined,
+  reqFilter: StrictNoSubqueryCondition | undefined,
+): ((row: Row) => boolean) | undefined {
+  if (!reqFilter) {
+    return connPredicate;
+  }
+  const reqPredicate = createPredicate(reqFilter);
+  if (!connPredicate) {
+    return reqPredicate;
+  }
+  return row => connPredicate(row) && reqPredicate(row);
+}
+
+/**
+ * Whether `a` occupies the same row identity as `b` -- the same primary key,
+ * or the same value on any unique key, which is what a replicated write
+ * conflicts on.
+ */
+function collides(
+  a: Row,
+  b: Row,
+  uniqueKeys: readonly (readonly string[])[],
+  primaryKey: PrimaryKey,
+  columns: Record<string, SchemaValue>,
+): boolean {
+  if (
+    primaryKey.every(col =>
+      sqliteValuesEqual(a[col], b[col], columns[col].type),
+    )
+  ) {
+    return true;
+  }
+  for (const key of uniqueKeys) {
+    if (key.some(col => b[col] === null || b[col] === undefined)) {
+      continue;
+    }
+    if (
+      key.every(col => sqliteValuesEqual(a[col], b[col], columns[col].type))
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function sqliteValuesEqual(
+  a: Value | undefined,
+  b: Value | undefined,
+  type: ValueType,
+) {
+  return toSQLiteType(a, type) === toSQLiteType(b, type);
+}
+
+function getUniqueIndexes(
+  db: Database,
+  tableName: string,
+): Map<string, Set<string>> {
+  const sqlAndBindings = format(
+    sql`
+    SELECT idx.name, json_group_array(col.name) as columnsJSON
+      FROM sqlite_master as idx
+      JOIN pragma_index_list(idx.tbl_name) AS info ON info.name = idx.name
+      JOIN pragma_index_info(idx.name) as col
+      WHERE idx.tbl_name = ${tableName} AND
+            idx.type = 'index' AND 
+            info."unique" != 0 AND
+            info.partial = 0
+      GROUP BY idx.name
+      ORDER BY idx.name`,
+  );
+  const stmt = db.prepare(sqlAndBindings.text);
+  const indexes = stmt.all<{columnsJSON: string}>(...sqlAndBindings.values);
+  return new Map(
+    indexes.map(({columnsJSON}) => {
+      const columns = JSON.parse(columnsJSON);
+      const set = new Set<string>(columns);
+      return [JSON.stringify(columns.sort()), set];
+    }),
+  );
+}
+
+export function toSQLiteTypes(
+  columns: readonly string[],
+  row: Row,
+  columnTypes: Record<string, SchemaValue>,
+): readonly unknown[] {
+  return columns.map(col => toSQLiteType(row[col], columnTypes[col].type));
+}
+
+export function toSQLiteTypeName(type: ValueType) {
+  switch (type) {
+    case 'boolean':
+      return 'INTEGER';
+    case 'number':
+      return 'REAL';
+    case 'string':
+      return 'TEXT';
+    case 'null':
+      return 'NULL';
+    case 'json':
+      return 'TEXT';
+  }
+}
+
+/**
+ * A column value as read from SQLite with `safeIntegers(true)`, i.e. before
+ * {@link fromSQLiteTypes} converts it to a {@link Value}.
+ */
+export type SQLiteValue = bigint | number | string | null;
+
+/** A row as read from SQLite, before {@link fromSQLiteTypes}. */
+export type SQLiteRow = Readonly<Record<string, SQLiteValue>>;
+
+export function fromSQLiteTypes(
+  valueTypes: Record<string, SchemaValue>,
+  row: SQLiteRow,
+  tableName: string,
+): Row {
+  const newRow: Writable<Row> = {};
+  for (const key of Object.keys(row)) {
+    const valueType = valueTypes[key];
+    if (valueType === undefined) {
+      throw invalidColumnError(valueTypes, key, tableName);
+    }
+    newRow[key] = fromSQLiteType(valueType.type, row[key], key, tableName);
+  }
+  return newRow;
+}
+
+/** A result column of a raw row and the type it converts to. */
+export type RawColumn = {
+  readonly name: string;
+  readonly type: ValueType;
+};
+
+export function rawColumn(
+  valueTypes: Record<string, SchemaValue>,
+  name: string,
+  tableName: string,
+): RawColumn {
+  // Not a column that `valueTypes` merely inherits, e.g. `toString`.
+  const valueType = Object.hasOwn(valueTypes, name)
+    ? valueTypes[name]
+    : undefined;
+  if (valueType === undefined) {
+    throw invalidColumnError(valueTypes, name, tableName);
+  }
+  return {name, type: valueType.type};
+}
+
+function invalidColumnError(
+  valueTypes: Record<string, SchemaValue>,
+  name: string,
+  tableName: string,
+): Error {
+  const columnList = Object.keys(valueTypes).sort().join(', ');
+  return new Error(
+    `Invalid column "${name}" for table "${tableName}". Synced columns include ${columnList}`,
+  );
+}
+
+/**
+ * Like {@link fromSQLiteTypes}, for a row read with `raw(true)`: the row's
+ * values are `values[offset]` up to `values[offset + columns.length - 1]`.
+ */
+export function fromSQLiteRawRow(
+  columns: readonly RawColumn[],
+  values: readonly SQLiteValue[],
+  tableName: string,
+  offset = 0,
+): Row {
+  const newRow: Writable<Row> = {};
+  for (let i = 0; i < columns.length; i++) {
+    const {name, type} = columns[i];
+    const value = fromSQLiteType(type, values[offset + i], name, tableName);
+    if (name === '__proto__') {
+      // An own property, not the legacy setter.
+      assignProperty<string, Value>(newRow, name, value);
+    } else {
+      newRow[name] = value;
+    }
+  }
+  return newRow;
+}
+
+function fromSQLiteType(
+  valueType: ValueType,
+  v: SQLiteValue,
+  column: string,
+  tableName: string,
+): Value {
+  if (v === null) {
+    return null;
+  }
+  switch (valueType) {
+    case 'boolean':
+      return !!v;
+    case 'number':
+    case 'string':
+    case 'null':
+      if (typeof v === 'bigint') {
+        if (v > Number.MAX_SAFE_INTEGER || v < Number.MIN_SAFE_INTEGER) {
+          throw new UnsupportedValueError(
+            `value ${v} (in ${tableName}.${column}) is outside of supported bounds`,
+          );
+        }
+        return Number(v);
+      }
+      return v;
+    case 'json':
+      try {
+        return JSON.parse(v as string);
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        throw new UnsupportedValueError(
+          `Failed to parse JSON for ${tableName}.${column}: ${errorMessage}`,
+          {cause: error},
+        );
+      }
+  }
+}
+
+export class UnsupportedValueError extends Error {}
+
+function canUseUpdate(
+  oldRow: Row,
+  row: Row,
+  columns: Record<string, SchemaValue>,
+  primaryKey: PrimaryKey,
+): boolean {
+  for (const pk of primaryKey) {
+    if (oldRow[pk] !== row[pk]) {
+      return false;
+    }
+  }
+  return Object.keys(columns).length > primaryKey.length;
+}
+
+function nonPrimaryValues(
+  columns: Record<string, SchemaValue>,
+  primaryKey: PrimaryKey,
+  row: Row,
+): Iterable<unknown> {
+  return nonPrimaryKeys(columns, primaryKey).map(c =>
+    toSQLiteType(row[c], columns[c].type),
+  );
+}
+
+function nonPrimaryKeys(
+  columns: Record<string, SchemaValue>,
+  primaryKey: PrimaryKey,
+) {
+  return Object.keys(columns).filter(c => !primaryKey.includes(c));
+}
+
+function* generateWithYields(stream: Stream<Node>, shouldYield: () => boolean) {
+  for (const n of stream) {
+    if (shouldYield()) {
+      yield 'yield';
+    }
+    yield n;
+  }
+}

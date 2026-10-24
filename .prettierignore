@@ -9,3 +9,4 @@ packages/stripe/src/webhook/test-events
 worker-configuration.d.ts
 AGENTS.md
 apps/docs/app/components/form-builder/form-builder.json
+packages/lofi/src/zql/vendor

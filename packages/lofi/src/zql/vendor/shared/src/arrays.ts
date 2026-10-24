@@ -1,0 +1,59 @@
+// Vendored from rocicorp/mono@945ce619249e63381fb51d46c12f0d9e80024860 packages/shared/src/arrays.ts. Do not edit; run scripts/vendor-zql.mjs.
+// @ts-nocheck
+import {assert} from './asserts.ts';
+import {getOrInsertComputed} from './map.ts';
+
+/**
+ * Returns `arr` as is if none of the elements are `undefined`.
+ * Otherwise returns a new array with only defined elements in `arr`.
+ */
+export function defined<T>(arr: (T | undefined)[]): T[] {
+  // avoid an array copy if possible
+  let i = arr.findIndex(x => x === undefined);
+  if (i < 0) {
+    return arr as T[];
+  }
+  const defined: T[] = arr.slice(0, i) as T[];
+  for (i++; i < arr.length; i++) {
+    const x = arr[i];
+    if (x !== undefined) {
+      defined.push(x);
+    }
+  }
+  return defined;
+}
+
+export function areEqual<T>(arr1: readonly T[], arr2: readonly T[]): boolean {
+  return arr1.length === arr2.length && arr1.every((e, i) => e === arr2[i]);
+}
+
+export function zip<T1, T2>(a1: readonly T1[], a2: readonly T2[]): [T1, T2][] {
+  assert(a1.length === a2.length, 'zip: arrays must have equal length');
+  const result: [T1, T2][] = [];
+  for (let i = 0; i < a1.length; i++) {
+    result.push([a1[i], a2[i]]);
+  }
+  return result;
+}
+
+export function last<T>(arr: T[]): T | undefined {
+  return arr.at(-1);
+}
+
+/**
+ * Creates an empty array.  Pass this to `getOrInsertComputed` instead of an
+ * inline `() => []` so that a hit does not allocate a closure.
+ */
+export const newArray = <T>(): T[] => [];
+
+export function groupBy<T, K>(
+  arr: readonly T[],
+  keyFn: (el: T) => K,
+): Map<K, T[]> {
+  const groups = new Map<K, T[]>();
+  for (const el of arr) {
+    const key = keyFn(el);
+    getOrInsertComputed(groups, key, newArray).push(el);
+  }
+  return groups;
+}

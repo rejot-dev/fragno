@@ -6,13 +6,13 @@ import { MemoryVFS } from "@journeyapps/wa-sqlite/src/examples/MemoryVFS.js";
 
 import * as SQLite from "@journeyapps/wa-sqlite";
 
-import type { LofiSqliteDatabase } from "./adapter";
+import { wrapWaSqliteDatabase, type LofiZqlSqliteDatabase } from "../zql/wa-sqlite";
 import { LOFI_SQLITE_ENDPOINT_NAME, type LofiSqliteReplica } from "./replica";
 
 /**
  * Opens replica databases in Node: one wa-sqlite module, the same SQLite build browsers run, whose
- * in-memory files every connection shares, like OPFS. Pass `open` as the replica's
- * `openDatabase` dependency.
+ * in-memory files every connection shares, like OPFS. Pass `open` as the replica's or the ZQL
+ * host's `openDatabase` dependency.
  */
 export async function openLofiSqliteMemoryFiles(options: {
   /** Delays every statement, like a slow OPFS write, to keep a catch-up observable. */
@@ -31,42 +31,25 @@ export async function openLofiSqliteMemoryFiles(options: {
 
   return {
     // A property rather than a method, so it can be passed on as the `openDatabase` dependency.
-    open: async ({
-      databaseName,
-    }: {
-      databaseName: string;
-    }): Promise<LofiSqliteDatabase & { close(): Promise<void> }> => {
+    open: async ({ databaseName }: { databaseName: string }): Promise<LofiZqlSqliteDatabase> => {
       const db = await sqlite3.open_v2(databaseName, undefined, "lofi-memory");
+      const database = wrapWaSqliteDatabase({
+        module,
+        sqlite3,
+        db,
+        close: async () => {
+          await sqlite3.close(db);
+        },
+      });
       return {
-        async execute(sql, params = []) {
+        ...database,
+        async execute(sql, params) {
           if (options.statementDelayMs > 0) {
             await new Promise((resolve) => {
               setTimeout(resolve, options.statementDelayMs);
             });
           }
-          const rows: Record<string, unknown>[] = [];
-          for await (const statement of sqlite3.statements(db, sql)) {
-            if (params.length > 0) {
-              sqlite3.bind_collection(statement, params as SQLiteCompatibleType[]);
-            }
-            const columns = sqlite3.column_names(statement);
-            while ((await sqlite3.step(statement)) === SQLite.SQLITE_ROW) {
-              const values = sqlite3.row(statement);
-              rows.push(
-                Object.fromEntries(
-                  // Blob values view wasm memory, which the next statement overwrites.
-                  columns.map((name, index) => {
-                    const value = values[index];
-                    return [name, value instanceof Uint8Array ? value.slice() : value];
-                  }),
-                ),
-              );
-            }
-          }
-          return rows;
-        },
-        async close() {
-          await sqlite3.close(db);
+          return await database.execute(sql, params);
         },
       };
     },
