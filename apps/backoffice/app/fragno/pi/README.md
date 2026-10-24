@@ -315,6 +315,12 @@ socket with a code from 4000 up (`PI_AGENT_WATCH_REFUSED`) and the reason; any o
 reconnecting after, which starts again from a whole view. Only Cloudflare serves view sockets; the
 Node runtime throws.
 
+The sockets are hibernatable (`ctx.acceptWebSocket`), so open tabs do not keep an idle agent in
+memory. Hibernation drops the watch, so an agent woken with sockets attached opens a new one before
+anything else uses the agent and sends each socket a whole `view` again: reopening may commit what
+the sockets never saw. Queue frames reach them meanwhile. The queue the agent last had is forgotten
+too, so the first publication after waking is taken whatever its revision.
+
 ## Backoffice execution
 
 `extensions/backoffice/backoffice-extension.ts` installs the shared Backoffice `read`, `search`, and
