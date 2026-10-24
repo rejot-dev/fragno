@@ -60,21 +60,45 @@ Use `defineWorkflow` for work that must survive retries, time, or an external co
 
 Use the `pi` runtime tools when a workflow needs model work. Prompt a defined agent by name; list
 them with `pi.listAgents({})`, and read `/static/skills/pi-agents/SKILL.md` to define a new one.
-Give every prompt a deterministic `requestId` derived from the workflow instance and operation, so a
-step retried after an uncertain outcome returns the original durable submission instead of a second
-turn.
+`pi.submitPrompt` queues the prompt and returns at once. Use the run's instance ID as its
+`requestId`: a step retried after an uncertain outcome then keeps the original prompt instead of
+queuing a second turn, and the turn's events name the run waiting for them.
 
 ```js
-const response = await step.do("classify text", async () => {
-  return await pi.runPrompt({
+await step.do("submit classification", async () => {
+  return await pi.submitPrompt({
     agentName: "assistant",
-    requestId: `${event.instanceId}:classify-text`,
+    requestId: event.instanceId,
     content: `Classify this text and explain the decision concisely:\n\n${text}`,
   });
 });
 
-const classification = response.assistantText;
+// The payload is the agent's pi event.
+const settled = await step.waitForEvent("wait for classification", { type: "pi-turn-settled" });
+
+const classification = await step.do("read classification", async () => {
+  if (settled.payload.eventType !== "turn.completed") {
+    return null;
+  }
+  // The event names the answer; reading its text needs pi.read.
+  const { answerEntryId } = settled.payload.payload;
+  const { messages } = await pi.listMessages({
+    agentName: "assistant",
+    before: answerEntryId + 1,
+    last: 1,
+  });
+  // An answer that said nothing is no message, so the page then holds an earlier one.
+  return messages[0]?.entryId === answerEntryId ? messages[0].text : null;
+});
 ```
+
+The wait ends when a route sends the prompt's turn event to the run. Save the workflow, start it
+from a route whose `instanceIdTemplate` gives its runs a shared prefix, and add one
+`send_workflow_event` route for each of the `pi` events `turn.completed`, `turn.failed`,
+`turn.aborted`, and `queue.dropped`: match `$.subject.agentName` and the prefix on
+`$.subject.requestId`, target `{ kind: "instance_id", template: "${event.subject.requestId}" }`, and
+send `eventType` `"pi-turn-settled"`. Read `/static/skills/building-automations/SKILL.md` for
+routes. A run waits for one prompt this way, since the prompt's request ID is the run's instance ID.
 
 An agent has one ongoing conversation and runs one turn at a time; a prompt to a busy agent waits
 for the current turn. The turn runs with the workflow's current permissions, narrowed by the agent's

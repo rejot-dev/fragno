@@ -161,22 +161,6 @@ export const piPromptReceiptOutputSchema = z.lazy(() =>
 );
 export type PiPromptReceipt = z.infer<typeof piPromptReceiptOutputSchema>;
 
-const piAgentDetailOutputSchema = z.lazy(() =>
-  piAgentDefinitionSchema._zod.innerType.extend({
-    // Null until the agent's conversation has received its first turn.
-    view: z.unknown(),
-  }),
-);
-
-const piPromptResultOutputSchema = z.lazy(() =>
-  z.object({
-    agentName: piAgentNameSchema,
-    view: z.unknown(),
-    submission: z.unknown(),
-    assistantText: z.string(),
-  }),
-);
-
 const agentInputSchema = z.lazy(() => z.strictObject({ agentName: piAgentNameSchema }));
 
 const promptSubmitInputSchema = z.lazy(() =>
@@ -184,18 +168,6 @@ const promptSubmitInputSchema = z.lazy(() =>
     content: z.string().trim().min(1),
     requestId: z.string().trim().min(1).optional(),
     whenBusy: piPromptWhenBusySchema.optional(),
-  }),
-);
-
-const promptRunInputSchema = z.lazy(() =>
-  promptSubmitInputSchema._zod.innerType.extend({
-    timeoutMs: z.number().int().positive().optional(),
-  }),
-);
-
-const submissionGetInputSchema = z.lazy(() =>
-  agentInputSchema._zod.innerType.extend({
-    requestId: z.string().trim().min(1),
   }),
 );
 
@@ -309,10 +281,10 @@ export const piOperations = {
     output: piAgentDirectoryOutputSchema,
   },
   "pi.agent.get": {
-    description: "Get one defined agent and its durable conversation view.",
+    description: "Get one defined agent.",
     permissions: [BACKOFFICE_PERMISSION.pi.read],
     input: agentInputSchema,
-    output: piAgentDetailOutputSchema,
+    output: piAgentDefinitionSchema,
   },
   "pi.agent.create": {
     description:
@@ -353,23 +325,10 @@ export const piOperations = {
   },
   "pi.prompt.submit": {
     description:
-      "Durably queue a prompt for an agent, or steer its running turn, and return a receipt saying which. A request ID still queued is not queued twice. The turn runs with the caller's current permissions, narrowed by the agent's definition. Usage belongs to the agent scope's root owner, independently of the caller or their active organization.",
+      "Durably queue a prompt for an agent, or steer its running turn, and return a receipt saying which. A request ID still queued is not queued twice. The prompt's outcome is recorded as a pi turn.completed event naming the answer's entry, or turn.failed, turn.aborted, or queue.dropped, each with the request ID in its subject. The turn runs with the caller's current permissions, narrowed by the agent's definition. Usage belongs to the agent scope's root owner, independently of the caller or their active organization.",
     permissions: [BACKOFFICE_PERMISSION.pi.modify],
     input: promptSubmitInputSchema,
     output: piPromptReceiptOutputSchema,
-  },
-  "pi.submission.get": {
-    description: "Get the durable status of one prompt submission.",
-    permissions: [BACKOFFICE_PERMISSION.pi.read],
-    input: submissionGetInputSchema,
-    output: z.lazy(() => z.unknown()),
-  },
-  "pi.prompt.run": {
-    description:
-      "Durably queue a prompt for an agent, wait for its turn to settle, and return its conversation view.",
-    permissions: [BACKOFFICE_PERMISSION.pi.modify],
-    input: promptRunInputSchema,
-    output: piPromptResultOutputSchema,
   },
   "pi.agent.stop": {
     description:

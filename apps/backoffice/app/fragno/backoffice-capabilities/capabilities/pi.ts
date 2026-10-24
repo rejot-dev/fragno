@@ -132,7 +132,7 @@ const requestSubjectSchema = agentSubjectSchema.extend({
     .string()
     .trim()
     .min(1)
-    .describe("The work's request ID; pi.getSubmission reads its submission."),
+    .describe("The work's request ID; for a prompt, the one pi.submitPrompt's receipt names."),
 });
 
 /** Names an agent among same-named agents of other scopes. */

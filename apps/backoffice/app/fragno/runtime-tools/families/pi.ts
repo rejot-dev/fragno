@@ -8,8 +8,6 @@ import {
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 import type {
   PiManagerAgentInput,
-  PiManagerGetSubmissionInput,
-  PiManagerRunPromptInput,
   PiManagerRuntime,
   PiManagerSubmitPromptInput,
 } from "@/fragno/pi/manager/pi-manager-runtime";
@@ -53,17 +51,6 @@ const parsePromptSubmit = defineCliArgsParser<PiManagerSubmitPromptInput>("pi.pr
   content: { required: true },
   requestId: { option: "request-id" },
   whenBusy: { option: "when-busy" },
-});
-const parseSubmissionGet = defineCliArgsParser<PiManagerGetSubmissionInput>("pi.submission.get", {
-  agentName: { option: "agent", required: true },
-  requestId: { option: "request-id", required: true },
-});
-const parsePromptRun = defineCliArgsParser<PiManagerRunPromptInput>("pi.prompt.run", {
-  agentName: { option: "agent", required: true },
-  content: { required: true },
-  requestId: { option: "request-id" },
-  whenBusy: { option: "when-busy" },
-  timeoutMs: { option: "timeout-ms", kind: "integer" },
 });
 const parseAgentStop = defineCliArgsParser<PiManagerAgentInput>("pi.agent.stop", {
   agentName: { option: "agent", required: true },
@@ -199,14 +186,13 @@ const agentGetTool = defineBackofficeRuntimeTool({
   namespace: "pi",
   name: "getAgent",
   execute: async (input, context: PiToolContext) => {
-    const { view, ...agent } = await requirePiManagerRuntime(context.runtimes.pi).getAgent(input);
-    return { ...agentDefinition(agent), view: normalizeRuntimeOutput(view) };
+    return agentDefinition(await requirePiManagerRuntime(context.runtimes.pi).getAgent(input));
   },
   adapters: {
     bash: {
       command: "pi.agent.get",
       help: {
-        summary: "pi.agent.get retrieves an agent and its durable conversation view.",
+        summary: "pi.agent.get retrieves an agent's definition.",
         options: [
           {
             name: "agent",
@@ -279,115 +265,6 @@ const promptSubmitTool = defineBackofficeRuntimeTool({
         examples: ['pi.prompt.submit --agent assistant --content "Investigate the failure"'],
       },
       parse: parsePromptSubmit,
-      format: (data) => ({ data }),
-    },
-  },
-});
-
-const submissionGetTool = defineBackofficeRuntimeTool({
-  ...backofficeApiOperationToolFields("pi.submission.get"),
-  namespace: "pi",
-  name: "getSubmission",
-  execute: async (input, context: PiToolContext) => {
-    return normalizeRuntimeOutput(
-      await requirePiManagerRuntime(context.runtimes.pi).getSubmission(input),
-    );
-  },
-  adapters: {
-    bash: {
-      command: "pi.submission.get",
-      help: {
-        summary: "pi.submission.get reads one durable prompt submission.",
-        options: [
-          {
-            name: "agent",
-            required: true,
-            valueRequired: true,
-            valueName: "agent-name",
-            description: "Agent name",
-          },
-          {
-            name: "request-id",
-            required: true,
-            valueRequired: true,
-            valueName: "request-id",
-            description: "Prompt request id",
-          },
-        ],
-        examples: ["pi.submission.get --agent assistant --request-id request-456"],
-      },
-      parse: parseSubmissionGet,
-      format: (data) => ({ data }),
-    },
-  },
-});
-
-const promptRunTool = defineBackofficeRuntimeTool({
-  ...backofficeApiOperationToolFields("pi.prompt.run"),
-  namespace: "pi",
-  name: "runPrompt",
-  execute: async (input, context: PiToolContext) => {
-    const result = await requirePiManagerRuntime(context.runtimes.pi).runPrompt(input);
-    return {
-      agentName: result.agentName,
-      view: normalizeRuntimeOutput(result.view),
-      submission: normalizeRuntimeOutput(result.submission),
-      assistantText: result.assistantText,
-    };
-  },
-  adapters: {
-    bash: {
-      command: "pi.prompt.run",
-      help: {
-        summary: "pi.prompt.run admits a prompt and waits for its durable submission to settle.",
-        options: [
-          {
-            name: "agent",
-            required: true,
-            valueRequired: true,
-            valueName: "agent-name",
-            description: "Agent name",
-          },
-          {
-            name: "content",
-            required: true,
-            valueRequired: true,
-            valueName: "text",
-            description: "Prompt content",
-          },
-          {
-            name: "request-id",
-            valueRequired: true,
-            valueName: "request-id",
-            description: "Optional deduplication key",
-          },
-          {
-            name: "when-busy",
-            valueRequired: true,
-            valueName: "mode",
-            description:
-              "followUp (default) waits for the current turn, steer joins it, reject refuses",
-          },
-          {
-            name: "billing-organization-id",
-            valueRequired: true,
-            valueName: "organization-id",
-            description:
-              "Billing owner chosen by a user-scoped agent's first turn; omitted inherits the calling Pi agent or workflow's owner",
-          },
-          {
-            name: "timeout-ms",
-            valueRequired: true,
-            valueName: "milliseconds",
-            description: "Maximum wait; admitted work continues after timeout",
-          },
-        ],
-        examples: [
-          'pi.prompt.run --agent assistant --content "Summarize your findings" --print assistantText',
-        ],
-      },
-      parse: parsePromptRun,
-      outputOptions: jsonByDefaultOutputOptions,
       format: (data) => ({ data }),
     },
   },
@@ -624,8 +501,6 @@ export const piRuntimeTools = [
   agentUpdateTool,
   agentDeleteTool,
   promptSubmitTool,
-  submissionGetTool,
-  promptRunTool,
   agentStopTool,
   agentBackfillEventsTool,
 ] as const;

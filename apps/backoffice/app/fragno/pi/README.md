@@ -119,7 +119,7 @@ oldest item it handles.
   `POST /agents/:agentName/resume`, or a prompt with `whenPaused: "resume"`, resumes it: the next
   turn starts at once, or when the stopped turn settles, with the queue's oldest item. The
   Backoffice UI sends `resume`; the default, `wait`, keeps automations and workflows from undoing a
-  stop, so `pi.runPrompt` waits until its deadline.
+  stop, so a workflow waiting for a prompt's turn event keeps waiting.
 
 Each change is one retrieve and one mutation, then at most one call to the agent object. The
 mutation decides: it admits the item against the agent's definition and models as they are then,
@@ -140,9 +140,8 @@ instead of joining another sender's turn.
 
 A request's submission reads `{ type: "input", status: "queued", requestId }` until Pi has its turn,
 and `{ type: "input", status: "dropped", requestId, reason }` once dropped; waiting for a queued
-prompt also waits for its dispatch, and `pi.runPrompt` fails with `PI_MANAGER_PROMPT_DROPPED`. Once
-its turn is dispatched, a request's submission is its turn's, so every notification a turn handled
-answers with that turn's submission.
+prompt also waits for its dispatch. Once its turn is dispatched, a request's submission is its
+turn's, so every notification a turn handled answers with that turn's submission.
 
 Every change publishes the agent's waiting items and whether its queue is paused, with the agent
 row's version as their revision, to the manager object's in-memory queue channel. The view stream
@@ -310,13 +309,11 @@ execution scope and actors and restore them after suspension, retries, and objec
 carry no independent billing choice. See [usage attribution](../billing/README.md).
 
 Runtime tools target the scoped manager directly: `pi.listAgents`, `pi.getAgent`, `pi.listMessages`,
-`pi.exportConversation`, `pi.submitPrompt`, `pi.getSubmission`, `pi.runPrompt`, `pi.stopAgent`, and
-`pi.backfillAgentEvents`. Scoped context handles rebuild this runtime for the selected scope.
-Synchronous prompt execution uses Pi Durable's commit-driven submission waiter through a bounded
-long-poll request. Prompt request IDs are stable within durable tool invocations; timeout or caller
-cancellation stops the wait but does not retract already admitted work. Manager failures throw
-`PiManagerRuntimeRequestError` with stable `status` and `code` fields, which codemode preserves for
-workflow recovery decisions.
+`pi.exportConversation`, `pi.submitPrompt`, `pi.stopAgent`, and `pi.backfillAgentEvents`. Scoped
+context handles rebuild this runtime for the selected scope. No tool waits for a turn; its turn
+events report how it ended. Prompt request IDs are stable within durable tool invocations. Manager
+failures throw `PiManagerRuntimeRequestError` with stable `status` and `code` fields, which codemode
+preserves for workflow recovery decisions.
 
 ## Reading conversations
 

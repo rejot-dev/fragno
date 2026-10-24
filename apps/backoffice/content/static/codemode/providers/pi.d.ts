@@ -2,7 +2,7 @@
 type PiCodemodeProvider = {
   /** List the built-in agents and the agents defined in the current scope. */
   listAgents(input: PiListAgentsInput): Promise<PiListAgentsOutput>;
-  /** Get one defined agent and its durable conversation view. */
+  /** Get one defined agent. */
   getAgent(input: PiGetAgentInput): Promise<PiGetAgentOutput>;
   /** Read the most recent messages of a started agent's conversation, oldest first, by the agent's name; call `pi.listAgents` to find the agent a request means rather than assuming it is you: what users said and the agent answered, without thinking, tool calls, or tool results. Pass the returned `before` to read further back; it is null at the conversation's start. Includes history before compactions and resets. */
   listMessages(input: PiListMessagesInput): Promise<PiListMessagesOutput>;
@@ -14,12 +14,8 @@ type PiCodemodeProvider = {
   updateAgent(input: PiUpdateAgentInput): Promise<PiUpdateAgentOutput>;
   /** Idempotently delete an agent's definition. Its stored conversation is kept and resumes if the name is defined again. */
   deleteAgent(input: PiDeleteAgentInput): Promise<PiDeleteAgentOutput>;
-  /** Durably queue a prompt for an agent, or steer its running turn, and return a receipt saying which. A request ID still queued is not queued twice. The turn runs with the caller's current permissions, narrowed by the agent's definition. Usage belongs to the agent scope's root owner, independently of the caller or their active organization. */
+  /** Durably queue a prompt for an agent, or steer its running turn, and return a receipt saying which. A request ID still queued is not queued twice. The prompt's outcome is recorded as a pi turn.completed event naming the answer's entry, or turn.failed, turn.aborted, or queue.dropped, each with the request ID in its subject. The turn runs with the caller's current permissions, narrowed by the agent's definition. Usage belongs to the agent scope's root owner, independently of the caller or their active organization. */
   submitPrompt(input: PiSubmitPromptInput): Promise<PiSubmitPromptOutput>;
-  /** Get the durable status of one prompt submission. */
-  getSubmission(input: PiGetSubmissionInput): Promise<unknown>;
-  /** Durably queue a prompt for an agent, wait for its turn to settle, and return its conversation view. */
-  runPrompt(input: PiRunPromptInput): Promise<PiRunPromptOutput>;
   /** Stop an agent: abort its running turn and background work, and pause its queue. Queued and new prompts wait until someone resumes the agent in Backoffice. */
   stopAgent(input: PiStopAgentInput): Promise<PiStopAgentOutput>;
   /** Record the scope's defined agents as pi agent.* events, for agents defined before those events were recorded, so views and routes built on the events see every agent. For each agent the events record missing, deleted, or with a different definition, it records agent.created or agent.updated with the current definition, and for each agent they record that is no longer defined, agent.deleted. Routes on those events run for each new event. A rerun records nothing new. Built-in agents are left out: they are defined in every scope. Returns the events it recorded. */
@@ -64,7 +60,6 @@ type PiGetAgentOutput = {
       }
     | AutomationRouteManagedBy
     | null;
-  view: unknown;
 };
 type PiListMessagesInput = {
   /** The agent whose conversation to read, by its name from `pi.listAgents`; it is yours only when you pass your own name. */
@@ -163,23 +158,6 @@ type PiSubmitPromptInput = {
 type PiSubmitPromptOutput = {
   requestId: string;
   status: "steered" | "queued";
-};
-type PiGetSubmissionInput = {
-  agentName: string;
-  requestId: string;
-};
-type PiRunPromptInput = {
-  agentName: string;
-  content: string;
-  requestId?: string;
-  whenBusy?: "followUp" | "steer" | "reject";
-  timeoutMs?: number;
-};
-type PiRunPromptOutput = {
-  agentName: string;
-  view: unknown;
-  submission: unknown;
-  assistantText: string;
 };
 type PiStopAgentInput = {
   agentName: string;

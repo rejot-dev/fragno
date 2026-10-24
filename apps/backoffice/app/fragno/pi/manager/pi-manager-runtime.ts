@@ -13,7 +13,6 @@ import { piAgentNameSchema } from "@fragno-dev/backoffice-api/v0/shared/pi-agent
 import type { z } from "zod";
 
 import type { Context } from "@earendil-works/chord";
-import type { ConversationView, SubmissionRecord } from "@earendil-works/pi-durable";
 
 import {
   backofficeExecutionScopeRestriction,
@@ -29,12 +28,7 @@ import {
   backofficeOperationErrorKindForStatus,
 } from "@/backoffice-runtime/operation-error";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
-import {
-  PI_AGENT_SUBMISSION_WAIT_MAX_MS,
-  type PiAgentNotification,
-  type PiAgentQueueSubmission,
-  type PiAgentSubmissionWait,
-} from "@/fragno/pi/agent/pi-agent-contract";
+import type { PiAgentNotification } from "@/fragno/pi/agent/pi-agent-contract";
 
 import { backfillPiAgentEvents, type PiAgentBackfilledEvent } from "./pi-agent-change-events";
 
@@ -45,22 +39,11 @@ export type PiManagerSubmitPromptInput = {
   requestId?: string;
   whenBusy?: z.infer<typeof piPromptWhenBusySchema>;
 };
-export type PiManagerGetSubmissionInput = { agentName: string; requestId: string };
-export type PiManagerRunPromptInput = PiManagerSubmitPromptInput & { timeoutMs?: number };
 export type PiManagerNotifyAgentInput = { agentName: string } & PiAgentNotification;
 export type PiManagerListMessagesInput = {
   agentName: string;
   last: number;
   before: number | null;
-};
-
-/** `view` is null until the agent's conversation has received its first turn. */
-export type PiManagerAgentDetail = PiManagerAgent & { view: ConversationView | null };
-export type PiManagerPromptResult = {
-  agentName: string;
-  view: ConversationView;
-  submission: SubmissionRecord;
-  assistantText: string;
 };
 
 /** Structured manager failures survive runtime-tool and codemode boundaries. */
@@ -139,15 +122,11 @@ export async function watchPiManagerAgent(input: {
 
 export type PiManagerRuntime = {
   listAgents(): Promise<PiManagerAgentDirectory>;
-  getAgent(input: PiManagerAgentInput): Promise<PiManagerAgentDetail>;
+  getAgent(input: PiManagerAgentInput): Promise<PiManagerAgent>;
   createAgent(input: PiAgentDefinitionCreate): Promise<PiAgentCreated>;
   updateAgent(input: PiAgentDefinitionCreate): Promise<PiAgentDefinition>;
   deleteAgent(input: PiManagerAgentInput): Promise<void>;
   submitPrompt(input: PiManagerSubmitPromptInput): Promise<PiPromptReceipt>;
-  getSubmission(
-    input: PiManagerGetSubmissionInput,
-  ): Promise<SubmissionRecord | PiAgentQueueSubmission>;
-  runPrompt(input: PiManagerRunPromptInput): Promise<PiManagerPromptResult>;
   /** Writes an event into a started agent's conversation and asks it to handle the event. */
   notifyAgent(input: PiManagerNotifyAgentInput): Promise<void>;
   /** Aborts the agent's work and pauses its queue until someone resumes it. */
@@ -159,22 +138,6 @@ export type PiManagerRuntime = {
   /** The agent's whole history as JSONL, newest entry last; see `pi.agent.export`. */
   exportConversation(input: PiManagerAgentInput): Promise<string>;
 };
-
-function assistantTextFromSubmission(view: ConversationView, submission: SubmissionRecord): string {
-  if (submission.status !== "done" || submission.type !== "input") {
-    return "";
-  }
-  const answer = view.entries.find((entry) => entry.id === submission.answer);
-  return (
-    answer?.model
-      ?.flatMap((message) =>
-        message.role === "assistant"
-          ? message.content.flatMap((block) => (block.type === "text" ? [block.text] : []))
-          : [],
-      )
-      .join("") ?? ""
-  );
-}
 
 /** Creates a runtime for the durable Pi directory selected by the trusted execution scope. */
 export function createPiManagerRuntime(input: {
@@ -229,7 +192,7 @@ export function createPiManagerRuntime(input: {
     if (response.status === 204) {
       return undefined as T;
     }
-    // The signed manager response is authoritative; Pi owns its structural view and submission.
+    // The signed manager response is authoritative.
     return (await response.json()) as T;
   }
 
@@ -237,29 +200,7 @@ export function createPiManagerRuntime(input: {
     return `/agents/${encodeURIComponent(piAgentNameSchema.parse(agentName.trim()))}`;
   }
 
-  function submissionRoute({ agentName, requestId }: PiManagerGetSubmissionInput) {
-    const normalizedRequestId = requestId.trim();
-    if (!normalizedRequestId) {
-      throw new Error("PI_MANAGER_PROMPT_REQUEST_ID_REQUIRED");
-    }
-    return `${agentRoute(agentName)}/submissions/${encodeURIComponent(normalizedRequestId)}`;
-  }
-
-  async function getSubmission(
-    input: PiManagerGetSubmissionInput,
-  ): Promise<SubmissionRecord | PiAgentQueueSubmission> {
-    return await request<SubmissionRecord | PiAgentQueueSubmission>(submissionRoute(input), null);
-  }
-
-  async function waitForSubmission(
-    input: PiManagerGetSubmissionInput,
-    waitMs: number,
-  ): Promise<PiAgentSubmissionWait> {
-    const query = new URLSearchParams({ waitMs: String(waitMs) });
-    return await request<PiAgentSubmissionWait>(`${submissionRoute(input)}/wait?${query}`, null);
-  }
-
-  const managerRuntime: PiManagerRuntime = {
+  return {
     async listAgents() {
       return await request<PiManagerAgentDirectory>("/agents", null);
     },
@@ -282,12 +223,7 @@ export function createPiManagerRuntime(input: {
       };
     },
     async getAgent({ agentName }) {
-      const route = agentRoute(agentName);
-      const agent = await request<PiManagerAgent>(route, null);
-      return {
-        ...agent,
-        view: agent.provisioned ? await request<ConversationView>(`${route}/view`, null) : null,
-      };
+      return await request<PiManagerAgent>(agentRoute(agentName), null);
     },
     async createAgent(definition) {
       return await request<PiAgentCreated>("/agents", definition);
@@ -309,43 +245,6 @@ export function createPiManagerRuntime(input: {
         ...(whenBusy ? { whenBusy } : {}),
       });
     },
-    getSubmission,
-    async runPrompt({ timeoutMs = 120_000, ...prompt }) {
-      if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) {
-        throw new Error("PI_MANAGER_PROMPT_TIMEOUT_INVALID: expected positive milliseconds.");
-      }
-      const receipt = await managerRuntime.submitPrompt(prompt);
-      const deadline = Date.now() + timeoutMs;
-      for (;;) {
-        const remainingMs = deadline - Date.now();
-        if (remainingMs <= 0) {
-          throw new Error(
-            `PI_MANAGER_PROMPT_TIMED_OUT: ${prompt.agentName}; request ${receipt.requestId} stays queued or running durably.`,
-          );
-        }
-        const result = await waitForSubmission(
-          { agentName: prompt.agentName, requestId: receipt.requestId },
-          Math.min(remainingMs, PI_AGENT_SUBMISSION_WAIT_MAX_MS),
-        );
-        if (result.status === "pending") {
-          continue;
-        }
-        if (result.submission.status === "dropped") {
-          throw new PiManagerRuntimeRequestError(
-            409,
-            "PI_MANAGER_PROMPT_DROPPED",
-            `${prompt.agentName}; request ${receipt.requestId} was dropped: ${result.submission.reason}`,
-          );
-        }
-        const view = await request<ConversationView>(`${agentRoute(prompt.agentName)}/view`, null);
-        return {
-          agentName: prompt.agentName,
-          view,
-          submission: result.submission,
-          assistantText: assistantTextFromSubmission(view, result.submission),
-        };
-      }
-    },
     async notifyAgent({ agentName, ...notification }) {
       await request(`${agentRoute(agentName)}/notifications`, notification);
     },
@@ -364,6 +263,4 @@ export function createPiManagerRuntime(input: {
       return await awaitRequest(response.text());
     },
   };
-
-  return managerRuntime;
 }
