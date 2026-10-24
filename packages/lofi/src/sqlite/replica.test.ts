@@ -24,6 +24,7 @@ import {
   openLofiSqliteReplica,
   type LofiSqliteReplica,
   type LofiSqliteReplicaOptions,
+  type LofiSqliteReplicaStatus,
 } from "./replica";
 import { openLofiSqliteMemoryFiles } from "./testing";
 import { decodeLofiSqliteRow } from "./values";
@@ -208,6 +209,8 @@ type ScenarioContext = {
   server: BetterSqlite3.Database;
   tabs: Map<string, LofiSqliteReplica>;
   notifications: Map<string, number>;
+  /** Every status each tab reported, starting with the one it opened with. */
+  statuses: Map<string, LofiSqliteReplicaStatus[]>;
   /** Mirrored users each closed tab had committed when it started closing. */
   usersAtClose: Map<string, number>;
   errors: unknown[];
@@ -219,6 +222,7 @@ type ScenarioStep =
   | { type: "closeTab"; tab: string }
   | { type: "closeTabAfterEntries"; tab: string; entries: number }
   | { type: "setStreamAvailable"; available: boolean }
+  | { type: "deliverStreamInBursts" }
   | { type: "grantAbortedLockRequests" }
   | {
       type: "write";
@@ -228,6 +232,7 @@ type ScenarioStep =
     }
   | { type: "waitForRows"; tab: string; sql: string; rows: unknown[] }
   | { type: "waitForError"; message: string }
+  | { type: "waitForStatus"; tab: string; status: LofiSqliteReplicaStatus }
   | { type: "assert"; assert: (ctx: ScenarioContext) => void | Promise<void> };
 
 const openTab = (tab: string, replica: ReplicaConfig): ScenarioStep => ({
@@ -248,6 +253,11 @@ const setStreamAvailable = (available: boolean): ScenarioStep => ({
   available,
 });
 /**
+ * Delivers stream bytes in bursts, so frames that follow one another, such as the last entries and
+ * the caught-up marker, reach the client in one chunk.
+ */
+const deliverStreamInBursts = (): ScenarioStep => ({ type: "deliverStreamInBursts" });
+/**
  * Makes Web Locks behave as observed in Chrome: an aborted request rejects, but stays queued and
  * is granted later.
  */
@@ -266,6 +276,11 @@ const waitForRows = (tab: string, sql: string, rows: unknown[]): ScenarioStep =>
   rows,
 });
 const waitForError = (message: string): ScenarioStep => ({ type: "waitForError", message });
+const waitForStatus = (tab: string, status: LofiSqliteReplicaStatus): ScenarioStep => ({
+  type: "waitForStatus",
+  tab,
+  status,
+});
 const assertStep = (assert: (ctx: ScenarioContext) => void | Promise<void>): ScenarioStep => ({
   type: "assert",
   assert,
@@ -320,12 +335,13 @@ async function runReplicaScenario(scenario: {
   }
 
   let streamAvailable = true;
+  let streamInBursts = false;
   const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : input.toString());
     if (!streamAvailable && url.pathname.endsWith("/stream")) {
       return new Response("unavailable", { status: 503 });
     }
-    return await fragments[0]!.callRouteRaw(
+    const response = await fragments[0]!.callRouteRaw(
       "GET",
       url.pathname as never,
       {
@@ -333,6 +349,9 @@ async function runReplicaScenario(scenario: {
         signal: init?.signal ?? undefined,
       } as never,
     );
+    return streamInBursts && url.pathname.endsWith("/stream") && response.body
+      ? new Response(inBursts(response.body, 50), response)
+      : response;
   };
   const files = await openLofiSqliteMemoryFiles({ statementDelayMs: scenario.statementDelayMs });
 
@@ -340,6 +359,7 @@ async function runReplicaScenario(scenario: {
     server,
     tabs: new Map(),
     notifications: new Map(),
+    statuses: new Map(),
     usersAtClose: new Map(),
     errors: [],
     vars: {},
@@ -368,6 +388,9 @@ async function runReplicaScenario(scenario: {
         replica.subscribe(() =>
           ctx.notifications.set(step.tab, ctx.notifications.get(step.tab)! + 1),
         );
+        const statuses = [replica.getStatus()];
+        ctx.statuses.set(step.tab, statuses);
+        replica.subscribeStatus(() => statuses.push(replica.getStatus()));
         ctx.tabs.set(step.tab, replica);
         break;
       }
@@ -394,6 +417,9 @@ async function runReplicaScenario(scenario: {
       }
       case "setStreamAvailable":
         streamAvailable = step.available;
+        break;
+      case "deliverStreamInBursts":
+        streamInBursts = true;
         break;
       case "grantAbortedLockRequests": {
         const locks = navigator.locks;
@@ -438,11 +464,54 @@ async function runReplicaScenario(scenario: {
           .poll(() => ctx.errors.map(String), { timeout: 5_000 })
           .toContainEqual(expect.stringContaining(step.message));
         break;
+      case "waitForStatus":
+        await expect
+          .poll(() => ctx.statuses.get(step.tab)!.at(-1), { timeout: 5_000 })
+          .toEqual(step.status);
+        break;
       case "assert":
         await step.assert(ctx);
         break;
     }
   }
+}
+
+/** Holds bytes back and passes on everything received every `intervalMs` as one chunk. */
+function inBursts(
+  body: ReadableStream<Uint8Array>,
+  intervalMs: number,
+): ReadableStream<Uint8Array> {
+  const reader = body.getReader();
+  let pending: Uint8Array[] = [];
+  let timer: ReturnType<typeof setInterval> | undefined;
+  return new ReadableStream({
+    start(controller) {
+      const flush = () => {
+        if (pending.length > 0) {
+          controller.enqueue(new Uint8Array(Buffer.concat(pending)));
+          pending = [];
+        }
+      };
+      timer = setInterval(flush, intervalMs);
+      void (async () => {
+        try {
+          for (let read = await reader.read(); !read.done; read = await reader.read()) {
+            pending.push(read.value);
+          }
+          clearInterval(timer);
+          flush();
+          controller.close();
+        } catch (error) {
+          clearInterval(timer);
+          controller.error(error);
+        }
+      })();
+    },
+    async cancel(reason) {
+      clearInterval(timer);
+      await reader.cancel(reason);
+    },
+  });
 }
 
 type Layout = Record<string, { columns: string[]; indexes: Record<string, string[]> }>;
@@ -1010,6 +1079,66 @@ describe("SQLite replica", () => {
     });
   });
 
+  it("reports catch-up progress to every tab, and stays caught up after it, also in later sessions", async () => {
+    const entries = 120;
+
+    await runReplicaScenario({
+      serverSchemas: [appSchema],
+      statementDelayMs: 2,
+      steps: [
+        ...Array.from({ length: entries }, (_, index) =>
+          write(appSchema, `user-${index}`, (uow) => {
+            uow.create("users", user(`user-${index}@example.com`));
+          }),
+        ),
+        deliverStreamInBursts(),
+        openTab("a", replica({})),
+        openTab("reader", replica({})),
+        waitForStatus("reader", { phase: "caught-up", error: null }),
+        assertStep(async ({ statuses, tabs }) => {
+          // The writer reports caught-up only after the last entry commits.
+          expect(
+            await tabs.get("reader")!.execute(`SELECT count(*) AS "count" FROM "users_app"`),
+          ).toEqual([{ count: entries }]);
+          for (const tab of ["a", "reader"]) {
+            const reported = statuses.get(tab)!;
+            expect(reported[0]).toEqual({ phase: "catching-up", fraction: null, error: null });
+            expect(reported.at(-1)).toEqual({ phase: "caught-up", error: null });
+            const fractions = reported.flatMap((status) =>
+              status.phase === "catching-up" && status.fraction !== null ? [status.fraction] : [],
+            );
+            expect(fractions).toEqual([...fractions].sort((left, right) => left - right));
+            assert(fractions.some((fraction) => fraction > 0 && fraction < 1));
+          }
+        }),
+        openTab("late", replica({})),
+        waitForStatus("late", { phase: "caught-up", error: null }),
+        closeTab("a"),
+        write(appSchema, "ada", (uow) => {
+          uow.create("users", user("ada@example.com"));
+        }),
+        waitForRows("late", `SELECT count(*) AS "count" FROM "users_app"`, [
+          { count: entries + 1 },
+        ]),
+        assertStep(({ statuses, errors }) => {
+          expect(errors).toEqual([]);
+          for (const tab of ["reader", "late"]) {
+            const reported = statuses.get(tab)!;
+            const caughtUpAt = reported.findIndex((status) => status.phase === "caught-up");
+            assert(reported.slice(caughtUpAt).every((status) => status.phase === "caught-up"));
+          }
+        }),
+        closeTab("reader"),
+        closeTab("late"),
+        openTab("returning", replica({})),
+        assertStep(({ statuses }) => {
+          // A complete, if older, copy opens at once; the stream replays what changed meanwhile.
+          expect(statuses.get("returning")![0]).toEqual({ phase: "caught-up", error: null });
+        }),
+      ],
+    });
+  });
+
   it("releases the writer role after a stream failure and recovers when the backend returns", async () => {
     await runReplicaScenario({
       serverSchemas: [appSchema],
@@ -1026,9 +1155,22 @@ describe("SQLite replica", () => {
           // Each failed attempt releases the lock and competes again, so failures repeat.
           await expect.poll(() => errors.length).toBeGreaterThan(2);
         }),
+        // Whichever tab failed last, both show the failure while they wait for the data.
+        waitForStatus("a", {
+          phase: "catching-up",
+          fraction: null,
+          error: expect.stringContaining("Outbox stream request failed: 503"),
+        }),
+        waitForStatus("b", {
+          phase: "catching-up",
+          fraction: null,
+          error: expect.stringContaining("Outbox stream request failed: 503"),
+        }),
         setStreamAvailable(true),
         waitForRows("a", `SELECT "email" FROM "users_app"`, [{ email: "ada@example.com" }]),
         waitForRows("b", `SELECT "email" FROM "users_app"`, [{ email: "ada@example.com" }]),
+        waitForStatus("a", { phase: "caught-up", error: null }),
+        waitForStatus("b", { phase: "caught-up", error: null }),
       ],
     });
   });

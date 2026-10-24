@@ -24,6 +24,7 @@ export type LofiPollOutboxOptions = {
   pollIntervalMs?: number;
   outboxStreamUrl?: never;
   streamReconnectIntervalMs?: never;
+  onCatchUp?: never;
 };
 
 export type LofiStreamOutboxOptions = {
@@ -31,7 +32,22 @@ export type LofiStreamOutboxOptions = {
   outboxStreamUrl?: string;
   streamReconnectIntervalMs?: number;
   pollIntervalMs?: never;
+  /**
+   * Reports each stream's catch-up: when the server names the entries a new stream must replay,
+   * after every batch of them is applied, and once they all are. A reconnected stream catches up
+   * again.
+   */
+  onCatchUp?: (progress: LofiCatchUpProgress) => void;
 };
+
+/**
+ * How far a stream has replayed the entries that existed when it opened. `fraction` estimates the
+ * share applied from versionstamps, between 0 and 1. `caught-up` follows only after every one of
+ * them is applied.
+ */
+export type LofiCatchUpProgress =
+  | { status: "catching-up"; fraction: number }
+  | { status: "caught-up" };
 
 export type LofiOutboxTransportOptions = LofiPollOutboxOptions | LofiStreamOutboxOptions;
 

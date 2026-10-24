@@ -39,6 +39,7 @@ export type {
   LofiResolvedTypedMutation,
   LofiSchemaRegistration,
   LofiStreamOutboxOptions,
+  LofiCatchUpProgress,
   LofiSyncResult,
 } from "./types";
 

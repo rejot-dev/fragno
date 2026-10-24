@@ -51,14 +51,40 @@ export type LofiSqliteReplica = {
   ): Promise<LofiSqliteQueryRow<TColumns>[]>;
   /** Calls `listener` after any tab applies outbox entries to this replica. */
   subscribe(listener: () => void): () => void;
+  /**
+   * How far this replica has caught up with its backend, as this tab knows it. This and
+   * `subscribeStatus` need no `this`, so they can go to React's `useSyncExternalStore` directly.
+   */
+  getStatus: () => LofiSqliteReplicaStatus;
+  /** Calls `listener` whenever `getStatus()` returns a new status. */
+  subscribeStatus: (listener: () => void) => () => void;
   /** Stops synchronizing, hands the writer role to another tab, and closes the connection. */
   close(): Promise<void>;
 };
 
-const CHANGED_MESSAGE = "changed";
+/**
+ * A replica is `catching-up` until it first holds every entry that existed when a stream started,
+ * and `caught-up` from then on, through reconnects, writer changes, and later sessions: its data is
+ * then a complete, if possibly older, state of the backend. `fraction` estimates
+ * the share replayed, and is null until the server says how many entries there are. `error` is the
+ * message of the last synchronization failure, cleared when synchronization next makes progress;
+ * the writing tab retries on its own.
+ */
+export type LofiSqliteReplicaStatus =
+  | { phase: "catching-up"; fraction: number | null; error: string | null }
+  | { phase: "caught-up"; error: string | null };
+
+/** What tabs tell each other. Only the writing tab answers a status request. */
+type ReplicaMessage =
+  | { type: "changed" }
+  | { type: "status"; status: LofiSqliteReplicaStatus }
+  | { type: "status-request" };
 
 /** Names the replica's outbox cursor, `<endpoint>::outbox`, in its `lofi_meta` table. */
 export const LOFI_SQLITE_ENDPOINT_NAME = "lofi-sqlite";
+
+/** Set in `lofi_meta` once the replica has caught up, so later sessions open `caught-up`. */
+const CAUGHT_UP_META_KEY = `caught-up:${LOFI_SQLITE_ENDPOINT_NAME}`;
 
 /**
  * Opens a SQLite replica of one Fragno backend's outbox in this tab. Every tab reads through its
@@ -100,10 +126,47 @@ export async function openLofiSqliteReplica(
     }
   };
   const channel = new BroadcastChannel(`fragno-lofi:${databaseName}`);
-  channel.onmessage = (event: MessageEvent) => {
-    if (event.data === CHANGED_MESSAGE) {
-      notify();
+  const post = (message: ReplicaMessage) => {
+    channel.postMessage(message);
+  };
+
+  let status: LofiSqliteReplicaStatus =
+    (await adapter.getMeta(CAUGHT_UP_META_KEY)) === undefined
+      ? { phase: "catching-up", fraction: null, error: null }
+      : { phase: "caught-up", error: null };
+  let writing = false;
+  const statusListeners = new Set<() => void>();
+  const updateStatus = (next: LofiSqliteReplicaStatus) => {
+    // Data a tab has shown does not disappear because a later stream catches up again.
+    const merged: LofiSqliteReplicaStatus =
+      status.phase === "caught-up" ? { phase: "caught-up", error: next.error } : next;
+    if (JSON.stringify(merged) === JSON.stringify(status)) {
+      return;
     }
+    status = merged;
+    for (const listener of statusListeners) {
+      listener();
+    }
+  };
+  const report = (next: LofiSqliteReplicaStatus) => {
+    updateStatus(next);
+    post({ type: "status", status: next });
+  };
+
+  channel.onmessage = (event: MessageEvent<ReplicaMessage>) => {
+    const message = event.data;
+    if (message.type === "changed") {
+      notify();
+    } else if (message.type === "status") {
+      updateStatus(message.status);
+    } else if (writing) {
+      post({ type: "status", status });
+    }
+  };
+  post({ type: "status-request" });
+  const reportError = (error: unknown) => {
+    report({ ...status, error: error instanceof Error ? error.message : String(error) });
+    options.onError(error);
   };
 
   const lifetime = new AbortController();
@@ -116,6 +179,7 @@ export async function openLofiSqliteReplica(
           return;
         }
         const term = startWriterTerm(adapter);
+        writing = true;
         // Holding the lock until close or a stopping error keeps every other tab a reader.
         await new Promise<void>((resolve) => {
           void whenAborted(lifetime.signal).then(resolve);
@@ -128,27 +192,42 @@ export async function openLofiSqliteReplica(
             fetch: options.fetch,
             ephemeralTables: options.ephemeralTables,
             onSyncApplied: (result) => {
+              if (status.error !== null) {
+                report({ ...status, error: null });
+              }
               if (result.appliedDurableMutations === 0) {
                 return;
               }
               notify();
-              channel.postMessage(CHANGED_MESSAGE);
+              post({ type: "changed" });
             },
-            onError: options.onError,
+            onCatchUp: (progress) => {
+              if (progress.status === "caught-up" && status.phase === "catching-up") {
+                // Failing to remember only shows the next session's download again.
+                void term.adapter.setMeta(CAUGHT_UP_META_KEY, "true").catch(() => {});
+              }
+              report(
+                progress.status === "caught-up"
+                  ? { phase: "caught-up", error: null }
+                  : { phase: "catching-up", fraction: progress.fraction, error: null },
+              );
+            },
+            onError: reportError,
             onStopped: () => {
               resolve();
             },
           }).start({ signal: lifetime.signal });
         });
+        writing = false;
         await term.end();
       });
       // The lock is released, so another tab can take over before this one competes again.
       await sleep(options.retryDelayMs, lifetime.signal);
     }
   };
-  const writing = writeWhileElected().catch((error: unknown) => {
+  const writer = writeWhileElected().catch((error: unknown) => {
     if (!lifetime.signal.aborted) {
-      options.onError(error);
+      reportError(error);
     }
   });
 
@@ -164,10 +243,17 @@ export async function openLofiSqliteReplica(
         listeners.delete(listener);
       };
     },
+    getStatus: () => status,
+    subscribeStatus(listener) {
+      statusListeners.add(listener);
+      return () => {
+        statusListeners.delete(listener);
+      };
+    },
     async close() {
       lifetime.abort();
       channel.close();
-      await writing;
+      await writer;
       // Lets this tab's pending reads finish before the connection goes away.
       await adapter.execute("SELECT 1");
       await database.close?.();
