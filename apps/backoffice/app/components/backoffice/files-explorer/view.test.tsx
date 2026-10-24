@@ -19,12 +19,12 @@ import {
 afterEach(cleanup);
 
 const filePath = "/package/1.0.0/README.md";
-function FilesExplorerView(props: Omit<FilesExplorerViewProps, "workflowRouting" | "pages">) {
+function FilesExplorerView(props: Omit<FilesExplorerViewProps, "workflowRouting" | "pageHref">) {
   return (
     <FilesExplorerViewComponent
       {...props}
       workflowRouting={{ status: "unavailable" }}
-      pages={{ status: "unavailable" }}
+      pageHref={null}
     />
   );
 }
@@ -114,7 +114,7 @@ describe("FilesExplorerView", () => {
           }}
           loadError={null}
           buildNodeTo={(path) => ({ pathname: "/files", search: `?path=${path}` })}
-          pages={{ status: "unavailable" }}
+          pageHref={null}
           workflowRouting={{
             status: "ready",
             routes: [

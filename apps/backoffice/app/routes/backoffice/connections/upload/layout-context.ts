@@ -2,7 +2,7 @@ import type { Dispatch, SetStateAction } from "react";
 
 import type { BackofficeMeData } from "@/fragno/auth/contracts";
 import type { UploadAdminConfigResponse } from "@/fragno/upload";
-import type { UploadCollectionSource } from "@/fragno/upload/tanstack/browser-database";
+import type { UploadReplicaSource } from "@/fragno/upload/lofi/replica";
 
 type BackofficeOrganization = BackofficeMeData["organizations"][number]["organization"];
 
@@ -12,7 +12,7 @@ export type UploadLayoutContext = {
   configState: UploadAdminConfigResponse | null;
   configLoading: boolean;
   configError: string | null;
-  persistenceSource: UploadCollectionSource | null;
+  persistenceSource: UploadReplicaSource | null;
   persistenceError: string | null;
   setConfigState: Dispatch<SetStateAction<UploadAdminConfigResponse | null>>;
   setConfigError: Dispatch<SetStateAction<string | null>>;

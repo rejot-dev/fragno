@@ -11,7 +11,7 @@ vi.mock("./file-collections.server", () => ({
   createFilesOverviewCollections: createFilesOverviewCollectionsMock,
 }));
 
-vi.mock("@/fragno/upload/tanstack/server", () => ({
+vi.mock("@/fragno/upload/adapter-identity.server", () => ({
   fetchUploadAdapterIdentity: fetchUploadAdapterIdentityMock,
 }));
 

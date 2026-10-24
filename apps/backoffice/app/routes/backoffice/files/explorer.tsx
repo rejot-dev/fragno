@@ -1,8 +1,7 @@
+import type { LofiSqliteReplica } from "@fragno-dev/lofi/sqlite";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
 import { Suspense, use, useMemo } from "react";
 import { useLoaderData, useOutletContext } from "react-router";
-
-import { and, eq, useLiveQuery } from "@tanstack/react-db";
 
 import {
   backofficeRuntimeScopeFromResolvedScope,
@@ -14,10 +13,7 @@ import {
   FilesExplorerView,
   type FilesExplorerSource,
 } from "@/components/backoffice/files-explorer";
-import type {
-  FilesPages,
-  WorkflowFileRouting,
-} from "@/components/backoffice/files-explorer/content-renderers";
+import type { WorkflowFileRouting } from "@/components/backoffice/files-explorer/content-renderers";
 import type { FilesExplorerSearchGroup } from "@/components/backoffice/files-explorer/view";
 import { createUploadFileTree } from "@/file-collection/create-upload-file-tree";
 import { resolveSynchronizedFileTree } from "@/file-collection/resolve-synchronized-file-tree";
@@ -26,11 +22,13 @@ import {
   type AutomationCollectionSource,
 } from "@/fragno/automation/tanstack/browser-database";
 import { useAutomationRoutes } from "@/fragno/automation/tanstack/use-automation-routes";
-import { toUploadFileRecord, type UploadFileRecord } from "@/fragno/upload/file-record";
+import { LofiReplicaGate, useLofiSqliteReplicaStatus } from "@/fragno/lofi/replica-gate";
+import { useLofiSqliteRead } from "@/fragno/lofi/use-lofi-sqlite-read";
 import {
-  describeUploadCollectionSource,
-  getUploadBrowserDatabase,
-} from "@/fragno/upload/tanstack/browser-database";
+  describeUploadReplicaSource,
+  getUploadReplica,
+  readReadyUploadFiles,
+} from "@/fragno/upload/lofi/replica";
 import { requireScopeSelection } from "@/layouts/backoffice-shell-request.server";
 
 import { pageName, pagePath } from "../pages/path";
@@ -53,12 +51,12 @@ export default function BackofficeFilesExplorer() {
   const loaderData = useLoaderData<typeof loader>();
   const { selectedScope } = useOutletContext<FilesLayoutContext>();
   const { automationCollectionSource } = useCurrentBackofficeContext();
+  // The server's snapshot shows until this tab's replica opens.
   const initialView = (
     <FilesExplorerRouteView
       {...loaderData}
       selectedScope={selectedScope}
       workflowRouting={{ status: "loading" }}
-      pages={{ status: "loading" }}
     />
   );
 
@@ -86,7 +84,6 @@ function LocalFirstFilesExplorer({
       <FilesExplorerWithLocalData
         {...props}
         workflowRouting={{ status: "error", message: automationCollectionSource.message }}
-        pages={{ status: "error", message: automationCollectionSource.message }}
       />
     );
   }
@@ -114,17 +111,7 @@ function SynchronizedAutomationRoutesFilesExplorer({
         ? { status: "error", message: routesState.message }
         : { status: "ready", routes: routesState.routes };
 
-  return (
-    <FilesExplorerWithLocalData
-      {...props}
-      workflowRouting={workflowRouting}
-      pages={{
-        status: "ready",
-        collections,
-        pageHref: (sourcePath) => pagePath(props.selectedScope, pageName(sourcePath)),
-      }}
-    />
-  );
+  return <FilesExplorerWithLocalData {...props} workflowRouting={workflowRouting} />;
 }
 
 function FilesExplorerWithLocalData(props: FilesExplorerRouteViewProps) {
@@ -133,59 +120,44 @@ function FilesExplorerWithLocalData(props: FilesExplorerRouteViewProps) {
     return <FilesExplorerRouteView {...props} />;
   }
 
+  const replica = use(getUploadReplica(synchronizedSource.synchronization.source));
   return (
-    <SynchronizedFilesExplorer
-      key={describeUploadCollectionSource(synchronizedSource.synchronization.source).resourceKey}
-      {...props}
-      synchronizedSource={synchronizedSource}
-    />
+    <LofiReplicaGate replica={replica} title="Downloading workspace files…">
+      <SynchronizedFilesExplorer
+        key={describeUploadReplicaSource(synchronizedSource.synchronization.source).resourceKey}
+        {...props}
+        synchronizedSource={synchronizedSource}
+        replica={replica}
+      />
+    </LofiReplicaGate>
   );
 }
 
 function SynchronizedFilesExplorer({
   sources,
   selectedPath,
-  selectedContent,
   loadError,
-  searchQuery,
-  searchGroups,
-  selectedScope,
-  workflowRouting,
-  pages,
   synchronizedSource,
+  replica,
+  ...props
 }: FilesExplorerRouteViewProps & {
   synchronizedSource: SynchronizedFilesExplorerSource;
+  replica: LofiSqliteReplica;
 }) {
-  const database = use(getUploadBrowserDatabase());
-  const collections = use(database.readyCollectionsFor(synchronizedSource.synchronization.source));
-  const filesQuery = useLiveQuery({
-    query: (query) =>
-      query
-        .from({ file: collections.files })
-        .where(({ file }) =>
-          and(
-            eq(file.status, "ready"),
-            eq(file.provider, synchronizedSource.synchronization.provider),
-          ),
-        ),
-  });
-  const files = useMemo<UploadFileRecord[]>(
-    () => (filesQuery.data ?? []).map(toUploadFileRecord),
-    [filesQuery.data],
+  const { provider } = synchronizedSource.synchronization;
+  const status = useLofiSqliteReplicaStatus(replica);
+  const files = useLofiSqliteRead(replica, provider, (replica) =>
+    readReadyUploadFiles(replica, provider),
   );
   const localTree = useMemo(
-    () =>
-      createUploadFileTree(files, {
-        provider: synchronizedSource.synchronization.provider,
-      }),
-    [files, synchronizedSource.synchronization.provider],
+    () => (files.status === "ready" ? createUploadFileTree(files.data, { provider }) : null),
+    [files, provider],
   );
-  const synchronizationFailure = filesQuery.isError ? collections.files.utils.getLastError() : null;
   const synchronizedTree = resolveSynchronizedFileTree(
     synchronizedSource.tree,
-    synchronizationFailure
-      ? { status: "error", error: synchronizationFailure }
-      : filesQuery.isReady
+    files.status === "error"
+      ? { status: "error", error: files.error }
+      : localTree
         ? { status: "ready", tree: localTree }
         : { status: "loading" },
   );
@@ -198,11 +170,14 @@ function SynchronizedFilesExplorer({
       ),
     [sources, synchronizedSource.rootPath, synchronizedTree],
   );
-  const synchronizationError = synchronizationFailure
-    ? readSynchronizationError(synchronizationFailure)
-    : null;
+  const synchronizationError =
+    files.status === "error"
+      ? "Workspace files could not be read from this browser's copy."
+      : status.error !== null
+        ? `Workspace local synchronization failed and is retrying: ${status.error}`
+        : null;
   const selectedPathError =
-    filesQuery.isReady &&
+    localTree &&
     selectedPath &&
     isPathWithinRoot(selectedPath, synchronizedSource.rootPath) &&
     !fileTreeContainsPath(localTree, synchronizedSource.rootPath, selectedPath)
@@ -211,20 +186,15 @@ function SynchronizedFilesExplorer({
 
   return (
     <FilesExplorerRouteView
+      {...props}
       sources={effectiveSources}
       selectedPath={selectedPath}
-      selectedContent={selectedContent}
       loadError={appendErrors(loadError, synchronizationError, selectedPathError)}
-      searchQuery={searchQuery}
-      searchGroups={searchGroups}
-      selectedScope={selectedScope}
-      workflowRouting={workflowRouting}
-      pages={pages}
     />
   );
 }
 
-type FilesExplorerLocalDataProps = Omit<FilesExplorerRouteViewProps, "workflowRouting" | "pages">;
+type FilesExplorerLocalDataProps = Omit<FilesExplorerRouteViewProps, "workflowRouting">;
 
 type FilesExplorerRouteViewProps = {
   sources: readonly FilesExplorerSourceSnapshot[];
@@ -235,7 +205,6 @@ type FilesExplorerRouteViewProps = {
   searchGroups: FilesExplorerSearchGroup[];
   selectedScope: BackofficeScopeSelection;
   workflowRouting: WorkflowFileRouting;
-  pages: FilesPages;
 };
 
 function FilesExplorerRouteView({
@@ -247,7 +216,6 @@ function FilesExplorerRouteView({
   searchGroups,
   selectedScope,
   workflowRouting,
-  pages,
 }: FilesExplorerRouteViewProps) {
   return (
     <FilesExplorerView
@@ -260,7 +228,7 @@ function FilesExplorerRouteView({
       buildNodeTo={(path) => ({ pathname: filesExplorerPath(selectedScope, path) })}
       buildFileHref={(path, disposition) => filesDownloadPath(selectedScope, path, disposition)}
       workflowRouting={workflowRouting}
-      pages={pages}
+      pageHref={(sourcePath) => pagePath(selectedScope, pageName(sourcePath))}
     />
   );
 }
@@ -294,12 +262,6 @@ function fileTreeContainsPath(
 
 function isPathWithinRoot(path: string, rootPath: string): boolean {
   return path === rootPath || path.startsWith(`${rootPath}/`);
-}
-
-function readSynchronizationError(error: unknown): string {
-  return error instanceof Error
-    ? `Workspace local synchronization failed: ${error.message}`
-    : "Workspace local synchronization failed.";
 }
 
 function appendErrors(...errors: Array<string | null>): string | null {
