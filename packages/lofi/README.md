@@ -691,8 +691,11 @@ parameters written in as SQL literals, and go to the worker in one call together
 or the `COMMIT`; `BEGIN` goes with the first one. A batch takes two calls: one that begins it and
 reads the applied-through watermark, and one with its writes and the commit. A value whose literal
 SQLite could read back differently, such as a fraction or a number beyond 32 bits that is not a
-bigint, sends its statement on its own. Replaying a 6,559-entry Upload outbox took 273 calls instead
-of about 7,250, and 0.49 s instead of 0.72 s in headless Chrome.
+bigint, sends its statement on its own. Calls go to the database one at a time, in the order they
+were made: the worker starts each call as it arrives, so a projection's second read, sent while the
+call carrying the queued writes was still running, could otherwise miss them. Replaying a
+6,559-entry Upload outbox took 273 calls instead of about 7,250, and 0.49 s instead of 0.72 s in
+headless Chrome.
 
 Two database workers that start at once can race to delete the temporary directories that closed
 workers left in OPFS, and the loser fails to open. A page that opens several replicas, or a replica

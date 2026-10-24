@@ -134,6 +134,53 @@ const countPostsPerAuthor = defineLocalProjection({
   },
 });
 
+/**
+ * Counts posts per author and in total. Its retrieve reads both rows at once, so the read that does
+ * not carry the batch's queued writes must still see them.
+ */
+const countPostsWithTotal = defineLocalProjection({
+  retrieve: ({ match, read }) => {
+    const authorIds = match
+      .all(appSchema, "posts", "create")
+      .map((post) => String(post.values.authorId));
+    return authorIds.length === 0
+      ? undefined
+      : {
+          // The first read takes the queued writes; the total, which the previous entry wrote,
+          // is read second.
+          authors: read.getEach(
+            [...new Set(authorIds)],
+            statsSchema,
+            "authorStats",
+            (authorId) => authorId,
+          ),
+          total: read.get(statsSchema, "authorStats", "total"),
+        };
+  },
+  mutate: ({ match, retrieved, tx }) => {
+    if (!retrieved) {
+      return;
+    }
+    const stats = tx.forSchema(statsSchema);
+    const posts = match.all(appSchema, "posts", "create");
+    const counts = [
+      ...retrieved.authors.map(({ item, row }) => ({
+        id: item,
+        row,
+        created: posts.filter((post) => String(post.values.authorId) === item).length,
+      })),
+      { id: "total", row: retrieved.total, created: posts.length },
+    ];
+    for (const { id, row, created } of counts) {
+      stats.create("authorStats", {
+        id,
+        posts: (row?.posts ?? 0) + created,
+        updatedAt: new Date(),
+      });
+    }
+  },
+});
+
 /** Always expects a version the stats row never has, so its entry cannot commit. */
 const rejectSecondPost = defineLocalProjection({
   retrieve: ({ match, read }) =>
@@ -1087,6 +1134,53 @@ describe("SQLite replica", () => {
           expect(
             await tab.execute(`SELECT count(DISTINCT "email") AS "count" FROM "users_app"`),
           ).toEqual([{ count: entries }]);
+        }),
+      ],
+    });
+  });
+
+  it("lets a projection read rows at once that earlier entries of its batch wrote", async () => {
+    const authors = 5;
+    const entries = 6;
+
+    await runReplicaScenario({
+      serverSchemas: [appSchema],
+      statementDelayMs: 0,
+      steps: [
+        write(appSchema, "users", (uow) => {
+          for (let author = 0; author < authors; author++) {
+            uow.create("users", user(`author-${author}@example.com`));
+          }
+        }),
+        // Each entry writes a post of every author, so the rows the next entry reads come after
+        // several other writes in its queue.
+        ...Array.from({ length: entries }, (_, entry) =>
+          write(appSchema, `posts-${entry}`, (uow, vars) => {
+            for (let author = 0; author < authors; author++) {
+              uow.create("posts", { authorId: vars["users"]![author]!, title: `${entry}` });
+            }
+          }),
+        ),
+        // Opened after the writes, so the entries arrive together and share transactions.
+        openTab(
+          "a",
+          replica({ localSchemas: [{ schema: statsSchema }], projections: [countPostsWithTotal] }),
+        ),
+        waitForRows("a", `SELECT count(*) AS "count" FROM "posts_app"`, [
+          { count: authors * entries },
+        ]),
+        assertStep(async ({ tabs, errors }) => {
+          expect(errors).toEqual([]);
+          expect(
+            await tabs
+              .get("a")!
+              .execute(
+                `SELECT "posts", count(*) AS "rows" FROM "authorStats_stats" GROUP BY 1 ORDER BY 1`,
+              ),
+          ).toEqual([
+            { posts: entries, rows: authors },
+            { posts: authors * entries, rows: 1 },
+          ]);
         }),
       ],
     });
