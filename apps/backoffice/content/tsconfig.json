@@ -9,12 +9,13 @@
     "strict": true
   },
   "include": ["**/*.js", "static/codemode/**/*.d.ts"],
-  // Published versions are immutable. These use removed tools, such as telegram.* and Pi sessions, and
-  // are kept only as release history; later versions replace them.
+  // Published versions are immutable. These use removed tools, such as telegram.*, Pi sessions, and
+  // pi.runPrompt, and are kept only as release history; later versions replace them.
   "exclude": [
     "marketplace/telegram-channel/versions/1.0.0/**",
     "marketplace/telegram-channel/versions/1.0.1/**",
     "marketplace/telegram-channel/versions/1.1.0/**",
+    "marketplace/telegram-channel/versions/1.2.0/**",
     "marketplace/telegram-test-command/versions/1.0.0/**",
     "marketplace/telegram-test-command/versions/1.1.0/**",
     "marketplace/telegram-test-command/versions/1.2.1/**",

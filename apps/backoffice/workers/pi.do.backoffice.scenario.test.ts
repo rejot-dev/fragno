@@ -226,15 +226,15 @@ test("durable Pi runs a workspace agent with its instructions, scoped skills, Ba
           fauxToolCall("execCodeMode", {
             code: `async () => {
           await state.writeFile({ path: "/workspace/durable-result.txt", content: "executed through Backoffice" });
-          const first = await pi.runPrompt({ agentName: "assistant", content: "First other-agent prompt" });
-          const second = await context.current.pi.runPrompt({ agentName: "assistant", content: "Second other-agent prompt" });
+          const first = await pi.submitPrompt({ agentName: "assistant", content: "First other-agent prompt" });
+          const second = await context.current.pi.submitPrompt({ agentName: "assistant", content: "Second other-agent prompt" });
           const directory = await pi.listAgents({});
           const assistant = await pi.getAgent({ agentName: "assistant" });
           return {
-            first: first.assistantText,
-            second: second.assistantText,
+            first: first.status,
+            second: second.status,
             agents: directory.agents.map(agent => agent.agentName),
-            inputs: assistant.view.entries.filter(entry => entry.kind === "pi.user").length,
+            assistant: assistant.agentName,
           };
         }`,
           }),
@@ -250,10 +250,10 @@ test("durable Pi runs a workspace agent with its instructions, scoped skills, Ba
     expect(JSON.stringify(results)).toContain("Durable marker");
     expect(results.find((result) => result.toolName === "execCodeMode")?.details).toMatchObject({
       result: {
-        first: "First other-agent answer.",
-        second: "Second other-agent answer.",
+        first: "queued",
+        second: "queued",
         agents: ["assistant", "researcher"],
-        inputs: 2,
+        assistant: "assistant",
       },
     });
     return fauxAssistantMessage("Backoffice tool run finished.");
@@ -293,6 +293,10 @@ test("durable Pi runs a workspace agent with its instructions, scoped skills, Ba
           await runtime.drain();
           const transcript = await view(runtime, execution, "researcher");
           expect(JSON.stringify(transcript.entries)).toContain("Backoffice tool run finished.");
+          const assistant = await view(runtime, execution, "assistant");
+          expect(userTexts(assistant)).toHaveLength(2);
+          expect(JSON.stringify(assistant.entries)).toContain("First other-agent answer.");
+          expect(JSON.stringify(assistant.entries)).toContain("Second other-agent answer.");
           const directory = await (
             await request(runtime, execution, "/agents", null)
           ).json<PiManagerAgentDirectory>();
@@ -753,7 +757,7 @@ for (const revocation of ["restricted", "disabled", "deleted"] as const) {
             orgId: "org-1",
             path: workflowPath,
             content: `export default defineWorkflow({ name: "delegated-pi" }, async (event, step) => {
-              return await step.do("run linked-user turn", async () => await pi.runPrompt({
+              return await step.do("prompt linked-user turn", async () => await pi.submitPrompt({
                 agentName: "assistant",
                 requestId: event.instanceId + ":prompt",
                 content: "Answer on behalf of the linked user.",
@@ -1033,7 +1037,7 @@ for (const leaveOrganization of [false, true]) {
   test(`durable Pi workflows retain personal usage attribution across nested workflows and restart${leaveOrganization ? " after leaving an organization" : ""}`, async () => {
     const scope = { kind: "user", userId: "member" } as const;
     const execution = createBackofficeUserExecution({ scope, userId: "member" });
-    const promptOperation = "pi.runPrompt";
+    const promptOperation = "pi.submitPrompt";
     const savedWorkflowCode = `export default defineWorkflow({ name: "saved-sentence-checker" }, async (event, step) => {
       await step.waitForEvent("wait for sentence", { type: "sentence" });
       return await step.do("submit sentence", async () => await ${promptOperation}({
@@ -1444,7 +1448,7 @@ test("durable Pi scoped codemode handles prompt the selected scope's agent", asy
             return fauxAssistantMessage(
               [
                 fauxToolCall("execCodeMode", {
-                  code: `async () => await context.user("org-1").pi.runPrompt({
+                  code: `async () => await context.user("org-1").pi.submitPrompt({
                     agentName: "assistant",
                     content: "Hello from the organization agent.",
                   })`,
@@ -1457,7 +1461,6 @@ test("durable Pi scoped codemode handles prompt the selected scope's agent", asy
             const result = toolResults(context).at(-1);
             assert(result?.role === "toolResult");
             expect(result.isError, JSON.stringify(result)).toBe(false);
-            expect(JSON.stringify(result)).toContain("The personal agent answered.");
             return fauxAssistantMessage("Prompted the user-scoped agent.");
           },
         ]),

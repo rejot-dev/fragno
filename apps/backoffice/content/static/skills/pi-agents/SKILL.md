@@ -69,10 +69,14 @@ definition's narrowing.
 
 ## Prompt an agent
 
-Use `pi.submitPrompt` or `pi.runPrompt` with `agentName`. Prompts wait in the agent's queue and run
-one turn each, in arrival order (`whenBusy: "followUp"`, the default), under the agent's definition
-as it is when their turn starts. `steer` joins the running turn at its next tool boundary only when
-the running turn has the same authority; otherwise it is queued, and the receipt's `status` says
-`queued` instead of `steered`. `reject` fails with `409 AGENT_BUSY` while the agent runs a turn or
-has queued work. Event notifications wait in the same queue, and those from one sender share a turn.
-Aborting an agent pauses its queue: queued work, including yours, waits until a person resumes it.
+Use `pi.submitPrompt` with `agentName`; it returns once the prompt is queued. The prompt's `pi`
+events report how it ended: `turn.completed`, whose payload's `answerEntryId` names the answer,
+`turn.failed`, `turn.aborted`, or `queue.dropped`, each with the receipt's `requestId` in its
+subject. A workflow waits for them as `/static/skills/workflows/SKILL.md` shows. Prompts wait in the
+agent's queue and run one turn each, in arrival order (`whenBusy: "followUp"`, the default), under
+the agent's definition as it is when their turn starts. `steer` joins the running turn at its next
+tool boundary only when the running turn has the same authority; otherwise it is queued, and the
+receipt's `status` says `queued` instead of `steered`. `reject` fails with `409 AGENT_BUSY` while
+the agent runs a turn or has queued work. Event notifications wait in the same queue, and those from
+one sender share a turn. Aborting an agent pauses its queue: queued work, including yours, waits
+until a person resumes it.

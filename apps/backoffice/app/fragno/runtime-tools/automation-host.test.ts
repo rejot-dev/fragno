@@ -52,15 +52,6 @@ const createOtpRuntime = (): OtpRuntime => ({
 });
 
 const createPiRuntime = (): PiManagerRuntime => {
-  const submission = {
-    id: 1,
-    conversationId: 1,
-    requestId: "request-1",
-    type: "input",
-    status: "done",
-    entry: "input-1",
-    answer: "answer-1",
-  } as never;
   return {
     listAgents: async () => ({ agents: [] }),
     getAgent: async ({ agentName }) => ({
@@ -71,7 +62,6 @@ const createPiRuntime = (): PiManagerRuntime => {
       instructions: "",
       managedBy: { kind: "built-in" },
       provisioned: false,
-      view: null,
     }),
     createAgent: async ({ managedBy, ...definition }) => ({
       ...definition,
@@ -82,13 +72,6 @@ const createPiRuntime = (): PiManagerRuntime => {
     deleteAgent: async () => undefined,
     submitPrompt: async () => ({ requestId: "request-1", status: "queued" }),
     notifyAgent: async () => undefined,
-    getSubmission: async () => submission,
-    runPrompt: async ({ agentName, content }) => ({
-      agentName,
-      view: { conversation: { id: 1 } as never, entries: [], docs: {} },
-      submission,
-      assistantText: content,
-    }),
     stopAgent: async () => undefined,
     backfillAgentEvents: async () => ({ agents: [] }),
     listMessages: async () => ({ messages: [], before: null }),
