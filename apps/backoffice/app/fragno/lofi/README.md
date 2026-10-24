@@ -9,10 +9,18 @@ Lofi's browser SQLite replica (`@fragno-dev/lofi/sqlite`) mirrors two of a scope
   TanStack DB collections in `../automation/tanstack`, which every other Automations view still
   reads, including the Files explorer's workflow routes.
 
+The Upload replica lives in a dedicated worker (`../upload/lofi/replica.worker.ts`), which serves it
+with `@fragno-dev/lofi/zql/worker`. Pages query it with ZQL (`@fragno-dev/lofi/zql`), and the worker
+keeps each view's result up to date incrementally as outbox entries arrive, instead of reading the
+tables again. The worker synchronizes with `backofficeFetch`, so an expired token refreshes there
+too. It starts with only its name, so the page names it after the backend's URL. The Automations
+replica still runs on the page, and its views read it again after every applied entry.
+
 Shared pieces in this directory:
 
 - `browser-replica.ts`: `getBrowserReplica`, one replica per backend instance and tab, cached so
-  Suspense sees one promise.
+  Suspense sees one promise, and `getWorkerReplica`, the same for a replica in a worker, which
+  resolves once the worker opened the replica.
 - `replica-gate.tsx`: `LofiReplicaGate` shows the download, with its percentage, until the replica
   has caught up, and only then the view. The download panel is the design system's
   `BackofficeDownloadState`. A replica that caught up in an earlier session opens caught up, so the
@@ -20,16 +28,19 @@ Shared pieces in this directory:
   a new database.
 - `use-lofi-sqlite-read.ts`: `useLofiSqliteRead`, which reads a replica again whenever any tab
   applies outbox entries.
-- `scenario-replica-database.ts`: the scenario harness's replicas (`ctx.lofi.upload`,
-  `ctx.lofi.automations`), on wa-sqlite's in-memory VFS.
+- `use-lofi-zql.ts`: `useLofiZql`, a worker view's live result in a component.
+- `scenario-replica-database.ts`: the scenario harness's replicas (`ctx.lofi.automations` on the
+  page, `ctx.lofi.upload` in a worker, with a `MessageChannel` in place of it), on wa-sqlite's
+  in-memory VFS.
 
 ## What reads the Upload replica
 
 The Files explorer's workspace tree (`routes/backoffice/files/explorer.tsx`) and the Upload file
-manager (`routes/backoffice/connections/upload/files.tsx`), through `readReadyUploadFiles`.
-`upload/lofi/replica.scenario.test.ts` uploads, deletes, and lists files through it. The explorer no
-longer previews pages, which render over the Automations TanStack collections; it links to them
-instead.
+manager (`routes/backoffice/connections/upload/files.tsx`), through `useReadyUploadFiles`: a view of
+the `file` rows whose status is `ready`, of one provider or of all. Both build their tree from the
+whole list whenever it changes. `upload/lofi/replica.scenario.test.ts` uploads, deletes, and lists
+files through the view. The explorer no longer previews pages, which render over the Automations
+TanStack collections; it links to them instead.
 
 ## What reads the Automations replica
 
@@ -92,6 +103,9 @@ The TanStack trace queries in `event-traces.ts` remain only as that reference.
 
 ## Measurements (Upload)
 
+These were taken while the replica still ran on the page, reaching TanStack DB's database worker
+through one message per call. In its own worker, its statements run without a round trip.
+
 A scope with 50 files rewritten 120 times has 6,559 outbox entries (6.9 MB of stream). In Chrome, in
 a background tab, with only the Upload replica empty:
 
@@ -126,6 +140,14 @@ a background tab, with only the Upload replica empty:
   while it retries.
 - **OPFS files accumulate:** one database per visited scope, and a new one whenever the adapter
   identity or the schema version changes. Nothing deletes old ones.
+- **Whole lists cross to the page.** The worker posts the view's full result whenever a file
+  changes, and the page rebuilds the tree from it. Sending the changes would let the tree update in
+  place.
+- **Only the writing tab updates incrementally.** Other tabs' workers rebuild the view after every
+  batch the writing tab commits.
+- **The worker path is checked only by building it.** The scenario test runs the same host in Node.
+  The dev server transforms the worker and serves wa-sqlite's WASM, and the production build emits
+  both, but no browser has opened the explorer on the worker yet.
 - **Two streams and two workers per Files tab:** the Upload replica and the Automations TanStack
   collections, each with its own `GET /_internal`, outbox stream, OPFS database, and worker.
 - **Pages that mix both follow the Automations outbox twice.** Leaving the dashboard for Files,

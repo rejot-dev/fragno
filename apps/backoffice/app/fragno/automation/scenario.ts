@@ -24,6 +24,8 @@ import {
   backofficeScopePathSegment,
   backofficeScopeRootOwner,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import type { LofiSqliteReplica } from "@fragno-dev/lofi/sqlite";
+import type { LofiZqlClient } from "@fragno-dev/lofi/zql";
 import { workflowsSchema } from "@fragno-dev/workflows/schema";
 import { InMemoryFs, type IFileSystem } from "just-bash";
 
@@ -79,6 +81,7 @@ import { createRuntimeStateBackend } from "@/fragno/codemode/runtime-state-backe
 import { readSavedWorkflowProgram } from "@/fragno/codemode/workflow-program";
 import {
   createScenarioReplicaDatabase,
+  createScenarioReplicaWorkerDatabase,
   type ScenarioReplicaDatabase,
 } from "@/fragno/lofi/scenario-replica-database";
 import type { MarketplaceStaticEntry } from "@/fragno/marketplace/contracts";
@@ -108,7 +111,7 @@ import {
   createScenarioCollectionDatabase,
   type ScenarioCollectionDatabase,
 } from "@/fragno/tanstack/scenario-collection-database";
-import { UPLOAD_REPLICA_SCHEMAS } from "@/fragno/upload/lofi/replica";
+import { UPLOAD_REPLICA_SCHEMAS } from "@/fragno/upload/lofi/replica-schemas";
 import { bytesToBase64 } from "@/lib/base64";
 import type { CreateSandboxRuntimeProviders } from "@/sandbox/contracts";
 
@@ -377,8 +380,8 @@ export type BackofficeScenarioTanStack = {
 
 /** SQLite replicas of the scopes' outboxes, as browsers open them. */
 export type BackofficeScenarioLofi = {
-  automations: ScenarioReplicaDatabase;
-  upload: ScenarioReplicaDatabase;
+  automations: ScenarioReplicaDatabase<LofiSqliteReplica>;
+  upload: ScenarioReplicaDatabase<LofiZqlClient>;
   syncAll(): Promise<void>;
   cleanup(): Promise<void>;
 };
@@ -1857,7 +1860,7 @@ const createScenarioLofi = (runtime: InMemoryBackofficeRuntime): BackofficeScena
     baseUrl: automationScopedBaseUrl,
     createFetch: (scope) => createScenarioAutomationTanStackFetch(runtime, scope),
   });
-  const upload = createScenarioReplicaDatabase({
+  const upload = createScenarioReplicaWorkerDatabase({
     name: "Upload replica",
     schemas: UPLOAD_REPLICA_SCHEMAS,
     drainRuntime: () => runtime.drain(),
