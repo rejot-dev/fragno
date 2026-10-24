@@ -564,6 +564,129 @@ state. Projection `retrieve`/`mutate` functions must not return promises; adapte
 IndexedDB work to keep transactions active. If local schema or projection code changes, delete the
 whole IndexedDB database and sync again.
 
+## SQLite replica (browser)
+
+`@fragno-dev/lofi/sqlite` mirrors one backend's outbox into a SQLite database in the browser's
+Origin Private File System (OPFS), using the same wa-sqlite setup as
+`@fragno-dev/tanstack-db-adapter`. Tables are laid out like the backend's SQLite tables, so you read
+them with plain SQL. Local projections run in the same transaction as the outbox entry. The replica
+only receives server state: it has no query engine, no optimistic writes, and no submit.
+
+```bash
+pnpm add @tanstack/browser-db-sqlite-persistence @journeyapps/wa-sqlite
+```
+
+```ts
+import { decodeLofiSqliteRow, openLofiSqliteReplica } from "@fragno-dev/lofi/sqlite";
+
+const replica = await openLofiSqliteReplica({
+  baseUrl: "https://example.com/api/my-fragment", // serves /_internal
+  fetch: fetch.bind(globalThis),
+  schemas: [{ schema: appSchema }],
+  // Projections work as in "Local schemas / materialized views" below.
+  localSchemas: [],
+  projections: [],
+  ephemeralTables: [],
+  onError: (error) => console.error(error),
+  retryDelayMs: 5_000,
+});
+
+const load = async () => {
+  const rows = await replica.execute(
+    `SELECT * FROM "users_app" WHERE "age" >= ? ORDER BY "age"`,
+    [21],
+  );
+  return rows.map((row) => decodeLofiSqliteRow(appSchema.tables.users, row));
+};
+
+const unsubscribe = replica.subscribe(() => void load());
+// On teardown:
+unsubscribe();
+await replica.close();
+```
+
+### Layout
+
+- **Tables** are named like the backend's: `<table>_<namespace>`, where the namespace is the schema
+  name the outbox reports (`app` above). Use `lofiSqliteTableName({ schema }, "users")` rather than
+  hard-coding names. Local schemas follow the same rule.
+- **Columns** use the schema's column names, including `_internalId` (a local
+  `INTEGER PRIMARY KEY AUTOINCREMENT`, not the server's id), `id` (the external id) and `_version`
+  (starts at 0 and goes up by 1 on every update, as on the server).
+- **Reference columns** hold the referenced row's local `_internalId`, so joins work as on the
+  server: `JOIN "users_app" u ON p."authorId" = u."_internalId"`.
+- **Values** are stored as on the backend's SQLite: dates and timestamps as epoch milliseconds,
+  booleans as 0/1, JSON as text, binary as BLOB. Bigints are the exception: they are stored as
+  `INTEGER`, not as an 8-byte BLOB, so they compare and sort numerically. wa-sqlite returns an
+  integer as a `number` when it is a safe integer and as a `bigint` otherwise.
+- **Indexes** have the backend's names. All of them are non-unique: a row the server deleted with
+  `omitOutbox()` and no truncate notification stays in the replica, and a new row may reuse its
+  unique values. There are no foreign keys, because a replica may mirror only some schemas.
+- `decodeLofiSqliteRow(table, row)` restores the record shape of a Fragno query: a `FragnoId` for
+  `id`, a `FragnoReference` for references, and `Date`, boolean, JSON, and bigint values.
+- `lofi_meta` holds the outbox cursor, and `lofi_inbox` holds the entries already applied.
+
+Mutations for schemas you did not register are skipped. A mutation for an unknown table in a
+registered schema fails, because it means the client's schema is behind the server's. Rows of
+`ephemeralTables` are skipped, not stored.
+
+### Database name and schema changes
+
+The database is a replayable cache, so it is never migrated. Its OPFS file name is
+`fragno-lofi-<hash>.sqlite`, where the hash covers the normalized base URL, the backend's
+`adapterIdentity` (from `GET /_internal`), `LOFI_SQLITE_LAYOUT_VERSION`, and the name and version of
+every registered source and local schema. Changing any of them opens a fresh database, which replays
+the outbox from the start.
+
+### Tabs
+
+Every tab opens its own connection and reads through it. One tab at a time holds a Web Lock named
+after the database. That tab streams the outbox (`GET /_internal/outbox/stream`) and writes. It
+releases the lock only after its last transaction has finished, so two tabs never write at once.
+When it closes, the next tab acquires the lock and resumes from the cursor in `lofi_meta`. If its
+synchronization stops on an error, for example an HTTP error from the stream, it reports the error
+to `onError`, releases the lock so another tab can try, and competes again after `retryDelayMs`.
+
+The writing tab tells the other tabs that entries were applied over a `BroadcastChannel`;
+`subscribe` fires in every tab. `execute` waits for the tab's pending replication writes, so a read
+never sees half of an entry.
+
+### Risks and follow-ups
+
+- **The OPFS path has no automated test.** The scenario tests run the whole replica in Node against
+  fragno-db's SQLite backend, with wa-sqlite's in-memory VFS standing in for OPFS and Node's own Web
+  Locks and `BroadcastChannel`. That VFS does not lock, so the tests do not show how tabs contend
+  for the file. The real OPFS path was checked by hand in Chrome 130 through the SQLite replica tab
+  of `example-apps/react-spa-local-first`: catch-up, live updates in two tabs, takeover when the
+  writing tab closes, persistence across a reload, and projections. Chrome can grant a Web Lock
+  request after its signal aborted; the replica handles that, and a scenario simulates it.
+- **No offline start.** `openLofiSqliteReplica` fetches `GET /_internal` before opening the
+  database, because the database name depends on the backend's `adapterIdentity`. While the backend
+  is unreachable, opening fails even when the data is already in OPFS. Remembering the last database
+  name per base URL would let a tab open the existing replica and start synchronizing once the
+  backend is back.
+- **Reads in other tabs during heavy writes.** OPFSCoopSyncVFS hands file access between
+  connections. If reading tabs stall while the writing tab catches up, send their reads to the
+  writing tab over the `BroadcastChannel` instead, as `@fragno-dev/tanstack-db-adapter` does.
+- **Catch-up speed.** Each outbox entry is its own transaction, and each statement is a worker round
+  trip. Applying a page of entries per transaction would cut most of the round trips.
+- **Projection changes.** Changing projection code does not change the database name, so rows
+  projected by the old code stay until a registered schema's version changes. A projection version
+  in the database name would fix this.
+- **Growth.** `lofi_inbox` rows are never pruned, and databases left behind by a name change stay in
+  OPFS. Both need cleanup.
+- **Exact checkpoints.** The cursor is a versionstamp, as in `LofiClient`, with `lofi_inbox`
+  removing duplicates. `@fragno-dev/tanstack-db-adapter` resumes from `{versionstamp, uowId}` and
+  rejects a history it cannot verify; the replica does not.
+- **Dangling references.** A reference to a row the replica does not hold, for example in a table
+  you did not register, is stored as NULL and is not filled in if the row arrives later.
+- **Errors that never clear.** A schema mismatch fails on every attempt, so each tab retries every
+  `retryDelayMs` and reports the same error each time.
+- **Coarse refresh.** `subscribe` says only that something changed, not which tables. Sending the
+  changed tables would let readers skip unrelated queries.
+- **JSON `null`.** A JSON column holding `null` is stored as SQL `NULL`, the same as a missing
+  value.
+
 ## Notes
 
 - `endpointName` must match between `LofiClient` and `IndexedDbAdapter`.
@@ -609,6 +732,8 @@ export const schema = schema("app", (s) =>
 - `IndexedDbAdapter` - IndexedDB-backed `LofiAdapter` and query engine.
 - `InMemoryLofiAdapter` - in-memory `LofiAdapter` for optimistic overlays/tests.
 - `StackedLofiAdapter` - merges base + overlay adapters for optimistic reads.
+- `@fragno-dev/lofi/sqlite`: `openLofiSqliteReplica`, `SqliteLofiAdapter`, `decodeLofiSqliteRow`,
+  `lofiSqliteTableName` - the browser SQLite replica.
 - `LofiOverlayManager` - overlay manager that rebuilds queued optimistic commands.
 - Outbox helpers: `decodeOutboxPayload`, `resolveOutboxRefs`, `outboxMutationsToUowOperations`.
 - Types: `LofiClientOptions`, `LofiAdapter`, `LofiMutation`, `LofiQueryInterface`, and more.
