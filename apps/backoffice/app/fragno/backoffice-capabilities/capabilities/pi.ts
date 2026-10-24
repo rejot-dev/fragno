@@ -96,7 +96,9 @@ const turnCompletedPayloadSchema = z.object({
     .number()
     .int()
     .nonnegative()
-    .describe("The conversation entry holding the turn's answer."),
+    .describe(
+      "The conversation entry holding the turn's answer; pi.listMessages with before set one past it and last 1 reads the answer, under pi.read.",
+    ),
 });
 
 const turnFailedPayloadSchema = z.object({

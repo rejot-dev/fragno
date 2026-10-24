@@ -169,8 +169,9 @@ running, which is how views show an agent answering. A prompt Pi settles without
 only its end, and a withdrawn one records nothing. A steer that joined a running turn starts and
 settles with that turn. The event's subject names the agent and the prompt's request ID, its actors
 are the turn's execution actors, and its scope restriction is the turn's, so `turn.aborted` names
-who prompted the turn; `agent.stopped` names who stopped it. No turn event carries answer text;
-`pi.getSubmission` leads to the answer.
+who prompted the turn; `agent.stopped` names who stopped it. No turn event carries answer text:
+event readers need only `events.read`, while conversations stay behind `pi.read`, so a reader of the
+answer calls `pi.listMessages` with `before` one past the answer's entry ID.
 
 Pi starts and settles submissions in its own commits, so the turns document is the outbox: a turn
 stays in `pending` until it settles, its events are ingested, keyed
