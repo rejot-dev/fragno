@@ -69,6 +69,7 @@ export class LofiClient {
   private readonly onSyncApplied?: (result: LofiSyncResult) => void | Promise<void>;
   private readonly onSyncComplete?: (result: LofiSyncResult) => void | Promise<void>;
   private readonly onError?: (error: unknown) => void;
+  private readonly onStopped?: (error: unknown) => void;
   private readonly defaultSignal?: AbortSignal;
 
   private intervalId: ReturnType<typeof setInterval> | undefined;
@@ -107,6 +108,7 @@ export class LofiClient {
     this.onSyncApplied = options.onSyncApplied;
     this.onSyncComplete = options.onSyncComplete;
     this.onError = options.onError;
+    this.onStopped = options.onStopped;
     this.defaultSignal = options.signal;
   }
 
@@ -662,6 +664,7 @@ export class LofiClient {
   private handleLoopError(error: unknown): void {
     this.stop();
     this.onError?.(error);
+    this.onStopped?.(error);
   }
 }
 
