@@ -213,6 +213,8 @@ type ScenarioContext = {
   statuses: Map<string, LofiSqliteReplicaStatus[]>;
   /** Mirrored users each closed tab had committed when it started closing. */
   usersAtClose: Map<string, number>;
+  /** The SQL of every call any tab made to its database, in order. */
+  databaseCalls: string[];
   errors: unknown[];
   vars: Record<string, FragnoId[]>;
 };
@@ -361,8 +363,19 @@ async function runReplicaScenario(scenario: {
     notifications: new Map(),
     statuses: new Map(),
     usersAtClose: new Map(),
+    databaseCalls: [],
     errors: [],
     vars: {},
+  };
+  const openDatabase: typeof files.open = async (options) => {
+    const database = await files.open(options);
+    return {
+      ...database,
+      execute: (sql, params) => {
+        ctx.databaseCalls.push(sql);
+        return database.execute(sql, params);
+      },
+    };
   };
   cleanups.push(async () => {
     for (const tab of ctx.tabs.values()) {
@@ -382,7 +395,7 @@ async function runReplicaScenario(scenario: {
             fetch: fetch as typeof globalThis.fetch,
             onError: (error) => ctx.errors.push(error),
           },
-          { openDatabase: files.open },
+          { openDatabase },
         );
         ctx.notifications.set(step.tab, 0);
         replica.subscribe(() =>
@@ -1074,6 +1087,48 @@ describe("SQLite replica", () => {
           expect(
             await tab.execute(`SELECT count(DISTINCT "email") AS "count" FROM "users_app"`),
           ).toEqual([{ count: entries }]);
+        }),
+      ],
+    });
+  });
+
+  it("applies each transaction in at most two database calls, one for its reads and one for its writes", async () => {
+    const entries = 120;
+
+    await runReplicaScenario({
+      serverSchemas: [appSchema],
+      statementDelayMs: 0,
+      steps: [
+        ...Array.from({ length: entries }, (_, index) =>
+          write(appSchema, `user-${index}`, (uow) => {
+            uow.create("users", user(`user-${index}@example.com`));
+          }),
+        ),
+        openTab("a", replica({})),
+        waitForRows("a", `SELECT count(*) AS "count" FROM "users_app"`, [{ count: entries }]),
+        assertStep(({ databaseCalls, errors }) => {
+          expect(errors).toEqual([]);
+          // Reads of the test go between transactions, which the replica serializes.
+          const transactions: string[][] = [];
+          let current: string[] | null = null;
+          for (const sql of databaseCalls) {
+            if (sql.startsWith("BEGIN IMMEDIATE")) {
+              current = [];
+            }
+            current?.push(sql);
+            if (current && sql.endsWith("COMMIT")) {
+              transactions.push(current);
+              current = null;
+            }
+          }
+          expect(current).toBeNull();
+          for (const calls of transactions) {
+            expect(calls.length).toBeLessThanOrEqual(2);
+          }
+          const inserts = databaseCalls.join("\n").split(`INSERT INTO "users_app"`).length - 1;
+          expect(inserts).toBe(entries);
+          // Entries that arrive together share a transaction.
+          expect(transactions.length).toBeLessThan(entries);
         }),
       ],
     });
