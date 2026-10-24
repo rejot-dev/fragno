@@ -14,7 +14,14 @@ import { allBackofficePermissionRequirements } from "@fragno-dev/backoffice-api/
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { env } from "cloudflare:workers";
 
-import { createRegistry, Harness, type ConversationView } from "@earendil-works/pi-durable";
+import {
+  createRegistry,
+  defineExtension,
+  defineTask,
+  Harness,
+  ROOT_CONVERSATION_ID,
+  type ConversationView,
+} from "@earendil-works/pi-durable";
 
 import { createCloudflareBackofficeObjectRegistry } from "@/backoffice-runtime/cloudflare-durable-object-factory";
 import {
@@ -461,6 +468,116 @@ describe("Pi durable agent scenarios", () => {
       });
     },
   );
+
+  test("an alarm resumes a sleep due beside running work, and a failed session ends it at once", async () => {
+    const config = orgAgent(`pi-wake-${crypto.randomUUID()}`);
+    const testEnv = env as CloudflareEnv;
+    const stub = testEnv.PI.getByName(piAgentObjectName(config));
+    await runInDurableObject(stub, async (_instance, state) => {
+      await state.storage.put("pi-agent-config", piAgentConfigSchema.parse(config));
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let napped = false;
+      const complete = {
+        status: "terminal",
+        outcome: { status: "completed", result: null },
+      } as const;
+      const aborted = { status: "terminal", outcome: { status: "aborted" } } as const;
+      // One task runs until released while the other sleeps briefly beside it.
+      const Hold = defineTask<null, { phase: "hold" }, null>({
+        name: "scenario.hold",
+        version: 1,
+        initial: () => ({ phase: "hold" }),
+        phases: {
+          hold: async (_task, runtime, context) => {
+            await held;
+            await runtime.commit(() => complete, context);
+          },
+        },
+        abort: (_task, runtime, context) => runtime.commit(() => aborted, context),
+      });
+      const Nap = defineTask<null, { phase: "nap" } | { phase: "wake" }, null>({
+        name: "scenario.nap",
+        version: 1,
+        initial: () => ({ phase: "nap" }),
+        phases: {
+          nap: (_task, runtime, context) =>
+            runtime.sleepUntil(runtime.now() + 200, { phase: "wake" }, context),
+          wake: async (_task, runtime, context) => {
+            napped = true;
+            await runtime.commit(() => complete, context);
+          },
+        },
+        abort: (_task, runtime, context) => runtime.commit(() => aborted, context),
+      });
+      const scenario = defineExtension({ name: "scenario.wake", tasks: [Hold, Nap] });
+      const registry = createRegistry();
+      registry.install(scenario);
+      const seeding = await Harness.open(
+        await openPiAgentStorage(state.storage),
+        { models: createModels(), registry },
+        BACKGROUND_CONTEXT,
+      );
+      await seeding.root(BACKGROUND_CONTEXT);
+      await seeding.commit(async (tx) => {
+        const options = {
+          ownership: { kind: "conversation" },
+          conversationId: ROOT_CONVERSATION_ID,
+          background: true,
+        } as const;
+        await tx.createTask(Hold, null, options);
+        await tx.createTask(Nap, null, options);
+      }, BACKGROUND_CONTEXT);
+      await seeding.close(BACKGROUND_CONTEXT);
+
+      const storageError = new Error("PI_SCENARIO_STORAGE_UNAVAILABLE");
+      let storageFails = false;
+      const object = new InMemoryPiObject({
+        state,
+        runtime: createCloudflareDurableObjectRuntimeServices(testEnv, state),
+        dependencies: {
+          ...createScriptedPiAgentDependencies(createModels()),
+          extensions: () => [scenario],
+          report: () => {},
+        },
+        openStorage: async () => {
+          const storage = await openPiAgentStorage(state.storage);
+          return new Proxy(storage, {
+            get(target, property) {
+              if (property === "commit" && storageFails) {
+                return async () => {
+                  throw storageError;
+                };
+              }
+              const value: unknown = target[property as keyof typeof target];
+              // Storage methods read the storage's private fields, so they run on it.
+              return typeof value === "function" ? value.bind(target) : value;
+            },
+          });
+        },
+        idFromConfig: (input) => testEnv.PI.idFromName(piAgentObjectName(input)),
+        nowEpochMs: Date.now,
+      });
+      try {
+        const alarm = object.alarm();
+        // Pi keeps no timer for the sleep, so the waiting alarm resumes it on time.
+        await vi.waitFor(() => {
+          assert(napped);
+        });
+        // The held task's next commit fails the session; the alarm fails with it, not after its budget.
+        storageFails = true;
+        release();
+        await expect(alarm).rejects.toBe(storageError);
+        // The next call opens the agent again, on storage that works.
+        storageFails = false;
+        await expect(object.getView(config)).resolves.toMatchObject({ entries: [] });
+      } finally {
+        await object.close();
+      }
+    });
+  });
 
   test("rejects unsigned and wrong-scope requests and cannot hand off another org's agent", async () => {
     const organizationId = `pi-owner-${crypto.randomUUID()}`;

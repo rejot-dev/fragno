@@ -1217,6 +1217,10 @@ test("an agent's turns and queue are recorded as they move, so its events say wh
           const { runtime } = ctx;
           await prompted(runtime, "third", grace);
           await runtime.drain();
+          // Pi retries an overloaded model after a backoff, asleep until the alarm armed for it.
+          expect(await assistantState(ctx)).toMatchObject({ answering: true });
+          runtime.advanceTime(60_000);
+          await runtime.drain();
 
           expect(await assistantState(ctx)).toEqual({
             answering: false,

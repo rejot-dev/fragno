@@ -10,6 +10,7 @@ import {
   type Extension,
   type HarnessSettings,
   type Storage,
+  type Wake,
 } from "@earendil-works/pi-durable";
 
 import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
@@ -93,6 +94,8 @@ export async function openPiAgentHarness(input: {
   dependencies: PiAgentDependencies;
   openStorage: () => Promise<Storage>;
   nowEpochMs: () => number;
+  /** Told whenever the agent's next wakeup changes; Pi keeps no timers of its own for sleeps. */
+  onWake: (wake: Wake) => void;
 }): Promise<OpenPiAgent> {
   const { config, runtime, dependencies } = input;
   function report(error: unknown) {
@@ -152,6 +155,9 @@ export async function openPiAgentHarness(input: {
         stream: { maxRetries: 3, ...dependencies.settings.stream },
       },
       onReport: report,
+      // Sleep deadlines and the object's alarms must read one clock.
+      now: input.nowEpochMs,
+      onWake: input.onWake,
     },
     BACKGROUND_CONTEXT,
   );

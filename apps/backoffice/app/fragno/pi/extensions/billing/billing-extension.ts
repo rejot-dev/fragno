@@ -265,34 +265,19 @@ async function ensurePiDurableBillingTask(input: {
   }, context);
 }
 
-async function flushPiDurableBilling(input: {
-  harness: Harness;
-  task: PiDurableBillingTask;
-  nowEpochMs: () => number;
-  context: Context;
-}): Promise<void> {
-  const { harness, task, nowEpochMs, context } = input;
-
-  while (true) {
-    const taskId = await ensurePiDurableBillingTask({
-      harness,
-      task,
-      nowEpochMs: nowEpochMs(),
-      context,
-    });
-    if (taskId === null) {
-      return;
-    }
-
-    harness.resume();
-    const settled = await harness.waitForTask(taskId, context);
-    if (
-      settled.state.outcome.status === "failed" ||
-      settled.state.outcome.status === "faulted" ||
-      settled.state.outcome.status === "orphaned"
-    ) {
-      throw new Error(`PI_DURABLE_BILLING_TASK_FAILED:${taskId}:${settled.state.outcome.status}`);
-    }
+/** Throws for a delivery task that ended without delivering, so the wakeup that ran it fails. */
+async function assertPiDurableBillingTaskNotFailed(
+  harness: Harness,
+  taskId: TaskId<PiDurableBillingTaskResult>,
+  context: Context,
+): Promise<void> {
+  const task = await harness.getTask(taskId, context);
+  if (task?.state.status !== "terminal") {
+    return;
+  }
+  const { status } = task.state.outcome;
+  if (status === "failed" || status === "faulted" || status === "orphaned") {
+    throw new Error(`PI_DURABLE_BILLING_TASK_FAILED:${taskId}:${status}`);
   }
 }
 
@@ -305,8 +290,12 @@ export type PiBilling = {
     nowEpochMs: number,
     context: Context,
   ): Promise<TaskId<PiDurableBillingTaskResult> | null>;
-  /** Runs billing delivery through the current committed usage watermark. */
-  flush(harness: Harness, nowEpochMs: () => number, context: Context): Promise<void>;
+  /** Throws when a delivery task `ensure` returned ended without delivering. */
+  assertNotFailed(
+    harness: Harness,
+    taskId: TaskId<PiDurableBillingTaskResult>,
+    context: Context,
+  ): Promise<void>;
 };
 
 export function createPiBilling(input: {
@@ -320,8 +309,6 @@ export function createPiBilling(input: {
     extension: defineExtension({ name: "backoffice.billing", tasks: [task] }),
     ensure: async (harness, nowEpochMs, context) =>
       await ensurePiDurableBillingTask({ harness, task, nowEpochMs, context }),
-    flush: async (harness, nowEpochMs, context) => {
-      await flushPiDurableBilling({ harness, task, nowEpochMs, context });
-    },
+    assertNotFailed: assertPiDurableBillingTaskNotFailed,
   };
 }
