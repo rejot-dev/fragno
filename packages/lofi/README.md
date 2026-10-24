@@ -660,9 +660,14 @@ When it closes, the next tab acquires the lock and resumes from the cursor in `l
 synchronization stops on an error, for example an HTTP error from the stream, it reports the error
 to `onError`, releases the lock so another tab can try, and competes again after `retryDelayMs`.
 
-The writing tab tells the other tabs that entries were applied over a `BroadcastChannel`;
-`subscribe` fires in every tab. `execute` waits for the tab's pending replication writes, so a read
-never sees half of an entry.
+The writing tab applies the entries that have arrived, up to 50 at a time, in one transaction that
+also writes the cursor once, so a catch-up commits once per batch instead of once per entry. An
+entry that fails, for example because a projection throws, rolls back its whole batch, and the next
+attempt starts from the batch's first entry.
+
+The writing tab tells the other tabs over a `BroadcastChannel` once a batch commits; `subscribe`
+fires in every tab. `execute` waits for the tab's pending replication writes, so a read never sees
+half of a batch.
 
 ### Risks and follow-ups
 
@@ -681,8 +686,8 @@ never sees half of an entry.
 - **Reads in other tabs during heavy writes.** OPFSCoopSyncVFS hands file access between
   connections. If reading tabs stall while the writing tab catches up, send their reads to the
   writing tab over the `BroadcastChannel` instead, as `@fragno-dev/tanstack-db-adapter` does.
-- **Catch-up speed.** Each outbox entry is its own transaction, and each statement is a worker round
-  trip. Applying a page of entries per transaction would cut most of the round trips.
+- **Catch-up speed.** Batches remove most commits, but every statement is still a round trip to the
+  worker, including each entry's inbox check and write.
 - **Projection changes.** Changing projection code does not change the database name, so rows
   projected by the old code stay until a registered schema's version changes. A projection version
   in the database name would fix this.
@@ -694,7 +699,8 @@ never sees half of an entry.
 - **Dangling references.** A reference to a row the replica does not hold, for example in a table
   you did not register, is stored as NULL and is not filled in if the row arrives later.
 - **Errors that never clear.** A schema mismatch fails on every attempt, so each tab retries every
-  `retryDelayMs` and reports the same error each time.
+  `retryDelayMs` and reports the same error each time. The entries before the failing one in its
+  batch are not applied either.
 - **No snapshot across queries.** Each `execute` or `query` waits for pending writes, but the
   writing tab can apply an entry between two of a reader's queries, so a view built from several
   queries can mix states. The next change notification reads again. A read transaction would need

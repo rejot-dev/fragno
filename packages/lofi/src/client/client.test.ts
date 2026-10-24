@@ -6,8 +6,15 @@ import superjson from "superjson";
 import type { OutboxEntry, OutboxPayload } from "@fragno-dev/db";
 
 import { LofiClient } from "../mod";
+import type { LofiAdapter } from "../types";
 
 const baseOutboxUrl = "https://example.com/outbox?foo=bar";
+
+/** Applies each entry of a batch on its own, as adapters without transactions do. */
+const sequentialBatches = (adapter: Omit<LofiAdapter, "applyOutboxBatch">): LofiAdapter => ({
+  ...adapter,
+  applyOutboxBatch: (apply) => apply(adapter),
+});
 
 const waitFor = async (predicate: () => boolean, timeoutMs = 1_000): Promise<void> => {
   const start = Date.now();
@@ -105,7 +112,7 @@ describe("LofiClient", () => {
     const client = new LofiClient({
       outboxUrl: baseOutboxUrl,
       endpointName: "app-outbox",
-      adapter: {
+      adapter: sequentialBatches({
         applyOutboxEntry: async ({ mutations }) => {
           appliedMutations.push(...mutations);
           return { applied: true };
@@ -114,7 +121,7 @@ describe("LofiClient", () => {
         setMeta: async (key, value) => {
           meta.set(key, value);
         },
-      },
+      }),
       ephemeralTables: [{ schema: "app", table: "events" }],
       fetch: (async () => new Response(JSON.stringify([entry]))) as typeof fetch,
     });
@@ -149,13 +156,13 @@ describe("LofiClient", () => {
     const client = new LofiClient({
       outboxUrl: baseOutboxUrl,
       endpointName: "app-outbox",
-      adapter: {
+      adapter: sequentialBatches({
         applyOutboxEntry: async () => ({ applied: true }),
         getMeta: async (key) => meta.get(key),
         setMeta: async (key, value) => {
           meta.set(key, value);
         },
-      },
+      }),
       ephemeralTables: [ephemeralStreamTable],
       fetch: (async () => new Response(JSON.stringify(responses.shift() ?? []))) as typeof fetch,
     });
@@ -192,11 +199,11 @@ describe("LofiClient", () => {
     const client = new LofiClient({
       outboxUrl: baseOutboxUrl,
       endpointName: "app-outbox",
-      adapter: {
+      adapter: sequentialBatches({
         applyOutboxEntry: async () => ({ applied: true }),
         getMeta: async () => undefined,
         setMeta: async () => undefined,
-      },
+      }),
       ephemeralTables: [ephemeralStreamTable],
       fetch: (async () => new Response(JSON.stringify(entries))) as typeof fetch,
     });
@@ -231,13 +238,13 @@ describe("LofiClient", () => {
     const client = new LofiClient({
       outboxUrl: baseOutboxUrl,
       endpointName: "app-outbox",
-      adapter: {
+      adapter: sequentialBatches({
         applyOutboxEntry: async () => ({ applied: true }),
         getMeta: async (key) => meta.get(key),
         setMeta: async (key, value) => {
           meta.set(key, value);
         },
-      },
+      }),
       ephemeralTables: [ephemeralStreamTable],
       fetch: (async () => new Response(JSON.stringify(responses.shift() ?? []))) as typeof fetch,
     });
@@ -278,11 +285,11 @@ describe("LofiClient", () => {
     const client = new LofiClient({
       outboxUrl: baseOutboxUrl,
       endpointName: "app-outbox",
-      adapter: {
+      adapter: sequentialBatches({
         applyOutboxEntry: async () => ({ applied: false }),
         getMeta: async () => "vs-1",
         setMeta: async () => undefined,
-      },
+      }),
       ephemeralTables: [ephemeralStreamTable],
       fetch: (async () => new Response(JSON.stringify([entry]))) as typeof fetch,
     });
@@ -330,7 +337,7 @@ describe("LofiClient", () => {
     const client = new LofiClient({
       outboxUrl: baseOutboxUrl,
       endpointName: "app-outbox",
-      adapter: {
+      adapter: sequentialBatches({
         applyOutboxEntry: async () => {
           durableApplyAttempts += 1;
           if (durableApplyAttempts === 1) {
@@ -343,7 +350,7 @@ describe("LofiClient", () => {
         setMeta: async (key, value) => {
           meta.set(key, value);
         },
-      },
+      }),
       ephemeralTables: [{ schema: "app", table: "events" }],
       fetch: (async () => new Response(JSON.stringify([entry]))) as typeof fetch,
     });
@@ -397,11 +404,11 @@ describe("LofiClient", () => {
     const client = new LofiClient({
       outboxUrl: baseOutboxUrl,
       endpointName: "app-outbox",
-      adapter: {
+      adapter: sequentialBatches({
         applyOutboxEntry: async () => ({ applied: applyAttempt++ === 0 }),
         getMeta: async () => undefined,
         setMeta: async () => undefined,
-      },
+      }),
       ephemeralTables: [{ schema: "app", table: "events" }],
       fetch: (async () => new Response(JSON.stringify([entry]))) as typeof fetch,
       onSyncComplete: (result) => {
@@ -431,13 +438,13 @@ describe("LofiClient", () => {
     const client = new LofiClient({
       outboxUrl: baseOutboxUrl,
       endpointName: "app-outbox",
-      adapter: {
+      adapter: sequentialBatches({
         applyOutboxEntry: async () => ({ applied: true }),
         getMeta: async (key) => meta.get(key),
         setMeta: async (key, value) => {
           meta.set(key, value);
         },
-      },
+      }),
       ephemeralTables: [ephemeralStreamTable],
       fetch: (async (input) => {
         const url = new URL(typeof input === "string" ? input : input.toString());
@@ -505,11 +512,11 @@ describe("LofiClient", () => {
     const client = new LofiClient({
       outboxUrl: baseOutboxUrl,
       endpointName: "app-outbox",
-      adapter: {
+      adapter: sequentialBatches({
         applyOutboxEntry: async () => ({ applied: true }),
         getMeta: async () => undefined,
         setMeta: async () => undefined,
-      },
+      }),
       ephemeralTables: [ephemeralStreamTable],
       fetch: (async () => new Response(JSON.stringify([entry]))) as typeof fetch,
     });
@@ -539,7 +546,7 @@ describe("LofiClient", () => {
     const client = new LofiClient({
       outboxUrl: baseOutboxUrl,
       endpointName: "app-outbox",
-      adapter: {
+      adapter: sequentialBatches({
         applyOutboxEntry: async () => ({ applied: true }),
         getMeta: async () => "vs-0",
         setMeta: async () => {
@@ -549,7 +556,7 @@ describe("LofiClient", () => {
             throw new Error("checkpoint failed");
           }
         },
-      },
+      }),
       ephemeralTables: [ephemeralStreamTable],
       fetch: (async (input) => {
         const url = new URL(typeof input === "string" ? input : input.toString());
@@ -593,11 +600,11 @@ describe("LofiClient", () => {
     const client = new LofiClient({
       outboxUrl: baseOutboxUrl,
       endpointName: "app-outbox",
-      adapter: {
+      adapter: sequentialBatches({
         applyOutboxEntry,
         getMeta: async () => undefined,
         setMeta,
-      },
+      }),
       ephemeralTables: [{ schema: "app", table: "events" }],
       fetch: (async () => new Response(JSON.stringify([entry]))) as typeof fetch,
     });
@@ -627,11 +634,11 @@ describe("LofiClient", () => {
     const client = new LofiClient({
       outboxUrl: baseOutboxUrl,
       endpointName: "app-outbox",
-      adapter: {
+      adapter: sequentialBatches({
         applyOutboxEntry,
         getMeta: async () => undefined,
         setMeta: async () => undefined,
-      },
+      }),
       ephemeralTables: [{ schema: "app", table: "events" }],
       fetch: (async () => new Response(JSON.stringify([entry]))) as typeof fetch,
     });
@@ -674,7 +681,7 @@ describe("LofiClient", () => {
     const client = new LofiClient({
       outboxUrl: baseOutboxUrl,
       endpointName: "app-outbox",
-      adapter: {
+      adapter: sequentialBatches({
         applyOutboxEntry: async ({ sourceKey, versionstamp, uowId }) => {
           applied.push({ sourceKey, versionstamp, uowId });
           return { applied: true };
@@ -683,7 +690,7 @@ describe("LofiClient", () => {
         setMeta: async (key, value) => {
           meta.set(key, value);
         },
-      },
+      }),
       fetch: fetcher as unknown as typeof fetch,
       limit: 2,
     });
@@ -749,7 +756,7 @@ describe("LofiClient", () => {
       outboxUrl: "https://example.com/_internal/outbox?foo=bar",
       endpointName: "app-outbox",
       outboxTransport: "stream",
-      adapter: {
+      adapter: sequentialBatches({
         applyOutboxEntry: async ({ sourceKey, versionstamp, uowId }) => {
           applied.push({ sourceKey, versionstamp, uowId });
           return { applied: true };
@@ -758,7 +765,7 @@ describe("LofiClient", () => {
         setMeta: async (key, value) => {
           meta.set(key, value);
         },
-      },
+      }),
       fetch: fetcher as unknown as typeof fetch,
       limit: 10,
       onSyncComplete: (result) => {
@@ -778,10 +785,8 @@ describe("LofiClient", () => {
       { sourceKey: "app-outbox::outbox", versionstamp: firstStamp, uowId: `uow-${firstStamp}` },
       { sourceKey: "app-outbox::outbox", versionstamp: secondStamp, uowId: `uow-${secondStamp}` },
     ]);
-    expect(completed).toEqual([
-      { appliedEntries: 1, lastVersionstamp: firstStamp },
-      { appliedEntries: 1, lastVersionstamp: secondStamp },
-    ]);
+    // Both entries arrived together, so they were applied as one batch.
+    expect(completed).toEqual([{ appliedEntries: 2, lastVersionstamp: secondStamp }]);
   });
 
   it("reconnects after a stream read failure", async () => {
@@ -825,7 +830,7 @@ describe("LofiClient", () => {
       endpointName: "app-outbox",
       outboxTransport: "stream",
       streamReconnectIntervalMs: 1,
-      adapter: {
+      adapter: sequentialBatches({
         applyOutboxEntry: async ({ versionstamp }) => {
           applied.push(versionstamp);
           return { applied: true };
@@ -834,7 +839,7 @@ describe("LofiClient", () => {
         setMeta: async (key, value) => {
           meta.set(key, value);
         },
-      },
+      }),
       fetch: fetcher as unknown as typeof fetch,
       onError: (error) => {
         errors.push(error);
@@ -873,11 +878,11 @@ describe("LofiClient", () => {
       outboxUrl: "https://example.com/_internal/outbox",
       endpointName: "app-outbox",
       outboxTransport: "stream",
-      adapter: {
+      adapter: sequentialBatches({
         applyOutboxEntry: async () => ({ applied: true }),
         getMeta: async () => "vs-0",
         setMeta: async () => undefined,
-      },
+      }),
       fetch: fetcher as unknown as typeof fetch,
     });
 
@@ -902,11 +907,11 @@ describe("LofiClient", () => {
     const client = new LofiClient({
       outboxUrl: "/api/outbox",
       endpointName: "app-outbox",
-      adapter: {
+      adapter: sequentialBatches({
         applyOutboxEntry: async () => ({ applied: true }),
         getMeta: async () => undefined,
         setMeta: async () => undefined,
-      },
+      }),
       fetch: fetcher as unknown as typeof fetch,
     });
 
@@ -923,11 +928,11 @@ describe("LofiClient", () => {
     const client = new LofiClient({
       outboxUrl: baseOutboxUrl,
       endpointName: "app-outbox",
-      adapter: {
+      adapter: sequentialBatches({
         applyOutboxEntry: async () => ({ applied: true }),
         getMeta: async () => undefined,
         setMeta: async () => undefined,
-      },
+      }),
       fetch: fetcher as unknown as typeof fetch,
     });
 
@@ -967,11 +972,11 @@ describe("LofiClient", () => {
     const client = new LofiClient({
       outboxUrl: baseOutboxUrl,
       endpointName: "app-outbox",
-      adapter: {
+      adapter: sequentialBatches({
         applyOutboxEntry: async () => ({ applied: true }),
         getMeta: async () => undefined,
         setMeta: async () => undefined,
-      },
+      }),
       fetch: fetcher as unknown as typeof fetch,
     });
 

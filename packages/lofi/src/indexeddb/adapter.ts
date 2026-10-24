@@ -20,6 +20,7 @@ import type {
   IndexedDbAdapterOptions,
   LofiAdapter,
   LofiMutation,
+  LofiOutboxWriter,
   LofiProjectionRowLookup,
   LofiProjectionRowSnapshot,
   LofiQueryEngineOptions,
@@ -182,6 +183,11 @@ export class IndexedDbAdapter
     this.schemaFingerprint = buildSchemaFingerprint(this.allSchemas, this.indexDefinitions);
     this.projections = options.projections ?? [];
     this.ignoreUnknownSchemas = options.ignoreUnknownSchemas ?? false;
+  }
+
+  /** Each entry commits on its own, so a failed batch keeps the entries applied before it. */
+  applyOutboxBatch<T>(apply: (writer: LofiOutboxWriter) => Promise<T>): Promise<T> {
+    return apply(this);
   }
 
   async applyOutboxEntry(options: {
