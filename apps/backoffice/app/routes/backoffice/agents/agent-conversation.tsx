@@ -48,9 +48,9 @@ import {
 import { estimatePiContextTokens } from "./session-detail/context-usage";
 import { SessionDisplayOptions } from "./session-detail/display-options";
 import {
-  usePiSessionViewStream,
+  usePiSessionViewSocket,
   type PiAgentQueueState,
-} from "./session-detail/pi-session-view-stream";
+} from "./session-detail/pi-session-view-socket";
 import { createReson8DictationAdapter } from "./session-detail/reson8-dictation";
 import { SessionThread, type ComposerAction } from "./session-detail/session-thread";
 import {
@@ -341,9 +341,9 @@ function usePiCompaction(agentPath: string, onCompleted: () => void) {
   return { request, compact, dismiss };
 }
 
-/** The conversation renders from the view stream; its first frame is the whole view. */
+/** The conversation renders from the view socket; its first view is the whole conversation. */
 export function AgentConversation(props: AgentConversationProps) {
-  const stream = usePiSessionViewStream(`${props.agentPath}/view-stream`);
+  const stream = usePiSessionViewSocket(`${props.agentPath}/view-socket`);
   if (stream.status === "connecting") {
     return (
       <AgentConversationStatus header={props.header}>

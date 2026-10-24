@@ -164,6 +164,10 @@ import type {
   MarketplacePackagePublishRequest,
 } from "@/fragno/marketplace/package-publishing";
 import type {
+  PiAgentAddress,
+  PiAgentViewerAuthorization,
+} from "@/fragno/pi/agent/pi-agent-contract";
+import type {
   PiClassificationRequest,
   PiImageGenerationRequest,
 } from "@/fragno/pi/agent/pi-models";
@@ -450,6 +454,14 @@ export type ApiObject = WarmableObject & DurableHookCommands;
 export type PiManagerObject = WarmableObject & {
   /** An agent reports each settled turn, so its queue can hand the agent its next item. */
   reportSettledTurn(input: { agentName: string; requestId: string }): Promise<void>;
+  /**
+   * Whether the execution may watch the agent's conversation, which needs `pi.read`, and if so what
+   * waits in its queue; an agent asks when a viewer connects to its view socket.
+   */
+  authorizeViewer(input: {
+    agentName: string;
+    execution: BackofficeExecutionContext;
+  }): Promise<PiAgentViewerAuthorization>;
   /** Classifies and records the usage on the ledger of the scope's root owner. */
   classify(input: {
     request: PiClassificationRequest;
@@ -873,6 +885,8 @@ export type BackofficeObjectFactory = {
     binding: BackofficeObjectBinding<TCommands>,
     address: BackofficeObjectAddress,
   ): BackofficeObjectHandle<TCommands>;
+  /** An agent object, which only its view socket reaches over HTTP; see `PiAgent.fetch`. */
+  piAgent(agent: PiAgentAddress): Pick<BackofficeObjectHttp, "fetchAuthorized">;
 };
 
 const binding = <TObject>(name: BackofficeObjectBindingName): BackofficeObjectBinding<TObject> => ({
@@ -1045,6 +1059,7 @@ export const createBackofficeObjectRegistry = (factory: BackofficeObjectFactory)
 
   automations: scoped(factory, binding<AutomationsObject>("AUTOMATIONS")),
   piManager: scoped(factory, binding<PiManagerObject>("PI_MANAGER")),
+  piAgent: (agent: PiAgentAddress) => factory.piAgent(agent),
   billing: scoped(factory, binding<BillingObject>("BILLING")),
   codemode: scoped(factory, binding<CodemodeObject>("CODEMODE")),
   marketplace: scoped(factory, binding<MarketplaceObject>("MARKETPLACE")),

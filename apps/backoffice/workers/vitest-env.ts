@@ -49,6 +49,12 @@ export class PiScenarioManager extends DurableObject<CloudflareEnv> {
     await this.#object.reportSettledTurn(input);
   }
 
+  async authorizeViewer(
+    input: Parameters<InMemoryPiManagerObject["authorizeViewer"]>[0],
+  ): ReturnType<InMemoryPiManagerObject["authorizeViewer"]> {
+    return await this.#object.authorizeViewer(input);
+  }
+
   async alarm(): Promise<void> {
     await this.#object.alarm();
   }

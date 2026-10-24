@@ -1,3 +1,5 @@
+import { piAgentObjectName, type PiAgentAddress } from "@/fragno/pi/agent/pi-agent-contract";
+
 import {
   createAuthorizedBackofficeObjectRequest,
   removeBackofficeInternalContextHeader,
@@ -79,6 +81,27 @@ export class CloudflareDurableObjectFactory implements BackofficeObjectFactory {
         ),
     };
     return { commands: stub, http };
+  }
+
+  piAgent(agent: PiAgentAddress): Pick<BackofficeObjectHttp, "fetchAuthorized"> {
+    const stub = this.env.PI.get(this.env.PI.idFromName(piAgentObjectName(agent)));
+    return {
+      fetchAuthorized: async (request, context) =>
+        forwardRequestOwnedResponse(
+          request,
+          await stub.fetch(
+            await createAuthorizedBackofficeObjectRequest({
+              request,
+              address: { binding: "PI", agent },
+              context: {
+                execution: context.execution,
+                propagationContext: context.propagationContext ?? null,
+              },
+              env: this.env,
+            }),
+          ),
+        ),
+    };
   }
 }
 

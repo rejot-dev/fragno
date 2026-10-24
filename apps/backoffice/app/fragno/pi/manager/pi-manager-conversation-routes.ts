@@ -1,7 +1,4 @@
-import {
-  piAgentMessagePageSchema,
-  piAgentWatchFrameSchema,
-} from "@fragno-dev/backoffice-api/v0/pi";
+import { piAgentMessagePageSchema } from "@fragno-dev/backoffice-api/v0/pi";
 import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
@@ -11,74 +8,9 @@ import {
   piAgentCompactionStatusSchema,
   piAgentEntryPageRequestSchema,
   piAgentMessagePageRequestSchema,
-  type PiAgentViewStreamFrame,
-  type PiAgentWaitingQueue,
 } from "@/fragno/pi/agent/pi-agent-contract";
 
 import { piManagerDefinition } from "./pi-manager-definition";
-
-/**
- * Interleaves `queue` frames with the agent's view frames. View frames pass through whole lines
- * only, so a queue frame never lands inside one.
- */
-function withQueueFrames(
-  views: ReadableStream<Uint8Array>,
-  watchQueue: (listener: (queue: PiAgentWaitingQueue) => void) => () => void,
-): ReadableStream<Uint8Array> {
-  const encoder = new TextEncoder();
-  const decoder = new TextDecoder();
-  const reader = views.getReader();
-  let partial = "";
-  let unwatch = () => {};
-  return new ReadableStream<Uint8Array>({
-    start(controller) {
-      const unwatchQueue = watchQueue(({ paused, items }) => {
-        const frame: PiAgentViewStreamFrame = { type: "queue", paused, items };
-        controller.enqueue(encoder.encode(`${JSON.stringify(frame)}\n`));
-      });
-
-      // This appears to fix the bug on localhost where the stream is not loading.
-      const keepalive = setInterval(() => {
-        if ((controller.desiredSize ?? 0) > 0) {
-          controller.enqueue(encoder.encode("\n"));
-        }
-      }, 1_000);
-      unwatch = () => {
-        clearInterval(keepalive);
-        unwatchQueue();
-      };
-    },
-    // Reads until it can pass on a whole line, since a pull that enqueues nothing is not repeated.
-    async pull(controller) {
-      while (true) {
-        const { done, value } = await reader.read().catch((cause: unknown) => {
-          // A stream that errors is never cancelled, so it stops following the queue here.
-          unwatch();
-          throw cause;
-        });
-        if (done) {
-          unwatch();
-          if (partial) {
-            controller.enqueue(encoder.encode(partial));
-          }
-          controller.close();
-          return;
-        }
-        partial += decoder.decode(value, { stream: true });
-        const end = partial.lastIndexOf("\n") + 1;
-        if (end > 0) {
-          controller.enqueue(encoder.encode(partial.slice(0, end)));
-          partial = partial.slice(end);
-          return;
-        }
-      }
-    },
-    async cancel(reason) {
-      unwatch();
-      await reader.cancel(reason);
-    },
-  });
-}
 
 /** Unlike an unstarted agent, a name no agent has is most likely a typo. */
 function agentNotFoundMessage(agentName: string) {
@@ -120,42 +52,6 @@ export const piManagerConversationRoutes = defineRoutes(piManagerDefinition).cre
         }
         try {
           return json(await config.agent(agent).getView(agent));
-        } catch (cause) {
-          return damagedViewResponse(cause, error);
-        }
-      },
-    }),
-    defineRoute({
-      method: "GET",
-      path: "/agents/:agentName/view-stream",
-      outputSchema: z.array(piAgentWatchFrameSchema),
-      errorCodes: ["AGENT_NOT_STARTED", PiConversationViewDamagedError.code],
-      handler: async function ({ pathParams }, { error }) {
-        const { agentName } = pathParams;
-        const { agent, queue } = await this.handlerTx()
-          .withServiceCalls(
-            () => [services.getAgents([agentName]), services.getWaitingQueue(agentName)] as const,
-          )
-          .transform(({ serviceResult: [agents, waiting] }) => ({
-            agent: agents.get(agentName),
-            queue: waiting,
-          }))
-          .execute();
-        if (!agent) {
-          return error({ code: "AGENT_NOT_STARTED", message: "Pi agent has no turns yet." }, 404);
-        }
-        try {
-          const views = await config.agent(agent).watchView(agent);
-          const stream = withQueueFrames(views, (listener) =>
-            config.queueChannel.watch(agentName, queue, listener),
-          );
-          return new Response(stream, {
-            headers: {
-              "cache-control": "no-cache",
-              "content-type": "application/x-ndjson; charset=utf-8",
-              "x-content-type-options": "nosniff",
-            },
-          });
         } catch (cause) {
           return damagedViewResponse(cause, error);
         }

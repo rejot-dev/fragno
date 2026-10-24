@@ -1,10 +1,7 @@
-import type {
-  BackofficeApi,
-  BackofficeApiImplementation,
-  BackofficeApiStreamImplementation,
-} from "@fragno-dev/backoffice-api/api";
+import type { BackofficeApi, BackofficeApiImplementation } from "@fragno-dev/backoffice-api/api";
 import { createOpenApiDocument } from "@fragno-dev/backoffice-api/openapi";
 import { backofficeApiV0 } from "@fragno-dev/backoffice-api/v0";
+import { piAgentNameSchema } from "@fragno-dev/backoffice-api/v0/shared/pi-agent-name";
 import {
   type BackofficeContextScope,
   backofficeScopeContains,
@@ -31,6 +28,7 @@ import {
   ACCESS_TOKEN_AUDIENCE,
   verifyBackofficeApiCredential,
 } from "@/fragno/auth/token-lifecycle";
+import { piAgentViewSocketRequest } from "@/fragno/pi/agent/pi-agent-contract";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import type { BackofficeToolContext } from "@/fragno/runtime-tools/runtime-tools";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
@@ -40,7 +38,6 @@ import { apiError } from "./api-error";
 import { backofficeProvisioningRouter } from "./provisioning-router";
 import { createRuntimeToolHandlers } from "./runtime-tool-handlers";
 import { backofficeApiV0Adapters } from "./v0-adapters";
-import { backofficeApiV0Streams, type BackofficeApiStreamContext } from "./v0-streams";
 
 /** Per-request services; both hosts create them before dispatching here. */
 type BackofficeApiBindings = { runtime: BackofficeRuntimeServices; kernel: BackofficeKernel };
@@ -125,59 +122,65 @@ async function authorizeApiRequest(
   };
 }
 
-/** A handler's failure as an API error. */
-function failedOperationResponse(error: unknown): Response {
-  // Kernel denials can cross object RPC, which keeps their name but not their class.
-  if (isBackofficeForbiddenError(error)) {
-    return apiError("forbidden", error.message);
+/** The scope a `/scopes/<scope>/<name>` request names. */
+function requestScope(path: string): BackofficeContextScope | Response {
+  try {
+    // Hono decodes path parameters, but scope ids are URI-encoded inside the segment.
+    return parseBackofficeScopePathSegment(path.split("/").at(-2) ?? "");
+  } catch (error) {
+    return apiError(
+      "invalid_request",
+      error instanceof Error ? error.message : "The scope is invalid.",
+    );
   }
-  if (error instanceof BackofficeOperationError) {
-    return apiError(error.kind, error.message);
-  }
-  // Untyped failures still carry user-facing messages, as in Bash and Codemode.
-  return apiError(
-    "operation_failed",
-    error instanceof Error ? error.message : "The operation failed.",
-  );
 }
 
 function createVersionRouter<TApi extends BackofficeApi>(
   api: TApi,
   handlers: BackofficeApiImplementation<TApi, BackofficeToolContext>,
-  streamHandlers: BackofficeApiStreamImplementation<TApi, BackofficeApiStreamContext>,
 ) {
-  // Both share one path, so an id that is both would make the operation unreachable.
-  const ambiguous = Object.keys(api.streams).filter((id) => Object.hasOwn(api.operations, id));
-  if (ambiguous.length > 0) {
-    throw new Error(
-      `API ${api.version} ids are both operations and streams: ${ambiguous.join(", ")}.`,
-    );
-  }
   const router = new Hono<{ Bindings: BackofficeApiBindings }>();
 
   router.get("/openapi.json", (c) =>
     c.json(createOpenApiDocument(api, { serverUrl: new URL(c.req.url).origin })),
   );
 
+  // A WebSocket rather than an operation, which neither operations nor OpenAPI describe. The agent
+  // serves it, after its manager checks `pi.read` for the credential's execution.
+  router.get("/scopes/:scope/pi.agent.watch", async (c) => {
+    if (c.req.header("upgrade")?.toLowerCase() !== "websocket") {
+      return apiError("invalid_request", "pi.agent.watch is a WebSocket; request an upgrade.");
+    }
+    const scope = requestScope(c.req.path);
+    if (scope instanceof Response) {
+      return scope;
+    }
+    const agentName = piAgentNameSchema.safeParse(c.req.query("agentName"));
+    if (!agentName.success) {
+      return apiError("invalid_request", z.prettifyError(agentName.error));
+    }
+    const { runtime } = c.env;
+    const authorization = await authorizeApiRequest(c.req.raw, scope, runtime);
+    if (!authorization.ok) {
+      return authorization.response;
+    }
+    const agent = { scope, agentName: agentName.data };
+    return await runtime.objects.piAgent(agent).fetchAuthorized(piAgentViewSocketRequest(agent), {
+      execution: authorization.execution,
+      propagationContext: null,
+    });
+  });
+
   router.post("/scopes/:scope/:operationId", async (c) => {
     const operationId = c.req.param("operationId");
-    const isStream = Object.hasOwn(api.streams, operationId);
-    if (!isStream && !Object.hasOwn(api.operations, operationId)) {
+    if (!Object.hasOwn(api.operations, operationId)) {
       return apiError("not_found", `Unknown operation '${operationId}'.`);
     }
-    const { input: inputSchema } = isStream
-      ? api.streams[operationId]
-      : api.operations[operationId];
+    const operation = api.operations[operationId];
 
-    let scope: BackofficeContextScope;
-    try {
-      // Hono decodes path parameters, but scope ids are URI-encoded inside the segment.
-      scope = parseBackofficeScopePathSegment(c.req.path.split("/").at(-2) ?? "");
-    } catch (error) {
-      return apiError(
-        "invalid_request",
-        error instanceof Error ? error.message : "The scope is invalid.",
-      );
+    const scope = requestScope(c.req.path);
+    if (scope instanceof Response) {
+      return scope;
     }
     const { runtime, kernel } = c.env;
     const authorization = await authorizeApiRequest(c.req.raw, scope, runtime);
@@ -186,9 +189,9 @@ function createVersionRouter<TApi extends BackofficeApi>(
     }
 
     let input: unknown;
-    if (inputSchema.def.type !== "void") {
+    if (operation.input.def.type !== "void") {
       const body: unknown = await c.req.json().catch(() => undefined);
-      const parsed = inputSchema.safeParse(body);
+      const parsed = operation.input.safeParse(body);
       if (!parsed.success) {
         return apiError(
           "invalid_request",
@@ -198,32 +201,6 @@ function createVersionRouter<TApi extends BackofficeApi>(
       input = parsed.data;
     }
 
-    if (isStream) {
-      // The handler was matched to this stream, and `input` was parsed by its schema.
-      const handleStream = streamHandlers[operationId] as (
-        input: unknown,
-        context: BackofficeApiStreamContext,
-      ) => Promise<ReadableStream<Uint8Array>>;
-      let frames: ReadableStream<Uint8Array>;
-      try {
-        frames = await handleStream(input, {
-          runtime,
-          kernel,
-          execution: authorization.execution,
-          signal: c.req.raw.signal,
-        });
-      } catch (error) {
-        return failedOperationResponse(error);
-      }
-      return new Response(frames, {
-        headers: {
-          "content-type": "application/x-ndjson; charset=utf-8",
-          "cache-control": "no-store",
-        },
-      });
-    }
-
-    const operation = api.operations[operationId];
     // The handler was matched to this operation, and `input` was parsed by its schema.
     const handle = handlers[operationId] as (
       input: unknown,
@@ -244,7 +221,18 @@ function createVersionRouter<TApi extends BackofficeApi>(
         ),
       );
     } catch (error) {
-      return failedOperationResponse(error);
+      // Kernel denials can cross object RPC, which keeps their name but not their class.
+      if (isBackofficeForbiddenError(error)) {
+        return apiError("forbidden", error.message);
+      }
+      if (error instanceof BackofficeOperationError) {
+        return apiError(error.kind, error.message);
+      }
+      // Untyped failures still carry user-facing messages, as in Bash and Codemode.
+      return apiError(
+        "operation_failed",
+        error instanceof Error ? error.message : "The operation failed.",
+      );
     }
     // Output that breaks the contract is a server bug, not a caller error.
     const response = operation.output.parse(output);
@@ -264,7 +252,6 @@ export const backofficeApiRouter = new Hono<{ Bindings: BackofficeApiBindings }>
     createVersionRouter(
       backofficeApiV0,
       createRuntimeToolHandlers(backofficeApiV0, backofficeApiV0Adapters),
-      backofficeApiV0Streams,
     ),
   )
   .notFound(() => apiError("not_found", "Not found."));

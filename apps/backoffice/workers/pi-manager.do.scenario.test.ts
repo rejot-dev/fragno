@@ -16,6 +16,7 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
 }));
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
+import { applyImmutable } from "@earendil-works/chord/delta";
 import { createModels } from "@earendil-works/pi-ai/models";
 import {
   fauxAssistantMessage,
@@ -52,7 +53,7 @@ import {
 } from "@/fragno/automation/scenario";
 import { BUILT_IN_PI_AGENT_DEFINITIONS } from "@/fragno/pi/agent/agent-definitions";
 import { piAgentActor } from "@/fragno/pi/agent/pi-agent-actor";
-import type { PiAgentViewStreamFrame } from "@/fragno/pi/agent/pi-agent-contract";
+import type { PiAgentViewFrame } from "@/fragno/pi/agent/pi-agent-contract";
 import {
   PI_NOTIFICATION_ENTRY_KIND,
   renderPiNotificationRequest,
@@ -145,26 +146,6 @@ async function readView(
   const response = await managerRequest(runtime, scope, `/agents/${agentName}/view`);
   assert.equal(response.status, 200, await response.clone().text());
   return await response.json<ConversationView>();
-}
-
-async function readPiViewStreamFrame(
-  reader: ReadableStreamDefaultReader<Uint8Array>,
-  state: { buffer: string },
-) {
-  const decoder = new TextDecoder();
-  while (true) {
-    const newlineIndex = state.buffer.indexOf("\n");
-    if (newlineIndex >= 0) {
-      const line = state.buffer.slice(0, newlineIndex);
-      state.buffer = state.buffer.slice(newlineIndex + 1);
-      return JSON.parse(line) as PiAgentViewStreamFrame;
-    }
-    const result = await reader.read();
-    if (result.done) {
-      throw new Error("Pi view stream closed before the expected frame.");
-    }
-    state.buffer += decoder.decode(result.value, { stream: true });
-  }
 }
 
 /** Every Automations event recorded in the scope. */
@@ -1880,8 +1861,10 @@ test("a busy agent sees events as they arrive and handles each sender's in a tur
   );
 });
 
-test("the local Pi view stream publishes durable generation partials before completion", async () => {
+test("the Pi agent shows its viewers durable generation partials before completion", async () => {
   const scope: BackofficeContextScope = { kind: "org", orgId: "streaming-org" };
+  // Node serves no view sockets, so the scenario connects to the agent object as Cloudflare does.
+  let agent: InMemoryPiObject | null = null;
   await runBackofficeScenario(
     defineBackofficeScenario({
       name: "stream durable Pi generation partials",
@@ -1898,7 +1881,7 @@ test("the local Pi view stream publishes durable generation partials before comp
           ]);
           const models = createModels();
           models.setProvider(faux.provider);
-          return new InMemoryPiObject({
+          agent = new InMemoryPiObject({
             state,
             dependencies: createScriptedPiAgentDependencies(models),
             runtime,
@@ -1906,54 +1889,61 @@ test("the local Pi view stream publishes durable generation partials before comp
             idFromConfig: piAgentIdFromConfig,
             nowEpochMs,
           });
+          return agent;
         },
       },
       steps: ({ then }) => [
-        then.assert("stream a live partial and the committed answer", async ({ runtime }) => {
-          const notStarted = await managerRequest(runtime, scope, "/agents/assistant/view-stream");
-          assert.equal(notStarted.status, 404);
-
+        then.assert("show a live partial and the committed answer", async ({ runtime }) => {
           const submitted = await prompt(runtime, scope, {
             requestId: "streamed-prompt",
             content: "Write the streamed answer.",
           });
           assert.equal(submitted.status, 202, await submitted.clone().text());
-          const response = await managerRequest(runtime, scope, "/agents/assistant/view-stream");
-          assert.equal(response.status, 200);
-          const reader = response.body!.getReader();
-          const streamState = { buffer: "" };
+          assert(agent);
+          const frames: PiAgentViewFrame[] = [];
+          const closes: string[] = [];
+          const disconnect = await agent.connectViewer(
+            {
+              send: (message) => frames.push(JSON.parse(message) as PiAgentViewFrame),
+              close: (code, reason) => closes.push(`${code} ${reason}`),
+            },
+            {
+              agent: { scope, agentName: "assistant" },
+              execution: createBackofficeServiceExecution({
+                scope,
+                service: { type: "automation", id: "viewer" },
+              }),
+            },
+          );
           // The prompt is dispatched, so nothing waits in the agent's queue.
-          expect(await readPiViewStreamFrame(reader, streamState)).toEqual({
-            type: "queue",
-            paused: false,
-            items: [],
-          });
-          expect(await readPiViewStreamFrame(reader, streamState)).toMatchObject({
-            type: "snapshot",
-          });
-          const draining = runtime.drain();
-          let sawUncommittedPartial = false;
-          let completedView: ConversationView | null = null;
-          while (!completedView) {
-            const frame = await readPiViewStreamFrame(reader, streamState);
-            if (frame.type === "queue") {
-              continue;
-            }
-            const live = frame.view.docs["pi.live"] as Readonly<LiveState> | undefined;
-            if (
-              live?.generation?.message !== undefined &&
-              !frame.view.entries.some((entry) => entry.kind === "pi.assistant")
-            ) {
-              sawUncommittedPartial = true;
-            }
-            if (JSON.stringify(frame.view.entries).includes("long enough")) {
-              completedView = frame.view;
+          expect(frames).toMatchObject([
+            { type: "queue", paused: false, items: [] },
+            { type: "view" },
+          ]);
+          await runtime.drain();
+          disconnect();
+
+          // After the whole view, the agent sends only what each commit changed.
+          expect(frames.filter((frame) => frame.type === "view")).toHaveLength(1);
+          const views: ConversationView[] = [];
+          for (const frame of frames) {
+            if (frame.type === "view") {
+              views.push(frame.view);
+            } else if (frame.type === "ops") {
+              views.push(applyImmutable(views.at(-1), frame.ops));
             }
           }
-          await draining;
-          await reader.cancel();
+          const sawUncommittedPartial = views.some((view) => {
+            const live = view.docs["pi.live"] as Readonly<LiveState> | undefined;
+            return (
+              live?.generation?.message !== undefined &&
+              !view.entries.some((entry) => entry.kind === "pi.assistant")
+            );
+          });
           assert(sawUncommittedPartial);
-          expect(JSON.stringify(completedView.entries)).toContain("long enough");
+          expect(JSON.stringify(views.at(-1)?.entries)).toContain("long enough");
+          expect(views.at(-1)).toEqual(await readView(runtime, scope));
+          expect(closes).toEqual([]);
         }),
       ],
     }),

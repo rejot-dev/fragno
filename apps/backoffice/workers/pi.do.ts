@@ -1,6 +1,10 @@
 import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
 import { PathError } from "@earendil-works/chord/delta";
-import { piAgentConfigSchema, type PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
+import {
+  PI_AGENT_WATCH_REFUSED,
+  piAgentConfigSchema,
+  type PiAgentConfig,
+} from "@fragno-dev/backoffice-api/v0/pi";
 import {
   backofficeContextScopeSchema,
   type BackofficeContextScope,
@@ -11,22 +15,23 @@ import { z } from "zod";
 
 import { copyJson } from "@earendil-works/chord";
 import {
+  type ConversationView,
   type EntryId,
   type JsonObject,
   type Storage,
   type SubmissionRecord,
+  type WatchHandle,
 } from "@earendil-works/pi-durable";
 
+import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
+import { verifyAuthorizedBackofficeObjectRequest } from "@/backoffice-runtime/internal-object-request";
 import {
   createCloudflareDurableObjectRuntimeServices,
   type BackofficeRuntimeServices,
 } from "@/backoffice-runtime/runtime-services";
 import { readPiCompactionStatus } from "@/fragno/pi/agent/compaction-status";
 import { listPiConversationMessages } from "@/fragno/pi/agent/conversation-messages";
-import {
-  createPiConversationExportStream,
-  createPiConversationViewNdjsonStream,
-} from "@/fragno/pi/agent/conversation-streams";
+import { createPiConversationExportStream } from "@/fragno/pi/agent/conversation-streams";
 import {
   piAgentCompactionSchema,
   piAgentEntryPageRequestSchema,
@@ -42,6 +47,8 @@ import {
   type PiAgentNotification,
   type PiAgentPrompt,
   type PiAgentTurn,
+  type PiAgentViewFrame,
+  type PiAgentWaitingQueue,
   type PiAgentWork,
 } from "@/fragno/pi/agent/pi-agent-contract";
 import {
@@ -75,6 +82,16 @@ const LEGACY_BILLING_SCOPE_KEY = "pi-legacy-billing-scope";
 const WAKE_HEARTBEAT_MS = 30_000;
 const WAKE_BUDGET_MS = 10 * 60_000;
 
+/** Who connects to watch which agent, as the viewer's signed request says. */
+type PiAgentViewing = { agent: PiAgentConfig; execution: BackofficeExecutionContext };
+
+/** A view socket, as either runtime's WebSocket offers it to `connectViewer`. */
+type PiAgentViewer = {
+  /** Sends one JSON-encoded `PiAgentViewFrame`. */
+  send(message: string): void;
+  close(code: number, reason: string): void;
+};
+
 type ProvisionedPiAgent = {
   config: PiAgentConfig;
   /** Null for agents provisioned since owner attribution: none of their deliveries is legacy. */
@@ -95,6 +112,11 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
   #opened: OpenPiAgent | null = null;
   #opening: Promise<OpenPiAgent> | null = null;
   #admitting = 0;
+  // Only the manager knows the queue; it publishes every change, and before each viewer connects.
+  #queue: PiAgentWaitingQueue | null = null;
+  readonly #viewers = new Set<PiAgentViewer>();
+  // One watch serves every viewer, so each commit is encoded once. It stays open until it ends.
+  #viewWatch: Promise<WatchHandle<ConversationView>> | null = null;
 
   constructor({
     state,
@@ -432,17 +454,121 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
     }
   }
 
-  async watchView(config: PiAgentConfig): Promise<ReadableStream<Uint8Array>> {
-    const { harness } = await this.#requireAgent(config);
-    const root = await harness.root(BACKGROUND_CONTEXT);
-    try {
-      return createPiConversationViewNdjsonStream(await root.watch(BACKGROUND_CONTEXT));
-    } catch (cause) {
-      if (!(cause instanceof PathError)) {
-        throw cause;
-      }
-      throw new PiConversationViewDamagedError(config.agentName, cause);
+  async fetch(_request: Request): Promise<Response> {
+    throw new Error("Pi view sockets are not implemented outside Cloudflare.");
+  }
+
+  async publishQueue(queue: PiAgentWaitingQueue): Promise<void> {
+    if (this.#queue && this.#queue.revision >= queue.revision) {
+      return;
     }
+    this.#queue = queue;
+    this.#broadcast({ type: "queue", paused: queue.paused, items: queue.items });
+  }
+
+  #broadcast(frame: PiAgentViewFrame) {
+    if (this.#viewers.size === 0) {
+      return;
+    }
+    const message = JSON.stringify(frame);
+    for (const viewer of this.#viewers) {
+      viewer.send(message);
+    }
+  }
+
+  // Concurrent connections share the opening watch; a watch that failed or ended is opened again.
+  #watchView(provisioned: ProvisionedPiAgent) {
+    if (this.#viewWatch) {
+      return this.#viewWatch;
+    }
+    const watching = (async () => {
+      const { harness } = await this.#open(provisioned);
+      const watch = await (await harness.root(BACKGROUND_CONTEXT)).watch(BACKGROUND_CONTEXT);
+      // Each frame's ops turn the previous frame's view into this one's, so viewers that start
+      // from any delivered view stay exact.
+      watch.start(async (_view, ops) => {
+        this.#broadcast({ type: "ops", ops });
+      });
+      // The watch ends with the agent's session, as when the object closes; viewers reconnect.
+      void watch.closed.then(() => {
+        if (this.#viewWatch === watching) {
+          this.#viewWatch = null;
+        }
+        const viewers = [...this.#viewers];
+        this.#viewers.clear();
+        for (const viewer of viewers) {
+          viewer.close(1012, "The conversation closed.");
+        }
+      });
+      return watch;
+    })();
+    this.#viewWatch = watching;
+    watching.catch(() => {
+      if (this.#viewWatch === watching) {
+        this.#viewWatch = null;
+      }
+    });
+    return watching;
+  }
+
+  /**
+   * Sends the viewer the queue and the whole conversation view, then every change to either, until
+   * the returned function disconnects it. The manager decides whether the viewer may watch; a
+   * viewer it refuses, or that the agent cannot serve, is closed instead.
+   */
+  async connectViewer(
+    viewer: PiAgentViewer,
+    { agent, execution }: PiAgentViewing,
+  ): Promise<() => void> {
+    let watching: Promise<WatchHandle<ConversationView>>;
+    let watch: WatchHandle<ConversationView>;
+    try {
+      this.#assertObjectIdentity(agent);
+      const authorization = await this.#runtime.objects.piManager
+        .for(agent.scope)
+        .commands.authorizeViewer({ agentName: agent.agentName, execution });
+      if (authorization.type === "refused") {
+        viewer.close(PI_AGENT_WATCH_REFUSED, authorization.message);
+        return () => {};
+      }
+      // The agent holds only the queues published to it, which a restart forgets.
+      await this.publishQueue(authorization.queue);
+      await this.#ready;
+      if (!this.#provisioned) {
+        viewer.close(PI_AGENT_WATCH_REFUSED, "Pi agent has no turns yet.");
+        return () => {};
+      }
+      watching = this.#watchView(this.#provisioned);
+      watch = await watching;
+    } catch (cause) {
+      if (cause instanceof PathError) {
+        viewer.close(PI_AGENT_WATCH_REFUSED, PiConversationViewDamagedError.publicMessage);
+      } else {
+        this.#dependencies.report(cause, this.#provisioned?.config ?? null);
+        viewer.close(1011, "The conversation is unavailable.");
+      }
+      return () => {};
+    }
+    if (this.#viewWatch !== watching) {
+      viewer.close(1012, "The conversation closed.");
+      return () => {};
+    }
+    if (this.#queue) {
+      viewer.send(
+        JSON.stringify({
+          type: "queue",
+          paused: this.#queue.paused,
+          items: this.#queue.items,
+        } satisfies PiAgentViewFrame),
+      );
+    }
+    // `value` is the latest view the watch delivered, and every delivery is broadcast at once, so
+    // the first ops this viewer receives start from this view.
+    viewer.send(JSON.stringify({ type: "view", view: watch.value } satisfies PiAgentViewFrame));
+    this.#viewers.add(viewer);
+    return () => {
+      this.#viewers.delete(viewer);
+    };
   }
 
   async reset(config: PiAgentConfig): Promise<void> {
@@ -595,8 +721,61 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
   async getView(config: PiAgentConfig): Promise<unknown> {
     return await this.#object.getView(config);
   }
-  async watchView(config: PiAgentConfig): Promise<ReadableStream<Uint8Array>> {
-    return await this.#object.watchView(config);
+  async publishQueue(queue: PiAgentWaitingQueue): Promise<void> {
+    await this.#object.publishQueue(queue);
+  }
+  async fetch(request: Request): Promise<Response> {
+    if (request.headers.get("upgrade") !== "websocket") {
+      return new Response("A Pi agent serves only its view socket.", { status: 426 });
+    }
+    let viewing: PiAgentViewing;
+    try {
+      // The request names the agent, so its signature can be checked before the agent is read.
+      const agent = piAgentConfigSchema.parse(
+        JSON.parse(new URL(request.url).searchParams.get("agent") ?? "null"),
+      );
+      const verified = await verifyAuthorizedBackofficeObjectRequest({
+        request,
+        address: { binding: "PI", agent },
+        env: this.env,
+      });
+      viewing = { agent, execution: verified.context.execution };
+    } catch (cause) {
+      return Response.json(
+        {
+          code: "INVALID_INTERNAL_CONTEXT",
+          message: cause instanceof Error ? cause.message : "Invalid view socket request.",
+        },
+        { status: 401 },
+      );
+    }
+    const { 0: client, 1: server } = new WebSocketPair();
+    server.accept();
+    let open = true;
+    const connected = this.#object.connectViewer(
+      {
+        send(message) {
+          // A watch can still deliver while its socket closes.
+          if (open) {
+            server.send(message);
+          }
+        },
+        close(code, reason) {
+          open = false;
+          server.close(code, reason);
+        },
+      },
+      viewing,
+    );
+    function disconnect() {
+      open = false;
+      void connected.then((stop) => {
+        stop();
+      });
+    }
+    server.addEventListener("close", disconnect);
+    server.addEventListener("error", disconnect);
+    return new Response(null, { status: 101, webSocket: client });
   }
   async reset(config: PiAgentConfig): Promise<void> {
     await this.#object.reset(config);

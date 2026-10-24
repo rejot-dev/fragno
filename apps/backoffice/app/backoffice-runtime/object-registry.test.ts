@@ -58,7 +58,10 @@ describe("Automations object scope policy", () => {
       },
     };
     const get = vi.fn(() => handle) as unknown as BackofficeObjectFactory["get"];
-    const automations = createBackofficeObjectRegistry({ get }).automations.forOrg("org-1");
+    const piAgent = vi.fn() as unknown as BackofficeObjectFactory["piAgent"];
+    const automations = createBackofficeObjectRegistry({ get, piAgent }).automations.forOrg(
+      "org-1",
+    );
 
     await expect(automations.commands.seedStarterAutomationRoutes()).resolves.toEqual({
       created: [],

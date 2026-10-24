@@ -17,7 +17,7 @@ import {
   piAgentTurnSchema,
 } from "@/fragno/pi/agent/pi-agent-contract";
 
-import { handOverPiAgentWork, type PiAgentHandover } from "./pi-agent-queue";
+import { handOverPiAgentWork, publishPiAgentQueue, type PiAgentHandover } from "./pi-agent-queue";
 import { piManagerDefinition } from "./pi-manager-definition";
 import type { PiAgentTurnProvenance } from "./pi-manager-schema";
 
@@ -136,7 +136,10 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
               409,
             );
           }
-          config.queueChannel.publish(agentName, submitted.queue);
+          await publishPiAgentQueue(
+            config.agent({ scope: config.scope, agentName }),
+            submitted.queue,
+          );
           await handOver(submitted.handover);
           return json({ requestId: prompt.requestId, status: submitted.status }, 202);
         },
@@ -170,7 +173,10 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
           if (submitted.type === "error") {
             return error({ code: submitted.code, message: submitted.message }, submitted.status);
           }
-          config.queueChannel.publish(agentName, submitted.queue);
+          await publishPiAgentQueue(
+            config.agent({ scope: config.scope, agentName }),
+            submitted.queue,
+          );
           await handOver(submitted.handover);
           return empty(204);
         },
@@ -267,7 +273,7 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
           if (!agent || !paused) {
             return error({ code: "AGENT_NOT_STARTED", message: "Pi agent has no turns yet." }, 404);
           }
-          config.queueChannel.publish(agentName, paused);
+          await publishPiAgentQueue(config.agent(agent), paused);
           await config.agent(agent).abort(agent);
           return empty(204);
         },
@@ -291,7 +297,10 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
           if (!resumed) {
             return error({ code: "AGENT_NOT_STARTED", message: "Pi agent has no turns yet." }, 404);
           }
-          config.queueChannel.publish(agentName, resumed.queue);
+          await publishPiAgentQueue(
+            config.agent({ scope: config.scope, agentName }),
+            resumed.queue,
+          );
           await handOver(resumed.handover);
           return empty(204);
         },

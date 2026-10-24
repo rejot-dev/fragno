@@ -2,6 +2,7 @@ import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "c
 import { describe, expect, test, assert, vi } from "vitest";
 
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { applyImmutable } from "@earendil-works/chord/delta";
 import { createModels } from "@earendil-works/pi-ai/models";
 import { fauxAssistantMessage, fauxProvider, fauxText } from "@earendil-works/pi-ai/providers/faux";
 import {
@@ -15,6 +16,7 @@ import { env } from "cloudflare:workers";
 
 import { createRegistry, Harness, type ConversationView } from "@earendil-works/pi-durable";
 
+import { createCloudflareBackofficeObjectRegistry } from "@/backoffice-runtime/cloudflare-durable-object-factory";
 import {
   createBackofficeServiceExecution,
   createBackofficeSystemExecution,
@@ -28,7 +30,8 @@ import { createCloudflareDurableObjectRuntimeServices } from "@/backoffice-runti
 import {
   piAgentObjectName,
   type PiAgentTurn,
-  type PiAgentViewStreamFrame,
+  piAgentViewSocketRequest,
+  type PiAgentViewFrame,
 } from "@/fragno/pi/agent/pi-agent-contract";
 import { recordPiAgentTurn } from "@/fragno/pi/agent/pi-agent-turns";
 
@@ -68,24 +71,30 @@ async function managerRequest(
   return await manager(organizationId).fetch(authorized);
 }
 
-async function readPiViewStreamFrame(
-  reader: ReadableStreamDefaultReader<Uint8Array>,
-  state: { buffer: string },
-) {
-  const decoder = new TextDecoder();
-  while (true) {
-    const newlineIndex = state.buffer.indexOf("\n");
-    if (newlineIndex >= 0) {
-      const line = state.buffer.slice(0, newlineIndex);
-      state.buffer = state.buffer.slice(newlineIndex + 1);
-      return JSON.parse(line) as PiAgentViewStreamFrame;
-    }
-    const result = await reader.read();
-    if (result.done) {
-      throw new Error("Pi view stream closed before the expected frame.");
-    }
-    state.buffer += decoder.decode(result.value, { stream: true });
-  }
+/** Opens an agent's view socket as the worker does, and collects what it sends. */
+async function openViewSocket(organizationId: string, agentName = "assistant") {
+  const agent = { scope: { kind: "org", orgId: organizationId } as const, agentName };
+  const response = await createCloudflareBackofficeObjectRegistry(env as CloudflareEnv)
+    .piAgent(agent)
+    .fetchAuthorized(piAgentViewSocketRequest(agent), {
+      execution: createBackofficeServiceExecution({
+        scope: agent.scope,
+        service: { type: "automation", id: "pi-durable-scenario" },
+      }),
+      propagationContext: null,
+    });
+  const socket = response.webSocket;
+  assert(socket, `The agent answered ${response.status} instead of upgrading.`);
+  const frames: PiAgentViewFrame[] = [];
+  const closes: string[] = [];
+  socket.addEventListener("message", (event) => {
+    frames.push(JSON.parse(event.data as string) as PiAgentViewFrame);
+  });
+  socket.addEventListener("close", (event) => {
+    closes.push(`${event.code} ${event.reason}`);
+  });
+  socket.accept();
+  return { socket, frames, closes };
 }
 
 /** A turn settles before its alarm clears the wake heartbeat, so the clear is observed eventually. */
@@ -203,28 +212,60 @@ describe("Pi durable agent scenarios", () => {
     expect(restored.entries).toEqual(view.entries);
   });
 
-  test("transfers the Pi conversation NDJSON stream through Cloudflare RPC", async () => {
-    const organizationId = `pi-stream-${crypto.randomUUID()}`;
+  test("serves the conversation and its queue over the agent's view socket", async () => {
+    const organizationId = `pi-socket-${crypto.randomUUID()}`;
+    const agent = {
+      scope: { kind: "org", orgId: organizationId } as const,
+      agentName: "assistant",
+    };
+    const unsigned = await (env as CloudflareEnv).PI.getByName(piAgentObjectName(agent)).fetch(
+      piAgentViewSocketRequest(agent),
+    );
+    assert.equal(unsigned.status, 401);
+    // The manager refuses before the first turn, and says so for a name no agent has.
+    const notStarted = await openViewSocket(organizationId);
+    const misspelled = await openViewSocket(organizationId, "assistnt");
+    await vi.waitFor(() => {
+      expect([...notStarted.closes, ...misspelled.closes]).toEqual([
+        "4000 Pi agent has no turns yet.",
+        "4000 No agent in this scope is named 'assistnt'.",
+      ]);
+    });
+
     const submitted = await managerRequest(organizationId, "/agents/assistant/prompts", {
-      requestId: "stream-1",
-      content: "Start the conversation.",
+      requestId: "socket-1",
+      content: "Please echo and answer.",
     });
     expect(submitted.status, await submitted.clone().text()).toBe(202);
-    const response = await managerRequest(organizationId, "/agents/assistant/view-stream");
-    expect(response.headers.get("content-type")).toContain("application/x-ndjson");
-    const reader = response.body!.getReader();
-    const streamState = { buffer: "" };
+    const { socket, frames } = await openViewSocket(organizationId);
 
-    // The manager leads with the agent's queue, empty since the prompt was dispatched.
-    expect(await readPiViewStreamFrame(reader, streamState)).toEqual({
-      type: "queue",
-      paused: false,
-      items: [],
+    // The manager's answer carries the queue, empty since the prompt was dispatched; the view follows.
+    await vi.waitFor(() => {
+      expect(frames.slice(0, 2)).toMatchObject([
+        { type: "queue", paused: false, items: [] },
+        { type: "view" },
+      ]);
     });
-    expect(await readPiViewStreamFrame(reader, streamState)).toMatchObject({
-      type: "snapshot",
+    // Commits arrive as ops on top of that view.
+    await vi.waitFor(() => {
+      let view: ConversationView | undefined;
+      for (const frame of frames) {
+        if (frame.type === "view") {
+          view = frame.view;
+        } else if (frame.type === "ops") {
+          view = applyImmutable<ConversationView>(view, frame.ops);
+        }
+      }
+      expect(JSON.stringify(view?.entries)).toContain("durable answer");
     });
-    await reader.cancel();
+    expect(frames.filter((frame) => frame.type === "view")).toHaveLength(1);
+
+    const stopped = await managerRequest(organizationId, "/agents/assistant/stop", {});
+    expect(stopped.status, await stopped.clone().text()).toBe(204);
+    await vi.waitFor(() => {
+      expect(frames).toContainEqual({ type: "queue", paused: true, items: [] });
+    });
+    socket.close();
   });
 
   test("singleton, user, and project managers preserve scope through handoff and cold restore", async () => {
