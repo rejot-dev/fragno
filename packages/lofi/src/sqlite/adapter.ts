@@ -77,7 +77,9 @@ export class SqliteLofiAdapter implements LofiAdapter {
       "SqliteLofiAdapter local",
     );
 
-    this.#database = options.database;
+    this.#database = {
+      execute: (sql, params) => options.database.execute(sql, params?.map(bindableValue)),
+    };
     this.#layouts = new Map(
       [...options.schemas, ...options.localSchemas].map((registration) => [
         registeredSchemaName(registration),
@@ -345,4 +347,15 @@ function referenceValue(lookup: string, value: unknown): SqlFragment {
   }
   const externalId = value instanceof FragnoId ? value.externalId : (value as string);
   return { sql: lookup, params: [externalId] };
+}
+
+/**
+ * wa-sqlite binds a number outside the 32-bit range, such as a timestamp, as REAL. Columns with
+ * INTEGER affinity store it as an integer again, but in expressions it stays REAL, so
+ * `("occurredAt" - ?) / ?` would divide in floating point. Whole numbers bind as 64-bit integers.
+ */
+function bindableValue(value: unknown): unknown {
+  return typeof value === "number" && Number.isSafeInteger(value) && value !== (value | 0)
+    ? BigInt(value)
+    : value;
 }

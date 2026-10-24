@@ -666,6 +666,13 @@ describe("SQLite replica", () => {
               posts: 1,
             },
           ]);
+          // Timestamps exceed 32 bits, which wa-sqlite would bind as REAL and divide as floats.
+          const [elapsed] = await tabs.get("a")!.query({
+            sql: `SELECT ("joinedAt" - ?1) / ?2 AS "hours" FROM "users_app" WHERE "email" = ?3`,
+            params: [joinedAt.getTime() - 90 * 60_000, 60 * 60_000, "ada@example.com"],
+            columns: { hours: "integer" },
+          });
+          expect(elapsed).toEqual({ hours: 1 });
           await expect(
             tabs.get("a")!.query({
               sql: `SELECT "email" FROM "users_app"`,
