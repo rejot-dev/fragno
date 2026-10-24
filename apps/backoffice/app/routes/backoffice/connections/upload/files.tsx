@@ -1,4 +1,4 @@
-import type { LofiSqliteReplica } from "@fragno-dev/lofi/sqlite";
+import type { LofiZqlClient } from "@fragno-dev/lofi/zql";
 import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
 import { BackofficeDownloadState } from "@fragno-private/design-system/download-state";
@@ -32,15 +32,14 @@ import {
 import { Collapsible, Progress } from "@base-ui/react";
 
 import { isUploadDirectoryMarker } from "@/file-collection/create-upload-file-tree";
-import { LofiReplicaGate, useLofiSqliteReplicaStatus } from "@/fragno/lofi/replica-gate";
-import { useLofiSqliteRead } from "@/fragno/lofi/use-lofi-sqlite-read";
+import { LofiReplicaGate, useLofiReplicaStatus } from "@/fragno/lofi/replica-gate";
 import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
 import { createUploadClient } from "@/fragno/upload-client";
 import type { UploadFileRecord } from "@/fragno/upload/file-record";
 import {
   describeUploadReplicaSource,
   getUploadReplica,
-  readReadyUploadFiles,
+  useReadyUploadFiles,
   type UploadReplicaSource,
 } from "@/fragno/upload/lofi/replica";
 
@@ -623,9 +622,9 @@ function SynchronizedUploadFiles({ source }: { source: UploadReplicaSource }) {
   );
 }
 
-function UploadReplicaFiles({ replica }: { replica: LofiSqliteReplica }) {
-  const status = useLofiSqliteReplicaStatus(replica);
-  const reading = useLofiSqliteRead(replica, "", (replica) => readReadyUploadFiles(replica, null));
+function UploadReplicaFiles({ replica }: { replica: LofiZqlClient }) {
+  const status = useLofiReplicaStatus(replica);
+  const reading = useReadyUploadFiles(replica, null);
   const files = useMemo<UploadFileRecord[]>(
     () =>
       reading.status === "ready"
@@ -633,7 +632,7 @@ function UploadReplicaFiles({ replica }: { replica: LofiSqliteReplica }) {
         : [],
     [reading],
   );
-  // The replica has caught up, so the first read takes milliseconds.
+  // The replica has caught up, so the view's first result takes milliseconds.
   if (reading.status === "loading") {
     return null;
   }

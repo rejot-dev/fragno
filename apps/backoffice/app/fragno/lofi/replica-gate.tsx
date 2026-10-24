@@ -2,7 +2,10 @@ import type { LofiSqliteReplica, LofiSqliteReplicaStatus } from "@fragno-dev/lof
 import { BackofficeDownloadState } from "@fragno-private/design-system/download-state";
 import { useSyncExternalStore, type ReactNode } from "react";
 
-export function useLofiSqliteReplicaStatus(replica: LofiSqliteReplica): LofiSqliteReplicaStatus {
+/** A replica on the page or a connection to one in a worker: both report the replica's status. */
+type LofiReplicaStatusSource = Pick<LofiSqliteReplica, "getStatus" | "subscribeStatus">;
+
+export function useLofiReplicaStatus(replica: LofiReplicaStatusSource): LofiSqliteReplicaStatus {
   return useSyncExternalStore(replica.subscribeStatus, replica.getStatus, replica.getStatus);
 }
 
@@ -15,11 +18,11 @@ export function LofiReplicaGate({
   title,
   children,
 }: {
-  replica: LofiSqliteReplica;
+  replica: LofiReplicaStatusSource;
   title: string;
   children: ReactNode;
 }) {
-  const status = useLofiSqliteReplicaStatus(replica);
+  const status = useLofiReplicaStatus(replica);
   return status.phase === "caught-up" ? (
     children
   ) : (

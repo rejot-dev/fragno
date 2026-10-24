@@ -1,4 +1,4 @@
-import type { LofiSqliteReplica } from "@fragno-dev/lofi/sqlite";
+import type { LofiZqlClient } from "@fragno-dev/lofi/zql";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
 import { Suspense, use, useMemo } from "react";
 import { useLoaderData, useOutletContext } from "react-router";
@@ -22,12 +22,11 @@ import {
   type AutomationCollectionSource,
 } from "@/fragno/automation/tanstack/browser-database";
 import { useAutomationRoutes } from "@/fragno/automation/tanstack/use-automation-routes";
-import { LofiReplicaGate, useLofiSqliteReplicaStatus } from "@/fragno/lofi/replica-gate";
-import { useLofiSqliteRead } from "@/fragno/lofi/use-lofi-sqlite-read";
+import { LofiReplicaGate, useLofiReplicaStatus } from "@/fragno/lofi/replica-gate";
 import {
   describeUploadReplicaSource,
   getUploadReplica,
-  readReadyUploadFiles,
+  useReadyUploadFiles,
 } from "@/fragno/upload/lofi/replica";
 import { requireScopeSelection } from "@/layouts/backoffice-shell-request.server";
 
@@ -142,13 +141,11 @@ function SynchronizedFilesExplorer({
   ...props
 }: FilesExplorerRouteViewProps & {
   synchronizedSource: SynchronizedFilesExplorerSource;
-  replica: LofiSqliteReplica;
+  replica: LofiZqlClient;
 }) {
   const { provider } = synchronizedSource.synchronization;
-  const status = useLofiSqliteReplicaStatus(replica);
-  const files = useLofiSqliteRead(replica, provider, (replica) =>
-    readReadyUploadFiles(replica, provider),
-  );
+  const status = useLofiReplicaStatus(replica);
+  const files = useReadyUploadFiles(replica, provider);
   const localTree = useMemo(
     () => (files.status === "ready" ? createUploadFileTree(files.data, { provider }) : null),
     [files, provider],
@@ -156,7 +153,7 @@ function SynchronizedFilesExplorer({
   const synchronizedTree = resolveSynchronizedFileTree(
     synchronizedSource.tree,
     files.status === "error"
-      ? { status: "error", error: files.error }
+      ? { status: "error", error: files.message }
       : localTree
         ? { status: "ready", tree: localTree }
         : { status: "loading" },

@@ -2,22 +2,22 @@ import {
   type BackofficeRoutableScope,
   backofficeScopePathSegment,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import { lofiSqliteTableName, type LofiSqliteReplica } from "@fragno-dev/lofi/sqlite";
+import type { LofiZqlClient, LofiZqlResult, LofiZqlView } from "@fragno-dev/lofi/zql";
 import { uploadSchema } from "@fragno-dev/upload/schema";
+import { useMemo } from "react";
 
 import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
-import { getBrowserReplica } from "@/fragno/lofi/browser-replica";
+import { getWorkerReplica } from "@/fragno/lofi/browser-replica";
+import { useLofiZql } from "@/fragno/lofi/use-lofi-zql";
 
 import type { UploadFileRecord } from "../file-record";
+import { UPLOAD_REPLICA_SCHEMAS } from "./replica-schemas";
 
 /** A scope's Upload backend, named by the adapter identity the server last reported for it. */
 export type UploadReplicaSource = {
   scope: BackofficeRoutableScope;
   adapterIdentity: string;
 };
-
-/** The Upload outbox carries only the `file` table, the metadata the file views list. */
-export const UPLOAD_REPLICA_SCHEMAS = [{ schema: uploadSchema }];
 
 export function describeUploadReplicaSource(source: UploadReplicaSource) {
   const scopeKey = backofficeScopePathSegment(source.scope);
@@ -28,50 +28,65 @@ export function describeUploadReplicaSource(source: UploadReplicaSource) {
 }
 
 /** The scope's Upload replica in this tab. */
-export function getUploadReplica(source: UploadReplicaSource): Promise<LofiSqliteReplica> {
+export function getUploadReplica(source: UploadReplicaSource): Promise<LofiZqlClient> {
   const description = describeUploadReplicaSource(source);
-  return getBrowserReplica({
-    name: "Upload",
+  return getWorkerReplica({
     baseUrl: description.baseUrl,
     resourceKey: description.resourceKey,
     schemas: UPLOAD_REPLICA_SCHEMAS,
+    startWorker: (baseUrl) =>
+      new Worker(new URL("./replica.worker.ts", import.meta.url), {
+        type: "module",
+        name: baseUrl,
+      }),
   });
 }
 
-const files = `"${lofiSqliteTableName({ schema: uploadSchema }, "file")}"`;
-const file = uploadSchema.tables.file.columns;
+/** A live view of the files that finished uploading and were not deleted, of one provider or all. */
+export function readyUploadFilesView(replica: LofiZqlClient, provider: string | null) {
+  const upload = replica.forSchema(uploadSchema);
+  const ready = upload.query.file.where("status", "ready");
+  return upload.store(provider === null ? ready : ready.where("provider", provider));
+}
 
-/** Files that finished uploading and were not deleted, of one provider or of all of them. */
-export async function readReadyUploadFiles(
-  replica: LofiSqliteReplica,
+type ReadyUploadFileRow =
+  ReturnType<typeof readyUploadFilesView> extends LofiZqlView<readonly (infer TRow)[]>
+    ? TRow
+    : never;
+
+/** Replica rows hold timestamps as epoch milliseconds. */
+export function toUploadFileRecord(row: ReadyUploadFileRow): UploadFileRecord {
+  return {
+    provider: row.provider,
+    fileKey: row.key,
+    status: row.status,
+    uploaderId: row.uploaderId,
+    sizeBytes: row.sizeBytes,
+    filename: row.filename,
+    contentType: row.contentType,
+    checksum: row.checksum,
+    tags: row.tags === null ? undefined : [...row.tags],
+    metadata: row.metadata,
+    visibility: row.visibility,
+    createdAt: new Date(row.createdAt),
+    updatedAt: new Date(row.updatedAt),
+    deletedAt: row.deletedAt === null ? null : new Date(row.deletedAt),
+  };
+}
+
+/** The ready files of one provider, or of all of them, as the replica changes. */
+export function useReadyUploadFiles(
+  replica: LofiZqlClient,
   provider: string | null,
-): Promise<UploadFileRecord[]> {
-  const rows = await replica.query({
-    sql: `SELECT "provider", "key", "status", "uploaderId", "sizeBytes", "filename", "contentType",
-            "checksum", "tags", "metadata", "visibility", "createdAt", "updatedAt", "deletedAt"
-          FROM ${files}
-          WHERE "status" = 'ready' AND (?1 IS NULL OR "provider" = ?1)`,
-    params: [provider],
-    columns: {
-      provider: file.provider,
-      key: file.key,
-      status: file.status,
-      uploaderId: file.uploaderId,
-      sizeBytes: "integer",
-      filename: file.filename,
-      contentType: file.contentType,
-      checksum: file.checksum,
-      tags: file.tags,
-      metadata: file.metadata,
-      visibility: file.visibility,
-      createdAt: file.createdAt,
-      updatedAt: file.updatedAt,
-      deletedAt: file.deletedAt,
-    },
-  });
-  return rows.map(({ key, tags, ...row }) => ({
-    ...row,
-    fileKey: key,
-    tags: tags ?? undefined,
-  }));
+): LofiZqlResult<UploadFileRecord[]> {
+  const result = useLofiZql(
+    useMemo(() => readyUploadFilesView(replica, provider), [replica, provider]),
+  );
+  return useMemo(
+    () =>
+      result.status === "ready"
+        ? { status: "ready", data: result.data.map(toUploadFileRecord) }
+        : result,
+    [result],
+  );
 }

@@ -15,11 +15,12 @@ import {
   runBackofficeScenario,
   type BackofficeScenarioContext,
 } from "@/fragno/automation/scenario";
+import { readScenarioReplicaView } from "@/fragno/lofi/scenario-replica-database";
 
 import { InMemoryAutomationsObject } from "../../../../workers/automations.do";
 import { InMemoryUploadObject } from "../../../../workers/upload.do";
 import { UPLOAD_PROVIDER_DATABASE } from "../../upload";
-import { readReadyUploadFiles } from "./replica";
+import { readyUploadFilesView, toUploadFileRecord } from "./replica";
 
 const scenarioObjects = {
   AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
@@ -64,15 +65,17 @@ async function deleteFile(ctx: BackofficeScenarioContext, key: string) {
 async function readExplorerTree(ctx: BackofficeScenarioContext) {
   const upload = ctx.lofi.upload.forOrg(ORG_ID);
   await upload.drain();
-  expect(upload.replica.getStatus()).toEqual({ phase: "caught-up", error: null });
-  const files = await readReadyUploadFiles(upload.replica, UPLOAD_PROVIDER_DATABASE);
-  return createUploadFileTree(files, { provider: UPLOAD_PROVIDER_DATABASE }).entries.map(
-    (entry) => ({
-      kind: entry.kind,
-      path: entry.path,
-      ...(entry.kind === "file" ? { sizeBytes: entry.sizeBytes } : {}),
-    }),
+  const rows = await readScenarioReplicaView(
+    readyUploadFilesView(upload.replica, UPLOAD_PROVIDER_DATABASE),
   );
+  expect(upload.replica.getStatus()).toEqual({ phase: "caught-up", error: null });
+  return createUploadFileTree(rows.map(toUploadFileRecord), {
+    provider: UPLOAD_PROVIDER_DATABASE,
+  }).entries.map((entry) => ({
+    kind: entry.kind,
+    path: entry.path,
+    ...(entry.kind === "file" ? { sizeBytes: entry.sizeBytes } : {}),
+  }));
 }
 
 test("the Files explorer lists the ready files and folders of the Upload replica", async () => {
@@ -113,7 +116,9 @@ test("the Files explorer lists the ready files and folders of the Upload replica
             { kind: "file", path: "reports/q1.csv", sizeBytes: 17 },
           ]);
           const upload = ctx.lofi.upload.forOrg(ORG_ID);
-          expect(await readReadyUploadFiles(upload.replica, "r2")).toEqual([]);
+          expect(await readScenarioReplicaView(readyUploadFilesView(upload.replica, "r2"))).toEqual(
+            [],
+          );
         }),
         then.assert("a file uploaded later appears after the next sync", async (ctx) => {
           await writeFile(ctx, {
