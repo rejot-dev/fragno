@@ -694,6 +694,10 @@ SQLite could read back differently, such as a fraction or a number beyond 32 bit
 bigint, sends its statement on its own. Replaying a 6,559-entry Upload outbox took 273 calls instead
 of about 7,250, and 0.49 s instead of 0.72 s in headless Chrome.
 
+Two database workers that start at once can race to delete the temporary directories that closed
+workers left in OPFS, and the loser fails to open. A page that opens several replicas, or a replica
+and a TanStack DB database, hits this on reloads, so the replica retries a failed open twice.
+
 The writing tab tells the other tabs over a `BroadcastChannel` once a batch commits; `subscribe`
 fires in every tab. `execute` waits for the tab's pending replication writes, so a read never sees
 half of a batch.
@@ -726,6 +730,10 @@ changed since. A reconnect or a new writer catches up again without sending view
 - **Catch-up speed.** A batch takes two worker calls, so the statements themselves and their parsing
   are now most of the cost. Statements are not prepared once and reused, because the worker takes
   only SQL text.
+- **Other databases still race at startup.** The retry covers the replica's own open. A TanStack DB
+  database that loses the race to a replica's worker still fails. wa-sqlite 2.x ignores the
+  directory that is already gone, but `@tanstack/browser-db-sqlite-persistence` accepts only
+  wa-sqlite `^1.4.1`, and 1.7.2 is the last 1.x release; a patch of 1.7.2 would cover both.
 - **Projection changes.** Changing projection code does not change the database name, so rows
   projected by the old code stay until a registered schema's version changes. A projection version
   in the database name would fix this.
