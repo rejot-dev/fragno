@@ -637,7 +637,10 @@ await replica.close();
 - **Parameters**: whole numbers bind as 64-bit integers. wa-sqlite would bind a number outside the
   32-bit range, such as a timestamp, as REAL, so `("occurredAt" - ?) / ?` would divide in floating
   point.
-- `lofi_meta` holds the outbox cursor, and `lofi_inbox` holds the entries already applied.
+- `lofi_meta` holds the outbox cursor and the versionstamp of the last entry applied. An outbox
+  delivers unique versionstamps in ascending order, so entries at or below it are skipped. The
+  cursor can stay behind that while an ephemeral stream is open, and the entries after it then
+  arrive again.
 
 Mutations for schemas you did not register are skipped. A mutation for an unknown table in a
 registered schema fails, because it means the client's schema is behind the server's. Rows of
@@ -687,15 +690,15 @@ half of a batch.
   connections. If reading tabs stall while the writing tab catches up, send their reads to the
   writing tab over the `BroadcastChannel` instead, as `@fragno-dev/tanstack-db-adapter` does.
 - **Catch-up speed.** Batches remove most commits, but every statement is still a round trip to the
-  worker, including each entry's inbox check and write.
+  worker.
 - **Projection changes.** Changing projection code does not change the database name, so rows
   projected by the old code stay until a registered schema's version changes. A projection version
   in the database name would fix this.
-- **Growth.** `lofi_inbox` rows are never pruned, and databases left behind by a name change stay in
-  OPFS. Both need cleanup.
-- **Exact checkpoints.** The cursor is a versionstamp, as in `LofiClient`, with `lofi_inbox`
-  removing duplicates. `@fragno-dev/tanstack-db-adapter` resumes from `{versionstamp, uowId}` and
-  rejects a history it cannot verify; the replica does not.
+- **Growth.** Databases left behind by a name change stay in OPFS and need cleanup.
+- **Exact checkpoints.** The cursor is a versionstamp, as in `LofiClient`, and entries at or below
+  the last one applied are skipped. That trusts the outbox to deliver ascending versionstamps:
+  `@fragno-dev/tanstack-db-adapter` resumes from `{versionstamp, uowId}` and rejects a history it
+  cannot verify; the replica does not.
 - **Dangling references.** A reference to a row the replica does not hold, for example in a table
   you did not register, is stored as NULL and is not filled in if the row arrives later.
 - **Errors that never clear.** A schema mismatch fails on every attempt, so each tab retries every
