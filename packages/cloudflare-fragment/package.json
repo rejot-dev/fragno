@@ -1,6 +1,6 @@
 {
   "name": "@fragno-dev/cloudflare-fragment",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Fragno Cloudflare Workers for Platforms deployment fragment",
   "keywords": [
     "fragno",
