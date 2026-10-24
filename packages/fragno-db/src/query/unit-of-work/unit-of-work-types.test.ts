@@ -1,7 +1,7 @@
 import { describe, expectTypeOf, it } from "vitest";
 
 import { column, idColumn, referenceColumn, schema } from "../../schema/create";
-import type { FragnoId, FragnoReference } from "../../schema/create";
+import type { FragnoId, FragnoReference, FragnoReferenceTo } from "../../schema/create";
 import { QueryTreeFindBuilder, QueryTreeJoinBuilder, type ParentColumnRef } from "./query-tree";
 import { UnitOfWork } from "./unit-of-work";
 
@@ -97,7 +97,7 @@ describe("UnitOfWork type tests", () => {
       name: string;
       email: string;
       age: number | null;
-      invitedBy: FragnoReference | null;
+      invitedBy: FragnoReferenceTo<"users"> | null;
     }>();
   });
 
@@ -132,7 +132,7 @@ describe("UnitOfWork type tests", () => {
       name: string;
       email: string;
       age: number | null;
-      invitedBy: FragnoReference | null;
+      invitedBy: FragnoReferenceTo<"users"> | null;
       inviter: {
         name: string;
       } | null;
@@ -175,7 +175,7 @@ describe("UnitOfWork type tests", () => {
       name: string;
       email: string;
       age: number | null;
-      invitedBy: FragnoReference | null;
+      invitedBy: FragnoReferenceTo<"users"> | null;
     }>();
   });
 

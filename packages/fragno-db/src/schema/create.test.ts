@@ -17,6 +17,7 @@ import {
   referenceColumn,
   schema,
   SchemaBuilder,
+  type FragnoReferenceTo,
 } from "./create";
 
 describe("create", () => {
@@ -775,7 +776,8 @@ describe("referenceColumn", () => {
     type _In = typeof _referenceCol.$in;
     type _Out = typeof _referenceCol.$out;
     expectTypeOf<_In>().toEqualTypeOf<string | bigint | FragnoId | FragnoReference>();
-    expectTypeOf<_Out>().toEqualTypeOf<FragnoReference>();
+    expectTypeOf<_Out>().toEqualTypeOf<FragnoReferenceTo<"users">>();
+    expectTypeOf<_Out>().toExtend<FragnoReference>();
   });
 });
 

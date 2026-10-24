@@ -494,21 +494,33 @@ export function column<TType extends keyof TypeMap>(
   return new Column(type);
 }
 
+declare const referencedTable: unique symbol;
+
+/**
+ * A `FragnoReference` read from a reference column, which knows the referenced table in its type
+ * only, so that consumers can type relationships.
+ */
+export type FragnoReferenceTo<TTable extends string> = FragnoReference & {
+  readonly [referencedTable]?: TTable;
+};
+
 /**
  * Create a reference column that points to another table's internal ID.
  * This is used for foreign key relationships.
  * Always uses bigint to match the internal ID type.
  */
-export function referenceColumn(options: {
-  table: string;
-}): Column<"bigint", string | bigint | FragnoId | FragnoReference, FragnoReference> {
+export function referenceColumn<const TTable extends string>(options: {
+  table: TTable;
+}): Column<"bigint", string | bigint | FragnoId | FragnoReference, FragnoReferenceTo<TTable>> {
   if (!options.table || options.table.trim().length === 0) {
     throw new Error("referenceColumn({ table }) requires a non-empty target table name.");
   }
 
-  const col = new Column<"bigint", string | bigint | FragnoId | FragnoReference, FragnoReference>(
+  const col = new Column<
     "bigint",
-  );
+    string | bigint | FragnoId | FragnoReference,
+    FragnoReferenceTo<TTable>
+  >("bigint");
   col.role = "reference";
   col.referenceTableName = options.table;
   return col;
