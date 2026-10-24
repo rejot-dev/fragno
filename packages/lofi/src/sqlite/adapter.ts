@@ -18,6 +18,7 @@ import type {
   LofiOutboxWriter,
   LofiSchemaRegistration,
 } from "../types";
+import { inlineSqliteParams } from "./inline";
 import {
   createSqliteTableLayouts,
   createSqliteTableStatements,
@@ -27,7 +28,11 @@ import {
 } from "./layout";
 import { decodeLofiSqliteRow, encodeSqliteValue, type SqliteValue } from "./values";
 
-/** One SQLite connection. Matches `openBrowserWASQLiteOPFSDatabase` from TanStack DB. */
+/**
+ * One SQLite connection. Matches `openBrowserWASQLiteOPFSDatabase` from TanStack DB. A call without
+ * `params` may hold several statements separated by semicolons; it runs them in order and returns
+ * the rows of all of them.
+ */
 export type LofiSqliteDatabase = {
   execute(
     sql: string,
@@ -47,6 +52,9 @@ export type SqliteLofiAdapterOptions = {
 type SqlFragment = { sql: string; params: SqliteValue[] };
 
 type OutboxEntryOptions = Parameters<LofiAdapter["applyOutboxEntry"]>[0];
+
+/** Queued statements are sent once their SQL reaches this many characters. */
+const MAX_QUEUED_SQL_LENGTH = 1_000_000;
 
 const SCHEMA_STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS "lofi_meta" ("key" TEXT PRIMARY KEY, "value" TEXT NOT NULL)`,
@@ -83,6 +91,11 @@ export class SqliteLofiAdapter implements LofiAdapter {
   // Statements of one transaction span several `execute` calls on a shared connection, so every
   // statement waits for the previous operation to finish.
   #tail: Promise<unknown> = Promise.resolve();
+  // Each `execute` is a round trip to the database's worker, which cost more than the statements
+  // themselves. Inside a transaction, statements that return no rows queue here, with their
+  // parameters written in, and go together with the next read or the `COMMIT`. Null outside one.
+  #queue: string[] | null = null;
+  #queuedLength = 0;
 
   private constructor(options: SqliteLofiAdapterOptions) {
     const sourceSchemas = options.schemas.map(toRegisteredSchema);
@@ -132,7 +145,7 @@ export class SqliteLofiAdapter implements LofiAdapter {
     ];
     await adapter.#transaction(async () => {
       for (const statement of statements) {
-        await adapter.#database.execute(statement);
+        await adapter.#write(statement);
       }
     });
     return adapter;
@@ -213,7 +226,7 @@ export class SqliteLofiAdapter implements LofiAdapter {
       schemaNameAliases: this.#schemaNameAliases,
       readRow: async (target, externalId) => {
         const layout = this.#getLayout(target.schema.name, target.table.name);
-        const [row] = await this.#database.execute(
+        const [row] = await this.#read(
           `SELECT * FROM ${quoteSqliteIdentifier(layout.sqlName)} WHERE ${idColumn(layout)} = ?`,
           [externalId],
         );
@@ -249,9 +262,9 @@ export class SqliteLofiAdapter implements LofiAdapter {
         if (!read.has(key)) {
           read.set(
             key,
-            this.#database
-              .execute(`SELECT "value" FROM "lofi_meta" WHERE "key" = ?`, [key])
-              .then(([row]) => (row ? (row["value"] as string) : undefined)),
+            this.#read(`SELECT "value" FROM "lofi_meta" WHERE "key" = ?`, [key]).then(([row]) =>
+              row ? (row["value"] as string) : undefined,
+            ),
           );
         }
         const through = recorded.get(key) ?? (await read.get(key));
@@ -269,7 +282,7 @@ export class SqliteLofiAdapter implements LofiAdapter {
   }
 
   async #writeMeta(key: string, value: string): Promise<void> {
-    await this.#database.execute(
+    await this.#write(
       `INSERT INTO "lofi_meta" ("key", "value") VALUES (?, ?) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value"`,
       [key, value],
     );
@@ -308,7 +321,7 @@ export class SqliteLofiAdapter implements LofiAdapter {
     const id = idColumn(layout);
 
     if (mutation.op === "delete") {
-      await this.#database.execute(`DELETE FROM ${table} WHERE ${id} = ?`, [mutation.externalId]);
+      await this.#write(`DELETE FROM ${table} WHERE ${id} = ?`, [mutation.externalId]);
       return;
     }
 
@@ -323,7 +336,7 @@ export class SqliteLofiAdapter implements LofiAdapter {
           : `DO UPDATE SET ${assignments
               .map(({ column }) => `${column} = excluded.${column}`)
               .join(", ")}`;
-      await this.#database.execute(
+      await this.#write(
         `INSERT INTO ${table} (${columns.join(", ")}) VALUES (${values
           .map(({ sql }) => sql)
           .join(", ")}) ON CONFLICT (${id}) ${onConflict}`,
@@ -347,13 +360,71 @@ export class SqliteLofiAdapter implements LofiAdapter {
           params: [mutation.externalId, mutation.expectedVersion!],
         }
       : { sql: `${id} = ?`, params: [mutation.externalId] };
-    const updated = await this.#database.execute(
-      `UPDATE ${table} SET ${assignments.map(({ sql }) => sql).join(", ")} WHERE ${where.sql} RETURNING ${id}`,
-      [...assignments.flatMap(({ params }) => params), ...where.params],
-    );
-    if (checkVersion && updated.length === 0) {
+    const update = `UPDATE ${table} SET ${assignments.map(({ sql }) => sql).join(", ")} WHERE ${where.sql}`;
+    const params = [...assignments.flatMap(({ params }) => params), ...where.params];
+    if (!checkVersion) {
+      await this.#write(update, params);
+      return;
+    }
+    const updated = await this.#read(`${update} RETURNING ${id}`, params);
+    if (updated.length === 0) {
       throw new Error(`Projection update check failed: ${layout.sqlName}.${mutation.externalId}`);
     }
+  }
+
+  /** Queues a statement that returns no rows when inside a transaction, or runs it. */
+  async #write(sql: string, params: ReadonlyArray<unknown> = []): Promise<void> {
+    const queue = this.#queue;
+    const inlined = queue === null ? null : inlineSqliteParams(sql, params.map(bindableValue));
+    if (queue === null || inlined === null) {
+      await this.#flush();
+      await this.#database.execute(sql, params);
+      return;
+    }
+    queue.push(inlined);
+    this.#queuedLength += inlined.length;
+    if (this.#queuedLength >= MAX_QUEUED_SQL_LENGTH) {
+      await this.#flush();
+    }
+  }
+
+  /** Runs a statement after the queued ones, in the same call when its parameters can be written in. */
+  async #read(
+    sql: string,
+    params: ReadonlyArray<unknown> = [],
+  ): Promise<ReadonlyArray<Record<string, unknown>>> {
+    const queued = this.#takeQueued();
+    if (queued.length === 0) {
+      return await this.#database.execute(sql, params);
+    }
+    const inlined = inlineSqliteParams(sql, params.map(bindableValue));
+    if (inlined === null) {
+      await this.#database.execute(queued.join(";\n"));
+      return await this.#database.execute(sql, params);
+    }
+    // Queued statements return no rows, so every row is the read's.
+    return await this.#database.execute([...queued, inlined].join(";\n"));
+  }
+
+  /** Sends the queued statements, followed by `last`. */
+  async #flush(last?: string): Promise<void> {
+    const statements = this.#takeQueued();
+    if (last !== undefined) {
+      statements.push(last);
+    }
+    if (statements.length > 0) {
+      await this.#database.execute(statements.join(";\n"));
+    }
+  }
+
+  #takeQueued(): string[] {
+    const queued = this.#queue;
+    if (queued === null || queued.length === 0) {
+      return [];
+    }
+    this.#queue = [];
+    this.#queuedLength = 0;
+    return queued;
   }
 
   #serialize<T>(operation: () => Promise<T>): Promise<T> {
@@ -364,15 +435,21 @@ export class SqliteLofiAdapter implements LofiAdapter {
 
   #transaction<T>(operation: () => Promise<T>): Promise<T> {
     return this.#serialize(async () => {
-      await this.#database.execute("BEGIN IMMEDIATE");
+      // BEGIN goes with the transaction's first statements.
+      this.#queue = ["BEGIN IMMEDIATE"];
+      this.#queuedLength = 0;
       try {
         const result = await operation();
-        await this.#database.execute("COMMIT");
+        await this.#flush("COMMIT");
         return result;
       } catch (error) {
-        // A failed ROLLBACK means SQLite already ended the transaction; the cause is more useful.
+        // A failed ROLLBACK means SQLite already ended the transaction, or never began it; the cause
+        // is more useful.
         await this.#database.execute("ROLLBACK").catch(() => {});
         throw error;
+      } finally {
+        this.#queue = null;
+        this.#queuedLength = 0;
       }
     });
   }
