@@ -50,8 +50,22 @@ type OutboxEntryOptions = Parameters<LofiAdapter["applyOutboxEntry"]>[0];
 
 const SCHEMA_STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS "lofi_meta" ("key" TEXT PRIMARY KEY, "value" TEXT NOT NULL)`,
-  `CREATE TABLE IF NOT EXISTS "lofi_inbox" ("source_key" TEXT NOT NULL, "uow_id" TEXT NOT NULL, "versionstamp" TEXT NOT NULL, PRIMARY KEY ("source_key", "uow_id", "versionstamp"))`,
 ];
+
+/**
+ * Prefixes the `lofi_meta` key holding the last versionstamp applied from a source. An outbox
+ * delivers unique versionstamps in ascending order, so every entry at or below it was applied. This
+ * differs from the client's cursor, which can stay behind applied entries while an ephemeral stream
+ * is open, so the entries after the cursor arrive again.
+ */
+const APPLIED_THROUGH_KEY_PREFIX = "applied-through:";
+
+/** Each source's applied-through versionstamp, read once per transaction and written before it commits. */
+type AppliedThrough = {
+  isApplied(sourceKey: string, versionstamp: string): Promise<boolean>;
+  record(sourceKey: string, versionstamp: string): void;
+  write(): Promise<void>;
+};
 
 /**
  * Mirrors outbox entries and local projections into SQLite tables laid out like the backend's,
@@ -133,43 +147,50 @@ export class SqliteLofiAdapter implements LofiAdapter {
   }
 
   applyOutboxEntry(options: OutboxEntryOptions): Promise<{ applied: boolean }> {
-    return this.#transaction(() => this.#applyOutboxEntryInTransaction(options));
+    return this.#transaction(async () => {
+      const appliedThrough = this.#readAppliedThrough();
+      const result = await this.#applyOutboxEntryInTransaction(options, appliedThrough);
+      await appliedThrough.write();
+      return result;
+    });
   }
 
   /**
    * Applies the batch in one transaction, which saves the commit and the journaling of shared pages,
-   * such as the inbox's and the cursor's, that every entry would otherwise pay for. A failure rolls
+   * such as the cursor's and the indexes', that every entry would otherwise pay for. A failure rolls
    * back the whole batch.
    */
   applyOutboxBatch<T>(apply: (writer: LofiOutboxWriter) => Promise<T>): Promise<T> {
     return this.#transaction(async () => {
+      const appliedThrough = this.#readAppliedThrough();
       let open = true;
       const whileOpen = <R>(operation: () => Promise<R>): Promise<R> =>
         open ? operation() : Promise.reject(new Error("The outbox batch has ended."));
+      let result: T;
       try {
-        return await apply({
+        result = await apply({
           applyOutboxEntry: (options) =>
-            whileOpen(() => this.#applyOutboxEntryInTransaction(options)),
+            whileOpen(() => this.#applyOutboxEntryInTransaction(options, appliedThrough)),
           setMeta: (key, value) => whileOpen(() => this.#writeMeta(key, value)),
         });
       } finally {
         open = false;
       }
+      await appliedThrough.write();
+      return result;
     });
   }
 
-  async #applyOutboxEntryInTransaction(options: OutboxEntryOptions): Promise<{ applied: boolean }> {
+  async #applyOutboxEntryInTransaction(
+    options: OutboxEntryOptions,
+    appliedThrough: AppliedThrough,
+  ): Promise<{ applied: boolean }> {
     const knownMutations = options.mutations.flatMap((mutation) => {
       const known = this.#getKnownSourceMutation(mutation);
       return known ? [known] : [];
     });
 
-    const inboxKey = [options.sourceKey, options.uowId, options.versionstamp];
-    const existing = await this.#database.execute(
-      `SELECT 1 FROM "lofi_inbox" WHERE "source_key" = ? AND "uow_id" = ? AND "versionstamp" = ?`,
-      inboxKey,
-    );
-    if (existing.length > 0) {
+    if (await appliedThrough.isApplied(options.sourceKey, options.versionstamp)) {
       return { applied: false };
     }
 
@@ -205,10 +226,7 @@ export class SqliteLofiAdapter implements LofiAdapter {
         ),
     });
 
-    await this.#database.execute(
-      `INSERT INTO "lofi_inbox" ("source_key", "uow_id", "versionstamp") VALUES (?, ?, ?)`,
-      inboxKey,
-    );
+    appliedThrough.record(options.sourceKey, options.versionstamp);
     return { applied: true };
   }
 
@@ -219,6 +237,35 @@ export class SqliteLofiAdapter implements LofiAdapter {
 
   setMeta(key: string, value: string): Promise<void> {
     return this.#serialize(() => this.#writeMeta(key, value));
+  }
+
+  /** Call inside a transaction, which keeps other connections from moving the watermarks meanwhile. */
+  #readAppliedThrough(): AppliedThrough {
+    const read = new Map<string, Promise<string | undefined>>();
+    const recorded = new Map<string, string>();
+    return {
+      isApplied: async (sourceKey, versionstamp) => {
+        const key = `${APPLIED_THROUGH_KEY_PREFIX}${sourceKey}`;
+        if (!read.has(key)) {
+          read.set(
+            key,
+            this.#database
+              .execute(`SELECT "value" FROM "lofi_meta" WHERE "key" = ?`, [key])
+              .then(([row]) => (row ? (row["value"] as string) : undefined)),
+          );
+        }
+        const through = recorded.get(key) ?? (await read.get(key));
+        return through !== undefined && versionstamp <= through;
+      },
+      record: (sourceKey, versionstamp) => {
+        recorded.set(`${APPLIED_THROUGH_KEY_PREFIX}${sourceKey}`, versionstamp);
+      },
+      write: async () => {
+        for (const [key, versionstamp] of recorded) {
+          await this.#writeMeta(key, versionstamp);
+        }
+      },
+    };
   }
 
   async #writeMeta(key: string, value: string): Promise<void> {

@@ -8,7 +8,7 @@ import type { LofiSchemaRegistration } from "../types";
  * Bump when the physical layout changes. Replicas are named by this version, so a bump opens a
  * fresh database and replays the outbox instead of migrating.
  */
-export const LOFI_SQLITE_LAYOUT_VERSION = 1;
+export const LOFI_SQLITE_LAYOUT_VERSION = 2;
 
 /** Physical table of one registered Fragno table. */
 export type SqliteTableLayout = {
