@@ -55,6 +55,10 @@ export default {
           ? await backofficeApiRouter.fetch(request, { runtime, kernel })
           : await requestHandler(request, context);
         statusCode = response.status;
+        // A socket travels only with the response that accepted it, so it cannot be rebuilt.
+        if (response.webSocket) {
+          return response;
+        }
         const headers = new Headers(response.headers);
         headers.set("backoffice-request-id", requestId);
 

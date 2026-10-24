@@ -1207,18 +1207,11 @@ const createFakePiManagerApi = (
       getViewCalls.push({ agentName: config.agentName });
       return conversationView(fake);
     },
-    async watchView(config) {
-      const fake = requireAgent(config);
-      const encoded = new TextEncoder().encode(
-        `${JSON.stringify({ type: "snapshot", view: conversationView(fake) })}\n`,
-      );
-      return new ReadableStream<Uint8Array>({
-        start(controller) {
-          controller.enqueue(encoded);
-          controller.close();
-        },
-      });
+    async fetch() {
+      throw new Error("The fake Pi agent serves no view sockets.");
     },
+    // The fake has no viewers to show its queue to.
+    async publishQueue() {},
     async getSubmission(config, requestId) {
       return requireAgent(config).submissions.get(requestId) ?? null;
     },

@@ -15,10 +15,11 @@ import {
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
-import type {
-  PiAgentCompactionStatus,
-  PiAgentModelChoice,
-  PiAvailableModel,
+import {
+  piAgentViewSocketRequest,
+  type PiAgentCompactionStatus,
+  type PiAgentModelChoice,
+  type PiAvailableModel,
 } from "@/fragno/pi/agent/pi-agent-contract";
 import { formatPiAgentName } from "@/fragno/pi/agent/pi-agent-name";
 import type { createPiManagerFragment } from "@/fragno/pi/manager/pi-manager-fragment";
@@ -188,26 +189,23 @@ export async function fetchPiManagerAgentDetail(
   return { detail: { agent: agentResponse.data, view }, agentError: null };
 }
 
-/** Opens the authorized NDJSON stream produced by the agent's durable conversation. */
-export async function fetchPiManagerAgentViewStream(
+/** The agent's view socket upgrade, which the agent serves once its manager authorizes the viewer. */
+export async function openPiAgentViewSocket(
   request: Request,
   context: Readonly<RouterContextProvider>,
   scope: BackofficeContextScope,
   agentName: string,
 ): Promise<Response> {
-  const { execution, manager } = await createPiManagerAuthorizedAccess(request, context, scope);
-  const url = new URL(
-    `/api/pi-manager/agents/${encodeURIComponent(agentName)}/view-stream`,
-    request.url,
-  );
-  return await manager.http.fetchAuthorized(
-    new Request(url, {
-      method: "GET",
-      headers: { accept: "application/x-ndjson" },
-      signal: request.signal,
-    }),
-    { execution, propagationContext: null },
-  );
+  // The agent upgrades whatever it is handed, so a plain GET must not reach it.
+  if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
+    return new Response("The agent's view is a WebSocket; request an upgrade.", { status: 426 });
+  }
+  const execution = await requireBackofficeContext(request, context, scope);
+  const { runtime } = context.get(BackofficeWorkerContext);
+  const agent = { scope, agentName };
+  return await runtime.objects
+    .piAgent(agent)
+    .fetchAuthorized(piAgentViewSocketRequest(agent), { execution, propagationContext: null });
 }
 
 export async function submitPiManagerPrompt(

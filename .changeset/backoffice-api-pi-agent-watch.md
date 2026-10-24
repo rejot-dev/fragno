@@ -2,5 +2,5 @@
 "@fragno-dev/backoffice-api": patch
 ---
 
-feat: add streams to the API contract, the `pi.agent.watch` stream of an agent's live conversation,
-and `watch` in the client.
+feat: add `PiAgentWatchFrame`, `PiAgentQueueEntry`, and `PI_AGENT_WATCH_REFUSED` for
+`pi.agent.watch`, a WebSocket that follows an agent's conversation and queue live.

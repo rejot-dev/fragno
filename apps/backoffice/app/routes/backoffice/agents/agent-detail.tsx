@@ -61,9 +61,9 @@ import {
 import { estimatePiContextTokens } from "./session-detail/context-usage";
 import { SessionDisplayOptions } from "./session-detail/display-options";
 import {
-  usePiSessionViewStream,
+  usePiSessionViewSocket,
   type PiAgentQueueState,
-} from "./session-detail/pi-session-view-stream";
+} from "./session-detail/pi-session-view-socket";
 import { createReson8DictationAdapter } from "./session-detail/reson8-dictation";
 import { SessionThread, type ComposerAction } from "./session-detail/session-thread";
 import {
@@ -387,11 +387,11 @@ function AgentStatusPane({
   );
 }
 
-/** The conversation renders from the view stream; its first frame is the whole view. */
+/** The conversation renders from the view socket; its first view is the whole conversation. */
 function BackofficeOrganizationPiAgentStream({ agent }: { agent: PiManagerAgent }) {
   const { basePath } = useOutletContext<PiAgentsOutletContext>();
-  const stream = usePiSessionViewStream(
-    `${basePath}/${encodeURIComponent(agent.agentName)}/view-stream`,
+  const stream = usePiSessionViewSocket(
+    `${basePath}/${encodeURIComponent(agent.agentName)}/view-socket`,
   );
   if (stream.status === "connecting") {
     return (

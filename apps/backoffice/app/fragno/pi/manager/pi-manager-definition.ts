@@ -14,12 +14,7 @@ import type {
 
 import { piAgentChangeEvent, piAgentQueueEvent } from "./pi-agent-change-events";
 import { piAgentDirectoryServices } from "./pi-agent-directory-services";
-import {
-  handOverPiAgentWork,
-  piAgentQueueServices,
-  type PiAgentQueueChannel,
-  type PiManagerHooks,
-} from "./pi-agent-queue";
+import { handOverPiAgentWork, piAgentQueueServices, type PiManagerHooks } from "./pi-agent-queue";
 import { piAgentDirectorySchema } from "./pi-manager-schema";
 import { piModelUsageServices } from "./pi-model-usage";
 
@@ -27,8 +22,6 @@ export type PiManagerConfig = {
   scope: BackofficeContextScope;
   agent: (address: PiAgentAddress) => PiAgent;
   supportedAvailableModels: () => Promise<readonly PiAvailableModel[]>;
-  /** One per manager object, which runs every request that changes its agents' queues. */
-  queueChannel: PiAgentQueueChannel;
   /** Where a scope's model usage is recorded. */
   billing: (scope: BackofficeContextScope) => UsageBilling;
   /** The scope's Automations, which record agent changes; null when the runtime has none. */

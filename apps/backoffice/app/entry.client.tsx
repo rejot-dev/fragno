@@ -1,5 +1,5 @@
 import { PostHogProvider } from "@posthog/react/slim";
-import { startTransition } from "react";
+import { startTransition, StrictMode } from "react";
 import { hydrateRoot } from "react-dom/client";
 import type { ClientOnErrorFunction } from "react-router";
 import { HydratedRouter } from "react-router/dom";
@@ -24,8 +24,11 @@ const onError: ClientOnErrorFunction = function reportClientError(error, { patte
 };
 
 startTransition(() => {
-  // StrictMode is off while we investigate stalled Pi view streams, so each mount opens one.
-  const router = <HydratedRouter onError={onError} />;
+  const router = (
+    <StrictMode>
+      <HydratedRouter onError={onError} />
+    </StrictMode>
+  );
   hydrateRoot(
     document,
     posthog ? <PostHogProvider client={posthog}>{router}</PostHogProvider> : router,

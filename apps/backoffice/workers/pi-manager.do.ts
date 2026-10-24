@@ -1,6 +1,8 @@
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import {
   type BackofficeContextScope,
   backofficeContextScopeSchema,
+  backofficeContextScopesEqual,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
@@ -8,11 +10,12 @@ import { DurableObject, RpcTarget } from "cloudflare:workers";
 import type { Usage } from "@earendil-works/pi-ai";
 
 import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
+import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import {
   BackofficeInternalRequestError,
   verifyAuthorizedBackofficeObjectRequest,
 } from "@/backoffice-runtime/internal-object-request";
-import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import { BackofficeForbiddenError, BackofficeKernel } from "@/backoffice-runtime/kernel";
 import {
   backofficeContextScopeFromDurableObjectId,
   backofficeObjectScopeFromContextScope,
@@ -25,6 +28,7 @@ import {
   piAgentObjectName,
   type PiAgent,
   type PiAgentAddress,
+  type PiAgentViewerAuthorization,
   type PiAvailableModel,
 } from "@/fragno/pi/agent/pi-agent-contract";
 import {
@@ -40,7 +44,6 @@ import {
   hasPiBillingUsage,
   piBillingCountersFromUsage,
 } from "@/fragno/pi/extensions/billing/usage-counters";
-import { createPiAgentQueueChannel } from "@/fragno/pi/manager/pi-agent-queue";
 import type { PiManagerConfig } from "@/fragno/pi/manager/pi-manager-definition";
 import {
   createPiManagerFragment,
@@ -70,11 +73,9 @@ export class InMemoryPiManagerObject extends RpcTarget implements PiManagerObjec
   readonly #scoped: ScopedFragmentDurableObjectRuntime<PiManagerFragment>;
   readonly #env: Pick<BackofficeRuntimeEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">;
   readonly #nowEpochMs: () => number;
-  readonly #config: Pick<
-    PiManagerConfig,
-    "agent" | "supportedAvailableModels" | "queueChannel" | "billing"
-  >;
+  readonly #config: Pick<PiManagerConfig, "agent" | "supportedAvailableModels" | "billing">;
   readonly #runtime: BackofficeRuntimeServices;
+  readonly #kernel: BackofficeKernel;
   readonly #classifier: PiClassifier | null;
   readonly #imageGenerator: PiImageGenerator | null;
 
@@ -110,10 +111,10 @@ export class InMemoryPiManagerObject extends RpcTarget implements PiManagerObjec
     this.#config = {
       agent,
       supportedAvailableModels,
-      queueChannel: createPiAgentQueueChannel(),
       billing: (scope) => usageBillingForScope(runtime, scope),
     };
     const kernel = new BackofficeKernel(runtime);
+    this.#kernel = kernel;
     this.#host = implementation.createFragmentHost({
       name: "PiManager",
       createRuntime: (scope) =>
@@ -180,7 +181,55 @@ export class InMemoryPiManagerObject extends RpcTarget implements PiManagerObjec
   }
 
   async reportSettledTurn(input: { agentName: string; requestId: string }): Promise<void> {
-    await reportPiAgentTurnSettled(await this.#scoped.getRuntime(), this.#config, input);
+    await reportPiAgentTurnSettled(
+      await this.#scoped.getRuntime(),
+      { ...this.#config, scope: this.#scoped.requireOwnerScope() },
+      input,
+    );
+  }
+
+  async authorizeViewer({
+    agentName,
+    execution,
+  }: {
+    agentName: string;
+    execution: BackofficeExecutionContext;
+  }): Promise<PiAgentViewerAuthorization> {
+    const scope = this.#scoped.requireOwnerScope();
+    // The same checks the manager's routes make of a GET, such as reading the conversation.
+    if (!backofficeContextScopesEqual(execution.scope, scope)) {
+      return { type: "refused", message: "Pi manager requires matching scope action context." };
+    }
+    try {
+      await this.#kernel.assertAuthorized({
+        execution,
+        operation: BACKOFFICE_PERMISSION.pi.read,
+        resource: { kind: "pi-agent-directory", scope },
+      });
+    } catch (cause) {
+      // Unavailable authority is passing, so the agent closes the socket as worth reconnecting.
+      if (cause instanceof BackofficeForbiddenError && cause.reason !== "authority-unavailable") {
+        return { type: "refused", message: cause.message };
+      }
+      throw cause;
+    }
+    const fragment = await this.#scoped.getRuntime();
+    const [{ definition, config }, queue] = await fragment.callServices(
+      () =>
+        [
+          fragment.services.getAgent(agentName),
+          fragment.services.getWaitingQueue(agentName),
+        ] as const,
+    );
+    if (!config) {
+      return {
+        type: "refused",
+        message: definition
+          ? "Pi agent has no turns yet."
+          : `No agent in this scope is named '${agentName}'.`,
+      };
+    }
+    return { type: "authorized", queue };
   }
 
   async classify({
@@ -291,6 +340,12 @@ export class PiManager extends DurableObject<CloudflareEnv> implements PiManager
 
   async reportSettledTurn(input: { agentName: string; requestId: string }): Promise<void> {
     await this.#object.reportSettledTurn(input);
+  }
+
+  async authorizeViewer(
+    input: Parameters<PiManagerObject["authorizeViewer"]>[0],
+  ): ReturnType<PiManagerObject["authorizeViewer"]> {
+    return await this.#object.authorizeViewer(input);
   }
 
   async classify(

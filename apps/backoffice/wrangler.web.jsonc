@@ -114,6 +114,11 @@
         "script_name": "rejot-backoffice",
       },
       {
+        "name": "PI",
+        "class_name": "Pi",
+        "script_name": "rejot-backoffice",
+      },
+      {
         "name": "PI_MANAGER",
         "class_name": "PiManager",
         "script_name": "rejot-backoffice",

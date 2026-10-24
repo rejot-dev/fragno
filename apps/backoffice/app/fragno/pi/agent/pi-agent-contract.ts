@@ -1,9 +1,11 @@
+import type { Op } from "@earendil-works/chord/delta";
 import { automationActorsSchema } from "@fragno-dev/backoffice-api/v0/automation";
 import { automationEventSchema } from "@fragno-dev/backoffice-api/v0/events";
-import {
-  type PiAgentConfig,
-  type PiAgentMessagePage,
-  type PiAgentQueueEntry,
+import type {
+  PiAgentConfig,
+  PiAgentMessagePage,
+  PiAgentQueueEntry,
+  PiAgentWatchFrame,
 } from "@fragno-dev/backoffice-api/v0/pi";
 import { jsonValueSchema } from "@fragno-dev/backoffice-api/v0/shared/json";
 import { backofficePermissionRequirementSchema } from "@fragno-dev/backoffice-api/v0/shared/permissions";
@@ -179,13 +181,13 @@ export const piAgentMessagePageRequestSchema = z.object({
  */
 export type PiAgentWaitingQueue = { revision: number; paused: boolean; items: PiAgentQueueEntry[] };
 
-/**
- * A `pi.agent.watch` frame (`piAgentWatchFrameSchema`) whose view is the agent's structural view,
- * which the contract keeps opaque.
- */
-export type PiAgentViewStreamFrame =
-  | { type: "snapshot" | "update"; view: ConversationView }
-  | { type: "queue"; paused: boolean; items: PiAgentQueueEntry[] };
+/** What an agent sends its view socket, which `pi.agent.watch` exposes. */
+export type PiAgentViewFrame = PiAgentWatchFrame<ConversationView, Op>;
+
+/** The manager's answer when an agent asks whether a viewer may watch its conversation. */
+export type PiAgentViewerAuthorization =
+  | { type: "authorized"; queue: PiAgentWaitingQueue }
+  | { type: "refused"; message: string };
 
 /** Agent operations shared by Cloudflare RPC and the local object runtime. */
 export type PiAgent = {
@@ -210,7 +212,16 @@ export type PiAgent = {
    */
   writeNotifications(config: PiAgentConfig, notifications: PiAgentNotification[]): Promise<void>;
   getView(config: PiAgentConfig): Promise<unknown>;
-  watchView(config: PiAgentConfig): Promise<ReadableStream<Uint8Array>>;
+  /**
+   * Accepts a view socket upgrade (see `PiAgentViewFrame`) signed for this agent with the viewer's
+   * execution, which the agent's manager authorizes before the agent sends anything.
+   */
+  fetch(request: Request): Promise<Response>;
+  /**
+   * Sends the agent's view sockets what waits in its queue. Publications may arrive out of order,
+   * so an older revision than the agent has is ignored.
+   */
+  publishQueue(queue: PiAgentWaitingQueue): Promise<void>;
   getSubmission(config: PiAgentConfig, requestId: string): Promise<SubmissionRecord | null>;
   listEntries(
     config: PiAgentConfig,
@@ -234,6 +245,16 @@ export type PiAgent = {
   reset(config: PiAgentConfig): Promise<void>;
   abort(config: PiAgentConfig): Promise<void>;
 };
+
+/**
+ * The view socket upgrade for an agent. It names the agent, whose object checks the signature
+ * against that name before it reads anything, including whether the agent was ever provisioned.
+ */
+export function piAgentViewSocketRequest(agent: PiAgentConfig): Request {
+  const url = new URL("https://pi.do/view-socket");
+  url.searchParams.set("agent", JSON.stringify(agent));
+  return new Request(url, { headers: { upgrade: "websocket" } });
+}
 
 /** Names an agent's object; unlike its config, it does not need the agent to be provisioned. */
 export type PiAgentAddress = Pick<PiAgentConfig, "scope" | "agentName">;
