@@ -1,5 +1,7 @@
 import { assert, describe, expect, test } from "vitest";
 
+import type { ConversationView } from "@earendil-works/pi-durable";
+
 import {
   createAssistantUiMessages,
   piConversationDraftAgentMessage,
@@ -47,28 +49,12 @@ describe("piConversationMessages", () => {
 
     expect(
       piConversationMessages(
-        {
-          conversation: { id: 1 },
-          entries: [
-            { id: 1, conversationId: 1, kind: "pi.user", model: [] },
-            { id: 2, conversationId: 1, kind: "pi.assistant", byTaskId: 8, model: [completed] },
-            {
-              id: 3,
-              conversationId: 1,
-              kind: "pi.assistant",
-              byTaskId: 8,
-              model: [abortedCopy],
-            },
-            {
-              id: 4,
-              conversationId: 1,
-              kind: "pi.assistant",
-              byTaskId: 8,
-              model: [abortedCopy],
-            },
-          ],
-          docs: {},
-        } as never,
+        [
+          { id: 1, conversationId: 1, kind: "pi.user", model: [] },
+          { id: 2, conversationId: 1, kind: "pi.assistant", byTaskId: 8, model: [completed] },
+          { id: 3, conversationId: 1, kind: "pi.assistant", byTaskId: 8, model: [abortedCopy] },
+          { id: 4, conversationId: 1, kind: "pi.assistant", byTaskId: 8, model: [abortedCopy] },
+        ] as never,
         null,
       ).messages,
     ).toEqual([completed]);
@@ -85,13 +71,9 @@ describe("piConversationMessages", () => {
 
     expect(
       piConversationMessages(
-        {
-          conversation: { id: 1 },
-          entries: [
-            { id: 2, conversationId: 1, kind: "pi.assistant", byTaskId: 8, model: [aborted] },
-          ],
-          docs: {},
-        } as never,
+        [
+          { id: 2, conversationId: 1, kind: "pi.assistant", byTaskId: 8, model: [aborted] },
+        ] as never,
         null,
       ).messages,
     ).toEqual([aborted]);
@@ -139,14 +121,14 @@ describe("createAssistantUiMessages", () => {
           },
         },
       },
-    } as never;
+    } as unknown as ConversationView;
 
     const { messages: converted } = createAssistantUiMessages({
       activeContextStartIndex: null,
       draftAgentMessage: piConversationDraftAgentMessage(view),
       readyForInput: false,
       statusText: "Working…",
-      messages: piConversationMessages(view, null).messages,
+      messages: piConversationMessages(view.entries, null).messages,
     });
 
     // The turn keeps the first response's id while the live generation streams onto it.

@@ -186,6 +186,9 @@ type PiEntryHistory = {
   nextPage: { cursor: string | null } | null;
 };
 
+// One shared empty history, so memos that depend on it hold while there is none.
+const NO_HISTORY_ENTRIES: readonly EntryRecord[] = [];
+
 /** Earlier history is fetched only on request, a page at a time. */
 function usePiEntryHistory({ before, pageUrl }: { before: number | null; pageUrl: string }) {
   const [loaded, setLoaded] = useState<PiEntryHistory | null>(null);
@@ -237,7 +240,7 @@ function usePiEntryHistory({ before, pageUrl }: { before: number | null; pageUrl
   }, [history, loading, pageUrl]);
 
   return {
-    entries: history?.entries ?? [],
+    entries: history?.entries ?? NO_HISTORY_ENTRIES,
     hasMore: history?.nextPage != null,
     loading,
     error,
@@ -245,15 +248,12 @@ function usePiEntryHistory({ before, pageUrl }: { before: number | null; pageUrl
   };
 }
 
-function conversationViewWithInactiveHistory(
-  view: ConversationView,
+function transcriptWithInactiveHistory(
+  entries: ConversationView["entries"],
   newestFirstHistory: readonly EntryRecord[],
 ) {
   // The active view leads with its compaction marker; the transcript shows it where it happened.
-  return {
-    ...view,
-    entries: [...newestFirstHistory, ...view.entries].sort((a, b) => a.id - b.id),
-  };
+  return [...newestFirstHistory, ...entries].sort((a, b) => a.id - b.id);
 }
 
 function useStartedWorkflowRunIds(
@@ -446,9 +446,11 @@ function BackofficeOrganizationPiAgent({
     before: activeContextStart,
     pageUrl: `${agentPath}/entries`,
   });
+  // Keyed on the entries, which a commit that changes only documents, such as each streamed
+  // partial, leaves as they were; rebuilding the transcript costs the whole conversation.
   const transcript = useMemo(
-    () => conversationViewWithInactiveHistory(view, history.entries),
-    [history.entries, view],
+    () => transcriptWithInactiveHistory(view.entries, history.entries),
+    [history.entries, view.entries],
   );
   const submittingCompaction =
     fetcher.state !== "idle" && fetcher.formData?.get("intent") === "compact";
@@ -465,7 +467,7 @@ function BackofficeOrganizationPiAgent({
     () => piConversationQueue(view, agentQueue.items),
     [view, agentQueue.items],
   );
-  const contextTokens = useMemo(() => estimatePiContextTokens(view), [view]);
+  const contextTokens = useMemo(() => estimatePiContextTokens(view.entries), [view.entries]);
   const statusText = compacting ? "Compacting…" : running ? "Working…" : null;
   const { messages: assistantMessages, activeContextStartMessageId } = useMemo(
     () =>

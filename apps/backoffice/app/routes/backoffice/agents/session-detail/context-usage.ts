@@ -11,11 +11,11 @@ import type { ConversationView } from "@earendil-works/pi-durable";
  * marker, plus estimates of every later message. Usage recorded before a compaction is stale, so
  * a freshly compacted context is estimated from its messages alone.
  */
-export function estimatePiContextTokens(view: ConversationView): number {
-  const headMarker = view.entries[0]?.head === undefined ? undefined : view.entries[0];
+export function estimatePiContextTokens(entries: ConversationView["entries"]): number {
+  const headMarker = entries[0]?.head === undefined ? undefined : entries[0];
   let trailingTokens = 0;
-  for (let entryIndex = view.entries.length - 1; entryIndex >= 0; entryIndex -= 1) {
-    const entry = view.entries[entryIndex];
+  for (let entryIndex = entries.length - 1; entryIndex >= 0; entryIndex -= 1) {
+    const entry = entries[entryIndex];
     const messages = entry.model ?? [];
     for (let messageIndex = messages.length - 1; messageIndex >= 0; messageIndex -= 1) {
       const message = messages[messageIndex];
