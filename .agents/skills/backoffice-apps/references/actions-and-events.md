@@ -8,9 +8,10 @@ Read [Bookkeeping's endpoint](../../../../apps/bookkeeping/workers/backoffice/ac
 
 Declare the operations agents actually need, with stable action IDs and JSON input/output schemas.
 Register an HTTPS endpoint (HTTP loopback is supported for development). Choose action-change
-approval deliberately: `automatic` applies revisions to existing installations; `installation` keeps
-their approved declaration until an owner approves a new revision. Keep declaration and handler
-together so setup imports the actual served actions.
+approval by trust: `automatic` applies revisions to existing installations and is reserved for apps
+administrators operate; `installation` keeps each installation's approved declaration until an owner
+approves a new revision. Keep declaration and handler together so setup imports the actual served
+actions.
 
 Backoffice exposes them through `app#<slug>`. `integrations.verify` sends a ping;
 `integrations.execute` sends an action. Backoffice validates declared inputs and outputs. The

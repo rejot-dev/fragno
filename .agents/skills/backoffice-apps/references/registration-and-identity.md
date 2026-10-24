@@ -20,24 +20,22 @@ the setup script is separate from permission to run it against a deployment.
 
 Provision a dedicated confidential client, using authorization code + S256 PKCE,
 `client_secret_basic`, and the scopes `openid profile email offline_access backoffice`. Enable
-client credentials for provisioning or installation-owned background work. Use `native` for HTTP
-loopback development callbacks and `web` with HTTPS for production; these remain confidential
-clients. Use separate development and production credentials.
+client credentials for claiming installations, installation-owned background work, and first-party
+provisioning. Use `native` for HTTP loopback development callbacks and `web` with HTTPS for
+production; these remain confidential clients. Use separate development and production credentials.
 
 Register that existing client as an app with:
 
 - an immutable slug, addressed as `app#<slug>`;
 - `requestedPermissions` derived from its scoped API operations;
-- `trust: { kind: "first-party", provisioningPermissions, branding }`;
-- branding fields `displayName`, `logoUrl`, `accentColor`, `homeUrl`, and `supportUrl`;
+- the trust its branch declares: `{ kind: "third-party" }`, or
+  `{ kind: "first-party", provisioningPermissions, branding }`;
 - `{ kind: "none" }` actions unless the product exposes an action endpoint.
 
-First-party provisioning grants are per operation. Bookkeeping requests `org.read` and every
-provisioning permission because it implements those flows; a smaller app should request less. Never
+Request only the permissions the product's calls need: Bookkeeping requests `org.read`. Never
 request `account.manage`, `apps.read`, `apps.manage`, or `org.manage`: only people acting directly
-hold them, and registration rejects them. First-party installations follow changed requested
-permissions within the registry cache lifetime (currently one minute). Treat permission updates as
-authority changes, not just metadata edits.
+hold them, and registration rejects them. Treat permission updates as authority changes, not just
+metadata edits; how they reach existing installations depends on the trust.
 
 ## Ship `backoffice:connect`
 
@@ -52,23 +50,27 @@ pnpm --dir apps/<app> backoffice:connect
 The script owns convergence on the declaration above:
 
 1. Read the app's local configuration and explicit origin overrides. Offer `--help`,
-   `--backoffice-url`, an app-origin flag, and `--slug`; derive callback, branding, and action URLs
-   from those origins. Import action declarations from the handler's canonical definition.
+   `--backoffice-url`, an app-origin flag, and `--slug`; derive callback, action, and first-party
+   branding URLs from those origins. Import action declarations from the handler's canonical
+   definition.
 2. Build the Backoffice CLI, then use its `login` and `exec system` flow against the selected
    Backoffice origin. Parse structured command results and stop on a failed subprocess.
 3. Find the stored OAuth client, following list cursors. Create it only when absent; otherwise
    repair its callback, scopes, and client-credentials setting. Preserve an existing secret;
    recovering a missing secret requires deliberate rotation by the client's owning administrator.
-4. Find the app by OAuth client ID. Create it when absent; otherwise update permissions, trust
-   (including branding), and actions with their explicit update commands. Read both records back and
-   fail with actionable diagnostics if they do not match the intended declaration.
+4. Find the app by OAuth client ID. Create it when absent; otherwise update permissions, trust, and
+   actions with their explicit update commands (`admin.apps.update-permissions`,
+   `admin.apps.update-trust`, `admin.apps.update-actions`). Read both records back and fail with
+   actionable diagnostics if they do not match the intended declaration.
 5. Write the origins, client ID, and secret to the app's ignored `.dev.vars`, preserving unrelated
    entries and valid existing secrets. For a Better Auth app, generate its session/encryption secret
    only when missing or still a placeholder. Keep secret-bearing results out of logs and use
    restrictive file permissions.
-6. Print what was created or repaired and the next steps: restart the app, try sign-in, and, when
-   actions are declared and a tenant is installed, run `integrations.verify` for `app#<slug>`.
-   Report any action revision that requires installation approval.
+6. Run the branch's setup, if any: Bookkeeping also creates its operator organization.
+7. Print what was created or repaired and the next steps: restart the app, try sign-in, link or
+   provision a first tenant, and, when actions are declared and a tenant is installed, run
+   `integrations.verify` for `app#<slug>`. Report any action revision that requires installation
+   approval.
 
 OAuth client creation is not idempotent. Retain newly issued credentials even if a later setup step
 fails, so a retry can repair the same registration. Do not create a replacement client to repair a
@@ -84,7 +86,7 @@ app IDs without rotating valid secrets, and rerunning after a callback or declar
 those records in place. Verify the instructions from a fresh checkout, not only existing local
 state.
 
-## Let Backoffice own sign-up
+## Let Backoffice own sign-in
 
 Use the provider configuration in Bookkeeping's Auth implementation, not a second password or email
 verification flow. Its explicit endpoints are under the Backoffice origin:
@@ -97,20 +99,14 @@ Backoffice does not mount root OIDC discovery. Send `resource=<Backoffice origin
 token, and refresh requests. Establish identity from authenticated userinfo; do not decode an
 unverified ID token as proof of identity. Let the OAuth library own state and PKCE verification.
 
-A signed authorization request for a registered first-party client selects Backoffice's product-
-branded sign-in: email, then a code or the account's password, or GitHub. A code sign-in from a new
-address becomes a verified Backoffice account, even when Backoffice's own sign-up is
-invitation-only. OAuth continues back to the app, which establishes its local session. Product copy
-can say “Get started”; users need not link a second account or know Backoffice's name.
+Userinfo, the token endpoint, and the execution exchange all require the person's recorded OAuth
+consent; the trust decides whether they see a consent screen. Preserve the provider flow instead of
+setting `skip_consent`. OAuth continues back to the app, which establishes its local session.
 
-Backoffice automatically records real OAuth consent through its consent endpoint. First-party
-consents are hidden from personal authorization listings and cannot be revoked there. Preserve this
-provider flow instead of setting `skip_consent`: userinfo and execution still require that record.
-
-Branded sign-in requires a valid provider-signed request, not a free `appId` or branding query
-parameter. Leave code delivery and verification in Backoffice. Local loopback Backoffice prints
-codes for development; production needs its email delivery configured. A logo and support URL are
-real public app resources, not placeholder deployment URLs.
+When the app knows whom it expects, such as the invited address on an invitation page, send it as
+`login_hint`. If another account is signed in to Backoffice, Backoffice then shows its sign-in
+instead of returning that account, as with `prompt=login`; signing in as anyone continues the
+request. Without this, logging out of the app would return the same wrong account.
 
 ## Keep provider tokens on the server
 

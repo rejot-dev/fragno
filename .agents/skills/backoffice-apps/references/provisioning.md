@@ -1,16 +1,19 @@
-# Tenant flows
+# Provisioning
 
-Read the [provisioning contract](../../../../packages/backoffice-api/src/v0/provisioning.ts) for
-exact inputs and results, and the
+First-party apps only: each operation needs the provisioning permission of the same name in the
+app's first-party trust. Read the
+[provisioning contract](../../../../packages/backoffice-api/src/v0/provisioning.ts) for exact inputs
+and results, and the
 [Backoffice provisioning router](../../../../apps/backoffice/app/backoffice-api/provisioning-router.ts)
-for cross-service behavior. The client uses `POST /api/v0/provisioning/<operationId>` with the app's
-client-credentials OAuth token, not an execution token or a scope argument.
+for cross-service behavior. `createBackofficeProvisioningClient` calls
+`POST /api/v0/provisioning/<operationId>` with the app's client-credentials OAuth token, not an
+execution token or a scope argument.
 
-The current operations are `organizations.provision`, `organizations.provisionForInvitee`,
-`projects.provision`, `invitations.create`, `invitations.send`, and `invitations.accept`. The
-earlier hidden-user provisioning and membership-sync design was replaced: users now sign in through
-Backoffice, and Backoffice owns membership. Use the current contract rather than resurrecting those
-historical endpoints.
+The operations are `organizations.provision`, `organizations.provisionForInvitee`,
+`projects.provision`, `invitations.create`, `invitations.send`, and `invitations.accept`. Users sign
+in through Backoffice, and Backoffice owns membership; provisioning never creates users or edits
+membership directly. Linking an organization that already exists is the install and claim flow in
+[tenancy](tenancy.md), not provisioning.
 
 ## Create a tenant
 
@@ -32,7 +35,10 @@ client: firm members reach a client as its members. Operators are the members of
 organization, which Backoffice's administrator creates with
 [the setup script](../../../../apps/bookkeeping/scripts/connect-backoffice.ts) and the app confirms
 like any other membership. Don't keep an allowlist of user IDs in configuration: it can't be audited
-in Backoffice, and changing it needs a deployment.
+in Backoffice, and changing it needs a deployment. Backoffice recording which organization manages
+another is an open
+[proposal](../../../../apps/backoffice/open-issues/2026_10_22-managing-organizations.md), not
+current behavior; keep such links in the app until it lands.
 
 The owner must already have authorized this app's OAuth client. The app secret is not permission to
 impersonate an arbitrary Backoffice user. Sign-up itself creates no organization; provisioning is an
@@ -56,46 +62,6 @@ finds what the first submission made. For a multi-step wizard, run Fragno Workfl
 durably for answers, and use the workflow instance ID as the external organization ID. Retry unknown
 outcomes with the same ID; surface explicit refusals. Preserve answers across retries and make late
 duplicate submissions after completion return the finished destination.
-
-For **linking an existing organization** instead of creating one, read the app-initiated install and
-claim flow in
-[Auth's README](../../../../apps/backoffice/app/fragno/auth/README.md#app-initiated-installation).
-The owner selects it on Backoffice's install page; verify callback state before the server redeems
-the claim code. First-party trust skips permission review, not owner selection or management
-authority. This branch is separate from new-tenant provisioning.
-
-## Confirm access by pulling authority
-
-Read [the access boundary](../../../../apps/bookkeeping/app/organizations/access.server.ts) and its
-[scenarios](../../../../apps/bookkeeping/app/organizations/access.scenario.test.ts). Keep a
-read-only projection keyed by Backoffice organization and user IDs. For each protected request:
-
-1. Require the local session and resolve the target organization, refusing one of another kind than
-   the route serves.
-2. Trust membership only within its explicit confirmation lifetime. Bookkeeping uses 60 seconds,
-   which is also its maximum stale local-access window after removal.
-3. Once stale or absent, obtain the user's OAuth token, exchange for that organization's execution
-   credential, and call `org.get` as that user to refresh organization details and roles.
-4. On confirmed scope refusal, remove the cached membership and deny access (Bookkeeping uses 404).
-   Preserve domain data. On outage, return 503 for unconfirmed access; neither extend stale
-   authority nor delete membership merely because the service is unreachable.
-
-Adopt Backoffice's owner/admin/member roles unless the product explicitly needs additional local
-authorization. Enforce product-specific management rules in server actions, not just hidden UI.
-Bookkeeping lets all members read books and only owners/admins invite or create administrations. Its
-provisioning project endpoint verifies an authorized member, so the stricter product manager rule
-belongs in the app.
-
-Use `org.members.list` and `org.invitations.list` as the viewer and follow their cursors to refresh
-member listings. A local projection is not automatically a global directory of every Backoffice
-organization. Bookkeeping starts with organizations it created or knows, and invitations sent
-through the app. If discovery of externally installed tenants or external invitations is required,
-design that read path explicitly; do not claim the cache already supplies it.
-
-This is pull-based confirmation, not webhook replication. Keep that simpler boundary until a product
-requirement demands push delivery. Fresh local membership can remain usable during an outage only
-until the stated confirmation deadline; scoped API operations still enforce their own live
-Backoffice authority.
 
 ## Add project-backed domain objects only when needed
 

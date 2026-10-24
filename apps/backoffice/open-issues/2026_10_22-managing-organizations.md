@@ -245,5 +245,5 @@ and is MI's choice per relationship.
 - Scenarios in `app/backoffice-api/first-party-app.scenario.test.ts` provision operator → firm →
   client, with an invited firm owner and an ownerless client. They cover access, refusal, and the
   end of a relationship.
-- Bookkeeping's fake Backoffice implements the same contract, and
-  `.agents/skills/backoffice-first-party-app/` describes managed tenancy.
+- Bookkeeping's fake Backoffice implements the same contract, and `.agents/skills/backoffice-apps/`
+  describes managed tenancy.
