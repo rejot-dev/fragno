@@ -1,0 +1,19 @@
+{
+  "extends": "@fragno-private/typescript-config/tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable", "DOM.AsyncIterable"],
+    "types": ["vite/client", "node"],
+    "paths": {
+      "@/*": ["../../apps/backoffice/app/*"]
+    }
+  },
+  "include": [
+    "src",
+    "vite.config.ts",
+    "outbox-fixture-server.ts",
+    "serve.ts",
+    "measure.ts",
+    "run-remote.ts"
+  ]
+}
