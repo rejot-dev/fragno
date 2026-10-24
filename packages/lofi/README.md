@@ -577,7 +577,7 @@ pnpm add @tanstack/browser-db-sqlite-persistence @journeyapps/wa-sqlite
 ```
 
 ```ts
-import { decodeLofiSqliteRow, openLofiSqliteReplica } from "@fragno-dev/lofi/sqlite";
+import { openLofiSqliteReplica } from "@fragno-dev/lofi/sqlite";
 
 const replica = await openLofiSqliteReplica({
   baseUrl: "https://example.com/api/my-fragment", // serves /_internal
@@ -591,13 +591,20 @@ const replica = await openLofiSqliteReplica({
   retryDelayMs: 5_000,
 });
 
-const load = async () => {
-  const rows = await replica.execute(
-    `SELECT * FROM "users_app" WHERE "age" >= ? ORDER BY "age"`,
-    [21],
-  );
-  return rows.map((row) => decodeLofiSqliteRow(appSchema.tables.users, row));
-};
+const { users } = appSchema.tables;
+const load = () =>
+  // Each result column decodes like the schema column it names, or as a plain integer or text.
+  replica.query({
+    sql: `SELECT "id", "email", "joinedAt", count(*) OVER () AS "total"
+          FROM "users_app" WHERE "age" >= ?1 ORDER BY "age"`,
+    params: [21],
+    columns: {
+      id: "text",
+      email: users.columns.email,
+      joinedAt: users.columns.joinedAt,
+      total: "integer",
+    },
+  });
 
 const unsubscribe = replica.subscribe(() => void load());
 // On teardown:
@@ -622,8 +629,11 @@ await replica.close();
 - **Indexes** have the backend's names. All of them are non-unique: a row the server deleted with
   `omitOutbox()` and no truncate notification stays in the replica, and a new row may reuse its
   unique values. There are no foreign keys, because a replica may mirror only some schemas.
-- `decodeLofiSqliteRow(table, row)` restores the record shape of a Fragno query: a `FragnoId` for
-  `id`, a `FragnoReference` for references, and `Date`, boolean, JSON, and bigint values.
+- `replica.query({ sql, params, columns })` decodes each result column like the schema column it
+  names (a `Date`, boolean, parsed JSON, or bigint), or as a plain `"integer"` or `"text"`, which
+  must not be NULL. A declared column missing from the result throws.
+  `decodeLofiSqliteRow(table, row)` restores a whole row in the record shape of a Fragno query: a
+  `FragnoId` for `id`, a `FragnoReference` for references, and decoded values.
 - `lofi_meta` holds the outbox cursor, and `lofi_inbox` holds the entries already applied.
 
 Mutations for schemas you did not register are skipped. A mutation for an unknown table in a
@@ -682,6 +692,10 @@ never sees half of an entry.
   you did not register, is stored as NULL and is not filled in if the row arrives later.
 - **Errors that never clear.** A schema mismatch fails on every attempt, so each tab retries every
   `retryDelayMs` and reports the same error each time.
+- **No snapshot across queries.** Each `execute` or `query` waits for pending writes, but the
+  writing tab can apply an entry between two of a reader's queries, so a view built from several
+  queries can mix states. The next change notification reads again. A read transaction would need
+  its own connection, because replication writes share the tab's.
 - **Coarse refresh.** `subscribe` says only that something changed, not which tables. Sending the
   changed tables would let readers skip unrelated queries.
 - **JSON `null`.** A JSON column holding `null` is stored as SQL `NULL`, the same as a missing

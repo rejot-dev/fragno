@@ -10,4 +10,5 @@ export {
   type LofiSqliteReplicaDependencies,
   type LofiSqliteReplicaOptions,
 } from "./sqlite/replica";
+export type { LofiSqliteQuery, LofiSqliteQueryRow, LofiSqliteResultColumn } from "./sqlite/query";
 export { decodeLofiSqliteRow } from "./sqlite/values";

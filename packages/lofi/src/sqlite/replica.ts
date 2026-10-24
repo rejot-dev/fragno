@@ -9,6 +9,12 @@ import type {
 } from "../types";
 import { SqliteLofiAdapter, type LofiSqliteDatabase } from "./adapter";
 import { LOFI_SQLITE_LAYOUT_VERSION, registeredSchemaName } from "./layout";
+import {
+  decodeLofiSqliteQueryRows,
+  type LofiSqliteQuery,
+  type LofiSqliteQueryRow,
+  type LofiSqliteResultColumn,
+} from "./query";
 
 export type LofiSqliteReplicaOptions = {
   /** Base URL below which the backend serves `/_internal`. */
@@ -39,6 +45,10 @@ export type LofiSqliteReplica = {
   readonly databaseName: string;
   /** Runs SQL on this tab's connection after its pending replication writes. */
   execute: SqliteLofiAdapter["execute"];
+  /** Like `execute`, but decodes each row with the query's declared columns. */
+  query<TColumns extends Record<string, LofiSqliteResultColumn>>(
+    query: LofiSqliteQuery<TColumns>,
+  ): Promise<LofiSqliteQueryRow<TColumns>[]>;
   /** Calls `listener` after any tab applies outbox entries to this replica. */
   subscribe(listener: () => void): () => void;
   /** Stops synchronizing, hands the writer role to another tab, and closes the connection. */
@@ -142,6 +152,9 @@ export async function openLofiSqliteReplica(
   return {
     databaseName,
     execute: (sql, params) => adapter.execute(sql, params),
+    async query(query) {
+      return decodeLofiSqliteQueryRows(query, await adapter.execute(query.sql, query.params));
+    },
     subscribe(listener) {
       listeners.add(listener);
       return () => {
