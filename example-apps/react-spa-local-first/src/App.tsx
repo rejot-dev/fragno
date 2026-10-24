@@ -14,6 +14,8 @@ import {
   type AnyLofiLocalProjection,
 } from "@fragno-dev/lofi";
 
+import { SqliteReplicaPanel } from "./SqliteReplicaPanel";
+
 type SchemaDescriptor = {
   name: string;
   namespace: string | null;
@@ -40,7 +42,7 @@ type EndpointConfig = {
   enabled: boolean;
 };
 
-type AppTab = "tables" | "endpoints" | "commands";
+type AppTab = "tables" | "endpoints" | "commands" | "sqlite";
 
 type EndpointInfo = {
   signature: string;
@@ -298,6 +300,7 @@ const SCHEMA_REGISTRY = new Map<string, AnySchema>([
   [commentSchema.name, commentSchema],
   [upvoteSchema.name, upvoteSchema],
 ]);
+const REGISTERED_SCHEMAS = [...SCHEMA_REGISTRY.values()];
 
 const DEFAULT_ENDPOINTS: EndpointConfig[] = [
   {
@@ -406,6 +409,8 @@ export default function App() {
     DEFAULT_ENDPOINTS,
   );
   const [activeTab, setActiveTab] = useStoredState<AppTab>("fragno-lofi-tab", "tables");
+  // The demo fragments share one database adapter, so any of them serves the whole outbox.
+  const sqliteBaseUrl = endpoints.find((endpoint) => endpoint.enabled)?.baseUrl;
   const [selectedEndpointId, setSelectedEndpointId] = useState<string>(endpoints[0]?.id ?? "");
   const [endpointInfos, setEndpointInfos] = useState<Record<string, EndpointInfo>>({});
   const [selectedTable, setSelectedTable] = useState<TableSelection | null>(null);
@@ -1324,6 +1329,15 @@ export default function App() {
         >
           Commands
         </button>
+        <button
+          className={`tab ${activeTab === "sqlite" ? "tab--active" : ""}`}
+          onClick={() => {
+            setActiveTab("sqlite");
+          }}
+          type="button"
+        >
+          SQLite replica
+        </button>
       </div>
 
       {activeTab === "tables" ? (
@@ -1744,6 +1758,19 @@ export default function App() {
             </div>
           </section>
         </main>
+      ) : activeTab === "sqlite" ? (
+        sqliteBaseUrl ? (
+          <SqliteReplicaPanel
+            baseUrl={sqliteBaseUrl}
+            schemas={REGISTERED_SCHEMAS}
+            localSchemas={LOCAL_SCHEMAS}
+            projections={LOCAL_PROJECTIONS}
+          />
+        ) : (
+          <main className="layout">
+            <div className="empty">Enable an endpoint to open its SQLite replica.</div>
+          </main>
+        )
       ) : (
         <main className="layout layout--commands">
           <section className="panel">
