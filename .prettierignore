@@ -1,5 +1,4 @@
 pnpm-lock.yaml
-ops/backoffice-infra/**
 *.pglite
 example-apps/fragno-db-usage-drizzle/src/schema/*
 example-apps/stripe-webshop/drizzle
