@@ -1,7 +1,7 @@
 import type { OutboxEntry } from "@fragno-dev/db";
 
 import { decodeOutboxPayload, resolveOutboxRefs } from "../outbox";
-import type { LofiAdapter, LofiMutation, LofiSubmitCommand } from "../types";
+import type { LofiMutation, LofiOutboxWriter, LofiSubmitCommand } from "../types";
 
 export type RebaseResult = {
   appliedEntries: number;
@@ -64,7 +64,7 @@ const decodeEntryMutations = (entry: OutboxEntry): LofiMutation[] => {
 };
 
 export const applyOutboxEntries = async (options: {
-  adapter: LofiAdapter;
+  adapter: LofiOutboxWriter;
   entries: OutboxEntry[];
   cursorKey: string;
   sourceKey?: string;
@@ -100,7 +100,7 @@ export const applyOutboxEntries = async (options: {
 };
 
 export const rebaseSubmitQueue = async (options: {
-  adapter: LofiAdapter;
+  adapter: LofiOutboxWriter;
   entries: OutboxEntry[];
   cursorKey: string;
   confirmedCommandIds: string[];

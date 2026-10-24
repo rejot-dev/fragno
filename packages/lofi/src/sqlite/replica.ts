@@ -230,6 +230,16 @@ function startWriterTerm(adapter: SqliteLofiAdapter): {
   return {
     adapter: {
       applyOutboxEntry: (entry) => run(() => adapter.applyOutboxEntry(entry)),
+      // Writes refused mid-batch roll the batch back; the next writer resumes from its start.
+      applyOutboxBatch: (apply) =>
+        run(() =>
+          adapter.applyOutboxBatch((writer) =>
+            apply({
+              applyOutboxEntry: (entry) => run(() => writer.applyOutboxEntry(entry)),
+              setMeta: (key, value) => run(() => writer.setMeta(key, value)),
+            }),
+          ),
+        ),
       getMeta: (key) => run(() => adapter.getMeta(key)),
       setMeta: (key, value) => run(() => adapter.setMeta(key, value)),
     },

@@ -15,6 +15,7 @@ import type {
   AnyLofiLocalProjection,
   LofiAdapter,
   LofiMutation,
+  LofiOutboxWriter,
   LofiSchemaRegistration,
 } from "../types";
 import {
@@ -44,6 +45,8 @@ export type SqliteLofiAdapterOptions = {
 };
 
 type SqlFragment = { sql: string; params: SqliteValue[] };
+
+type OutboxEntryOptions = Parameters<LofiAdapter["applyOutboxEntry"]>[0];
 
 const SCHEMA_STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS "lofi_meta" ("key" TEXT PRIMARY KEY, "value" TEXT NOT NULL)`,
@@ -129,65 +132,84 @@ export class SqliteLofiAdapter implements LofiAdapter {
     return this.#serialize(() => this.#database.execute(sql, params));
   }
 
-  async applyOutboxEntry(options: {
-    sourceKey: string;
-    versionstamp: string;
-    uowId: string;
-    mutations: LofiMutation[];
-  }): Promise<{ applied: boolean }> {
+  applyOutboxEntry(options: OutboxEntryOptions): Promise<{ applied: boolean }> {
+    return this.#transaction(() => this.#applyOutboxEntryInTransaction(options));
+  }
+
+  /**
+   * Applies the batch in one transaction, which saves the commit and the journaling of shared pages,
+   * such as the inbox's and the cursor's, that every entry would otherwise pay for. A failure rolls
+   * back the whole batch.
+   */
+  applyOutboxBatch<T>(apply: (writer: LofiOutboxWriter) => Promise<T>): Promise<T> {
+    return this.#transaction(async () => {
+      let open = true;
+      const whileOpen = <R>(operation: () => Promise<R>): Promise<R> =>
+        open ? operation() : Promise.reject(new Error("The outbox batch has ended."));
+      try {
+        return await apply({
+          applyOutboxEntry: (options) =>
+            whileOpen(() => this.#applyOutboxEntryInTransaction(options)),
+          setMeta: (key, value) => whileOpen(() => this.#writeMeta(key, value)),
+        });
+      } finally {
+        open = false;
+      }
+    });
+  }
+
+  async #applyOutboxEntryInTransaction(options: OutboxEntryOptions): Promise<{ applied: boolean }> {
     const knownMutations = options.mutations.flatMap((mutation) => {
       const known = this.#getKnownSourceMutation(mutation);
       return known ? [known] : [];
     });
 
-    return await this.#transaction(async () => {
-      const inboxKey = [options.sourceKey, options.uowId, options.versionstamp];
-      const existing = await this.#database.execute(
-        `SELECT 1 FROM "lofi_inbox" WHERE "source_key" = ? AND "uow_id" = ? AND "versionstamp" = ?`,
-        inboxKey,
-      );
-      if (existing.length > 0) {
-        return { applied: false };
-      }
+    const inboxKey = [options.sourceKey, options.uowId, options.versionstamp];
+    const existing = await this.#database.execute(
+      `SELECT 1 FROM "lofi_inbox" WHERE "source_key" = ? AND "uow_id" = ? AND "versionstamp" = ?`,
+      inboxKey,
+    );
+    if (existing.length > 0) {
+      return { applied: false };
+    }
 
-      const baseNow = Date.now();
-      const mutations = knownMutations.map((mutation) => resolveMutation(mutation, baseNow));
-      for (const mutation of mutations) {
-        await this.#writeMutation(this.#getLayout(mutation.schema, mutation.table), mutation);
-      }
+    const baseNow = Date.now();
+    const mutations = knownMutations.map((mutation) => resolveMutation(mutation, baseNow));
+    for (const mutation of mutations) {
+      await this.#writeMutation(this.#getLayout(mutation.schema, mutation.table), mutation);
+    }
 
-      await runLocalProjections({
-        projections: this.#projections,
-        mutations,
-        source: {
-          sourceKey: options.sourceKey,
-          uowId: options.uowId,
-          versionstamp: options.versionstamp,
-        },
-        localSchemaMap: this.#localSchemaMap,
-        localTableMap: this.#localTableMap,
-        schemaNameAliases: this.#schemaNameAliases,
-        readRow: async (target, externalId) => {
-          const layout = this.#getLayout(target.schema.name, target.table.name);
-          const [row] = await this.#database.execute(
-            `SELECT * FROM ${quoteSqliteIdentifier(layout.sqlName)} WHERE ${idColumn(layout)} = ?`,
-            [externalId],
-          );
-          return row ? decodeLofiSqliteRow(layout.table, row) : undefined;
-        },
-        writeMutation: (mutation, target) =>
-          this.#writeMutation(
-            this.#getLayout(target.schema.name, target.table.name),
-            resolveMutation(mutation, baseNow) as ProjectionQueuedMutation,
-          ),
-      });
-
-      await this.#database.execute(
-        `INSERT INTO "lofi_inbox" ("source_key", "uow_id", "versionstamp") VALUES (?, ?, ?)`,
-        inboxKey,
-      );
-      return { applied: true };
+    await runLocalProjections({
+      projections: this.#projections,
+      mutations,
+      source: {
+        sourceKey: options.sourceKey,
+        uowId: options.uowId,
+        versionstamp: options.versionstamp,
+      },
+      localSchemaMap: this.#localSchemaMap,
+      localTableMap: this.#localTableMap,
+      schemaNameAliases: this.#schemaNameAliases,
+      readRow: async (target, externalId) => {
+        const layout = this.#getLayout(target.schema.name, target.table.name);
+        const [row] = await this.#database.execute(
+          `SELECT * FROM ${quoteSqliteIdentifier(layout.sqlName)} WHERE ${idColumn(layout)} = ?`,
+          [externalId],
+        );
+        return row ? decodeLofiSqliteRow(layout.table, row) : undefined;
+      },
+      writeMutation: (mutation, target) =>
+        this.#writeMutation(
+          this.#getLayout(target.schema.name, target.table.name),
+          resolveMutation(mutation, baseNow) as ProjectionQueuedMutation,
+        ),
     });
+
+    await this.#database.execute(
+      `INSERT INTO "lofi_inbox" ("source_key", "uow_id", "versionstamp") VALUES (?, ?, ?)`,
+      inboxKey,
+    );
+    return { applied: true };
   }
 
   async getMeta(key: string): Promise<string | undefined> {
@@ -195,8 +217,12 @@ export class SqliteLofiAdapter implements LofiAdapter {
     return row ? (row["value"] as string) : undefined;
   }
 
-  async setMeta(key: string, value: string): Promise<void> {
-    await this.execute(
+  setMeta(key: string, value: string): Promise<void> {
+    return this.#serialize(() => this.#writeMeta(key, value));
+  }
+
+  async #writeMeta(key: string, value: string): Promise<void> {
+    await this.#database.execute(
       `INSERT INTO "lofi_meta" ("key", "value") VALUES (?, ?) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value"`,
       [key, value],
     );

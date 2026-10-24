@@ -18,6 +18,7 @@ import type {
   InMemoryLofiAdapterOptions,
   LofiAdapter,
   LofiMutation,
+  LofiOutboxWriter,
   LofiProjectionRowLookup,
   LofiProjectionRowSnapshot,
   LofiQueryEngineOptions,
@@ -152,6 +153,11 @@ export class InMemoryLofiAdapter
         endpointName: this.endpointName,
         schemas: allSchemas,
       });
+  }
+
+  /** Each entry commits on its own, so a failed batch keeps the entries applied before it. */
+  applyOutboxBatch<T>(apply: (writer: LofiOutboxWriter) => Promise<T>): Promise<T> {
+    return apply(this);
   }
 
   async applyOutboxEntry(options: {

@@ -393,10 +393,20 @@ export type LofiAdapter = {
     uowId: string;
     mutations: LofiMutation[];
   }): Promise<{ applied: boolean }>;
+  /**
+   * Applies consecutive outbox entries, and the batch's cursor write, through `writer`, which is
+   * valid only until `apply` settles. An adapter may commit the batch as one transaction. When the
+   * batch fails, it keeps either none of it or the writes made before the failure, so callers resume
+   * from before the batch and rely on the adapter to skip the entries it kept.
+   */
+  applyOutboxBatch<T>(apply: (writer: LofiOutboxWriter) => Promise<T>): Promise<T>;
   applyMutations?(mutations: LofiMutation[]): Promise<void>;
   getMeta(key: string): Promise<string | undefined>;
   setMeta(key: string, value: string): Promise<void>;
 };
+
+/** Writes one batch of outbox entries; see `LofiAdapter.applyOutboxBatch`. */
+export type LofiOutboxWriter = Pick<LofiAdapter, "applyOutboxEntry" | "setMeta">;
 
 export type IndexedDbAdapterOptions = {
   dbName?: string;
