@@ -59,6 +59,8 @@ export const PiDurableBillingDoc = defineDoc<PiDurableBillingState>({
   kind: "backoffice.pi.billing",
   version: 1,
   scope: "session",
+  // A few counters, so every change stores the whole document.
+  checkpointWhen: () => true,
   initial: () => ({
     delivered: piBillingCountersFromUsage([]),
     conversationId: null,
@@ -157,8 +159,10 @@ function createPiDurableBillingTask(input: {
       },
       deliver: async (task, runtime, context) => {
         const checkpoint = task.state.checkpoint;
+        // Retries sleep until their time; a delivery stored before sleeps existed waited here.
         if (checkpoint.retryAtEpochMs > runtime.now()) {
-          await runtime.sleep(checkpoint.retryAtEpochMs, context);
+          await runtime.sleepUntil(checkpoint.retryAtEpochMs, checkpoint, context);
+          return;
         }
 
         let result: BillingRecordEventResult;
@@ -168,15 +172,10 @@ function createPiDurableBillingTask(input: {
             : recordLegacyEvent(checkpoint.event));
         } catch (error) {
           runtime.report(error);
-          await runtime.commit(
-            () => ({
-              status: "running",
-              checkpoint: {
-                ...checkpoint,
-                attempt: checkpoint.attempt + 1,
-                retryAtEpochMs: runtime.now() + retryDelayMs(checkpoint.attempt),
-              },
-            }),
+          const retryAtEpochMs = runtime.now() + retryDelayMs(checkpoint.attempt);
+          await runtime.sleepUntil(
+            retryAtEpochMs,
+            { ...checkpoint, attempt: checkpoint.attempt + 1, retryAtEpochMs },
             context,
           );
           return;

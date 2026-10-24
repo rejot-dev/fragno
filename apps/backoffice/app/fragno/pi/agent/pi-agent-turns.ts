@@ -31,6 +31,8 @@ const PiAgentTurnsDoc = defineDoc<PiAgentTurnsState>({
   kind: "backoffice.pi.turns",
   version: 1,
   scope: "session",
+  // Each turn adds and settles its record; a base every 32 changes keeps reopening cheap.
+  checkpointWhen: (_value, _ops, { deltasSinceBase }) => deltasSinceBase >= 31,
   initial: () => ({ pending: {}, latest: null }),
 });
 
