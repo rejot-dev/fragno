@@ -24,7 +24,20 @@ import {
 
 import type { BillingEventInput } from "@/fragno/billing/contracts";
 
-import { createPiBilling, PiDurableBillingDoc } from "./billing-extension";
+import { createPiBilling, PiDurableBillingDoc, type PiBilling } from "./billing-extension";
+
+/** Delivers usage through the committed watermark, as an agent's wakeups do. */
+async function deliverUsage(billing: PiBilling, harness: Harness, nowEpochMs: number) {
+  for (;;) {
+    const taskId = await billing.ensure(harness, nowEpochMs, BACKGROUND_CONTEXT);
+    if (taskId === null) {
+      return;
+    }
+    harness.resume();
+    await harness.waitForTask(taskId, BACKGROUND_CONTEXT);
+    await billing.assertNotFailed(harness, taskId, BACKGROUND_CONTEXT);
+  }
+}
 
 const config: PiAgentConfig = {
   scope: { kind: "project", owner: { kind: "org", orgId: "org-1" }, projectId: "project-1" },
@@ -91,7 +104,7 @@ test("durable Pi billing retries the exact event after delivery succeeds before 
       usage.models = committedUsage.models;
     }, BACKGROUND_CONTEXT);
 
-    await billing.flush(harness, () => Date.parse("2026-10-03T12:00:00.000Z"), BACKGROUND_CONTEXT);
+    await deliverUsage(billing, harness, Date.parse("2026-10-03T12:00:00.000Z"));
 
     expect(attempts).toHaveLength(2);
     expect(attempts[1]).toEqual(attempts[0]);
@@ -115,7 +128,7 @@ test("durable Pi billing retries the exact event after delivery succeeds before 
     expect(billingState).toMatchObject({ activeTaskId: null });
     expect(billingState?.delivered).toMatchObject({ totalTokens: 140, totalNanoUsd: 696_750 });
 
-    await billing.flush(harness, () => Date.parse("2026-10-03T12:01:00.000Z"), BACKGROUND_CONTEXT);
+    await deliverUsage(billing, harness, Date.parse("2026-10-03T12:01:00.000Z"));
     expect(attempts).toHaveLength(2);
   } finally {
     await harness.close(BACKGROUND_CONTEXT);
@@ -167,11 +180,7 @@ test.each(["owner", "legacy"] as const)(
         const usage = await tx.doc(UsageDoc, ROOT_CONVERSATION_ID);
         usage.models = committedUsage.models;
       }, BACKGROUND_CONTEXT);
-      await sourceBilling.flush(
-        sourceHarness,
-        () => Date.parse("2026-10-03T12:00:00.000Z"),
-        BACKGROUND_CONTEXT,
-      );
+      await deliverUsage(sourceBilling, sourceHarness, Date.parse("2026-10-03T12:00:00.000Z"));
       await sourceHarness.close(BACKGROUND_CONTEXT);
 
       if (attribution === "legacy") {
@@ -192,10 +201,10 @@ test.each(["owner", "legacy"] as const)(
         BACKGROUND_CONTEXT,
       );
       try {
-        await restoredBilling.flush(
+        await deliverUsage(
+          restoredBilling,
           restoredHarness,
-          () => Date.parse("2026-10-03T12:01:00.000Z"),
-          BACKGROUND_CONTEXT,
+          Date.parse("2026-10-03T12:01:00.000Z"),
         );
         expect(attempts).toHaveLength(2);
         expect(attempts[1]).toEqual(attempts[0]);
@@ -212,10 +221,10 @@ test.each(["owner", "legacy"] as const)(
           usage.models["faux/faux-1"].input += 10;
           usage.models["faux/faux-1"].totalTokens += 10;
         }, BACKGROUND_CONTEXT);
-        await restoredBilling.flush(
+        await deliverUsage(
+          restoredBilling,
           restoredHarness,
-          () => Date.parse("2026-10-03T12:02:00.000Z"),
-          BACKGROUND_CONTEXT,
+          Date.parse("2026-10-03T12:02:00.000Z"),
         );
         expect(destinations).toEqual(["original", attribution, "owner"]);
         expect(acceptedEvents).toHaveLength(2);
@@ -271,11 +280,7 @@ test("root conversation cancellation does not abort ownerless billing delivery",
       usage.models = committedUsage.models;
     }, BACKGROUND_CONTEXT);
 
-    const flushing = billing.flush(
-      harness,
-      () => Date.parse("2026-10-03T12:00:00.000Z"),
-      BACKGROUND_CONTEXT,
-    );
+    const flushing = deliverUsage(billing, harness, Date.parse("2026-10-03T12:00:00.000Z"));
     await recordEventStarted;
     await root.abort(BACKGROUND_CONTEXT, { background: true });
     releaseRecordEvent();
