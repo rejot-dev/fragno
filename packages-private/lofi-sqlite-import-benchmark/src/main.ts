@@ -7,6 +7,7 @@ import {
 import { openBrowserWASQLiteOPFSDatabase } from "@tanstack/browser-db-sqlite-persistence";
 
 import { automationFragmentSchema } from "../../../apps/backoffice/app/fragno/automation/schema";
+import { uploadSchema } from "../../../packages/fragment-upload/src/schema";
 import { backofficeViews } from "./backoffice-views";
 import { instrumentDatabase, type DatabaseMeasurements } from "./instrumented-database";
 import { FIXTURE_BASE_PATH, FIXTURE_INFO_PATH, type OutboxFixtureInfo } from "./outbox-fixture";
@@ -20,10 +21,12 @@ declare global {
   }
 }
 
-const REGISTRATION = { schema: automationFragmentSchema };
+/** The fixture's schema, from the page URL: `?schema=upload` replays an Upload outbox. */
+const UPLOAD = new URLSearchParams(location.search).get("schema") === "upload";
+const REGISTRATION = { schema: UPLOAD ? uploadSchema : automationFragmentSchema };
 // Older outbox entries still write these tables, which the schema removed with `noOp`, and the
 // replica rejects unknown tables of a registered schema.
-const REMOVED_TABLES = ["sandbox_instance", "marketplace_ingestion"];
+const REMOVED_TABLES = UPLOAD ? [] : ["sandbox_instance", "marketplace_ingestion"];
 // `openLofiSqliteReplica` runs its `LofiClient` with endpoint name "lofi-sqlite".
 const CURSOR_META_KEY = "lofi-sqlite::outbox";
 const SAMPLE_INTERVAL_MS = 500;
@@ -75,7 +78,9 @@ let importRun: ImportRun | null = null;
 let downloadRun: DownloadRun | null = null;
 
 elements.fixture.textContent = `${fixture.path}: ${fixture.versionstamps.length} entries, ${formatMb(fixture.bytes)}`;
-elements.sql.value = `SELECT "source", "eventType", count(*) AS "count" FROM "${lofiSqliteTableName(REGISTRATION, "automation_event")}" GROUP BY 1, 2 ORDER BY 3 DESC`;
+elements.sql.value = UPLOAD
+  ? `SELECT "provider", "status", count(*) AS "count" FROM "${lofiSqliteTableName(REGISTRATION, "file")}" GROUP BY 1, 2 ORDER BY 3 DESC`
+  : `SELECT "source", "eventType", count(*) AS "count" FROM "${lofiSqliteTableName(REGISTRATION, "automation_event")}" GROUP BY 1, 2 ORDER BY 3 DESC`;
 for (const button of [elements.importButton, elements.downloadButton, elements.resetButton]) {
   button.disabled = false;
 }
@@ -134,7 +139,7 @@ async function runImport(): Promise<void> {
       localSchemas: local.localSchemas,
       projections: local.projections,
       ephemeralTables: REMOVED_TABLES.map((table) => ({
-        schema: automationFragmentSchema.name,
+        schema: REGISTRATION.schema.name,
         table,
       })),
       onError: reportError,
