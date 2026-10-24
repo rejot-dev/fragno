@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { BackofficeApiOperation, BackofficeApiStream } from "../api";
+import type { BackofficeApiOperation } from "../api";
 import { automationRouteManagedBySchema } from "./automation";
 import {
   allBackofficePermissionRequirements,
@@ -161,6 +161,30 @@ export const piPromptReceiptOutputSchema = z.lazy(() =>
 );
 export type PiPromptReceipt = z.infer<typeof piPromptReceiptOutputSchema>;
 
+/** An item waiting in an agent's queue, as its viewers see it. */
+export type PiAgentQueueEntry =
+  | { type: "prompt"; requestId: string; content: string }
+  | { type: "notification"; requestId: string; source: string; eventType: string };
+
+/**
+ * What the `pi.agent.watch` WebSocket sends, one JSON frame per message: the whole conversation view
+ * once, on connecting, then each commit's ops, which turn the view the socket has into the
+ * committed one; and the items waiting in the agent's queue whenever they change. The view is Pi
+ * Durable's `ConversationView` and the ops are Chord's `Op`, which `applyImmutable` from
+ * `@earendil-works/chord/delta` applies.
+ */
+export type PiAgentWatchFrame<TView = unknown, TOp = unknown> =
+  | { type: "view"; view: TView }
+  | { type: "ops"; ops: readonly TOp[] }
+  | { type: "queue"; paused: boolean; items: PiAgentQueueEntry[] };
+
+/**
+ * `pi.agent.watch` closes with a code from 4000 up, and says why, when reconnecting cannot help,
+ * such as for a missing permission or a damaged conversation; any other close is worth reconnecting
+ * after.
+ */
+export const PI_AGENT_WATCH_REFUSED = 4000;
+
 const agentInputSchema = z.lazy(() => z.strictObject({ agentName: piAgentNameSchema }));
 
 const promptSubmitInputSchema = z.lazy(() =>
@@ -245,34 +269,6 @@ const exportInputSchema = z.lazy(() =>
   }),
 );
 
-const piAgentQueueEntrySchema = z.lazy(() =>
-  z.discriminatedUnion("type", [
-    z.object({ type: z.literal("prompt"), requestId: z.string(), content: z.string() }),
-    z.object({
-      type: z.literal("notification"),
-      requestId: z.string(),
-      source: z.string(),
-      eventType: z.string(),
-    }),
-  ]),
-);
-export type PiAgentQueueEntry = z.infer<typeof piAgentQueueEntrySchema>;
-
-/**
- * `snapshot` and `update` replace the agent's whole durable conversation view with one committed
- * revision, and `queue` replaces the items waiting in its queue and whether the queue is paused.
- */
-export const piAgentWatchFrameSchema = z.lazy(() =>
-  z.discriminatedUnion("type", [
-    z.object({ type: z.enum(["snapshot", "update"]), view: z.unknown() }),
-    z.object({
-      type: z.literal("queue"),
-      paused: z.boolean(),
-      items: z.array(piAgentQueueEntrySchema),
-    }),
-  ]),
-);
-
 export const piOperations = {
   "pi.agent.list": {
     description: "List the built-in agents and the agents defined in the current scope.",
@@ -354,13 +350,3 @@ export const piOperations = {
     ),
   },
 } satisfies Record<string, BackofficeApiOperation>;
-
-export const piStreams = {
-  "pi.agent.watch": {
-    description:
-      "Watch an agent's conversation live. The stream opens with a queue frame and a snapshot of the conversation view, then sends an update with the whole view whenever it commits, including partial answers while the agent generates, and a queue frame whenever its queue changes. Reconnecting starts again from a snapshot. An agent that has never had a turn answers 404.",
-    permissions: [BACKOFFICE_PERMISSION.pi.read],
-    input: agentInputSchema,
-    frame: piAgentWatchFrameSchema,
-  },
-} satisfies Record<string, BackofficeApiStream>;

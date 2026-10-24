@@ -53,14 +53,43 @@ transfer APIs will replace it for large files. Errors return `{ error: { code, m
 `operation_failed` 422. `not_found` also covers things the request names, such as an unknown id, and
 `operation_failed` is reserved for failures no other code describes.
 
-## Watching a stream
+## Watching an agent
 
-Streams (`streams` in a version, beside `operations`) are requested like operations, at
-`POST /api/<version>/scopes/<scope>/<streamId>` with the same credential, input, permissions, and
-errors. A successful response is `200` with `application/x-ndjson`: one JSON frame per line, each
-matching the stream's `frame` schema, until the caller disconnects or Backoffice ends the stream.
-`pi.agent.watch` follows an agent's conversation live; reconnecting starts again from a snapshot, so
-a dropped connection needs no cursor to resume.
+`pi.agent.watch` follows an agent's conversation and queue live over a WebSocket, which is not an
+operation: open it with `GET /api/<version>/scopes/<scope>/pi.agent.watch?agentName=<agentName>`, an
+upgrade, and a bearer token. It needs `pi.read` in the scope. Since browsers cannot send a
+WebSocket's headers, it is for servers:
+
+```ts
+import { applyImmutable, type Op } from "@earendil-works/chord/delta";
+import type { ConversationView } from "@earendil-works/pi-durable";
+import { PI_AGENT_WATCH_REFUSED, type PiAgentWatchFrame } from "@fragno-dev/backoffice-api/v0/pi";
+
+const socket = new WebSocket(
+  `${origin}/api/v0/scopes/org:${orgId}/pi.agent.watch?agentName=assistant`,
+  {
+    headers: { authorization: `Bearer ${token}` },
+  },
+);
+let view: ConversationView;
+socket.addEventListener("message", ({ data }) => {
+  const frame = JSON.parse(data) as PiAgentWatchFrame<ConversationView, Op>;
+  if (frame.type === "view") view = frame.view;
+  if (frame.type === "ops") view = applyImmutable(view, frame.ops);
+});
+socket.addEventListener("close", ({ code, reason }) => {
+  if (code >= PI_AGENT_WATCH_REFUSED) throw new Error(reason);
+  // Otherwise reconnect, which starts again from a whole view.
+});
+```
+
+The socket sends a `queue` frame, then a `view` frame with the whole conversation view, then an
+`ops` frame with each commit's changes, including partial answers while the agent generates, and a
+`queue` frame whenever the queue changes (`PiAgentWatchFrame`). A request that cannot upgrade, such
+as one with an invalid credential, answers with an error like an operation's. A missing permission,
+an agent that has had no turns, and a name no agent has close the socket with
+`PI_AGENT_WATCH_REFUSED` and the reason. The credential is only checked on connecting, so an open
+socket outlives it.
 
 ## Client
 
@@ -84,20 +113,6 @@ envelope's code, or `null` when the response was not an API error (for example a
 the outcome is unknown. Network failures reject with `BackofficeApiUnreachableError`, whose outcome
 is also unknown. Anything else, such as a success body that does not match the client's contract, is
 a bug and rejects unchanged.
-
-`watch` opens a stream and yields its frames, parsed by the stream's frame schema. Leaving the loop
-closes the connection. A stream that cannot open rejects like `call`, and a connection lost
-mid-stream rejects with `BackofficeApiUnreachableError`:
-
-```ts
-for await (const frame of backoffice.watch({ kind: "org", orgId }, "pi.agent.watch", {
-  agentName: "assistant",
-})) {
-  if (frame.type !== "queue") {
-    render(frame.view);
-  }
-}
-```
 
 ## Projects
 

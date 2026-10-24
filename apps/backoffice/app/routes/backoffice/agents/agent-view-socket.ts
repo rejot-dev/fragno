@@ -1,11 +1,11 @@
 import { requireRouteScope } from "@/layouts/backoffice-shell-request.server";
 
-import type { Route } from "./+types/agent-view-stream";
-import { fetchPiManagerAgentViewStream } from "./data";
+import type { Route } from "./+types/agent-view-socket";
+import { openPiAgentViewSocket } from "./data";
 
-/** Proxies the authorized durable agent NDJSON stream to the browser. */
+/** Upgrades to the agent's view socket, which the agent object serves directly. */
 export async function loader({ request, params, context }: Route.LoaderArgs) {
-  return await fetchPiManagerAgentViewStream(
+  return await openPiAgentViewSocket(
     request,
     context,
     requireRouteScope(context).execution.scope,

@@ -1,8 +1,5 @@
-import type {
-  PiAgentConfig,
-  PiAgentDefinition,
-  PiAgentQueueEntry,
-} from "@fragno-dev/backoffice-api/v0/pi";
+import type { PiAgentConfig, PiAgentDefinition } from "@fragno-dev/backoffice-api/v0/pi";
+import type { PiAgentQueueEntry } from "@fragno-dev/backoffice-api/v0/pi";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { FragnoId } from "@fragno-dev/db/schema";
 
@@ -100,45 +97,17 @@ export async function handOverPiAgentWork(
   }
 }
 
-export type PiAgentQueueChannel = ReturnType<typeof createPiAgentQueueChannel>;
-
-/** Each agent's waiting items, published as its queue changes to the manager object's streams. */
-export function createPiAgentQueueChannel() {
-  const latest = new Map<string, PiAgentWaitingQueue>();
-  const listeners = new Map<string, Set<(queue: PiAgentWaitingQueue) => void>>();
-
-  // Concurrent requests may publish out of order, so only a newer revision replaces the latest.
-  function publish(agentName: string, queue: PiAgentWaitingQueue) {
-    const current = latest.get(agentName);
-    if (current && current.revision >= queue.revision) {
-      return;
-    }
-    latest.set(agentName, queue);
-    for (const listener of listeners.get(agentName) ?? []) {
-      listener(queue);
-    }
+/**
+ * Shows the agent's viewers what waits in its queue once a change to it commits. The change stands
+ * either way, and the next change or a reconnecting viewer publishes again, so a failure is only
+ * reported.
+ */
+export async function publishPiAgentQueue(agent: PiAgent, queue: PiAgentWaitingQueue) {
+  try {
+    await agent.publishQueue(queue);
+  } catch (error) {
+    console.error("Publishing a Pi agent's queue to its viewers failed.", error);
   }
-
-  return {
-    publish,
-    /**
-     * Calls the listener at once with the newer of `read` and the latest publication, then with
-     * every newer revision, so a change committed while `read` was taken is not missed.
-     */
-    watch(
-      agentName: string,
-      read: PiAgentWaitingQueue,
-      listener: (queue: PiAgentWaitingQueue) => void,
-    ): () => void {
-      publish(agentName, read);
-      listener(latest.get(agentName) ?? read);
-      const agentListeners = listeners.get(agentName) ?? new Set();
-      listeners.set(agentName, agentListeners.add(listener));
-      return () => {
-        agentListeners.delete(listener);
-      };
-    },
-  };
 }
 
 /** `status` repeats the state's tag so the queue's index can find live items. */

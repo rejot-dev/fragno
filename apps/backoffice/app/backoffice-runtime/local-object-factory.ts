@@ -238,6 +238,26 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
     return { commands: stub, http };
   }
 
+  piAgent(agent: PiAgentAddress): Pick<BackofficeObjectHttp, "fetchAuthorized"> {
+    return {
+      fetchAuthorized: async (request, context) => {
+        const agents = this.#namespaces.PI as LocalDurableObjectNamespace<InMemoryPiObject>;
+        return await agents.get(agents.idFromName(piAgentObjectName(agent))).fetch(
+          await createAuthorizedBackofficeObjectRequest({
+            request,
+            address: { binding: "PI", agent },
+            context: {
+              execution: context.execution,
+              propagationContext: context.propagationContext ?? null,
+            },
+            env: this.env as unknown as CloudflareEnv,
+            nowEpochMs: this.now(),
+          }),
+        );
+      },
+    };
+  }
+
   async restorePersistedInstances(): Promise<void> {
     for (const id of this.#sqlite?.storage.objectIds() ?? []) {
       const persistedObject = this.#resolvePersistedObject(id);

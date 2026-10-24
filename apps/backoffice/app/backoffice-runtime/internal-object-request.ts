@@ -1,5 +1,10 @@
-import { backofficeContextScopesEqual } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  backofficeContextScopesEqual,
+  type BackofficeContextScope,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
+
+import { piAgentObjectName, type PiAgentAddress } from "@/fragno/pi/agent/pi-agent-contract";
 
 import type { BackofficeRuntimeEnv } from "./backoffice-runtime-env";
 import { backofficeExecutionContextSchema, type BackofficeExecutionContext } from "./context";
@@ -32,6 +37,25 @@ const backofficeInternalContextPayloadSchema = z.strictObject({
 });
 
 type BackofficeInternalContextPayload = z.infer<typeof backofficeInternalContextPayloadSchema>;
+
+/**
+ * An object a signed request is for: a registry address, or an agent object, which is named by its
+ * agent rather than by a registry address.
+ */
+export type BackofficeSignedObject =
+  | BackofficeObjectAddress
+  | { binding: "PI"; agent: PiAgentAddress };
+
+function signedObjectName(object: BackofficeSignedObject): string {
+  return object.binding === "PI"
+    ? piAgentObjectName(object.agent)
+    : encodeBackofficeObjectAddress(object);
+}
+
+/** The scope a signed request's execution must have to reach the object. */
+function signedObjectScope(object: BackofficeSignedObject): BackofficeContextScope {
+  return object.binding === "PI" ? object.agent.scope : objectScopeToContextScope(object.scope);
+}
 
 export type BackofficeAuthorizedRequestContext = {
   execution: BackofficeExecutionContext;
@@ -170,7 +194,7 @@ export async function createAuthorizedBackofficeObjectRequest({
   requestId = crypto.randomUUID(),
 }: {
   request: Request;
-  address: BackofficeObjectAddress;
+  address: BackofficeSignedObject;
   context: BackofficeAuthorizedRequestContext;
   env: Pick<BackofficeRuntimeEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">;
   nowEpochMs?: number;
@@ -180,7 +204,7 @@ export async function createAuthorizedBackofficeObjectRequest({
   const payload: BackofficeInternalContextPayload = {
     version: INTERNAL_CONTEXT_VERSION,
     binding: address.binding,
-    objectName: encodeBackofficeObjectAddress(address),
+    objectName: signedObjectName(address),
     method: request.method,
     pathname: url.pathname,
     search: url.search,
@@ -208,7 +232,7 @@ export async function verifyAuthorizedBackofficeObjectRequest({
   nowEpochMs = Date.now(),
 }: {
   request: Request;
-  address: BackofficeObjectAddress;
+  address: BackofficeSignedObject;
   env: Pick<BackofficeRuntimeEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">;
   nowEpochMs?: number;
 }): Promise<VerifiedBackofficeInternalRequest> {
@@ -230,7 +254,7 @@ export async function verifyAuthorizedBackofficeObjectRequest({
   const requestUrl = new URL(request.url);
   if (
     payload.binding !== address.binding ||
-    payload.objectName !== encodeBackofficeObjectAddress(address) ||
+    payload.objectName !== signedObjectName(address) ||
     payload.method !== request.method ||
     payload.pathname !== requestUrl.pathname ||
     payload.search !== requestUrl.search
@@ -247,8 +271,7 @@ export async function verifyAuthorizedBackofficeObjectRequest({
     throw new BackofficeInternalRequestError("Backoffice internal request context has expired.");
   }
 
-  const objectScope = objectScopeToContextScope(address.scope);
-  if (!backofficeContextScopesEqual(payload.execution.scope, objectScope)) {
+  if (!backofficeContextScopesEqual(payload.execution.scope, signedObjectScope(address))) {
     throw new BackofficeInternalRequestError(
       "Backoffice internal request execution scope does not match the object address.",
     );

@@ -121,16 +121,16 @@ oldest item it handles.
   Backoffice UI sends `resume`; the default, `wait`, keeps automations and workflows from undoing a
   stop, so a workflow waiting for a prompt's turn event keeps waiting.
 
-Each change is one retrieve and one mutation, then at most one call to the agent object. The
-mutation decides: it admits the item against the agent's definition and models as they are then,
-provisions the agent on its first prompt, and records the placement. Every change updates the agent
-row with Fragno's optimistic version check, so concurrent changes to one queue conflict and retry,
-and a new item takes the row's new version as its position. A concurrent first prompt retries on the
-agent row's unique conflict. The agent's settled-turn outbox (see Turn events) reports every settled
-turn through the manager object's `reportSettledTurn` command, whose mutation settles every item of
-the dispatched turn and dispatches the next one, admitted against the definition as it is then. When
-the definition or model it needs is gone, every waiting item is dropped with the reason, since
-admission does not depend on the item.
+Each change is one retrieve and one mutation, then the queue's publication to the agent object (see
+below) and at most one other call to it. The mutation decides: it admits the item against the
+agent's definition and models as they are then, provisions the agent on its first prompt, and
+records the placement. Every change updates the agent row with Fragno's optimistic version check, so
+concurrent changes to one queue conflict and retry, and a new item takes the row's new version as
+its position. A concurrent first prompt retries on the agent row's unique conflict. The agent's
+settled-turn outbox (see Turn events) reports every settled turn through the manager object's
+`reportSettledTurn` command, whose mutation settles every item of the dispatched turn and dispatches
+the next one, admitted against the definition as it is then. When the definition or model it needs
+is gone, every waiting item is dropped with the reason, since admission does not depend on the item.
 
 Items are recorded before the agent receives them. Each handover also triggers a durable hook that
 repeats it: `redispatchAgentQueue` hands every unsettled dispatched or steered item over again, and
@@ -143,10 +143,12 @@ and `{ type: "input", status: "dropped", requestId, reason }` once dropped. Once
 dispatched, a request's submission is its turn's, so every notification a turn handled answers with
 that turn's submission.
 
-Every change publishes the agent's waiting items and whether its queue is paused, with the agent
-row's version as their revision, to the manager object's in-memory queue channel. The view stream
-leads with them and sends them again as a `queue` frame whenever they change; an older revision
-published late is ignored.
+Once a change commits, the manager publishes the agent's waiting items and whether its queue is
+paused to the agent object, with the agent row's version as their revision; the agent ignores an
+older revision published late. The change stands if publishing fails, and the next change publishes
+again. The agent keeps the latest in memory only, so the manager's answer when a viewer connects
+carries it too (see View socket). The socket leads with them and sends them again as a `queue` frame
+whenever they change.
 
 Work that waits is also recorded as `pi` events, attributed to its sender, so views show the queue
 the agent page shows. `queue.added` records an item that starts waiting, with its type: `prompt` or
@@ -264,8 +266,6 @@ All paths below are mounted at `/api/pi-manager` inside the manager object:
 - `GET /agents/:agentName/submissions/:requestId`: Pi's submission record, or the queue's record of
   an item Pi does not have; see Queue.
 - `GET /agents/:agentName/view`: Pi's committed active structural conversation view.
-- `GET /agents/:agentName/view-stream`: NDJSON `snapshot` and `update` frames of that view,
-  interleaved with `queue` frames listing the items waiting in the agent's queue; see Queue.
 - `GET /agents/:agentName/entries?cursor=...&pageSize=...`: newest-first, fork-aware durable entry
   history (maximum 256 entries per page).
 - `GET /agents/:agentName/messages?last=...&before=...`: the `last` (default 20, at most 100)
@@ -279,9 +279,9 @@ All paths below are mounted at `/api/pi-manager` inside the manager object:
 - `POST /agents/:agentName/resume`: resumes a paused queue; see Queue.
 
 Conversation routes return `404 AGENT_NOT_STARTED` before an agent's first turn. A damaged Chord
-document path returns `409 PI_CONVERSATION_VIEW_DAMAGED` from the view and stream routes instead of
-presenting an entry-only view as an idle conversation. Durable entry history and JSONL export remain
-independent read paths.
+document path returns `409 PI_CONVERSATION_VIEW_DAMAGED` from the view route, and closes the view
+socket, instead of presenting an entry-only view as an idle conversation. Durable entry history and
+JSONL export remain independent read paths.
 
 Manager HTTP requests must use `http.fetchAuthorized` with a matching execution scope. The manager
 verifies the signed object address and enforces the existing `pi.read` / `pi.modify` permissions.
@@ -292,6 +292,26 @@ no Fragno workflow involved in agent execution. The same manager and agent lifec
 Cloudflare and local/Node runtimes. Local agents use Pi Durable's Node SQLite adapter: in-memory
 SQLite for transient scenarios, or one `pi-agent-*.sqlite` file per agent in the configured SQLite
 data directory.
+
+## View socket
+
+Viewers watch an agent's conversation over a WebSocket that the agent object serves, with no manager
+in between: the browser through the agent page's `view-socket` route, and API callers through
+`pi.agent.watch` (see `@fragno-dev/backoffice-api`'s README). The worker signs the upgrade with the
+viewer's execution for the agent (`runtime.objects.piAgent(agent).fetchAuthorized`, with
+`piAgentViewSocketRequest`), and the request names the agent, so its object checks the signature,
+and that the name is its own, before reading anything. It then asks its manager over RPC whether the
+viewer may watch (`authorizeViewer`): the manager makes the checks of its routes' GETs, scope and
+`pi.read`, refuses an agent without turns or a name no agent has, and answers with what waits in the
+queue.
+
+The socket's JSON frames are `queue`, then `view` with the whole view, then `ops` with each commit's
+Chord ops, including partial answers while the agent generates, which the browser applies with
+`applyImmutable`. One watch serves all of an agent's sockets, so each commit is encoded once, and
+its frame is the size of the change, not of the conversation. A refusal or a damaged view closes the
+socket with a code from 4000 up (`PI_AGENT_WATCH_REFUSED`) and the reason; any other close is worth
+reconnecting after, which starts again from a whole view. Only Cloudflare serves view sockets; the
+Node runtime throws.
 
 ## Backoffice execution
 
@@ -351,8 +371,8 @@ Pi holds in `pi.inbox` as steering or up next, then the agent's queue as queued 
 notifications), estimates the active context against the conversation's model, runs and monitors
 manual compaction, paginates inactive transcript history, downloads streaming JSONL exports, and
 stops active work. Messages resume a stopped agent's queue, and while it is paused with items
-waiting, the composer's empty send button resumes it. A scoped resource route proxies the agent's
-`application/x-ndjson` conversation-view stream to the browser.
+waiting, the composer's empty send button resumes it. A scoped resource route upgrades the browser
+to the agent's view socket, which reconnects with backoff until the agent refuses it.
 
 ## Recovery
 
