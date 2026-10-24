@@ -256,11 +256,11 @@ function notificationRequestMessage(entry: EntryRecord): PiNotificationRequestMe
  * context starts; it is null unless history before that entry is in the view.
  */
 export function piConversationMessages(
-  view: ConversationView,
+  entries: ConversationView["entries"],
   activeFrom: number | null,
 ): { messages: PiConversationMessage[]; activeContextStartIndex: number | null } {
   const completedAssistantAttempts = new Set<string>();
-  for (const entry of view.entries) {
+  for (const entry of entries) {
     const taskKey = entry.byTaskId === undefined ? `entry:${entry.id}` : `task:${entry.byTaskId}`;
     for (const message of entry.model ?? []) {
       if (message.role === "assistant" && message.stopReason !== "aborted") {
@@ -272,8 +272,8 @@ export function piConversationMessages(
   const visibleAbortedAttempts = new Set<string>();
   const messages: PiConversationMessage[] = [];
   let activeContextStartIndex: number | null = null;
-  view.entries.forEach((entry, index) => {
-    const previous = view.entries[index - 1];
+  entries.forEach((entry, index) => {
+    const previous = entries[index - 1];
     if (activeFrom !== null && previous && previous.id < activeFrom && entry.id >= activeFrom) {
       activeContextStartIndex = messages.length;
     }
@@ -320,22 +320,34 @@ export function piConversationDraftAgentMessage(
   const assistant = live?.generation?.message as
     | Extract<PiConversationMessage, { role: "assistant" }>
     | undefined;
+  // Only the running tools' calls are needed, and the newest one with an ID wins: the partial's,
+  // then the newest entries'. They belong to the running turn, so the scan stops long before the
+  // conversation's start, which keeps each partial's cost independent of the conversation's length.
+  const wantedCallIds = new Set((live?.tools ?? []).map((slot) => slot.callId));
   const toolCallsById = new Map<string, Extract<PiContentBlock, { type: "toolCall" }>>();
-  for (const entry of view.entries) {
-    for (const message of entry.model ?? []) {
-      if (message.role !== "assistant") {
-        continue;
-      }
-      for (const block of normalizePiContent(message.content)) {
-        if (block.type === "toolCall") {
-          toolCallsById.set(block.id, block);
-        }
+  function collectToolCalls(content: unknown) {
+    for (const block of normalizePiContent(content)) {
+      if (
+        block.type === "toolCall" &&
+        wantedCallIds.has(block.id) &&
+        !toolCallsById.has(block.id)
+      ) {
+        toolCallsById.set(block.id, block);
       }
     }
   }
-  for (const block of normalizePiContent(assistant?.content)) {
-    if (block.type === "toolCall") {
-      toolCallsById.set(block.id, block);
+  collectToolCalls(assistant?.content);
+  for (
+    let entryIndex = view.entries.length - 1;
+    entryIndex >= 0 && toolCallsById.size < wantedCallIds.size;
+    entryIndex -= 1
+  ) {
+    const messages = view.entries[entryIndex].model ?? [];
+    for (let messageIndex = messages.length - 1; messageIndex >= 0; messageIndex -= 1) {
+      const message = messages[messageIndex];
+      if (message.role === "assistant") {
+        collectToolCalls(message.content);
+      }
     }
   }
 
