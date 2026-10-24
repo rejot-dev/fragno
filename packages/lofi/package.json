@@ -36,6 +36,10 @@
     "./sqlite": {
       "types": "./dist/sqlite.d.ts",
       "default": "./dist/sqlite.js"
+    },
+    "./sqlite/testing": {
+      "types": "./dist/sqlite/testing.d.ts",
+      "default": "./dist/sqlite/testing.js"
     }
   },
   "scripts": {

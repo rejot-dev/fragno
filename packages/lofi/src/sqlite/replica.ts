@@ -57,6 +57,9 @@ export type LofiSqliteReplica = {
 
 const CHANGED_MESSAGE = "changed";
 
+/** Names the replica's outbox cursor, `<endpoint>::outbox`, in its `lofi_meta` table. */
+export const LOFI_SQLITE_ENDPOINT_NAME = "lofi-sqlite";
+
 /**
  * Opens a SQLite replica of one Fragno backend's outbox in this tab. Every tab reads through its
  * own connection; one tab at a time, elected with a Web Lock, streams the outbox and writes.
@@ -120,7 +123,7 @@ export async function openLofiSqliteReplica(
             outboxUrl: urls.outbox.toString(),
             outboxStreamUrl: urls.outboxStream.toString(),
             outboxTransport: "stream",
-            endpointName: "lofi-sqlite",
+            endpointName: LOFI_SQLITE_ENDPOINT_NAME,
             adapter: term.adapter,
             fetch: options.fetch,
             ephemeralTables: options.ephemeralTables,
