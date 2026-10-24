@@ -228,6 +228,8 @@ describe("Pi durable agent scenarios", () => {
       piAgentViewSocketRequest(agent),
     );
     assert.equal(unsigned.status, 401);
+    // Reading the body also releases the response, whose stream would keep the agent from hibernating.
+    expect(await unsigned.json()).toMatchObject({ code: "INVALID_INTERNAL_CONTEXT" });
     // The manager refuses before the first turn, and says so for a name no agent has.
     const notStarted = await openViewSocket(organizationId);
     const misspelled = await openViewSocket(organizationId, "assistnt");
@@ -253,7 +255,7 @@ describe("Pi durable agent scenarios", () => {
       ]);
     });
     // Commits arrive as ops on top of that view.
-    await vi.waitFor(() => {
+    function viewed() {
       let view: ConversationView | undefined;
       for (const frame of frames) {
         if (frame.type === "view") {
@@ -262,15 +264,27 @@ describe("Pi durable agent scenarios", () => {
           view = applyImmutable<ConversationView>(view, frame.ops);
         }
       }
-      expect(JSON.stringify(view?.entries)).toContain("durable answer");
+      return view;
+    }
+    await vi.waitFor(() => {
+      expect(JSON.stringify(viewed()?.entries)).toContain("durable answer");
     });
     expect(frames.filter((frame) => frame.type === "view")).toHaveLength(1);
+    const piAgent = (env as CloudflareEnv).PI.getByName(piAgentObjectName(agent));
+    await expectAlarmCleared(piAgent);
 
+    // The idle agent hibernates with its socket open. Waking it, here to show a stopped queue,
+    // sends the whole view again, since reopening the agent may commit what the socket never saw.
+    await evictDurableObject(piAgent);
     const stopped = await managerRequest(organizationId, "/agents/assistant/stop", {});
     expect(stopped.status, await stopped.clone().text()).toBe(204);
     await vi.waitFor(() => {
+      expect(frames.filter((frame) => frame.type === "view")).toHaveLength(2);
       expect(frames).toContainEqual({ type: "queue", paused: true, items: [] });
     });
+    expect(viewed()).toEqual(
+      await (await managerRequest(organizationId, "/agents/assistant/view")).json(),
+    );
     socket.close();
   });
 
