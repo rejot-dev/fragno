@@ -914,6 +914,86 @@
     ]
   },
   {
+    "command": "admin.events.delete",
+    "summary": "admin.events.delete permanently deletes up to 50 of an organization's oldest stored events of one type, and their sync history, so browsers stop downloading them. Events stored in the last 8 days or whose routes are still being matched are kept, as are route dispatch records; traces rooted at a deleted event lose their root. pi and integrations events cannot be deleted.",
+    "options": [
+      {
+        "name": "org",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "slug",
+        "description": "Organization slug"
+      },
+      {
+        "name": "source",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "source",
+        "description": "Event source, such as github"
+      },
+      {
+        "name": "event-type",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "type",
+        "description": "Event type, such as webhook.received"
+      },
+      {
+        "name": "before",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "date",
+        "description": "Delete events that occurred before this ISO date; events stored in the last 8 days are kept"
+      },
+      {
+        "name": "payload-field",
+        "valueRequired": true,
+        "valueName": "field",
+        "description": "Only delete events whose top-level payload field holds a --payload-value"
+      },
+      {
+        "name": "payload-value",
+        "valueRequired": true,
+        "valueName": "value",
+        "description": "A string value of --payload-field to delete; repeatable"
+      },
+      {
+        "name": "cursor",
+        "valueRequired": true,
+        "valueName": "cursor",
+        "description": "Cursor from the previous pass"
+      },
+      {
+        "name": "dry-run",
+        "description": "Count what the pass would delete without deleting"
+      },
+      {
+        "name": "danger",
+        "required": true,
+        "description": "Confirm the deletion is permanent"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "admin.marketplace.feature",
     "summary": "Feature a published listing, or update its feature settings. System scope curates the public Marketplace (System administrators); organization scope curates that organization's Marketplace (owners and admins).",
     "options": [

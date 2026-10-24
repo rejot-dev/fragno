@@ -4,6 +4,7 @@ import type { PiManagerRuntime } from "@/fragno/pi/manager/pi-manager-runtime";
 import { codemodeStateToolFamily } from "./codemode-state-runtime";
 import { accountToolFamily, type AccountRuntime } from "./families/account";
 import { adminToolFamily, type AdminRuntime } from "./families/admin";
+import { adminEventsToolFamily } from "./families/admin-events";
 import {
   adminMarketplaceCurationToolFamily,
   adminMarketplacePublicationToolFamily,
@@ -112,6 +113,7 @@ export const runtimeToolFamilies = [
   codemodeStateToolFamily,
   accountToolFamily,
   adminToolFamily,
+  adminEventsToolFamily,
   adminMarketplaceCurationToolFamily,
   adminMarketplacePublicationToolFamily,
   organizationToolFamily,

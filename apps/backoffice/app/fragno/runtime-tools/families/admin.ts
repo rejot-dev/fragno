@@ -41,6 +41,7 @@ import type {
   BackofficeOAuthClientUpdateInput,
   BackofficeOAuthClientUpdateResult,
 } from "@/fragno/auth/oauth-client";
+import type { EventDeletionPass } from "@/fragno/automation/events-storage-runtime";
 import { defineCliArgsParser } from "@/fragno/runtime-tools/bash-cli";
 
 import {
@@ -113,6 +114,9 @@ export type AdminRuntime = {
     organizationSlug: string;
     userEmail: string;
   }): Promise<AdminOrganizationMemberRecord>;
+  deleteOrganizationEventsOfType(
+    input: { organizationSlug: string } & EventDeletionPass,
+  ): Promise<{ scanned: number; deleted: number; cursor: string | null }>;
 };
 
 type AdminToolContext = BackofficeToolContext<{ admin?: AdminRuntime }>;

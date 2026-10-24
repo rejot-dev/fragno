@@ -295,6 +295,8 @@ export const createRouteBackedRuntimeContext = ({
               resend: runtime.config.bindings.resend
                 ? runtime.objects.resend.singleton().commands
                 : null,
+              automationsForOrg: (organizationId) =>
+                runtime.objects.automations.forOrg(organizationId).commands,
               publicBaseUrl: runtime.config.docsPublicBaseUrl ?? null,
             }),
           }

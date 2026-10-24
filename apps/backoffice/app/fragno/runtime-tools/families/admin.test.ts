@@ -92,6 +92,9 @@ describe("admin runtime tools", () => {
       updateAppTrust: async () => {
         throw new Error("unexpected app trust update");
       },
+      deleteOrganizationEventsOfType: async () => {
+        throw new Error("unexpected event deletion");
+      },
       listApps: async () => {
         throw new Error("App listing is not configured in this legacy fixture.");
       },

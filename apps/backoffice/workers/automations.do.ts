@@ -66,6 +66,7 @@ import type {
   AutomationEventSource,
   AutomationEventSourceInput,
 } from "@/fragno/automation/event-sources";
+import type { EventDeletionPass } from "@/fragno/automation/events-storage-runtime";
 import {
   bindExternalIdentityInputSchema,
   getExternalIdentityBindingInputSchema,
@@ -935,6 +936,14 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     return { events: page.events.map(automationEventRecord), cursor: page.cursor };
   }
 
+  async deleteEventsOfType(input: EventDeletionPass) {
+    await this.#ensureConfigured({ scope: this.#requireScope() });
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+    return await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.deleteEventsOfType(input),
+    );
+  }
+
   async listEventSources(): Promise<AutomationEventSource[]> {
     await this.#ensureConfigured({ scope: this.#requireScope() });
     const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
@@ -1229,6 +1238,10 @@ export class Automations extends DurableObject<CloudflareEnv> implements Automat
 
   async listEventsOfType(input: { source: string; eventType: string; cursor: string | null }) {
     return await this.#object.listEventsOfType(input);
+  }
+
+  async deleteEventsOfType(input: EventDeletionPass) {
+    return await this.#object.deleteEventsOfType(input);
   }
 
   async listEventSources() {

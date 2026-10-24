@@ -96,6 +96,7 @@ import type {
   AutomationEventSource,
   AutomationEventSourceInput,
 } from "@/fragno/automation/event-sources";
+import type { EventDeletionPass } from "@/fragno/automation/events-storage-runtime";
 import type {
   BindExternalIdentityInput,
   BindExternalIdentityResult,
@@ -600,6 +601,10 @@ export type AutomationsObject = {
     eventType: string;
     cursor: string | null;
   }): Promise<{ events: (AutomationEventRecord & { createdAt: string })[]; cursor: string | null }>;
+  /** One pass of a destructive cleanup; repeat with the returned cursor until it is null. */
+  deleteEventsOfType(
+    input: EventDeletionPass,
+  ): Promise<{ scanned: number; deleted: number; cursor: string | null }>;
   listEventSources(): Promise<AutomationEventSource[]>;
   getEventSource(input: { source: string }): Promise<AutomationEventSource | null>;
   ensureEventSource(input: AutomationEventSourceInput): Promise<AutomationEventSource>;

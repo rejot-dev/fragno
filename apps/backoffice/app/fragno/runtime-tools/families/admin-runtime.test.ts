@@ -62,6 +62,9 @@ function createAdminRuntimeDependencies() {
     resend: {
       queueEmail: vi.fn(async () => {}),
     },
+    automationsForOrg: () => {
+      throw new Error("These tests do not reach an organization's automations.");
+    },
     publicBaseUrl: "https://backoffice.example/",
   } satisfies Parameters<typeof createAdminRuntime>[0];
 }
