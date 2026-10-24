@@ -73,7 +73,7 @@ export function decodeLofiSqliteRow(
   return record;
 }
 
-function decodeSqliteValue(column: AnyColumn, value: unknown): unknown {
+export function decodeSqliteValue(column: AnyColumn, value: unknown): unknown {
   if (value === null) {
     return null;
   }

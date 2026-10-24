@@ -640,6 +640,39 @@ describe("SQLite replica", () => {
           expect((decodedPost["authorId"] as FragnoReference).internalId).toBe(
             (decoded["id"] as FragnoId).internalId,
           );
+          const { users } = appSchema.tables;
+          const authors = await tabs.get("a")!.query({
+            sql: `SELECT "users"."email", "users"."joinedAt", "users"."profile", "users"."active",
+                    count("posts"."_internalId") AS "posts"
+                  FROM "users_app" AS "users"
+                  LEFT JOIN "posts_app" AS "posts" ON "posts"."authorId" = "users"."_internalId"
+                  WHERE "users"."balance" > ?
+                  GROUP BY "users"."_internalId"`,
+            params: [0],
+            columns: {
+              email: "text",
+              joinedAt: users.columns.joinedAt,
+              profile: users.columns.profile,
+              active: users.columns.active,
+              posts: "integer",
+            },
+          });
+          expect(authors).toEqual([
+            {
+              email: "ada@example.com",
+              joinedAt,
+              profile: { langs: ["en"] },
+              active: true,
+              posts: 1,
+            },
+          ]);
+          await expect(
+            tabs.get("a")!.query({
+              sql: `SELECT "email" FROM "users_app"`,
+              params: [],
+              columns: { age: "integer" },
+            }),
+          ).rejects.toThrow('Query result has no column "age"');
         }),
         write(appSchema, "truncated", (uow, vars) => {
           uow.delete("users", vars["users"]![1]!, (b) => b.omitOutbox());
