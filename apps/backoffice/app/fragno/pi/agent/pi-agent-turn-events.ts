@@ -41,17 +41,25 @@ const STARTED_TURN_EVENT: PiTurnEvent = {
   payload: {},
 };
 
+/**
+ * Names the answer's entry without its text: event readers need only `events.read`, and the answer
+ * stays behind `pi.read`, as `pi.listMessages` reads it.
+ */
+function completedTurnEvent(answerEntryId: number): PiTurnEvent {
+  return {
+    phase: "ended",
+    eventType: PI_TURN_AUTOMATION_EVENTS.completed.eventType,
+    payload: { answerEntryId },
+  };
+}
+
 /** The event a settled input records: answered, cut off by a stop, or failed for another reason. */
 function settledTurnEventOf(submission: SettledSubmissionRecord): PiTurnEvent | null {
   if (submission.type !== "input") {
     return null;
   }
   if (submission.status === "done") {
-    return {
-      phase: "ended",
-      eventType: PI_TURN_AUTOMATION_EVENTS.completed.eventType,
-      payload: { answerEntryId: submission.answer },
-    };
+    return completedTurnEvent(submission.answer);
   }
   return submission.reason === ABORTED_SUBMISSION_REASON
     ? { phase: "ended", eventType: PI_TURN_AUTOMATION_EVENTS.aborted.eventType, payload: {} }
@@ -65,7 +73,7 @@ function settledTurnEventOf(submission: SettledSubmissionRecord): PiTurnEvent | 
 function piAgentTurnEvent(
   config: PiAgentConfig,
   agent: BackofficeAgentContext,
-  { requestId, turn }: ReportablePiAgentTurn,
+  { requestId, turn }: Pick<ReportablePiAgentTurn, "requestId" | "turn">,
   { phase, eventType, payload }: PiTurnEvent,
   occurredAt: Date,
 ): AutomationEvent {
@@ -85,6 +93,17 @@ function piAgentTurnEvent(
     subject: { ...piAgentEventSubject(scope, config.agentName), requestId },
     causation: { kind: "origin" },
   };
+}
+
+/** Records that the turn answered, as a real agent does; for fakes that answer without Pi. */
+export function piAgentTurnCompletedEvent(
+  config: PiAgentConfig,
+  agent: BackofficeAgentContext,
+  turn: Pick<ReportablePiAgentTurn, "requestId" | "turn">,
+  answerEntryId: number,
+  occurredAt: Date,
+): AutomationEvent {
+  return piAgentTurnEvent(config, agent, turn, completedTurnEvent(answerEntryId), occurredAt);
 }
 
 function changesRootSubmission(publication: CommitPublication) {

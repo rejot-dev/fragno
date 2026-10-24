@@ -150,7 +150,7 @@ if (!telegramTestCommandEntry) {
 const TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION = {
   targetScope: { kind: "org", orgId: "org-1" },
   slug: "telegram-channel",
-  version: "1.2.0",
+  version: "1.3.0",
   // The Marketplace page's suggested folder, so nothing depends on where a package lands.
   installationRoot: "/workspace/telegram-channel",
 } as const;
@@ -408,7 +408,7 @@ describe("starter automation router scenarios", () => {
             expect(await response.json()).toMatchObject({
               agentName: "telegram",
               instructions: expect.stringContaining("Messages arrive from Telegram chats"),
-              managedBy: { kind: "marketplace", resourceKey: "telegram-agent", version: "1.2.0" },
+              managedBy: { kind: "marketplace", resourceKey: "telegram-agent", version: "1.3.0" },
             });
           }),
           then.assert("assert channel routes are visible through TanStack DB", async (ctx) => {
@@ -1459,7 +1459,7 @@ describe("starter automation router scenarios", () => {
             },
           }),
           then.assert("assert /pi runs no agent turn", (ctx) => {
-            const calls = ctx.fakes.pi?.runPromptCalls ?? [];
+            const calls = ctx.fakes.pi?.turns ?? [];
             if (calls.length !== 0) {
               throw new Error(`Expected no Pi turn, got ${calls.length}.`);
             }
@@ -1621,7 +1621,7 @@ describe("starter automation router scenarios", () => {
 
           then.telegram.noMessages(),
           then.assert("assert Pi was not called after identity revocation", (ctx) => {
-            const calls = ctx.fakes.pi?.runPromptCalls ?? [];
+            const calls = ctx.fakes.pi?.turns ?? [];
             if (calls.length !== 0) {
               throw new Error(`Expected no Pi turn, got ${calls.length}.`);
             }
@@ -1665,7 +1665,7 @@ describe("starter automation router scenarios", () => {
           const thenNothingStarted = () => [
             then.telegram.noMessages(),
             then.assert("assert Pi was not called", (ctx) => {
-              const calls = ctx.fakes.pi?.runPromptCalls ?? [];
+              const calls = ctx.fakes.pi?.turns ?? [];
               if (calls.length !== 0) {
                 throw new Error(`Expected no Pi turn, got ${calls.length}.`);
               }
@@ -1833,7 +1833,7 @@ describe("starter automation router scenarios", () => {
           then.pi.provisionedAgent({ agentName: "telegram" }),
           then.assert("assert every message continues one telegram agent conversation", (ctx) => {
             const provisioned = ctx.fakes.pi?.provisionedAgents ?? [];
-            const turns = ctx.fakes.pi?.runPromptCalls ?? [];
+            const turns = ctx.fakes.pi?.turns ?? [];
             if (provisioned.length !== 1 || turns.length !== 2) {
               throw new Error(
                 `Expected one provisioned agent and two turns, got ${provisioned.length} and ${turns.length}.`,
@@ -1843,7 +1843,7 @@ describe("starter automation router scenarios", () => {
           then.assert(
             "assert the turn runs as the linked user with the installed definition",
             (ctx) => {
-              const turn = ctx.fakes.pi?.runPromptCalls[0]?.turn;
+              const turn = ctx.fakes.pi?.turns[0]?.turn;
               expect(turn?.actors.principal).toEqual({
                 scope: "internal",
                 type: "user",

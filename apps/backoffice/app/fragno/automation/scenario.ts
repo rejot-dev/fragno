@@ -81,6 +81,7 @@ import type { MarketplaceStaticEntry } from "@/fragno/marketplace/contracts";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
 import { isMarketplaceInternalPackagePath } from "@/fragno/marketplace/package-files";
 import { getStaticMarketplaceEntry } from "@/fragno/marketplace/static-entries";
+import { createBackofficeAgentContext } from "@/fragno/pi/agent/backoffice-agent-context";
 import {
   piAgentObjectName,
   type PiAgent,
@@ -88,6 +89,7 @@ import {
   type PiAvailableModel,
 } from "@/fragno/pi/agent/pi-agent-contract";
 import { renderPiNotificationRequest } from "@/fragno/pi/agent/pi-agent-notification-entry";
+import { piAgentTurnCompletedEvent } from "@/fragno/pi/agent/pi-agent-turn-events";
 import {
   createPiClassifier,
   createPiImageGenerator,
@@ -216,10 +218,12 @@ type PiGetViewCall = {
   agentName: string;
 };
 
-type PiRunPromptCall = {
+type PiTurnCall = {
   agentName: string;
+  requestId: string;
   content: string;
   assistantText: string;
+  answerEntryId: number;
   turn: PiAgentTurn;
 };
 
@@ -273,7 +277,7 @@ export type FakeTelegramApi = {
 export type FakePiManagerApi = {
   provisionedAgents: PiProvisionedAgentCall[];
   getViewCalls: PiGetViewCall[];
-  runPromptCalls: PiRunPromptCall[];
+  turns: PiTurnCall[];
   agent: PiAgent;
 };
 
@@ -1089,7 +1093,7 @@ const createFakePiManagerApi = (
 ): FakePiManagerApi => {
   const provisionedAgents: PiProvisionedAgentCall[] = [];
   const getViewCalls: PiGetViewCall[] = [];
-  const runPromptCalls: PiRunPromptCall[] = [];
+  const turns: PiTurnCall[] = [];
   const agents = new Map<string, FakePiAgent>();
   const assistantText =
     options.assistantText ?? ((input: { content: string }) => `agent:${input.content}`);
@@ -1156,7 +1160,7 @@ const createFakePiManagerApi = (
       return;
     }
     const reply = assistantText({ agentName: config.agentName, content: prompt.content });
-    const submissionId = runPromptCalls.length + 1;
+    const submissionId = turns.length + 1;
     const answerEntryId = `answer-${submissionId}`;
     // Like Pi, the conversation keeps its model for turns that name none.
     fake.model = turn.agent.model ?? fake.model;
@@ -1171,10 +1175,12 @@ const createFakePiManagerApi = (
       entry: `input-${submissionId}`,
       answer: answerEntryId,
     } as unknown as SubmissionRecord);
-    runPromptCalls.push({
+    turns.push({
       agentName: config.agentName,
+      requestId: prompt.requestId,
       content: prompt.content,
       assistantText: reply,
+      answerEntryId: submissionId,
       turn,
     });
   };
@@ -1227,21 +1233,25 @@ const createFakePiManagerApi = (
       // The fake never compacts, so no history precedes its active context.
       return { entries: [], cursor: null };
     },
-    async listMessages(config) {
-      const fake = requireAgent(config);
-      // Like its view, the fake keeps only its latest answer.
+    async listMessages(config, { last, before }) {
+      requireAgent(config);
+      // Only the answers, which turn.completed names: like Pi, an answer that said nothing is no
+      // message.
+      const said = turns.filter(
+        (turn) =>
+          turn.agentName === config.agentName &&
+          turn.assistantText !== "" &&
+          (before === null || turn.answerEntryId < before),
+      );
+      const messages = said.slice(-last).map((turn) => ({
+        entryId: turn.answerEntryId,
+        role: "assistant" as const,
+        text: turn.assistantText,
+        sentAt: "2026-01-01T00:00:00.000Z",
+      }));
       return {
-        messages: fake.answerEntryId
-          ? [
-              {
-                entryId: Number(fake.answerEntryId.slice("answer-".length)),
-                role: "assistant",
-                text: fake.assistantText,
-                sentAt: "2026-01-01T00:00:00.000Z",
-              },
-            ]
-          : [],
-        before: null,
+        messages,
+        before: said.length > messages.length ? (messages[0]?.entryId ?? null) : null,
       };
     },
     async exportEntries(config) {
@@ -1270,7 +1280,7 @@ const createFakePiManagerApi = (
     async abort() {},
   };
 
-  return { provisionedAgents, getViewCalls, runPromptCalls, agent };
+  return { provisionedAgents, getViewCalls, turns, agent };
 };
 
 const RESEND_FAKE_TIMESTAMP = "2026-03-18T12:00:00.000Z";
@@ -3487,7 +3497,7 @@ const buildStepBuilders = <
           "pi.ranPrompt",
           "assert Pi prompt was run",
           (ctx) => {
-            const calls = ctx.fakes.pi?.runPromptCalls ?? [];
+            const calls = ctx.fakes.pi?.turns ?? [];
             const call = calls.find((candidate) => {
               const assistantOk =
                 typeof input.assistantText === "undefined"
@@ -3503,7 +3513,7 @@ const buildStepBuilders = <
             });
             if (!call) {
               throw new Error(
-                `Expected Pi runPrompt call was not found. Calls: ${JSON.stringify(calls, null, 2)}`,
+                `Expected Pi turn was not found. Turns: ${JSON.stringify(calls, null, 2)}`,
               );
             }
           },
@@ -4319,9 +4329,31 @@ const createFakeObjectOverrides = async (fakes: ScenarioFakes): Promise<LocalBac
         runtime,
         implementation,
         agent: fakePi
-          ? // Like a real agent, the fake reports each turn it settles, which it does on receipt.
+          ? // Like a real agent, the fake records and reports each turn it settles, which it does
+            // on receipt.
             () => {
+              const { turns } = fakePi;
               async function settled(config: PiAgentConfig, requestId: string) {
+                const answered = turns.find((call) => call.requestId === requestId);
+                if (answered && runtime.config.bindings.automations) {
+                  const agent = createBackofficeAgentContext({
+                    config,
+                    runtime,
+                    readActiveTurn: async () => answered.turn,
+                  });
+                  await runtime.objects.automations
+                    .for(config.scope)
+                    .commands.ingestEvent(
+                      piAgentTurnCompletedEvent(
+                        config,
+                        agent,
+                        { requestId, turn: answered.turn },
+                        answered.answerEntryId,
+                        new Date(nowEpochMs()),
+                      ),
+                      { propagationContext: null },
+                    );
+                }
                 await runtime.objects.piManager
                   .for(config.scope)
                   .commands.reportSettledTurn({ agentName: config.agentName, requestId });
@@ -4495,7 +4527,7 @@ const collectDiagnostics = async (ctx: BackofficeScenarioContext): Promise<unkno
       ? {
           provisionedAgents: ctx.fakes.pi.provisionedAgents,
           getViewCalls: ctx.fakes.pi.getViewCalls,
-          runPromptCalls: ctx.fakes.pi.runPromptCalls,
+          turns: ctx.fakes.pi.turns,
         }
       : null,
   };
