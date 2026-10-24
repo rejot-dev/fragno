@@ -1,5 +1,6 @@
 import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
 import { PathError } from "@earendil-works/chord/delta";
+import { openDurableObjectSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/cloudflare";
 import {
   PI_AGENT_WATCH_REFUSED,
   piAgentConfigSchema,
@@ -75,12 +76,19 @@ import { createPiPostHogExtension } from "@/fragno/pi/extensions/posthog/posthog
 
 import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
 import { createCloudflarePostHog, shutdownCloudflarePostHog } from "./lib/cloudflare-posthog";
-import { openPiSessionStore } from "./lib/pi-session-store";
 
 const AGENT_CONFIG_KEY = "pi-agent-config";
 const LEGACY_BILLING_SCOPE_KEY = "pi-legacy-billing-scope";
 const WAKE_HEARTBEAT_MS = 30_000;
 const WAKE_BUDGET_MS = 10 * 60_000;
+
+/**
+ * Opens Pi's storage on the agent object's SQLite database, beside the agent's own keys. Pi's tables
+ * keep the `pi_` prefix every stored agent already has them under.
+ */
+export function openPiAgentStorage(storage: DurableObjectStorage) {
+  return openDurableObjectSqliteStorage(storage, { prefix: "pi_" });
+}
 
 /** Who connects to watch which agent, as the viewer's signed request says. */
 type PiAgentViewing = { agent: PiAgentConfig; execution: BackofficeExecutionContext };
@@ -668,7 +676,7 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
           }
         : dependencies,
       runtime: createCloudflareDurableObjectRuntimeServices(env, state),
-      openStorage: () => openPiSessionStore(state.storage),
+      openStorage: () => openPiAgentStorage(state.storage),
       idFromConfig: (config) => env.PI.idFromName(piAgentObjectName(config)),
       nowEpochMs: Date.now,
     });

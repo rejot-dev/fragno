@@ -35,9 +35,8 @@ import {
 } from "@/fragno/pi/agent/pi-agent-contract";
 import { recordPiAgentTurn } from "@/fragno/pi/agent/pi-agent-turns";
 
-import { openPiSessionStore } from "./lib/pi-session-store";
 import { createScriptedPiAgentDependencies } from "./pi-durable-scenario.test-support";
-import { InMemoryPiObject, type Pi } from "./pi.do";
+import { InMemoryPiObject, openPiAgentStorage, type Pi } from "./pi.do";
 
 function manager(organizationId: string) {
   return (env as CloudflareEnv).PI_MANAGER.getByName(
@@ -359,7 +358,7 @@ describe("Pi durable agent scenarios", () => {
       faux.setResponses([fauxAssistantMessage([fauxText("unfinished answer")])]);
       const models = createModels();
       models.setProvider(faux.provider);
-      const storage = await openPiSessionStore(state.storage);
+      const storage = await openPiAgentStorage(state.storage);
       const harness = await Harness.open(
         storage,
         { models, registry: createRegistry() },
@@ -419,7 +418,7 @@ describe("Pi durable agent scenarios", () => {
             if (storageAttempts === 1) {
               throw startupError;
             }
-            return await openPiSessionStore(state.storage);
+            return await openPiAgentStorage(state.storage);
           },
           idFromConfig: (input) => testEnv.PI.idFromName(piAgentObjectName(input)),
           nowEpochMs: Date.now,
