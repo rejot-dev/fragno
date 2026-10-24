@@ -20,6 +20,18 @@ Open http://localhost:5544 in Chrome.
   from scratch. Reloading without deleting resumes from the stored cursor.
 - **Copy results JSON** copies the fixture, user agent, and both runs with their samples.
 
+## ZQL views
+
+http://localhost:5544/zql.html replays an Upload outbox through `@fragno-dev/lofi/zql`: a worker
+imports it into the replica while the page shows three live ZQL views, with how many updates each
+received and when. With an empty OPFS, the views update incrementally during the whole import. Open
+the page in two tabs to see a reading tab rebuild its views. `window.lofiZqlViews` holds each view's
+updates and latest result.
+
+```bash
+OUTBOX_JSONL=~/dev/fragno-fixtures/upload-outbox-2026-10-24/outbox.jsonl pnpm -C packages-private/lofi-sqlite-import-benchmark dev
+```
+
 ## Production build and headless runs
 
 The dev server reloads the page when a workspace package such as `packages/lofi/dist` is rebuilt,

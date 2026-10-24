@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lofi ZQL views</title>
+    <style>
+      body {
+        font:
+          14px/1.4 system-ui,
+          sans-serif;
+        margin: 2rem;
+        max-width: 72rem;
+      }
+      pre {
+        background: #f4f4f4;
+        padding: 0.5rem;
+        overflow: auto;
+        max-height: 20rem;
+      }
+      #errors {
+        color: #b00;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Lofi ZQL views</h1>
+    <p>
+      Live ZQL views of an Upload outbox replica, maintained incrementally in a worker while the
+      outbox imports.
+    </p>
+    <pre id="errors"></pre>
+    <div id="views"></div>
+    <script type="module" src="/src/zql-page.ts"></script>
+  </body>
+</html>
