@@ -96,6 +96,11 @@ export class SqliteLofiAdapter implements LofiAdapter {
   // parameters written in, and go together with the next read or the `COMMIT`. Null outside one.
   #queue: string[] | null = null;
   #queuedLength = 0;
+  // The last database call. A call holds the queued writes of the statements issued before it, so
+  // a call issued later, such as one of a projection's concurrent reads, must not overtake it: the
+  // database's worker starts each call as it arrives and steps through statements asynchronously,
+  // so two calls in flight interleave.
+  #lastCall: Promise<unknown> = Promise.resolve();
 
   private constructor(options: SqliteLofiAdapterOptions) {
     const sourceSchemas = options.schemas.map(toRegisteredSchema);
@@ -108,7 +113,13 @@ export class SqliteLofiAdapter implements LofiAdapter {
     );
 
     this.#database = {
-      execute: (sql, params) => options.database.execute(sql, params?.map(bindableValue)),
+      execute: (sql, params) => {
+        const call = this.#lastCall.then(() =>
+          options.database.execute(sql, params?.map(bindableValue)),
+        );
+        this.#lastCall = call.catch(() => {});
+        return call;
+      },
     };
     this.#layouts = new Map(
       [...options.schemas, ...options.localSchemas].map((registration) => [
