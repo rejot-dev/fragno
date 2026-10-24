@@ -1,8 +1,5 @@
 import { afterEach, describe, expect, it, assert } from "vitest";
 
-import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
-
 import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
 import { BetterSQLite3DriverConfig } from "@fragno-dev/db/drivers";
 import {
@@ -15,23 +12,19 @@ import {
   type AnySchema,
   type TableBuilder,
 } from "@fragno-dev/db/schema";
-import SQLiteESMFactory from "@journeyapps/wa-sqlite/dist/wa-sqlite.mjs";
-import { MemoryVFS } from "@journeyapps/wa-sqlite/src/examples/MemoryVFS.js";
 import BetterSqlite3 from "better-sqlite3";
 import { SqliteDialect } from "kysely";
 
 import { defineFragment, instantiate } from "@fragno-dev/core";
 import { migrate, withDatabase, type TypedUnitOfWork } from "@fragno-dev/db";
 
-import * as SQLite from "@journeyapps/wa-sqlite";
-
 import { defineLocalProjection } from "../local/projection";
-import type { LofiSqliteDatabase } from "./adapter";
 import {
   openLofiSqliteReplica,
   type LofiSqliteReplica,
   type LofiSqliteReplicaOptions,
 } from "./replica";
+import { openLofiSqliteMemoryFiles } from "./testing";
 import { decodeLofiSqliteRow } from "./values";
 
 const LONG_TABLE_NAME = "workspaceMembershipInvitationAuditTrailEntriesForComplianceReview";
@@ -323,7 +316,7 @@ async function runReplicaScenario(scenario: {
       } as never,
     );
   };
-  const files = await openSharedMemoryFiles(scenario.statementDelayMs);
+  const files = await openLofiSqliteMemoryFiles({ statementDelayMs: scenario.statementDelayMs });
 
   const ctx: ScenarioContext = {
     server,
@@ -351,7 +344,7 @@ async function runReplicaScenario(scenario: {
             fetch: fetch as typeof globalThis.fetch,
             onError: (error) => ctx.errors.push(error),
           },
-          { openDatabase: ({ databaseName }) => files.open(databaseName) },
+          { openDatabase: files.open },
         );
         ctx.notifications.set(step.tab, 0);
         replica.subscribe(() =>
@@ -432,56 +425,6 @@ async function runReplicaScenario(scenario: {
         break;
     }
   }
-}
-
-/** One wa-sqlite module whose in-memory files are shared by every connection, like OPFS. */
-async function openSharedMemoryFiles(statementDelayMs: number) {
-  const require = createRequire(import.meta.url);
-  const module = await SQLiteESMFactory({
-    wasmBinary: readFileSync(require.resolve("@journeyapps/wa-sqlite/dist/wa-sqlite.wasm")),
-  });
-  const sqlite3 = SQLite.Factory(module);
-  // The bundled declarations omit the static factory.
-  const vfs = await (
-    MemoryVFS as unknown as { create(name: string, module: unknown): Promise<MemoryVFS> }
-  ).create("replica-memory", module);
-  sqlite3.vfs_register(vfs as never, false);
-
-  return {
-    async open(databaseName: string): Promise<LofiSqliteDatabase & { close(): Promise<void> }> {
-      const db = await sqlite3.open_v2(databaseName, undefined, "replica-memory");
-      return {
-        async execute(sql, params = []) {
-          if (statementDelayMs > 0) {
-            await new Promise((resolve) => setTimeout(resolve, statementDelayMs));
-          }
-          const rows: Record<string, unknown>[] = [];
-          for await (const statement of sqlite3.statements(db, sql)) {
-            if (params.length > 0) {
-              sqlite3.bind_collection(statement, params as SQLiteCompatibleType[]);
-            }
-            const columns = sqlite3.column_names(statement);
-            while ((await sqlite3.step(statement)) === SQLite.SQLITE_ROW) {
-              const values = sqlite3.row(statement);
-              rows.push(
-                Object.fromEntries(
-                  // Blob values view wasm memory, which the next statement overwrites.
-                  columns.map((name, index) => {
-                    const value = values[index];
-                    return [name, value instanceof Uint8Array ? value.slice() : value];
-                  }),
-                ),
-              );
-            }
-          }
-          return rows;
-        },
-        async close() {
-          await sqlite3.close(db);
-        },
-      };
-    },
-  };
 }
 
 type Layout = Record<string, { columns: string[]; indexes: Record<string, string[]> }>;
@@ -640,6 +583,7 @@ describe("SQLite replica", () => {
           expect((decodedPost["authorId"] as FragnoReference).internalId).toBe(
             (decoded["id"] as FragnoId).internalId,
           );
+
           const { users } = appSchema.tables;
           const authors = await tabs.get("a")!.query({
             sql: `SELECT "users"."email", "users"."joinedAt", "users"."profile", "users"."active",

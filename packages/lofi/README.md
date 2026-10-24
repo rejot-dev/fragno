@@ -751,6 +751,9 @@ export const schema = schema("app", (s) =>
 - `StackedLofiAdapter` - merges base + overlay adapters for optimistic reads.
 - `@fragno-dev/lofi/sqlite`: `openLofiSqliteReplica`, `SqliteLofiAdapter`, `decodeLofiSqliteRow`,
   `lofiSqliteTableName` - the browser SQLite replica.
+- `@fragno-dev/lofi/sqlite/testing`: `openLofiSqliteMemoryFiles` opens replicas in Node on
+  wa-sqlite's in-memory VFS, and `waitForLofiSqliteReplica` waits until a replica reaches a
+  versionstamp - for scenario tests of apps that read a replica.
 - `LofiOverlayManager` - overlay manager that rebuilds queued optimistic commands.
 - Outbox helpers: `decodeOutboxPayload`, `resolveOutboxRefs`, `outboxMutationsToUowOperations`.
 - Types: `LofiClientOptions`, `LofiAdapter`, `LofiMutation`, `LofiQueryInterface`, and more.
