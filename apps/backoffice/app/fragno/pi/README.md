@@ -284,12 +284,16 @@ JSONL export remain independent read paths.
 Manager HTTP requests must use `http.fetchAuthorized` with a matching execution scope. The manager
 verifies the signed object address and enforces the existing `pi.read` / `pi.modify` permissions.
 
-The agent persists an alarm before admitting input. Alarm invocations resume Pi's own scheduler,
-retain a recovery heartbeat while work remains, and clear the alarm when the agent is idle. There is
-no Fragno workflow involved in agent execution. The same manager and agent lifecycle runs in
-Cloudflare and local/Node runtimes. Local agents use Pi Durable's Node SQLite adapter: in-memory
-SQLite for transient scenarios, or one `pi-agent-*.sqlite` file per agent in the configured SQLite
-data directory.
+The agent persists an alarm before admitting input. Alarm invocations resume Pi's own scheduler and
+keep a recovery heartbeat until no work can run, as `harness.wake()` tells through `onWake`. Pi
+keeps no timers for sleeps, such as retry backoffs: a waiting alarm resumes a sleep that comes due
+beside running work, and once no work can run, the alarm moves to the earliest sleep, so the object
+holds no invocation while it waits. A session that fails, as on a storage error, fails the waiting
+alarm at once, and the next call or alarm opens the agent again. An agent with no sleeps, or only
+tasks parked after repeated crashes, clears its alarm. There is no Fragno workflow involved in agent
+execution. The same manager and agent lifecycle runs in Cloudflare and local/Node runtimes. Local
+agents use Pi Durable's Node SQLite adapter: in-memory SQLite for transient scenarios, or one
+`pi-agent-*.sqlite` file per agent in the configured SQLite data directory.
 
 ## View socket
 

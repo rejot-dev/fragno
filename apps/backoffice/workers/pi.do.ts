@@ -19,8 +19,11 @@ import {
   type ConversationView,
   type EntryId,
   type JsonObject,
+  type Harness,
+  type SessionEnd,
   type Storage,
   type SubmissionRecord,
+  type Wake,
   type WatchHandle,
 } from "@earendil-works/pi-durable";
 
@@ -100,6 +103,12 @@ type PiAgentViewer = {
   close(code: number, reason: string): void;
 };
 
+/** An alarm waiting for the agent's work to stop. */
+type PiAgentWaiter = {
+  wake(wake: Wake): void;
+  closed(end: SessionEnd): void;
+};
+
 type ProvisionedPiAgent = {
   config: PiAgentConfig;
   /** Null for agents provisioned since owner attribution: none of their deliveries is legacy. */
@@ -120,6 +129,8 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
   #opened: OpenPiAgent | null = null;
   #opening: Promise<OpenPiAgent> | null = null;
   #admitting = 0;
+  // An alarm waiting for the agent's work to stop follows its wakeups and its session's end.
+  readonly #waiters = new Set<PiAgentWaiter>();
   // Only the manager knows the queue; it publishes every change, and before each viewer connects.
   #queue: PiAgentWaitingQueue | null = null;
   readonly #viewers = new Set<PiAgentViewer>();
@@ -179,12 +190,13 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
           return;
         }
         const opened = await this.#open(this.#provisioned);
-        const billingTaskId = await this.#ensureBillingDelivery(opened);
-        if (
-          billingTaskId !== null ||
-          (await opened.harness.inspect(BACKGROUND_CONTEXT)).tasks.length > 0
-        ) {
-          await state.storage.setAlarm(this.#nowEpochMs());
+        await this.#ensureBillingDelivery(opened);
+        // Work a lost instance left, and sleeps, need a wakeup; one already armed may be earlier.
+        const wake = opened.harness.wake();
+        const wakeAt = wake.active ? this.#nowEpochMs() : wake.at;
+        const armed = await state.storage.getAlarm();
+        if (wakeAt !== undefined && (armed === null || armed > wakeAt)) {
+          await state.storage.setAlarm(wakeAt);
         }
       })
       .catch((error: unknown) => {
@@ -206,14 +218,31 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
       return await this.#opening;
     }
     // Once external work leaves the input gate, concurrent requests must still share one storage owner.
-    const opening = openPiAgentHarness({
-      config,
-      legacyBillingScope,
-      runtime: this.#runtime,
-      dependencies: this.#dependencies,
-      openStorage: this.#openStorage,
-      nowEpochMs: this.#nowEpochMs,
-    });
+    const opening = (async () => {
+      const opened = await openPiAgentHarness({
+        config,
+        legacyBillingScope,
+        runtime: this.#runtime,
+        dependencies: this.#dependencies,
+        openStorage: this.#openStorage,
+        nowEpochMs: this.#nowEpochMs,
+        onWake: (wake) => {
+          for (const waiter of this.#waiters) {
+            waiter.wake(wake);
+          }
+        },
+      });
+      // A failed session stays failed, so the next call opens the agent again.
+      void opened.harness.closed.then((end) => {
+        if (this.#opened === opened) {
+          this.#opened = null;
+        }
+        for (const waiter of this.#waiters) {
+          waiter.closed(end);
+        }
+      });
+      return opened;
+    })();
     this.#opening = opening;
     try {
       this.#opened = await opening;
@@ -600,18 +629,25 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
     const opened = await this.#open(this.#provisioned);
     const { harness } = opened;
     await this.#state.storage.setAlarm(this.#nowEpochMs() + WAKE_HEARTBEAT_MS);
-    harness.resume();
     const controller = new AbortController();
     const timer = setTimeout(() => {
       controller.abort();
     }, WAKE_BUDGET_MS);
     const alarmContext = withAbortSignal(controller.signal, BACKGROUND_CONTEXT);
     try {
-      // Keep the alarm invocation alive while Pi runs; a persisted heartbeat covers eviction.
-      await harness.waitForIdle(alarmContext);
-      // A throw keeps the heartbeat alarm, which retries reports a restart or failure left behind.
-      await opened.reportTurns(alarmContext);
-      await opened.billing.flush(harness, this.#nowEpochMs, alarmContext);
+      // A billing delivery is a task too. It runs after the turns whose usage it bills, until no
+      // work can run now; a sleeping task waits for the alarm armed below, not in this handler.
+      let billingTaskId: Awaited<ReturnType<OpenPiAgent["billing"]["ensure"]>> = null;
+      do {
+        harness.resume();
+        await this.#untilInactive(harness, controller.signal);
+        if (billingTaskId !== null) {
+          await opened.billing.assertNotFailed(harness, billingTaskId, alarmContext);
+        }
+        // A throw keeps the heartbeat alarm, which retries reports a restart or failure left behind.
+        await opened.reportTurns(alarmContext);
+        billingTaskId = await this.#ensureBillingDelivery(opened);
+      } while (billingTaskId !== null && harness.wake().active);
     } catch (error) {
       if (!controller.signal.aborted) {
         throw error;
@@ -621,11 +657,89 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
     }
     await this.#state.blockConcurrencyWhile(async () => {
       await this.#ensureBillingDelivery(opened);
-      const { tasks } = await harness.inspect(BACKGROUND_CONTEXT);
-      if (tasks.length === 0 && this.#admitting === 0) {
+      const wake = harness.wake();
+      // Work that can still run, or is being admitted, keeps the heartbeat.
+      if (wake.active || this.#admitting > 0) {
+        return;
+      }
+      // Parked tasks wait for a retry, so an agent with only those, or nothing, needs no wakeup.
+      if (wake.at === undefined) {
         await this.#state.storage.deleteAlarm();
+      } else {
+        await this.#state.storage.setAlarm(wake.at);
       }
     });
+  }
+
+  /**
+   * Resolves once no work of the agent can run now; it may still have sleeps ahead. Rejects when the
+   * agent's session ends meanwhile, with the error of one that failed.
+   */
+  async #untilInactive(harness: Harness, signal: AbortSignal): Promise<void> {
+    let waiter: PiAgentWaiter | null = null;
+    // The earliest sleep this wait resumes; none is armed at `Infinity`.
+    const sleep: { at: number; timer: ReturnType<typeof setTimeout> | undefined } = {
+      at: Infinity,
+      timer: undefined,
+    };
+    try {
+      await new Promise<void>((resolve, reject) => {
+        waiter = {
+          wake: (wake) => {
+            if (!wake.active) {
+              resolve();
+              return;
+            }
+            // Pi keeps no timers for sleeps, and while this alarm runs no other can, so a sleep that
+            // comes due beside running work is resumed here. An armed timer stays until it fires: a
+            // sleep overdue by then counts as active, without its time.
+            const { at } = wake;
+            if (at !== undefined && at < sleep.at) {
+              clearTimeout(sleep.timer);
+              sleep.at = at;
+              sleep.timer = setTimeout(
+                () => {
+                  sleep.at = Infinity;
+                  sleep.timer = undefined;
+                  harness.resume();
+                },
+                Math.max(0, at - this.#nowEpochMs()),
+              );
+            }
+          },
+          closed: (end) => {
+            if (end.reason === "closed") {
+              reject(new Error("The Pi agent closed while its alarm waited."));
+            } else {
+              reject(
+                end.error instanceof Error
+                  ? end.error
+                  : new Error("The Pi agent's session failed.", { cause: end.error }),
+              );
+            }
+          },
+        };
+        this.#waiters.add(waiter);
+        signal.addEventListener(
+          "abort",
+          () => {
+            resolve();
+          },
+          { once: true },
+        );
+        if (signal.aborted) {
+          resolve();
+        } else {
+          waiter.wake(harness.wake());
+        }
+      });
+    } finally {
+      if (waiter) {
+        this.#waiters.delete(waiter);
+      }
+      clearTimeout(sleep.timer);
+    }
+    signal.throwIfAborted();
   }
 
   async close(): Promise<void> {
