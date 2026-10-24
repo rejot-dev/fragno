@@ -10,6 +10,7 @@ export default defineConfig([
       "./src/outbox/outbox.ts",
       "./src/outbox/outbox-stream.ts",
       "./src/database-namespace.ts",
+      "./src/naming/sql-naming.ts",
       "./src/schema/create.ts",
       "./src/query/mod.ts",
       "./src/adapters/adapters.ts",
