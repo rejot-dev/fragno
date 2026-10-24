@@ -383,7 +383,7 @@ output schema; any other status fails the call with the answer's `message`.
 Apps verify requests with `createAppActionVerifier` from
 `@fragno-dev/backoffice-api/v0/app-actions`, which checks the signature against Backoffice's JWKS,
 the audience, expiry, and body hash, and parses the body. Bookkeeping's
-`workers/backoffice-actions.ts` is a complete endpoint.
+`workers/backoffice/actions.ts` is a complete endpoint.
 
 ## First-party apps
 
