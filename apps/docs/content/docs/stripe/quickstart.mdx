@@ -39,44 +39,43 @@ Create a file to instantiate your Stripe fragment (e.g., `lib/stripe.ts` or `ser
 ```typescript title="lib/stripe.ts"
 import { createStripeFragment } from "@fragno-dev/stripe";
 /* These imports are illustrative and application specific */
-import { updateEntity } from "@/db/repo";
+import { databaseAdapter } from "@/db/fragno";
 import { getSession } from "@/lib/auth";
 
-export const stripeFragment = createStripeFragment({
-  stripeSecretKey: process.env.STRIPE_SECRET_KEY,
-  webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
+export const stripeFragment = createStripeFragment(
+  {
+    stripeSecretKey: process.env.STRIPE_SECRET_KEY,
+    webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
 
-  // Link Stripe customers to your users
-  onStripeCustomerCreated: async (stripeCustomerId, referenceId) => {
-    // When a Stripe customer is created, save the ID to your internal record
-    await updateEntity(referenceId, { stripeCustomerId });
+    // Resolves the authenticated entity from the request
+    resolveEntityFromRequest: async (context) => {
+      // Get session using your authentication system
+      const session = await getSession(context.headers);
+      if (!session) {
+        return null; // The fragment responds with 401 UNAUTHENTICATED
+      }
+
+      return {
+        // Your application's identifier for the entity which owns the subscription
+        referenceId: session.user.id,
+        // Set on the Stripe customer the fragment creates for this entity
+        customerEmail: session.user.email,
+        customerMetadata: {},
+      };
+    },
+
+    // Runs after a subscription changed, e.g. to grant or revoke access
+    onSubscriptionChanged: async ({ subscription }) => {
+      console.log(subscription.referenceId, subscription.status);
+    },
   },
-
-  // Resolves the authenticated entity from the request
-  resolveEntityFromRequest: async (context) => {
-    // Get session using your authentication system
-    const session = getSession(context.headers);
-
-    return {
-      // Your application's identifier for the entity which owns the subscription
-      referenceId: session.user.id,
-      customerEmail: session.user.email,
-
-      // Only used when updating an existing subscription.
-      stripeCustomerId: session.user.stripeCustomerId || undefined,
-
-      // Additional metadata to attach to the Stripe customer
-      stripeMetadata: {},
-    };
-  },
-
-  // Note: do not enable without configuring auth on those routes!
-  enableAdminRoutes: false,
-});
+  { databaseAdapter },
+);
 ```
 
-For additional details on setting up the `onStripeCustomerCreated` and `resolveEntityFromRequest`
-callbacks, see [Subscriptions](docs/stripe/subscriptions#configuration-requirements) page.
+The fragment creates a Stripe customer for an entity on its first checkout and remembers the link
+itself, so your application does not need to store Stripe IDs. See
+[Subscriptions](/docs/stripe/subscriptions#configuration) for all callbacks.
 
 <Callout type="info">
   **What is `referenceId`?** This is your application's identifier for the entity that owns the
@@ -93,13 +92,25 @@ depends on your framework. See [Frameworks](/docs/frameworks) supported framewor
 
 ### 3. Run Database Migrations
 
-The fragment adds a `stripe_subscription` table to your database. Generate the schema for this table
-using the `fragno-cli`. For setting up Fragno DB schemas, see the
+The fragment adds `customer` and `subscription` tables to your database. Generate the schema for
+these tables using the `fragno-cli`. For setting up Fragno DB schemas, see the
 [Fragno DB Quickstart](/docs/fragno/for-users/database-fragments/overview#quick-start).
 
 ```npm
 # Generate schema file
 npx fragno-cli db generate lib/stripe.ts --format drizzle -o db/stripe.schema.ts
+```
+
+### 4. Run a Hook Processor
+
+The webhook route only records each Stripe event; durable hooks process it afterwards and retry when
+Stripe or your callbacks fail. Run a [hook processor](/docs/fragno/for-users/hook-processors) so
+they run:
+
+```typescript title="lib/stripe.ts"
+import { createDurableHooksProcessor } from "@fragno-dev/db/dispatchers/node";
+
+createDurableHooksProcessor([stripeFragment], { pollIntervalMs: 2000 }).startPolling();
 ```
 
 ## Creating a subscription
@@ -122,7 +133,7 @@ export function SubscribeButton() {
   const { mutate, loading, error } = stripeClient.upgradeSubscription();
 
   const handleSubscribe = async () => {
-    const { url, redirect } = await mutate({
+    const { url } = await mutate({
       body: {
         priceId: "price_1234567890", // The Stripe price ID being subscribed to
         successUrl: `${window.location.origin}/success`,
@@ -130,9 +141,7 @@ export function SubscribeButton() {
       },
     });
 
-    if (redirect) {
-      window.location.href = url; // Redirect to Stripe Checkout Portal
-    }
+    window.location.href = url; // Redirect to Stripe Checkout
   };
 
   return (

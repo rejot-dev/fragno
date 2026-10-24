@@ -1,29 +1,36 @@
 ---
 title: Webhooks
-description: Configure and handle Stripe webhook events
+description: How the fragment processes Stripe webhook events
 ---
 
 import { Callout } from "fumadocs-ui/components/callout";
 
 ## Overview
 
-Stripe sends subscription updates through webhook events, this fragment implements a webhook handler
-for you which keeps the subscription table in sync.
+Stripe reports subscription changes through webhook events. The fragment's webhook route verifies
+the event signature, records the event as a [durable hook](/docs/fragno/for-users/hook-processors)
+and responds right away. A hook processor then handles the event, retrying when Stripe or your
+callbacks fail.
+
+Stripe delivers events at least once and in any order. The fragment therefore does not apply the
+snapshot an event carries: an event prompts it to fetch the subscription from Stripe and store the
+state Stripe reports at that moment. A late or repeated event cannot roll a subscription back.
+Repeated deliveries of the same event are recorded once.
+
+<Callout type="warning">
+  Without a running [hook processor](/docs/fragno/for-users/hook-processors), events are recorded
+  but never processed.
+</Callout>
 
 ### Handled Events
 
-The fragment listens for these subscription-related events:
+- **`checkout.session.completed`** (subscription mode) - Syncs the subscription the checkout created
+- **`customer.subscription.*`** - Syncs the subscription (created, updated, deleted, paused,
+  resumed, trial ending, pending updates)
+- **`customer.deleted`** - Unlinks the customer from its entity, so the entity's next checkout
+  creates a new customer
 
-- **`checkout.session.completed`** - Creates the subscription record after successful checkout
-- **`customer.subscription.updated`** - Updates subscription data when changes occur (renewals, plan
-  changes, etc.)
-- **`customer.subscription.deleted`** - Removes subscriptions
-- **`customer.subscription.paused`** - Updates status when subscriptions are paused
-- **`customer.subscription.resumed`** - Updates status when subscriptions resume
-- **`customer.subscription.trial_will_end`** - Notifies when trials are ending soon (3 days before)
-
-All of these events automatically update your local `subscription` table to match the state in
-Stripe.
+Configure your Stripe webhook endpoint to send at least these events.
 
 ## Webhook Endpoint URL
 
@@ -36,29 +43,50 @@ https://yourdomain.com/api/stripe/webhook
 Here `/api/stripe` is the default mount path where you have
 [mounted](/docs/stripe/quickstart#2-mount-the-fragment-routes) the Stripe fragment.
 
-<Callout type="info">
-  For local development, you'll need to use the Stripe CLI to forward webhooks. See [Testing
-  Webhooks Locally](#testing-webhooks-locally) below.
-</Callout>
+## Reacting to Changes
+
+Use `onSubscriptionChanged` to act on subscription state, for example to grant or revoke access. It
+runs after a sync changed a subscription and receives the subscription as it is stored when the
+callback runs, so a retried callback never sees an outdated state.
+
+```typescript
+export const stripeFragment = createStripeFragment(
+  {
+    // ... other config
+    onSubscriptionChanged: async ({ subscription }, { idempotencyKey }) => {
+      if (subscription.referenceId) {
+        await setPlan(subscription.referenceId, subscription.priceId, subscription.status);
+      }
+    },
+  },
+  { databaseAdapter },
+);
+```
 
 ## Custom Webhook Event Handlers
 
-To implement custom handlers for webhook events supply the fragment with the `onEvent` callback.
-This callback is ran _before_ the handlers of the fragment.
+`onStripeEvent` receives every verified Stripe event. It runs as its own durable hook, so a failing
+handler retries on its own without holding back the fragment's subscription sync. Events arrive in
+any order; read subscription state from `onSubscriptionChanged` instead of event payloads.
 
 ```typescript
-export const stripeFragment = createStripeFragment({
-  // ... other configs
-  onEvent: async ({event}) => {
+export const stripeFragment = createStripeFragment(
+  {
+    // ... other config
+    onStripeEvent: async ({ event }, { idempotencyKey }) => {
       switch (event.type) {
-          case 'checkout.session.completed':
-          // do things
+        case "invoice.payment_failed":
+          // notify the customer
           break;
       }
-    }
-  }
-});
+    },
+  },
+  { databaseAdapter },
+);
 ```
+
+All callbacks run at least once. Use the `idempotencyKey` of the hook context (second argument) to
+make side effects idempotent.
 
 ## Testing Webhooks Locally
 

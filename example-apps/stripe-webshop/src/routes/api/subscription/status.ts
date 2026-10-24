@@ -10,27 +10,14 @@ export const Route = createFileRoute("/api/subscription/status")({
         const session = await auth.api.getSession({
           headers: request.headers,
         });
-
-        if (session?.user?.id && session?.user?.stripeCustomerId) {
-          const referenceId = session.user.id;
-          const stripeCustomerId = session.user.stripeCustomerId;
-          const stripeClient = stripeFragment.services.getStripeClient();
-          const stripeSubscriptions = await stripeClient.subscriptions.list({
-            customer: stripeCustomerId,
-            status: "all",
-          });
-
-          // Sync subscription from Stripe to ensure database is up-to-date
-          await stripeFragment.callServices(() =>
-            stripeFragment.services.syncStripeSubscriptions(
-              referenceId,
-              stripeCustomerId,
-              stripeSubscriptions.data,
-            ),
-          );
-        } else {
-          throw new Error("User not linked to Stripe account");
+        if (!session?.user?.id) {
+          throw new Error("Not signed in");
         }
+
+        // Stripe's webhook may arrive after Checkout redirects back, so sync from Stripe now.
+        await stripeFragment.callServices(() =>
+          stripeFragment.services.syncSubscriptions(session.user.id),
+        );
 
         return Response.json({ synced: true });
       },

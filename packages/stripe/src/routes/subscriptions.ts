@@ -1,280 +1,273 @@
+import type Stripe from "stripe";
 import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
-import type { DatabaseRequestContext } from "@fragno-dev/db";
+import { decodeCursor, type Cursor } from "@fragno-dev/db";
 
-import { stripeFragmentDefinition } from "../definition";
-import {
-  SubscriptionReponseSchema,
-  SubscriptionUpgradeRequestSchema,
-  type SubscriptionResponse,
-} from "../models/subscriptions";
-import type { StripeServiceCall } from "../types";
+import { recordCustomerLink, stripeFragmentDefinition } from "../definition";
+import { stripeSchema } from "../schema";
+import { isOngoing, subscriptionFromRow, subscriptionSchema } from "../subscriptions";
+import type { StripeCustomerLink, StripeEntity } from "../types";
 import { stripeToApiError } from "./errors";
 
-const callService = async <T, TRetrieve>(
-  handlerTx: DatabaseRequestContext["handlerTx"],
-  call: () => StripeServiceCall<T, TRetrieve>,
-) => {
-  return handlerTx()
-    .withServiceCalls(() => [call()] as const)
-    .transform(({ serviceResult: [result] }) => result)
-    .execute();
-};
+const upgradeRequestSchema = z.object({
+  priceId: z.string().describe("Stripe price ID to subscribe/upgrade to"),
+  quantity: z.number().int().positive().default(1).describe("Number of seats"),
+  successUrl: z.url().describe("Redirect URL after successful checkout"),
+  cancelUrl: z.url().describe("Redirect URL if checkout is cancelled"),
+  returnUrl: z.url().optional().describe("Return URL for billing portal"),
+  promotionCode: z.string().optional().describe("Promotion code to apply"),
+  subscriptionId: z
+    .string()
+    .optional()
+    .describe("Subscription to upgrade; defaults to the entity's only active subscription"),
+});
+
+const subscriptionPageQuerySchema = z.object({
+  cursor: z.string().min(1).optional(),
+  pageSize: z.coerce.number().int().min(1).max(100).optional(),
+});
+
+type UpgradeOutcome =
+  | { ok: true; url: string; newLink: StripeCustomerLink | null }
+  | {
+      ok: false;
+      code: "SUBSCRIPTION_NOT_FOUND" | "MULTIPLE_ACTIVE_SUBSCRIPTIONS" | "PROMOTION_CODE_INVALID";
+    };
+
+/** Stripe search queries quote string values with single quotes. */
+function searchString(value: string) {
+  return `'${value.replaceAll("\\", "\\\\").replaceAll("'", "\\'")}'`;
+}
 
 export const subscriptionsRoutesFactory = defineRoutes(stripeFragmentDefinition).create(
   ({ deps, services, config, defineRoute }) => {
+    /** A customer an earlier integration created for the entity, found by its metadata. */
+    async function findCustomer(entity: StripeEntity): Promise<string | null> {
+      const found = await deps.stripe.customers.search({
+        query: `metadata['referenceId']:${searchString(entity.referenceId)}`,
+        limit: 1,
+      });
+      return found.data[0]?.id ?? null;
+    }
+
+    async function createCustomer(entity: StripeEntity): Promise<string> {
+      // Concurrent first upgrades can each create a customer. Only one gets linked; the other
+      // requests retry onto the link and leave their customer unused.
+      const created = await deps.stripe.customers.create({
+        email: entity.customerEmail,
+        metadata: { ...entity.customerMetadata, referenceId: entity.referenceId },
+      });
+      return created.id;
+    }
+
+    /**
+     * The customer's subscriptions that still bill, as Stripe lists them. Routes decide from these
+     * because synced rows lag behind Stripe, and behind links to customers that already existed.
+     */
+    async function listOngoingSubscriptions(customerId: string) {
+      const subscriptions = await deps.stripe.subscriptions.list({
+        customer: customerId,
+        limit: 100,
+      });
+      return subscriptions.data.filter(isOngoing);
+    }
+
+    async function findPromotionCodeId(code: string): Promise<string | null> {
+      const promotionCodes = await deps.stripe.promotionCodes.list({
+        code,
+        active: true,
+        limit: 1,
+      });
+      return promotionCodes.data[0]?.id ?? null;
+    }
+
     return [
       defineRoute({
         method: "GET",
         path: "/admin/subscriptions",
-        errorCodes: ["UNAUTHORIZED"] as const,
+        queryParameters: ["cursor", "pageSize"],
         outputSchema: z.object({
-          subscriptions: z.array(SubscriptionReponseSchema),
+          subscriptions: z.array(subscriptionSchema),
+          cursor: z.string().nullable(),
+          hasNextPage: z.boolean(),
         }),
-        handler: async function (_, { json, error }) {
-          if (!config.enableAdminRoutes) {
-            return error({ message: "Unauthorized", code: "UNAUTHORIZED" }, 401);
-          }
-
-          // TODO: Implement pagination
-          return json({
-            subscriptions: await callService(this.handlerTx.bind(this), () =>
-              services.getAllSubscriptions(),
-            ),
+        errorCodes: ["INVALID_QUERY"] as const,
+        handler: async function ({ query }, { json, error }) {
+          const invalidQuery = () =>
+            error(
+              {
+                message:
+                  "pageSize must be a whole number from 1 to 100 and cursor a returned cursor",
+                code: "INVALID_QUERY",
+              },
+              400,
+            );
+          const parsed = subscriptionPageQuerySchema.safeParse({
+            cursor: query.get("cursor") ?? undefined,
+            pageSize: query.get("pageSize") ?? undefined,
           });
+          if (!parsed.success) {
+            return invalidQuery();
+          }
+          let cursor: Cursor | undefined;
+          try {
+            cursor = parsed.data.cursor ? decodeCursor(parsed.data.cursor) : undefined;
+          } catch {
+            return invalidQuery();
+          }
+          const pageSize = parsed.data.pageSize ?? 50;
+
+          const page = await this.handlerTx()
+            .retrieve(({ forSchema }) =>
+              forSchema(stripeSchema).findWithCursor("subscription", (b) => {
+                const ordered = b
+                  .whereIndex("primary")
+                  .orderByIndex("primary", "asc")
+                  .pageSize(pageSize);
+                return cursor ? ordered.after(cursor) : ordered;
+              }),
+            )
+            .transformRetrieve(([page]) => ({
+              subscriptions: page.items.map(subscriptionFromRow),
+              cursor: page.cursor?.encode() ?? null,
+              hasNextPage: page.hasNextPage,
+            }))
+            .execute();
+
+          return json(page);
         },
       }),
       defineRoute({
         method: "POST",
         path: "/subscription/upgrade",
-        inputSchema: SubscriptionUpgradeRequestSchema,
-        outputSchema: z.object({
-          url: z.string(),
-          redirect: z.boolean(),
-          sessionId: z.string().optional(),
-        }),
+        inputSchema: upgradeRequestSchema,
+        outputSchema: z.object({ url: z.url().describe("URL to redirect the entity to") }),
         errorCodes: [
-          "MISSING_CUSTOMER_INFO",
+          "UNAUTHENTICATED",
           "SUBSCRIPTION_NOT_FOUND",
-          "CUSTOMER_SUBSCRIPTION_MISMATCH",
+          "MULTIPLE_ACTIVE_SUBSCRIPTIONS",
+          "PROMOTION_CODE_INVALID",
           "UPGRADE_HAS_NO_EFFECT",
           "SUBSCRIPTION_UPDATE_NOT_ALLOWED",
           "SUBSCRIPTION_UPDATE_PROMO_CODE_NOT_ALLOWED",
           "PROMOTION_CODE_CUSTOMER_NOT_FIRST_TIME",
-          "MULTIPLE_ACTIVE_SUBSCRIPTIONS",
-          "NO_ACTIVE_SUBSCRIPTIONS",
         ] as const,
         handler: async function (context, { json, error }) {
           const body = await context.input.valid();
           const entity = await config.resolveEntityFromRequest(context);
-
-          let customerId: string | undefined = entity.stripeCustomerId;
-          let existingSubscription: SubscriptionResponse | null = null;
-
-          // Step 1: Get active subscriptions
-          const stripeCustomerId = entity.stripeCustomerId;
-          if (stripeCustomerId) {
-            const existingSubscriptions = await callService(this.handlerTx.bind(this), () =>
-              services.getSubscriptionsByStripeCustomerId(stripeCustomerId),
-            );
-
-            // Cannot upgrade cancelled subscriptions
-            let activeSubscriptions = existingSubscriptions.filter((s) => s.status !== "canceled");
-
-            // A specific subscription has been specified
-            if (body.subscriptionId) {
-              activeSubscriptions = activeSubscriptions.filter((s) => s.id === body.subscriptionId);
-            }
-
-            if (activeSubscriptions.length > 1) {
-              return error(
-                {
-                  message:
-                    "Multiple active subscriptions found for customer, please specify which subscription to upgrade",
-                  code: "MULTIPLE_ACTIVE_SUBSCRIPTIONS",
-                },
-                400,
-              );
-            }
-            if (activeSubscriptions.length === 0) {
-              return error(
-                {
-                  message: "No active subscriptions found for customer",
-                  code: "NO_ACTIVE_SUBSCRIPTIONS",
-                },
-                400,
-              );
-            }
-            const activeSubscription = activeSubscriptions[0];
-            if (!activeSubscription) {
-              return error(
-                {
-                  message: "No active subscriptions found for customer",
-                  code: "NO_ACTIVE_SUBSCRIPTIONS",
-                },
-                400,
-              );
-            }
-            existingSubscription = activeSubscription;
-
-            if (
-              customerId &&
-              existingSubscription?.stripeCustomerId &&
-              existingSubscription.stripeCustomerId !== customerId
-            ) {
-              return error(
-                {
-                  message:
-                    "Subsciption being updated does not belong to Stripe Customer that was provided",
-                  code: "CUSTOMER_SUBSCRIPTION_MISMATCH",
-                },
-                422,
-              );
-            }
-
-            customerId = activeSubscription.stripeCustomerId;
+          if (!entity) {
+            return error({ message: "Not authenticated", code: "UNAUTHENTICATED" }, 401);
           }
+          const returnUrl = body.returnUrl ?? body.successUrl;
 
-          // Step 2: Get or Create customer if not found
-          if (!customerId) {
-            const existingLinkedCustomer = await deps.stripe.customers.search({
-              query: `metadata['referenceId']:'${entity.referenceId}'`,
-              limit: 1,
-            });
+          let outcome: UpgradeOutcome;
+          try {
+            outcome = await this.handlerTx()
+              .withServiceCalls(
+                () => [services.getCustomerByReferenceId(entity.referenceId)] as const,
+              )
+              .transformRetrieve(async (_, [linkedCustomer]) => {
+                const existingCustomerId =
+                  linkedCustomer?.customerId ?? (await findCustomer(entity));
+                const ongoing = existingCustomerId
+                  ? await listOngoingSubscriptions(existingCustomerId)
+                  : [];
+                const candidates = ongoing.filter(
+                  (subscription) => !body.subscriptionId || subscription.id === body.subscriptionId,
+                );
+                if (body.subscriptionId && candidates.length === 0) {
+                  return { ok: false, code: "SUBSCRIPTION_NOT_FOUND" } as const;
+                }
+                if (candidates.length > 1) {
+                  return { ok: false, code: "MULTIPLE_ACTIVE_SUBSCRIPTIONS" } as const;
+                }
 
-            if (existingLinkedCustomer.data.length === 1) {
-              // Use existing customer
-              customerId = existingLinkedCustomer.data[0].id;
-            } else {
-              // Create new Stripe Customer
+                let discounts: { promotion_code: string }[] | undefined;
+                if (body.promotionCode) {
+                  const promotionCodeId = await findPromotionCodeId(body.promotionCode);
+                  if (!promotionCodeId) {
+                    return { ok: false, code: "PROMOTION_CODE_INVALID" } as const;
+                  }
+                  discounts = [{ promotion_code: promotionCodeId }];
+                }
 
-              // Check if sufficient data is provided for this scenario
-              if (!entity.customerEmail || !entity.referenceId) {
-                return error({
-                  message:
-                    "New Stripe Customer must be created, but customerEmail or referenceID has not been provided",
-                  code: "MISSING_CUSTOMER_INFO",
-                });
-              }
+                const customerId = existingCustomerId ?? (await createCustomer(entity));
+                // Customers found by search name the entity in their metadata, so their synced
+                // subscriptions already belong to it.
+                const newLink = linkedCustomer
+                  ? null
+                  : { customerId, referenceId: entity.referenceId };
 
-              const newCustomer = await deps.stripe.customers.create({
-                email: entity.customerEmail,
-                metadata: {
-                  referenceId: entity.referenceId,
-                  ...entity.stripeMetadata,
-                },
-              });
-              customerId = newCustomer.id;
-            }
+                const subscription = candidates[0];
+                if (subscription?.cancel_at_period_end) {
+                  // The portal cannot change a subscription that is scheduled to cancel, so
+                  // upgrading it means resuming it.
+                  await deps.stripe.subscriptions.update(subscription.id, {
+                    cancel_at_period_end: false,
+                  });
+                  return { ok: true, url: returnUrl, newLink } as const;
+                }
 
-            // Communicate back to the user that a customer has been created/linked
-            try {
-              await config.onStripeCustomerCreated(customerId, entity.referenceId);
-            } catch (error) {
-              deps.log.error("onStripeCustomerCreated failed!", error);
-            }
-          }
-
-          // Step 3: Resolve promotion code to ID if provided
-          let promotionCodeId: string | undefined = undefined;
-          if (body.promotionCode) {
-            const promotionCodes = await deps.stripe.promotionCodes.list({
-              code: body.promotionCode,
-              active: true,
-              limit: 1,
-            });
-            if (promotionCodes.data.length > 0) {
-              promotionCodeId = promotionCodes.data[0].id;
-            }
-          }
-
-          // Step 4: If existing subscription is active, modify using billing portal
-          if (
-            existingSubscription &&
-            (existingSubscription.status === "active" || existingSubscription.status === "trialing")
-          ) {
-            const stripeSubscription = await deps.stripe.subscriptions.retrieve(
-              existingSubscription.stripeSubscriptionId,
-            );
-
-            try {
-              // when /upgrade is called on a subscription scheduled to cancel at the end of the billing period,
-              // it is still "active" but it's not possible to renew it using a billing portal.
-              if (existingSubscription.cancelAt != null) {
-                deps.log.info("un-cancelling subscription", stripeSubscription.id);
-
-                await deps.stripe.subscriptions.update(stripeSubscription.id, {
-                  cancel_at_period_end: false,
-                });
-
-                return json({
-                  url: body.returnUrl || body.successUrl,
-                  redirect: true,
-                });
-              }
-              // Portal session to confirm subscription changes
-              const portalSession = await deps.stripe.billingPortal.sessions.create({
-                customer: customerId,
-                return_url: body.returnUrl || body.successUrl,
-                flow_data: {
-                  type: "subscription_update_confirm",
-                  after_completion: {
-                    type: "redirect",
-                    redirect: {
-                      return_url: body.returnUrl || body.successUrl,
-                    },
-                  },
-                  subscription_update_confirm: {
-                    subscription: existingSubscription.stripeSubscriptionId,
-                    items: [
-                      {
-                        // We always create subscriptions with a single item
-                        id: stripeSubscription.items.data[0]?.id,
-                        quantity: body.quantity,
-                        price: body.priceId,
+                if (subscription) {
+                  const portalSession = await deps.stripe.billingPortal.sessions.create({
+                    customer: customerId,
+                    return_url: returnUrl,
+                    flow_data: {
+                      type: "subscription_update_confirm",
+                      after_completion: { type: "redirect", redirect: { return_url: returnUrl } },
+                      subscription_update_confirm: {
+                        subscription: subscription.id,
+                        items: [
+                          {
+                            id: subscription.items.data[0].id,
+                            quantity: body.quantity,
+                            price: body.priceId,
+                          },
+                        ],
+                        discounts,
                       },
-                    ],
-                    ...(promotionCodeId && {
-                      discounts: [{ promotion_code: promotionCodeId }],
-                    }),
-                  },
-                },
-              });
-              return json({
-                url: portalSession.url,
-                redirect: true,
-              });
-            } catch (error: unknown) {
-              throw stripeToApiError(error);
-            }
+                    },
+                  });
+                  return { ok: true, url: portalSession.url, newLink } as const;
+                }
+
+                const checkoutParams: Stripe.Checkout.SessionCreateParams = {
+                  mode: "subscription",
+                  customer: customerId,
+                  client_reference_id: entity.referenceId,
+                  success_url: body.successUrl,
+                  cancel_url: body.cancelUrl,
+                  line_items: [{ price: body.priceId, quantity: body.quantity }],
+                  subscription_data: { metadata: { referenceId: entity.referenceId } },
+                  discounts,
+                };
+                const checkoutSession = await deps.stripe.checkout.sessions.create(checkoutParams);
+                // Hosted checkout sessions always have a URL.
+                const url = checkoutSession.url!;
+                return { ok: true, url, newLink } as const;
+              })
+              .mutate(({ forSchema, retrieveResult }): UpgradeOutcome => {
+                if (retrieveResult.ok && retrieveResult.newLink) {
+                  recordCustomerLink(forSchema(stripeSchema), retrieveResult.newLink);
+                }
+                return retrieveResult;
+              })
+              .execute();
+          } catch (err) {
+            throw stripeToApiError(err);
           }
 
-          // Step 5: Create a Subscription
-          const checkoutSession = await deps.stripe.checkout.sessions.create({
-            customer: customerId,
-            success_url: body.successUrl,
-            cancel_url: body.cancelUrl,
-            line_items: [
-              {
-                price: body.priceId,
-                quantity: body.quantity,
-              },
-            ],
-            mode: "subscription",
-            metadata: {
-              referenceId: entity.referenceId,
-            },
-            ...(promotionCodeId && {
-              discounts: [{ promotion_code: promotionCodeId }],
-            }),
-          });
-
-          return json({
-            url: checkoutSession.url!,
-            redirect: true,
-            sessionId: checkoutSession.id,
-          });
+          if (!outcome.ok) {
+            const messages = {
+              SUBSCRIPTION_NOT_FOUND: "No active subscription with this ID",
+              MULTIPLE_ACTIVE_SUBSCRIPTIONS:
+                "Multiple active subscriptions found, specify which subscription to upgrade",
+              PROMOTION_CODE_INVALID: "Promotion code does not exist or is no longer active",
+            };
+            return error({ message: messages[outcome.code], code: outcome.code }, 400);
+          }
+          return json({ url: outcome.url });
         },
       }),
       defineRoute({
@@ -287,108 +280,99 @@ export const subscriptionsRoutesFactory = defineRoutes(stripeFragmentDefinition)
             .optional()
             .describe("Which subscription to cancel, if there are multiple active subscriptions"),
         }),
-        outputSchema: z.object({
-          url: z.url().describe("URL to redirect to after cancellation"),
-          redirect: z.boolean().describe("Whether to redirect to the URL"),
-        }),
+        outputSchema: z.object({ url: z.url().describe("URL to redirect the entity to") }),
         errorCodes: [
-          "SUBSCRIPTION_NOT_FOUND",
+          "UNAUTHENTICATED",
           "NO_SUBSCRIPTION_TO_CANCEL",
-          "SUBSCRIPTION_ALREADY_CANCELED",
-          "NO_STRIPE_CUSTOMER_LINKED",
           "MULTIPLE_SUBSCRIPTIONS_FOUND",
+          "SUBSCRIPTION_ALREADY_CANCELED",
         ] as const,
         handler: async function (context, { json, error }) {
           const body = await context.input.valid();
-          const { stripeCustomerId } = await config.resolveEntityFromRequest(context);
-
-          if (!stripeCustomerId) {
-            return error(
-              { message: "No stripe customer linked to entity", code: "NO_STRIPE_CUSTOMER_LINKED" },
-              400,
-            );
+          const entity = await config.resolveEntityFromRequest(context);
+          if (!entity) {
+            return error({ message: "Not authenticated", code: "UNAUTHENTICATED" }, 401);
           }
 
-          let activeSubscriptions = (
-            await callService(this.handlerTx.bind(this), () =>
-              services.getSubscriptionsByStripeCustomerId(stripeCustomerId),
-            )
-          ).filter((s) => s.status === "active");
-
-          // A specific active subscription was requested
-          if (body.subscriptionId) {
-            activeSubscriptions = activeSubscriptions.filter((s) => s.id === body.subscriptionId);
-          }
-
-          if (activeSubscriptions.length === 0) {
-            return error(
-              { message: "No active subscription to cancel", code: "NO_SUBSCRIPTION_TO_CANCEL" },
-              404,
-            );
-          }
-
-          if (activeSubscriptions.length > 1) {
-            return error(
-              {
-                message: "Multiple active subscriptions found",
-                code: "MULTIPLE_SUBSCRIPTIONS_FOUND",
-              },
-              400,
-            );
-          }
-
-          const activeSubscription = activeSubscriptions[0];
-
+          let outcome:
+            | { ok: true; url: string; newLink: StripeCustomerLink | null }
+            | {
+                ok: false;
+                code:
+                  | "NO_SUBSCRIPTION_TO_CANCEL"
+                  | "MULTIPLE_SUBSCRIPTIONS_FOUND"
+                  | "SUBSCRIPTION_ALREADY_CANCELED";
+              };
           try {
-            // Get active subscriptions from Stripe for this customer
-            const stripeSubscription = await deps.stripe.subscriptions.retrieve(
-              activeSubscription.stripeSubscriptionId,
-            );
+            outcome = await this.handlerTx()
+              .withServiceCalls(
+                () => [services.getCustomerByReferenceId(entity.referenceId)] as const,
+              )
+              .transformRetrieve(async (_, [linkedCustomer]) => {
+                const customerId = linkedCustomer?.customerId ?? (await findCustomer(entity));
+                const ongoing = customerId ? await listOngoingSubscriptions(customerId) : [];
+                const candidates = ongoing.filter(
+                  (subscription) => !body.subscriptionId || subscription.id === body.subscriptionId,
+                );
+                const subscription = candidates[0];
+                if (!customerId || !subscription) {
+                  return { ok: false, code: "NO_SUBSCRIPTION_TO_CANCEL" } as const;
+                }
+                if (candidates.length > 1) {
+                  return { ok: false, code: "MULTIPLE_SUBSCRIPTIONS_FOUND" } as const;
+                }
+                if (subscription.cancel_at_period_end) {
+                  return { ok: false, code: "SUBSCRIPTION_ALREADY_CANCELED" } as const;
+                }
 
-            if (!stripeSubscription) {
-              return error(
-                {
-                  message: "Active subscription not found in Stripe",
-                  code: "SUBSCRIPTION_NOT_FOUND",
-                },
-                404,
-              );
-            }
-
-            // Check if subscription is already set to cancel at period end
-            if (stripeSubscription.cancel_at_period_end) {
-              // Already scheduled for cancellation, just return success
-              return json({
-                url: "", // No redirect needed
-                redirect: false,
-              });
-            }
-
-            // Create billing portal session for cancellation
-            const portalSession = await deps.stripe.billingPortal.sessions.create({
-              customer: activeSubscription.stripeCustomerId,
-              return_url: body.returnUrl,
-              flow_data: {
-                type: "subscription_cancel",
-                subscription_cancel: {
-                  subscription: stripeSubscription.id,
-                },
-                after_completion: {
-                  type: "redirect",
-                  redirect: {
-                    return_url: body.returnUrl,
+                const portalSession = await deps.stripe.billingPortal.sessions.create({
+                  customer: customerId,
+                  return_url: body.returnUrl,
+                  flow_data: {
+                    type: "subscription_cancel",
+                    subscription_cancel: { subscription: subscription.id },
+                    after_completion: {
+                      type: "redirect",
+                      redirect: { return_url: body.returnUrl },
+                    },
                   },
-                },
-              },
-            });
-
-            return json({
-              url: portalSession.url,
-              redirect: true,
-            });
-          } catch (err: unknown) {
+                });
+                return {
+                  ok: true,
+                  url: portalSession.url,
+                  newLink: linkedCustomer ? null : { customerId, referenceId: entity.referenceId },
+                } as const;
+              })
+              .mutate(({ forSchema, retrieveResult }) => {
+                if (retrieveResult.ok && retrieveResult.newLink) {
+                  recordCustomerLink(forSchema(stripeSchema), retrieveResult.newLink);
+                }
+                return retrieveResult;
+              })
+              .execute();
+          } catch (err) {
             throw stripeToApiError(err);
           }
+
+          if (!outcome.ok) {
+            const responses = {
+              NO_SUBSCRIPTION_TO_CANCEL: {
+                message: "No active subscription to cancel",
+                status: 404,
+              },
+              MULTIPLE_SUBSCRIPTIONS_FOUND: {
+                message: "Multiple active subscriptions found, specify which one to cancel",
+                status: 400,
+              },
+              SUBSCRIPTION_ALREADY_CANCELED: {
+                message: "Subscription is already set to be canceled at period end",
+                status: 409,
+              },
+            } as const;
+            const { message, status } = responses[outcome.code];
+            return error({ message, code: outcome.code }, status);
+          }
+          return json({ url: outcome.url });
         },
       }),
     ];

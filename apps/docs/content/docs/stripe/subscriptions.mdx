@@ -7,9 +7,9 @@ import { Callout } from "fumadocs-ui/components/callout";
 
 ## Data Model
 
-The fragment maintains a local database table (`subscription_stripe`) that tracks subscription
-state, with a subscription linked back to an entity in your application through the
-**`referenceId`**.
+The fragment keeps a local copy of the Stripe state your application reads: a `customer` table that
+links each Stripe customer to an entity in your application through its **`referenceId`**, and a
+`subscription` table with the subscriptions of those customers.
 
 In Stripe's model:
 
@@ -41,9 +41,9 @@ You can also configure Stripe to allow only a single (active) subscription per c
 
 Stripe is the source of truth for subscription state. Never modify subscription data in the database
 tables. All subscription changes (create, update, cancel) should be performed through either this
-fragments `/subscription/upgrade` or `/subscription/cancel` hooks or directly through the Stripe
-API. The database table is updated automatically via webhooks or manually through the
-`syncStripeSubscriptions` service.
+fragments `/subscription/upgrade` or `/subscription/cancel` routes or directly through the Stripe
+API. The tables are updated automatically via [webhooks](/docs/stripe/webhooks) or on demand through
+the `syncSubscriptions` service.
 
 ### Security
 
@@ -59,12 +59,19 @@ subscription happens through a redirect to a
 
 ## Database Schema
 
-The Stripe fragment maintains a `subscription_stripe` table in your database to track subscription
-state. This allows you to query subscription data without making API calls to Stripe and ensures
-your application remains responsive even if Stripe is temporarily unavailable.
+The fragment's tables are keyed by Stripe IDs:
 
-The `subscription_stripe` table has a `reference_id` column that is used to link a subscription to
-an application-specific identifier like a user ID or organization ID.
+- **`customer`**: the Stripe customer ID and the `referenceId` of the entity it belongs to. Each
+  entity has at most one customer.
+- **`subscription`**: the Stripe subscription ID, its customer, the `referenceId` of that customer's
+  entity, its price and quantity, status, period and cancellation dates.
+
+A subscription belongs to the entity its customer is linked to. Before a customer is linked, the
+`referenceId` in the Stripe customer's metadata names the entity, and a subscription keeps its
+entity after its customer is deleted.
+
+This allows you to query subscription data without making API calls to Stripe and ensures your
+application remains responsive even if Stripe is temporarily unavailable.
 
 For setting up Fragno DB schemas, see the
 [Fragno DB Quickstart](/docs/fragno/for-users/database-fragments/overview#quick-start).
@@ -81,7 +88,7 @@ export function PricingCard({ priceId, planName }: { priceId: string; planName: 
   const { mutate, loading, error } = stripeClient.upgradeSubscription();
 
   const handleSubscribe = async () => {
-    const { url, redirect } = await mutate({
+    const { url } = await mutate({
       body: {
         priceId: priceId, // Stripe price ID (e.g., "price_1234567890")
         successUrl: `${window.location.origin}/success`,
@@ -89,9 +96,7 @@ export function PricingCard({ priceId, planName }: { priceId: string; planName: 
       },
     });
 
-    if (redirect) {
-      window.location.href = url; // Redirect to Stripe Checkout
-    }
+    window.location.href = url; // Redirect to Stripe Checkout
   };
 
   return (
@@ -109,87 +114,113 @@ export function PricingCard({ priceId, planName }: { priceId: string; planName: 
 
 The Stripe Checkout portal will redirect the user back to `successUrl` after a successful payment,
 at this point the webhook event that registers this payment may not (yet) have arrived. Therefore
-you can create a dedicated success page which fetches the latest subscription status from using the
-`syncStripeSubscriptions` service to ensure the end-user sees the right result. See
+you can create a dedicated success page which fetches the latest subscription status from Stripe
+using the `syncSubscriptions` service to ensure the end-user sees the right result. See
 [Manual Synchronization](#manual-synchronization) for details.
 
-### Configuration Requirements
+### Configuration
 
-When creating the Stripe fragment, you must provide two callbacks:
+**`resolveEntityFromRequest`** (required)
 
-**`onStripeCustomerCreated`**
+Called on the routes that act for an entity (`/subscription/upgrade`, `/subscription/cancel` and
+`/portal`) to identify which entity (user or organization) is making the request. Extract
+authentication information from the request context (session cookies, JWT tokens in headers, etc.)
+and return:
 
-Called when a new Stripe Customer is created for an entity in your system. Use this to store the
-Stripe Customer ID in your database so you can link it back to your user/organization.
+- `referenceId`: your application's identifier for the entity
+- `customerEmail`: the email set on the Stripe customer the fragment creates for this entity
+- `customerMetadata`: metadata set on that Stripe customer
 
-**`resolveEntityFromRequest`**
+Return `null` when the request is not authenticated; the routes then respond with
+`401 UNAUTHENTICATED`.
 
-Called on subscription management routes (`/subscription/upgrade` and `/subscription/cancel`) to
-identify which entity (user or organization) is making the request. This callback should:
+On an entity's first upgrade the fragment looks for a Stripe customer whose `referenceId` metadata
+matches, which is how customers created by earlier integrations are picked up. Otherwise it creates
+one. Either way it records the link in its `customer` table.
 
-1. Extract authentication information from the request context (session cookies, JWT tokens in
-   headers, etc.)
-2. Return the entity's Stripe-related data needed for subscription operations
+**Callbacks** (optional)
 
-The `getEntity` function should return an object of type `StripeEntityData` with the following
-properties:
+These run as [durable hooks](/docs/stripe/webhooks): after the change committed, at least once, and
+retried when they throw. The second argument is the hook context, whose `idempotencyKey` identifies
+the change.
 
-- `stripeCustomerId`: The Stripe customer ID
-- `id`: Your internal entity ID
-
-See this example:
+- `onCustomerLinked({ customerId, referenceId })`: a Stripe customer was linked to an entity, e.g.
+  to keep a copy of the customer ID in your own tables
+- `onSubscriptionChanged({ subscription })`: a subscription changed; `subscription` is read when the
+  callback runs, so it is the current state
+- `onStripeEvent({ event })`: any verified Stripe event, see [Webhooks](/docs/stripe/webhooks)
 
 ```typescript title="lib/stripe.ts"
 import { createStripeFragment } from "@fragno-dev/stripe";
 import { updateUser } from "@/db/user-repo";
 import { getSession } from "@/lib/auth";
 
-export const stripeFragment = createStripeFragment({
-  // ... other config
+export const stripeFragment = createStripeFragment(
+  {
+    // ... other config
 
-  onStripeCustomerCreated: async (stripeCustomerId, referenceId) => {
-    // Store the Stripe Customer ID in your database
-    await updateUser(referenceId, { stripeCustomerId });
+    resolveEntityFromRequest: async (context) => {
+      // Extract authentication from your session/auth system
+      const session = await getSession(context.headers);
+      if (!session) {
+        return null;
+      }
+
+      return {
+        referenceId: session.user.id,
+        customerEmail: session.user.email,
+        customerMetadata: {
+          // Additional metadata you want to attach
+        },
+      };
+    },
+
+    onCustomerLinked: async ({ customerId, referenceId }) => {
+      await updateUser(referenceId, { stripeCustomerId: customerId });
+    },
   },
+  { databaseAdapter },
+);
+```
 
-  resolveEntityFromRequest: async (context) => {
-    // Extract authentication from your session/auth system
-    const session = getSession(context.headers);
+### Importing Existing Customers
 
-    return {
-      referenceId: session.user.id,
-      customerEmail: session.user.email,
-      stripeCustomerId: session.user.stripeCustomerId || undefined,
-      stripeMetadata: {
-        // Additional metadata you want to attach
-      },
-    };
-  },
-});
+If your application already stores Stripe customer IDs, link them with the `linkCustomer` service.
+Subscriptions of those customers that the fragment already stored are assigned to the entity in the
+same transaction; the fragment then syncs the ones it has not seen yet.
+
+```typescript
+const result = await stripeFragment.callServices(() =>
+  stripeFragment.services.linkCustomer({ customerId: user.stripeCustomerId, referenceId: user.id }),
+);
+if (!result.ok) {
+  // REFERENCE_ALREADY_LINKED or CUSTOMER_ALREADY_LINKED
+  console.warn(result.code);
+}
 ```
 
 ## Retrieving Subscriptions
 
-The fragment exposes service functions that can be used server-side to query data from the
-subscription table:
+The fragment exposes service functions that can be used server-side to query its tables:
 
 ```typescript
 import { stripeFragment } from "@/lib/stripe";
 
-// Get all subscriptions for a reference ID (e.g., user ID)
-const subscriptions = await stripeFragment.services.getSubscriptionsByReferenceId(user.id);
+// All subscriptions of an entity (e.g. a user ID), including ended ones
+const subscriptions = await stripeFragment.callServices(() =>
+  stripeFragment.services.getSubscriptionsByReferenceId(user.id),
+);
 
-// Get a specific subscription by ID
-const subscription = await stripeFragment.services.getSubscriptionById(subscriptionId);
-
-// Get all subscriptions for a Stripe customer
-const subscriptions = await stripeFragment.services.getSubscriptionsByStripeCustomerId(customerId);
+// The Stripe customer linked to an entity, or null
+const customer = await stripeFragment.callServices(() =>
+  stripeFragment.services.getCustomerByReferenceId(user.id),
+);
 ```
 
 ## Handling Multiple Subscriptions
 
 When users have multiple subscriptions, you need to specify which subscription to upgrade or cancel
-using the subscription ID, this is the identifier of the fragments subscription table.
+using the subscription ID, which is the Stripe subscription ID.
 
 ```typescript
 const { mutate } = stripeClient.upgradeSubscription();
@@ -216,15 +247,13 @@ export function CancelSubscriptionButton() {
   const { mutate, loading, error } = stripeClient.cancelSubscription();
 
   const handleCancel = async () => {
-    const { url, redirect } = await mutate({
+    const { url } = await mutate({
       body: {
         returnUrl: `${window.location.origin}/account`,
       },
     });
 
-    if (redirect) {
-      window.location.href = url; // Redirect to Stripe Billing Portal
-    }
+    window.location.href = url; // Redirect to Stripe Billing Portal
   };
 
   return (
@@ -239,7 +268,10 @@ export function CancelSubscriptionButton() {
 
 To change the user from one plan to another, use the same `upgradeSubscription` mutator with a
 different price ID. If the user already has an active subscription, the fragment will create a
-Stripe Billing Portal confirming the change.
+Stripe Billing Portal confirming the change. If that subscription is scheduled to cancel, upgrading
+resumes it instead and returns `returnUrl` (or `successUrl`). The upgrade and cancel routes look up
+the customer's subscriptions in Stripe rather than in the local tables, so they act on the current
+state even before webhooks arrive.
 
 ```typescript
 const { mutate } = stripeClient.upgradeSubscription();
@@ -271,7 +303,7 @@ const response = await mutate({
   },
 });
 
-if (response?.redirect) {
+if (response) {
   window.location.href = response.url; // Redirect to Stripe Billing Portal
 }
 ```
@@ -287,11 +319,10 @@ Checkout. They should see their subscription status reflected in your UI immedia
 could arrive a few seconds later, it would be better to get the latest info from Stripe directly on
 the checkout success page.
 
-### Using `syncStripeSubscriptions`
+### Using `syncSubscriptions`
 
-The fragment provides the `syncStripeSubscriptions` method as a fragment service. This method takes
-Stripe subscriptions you have already fetched and writes them to your database. If no subscriptions
-are provided for a customer, then the subscription will be dropped from the database.
+The `syncSubscriptions` service fetches the subscriptions of an entity's Stripe customer from Stripe
+and stores them, in one transaction. Webhooks that arrive later find nothing left to change.
 
 ```typescript
 import { stripeFragment } from "@/lib/stripe";
@@ -300,22 +331,12 @@ import { getSession } from "@/lib/auth";
 /* ... */
 
 const session = await getSession();
-const stripeClient = stripeFragment.services.getStripeClient();
-const stripeSubscriptions = await stripeClient.subscriptions.list({
-  customer: session.user.stripeCustomerId,
-  status: "all",
-});
 
 // Sync latest subscription data to the database
-await stripeFragment.services.syncStripeSubscriptions(
-  session.user.id, // referenceId
-  session.user.stripeCustomerId, // stripeCustomerId
-  stripeSubscriptions.data,
-);
+await stripeFragment.callServices(() => stripeFragment.services.syncSubscriptions(session.user.id));
 
 // Now you can assume the db state is recent
-const subscription = await stripeFragment.services.getSubscriptionById(session.subscriptionId);
-
-// do things
-console.log(subscription.status);
+const subscriptions = await stripeFragment.callServices(() =>
+  stripeFragment.services.getSubscriptionsByReferenceId(session.user.id),
+);
 ```

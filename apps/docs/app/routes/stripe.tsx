@@ -65,29 +65,30 @@ const setupSteps: Step[] = [
   },
   {
     title: "2. Create the fragment server",
-    description: "Configure Stripe secrets and map customers to your users.",
+    description: "Configure Stripe secrets and tell the fragment who is paying.",
     lang: "ts",
     code: `import { createStripeFragment } from "@fragno-dev/stripe";
 import { getSession } from "@/lib/auth";
-import { updateEntity } from "@/db/repo";
 
 export const stripeFragment = createStripeFragment({
   stripeSecretKey: process.env.STRIPE_SECRET_KEY!,
   webhookSecret: process.env.STRIPE_WEBHOOK_SECRET!,
 
-  onStripeCustomerCreated: async (stripeCustomerId, referenceId) => {
-    await updateEntity(referenceId, { stripeCustomerId });
-  },
-
   resolveEntityFromRequest: async (context) => {
-    const session = getSession(context.headers);
+    const session = await getSession(context.headers);
+    if (!session) {
+      return null;
+    }
 
     return {
       referenceId: session.user.id,
       customerEmail: session.user.email,
-      stripeCustomerId: session.user.stripeCustomerId || undefined,
-      stripeMetadata: {},
+      customerMetadata: {},
     };
+  },
+
+  onSubscriptionChanged: async ({ subscription }) => {
+    console.log(subscription.referenceId, subscription.status);
   },
 });`,
   },
@@ -120,7 +121,7 @@ export function SubscribeButton() {
   const { mutate, loading } = stripeClient.upgradeSubscription();
 
   const handleSubscribe = async () => {
-    const { url, redirect } = await mutate({
+    const { url } = await mutate({
       body: {
         priceId: "price_123",
         successUrl: \
@@ -129,9 +130,7 @@ export function SubscribeButton() {
       },
     });
 
-    if (redirect) {
-      window.location.href = url;
-    }
+    window.location.href = url;
   };
 
   return (

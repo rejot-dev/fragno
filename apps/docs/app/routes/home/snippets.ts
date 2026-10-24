@@ -1,28 +1,28 @@
 export const fragmentSnippet = `import { createStripeFragment } from "@fragno-dev/stripe";
 /* These imports are illustrative and application specific */
-import { updateEntity } from "@/db/repo";
+import { grantPlan } from "@/db/repo";
 import { getSession } from "@/lib/auth";
 
 export const stripeFragment = createStripeFragment({
   stripeSecretKey: process.env.STRIPE_SECRET_KEY,
   webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
 
-  onStripeCustomerCreated: async (stripeCustomerId, referenceId) => {
-    await updateEntity(referenceId, { stripeCustomerId });
-  },
-
   resolveEntityFromRequest: async (context) => {
-    const session = getSession(context.headers);
+    const session = await getSession(context.headers);
+    if (!session) {
+      return null;
+    }
 
     return {
       referenceId: session.user.id,
       customerEmail: session.user.email,
-      stripeCustomerId: session.user.stripeCustomerId || undefined,
-      stripeMetadata: {},
+      customerMetadata: {},
     };
   },
 
-  enableAdminRoutes: false,
+  onSubscriptionChanged: async ({ subscription }) => {
+    await grantPlan(subscription.referenceId, subscription.priceId, subscription.status);
+  },
 });`;
 
 export const mountSnippet = `import type { Route } from "./+types/example-fragment";

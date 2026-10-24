@@ -35,24 +35,24 @@ export function createStripeFragmentClients(fragnoConfig: FragnoPublicClientConf
   const builder = createClientBuilder(stripeFragmentDefinition, fragnoConfig, routes);
 
   return {
-    // These hooks are for building internal administrative interfaces
+    // Admin hooks for internal interfaces; gate `/admin/*` routes with middleware.
     useCustomers: builder.createHook("/admin/customers"),
     useProducts: builder.createHook("/admin/products"),
     usePrices: builder.createHook("/admin/products/:productId/prices"),
-    useSubscription: builder.createHook("/admin/subscriptions"),
-    // Billing Portal for stripe customer
+    useSubscriptions: builder.createHook("/admin/subscriptions"),
+    // Mutators for the authenticated entity.
     useBillingPortal: builder.createMutator("POST", "/portal"),
-    // These clients are for end-users to create/update/cancel their subscriptions
     upgradeSubscription: builder.createMutator("POST", "/subscription/upgrade"),
     cancelSubscription: builder.createMutator("POST", "/subscription/cancel"),
   };
 }
 
-export { stripeFragmentDefinition } from "./definition";
+export { stripeFragmentDefinition, type LinkCustomerResult } from "./definition";
+export type { Subscription, SubscriptionStatus } from "./subscriptions";
 export type {
+  StripeCustomerLink,
+  StripeEntity,
   StripeFragmentConfig,
-  StripeFragmentDeps,
-  StripeFragmentServices,
-  Logger,
+  StripeRequestContext,
 } from "./types";
 export type { FragnoRouteConfig } from "@fragno-dev/core";

@@ -1,7 +1,7 @@
 import { config } from "dotenv";
+import Stripe from "stripe";
 
 import { PLANS } from "@/lib/plans";
-import { stripeFragment } from "@/lib/stripe";
 
 // Load environment variables
 config({ quiet: true });
@@ -17,8 +17,11 @@ async function syncProductsToStripe() {
   console.log("Starting plan sync to Stripe...\n");
 
   try {
-    // Get Stripe client from fragment
-    const stripe = stripeFragment.services.getStripeClient();
+    const secretKey = process.env["STRIPE_SECRET_KEY"];
+    if (!secretKey) {
+      throw new Error("STRIPE_SECRET_KEY is not set");
+    }
+    const stripe = new Stripe(secretKey);
 
     console.log(`Found ${PLANS.length} plans to sync\n`);
 

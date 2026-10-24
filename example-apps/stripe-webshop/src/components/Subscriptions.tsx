@@ -29,7 +29,7 @@ const getStatusColor = (status: string) => {
 };
 
 export function Subscriptions() {
-  const { data, loading, error } = stripeClient.useSubscription();
+  const { data, loading, error } = stripeClient.useSubscriptions();
 
   return (
     <Card>
@@ -63,7 +63,7 @@ export function Subscriptions() {
                   <TableRow key={sub.id}>
                     <TableCell>
                       <div className="flex flex-col">
-                        <span className="text-xs font-medium">{sub.stripeCustomerId || "—"}</span>
+                        <span className="text-xs font-medium">{sub.customerId}</span>
                         <span className="text-muted-foreground text-xs">Customer ID</span>
                       </div>
                     </TableCell>
@@ -77,13 +77,9 @@ export function Subscriptions() {
                         </span>
                       )}
                     </TableCell>
-                    <TableCell>{sub.stripePriceId}</TableCell>
+                    <TableCell>{sub.priceId}</TableCell>
                     <TableCell>
-                      {sub.stripeSubscriptionId ? (
-                        <span className="font-mono text-xs">{sub.stripeSubscriptionId}</span>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
+                      <span className="font-mono text-xs">{sub.id}</span>
                     </TableCell>
                     <TableCell className="text-muted-foreground text-sm">
                       {formatDate(sub.createdAt)}

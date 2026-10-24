@@ -28,16 +28,28 @@ pnpm add @fragno-dev/stripe
 ### 2. Configure on the server
 
 ```ts
+import { createDurableHooksProcessor } from "@fragno-dev/db/dispatchers/node";
 import { createStripeFragment } from "@fragno-dev/stripe";
 
-export const stripe = createStripeFragment({
-  stripeSecretKey: process.env.STRIPE_SECRET_KEY,
-  webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
-  stripeClientOptions: {
-    // Optional Stripe SDK configuration
-    apiVersion: "2025-09-30.clover",
+export const stripe = createStripeFragment(
+  {
+    stripeSecretKey: process.env.STRIPE_SECRET_KEY,
+    webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
+    resolveEntityFromRequest: async ({ headers }) => {
+      const session = await getSession(headers);
+      return session
+        ? { referenceId: session.user.id, customerEmail: session.user.email, customerMetadata: {} }
+        : null;
+    },
+    onSubscriptionChanged: async ({ subscription }) => {
+      // Grant or revoke access for subscription.referenceId
+    },
   },
-});
+  { databaseAdapter },
+);
+
+// Webhook events are processed by durable hooks.
+createDurableHooksProcessor([stripe], { pollIntervalMs: 2000 }).startPolling();
 ```
 
 ### 3. Client helpers
@@ -56,15 +68,20 @@ Example (React):
 import { stripeClient } from "@/lib/stripe-client";
 
 export function UpgradeButton() {
-  const { upgradeSubscription } = stripeClient;
+  const { mutate } = stripeClient.upgradeSubscription();
 
   return (
     <button
       type="button"
-      onClick={() => {
-        return upgradeSubscription({
-          priceId: "price_123",
+      onClick={async () => {
+        const { url } = await mutate({
+          body: {
+            priceId: "price_123",
+            successUrl: `${window.location.origin}/success`,
+            cancelUrl: window.location.href,
+          },
         });
+        window.location.href = url;
       }}
     >
       Upgrade
@@ -75,10 +92,12 @@ export function UpgradeButton() {
 
 ## Features
 
-- **Customers and subscriptions**: create and manage customer subscriptions in your app.
+- **Customers and subscriptions**: the fragment links Stripe customers to your users and keeps a
+  local copy of their subscriptions.
 - **Billing portal redirect**: send users to Stripe's billing portal for payment methods and
   invoices.
-- **Webhook handling**: verify and process Stripe webhooks in one place.
+- **Reliable webhooks**: events are verified, recorded once and processed by durable hooks that sync
+  from Stripe, so retries, duplicates and out-of-order delivery are handled.
 - **Typed client helpers**: simple helpers for common subscription flows.
 
 ## Documentation

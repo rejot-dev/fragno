@@ -107,14 +107,12 @@ export function createStripeServer(pool: Pool | (() => Pool)) {
     {
       stripeSecretKey: process.env.STRIPE_SECRET_KEY!,
       webhookSecret: process.env.STRIPE_WEBHOOK_SECRET!,
-      onStripeCustomerCreated: async (stripeCustomerId, referenceId) => {
-        // Update your user/org record with the Stripe customer ID
-      },
       resolveEntityFromRequest: async (context) => {
-        // Return authenticated user/org info
+        // Return the authenticated user/org, or null when the request is not authenticated
         return {
           referenceId: "user_id",
           customerEmail: "user@example.com",
+          customerMetadata: {},
         };
       },
     },
@@ -132,6 +130,9 @@ export const fragment = createStripeServer(() => {
 
 It's important for the Fragment instance to be exported on the top-level so that the Fragno CLI can
 find it and generate the schema file.
+
+The Stripe Fragment processes webhook events with durable hooks, so it also needs a running
+[hook processor](/docs/fragno/for-users/hook-processors).
 
 ## Step 4: Configure Cloudflare Worker
 
@@ -269,7 +270,6 @@ Update your `package.json` to include the following script to generate the Fragn
      id: serial().primaryKey(),
      name: text().notNull(),
      email: text(),
-     stripeCustomerId: text(),
    });
 
    // Export combined schema
@@ -305,9 +305,9 @@ npm run db:fragno:generate
 Create `app/lib/stripe-client.ts`:
 
 ```typescript
-import { createStripeClient } from "@fragno-dev/stripe/react";
+import { createStripeFragmentClient } from "@fragno-dev/stripe/react";
 
-export const stripeClient = createStripeClient();
+export const stripeClient = createStripeFragmentClient();
 ```
 
 **Note**: The file should NOT end with `.client.ts` as this prevents server-side rendering in some
@@ -322,7 +322,7 @@ export default function SubscribeButton() {
   const { mutate, loading, error } = stripeClient.upgradeSubscription();
 
   const handleSubscribe = async () => {
-    const { url, redirect } = await mutate({
+    const { url } = await mutate({
       body: {
         priceId: "price_1234567890",
         successUrl: `${window.location.origin}/success`,
@@ -330,9 +330,7 @@ export default function SubscribeButton() {
       },
     });
 
-    if (redirect) {
-      window.location.href = url;
-    }
+    window.location.href = url;
   };
 
   return (

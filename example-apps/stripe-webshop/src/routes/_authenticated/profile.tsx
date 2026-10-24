@@ -59,7 +59,7 @@ function ProfilePage() {
       },
     });
 
-    if (result?.redirect) {
+    if (result) {
       window.location.href = result.url;
     }
   };
@@ -74,7 +74,7 @@ function ProfilePage() {
       },
     });
 
-    if (result?.redirect) {
+    if (result) {
       window.location.href = result.url;
     }
   };
@@ -90,7 +90,7 @@ function ProfilePage() {
       },
     });
 
-    if (result?.redirect) {
+    if (result) {
       window.location.href = result.url;
     }
   };
@@ -254,7 +254,7 @@ function ProfilePage() {
                 const price = billingCycle === "monthly" ? plan.priceMonthly : plan.priceYearly;
                 const priceId =
                   billingCycle === "monthly" ? plan.stripeMonthlyPriceId : plan.stripeYearlyPriceId;
-                const isCurrentPlan = session.subscription?.stripePriceId === priceId;
+                const isCurrentPlan = session.subscription?.priceId === priceId;
                 const isPopular = plan.name === "plus";
                 const isFreePlan = plan.name === "free";
                 const hasActiveSubscription = session.subscription?.status === "active";

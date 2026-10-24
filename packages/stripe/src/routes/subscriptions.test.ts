@@ -1,557 +1,283 @@
-import { test, describe, expect, beforeEach, vi, assert } from "vitest";
+import { assert, describe, expect, test } from "vitest";
 
-import type Stripe from "stripe";
+import { buildStripeTest } from "../test-stripe";
 
-import { instantiate } from "@fragno-dev/core";
-import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+type StripeTest = Awaited<ReturnType<typeof buildStripeTest>>;
 
-import { stripeFragmentDefinition } from "../definition";
-import { subscriptionsRoutesFactory } from "./subscriptions";
+async function subscribe(stripeTest: StripeTest, priceId = "price_basic") {
+  const checkout = await stripeTest.upgrade({ priceId });
+  assert(checkout.type === "json");
+  const subscriptionId = stripeTest.stripe.completeCheckout(checkout.data.url);
+  await stripeTest.deliver();
+  return subscriptionId;
+}
 
-// Mock Stripe client methods
-const mockCustomersSearch = vi.fn();
-const mockCustomersCreate = vi.fn();
-const mockCheckoutSessionsCreate = vi.fn();
-const mockSubscriptionsRetrieve = vi.fn();
-const mockBillingPortalSessionsCreate = vi.fn();
-const mockOnStripeCustomerCreated = vi.fn();
+describe("subscription routes", () => {
+  test("the first upgrade links a new customer and starts a checkout", async () => {
+    const stripeTest = await buildStripeTest();
+    stripeTest.signIn("user_1");
 
-// Mock resolveEntityFromRequest function - can be configured per test
-const mockResolveEntityFromRequest = vi.fn();
+    const checkout = await stripeTest.upgrade({ priceId: "price_basic", quantity: 3 });
 
-// Mock the Stripe module
-vi.mock("stripe", () => {
-  class MockStripe {
-    customers = {
-      search: mockCustomersSearch,
-      create: mockCustomersCreate,
-    };
-
-    checkout = {
-      sessions: {
-        create: mockCheckoutSessionsCreate,
-      },
-    };
-
-    subscriptions = {
-      retrieve: mockSubscriptionsRetrieve,
-    };
-
-    billingPortal = {
-      sessions: {
-        create: mockBillingPortalSessionsCreate,
-      },
-    };
-  }
-
-  return {
-    default: vi.fn(function MockStripeConstructor() {
-      return new MockStripe();
-    }),
-  };
-});
-
-describe("subscription handlers", async () => {
-  const { fragments } = await buildDatabaseFragmentsTest()
-    .withTestAdapter({ type: "kysely-sqlite" })
-    .withFragment(
-      "stripe",
-      instantiate(stripeFragmentDefinition)
-        .withConfig({
-          stripeSecretKey: "sk_test_mock_key",
-          webhookSecret: "whsec_test_mock_secret",
-          enableAdminRoutes: true,
-          resolveEntityFromRequest: mockResolveEntityFromRequest,
-          onStripeCustomerCreated: mockOnStripeCustomerCreated,
-        })
-        .withRoutes([subscriptionsRoutesFactory]),
-    )
-    .build();
-
-  const fragment = fragments.stripe;
-
-  beforeEach(() => {
-    // Clear all mocks before each test
-    vi.clearAllMocks();
-
-    // Set default resolveEntityFromRequest response
-    mockResolveEntityFromRequest.mockResolvedValue({
-      referenceId: "test_user",
-      stripeCustomerId: undefined,
-      customerEmail: "test@example.com",
-      subscriptionId: undefined,
-      stripeMetadata: {},
+    assert(checkout.type === "json");
+    const [customer] = stripeTest.stripe.customers.values();
+    expect(customer).toMatchObject({
+      email: "user_1@example.com",
+      metadata: { app: "test", referenceId: "user_1" },
     });
+    expect(await stripeTest.customerOf("user_1")).toEqual({
+      customerId: customer.id,
+      referenceId: "user_1",
+    });
+    const [session] = stripeTest.stripe.checkoutSessions.values();
+    expect(session).toMatchObject({
+      url: checkout.data.url,
+      customer: customer.id,
+      client_reference_id: "user_1",
+      priceId: "price_basic",
+      quantity: 3,
+      subscriptionMetadata: { referenceId: "user_1" },
+    });
+
+    await stripeTest.cleanup();
   });
 
-  describe("GET /subscriptions", { concurrent: false }, () => {
-    test("should return empty array when no subscriptions exist", async () => {
-      const response = await fragment.callRoute("GET", "/admin/subscriptions");
+  test("the page checkout returns to syncs before the webhook arrives", async () => {
+    const stripeTest = await buildStripeTest();
+    stripeTest.signIn("user_1");
+    const checkout = await stripeTest.upgrade({ priceId: "price_basic" });
+    assert(checkout.type === "json");
+    const subscriptionId = stripeTest.stripe.completeCheckout(checkout.data.url);
 
-      assert(response.type === "json");
-      if (response.type === "json") {
-        expect(response.data).toEqual({ subscriptions: [] });
-      }
-    });
+    await stripeTest.syncSubscriptions("user_1");
+    await stripeTest.drainHooks();
 
-    test("should return all subscriptions after creating one", async () => {
-      // Create test subscription
-      await fragment.fragment.callServices(() =>
-        fragment.services.createSubscription({
-          referenceId: "user_1",
-          stripePriceId: "price_1",
-          stripeCustomerId: "cus_1",
-          stripeSubscriptionId: "sub_1",
-          status: "active",
-          periodStart: new Date(),
-          periodEnd: new Date(),
-          trialStart: null,
-          trialEnd: null,
-          cancelAtPeriodEnd: false,
-          cancelAt: null,
-          seats: 1,
-        }),
-      );
+    expect(await stripeTest.subscriptionsOf("user_1")).toEqual([
+      expect.objectContaining({ id: subscriptionId, status: "active" }),
+    ]);
+    await stripeTest.deliver();
+    expect(stripeTest.integrator.subscriptionChanges).toHaveLength(1);
 
-      const response = await fragment.callRoute("GET", "/admin/subscriptions");
-
-      assert(response.type === "json");
-      if (response.type === "json") {
-        expect(response.data.subscriptions.length).toBeGreaterThanOrEqual(1);
-        const sub = response.data.subscriptions.find((s) => s.referenceId === "user_1");
-        expect(sub).toBeDefined();
-        assert(sub?.stripeCustomerId === "cus_1");
-      }
-    });
+    await stripeTest.cleanup();
   });
 
-  describe("POST /subscription/upgrade", () => {
-    test("validates input before resolving the request entity", async () => {
-      const response = await fragment.callRoute("POST", "/subscription/upgrade", {
-        // @ts-expect-error Deliberately omit required fields to verify validation ordering.
-        body: {},
-      });
+  test("an upgrade reuses the customer an earlier integration created", async () => {
+    const stripeTest = await buildStripeTest();
+    const customerId = stripeTest.stripe.createCustomer({ referenceId: "user_1" });
+    stripeTest.signIn("user_1");
 
-      assert(response.type === "error");
-      assert(response.status === 400);
-      expect(response.error).toEqual({
-        code: "FRAGNO_VALIDATION_ERROR",
-        message: "Validation failed",
-      });
-      expect(mockResolveEntityFromRequest).not.toHaveBeenCalled();
-    });
+    await subscribe(stripeTest);
 
-    test("should create new subscription without existing stripe customer", async () => {
-      // Mock auth middleware to return user without Stripe customer
-      mockResolveEntityFromRequest.mockResolvedValue({
-        referenceId: "user_123",
-        stripeCustomerId: undefined,
-        customerEmail: "user@example.com",
-        subscriptionId: undefined,
-        stripeMetadata: {},
-      });
+    assert(stripeTest.stripe.customers.size === 1);
+    expect(await stripeTest.customerOf("user_1")).toEqual({ customerId, referenceId: "user_1" });
+    expect(await stripeTest.subscriptionsOf("user_1")).toEqual([
+      expect.objectContaining({ customerId, status: "active" }),
+    ]);
 
-      // Mock: No existing customer found
-      mockCustomersSearch.mockResolvedValue({
-        data: [],
-      });
-
-      // Mock: Create new customer
-      mockCustomersCreate.mockResolvedValue({
-        id: "cus_new_123",
-        email: "user@example.com",
-      } as Stripe.Customer);
-
-      // Mock: Create checkout session
-      mockCheckoutSessionsCreate.mockResolvedValue({
-        id: "cs_123",
-        url: "https://checkout.stripe.com/pay/cs_123",
-      } as Stripe.Checkout.Session);
-
-      const response = await fragment.callRoute("POST", "/subscription/upgrade", {
-        body: {
-          priceId: "price_123",
-          quantity: 1,
-          successUrl: "https://example.com/success",
-          cancelUrl: "https://example.com/cancel",
-        },
-      });
-
-      assert(response.type === "json");
-      if (response.type === "json") {
-        expect(response.data).toEqual({
-          url: "https://checkout.stripe.com/pay/cs_123",
-          redirect: true,
-          sessionId: "cs_123",
-        });
-      }
-
-      // Verify Stripe methods were called
-      expect(mockCustomersSearch).toHaveBeenCalledWith({
-        query: "metadata['referenceId']:'user_123'",
-        limit: 1,
-      });
-      expect(mockCustomersCreate).toHaveBeenCalledWith({
-        email: "user@example.com",
-        metadata: {
-          referenceId: "user_123",
-        },
-      });
-      expect(mockCheckoutSessionsCreate).toHaveBeenCalled();
-      expect(mockOnStripeCustomerCreated).toHaveBeenCalledWith("cus_new_123", "user_123");
-    });
-
-    test("should create new subscription with existing linked stripe customer", async () => {
-      // Mock auth middleware to return user without Stripe customer
-      mockResolveEntityFromRequest.mockResolvedValue({
-        referenceId: "user_123",
-        stripeCustomerId: undefined,
-        customerEmail: undefined,
-        subscriptionId: undefined,
-        stripeMetadata: {},
-      });
-
-      // Mock: Existing customer found
-      mockCustomersSearch.mockResolvedValue({
-        data: [
-          {
-            id: "cus_existing_123",
-            email: "user@example.com",
-            metadata: {
-              referenceId: "user_123",
-            },
-          },
-        ],
-      });
-
-      // Mock: Create checkout session
-      mockCheckoutSessionsCreate.mockResolvedValue({
-        id: "cs_123",
-        url: "https://checkout.stripe.com/pay/cs_123",
-      } as Stripe.Checkout.Session);
-
-      const response = await fragment.callRoute("POST", "/subscription/upgrade", {
-        body: {
-          priceId: "price_123",
-          quantity: 1,
-          successUrl: "https://example.com/success",
-          cancelUrl: "https://example.com/cancel",
-        },
-      });
-
-      assert(response.type === "json");
-      if (response.type === "json") {
-        expect(response.data).toEqual({
-          url: "https://checkout.stripe.com/pay/cs_123",
-          redirect: true,
-          sessionId: "cs_123",
-        });
-      }
-      expect(mockCheckoutSessionsCreate).toHaveBeenCalled();
-      expect(mockOnStripeCustomerCreated).toHaveBeenCalledWith("cus_existing_123", "user_123");
-    });
-
-    test("should return error when missing customer info", async () => {
-      // Mock auth middleware to return user without customer email
-      mockResolveEntityFromRequest.mockResolvedValue({
-        referenceId: "user_123",
-        stripeCustomerId: undefined,
-        customerEmail: undefined, // Missing customer email
-        subscriptionId: undefined,
-        stripeMetadata: {},
-      });
-
-      // Mock: No existing customer found
-      mockCustomersSearch.mockResolvedValue({
-        data: [],
-      });
-
-      const response = await fragment.callRoute("POST", "/subscription/upgrade", {
-        body: {
-          priceId: "price_123",
-          quantity: 1,
-          successUrl: "https://example.com/success",
-          cancelUrl: "https://example.com/cancel",
-        },
-      });
-
-      assert(response.type === "error");
-      if (response.type === "error") {
-        assert(response.error.code === "MISSING_CUSTOMER_INFO");
-        assert(response.status === 500);
-      }
-    });
-
-    test("should upgrade existing active subscription using billing portal", async () => {
-      // Create existing subscription
-      const subscription = await fragment.fragment.callServices(() =>
-        fragment.services.createSubscription({
-          referenceId: "user_123",
-          stripePriceId: "price_old",
-          stripeCustomerId: "cus_123",
-          stripeSubscriptionId: "sub_123",
-          status: "active",
-          periodStart: new Date(),
-          periodEnd: new Date(),
-          trialStart: null,
-          trialEnd: null,
-          cancelAtPeriodEnd: false,
-          cancelAt: null,
-          seats: 1,
-        }),
-      );
-
-      // Mock auth middleware to return user with existing subscription
-      mockResolveEntityFromRequest.mockResolvedValue({
-        referenceId: "user_123",
-        stripeCustomerId: "cus_123",
-        customerEmail: "user@example.com",
-        subscriptionId: subscription,
-        stripeMetadata: {},
-      });
-
-      // Mock: Retrieve subscription from Stripe
-      mockSubscriptionsRetrieve.mockResolvedValue({
-        id: "sub_123",
-        items: {
-          data: [{ id: "si_123", price: "price_old", quantity: 1 }],
-        },
-      } as unknown as Stripe.Subscription);
-
-      // Mock: Create billing portal session
-      mockBillingPortalSessionsCreate.mockResolvedValue({
-        url: "https://billing.stripe.com/portal",
-      } as Stripe.BillingPortal.Session);
-
-      const response = await fragment.callRoute("POST", "/subscription/upgrade", {
-        body: {
-          priceId: "price_new",
-          quantity: 2,
-          successUrl: "https://example.com/success",
-          cancelUrl: "https://example.com/cancel",
-        },
-      });
-
-      assert(response.type === "json");
-      if (response.type === "json") {
-        expect(response.data).toEqual({
-          url: "https://billing.stripe.com/portal",
-          redirect: true,
-        });
-      }
-
-      expect(mockBillingPortalSessionsCreate).toHaveBeenCalled();
-    });
-
-    test("should return error for non-existent subscription", async () => {
-      // Mock auth middleware to return user with non-existent subscription
-      mockResolveEntityFromRequest.mockResolvedValue({
-        referenceId: "user_123",
-        stripeCustomerId: "this_customer_does_not_exist",
-        customerEmail: "user@example.com",
-        stripeMetadata: {},
-      });
-
-      const response = await fragment.callRoute("POST", "/subscription/upgrade", {
-        body: {
-          priceId: "price_123",
-          quantity: 1,
-          successUrl: "https://example.com/success",
-          cancelUrl: "https://example.com/cancel",
-        },
-      });
-
-      assert(response.type === "error");
-      if (response.type === "error") {
-        assert(response.error.code === "NO_ACTIVE_SUBSCRIPTIONS");
-        assert(response.status === 400);
-      }
-    });
+    await stripeTest.cleanup();
   });
 
-  describe("POST /subscription/cancel", () => {
-    test("should cancel active subscription", async () => {
-      // Create active subscription
-      await fragment.fragment.callServices(() =>
-        fragment.services.createSubscription({
-          referenceId: "user_123",
-          stripePriceId: "price_123",
-          stripeCustomerId: "cust_active_1",
-          stripeSubscriptionId: "sub_123",
-          status: "active",
-          periodStart: new Date(),
-          periodEnd: new Date(),
-          trialStart: null,
-          trialEnd: null,
-          cancelAtPeriodEnd: false,
-          cancelAt: null,
-          seats: 1,
-        }),
-      );
+  test("an earlier integration's subscription is upgraded in the portal before it is synced", async () => {
+    const stripeTest = await buildStripeTest();
+    const customerId = stripeTest.stripe.createCustomer({ referenceId: "user_1" });
+    const subscriptionId = stripeTest.stripe.createSubscription(customerId, "price_basic");
+    stripeTest.signIn("user_1");
 
-      // Mock auth middleware to return user with active subscription
-      mockResolveEntityFromRequest.mockResolvedValue({
-        referenceId: "user_123",
-        stripeCustomerId: "cust_active_1",
-        customerEmail: "user@example.com",
-        stripeMetadata: {},
-      });
+    const upgrade = await stripeTest.upgrade({ priceId: "price_pro" });
 
-      // Mock: Retrieve subscription from Stripe
-      mockSubscriptionsRetrieve.mockResolvedValue({
-        id: "sub_123",
-        status: "active",
-        cancel_at_period_end: false,
-      } as Stripe.Subscription);
+    assert(upgrade.type === "json");
+    expect(upgrade.data.url).toBe(stripeTest.stripe.portalSessions[0]?.url);
+    assert(stripeTest.stripe.checkoutSessions.size === 0);
+    expect(await stripeTest.customerOf("user_1")).toEqual({ customerId, referenceId: "user_1" });
+    await stripeTest.deliver();
+    expect(await stripeTest.subscriptionsOf("user_1")).toEqual([
+      expect.objectContaining({ id: subscriptionId, referenceId: "user_1" }),
+    ]);
 
-      // Mock: Create billing portal session for cancellation
-      mockBillingPortalSessionsCreate.mockResolvedValue({
-        url: "https://billing.stripe.com/cancel",
-      } as Stripe.BillingPortal.Session);
+    await stripeTest.cleanup();
+  });
 
-      const response = await fragment.callRoute("POST", "/subscription/cancel", {
-        body: {
-          returnUrl: "https://example.com/return",
-        },
-      });
+  test("an upgrade right after linking a customer changes its subscription in the portal", async () => {
+    const stripeTest = await buildStripeTest();
+    const customerId = stripeTest.stripe.createCustomer({});
+    const subscriptionId = stripeTest.stripe.createSubscription(customerId, "price_basic");
+    await stripeTest.deliver();
+    await stripeTest.linkCustomer({ customerId, referenceId: "user_1" });
+    stripeTest.signIn("user_1");
 
-      assert(response.type === "json");
-      if (response.type === "json") {
-        expect(response.data).toEqual({
-          url: "https://billing.stripe.com/cancel",
-          redirect: true,
-        });
-      }
+    const upgrade = await stripeTest.upgrade({ priceId: "price_pro" });
 
-      expect(mockBillingPortalSessionsCreate).toHaveBeenCalledWith({
-        customer: "cust_active_1",
-        return_url: "https://example.com/return",
+    assert(upgrade.type === "json");
+    assert(stripeTest.stripe.checkoutSessions.size === 0);
+    expect(stripeTest.stripe.portalSessions).toEqual([
+      expect.objectContaining({
+        url: upgrade.data.url,
         flow_data: expect.objectContaining({
-          type: "subscription_cancel",
+          subscription_update_confirm: expect.objectContaining({ subscription: subscriptionId }),
         }),
-      });
+      }),
+    ]);
+
+    await stripeTest.cleanup();
+  });
+
+  test("concurrent first upgrades link one customer", async () => {
+    const stripeTest = await buildStripeTest();
+    stripeTest.signIn("user_1");
+
+    const checkouts = await Promise.all([
+      stripeTest.upgrade({ priceId: "price_basic" }),
+      stripeTest.upgrade({ priceId: "price_basic" }),
+    ]);
+
+    expect(checkouts.map((checkout) => checkout.type)).toEqual(["json", "json"]);
+    const link = await stripeTest.customerOf("user_1");
+    assert(link);
+    const sessionCustomers = [...stripeTest.stripe.checkoutSessions.values()].map(
+      (session) => session.customer,
+    );
+    expect(new Set(sessionCustomers)).toEqual(new Set([link.customerId]));
+
+    await stripeTest.cleanup();
+  });
+
+  test("an active subscription is changed and canceled through the billing portal", async () => {
+    const stripeTest = await buildStripeTest();
+    stripeTest.signIn("user_1");
+    const subscriptionId = await subscribe(stripeTest);
+    const [subscription] = await stripeTest.subscriptionsOf("user_1");
+
+    const upgrade = await stripeTest.upgrade({ priceId: "price_pro", quantity: 2 });
+    const cancel = await stripeTest.cancel();
+
+    assert(upgrade.type === "json" && cancel.type === "json");
+    const [updatePortal, cancelPortal] = stripeTest.stripe.portalSessions;
+    expect(upgrade.data.url).toBe(updatePortal.url);
+    expect(updatePortal.flow_data).toMatchObject({
+      type: "subscription_update_confirm",
+      subscription_update_confirm: {
+        subscription: subscriptionId,
+        items: [{ id: subscription.itemId, price: "price_pro", quantity: "2" }],
+      },
+    });
+    expect(cancel.data.url).toBe(cancelPortal.url);
+    expect(cancelPortal.flow_data).toMatchObject({
+      type: "subscription_cancel",
+      subscription_cancel: { subscription: subscriptionId },
     });
 
-    test("should return error when subscription not found", async () => {
-      // Mock auth middleware to return user with non-existent subscription
-      mockResolveEntityFromRequest.mockResolvedValue({
-        referenceId: "user_123",
-        stripeCustomerId: "this_customer_does_not_exist",
-        customerEmail: "user@example.com",
-        stripeMetadata: {},
-      });
+    await stripeTest.cleanup();
+  });
 
-      const response = await fragment.callRoute("POST", "/subscription/cancel", {
-        body: {
-          returnUrl: "https://example.com/return",
-        },
-      });
+  test("upgrading a subscription that is scheduled to cancel resumes it", async () => {
+    const stripeTest = await buildStripeTest();
+    stripeTest.signIn("user_1");
+    const subscriptionId = await subscribe(stripeTest);
+    stripeTest.stripe.scheduleCancellation(subscriptionId);
+    await stripeTest.deliver();
 
-      assert(response.type === "error");
-      if (response.type === "error") {
-        assert(response.error.code === "NO_SUBSCRIPTION_TO_CANCEL");
-        assert(response.status === 404);
-      }
+    const cancelAgain = await stripeTest.cancel();
+    assert(cancelAgain.type === "error");
+    assert(cancelAgain.error.code === "SUBSCRIPTION_ALREADY_CANCELED");
+
+    const resume = await stripeTest.upgrade({ priceId: "price_basic" });
+    assert(resume.type === "json");
+    assert(resume.data.url === "https://app.test/billing/success");
+    await stripeTest.deliver();
+
+    expect(await stripeTest.subscriptionsOf("user_1")).toEqual([
+      expect.objectContaining({ id: subscriptionId, status: "active", cancelAtPeriodEnd: false }),
+    ]);
+
+    await stripeTest.cleanup();
+  });
+
+  test("an entity whose subscription ended subscribes again through checkout", async () => {
+    const stripeTest = await buildStripeTest();
+    stripeTest.signIn("user_1");
+    const firstSubscriptionId = await subscribe(stripeTest);
+    stripeTest.stripe.endSubscription(firstSubscriptionId);
+    await stripeTest.deliver();
+
+    const cancel = await stripeTest.cancel();
+    assert(cancel.type === "error");
+    assert(cancel.error.code === "NO_SUBSCRIPTION_TO_CANCEL");
+
+    const secondSubscriptionId = await subscribe(stripeTest, "price_pro");
+
+    const subscriptions = await stripeTest.subscriptionsOf("user_1");
+    expect(subscriptions.map(({ id, status }) => ({ id, status }))).toEqual(
+      expect.arrayContaining([
+        { id: firstSubscriptionId, status: "canceled" },
+        { id: secondSubscriptionId, status: "active" },
+      ]),
+    );
+
+    await stripeTest.cleanup();
+  });
+
+  test("promotion codes apply to checkout and unknown codes are rejected", async () => {
+    const stripeTest = await buildStripeTest();
+    const promotionCodeId = stripeTest.stripe.addPromotionCode("WELCOME");
+    stripeTest.signIn("user_1");
+
+    const unknown = await stripeTest.upgrade({ priceId: "price_basic", promotionCode: "NOPE" });
+    const known = await stripeTest.upgrade({ priceId: "price_basic", promotionCode: "WELCOME" });
+
+    assert(unknown.type === "error");
+    assert(unknown.error.code === "PROMOTION_CODE_INVALID");
+    assert(known.type === "json");
+    expect([...stripeTest.stripe.checkoutSessions.values()]).toEqual([
+      expect.objectContaining({
+        url: known.data.url,
+        discounts: [{ promotion_code: promotionCodeId }],
+      }),
+    ]);
+
+    await stripeTest.cleanup();
+  });
+
+  test("admins page through all subscriptions", async () => {
+    const stripeTest = await buildStripeTest();
+    for (const entity of ["user_1", "user_2", "user_3"]) {
+      stripeTest.signIn(entity);
+      await subscribe(stripeTest);
+    }
+
+    const firstPage = await stripeTest.fragment.callRoute("GET", "/admin/subscriptions", {
+      query: { pageSize: "2" },
     });
-
-    test("should return error when subscription already canceled", async () => {
-      // Create canceled subscription
-      await fragment.fragment.callServices(() =>
-        fragment.services.createSubscription({
-          referenceId: "user_123",
-          stripePriceId: "price_123",
-          stripeCustomerId: "cus_of_cancelled_sub",
-          stripeSubscriptionId: "sub_123",
-          status: "canceled",
-          periodStart: new Date(),
-          periodEnd: new Date(),
-          trialStart: null,
-          trialEnd: null,
-          cancelAtPeriodEnd: true,
-          cancelAt: new Date(),
-          seats: 1,
-        }),
-      );
-
-      // Mock auth middleware to return user with canceled subscription
-      mockResolveEntityFromRequest.mockResolvedValue({
-        referenceId: "user_123",
-        stripeCustomerId: "cus_of_cancelled_sub",
-        customerEmail: "user@example.com",
-        stripeMetadata: {},
-      });
-
-      const response = await fragment.callRoute("POST", "/subscription/cancel", {
-        body: {
-          returnUrl: "https://example.com/return",
-        },
-      });
-
-      assert(response.type === "error");
-      if (response.type === "error") {
-        assert(response.error.code === "NO_SUBSCRIPTION_TO_CANCEL");
-        assert(response.status === 404);
-      }
+    assert(firstPage.type === "json" && firstPage.data.cursor);
+    const secondPage = await stripeTest.fragment.callRoute("GET", "/admin/subscriptions", {
+      query: { pageSize: "2", cursor: firstPage.data.cursor },
     });
+    assert(secondPage.type === "json");
 
-    test("should handle multiple active subscriptions", async () => {
-      const subscriptionData = {
-        referenceId: "user_123",
-        stripePriceId: "price_123",
-        stripeCustomerId: "customer_of_multiple_subscriptions",
-        stripeSubscriptionId: "sub_123",
-        status: "active",
-        periodStart: new Date(),
-        periodEnd: new Date(),
-        trialStart: null,
-        trialEnd: null,
-        cancelAtPeriodEnd: false,
-        cancelAt: null,
-        seats: 1,
-      };
-      const sub1 = await fragment.fragment.callServices(() =>
-        fragment.services.createSubscription(subscriptionData),
-      );
-      const _sub2 = await fragment.fragment.callServices(() =>
-        fragment.services.createSubscription({
-          ...subscriptionData,
-          stripeSubscriptionId: "sub_456",
-        }),
-      );
+    const invalidPages: Record<string, string>[] = [
+      { pageSize: "0" },
+      { pageSize: "1.5" },
+      { cursor: "not-a-cursor" },
+    ];
+    for (const query of invalidPages) {
+      const invalid = await stripeTest.fragment.callRoute("GET", "/admin/subscriptions", { query });
+      assert(invalid.type === "error");
+      assert(invalid.error.code === "INVALID_QUERY");
+    }
+    const invalidLists: Record<string, string>[] = [{ limit: "500" }, { startingAfter: "" }];
+    for (const query of invalidLists) {
+      const invalid = await stripeTest.fragment.callRoute("GET", "/admin/customers", { query });
+      assert(invalid.type === "error");
+      assert(invalid.error.code === "INVALID_QUERY");
+    }
 
-      mockResolveEntityFromRequest.mockResolvedValue({
-        referenceId: "user_123",
-        stripeCustomerId: "customer_of_multiple_subscriptions",
-        customerEmail: "user@example.com",
-        stripeMetadata: {},
-      });
+    assert(firstPage.data.hasNextPage);
+    assert(!secondPage.data.hasNextPage);
+    expect(
+      [...firstPage.data.subscriptions, ...secondPage.data.subscriptions].map(
+        (subscription) => subscription.referenceId,
+      ),
+    ).toEqual(["user_1", "user_2", "user_3"]);
 
-      const response = await fragment.callRoute("POST", "/subscription/cancel", {
-        body: {
-          returnUrl: "https://example.com/return",
-        },
-      });
-
-      assert(response.type === "error");
-      if (response.type === "error") {
-        assert(response.error.code === "MULTIPLE_SUBSCRIPTIONS_FOUND");
-        assert(response.status === 400);
-      }
-
-      const response2 = await fragment.callRoute("POST", "/subscription/cancel", {
-        body: {
-          returnUrl: "https://example.com/return",
-          subscriptionId: sub1,
-        },
-      });
-
-      assert(response2.type === "json");
-      if (response2.type === "json") {
-        expect(response2.data).toEqual({
-          url: "https://billing.stripe.com/cancel",
-          redirect: true,
-        });
-      }
-    });
+    await stripeTest.cleanup();
   });
 });

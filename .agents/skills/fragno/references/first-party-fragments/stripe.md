@@ -19,29 +19,33 @@ What you provide:
 
 - `stripeSecretKey`: Stripe API secret key.
 - `webhookSecret`: Stripe webhook signing secret.
-- `resolveEntityFromRequest`: map the incoming request to your user/org. Must return:
+- `resolveEntityFromRequest`: map the incoming request to your user/org, or return `null` when it is
+  not authenticated (routes then respond 401). Must return:
   - `referenceId`: your user/org id.
-  - `customerEmail`: email to attach to the Stripe customer.
-  - `stripeCustomerId`: existing customer id, or `undefined`.
-  - `stripeMetadata`: metadata to attach to the customer.
-- `onStripeCustomerCreated`: store the Stripe customer id in your DB.
-- `enableAdminRoutes`: `true` to expose `/admin/*` endpoints, otherwise `false`.
+  - `customerEmail`: email set on the Stripe customer the fragment creates.
+  - `customerMetadata`: metadata set on that Stripe customer.
 
-Optional config:
+Optional callbacks, run as durable hooks (at least once, retried, `(payload, hookContext)`):
 
-- `onEvent`: hook to run before built-in webhook handling.
-- `stripeClientOptions`: pass through to the Stripe SDK.
-- `logger`: override logging.
+- `onCustomerLinked({ customerId, referenceId })`: a Stripe customer was linked to an entity.
+- `onSubscriptionChanged({ subscription })`: a subscription changed; read at delivery, so current.
+- `onStripeEvent({ event })`: every verified Stripe event.
 
 What the fragment needs via options:
 
-- `databaseAdapter`: required for `subscription_stripe` table.
+- `databaseAdapter`: required for the `customer` and `subscription` tables.
 - `mountRoute` (optional): defaults to `/api/stripe`.
+
+The fragment owns the customer link: it finds (by `metadata.referenceId`) or creates a Stripe
+customer on an entity's first upgrade. Import links your app stored earlier with the `linkCustomer`
+service.
 
 ## What you get
 
 - Subscription creation, upgrade, and cancellation flows.
-- A local `subscription_stripe` table synced via webhooks.
+- Local `customer` and `subscription` tables synced via webhooks and durable hooks.
+- Services: `getSubscriptionsByReferenceId`, `getCustomerByReferenceId`, `syncSubscriptions`,
+  `linkCustomer`.
 - Admin hooks to list products, prices, customers, and subscriptions.
 
 ## Docs (curl)
@@ -62,6 +66,7 @@ Search:
 - Stripe API key and webhook secret.
 - A Stripe Product and Price configured in the Stripe dashboard.
 - A database and `@fragno-dev/db` adapter.
+- A running durable hooks processor (webhook events are processed by durable hooks).
 - App authentication for `resolveEntityFromRequest`.
 
 ## Install
@@ -71,33 +76,41 @@ Search:
 ## Server setup
 
 1. Create the fragment instance:
-   - `createStripeFragment({ stripeSecretKey, webhookSecret, onStripeCustomerCreated, resolveEntityFromRequest, enableAdminRoutes? })`
+   - `createStripeFragment({ stripeSecretKey, webhookSecret, resolveEntityFromRequest, ...callbacks }, { databaseAdapter })`
 2. Mount routes, default `/api/stripe`.
-3. Generate migrations for the `subscription_stripe` table.
-4. Configure Stripe webhooks to call `{mountRoute}/webhook`.
+3. Generate migrations for the `customer` and `subscription` tables.
+4. Start a durable hooks processor.
+5. Configure Stripe webhooks to call `{mountRoute}/webhook`.
 
 Example server module:
 
 ```ts
+import { createDurableHooksProcessor } from "@fragno-dev/db/dispatchers/node";
 import { createStripeFragment } from "@fragno-dev/stripe";
 
-export const stripeFragment = createStripeFragment({
-  stripeSecretKey: process.env.STRIPE_SECRET_KEY,
-  webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
-  onStripeCustomerCreated: async (stripeCustomerId, referenceId) => {
-    // Store stripeCustomerId in your DB
+export const stripeFragment = createStripeFragment(
+  {
+    stripeSecretKey: process.env.STRIPE_SECRET_KEY,
+    webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
+    resolveEntityFromRequest: async (context) => {
+      const session = await getSession(context.headers);
+      if (!session) {
+        return null;
+      }
+      return {
+        referenceId: session.user.id,
+        customerEmail: session.user.email,
+        customerMetadata: {},
+      };
+    },
+    onSubscriptionChanged: async ({ subscription }) => {
+      // Grant or revoke access for subscription.referenceId
+    },
   },
-  resolveEntityFromRequest: async (context) => {
-    const session = getSession(context.headers);
-    return {
-      referenceId: session.user.id,
-      customerEmail: session.user.email,
-      stripeCustomerId: session.user.stripeCustomerId || undefined,
-      stripeMetadata: {},
-    };
-  },
-  enableAdminRoutes: false,
-});
+  { databaseAdapter },
+);
+
+createDurableHooksProcessor([stripeFragment], { pollIntervalMs: 2000 }).startPolling();
 ```
 
 ## Database migrations
@@ -122,7 +135,7 @@ export const stripeClient = createStripeFragmentClient({
 
 ## Admin hooks
 
-Enable `enableAdminRoutes: true` and protect `/admin/*` with middleware. Hooks:
+Admin routes are always mounted; protect `/admin/*` with middleware. Hooks:
 
 - `useCustomers`
 - `useProducts`
@@ -143,10 +156,10 @@ Enable `enableAdminRoutes: true` and protect `/admin/*` with middleware. Hooks:
 ## Common pitfalls
 
 - Skipping webhook configuration leads to stale subscription state.
-- Forgetting to persist Stripe customer IDs for later upgrades.
+- Not running a durable hooks processor: webhook events are recorded but never processed.
 - Exposing admin routes without auth.
 
 ## Next steps
 
-- Add a success page that calls `syncStripeSubscriptions` to refresh state after checkout.
+- Add a success page that calls the `syncSubscriptions` service to refresh state after checkout.
 - Build admin views with the admin hooks.

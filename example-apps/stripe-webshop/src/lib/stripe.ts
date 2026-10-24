@@ -1,4 +1,5 @@
 import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
+import { createDurableHooksProcessor } from "@fragno-dev/db/dispatchers/node";
 import { PGLiteDriverConfig } from "@fragno-dev/db/drivers";
 import { eq } from "drizzle-orm";
 import { KyselyPGlite } from "kysely-pglite";
@@ -27,26 +28,19 @@ export const stripeFragment: ReturnType<typeof createStripeFragment> = createStr
     },
     resolveEntityFromRequest: async ({ headers }) => {
       const session = await auth.api.getSession({ headers });
-
       if (!session?.user) {
-        throw new Error("User not authenticated");
+        return null;
       }
-
       return {
         referenceId: session.user.id,
-        stripeCustomerId: session.user.stripeCustomerId,
         customerEmail: session.user.email,
-        stripeMetadata: {},
-        // Check if user has admin role (via Better Auth admin plugin)
-        // @ts-expect-error - Better Auth admin plugin adds role field
-        isAdmin: session.user.role === "admin",
+        customerMetadata: {},
       };
     },
-    onStripeCustomerCreated: async (stripeCustomerId, referenceId) => {
-      // Update user with Stripe customer ID
-      await db.update(user).set({ stripeCustomerId }).where(eq(user.id, referenceId));
+    onCustomerLinked: async ({ customerId, referenceId }) => {
+      // Keep a copy on the user so the admin users table can show it.
+      await db.update(user).set({ stripeCustomerId: customerId }).where(eq(user.id, referenceId));
     },
-    enableAdminRoutes: true,
   },
   {
     databaseAdapter: new SqlAdapter({
@@ -54,4 +48,17 @@ export const stripeFragment: ReturnType<typeof createStripeFragment> = createStr
       driverConfig: new PGLiteDriverConfig(),
     }),
   },
-);
+).withMiddleware(async ({ path, headers }, { error }) => {
+  if (!path.startsWith("/admin/")) {
+    return undefined;
+  }
+  const session = await auth.api.getSession({ headers });
+  // @ts-expect-error - Better Auth admin plugin adds role field
+  if (session?.user.role !== "admin") {
+    return error({ message: "Unauthorized", code: "UNAUTHORIZED" }, 401);
+  }
+  return undefined;
+});
+
+// Webhooks are processed by durable hooks; poll so retries run even without new requests.
+createDurableHooksProcessor([stripeFragment], { pollIntervalMs: 2000 }).startPolling();

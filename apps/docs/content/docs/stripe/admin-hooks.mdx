@@ -20,34 +20,29 @@ The fragment exposes these admin endpoints:
 | `GET /admin/products/:productId/prices` | List prices for a specific product | `usePrices()`        |
 | `GET /admin/subscriptions`              | List all local subscriptions       | `useSubscriptions()` |
 
-## Using Admin Hooks
+The Stripe routes page with Stripe's cursors: pass the ID of the last item as `startingAfter` and up
+to 100 as `limit`. `/admin/subscriptions` pages through the fragment's own table: pass the returned
+`cursor` back as `cursor`, with up to 100 as `pageSize`. Both page sizes default to 50; invalid
+values are rejected with `400 INVALID_QUERY`.
 
-Set `enableAdminRoutes: true` in your fragment configuration to enable these admin-only routes. When
-disabled, these routes will return a 401 Unauthorized error.
+## Securing Admin Routes
 
-### Securing Admin Routes
-
-The admin routes should be behind authentication and authorization, use a
-[middleware](/docs/fragno/for-users/middleware) to make sure that they are not publically
-accessible!
+The admin routes are always mounted. Put them behind authentication and authorization with a
+[middleware](/docs/fragno/for-users/middleware) so they are not publicly accessible!
 
 ```typescript
 import { createStripeFragment } from "@fragno-dev/stripe";
 
-export const stripeFragment = createStripeFragment(
-  {
-    enableAdminRoutes: true,
-    ...config,
-  },
-  dbConfig,
-).withMiddleware(async ({ path, headers }, { error }) => {
-  const { role } = await getSession(headers);
+export const stripeFragment = createStripeFragment(config, dbConfig).withMiddleware(
+  async ({ path, headers }, { error }) => {
+    const { role } = await getSession(headers);
 
-  if (path.startsWith("/admin") && role !== "admin") {
-    return error({ message: "Unauthorized", code: "UNAUTHORIZED" }, 401);
-  }
-  return undefined;
-});
+    if (path.startsWith("/admin") && role !== "admin") {
+      return error({ message: "Unauthorized", code: "UNAUTHORIZED" }, 401);
+    }
+    return undefined;
+  },
+);
 ```
 
 ### Example: Listing Products
@@ -67,7 +62,7 @@ export function ProductsPage() {
     error,
   } = stripeClient.useProducts({
     query: {
-      limit: 25,
+      limit: "25",
       startingAfter: cursor,
     },
   });
@@ -101,7 +96,7 @@ export function ProductsPage() {
       {products?.hasMore && (
         <button
           onClick={() => {
-            const lastProduct = response.products[response.products.length - 1];
+            const lastProduct = products.products[products.products.length - 1];
             setCursor(lastProduct.id);
           }}
         >

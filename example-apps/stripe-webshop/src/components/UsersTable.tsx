@@ -78,15 +78,14 @@ export function UsersTable() {
 
     setUpdating(true);
     try {
-      const { error } = await authClient.admin.updateUser({
-        userId,
-        data: {
-          stripeCustomerId: selectedCustomerId,
-        },
+      const response = await fetch("/api/users/link-customer", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ userId, customerId: selectedCustomerId }),
       });
 
-      if (error) {
-        console.error("Failed to update user:", error);
+      if (!response.ok) {
+        console.error("Failed to link customer:", await response.text());
         alert("Failed to link customer. Please try again.");
       } else {
         // Update React Query cache

@@ -1,48 +1,73 @@
+import type Stripe from "stripe";
 import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
 
 import { stripeFragmentDefinition } from "../definition";
-import { PriceResponseSchema } from "../models/prices";
+import { stripeId } from "../subscriptions";
+import { invalidQueryMessage, stripeListParams, stripeListQueryParameters } from "./stripe-lists";
+
+const priceSchema = z.object({
+  id: z.string(),
+  product: z.string(),
+  active: z.boolean(),
+  currency: z.string(),
+  unit_amount: z.number().nullable().describe("In the currency's smallest unit"),
+  type: z.string().describe("one_time or recurring"),
+  recurring: z
+    .object({
+      interval: z.string().describe("day, week, month or year"),
+      interval_count: z.number(),
+    })
+    .nullable(),
+  nickname: z.string().nullable(),
+  lookup_key: z.string().nullable(),
+  metadata: z.record(z.string(), z.string()),
+  created: z.number().describe("Unix time in seconds"),
+});
+
+function priceFromStripe(price: Stripe.Price): z.infer<typeof priceSchema> {
+  return {
+    id: price.id,
+    product: stripeId(price.product),
+    active: price.active,
+    currency: price.currency,
+    unit_amount: price.unit_amount,
+    type: price.type,
+    recurring: price.recurring && {
+      interval: price.recurring.interval,
+      interval_count: price.recurring.interval_count,
+    },
+    nickname: price.nickname,
+    lookup_key: price.lookup_key,
+    metadata: price.metadata,
+    created: price.created,
+  };
+}
 
 export const pricesRoutesFactory = defineRoutes(stripeFragmentDefinition).create(
-  ({ deps, config, defineRoute }) => {
+  ({ deps, defineRoute }) => {
     return [
       defineRoute({
         method: "GET",
         path: "/admin/products/:productId/prices",
-        inputSchema: z.object({
-          limit: z
-            .number()
-            .int()
-            .positive()
-            .max(100)
-            .optional()
-            .default(50)
-            .describe("Number of prices to return (max 100)"),
-          startingAfter: z.string().optional().describe("Price ID to start after for pagination"),
-        }),
+        queryParameters: stripeListQueryParameters,
         outputSchema: z.object({
-          prices: z.array(PriceResponseSchema),
+          prices: z.array(priceSchema),
           hasMore: z.boolean().describe("Whether there are more items to fetch"),
         }),
+        errorCodes: ["INVALID_QUERY"] as const,
         handler: async ({ pathParams, query }, { json, error }) => {
-          if (!config.enableAdminRoutes) {
-            return error({ message: "Unauthorized", code: "UNAUTHORIZED" }, 401);
+          const params = stripeListParams(query);
+          if (!params) {
+            return error({ message: invalidQueryMessage, code: "INVALID_QUERY" }, 400);
           }
-
-          const { productId } = pathParams;
-          const limit = Number(query.get("limit")) || undefined;
-          const startingAfter = query.get("startingAfter") || undefined;
-
           const prices = await deps.stripe.prices.list({
-            product: productId,
-            limit,
-            starting_after: startingAfter,
+            ...params,
+            product: pathParams.productId,
           });
-
           return json({
-            prices: prices.data,
+            prices: prices.data.map(priceFromStripe),
             hasMore: prices.has_more,
           });
         },

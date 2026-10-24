@@ -2,12 +2,13 @@ import Stripe from "stripe";
 import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
+import { isUniqueConstraintError } from "@fragno-dev/db";
 
 import { stripeFragmentDefinition } from "../definition";
-import { eventToHandler, type SupportedStripeEvent } from "../webhook/handlers";
+import { stripeSchema } from "../schema";
 
 export const webhookRoutesFactory = defineRoutes(stripeFragmentDefinition).create(
-  ({ config, deps, services, defineRoute }) => {
+  ({ config, deps, defineRoute }) => {
     return [
       defineRoute({
         method: "POST",
@@ -15,11 +16,9 @@ export const webhookRoutesFactory = defineRoutes(stripeFragmentDefinition).creat
         outputSchema: z.object({
           success: z.boolean(),
         }),
-        errorCodes: ["MISSING_SIGNATURE", "WEBHOOK_SIGNATURE_INVALID", "WEBHOOK_ERROR"] as const,
+        errorCodes: ["MISSING_SIGNATURE", "WEBHOOK_SIGNATURE_INVALID"] as const,
         handler: async function ({ headers, rawBody }, { json, error }) {
-          // Get the signature
           const signature = headers.get("stripe-signature");
-
           if (!signature) {
             return error(
               { message: "Missing stripe-signature header", code: "MISSING_SIGNATURE" },
@@ -27,33 +26,18 @@ export const webhookRoutesFactory = defineRoutes(stripeFragmentDefinition).creat
             );
           }
 
-          if (!rawBody) {
-            return error(
-              { message: "Missing request body for webhook verification", code: "WEBHOOK_ERROR" },
-              400,
-            );
-          }
-
-          // Verify the webhook signature
           let event: Stripe.Event;
           try {
-            // Support both Stripe v18 (constructEvent) and v19+ (constructEventAsync)
-            if (typeof deps.stripe.webhooks.constructEventAsync === "function") {
-              // Stripe v19+ - use async method
-              event = await deps.stripe.webhooks.constructEventAsync(
-                rawBody,
-                signature,
-                config.webhookSecret,
-              );
-            } else {
-              // Stripe v18 - use sync method
-              event = deps.stripe.webhooks.constructEvent(rawBody, signature, config.webhookSecret);
-            }
+            event = await deps.stripe.webhooks.constructEventAsync(
+              rawBody ?? "",
+              signature,
+              config.webhookSecret,
+            );
           } catch (err) {
             if (err instanceof Stripe.errors.StripeSignatureVerificationError) {
               return error(
                 {
-                  message: `Webhook signature verification failed`,
+                  message: "Webhook signature verification failed",
                   code: "WEBHOOK_SIGNATURE_INVALID",
                 },
                 400,
@@ -62,29 +46,24 @@ export const webhookRoutesFactory = defineRoutes(stripeFragmentDefinition).creat
             throw err;
           }
 
-          if (!event) {
-            return error({ message: "Failed to construct event", code: "WEBHOOK_ERROR" }, 400);
+          try {
+            await this.handlerTx()
+              .mutate(({ forSchema }) => {
+                const uow = forSchema(stripeSchema);
+                uow.triggerHook(
+                  "processStripeEvent",
+                  { event },
+                  { id: `stripe-event:${event.id}` },
+                );
+                uow.triggerHook("deliverStripeEvent", { event });
+              })
+              .execute();
+          } catch (err) {
+            // Stripe redelivers events; the hook ID recorded the first delivery already.
+            if (!isUniqueConstraintError(err)) {
+              throw err;
+            }
           }
-
-          if (config.onEvent) {
-            deps.log.info("Running user callback event");
-            await config.onEvent({ event, stripeClient: deps.stripe });
-          }
-
-          const eventHandler = eventToHandler[event.type as SupportedStripeEvent];
-          if (!eventHandler) {
-            deps.log.info(`Webhook event ${event.type}: ${event.id} ignored`);
-            return json({ success: true });
-          }
-
-          deps.log.info(`Executing event handler for ${event.type}: ${event.id}`);
-          await eventHandler({
-            event,
-            services,
-            deps,
-            config,
-            handlerTx: this.handlerTx.bind(this),
-          });
 
           return json({ success: true });
         },

@@ -63,7 +63,7 @@
   "dependencies": {
     "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",
-    "stripe": "^19.3.1",
+    "stripe": "^23.0.1",
     "zod": "^4.5.4"
   },
   "devDependencies": {

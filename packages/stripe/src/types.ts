@@ -1,18 +1,8 @@
-import type { TableToColumnValues, TableToInsertValues } from "@fragno-dev/db/query";
 import type Stripe from "stripe";
 
-import type { TxResult } from "@fragno-dev/db";
+import type { HookContext } from "@fragno-dev/db";
 
-import type { stripeSchema } from "./database/schema";
-import type { SubscriptionResponse } from "./models/subscriptions";
-
-export interface Logger {
-  log(...data: unknown[]): void;
-  info(...data: unknown[]): void;
-  error(...data: unknown[]): void;
-  warn(...data: unknown[]): void;
-  debug(...data: unknown[]): void;
-}
+import type { Subscription } from "./subscriptions";
 
 export type StripeRequestContext = {
   method: string;
@@ -27,125 +17,55 @@ export type StripeRequestContext = {
   };
 };
 
-export type StripeEntityData = {
+export type StripeEntity = {
   /**
    * The unique identifier for the entity (user, organization, etc.) in your system
    */
   referenceId: string;
   /**
-   * The Stripe Customer ID associated with this entity, if one exists
-   */
-  stripeCustomerId: string | undefined;
-  /**
-   * The email address of the customer
+   * The email address set on the Stripe customer the fragment creates for this entity
    */
   customerEmail: string;
   /**
-   * Custom metadata to be attached to Stripe Customer for this entity
+   * Metadata set on the Stripe customer the fragment creates for this entity
    */
-  stripeMetadata: Record<string, string>;
+  customerMetadata: Record<string, string>;
+};
+
+export type StripeCustomerLink = {
+  customerId: string;
+  referenceId: string;
 };
 
 export interface StripeFragmentConfig {
   stripeSecretKey: string;
   webhookSecret: string;
-  stripeClientOptions?: Stripe.StripeConfig;
-  enableAdminRoutes: boolean;
+  /** Sends the fragment's Stripe API requests. Defaults to the global `fetch`. */
+  fetch?: typeof fetch;
   /**
-   * Resolves the authenticated entity (user, organization or something) from the request context
-   * and returns their Stripe-related data.
+   * Resolves the authenticated entity (user, organization or something else) making the request.
    *
-   * This callback is invoked on user-specific routes (/subscription/upgrade and /subscription/cancel)
-   * to identify which entity is making the request. Extract authentication information
-   * from the request context (e.g., session cookies, JWT tokens in headers) and return
-   * the entity's Stripe customer ID, subscription ID (if exists), email, and custom metadata.
-   *
-   * @param context - Request context containing headers, query params, path params, and request body
-   * @returns Promise resolving to the entity's Stripe-related data
+   * Invoked on the routes that act for an entity (/subscription/upgrade, /subscription/cancel and
+   * /portal). Return null when the request is not authenticated.
    */
-  resolveEntityFromRequest: (context: StripeRequestContext) => Promise<StripeEntityData>;
+  resolveEntityFromRequest: (context: StripeRequestContext) => Promise<StripeEntity | null>;
   /**
-   * Callback that gets called when a Stripe Customer is created.
-   *
-   * Use this callback when you want to store a reference to the customer id in your app.
+   * Runs after a Stripe customer is linked to an entity, either by the upgrade route or by the
+   * `linkCustomer` service.
    */
-  onStripeCustomerCreated: (stripeCustomerId: string, referenceId: string) => Promise<void>;
+  onCustomerLinked?: (payload: StripeCustomerLink, context: HookContext) => Promise<void> | void;
   /**
-   * Optional callback for custom Stripe event handlers.
-   *
-   * This callback runs BEFORE the default handling.
+   * Runs after a sync changed a subscription. The subscription is read when the hook runs, so it is
+   * the current state rather than the state of the change that triggered it.
    */
-  onEvent?: (args: { event: Stripe.Event; stripeClient: Stripe }) => Promise<void>;
-
-  /* Override the default logger */
-  logger?: Logger;
-}
-
-export interface StripeFragmentDeps {
-  stripe: Stripe;
-  stripeClientOptions?: Stripe.StripeConfig;
-  log: Logger;
-}
-
-export type StripeServiceCall<T, TRetrieve = T> = TxResult<T, TRetrieve>;
-
-type SubscriptionRow = TableToColumnValues<typeof stripeSchema.tables.subscription>;
-
-export interface StripeFragmentServices extends Record<string, unknown> {
+  onSubscriptionChanged?: (
+    payload: { subscription: Subscription },
+    context: HookContext,
+  ) => Promise<void> | void;
   /**
-   * Get the Stripe client instance
+   * Runs for every verified Stripe event, independently of the fragment's own processing, so a
+   * failure here retries without holding back subscription syncs. Events arrive in any order;
+   * read subscription state from `onSubscriptionChanged` instead.
    */
-  getStripeClient(): Stripe;
-  /**
-   * Create a new subscription record in the database
-   * Note: createdAt and updatedAt are automatically set by the service
-   */
-  createSubscription(
-    data: Omit<
-      TableToInsertValues<typeof stripeSchema.tables.subscription>,
-      "id" | "createdAt" | "updatedAt"
-    >,
-  ): StripeServiceCall<string>;
-  /**
-   * Update an existing subscription record
-   */
-  updateSubscription(
-    id: string,
-    data: Partial<Omit<TableToInsertValues<typeof stripeSchema.tables.subscription>, "id">>,
-  ): StripeServiceCall<void>;
-  /**
-   * Find a subscription by Stripe subscription ID
-   */
-  getSubscriptionByStripeId(
-    stripeSubscriptionId: string,
-  ): StripeServiceCall<SubscriptionResponse | null>;
-  /**
-   * Find all subscriptions for a Stripe customer ID
-   */
-  getSubscriptionsByStripeCustomerId(
-    stripeCustomerId: string,
-  ): StripeServiceCall<SubscriptionResponse[]>;
-  /**
-   * Delete a subscription record
-   */
-  deleteSubscription(id: string): StripeServiceCall<void>;
-
-  deleteSubscriptionsByReferenceId(
-    referenceId: string,
-  ): StripeServiceCall<{ success: boolean }, [SubscriptionRow[]]>;
-  /**
-   * Get all subscriptions
-   */
-  getAllSubscriptions(): StripeServiceCall<SubscriptionResponse[]>;
-  /**
-   * Get subscriptions by id (internal)
-   */
-  getSubscriptionById(id: string): StripeServiceCall<SubscriptionResponse | null>;
-  getSubscriptionsByReferenceId(referenceId: string): StripeServiceCall<SubscriptionResponse[]>;
-
-  syncStripeSubscriptions(
-    referenceId: string,
-    customerId: string,
-    stripeSubscriptions: Stripe.Subscription[],
-  ): StripeServiceCall<{ success: boolean }, [SubscriptionRow[]]>;
+  onStripeEvent?: (payload: { event: Stripe.Event }, context: HookContext) => Promise<void> | void;
 }

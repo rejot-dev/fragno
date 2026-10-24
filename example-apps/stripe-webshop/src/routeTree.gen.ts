@@ -22,6 +22,7 @@ import { Route as AuthenticatedUsersRouteImport } from './routes/_authenticated/
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiStripeSplatRouteImport } from './routes/api/stripe/$'
 import { Route as ApiSubscriptionStatusRouteImport } from './routes/api/subscription/status'
+import { Route as ApiUsersLinkCustomerRouteImport } from './routes/api/users/link-customer'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -87,6 +88,11 @@ const ApiSubscriptionStatusRoute = ApiSubscriptionStatusRouteImport.update({
   path: '/api/subscription/status',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiUsersLinkCustomerRoute = ApiUsersLinkCustomerRouteImport.update({
+  id: '/api/users/link-customer',
+  path: '/api/users/link-customer',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -101,6 +107,7 @@ export interface FileRoutesByFullPath {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/stripe/$': typeof ApiStripeSplatRoute
   '/api/subscription/status': typeof ApiSubscriptionStatusRoute
+  '/api/users/link-customer': typeof ApiUsersLinkCustomerRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -115,6 +122,7 @@ export interface FileRoutesByTo {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/stripe/$': typeof ApiStripeSplatRoute
   '/api/subscription/status': typeof ApiSubscriptionStatusRoute
+  '/api/users/link-customer': typeof ApiUsersLinkCustomerRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -131,6 +139,7 @@ export interface FileRoutesById {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/stripe/$': typeof ApiStripeSplatRoute
   '/api/subscription/status': typeof ApiSubscriptionStatusRoute
+  '/api/users/link-customer': typeof ApiUsersLinkCustomerRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -147,6 +156,7 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/stripe/$'
     | '/api/subscription/status'
+    | '/api/users/link-customer'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -161,6 +171,7 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/stripe/$'
     | '/api/subscription/status'
+    | '/api/users/link-customer'
   id:
     | '__root__'
     | '/'
@@ -176,6 +187,7 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/stripe/$'
     | '/api/subscription/status'
+    | '/api/users/link-customer'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -187,6 +199,7 @@ export interface RootRouteChildren {
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiStripeSplatRoute: typeof ApiStripeSplatRoute
   ApiSubscriptionStatusRoute: typeof ApiSubscriptionStatusRoute
+  ApiUsersLinkCustomerRoute: typeof ApiUsersLinkCustomerRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -282,6 +295,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiSubscriptionStatusRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/users/link-customer': {
+      id: '/api/users/link-customer'
+      path: '/api/users/link-customer'
+      fullPath: '/api/users/link-customer'
+      preLoaderRoute: typeof ApiUsersLinkCustomerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -314,6 +334,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiStripeSplatRoute: ApiStripeSplatRoute,
   ApiSubscriptionStatusRoute: ApiSubscriptionStatusRoute,
+  ApiUsersLinkCustomerRoute: ApiUsersLinkCustomerRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
