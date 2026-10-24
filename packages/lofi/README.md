@@ -634,6 +634,9 @@ await replica.close();
   must not be NULL. A declared column missing from the result throws.
   `decodeLofiSqliteRow(table, row)` restores a whole row in the record shape of a Fragno query: a
   `FragnoId` for `id`, a `FragnoReference` for references, and decoded values.
+- **Parameters**: whole numbers bind as 64-bit integers. wa-sqlite would bind a number outside the
+  32-bit range, such as a timestamp, as REAL, so `("occurredAt" - ?) / ?` would divide in floating
+  point.
 - `lofi_meta` holds the outbox cursor, and `lofi_inbox` holds the entries already applied.
 
 Mutations for schemas you did not register are skipped. A mutation for an unknown table in a
