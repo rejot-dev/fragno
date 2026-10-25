@@ -21,7 +21,7 @@ import { migrate, withDatabase, type TypedUnitOfWork } from "@fragno-dev/db";
 import { defineLocalProjection } from "../local/projection";
 import {
   LOFI_SQLITE_ENDPOINT_NAME,
-  openLofiSqliteReplica,
+  openLofiSqliteReplicaOn,
   type LofiSqliteReplica,
   type LofiSqliteReplicaOptions,
   type LofiSqliteReplicaStatus,
@@ -488,7 +488,7 @@ async function runReplicaScenario(scenario: {
   for (const step of scenario.steps) {
     switch (step.type) {
       case "openTab": {
-        const replica = await openLofiSqliteReplica(
+        const replica = await openLofiSqliteReplicaOn(
           {
             ...step.replica,
             baseUrl: "http://replica.test",

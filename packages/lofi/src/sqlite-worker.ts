@@ -2,7 +2,16 @@ export { serveLofiSqlite, type LofiSqliteHost, type LofiSqliteHostOptions } from
 export { serveLofiSqliteWorker } from "./sqlite/worker";
 export { readViewEngine } from "./sqlite/read-views";
 export {
+  guardedSqlViewEngine,
+  type LofiSqliteDerivedRelation,
+  type LofiSqliteGuardedLimits,
+  type LofiSqliteGuardedViewsOptions,
+} from "./sqlite/guarded-views";
+export {
+  LofiSqliteAccessError,
   wrapWaSqliteDatabase,
+  type LofiSqliteAccess,
+  type LofiSqliteGuard,
   type LofiSqliteSyncConnection,
   type LofiSqliteSyncDatabase,
   type LofiSqliteSyncStatement,

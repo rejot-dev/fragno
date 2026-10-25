@@ -6,11 +6,13 @@ export {
 export {
   LOFI_SQLITE_LAYOUT_VERSION,
   lofiSqliteTableName,
+  quoteSqliteIdentifier,
   registeredSchemaName,
 } from "./sqlite/layout";
+export { openLofiSqliteReplica } from "./sqlite/browser-replica";
 export {
-  openLofiSqliteReplica,
   type LofiSqliteReplica,
+  type LofiSqliteReplicaChange,
   type LofiSqliteReplicaDependencies,
   type LofiSqliteReplicaOptions,
   type LofiSqliteReplicaStatus,
@@ -24,6 +26,8 @@ export {
   type LofiSqliteViewResult,
 } from "./sqlite/client";
 export type { LofiSqlitePort } from "./sqlite/protocol";
+export type { LofiSqliteGuardedQuery, LofiSqliteGuardedResult } from "./sqlite/guarded-views";
+export type { SqliteValue } from "./sqlite/values";
 export {
   lofiSqliteReadViews,
   type LofiSqliteRead,

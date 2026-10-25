@@ -808,8 +808,9 @@ changed since. A reconnect or a new writer catches up again without sending view
   older state at once, and nothing says how far behind it is while the stream replays the gap.
 - **Estimated progress.** `fraction` is the share of entries replayed, counted by the transaction
   versions in their versionstamps. Entries differ in size, so it does not track the time left.
-- **Coarse refresh.** `subscribe` says only that something changed, not which tables. Sending the
-  changed tables would let readers skip unrelated queries.
+- **Coarse refresh.** `subscribe` reports which tables a batch wrote, not which rows, so a reader
+  runs a query again after any write to a table it reads. A writing tab on a lofi that does not
+  report tables sends null, which refreshes everything.
 - **JSON `null`.** A JSON column holding `null` is stored as SQL `NULL`, the same as a missing
   value.
 
@@ -870,18 +871,82 @@ $adults.subscribe((result) => {
 `LofiSqliteReplica`'s do, so a page can wait for the catch-up before showing views.
 
 A SQL view's rows decode like `replica.query`'s (see Layout above). The worker runs the query again
-after every batch the replica applies, and sends the rows only when they changed. The query is one
-statement, and a statement that would write is refused, since a write would bypass the replica.
+after every batch that wrote a table it reads, and sends the rows only when they changed. The query
+is one statement: SQL after it other than whitespace and comments is refused, as is a statement that
+would write, since a write would bypass the replica.
+
+### Which views refresh
+
+The replica records the tables each batch writes, by SQL name: the rows of the outbox's mutations,
+what projections write, and the tables a rebuild recreates. `replica.subscribe` passes them to its
+listeners as `{ tables }`, and tabs that write tell the others; `tables` is null when a writing tab
+runs a lofi that does not say. The leader adds up the tables of the batches since its last refresh
+and passes them to every engine's `refresh(changed)`. SQLite's authorizer reports the tables a
+statement reads while preparing it, as `statement.tables`, including the tables behind a view, so:
+
+- a SQL view refreshes after a batch that wrote one of its statement's tables;
+- a read view refreshes after a batch that wrote a table its last run read, since a read reads other
+  tables only once one it read changed;
+- an engine that cannot tell, such as `@fragno-dev/lofi-zql`'s, refreshes after every batch.
 
 ### View engines
 
 A view engine maintains one kind of view. In the worker,
 `engine.open({ connection, registrations })` starts it on the leader's synchronous connection, and
-returns the engine's `materialize(id, query, listener)`, `destroy(id)`, and `refresh()`. The leader
-calls them only while it holds a lock on the database, after every batch in the case of `refresh`,
-so they read synchronously. Engines must not write: only the replica does. On the page,
-`replica.view(kind, query)` asks the leader's engine of `kind` for a view; `query` must survive
-`postMessage`.
+returns the engine's `materialize(id, query, listener)`, `destroy(id)`, and `refresh(changed)`. The
+leader calls them only while it holds a lock on the database, after every batch in the case of
+`refresh`, so they read synchronously. Engines must not write the replica's tables: only the replica
+does. On the page, `replica.view(kind, query)` asks the leader's engine of `kind` for a view;
+`query` must survive `postMessage`.
+
+`connection.prepare(sql)` prepares one statement and reports its `columnNames`, `isReadOnly`,
+`tables`, and `parameterCount`. `connection.guarded(guard, run)` runs `run` with a `guard` that
+decides each access the statements prepared meanwhile make, as SQLite's authorizer reports it, and
+interrupts a statement that takes more than `guard.maxOperations` thousand of SQLite's operations or
+produces a string or blob longer than `guard.maxLength`. wa-sqlite installs such hooks per module
+rather than per connection, so the connection installs them only while it runs synchronously and
+removes them before returning.
+
+### Guarded SQL views
+
+`guardedSqlViewEngine` maintains views of SQL that people or agents write, such as the queries of a
+page, which the replica must survive. It gives queries relations of their own and keeps them from
+everything else:
+
+```ts
+guardedSqlViewEngine({
+  kind: "pages",
+  // Temporary views on the leader's connection, which queries read by name.
+  views: { people: `SELECT "id", "email" FROM "users_app"` },
+  // Relations the app computes in JavaScript, which queries read as temporary tables.
+  derived: {
+    active_people: {
+      columns: ["count"],
+      compute: (reader) => [[countActive(reader)]],
+    },
+  },
+  functions: ["count", "upper", "json_extract"],
+  limits: { rows: 500, bytes: 4_000_000, operations: 25_000, length: 16_000_000 },
+});
+```
+
+A view's query is `{ sql, params }`, one SELECT with its parameters bound as values, and its data is
+`{ status: "ready", columns, rows, truncated }` or `{ status: "error", message }`: queries that
+cannot run, and runs that fail, report why to the page that asked rather than to the worker.
+
+- **Reads.** A query reads the `views` and `derived` relations, through which it reads the replica's
+  tables, and table-valued JSON functions. It cannot read the replica's tables by name, write,
+  attach, or run pragmas, and calls only `functions`; an error names what it may read instead.
+- **Limits.** A view holds `limits.rows` rows and says when it dropped more. A run that takes more
+  than `limits.operations` thousand operations, or rows holding more than `limits.bytes` bytes of
+  text, in UTF-8, and blobs, fails. 25 million operations take about 200 ms in Node. A query given
+  the wrong number of parameters fails for good.
+- **Derived relations** run their `compute` with a reader of the replica, only while views exist,
+  and again before the next refresh once a batch wrote a table their last run read. Rows that
+  changed are written to the temporary table, and the views that read it refresh.
+- **Checking on a server.** Open the engine on a connection to an empty in-memory database of the
+  replica's tables, such as one `SqliteLofiAdapter.open` created, and `materialize` a query to learn
+  whether it runs and which columns it selects before any page asks for it.
 
 ### Read views
 
@@ -960,9 +1025,25 @@ only to the tab that shows it.
 - **Tabs on other code.** Tabs whose schemas have the same versions share a leader even if they run
   different versions of lofi, whose messages could differ, or of a rebuildable projection, whose
   rows are then the leader's version.
-- **SQL and read views run again after every batch.** Every SQL view and read runs again whether or
-  not the batch touched its tables, and a read's whole result is compared with the last one sent.
-  Knowing which tables a batch changed, and which a query reads, would let the worker skip the rest.
+- **Views refresh by table.** A view refreshes after any batch that wrote a table it reads, even
+  when the batch touched none of its rows, and a read's whole result is compared with the last one
+  sent.
+- **The guard has two gaps.** SQLite reports reads inside a CTE as made through the CTE, so a CTE
+  named like a guarded view can read the replica's tables directly, and it reports `count(*)` of a
+  table as a read of no column, so a query can count a table it may not read. Both need the
+  replica's table names, which queries are not given; neither writes.
+- **Derived relations hold all their rows.** A derived relation's rows are recomputed in full, and
+  rewritten when any changed, so it suits relations of tens or hundreds of rows, such as agents.
+- **Derived relations compute while any view is open.** Every stale derived relation is computed
+  before a refresh once one guarded view exists, also when no open view reads it. Computing only
+  those that an open view's statement reads would skip the rest.
+- **Limits are per view.** Each run of a view gets its own operations budget, so a page of eleven
+  queries that each approach it holds the leader, and every tab's views and synchronization, for
+  eleven times as long after a batch. A budget per refresh would bound the whole.
+- **TanStack's OPFS worker is still bundled.** `openLofiSqliteReplica` opens its database through
+  `@tanstack/browser-db-sqlite-persistence`. Replica workers no longer reach it, but a bundler that
+  follows `@fragno-dev/lofi/sqlite` still emits that package's worker as an unused asset; moving
+  `openLofiSqliteReplica` to an entry of its own would leave it out.
 - **Whole results cross to the page.** The worker posts a view's full data whenever it changes. For
   large views, posting the changes and applying them in the page would cost less.
 - **No optimistic writes or submit.** As with the replica, views show server state only.
@@ -1013,7 +1094,7 @@ export const schema = schema("app", (s) =>
 - `InMemoryLofiAdapter` - in-memory `LofiAdapter` for optimistic overlays/tests.
 - `StackedLofiAdapter` - merges base + overlay adapters for optimistic reads.
 - `@fragno-dev/lofi/sqlite`: `openLofiSqliteReplica`, `SqliteLofiAdapter`, `decodeLofiSqliteRow`,
-  `lofiSqliteTableName` - the browser SQLite replica.
+  `lofiSqliteTableName`, `quoteSqliteIdentifier` - the browser SQLite replica.
 - `@fragno-dev/lofi/sqlite/testing`: `openLofiSqliteMemoryFiles` opens replicas in Node on
   wa-sqlite's in-memory VFS, `openLofiSqliteTab` opens a replica worker's host and its page's client
   over a `MessageChannel`, and `waitForLofiSqliteReplica` waits until a replica reaches a
@@ -1021,8 +1102,8 @@ export const schema = schema("app", (s) =>
 - `@fragno-dev/lofi/sqlite` also has `connectLofiSqlite`, which connects a page to its replica
   worker for live views.
 - `@fragno-dev/lofi/sqlite/worker`: `serveLofiSqliteWorker`, `serveLofiSqlite`,
-  `wrapWaSqliteDatabase`, and the `LofiSqliteViewEngine` type - the replica worker, which maintains
-  every tab's views.
+  `wrapWaSqliteDatabase`, `readViewEngine`, `guardedSqlViewEngine`, and the `LofiSqliteViewEngine`
+  type - the replica worker, which maintains every tab's views.
 - `LofiOverlayManager` - overlay manager that rebuilds queued optimistic commands.
 - Outbox helpers: `decodeOutboxPayload`, `resolveOutboxRefs`, `outboxMutationsToUowOperations`.
 - Types: `LofiClientOptions`, `LofiAdapter`, `LofiMutation`, `LofiQueryInterface`, and more.

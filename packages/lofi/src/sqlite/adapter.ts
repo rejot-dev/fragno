@@ -117,6 +117,9 @@ export class SqliteLofiAdapter implements LofiAdapter {
   // database's worker starts each call as it arrives and steps through statements asynchronously,
   // so two calls in flight interleave.
   #lastCall: Promise<unknown> = Promise.resolve();
+  // Tables written since `takeChangedTables` last returned them, by SQL name. A transaction that
+  // rolls back leaves its tables here, which only refreshes views for nothing.
+  readonly #changedTables = new Set<string>();
 
   private constructor(options: SqliteLofiAdapterOptions) {
     const sourceSchemas = options.schemas.map(toRegisteredSchema);
@@ -314,6 +317,8 @@ export class SqliteLofiAdapter implements LofiAdapter {
    */
   async #rebuild(plan: ProjectionRebuildPlan): Promise<void> {
     for (const { registration, layout } of plan.writes) {
+      // A table the rebuild leaves empty is changed too.
+      this.#changedTables.add(layout.sqlName);
       await this.#write(`DROP TABLE IF EXISTS ${quoteSqliteIdentifier(layout.sqlName)}`);
       for (const statement of createSqliteTableStatements(registration, layout)) {
         await this.#write(statement);
@@ -337,6 +342,13 @@ export class SqliteLofiAdapter implements LofiAdapter {
       }
     }
     await this.#writeMeta(plan.metaKey, plan.fingerprint);
+  }
+
+  /** The tables written since the last call, by SQL name, such as to refresh views that read them. */
+  takeChangedTables(): string[] {
+    const tables = [...this.#changedTables];
+    this.#changedTables.clear();
+    return tables;
   }
 
   async getMeta(key: string): Promise<string | undefined> {
@@ -446,6 +458,7 @@ export class SqliteLofiAdapter implements LofiAdapter {
   ): Promise<void> {
     const table = quoteSqliteIdentifier(layout.sqlName);
     const id = idColumn(layout);
+    this.#changedTables.add(layout.sqlName);
 
     if (mutation.op === "delete") {
       await this.#write(`DELETE FROM ${table} WHERE ${id} = ?`, [mutation.externalId]);

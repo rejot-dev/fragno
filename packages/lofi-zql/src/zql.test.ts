@@ -134,11 +134,11 @@ async function runZqlScenario(steps: ScenarioStep[]): Promise<ScenarioContext> {
     return {
       ...database,
       connection: {
+        ...database.connection,
         prepare(sql: string) {
           const statement = database.connection.prepare(sql);
           return {
-            columnNames: statement.columnNames,
-            isReadOnly: statement.isReadOnly,
+            ...statement,
             *rows(params: Parameters<typeof statement.rows>[0]) {
               for (const row of statement.rows(params)) {
                 ctx.rowsRead++;

@@ -10,6 +10,7 @@ import { defineFragment, instantiate } from "@fragno-dev/core";
 import { migrate, withDatabase, type TypedUnitOfWork } from "@fragno-dev/db";
 
 import type { LofiSqliteClient, LofiSqliteView, LofiSqliteViewResult } from "./client";
+import { guardedSqlViewEngine, type LofiSqliteGuardedQuery } from "./guarded-views";
 import { lofiSqliteTableName, quoteSqliteIdentifier } from "./layout";
 import { lofiSqliteReadViews, readViewEngine, type LofiSqliteReads } from "./read-views";
 import { openLofiSqliteMemoryFiles, openLofiSqliteTab } from "./testing";
@@ -62,10 +63,52 @@ const appReads = {
       columns: { count: "integer" },
     })[0]!.count,
   }),
+  // Counts its runs, to show which batches run it again.
+  postTitles: (reader) => {
+    postTitleRuns += 1;
+    return reader
+      .query({
+        sql: `SELECT "title" FROM ${table("posts")} ORDER BY "title"`,
+        params: [],
+        columns: { title: appSchema.tables.posts.columns.title },
+      })
+      .map(({ title }) => title);
+  },
   deleteUsers: (reader) =>
     reader.query({ sql: `DELETE FROM ${table("users")}`, params: [], columns: {} }),
 } satisfies LofiSqliteReads;
 const appReadViews = lofiSqliteReadViews<typeof appReads>("app-reads");
+let postTitleRuns = 0;
+
+// Pages read people only through `people` and `active_people`, two at a time.
+let activePeopleComputed = 0;
+const guardedEngine = guardedSqlViewEngine({
+  kind: "guarded",
+  views: { people: `SELECT "id", "email", "active" FROM ${table("users")}` },
+  derived: {
+    active_people: {
+      columns: ["count"],
+      compute: (reader) => {
+        activePeopleComputed += 1;
+        return [
+          [
+            reader.query({
+              sql: `SELECT count(*) AS "count" FROM ${table("users")} WHERE "active" = 1`,
+              params: [],
+              columns: { count: "integer" },
+            })[0]!.count,
+          ],
+        ];
+      },
+    },
+  },
+  functions: ["count", "upper"],
+  limits: { rows: 2, bytes: 200, operations: 100, length: 1_000 },
+});
+const guardedView =
+  (sql: string, params: unknown[] = []) =>
+  (client: LofiSqliteClient) =>
+    client.view("guarded", { sql, params } as LofiSqliteGuardedQuery);
 
 // ---------------------------------------------------------------------------------------------
 // Scenario DSL: a fragment on fragno-db's SQLite backend serves the outbox. Each "tab" runs a host,
@@ -201,7 +244,7 @@ async function runScenario(steps: ScenarioStep[]): Promise<ScenarioContext> {
               onError: (error) => ctx.errors.push(error),
               retryDelayMs: 10,
             },
-            engines: [readViewEngine({ kind: "app-reads", reads: appReads })],
+            engines: [readViewEngine({ kind: "app-reads", reads: appReads }), guardedEngine],
             openDatabase: async (open) => {
               ctx.databasesOpened++;
               return await files.open(open);
@@ -344,6 +387,124 @@ describe("Lofi SQLite host", () => {
       waitForError("b", "writes", "must not write"),
       watch("b", "unknown", (client) => client.view("app-reads", { read: "nope", args: null })),
       waitForError("b", "unknown", 'No read named "nope"'),
+    ]);
+    expect(ctx.errors).toEqual([]);
+  });
+
+  it("runs a view again only after batches that wrote a table it reads", async () => {
+    let runsBefore = 0;
+    const ctx = await runScenario([
+      openTab("a"),
+      watch("a", "titles", (client) => appReadViews(client, "postTitles", undefined)),
+      watch("a", "posts", postCountView),
+      write("post", (uow) => {
+        uow.create("posts", { title: "Hello" });
+      }),
+      waitForView("a", "titles", ["Hello"]),
+      waitForView("a", "posts", [{ count: 1 }]),
+      check(() => {
+        runsBefore = postTitleRuns;
+      }),
+      // Users are written, and the views that read users refresh, but the posts views do not run.
+      watch("a", "users", usersView),
+      write("users", (uow) => {
+        uow.create("users", { email: "ada@example.com", active: true });
+      }),
+      waitForView("a", "users", [{ email: "ada@example.com" }]),
+      check(() => {
+        assert.equal(postTitleRuns, runsBefore);
+      }),
+      write("again", (uow) => {
+        uow.create("posts", { title: "Again" });
+      }),
+      waitForView("a", "titles", ["Again", "Hello"]),
+      check(() => {
+        assert.equal(postTitleRuns, runsBefore + 1);
+      }),
+    ]);
+    expect(ctx.errors).toEqual([]);
+  });
+
+  it("maintains guarded views, which read only their relations within limits", async () => {
+    let computedBefore = 0;
+    const ready = (columns: string[], rows: unknown[][], truncated = false) => ({
+      status: "ready",
+      columns,
+      rows,
+      truncated,
+    });
+    const failed = (message: string) => ({
+      status: "error",
+      message: expect.stringContaining(message),
+    });
+    const ctx = await runScenario([
+      openTab("a"),
+      watch(
+        "a",
+        "emails",
+        guardedView(
+          `SELECT upper("email") AS "email" FROM "people" WHERE "active" = ?1 ORDER BY 1`,
+          [1],
+        ),
+      ),
+      watch("a", "active", guardedView(`SELECT "count" FROM "active_people"`)),
+      waitForView("a", "emails", ready(["email"], [])),
+      waitForView("a", "active", ready(["count"], [[0]])),
+      write("users", (uow) => {
+        uow.create("users", { email: "bob@example.com", active: true });
+        uow.create("users", { email: "ada@example.com", active: true });
+        uow.create("users", { email: "cy@example.com", active: true });
+      }),
+      // The view holds two of the three rows.
+      waitForView(
+        "a",
+        "emails",
+        ready(["email"], [["ADA@EXAMPLE.COM"], ["BOB@EXAMPLE.COM"]], true),
+      ),
+      waitForView("a", "active", ready(["count"], [[3]])),
+      check(() => {
+        computedBefore = activePeopleComputed;
+      }),
+      // The derived relation reads only users, so writing posts does not compute it again.
+      write("post", (uow) => {
+        uow.create("posts", { title: "Hello" });
+      }),
+      watch("a", "posts", postCountView),
+      waitForView("a", "posts", [{ count: 1 }]),
+      check(() => {
+        assert.equal(activePeopleComputed, computedBefore);
+      }),
+
+      watch("a", "table", guardedView(`SELECT "email" FROM ${table("users")}`)),
+      waitForView(
+        "a",
+        "table",
+        failed(
+          `"users_app" is not a relation queries can read. Read one of: people, active_people.`,
+        ),
+      ),
+      watch("a", "function", guardedView(`SELECT hex(randomblob(4)) FROM "people"`)),
+      waitForView("a", "function", failed("Queries cannot call hex().")),
+      watch("a", "write", guardedView(`DELETE FROM "active_people"`)),
+      waitForView("a", "write", failed("Queries only read")),
+      watch("a", "two", guardedView(`SELECT 1; SELECT 2`)),
+      waitForView("a", "two", failed("more than one statement")),
+      watch("a", "params", guardedView(`SELECT ?1, ?2`, [1])),
+      waitForView("a", "params", failed("takes 2 parameters, and was given 1")),
+      watch(
+        "a",
+        "work",
+        guardedView(
+          `WITH RECURSIVE "n"("i") AS (SELECT 1 UNION ALL SELECT "i" + 1 FROM "n") SELECT count(*) FROM "n"`,
+        ),
+      ),
+      waitForView("a", "work", failed("more than 100000 operations")),
+      watch(
+        "a",
+        "bytes",
+        guardedView(`SELECT ${Array(8).fill(`"email"`).join(" || ")} FROM "people" ORDER BY 1`),
+      ),
+      waitForView("a", "bytes", failed("more than 200 bytes")),
     ]);
     expect(ctx.errors).toEqual([]);
   });
