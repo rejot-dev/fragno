@@ -1,12 +1,21 @@
-import { Button, ButtonLink } from "@fragno-private/design-system/button";
+import { Button } from "@fragno-private/design-system/button";
 import { Field } from "@fragno-private/design-system/field";
-import { FormContainer } from "@fragno-private/design-system/form-container";
 import { Input } from "@fragno-private/design-system/input";
-import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
+import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
+import {
+  SurfacePanel,
+  SurfacePanelBody,
+  SurfaceTable,
+  SurfaceTableRow,
+  type SurfaceTableColumn,
+} from "@fragno-private/design-system/surface-panel";
+import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
+import { BackofficeTabHeader } from "@fragno-private/design-system/tab-header";
 import { useState } from "react";
 import {
   data,
   Form,
+  Link,
   redirect,
   useLoaderData,
   useNavigation,
@@ -15,6 +24,7 @@ import {
 } from "react-router";
 import { z } from "zod";
 
+import { backofficePageBodyClassName } from "@/components/backoffice/page-body";
 import { authClient } from "@/fragno/auth/auth-client";
 import { loadUserInvitations } from "@/fragno/auth/auth-directory.server";
 import { requireBackofficeBrowserSession } from "@/fragno/auth/browser-session.server";
@@ -109,152 +119,165 @@ export default function BackofficeOrganizations({ actionData }: Route.ComponentP
   };
 
   return (
-    <div className="space-y-4">
-      <BackofficePageHeader
-        breadcrumbs={[{ label: "Backoffice", to: "/backoffice" }, { label: "Organizations" }]}
-        eyebrow="Directory"
-        title="Organization rosters and access levels."
-        description="Select an organization to manage settings, members, and invitations. Backoffice opens in the organization you last worked in."
+    <div className="flex flex-1 flex-col">
+      <h1 className="sr-only">Organizations</h1>
+      <BackofficeTabHeader
+        items={[
+          {
+            id: "organizations",
+            label: "Organizations",
+            to: "/backoffice/organizations",
+            active: true,
+          },
+        ]}
+        ariaLabel="Organizations"
+        trailing={null}
+        options={null}
       />
+      <div className={`${backofficePageBodyClassName} flex flex-col gap-4`}>
+        <SurfacePanel
+          caption={`${organizations.length} ${organizations.length === 1 ? "organization" : "organizations"}`}
+          actions={null}
+        >
+          {organizations.length === 0 ? (
+            <BackofficeSystemState
+              tone="empty"
+              title="You are not a member of any organization yet."
+              description="Create one below or accept an invitation."
+              flush
+            />
+          ) : (
+            <SurfaceTable columns={ORGANIZATION_COLUMNS}>
+              {sortedOrganizations.map(({ organization, member }) => (
+                <SurfaceTableRow
+                  key={organization.id}
+                  columns={ORGANIZATION_COLUMNS}
+                  cells={[
+                    <Link
+                      key="organization"
+                      to={`/backoffice/organizations/${encodeURIComponent(organization.slug)}`}
+                      className="group block max-w-[24rem] min-w-0"
+                    >
+                      <span className="block truncate font-semibold text-[var(--bo-fg)] group-hover:underline">
+                        {organization.name}
+                      </span>
+                      <span className="block truncate font-mono text-[11px]">
+                        {organization.slug}
+                      </span>
+                    </Link>,
+                    formatRoles(member.roles),
+                    organization.id === me.activeOrganizationId ? (
+                      <BackofficeStatusLight key="status" tone="live">
+                        Active
+                      </BackofficeStatusLight>
+                    ) : (
+                      <BackofficeStatusLight key="status" tone="muted">
+                        Available
+                      </BackofficeStatusLight>
+                    ),
+                    <span key="created" className="whitespace-nowrap">
+                      {formatDate(organization.createdAt)}
+                    </span>,
+                  ]}
+                />
+              ))}
+            </SurfaceTable>
+          )}
+        </SurfacePanel>
 
-      <CreateOrganizationForm error={actionData?.error ?? null} />
-
-      <FormContainer
-        eyebrow="Invitations"
-        title={
-          userInvitations.status === "listed"
-            ? `Open invitations (${userInvitations.invitations.length})`
-            : "Open invitations"
-        }
-        description="Invitations addressed to your account. Accepting adds you to the organization."
-      >
-        {userInvitations.status === "email-unverified" ? (
-          <p className="text-sm text-[var(--bo-muted)]">
-            Verify your email address to see invitations sent to it.
-          </p>
-        ) : userInvitations.invitations.length === 0 ? (
-          <p className="text-sm text-[var(--bo-muted)]">No open invitations.</p>
-        ) : (
-          <div className="overflow-hidden border border-[color:var(--bo-border)]">
-            <table className="min-w-full divide-y divide-[color:var(--bo-border)] text-sm">
-              <thead className="bg-[var(--bo-panel-2)] text-left">
-                <tr className="text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-                  <th scope="col" className="px-3 py-2">
-                    Organization
-                  </th>
-                  <th scope="col" className="px-3 py-2">
-                    Roles
-                  </th>
-                  <th scope="col" className="px-3 py-2">
-                    Sent
-                  </th>
-                  <th scope="col" className="px-3 py-2">
-                    Expires
-                  </th>
-                  <th scope="col" className="px-3 py-2">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[color:var(--bo-border)] bg-[var(--bo-panel)]">
-                {userInvitations.invitations.map((entry) => {
-                  const isWorking =
-                    respondingInvitation && activeInvitationId === entry.invitation.id;
-                  return (
-                    <tr key={entry.invitation.id} className="text-[var(--bo-muted)]">
-                      <td className="px-3 py-2 font-semibold text-[var(--bo-fg)]">
+        <SurfacePanel
+          caption={
+            userInvitations.status === "listed"
+              ? `${userInvitations.invitations.length} ${userInvitations.invitations.length === 1 ? "invitation" : "invitations"} for you`
+              : "Invitations for you"
+          }
+          actions={null}
+        >
+          {userInvitations.status === "email-unverified" ? (
+            <BackofficeSystemState
+              tone="empty"
+              label="Unverified"
+              title="Verify your email address to see invitations sent to it."
+              flush
+            />
+          ) : userInvitations.invitations.length === 0 ? (
+            <BackofficeSystemState
+              tone="empty"
+              title="No open invitations."
+              description="Invitations addressed to your account appear here. Accepting adds you to the organization."
+              flush
+            />
+          ) : (
+            <SurfaceTable columns={INVITATION_COLUMNS}>
+              {userInvitations.invitations.map((entry) => {
+                const isWorking =
+                  respondingInvitation && activeInvitationId === entry.invitation.id;
+                return (
+                  <SurfaceTableRow
+                    key={entry.invitation.id}
+                    columns={INVITATION_COLUMNS}
+                    cells={[
+                      <span key="organization" className="font-semibold text-[var(--bo-fg)]">
                         {entry.organization.name}
-                      </td>
-                      <td className="px-3 py-2">{formatRoles(entry.invitation.roles)}</td>
-                      <td className="px-3 py-2">{formatDateTime(entry.invitation.createdAt)}</td>
-                      <td className="px-3 py-2">{formatDateTime(entry.invitation.expiresAt)}</td>
-                      <td className="px-3 py-2">
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            variant="accent"
-                            type="button"
-                            onClick={() => void handleInvitationAction(entry, "accept")}
-                            disabled={respondingInvitation}
-                          >
-                            {isWorking ? "Accepting..." : "Accept"}
-                          </Button>
-                          <Button
-                            variant="secondary"
-                            type="button"
-                            onClick={() => void handleInvitationAction(entry, "reject")}
-                            disabled={respondingInvitation}
-                          >
-                            {isWorking ? "Rejecting..." : "Reject"}
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-        <Notice notice={invitationNotice} />
-      </FormContainer>
+                      </span>,
+                      formatRoles(entry.invitation.roles),
+                      <span key="sent" className="whitespace-nowrap">
+                        {formatDateTime(entry.invitation.createdAt)}
+                      </span>,
+                      <span key="expires" className="whitespace-nowrap">
+                        {formatDateTime(entry.invitation.expiresAt)}
+                      </span>,
+                      <div key="actions" className="flex flex-wrap justify-end gap-2">
+                        <Button
+                          variant="accent"
+                          type="button"
+                          onClick={() => void handleInvitationAction(entry, "accept")}
+                          disabled={respondingInvitation}
+                        >
+                          {isWorking ? "Accepting…" : "Accept"}
+                        </Button>
+                        <Button
+                          variant="danger"
+                          type="button"
+                          onClick={() => void handleInvitationAction(entry, "reject")}
+                          disabled={respondingInvitation}
+                        >
+                          {isWorking ? "Rejecting…" : "Reject"}
+                        </Button>
+                      </div>,
+                    ]}
+                  />
+                );
+              })}
+            </SurfaceTable>
+          )}
+          {invitationNotice ? (
+            <SurfacePanelBody>
+              <Notice notice={invitationNotice} />
+            </SurfacePanelBody>
+          ) : null}
+        </SurfacePanel>
 
-      {organizations.length === 0 ? (
-        <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
-          You are not a member of any organization yet. Create one above or accept an invitation.
-        </div>
-      ) : (
-        <section className="grid gap-3 md:grid-cols-2">
-          {sortedOrganizations.map(({ organization, member }) => {
-            return (
-              <div
-                key={organization.id}
-                className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4"
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-                      {organization.slug}
-                    </p>
-                    <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">
-                      {organization.name}
-                    </h2>
-                  </div>
-                  <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
-                    {organization.id === me.activeOrganizationId ? "Active" : "Available"}
-                  </span>
-                </div>
-                <div className="mt-4 space-y-2 text-sm text-[var(--bo-muted)]">
-                  <p className="flex items-center justify-between">
-                    <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-                      Roles
-                    </span>
-                    <span className="font-semibold text-[var(--bo-fg)]">
-                      {formatRoles(member.roles)}
-                    </span>
-                  </p>
-                  <p className="flex items-center justify-between">
-                    <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-                      Created
-                    </span>
-                    <span>{formatDate(organization.createdAt)}</span>
-                  </p>
-                </div>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <ButtonLink
-                    variant="accent"
-                    to={`/backoffice/organizations/${encodeURIComponent(organization.slug)}`}
-                  >
-                    Open
-                  </ButtonLink>
-                </div>
-              </div>
-            );
-          })}
-        </section>
-      )}
+        <CreateOrganizationForm error={actionData?.error ?? null} />
+      </div>
     </div>
   );
 }
+
+const ORGANIZATION_COLUMNS: readonly SurfaceTableColumn[] = [
+  { label: "Organization", align: "start" },
+  { label: "Your roles", align: "start" },
+  { label: "Status", align: "start" },
+  { label: "Created", align: "start" },
+];
+
+const INVITATION_COLUMNS: readonly SurfaceTableColumn[] = [
+  { label: "Organization", align: "start" },
+  { label: "Roles", align: "start" },
+  { label: "Sent", align: "start" },
+  { label: "Expires", align: "start" },
+  { label: "Actions", align: "end" },
+];
 
 function CreateOrganizationForm({ error }: { error: string | null }) {
   const navigation = useNavigation();
@@ -262,39 +285,46 @@ function CreateOrganizationForm({ error }: { error: string | null }) {
   const creating = navigation.state !== "idle" && navigation.formMethod === "POST";
 
   return (
-    <FormContainer
-      eyebrow="New"
-      title="Create an organization"
-      description="Organizations share projects, automations, and integrations with their members. You become its owner."
-    >
-      <Form method="post" className="space-y-3">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Name" required>
-            <Input
-              type="text"
-              name="name"
-              value={name}
-              onChange={(event) => {
-                setName(event.target.value);
-              }}
-              className="w-full"
-            />
-          </Field>
-          {/* Auth chooses the slug and appends a number when another organization has it. */}
-          <Field label="Slug">
-            <Input
-              type="text"
-              value={name.trim() ? organizationSlugFromName(name) : ""}
-              disabled
-              className="w-full"
-            />
-          </Field>
-        </div>
-        <Button variant="accent" type="submit" disabled={!name.trim() || creating}>
-          {creating ? "Creating..." : "Create organization"}
-        </Button>
-        <Notice notice={error ? { type: "error", message: error } : null} />
-      </Form>
-    </FormContainer>
+    <SurfacePanel caption="Create an organization" actions={null}>
+      <SurfacePanelBody>
+        <Form method="post" className="flex max-w-2xl flex-col gap-4">
+          <p className="text-sm text-pretty text-[var(--bo-muted)]">
+            Organizations share projects, automations, and integrations with their members. You
+            become its owner.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Name" required>
+              <Input
+                type="text"
+                name="name"
+                value={name}
+                onChange={(event) => {
+                  setName(event.target.value);
+                }}
+                className="w-full"
+              />
+            </Field>
+            {/* Auth chooses the slug and appends a number when another organization has it. */}
+            <Field label="Slug">
+              <Input
+                type="text"
+                value={name.trim() ? organizationSlugFromName(name) : ""}
+                disabled
+                className="w-full"
+              />
+            </Field>
+          </div>
+          <Button
+            variant="accent"
+            type="submit"
+            disabled={!name.trim() || creating}
+            className="self-start"
+          >
+            {creating ? "Creating…" : "Create organization"}
+          </Button>
+          <Notice notice={error ? { type: "error", message: error } : null} />
+        </Form>
+      </SurfacePanelBody>
+    </SurfacePanel>
   );
 }

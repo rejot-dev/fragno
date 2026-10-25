@@ -1,8 +1,18 @@
 import { Button } from "@fragno-private/design-system/button";
-import { cn } from "@fragno-private/design-system/cn";
+import { Checkbox } from "@fragno-private/design-system/checkbox";
+import { CopyButton } from "@fragno-private/design-system/copy-button";
 import { Field } from "@fragno-private/design-system/field";
-import { FormContainer } from "@fragno-private/design-system/form-container";
 import { Input } from "@fragno-private/design-system/input";
+import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
+import type { BackofficeStatusTone } from "@fragno-private/design-system/status-tone";
+import {
+  SurfacePanel,
+  SurfacePanelBody,
+  SurfaceTable,
+  SurfaceTableRow,
+  type SurfaceTableColumn,
+} from "@fragno-private/design-system/surface-panel";
+import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { usePostHog } from "@posthog/react/slim";
 import { useEffect, useReducer, useState, type SubmitEvent } from "react";
 import { useLoaderData, useOutletContext, useRevalidator } from "react-router";
@@ -85,39 +95,6 @@ function invitationFormReducer(
       return unreachableAction;
     }
   }
-}
-
-function CopyButton({
-  text,
-  label = "Copy link",
-  disabled = false,
-}: {
-  text: string;
-  label?: string;
-  disabled?: boolean;
-}) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    if (!text || disabled) {
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      window.setTimeout(() => {
-        setCopied(false);
-      }, 2000);
-    } catch {
-      // Ignore clipboard failures.
-    }
-  };
-
-  return (
-    <Button variant="secondary" type="button" onClick={() => void handleCopy()} disabled={disabled}>
-      {copied ? "Copied" : label}
-    </Button>
-  );
 }
 
 export function meta() {
@@ -203,145 +180,134 @@ export default function BackofficeOrganizationInvites() {
     : null;
 
   return (
-    <div className="space-y-4">
-      <FormContainer
-        eyebrow="Invitations"
-        title="Invite a member"
-        description="Create a shareable invitation link and assign default roles. Invitations are not emailed automatically."
-      >
-        <form onSubmit={(event) => void handleInviteSubmit(event)} className="space-y-3">
-          <Field
-            label="Email"
-            description="Invites are not emailed automatically. Share the generated link manually or via your own hook."
+    <>
+      <SurfacePanel caption="Invite a member" actions={null}>
+        <SurfacePanelBody>
+          <form
+            onSubmit={(event) => void handleInviteSubmit(event)}
+            className="flex max-w-xl flex-col gap-4"
           >
-            <Input
-              type="email"
-              value={inviteForm.email}
-              onChange={(event) => {
-                dispatchInviteForm({ type: "emailChanged", email: event.target.value });
-              }}
-              placeholder="teammate@fragno.dev"
-              disabled={!canManageMembers}
-              className="w-full"
-            />
-          </Field>
-          <div className="space-y-2">
-            <p className="text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-              Roles
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {ROLE_OPTIONS.map((role) => {
-                const isSelected = inviteForm.roles.includes(role);
-                return (
-                  <button
+            <Field
+              label="Email"
+              description="Invitations are not emailed. Share the generated link with your teammate."
+            >
+              <Input
+                type="email"
+                value={inviteForm.email}
+                onChange={(event) => {
+                  dispatchInviteForm({ type: "emailChanged", email: event.target.value });
+                }}
+                placeholder="teammate@fragno.dev"
+                disabled={!canManageMembers}
+                className="w-full"
+              />
+            </Field>
+            <fieldset className="flex flex-col gap-2">
+              <legend className="mb-2 text-sm font-semibold text-[var(--bo-fg)]">Roles</legend>
+              <div className="flex flex-wrap gap-x-5 gap-y-2">
+                {ROLE_OPTIONS.map((role) => (
+                  <Checkbox
                     key={role}
-                    type="button"
-                    onClick={() => {
+                    checked={inviteForm.roles.includes(role)}
+                    onCheckedChange={() => {
                       toggleRole(role);
                     }}
                     disabled={!canManageMembers}
-                    className={cn(
-                      "border px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] transition-colors",
-                      isSelected
-                        ? "border-[color:var(--bo-selected-border)] bg-[var(--bo-selected-bg)] shadow-[var(--bo-selected-shadow)] text-[var(--bo-fg)]"
-                        : "border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] text-[var(--bo-muted)] hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]",
-                      !canManageMembers && "opacity-60",
-                    )}
                   >
                     {role}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="accent" type="submit" disabled={!canManageMembers || invitingMember}>
-              {invitingMember ? "Sending..." : "Send invite"}
-            </Button>
-            {inviteMemberError ? (
-              <span className="text-xs text-red-600">{getErrorMessage(inviteMemberError)}</span>
-            ) : null}
-            {!canManageMembers ? (
-              <span className="text-xs text-[var(--bo-muted-2)]">
-                Admin or owner access required.
-              </span>
-            ) : null}
-          </div>
-          <Notice notice={inviteForm.notice} />
-          {inviteLink ? (
-            <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-xs text-[var(--bo-muted)]">
-              <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-                Invite link
-              </p>
-              <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
-                <Input
-                  readOnly
-                  aria-label="Invitation link"
-                  value={inviteLink}
-                  className="w-full font-mono text-[11px]"
-                />
-                <CopyButton text={inviteLink} />
+                  </Checkbox>
+                ))}
               </div>
+            </fieldset>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button variant="accent" type="submit" disabled={!canManageMembers || invitingMember}>
+                {invitingMember ? "Creating…" : "Create invitation"}
+              </Button>
+              {!canManageMembers ? (
+                <span className="text-xs text-[var(--bo-muted-2)]">
+                  Admin or owner access required.
+                </span>
+              ) : null}
             </div>
-          ) : null}
-        </form>
-      </FormContainer>
+            {inviteMemberError && !inviteForm.notice ? (
+              <Notice notice={{ type: "error", message: getErrorMessage(inviteMemberError) }} />
+            ) : (
+              <Notice notice={inviteForm.notice} />
+            )}
+            {inviteLink ? (
+              <Field label="Invitation link">
+                <div className="flex items-center gap-2">
+                  <Input readOnly value={inviteLink} className="w-full font-mono text-xs" />
+                  <CopyButton value={inviteLink} label="Copy link" labelled />
+                </div>
+              </Field>
+            ) : null}
+          </form>
+        </SurfacePanelBody>
+      </SurfacePanel>
 
-      <FormContainer
-        eyebrow="Pending"
-        title={`Open invitations (${invitations.length})`}
-        description="Track pending invitations for this organization and copy invite links to share."
+      <SurfacePanel
+        caption={`${invitations.length} ${invitations.length === 1 ? "invitation" : "invitations"}`}
+        actions={null}
       >
         {invitations.length === 0 ? (
-          <p className="text-sm text-[var(--bo-muted)]">No pending invitations.</p>
+          <BackofficeSystemState
+            tone="empty"
+            title="No invitations yet."
+            description="Invitations you create appear here with a link to share."
+            flush
+          />
         ) : (
-          <div className="overflow-hidden border border-[color:var(--bo-border)]">
-            <table className="min-w-full divide-y divide-[color:var(--bo-border)] text-sm">
-              <thead className="bg-[var(--bo-panel-2)] text-left">
-                <tr className="text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-                  <th scope="col" className="px-3 py-2">
-                    Email
-                  </th>
-                  <th scope="col" className="px-3 py-2">
-                    Roles
-                  </th>
-                  <th scope="col" className="px-3 py-2">
-                    Status
-                  </th>
-                  <th scope="col" className="px-3 py-2">
-                    Sent
-                  </th>
-                  <th scope="col" className="px-3 py-2">
-                    Invite link
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[color:var(--bo-border)] bg-[var(--bo-panel)]">
-                {invitations.map((invitation) => {
-                  const link = `${origin || ""}${backofficeInvitationPath(invitation.id)}`;
-                  return (
-                    <tr key={invitation.id} className="text-[var(--bo-muted)]">
-                      <td className="px-3 py-2 font-semibold text-[var(--bo-fg)]">
-                        {invitation.email}
-                      </td>
-                      <td className="px-3 py-2">{formatRoles(invitation.roles)}</td>
-                      <td className="px-3 py-2">
-                        <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
-                          {invitation.status}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2">{formatDateTime(invitation.createdAt)}</td>
-                      <td className="px-3 py-2">
-                        <CopyButton text={link} disabled={!canManageMembers} />
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <SurfaceTable columns={INVITATION_COLUMNS}>
+            {invitations.map((invitation) => (
+              <SurfaceTableRow
+                key={invitation.id}
+                columns={INVITATION_COLUMNS}
+                cells={[
+                  <span key="email" className="font-semibold text-[var(--bo-fg)]">
+                    {invitation.email}
+                  </span>,
+                  formatRoles(invitation.roles),
+                  <BackofficeStatusLight
+                    key="status"
+                    tone={invitationStatusTone(invitation.status)}
+                  >
+                    {invitation.status}
+                  </BackofficeStatusLight>,
+                  <span key="sent" className="whitespace-nowrap">
+                    {formatDateTime(invitation.createdAt)}
+                  </span>,
+                  invitation.status === "pending" && canManageMembers ? (
+                    <CopyButton
+                      key="link"
+                      value={`${origin}${backofficeInvitationPath(invitation.id)}`}
+                      label="Copy link"
+                      labelled
+                    />
+                  ) : (
+                    "—"
+                  ),
+                ]}
+              />
+            ))}
+          </SurfaceTable>
         )}
-      </FormContainer>
-    </div>
+      </SurfacePanel>
+    </>
   );
+}
+
+const INVITATION_COLUMNS: readonly SurfaceTableColumn[] = [
+  { label: "Email", align: "start" },
+  { label: "Roles", align: "start" },
+  { label: "Status", align: "start" },
+  { label: "Sent", align: "start" },
+  { label: "Link", align: "start" },
+];
+
+function invitationStatusTone(status: string): BackofficeStatusTone {
+  if (status === "pending") {
+    return "waiting";
+  }
+  return status === "accepted" ? "live" : "muted";
 }

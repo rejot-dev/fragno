@@ -51,7 +51,9 @@ describe("Backoffice organization members", () => {
     expect(screen.getByText("alice@example.com")).toBeTruthy();
     expect(screen.queryByText("xPJUkt7ICr36M63V1TAhA16t33WmMkoY")).toBeNull();
     expect(memberName.parentElement).toBe(ownMemberLabel.parentElement);
-    assert(screen.getByRole("button", { name: "owner" }).hasAttribute("disabled"));
+    const ownerRole = screen.getByRole("checkbox", { name: "owner" });
+    assert(ownerRole.getAttribute("aria-checked") === "true");
+    assert(ownerRole.getAttribute("aria-disabled") === "true");
     assert(screen.getByRole("button", { name: "Save" }).hasAttribute("disabled"));
     assert(screen.getByRole("button", { name: "Remove" }).hasAttribute("disabled"));
     router.dispose();

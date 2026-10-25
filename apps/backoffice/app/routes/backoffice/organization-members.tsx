@@ -1,10 +1,19 @@
-import { Button, ButtonLink } from "@fragno-private/design-system/button";
+import { Button } from "@fragno-private/design-system/button";
+import { Checkbox } from "@fragno-private/design-system/checkbox";
 import { cn } from "@fragno-private/design-system/cn";
-import { FormContainer } from "@fragno-private/design-system/form-container";
 import { Input } from "@fragno-private/design-system/input";
+import {
+  SurfacePanel,
+  SurfacePanelFooter,
+  SurfaceTable,
+  SurfaceTableRow,
+  type SurfaceTableColumn,
+} from "@fragno-private/design-system/surface-panel";
+import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { usePostHog } from "@posthog/react/slim";
 import { useEffect, useMemo, useState } from "react";
 import {
+  Link,
   useLoaderData,
   useNavigation,
   useOutletContext,
@@ -35,6 +44,12 @@ type ActionNotice = {
 export function meta() {
   return [{ title: "Organization Members" }];
 }
+
+const MEMBER_COLUMNS: readonly SurfaceTableColumn[] = [
+  { label: "Member", align: "start" },
+  { label: "Roles", align: "start" },
+  { label: "Joined", align: "start" },
+];
 
 export default function BackofficeOrganizationMembers() {
   const posthog = usePostHog();
@@ -98,107 +113,87 @@ export default function BackofficeOrganizationMembers() {
   }, [memberSearch, members]);
 
   const hasMemberSearch = memberSearch.trim().length > 0;
+  const totalPages = membersData.totalPages;
+  const columns: readonly SurfaceTableColumn[] = canManageMembers
+    ? [...MEMBER_COLUMNS, { label: "Actions", align: "end" }]
+    : MEMBER_COLUMNS;
 
   return (
-    <div className="space-y-4">
-      <FormContainer
-        eyebrow="Members"
-        title={`Members (${members.length})`}
-        description="Review the current organization roster and role assignments."
-        actions={
-          <Input
-            type="search"
-            aria-label="Search organization members"
-            value={memberSearch}
-            onChange={(event) => {
-              setMemberSearch(event.target.value);
+    <SurfacePanel
+      caption={
+        hasMemberSearch
+          ? `${filteredMembers.length} of ${members.length} members`
+          : `${membersData.total} ${membersData.total === 1 ? "member" : "members"}`
+      }
+      actions={
+        <Input
+          type="search"
+          aria-label="Search organization members"
+          value={memberSearch}
+          onChange={(event) => {
+            setMemberSearch(event.target.value);
+          }}
+          placeholder="Search members"
+          className="w-full text-xs sm:w-56"
+        />
+      }
+    >
+      {filteredMembers.length === 0 ? (
+        <BackofficeSystemState
+          tone="empty"
+          title={hasMemberSearch ? "No members match your search." : "No members found."}
+          flush
+        />
+      ) : (
+        <SurfaceTable columns={columns}>
+          {filteredMembers.map((memberEntry) => (
+            <OrganizationMemberRow
+              key={`${memberEntry.id}:${memberEntry.roles.join(",")}`}
+              columns={columns}
+              member={memberEntry}
+              isSelf={memberEntry.userId === currentUserId}
+              canManageMembers={canManageMembers}
+              canOpenWorkspace={administersOrganization}
+              onUpdateRoles={handleUpdateMemberRoles}
+              onRemove={handleRemoveMember}
+            />
+          ))}
+        </SurfaceTable>
+      )}
+
+      {totalPages > 1 ? (
+        <SurfacePanelFooter>
+          <span className="mr-auto text-xs text-[var(--bo-muted-2)]">
+            Page {membersPage} of {totalPages}
+          </span>
+          <Button
+            variant="secondary"
+            type="button"
+            onClick={() => {
+              setSearchParams({ page: String(Math.max(1, membersPage - 1)) });
             }}
-            placeholder="Search members"
-            className="w-full text-xs sm:w-52"
-          />
-        }
-      >
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--bo-muted-2)]">
-            <span>
-              {hasMemberSearch
-                ? `Showing ${filteredMembers.length} of ${members.length} members on this page`
-                : `${membersData?.total ?? 0} members`}
-            </span>
-            <span>
-              Page {membersData?.page ?? membersPage} of {membersData?.totalPages ?? 1}
-            </span>
-          </div>
-
-          {filteredMembers.length === 0 ? (
-            <p className="text-sm text-[var(--bo-muted)]">
-              {hasMemberSearch ? "No members match your search." : "No members found."}
-            </p>
-          ) : (
-            <div className="overflow-hidden border border-[color:var(--bo-border)]">
-              <table className="min-w-full divide-y divide-[color:var(--bo-border)] text-sm">
-                <thead className="bg-[var(--bo-panel-2)] text-left">
-                  <tr className="text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-                    <th scope="col" className="px-3 py-2">
-                      User
-                    </th>
-                    <th scope="col" className="px-3 py-2">
-                      Roles
-                    </th>
-                    <th scope="col" className="px-3 py-2">
-                      Joined
-                    </th>
-                    <th scope="col" className="px-3 py-2">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[color:var(--bo-border)] bg-[var(--bo-panel)]">
-                  {filteredMembers.map((memberEntry) => (
-                    <OrganizationMemberRow
-                      key={`${memberEntry.id}:${memberEntry.roles.join(",")}`}
-                      member={memberEntry}
-                      isSelf={Boolean(currentUserId && memberEntry.userId === currentUserId)}
-                      canManageMembers={canManageMembers}
-                      canOpenWorkspace={administersOrganization}
-                      onUpdateRoles={handleUpdateMemberRoles}
-                      onRemove={handleRemoveMember}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          <div className="flex items-center justify-end gap-2">
-            <Button
-              variant="secondary"
-              type="button"
-              onClick={() => {
-                setSearchParams({ page: String(Math.max(1, membersPage - 1)) });
-              }}
-              disabled={membersLoading || membersPage === 1}
-            >
-              Previous
-            </Button>
-            <Button
-              variant="secondary"
-              type="button"
-              onClick={() => {
-                setSearchParams({ page: String(membersPage + 1) });
-              }}
-              disabled={membersLoading || membersPage >= (membersData?.totalPages ?? 1)}
-            >
-              Next
-            </Button>
-          </div>
-        </div>
-      </FormContainer>
-    </div>
+            disabled={membersLoading || membersPage === 1}
+          >
+            Previous
+          </Button>
+          <Button
+            variant="secondary"
+            type="button"
+            onClick={() => {
+              setSearchParams({ page: String(membersPage + 1) });
+            }}
+            disabled={membersLoading || membersPage >= totalPages}
+          >
+            Next
+          </Button>
+        </SurfacePanelFooter>
+      ) : null}
+    </SurfacePanel>
   );
 }
 
 function OrganizationMemberRow({
+  columns,
   member,
   isSelf,
   canManageMembers,
@@ -206,6 +201,7 @@ function OrganizationMemberRow({
   onUpdateRoles,
   onRemove,
 }: {
+  columns: readonly SurfaceTableColumn[];
   member: OrganizationMember;
   isSelf: boolean;
   canManageMembers: boolean;
@@ -281,95 +277,98 @@ function OrganizationMemberRow({
     }
   };
 
+  const identity = (
+    <div key="member" className="min-w-0">
+      <div className="flex items-center gap-2">
+        <span className="truncate font-semibold text-[var(--bo-fg)]">{member.user.name}</span>
+        {isSelf ? (
+          <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+            You
+          </span>
+        ) : null}
+      </div>
+      <span className="block truncate text-xs">{member.user.email}</span>
+      {canOpenWorkspace && !isSelf ? (
+        <Link
+          to={dashboardPath({ kind: "user", userId: member.userId })}
+          className="text-xs font-semibold text-[var(--bo-accent-fg)] hover:underline"
+        >
+          Open workspace
+        </Link>
+      ) : null}
+    </div>
+  );
+  const roles = canManageMembers ? (
+    <fieldset key="roles" className="flex gap-4 whitespace-nowrap">
+      <legend className="sr-only">Roles for {member.user.name}</legend>
+      {roleOptions.map((role) => (
+        <Checkbox
+          key={role}
+          density="compact"
+          checked={selectedRoleSet.has(role)}
+          onCheckedChange={() => {
+            handleToggleRole(role);
+          }}
+          disabled={!canEditMember}
+        >
+          {role}
+        </Checkbox>
+      ))}
+    </fieldset>
+  ) : (
+    <span key="roles">{formatRoles(member.roles)}</span>
+  );
+  const joined = (
+    <span key="joined" className="whitespace-nowrap">
+      {formatDate(member.createdAt)}
+    </span>
+  );
+
+  if (!canManageMembers) {
+    return <SurfaceTableRow columns={columns} cells={[identity, roles, joined]} />;
+  }
+
   return (
-    <tr className="text-[var(--bo-muted)]">
-      <td className="px-3 py-2 font-semibold text-[var(--bo-fg)]">
-        <div className="flex flex-col">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-[var(--bo-fg)]">{member.user.name}</span>
-            {isSelf ? (
-              <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-                You
-              </span>
-            ) : null}
+    <SurfaceTableRow
+      columns={columns}
+      cells={[
+        identity,
+        roles,
+        joined,
+        <div key="actions" className="flex flex-col items-end gap-1">
+          <div className="flex items-center justify-end gap-2 whitespace-nowrap">
+            <Button
+              variant="accent"
+              type="button"
+              onClick={() => void handleSave()}
+              disabled={!canEditMember || !rolesChanged || selectedRoles.length === 0 || saving}
+            >
+              {saving ? "Saving…" : "Save"}
+            </Button>
+            <Button
+              variant="danger"
+              type="button"
+              onClick={() => void handleRemove()}
+              disabled={!canEditMember || removing}
+            >
+              {removing ? "Removing…" : "Remove"}
+            </Button>
           </div>
-          <span className="text-xs font-normal text-[var(--bo-muted)]">{member.user.email}</span>
-        </div>
-      </td>
-      <td className="px-3 py-2">
-        {canManageMembers ? (
-          <div className="flex flex-wrap gap-2">
-            {roleOptions.map((role) => {
-              const isSelected = selectedRoleSet.has(role);
-              return (
-                <button
-                  key={role}
-                  type="button"
-                  onClick={() => {
-                    handleToggleRole(role);
-                  }}
-                  disabled={!canEditMember}
-                  className={cn(
-                    "border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] transition-colors disabled:cursor-not-allowed disabled:opacity-60",
-                    isSelected
-                      ? "border-[color:var(--bo-selected-border)] bg-[var(--bo-selected-bg)] shadow-[var(--bo-selected-shadow)] text-[var(--bo-fg)]"
-                      : "border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] text-[var(--bo-muted)] hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]",
-                  )}
-                >
-                  {role}
-                </button>
-              );
-            })}
-          </div>
-        ) : (
-          <span>{formatRoles(member.roles)}</span>
-        )}
-      </td>
-      <td className="px-3 py-2">{formatDate(member.createdAt)}</td>
-      <td className="px-3 py-2">
-        {canManageMembers ? (
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center gap-2">
-              {canOpenWorkspace && !isSelf ? (
-                <ButtonLink
-                  variant="secondary"
-                  to={dashboardPath({ kind: "user", userId: member.userId })}
-                >
-                  Open workspace
-                </ButtonLink>
-              ) : null}
-              <Button
-                variant="accent"
-                type="button"
-                onClick={() => void handleSave()}
-                disabled={!canEditMember || !rolesChanged || selectedRoles.length === 0 || saving}
-              >
-                {saving ? "Saving" : "Save"}
-              </Button>
-              <Button
-                variant="secondary"
-                type="button"
-                onClick={() => void handleRemove()}
-                disabled={!canEditMember || removing}
-              >
-                {removing ? "Removing" : "Remove"}
-              </Button>
-            </div>
-            {actionNotice ? (
-              <p
-                className={cn(
-                  "text-[11px]",
-                  actionNotice.type === "error" ? "text-red-600" : "text-[var(--bo-muted)]",
-                )}
-              >
-                {actionNotice.message}
-              </p>
-            ) : null}
-          </div>
-        ) : (
-          <span className="text-xs text-[var(--bo-muted-2)]">Admin only</span>
-        )}
-      </td>
-    </tr>
+          {actionNotice ? (
+            <p
+              role={actionNotice.type === "error" ? "alert" : "status"}
+              className={cn(
+                "text-[11px]",
+                actionNotice.type === "error"
+                  ? "text-[var(--bo-failed)]"
+                  : "text-[var(--bo-muted)]",
+              )}
+            >
+              {actionNotice.message}
+            </p>
+          ) : null}
+        </div>,
+      ]}
+    />
   );
 }

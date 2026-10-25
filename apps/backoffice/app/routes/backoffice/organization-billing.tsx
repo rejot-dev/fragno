@@ -1,8 +1,17 @@
 import { Button, ButtonLink } from "@fragno-private/design-system/button";
-import { FormContainer } from "@fragno-private/design-system/form-container";
 import { Input } from "@fragno-private/design-system/input";
-import { Form } from "react-router";
+import {
+  SurfaceFacts,
+  SurfacePanel,
+  SurfaceTable,
+  SurfaceTableRow,
+  type SurfaceTableColumn,
+} from "@fragno-private/design-system/surface-panel";
+import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
+import { BackofficeTabHeader } from "@fragno-private/design-system/tab-header";
+import { Form, useParams } from "react-router";
 
+import { backofficePageBodyClassName } from "@/components/backoffice/page-body";
 import { billingPeriodSchema, type BillingStatementTracker } from "@/fragno/billing";
 import { getBackofficeShellRequest } from "@/layouts/backoffice-shell-request.server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
@@ -94,128 +103,134 @@ export function meta({ loaderData }: Route.MetaArgs) {
 }
 
 export default function BackofficeOrganizationBilling({ loaderData }: Route.ComponentProps) {
-  const { period, trackers, ownerName } = loaderData;
+  const { orgSlug } = useParams();
+  const usage = <BillingUsage {...loaderData} />;
+  // Organization billing sits under the organization's tabs; personal usage is a page of its own.
+  if (orgSlug !== undefined) {
+    return usage;
+  }
+  return (
+    <div className="flex flex-1 flex-col">
+      <h1 className="sr-only">Personal usage</h1>
+      <BackofficeTabHeader
+        items={[{ id: "usage", label: "Usage", to: "/backoffice/usage", active: true }]}
+        ariaLabel="Usage"
+        trailing={null}
+        options={null}
+      />
+      <div className={`${backofficePageBodyClassName} flex flex-col gap-4`}>{usage}</div>
+    </div>
+  );
+}
+
+const LEDGER_COLUMNS: readonly SurfaceTableColumn[] = [
+  { label: "Meter", align: "start" },
+  { label: "Quantity", align: "end" },
+  { label: "Events", align: "end" },
+  { label: "First seen", align: "start" },
+  { label: "Last seen", align: "start" },
+];
+
+function BillingUsage({ period, trackers, ownerName }: Route.ComponentProps["loaderData"]) {
   const totalCost = trackers.find((tracker) => tracker.meter === TOTAL_COST_METER)?.quantity;
   const previousPeriod = shiftPeriod(period, -1);
   const nextPeriod = shiftPeriod(period, 1);
   const currentPeriod = currentUtcPeriod();
 
   return (
-    <div className="space-y-4">
-      <FormContainer
-        eyebrow={`${ownerName} usage`}
-        title={formatPeriod(period)}
-        description="Recorded usage by UTC month. These measurements are not an invoice."
+    <>
+      <SurfacePanel
+        caption={`${ownerName} usage · ${formatPeriod(period)}`}
         actions={
-          <Form method="get" className="flex gap-2">
-            <Input
-              key={period}
-              type="month"
-              name="period"
-              defaultValue={period}
-              className="text-xs"
-            />
-            <Button variant="accent" type="submit">
-              View
-            </Button>
-          </Form>
+          <>
+            <ButtonLink variant="ghost" to={billingPagePath(previousPeriod)}>
+              ← Previous
+            </ButtonLink>
+            <Form method="get" className="flex gap-2">
+              <Input
+                key={period}
+                type="month"
+                name="period"
+                aria-label="Billing month"
+                defaultValue={period}
+                className="text-xs"
+              />
+              <Button variant="secondary" type="submit">
+                View
+              </Button>
+            </Form>
+            {nextPeriod <= currentPeriod ? (
+              <ButtonLink variant="ghost" to={billingPagePath(nextPeriod)}>
+                Next →
+              </ButtonLink>
+            ) : null}
+          </>
         }
       >
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-[10px] font-semibold tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
-              Recorded model cost
-            </p>
-            <p className="mt-2 text-4xl font-semibold tracking-[-0.04em] text-[var(--bo-fg)]">
-              {formatUsd(totalCost)}
-            </p>
-          </div>
+        <SurfaceFacts
+          items={[
+            {
+              key: "cost",
+              label: "Recorded model cost",
+              value: (
+                <>
+                  <span className="text-2xl tracking-[-0.02em] tabular-nums">
+                    {formatUsd(totalCost)}
+                  </span>
+                  <span className="block text-xs font-normal text-[var(--bo-muted)]">
+                    Recorded by UTC month. Not an invoice.
+                  </span>
+                </>
+              ),
+            },
+            {
+              key: "meters",
+              label: "Meters",
+              value: <span className="text-2xl tabular-nums">{trackers.length}</span>,
+            },
+          ]}
+        />
+      </SurfacePanel>
 
-          <div className="flex gap-2">
-            <PeriodLink period={previousPeriod} label="← Previous" />
-            {nextPeriod <= currentPeriod ? <PeriodLink period={nextPeriod} label="Next →" /> : null}
-          </div>
-        </div>
-      </FormContainer>
-
-      <FormContainer
-        eyebrow="Recorded measurements"
-        title="Usage ledger"
-        description="Monthly usage counters, ordered by meter."
-      >
+      <SurfacePanel caption="Usage ledger" actions={null}>
         {trackers.length === 0 ? (
-          <div className="border border-dashed border-[color:var(--bo-border-strong)] bg-[var(--bo-panel-2)] px-5 py-8 text-center">
-            <p className="text-sm text-[var(--bo-muted)]">
-              No measurements were recorded for {formatPeriod(period)}.
-            </p>
-          </div>
+          <BackofficeSystemState
+            tone="empty"
+            title={`No measurements were recorded for ${formatPeriod(period)}.`}
+            description="Model calls and other metered work appear here as they are recorded."
+            flush
+          />
         ) : (
-          <div className="overflow-x-auto border border-[color:var(--bo-border)]">
-            <table className="w-full min-w-[720px] border-collapse text-left text-sm">
-              <thead className="bg-[var(--bo-panel-2)] text-[10px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
-                <tr>
-                  <th className="border-b border-[color:var(--bo-border)] px-3 py-2 font-semibold">
-                    Meter
-                  </th>
-                  <th className="border-b border-[color:var(--bo-border)] px-3 py-2 text-right font-semibold">
-                    Quantity
-                  </th>
-                  <th className="border-b border-[color:var(--bo-border)] px-3 py-2 text-right font-semibold">
-                    Events
-                  </th>
-                  <th className="border-b border-[color:var(--bo-border)] px-3 py-2 font-semibold">
-                    First seen
-                  </th>
-                  <th className="border-b border-[color:var(--bo-border)] px-3 py-2 font-semibold">
-                    Last seen
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {trackers.map((tracker) => (
-                  <tr
-                    key={tracker.meter}
-                    className="border-b border-[color:var(--bo-border)] last:border-b-0"
-                  >
-                    <td className="px-3 py-3">
-                      <p className="font-mono text-xs font-semibold text-[var(--bo-fg)]">
-                        {tracker.meter}
-                      </p>
-                      <p className="mt-1 text-[10px] tracking-[0.16em] text-[var(--bo-muted-2)] uppercase">
-                        {tracker.unit}
-                      </p>
-                    </td>
-                    <td className="px-3 py-3 text-right font-semibold text-[var(--bo-fg)]">
-                      {formatTrackerQuantity(tracker)}
-                    </td>
-                    <td className="px-3 py-3 text-right text-[var(--bo-muted)]">
-                      {formatInteger(tracker.eventCount)}
-                    </td>
-                    <td className="px-3 py-3 text-xs text-[var(--bo-muted)]">
-                      {formatTimestamp(tracker.firstOccurredAt)}
-                    </td>
-                    <td className="px-3 py-3 text-xs text-[var(--bo-muted)]">
-                      {formatTimestamp(tracker.lastOccurredAt)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <SurfaceTable columns={LEDGER_COLUMNS}>
+            {trackers.map((tracker) => (
+              <SurfaceTableRow
+                key={tracker.meter}
+                columns={LEDGER_COLUMNS}
+                cells={[
+                  <span key="meter" className="block">
+                    <span className="block font-mono text-xs font-semibold text-[var(--bo-fg)]">
+                      {tracker.meter}
+                    </span>
+                    <span className="block text-[10px] tracking-[0.16em] text-[var(--bo-muted-2)] uppercase">
+                      {tracker.unit}
+                    </span>
+                  </span>,
+                  <span key="quantity" className="font-semibold text-[var(--bo-fg)]">
+                    {formatTrackerQuantity(tracker)}
+                  </span>,
+                  formatInteger(tracker.eventCount),
+                  <span key="first" className="text-xs whitespace-nowrap">
+                    {formatTimestamp(tracker.firstOccurredAt)}
+                  </span>,
+                  <span key="last" className="text-xs whitespace-nowrap">
+                    {formatTimestamp(tracker.lastOccurredAt)}
+                  </span>,
+                ]}
+              />
+            ))}
+          </SurfaceTable>
         )}
-      </FormContainer>
-    </div>
-  );
-}
-
-function PeriodLink({ period, label }: { period: string; label: string }) {
-  return <PageLink to={billingPagePath(period)} label={label} />;
-}
-
-function PageLink({ to, label }: { to: string; label: string }) {
-  return (
-    <ButtonLink variant="secondary" to={to}>
-      {label}
-    </ButtonLink>
+      </SurfacePanel>
+    </>
   );
 }

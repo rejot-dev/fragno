@@ -1,7 +1,12 @@
 import { Button } from "@fragno-private/design-system/button";
 import { Field } from "@fragno-private/design-system/field";
-import { FormContainer } from "@fragno-private/design-system/form-container";
 import { Input } from "@fragno-private/design-system/input";
+import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
+import {
+  SurfaceFacts,
+  SurfacePanel,
+  SurfacePanelBody,
+} from "@fragno-private/design-system/surface-panel";
 import { useEffect, useState, type SubmitEvent } from "react";
 import { useOutletContext, useRevalidator } from "react-router";
 
@@ -64,80 +69,72 @@ export default function BackofficeOrganizationOverview() {
   const nameValid = nameInput.trim().length > 0;
 
   return (
-    <div className="space-y-4">
-      <FormContainer
-        eyebrow="Overview"
-        title={organization.name}
-        description="Review core organization details and admin status."
+    <>
+      <SurfacePanel
+        caption="Organization"
+        actions={
+          <BackofficeStatusLight tone={isActive ? "live" : "muted"}>
+            {isActive ? "Active" : "Idle"}
+          </BackofficeStatusLight>
+        }
       >
-        <div className="grid gap-3 text-sm sm:grid-cols-2">
-          <div>
-            <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">Slug</p>
-            <p className="mt-1 font-semibold text-[var(--bo-fg)]">{organization.slug}</p>
-          </div>
-          <div>
-            <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-              Status
-            </p>
-            <p className="mt-1 font-semibold text-[var(--bo-fg)]">{isActive ? "Active" : "Idle"}</p>
-          </div>
-          <div>
-            <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-              Your roles
-            </p>
-            <p className="mt-1 font-semibold text-[var(--bo-fg)]">{formatRoles(member.roles)}</p>
-          </div>
-          <div>
-            <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-              Created
-            </p>
-            <p className="mt-1 font-semibold text-[var(--bo-fg)]">
-              {formatDate(organization.createdAt)}
-            </p>
-          </div>
-        </div>
-      </FormContainer>
+        <SurfaceFacts
+          items={[
+            { key: "name", label: "Name", value: organization.name },
+            { key: "slug", label: "Slug", value: organization.slug },
+            { key: "roles", label: "Your roles", value: formatRoles(member.roles) },
+            { key: "created", label: "Created", value: formatDate(organization.createdAt) },
+          ]}
+        />
+      </SurfacePanel>
 
-      <FormContainer
-        eyebrow="Identity"
-        title="Rename organization"
-        description="Update the name shown across dashboards and invitations."
-      >
-        <form onSubmit={(event) => void handleNameSubmit(event)} className="space-y-3">
-          <Field label="Organization name">
-            <Input
-              type="text"
-              value={nameInput}
-              onChange={(event) => {
-                setNameInput(event.target.value);
-                setNameNotice(null);
-              }}
-              disabled={!canManageOrganization}
-              className="w-full"
-            />
-          </Field>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="accent"
-              type="submit"
-              disabled={!canManageOrganization || !nameDirty || !nameValid || updatingOrganization}
+      <SurfacePanel caption="Rename organization" actions={null}>
+        <SurfacePanelBody>
+          <form
+            onSubmit={(event) => void handleNameSubmit(event)}
+            className="flex max-w-xl flex-col gap-3"
+          >
+            <Field
+              label="Organization name"
+              description="Shown across dashboards and invitations. The slug stays the same."
             >
-              {updatingOrganization ? "Saving..." : "Save name"}
-            </Button>
-            {updateOrganizationError ? (
-              <span className="text-xs text-red-600">
-                {getErrorMessage(updateOrganizationError)}
-              </span>
-            ) : null}
-            {!canManageOrganization ? (
-              <span className="text-xs text-[var(--bo-muted-2)]">
-                Admin or owner access required.
-              </span>
-            ) : null}
-          </div>
-          <Notice notice={nameNotice} />
-        </form>
-      </FormContainer>
-    </div>
+              <Input
+                type="text"
+                value={nameInput}
+                onChange={(event) => {
+                  setNameInput(event.target.value);
+                  setNameNotice(null);
+                }}
+                disabled={!canManageOrganization}
+                className="w-full"
+              />
+            </Field>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                variant="accent"
+                type="submit"
+                disabled={
+                  !canManageOrganization || !nameDirty || !nameValid || updatingOrganization
+                }
+              >
+                {updatingOrganization ? "Saving…" : "Save name"}
+              </Button>
+              {!canManageOrganization ? (
+                <span className="text-xs text-[var(--bo-muted-2)]">
+                  Admin or owner access required.
+                </span>
+              ) : null}
+            </div>
+            {updateOrganizationError && !nameNotice ? (
+              <Notice
+                notice={{ type: "error", message: getErrorMessage(updateOrganizationError) }}
+              />
+            ) : (
+              <Notice notice={nameNotice} />
+            )}
+          </form>
+        </SurfacePanelBody>
+      </SurfacePanel>
+    </>
   );
 }

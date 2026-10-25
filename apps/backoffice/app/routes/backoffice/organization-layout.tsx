@@ -5,8 +5,8 @@ import { getBackofficeShellRequest } from "@/layouts/backoffice-shell-request.se
 import type { Route } from "./+types/organization-layout";
 import {
   OrganizationErrorBoundary,
-  OrganizationHeader,
   OrganizationTabs,
+  organizationPageBodyClassName,
 } from "./organization-shared";
 import type { OrganizationTab } from "./organization-utils";
 import { throwBackofficeOrganizationNotFound } from "./route-errors";
@@ -58,10 +58,12 @@ export default function BackofficeOrganizationLayout({
   }
 
   return (
-    <div className="space-y-4">
-      <OrganizationHeader organizationLabel={organization.name || organization.id} />
+    <div className="flex flex-1 flex-col">
+      <h1 className="sr-only">Organization {organization.name || organization.id}</h1>
       <OrganizationTabs orgSlug={organization.slug} activeTab={activeTab} />
-      <Outlet context={{ organization, member, me }} />
+      <div className={organizationPageBodyClassName}>
+        <Outlet context={{ organization, member, me }} />
+      </div>
     </div>
   );
 }
