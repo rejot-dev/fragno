@@ -29,7 +29,10 @@ import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { GENERAL_SKILL_CONTENT } from "@/files/content/skills";
 import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
-import { readAutomationReplica } from "@/fragno/automation/lofi/testing";
+import {
+  assertAutomationProjectionsRebuild,
+  readAutomationReplica,
+} from "@/fragno/automation/lofi/testing";
 import {
   backofficeFiles,
   defineBackofficeScenario,
@@ -888,6 +891,16 @@ describe("dashboard", () => {
             "the Agents directory reads what the TanStack collections hold",
             async (ctx) => {
               await assertAgentDirectoryMatchesCollections(ctx);
+            },
+          ),
+          then.assert(
+            "rebuilding the agent projections from the stored events gives the same rows",
+            async (ctx) => {
+              await assertAutomationProjectionsRebuild(ctx.lofi.automations.forOrg(orgId), [
+                "pi_agent",
+                "pi_agent_request",
+                "pi_agent_turn",
+              ]);
             },
           ),
         ],

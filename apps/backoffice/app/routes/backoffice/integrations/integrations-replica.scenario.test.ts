@@ -13,7 +13,10 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 
 import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
-import { readAutomationReplica } from "@/fragno/automation/lofi/testing";
+import {
+  assertAutomationProjectionsRebuild,
+  readAutomationReplica,
+} from "@/fragno/automation/lofi/testing";
 import {
   defineBackofficeScenario,
   runBackofficeScenario,
@@ -204,6 +207,14 @@ describe("integrations replica", () => {
           then.assert("the replica reads what the TanStack collections hold", async (ctx) => {
             await assertIntegrationReadsMatchCollections(ctx);
           }),
+          then.assert(
+            "rebuilding the connections from the stored events gives the same rows",
+            async (ctx) => {
+              await assertAutomationProjectionsRebuild(ctx.lofi.automations.forOrg(orgId), [
+                "integration_connection",
+              ]);
+            },
+          ),
         ],
       }),
     );
