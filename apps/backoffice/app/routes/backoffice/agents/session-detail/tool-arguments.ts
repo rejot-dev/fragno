@@ -150,7 +150,7 @@ const extractStreamingJsonStringField = (rawText: string | undefined, fieldNames
   return null;
 };
 
-export const getCodeArgumentSource = ({ rawText, value }: { rawText?: string; value: unknown }) => {
+const getCodeArgumentSource = ({ rawText, value }: { rawText?: string; value: unknown }) => {
   const codeArgument = getCodeArgument(value);
   const streamingCode = extractStreamingJsonStringField(rawText, ["code"]);
   if (streamingCode && streamingCode.length >= (codeArgument ? codeArgument.code.length : 0)) {

@@ -14,12 +14,7 @@ export function SessionWorkspacePanel({
   onClose: () => void;
 }) {
   return (
-    <ChatWorkspacePanel
-      label={item.label}
-      toolbarRef={() => undefined}
-      onClose={onClose}
-      actions={null}
-    >
+    <ChatWorkspacePanel label={item.label} onClose={onClose}>
       <ChatWorkspaceScroll>
         <ResultContent
           parsedValue={{ kind: "valid", value: item.view.result }}
