@@ -123,7 +123,7 @@ type CodemodeWorkflowRunHandle = {
 };
 
 /**
- * Return defineWorkflow(...) from execCodeMode or a codemode automation script to schedule durable
+ * Return defineWorkflow(...) from codemode or a codemode automation script to schedule durable
  * workflow execution. The callback runs later with real workflow step controls. Pass the returned
  * instanceId to workflow.getInstance(...) to observe completion across isolated code-mode calls.
  */

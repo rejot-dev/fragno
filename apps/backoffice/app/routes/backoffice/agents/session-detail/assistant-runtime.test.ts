@@ -19,7 +19,7 @@ const usage = {
 };
 
 describe("formatToolArgumentsDisplayText", () => {
-  test("renders streaming execCodeMode code input before the JSON argument is complete", () => {
+  test("renders streaming codemode code input before the JSON argument is complete", () => {
     expect(
       formatToolArgumentsDisplayText({
         rawText:
@@ -196,7 +196,7 @@ describe("createAssistantUiMessages", () => {
     );
   });
 
-  test("keeps the raw execCodeMode result in the tool-call artifact", () => {
+  test("keeps the raw codemode result in the tool-call artifact", () => {
     const rawResult = {
       total: 24,
       $ui: {
@@ -226,7 +226,7 @@ describe("createAssistantUiMessages", () => {
             {
               type: "toolCall",
               id: "tool-ui",
-              name: "execCodeMode",
+              name: "codemode",
               arguments: { code: "async () => ({})" },
             },
           ],
@@ -237,7 +237,7 @@ describe("createAssistantUiMessages", () => {
         {
           role: "toolResult",
           toolCallId: "tool-ui",
-          toolName: "execCodeMode",
+          toolName: "codemode",
           content: [{ type: "text", text: JSON.stringify(rawResult) }],
           details: { result: rawResult, logs: [] },
           isError: false,

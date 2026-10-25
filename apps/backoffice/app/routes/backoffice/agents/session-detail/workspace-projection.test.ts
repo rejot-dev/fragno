@@ -29,7 +29,7 @@ const assistantToolCall = (id: string, code: string) =>
       {
         type: "toolCall",
         id,
-        name: "execCodeMode",
+        name: "codemode",
         arguments: { code },
       },
     ],
@@ -40,7 +40,7 @@ const toolResult = (id: string, result: unknown, details: Record<string, unknown
   ({
     role: "toolResult",
     toolCallId: id,
-    toolName: "execCodeMode",
+    toolName: "codemode",
     content: [{ type: "text", text: "Completed" }],
     details: { result, logs: [], ...details },
     isError: false,
@@ -120,7 +120,7 @@ describe("projectSessionWorkspaceItems", () => {
         tools: {
           "shared-call": {
             id: "shared-call",
-            name: "execCodeMode",
+            name: "codemode",
             args: { code: `defineWorkflow({ name: "new-name" }, async () => {});` },
             status: "done",
             resultMessage: toolResult("shared-call", generatedUiResult, {
@@ -171,7 +171,7 @@ describe("projectSessionWorkspaceItems", () => {
         tools: {
           draft: {
             id: "draft",
-            name: "execCodeMode",
+            name: "codemode",
             args: {},
             argsText:
               '{"code":"defineWorkflow({ name: \\"streaming-workflow\\" }, async (_event, step) => {\\n  await step.do(\\"still writing',

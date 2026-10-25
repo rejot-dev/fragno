@@ -12,10 +12,10 @@ own request, and `CODEMODE_COMPILER` to `CodemodeCompiler` for type checking. Ba
 Dynamic Workers itself. Deploy the bridge before Backoffice when either entrypoint changes. `dev`
 and `preview` run the bridge as an auxiliary Worker, so local development needs no second command.
 
-Every codemode activation (execCodeMode, `js.build`, `js.run`, Pi workspace extensions, and each
-workflow tick) goes through the scope's `CODEMODE` Durable Object, which calls the bridge and keeps
-seven days of run history: outcome, error, and bounded logs. Guests have no network egress; use the
-`web.*` tools for internet access.
+Every codemode activation (the Pi `codemode` tool, `js.build`, `js.run`, Pi workspace extensions,
+and each workflow tick) goes through the scope's `CODEMODE` Durable Object, which calls the bridge
+and keeps seven days of run history: outcome, error, and bounded logs. Guests have no network
+egress; use the `web.*` tools for internet access.
 
 ## Tests
 

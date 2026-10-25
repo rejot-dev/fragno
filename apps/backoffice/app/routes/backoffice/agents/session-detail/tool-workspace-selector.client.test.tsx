@@ -40,7 +40,7 @@ function SelectorHarness() {
   return (
     <SessionWorkspaceNavigationProvider value={navigation}>
       <ToolWorkspaceSelector
-        toolLabel="execCodeMode"
+        toolLabel="codemode"
         labelled
         options={[
           { id: workflowId, kind: "workflow-graph", label: "Workflow graph" },

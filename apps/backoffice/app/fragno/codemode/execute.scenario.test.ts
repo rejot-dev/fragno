@@ -29,7 +29,7 @@ import {
   type BackofficeScenarioContext,
 } from "@/fragno/automation/scenario";
 import { createBackofficeAgentContext } from "@/fragno/pi/agent/backoffice-agent-context";
-import { createExecCodeModeTool } from "@/fragno/pi/extensions/backoffice/exec-code-mode-tool";
+import { createCodemodeTool } from "@/fragno/pi/extensions/backoffice/codemode-tool";
 
 let server: Awaited<ReturnType<typeof createCodemodeTestServer>>;
 beforeAll(async () => {
@@ -42,7 +42,7 @@ afterAll(async () => {
 const owner = { kind: "org", orgId: "acme" } as const;
 
 function executionTool(ctx: BackofficeScenarioContext, execution: BackofficeExecutionContext) {
-  return createExecCodeModeTool(
+  return createCodemodeTool(
     createBackofficeAgentContext({
       config: { agentName: "diagnostics", scope: execution.scope },
       runtime: ctx.runtime.services,

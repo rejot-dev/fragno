@@ -7,7 +7,7 @@ import {
   type PiDraftTool,
   type ToolResultMessage,
 } from "./assistant-runtime";
-import { getExecCodeModeResultDetails } from "./exec-code-mode";
+import { getCodemodeResultDetails, isCodemodeTool } from "./codemode-result";
 import { getCodeArgumentSource } from "./tool-arguments";
 import { projectWorkflowGraph } from "./workflow-graph-projection";
 import {
@@ -25,19 +25,19 @@ export function getSessionWorkflowRunIds({
 }): string[] {
   const runIds = new Set<string>();
   const addRun = (resultMessage: ToolResultMessage | null) => {
-    const run = getExecCodeModeResultDetails(resultMessage?.details).run;
+    const run = getCodemodeResultDetails(resultMessage?.details).run;
     if (run) {
       runIds.add(run.instanceId);
     }
   };
 
   for (const message of messages) {
-    if (message.role === "toolResult" && message.toolName === "execCodeMode") {
+    if (message.role === "toolResult" && isCodemodeTool(message.toolName)) {
       addRun(message);
     }
   }
   for (const draftTool of Object.values(draftAgentMessage?.tools ?? {})) {
-    if (draftTool.name === "execCodeMode") {
+    if (isCodemodeTool(draftTool.name)) {
       addRun(completedDraftToolResult(draftTool));
     }
   }
@@ -61,7 +61,7 @@ export function projectSessionWorkspaceItems({
   const completedResultsByCallId = new Map(
     messages.flatMap(
       (message): Array<[string, ToolResultMessage]> =>
-        message.role === "toolResult" && message.toolName === "execCodeMode"
+        message.role === "toolResult" && isCodemodeTool(message.toolName)
           ? [[message.toolCallId, message]]
           : [],
     ),
@@ -77,7 +77,7 @@ export function projectSessionWorkspaceItems({
     args: unknown;
     argsText?: string;
     complete: boolean;
-    run: ReturnType<typeof getExecCodeModeResultDetails>["run"];
+    run: ReturnType<typeof getCodemodeResultDetails>["run"];
     toolCallId: string;
   }) => {
     const id = workflowGraphWorkspaceId(toolCallId);
@@ -105,7 +105,7 @@ export function projectSessionWorkspaceItems({
   };
 
   const appendGeneratedUi = (resultMessage: ToolResultMessage) => {
-    if (resultMessage.toolName !== "execCodeMode" || resultMessage.isError) {
+    if (!isCodemodeTool(resultMessage.toolName) || resultMessage.isError) {
       return;
     }
 
@@ -114,7 +114,7 @@ export function projectSessionWorkspaceItems({
       return;
     }
 
-    const details = getExecCodeModeResultDetails(resultMessage.details);
+    const details = getCodemodeResultDetails(resultMessage.details);
     if (!details.hasResult) {
       return;
     }
@@ -140,7 +140,7 @@ export function projectSessionWorkspaceItems({
   for (const message of messages) {
     if (message.role === "assistant") {
       for (const block of normalizePiContent(message.content)) {
-        if (block.type !== "toolCall" || block.name !== "execCodeMode") {
+        if (block.type !== "toolCall" || !isCodemodeTool(block.name)) {
           continue;
         }
         const draftTool = draftToolsByCallId.get(block.id);
@@ -151,7 +151,7 @@ export function projectSessionWorkspaceItems({
           args: draftTool?.args ?? block.arguments,
           argsText: draftTool?.argsText,
           complete: draftTool ? draftTool.status === "done" : true,
-          run: getExecCodeModeResultDetails(latestResult?.details).run,
+          run: getCodemodeResultDetails(latestResult?.details).run,
           toolCallId: block.id,
         });
       }
@@ -164,7 +164,7 @@ export function projectSessionWorkspaceItems({
   }
 
   for (const draftTool of draftTools) {
-    if (draftTool.name !== "execCodeMode") {
+    if (!isCodemodeTool(draftTool.name)) {
       continue;
     }
     const resultMessage = completedDraftToolResult(draftTool);
@@ -172,7 +172,7 @@ export function projectSessionWorkspaceItems({
       args: draftTool.args,
       argsText: draftTool.argsText,
       complete: draftTool.status === "done",
-      run: getExecCodeModeResultDetails(resultMessage?.details).run,
+      run: getCodemodeResultDetails(resultMessage?.details).run,
       toolCallId: draftTool.id,
     });
     if (resultMessage) {

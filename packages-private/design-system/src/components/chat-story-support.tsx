@@ -39,7 +39,7 @@ const TURN = `### Thinking
 
 Load the unpaid invoices first, then draft one reminder per customer.
 
-### Tool call: execCodeMode (1.2s)
+### Tool call: codemode (1.2s)
 
 **Arguments**
 
@@ -159,7 +159,7 @@ export function SampleConversation({
           <ChatActivityStep
             icon="code"
             state="done"
-            title="execCodeMode"
+            title="codemode"
             detail="invoices.unpaid()"
             durationMs={1_240}
             outlined={false}

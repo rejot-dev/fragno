@@ -4,7 +4,7 @@ import { defineExtension, section, type Extension } from "@earendil-works/pi-dur
 
 import type { BackofficeAgentContext } from "@/fragno/pi/agent/backoffice-agent-context";
 
-import { createExecCodeModeTool } from "./exec-code-mode-tool";
+import { createCodemodeTool } from "./codemode-tool";
 import { createReadTool } from "./read-tool";
 import { createSearchTool } from "./search-tool";
 import { buildBackofficePiSystemPrompt } from "./system-prompt";
@@ -13,7 +13,7 @@ import { buildBackofficePiSystemPrompt } from "./system-prompt";
 export function createBackofficeExtension(agent: BackofficeAgentContext): Extension {
   return defineExtension({
     name: "backoffice",
-    tools: [createExecCodeModeTool(agent), createReadTool(agent), createSearchTool(agent)],
+    tools: [createCodemodeTool(agent), createReadTool(agent), createSearchTool(agent)],
     sections: [
       section(
         "backoffice",

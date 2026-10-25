@@ -1,14 +1,19 @@
 import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
 import type { WorkflowRunReference } from "@/routes/backoffice/automations/script-view/workflow-run-presentation";
 
-export type ExecCodeModeResultDetails = {
+export type CodemodeResultDetails = {
   hasResult: boolean;
   logs: string[];
   result: unknown;
   run: WorkflowRunReference | null;
 };
 
-export function getExecCodeModeResultDetails(details: unknown): ExecCodeModeResultDetails {
+/** Conversations recorded before the tool was renamed to `codemode` call it `execCodeMode`. */
+export function isCodemodeTool(name: string) {
+  return name === "codemode" || name === "execCodeMode";
+}
+
+export function getCodemodeResultDetails(details: unknown): CodemodeResultDetails {
   if (!details || typeof details !== "object" || Array.isArray(details)) {
     return { hasResult: false, logs: [], result: undefined, run: null };
   }
@@ -39,6 +44,6 @@ function parseWorkflowRunReference(value: unknown): WorkflowRunReference {
 
 function invalidWorkflowRunReferenceError() {
   return new TypeError(
-    "Invalid execCodeMode result details.run: expected a non-empty instanceId string",
+    "Invalid codemode result details.run: expected a non-empty instanceId string",
   );
 }

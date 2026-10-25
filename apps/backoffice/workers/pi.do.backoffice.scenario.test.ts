@@ -215,7 +215,7 @@ test("durable Pi runs a workspace agent with its instructions, scoped skills, Ba
           .filter((message) => message.role === "system")
           .flatMap((message) => message.toolsAdded ?? [])
           .map((tool) => tool.name),
-      ).toEqual(expect.arrayContaining(["read", "search", "execCodeMode"]));
+      ).toEqual(expect.arrayContaining(["read", "search", "codemode"]));
       return fauxAssistantMessage(
         [
           fauxToolCall("read", { path: "/workspace/durable-notes.txt", offset: 2, limit: 1 }),
@@ -223,7 +223,7 @@ test("durable Pi runs a workspace agent with its instructions, scoped skills, Ba
             keywords: ["Durable marker"],
             glob: "/workspace/durable-notes.txt",
           }),
-          fauxToolCall("execCodeMode", {
+          fauxToolCall("codemode", {
             code: `async () => {
           await state.writeFile({ path: "/workspace/durable-result.txt", content: "executed through Backoffice" });
           const first = await pi.submitPrompt({ agentName: "assistant", content: "First other-agent prompt" });
@@ -248,7 +248,7 @@ test("durable Pi runs a workspace agent with its instructions, scoped skills, Ba
       JSON.stringify(results),
     );
     expect(JSON.stringify(results)).toContain("Durable marker");
-    expect(results.find((result) => result.toolName === "execCodeMode")?.details).toMatchObject({
+    expect(results.find((result) => result.toolName === "codemode")?.details).toMatchObject({
       result: {
         first: "queued",
         second: "queued",
@@ -338,7 +338,7 @@ test("agents and users read another agent's messages and export its whole conver
     if (results.length === 0) {
       return fauxAssistantMessage(
         [
-          fauxToolCall("execCodeMode", {
+          fauxToolCall("codemode", {
             code: `async () => {
           const latest = await pi.listMessages({ agentName: "assistant", last: 1 });
           const earlier = await pi.listMessages({ agentName: "assistant", before: latest.before });
@@ -461,7 +461,7 @@ test("an agent's backfill records agent events as the agent's turn, keeping its 
   const respond: FauxResponseStep = (context) =>
     toolResults(context).length === 0
       ? fauxAssistantMessage(
-          [fauxToolCall("execCodeMode", { code: "async () => await pi.backfillAgentEvents({})" })],
+          [fauxToolCall("codemode", { code: "async () => await pi.backfillAgentEvents({})" })],
           { stopReason: "toolUse" },
         )
       : fauxAssistantMessage("Backfilled.");
@@ -616,7 +616,7 @@ test("an agent's definition narrows every turn and an edited definition applies 
   };
   const storeWrite = fauxAssistantMessage(
     [
-      fauxToolCall("execCodeMode", {
+      fauxToolCall("codemode", {
         code: `async () => await store.set({ key: "reader/result", value: "written" })`,
       }),
     ],
@@ -727,7 +727,7 @@ for (const revocation of ["restricted", "disabled", "deleted"] as const) {
               expect(JSON.stringify(context.messages)).toContain("# Backoffice System Guidance");
               return fauxAssistantMessage(
                 [
-                  fauxToolCall("execCodeMode", {
+                  fauxToolCall("codemode", {
                     code: `async () => await store.set({ key: "linked-pi/result", value: "written" })`,
                   }),
                 ],
@@ -1068,7 +1068,7 @@ for (const leaveOrganization of [false, true]) {
       }
       const results = toolResults(context);
       if (results.length === 0) {
-        return fauxAssistantMessage([fauxToolCall("execCodeMode", { code: workflowCode })], {
+        return fauxAssistantMessage([fauxToolCall("codemode", { code: workflowCode })], {
           stopReason: "toolUse",
         });
       }
@@ -1227,7 +1227,7 @@ test("an agent hears back from the workflow it starts when it ends", async () =>
       objects: {
         ...scenarioObjects,
         ...scriptedAgents([
-          fauxAssistantMessage([fauxToolCall("execCodeMode", { code: workflowCode })], {
+          fauxAssistantMessage([fauxToolCall("codemode", { code: workflowCode })], {
             stopReason: "toolUse",
           }),
           fauxAssistantMessage("The approval checker is waiting for approval."),
@@ -1306,7 +1306,7 @@ test("durable Pi restores scoped tools and reports interrupted codemode without 
       faux.setResponses([
         fauxAssistantMessage(
           [
-            fauxToolCall("execCodeMode", {
+            fauxToolCall("codemode", {
               code: `async () => {
           const count = Number(await state.readFile({ path: "/workspace/codemode-effects.txt" })) + 1;
           await state.writeFile({ path: "/workspace/codemode-effects.txt", content: String(count) });
@@ -1325,7 +1325,7 @@ test("durable Pi restores scoped tools and reports interrupted codemode without 
         hooks: [
           hook(ToolTask, {
             afterTool: async (call) => {
-              if (call.name === "execCodeMode") {
+              if (call.name === "codemode") {
                 // Capture real committed intent after the external mutation, before result settlement.
                 await (await database).run("VACUUM INTO ?", snapshot);
               }
@@ -1384,7 +1384,7 @@ test("durable Pi restores scoped tools and reports interrupted codemode without 
                   const result = toolResults(context).at(-1);
                   assert.equal(result?.isError, true, JSON.stringify(result));
                   expect(JSON.stringify(result)).toContain(
-                    "Tool execCodeMode was interrupted and may have partially run",
+                    "Tool codemode was interrupted and may have partially run",
                   );
                   return fauxAssistantMessage(
                     [fauxToolCall("read", { path: "/workspace/codemode-effects.txt" })],
@@ -1447,7 +1447,7 @@ test("durable Pi scoped codemode handles prompt the selected scope's agent", asy
             }
             return fauxAssistantMessage(
               [
-                fauxToolCall("execCodeMode", {
+                fauxToolCall("codemode", {
                   code: `async () => await context.user("org-1").pi.submitPrompt({
                     agentName: "assistant",
                     content: "Hello from the organization agent.",
