@@ -52,8 +52,51 @@ describe("scopeSwitchPath", () => {
 
   test("lands unknown sections on the dashboard", () => {
     assert(
-      scopeSwitchPath("/backoffice/organizations", projectScope) ===
+      scopeSwitchPath("/backoffice/claims/acme/complete", projectScope) ===
         "/backoffice/dashboard/project/org:org-a:proj-1",
+    );
+  });
+
+  test("keeps settings open for the new scope's owner", () => {
+    // An organization's settings keep the tabs every organization has.
+    assert(
+      scopeSwitchPath("/backoffice/organizations/org-b/members", projectScope) ===
+        "/backoffice/organizations/org-a/members",
+    );
+    assert(
+      scopeSwitchPath("/backoffice/organizations/org-b/invites", {
+        kind: "org",
+        orgSlug: "org-a",
+      }) === "/backoffice/organizations/org-a",
+    );
+    assert(
+      scopeSwitchPath("/backoffice/settings", { kind: "org", orgSlug: "org-a" }) ===
+        "/backoffice/organizations/org-a",
+    );
+    // The user's own workspace opens their settings; a member's has none to open.
+    assert(
+      scopeSwitchPath("/backoffice/organizations/org-a", { kind: "user", userId: "ada" }, "ada") ===
+        "/backoffice/settings",
+    );
+    // An organization's billing and the user's usage open each other.
+    assert(
+      scopeSwitchPath(
+        "/backoffice/organizations/org-a/billing",
+        { kind: "user", userId: "ada" },
+        "ada",
+      ) === "/backoffice/usage",
+    );
+    assert(
+      scopeSwitchPath("/backoffice/usage", { kind: "org", orgSlug: "org-a" }) ===
+        "/backoffice/organizations/org-a/billing",
+    );
+    assert(
+      scopeSwitchPath("/backoffice/organizations", { kind: "user", userId: "cleo" }, "ada") ===
+        "/backoffice/dashboard/user/cleo",
+    );
+    assert(
+      scopeSwitchPath("/backoffice/settings", { kind: "system" }, "ada") ===
+        "/backoffice/dashboard/system/system",
     );
   });
 });

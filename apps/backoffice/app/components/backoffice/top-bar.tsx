@@ -15,8 +15,8 @@ import {
 } from "@/fragno/automation/tanstack/browser-database";
 import { useAutomationProjects } from "@/fragno/automation/tanstack/use-automation-projects";
 
-import { BackofficeAccountMenu } from "./account-menu";
 import { AGENT_DRAWER_ID } from "./agent-drawer";
+import { BackofficeAppearanceMenu } from "./appearance-menu";
 import { BackofficePresenceIndicator } from "./presence-indicator";
 import {
   BackofficeProjectMenu,
@@ -129,7 +129,6 @@ export function BackofficeTopBar({
   agentDrawerOpen = false,
   onAgentDrawerToggle,
 }: BackofficeTopBarProps) {
-  const routeScope = resolvedScope ? backofficeRouteScopeFromResolvedScope(resolvedScope) : null;
   const projectOwner = resolvedScope && backofficeScopeProjectOwner(resolvedScope);
 
   return (
@@ -168,7 +167,7 @@ export function BackofficeTopBar({
             <BackofficePresenceIndicator key={me.activeOrganizationId} />
           ) : null}
           <div className="flex shrink-0 items-center min-[960px]:border-l min-[960px]:border-[color:var(--bo-border)]">
-            <BackofficeAccountMenu me={me} currentScope={routeScope} isLoading={isLoading} />
+            <BackofficeAppearanceMenu me={me} isLoading={isLoading} />
           </div>
         </div>
 
@@ -202,7 +201,7 @@ export function BackofficeTopBar({
       </div>
 
       <div className="border-t border-[color:var(--bo-border)] min-[960px]:hidden">
-        <BackofficeMobileNav currentScope={routeScope} />
+        <BackofficeMobileNav currentScope={resolvedScope} me={me} />
       </div>
     </header>
   );

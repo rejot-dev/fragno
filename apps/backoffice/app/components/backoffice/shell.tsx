@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import {
   type BackofficeNamedProject,
-  backofficeRouteScopeFromResolvedScope,
   type BackofficeResolvedScope,
   type BackofficeScopeSelection,
 } from "@/backoffice-runtime/resolved-scope";
@@ -116,7 +115,6 @@ function BackofficeShellFrame({
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const sidebarRestoredRef = useRef(false);
   const [sidebarRestoring, setSidebarRestoring] = useState(true);
-  const routeScope = resolvedScope ? backofficeRouteScopeFromResolvedScope(resolvedScope) : null;
   const terminalScope = resolvedScope
     ? backofficeTerminalScopeSelection(resolvedScope, me, administeredMember)
     : null;
@@ -199,7 +197,8 @@ function BackofficeShellFrame({
         />
         <div className="flex min-w-0 flex-1">
           <BackofficeSidebarNav
-            currentScope={routeScope}
+            currentScope={resolvedScope}
+            me={me}
             collapsed={sidebarCollapsed}
             onCollapsedChange={setSidebarCollapsed}
           />

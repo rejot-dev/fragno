@@ -85,13 +85,7 @@ describe("BackofficeShell resolved scope", () => {
 
     expect(topBarMock).toHaveBeenCalledWith(expect.objectContaining({ resolvedScope }));
     expect(sidebarMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        currentScope: {
-          kind: "project",
-          owner: { kind: "org", orgSlug: "acme" },
-          projectSlug: "project-1",
-        },
-      }),
+      expect.objectContaining({ currentScope: resolvedScope }),
     );
     expect(terminalMock).toHaveBeenCalledWith(
       expect.objectContaining({
