@@ -46,7 +46,7 @@ test("a client's owner sets up its books, and every member opens them", async ()
     expect(await ada.submit("/w/analytical-engines/administrations/new", submitted)).toMatchObject({
       path: "/w/analytical-engines/a/analytical-engines",
       loaderData: {
-        "administrations/administration": {
+        "books/layout": {
           books: { name: "Analytical Engines", functionalCurrency: "EUR" },
         },
       },
@@ -69,7 +69,7 @@ test("a client's owner sets up its books, and every member opens them", async ()
     });
     expect(await ada.navigate("/w/analytical-engines/a/difference-engines")).toMatchObject({
       loaderData: {
-        "administrations/administration": {
+        "books/layout": {
           books: { name: "Difference Engines", functionalCurrency: "GBP" },
         },
       },
@@ -85,7 +85,7 @@ test("a client's owner sets up its books, and every member opens them", async ()
       },
     });
     expect(await charles.navigate("/w/analytical-engines/a/difference-engines")).toMatchObject({
-      loaderData: { "administrations/administration": { books: { name: "Difference Engines" } } },
+      loaderData: { "books/layout": { books: { name: "Difference Engines" } } },
     });
   });
 });

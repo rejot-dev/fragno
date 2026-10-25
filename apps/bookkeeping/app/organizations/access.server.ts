@@ -13,13 +13,8 @@ import { redirect } from "react-router";
 import type { SessionUser } from "../../workers/auth/auth";
 import { exchangeForOrganization, isBackofficeUnavailable } from "../../workers/backoffice/client";
 import type { Organization, OrganizationKind } from "../../workers/directory/directory";
+import { MEMBERSHIP_CONFIRMATION_LIFETIME_MS } from "../../workers/directory/membership";
 import { currentPath, requireSessionUser } from "../auth/session.server";
-
-/**
- * How long Bookkeeping trusts a membership Backoffice confirmed. Someone removed in Backoffice
- * keeps access at most this long.
- */
-const CONFIRMATION_LIFETIME_MS = 60_000;
 
 /** The signed-in person in one of their organizations. */
 export type OrganizationContext = {
@@ -42,11 +37,6 @@ export function organizationNotFound(): Response {
 
 export function parseRoles(roles: string[]): OrganizationRole[] {
   return organizationRoleSchema.array().min(1).parse(roles);
-}
-
-/** Owners and admins invite people and create administrations. */
-export function canManage(roles: OrganizationRole[]): boolean {
-  return roles.includes("owner") || roles.includes("admin");
 }
 
 /** Whether what was asked of Backoffice may or may not have happened. */
@@ -146,7 +136,7 @@ export async function requireOrganization(
     organizationId: organization.id,
     userId: user.backofficeUserId,
   });
-  if (known && Date.now() - known.confirmedAt < CONFIRMATION_LIFETIME_MS) {
+  if (known && Date.now() - known.confirmedAt < MEMBERSHIP_CONFIRMATION_LIFETIME_MS) {
     return { user, organization, roles: known.roles };
   }
   const confirmed = await confirmWithBackoffice(request, organization.id);
@@ -183,7 +173,7 @@ export async function requireOperator(request: Request): Promise<OrganizationCon
       organizationId: operators.id,
       userId: user.backofficeUserId,
     }));
-  if (operators && known && Date.now() - known.confirmedAt < CONFIRMATION_LIFETIME_MS) {
+  if (operators && known && Date.now() - known.confirmedAt < MEMBERSHIP_CONFIRMATION_LIFETIME_MS) {
     return { user, organization: operators, roles: known.roles };
   }
   const confirmed = await confirmWithBackoffice(request, operatorsId);

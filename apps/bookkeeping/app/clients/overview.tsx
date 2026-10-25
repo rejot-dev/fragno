@@ -6,7 +6,8 @@ import { BackofficeSystemState } from "@fragno-private/design-system/system-stat
 import { env } from "cloudflare:workers";
 import { Link, useOutletContext } from "react-router";
 
-import { canManage, requireOrganization } from "../organizations/access.server";
+import { canManage } from "../../workers/directory/membership";
+import { requireOrganization } from "../organizations/access.server";
 import type { Route } from "./+types/overview";
 import type { ClientOutletContext } from "./layout";
 

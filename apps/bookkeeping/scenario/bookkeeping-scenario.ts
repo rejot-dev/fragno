@@ -332,6 +332,26 @@ export class BookkeepingScenario {
     return { grace, ada, firmPath, clientPath };
   }
 
+  /**
+   * `member` opens a new administration of the client at `clientPath`, kept in `currency`.
+   * Returns the path of its books.
+   */
+  async openAdministration(
+    member: ScenarioBrowser,
+    clientPath: string,
+    name: string,
+    functionalCurrency = "EUR",
+  ): Promise<string> {
+    const path = `${clientPath}/administrations/new`;
+    const form = await member.navigate(path);
+    const { externalId } = form.loaderData["administrations/new"] as { externalId: string };
+    const opened = await member.submit(path, { externalId, name, functionalCurrency });
+    if (opened.status !== 200 || !opened.path.startsWith(`${clientPath}/a/`)) {
+      throw new Error(`${name} did not open: ${JSON.stringify(opened)}`);
+    }
+    return opened.path;
+  }
+
   /** Moves every clock forward: sessions, tokens, and confirmations. */
   advanceTime(ms: number): void {
     vi.setSystemTime(Date.now() + ms);

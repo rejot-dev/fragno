@@ -2,10 +2,17 @@
 
 One SQLite database, the `Books` Durable Object in `books.ts`, per administration holds its books.
 Isolation, backup, export and deletion are per database, so no table carries an administration
-column. `schema.ts` exports the full schema as `bookkeepingSchema`, the SQL files concatenated in
-dependency order, for a single `sql.exec`; it is the object's first migration, so later changes are
-new migrations. Opening an administration's books writes its `administration` row and functional
-currency (`currencies.ts`).
+column.
+
+`Books` runs the ledger fragment (`@fragno-dev/ledger`) on the object's database and exposes its
+operations as RPC methods. The ledger's refusals return as `Outcome` values, because errors crossing
+Durable Object RPC keep only their message. Opening the books (`open`) sets the functional currency
+(`currencies.ts`) and, in the same transaction, this calendar year's monthly periods
+(`fiscal-years.ts`) and the default journals and chart of accounts (`default-books.ts`).
+
+The SQL files below are the reference design the ledger fragment was built from, and the design of
+the areas not built yet. `schema.ts` concatenates them in dependency order for their tests; no
+Durable Object applies them.
 
 | Directory        | Owns                                                                                                                                              |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -43,12 +50,13 @@ the copy: `settlement_allocation` copies party account and currency from its lin
 Files contain only DDL and seed rows. Durable Objects reject `BEGIN`/`COMMIT` and most `PRAGMA`s;
 transactions come from `transactionSync`, and foreign keys are always enforced.
 
-## Writing to the books
+## Writing to the SQL design
 
-Each domain operation runs in one transaction. The Durable Object is the single writer, so "next
-number = MAX + 1" for gapless entry and invoice numbers cannot race. Posting inserts the entry as a
-draft, writes its lines and VAT facts, then sets it to `posted`; the posting triggers check it. A
-committed draft entry is an application bug.
+The ledger fragment moves these rules from the database into its services (see its README). In the
+SQL design, each domain operation runs in one transaction. The Durable Object is the single writer,
+so "next number = MAX + 1" for gapless entry and invoice numbers cannot race. Posting inserts the
+entry as a draft, writes its lines and VAT facts, then sets it to `posted`; the posting triggers
+check it. A committed draft entry is an application bug.
 
 The database guards integrity: immutability, balance, numbering, control accounts, allocation
 limits, period state. The application owns policy: VAT calculation and rounding, exchange-rate

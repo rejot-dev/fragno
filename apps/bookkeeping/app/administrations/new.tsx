@@ -12,9 +12,10 @@ import { z } from "zod";
 import { createProvisioningClient } from "../../workers/backoffice/client";
 import { FUNCTIONAL_CURRENCIES, type FunctionalCurrency } from "../../workers/books/currencies";
 import type { Administration } from "../../workers/directory/directory";
+import { canManage } from "../../workers/directory/membership";
 import { assertSameOrigin } from "../auth/session.server";
 import type { ClientOutletContext } from "../clients/layout";
-import { callBackoffice, canManage, requireOrganization } from "../organizations/access.server";
+import { callBackoffice, requireOrganization } from "../organizations/access.server";
 import type { Route } from "./+types/new";
 
 export function meta() {

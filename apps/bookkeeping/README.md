@@ -38,22 +38,23 @@ pnpm dev
 
 Routes:
 
-| Path                                                         | What                                                                     |
-| ------------------------------------------------------------ | ------------------------------------------------------------------------ |
-| `/`                                                          | Public frontpage                                                         |
-| `/login`, `/help`                                            | Signing in, and help with signing in; `/signup` redirects to `/login`    |
-| `/name`                                                      | Asks a new person's name                                                 |
-| `/start`                                                     | Where signing in lands: one place, or a choice of places and invitations |
-| `/account`                                                   | Who is signed in, and logging out                                        |
-| `/invitations/:invitationId`                                 | Joining a firm or a client                                               |
-| `/operator`                                                  | Every firm, for operators only; `/operator/firms/new` creates one        |
-| `/operator/members`                                          | The operators, and inviting more                                         |
-| `/f/:slug`                                                   | A firm's clients; `/f/:slug/clients/new` creates one                     |
-| `/f/:slug/members`                                           | The firm's members and invitations                                       |
-| `/w/:slug`                                                   | A client's workspace: its administrations                                |
-| `/w/:slug/administrations/new`, `/w/:slug/a/:administration` | Creating an administration, and its books                                |
-| `/w/:slug/members`                                           | The client's members and invitations                                     |
-| `/api/auth/*`                                                | Better Auth, served by the `Auth` object                                 |
+| Path                           | What                                                                     |
+| ------------------------------ | ------------------------------------------------------------------------ |
+| `/`                            | Public frontpage                                                         |
+| `/login`, `/help`              | Signing in, and help with signing in; `/signup` redirects to `/login`    |
+| `/name`                        | Asks a new person's name                                                 |
+| `/start`                       | Where signing in lands: one place, or a choice of places and invitations |
+| `/account`                     | Who is signed in, and logging out                                        |
+| `/invitations/:invitationId`   | Joining a firm or a client                                               |
+| `/operator`                    | Every firm, for operators only; `/operator/firms/new` creates one        |
+| `/operator/members`            | The operators, and inviting more                                         |
+| `/f/:slug`                     | A firm's clients; `/f/:slug/clients/new` creates one                     |
+| `/f/:slug/members`             | The firm's members and invitations                                       |
+| `/w/:slug`                     | A client's workspace: its administrations                                |
+| `/w/:slug/administrations/new` | Creating an administration                                               |
+| `/w/:slug/a/:administration`   | An administration's books, opening on its journal; see [Books](#books)   |
+| `/w/:slug/members`             | The client's members and invitations                                     |
+| `/api/auth/*`                  | Better Auth, served by the `Auth` object                                 |
 
 The operator, firm, and client areas share a frame: a collapsible desktop sidebar, mobile
 navigation, and a switcher between every place the person can go. Pages that require a session send
@@ -63,8 +64,7 @@ visitors at `/login` continue to its `returnTo`. When Backoffice no longer accep
 authorization, the page sends them to `/login?reauthorize=1&returnTo=<page>` to sign in again.
 Personalized route responses are marked private and non-cacheable.
 
-Signing in requires JavaScript. An administration's books open empty; transaction, accounting, and
-reporting functionality are not implemented.
+Signing in requires JavaScript.
 
 ## Backoffice login
 
@@ -229,7 +229,8 @@ at `/w/:slug/administrations/new` with a name and the currency the books are kep
 1. creates its Backoffice project with `projects.provision`, as the person creating it, so
    Backoffice agents can work on the administration in that project;
 2. opens its books in a new `Books` object named by the project's ID (`workers/books`; see its
-   README);
+   README), ready to post to: this calendar year in monthly periods, journals for general, sales,
+   purchase, and bank entries, and a small chart of accounts;
 3. records it in the `Directory` object, which lists a client's administrations.
 
 The form carries an identifier chosen when it was shown, and each step is idempotent, so submitting
@@ -237,6 +238,32 @@ it again after a failure, such as Backoffice being unreachable, finishes the ste
 creating a second administration. Bookkeeping owns which projects are administrations: projects made
 in Backoffice itself are not, and renaming or deleting a project there does not change the
 administration.
+
+## Books
+
+An administration's books are the double-entry ledger of `@fragno-dev/ledger`
+(`packages/fragment-ledger`), which runs in its `Books` object. The ledger enforces the rules:
+entries balance and are final once posted, periods must be open, lines on receivable and payable
+accounts belong to a customer or supplier. The pages under `/w/:slug/a/:administration` show its
+refusals as form errors:
+
+| Path                                   | What                                                                                             |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| the books' own path                    | A journal's entries, newest first, and reversing one; `?journal=` picks the journal              |
+| `/entries/new`                         | Posting an entry: its lines, with a customer or supplier, currency, and dimension values         |
+| `/accounts`, `/accounts/:accountId`    | The chart of accounts and adding to it; an account's lines, and renaming or deactivating it      |
+| `/trial-balance`                       | Each account's totals for the fiscal year through a period; `?period=` picks it                  |
+| `/parties`, `/parties/:partyAccountId` | Customers and suppliers; one's open items, settling them against each other, and undoing that    |
+| `/settings`                            | Fiscal years, and closing, reopening, or locking their periods; journals, dimensions, currencies |
+
+Everyone in the client's workspace keeps the books: posting and reversing entries, adding customers
+and suppliers, and settling their items. Owners and admins also set them up: the calendar, journals,
+dimensions, currencies, and chart of accounts. Entries and settlements record the name of the person
+who made them. Amounts are entered as decimals with a dot or a comma and no thousands separators.
+
+Bookkeeping is not live, so its storage keeps no compatibility: books are set up only when their
+administration is created, and administrations from before a storage change do not open. Delete
+`.wrangler/state` to start over locally.
 
 ## Layout
 
@@ -253,14 +280,15 @@ folder with its migrations.
 | `app/operator`        | the operator's area: every firm, creating firms, and the operators    |
 | `app/firms`           | a firm's area: its clients, creating clients, and its members         |
 | `app/clients`         | a client's workspace: its administrations and its members             |
-| `app/administrations` | creating and opening an administration                                |
+| `app/administrations` | creating an administration                                            |
+| `app/books`           | an administration's books: journal, accounts, reports, parties, setup |
 | `app/members`         | a firm's or client's team: members, invitations, and inviting         |
 | `app/invitations`     | inviting someone, and accepting an invitation                         |
 | `workers/worker.ts`   | the Worker's `fetch` entry, which exports the Durable Objects         |
 | `workers/auth`        | the `Auth` object                                                     |
 | `workers/directory`   | the `Directory` object                                                |
 | `workers/backoffice`  | Backoffice's API client and the actions Backoffice calls              |
-| `workers/books`       | the `Books` object and its schema                                     |
+| `workers/books`       | the `Books` object, the books it opens, and the reference schema      |
 | `scenario/`           | the scenario test harness                                             |
 
 ## Checks
@@ -321,4 +349,5 @@ it has applied, not their names.
   their links to Backoffice, which `0004-drop-organizations.sql` drops.
 - `workers/directory/migrations/0001-directory.sql`: the `Directory` object's organizations,
   memberships, invitations, and administrations, and `0002-operators.sql` the `operator` kind.
-- `Books` applies `bookkeepingSchema` from `workers/books/schema.ts` as its first migration.
+- `Books` holds the ledger fragment's tables, which Fragno's `migrate` creates and upgrades when the
+  object starts.
