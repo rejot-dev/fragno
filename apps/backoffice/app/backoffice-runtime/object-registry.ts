@@ -304,6 +304,21 @@ export type OrganizationManagerRecord = {
   managingOrganizationId: string | null;
 };
 
+export type OrganizationReference = { organizationId: string; name: string; slug: string };
+
+/** An organization another one manages, as the managing organization lists its clients. */
+export type ManagedOrganizationRecord = OrganizationReference & {
+  createdAt: string;
+  memberCount: number;
+};
+
+/** Who acts in an organization: its members, the organization managing it, and those it manages. */
+export type OrganizationRelations = {
+  memberCount: number;
+  managingOrganization: OrganizationReference | null;
+  managedOrganizations: ManagedOrganizationRecord[];
+};
+
 export type AuthObject = DurableHookCommands &
   AuthAppProvisioningCommands & {
     enqueueEmailVerificationHook(
@@ -423,6 +438,8 @@ export type AuthObject = DurableHookCommands &
       organizationId: string;
       managingOrganizationId: string | null;
     }): Promise<OrganizationManagerRecord>;
+    /** The organization's member count, its manager, and the organizations it manages by name. */
+    getOrganizationRelations(input: { organizationId: string }): Promise<OrganizationRelations>;
     listOrganizations(input: DirectoryPageInput): Promise<OrganizationPage>;
     listOrganizationMembers(
       input: { organizationId: string } & DirectoryPageInput,

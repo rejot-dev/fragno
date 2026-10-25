@@ -3,6 +3,7 @@ import type { IconName } from "@fragno-private/design-system/icon";
 import {
   SelectorMenu,
   SelectorMenuGroup,
+  SelectorMenuLink,
   SelectorMenuOption,
   SelectorMenuPopup,
   SelectorMenuTrigger,
@@ -21,20 +22,28 @@ import {
   type Organization,
 } from "@/fragno/auth/contracts";
 
-import { backofficeScopeOptions } from "./scope-options";
+import { administeredMemberName } from "./member-workspace-banner";
 import { scopeSwitchPath } from "./scope-switch-path";
-
-const SCOPE_GROUPS = [
-  { kind: "system", label: "System" },
-  { kind: "org", label: "Organizations" },
-  { kind: "user", label: "Personal" },
-] as const;
 
 type ScopeMenuOption = {
   id: string;
   label: string;
+  description: string | null;
   scope: BackofficeResolvedScope<Organization>;
 };
+
+type ScopeMenuGroup = {
+  key: string;
+  label: string;
+  options: ScopeMenuOption[];
+  /** Pages to go to rather than scopes to switch to, such as where members' workspaces are listed. */
+  shortcuts: { key: string; to: string; label: string; description: string }[];
+  /** Where every option is listed, when the group shows only some of them. */
+  more: { to: string; label: string } | null;
+};
+
+/** A managing organization's clients beyond this many are listed on its Clients page instead. */
+const CLIENTS_SHOWN_PER_GROUP = 6;
 
 // A project is chosen in the adjacent project menu, so this menu selects its owner.
 const scopeOptionId = (scope: BackofficeResolvedScope): string => {
@@ -71,6 +80,25 @@ const triggerKindLabel = (scope: BackofficeResolvedScope): string => {
     default:
       throw new Error("Unsupported Backoffice scope kind.", { cause: scope satisfies never });
   }
+};
+
+// Another person's workspace is labelled as theirs, so it is never mistaken for the user's own.
+const triggerKindLabelFor = (
+  scope: BackofficeResolvedScope,
+  me: BackofficeMeData,
+  administeredMember: AdministeredMember | null,
+): string => {
+  const ownerUserId =
+    scope.kind === "user"
+      ? scope.userId
+      : scope.kind === "project" && scope.owner.kind === "user"
+        ? scope.owner.userId
+        : null;
+  return ownerUserId !== null &&
+    ownerUserId !== me.user.id &&
+    administeredMember?.userId === ownerUserId
+    ? "Member workspace"
+    : triggerKindLabel(scope);
 };
 
 // While in project scope this menu shows the project's owner, so it shares its mark.
@@ -118,7 +146,7 @@ const currentScopeLabel = (
       return scope.organization.name;
     case "user":
       return administeredMember?.userId === scope.userId
-        ? administeredMember.email
+        ? administeredMemberName(administeredMember)
         : (me.user.email ?? scope.userId);
     case "app":
       return scope.appId;
@@ -143,29 +171,14 @@ export function BackofficeScopeMenu({
     return null;
   }
 
-  const options: ScopeMenuOption[] = [
-    ...backofficeScopeOptions(me),
-    // The member's workspace stays listed while the user works in it.
-    ...(administeredMember
-      ? [
-          {
-            label: administeredMember.email,
-            scope: { kind: "user" as const, userId: administeredMember.userId },
-          },
-        ]
-      : []),
-  ].map((option) => ({ ...option, id: scopeOptionId(option.scope) }));
   const selectedId = scopeOptionId(currentScope);
   const triggerLabel = currentScopeLabel(currentScope, me, administeredMember);
-  // Members are listed, paginated, on each organization's members page rather than here.
-  const administeredOrganizations = me.organizations
-    .filter(({ roles }) => administersMembers(roles))
-    .map(({ organization }) => organization);
+  const groups = scopeMenuGroups(me, administeredMember, selectedId);
 
   return (
     <SelectorMenu>
       <SelectorMenuTrigger
-        label={triggerKindLabel(currentScope)}
+        label={triggerKindLabelFor(currentScope, me, administeredMember)}
         value={triggerLabel}
         ariaLabel={`Switch scope. Current context: ${triggerLabel}`}
         layout={{
@@ -177,49 +190,161 @@ export function BackofficeScopeMenu({
       />
 
       <SelectorMenuPopup align="start" height="capped">
-        {SCOPE_GROUPS.map((group) => {
-          const groupOptions = options.filter((option) => option.scope.kind === group.kind);
-          if (groupOptions.length === 0) {
-            return null;
-          }
-
-          return (
-            <SelectorMenuGroup key={group.kind} label={group.label}>
-              {groupOptions.map((option) => {
-                const switchPath = scopeSwitchPath(
+        {groups.map((group) => (
+          <SelectorMenuGroup key={group.key} label={group.label}>
+            {group.options.map((option) => (
+              <SelectorMenuOption
+                key={option.id}
+                to={scopeSwitchPath(
                   location.pathname,
                   backofficeRouteScopeFromResolvedScope(option.scope),
-                );
-
-                return (
-                  <SelectorMenuOption
-                    key={option.id}
-                    to={switchPath}
-                    label={option.label}
-                    description={null}
-                    badge={null}
-                    current={option.id === selectedId}
-                  />
-                );
-              })}
-            </SelectorMenuGroup>
-          );
-        })}
-        {administeredOrganizations.length > 0 ? (
-          <SelectorMenuGroup label="Member workspaces">
-            {administeredOrganizations.map((organization) => (
+                )}
+                label={option.label}
+                description={option.description}
+                badge={null}
+                current={option.id === selectedId}
+              />
+            ))}
+            {group.shortcuts.map((shortcut) => (
               <SelectorMenuOption
-                key={organization.id}
-                to={`/backoffice/organizations/${encodeURIComponent(organization.slug)}/members`}
-                label={`${organization.name} members`}
-                description="Open a member's personal workspace"
+                key={shortcut.key}
+                to={shortcut.to}
+                label={shortcut.label}
+                description={shortcut.description}
                 badge={null}
                 current={false}
               />
             ))}
+            {group.more ? (
+              <SelectorMenuLink to={group.more.to} icon="layers">
+                {group.more.label}
+              </SelectorMenuLink>
+            ) : null}
           </SelectorMenuGroup>
-        ) : null}
+        ))}
       </SelectorMenuPopup>
     </SelectorMenu>
   );
+}
+
+/**
+ * The scopes to switch to, grouped by why the user may act in them: System for administrators, the
+ * organizations they belong to, the clients of each of those, and their own workspace. Last come
+ * members' workspaces: the one the user is in, and each organization whose members they administer,
+ * whose members page lists them, paginated.
+ */
+function scopeMenuGroups(
+  me: BackofficeMeData,
+  administeredMember: AdministeredMember | null,
+  selectedId: string,
+): ScopeMenuGroup[] {
+  const organizationOption = (organization: Organization): ScopeMenuOption => {
+    const scope = { kind: "org" as const, organization };
+    return { id: scopeOptionId(scope), label: organization.name, description: null, scope };
+  };
+  const clientsByManager = new Map<string, { manager: Organization; clients: Organization[] }>();
+  for (const { organization, through } of me.organizations) {
+    if (through.kind !== "managing-organization") {
+      continue;
+    }
+    const manager = me.organizations.find(
+      (entry) => entry.organization.id === through.organization.id,
+    )?.organization;
+    if (!manager) {
+      continue;
+    }
+    const group = clientsByManager.get(manager.id) ?? { manager, clients: [] };
+    group.clients.push(organization);
+    clientsByManager.set(manager.id, group);
+  }
+
+  const groups: ScopeMenuGroup[] = [];
+  if (me.user.role === "admin") {
+    const scope = { kind: "system" as const };
+    groups.push({
+      key: "system",
+      label: "System",
+      options: [{ id: scopeOptionId(scope), label: "System", description: null, scope }],
+      shortcuts: [],
+      more: null,
+    });
+  }
+  const memberships = me.organizations
+    .filter(({ through }) => through.kind === "membership")
+    .map(({ organization }) => organizationOption(organization));
+  if (memberships.length > 0) {
+    groups.push({
+      key: "organizations",
+      label: "Organizations",
+      options: memberships,
+      shortcuts: [],
+      more: null,
+    });
+  }
+  for (const { manager, clients } of clientsByManager.values()) {
+    const options = clients.map(organizationOption);
+    // The current client stays listed even when it falls beyond the ones shown.
+    const shown = options.filter(
+      (option, index) => index < CLIENTS_SHOWN_PER_GROUP || option.id === selectedId,
+    );
+    groups.push({
+      key: `clients:${manager.id}`,
+      label: `Managed by ${manager.name}`,
+      options: shown,
+      shortcuts: [],
+      more:
+        shown.length < options.length
+          ? {
+              to: `/backoffice/organizations/${encodeURIComponent(manager.slug)}/clients`,
+              label: `All ${options.length} organizations ${manager.name} manages`,
+            }
+          : null,
+    });
+  }
+  const personalScope = { kind: "user" as const, userId: me.user.id };
+  groups.push({
+    key: "personal",
+    label: "Personal",
+    options: [
+      {
+        id: scopeOptionId(personalScope),
+        label: me.user.email ?? me.user.id,
+        description: null,
+        scope: personalScope,
+      },
+    ],
+    shortcuts: [],
+    more: null,
+  });
+  const memberScope = administeredMember
+    ? { kind: "user" as const, userId: administeredMember.userId }
+    : null;
+  const administeredOrganizations = me.organizations
+    .filter(({ roles }) => administersMembers(roles))
+    .map(({ organization }) => organization);
+  if (administeredMember || administeredOrganizations.length > 0) {
+    groups.push({
+      key: "member-workspaces",
+      label: "Member workspaces",
+      options:
+        administeredMember && memberScope
+          ? [
+              {
+                id: scopeOptionId(memberScope),
+                label: administeredMemberName(administeredMember),
+                description: `${administeredMember.organization.name} member`,
+                scope: memberScope,
+              },
+            ]
+          : [],
+      shortcuts: administeredOrganizations.map((organization) => ({
+        key: organization.id,
+        to: `/backoffice/organizations/${encodeURIComponent(organization.slug)}/members`,
+        label: `${organization.name} members`,
+        description: "Open a member's personal workspace",
+      })),
+      more: null,
+    });
+  }
+  return groups;
 }

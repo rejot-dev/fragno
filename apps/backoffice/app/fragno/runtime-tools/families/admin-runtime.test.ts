@@ -33,6 +33,11 @@ function createAdminRuntimeDependencies() {
       getOrganizationBySlug: async (slug: string) =>
         slug === "acme" ? { id: "org-1", slug } : null,
       getOrganization: async () => null,
+      getOrganizationRelations: async () => ({
+        memberCount: 0,
+        managingOrganization: null,
+        managedOrganizations: [],
+      }),
       listOrganizations: async () => ({ organizations: [], nextCursor: null, hasNextPage: false }),
       listOrganizationMembers: async () => ({ members: [], nextCursor: null, hasNextPage: false }),
       addAdminOrganizationMember: async (input: {

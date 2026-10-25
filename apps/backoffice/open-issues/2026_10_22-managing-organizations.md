@@ -42,8 +42,13 @@ This version differs from the proposal below:
 - Credentials record no `via`. They are live through `me` and deferred authority, and an issued
   credential lasts until it expires, as after leaving an organization.
 
-Everything for first-party apps is still open: managed provisioning, `managed.list`, `org.get`'s
-`managedBy`/`access`, ownerless managed organizations, and Bookkeeping's and MI's migrations.
+- Inside Backoffice, both organizations see the relationship: a "Who can act here" panel, a Clients
+  tab for the managing organization, and `admin.org.get`'s `managingOrganization`. Apps cannot read
+  any of this yet.
+
+Everything for first-party apps is still open: managed provisioning, the `managed.list` operation,
+`org.get`'s `managedBy`/`access`, ownerless managed organizations, and Bookkeeping's and MI's
+migrations.
 
 ## Motivation
 

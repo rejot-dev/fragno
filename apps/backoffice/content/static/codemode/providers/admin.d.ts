@@ -38,7 +38,7 @@ type AdminCodemodeProvider = {
    */
   orgList(input: AdminOrgListInput): Promise<AdminOrgListOutput>;
   /**
-   * Read one organization by slug.
+   * Read one organization by slug, with the organization managing it, if any.
    * Requires `admin.organizations.manage`.
    */
   orgGet(input: AdminOrgGetInput): Promise<AdminOrgGetOutput>;
@@ -571,7 +571,18 @@ type AdminOrgListOutput = OrganizationPage;
 type AdminOrgGetInput = {
   organizationSlug: string;
 };
-type AdminOrgGetOutput = OrganizationRecord;
+type AdminOrgGetOutput = {
+  organizationId: string;
+  name: string;
+  slug: string;
+  /** ISO 8601 datetime string. */
+  createdAt: string;
+  managingOrganization: {
+    organizationId: string;
+    name: string;
+    slug: string;
+  } | null;
+};
 type AdminOrgMembersListInput = {
   pageSize?: number;
   cursor?: string | null;

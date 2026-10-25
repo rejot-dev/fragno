@@ -197,11 +197,14 @@ export type UserOrganizationAuthorityFacts = Readonly<{
 
 /**
  * A user whose personal workspace another user may act in, because that user is an owner or admin
- * of an organization they both belong to.
+ * of an organization the member belongs to, or of the organization managing it. `organization` is
+ * the member's organization that grants it, one the administrator belongs to when there is one.
  */
 export type AdministeredMember = Readonly<{
   userId: string;
+  name: string;
   email: string;
+  organization: Readonly<{ id: string; name: string; slug: string }>;
 }>;
 
 /** Whether an organization's member with these roles may act in its members' personal workspaces. */

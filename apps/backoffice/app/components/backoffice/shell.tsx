@@ -14,6 +14,7 @@ import { BackofficeClsDebugger } from "./cls-debugger";
 import { CurrentBackofficeProvider } from "./current-context";
 import type { CurrentBackofficeContext } from "./current-context-state";
 import { GlobalHotkeysProvider, useGlobalHotkey } from "./global-hotkeys";
+import { MemberWorkspaceBanner } from "./member-workspace-banner";
 import { QuakeTerminal } from "./quake-terminal";
 import { BackofficeSidebarNav } from "./sidebar-nav";
 import { BackofficeTopBar } from "./top-bar";
@@ -203,6 +204,11 @@ function BackofficeShellFrame({
             onCollapsedChange={setSidebarCollapsed}
           />
           <main className="relative z-10 flex min-w-0 flex-1 flex-col">
+            <MemberWorkspaceBanner
+              me={me}
+              resolvedScope={resolvedScope}
+              administeredMember={administeredMember}
+            />
             <div className="flex min-w-0 flex-1 flex-col">{children}</div>
           </main>
         </div>

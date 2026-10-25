@@ -23,6 +23,7 @@ import {
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import { loader as dashboardLoader } from "@/routes/backoffice/dashboard/dashboard";
+import { loader as organizationLayoutLoader } from "@/routes/backoffice/organization-layout";
 import { loader as organizationMembersLoader } from "@/routes/backoffice/organization-members";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
@@ -151,6 +152,27 @@ async function runSystemCommand(ctx: Ctx, command: string) {
   });
   const result = await bash.exec(command);
   assert.equal(result.exitCode, 0, result.stderr);
+  return result.stdout;
+}
+
+/** Who acts in the organization, as its settings pages show the user. */
+async function organizationRelations(ctx: Ctx, cookie: string, orgSlug: string) {
+  const opened = await load(ctx, {
+    path: `/backoffice/organizations/${orgSlug}`,
+    params: { orgSlug },
+    loader: organizationLayoutLoader,
+    cookie,
+  });
+  assert(opened.status === 200, `Opening ${orgSlug}'s settings answered ${opened.status}.`);
+  return z
+    .object({
+      relations: z.object({
+        memberCount: z.number(),
+        managingOrganization: z.object({ slug: z.string() }).nullable(),
+        managedOrganizations: z.array(z.object({ slug: z.string(), memberCount: z.number() })),
+      }),
+    })
+    .parse(opened.data).relations;
 }
 
 test("an agency's members act in the organizations it manages until management ends", async () => {
@@ -207,6 +229,9 @@ test("an agency's members act in the organizations it manages until management e
         ),
         then.assert("a system administrator makes the Agency manage the Client", async (ctx) => {
           await runSystemCommand(ctx, "admin.org.manager.set --org client --manager agency");
+          expect(await runSystemCommand(ctx, "admin.org.get --org client")).toContain(
+            "Managed by: Agency (agency)",
+          );
         }),
         then.assert(
           "Ada acts in the Client as an admin, in its projects and in Cleo's personal scope",
@@ -280,6 +305,36 @@ test("an agency's members act in the organizations it manages until management e
                 userId: ctx.vars.adaId,
               });
             expect(membership?.roles).toEqual(["admin"]);
+
+            // Her settings pages list the Agency's client, and the Client says who manages it.
+            const [adaSession] = ctx.vars.adaCookie.split("; fragno-backoffice.access_token=");
+            const adaInAgency = await withBackofficeAccessToken(
+              ctx,
+              adaSession!,
+              ctx.vars.agencyId,
+            );
+            expect(await organizationRelations(ctx, adaInAgency, "agency")).toEqual({
+              memberCount: 2,
+              managingOrganization: null,
+              managedOrganizations: [expect.objectContaining({ slug: "client", memberCount: 1 })],
+            });
+            expect(await organizationRelations(ctx, ctx.vars.adaCookie, "client")).toEqual({
+              memberCount: 1,
+              managingOrganization: { slug: "agency" },
+              managedOrganizations: [],
+            });
+            // Cleo's workspace says whose it is and which organization lets Ada in.
+            expect(
+              await ctx.runtime.objects.auth.singleton().commands.findAdministeredMember({
+                administratorId: ctx.vars.adaId,
+                memberId: ctx.vars.cleoId,
+              }),
+            ).toEqual({
+              userId: ctx.vars.cleoId,
+              name: expect.any(String),
+              email: "cleo@client.test",
+              organization: { id: ctx.vars.clientId, name: "Client", slug: "client" },
+            });
           },
         ),
         then.assert(
@@ -337,6 +392,11 @@ test("an agency's members act in the organizations it manages until management e
                 totalPages: 1,
               },
             });
+            // She sees who manages the Client, though its people are not her members.
+            expect(
+              (await organizationRelations(ctx, ctx.vars.cleoCookie, "client"))
+                .managingOrganization,
+            ).toEqual({ slug: "agency" });
           },
         ),
         then.assert("ending management takes the Client away from Ada", async (ctx) => {

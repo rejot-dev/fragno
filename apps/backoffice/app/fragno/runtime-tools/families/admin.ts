@@ -4,7 +4,6 @@ import {
   organizationMemberPageSchema,
   organizationRecordSchema,
   type OrganizationMemberPage,
-  type OrganizationRecord,
 } from "@fragno-dev/backoffice-api/v0/organization";
 import {
   directoryPageInputSchema,
@@ -102,7 +101,7 @@ export type AdminRuntime = {
     ownerEmail: string;
   }): Promise<AdminOrganizationRecord>;
   listOrganizations(input: DirectoryPageInput): Promise<OrganizationPage>;
-  getOrganization(input: { organizationSlug: string }): Promise<OrganizationRecord>;
+  getOrganization(input: { organizationSlug: string }): Promise<AdminOrganizationDetails>;
   listOrganizationMembers(
     input: { organizationSlug: string } & DirectoryPageInput,
   ): Promise<OrganizationMemberPage>;
@@ -145,6 +144,31 @@ const organizationMemberChangeRecordSchema = z.strictObject({
   userId: z.string().trim().min(1),
   roles: z.array(z.string().trim().min(1)).min(1),
 });
+
+/** An organization as administrators read it: with the organization managing it, if any. */
+const adminOrganizationDetailsSchema = z.lazy(() =>
+  organizationRecordSchema._zod.innerType.extend({
+    managingOrganization: z
+      .strictObject({
+        organizationId: z.string().min(1),
+        name: z.string().min(1),
+        slug: z.string().min(1),
+      })
+      .nullable(),
+  }),
+);
+export type AdminOrganizationDetails = z.output<typeof adminOrganizationDetailsSchema>;
+
+function formatAdminOrganizationText(organization: AdminOrganizationDetails): string {
+  return [
+    formatOrganizationText(organization),
+    `  Managed by: ${
+      organization.managingOrganization
+        ? `${organization.managingOrganization.name} (${organization.managingOrganization.slug})`
+        : "none"
+    }`,
+  ].join("\n");
+}
 
 const organizationManagerRecordSchema = z.strictObject({
   organizationId: z.string().trim().min(1),
@@ -385,10 +409,10 @@ const getOrganizationTool = defineBackofficeRuntimeTool({
   id: "admin.org.get",
   namespace: "admin",
   name: "orgGet",
-  description: "Read one organization by slug.",
+  description: "Read one organization by slug, with the organization managing it, if any.",
   requiredPermissions: [BACKOFFICE_PERMISSION.admin.organizationsManage],
   inputSchema: z.strictObject({ organizationSlug: z.string().trim().min(1) }),
-  outputSchema: organizationRecordSchema,
+  outputSchema: adminOrganizationDetailsSchema,
   execute: async (input, context: AdminToolContext) =>
     await getAdminRuntime(context.runtimes.admin).getOrganization(input),
   adapters: {
@@ -405,7 +429,7 @@ const getOrganizationTool = defineBackofficeRuntimeTool({
       format: (result, options) =>
         options.format === "json" || options.print
           ? { data: result }
-          : { data: result, stdout: `${formatOrganizationText(result)}\n` },
+          : { data: result, stdout: `${formatAdminOrganizationText(result)}\n` },
     },
   },
 });
