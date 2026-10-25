@@ -1,12 +1,13 @@
+import { lofiSqliteTableName, registeredSchemaName } from "@fragno-dev/lofi/sqlite";
+import type { LofiSqliteSyncConnection } from "@fragno-dev/lofi/sqlite/worker";
+
+import type { LofiSchemaRegistration } from "@fragno-dev/lofi";
+
 import { LogContext } from "@rocicorp/logger";
 
-import { lofiSqliteTableName, quoteSqliteIdentifier, registeredSchemaName } from "../sqlite/layout";
-import type { LofiSchemaRegistration } from "../types";
 import { lofiZqlSchema } from "./schema";
 import type { LogConfig } from "./vendor/otel/src/log-options.ts";
-import type { AST } from "./vendor/zero-protocol/src/ast.ts";
 import type { Row } from "./vendor/zero-protocol/src/data.ts";
-import type { Format } from "./vendor/zero-types/src/format.ts";
 import type { SchemaValue } from "./vendor/zero-types/src/schema-value.ts";
 import { buildPipeline, type BuilderDelegate } from "./vendor/zql/src/builder/builder.ts";
 import { ArrayView } from "./vendor/zql/src/ivm/array-view.ts";
@@ -25,7 +26,8 @@ import {
   type RawColumn,
   type SQLiteValue,
 } from "./vendor/zqlite/src/table-source.ts";
-import { Database, type LofiZqlConnection, type Statement } from "./zqlite-database.ts";
+import type { LofiZqlViewQuery } from "./view-query";
+import { Database, type Statement } from "./zqlite-database.ts";
 
 /** One replica table as IVM reads it. */
 type ZqlTable = {
@@ -35,13 +37,6 @@ type ZqlTable = {
   primaryKey: [string];
   readByInternalId: Statement;
   readById: Statement;
-};
-
-type ViewSpec = {
-  schemaName: string;
-  ast: AST;
-  format: Format;
-  listener: (data: unknown) => void;
 };
 
 /** Holds the earlier values of each row a write touches, until IVM catches up with the write. */
@@ -65,8 +60,8 @@ const LOG_CONFIG: LogConfig = {
  *
  * SQLite triggers record the earlier values of the rows this connection writes. `refresh` rewinds
  * each source to those values and pushes the rows' changes one at a time, which is what IVM
- * requires: every push must see the database as it was before the change. Writes by other
- * connections are not recorded, so after one, views are built again.
+ * requires: every push must see the database as it was before the change. The triggers are
+ * temporary, so they see only this connection's writes: no other connection may write the database.
  */
 export class LofiZqlEngine {
   readonly #database: Database;
@@ -75,11 +70,13 @@ export class LofiZqlEngine {
   readonly #tables: Map<string, Map<string, ZqlTable>>;
   readonly #tablesBySqlName: Map<string, ZqlTable>;
   readonly #sources = new Map<string, TableSource>();
-  readonly #views = new Map<number, { spec: ViewSpec; view: ArrayView<never> }>();
-  /** `PRAGMA data_version` when IVM last caught up, or null before the triggers exist. */
-  #dataVersion: number | null = null;
+  readonly #views = new Map<string, ArrayView<never>>();
+  #recording = false;
 
-  constructor(connection: LofiZqlConnection, registrations: LofiSchemaRegistration[]) {
+  constructor(
+    connection: LofiSqliteSyncConnection,
+    registrations: readonly LofiSchemaRegistration[],
+  ) {
     this.#database = new Database(connection);
     this.#tables = new Map(
       registrations.map((registration) => [
@@ -117,37 +114,32 @@ export class LofiZqlEngine {
     );
   }
 
-  /** Builds a view of `ast`, a query on the tables of a registered schema, and reports its data. */
-  materialize(id: number, spec: ViewSpec): void {
+  /** Builds a view of a query on the tables of a registered schema, and reports its data. */
+  materialize(id: string, query: LofiZqlViewQuery, listener: (data: unknown) => void): void {
     this.refresh();
-    this.#views.set(id, { spec, view: this.#build(id, spec) });
+    this.destroy(id);
+    this.#views.set(id, this.#build(id, query, listener));
   }
 
-  destroy(id: number): void {
-    this.#views.get(id)?.view.destroy();
+  destroy(id: string): void {
+    this.#views.get(id)?.destroy();
     this.#views.delete(id);
   }
 
   /** Brings every view up to date with the database and reports the data of views that changed. */
   refresh(): void {
-    if (this.#dataVersion === null) {
+    if (!this.#recording) {
       this.#recordChanges();
-      this.#dataVersion = this.#readDataVersion();
-      return;
-    }
-    const dataVersion = this.#readDataVersion();
-    if (dataVersion !== this.#dataVersion) {
-      this.#dataVersion = dataVersion;
-      this.#rebuildViews();
+      this.#recording = true;
       return;
     }
     this.#pushRecordedChanges();
   }
 
-  #build(id: number, spec: ViewSpec): ArrayView<never> {
-    const tables = this.#tables.get(spec.schemaName);
+  #build(id: string, query: LofiZqlViewQuery, listener: (data: unknown) => void): ArrayView<never> {
+    const tables = this.#tables.get(query.schemaName);
     if (!tables) {
-      throw new Error(`Schema "${spec.schemaName}" is not registered with the replica.`);
+      throw new Error(`Schema "${query.schemaName}" is not registered with the replica.`);
     }
     const delegate: BuilderDelegate = {
       // The replica holds whole tables, so a missing row is known to be missing.
@@ -162,13 +154,13 @@ export class LofiZqlEngine {
       decorateFilterInput: (input) => input,
       decorateSourceInput: (input) => input,
     };
-    const input = buildPipeline(spec.ast, delegate, String(id));
-    const view = new ArrayView<never>(input, spec.format, true, () => {});
+    const input = buildPipeline(query.ast, delegate, id);
+    const view = new ArrayView<never>(input, query.format, true, () => {});
     view.onDestroy = () => {
       input.destroy();
     };
     view.addListener((data) => {
-      spec.listener(data);
+      listener(data);
     });
     return view;
   }
@@ -190,18 +182,6 @@ export class LofiZqlEngine {
       this.#sources.set(table.sqlName, source);
     }
     return source;
-  }
-
-  #rebuildViews(): void {
-    this.#run(`DELETE FROM ${CHANGES_TABLE}`);
-    const views = [...this.#views];
-    for (const [, { view }] of views) {
-      view.destroy();
-    }
-    this.#sources.clear();
-    for (const [id, { spec }] of views) {
-      this.#views.set(id, { spec, view: this.#build(id, spec) });
-    }
   }
 
   #recordChanges(): void {
@@ -301,14 +281,9 @@ export class LofiZqlEngine {
     for (const source of touched.keys()) {
       source.setDB(this.#database);
     }
-    for (const { view } of this.#views.values()) {
+    for (const view of this.#views.values()) {
       view.flush();
     }
-  }
-
-  #readDataVersion(): number {
-    const [row] = this.#database.prepare("PRAGMA data_version").raw(true).all<SQLiteValue[]>();
-    return Number(row?.[0]);
   }
 
   #run(sql: string): void {
@@ -325,6 +300,10 @@ function readRow(table: ZqlTable, statement: Statement, key: unknown): Row | und
 
 function selectList(columns: Record<string, SchemaValue>): string {
   return Object.keys(columns).map(quoteSqliteIdentifier).join(", ");
+}
+
+function quoteSqliteIdentifier(identifier: string): string {
+  return `"${identifier.replaceAll('"', '""')}"`;
 }
 
 function sqlString(value: string): string {

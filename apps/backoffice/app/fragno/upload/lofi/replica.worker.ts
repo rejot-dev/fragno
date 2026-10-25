@@ -1,4 +1,5 @@
-import { serveLofiZqlWorker } from "@fragno-dev/lofi/zql/worker";
+import { zqlViewEngine } from "@fragno-dev/lofi-zql/worker";
+import { serveLofiSqliteWorker } from "@fragno-dev/lofi/sqlite/worker";
 
 import { backofficeFetch } from "@/fragno/auth/browser-auth.client";
 
@@ -8,17 +9,19 @@ import { UPLOAD_REPLICA_SCHEMAS } from "./replica-schemas";
 const RETRY_DELAY_MS = 5_000;
 
 // A worker starts with no arguments but its name, so the page names it after the backend's URL.
-void serveLofiZqlWorker({
-  baseUrl: self.name,
-  fetch: backofficeFetch,
-  schemas: UPLOAD_REPLICA_SCHEMAS,
-  localSchemas: [],
-  projections: [],
-  ephemeralTables: [],
-  onError(error) {
-    console.error("The Upload replica failed to synchronize.", error);
+// A replica that fails to open fails the page's connection.
+serveLofiSqliteWorker({
+  replica: {
+    baseUrl: self.name,
+    fetch: backofficeFetch,
+    schemas: UPLOAD_REPLICA_SCHEMAS,
+    localSchemas: [],
+    projections: [],
+    ephemeralTables: [],
+    onError(error) {
+      console.error("The Upload replica failed to synchronize.", error);
+    },
+    retryDelayMs: RETRY_DELAY_MS,
   },
-  retryDelayMs: RETRY_DELAY_MS,
-}).catch(() => {
-  // The page learns the failure and shows it.
+  engines: [zqlViewEngine],
 });

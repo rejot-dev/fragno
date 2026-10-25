@@ -1,30 +1,17 @@
 // Stands in for zqlite's `db.ts`, which wraps a native SQLite binding, in the vendored TableSource;
 // see scripts/vendor-zql.mjs. Only the methods TableSource and its statement cache call exist.
 
+import type {
+  LofiSqliteSyncConnection,
+  LofiSqliteSyncStatement,
+} from "@fragno-dev/lofi/sqlite/worker";
+
 import type { SQLiteValue } from "./vendor/zqlite/src/table-source.ts";
 
-/**
- * A synchronous SQLite connection. IVM operators pull rows in the middle of a push, so a source
- * cannot wait for its database.
- */
-export type LofiZqlConnection = {
-  prepare(sql: string): LofiZqlStatement;
-};
-
-export type LofiZqlStatement = {
-  /** The result columns, in the order of a row's values. */
-  readonly columnNames: readonly string[];
-  /**
-   * Runs the statement and yields each row's values, with integers outside the safe range as
-   * bigints. Returning the iterator early ends the run.
-   */
-  rows(params: readonly unknown[]): IterableIterator<SQLiteValue[]>;
-};
-
 export class Database {
-  readonly #connection: LofiZqlConnection;
+  readonly #connection: LofiSqliteSyncConnection;
 
-  constructor(connection: LofiZqlConnection) {
+  constructor(connection: LofiSqliteSyncConnection) {
     this.#connection = connection;
   }
 
@@ -34,10 +21,10 @@ export class Database {
 }
 
 export class Statement {
-  readonly #statement: LofiZqlStatement;
+  readonly #statement: LofiSqliteSyncStatement;
   #raw = false;
 
-  constructor(statement: LofiZqlStatement) {
+  constructor(statement: LofiSqliteSyncStatement) {
     this.#statement = statement;
   }
 
@@ -56,25 +43,25 @@ export class Statement {
   }
 
   run(...params: unknown[]): void {
-    for (const _ of this.#statement.rows(params)) {
+    for (const _ of this.#rows(params)) {
       // Writes return no rows; draining runs the statement to completion.
     }
   }
 
   // oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- TableSource passes the row type, as to zqlite's own statements.
   get<T>(...params: unknown[]): T {
-    const rows = this.#statement.rows(params);
+    const rows = this.#rows(params);
     const first = rows.next();
     rows.return?.();
     return (first.done ? undefined : this.#shape(first.value)) as T;
   }
 
   all<T>(...params: unknown[]): T[] {
-    return Array.from(this.#statement.rows(params), (values) => this.#shape(values) as T);
+    return Array.from(this.#rows(params), (values) => this.#shape(values) as T);
   }
 
   batches(params: readonly unknown[]): BatchCursor {
-    return new BatchCursor(this.#statement.rows(params));
+    return new BatchCursor(this.#rows(params));
   }
 
   /** Statements report no scan status, which TableSource only reads in debug mode. */
@@ -83,6 +70,11 @@ export class Statement {
   }
 
   scanStatusReset(): void {}
+
+  #rows(params: readonly unknown[]): IterableIterator<SQLiteValue[]> {
+    // IVM reads no binary columns, so its rows hold no blobs.
+    return this.#statement.rows(params) as IterableIterator<SQLiteValue[]>;
+  }
 
   #shape(values: SQLiteValue[]): unknown {
     if (this.#raw) {

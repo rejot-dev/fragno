@@ -3,15 +3,16 @@ import { afterEach, assert, describe, expect, it } from "vitest";
 import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
 import { BetterSQLite3DriverConfig } from "@fragno-dev/db/drivers";
 import { column, idColumn, referenceColumn, schema, type FragnoId } from "@fragno-dev/db/schema";
+import type { LofiSqliteViewResult } from "@fragno-dev/lofi/sqlite";
+import { openLofiSqliteMemoryFiles, openLofiSqliteTab } from "@fragno-dev/lofi/sqlite/testing";
 import BetterSqlite3 from "better-sqlite3";
 import { SqliteDialect } from "kysely";
 
 import { defineFragment, instantiate } from "@fragno-dev/core";
 import { migrate, withDatabase, type TypedUnitOfWork } from "@fragno-dev/db";
 
-import { openLofiSqliteMemoryFiles } from "../sqlite/testing";
-import { connectLofiZql, type LofiZqlResult, type LofiZqlSchemaClient } from "./client";
-import { serveLofiZql, type LofiZqlHost } from "./host";
+import { lofiZql, type LofiZqlSchemaClient } from "./client";
+import { zqlViewEngine } from "./worker";
 
 const appSchema = schema("app", (s) =>
   s
@@ -36,17 +37,21 @@ const appSchema = schema("app", (s) =>
 type AppClient = LofiZqlSchemaClient<typeof appSchema>;
 
 // ---------------------------------------------------------------------------------------------
-// Scenario DSL: a fragment on fragno-db's SQLite backend serves the outbox. Each "tab" runs a ZQL
-// host, as its worker would, and a client talking to it over a MessageChannel; wa-sqlite's
-// in-memory VFS stands in for OPFS.
+// Scenario DSL: a fragment on fragno-db's SQLite backend serves the outbox. Each "tab" runs a
+// replica host with the ZQL engine, as its worker would, and a client talking to it over a
+// MessageChannel; wa-sqlite's in-memory VFS stands in for OPFS.
 // ---------------------------------------------------------------------------------------------
 
 type ScenarioContext = {
-  tabs: Map<string, { host: LofiZqlHost; client: AppClient; port: MessagePort }>;
+  tabs: Map<string, { app: AppClient; close(): Promise<void> }>;
   /** Every result a watched view reported, by `<tab>/<view>`. */
-  views: Map<string, { results: LofiZqlResult<unknown>[]; unwatch: () => void }>;
+  views: Map<string, { results: LofiSqliteViewResult<unknown>[]; unwatch: () => void }>;
   errors: unknown[];
   vars: Record<string, FragnoId[]>;
+  /** How many tabs opened the database. */
+  databasesOpened: number;
+  /** Rows the engines read from SQLite. */
+  rowsRead: number;
 };
 
 type ScenarioStep =
@@ -59,7 +64,8 @@ type ScenarioStep =
       storeIdsAs: string;
       write: (uow: TypedUnitOfWork<typeof appSchema>, vars: ScenarioContext["vars"]) => void;
     }
-  | { type: "waitForView"; tab: string; view: string; data: unknown };
+  | { type: "waitForView"; tab: string; view: string; data: unknown }
+  | { type: "check"; check: (ctx: ScenarioContext) => void };
 
 const openTab = (tab: string): ScenarioStep => ({ type: "openTab", tab });
 const closeTab = (tab: string): ScenarioStep => ({ type: "closeTab", tab });
@@ -82,6 +88,8 @@ const waitForView = (tab: string, view: string, data: unknown): ScenarioStep => 
   view,
   data,
 });
+
+const check = (check: (ctx: ScenarioContext) => void): ScenarioStep => ({ type: "check", check });
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -112,14 +120,42 @@ async function runZqlScenario(steps: ScenarioStep[]): Promise<ScenarioContext> {
   };
   const files = await openLofiSqliteMemoryFiles({ statementDelayMs: 0 });
 
-  const ctx: ScenarioContext = { tabs: new Map(), views: new Map(), errors: [], vars: {} };
+  const ctx: ScenarioContext = {
+    tabs: new Map(),
+    views: new Map(),
+    errors: [],
+    vars: {},
+    databasesOpened: 0,
+    rowsRead: 0,
+  };
+  const openDatabase = async (open: { databaseName: string }) => {
+    const database = await files.open(open);
+    ctx.databasesOpened++;
+    return {
+      ...database,
+      connection: {
+        prepare(sql: string) {
+          const statement = database.connection.prepare(sql);
+          return {
+            columnNames: statement.columnNames,
+            isReadOnly: statement.isReadOnly,
+            *rows(params: Parameters<typeof statement.rows>[0]) {
+              for (const row of statement.rows(params)) {
+                ctx.rowsRead++;
+                yield row;
+              }
+            },
+          };
+        },
+      },
+    };
+  };
   cleanups.push(async () => {
     for (const { unwatch } of ctx.views.values()) {
       unwatch();
     }
-    for (const { host, port } of ctx.tabs.values()) {
-      await host.close();
-      port.close();
+    for (const tab of ctx.tabs.values()) {
+      await tab.close();
     }
     await adapter.close();
     server.close();
@@ -128,8 +164,7 @@ async function runZqlScenario(steps: ScenarioStep[]): Promise<ScenarioContext> {
   for (const step of steps) {
     switch (step.type) {
       case "openTab": {
-        const channel = new MessageChannel();
-        const host = await serveLofiZql({
+        const tab = await openLofiSqliteTab({
           replica: {
             baseUrl: "http://zql.test",
             fetch: fetch as typeof globalThis.fetch,
@@ -140,26 +175,24 @@ async function runZqlScenario(steps: ScenarioStep[]): Promise<ScenarioContext> {
             onError: (error) => ctx.errors.push(error),
             retryDelayMs: 10,
           },
-          port: channel.port1,
-          openDatabase: files.open,
+          engines: [zqlViewEngine],
+          openDatabase,
+          heartbeatIntervalMs: 20,
+          leaderTimeoutMs: 200,
         });
-        const client = (
-          await connectLofiZql({ port: channel.port2, schemas: [{ schema: appSchema }] })
-        ).forSchema(appSchema);
-        ctx.tabs.set(step.tab, { host, client, port: channel.port2 });
+        ctx.tabs.set(step.tab, { app: lofiZql(tab.client, appSchema), close: tab.close });
         break;
       }
       case "closeTab": {
-        const { host, port } = ctx.tabs.get(step.tab)!;
+        const tab = ctx.tabs.get(step.tab)!;
         ctx.tabs.delete(step.tab);
-        await host.close();
-        port.close();
+        await tab.close();
         break;
       }
       case "watch": {
-        const { client } = ctx.tabs.get(step.tab)!;
-        const store = client.store(step.query(client) as never);
-        const results: LofiZqlResult<unknown>[] = [];
+        const { app } = ctx.tabs.get(step.tab)!;
+        const store = app.store(step.query(app) as never);
+        const results: LofiSqliteViewResult<unknown>[] = [];
         const unwatch = store.subscribe((result) => {
           results.push(result);
         });
@@ -186,6 +219,9 @@ async function runZqlScenario(steps: ScenarioStep[]): Promise<ScenarioContext> {
             timeout: 2_000,
           })
           .toMatchObject({ status: "ready", data: step.data });
+        break;
+      case "check":
+        step.check(ctx);
         break;
     }
   }
@@ -300,26 +336,72 @@ describe("Lofi ZQL", () => {
     expect(ctx.errors).toEqual([]);
   });
 
-  it("builds a tab's views again from the rows another tab writes, and incrementally once it writes itself", async () => {
+  it("maintains every tab's views incrementally in the leading tab, then in the next one", async () => {
+    const others = Array.from({ length: 198 }, (_, i) => ({
+      email: `user${String(i + 2).padStart(3, "0")}@example.com`,
+    }));
     const ctx = await runZqlScenario([
       openTab("a"),
       openTab("b"),
       watch("b", "users", (app) => app.query.users.orderBy("email", "asc")),
       waitForView("b", "users", []),
-      write("ada", (uow) => {
-        uow.create("users", user("ada@example.com"));
+      // Tab a leads: only it opened the database, and it answers tab b's view.
+      check((ctx) => {
+        assert.equal(ctx.databasesOpened, 1);
       }),
-      waitForView("b", "users", [{ email: "ada@example.com" }]),
-      // Tab b takes over writing.
+      write("users", (uow) => {
+        for (let i = 0; i < 200; i++) {
+          uow.create("users", user(`user${String(i).padStart(3, "0")}@example.com`));
+        }
+      }),
+      waitForView("b", "users", [
+        { email: "user000@example.com" },
+        { email: "user001@example.com" },
+        ...others,
+      ]),
+
+      // A change reads the rows it touches; building the view again would read all 200.
+      check((ctx) => {
+        ctx.rowsRead = 0;
+      }),
+      write("renamed", (uow, vars) => {
+        uow.update("users", vars["users"]![1]!, (b) => b.set({ email: "a@example.com" }));
+      }),
+      waitForView("b", "users", [
+        { email: "a@example.com" },
+        { email: "user000@example.com" },
+        ...others,
+      ]),
+      check((ctx) => {
+        expect(ctx.rowsRead).toBeLessThan(10);
+      }),
+
+      // Tab b leads once tab a closes, and builds its views again.
       closeTab("a"),
-      write("bob", (uow) => {
-        uow.create("users", user("bob@example.com"));
+      write("first", (uow) => {
+        uow.create("users", user("0@example.com"));
       }),
-      waitForView("b", "users", [{ email: "ada@example.com" }, { email: "bob@example.com" }]),
+      waitForView("b", "users", [
+        { email: "0@example.com" },
+        { email: "a@example.com" },
+        { email: "user000@example.com" },
+        ...others,
+      ]),
+      check((ctx) => {
+        assert.equal(ctx.databasesOpened, 2);
+        ctx.rowsRead = 0;
+      }),
       write("removed", (uow, vars) => {
-        uow.delete("users", vars["ada"]![0]!);
+        uow.delete("users", vars["first"]![0]!);
       }),
-      waitForView("b", "users", [{ email: "bob@example.com" }]),
+      waitForView("b", "users", [
+        { email: "a@example.com" },
+        { email: "user000@example.com" },
+        ...others,
+      ]),
+      check((ctx) => {
+        expect(ctx.rowsRead).toBeLessThan(10);
+      }),
     ]);
     expect(ctx.errors).toEqual([]);
   });

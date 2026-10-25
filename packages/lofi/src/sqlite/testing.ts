@@ -6,13 +6,15 @@ import { MemoryVFS } from "@journeyapps/wa-sqlite/src/examples/MemoryVFS.js";
 
 import * as SQLite from "@journeyapps/wa-sqlite";
 
-import { wrapWaSqliteDatabase, type LofiZqlSqliteDatabase } from "../zql/wa-sqlite";
+import { connectLofiSqlite, type LofiSqliteClient } from "./client";
+import { serveLofiSqlite, type LofiSqliteHost, type LofiSqliteHostOptions } from "./host";
 import { LOFI_SQLITE_ENDPOINT_NAME, type LofiSqliteReplica } from "./replica";
+import { wrapWaSqliteDatabase, type LofiSqliteSyncDatabase } from "./sync-connection";
 
 /**
  * Opens replica databases in Node: one wa-sqlite module, the same SQLite build browsers run, whose
- * in-memory files every connection shares, like OPFS. Pass `open` as the replica's or the ZQL
- * host's `openDatabase` dependency.
+ * in-memory files every connection shares, like OPFS. Pass `open` as the replica's or the host's
+ * `openDatabase` dependency.
  */
 export async function openLofiSqliteMemoryFiles(options: {
   /** Delays every statement, like a slow OPFS write, to keep a catch-up observable. */
@@ -31,7 +33,7 @@ export async function openLofiSqliteMemoryFiles(options: {
 
   return {
     // A property rather than a method, so it can be passed on as the `openDatabase` dependency.
-    open: async ({ databaseName }: { databaseName: string }): Promise<LofiZqlSqliteDatabase> => {
+    open: async ({ databaseName }: { databaseName: string }): Promise<LofiSqliteSyncDatabase> => {
       const db = await sqlite3.open_v2(databaseName, undefined, "lofi-memory");
       const database = wrapWaSqliteDatabase({
         module,
@@ -82,5 +84,33 @@ export async function waitForLofiSqliteReplica(
     await new Promise((resolve) => {
       setTimeout(resolve, 5);
     });
+  }
+}
+
+/**
+ * Opens a tab as a page and its replica worker do, talking over a MessageChannel, and connects once
+ * a tab has opened the replica. A tab whose connection fails is closed again.
+ */
+export async function openLofiSqliteTab(options: Omit<LofiSqliteHostOptions, "port">): Promise<{
+  host: LofiSqliteHost;
+  client: LofiSqliteClient;
+  close(): Promise<void>;
+}> {
+  const channel = new MessageChannel();
+  const host = serveLofiSqlite({ ...options, port: channel.port1 });
+  const close = async () => {
+    await host.close();
+    channel.port1.close();
+    channel.port2.close();
+  };
+  try {
+    const client = await connectLofiSqlite({
+      port: channel.port2,
+      schemas: [...options.replica.schemas, ...options.replica.localSchemas],
+    });
+    return { host, client, close };
+  } catch (error) {
+    await close();
+    throw error;
   }
 }

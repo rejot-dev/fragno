@@ -1,4 +1,4 @@
-import type { LofiZqlClient } from "@fragno-dev/lofi/zql";
+import type { LofiSqliteClient } from "@fragno-dev/lofi/sqlite";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
 import { Suspense, use, useMemo } from "react";
 import { useLoaderData, useOutletContext } from "react-router";
@@ -141,7 +141,7 @@ function SynchronizedFilesExplorer({
   ...props
 }: FilesExplorerRouteViewProps & {
   synchronizedSource: SynchronizedFilesExplorerSource;
-  replica: LofiZqlClient;
+  replica: LofiSqliteClient;
 }) {
   const { provider } = synchronizedSource.synchronization;
   const status = useLofiReplicaStatus(replica);

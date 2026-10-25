@@ -1,5 +1,5 @@
 // Copies the ZQL query builder, IVM operators, and zqlite's TableSource from a checkout of
-// rocicorp/mono into src/zql/vendor, keeping mono's package layout so relative imports resolve
+// rocicorp/mono into src/vendor, keeping mono's package layout so relative imports resolve
 // unchanged. zqlite's native SQLite bindings are replaced by Fragno modules (see REPLACEMENTS).
 //
 // Usage: node scripts/vendor-zql.mjs <path-to-mono-checkout>
@@ -22,14 +22,14 @@ const ENTRIES = [
 ];
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const zqlRoot = join(packageRoot, "src/zql");
-const vendorRoot = join(zqlRoot, "vendor");
+const srcRoot = join(packageRoot, "src");
+const vendorRoot = join(srcRoot, "vendor");
 
 // Vendored modules that are swapped for Fragno modules, by their path in mono's packages.
 const REPLACEMENTS = new Map([
-  ["zqlite/src/db.ts", join(zqlRoot, "zqlite-database.ts")],
-  ["zqlite/src/index-usage.ts", join(zqlRoot, "zqlite-shims.ts")],
-  ["@rocicorp/zero-sqlite3", join(zqlRoot, "zqlite-shims.ts")],
+  ["zqlite/src/db.ts", join(srcRoot, "zqlite-database.ts")],
+  ["zqlite/src/index-usage.ts", join(srcRoot, "zqlite-shims.ts")],
+  ["@rocicorp/zero-sqlite3", join(srcRoot, "zqlite-shims.ts")],
 ]);
 
 // Edits to vendored files, each anchored on text that must occur exactly once upstream.
@@ -43,7 +43,7 @@ const PATCHES = [
   },
   {
     // Lets the replica rewind a source to the rows it held before a batch that SQLite already
-    // applied, so the batch's changes can be pushed one at a time; see src/zql/engine.ts.
+    // applied, so the batch's changes can be pushed one at a time; see src/engine.ts.
     file: "zqlite/src/table-source.ts",
     find: "  #getStatementsFor(db: Database) {",
     replace: `  /**

@@ -67,6 +67,7 @@
     "@fragno-dev/forms": "workspace:*",
     "@fragno-dev/github-app-fragment": "workspace:*",
     "@fragno-dev/lofi": "workspace:*",
+    "@fragno-dev/lofi-zql": "workspace:*",
     "@fragno-dev/mcp-fragment": "workspace:*",
     "@fragno-dev/otp-fragment": "workspace:*",
     "@fragno-dev/project-connector-fragment": "workspace:*",
