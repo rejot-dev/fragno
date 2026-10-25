@@ -273,7 +273,13 @@ export const createRouteBackedRuntimeContext = ({
             runtime: createFileLinkRuntime({
               uploadObject: () => uploadObject().http,
               scope: execution.scope,
-              baseUrl: runtime.config.sandboxBackofficeBaseUrl,
+              origins:
+                runtime.config.docsPublicBaseUrl && runtime.config.sandboxBackofficeBaseUrl
+                  ? {
+                      public: runtime.config.docsPublicBaseUrl,
+                      sandbox: runtime.config.sandboxBackofficeBaseUrl,
+                    }
+                  : null,
             }),
           }
         : null,

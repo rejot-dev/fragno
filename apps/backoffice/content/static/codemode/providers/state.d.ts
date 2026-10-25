@@ -115,12 +115,12 @@ type StateCodemodeProvider = {
    */
   hashFile(input: StateHashFileInput): Promise<string>;
   /**
-   * Create a temporary URL that sandbox commands use to read workspace files without credentials; it may not work outside sandboxes. A file path links the file: `curl -sS --fail-with-body "$url" -o file`. A folder or glob links an uncompressed tar archive of up to 500 matching files named relative to `root`: `curl -sS --fail-with-body "$url" | tar -x -C dir`. When the archive response has an X-Next-Cursor header, request the URL again with ?cursor=<value> for the next files. Anyone holding the URL can read these files until it expires.
+   * Create a temporary URL that reads workspace files without credentials. Give `url` to people and services outside Backoffice; browsers download the file. Sandbox commands use `sandboxUrl`. A file path links the file: `curl -sS --fail-with-body "$sandboxUrl" -o file`. A folder or glob links an uncompressed tar archive of up to 500 matching files named relative to `root`: `curl -sS --fail-with-body "$sandboxUrl" | tar -x -C dir`. When the archive response has an X-Next-Cursor header, request the URL again with ?cursor=<value> for the next files. Anyone holding the URL can read these files until it expires.
    * Requires `upload.read`.
    */
   createDownloadLink(input: StateCreateDownloadLinkInput): Promise<StateCreateDownloadLinkOutput>;
   /**
-   * Create a temporary URL that sandbox commands use to write workspace files without credentials; it may not work outside sandboxes. Writes replace existing files. Each file may be at most 1.9 MB. A file path accepts the file: `curl -sS --fail-with-body -H "Expect:" -T file "$url"`. A folder or glob accepts an uncompressed tar archive of at most 200 regular files and 25 MB, without symlinks, whose entry names are relative to `root` and must match: `tar -ch -C dir . | curl -sS --fail-with-body -H "Expect:" -T - "$url"`. Push only the files the task produced, never a whole project; an archive is written all-or-nothing. A successful write returns `{"fileCount","sizeBytes"}`. Anyone holding the URL can write these files until it expires.
+   * Create a temporary URL that writes workspace files without credentials. Give `url` to services outside Backoffice; sandbox commands use `sandboxUrl`. Writes replace existing files. Each file may be at most 1.9 MB. A file path accepts the file: `curl -sS --fail-with-body -H "Expect:" -T file "$sandboxUrl"`. A folder or glob accepts an uncompressed tar archive of at most 200 regular files and 25 MB, without symlinks, whose entry names are relative to `root` and must match: `tar -ch -C dir . | curl -sS --fail-with-body -H "Expect:" -T - "$sandboxUrl"`. Push only the files the task produced, never a whole project; an archive is written all-or-nothing. A successful write returns `{"fileCount","sizeBytes"}`. Anyone holding the URL can write these files until it expires.
    * Requires `upload.modify`.
    */
   createUploadLink(input: StateCreateUploadLinkInput): Promise<StateCreateUploadLinkOutput>;
@@ -343,7 +343,7 @@ type StateHashFileInput = {
   algorithm?: "md5" | "sha1" | "sha256";
 };
 type StateCreateDownloadLinkInput = {
-  /** A /workspace file path, a folder ending in /, or a glob with * or ?, for example /workspace/data/*.csv. */
+  /** A path in this scope's Backoffice workspace, the files state.readFile reads, not a path inside a sandbox: a /workspace file, a folder ending in /, or a glob with * or ?, for example /workspace/data/*.csv. */
   path: string;
   /** How long the link works. Defaults to 900 seconds. */
   expiresInSeconds?: number;
@@ -352,8 +352,11 @@ type StateCreateDownloadLinkOutput =
   | {
       /** The URL's body is the file itself. */
       format: "file";
-      /** Use unchanged in a sandbox command; its host may resolve only inside sandboxes. */
+      /** The public URL, for people and services outside Backoffice. */
       url: string;
+      /** The URL for sandbox commands; use it unchanged, since its host may resolve only inside sandboxes. */
+      sandboxUrl: string;
+      /** The linked file's path in the Backoffice workspace. */
       path: string;
       /** ISO 8601 datetime string. */
       expiresAt: string;
@@ -361,16 +364,19 @@ type StateCreateDownloadLinkOutput =
   | {
       /** The URL's body is a tar archive of the matching files. */
       format: "tar";
-      /** Use unchanged in a sandbox command; its host may resolve only inside sandboxes. */
+      /** The public URL, for people and services outside Backoffice. */
       url: string;
+      /** The URL for sandbox commands; use it unchanged, since its host may resolve only inside sandboxes. */
+      sandboxUrl: string;
+      /** The Backoffice workspace paths the link matches. */
       glob: string;
-      /** The /workspace folder that archive entry names are relative to. */
+      /** The Backoffice workspace folder that archive entry names are relative to. */
       root: string;
       /** ISO 8601 datetime string. */
       expiresAt: string;
     };
 type StateCreateUploadLinkInput = {
-  /** A /workspace file path, a folder ending in /, or a glob with * or ?, for example /workspace/data/*.csv. */
+  /** A path in this scope's Backoffice workspace, the files state.readFile reads, not a path inside a sandbox: a /workspace file, a folder ending in /, or a glob with * or ?, for example /workspace/data/*.csv. */
   path: string;
   /** How long the link works. Defaults to 900 seconds. */
   expiresInSeconds?: number;
@@ -379,8 +385,11 @@ type StateCreateUploadLinkOutput =
   | {
       /** The URL's body is the file itself. */
       format: "file";
-      /** Use unchanged in a sandbox command; its host may resolve only inside sandboxes. */
+      /** The public URL, for people and services outside Backoffice. */
       url: string;
+      /** The URL for sandbox commands; use it unchanged, since its host may resolve only inside sandboxes. */
+      sandboxUrl: string;
+      /** The linked file's path in the Backoffice workspace. */
       path: string;
       /** ISO 8601 datetime string. */
       expiresAt: string;
@@ -388,10 +397,13 @@ type StateCreateUploadLinkOutput =
   | {
       /** The URL's body is a tar archive of the matching files. */
       format: "tar";
-      /** Use unchanged in a sandbox command; its host may resolve only inside sandboxes. */
+      /** The public URL, for people and services outside Backoffice. */
       url: string;
+      /** The URL for sandbox commands; use it unchanged, since its host may resolve only inside sandboxes. */
+      sandboxUrl: string;
+      /** The Backoffice workspace paths the link matches. */
       glob: string;
-      /** The /workspace folder that archive entry names are relative to. */
+      /** The Backoffice workspace folder that archive entry names are relative to. */
       root: string;
       /** ISO 8601 datetime string. */
       expiresAt: string;

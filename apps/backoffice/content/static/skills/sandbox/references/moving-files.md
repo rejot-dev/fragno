@@ -3,12 +3,14 @@
 The sandbox's `/workspace` is its own disk, separate from the Backoffice `/workspace`, and the
 sandbox holds no Backoffice credentials. Move files with **file links**: `state.createDownloadLink`
 and `state.createUploadLink` (see "/static/codemode/providers/state.d.ts", which lists their limits)
-return a temporary URL for sandbox commands to `curl`, so file bytes stay out of command text and
-output. Pass `link.url` to the command exactly as returned: its host may resolve only inside
-sandboxes.
+return a temporary link for sandbox commands to `curl`, so file bytes stay out of command text and
+output. Pass `link.sandboxUrl` to the command exactly as returned: its host may resolve only inside
+sandboxes. `link.url` is the same link at Backoffice's public address, for people and services
+outside sandboxes.
 
-A link reaches the workspace of the scope that created it, and any sandbox can use it: create it
-with `context.project(projectId).state` or `context.user(userId).state` to move that scope's files.
+The link's `path` names Backoffice workspace files; the `curl` command names the sandbox's files. A
+link reaches the workspace of the scope that created it, and any sandbox can use it: create it with
+`context.project(projectId).state` or `context.user(userId).state` to move that scope's files.
 
 **Pull** a folder in:
 
@@ -17,7 +19,7 @@ async () => {
   const link = await state.createDownloadLink({ path: "/workspace/data/" });
   return await sandbox.executeCommand({
     sandboxId: "dev",
-    command: `set -o pipefail; mkdir -p data && curl -sS --fail-with-body '${link.url}' | tar -x -C data`,
+    command: `set -o pipefail; mkdir -p data && curl -sS --fail-with-body '${link.sandboxUrl}' | tar -x -C data`,
     timeoutMs: 120000,
   });
 };
@@ -30,7 +32,7 @@ async () => {
   const link = await state.createUploadLink({ path: "/workspace/results/" });
   return await sandbox.executeCommand({
     sandboxId: "dev",
-    command: `set -o pipefail; tar -ch -C out . | curl -sS --fail-with-body -H 'Expect:' -T - '${link.url}'`,
+    command: `set -o pipefail; tar -ch -C out . | curl -sS --fail-with-body -H 'Expect:' -T - '${link.sandboxUrl}'`,
     timeoutMs: 120000,
   });
 };
@@ -46,7 +48,7 @@ async () => {
   per archive and per file; when a push exceeds a cap, narrow it to the outputs, and when the task
   truly needs more, ask the user before pushing in parts.
 - **Pulls page:** when more files match than one archive holds, the response has an `X-Next-Cursor`
-  header; fetch `<url>?cursor=<value>` until the header is absent.
+  header; fetch `<sandboxUrl>?cursor=<value>` until the header is absent.
 - **Links are bearer URLs** until they expire: anyone holding one can use it. Create each link right
   before its command, link the narrowest folder or glob the task needs, and use each URL only inside
   its command.
