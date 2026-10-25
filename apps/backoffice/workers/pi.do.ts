@@ -1,5 +1,6 @@
 import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
 import { PathError } from "@earendil-works/chord/delta";
+import { boundOutput } from "@earendil-works/chord/output";
 import { openDurableObjectSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/cloudflare";
 import {
   PI_AGENT_WATCH_REFUSED,
@@ -812,9 +813,16 @@ function piAgentSocketViewer(socket: WebSocket): PiAgentViewer {
       }
     },
     close(code, reason) {
-      socket.close(code, reason);
+      socket.close(code, closeReason(reason));
     },
   };
+}
+
+// close() throws on a reason over 123 UTF-8 bytes, which would turn a refusal into an unavailable
+// close that viewers reconnect after. Denials name actors and grants, so they can be longer.
+function closeReason(reason: string) {
+  const bounded = boundOutput(reason, { maxBytes: 120, maxLines: 1, retain: "head" });
+  return bounded.droppedBytes === 0 ? reason : `${bounded.text.trimEnd()}…`;
 }
 
 /** One durable agent per object; scoped managers own agent discovery. */

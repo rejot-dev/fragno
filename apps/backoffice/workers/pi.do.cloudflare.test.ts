@@ -5,6 +5,7 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { applyImmutable } from "@earendil-works/chord/delta";
 import { createModels } from "@earendil-works/pi-ai/models";
 import { fauxAssistantMessage, fauxProvider, fauxText } from "@earendil-works/pi-ai/providers/faux";
+import type { AutomationActors } from "@fragno-dev/backoffice-api/v0/automation";
 import {
   piAgentConfigSchema,
   type PiAgentConfig,
@@ -78,15 +79,20 @@ async function managerRequest(
 }
 
 /** Opens an agent's view socket as the worker does, and collects what it sends. */
-async function openViewSocket(organizationId: string, agentName = "assistant") {
+async function openViewSocket(
+  organizationId: string,
+  agentName = "assistant",
+  delegation: AutomationActors["delegation"] = [],
+) {
   const agent = { scope: { kind: "org", orgId: organizationId } as const, agentName };
+  const execution = createBackofficeServiceExecution({
+    scope: agent.scope,
+    service: { type: "automation", id: "pi-durable-scenario" },
+  });
   const response = await createCloudflareBackofficeObjectRegistry(env as CloudflareEnv)
     .piAgent(agent)
     .fetchAuthorized(piAgentViewSocketRequest(agent), {
-      execution: createBackofficeServiceExecution({
-        scope: agent.scope,
-        service: { type: "automation", id: "pi-durable-scenario" },
-      }),
+      execution: { ...execution, actors: { ...execution.actors, delegation } },
       propagationContext: null,
     });
   const socket = response.webSocket;
@@ -239,6 +245,23 @@ describe("Pi durable agent scenarios", () => {
         "4000 No agent in this scope is named 'assistnt'.",
       ]);
     });
+    // A denial naming a long delegate outgrows a close reason; it is shortened rather than turned
+    // into a close the viewer reconnects after.
+    const denied = await openViewSocket(organizationId, "assistant", [
+      {
+        scope: "internal",
+        type: "automation",
+        id: `automation-route:${"r".repeat(100)}`,
+        role: "delegate",
+      },
+    ]);
+    await vi.waitFor(() => {
+      expect(denied.closes).toHaveLength(1);
+    });
+    expect(denied.closes[0]).toMatch(/^4000 Delegated automation 'automation-route:r+…$/);
+    expect(
+      new TextEncoder().encode(denied.closes[0].slice("4000 ".length)).byteLength,
+    ).toBeLessThanOrEqual(123);
 
     const submitted = await managerRequest(organizationId, "/agents/assistant/prompts", {
       requestId: "socket-1",
