@@ -52,11 +52,13 @@ const projects = [
 ];
 const routers: ReturnType<typeof createMemoryRouter>[] = [];
 
-afterEach(() => {
-  cleanup();
-  for (const router of routers.splice(0)) {
-    router.dispose();
-  }
+afterEach(async () => {
+  await act(async () => {
+    cleanup();
+    for (const router of routers.splice(0)) {
+      router.dispose();
+    }
+  });
 });
 
 async function loadScope({ params }: LoaderFunctionArgs) {
@@ -105,7 +107,7 @@ function NavigationScenario({ navigation }: { navigation: "desktop" | "mobile" }
   );
 }
 
-function renderNavigation(initialPath: string, navigation: "desktop" | "mobile") {
+async function renderNavigation(initialPath: string, navigation: "desktop" | "mobile") {
   const router = createMemoryRouter(
     [
       ...["/backoffice/organizations/:orgSlug/*", "/backoffice/dashboard/:scopeKind/:scopeId"].map(
@@ -121,7 +123,10 @@ function renderNavigation(initialPath: string, navigation: "desktop" | "mobile")
     { initialEntries: [initialPath] },
   );
   routers.push(router);
-  render(<RouterProvider router={router} />);
+  // A visible trigger can precede the async route's interaction setup.
+  await act(async () => {
+    render(<RouterProvider router={router} />);
+  });
   return router;
 }
 
@@ -140,7 +145,7 @@ describe("scope navigation scenarios", () => {
   test.each(["desktop", "mobile"] as const)(
     "%s navigation reaches personal settings from owned descendants but not another member's",
     async (navigation) => {
-      const router = renderNavigation("/backoffice/dashboard/user/ada", navigation);
+      const router = await renderNavigation("/backoffice/dashboard/user/ada", navigation);
       await screen.findByRole("navigation", { name: "Backoffice" });
 
       for (const scope of personalScopes("ada")) {
@@ -168,14 +173,20 @@ describe("scope navigation scenarios", () => {
     "selecting projects from organization settings%s enters each selected project",
     async (tab) => {
       const settingsPath = `/backoffice/organizations/agency${tab}`;
-      const router = renderNavigation(settingsPath, "desktop");
+      const router = await renderNavigation(settingsPath, "desktop");
       await screen.findByRole("button", { name: "Switch project. Current project: none" });
 
       for (const project of projects) {
-        fireEvent.keyDown(screen.getByRole("button", { name: /Switch project/ }), {
-          key: "ArrowDown",
+        const trigger = screen.getByRole("button", { name: /Switch project/ });
+        await act(async () => {
+          trigger.focus();
+          fireEvent.keyDown(trigger, { key: "ArrowDown" });
+          fireEvent.keyUp(trigger, { key: "ArrowDown" });
         });
-        fireEvent.click(await screen.findByRole("menuitem", { name: new RegExp(project.name) }));
+        const option = await screen.findByRole("menuitem", { name: new RegExp(project.name) });
+        await act(async () => {
+          fireEvent.click(option);
+        });
         await waitFor(() => {
           expect(router.state.location.pathname).toBe(
             `/backoffice/dashboard/project/org:agency:${project.slug}`,
