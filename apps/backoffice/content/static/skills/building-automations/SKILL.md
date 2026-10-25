@@ -43,7 +43,8 @@ reclassifies the event, or forwards it to another scope.
 
 2. Choose the smallest topology that satisfies the request:
    - External or product event: route with an `event` trigger.
-   - Time-based trigger: route with a `schedule` trigger.
+   - Time-based trigger: route with a `schedule` trigger. Each occurrence fires the route once, so a
+     scheduled `start_workflow` starts a new run per occurrence that does that occurrence's work.
    - New work: `start_workflow`.
    - Resume waiting work: `send_workflow_event`.
    - Domain event classification: `reclassify_event`.
@@ -171,16 +172,46 @@ reclassifies the event, or forwards it to another scope.
    domain data only; trusted execution provenance is recorded by the kernel. Categories are ordinary
    labels. Use `verification` for JSON text that must satisfy a schema.
 
-6. Re-read the completed route with `router.get({ id })` and
-   `state.readFile({ path: workflowScriptPath })` when saved. Run
-   `integrations.verify({ connectionId })` for each connection it calls.
+6. Verify in one `codemode` call: re-read the route with `router.get({ id })` and run
+   `integrations.verify({ connectionId })` for each connection it calls. When running the action
+   once more is acceptable, exercise a scheduled route with `router.triggerNow({ id })`, then read
+   the event's routing with `events.get` and the run its outcome names with `workflow.getInstance`,
+   polling both until they settle:
 
-   For delivery verification, read `/static/skills/building-automations/references/event-routing.md`
-   and use `events.list` / `events.get` to correlate the triggering event with the route's
-   downstream outcome. **Complete only when** the route trigger, action, workflow name, file path,
-   and connection status line up, and any exercised delivery has matching ingestion and downstream
-   evidence. If no delivery was exercised, report configuration as verified and runtime execution as
-   unverified.
+   ```js
+   async () => {
+     const id = "daily-digest";
+     const wait = () => new Promise((resolve) => setTimeout(resolve, 1000));
+     const route = await router.get({ id });
+     const triggered = await router.triggerNow({ id });
+     let routed = null;
+     for (let attempt = 0; triggered && attempt < 10; attempt++) {
+       const routing = (await events.get({ id: triggered.eventId }))?.routing;
+       routed =
+         routing?.status === "matched"
+           ? (routing.routes.find((matched) => matched.routeId === id) ?? null)
+           : null;
+       if (routed && routed.status !== "pending") break;
+       await wait();
+     }
+     let run = null;
+     if (routed?.status === "completed" && routed.outcome.kind === "workflow_started") {
+       for (let attempt = 0; attempt < 10; attempt++) {
+         run = await workflow.getInstance({ instanceId: routed.outcome.instanceId });
+         if (!["active", "waiting"].includes(run.details.status)) break;
+         await wait();
+       }
+     }
+     return { route, triggered, routed, run };
+   };
+   ```
+
+   For event-triggered routes and the other outcomes, read
+   `/static/skills/building-automations/references/event-routing.md` and use `events.list` /
+   `events.get` to correlate the triggering event with the route's downstream outcome. **Complete
+   only when** the route trigger, action, workflow name, file path, and connection status line up,
+   and any exercised delivery has matching ingestion and downstream evidence. If no delivery was
+   exercised, report configuration as verified and runtime execution as unverified.
 
 ## Diagnose a route that did not act
 
