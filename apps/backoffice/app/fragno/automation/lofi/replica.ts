@@ -4,8 +4,9 @@ import {
   type LofiSqliteReadArgs,
   type LofiSqliteViewResult,
 } from "@fragno-dev/lofi/sqlite";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
+import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
 import { getWorkerReplica } from "@/fragno/lofi/browser-replica";
 import { useLofiView } from "@/fragno/lofi/use-lofi-view";
 
@@ -36,6 +37,73 @@ export function getAutomationReplica(
         name: baseUrl,
       }),
   });
+}
+
+type CurrentAutomationReplica = {
+  /** Null until the scope's replica opens, and when it cannot. */
+  replica: LofiSqliteClient | null;
+  /** Whether the replica holds everything its backend had when synchronization started. */
+  caughtUp: boolean;
+  error: string | null;
+};
+
+const subscribeToNothing = () => () => {};
+const notCaughtUp = () => false;
+
+/**
+ * The current scope's Automations replica, for views that render before it opens instead of
+ * suspending, such as the agent drawer and pages rendered on the server.
+ */
+export function useCurrentAutomationReplica(): CurrentAutomationReplica {
+  const { automationCollectionSource } = useCurrentBackofficeContext();
+  const source =
+    automationCollectionSource.status === "ready" ? automationCollectionSource.source : null;
+  const sourceKey = source ? describeAutomationCollectionSource(source).resourceKey : null;
+  const unavailable =
+    automationCollectionSource.status === "unavailable" ? automationCollectionSource.message : null;
+  const [opened, setOpened] = useState<{
+    sourceKey: string;
+    replica: LofiSqliteClient | null;
+    error: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!source || !sourceKey) {
+      return () => {
+        cancelled = true;
+      };
+    }
+    void getAutomationReplica(source).then(
+      (replica) => {
+        if (!cancelled) {
+          setOpened({ sourceKey, replica, error: null });
+        }
+      },
+      (cause: unknown) => {
+        if (!cancelled) {
+          setOpened({
+            sourceKey,
+            replica: null,
+            error: cause instanceof Error ? cause.message : "Automation synchronization failed.",
+          });
+        }
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [source, sourceKey]);
+
+  // A replica opened for another scope is not this one's.
+  const current = opened?.sourceKey === sourceKey ? opened : null;
+  const replica = current?.replica ?? null;
+  const caughtUp = useSyncExternalStore(
+    replica?.subscribeStatus ?? subscribeToNothing,
+    replica ? () => replica.getStatus().phase === "caught-up" : notCaughtUp,
+    notCaughtUp,
+  );
+  return { replica, caughtUp, error: unavailable ?? current?.error ?? null };
 }
 
 type AutomationReads = typeof automationReads;

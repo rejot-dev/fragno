@@ -41,16 +41,16 @@ const generatedUiItem = (id: string, label: string, value: string): SessionWorks
 
 function WorkspaceHarness({
   item,
-  workflowCollectionsError,
+  runReplicaError,
 }: {
   item: SessionWorkspaceItem;
-  workflowCollectionsError?: string | null;
+  runReplicaError?: string | null;
 }) {
   const [open, setOpen] = useState(true);
   return open ? (
     <SessionWorkspacePanel
       item={item}
-      workflowCollectionsError={workflowCollectionsError}
+      runReplicaError={runReplicaError}
       resolvedScope={{ kind: "org", organization: { id: "org-1", slug: "acme" } }}
       onClose={() => {
         setOpen(false);
@@ -152,7 +152,7 @@ describe("SessionWorkspacePanel", () => {
             run: { workflowName: "codemode-script", instanceId: "workflow-instance" },
           },
         }}
-        workflowCollectionsError="Failed to load workflow synchronization."
+        runReplicaError="Failed to load workflow synchronization."
       />,
     );
 
