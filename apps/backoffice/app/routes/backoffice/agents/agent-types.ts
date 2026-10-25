@@ -1,4 +1,3 @@
-import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import type { PiAvailableModel } from "@/fragno/pi/agent/pi-agent-contract";
 
 import type { PiAgentListing } from "./agent-activity";
@@ -15,7 +14,6 @@ export type PiAgentDirectoryState =
 
 export type PiAgentsOutletContext = {
   directory: PiAgentDirectoryState;
-  resolvedScope: BackofficeResolvedScope;
   basePath: string;
   usageLabel: string;
   availableModelOptions: PiAvailableModel[];

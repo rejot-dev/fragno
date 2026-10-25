@@ -141,13 +141,7 @@ function headlineOf(step: SampleStep) {
 }
 
 const ARTIFACTS = (
-  <ChatArtifactToggle
-    icon="share-2"
-    label="Workflow graph"
-    labelled
-    pressed={false}
-    onClick={() => {}}
-  />
+  <ChatArtifactToggle icon="layout" label="Interface" labelled pressed={false} onClick={() => {}} />
 );
 
 /** Steps arrive one by one, then the turn settles and the card folds to its summary. */

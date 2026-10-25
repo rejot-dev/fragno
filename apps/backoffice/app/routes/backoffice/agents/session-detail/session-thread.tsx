@@ -48,6 +48,7 @@ import {
   ResetMessage,
   UserMessage,
 } from "./messages";
+import { SessionWorkflowInputRequests } from "./session-workflow";
 
 const OUT_OF_CONTEXT_HISTORY =
   "Earlier messages are still visible but out of context for the agent due to compaction or a reset.";
@@ -345,6 +346,7 @@ export function SessionThread({
             <ThreadPrimitive.ViewportFooter asChild>
               <ChatViewportFooter alert={error}>
                 <ScrollToLatest />
+                <SessionWorkflowInputRequests />
                 <ComposerPrimitive.Root
                   onSubmit={(event) => {
                     if (composerAction === "message") {

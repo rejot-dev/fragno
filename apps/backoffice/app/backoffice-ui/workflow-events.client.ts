@@ -66,3 +66,26 @@ export async function sendBackofficeWorkflowEvent({
 
   throw new Error(`Could not send workflow input (${response.status}).`);
 }
+
+/** Ends a run for good, such as one the reader no longer wants to answer. */
+export async function terminateBackofficeWorkflowRun(
+  reference: ScopedWorkflowRunReference,
+): Promise<void> {
+  const callRoute = createScopedWorkflowsRouteCaller(reference.scope);
+  const response = await callRoute("POST", "/:workflowName/instances/:instanceId/terminate", {
+    pathParams: {
+      workflowName: reference.workflowName,
+      instanceId: reference.instanceId,
+    },
+  });
+
+  if (response.type === "json") {
+    return;
+  }
+
+  if (response.type === "error") {
+    throw new Error(response.error.message);
+  }
+
+  throw new Error(`Could not stop the run (${response.status}).`);
+}

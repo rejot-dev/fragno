@@ -78,16 +78,17 @@ const COMPOSER_ACTIONS: RadioMenuOption<ComposerAction>[] = [
 ];
 
 export function SampleConversation({
-  workflowShown,
-  onToggleWorkflow,
+  interfaceShown,
+  onToggleInterface,
 }: {
-  workflowShown: boolean;
-  onToggleWorkflow: () => void;
+  interfaceShown: boolean;
+  onToggleInterface: () => void;
 }) {
   return (
     <>
       <ChatBoundaryDivider>{OUT_OF_CONTEXT}</ChatBoundaryDivider>
       <ChatEventDisclosure
+        defaultOpen={false}
         marker="accent"
         title="Context compacted"
         note="Automatic"
@@ -98,6 +99,7 @@ export function SampleConversation({
         </p>
       </ChatEventDisclosure>
       <ChatEventDisclosure
+        defaultOpen={false}
         marker="notification"
         title="stripe · invoice.overdue"
         note="via billing-route"
@@ -135,11 +137,11 @@ export function SampleConversation({
           }}
           artifacts={
             <ChatArtifactToggle
-              icon="share-2"
-              label="Workflow graph"
+              icon="layout"
+              label="Interface"
               labelled
-              pressed={workflowShown}
-              onClick={onToggleWorkflow}
+              pressed={interfaceShown}
+              onClick={onToggleInterface}
             />
           }
         >

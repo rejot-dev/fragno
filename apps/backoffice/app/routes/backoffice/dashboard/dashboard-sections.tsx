@@ -208,6 +208,7 @@ function AttentionRow({
                 run={{ ...item.run, steps: item.run.workflowSteps }}
                 generatedUi={item.generatedUi}
                 resolvedScope={selectedScope}
+                standalone={false}
               />
             ),
           }}

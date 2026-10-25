@@ -43,6 +43,8 @@ type WorkflowRunGeneratedInterfaceProps = {
   run: GeneratedInterfaceRun;
   generatedUi: WorkflowRunGeneratedUi<GeneratedInterfaceStep>;
   resolvedScope: BackofficeResolvedScope;
+  /** Fills its container without a separator above it, for a container that frames it. */
+  standalone: boolean;
 };
 
 /** Renders the interface a run presents; step interfaces answer the run's waits with events. */
@@ -59,6 +61,7 @@ function GeneratedInterfaceContent({
   run,
   generatedUi,
   resolvedScope,
+  standalone,
 }: WorkflowRunGeneratedInterfaceProps) {
   if (generatedUi.type === "output") {
     return generatedUi.parsed.kind === "valid" ? (
@@ -78,6 +81,7 @@ function GeneratedInterfaceContent({
   return (
     <WorkflowStepGeneratedUi
       state={workflowStepGeneratedUiState(generatedUi.step)}
+      standalone={standalone}
       workflowEvents={run.workflowEvents}
       workflowRunRecordId={run.id}
       currentScope={resolvedScope.kind !== "system" ? resolvedScope : undefined}

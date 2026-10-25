@@ -1,12 +1,11 @@
 // @vitest-environment happy-dom
 
-import { afterEach, describe, expect, test, assert } from "vitest";
+import { afterEach, describe, expect, test } from "vitest";
 
 import { useState } from "react";
 
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
-import { projectWorkflowGraph } from "./workflow-graph-projection";
 import type { SessionWorkspaceItem } from "./workspace-model";
 import { SessionWorkspacePanel } from "./workspace-panel";
 
@@ -39,19 +38,11 @@ const generatedUiItem = (id: string, label: string, value: string): SessionWorks
   },
 });
 
-function WorkspaceHarness({
-  item,
-  runReplicaError,
-}: {
-  item: SessionWorkspaceItem;
-  runReplicaError?: string | null;
-}) {
+function WorkspaceHarness({ item }: { item: SessionWorkspaceItem }) {
   const [open, setOpen] = useState(true);
   return open ? (
     <SessionWorkspacePanel
       item={item}
-      runReplicaError={runReplicaError}
-      resolvedScope={{ kind: "org", organization: { id: "org-1", slug: "acme" } }}
       onClose={() => {
         setOpen(false);
       }}
@@ -69,98 +60,6 @@ describe("SessionWorkspacePanel", () => {
     expect(screen.queryByText("Generated interface")).toBeNull();
     expect(screen.queryByRole("tablist")).toBeNull();
     expect(screen.queryByRole("tab")).toBeNull();
-  });
-
-  test("renders workflows through the automation script graph", () => {
-    const projection = projectWorkflowGraph({
-      complete: false,
-      toolCallId: "workflow",
-      source: `defineWorkflow({ name: "order-workflow" }, async (_event, step) => {
-        await step.do("load orders", async () => []);
-      });`,
-    });
-    if (!projection) {
-      throw new Error("Expected workflow projection.");
-    }
-
-    const { container } = render(
-      <WorkspaceHarness
-        item={{
-          id: "workflow-graph:workflow",
-          toolCallId: "workflow",
-          label: "order-workflow",
-          view: {
-            type: "workflow-graph",
-            projection,
-            run: { workflowName: "codemode-script", instanceId: "workflow-instance" },
-          },
-        }}
-      />,
-    );
-
-    expect(screen.queryByText("Building workflow")).toBeNull();
-    const toolbar = container.querySelector<HTMLElement>("[data-session-workspace-toolbar]");
-    const actions = container.querySelector<HTMLElement>("[data-session-workspace-actions]");
-    assert(toolbar && actions);
-    expect(within(toolbar).getByRole("group", { name: "Workflow display" })).toBeDefined();
-    expect(toolbar.querySelector("[data-progressive-overflow-controls]")).toBeDefined();
-    expect(within(toolbar).getByRole("button", { name: "Close session workspace" })).toBeDefined();
-
-    const workflowGraph = screen.getByLabelText("Workflow graph");
-    expect(within(workflowGraph).getByLabelText("order-workflow")).toBeDefined();
-    expect(within(workflowGraph).getByText("load orders")).toBeDefined();
-    expect(screen.queryByText("Live execution")).toBeNull();
-    assert(screen.getByRole("button", { name: /^Flow$/ }).getAttribute("aria-pressed") === "true");
-    expect(screen.getByRole("button", { name: /^UI$/ })).toBeDefined();
-    expect(screen.queryByRole("button", { name: /^Graph$/ })).toBeNull();
-    expect(screen.queryByRole("button", { name: /^Both$/ })).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: /^Flow$/ }));
-    expect(screen.getByText("load orders")).toBeDefined();
-    expect(screen.queryByText("do")).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: /^Code$/ }));
-    expect(screen.queryByLabelText("Workflow graph")).toBeNull();
-    expect(screen.getByLabelText("Script source").textContent).toContain("defineWorkflow");
-
-    fireEvent.click(screen.getByRole("button", { name: /^UI$/ }));
-    expect(screen.queryByLabelText("Script source")).toBeNull();
-    expect(screen.getByLabelText("Workflow graph")).toBeDefined();
-  });
-
-  test("surfaces workflow synchronization failures", () => {
-    const projection = projectWorkflowGraph({
-      complete: true,
-      toolCallId: "failed-workflow",
-      source: `defineWorkflow({ name: "failed-workflow" }, async (_event, step) => {
-        await step.do("load orders", async () => []);
-      });`,
-    });
-    if (!projection) {
-      throw new Error("Expected workflow projection.");
-    }
-
-    render(
-      <WorkspaceHarness
-        item={{
-          id: "workflow-graph:failed-workflow",
-          toolCallId: "failed-workflow",
-          label: "failed-workflow",
-          view: {
-            type: "workflow-graph",
-            projection,
-            run: { workflowName: "codemode-script", instanceId: "workflow-instance" },
-          },
-        }}
-        runReplicaError="Failed to load workflow synchronization."
-      />,
-    );
-
-    expect(screen.getByRole("alert").textContent).toContain(
-      "Workflow synchronization failed: Failed to load workflow synchronization.",
-    );
-    expect(document.querySelector('[data-workspace-status="failed"]')).not.toBeNull();
-    expect(screen.queryByText(/Live execution/)).toBeNull();
   });
 
   test("provides an accessible close action", () => {

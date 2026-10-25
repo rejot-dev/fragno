@@ -13,11 +13,10 @@ import {
   ChatViewport,
   ChatViewportFooter,
 } from "./chat-thread";
-import { ChatWorkspacePanel, ChatWorkspaceStatus } from "./chat-workspace-panel";
+import { ChatWorkspacePanel } from "./chat-workspace-panel";
 import { ChatWorkspaceSplit } from "./chat-workspace-split";
 import { OperationNotice } from "./operation-notice";
 import { PaneMessage, PaneSpinner } from "./pane-message";
-import { UnderlineToggleButton } from "./underline-tabs";
 
 export default { title: "Agents/Chat window" };
 
@@ -31,8 +30,7 @@ function Frame({ children }: { children: ReactNode }) {
 }
 
 export function Conversation() {
-  const [workflowShown, setWorkflowShown] = useState(true);
-  const [display, setDisplay] = useState<"ui" | "simple" | "code">("simple");
+  const [interfaceShown, setInterfaceShown] = useState(true);
 
   return (
     <Frame>
@@ -50,9 +48,9 @@ export function Conversation() {
                   onLoadMore={() => undefined}
                 />
                 <SampleConversation
-                  workflowShown={workflowShown}
-                  onToggleWorkflow={() => {
-                    setWorkflowShown((current) => !current);
+                  interfaceShown={interfaceShown}
+                  onToggleInterface={() => {
+                    setInterfaceShown((current) => !current);
                   }}
                 />
                 <ChatTurnSpacer />
@@ -64,32 +62,17 @@ export function Conversation() {
           </ChatThread>
         }
         workspace={
-          workflowShown ? (
+          interfaceShown ? (
             <ChatWorkspacePanel
-              label="Unpaid invoices"
+              label="Interface"
               toolbarRef={() => undefined}
               onClose={() => {
-                setWorkflowShown(false);
+                setInterfaceShown(false);
               }}
-              actions={
-                <div role="group" aria-label="Workflow display" className="flex items-center gap-1">
-                  {(["ui", "simple", "code"] as const).map((mode) => (
-                    <UnderlineToggleButton
-                      key={mode}
-                      pressed={display === mode}
-                      onClick={() => {
-                        setDisplay(mode);
-                      }}
-                    >
-                      {mode === "ui" ? "UI" : mode === "simple" ? "Flow" : "Code"}
-                    </UnderlineToggleButton>
-                  ))}
-                </div>
-              }
+              actions={null}
             >
-              <ChatWorkspaceStatus tone="loading">Synchronizing workflow…</ChatWorkspaceStatus>
               <div className="flex h-full items-center justify-center text-xs text-[var(--bo-muted-2)]">
-                The workflow graph renders here.
+                The generated interface renders here.
               </div>
             </ChatWorkspacePanel>
           ) : null
@@ -105,7 +88,7 @@ export function Running() {
       <ChatThread>
         <ChatViewport>
           <ChatColumn>
-            <SampleConversation workflowShown={false} onToggleWorkflow={() => undefined} />
+            <SampleConversation interfaceShown={false} onToggleInterface={() => undefined} />
             <ChatThreadNotice>
               <OperationNotice
                 tone="progress"

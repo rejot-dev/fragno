@@ -15,14 +15,13 @@ import {
   createSessionWorkspaceState,
   generatedUiWorkspaceId,
   toggleSessionWorkspaceItem,
-  workflowGraphWorkspaceId,
 } from "./workspace-model";
 
 afterEach(cleanup);
 
-const workflowId = workflowGraphWorkspaceId("tool-call");
+const firstId = generatedUiWorkspaceId("first-call");
 const interfaceId = generatedUiWorkspaceId("tool-call");
-const itemIds = new Set([workflowId, interfaceId]);
+const itemIds = new Set([firstId, interfaceId]);
 
 function SelectorHarness() {
   const [workspaceState, setWorkspaceState] = useState(createSessionWorkspaceState);
@@ -43,8 +42,8 @@ function SelectorHarness() {
         toolLabel="codemode"
         labelled
         options={[
-          { id: workflowId, kind: "workflow-graph", label: "Workflow graph" },
-          { id: interfaceId, kind: "generated-ui", label: "Interface" },
+          { id: firstId, label: "Interface 1" },
+          { id: interfaceId, label: "Interface" },
         ]}
       />
     </SessionWorkspaceNavigationProvider>
@@ -55,15 +54,15 @@ describe("ToolWorkspaceSelector", () => {
   test("opens, switches, and closes side panel selections", () => {
     render(<SelectorHarness />);
 
-    const showWorkflow = screen.getByRole("button", {
-      name: "Show Workflow graph in side panel",
+    const showFirst = screen.getByRole("button", {
+      name: "Show Interface 1 in side panel",
     });
-    assert(showWorkflow.getAttribute("aria-pressed") === "false");
+    assert(showFirst.getAttribute("aria-pressed") === "false");
 
-    fireEvent.click(showWorkflow);
+    fireEvent.click(showFirst);
     assert(
       screen
-        .getByRole("button", { name: "Hide Workflow graph in side panel" })
+        .getByRole("button", { name: "Hide Interface 1 in side panel" })
         .getAttribute("aria-pressed") === "true",
     );
 
@@ -75,7 +74,7 @@ describe("ToolWorkspaceSelector", () => {
     );
     assert(
       screen
-        .getByRole("button", { name: "Show Workflow graph in side panel" })
+        .getByRole("button", { name: "Show Interface 1 in side panel" })
         .getAttribute("aria-pressed") === "false",
     );
 

@@ -54,7 +54,6 @@ export function PiAgentsWorkspace({ layoutContext }: { layoutContext: PiLayoutCo
         context={
           {
             directory,
-            resolvedScope,
             availableModelOptions,
             usageLabel,
             dictationMountRoute,
@@ -68,7 +67,7 @@ export function PiAgentsWorkspace({ layoutContext }: { layoutContext: PiLayoutCo
   );
 }
 
-// Remembering observed items keeps a refresh from auto-opening a workflow graph the user closed.
+// Remembering the side panel keeps what the user opened in it across a refresh.
 function workspaceStateStorageKey(basePath: string, agentName: string) {
   return `fragno-backoffice-agent-workspace:${basePath}/${agentName}`;
 }

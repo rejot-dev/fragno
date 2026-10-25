@@ -18,7 +18,7 @@ import { ToolResultContent } from "./tool-result-content";
 import { ToolArgumentsBlock } from "./tool-result-details";
 import { ToolWorkspaceSelector, type ToolWorkspaceSelectorOption } from "./tool-workspace-selector";
 import type { SessionWorkspaceNavigation } from "./workspace-context";
-import { generatedUiWorkspaceId, workflowGraphWorkspaceId } from "./workspace-model";
+import { generatedUiWorkspaceId } from "./workspace-model";
 
 const ordinaryResultPresentation: BackofficeUiParseResult = { kind: "ordinary" };
 
@@ -68,7 +68,6 @@ export function toolCallPresentation(part: ToolCallPart) {
   };
 }
 
-/** The side panel views a tool call produced, such as its workflow graph. */
 /** What a running tool call is doing, for the header of its turn. */
 export function toolHeadline({ loadedSkillName, label }: ToolCallPresentation) {
   return loadedSkillName ? `Loading the ${loadedSkillName} skill` : `Running ${label}`;
@@ -82,16 +81,10 @@ export function toolWorkspaceOptions(
   if (!navigation) {
     return [];
   }
-  const workflowGraphItemId = workflowGraphWorkspaceId(part.toolCallId);
   const generatedUiItemId = generatedUiWorkspaceId(part.toolCallId);
-  return [
-    ...(navigation.hasItem(workflowGraphItemId)
-      ? [{ id: workflowGraphItemId, kind: "workflow-graph" as const, label: "Workflow graph" }]
-      : []),
-    ...(resultPresentation.kind === "valid" && navigation.hasItem(generatedUiItemId)
-      ? [{ id: generatedUiItemId, kind: "generated-ui" as const, label: "Interface" }]
-      : []),
-  ];
+  return resultPresentation.kind === "valid" && navigation.hasItem(generatedUiItemId)
+    ? [{ id: generatedUiItemId, label: "Interface" }]
+    : [];
 }
 
 const SUMMARY_ARGUMENTS = ["query", "pattern", "command", "url", "path", "name"];

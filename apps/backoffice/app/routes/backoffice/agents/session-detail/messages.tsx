@@ -1,10 +1,15 @@
+import { parseBackofficeUiResult } from "@fragno-private/backoffice-ui/result";
 import {
   ChatActivity,
   ChatActivityNote,
   ChatActivityStep,
   type ChatActivityStatus,
 } from "@fragno-private/design-system/chat-activity";
-import { ChatEventDisclosure, ChatEventDivider } from "@fragno-private/design-system/chat-divider";
+import {
+  ChatEventDisclosure,
+  ChatEventDivider,
+  ChatEventLink,
+} from "@fragno-private/design-system/chat-divider";
 import {
   ChatAssistantMessage,
   ChatMessageActions,
@@ -18,6 +23,8 @@ import { WorkingIndicator } from "@fragno-private/design-system/working-indicato
 
 import { MessagePrimitive, useAuiState } from "@assistant-ui/react";
 
+import { workflowCompletionFromNotification } from "@/fragno/automation/workflow-reply";
+
 import { agentTurn, liveHeadline, type AgentTurnStep, type ToolCallPart } from "./agent-turn";
 import {
   notificationRequestLabel,
@@ -27,6 +34,8 @@ import {
   type PiNotificationRequestMessageMetadata,
 } from "./assistant-runtime";
 import { MarkdownText, MessageImage } from "./message-content";
+import { ResultContent } from "./result-content";
+import { SessionWorkflow, useSessionRun } from "./session-workflow";
 import {
   ToolCallStep,
   toolCallPresentation,
@@ -51,8 +60,8 @@ export function UserMessage() {
 }
 
 /**
- * The agent's whole turn: one activity card for its thoughts and tool calls, then its answer.
- * The view options hide thoughts or tool calls from the card.
+ * The agent's whole turn: one activity card for its thoughts and tool calls, the workflows they
+ * started, then its answer. The view options hide thoughts or tool calls from the card.
  */
 export function AssistantMessage({
   showThinking,
@@ -86,6 +95,7 @@ export function AssistantMessage({
     ];
   });
   const toolsById = new Map(tools.map((tool) => [tool.part.toolCallId, tool]));
+  const workflowRuns = tools.flatMap((tool) => tool.presentation.codemodeDetails?.run ?? []);
   // The turn's result is what its newest tool call that made something produced.
   const artifactTool = tools.filter((tool) => tool.workspaceOptions.length > 0).at(-1) ?? null;
   const visibleSteps = steps.filter((step) =>
@@ -178,6 +188,9 @@ export function AssistantMessage({
         ) : running && !answering ? (
           <WorkingIndicator>{metadata.statusText ?? "Working…"}</WorkingIndicator>
         ) : null}
+        {workflowRuns.map((run) => (
+          <SessionWorkflow key={run.instanceId} run={run} />
+        ))}
         {answer.map((part) =>
           part.kind === "text" ? (
             <MarkdownText key={part.key} text={part.text} />
@@ -275,6 +288,7 @@ export function CompactionMessage() {
   return (
     <MessagePrimitive.Root asChild>
       <ChatEventDisclosure
+        defaultOpen={false}
         marker="accent"
         title="Context compacted"
         note={compactionReasonLabels[metadata.reason]}
@@ -291,7 +305,10 @@ export function CompactionMessage() {
   );
 }
 
-/** An event a route delivered to the agent; expanding it shows the event's subject and payload. */
+/**
+ * An event a route delivered to the agent; expanding it shows the event's subject and payload. A
+ * workflow's completion opens on its output when the output is an interface.
+ */
 export function NotificationMessage() {
   const createdAt = useAuiState((state) => state.message.createdAt);
   const { notification } = useAuiState(
@@ -300,24 +317,63 @@ export function NotificationMessage() {
   const data = useAuiState((state) =>
     state.message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n"),
   );
+  const completion = workflowCompletionFromNotification(notification.event);
+  const run = useSessionRun(completion?.instanceId ?? null);
+  const completionUi = completion === null ? null : parseBackofficeUiResult(completion.output);
+  const output =
+    completion !== null && completionUi !== null && completionUi.kind !== "ordinary"
+      ? { parsed: completionUi, value: completion.output }
+      : null;
+  const title = `${notification.event.source} · ${notification.event.eventType}`;
+
+  // The run's card above holds its output, so the event leads back to it rather than repeat it.
+  if (completion !== null && run !== null) {
+    return (
+      <MessagePrimitive.Root asChild>
+        <ChatEventLink
+          marker="live"
+          title={title}
+          note={completion.workflowName}
+          time={createdAt ?? null}
+          action={output === null ? "View run" : "View result"}
+          onShow={run.show}
+        />
+      </MessagePrimitive.Root>
+    );
+  }
 
   return (
     <MessagePrimitive.Root asChild>
       <ChatEventDisclosure
+        defaultOpen={output !== null}
         marker="notification"
-        title={`${notification.event.source} · ${notification.event.eventType}`}
-        note={notification.routeId === null ? null : `via ${notification.routeId}`}
+        title={title}
+        note={
+          completion !== null
+            ? completion.workflowName
+            : notification.routeId === null
+              ? null
+              : `via ${notification.routeId}`
+        }
         time={createdAt ?? null}
       >
-        <p className="mb-2 text-[10px] text-[var(--bo-muted-2)]">
-          Event {notification.event.id},{" "}
-          {notification.routeId === null
-            ? "addressed to this agent."
-            : "delivered by an automation route."}
-        </p>
-        <pre className="overflow-x-auto text-xs leading-5 whitespace-pre-wrap text-[var(--bo-muted)]">
-          {data}
-        </pre>
+        {output !== null ? (
+          <ResultContent parsedValue={output.parsed} showRawValue={false} value={output.value}>
+            {null}
+          </ResultContent>
+        ) : (
+          <>
+            <p className="mb-2 text-[10px] text-[var(--bo-muted-2)]">
+              Event {notification.event.id},{" "}
+              {notification.routeId === null
+                ? "addressed to this agent."
+                : "delivered by an automation route."}
+            </p>
+            <pre className="overflow-x-auto text-xs leading-5 whitespace-pre-wrap text-[var(--bo-muted)]">
+              {data}
+            </pre>
+          </>
+        )}
       </ChatEventDisclosure>
     </MessagePrimitive.Root>
   );

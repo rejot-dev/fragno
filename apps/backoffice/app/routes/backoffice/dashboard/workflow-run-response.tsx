@@ -47,6 +47,7 @@ export function WorkflowRunResponse({
       run={{ ...run, steps: run.workflowSteps }}
       generatedUi={{ type: "step", step }}
       resolvedScope={resolvedScope}
+      standalone={false}
     />
   );
 }

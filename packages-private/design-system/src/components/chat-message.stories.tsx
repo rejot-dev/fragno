@@ -95,7 +95,13 @@ export function Dividers() {
       <ChatEventDivider marker="notification" time={SAMPLE_TIME} title="evt_42 via billing-route">
         Asked to handle 1 notification
       </ChatEventDivider>
-      <ChatEventDisclosure marker="accent" title="Context compacted" note="Requested" time={null}>
+      <ChatEventDisclosure
+        defaultOpen={false}
+        marker="accent"
+        title="Context compacted"
+        note="Requested"
+        time={null}
+      >
         <p className="text-xs leading-6 text-[var(--bo-muted)]">The summary Pi continues from.</p>
       </ChatEventDisclosure>
     </Column>

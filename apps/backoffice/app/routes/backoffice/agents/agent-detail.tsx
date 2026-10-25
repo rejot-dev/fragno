@@ -144,7 +144,6 @@ function PiAgentDetailConversation({
     availableModelOptions,
     basePath,
     dictationMountRoute,
-    resolvedScope,
     updateWorkspaceState,
     workspaceStates,
   } = useOutletContext<PiAgentsOutletContext>();
@@ -182,7 +181,6 @@ function PiAgentDetailConversation({
       header={header}
       workspace={{
         storageKey: `backoffice:pi-agent-workspace:${basePath}`,
-        resolvedScope,
         state: workspaceStates[agent.agentName] ?? createSessionWorkspaceState(),
         update: updateAgentWorkspaceState,
       }}

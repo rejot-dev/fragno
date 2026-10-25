@@ -1,5 +1,4 @@
 import type { PiManagerAgent, PiPromptReceipt } from "@fragno-dev/backoffice-api/v0/pi";
-import type { LofiSqliteClient } from "@fragno-dev/lofi/sqlite";
 import { ChatComposerModel } from "@fragno-private/design-system/chat-composer";
 import { ChatWorkspaceSplit } from "@fragno-private/design-system/chat-workspace-split";
 import { PaneMessage, PaneSpinner } from "@fragno-private/design-system/pane-message";
@@ -16,8 +15,6 @@ import {
 } from "@assistant-ui/react";
 import type { ConversationView, EntryRecord } from "@earendil-works/pi-durable";
 
-import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scope";
-import { useAutomationRead, useCurrentAutomationReplica } from "@/fragno/automation/lofi/replica";
 import type {
   PiAgentCompactionStatus,
   PiAvailableModel,
@@ -51,21 +48,18 @@ import {
 } from "./session-detail/pi-session-view-socket";
 import { createReson8DictationAdapter } from "./session-detail/reson8-dictation";
 import { SessionThread, type ComposerAction } from "./session-detail/session-thread";
+import { SessionWorkflowsProvider } from "./session-detail/session-workflow";
 import {
   SessionWorkspaceNavigationProvider,
   type SessionWorkspaceNavigation,
 } from "./session-detail/workspace-context";
 import {
-  autoOpenNewWorkflowWorkspaceItem,
   toggleSessionWorkspaceItem,
   type SessionWorkspaceState,
   type SessionWorkspaceStateUpdate,
 } from "./session-detail/workspace-model";
 import { SessionWorkspacePanel } from "./session-detail/workspace-panel";
-import {
-  getSessionWorkflowRunIds,
-  projectSessionWorkspaceItems,
-} from "./session-detail/workspace-projection";
+import { projectSessionWorkspaceItems } from "./session-detail/workspace-projection";
 
 const PI_ENTRY_HISTORY_PAGE_SIZE = 100;
 const PI_COMPACTION_POLL_MS = 250;
@@ -78,7 +72,6 @@ export type PiAgentActionData =
 /** What the conversation produced, opened beside it. */
 export type AgentConversationWorkspace = {
   storageKey: string;
-  resolvedScope: BackofficeResolvedScope;
   state: SessionWorkspaceState;
   update: (update: SessionWorkspaceStateUpdate) => void;
 };
@@ -204,19 +197,6 @@ function transcriptWithInactiveHistory(
 ) {
   // The active view leads with its compaction marker; the transcript shows it where it happened.
   return [...newestFirstHistory, ...entries].sort((a, b) => a.id - b.id);
-}
-
-function useStartedWorkflowRunIds(
-  replica: LofiSqliteClient | null,
-  sessionWorkflowRunIds: string[],
-): ReadonlySet<string> {
-  const started = useAutomationRead(
-    sessionWorkflowRunIds.length > 0 ? replica : null,
-    "startedCodemodeRuns",
-    { instanceIds: sessionWorkflowRunIds },
-  );
-  const instanceIds = started.status === "ready" ? started.data : null;
-  return useMemo(() => new Set(instanceIds), [instanceIds]);
 }
 
 async function waitForPiCompaction(url: string, signal: AbortSignal) {
@@ -614,31 +594,33 @@ function AgentConversationThread({
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-        <h2 className="sr-only">{formatPiAgentName(agent.agentName)}</h2>
-        {header(
-          <SessionDisplayOptions
-            exportHref={`${agentPath}.jsonl`}
-            exportFilename={`pi-agent-${agent.agentName}.jsonl`}
-            showToolCalls={displayOptions.showToolCalls}
-            showThinking={displayOptions.showThinking}
-            showUsage={displayOptions.showUsage}
-            onShowToolCallsChange={updateDisplayOption("showToolCalls")}
-            onShowThinkingChange={updateDisplayOption("showThinking")}
-            onShowUsageChange={updateDisplayOption("showUsage")}
-          />,
-        )}
-        {workspace ? (
-          <AgentConversationWithWorkspace
-            workspace={workspace}
-            messages={messages}
-            draftAgentMessage={draftAgentMessage}
-            conversation={conversation}
-          />
-        ) : (
-          conversation
-        )}
-      </div>
+      <SessionWorkflowsProvider>
+        <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+          <h2 className="sr-only">{formatPiAgentName(agent.agentName)}</h2>
+          {header(
+            <SessionDisplayOptions
+              exportHref={`${agentPath}.jsonl`}
+              exportFilename={`pi-agent-${agent.agentName}.jsonl`}
+              showToolCalls={displayOptions.showToolCalls}
+              showThinking={displayOptions.showThinking}
+              showUsage={displayOptions.showUsage}
+              onShowToolCallsChange={updateDisplayOption("showToolCalls")}
+              onShowThinkingChange={updateDisplayOption("showThinking")}
+              onShowUsageChange={updateDisplayOption("showUsage")}
+            />,
+          )}
+          {workspace ? (
+            <AgentConversationWithWorkspace
+              workspace={workspace}
+              messages={messages}
+              draftAgentMessage={draftAgentMessage}
+              conversation={conversation}
+            />
+          ) : (
+            conversation
+          )}
+        </div>
+      </SessionWorkflowsProvider>
     </AssistantRuntimeProvider>
   );
 }
@@ -655,32 +637,14 @@ function AgentConversationWithWorkspace({
   conversation: ReactNode;
 }) {
   const { state: workspaceState, update: updateWorkspaceState } = workspace;
-  const automationReplica = useCurrentAutomationReplica();
-  const sessionWorkflowRunIds = useMemo(
-    () => getSessionWorkflowRunIds({ draftAgentMessage, messages }),
-    [draftAgentMessage, messages],
-  );
-  const startedWorkflowRunIds = useStartedWorkflowRunIds(
-    automationReplica.replica,
-    sessionWorkflowRunIds,
-  );
   const workspaceItems = useMemo(
-    () =>
-      projectSessionWorkspaceItems({
-        draftAgentMessage,
-        messages,
-        startedWorkflowRunIds,
-      }),
-    [draftAgentMessage, messages, startedWorkflowRunIds],
+    () => projectSessionWorkspaceItems({ draftAgentMessage, messages }),
+    [draftAgentMessage, messages],
   );
   const workspaceItemIds = useMemo(
     () => new Set(workspaceItems.map((item) => item.id)),
     [workspaceItems],
   );
-
-  useEffect(() => {
-    updateWorkspaceState((current) => autoOpenNewWorkflowWorkspaceItem(current, workspaceItems));
-  }, [updateWorkspaceState, workspaceItems]);
 
   const toggleWorkspaceItem = useCallback(
     (itemId: string) => {
@@ -716,9 +680,6 @@ function AgentConversationWithWorkspace({
             <SessionWorkspacePanel
               key={selectedWorkspaceItem.id}
               item={selectedWorkspaceItem}
-              runReplica={automationReplica.replica ?? undefined}
-              runReplicaError={automationReplica.error}
-              resolvedScope={workspace.resolvedScope}
               onClose={closeWorkspace}
             />
           ) : null
