@@ -60,8 +60,10 @@ describe("scopeSwitchPath", () => {
   test("keeps settings open for the new scope's owner", () => {
     // An organization's settings keep the tabs every organization has.
     assert(
-      scopeSwitchPath("/backoffice/organizations/org-b/members", projectScope) ===
-        "/backoffice/organizations/org-a/members",
+      scopeSwitchPath("/backoffice/organizations/org-b/members", {
+        kind: "org",
+        orgSlug: "org-a",
+      }) === "/backoffice/organizations/org-a/members",
     );
     assert(
       scopeSwitchPath("/backoffice/organizations/org-b/invites", {

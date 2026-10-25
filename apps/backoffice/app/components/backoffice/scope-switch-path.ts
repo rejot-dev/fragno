@@ -14,7 +14,7 @@ const MARKETPLACE_TABS = new Set(["marketplace", "installed", "my-listings"]);
 const ORGANIZATION_SETTINGS_TABS = new Set(["members", "billing"]);
 
 /**
- * Settings follow the scope's owner: an organization's settings in it and its projects, and the
+ * Owner switches keep settings open: an organization's settings in its workspace, and the
  * user's own settings in their personal workspace. Another person's workspace has none. An
  * organization's billing and the user's usage are the same statement for each owner, so either
  * opens the other.
@@ -77,6 +77,10 @@ export const scopeSwitchPath = (
     case "settings":
     case "organizations":
     case "usage": {
+      // Settings URLs cannot encode a project or app; selecting one must enter its workspace.
+      if (scope.kind === "project" || scope.kind === "app") {
+        return `/backoffice/dashboard/${scopePath}`;
+      }
       const organizationTab =
         section === "usage"
           ? "billing"
