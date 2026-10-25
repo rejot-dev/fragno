@@ -18,15 +18,12 @@ import {
   type ShouldRevalidateFunctionArgs,
 } from "react-router";
 
-import { caseWhen, count, eq, not, or, sum, useLiveQuery } from "@tanstack/react-db";
-
 import type { BackofficeScopeSelection } from "@/backoffice-runtime/resolved-scope";
 import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
 import { backofficePageBodyClassName } from "@/components/backoffice/page-body";
-import {
-  describeAutomationCollectionSource,
-  getAutomationBrowserDatabase,
-} from "@/fragno/automation/tanstack/browser-database";
+import { getAutomationReplica, useAutomationRead } from "@/fragno/automation/lofi/replica";
+import { describeAutomationCollectionSource } from "@/fragno/automation/tanstack/browser-database";
+import { LofiReplicaGate } from "@/fragno/lofi/replica-gate";
 import type { IntegrationConnectionRecord } from "@/fragno/runtime-tools/families/integrations/integration-connections";
 import { requireScopeSelection } from "@/layouts/backoffice-shell-request.server";
 
@@ -78,6 +75,9 @@ export default function BackofficeIntegrationsScopeLayout({ loaderData }: Route.
     </div>
   );
 }
+
+const DOWNLOAD_TITLE = "Downloading connection events…";
+const NO_CONNECTIONS: IntegrationConnectionRecord[] = [];
 
 type ConnectionTab = { connectionId: string; label: string };
 
@@ -146,54 +146,37 @@ function IntegrationsClient(props: WorkspaceProps) {
     );
   }
   const source = automationCollectionSource.source;
+  const replica = use(getAutomationReplica(source));
   return (
-    <IntegrationsWorkspace
-      key={describeAutomationCollectionSource(source).resourceKey}
-      {...props}
-      collections={use(getAutomationBrowserDatabase(source)).collections}
-    />
+    <LofiReplicaGate replica={replica} title={DOWNLOAD_TITLE}>
+      <IntegrationsWorkspace
+        key={describeAutomationCollectionSource(source).resourceKey}
+        {...props}
+        replica={replica}
+      />
+    </LofiReplicaGate>
   );
 }
 
 function IntegrationsWorkspace({
   selectedScope,
-  collections,
-}: WorkspaceProps & Pick<IntegrationsLayoutContext, "collections">) {
+  replica,
+}: WorkspaceProps & Pick<IntegrationsLayoutContext, "replica">) {
   const { connectionId: selectedConnectionId } = useParams();
   const [showDisconnected, setShowDisconnected] = useState(false);
   // A selected disconnected connection keeps its tab while the others are hidden.
-  const connectionsQuery = useLiveQuery({
-    query: (query) => {
-      const all = query.from({ connection: collections.connections });
-      const shown = showDisconnected
-        ? all
-        : all.where(({ connection }) =>
-            selectedConnectionId === undefined
-              ? not(eq(connection.state, "disconnected"))
-              : or(
-                  not(eq(connection.state, "disconnected")),
-                  eq(connection.connectionId, selectedConnectionId),
-                ),
-          );
-      return shown
-        .orderBy(({ connection }) => connection.service, "asc")
-        .orderBy(({ connection }) => connection.connectionId, "asc");
-    },
-  });
-  const countsQuery = useLiveQuery({
-    query: (query) =>
-      query
-        .from({ connection: collections.connections })
-        .select(({ connection }) => ({
-          total: count(connection.connectionId),
-          disconnected: sum(caseWhen(eq(connection.state, "disconnected"), 1, 0)),
-        }))
-        .findOne(),
-  });
-  const visibleConnections = connectionsQuery.data ?? [];
-  // Without connections the count query has no row.
-  const total = countsQuery.data?.total ?? 0;
-  const hiddenCount = showDisconnected ? 0 : (countsQuery.data?.disconnected ?? 0);
+  const list = useAutomationRead(replica, "integrationConnections", undefined);
+  const connections = list.status === "ready" ? list.data : NO_CONNECTIONS;
+  const visibleConnections = showDisconnected
+    ? connections
+    : connections.filter(
+        ({ connectionId, state }) =>
+          state !== "disconnected" || connectionId === selectedConnectionId,
+      );
+  const total = connections.length;
+  const hiddenCount = showDisconnected
+    ? 0
+    : connections.filter(({ state }) => state === "disconnected").length;
   const connectionTabs = visibleConnections.map((connection) => ({
     connectionId: connection.connectionId,
     label: connection.displayName,
@@ -219,12 +202,14 @@ function IntegrationsWorkspace({
               ) : null
             }
           >
-            {connectionsQuery.isError || countsQuery.isError ? (
+            {list.status === "error" ? (
               <BackofficeSystemState
                 tone="error"
                 title="Connection events could not be read."
                 flush
               />
+            ) : list.status === "loading" ? (
+              <PaneSpinner label="Reading connection events" />
             ) : total === 0 ? (
               <BackofficeSystemState
                 tone="empty"
@@ -246,7 +231,7 @@ function IntegrationsWorkspace({
           <NativeServices selectedScope={selectedScope} />
         </>
       ) : (
-        <Outlet context={{ selectedScope, collections } satisfies IntegrationsLayoutContext} />
+        <Outlet context={{ selectedScope, replica } satisfies IntegrationsLayoutContext} />
       )}
     </IntegrationsPage>
   );

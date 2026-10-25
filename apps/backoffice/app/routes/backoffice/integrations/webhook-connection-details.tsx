@@ -1,21 +1,20 @@
 import type { WebhookEndpoint } from "@fragno-dev/api-fragment/types";
+import type { LofiSqliteClient } from "@fragno-dev/lofi/sqlite";
 
-import { eq, or, useLiveQuery } from "@tanstack/react-db";
-
+import { useAutomationRead } from "@/fragno/automation/lofi/replica";
 import type { IntegrationConnectionDetails } from "@/fragno/runtime-tools/families/integrations/integration-implementation";
 
 import { AutomationDetailRows } from "../automations/detail-rows";
 import { DetailSection, formatSourceTimestamp } from "./connection-display";
-import type { IntegrationsLayoutContext } from "./layout-context";
 
 const RECENT_DELIVERY_COUNT = 10;
 
 export function WebhookConnectionDetails({
   details: { endpoint, publicUrl },
-  collections,
+  replica,
 }: {
   details: Extract<IntegrationConnectionDetails, { kind: "webhook" }>;
-  collections: IntegrationsLayoutContext["collections"];
+  replica: LofiSqliteClient;
 }) {
   if (endpoint === null) {
     return (
@@ -54,40 +53,23 @@ export function WebhookConnectionDetails({
           ]}
         />
       </DetailSection>
-      <RecentDeliveries endpointId={endpoint.id} collections={collections} />
+      <RecentDeliveries endpointId={endpoint.id} replica={replica} />
     </>
   );
 }
 
-/** Raw deliveries arrive as api/webhook.received; routes reclassify them under the endpoint ID. */
 function RecentDeliveries({
   endpointId,
-  collections,
+  replica,
 }: {
   endpointId: string;
-  collections: IntegrationsLayoutContext["collections"];
+  replica: LofiSqliteClient;
 }) {
-  const eventsQuery = useLiveQuery({
-    query: (query) =>
-      query
-        .from({ event: collections.events })
-        .where(({ event }) => or(eq(event.source, "api"), eq(event.source, endpointId)))
-        .select(({ event }) => ({
-          id: event.id,
-          source: event.source,
-          eventType: event.eventType,
-          subject: event.subject,
-          occurredAt: event.occurredAt,
-        })),
+  const deliveriesRead = useAutomationRead(replica, "webhookDeliveries", {
+    endpointId,
+    limit: RECENT_DELIVERY_COUNT,
   });
-  const deliveries = (eventsQuery.data ?? [])
-    .filter(
-      (event) =>
-        event.source === endpointId ||
-        (event.eventType === "webhook.received" && event.subject?.endpointId === endpointId),
-    )
-    .sort((left, right) => right.occurredAt.getTime() - left.occurredAt.getTime())
-    .slice(0, RECENT_DELIVERY_COUNT);
+  const deliveries = deliveriesRead.status === "ready" ? deliveriesRead.data : [];
 
   return (
     <DetailSection title="Recent deliveries">

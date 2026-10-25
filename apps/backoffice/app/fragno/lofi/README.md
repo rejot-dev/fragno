@@ -90,6 +90,14 @@ it reads from the replica only which of the Codemode runs it started have record
 These render before the replica opens, so they take it from `useCurrentAutomationReplica` instead of
 suspending, and show the directory as loading until the replica first catches up.
 
+Integrations (`routes/backoffice/integrations/`) lists every connection, disconnected ones too, from
+the `integration_connection` projection, and filters them on the page, so showing disconnected
+connections opens no new read. A connection's state history reads its `integrations` events and
+folds them with `integrationConnectionStateChanges`; a webhook endpoint's recent deliveries are its
+latest `api/webhook.received` events and those routes reclassified under the endpoint ID
+(`integrations-replica.ts`). Both narrow by a field of the event's subject with `json_extract`, the
+history before `integrationConnectionStateChanges` validates the subject.
+
 The project menu in the top bar reads no synchronized data: the layout's loader lists the owner's
 projects through the Automations object's `GET /projects` (`../automation/project-list.server.ts`)
 and streams them to the menu, so no page opens a database for it.
@@ -173,12 +181,13 @@ summary changes.
   `NotFoundError`; three workers running that loop against three leftover directories failed in 14
   of 30 trials. While the Automations replica opened next to the TanStack DB database, both started
   after the same `GET /_internal`, and 3 of 12 reloads showed the route's error page. Replica
-  workers retry their open; the TanStack database does not. The dashboard, Files, Marketplace, and
-  Agents open only replica workers, the Upload and the Automations replica's on Files: 12 of 12
-  reloads of a workflow file showed its tree and its routes. Integrations and pages still open the
-  TanStack database, and tabs share OPFS, so workers of two tabs opening at once can still fail
-  there. wa-sqlite 2.x ignores the `NotFoundError`, but `@tanstack/browser-db-sqlite-persistence`
-  (0.2.37) accepts only `^1.4.1`; backporting that change as a pnpm patch of 1.7.2 would fix it.
+  workers retry their open; the TanStack database does not. Only user pages
+  (`routes/backoffice/pages/page.tsx`, `../../artifacts/pages/view.tsx`) still open the TanStack
+  database; every other route opens only replica workers, the Upload and the Automations replica's
+  on Files: 12 of 12 reloads of a workflow file showed its tree and its routes. Tabs share OPFS, so
+  on pages, workers of two tabs opening at once can still fail. wa-sqlite 2.x ignores the
+  `NotFoundError`, but `@tanstack/browser-db-sqlite-persistence` (0.2.37) accepts only `^1.4.1`;
+  backporting that change as a pnpm patch of 1.7.2 would fix it.
 - **Returning visits show older data without saying so.** A replica that caught up before opens at
   once and replays what changed since in the background, with no indicator.
 - **Failures show as text.** The download and the Files views show the leading tab's last error
@@ -197,9 +206,9 @@ summary changes.
   closed, the other took the lead and showed the next event within about 300 ms.
 - **Two streams and two databases on Files:** the Upload and the Automations replica, each with its
   own `GET /_internal`, outbox stream, OPFS database, and worker, since they follow two backends.
-- **Pages that mix both follow the Automations outbox twice.** Leaving the dashboard, Files, or
-  Agents for Integrations or pages opens the TanStack collections next to the replica that stays
-  open in the tab, each with its own stream, database, and worker.
+- **Pages that mix both follow the Automations outbox twice.** Leaving any other route for a user
+  page opens the TanStack collections next to the replica that stays open in the tab, each with its
+  own stream, database, and worker.
 - **The project menu refreshes on navigation, not live.** It lists projects as of the last time the
   layout's loader ran, which actions such as creating a project rerun; a project an agent creates
   shows after the next navigation. Once every page reads the Automations replica, pages outside a
