@@ -262,9 +262,10 @@ export function serveLofiSqlite(options: LofiSqliteHostOptions): LofiSqliteHost 
       lifetime.abort();
       clearInterval(watchdog);
       options.port.onmessage = null;
+      // A closing leader's replica can still report its status, which it tells the other tabs.
+      await serving;
       channel.close();
       ownChannel.close();
-      await serving;
     },
   };
 }
