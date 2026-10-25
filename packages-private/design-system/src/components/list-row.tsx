@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Link } from "react-router";
+import { Link, NavLink } from "react-router";
 
 import { Icon, type IconName } from "./icon";
 import type { BackofficeStatusTone } from "./status-tone";
@@ -31,7 +31,8 @@ export type ListRowExpansion = { label: string; content: ReactNode };
 
 /**
  * One row of a RowList: what it is, a line about it, and what it trails with, such as a time or a
- * status. With `to`, the whole row leads there, so its trailing content holds no links. With an
+ * status. With `to`, the whole row leads there, so its trailing content holds no links; while that
+ * page is open, as when the row's record shows beside its list, the row reads as selected. With an
  * expansion, the row opens to show its content below, such as a form to answer; then only the
  * title leads to `to`, so the rest of the row toggles.
  */
@@ -102,7 +103,7 @@ export function ListRow({
 
   const row = content(
     <span
-      className={`${titleClassName} ${to === null ? "" : "group-hover:underline"}`}
+      className={`${titleClassName} ${to === null ? "" : "group-hover:underline group-aria-[current=page]:text-[var(--bo-accent-fg)]"}`}
       title={title}
     >
       {title}
@@ -114,9 +115,9 @@ export function ListRow({
       {to === null ? (
         <div className={rowClassName}>{row}</div>
       ) : (
-        <Link to={to} className={rowClassName}>
+        <NavLink to={to} end className={rowClassName}>
           {row}
-        </Link>
+        </NavLink>
       )}
     </li>
   );
