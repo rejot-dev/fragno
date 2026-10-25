@@ -55,6 +55,23 @@ describe("server-side upload file edits", async () => {
     await fs.rm(rootDir, { recursive: true, force: true });
   });
 
+  it("deletes a file by key so reading it reports it gone", async () => {
+    await helpers.applyEdits({
+      provider,
+      edits: [{ kind: "write", fileKey: "uploads/old.txt", content: "old" }],
+    });
+
+    await helpers.deleteFile("uploads/old.txt", { provider });
+
+    const response = await fetcher(
+      `${TEST_BASE_URL}${server.fragment.mountRoute}/files/by-key/content?${new URLSearchParams({
+        provider,
+        key: "uploads/old.txt",
+      })}`,
+    );
+    assert(response.status === 410);
+  });
+
   it("applies write, replace, and JSON operations through one client request", async () => {
     await helpers.applyEdits({
       provider,

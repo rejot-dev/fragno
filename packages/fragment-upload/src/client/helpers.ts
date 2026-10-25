@@ -130,6 +130,8 @@ export type UploadHelpers = {
   ) => Promise<UploadTransferResult>;
   applyEdits: (input: ApplyFileEditsInput) => Promise<ApplyFileEditsResult>;
   downloadFile: (fileKey: string, options: DownloadFileOptions) => Promise<Response>;
+  /** Deletes the file at `fileKey`; its storage is reclaimed in the background. */
+  deleteFile: (fileKey: string, options: { provider: string }) => Promise<void>;
   /** Lists files that may contain any of `keywords`, one index pass per keyword. */
   searchFileCandidates: (
     glob: string,
@@ -726,6 +728,12 @@ export const createUploadHelpers = (input: {
     });
   };
 
+  const deleteFile: UploadHelpers["deleteFile"] = async (fileKey, { provider }) => {
+    await fetchJson<{ ok: true }>(`/files/by-key?${buildByKeyQuery(provider, fileKey)}`, {
+      method: "DELETE",
+    });
+  };
+
   const downloadFile: UploadHelpers["downloadFile"] = async (fileKey, options) => {
     if (!hasText(fileKey)) {
       throw new Error("File key is required");
@@ -857,6 +865,7 @@ export const createUploadHelpers = (input: {
   return {
     applyEdits,
     createUploadAndTransfer,
+    deleteFile,
     downloadFile,
     hydrateSearchMatches,
     searchFileCandidates,
