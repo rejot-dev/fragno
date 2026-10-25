@@ -1,4 +1,4 @@
-import type { LofiSqliteReplica } from "@fragno-dev/lofi/sqlite";
+import type { LofiSqliteClient } from "@fragno-dev/lofi/sqlite";
 
 import type { AutomationCollections } from "./tanstack/collections";
 
@@ -8,13 +8,13 @@ import type { AutomationCollections } from "./tanstack/collections";
  * they already hold, so none opens a second copy of the scope's history for a shared view.
  */
 export type AutomationReadSource<TCollections = AutomationCollections> =
-  | { kind: "replica"; replica: LofiSqliteReplica }
+  | { kind: "replica"; replica: LofiSqliteClient }
   | { kind: "collections"; collections: TCollections };
 
 /** The replica a source names, or null when it names the TanStack collections. */
 export function automationReadReplica(
   source: AutomationReadSource<unknown> | undefined,
-): LofiSqliteReplica | null {
+): LofiSqliteClient | null {
   return source?.kind === "replica" ? source.replica : null;
 }
 

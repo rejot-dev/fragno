@@ -28,7 +28,7 @@ import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { GENERAL_SKILL_CONTENT } from "@/files/content/skills";
-import { readLatestEventsOfType, readWorkflowRuns } from "@/fragno/automation/lofi/reads";
+import { readAutomationReplica } from "@/fragno/automation/lofi/testing";
 import {
   backofficeFiles,
   defineBackofficeScenario,
@@ -62,10 +62,8 @@ import {
 import {
   orchestrationActiveWorkflowsQuery,
   projectOrchestrationGraph,
-  readOrchestrationRecords,
 } from "./orchestration-graph";
 import { dashboardBucketStarts, projectBackofficeDashboard } from "./overview";
-import { readDashboardOverview } from "./overview-replica";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
   class MockDurableObject {
@@ -438,10 +436,10 @@ async function readDashboard(ctx: BackofficeScenarioContext) {
   const replica = ctx.lofi.automations.forOrg(orgId);
   await replica.drain();
   const now = ctx.runtime.now();
-  const since = new Date(dashboardBucketStarts(now)[0] ?? now);
+  const since = dashboardBucketStarts(now)[0] ?? now;
   const [overview, { activeWorkflows }] = await Promise.all([
-    readDashboardOverview(replica.replica, since),
-    readOrchestrationRecords(replica.replica),
+    readAutomationReplica(replica.replica, "dashboardOverview", { since }),
+    readAutomationReplica(replica.replica, "orchestrationRecords", undefined),
   ]);
   const { routes, events, agents, agentTurns } = overview;
   const dashboard = projectBackofficeDashboard({ now, ...overview });
@@ -545,7 +543,7 @@ async function assertReplicaReadsMatchCollections(ctx: BackofficeScenarioContext
   const { replica } = handle;
   const { collections } = database;
 
-  const records = await readOrchestrationRecords(replica);
+  const records = await readAutomationReplica(replica, "orchestrationRecords", undefined);
   const [eventSources, eventDefinitions, activeWorkflows] = await Promise.all([
     queryOnce((query) =>
       query.from({ source: collections.eventSources }).select(({ source }) => ({
@@ -589,14 +587,14 @@ async function assertReplicaReadsMatchCollections(ctx: BackofficeScenarioContext
   ];
   for (const selector of selectors) {
     assert.deepEqual(
-      await readWorkflowRuns(replica, selector),
+      await readAutomationReplica(replica, "workflowRuns", selector),
       (await queriedRuns(selector)).map(withoutVirtualProps),
       JSON.stringify(selector),
     );
   }
 
   // `WorkflowRunResponse` derives a run's waits from the run, as the waits collection does.
-  const waitingRuns = await readWorkflowRuns(replica, { type: "waiting" });
+  const waitingRuns = await readAutomationReplica(replica, "workflowRuns", { type: "waiting" });
   assert.isNotEmpty(waitingRuns);
   assert.deepEqual(
     byJson(
@@ -628,7 +626,7 @@ async function assertReplicaReadsMatchCollections(ctx: BackofficeScenarioContext
         })),
     );
     assert.deepEqual(
-      await readLatestEventsOfType(replica, { source, eventType, limit: 2 }),
+      await readAutomationReplica(replica, "latestEventsOfType", { source, eventType, limit: 2 }),
       latest.map(withoutVirtualProps),
       `${source}:${eventType}`,
     );

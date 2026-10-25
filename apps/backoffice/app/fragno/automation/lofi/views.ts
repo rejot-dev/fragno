@@ -1,6 +1,6 @@
 import type { PiAgentDefinition } from "@fragno-dev/backoffice-api/v0/pi";
 import { column, idColumn, schema, type Column } from "@fragno-dev/db/schema";
-import { lofiSqliteTableName, type LofiSqliteReplica } from "@fragno-dev/lofi/sqlite";
+import { lofiSqliteTableName, type LofiSqliteReader } from "@fragno-dev/lofi/sqlite";
 
 import {
   defineLocalProjection,
@@ -386,9 +386,9 @@ const table = (name: keyof typeof views) =>
  * The scope's agents: built-in agents, and those their events define. The most recently active
  * come first; agents without activity keep built-in agents first, then go by name.
  */
-export async function readPiAgents(replica: LofiSqliteReplica): Promise<PiAgentRecord[]> {
+export function readPiAgents(reader: LofiSqliteReader): PiAgentRecord[] {
   const agent = views.pi_agent.columns;
-  const rows = await replica.query({
+  const rows = reader.query({
     sql: `SELECT "id" AS "agentName", "latestKind", "latestAt", "latestCreatedAt", "definition",
             "definitionAt", "definitionCreatedAt", "paused", "pauseAt", "pauseCreatedAt", "running",
             "queued", "steering"
@@ -426,12 +426,12 @@ export async function readPiAgents(replica: LofiSqliteReplica): Promise<PiAgentR
 }
 
 /** The turns agents ended since `since`. */
-export async function readPiAgentTurns(
-  replica: LofiSqliteReplica,
+export function readPiAgentTurns(
+  reader: LofiSqliteReader,
   since: Date,
-): Promise<Pick<PiAgentTurnRecord, "agentName" | "endedAt">[]> {
+): Pick<PiAgentTurnRecord, "agentName" | "endedAt">[] {
   const turn = views.pi_agent_turn.columns;
-  return await replica.query({
+  return reader.query({
     sql: `SELECT "agentName", "endedAt" FROM ${table("pi_agent_turn")} WHERE "endedAt" >= ?`,
     params: [since.getTime()],
     columns: { agentName: turn.agentName, endedAt: turn.endedAt },
@@ -439,11 +439,11 @@ export async function readPiAgentTurns(
 }
 
 /** The connections that are not disconnected, by service and then connection ID. */
-export async function readCurrentIntegrationConnections(
-  replica: LofiSqliteReplica,
-): Promise<IntegrationConnectionRecord[]> {
+export function readCurrentIntegrationConnections(
+  reader: LofiSqliteReader,
+): IntegrationConnectionRecord[] {
   const connection = views.integration_connection.columns;
-  const rows = await replica.query({
+  const rows = reader.query({
     sql: `SELECT "id" AS "connectionId", "service", "kind", "state", "name", "authMethod",
             "eventId", "changedAt", "displayName", "kindLabel"
           FROM ${table("integration_connection")}

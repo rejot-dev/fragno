@@ -10,6 +10,7 @@ import type { CausalFlameNode } from "@fragno-private/design-system/causal-flame
 
 import { and, eq, queryOnce } from "@tanstack/react-db";
 
+import { readAutomationReplica } from "@/fragno/automation/lofi/testing";
 import { getStaticMarketplaceEntry } from "@/fragno/marketplace/static-entries";
 import {
   eventTraceDeliveriesQuery,
@@ -27,10 +28,6 @@ import {
   type EventTraceRun,
   type EventTraceStep,
 } from "@/routes/backoffice/dashboard/event-traces";
-import {
-  readEventTrace,
-  readEventTraceList,
-} from "@/routes/backoffice/dashboard/event-traces-replica";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
   class MockDurableObject {
@@ -177,13 +174,14 @@ async function assertReplicaTracesMatchCollections(
   assert(trace);
   expect(
     comparable(
-      projectEventTrace({ rootEventId, ...(await readEventTrace(replica.replica, rootEventId)) }),
+      projectEventTrace({
+        rootEventId,
+        ...(await readAutomationReplica(replica.replica, "eventTrace", { rootEventId })),
+      }),
     ),
   ).toEqual(comparable(trace));
   expect(
-    comparable(
-      projectEventTraceSummaries({ ...(await readEventTraceList(replica.replica, 10)), limit: 10 }),
-    ),
+    comparable(await readAutomationReplica(replica.replica, "eventTraceSummaries", { limit: 10 })),
   ).toEqual(comparable(projectEventTraceSummaries({ events, dispatches, runs, limit: 10 })));
 }
 

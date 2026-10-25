@@ -1,4 +1,4 @@
-import { lofiSqliteTableName, type LofiSqliteReplica } from "@fragno-dev/lofi/sqlite";
+import { lofiSqliteTableName, type LofiSqliteReader } from "@fragno-dev/lofi/sqlite";
 import { workflowsSchema } from "@fragno-dev/workflows/schema";
 
 import { automationFragmentSchema } from "@/fragno/automation/schema";
@@ -6,6 +6,7 @@ import { automationFragmentSchema } from "@/fragno/automation/schema";
 import {
   eventTraceDispatch,
   eventTraceRunIds,
+  projectEventTraceSummaries,
   type EventTraceDelivery,
   type EventTraceDispatch,
   type EventTraceDispatchRow,
@@ -40,15 +41,15 @@ type EventRow = Omit<EventTraceEvent, "payload" | "subject">;
 // strings hold the shapes it persists.
 const withoutBody = (row: EventRow): EventTraceEvent => ({ ...row, payload: null, subject: null });
 
-async function readDispatches(
-  replica: LofiSqliteReplica,
+function readDispatches(
+  reader: LofiSqliteReader,
   rootEventIds: readonly string[],
-): Promise<EventTraceDispatch[]> {
+): EventTraceDispatch[] {
   if (rootEventIds.length === 0) {
     return [];
   }
   const dispatch = automationFragmentSchema.tables.automation_route_dispatch.columns;
-  const rows = await replica.query({
+  const rows = reader.query({
     sql: `SELECT "id", "eventId", "rootEventId", "routeId", "routeName", "status", "outcome",
             "failedAttempts", "error", "dispatchedAt"
           FROM ${automationTable("automation_route_dispatch")}
@@ -71,10 +72,10 @@ async function readDispatches(
 }
 
 /** The runs the dispatches started or sent events to, which a trace names its routes by. */
-async function readDispatchedRuns(
-  replica: LofiSqliteReplica,
+function readDispatchedRuns(
+  reader: LofiSqliteReader,
   dispatches: readonly EventTraceDispatch[],
-): Promise<EventTraceRun[]> {
+): EventTraceRun[] {
   const keys = new Map<string, [string, string]>();
   for (const { state } of dispatches) {
     if (
@@ -89,7 +90,7 @@ async function readDispatchedRuns(
     return [];
   }
   const instance = workflowsSchema.tables.workflow_instance.columns;
-  const rows = await replica.query({
+  const rows = reader.query({
     sql: `SELECT "id", "workflowName", "instanceId", "remoteWorkflowName", "status",
             "errorMessage", "createdAt", "startedAt", "completedAt"
           FROM ${workflowTable("workflow_instance")}
@@ -113,12 +114,20 @@ async function readDispatchedRuns(
 }
 
 /**
+ * The newest `limit` origins' summaries, as the Events list shows them. They are projected where
+ * they are read, so the origins' payloads, which can be whole webhook bodies, stay in the worker.
+ */
+export function readEventTraceSummaries(reader: LofiSqliteReader, { limit }: { limit: number }) {
+  return projectEventTraceSummaries({ ...readEventTraceList(reader, { limit }), limit });
+}
+
+/**
  * What `projectEventTraceSummaries` needs for the newest `limit` origins: the origins, with the
  * payload their headline comes from, the events they caused, their dispatches, and the runs those
  * started or sent events to. Origins that tie on time come newest ID first.
  */
-export async function readEventTraceList(replica: LofiSqliteReplica, limit: number) {
-  const origins = await replica.query({
+function readEventTraceList(reader: LofiSqliteReader, { limit }: { limit: number }) {
+  const origins = reader.query({
     sql: `SELECT ${EVENT_SELECT}, "payload"
           FROM ${automationTable("automation_event")}
           WHERE "rootEventId" IS NULL OR "rootEventId" = "id"
@@ -128,19 +137,18 @@ export async function readEventTraceList(replica: LofiSqliteReplica, limit: numb
     columns: { ...EVENT_COLUMNS, payload: event.payload },
   });
   const originIds = origins.map(({ id }) => id);
-  const [derived, dispatches] = await Promise.all([
+  const derived =
     originIds.length === 0
       ? []
-      : replica.query({
+      : reader.query({
           sql: `SELECT ${EVENT_SELECT}
                 FROM ${automationTable("automation_event")}
                 WHERE "rootEventId" IN (${placeholders(originIds.length)}) AND "id" <> "rootEventId"`,
           params: originIds,
           columns: EVENT_COLUMNS,
-        }),
-    readDispatches(replica, originIds),
-  ]);
-  const runs = await readDispatchedRuns(replica, dispatches);
+        });
+  const dispatches = readDispatches(reader, originIds);
+  const runs = readDispatchedRuns(reader, dispatches);
   const events: EventTraceEvent[] = [
     ...origins.map((origin) => ({ ...origin, subject: null }) as EventTraceEvent),
     ...(derived as EventRow[]).map(withoutBody),
@@ -152,18 +160,16 @@ export async function readEventTraceList(replica: LofiSqliteReplica, limit: numb
  * What `projectEventTrace` needs for one origin: its events in full, its dispatches, the runs they
  * started or sent events to, and the steps and workflow events of those runs.
  */
-export async function readEventTrace(replica: LofiSqliteReplica, rootEventId: string) {
-  const [events, dispatches] = await Promise.all([
-    replica.query({
-      sql: `SELECT ${EVENT_SELECT}, "payload", "subject"
+export function readEventTrace(reader: LofiSqliteReader, { rootEventId }: { rootEventId: string }) {
+  const events = reader.query({
+    sql: `SELECT ${EVENT_SELECT}, "payload", "subject"
             FROM ${automationTable("automation_event")}
             WHERE "id" = ? OR "rootEventId" = ?`,
-      params: [rootEventId, rootEventId],
-      columns: { ...EVENT_COLUMNS, payload: event.payload, subject: event.subject },
-    }),
-    readDispatches(replica, [rootEventId]),
-  ]);
-  const runs = await readDispatchedRuns(replica, dispatches);
+    params: [rootEventId, rootEventId],
+    columns: { ...EVENT_COLUMNS, payload: event.payload, subject: event.subject },
+  });
+  const dispatches = readDispatches(reader, [rootEventId]);
+  const runs = readDispatchedRuns(reader, dispatches);
   const runIds = eventTraceRunIds({ rootEventId, dispatches, runs });
   if (runIds.length === 0) {
     return {
@@ -183,43 +189,41 @@ export async function readEventTrace(replica: LofiSqliteReplica, rootEventId: st
   const runsOfTrace = `JOIN ${workflowTable("workflow_instance")} AS "run"
     ON "run".${internalId} = "row"."instanceRef"
     WHERE "run"."id" IN (${placeholders(runIds.length)})`;
-  const [steps, deliveries] = await Promise.all([
-    replica.query({
-      sql: `SELECT "row"."id", "run"."id" AS "instanceRef", "row"."stepKey", "row"."parentStepKey",
+  const steps = reader.query({
+    sql: `SELECT "row"."id", "run"."id" AS "instanceRef", "row"."stepKey", "row"."parentStepKey",
               "row"."name", "row"."type", "row"."status", "row"."attempts", "row"."waitEventType",
               "row"."errorMessage", "row"."createdAt", "row"."updatedAt"
             FROM ${workflowTable("workflow_step")} AS "row" ${runsOfTrace}`,
-      params: runIds,
-      columns: {
-        id: "text",
-        instanceRef: "text",
-        stepKey: step.stepKey,
-        parentStepKey: step.parentStepKey,
-        name: step.name,
-        type: step.type,
-        status: step.status,
-        attempts: step.attempts,
-        waitEventType: step.waitEventType,
-        errorMessage: step.errorMessage,
-        createdAt: step.createdAt,
-        updatedAt: step.updatedAt,
-      },
-    }),
-    replica.query({
-      sql: `SELECT "row"."id", "run"."id" AS "instanceRef", "row"."type", "row"."createdAt",
+    params: runIds,
+    columns: {
+      id: "text",
+      instanceRef: "text",
+      stepKey: step.stepKey,
+      parentStepKey: step.parentStepKey,
+      name: step.name,
+      type: step.type,
+      status: step.status,
+      attempts: step.attempts,
+      waitEventType: step.waitEventType,
+      errorMessage: step.errorMessage,
+      createdAt: step.createdAt,
+      updatedAt: step.updatedAt,
+    },
+  });
+  const deliveries = reader.query({
+    sql: `SELECT "row"."id", "run"."id" AS "instanceRef", "row"."type", "row"."createdAt",
               "row"."deliveredAt", "row"."consumedByStepKey"
             FROM ${workflowTable("workflow_event")} AS "row" ${runsOfTrace}`,
-      params: runIds,
-      columns: {
-        id: "text",
-        instanceRef: "text",
-        type: delivery.type,
-        createdAt: delivery.createdAt,
-        deliveredAt: delivery.deliveredAt,
-        consumedByStepKey: delivery.consumedByStepKey,
-      },
-    }),
-  ]);
+    params: runIds,
+    columns: {
+      id: "text",
+      instanceRef: "text",
+      type: delivery.type,
+      createdAt: delivery.createdAt,
+      deliveredAt: delivery.deliveredAt,
+      consumedByStepKey: delivery.consumedByStepKey,
+    },
+  });
   return {
     events: events as EventTraceEvent[],
     dispatches,

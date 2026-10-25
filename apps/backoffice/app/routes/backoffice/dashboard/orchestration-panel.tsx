@@ -13,6 +13,7 @@ import { useLiveQuery } from "@tanstack/react-db";
 
 import type { BackofficeScopeSelection } from "@/backoffice-runtime/resolved-scope";
 import { useClock } from "@/components/backoffice/use-clock";
+import { useAutomationRead, type AutomationReadData } from "@/fragno/automation/lofi/replica";
 import {
   automationReadCollections,
   automationReadReplica,
@@ -24,7 +25,6 @@ import {
   listAutomationEventDescriptors,
   listCapabilityEventSources,
 } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
-import { useLofiSqliteRead } from "@/fragno/lofi/use-lofi-sqlite-read";
 import type { RuntimeToolWorkflowDescriptor } from "@/fragno/runtime-tools/workflow-catalog";
 
 import type { AutomationScriptSourceRecord } from "../automations/data";
@@ -35,7 +35,6 @@ import {
   orchestrationActiveWorkflowsQuery,
   orchestrationEventId,
   projectOrchestrationGraph,
-  readOrchestrationRecords,
   routeTargetId,
   routeTriggerEventId,
   type OrchestrationCatalogEvent,
@@ -249,7 +248,7 @@ export function ScopeOrchestration({
   );
 }
 
-type OrchestrationRecords = Awaited<ReturnType<typeof readOrchestrationRecords>>;
+type OrchestrationRecords = AutomationReadData<"orchestrationRecords">;
 
 const NO_ORCHESTRATION_RECORDS: OrchestrationRecords = {
   eventSources: [],
@@ -291,10 +290,10 @@ function useOrchestrationRecords(readSource: AutomationReadSource): {
     query: (query) =>
       collections ? orchestrationActiveWorkflowsQuery(query, collections) : undefined,
   });
-  const replicaRead = useLofiSqliteRead(
+  const replicaRead = useAutomationRead(
     automationReadReplica(readSource),
-    "",
-    readOrchestrationRecords,
+    "orchestrationRecords",
+    undefined,
   );
   const queried = useMemo(
     (): OrchestrationRecords => ({

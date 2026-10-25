@@ -5,14 +5,13 @@ import type { WorkflowVisualizationSnapshot } from "@fragno-dev/workflow-visuali
 import { and, eq, or, toArray, useLiveQuery, type InitialQueryBuilder } from "@tanstack/react-db";
 
 import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
-import { readWorkflowRuns } from "@/fragno/automation/lofi/reads";
+import { useAutomationRead } from "@/fragno/automation/lofi/replica";
 import {
   automationReadCollections,
   automationReadReplica,
   type AutomationReadSource,
 } from "@/fragno/automation/read-source";
 import type { AutomationCollections } from "@/fragno/automation/tanstack/collections";
-import { useLofiSqliteRead } from "@/fragno/lofi/use-lofi-sqlite-read";
 
 import {
   projectScriptWorkflowRuns,
@@ -149,14 +148,11 @@ export function useWorkflowRunRecords({
     query: (query) =>
       selector && collections ? workflowRunRecordsQuery(query, collections, selector) : undefined,
   });
-  const selectorKey = selector ? JSON.stringify(selector) : null;
-  const replicaRead = useLofiSqliteRead(
+  const replicaRead = useAutomationRead(
     selector ? automationReadReplica(source) : null,
-    selectorKey ?? "",
-    async (replica) => ({
-      selectorKey,
-      instances: selector ? await readWorkflowRuns(replica, selector) : [],
-    }),
+    "workflowRuns",
+    // Without a selector there is no replica, so nothing reads this.
+    selector ?? { type: "waiting" },
   );
   const queriedInstances = useMemo(
     () => automationWorkflowRunsFromRecords(runsQuery.data ?? []),
@@ -164,12 +160,10 @@ export function useWorkflowRunRecords({
   );
 
   if (source?.kind === "replica") {
-    // A read for an earlier selector can still land after the selector changes.
-    const current = replicaRead.status === "ready" && replicaRead.data.selectorKey === selectorKey;
     return {
-      instances: current ? replicaRead.data.instances : NO_RUNS,
+      instances: replicaRead.status === "ready" ? replicaRead.data : NO_RUNS,
       error: selector && replicaRead.status === "error" ? "Workflow runs could not be read." : null,
-      isLoading: Boolean(selector && !current && replicaRead.status !== "error"),
+      isLoading: Boolean(selector && replicaRead.status === "loading"),
     };
   }
   return {

@@ -1,5 +1,5 @@
 import { backofficeScopeProjectOwner } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import type { LofiSqliteReplica } from "@fragno-dev/lofi/sqlite";
+import type { LofiSqliteClient } from "@fragno-dev/lofi/sqlite";
 import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
 import { BackofficeDownloadState } from "@fragno-private/design-system/download-state";
@@ -19,10 +19,9 @@ import {
 import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
 import { backofficePageBodyClassName } from "@/components/backoffice/page-body";
 import { useClock } from "@/components/backoffice/use-clock";
-import { getAutomationReplica } from "@/fragno/automation/lofi/replica";
+import { getAutomationReplica, useAutomationRead } from "@/fragno/automation/lofi/replica";
 import { describeAutomationCollectionSource } from "@/fragno/automation/tanstack/browser-database";
 import { LofiReplicaGate } from "@/fragno/lofi/replica-gate";
-import { useLofiSqliteRead } from "@/fragno/lofi/use-lofi-sqlite-read";
 import {
   getBackofficeShellRequest,
   requireRouteScope,
@@ -36,7 +35,6 @@ import { DashboardSections, type DashboardLoaderData } from "./dashboard-section
 import { DashboardTabs } from "./dashboard-tabs";
 import { loadOrchestration } from "./orchestration-loader.server";
 import { dashboardBucketStarts, projectBackofficeDashboard } from "./overview";
-import { readDashboardOverview } from "./overview-replica";
 import { dashboardPath, shouldRevalidateOrchestration } from "./path";
 
 const CLOCK_TICK_MS = 60_000;
@@ -238,15 +236,13 @@ function DashboardWorkspace({
   replica,
 }: {
   loaderData: DashboardLoaderData;
-  replica: LofiSqliteReplica;
+  replica: LofiSqliteClient;
 }) {
   const readSource = useMemo(() => ({ kind: "replica", replica }) as const, [replica]);
   const now = useClock(CLOCK_TICK_MS);
-  // The window start only moves when a new bucket begins, so the replica is read again rarely.
+  // The window start only moves when a new bucket begins, so the view opens again rarely.
   const windowStart = dashboardBucketStarts(now)[0] ?? now;
-  const reading = useLofiSqliteRead(replica, String(windowStart), (replica) =>
-    readDashboardOverview(replica, new Date(windowStart)),
-  );
+  const reading = useAutomationRead(replica, "dashboardOverview", { since: windowStart });
   const overview = reading.status === "ready" ? reading.data : null;
   const dashboard = useMemo(
     () =>
@@ -275,9 +271,7 @@ function DashboardWorkspace({
       <BackofficeSystemState
         tone="error"
         title="Automation activity could not be read."
-        description={
-          reading.error instanceof Error ? reading.error.message : "Reload to try again."
-        }
+        description={reading.message}
       />
     );
   }
