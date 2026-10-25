@@ -2,6 +2,7 @@ import { afterEach, assert, describe, expect, it } from "vitest";
 
 import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
 import { BetterSQLite3DriverConfig } from "@fragno-dev/db/drivers";
+import { fetchFragnoInternalDescription } from "@fragno-dev/db/outbox";
 import { column, idColumn, schema, type FragnoId } from "@fragno-dev/db/schema";
 import BetterSqlite3 from "better-sqlite3";
 import { SqliteDialect } from "kysely";
@@ -155,10 +156,20 @@ type ScenarioContext = {
   vars: Record<string, FragnoId[]>;
   /** How many tabs opened the database. */
   databasesOpened: number;
+  /** The identity `GET /_internal` reports for the backend. */
+  adapterIdentity: string;
 };
 
 type ScenarioStep =
-  | { type: "openTab"; tab: string; beats: boolean }
+  | {
+      type: "openTab";
+      tab: string;
+      beats: boolean;
+      /** The backend identity the tab expects, `"backend"` for the backend's, or none. */
+      expects?: string;
+      /** The tab's connection fails with this message. */
+      fails?: string;
+    }
   | { type: "closeTab"; tab: string }
   | {
       type: "watch";
@@ -175,7 +186,19 @@ type ScenarioStep =
   | { type: "waitForLeader"; tab: string }
   | { type: "check"; check: (ctx: ScenarioContext) => void };
 
-const openTab = (tab: string): ScenarioStep => ({ type: "openTab", tab, beats: true });
+const openTab = (tab: string, expects?: string): ScenarioStep => ({
+  type: "openTab",
+  tab,
+  beats: true,
+  expects,
+});
+const failToOpenTab = (tab: string, expects: string, message: string): ScenarioStep => ({
+  type: "openTab",
+  tab,
+  beats: true,
+  expects,
+  fails: message,
+});
 /** A tab whose worker runs but whose heartbeats never arrive, like a frozen leader's. */
 const openSilentTab = (tab: string): ScenarioStep => ({ type: "openTab", tab, beats: false });
 const closeTab = (tab: string): ScenarioStep => ({ type: "closeTab", tab });
@@ -240,6 +263,10 @@ async function runScenario(steps: ScenarioStep[]): Promise<ScenarioContext> {
     );
   };
   const files = await openLofiSqliteMemoryFiles({ statementDelayMs: 0 });
+  const { adapterIdentity } = await fetchFragnoInternalDescription({
+    internalUrl: new URL("http://host.test/_internal"),
+    fetch: fetch as typeof globalThis.fetch,
+  });
 
   const ctx: ScenarioContext = {
     tabs: new Map(),
@@ -247,6 +274,7 @@ async function runScenario(steps: ScenarioStep[]): Promise<ScenarioContext> {
     errors: [],
     vars: {},
     databasesOpened: 0,
+    adapterIdentity,
   };
   cleanups.push(async () => {
     for (const { unwatch } of ctx.views.values()) {
@@ -265,6 +293,7 @@ async function runScenario(steps: ScenarioStep[]): Promise<ScenarioContext> {
         const opening = openLofiSqliteTab({
           replica: {
             baseUrl: "http://host.test",
+            adapterIdentity: step.expects === "backend" ? ctx.adapterIdentity : step.expects,
             fetch: fetch as typeof globalThis.fetch,
             schemas: [{ schema: appSchema }],
             localSchemas: [],
@@ -285,7 +314,11 @@ async function runScenario(steps: ScenarioStep[]): Promise<ScenarioContext> {
           heartbeatIntervalMs: step.beats ? 20 : 60 * 60_000,
           leaderTimeoutMs: 200,
         });
-        ctx.tabs.set(step.tab, await opening);
+        if (step.fails === undefined) {
+          ctx.tabs.set(step.tab, await opening);
+        } else {
+          await expect(opening).rejects.toThrow(step.fails);
+        }
         break;
       }
       case "closeTab": {
@@ -662,5 +695,32 @@ describe("Lofi SQLite host", () => {
       }),
     ]);
     ctx.errors.length = 0;
+  });
+
+  it("shares a leader only with tabs that expect the same backend", async () => {
+    const ctx = await runScenario([
+      openTab("a", "backend"),
+      write("ada", (uow) => {
+        uow.create("users", { email: "ada@example.com", active: true });
+      }),
+      watch("a", "users", usersView),
+      waitForView("a", "users", [{ email: "ada@example.com" }]),
+
+      // A tab loaded after the backend was replaced does not read the old backend's replica
+      // through tab a, and refuses to replicate a backend other than the one it expects.
+      failToOpenTab("b", "replacement", "was replaced since the page loaded"),
+      check((ctx) => {
+        assert.equal(ctx.databasesOpened, 1);
+      }),
+
+      // A tab that expects the backend's identity shares tab a's replica.
+      openTab("c", "backend"),
+      watch("c", "users", usersView),
+      waitForView("c", "users", [{ email: "ada@example.com" }]),
+      check((ctx) => {
+        assert.equal(ctx.databasesOpened, 1);
+      }),
+    ]);
+    expect(ctx.errors).toEqual([]);
   });
 });

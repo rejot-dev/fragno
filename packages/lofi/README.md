@@ -673,6 +673,11 @@ every registered source schema and of every local schema that a projection witho
 Changing any of them opens a fresh database, which replays the outbox from the start. Local schemas
 written only by rebuildable projections are left out, because the replica rebuilds those in place.
 
+A page that knows the backend's identity, for example from its server, can pass it as
+`adapterIdentity`. The replica then refuses to open on a backend that reports another one, such as a
+backend replaced since the page loaded, and tabs share a leader only with tabs that expect the same
+backend.
+
 ### Rebuildable projections
 
 A projection that declares `rebuild` can change without a new download. It names its version, the
@@ -1012,6 +1017,9 @@ only to the tab that shows it.
   stops competing; pages that had not connected yet reject. The next tab tries again.
 - **Unknown kinds.** Tabs share a leader whatever engines they pass, since two leaders on one
   database would both open it. A view of a kind the leader's worker has no engine for fails.
+- **Another backend.** Tabs that pass different `adapterIdentity` options lead separately, so a tab
+  loaded after the backend was replaced does not read the old backend's replica through an older
+  tab. Its own replica fails to open if the backend reports another identity still.
 
 ### Risks and follow-ups
 

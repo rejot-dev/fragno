@@ -22,14 +22,10 @@ import { automationViews } from "./views";
 export function getAutomationReplica(source: AutomationReplicaSource): Promise<LofiSqliteClient> {
   const description = describeAutomationReplicaSource(source);
   return getWorkerReplica({
-    baseUrl: description.baseUrl,
-    resourceKey: description.resourceKey,
+    target: { baseUrl: description.baseUrl, adapterIdentity: source.adapterIdentity },
     schemas: [...AUTOMATION_REPLICA_SCHEMAS, ...automationViews.localSchemas],
-    startWorker: (baseUrl) =>
-      new Worker(new URL("./replica.worker.ts", import.meta.url), {
-        type: "module",
-        name: baseUrl,
-      }),
+    startWorker: (name) =>
+      new Worker(new URL("./replica.worker.ts", import.meta.url), { type: "module", name }),
   });
 }
 

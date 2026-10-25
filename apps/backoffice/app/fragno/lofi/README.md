@@ -16,8 +16,10 @@ Each tab starts a replica worker per backend (`../upload/lofi/replica.worker.ts`
 `@fragno-dev/lofi/sqlite/worker`. The workers of a scope's tabs elect a leader, which opens the
 replica and keeps every tab's views up to date as outbox entries arrive; the other tabs' workers
 relay to it. The leader synchronizes with `backofficeFetch`, so an expired token refreshes there
-too. A worker starts with only its name, so the page names it after the backend's URL. Pages connect
-with `@fragno-dev/lofi/sqlite` and read live views:
+too. A worker starts with only its name, so the page names it after the backend's URL and the
+identity its server last reported (`worker-replica-target.ts`): a tab loaded after the backend was
+replaced does not join an older tab's leader, and its replica fails to open if the backend changed
+again since its server looked. Pages connect with `@fragno-dev/lofi/sqlite` and read live views:
 
 - Upload's are ZQL views (`@fragno-dev/lofi-zql`), which the leader updates incrementally.
 - Automations' are read views: named functions in `../automation/lofi/replica-host.ts` that the

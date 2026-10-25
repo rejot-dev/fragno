@@ -20,6 +20,12 @@ import { registrationsNamingReplica } from "./rebuild";
 export type LofiSqliteReplicaOptions = {
   /** Base URL below which the backend serves `/_internal`. */
   baseUrl: string | URL;
+  /**
+   * The identity of the backend the page expects, as `GET /_internal` reported it, if the page
+   * knows it. Tabs share a leader only with tabs that expect the same backend, and the replica
+   * refuses to open on a backend that reports another, such as one replaced since the page loaded.
+   */
+  adapterIdentity?: string;
   fetch: typeof globalThis.fetch;
   schemas: LofiSchemaRegistration[];
   localSchemas: LofiSchemaRegistration[];
@@ -110,6 +116,11 @@ export async function openLofiSqliteReplicaOn(
     internalUrl: urls.internal,
     fetch: options.fetch,
   });
+  if (options.adapterIdentity !== undefined && options.adapterIdentity !== adapterIdentity) {
+    throw new Error(
+      `The backend at ${urls.baseUrl} was replaced since the page loaded: it is now "${adapterIdentity}", not "${options.adapterIdentity}". Reload the page to replicate it.`,
+    );
+  }
   const databaseName = await replicaDatabaseName({
     baseUrl: urls.baseUrl,
     adapterIdentity,
