@@ -23,6 +23,7 @@ type InMemoryWorkerEvaluationContext = {
   clearTimeout: typeof clearTimeout;
   atob: typeof atob;
   btoa: typeof btoa;
+  TextEncoder: typeof TextEncoder;
   Entrypoint?: new () => unknown;
 };
 
@@ -60,6 +61,8 @@ const createInMemoryWorkerLoader = (): WorkerLoader => {
           clearTimeout,
           atob,
           btoa,
+          // Guests count log bytes with it.
+          TextEncoder,
         };
         runInNewContext(transformed, evaluationContext);
         const Entrypoint = evaluationContext.Entrypoint;

@@ -597,6 +597,78 @@ test("durable Pi lists Marketplace-installed skills and finds them by any keywor
   );
 });
 
+test("codemode output past the harness limits keeps its beginning and end and saves the rest for the agent", async () => {
+  const execution = createBackofficeServiceExecution({
+    scope: { kind: "org", orgId: "org-1" },
+    service: { type: "automation", id: "codemode-output-scenario" },
+  });
+  let fullOutputPath = "";
+  const objectOverrides = scriptedAgents([
+    fauxAssistantMessage(
+      [
+        fauxToolCall("codemode", {
+          code: `async () => {
+            for (let i = 0; i < 500; i++) console.log("line " + i + " " + "x".repeat(190));
+            return "result-marker";
+          }`,
+        }),
+      ],
+      { stopReason: "toolUse" },
+    ),
+    (context) => {
+      const result = toolResults(context).at(-1);
+      assert(result);
+      const text = result.content
+        .map((block) => (block.type === "text" ? block.text : ""))
+        .join("");
+      const details = result.details as { fullOutputPath: string };
+      expect(details.fullOutputPath).toMatch(/^\/workspace\/\.pi\/assistant\/outputs\/.+\.txt$/);
+      expect(details).not.toHaveProperty("result");
+      expect(details).not.toHaveProperty("logs");
+      expect(text).toContain("line 0 ");
+      expect(text).not.toContain("line 250 ");
+      expect(text.trimEnd().split("\n").slice(-3, -2)).toEqual(["result-marker"]);
+      expect(text).toContain(`Full output: ${details.fullOutputPath}.`);
+      fullOutputPath = details.fullOutputPath;
+      return fauxAssistantMessage(
+        [
+          fauxToolCall("codemode", {
+            code: `async () => {
+              const lines = (await state.readFile({ path: ${JSON.stringify(fullOutputPath)} })).split("\\n");
+              return lines.filter((line) => line.startsWith("line 250 ")).length + " " + lines.at(-1);
+            }`,
+          }),
+        ],
+        { stopReason: "toolUse" },
+      );
+    },
+    (context) => {
+      const result = toolResults(context).at(-1);
+      assert.equal(result?.isError, false, JSON.stringify(result));
+      expect(result?.details).toMatchObject({ result: "1 result-marker", fullOutputPath: null });
+      return fauxAssistantMessage("Read the full output.");
+    },
+  ]);
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "durable Pi codemode output overflow",
+      options: { drain: false },
+      objects: { ...scenarioObjects, ...objectOverrides },
+      piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+      setup: ({ given }) => [given.organization.exists({ id: "org-1" })],
+      steps: ({ then }) => [
+        then.assert("the agent reads the saved output back", async ({ runtime }) => {
+          await prompt(runtime, execution);
+          await runtime.drain();
+          const transcript = await view(runtime, execution);
+          expect(JSON.stringify(transcript.entries)).toContain("Read the full output.");
+          expect(fullOutputPath).not.toBe("");
+        }),
+      ],
+    }),
+  );
+});
+
 test("an agent's definition narrows every turn and an edited definition applies from the next turn", async () => {
   const execution = createBackofficeServiceExecution({
     scope: { kind: "org", orgId: "org-1" },
