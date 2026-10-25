@@ -36,24 +36,27 @@ function workspaceFileLinkTarget(path: string) {
     : { kind: "file" as const, fileKey: key };
 }
 
+/** Where the `/api/file-links` route is reached from outside Backoffice and from sandboxes. */
+type FileLinkOrigins = { public: string; sandbox: string };
+
 /**
- * Links to one scope's workspace. They reach it through the `/api/file-links` route at the origin
- * sandboxes use, so a sandbox of any scope can move this scope's files.
+ * Links to one scope's workspace. They reach it through the `/api/file-links` route, so anyone
+ * holding the link, including a sandbox of any scope, can move this scope's files.
  */
 export function createFileLinkRuntime({
   uploadObject,
   scope,
-  baseUrl,
+  origins,
 }: {
   uploadObject: () => FetchObject;
   scope: BackofficeRoutableScope;
-  baseUrl: string | null;
+  origins: FileLinkOrigins | null;
 }): FileLinkRuntime {
   async function createLink(
     access: "read" | "write",
     { path, expiresInSeconds = DEFAULT_FILE_LINK_SECONDS }: FileLinkInput,
   ): Promise<FileLink> {
-    if (!baseUrl) {
+    if (!origins) {
       throw new BackofficeOperationError(
         "operation_failed",
         "File links need DOCS_PUBLIC_BASE_URL to be configured.",
@@ -82,20 +85,21 @@ export function createFileLinkRuntime({
     const { token, expiresAt } = z
       .object({ token: z.string(), expiresAt: z.iso.datetime() })
       .parse(await response.json());
-    const url = new URL(
-      `api/file-links/${backofficeContextScopeRoutePath(scope)}/${UPLOAD_PROVIDER_DATABASE}/${token}`,
-      baseUrl,
-    );
+    const linkPath = `api/file-links/${backofficeContextScopeRoutePath(scope)}/${UPLOAD_PROVIDER_DATABASE}/${token}${target.kind === "file" ? "" : "/archive.tar"}`;
+    const url = new URL(linkPath, origins.public).toString();
+    const sandboxUrl = new URL(linkPath, origins.sandbox).toString();
     return target.kind === "file"
       ? {
           format: "file",
-          url: url.toString(),
+          url,
+          sandboxUrl,
           path: `${WORKSPACE_ROOT}${target.fileKey}`,
           expiresAt,
         }
       : {
           format: "tar",
-          url: `${url}/archive.tar`,
+          url,
+          sandboxUrl,
           glob: `${WORKSPACE_ROOT}${target.glob}`,
           root: `${WORKSPACE_ROOT}${getStaticGlobPrefix(target.glob)}`,
           expiresAt,

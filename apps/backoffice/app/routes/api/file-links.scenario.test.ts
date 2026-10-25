@@ -63,7 +63,7 @@ async function tar(entries: TarEntry[]) {
   return new Uint8Array(await packTar(entries));
 }
 
-/** Sends a request the way a sandbox's curl reaches the public file-link route. */
+/** Sends a request the way a browser or a sandbox's curl reaches the public file-link route. */
 async function sendToLink(ctx: BackofficeScenarioContext, url: string, init?: RequestInit) {
   const request = new Request(url, init);
   const match = matchPath("/api/file-links/:scopeKind/:scopeId/:provider/*", new URL(url).pathname);
@@ -110,7 +110,7 @@ test("a sandbox pulls a workspace folder and pushes its results back through fil
           const download = await createLink(ctx, "createDownloadLink", "/workspace/data/");
           assert(download.format === "tar");
           expect(download).toMatchObject({ glob: "/workspace/data/**", root: "/workspace/data/" });
-          const archive = await sendToLink(ctx, download.url);
+          const archive = await sendToLink(ctx, download.sandboxUrl);
           assert.equal(archive.status, 200, await archive.clone().text());
           const pulled = await unpackTar(new Uint8Array(await archive.arrayBuffer()));
           expect(pulled.map(({ header, data }) => [header.name, data])).toEqual([
@@ -120,7 +120,7 @@ test("a sandbox pulls a workspace folder and pushes its results back through fil
 
           const upload = await createLink(ctx, "createUploadLink", "/workspace/results/");
           assert(upload.format === "tar");
-          const pushed = await sendToLink(ctx, upload.url, {
+          const pushed = await sendToLink(ctx, upload.sandboxUrl, {
             method: "PUT",
             body: await tar([
               { header: { name: "./summary.md", size: 7 }, body: "# Done\n" },
@@ -142,7 +142,7 @@ test("a sandbox pulls a workspace folder and pushes its results back through fil
 
           const singleFile = await createLink(ctx, "createUploadLink", "/workspace/notes.md");
           assert(singleFile.format === "file");
-          const replaced = await sendToLink(ctx, singleFile.url, {
+          const replaced = await sendToLink(ctx, singleFile.sandboxUrl, {
             method: "PUT",
             headers: { "content-length": "7" },
             body: "updated",
@@ -150,7 +150,7 @@ test("a sandbox pulls a workspace folder and pushes its results back through fil
           assert.equal(replaced.status, 200, await replaced.clone().text());
           await expect(state.readFile("/workspace/notes.md")).resolves.toBe("updated");
 
-          const readOnly = await sendToLink(ctx, download.url, {
+          const readOnly = await sendToLink(ctx, download.sandboxUrl, {
             method: "PUT",
             body: await tar([{ header: { name: "input.csv", size: 1 }, body: "x" }]),
           });
@@ -159,13 +159,13 @@ test("a sandbox pulls a workspace folder and pushes its results back through fil
 
           const otherOrg = await sendToLink(
             ctx,
-            download.url.replace("/org/org-1/", "/org/org-2/"),
+            download.sandboxUrl.replace("/org/org-1/", "/org/org-2/"),
           );
           assert.equal(otherOrg.status, 403);
 
           const escaped = await sendToLink(
             ctx,
-            download.url.replace(/\/[^/]+\/archive\.tar$/u, "/..%2F..%2Ffiles"),
+            download.sandboxUrl.replace(/\/[^/]+\/archive\.tar$/u, "/..%2F..%2Ffiles"),
           );
           assert.equal(escaped.status, 404);
           assert.equal(await escaped.text(), "File link not found.");
@@ -201,13 +201,49 @@ test("an organization's sandbox reads personal workspace files through their fil
           });
           const link = run.result as FileLink;
           assert(link.format === "file");
-          expect(link.url).toContain("/api/file-links/user/user-1/");
+          expect(link.sandboxUrl).toContain("/api/file-links/user/user-1/");
 
-          const pulled = await sendToLink(ctx, link.url);
+          const pulled = await sendToLink(ctx, link.sandboxUrl);
           assert.equal(pulled.status, 200, await pulled.clone().text());
           expect(new Uint8Array(await pulled.arrayBuffer())).toEqual(
             new Uint8Array([79, 103, 103]),
           );
+        }),
+      ],
+    }),
+  );
+});
+
+test("a person downloads a workspace archive under its own name from the link's public URL", async () => {
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      objects: scenarioObjects,
+      name: "File links download in browsers",
+      setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+      steps: ({ then }) => [
+        then.assert("the zip downloads as workspace-download.zip", async (ctx) => {
+          const state = createRuntimeStateBackend({
+            runtime: ctx.runtime.services,
+            kernel: new BackofficeKernel(ctx.runtime.services),
+            execution: createBackofficeSystemExecution(ORG_SCOPE),
+          });
+          const zip = new Uint8Array([80, 75, 5, 6, ...Array<number>(18).fill(0)]);
+          await state.writeFileBytes("/workspace/workspace-download.zip", zip);
+
+          const link = await createLink(
+            ctx,
+            "createDownloadLink",
+            "/workspace/workspace-download.zip",
+          );
+          expect(link.url).toMatch(/^https:\/\/example\.com\/api\/file-links\/org\/org-1\//u);
+
+          const downloaded = await sendToLink(ctx, link.url);
+          assert.equal(downloaded.status, 200, await downloaded.clone().text());
+          expect(Object.fromEntries(downloaded.headers)).toMatchObject({
+            "content-type": "application/zip",
+            "content-disposition": `attachment; filename="workspace-download.zip"; filename*=UTF-8''workspace-download.zip`,
+          });
+          expect(new Uint8Array(await downloaded.arrayBuffer())).toEqual(zip);
         }),
       ],
     }),
