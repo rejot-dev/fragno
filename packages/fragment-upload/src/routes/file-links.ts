@@ -345,6 +345,26 @@ async function* singleWrite(write: LinkWrite): AsyncGenerator<LinkWrite> {
   yield write;
 }
 
+/**
+ * Link holders open these responses in browsers on the host's origin, so they always download, and
+ * a linked HTML or SVG file that is opened anyway runs no scripts there.
+ */
+function linkedDownload(body: BodyInit | null, headers: Headers, filename: string): Response {
+  // RFC 5987 values exclude the characters encodeURIComponent keeps, and browsers drop the
+  // whole filename* on an unescaped apostrophe.
+  const encoded = encodeURIComponent(filename).replace(
+    /['()*]/gu,
+    (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+  headers.set(
+    "Content-Disposition",
+    `attachment; filename="${filename.replace(/[^\x20-\x7e]|["\\]/gu, "_")}"; filename*=UTF-8''${encoded}`,
+  );
+  headers.set("Content-Security-Policy", "default-src 'none'; sandbox");
+  headers.set("X-Content-Type-Options", "nosniff");
+  return new Response(body, { headers });
+}
+
 function requireContentLength(headers: Headers): number {
   const contentLength = headers.get("content-length");
   const sizeBytes = Number(contentLength);
@@ -485,11 +505,13 @@ export const fileLinkRoutesFactory = defineRoutes(uploadFragmentDefinition).crea
             if (!storage.getDownloadStream) {
               throw new UploadServiceError("STORAGE_ERROR", "Download streaming unsupported.");
             }
+            let content: Response;
             try {
-              return await storage.getDownloadStream({ storageKey: file.objectKey });
+              content = await storage.getDownloadStream({ storageKey: file.objectKey });
             } catch (cause) {
               throw mapStorageOperationError(cause);
             }
+            return linkedDownload(content.body, new Headers(content.headers), file.filename);
           } catch (cause) {
             return toErrorResponse(cause, error);
           }
@@ -585,7 +607,8 @@ export const fileLinkRoutesFactory = defineRoutes(uploadFragmentDefinition).crea
             if (nextCursor) {
               headers.set(FILE_LINK_NEXT_CURSOR_HEADER, nextCursor);
             }
-            return new Response(readable, { headers });
+            const folder = base.split("/").at(-2);
+            return linkedDownload(readable, headers, `${folder || "archive"}.tar`);
           } catch (cause) {
             return toErrorResponse(cause, error);
           }

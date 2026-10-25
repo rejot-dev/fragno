@@ -138,6 +138,10 @@ describe("file links", async () => {
     const archive = await send(fragment, `/file-links/${readToken}/archive.tar`);
     assert(archive.status === 200);
     assert(archive.headers.get("content-type") === "application/x-tar");
+    assert(
+      archive.headers.get("content-disposition") ===
+        `attachment; filename="data.tar"; filename*=UTF-8''data.tar`,
+    );
     assert(!archive.headers.has("x-next-cursor"));
     const entries = await unpackTar(new Uint8Array(await archive.arrayBuffer()));
     expect(
@@ -294,13 +298,24 @@ describe("file links", async () => {
   });
 
   it("reads and replaces one file, and grants nothing beyond its file, access, audience, or lifetime", async () => {
-    await writeFile("reports/q1.txt", "draft");
-    const readToken = await createLink("read", { kind: "file", fileKey: "reports/q1.txt" });
-    const writeToken = await createLink("write", { kind: "file", fileKey: "reports/q1.txt" });
+    await writeFile("reports/q1 übersicht's.txt", "draft");
+    const readToken = await createLink("read", {
+      kind: "file",
+      fileKey: "reports/q1 übersicht's.txt",
+    });
+    const writeToken = await createLink("write", {
+      kind: "file",
+      fileKey: "reports/q1 übersicht's.txt",
+    });
 
     const read = await send(fragment, `/file-links/${readToken}`);
     assert(read.status === 200);
     assert((await read.text()) === "draft");
+    expect(Object.fromEntries(read.headers)).toMatchObject({
+      "content-disposition": `attachment; filename="q1 _bersicht's.txt"; filename*=UTF-8''q1%20%C3%BCbersicht%27s.txt`,
+      "content-security-policy": "default-src 'none'; sandbox",
+      "x-content-type-options": "nosniff",
+    });
 
     const replaced = await send(fragment, `/file-links/${writeToken}`, {
       method: "PUT",
@@ -308,7 +323,7 @@ describe("file links", async () => {
       contentLength: 5,
     });
     assert(replaced.status === 200);
-    await expect(readFile("reports/q1.txt")).resolves.toBe("final");
+    await expect(readFile("reports/q1 übersicht's.txt")).resolves.toBe("final");
 
     const writeWithReadLink = await send(fragment, `/file-links/${readToken}`, {
       method: "PUT",
@@ -330,7 +345,7 @@ describe("file links", async () => {
       contentLength: 21,
     });
     assert(oversized.status === 413);
-    await expect(readFile("reports/q1.txt")).resolves.toBe("final");
+    await expect(readFile("reports/q1 übersicht's.txt")).resolves.toBe("final");
 
     const fileLinkArchive = await send(fragment, `/file-links/${readToken}/archive.tar`);
     assert(fileLinkArchive.status === 400);
