@@ -63,7 +63,12 @@ type RecordedLine = {
   functionalAmountMinor: bigint;
   description: string;
   dimensions: { dimensionId: Reference; valueId: Reference }[];
-  openItem: { partyAccountId: Reference; dueDate: CalendarDate } | null;
+  openItem: {
+    partyAccountId: Reference;
+    dueDate: CalendarDate;
+    /** The item a reversal's open item settles: the one it mirrors. */
+    settles: { id: FragnoId; outstandingMinor: bigint } | null;
+  } | null;
 };
 
 type PostingPeriod = {
@@ -240,6 +245,10 @@ export const postingServices = {
    * Posts the mirror of an entry, in the same journal and for the same source document: every
    * line again, with its side swapped. Account and dimension rules are not checked again: undoing
    * a posted entry stays possible after its accounts are deactivated or their rules change.
+   *
+   * Each open item of the entry is settled against its mirror for what it has outstanding, so a
+   * reversed invoice no longer shows as owed. What was already settled, such as a payment, stays
+   * open on the mirror.
    */
   reverseEntry: function (this: LedgerServiceContext, input: ReverseEntryInput) {
     return this.serviceTx(ledgerSchema)
@@ -303,6 +312,7 @@ export const postingServices = {
             openItem: line.openItem && {
               partyAccountId: line.openItem.partyAccountId,
               dueDate: line.openItem.dueDate,
+              settles: { id: line.openItem.id, outstandingMinor: line.openItem.outstandingMinor },
             },
           })),
         });
@@ -398,7 +408,7 @@ function resolveOpenItem(
       `Party account ${partyAccount.code} posts to another control account.`,
     );
   }
-  return { partyAccountId: partyAccount.id, dueDate: openItem.dueDate };
+  return { partyAccountId: partyAccount.id, dueDate: openItem.dueDate, settles: null };
 }
 
 /**
@@ -482,14 +492,26 @@ function recordEntry(
       });
     }
     if (line.openItem) {
-      uow.create("openItem", {
+      const { settles } = line.openItem;
+      const settledMinor = settles === null ? 0n : settles.outstandingMinor;
+      const openItemId = uow.create("openItem", {
         lineId,
         partyAccountId: line.openItem.partyAccountId,
         side: line.side,
         currency: line.currency,
         dueDate: line.openItem.dueDate,
-        outstandingMinor: line.amountMinor,
+        outstandingMinor: line.amountMinor - settledMinor,
       });
+      if (settles !== null && settledMinor > 0n) {
+        uow.update("openItem", settles.id, (b) => b.set({ outstandingMinor: 0n }).check());
+        uow.create("allocation", {
+          debitItemId: line.side === "debit" ? openItemId : settles.id,
+          creditItemId: line.side === "debit" ? settles.id : openItemId,
+          amountMinor: settledMinor,
+          allocatedAt: uow.now(),
+          allocatedBy: entry.postedBy,
+        });
+      }
     }
     return lineId.valueOf();
   });

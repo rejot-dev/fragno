@@ -240,6 +240,28 @@ describe("posting", () => {
         "1300": [12100n, 12100n],
         "8000": [12100n, 12100n],
       });
-      assert((await ledger.outstanding("r1", 1)) === 12100n);
+      // The reversal settles the invoice: nothing is owed any more.
+      assert((await ledger.outstanding("e1", 1)) === 0n);
+      assert((await ledger.outstanding("r1", 1)) === 0n);
+      const [invoice, mirror] = await ledger.openItems("alice-c");
+      expect(invoice.allocations).toMatchObject([
+        { creditItemId: mirror.id, amountMinor: "12100", reversed: false },
+      ]);
+    }));
+
+  test("a reversal settles only what is still outstanding, leaving payments open on its mirror", () =>
+    ledgerScenario(async (ledger) => {
+      await ledger.post({ name: "e1", journal: "sales", lines: sale() });
+      await ledger.post({
+        name: "receipt",
+        journal: "cashbook",
+        lines: [debit("bank", 5000n), credit("ar", 5000n, { party: "alice-c" })],
+      });
+      await ledger.allocate({ name: "a1", debit: ["e1", 1], credit: ["receipt", 2], amount: null });
+      await ledger.reverse("r1", "e1");
+
+      assert.equal(await ledger.outstanding("e1", 1), 0n);
+      // Alice paid 50.00 of an invoice that no longer stands: the books owe it back to her.
+      assert.equal(await ledger.outstanding("r1", 1), 5000n);
     }));
 });
