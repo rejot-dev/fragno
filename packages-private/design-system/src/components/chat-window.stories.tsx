@@ -65,11 +65,9 @@ export function Conversation() {
           interfaceShown ? (
             <ChatWorkspacePanel
               label="Interface"
-              toolbarRef={() => undefined}
               onClose={() => {
                 setInterfaceShown(false);
               }}
-              actions={null}
             >
               <div className="flex h-full items-center justify-center text-xs text-[var(--bo-muted-2)]">
                 The generated interface renders here.
