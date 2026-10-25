@@ -3,7 +3,6 @@ import {
   backofficeScopeProjectOwner,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { CodemodeWireError } from "@fragno-dev/codemode/execution/codemode-error-contract";
-import { encodeCodemodeError } from "@fragno-dev/codemode/execution/codemode-errors";
 import { codemodeScopedCallSchema } from "@fragno-dev/codemode/host/codemode-host-capabilities";
 import { resolveProvider, type ExecuteResult } from "@fragno-dev/codemode/runtime-api";
 import { withBackofficeUiBuilder } from "@fragno-private/backoffice-ui/builder";
@@ -16,18 +15,19 @@ import {
   executeBackofficeRuntimeTool,
 } from "@/fragno/runtime-tools/runtime-tools";
 import type {
-  BackofficeRuntimeToolCall,
   BackofficeRuntimeToolFamily,
   BackofficeToolContext,
 } from "@/fragno/runtime-tools/runtime-tools";
 import type { CoreBackofficeToolContext } from "@/fragno/runtime-tools/tool-families";
 
+import type { CodemodeRunToolCall } from "./codemode-fragment";
 import {
   codemodeProviderManifest,
   executeCodemodeInObject,
   type CodemodeRunner,
   type CodemodeRunTools,
 } from "./codemode-object-execute";
+import { createCodemodeToolCallLog, type CodemodeToolCallLog } from "./codemode-tool-call-observer";
 import { readSavedModuleImports } from "./saved-module-imports";
 
 export type RunBackofficeCodemodeInput = {
@@ -37,12 +37,14 @@ export type RunBackofficeCodemodeInput = {
   timeout?: number;
   families: readonly BackofficeRuntimeToolFamily[];
   toolContext: CoreBackofficeToolContext;
+  /** Sees the run's calls as each starts and settles, such as to show them while the run continues. */
+  onToolCalls?: (calls: readonly CodemodeRunToolCall[]) => void;
 };
 
 export type BackofficeCodemodeProvidersInput = {
   families: readonly BackofficeRuntimeToolFamily[];
   toolContext: CoreBackofficeToolContext;
-  toolCalls?: BackofficeRuntimeToolCall[];
+  toolCallLog: CodemodeToolCallLog | null;
 };
 
 export type BackofficeCodemodeWorkflowDefinition = {
@@ -54,7 +56,8 @@ export type BackofficeCodemodeExecuteResult = ExecuteResult & {
   /** Leads to the run's retained record: its logs and tool calls. */
   runId: string;
   errorDetails: CodemodeWireError | null;
-  toolCalls: BackofficeRuntimeToolCall[];
+  /** Oldest first, as the run's guest made them. */
+  toolCalls: readonly CodemodeRunToolCall[];
   workflowDefinition?: BackofficeCodemodeWorkflowDefinition;
   /** Saved modules the code imported; a workflow it defines pins these when scheduled. */
   modules: Record<string, string>;
@@ -66,7 +69,6 @@ const callScopedTool = async (
   input: ScopedCodemodeCallInput,
   scopedContext: BackofficeToolContext,
   families: readonly BackofficeRuntimeToolFamily[],
-  toolCalls?: BackofficeRuntimeToolCall[],
 ) => {
   const family = families.find((candidate) =>
     candidate.tools.some(
@@ -79,34 +81,14 @@ const callScopedTool = async (
   if (!tool) {
     throw new Error(`Unknown scoped tool: ${input.namespace}.${input.toolName}`);
   }
-
-  const call: BackofficeRuntimeToolCall = {
-    providerName: `${input.scope.kind}:${input.namespace}`,
-    toolName: input.toolName,
-    toolId: tool.id,
-    inputSummary: JSON.stringify(input.args[0] ?? null),
-    status: "success",
-    errorDetails: null,
-  };
-  try {
-    if (family?.isAvailable && !family.isAvailable(scopedContext)) {
-      throw new BackofficeToolUnavailableError(
-        `${tool.namespace}.${tool.name}`,
-        scopedContext.execution.scope,
-        tool.description,
-      );
-    }
-    const output = await executeBackofficeRuntimeTool(tool, input.args[0], scopedContext);
-    call.resultSummary = tool.resultLogging === "redacted" ? "[redacted]" : JSON.stringify(output);
-    toolCalls?.push(call);
-    return output;
-  } catch (error) {
-    call.status = "error";
-    call.error = error instanceof Error ? error.message : String(error);
-    call.errorDetails = encodeCodemodeError(error);
-    toolCalls?.push(call);
-    throw error;
+  if (family?.isAvailable && !family.isAvailable(scopedContext)) {
+    throw new BackofficeToolUnavailableError(
+      `${tool.namespace}.${tool.name}`,
+      scopedContext.execution.scope,
+      tool.description,
+    );
   }
+  return await executeBackofficeRuntimeTool(tool, input.args[0], scopedContext);
 };
 
 function codemodeCallScope(
@@ -135,11 +117,9 @@ function codemodeCallScope(
 const createBackofficeScopedCodemodeProvider = ({
   families,
   context,
-  toolCalls,
 }: {
   families: readonly BackofficeRuntimeToolFamily[];
   context: BackofficeToolContext;
-  toolCalls?: BackofficeRuntimeToolCall[];
 }) => ({
   name: "__context",
   fns: {
@@ -147,7 +127,7 @@ const createBackofficeScopedCodemodeProvider = ({
     callScoped: async (rawInput: unknown) => {
       const input = codemodeScopedCallSchema.parse(rawInput);
       const scope = codemodeCallScope(input.scope, context.execution.scope);
-      return await callScopedTool(input, context.createScopedContext(scope), families, toolCalls);
+      return await callScopedTool(input, context.createScopedContext(scope), families);
     },
   },
 });
@@ -155,18 +135,19 @@ const createBackofficeScopedCodemodeProvider = ({
 export function createBackofficeCodemodeRunTools({
   families,
   toolContext,
-  toolCalls,
+  toolCallLog,
 }: BackofficeCodemodeProvidersInput): CodemodeRunTools {
   return {
     providers: [
-      ...createBackofficeCodemodeProviders({ families, context: toolContext, toolCalls }),
-      createBackofficeScopedCodemodeProvider({ families, context: toolContext, toolCalls }),
+      ...createBackofficeCodemodeProviders({ families, context: toolContext }),
+      createBackofficeScopedCodemodeProvider({ families, context: toolContext }),
     ].map((provider) => resolveProvider(provider)),
     redactedResults: families.flatMap((family) =>
       family.tools
         .filter((tool) => tool.resultLogging === "redacted")
         .map((tool) => `${tool.namespace}.${tool.name}`),
     ),
+    toolCallLog,
   };
 }
 
@@ -177,8 +158,9 @@ export const runBackofficeCodemode = async ({
   timeout,
   families,
   toolContext,
+  onToolCalls,
 }: RunBackofficeCodemodeInput): Promise<BackofficeCodemodeExecuteResult> => {
-  const toolCalls: BackofficeRuntimeToolCall[] = [];
+  const toolCallLog = createCodemodeToolCallLog(onToolCalls ?? null);
 
   const state = toolContext.runtimes.state;
   // Without a filesystem, saved-module imports stay unresolved and fail when the code runs.
@@ -188,7 +170,7 @@ export const runBackofficeCodemode = async ({
         program: { kind: "inline", code },
       })
     : { modules: {} };
-  const tools = createBackofficeCodemodeRunTools({ families, toolContext, toolCalls });
+  const tools = createBackofficeCodemodeRunTools({ families, toolContext, toolCallLog });
   const { runId, completion } = await executeCodemodeInObject(
     codemode,
     {
@@ -210,7 +192,7 @@ export const runBackofficeCodemode = async ({
       error: completion.error.message,
       errorDetails: completion.error,
       logs: completion.logs,
-      toolCalls,
+      toolCalls: toolCallLog.calls,
       modules,
     };
   }
@@ -220,7 +202,7 @@ export const runBackofficeCodemode = async ({
     errorDetails: null,
     logs: completion.logs,
     ...(completion.workflowDefinition ? { workflowDefinition: completion.workflowDefinition } : {}),
-    toolCalls,
+    toolCalls: toolCallLog.calls,
     modules,
   };
 };

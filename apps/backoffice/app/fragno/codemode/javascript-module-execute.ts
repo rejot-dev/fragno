@@ -3,10 +3,7 @@ import type {
   JavaScriptModuleExecution,
   JavaScriptModuleProgram,
 } from "@/fragno/runtime-tools/families/javascript-runtime";
-import type {
-  BackofficeRuntimeToolCall,
-  BackofficeRuntimeToolFamily,
-} from "@/fragno/runtime-tools/runtime-tools";
+import type { BackofficeRuntimeToolFamily } from "@/fragno/runtime-tools/runtime-tools";
 import type { CoreBackofficeToolContext } from "@/fragno/runtime-tools/tool-families";
 
 import {
@@ -30,8 +27,7 @@ export async function runBackofficeJavaScriptModule({
   families,
   toolContext,
 }: RunBackofficeJavaScriptModuleInput): Promise<JavaScriptModuleExecution> {
-  const toolCalls: BackofficeRuntimeToolCall[] = [];
-  const tools = createBackofficeCodemodeRunTools({ families, toolContext, toolCalls });
+  const tools = createBackofficeCodemodeRunTools({ families, toolContext, toolCallLog: null });
   const origin = { kind: "file", path: program.path } as const;
   const { runId, completion } =
     program.kind === "bundle"

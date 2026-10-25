@@ -45,13 +45,13 @@ import {
   type CodemodeRunStartedHookPayload,
 } from "@/fragno/codemode/codemode-fragment";
 import type { CodemodeRunLease } from "@/fragno/codemode/codemode-object-execute";
+import { codemodeToolCallObserver } from "@/fragno/codemode/codemode-tool-call-observer";
 import { explainUnloadedSavedModule } from "@/fragno/codemode/saved-module-imports";
 import {
   loadDurableHook,
   loadDurableHookQueue,
   type DurableHookQueueOptions,
 } from "@/fragno/durable-hooks";
-import { summarizeToolValue } from "@/fragno/runtime-tools/runtime-tools";
 
 import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
 import type { BackofficeObjectImplementation } from "./lib/backoffice-object-implementation";
@@ -320,36 +320,16 @@ export class InMemoryCodemodeObject extends RpcTarget implements CodemodeObject 
     this.#lentSlots.set(lease.key, new CodemodeActivationSlots(1));
     // Each call is stored as it starts and again as it settles, so history shows a run's calls
     // while it is still running.
-    const redacted = new Set(redactedResults);
-    let calls = 0;
     const recordedHost = observeCodemodeToolCalls(
       host,
-      async function recordToolCall(call, input, invoke) {
-        // Taken before any await, so parallel calls keep the order the guest made them in.
-        const sequence = calls++;
-        const callId = await fragment.callServices(() =>
-          fragment.services.startToolCall(runId, sequence, call, summarizeToolValue(input)),
-        );
-        let settlement: { status: "succeeded" | "failed"; output: string };
-        try {
-          const result = await invoke();
-          settlement =
-            result.status === "error"
-              ? { status: "failed", output: summarizeToolValue(result.error) }
-              : {
-                  status: "succeeded",
-                  output: redacted.has(`${call.provider}.${call.tool}`)
-                    ? "[redacted]"
-                    : summarizeToolValue(result.value),
-                };
-          return result;
-        } catch (error) {
-          settlement = { status: "failed", output: summarizeToolValue(encodeCodemodeError(error)) };
-          throw error;
-        } finally {
-          await fragment.callServices(() => fragment.services.settleToolCall(callId, settlement));
-        }
-      },
+      codemodeToolCallObserver(redactedResults, {
+        started: (sequence, call, input) =>
+          fragment.callServices(() =>
+            fragment.services.startToolCall(runId, sequence, call, input),
+          ),
+        settled: (callId, outcome) =>
+          fragment.callServices(() => fragment.services.settleToolCall(callId, outcome)),
+      }),
     );
     let completion: CodemodeRunCompletion;
     try {

@@ -35,7 +35,7 @@ export async function buildBackofficeJavaScriptModule(input: {
       dependencies: input.dependencies,
     },
     { kind: "file", path: input.entry },
-    { providers: [], redactedResults: [] },
+    { providers: [], redactedResults: [], toolCallLog: null },
     null,
   );
   if (completion.status === "failed") {

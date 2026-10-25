@@ -1,7 +1,6 @@
 import { z } from "zod";
 
 import type { BackofficeCodemodeWorkflowDefinition } from "../codemode/execute";
-import type { BackofficeRuntimeToolCall } from "../runtime-tools/runtime-tools";
 
 export type AutomationRunRuntime = "bash" | "codemode";
 
@@ -21,7 +20,6 @@ export type AutomationRunResult<TRuntime extends AutomationRunRuntime = Automati
   logs: string[];
   result?: unknown;
   commandCalls: AutomationCommandCallResult[];
-  toolCalls: BackofficeRuntimeToolCall[];
   workflowDefinition?: BackofficeCodemodeWorkflowDefinition;
 };
 
@@ -35,7 +33,6 @@ type CreateAutomationRunResultInput<TRuntime extends AutomationRunRuntime> = {
   logs?: string[];
   result?: unknown;
   commandCalls?: AutomationCommandCallResult[];
-  toolCalls?: BackofficeRuntimeToolCall[];
   workflowDefinition?: BackofficeCodemodeWorkflowDefinition;
 };
 
@@ -61,17 +58,6 @@ export const automationRunResultSchema = z.object({
   result: z.unknown().optional(),
   workflowDefinition: automationWorkflowDefinitionSchema.optional(),
   commandCalls: z.array(automationCommandCallResultSchema),
-  toolCalls: z.array(
-    z.object({
-      providerName: z.string(),
-      toolName: z.string(),
-      toolId: z.string(),
-      inputSummary: z.string(),
-      status: z.enum(["success", "error"]),
-      resultSummary: z.string().optional(),
-      error: z.string().optional(),
-    }),
-  ),
 });
 
 const formatAutomationResultAsStdout = (result: unknown) => {
@@ -92,7 +78,6 @@ export const createAutomationRunResult = <TRuntime extends AutomationRunRuntime>
   stderr,
   logs,
   commandCalls,
-  toolCalls,
   workflowDefinition,
   ...input
 }: CreateAutomationRunResultInput<TRuntime>): AutomationRunResult<TRuntime> => {
@@ -102,7 +87,6 @@ export const createAutomationRunResult = <TRuntime extends AutomationRunRuntime>
     stderr: stderr ?? "",
     logs: logs ?? [],
     commandCalls: commandCalls ?? [],
-    toolCalls: toolCalls ?? [],
   };
 
   const withResult = result === undefined ? normalized : { ...normalized, result };

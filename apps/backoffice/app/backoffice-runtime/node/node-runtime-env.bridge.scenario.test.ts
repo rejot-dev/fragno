@@ -56,7 +56,7 @@ test("Node production codemode uses the bridge WebSocket and compiler HTTP APIs"
           });
           expect(ctx.codemodeRuns[0].result.toolCalls).toEqual(
             expect.arrayContaining([
-              expect.objectContaining({ toolName: "set", status: "success" }),
+              expect.objectContaining({ provider: "store", tool: "set", status: "succeeded" }),
             ]),
           );
         }),

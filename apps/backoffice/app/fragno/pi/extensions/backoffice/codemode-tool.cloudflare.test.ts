@@ -48,6 +48,11 @@ const codemode = codemodeRunnerFor(
 );
 
 const unusedObjects = {} as BackofficeObjectRegistry;
+
+/** The tool API a call gets in tests: its task, and somewhere for its live details to go. */
+function toolApi(taskId: string) {
+  return { taskId, details: async () => {} } as never;
+}
 const testRuntimeConfig: BackofficeRuntimeConfig = {
   authEmailVerification: { enabled: false },
   sandboxBackofficeBaseUrl: null,
@@ -149,7 +154,7 @@ describe("Pi codemode tool", () => {
           return await state.readFile({ path: "/workspace/output.txt" });
         }`,
       },
-      { taskId: "tool-call-1" } as never,
+      toolApi("tool-call-1"),
       BACKGROUND_CONTEXT,
     );
 
@@ -197,7 +202,7 @@ describe("Pi codemode tool", () => {
           };
         }`,
       },
-      { taskId: "tool-call-ui" } as never,
+      toolApi("tool-call-ui"),
       BACKGROUND_CONTEXT,
     );
 
@@ -248,7 +253,7 @@ describe("Pi codemode tool", () => {
           };
         }`,
       },
-      { taskId: "tool-call-ui-builder" } as never,
+      toolApi("tool-call-ui-builder"),
       BACKGROUND_CONTEXT,
     );
 
@@ -316,7 +321,7 @@ describe("Pi codemode tool", () => {
           },
         })`,
       },
-      { taskId: "tool-call-invalid-ui" } as never,
+      toolApi("tool-call-invalid-ui"),
       BACKGROUND_CONTEXT,
     );
 
@@ -338,7 +343,7 @@ describe("Pi codemode tool", () => {
           return { $ui: ui.render(ui.textArea({ label: "Reason", value: form.bind("reason") })) };
         }`,
       },
-      { taskId: "tool-call-unknown-field" } as never,
+      toolApi("tool-call-unknown-field"),
       BACKGROUND_CONTEXT,
     );
     expect(result).toMatchObject({
@@ -367,7 +372,7 @@ describe("Pi codemode tool", () => {
           });
         });`,
       },
-      { taskId: "tool-call-1" } as never,
+      toolApi("tool-call-1"),
       BACKGROUND_CONTEXT,
     );
 
@@ -402,7 +407,7 @@ describe("Pi codemode tool", () => {
       {
         code: `defineWorkflow({ name: "denied-workflow" }, async () => ({ ok: true }));`,
       },
-      { taskId: "tool-call-denied" } as never,
+      toolApi("tool-call-denied"),
       BACKGROUND_CONTEXT,
     );
 
@@ -486,7 +491,7 @@ describe("Pi codemode tool", () => {
           });
         });`,
       },
-      { taskId: "tool-call-1" } as never,
+      toolApi("tool-call-1"),
       BACKGROUND_CONTEXT,
     );
 
@@ -530,7 +535,7 @@ describe("Pi codemode tool", () => {
           });`,
         dependencies: { "is-number": "7.0.0" },
       },
-      { taskId: "tool-call-1" } as never,
+      toolApi("tool-call-1"),
       BACKGROUND_CONTEXT,
     );
 
@@ -552,7 +557,7 @@ describe("Pi codemode tool", () => {
             return new Map([["key", "value"]]);
           }`,
         },
-        { taskId: "tool-call-1" } as never,
+        toolApi("tool-call-1"),
         BACKGROUND_CONTEXT,
       ),
     ).rejects.toThrow("Value must contain strict JSON plain objects or arrays");
@@ -583,7 +588,7 @@ describe("Pi codemode tool", () => {
           return await workflow.getInstance({ instanceId: "instance-1" });
         }`,
       },
-      { taskId: "tool-call-1" } as never,
+      toolApi("tool-call-1"),
       BACKGROUND_CONTEXT,
     );
 
@@ -646,29 +651,38 @@ describe("Pi codemode tool", () => {
           });
         }`,
       },
-      { taskId: "tool-call-1" } as never,
+      toolApi("tool-call-1"),
       BACKGROUND_CONTEXT,
     );
 
     expect(result.details).toMatchObject({
       result: { key: "telegram/chat-456", value: "user-55" },
       logs: [],
-      toolCalls: [
-        {
-          providerName: "store",
-          toolName: "get",
-          inputSummary: '{"key":"telegram/chat-123"}',
-          status: "success",
-          resultSummary:
-            '{"id":"telegram/chat-123","key":"telegram/chat-123","value":"user-55","category":[]}',
-        },
-        {
-          providerName: "store",
-          toolName: "set",
-          inputSummary: '{"key":"telegram/chat-456","value":"user-55"}',
-          status: "success",
-        },
-      ],
+      calls: {
+        items: [
+          {
+            subject: {
+              kind: "call",
+              name: "store.get",
+              scope: null,
+              input: '{"key":"telegram/chat-123"}',
+            },
+            status: "succeeded",
+            durationMs: expect.any(Number),
+          },
+          {
+            subject: {
+              kind: "call",
+              name: "store.set",
+              scope: null,
+              input: '{"key":"telegram/chat-456","value":"user-55"}',
+            },
+            status: "succeeded",
+            durationMs: expect.any(Number),
+          },
+        ],
+        omitted: 0,
+      },
     });
     const content = result.output[0];
     assert(content?.type === "text");
@@ -719,7 +733,7 @@ describe("Pi codemode tool", () => {
           return await store.set({ key: "", value: "" });
         }`,
       },
-      { taskId: "tool-call-1" } as never,
+      toolApi("tool-call-1"),
       BACKGROUND_CONTEXT,
     );
     expect(result).toMatchObject({

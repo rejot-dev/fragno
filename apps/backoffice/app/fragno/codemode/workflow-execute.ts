@@ -60,7 +60,7 @@ async function runCodemodeWorkflowTick<TParams>(
   input: WorkflowExecutionInput<TParams>,
 ): Promise<WorkflowTickCompletion> {
   const { program, event, remote, codemode, origin, families, toolContext, dependencies } = input;
-  const tools = createBackofficeCodemodeRunTools({ families, toolContext });
+  const tools = createBackofficeCodemodeRunTools({ families, toolContext, toolCallLog: null });
   const runHost = createCodemodeRunHost(
     tools,
     new BackofficeWorkflowStepHost(remote, input.allowedHooks),

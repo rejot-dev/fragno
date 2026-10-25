@@ -284,20 +284,18 @@ describe("runBackofficeCodemode", () => {
     ]);
     expect(result.toolCalls).toMatchObject([
       {
-        providerName: "store",
-        toolName: "get",
-        toolId: "store.get",
-        inputSummary: '{"key":"telegram/chat-123"}',
-        status: "success",
-        resultSummary:
+        provider: "store",
+        tool: "get",
+        input: '{"key":"telegram/chat-123"}',
+        status: "succeeded",
+        output:
           '{"id":"telegram/chat-123","key":"telegram/chat-123","value":"user-55","category":[]}',
       },
       {
-        providerName: "store",
-        toolName: "set",
-        toolId: "store.set",
-        inputSummary: '{"key":"telegram/chat-456","value":"user-55"}',
-        status: "success",
+        provider: "store",
+        tool: "set",
+        input: '{"key":"telegram/chat-456","value":"user-55"}',
+        status: "succeeded",
       },
     ]);
   });
@@ -344,10 +342,9 @@ describe("runBackofficeCodemode", () => {
     ]);
     expect(result.toolCalls).toMatchObject([
       {
-        providerName: "events",
-        toolName: "fire",
-        toolId: "events.fire",
-        status: "success",
+        provider: "events",
+        tool: "fire",
+        status: "succeeded",
       },
     ]);
   });
@@ -395,10 +392,9 @@ describe("runBackofficeCodemode", () => {
     expect(calls).toEqual([["createClaim", { ttlMinutes: 15 }]]);
     expect(result.toolCalls).toMatchObject([
       {
-        providerName: "otp",
-        toolName: "createIdentityClaim",
-        toolId: "otp.identity.create-claim",
-        status: "success",
+        provider: "otp",
+        tool: "createIdentityClaim",
+        status: "succeeded",
       },
     ]);
   });
@@ -480,13 +476,13 @@ describe("runBackofficeCodemode", () => {
     expect(result.error).toBeTruthy();
     expect(result.toolCalls).toMatchObject([
       {
-        providerName: "store",
-        toolName: "set",
-        inputSummary: '{"key":"","value":""}',
-        status: "error",
+        provider: "store",
+        tool: "set",
+        input: '{"key":"","value":""}',
+        status: "failed",
       },
     ]);
-    expect(result.toolCalls[0]?.error).toContain("Too small");
+    expect(result.toolCalls[0]).toMatchObject({ output: expect.stringContaining("Too small") });
     expect(calls).toEqual([]);
   });
 
@@ -510,10 +506,10 @@ describe("runBackofficeCodemode", () => {
     assert(result.error === "runtime tool failed");
     expect(result.toolCalls).toMatchObject([
       {
-        providerName: "otp",
-        toolName: "createIdentityClaim",
-        status: "error",
-        error: "runtime tool failed",
+        provider: "otp",
+        tool: "createIdentityClaim",
+        status: "failed",
+        output: "runtime tool failed",
       },
     ]);
   });
@@ -606,10 +602,9 @@ describe("runBackofficeCodemode", () => {
       });
       expect(result.toolCalls).toMatchObject([
         {
-          providerName: "events",
-          toolName: "fire",
-          toolId: "events.fire",
-          status: "success",
+          provider: "events",
+          tool: "fire",
+          status: "succeeded",
         },
       ]);
     } finally {
