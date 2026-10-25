@@ -16,7 +16,10 @@ import {
   type BackofficeCodemodeExecuteResult,
 } from "@/fragno/codemode/execute";
 import { inlineWorkflowProgram } from "@/fragno/codemode/workflow-program";
-import type { BackofficeAgentContext } from "@/fragno/pi/agent/backoffice-agent-context";
+import {
+  requirePiStateBackend,
+  type BackofficeAgentContext,
+} from "@/fragno/pi/agent/backoffice-agent-context";
 import type {
   InternalAutomationWorkflowRuntime,
   WorkflowCreateInstanceResult,
@@ -26,6 +29,8 @@ import {
   runtimeToolFamilies,
   type CoreBackofficeToolContext,
 } from "@/fragno/runtime-tools/tool-families";
+
+import { fitCodemodeOutput } from "./codemode-output";
 
 export const codemodeParametersSchema = Type.Object({
   code: Type.String({
@@ -52,7 +57,7 @@ const hashToolCallId = (toolCallId: string) => {
   return `${(first >>> 0).toString(36)}${(second >>> 0).toString(36)}`;
 };
 
-const formatCodemodeText = (result: BackofficeCodemodeExecuteResult) => {
+const formatCodemodeText = (result: BackofficeCodemodeExecuteResult, jsonIndent: 0 | 2) => {
   const lines: string[] = [];
   const logs = result.logs ?? [];
   lines.push(...logs.map(formatCodemodeLogLine));
@@ -75,7 +80,9 @@ const formatCodemodeText = (result: BackofficeCodemodeExecuteResult) => {
   }
 
   lines.push(
-    typeof result.result === "string" ? result.result : (JSON.stringify(result.result) ?? ""),
+    typeof result.result === "string"
+      ? result.result
+      : (JSON.stringify(result.result, null, jsonIndent) ?? ""),
   );
   return lines.join("\n");
 };
@@ -108,7 +115,8 @@ function serializeWorkflowScheduleError(cause: unknown): WorkflowScheduleErrorDe
 export function createCodemodeTool(agent: BackofficeAgentContext) {
   return defineTool({
     name: "codemode",
-    description: "Execute one top-level codemode program against the current Backoffice context.",
+    description:
+      "Execute one top-level codemode program against the current Backoffice context. Output over 50 KB or 2000 lines shows its beginning and end; the full output is saved to the file the notice names.",
     parameters: codemodeParametersSchema,
     // Codemode can execute arbitrary mutations. An interrupted call must not silently repeat them.
     replay: "unsafe",
@@ -193,23 +201,34 @@ export function createCodemodeTool(agent: BackofficeAgentContext) {
       const generatedUiError =
         generatedUi.kind === "invalid" ? `Generated UI is invalid: ${generatedUi.message}` : null;
 
-      const text = [
-        formatCodemodeText(result),
-        ...(scheduleError ? [`Workflow could not be scheduled: ${scheduleError.message}`] : []),
-        ...(generatedUiError ? [generatedUiError] : []),
-      ].join("\n\n");
+      const renderText = (jsonIndent: 0 | 2) =>
+        [
+          formatCodemodeText(result, jsonIndent),
+          ...(scheduleError ? [`Workflow could not be scheduled: ${scheduleError.message}`] : []),
+          ...(generatedUiError ? [generatedUiError] : []),
+        ].join("\n\n");
+      const output = await fitCodemodeOutput({
+        text: renderText(0),
+        fullText: () => renderText(2),
+        path: `/workspace/.pi/${agent.agentName}/outputs/${taskId}.txt`,
+        state: requirePiStateBackend(runtimeToolContext),
+      });
+      // Overflowing logs and results stay in the saved file rather than in the session history; the
+      // session view still renders generated interfaces from the result.
+      const overflowed = output.fullOutputPath !== null;
 
       // Execution failures are tool results: throwing here would discard their diagnostics and run ID.
       return {
-        output: [{ type: "text", text }],
+        output: [{ type: "text", text: output.text }],
         isError: Boolean(result.error || scheduleError || generatedUiError),
         details: copyJson(
           {
             ...result,
             // Session history keeps display text; structured lines stay on the codemode run.
-            logs: result.logs?.map(formatCodemodeLogLine),
+            logs: overflowed ? undefined : result.logs?.map(formatCodemodeLogLine),
+            result: overflowed && generatedUi.kind === "ordinary" ? undefined : result.result,
             code,
-            outputText: text,
+            fullOutputPath: output.fullOutputPath,
             // The live run handle so the client can
             // subscribe to realtime progress. Absent when scheduling failed.
             ...(runHandle ? { run: runHandle } : {}),
