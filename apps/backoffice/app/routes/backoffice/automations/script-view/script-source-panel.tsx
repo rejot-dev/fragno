@@ -12,7 +12,6 @@ import {
   type BackofficeResolvedScope,
 } from "@/backoffice-runtime/resolved-scope";
 import { sendBackofficeWorkflowEvent } from "@/backoffice-ui/workflow-events.client";
-import type { AutomationBrowserCollections as AutomationCollections } from "@/fragno/automation/tanstack/browser-database";
 import {
   resolveWorkflowRuntimeToolCalls,
   type RuntimeToolWorkflowDescriptor,
@@ -31,7 +30,7 @@ import {
   searchParamsWithWorkflowGraphDetailMode,
   workflowGraphDetailModeFromSearchParam,
 } from "./script-view-mode";
-import { useScriptWorkflowRuns, type WorkflowRunCollections } from "./use-script-workflow-runs";
+import { useScriptWorkflowRuns, type WorkflowRunSource } from "./use-script-workflow-runs";
 import { ScriptWorkflowGraph } from "./workflow-graph";
 import type { ScriptWorkflowRun } from "./workflow-run-presentation";
 import { useWorkflowRunTimeline } from "./workflow-run-timeline-presentation";
@@ -40,16 +39,13 @@ export function ScriptSourcePanel({
   absolutePath,
   source,
   runtimeToolCatalog,
-  collections,
+  readSource,
   resolvedScope,
 }: {
   absolutePath: string;
   source: { script: string | null; scriptError: string | null };
   runtimeToolCatalog: readonly RuntimeToolWorkflowDescriptor[];
-  collections: Pick<
-    AutomationCollections,
-    "workflowInstances" | "workflowSteps" | "workflowEvents" | "workflowStepEmissions"
-  >;
+  readSource: WorkflowRunSource;
   resolvedScope: BackofficeResolvedScope;
 }) {
   const runtimeScope = backofficeRuntimeScopeFromResolvedScope(resolvedScope);
@@ -72,7 +68,7 @@ export function ScriptSourcePanel({
   );
   const workflowRuns = useScriptWorkflowRuns({
     absolutePath,
-    collections,
+    source: readSource,
     selectedInstanceId: searchParams.get(WORKFLOW_RUN_SEARCH_PARAM),
     visualization,
   });
@@ -139,7 +135,7 @@ export function ScriptSourcePanel({
       {showGraph && workflowRuns.selectedRun ? (
         <ScriptRunTimeline
           key={workflowRuns.selectedRun.id}
-          collections={collections}
+          readSource={readSource}
           run={workflowRuns.selectedRun}
           runPath={dashboardRunPath(resolvedScope, {
             workflowName: workflowRuns.selectedRun.instanceWorkflowName,
@@ -204,18 +200,18 @@ export function ScriptSourcePanel({
  * graph while the file still holds that program, so selecting one reveals its card.
  */
 function ScriptRunTimeline({
-  collections,
+  readSource,
   run,
   runPath,
   onSelectStep,
 }: {
-  collections: WorkflowRunCollections;
+  readSource: WorkflowRunSource;
   run: ScriptWorkflowRun;
   runPath: string;
   onSelectStep: (stepId: string) => void;
 }) {
   const { timeline } = useWorkflowRunTimeline({
-    collections,
+    source: readSource,
     reference: { workflowName: run.instanceWorkflowName, instanceId: run.instanceId },
   });
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);

@@ -37,24 +37,6 @@ export function dashboardBucketIndex(bucketStarts: readonly number[], time: Date
   return Math.min(bucketStarts.length - 1, Math.floor((time.getTime() - windowStart) / BUCKET_MS));
 }
 
-export function dashboardRunsQuery(
-  query: InitialQueryBuilder,
-  collections: Pick<AutomationCollections, "workflowInstances">,
-) {
-  return query.from({ instance: collections.workflowInstances }).select(({ instance }) => ({
-    id: instance.id,
-    instanceId: instance.instanceId,
-    workflowName: instance.workflowName,
-    remoteWorkflowName: instance.remoteWorkflowName,
-    status: instance.status,
-    errorName: instance.errorName,
-    errorMessage: instance.errorMessage,
-    createdAt: instance.createdAt,
-    updatedAt: instance.updatedAt,
-    completedAt: instance.completedAt,
-  }));
-}
-
 export function dashboardEventsQuery(
   query: InitialQueryBuilder,
   collections: Pick<AutomationCollections, "events">,

@@ -47,7 +47,11 @@ export function BackofficePageView({
         <ScopeOrchestration collections={collections} loaderData={orchestration} />
       ),
       workflowResponse: (run) => (
-        <WorkflowRunResponse collections={collections} resolvedScope={resolvedScope} run={run} />
+        <WorkflowRunResponse
+          readSource={{ kind: "collections", collections }}
+          resolvedScope={resolvedScope}
+          run={run}
+        />
       ),
     }),
     [collections, orchestration, resolvedScope],

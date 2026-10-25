@@ -190,7 +190,9 @@ function SessionWorkflowWorkspace({
     viewMode === "split",
   );
   const workflowRun = useWorkflowRun({
-    collections: workflowCollections,
+    source: workflowCollections
+      ? { kind: "collections", collections: workflowCollections }
+      : undefined,
     reference: runReference,
     visualization: projection.visualization,
   });

@@ -21,7 +21,7 @@ import {
   type BackofficeScopeSelection,
 } from "@/backoffice-runtime/resolved-scope";
 import { WorkflowRunGeneratedInterface } from "@/components/backoffice/workflow-run-generated-interface";
-import type { AutomationBrowserCollections } from "@/fragno/automation/tanstack/browser-database";
+import type { AutomationReadSource } from "@/fragno/automation/read-source";
 
 import {
   describePiAgentActivity,
@@ -58,7 +58,7 @@ export function DashboardSections({
   dashboard,
   now,
   loaderData,
-  collections,
+  readSource,
   routes,
   recentEvents,
   agents,
@@ -66,7 +66,7 @@ export function DashboardSections({
   dashboard: BackofficeDashboard;
   now: number;
   loaderData: DashboardLoaderData;
-  collections: AutomationBrowserCollections;
+  readSource: AutomationReadSource;
   routes: readonly AutomationRouteDefinition[];
   recentEvents: readonly { source: string; eventType: string }[];
   agents: readonly PiAgentListing[];
@@ -80,7 +80,7 @@ export function DashboardSections({
 
       <Panel title="Orchestration" leading={null} footer={null}>
         <OrchestrationPanel
-          collections={collections}
+          readSource={readSource}
           routes={routes}
           recentEvents={recentEvents}
           selectedScope={selectedScope}
@@ -95,7 +95,7 @@ export function DashboardSections({
             workflows={dashboard.workflows}
             now={now}
             selectedScope={selectedScope}
-            collections={collections}
+            readSource={readSource}
           />
           <EventVolumePanel eventVolume={dashboard.eventVolume} />
         </div>
@@ -250,12 +250,12 @@ function WorkflowHealthPanel({
   workflows,
   now,
   selectedScope,
-  collections,
+  readSource,
 }: {
   workflows: BackofficeDashboard["workflows"];
   now: number;
   selectedScope: BackofficeScopeSelection;
-  collections: AutomationBrowserCollections;
+  readSource: AutomationReadSource;
 }) {
   const [showAll, setShowAll] = useState(false);
   const [searchParams] = useSearchParams();
@@ -281,7 +281,7 @@ function WorkflowHealthPanel({
         >
           <WorkflowRunDetail
             key={openedRunKey}
-            collections={collections}
+            readSource={readSource}
             reference={openedRun}
             presentation={{ kind: "standalone" }}
           />

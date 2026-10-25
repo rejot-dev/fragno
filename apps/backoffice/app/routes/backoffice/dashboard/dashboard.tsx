@@ -1,15 +1,15 @@
 import { backofficeScopeProjectOwner } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import type { LofiSqliteReplica } from "@fragno-dev/lofi/sqlite";
 import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
+import { BackofficeDownloadState } from "@fragno-private/design-system/download-state";
 import { Field } from "@fragno-private/design-system/field";
 import { Input } from "@fragno-private/design-system/input";
 import { PaneSpinner } from "@fragno-private/design-system/pane-message";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { TextArea } from "@fragno-private/design-system/text-area";
-import { Suspense, use, useMemo, useSyncExternalStore } from "react";
+import { Suspense, use, useMemo } from "react";
 import { Form, redirect, useActionData, useNavigation, useSearchParams } from "react-router";
-
-import { eq, not, useLiveQuery } from "@tanstack/react-db";
 
 import { isBackofficeObjectAvailableInContext } from "@/backoffice-runtime/object-registry";
 import {
@@ -19,38 +19,28 @@ import {
 import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
 import { backofficePageBodyClassName } from "@/components/backoffice/page-body";
 import { useClock } from "@/components/backoffice/use-clock";
-import {
-  describeAutomationCollectionSource,
-  getAutomationBrowserDatabase,
-  getAutomationCatchUpProgress,
-  subscribeAutomationCatchUpProgress,
-  type AutomationBrowserCollections,
-} from "@/fragno/automation/tanstack/browser-database";
-import { useAutomationRoutes } from "@/fragno/automation/tanstack/use-automation-routes";
+import { getAutomationReplica } from "@/fragno/automation/lofi/replica";
+import { describeAutomationCollectionSource } from "@/fragno/automation/tanstack/browser-database";
+import { LofiReplicaGate } from "@/fragno/lofi/replica-gate";
+import { useLofiSqliteRead } from "@/fragno/lofi/use-lofi-sqlite-read";
 import {
   getBackofficeShellRequest,
   requireRouteScope,
 } from "@/layouts/backoffice-shell-request.server";
 
-import { piAgentListings, piAgentTurnsQuery } from "../agents/agent-activity";
+import { piAgentListings } from "../agents/agent-activity";
 import { createAutomationProject } from "../automations/data.server";
-import { workflowRunRecordsQuery } from "../automations/script-view/use-script-workflow-runs";
-import { automationWorkflowRunsFromRecords } from "../automations/script-view/workflow-run-records";
 import { loadPageSources, type PageSources } from "../pages/load.server";
 import type { Route } from "./+types/dashboard";
-import { AutomationBrowserPersistenceDiagnosticPanel } from "./browser-persistence-diagnostics";
 import { DashboardSections, type DashboardLoaderData } from "./dashboard-sections";
 import { DashboardTabs } from "./dashboard-tabs";
 import { loadOrchestration } from "./orchestration-loader.server";
-import {
-  dashboardBucketStarts,
-  dashboardEventsQuery,
-  dashboardRunsQuery,
-  projectBackofficeDashboard,
-} from "./overview";
+import { dashboardBucketStarts, projectBackofficeDashboard } from "./overview";
+import { readDashboardOverview } from "./overview-replica";
 import { dashboardPath, shouldRevalidateOrchestration } from "./path";
 
 const CLOCK_TICK_MS = 60_000;
+const DOWNLOAD_TITLE = "Downloading automation activity…";
 const CREATE_PROJECT_PARAM = "createProject";
 const pageClassName = `${backofficePageBodyClassName} flex flex-col gap-4`;
 
@@ -143,7 +133,8 @@ export default function BackofficeDashboard({ loaderData }: Route.ComponentProps
     );
   }
 
-  const loading = <DashboardSynchronizationLoading />;
+  // The replica's database opens before its download reports progress.
+  const loading = <BackofficeDownloadState title={DOWNLOAD_TITLE} fraction={null} error={null} />;
 
   return (
     <>
@@ -217,35 +208,6 @@ function CreateProjectPanel({ cancelPath }: { cancelPath: string }) {
   );
 }
 
-function DashboardSynchronizationLoading() {
-  const { automationCollectionSource } = useCurrentBackofficeContext();
-  const resourceKey =
-    automationCollectionSource.status === "ready"
-      ? describeAutomationCollectionSource(automationCollectionSource.source).resourceKey
-      : null;
-  const progress = useSyncExternalStore(
-    (listener) =>
-      resourceKey ? subscribeAutomationCatchUpProgress(resourceKey, listener) : () => {},
-    () => (resourceKey ? getAutomationCatchUpProgress(resourceKey) : null),
-    () => null,
-  );
-
-  return (
-    <>
-      <PaneSpinner
-        label={
-          progress
-            ? `Synchronizing automation activity, ${progress.percent}%`
-            : "Synchronizing automation activity"
-        }
-      />
-      {import.meta.env.DEV && resourceKey ? (
-        <AutomationBrowserPersistenceDiagnosticPanel resourceKey={resourceKey} />
-      ) : null}
-    </>
-  );
-}
-
 function DashboardClient({ loaderData }: { loaderData: DashboardLoaderData }) {
   const { automationCollectionSource } = useCurrentBackofficeContext();
   if (automationCollectionSource.status === "unavailable") {
@@ -259,112 +221,68 @@ function DashboardClient({ loaderData }: { loaderData: DashboardLoaderData }) {
     );
   }
   const source = automationCollectionSource.source;
+  const replica = use(getAutomationReplica(source));
   return (
-    <DashboardWorkspace
-      key={describeAutomationCollectionSource(source).resourceKey}
-      loaderData={loaderData}
-      collections={use(getAutomationBrowserDatabase(source)).collections}
-    />
+    <LofiReplicaGate replica={replica} title={DOWNLOAD_TITLE}>
+      <DashboardWorkspace
+        key={describeAutomationCollectionSource(source).resourceKey}
+        loaderData={loaderData}
+        replica={replica}
+      />
+    </LofiReplicaGate>
   );
 }
 
 function DashboardWorkspace({
   loaderData,
-  collections,
+  replica,
 }: {
   loaderData: DashboardLoaderData;
-  collections: AutomationBrowserCollections;
+  replica: LofiSqliteReplica;
 }) {
+  const readSource = useMemo(() => ({ kind: "replica", replica }) as const, [replica]);
   const now = useClock(CLOCK_TICK_MS);
-  // The window start only moves when a new bucket begins, so the event query restarts rarely.
+  // The window start only moves when a new bucket begins, so the replica is read again rarely.
   const windowStart = dashboardBucketStarts(now)[0] ?? now;
-  const runsQuery = useLiveQuery({ query: (query) => dashboardRunsQuery(query, collections) });
-  const waitingRunsQuery = useLiveQuery({
-    query: (query) => workflowRunRecordsQuery(query, collections, { type: "waiting" }),
-  });
-  const waitsQuery = useLiveQuery({
-    query: (query) => query.from({ wait: collections.workflowWaits }),
-  });
-  const eventsQuery = useLiveQuery({
-    query: (query) => dashboardEventsQuery(query, collections, new Date(windowStart)),
-  });
-  const connectionsQuery = useLiveQuery({
-    query: (query) =>
-      query
-        .from({ connection: collections.connections })
-        .where(({ connection }) => not(eq(connection.state, "disconnected")))
-        .orderBy(({ connection }) => connection.service, "asc")
-        .orderBy(({ connection }) => connection.connectionId, "asc"),
-  });
-  // The most recently active agents come first; agents without activity keep directory order.
-  const agentsQuery = useLiveQuery({
-    query: (query) =>
-      query
-        .from({ agent: collections.agents })
-        .orderBy(({ agent }) => agent.latestAt, { direction: "desc", nulls: "last" })
-        .orderBy(({ agent }) => agent.builtIn, "desc")
-        .orderBy(({ agent }) => agent.agentName, "asc"),
-  });
-  const agentTurnsQuery = useLiveQuery({
-    query: (query) => piAgentTurnsQuery(query, collections, new Date(windowStart)),
-  });
-  const routesState = useAutomationRoutes(collections);
-  const waitingRuns = useMemo(
-    () => automationWorkflowRunsFromRecords(waitingRunsQuery.data ?? []),
-    [waitingRunsQuery.data],
+  const reading = useLofiSqliteRead(replica, String(windowStart), (replica) =>
+    readDashboardOverview(replica, new Date(windowStart)),
   );
+  const overview = reading.status === "ready" ? reading.data : null;
   const dashboard = useMemo(
     () =>
+      overview &&
       projectBackofficeDashboard({
         now,
-        runs: runsQuery.data ?? [],
-        waitingRuns,
-        waits: waitsQuery.data ?? [],
-        events: eventsQuery.data ?? [],
-        connections: connectionsQuery.data ?? [],
-        routes: routesState.routes,
+        runs: overview.runs,
+        waitingRuns: overview.waitingRuns,
+        waits: overview.waits,
+        events: overview.events,
+        connections: overview.connections,
+        routes: overview.routes,
       }),
-    [
-      now,
-      runsQuery.data,
-      waitingRuns,
-      waitsQuery.data,
-      eventsQuery.data,
-      connectionsQuery.data,
-      routesState.routes,
-    ],
+    [now, overview],
   );
-
   const agents = useMemo(
     () =>
-      piAgentListings(
-        agentsQuery.data ?? [],
-        agentTurnsQuery.data ?? [],
-        dashboard.eventVolume.bucketStarts,
-      ),
-    [agentsQuery.data, agentTurnsQuery.data, dashboard.eventVolume.bucketStarts],
+      overview && dashboard
+        ? piAgentListings(overview.agents, overview.agentTurns, dashboard.eventVolume.bucketStarts)
+        : [],
+    [overview, dashboard],
   );
 
-  const queries = [
-    runsQuery,
-    waitingRunsQuery,
-    waitsQuery,
-    eventsQuery,
-    connectionsQuery,
-    agentsQuery,
-    agentTurnsQuery,
-  ];
-  if (queries.some((query) => query.isError) || routesState.status === "error") {
+  if (reading.status === "error") {
     return (
       <BackofficeSystemState
         tone="error"
         title="Automation activity could not be read."
-        description="Some synchronized collections failed to load. Reload to try again."
+        description={
+          reading.error instanceof Error ? reading.error.message : "Reload to try again."
+        }
       />
     );
   }
-  if (queries.some((query) => !query.isReady) || routesState.status === "loading") {
-    return <PaneSpinner label="Synchronizing automation activity" />;
+  if (!overview || !dashboard) {
+    return <PaneSpinner label="Reading automation activity" />;
   }
 
   return (
@@ -372,9 +290,9 @@ function DashboardWorkspace({
       dashboard={dashboard}
       now={now}
       loaderData={loaderData}
-      collections={collections}
-      routes={routesState.routes}
-      recentEvents={eventsQuery.data ?? []}
+      readSource={readSource}
+      routes={overview.routes}
+      recentEvents={overview.events}
       agents={agents}
     />
   );

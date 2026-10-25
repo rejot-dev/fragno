@@ -88,9 +88,9 @@ function SynchronizedMarketplaceInstallationWorkflow({
   targetScope: BackofficeRoutableResolvedScope;
 }) {
   const database = use(getAutomationBrowserDatabase(collectionSource));
-  const collections = database.collections;
+  const readSource = { kind: "collections", collections: database.collections } as const;
   const ingestionRecords = useWorkflowRunRecords({
-    collections,
+    source: readSource,
     selector: {
       type: "instance",
       workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
@@ -101,7 +101,7 @@ function SynchronizedMarketplaceInstallationWorkflow({
     ingestionWorkflowInstanceId,
   );
   const installerRecords = useWorkflowRunRecords({
-    collections,
+    source: readSource,
     selector: {
       type: "instance",
       workflowName: CODEMODE_WORKFLOW,

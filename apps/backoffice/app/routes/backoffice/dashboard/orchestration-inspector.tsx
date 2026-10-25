@@ -16,7 +16,14 @@ import {
   type BackofficeResolvedScope,
 } from "@/backoffice-runtime/resolved-scope";
 import { sendBackofficeWorkflowEvent } from "@/backoffice-ui/workflow-events.client";
-import type { AutomationBrowserCollections as AutomationCollections } from "@/fragno/automation/tanstack/browser-database";
+import { readLatestEventsOfType } from "@/fragno/automation/lofi/reads";
+import {
+  automationReadCollections,
+  automationReadReplica,
+  type AutomationReadSource,
+} from "@/fragno/automation/read-source";
+import type { AutomationCollections } from "@/fragno/automation/tanstack/collections";
+import { useLofiSqliteRead } from "@/fragno/lofi/use-lofi-sqlite-read";
 import type { RuntimeToolWorkflowDescriptor } from "@/fragno/runtime-tools/workflow-catalog";
 import { resolveWorkflowRuntimeToolCalls } from "@/fragno/runtime-tools/workflow-catalog";
 import { jsonSchemaToTypeScript } from "@/lib/zod/zod-formatter";
@@ -25,7 +32,10 @@ import type { AutomationScriptSourceRecord } from "../automations/data";
 import { formatTimestamp } from "../automations/formatting";
 import { AutomationRouteDetail } from "../automations/route-detail";
 import { useLinkedScrollViewports } from "../automations/script-view/linked-scroll";
-import { useScriptWorkflowRuns } from "../automations/script-view/use-script-workflow-runs";
+import {
+  useScriptWorkflowRuns,
+  type WorkflowRunCollections,
+} from "../automations/script-view/use-script-workflow-runs";
 import { ScriptWorkflowGraph } from "../automations/script-view/workflow-graph";
 import type { OrchestrationCatalogEvent, OrchestrationCatalogSource } from "./orchestration-graph";
 
@@ -50,7 +60,7 @@ export function OrchestrationInspector({
   selection,
   workflowSource,
   runtimeToolCatalog,
-  collections,
+  readSource,
   filesScopePath,
   eventPath,
   scope,
@@ -60,10 +70,7 @@ export function OrchestrationInspector({
   selection: OrchestrationInspectorSelection;
   workflowSource: AutomationScriptSourceRecord;
   runtimeToolCatalog: readonly RuntimeToolWorkflowDescriptor[];
-  collections: Pick<
-    AutomationCollections,
-    "events" | "workflowInstances" | "workflowSteps" | "workflowEvents" | "workflowStepEmissions"
-  >;
+  readSource: AutomationReadSource<RecentEventCollections & WorkflowRunCollections>;
   filesScopePath: string;
   eventPath: (source: string, eventType: string) => string;
   scope: BackofficeResolvedScope;
@@ -75,7 +82,7 @@ export function OrchestrationInspector({
       absolutePath={absolutePath}
       source={workflowSource}
       runtimeToolCatalog={runtimeToolCatalog}
-      collections={collections}
+      readSource={readSource}
       scope={scope}
     />
   );
@@ -96,7 +103,7 @@ export function OrchestrationInspector({
         {selection.kind === "event" ? (
           <RecentEventInspector
             eventDefinition={selection.eventDefinition}
-            collections={collections}
+            readSource={readSource}
           />
         ) : null}
         {selection.kind === "route" ? (
@@ -223,30 +230,63 @@ function SourceInspector({
   );
 }
 
+type RecentEventCollections = Pick<AutomationCollections, "events">;
+
+const RECENT_EVENT_LIMIT = 10;
+
 function RecentEventInspector({
   eventDefinition,
-  collections,
+  readSource,
 }: {
   eventDefinition: OrchestrationCatalogEvent;
-  collections: Pick<AutomationCollections, "events">;
+  readSource: AutomationReadSource<RecentEventCollections>;
 }) {
+  const { source, eventType } = eventDefinition;
+  const collections = automationReadCollections(readSource);
   const recentEventsQuery = useLiveQuery({
     query: (query) =>
-      query
-        .from({ event: collections.events })
-        .where(({ event }) => eq(event.source, eventDefinition.source))
-        .where(({ event }) => eq(event.eventType, eventDefinition.eventType))
-        .orderBy(({ event }) => event.occurredAt, "desc")
-        .orderBy(({ event }) => event.id, "desc")
-        .limit(10)
-        .select(({ event }) => ({
-          id: event.id,
-          occurredAt: event.occurredAt,
-          subject: event.subject,
-          payload: event.payload,
-        })),
+      collections
+        ? query
+            .from({ event: collections.events })
+            .where(({ event }) => eq(event.source, source))
+            .where(({ event }) => eq(event.eventType, eventType))
+            .orderBy(({ event }) => event.occurredAt, "desc")
+            .orderBy(({ event }) => event.id, "desc")
+            .limit(RECENT_EVENT_LIMIT)
+            .select(({ event }) => ({
+              id: event.id,
+              occurredAt: event.occurredAt,
+              subject: event.subject,
+              payload: event.payload,
+            }))
+        : undefined,
   });
-  const recentEvents = recentEventsQuery.data ?? [];
+  const eventKey = JSON.stringify([source, eventType]);
+  const replicaRead = useLofiSqliteRead(
+    automationReadReplica(readSource),
+    eventKey,
+    async (replica) => ({
+      eventKey,
+      events: await readLatestEventsOfType(replica, {
+        source,
+        eventType,
+        limit: RECENT_EVENT_LIMIT,
+      }),
+    }),
+  );
+  // A read for the previously selected event can still land after the selection changes.
+  const replicaEvents =
+    replicaRead.status === "ready" && replicaRead.data.eventKey === eventKey
+      ? replicaRead.data.events
+      : null;
+  const recentEvents =
+    readSource.kind === "replica" ? (replicaEvents ?? []) : (recentEventsQuery.data ?? []);
+  const isLoading =
+    readSource.kind === "replica"
+      ? replicaEvents === null && replicaRead.status !== "error"
+      : recentEventsQuery.isLoading;
+  const readFailed =
+    readSource.kind === "replica" ? replicaRead.status === "error" : recentEventsQuery.isError;
 
   return (
     <div className="p-3">
@@ -282,7 +322,11 @@ function RecentEventInspector({
         </div>
       ) : (
         <p className="py-8 text-center text-sm text-[var(--bo-muted)]">
-          {recentEventsQuery.isLoading ? "Loading recent events…" : "No recent events recorded."}
+          {isLoading
+            ? "Loading recent events…"
+            : readFailed
+              ? "Recent events could not be read."
+              : "No recent events recorded."}
         </p>
       )}
     </div>
@@ -372,16 +416,13 @@ function WorkflowGraph({
   absolutePath,
   source,
   runtimeToolCatalog,
-  collections,
+  readSource,
   scope,
 }: {
   absolutePath: string;
   source: AutomationScriptSourceRecord;
   runtimeToolCatalog: readonly RuntimeToolWorkflowDescriptor[];
-  collections: Pick<
-    AutomationCollections,
-    "workflowInstances" | "workflowSteps" | "workflowEvents" | "workflowStepEmissions"
-  >;
+  readSource: AutomationReadSource<WorkflowRunCollections>;
   scope: BackofficeResolvedScope;
 }) {
   const runtimeScope = backofficeRuntimeScopeFromResolvedScope(scope);
@@ -396,7 +437,7 @@ function WorkflowGraph({
   );
   const workflowRuns = useScriptWorkflowRuns({
     absolutePath,
-    collections,
+    source: readSource,
     selectedInstanceId: null,
     visualization,
   });

@@ -122,6 +122,8 @@ import {
   createCodemodeWorkflowInstanceInput,
   prepareCodemodeWorkflowInstance,
 } from "./engine/codemode-invocation";
+import { AUTOMATION_REPLICA_EPHEMERAL_TABLES, AUTOMATION_REPLICA_SCHEMAS } from "./lofi/replica";
+import { automationViews } from "./lofi/views";
 import { createRouteBackedAutomationRouterRuntime } from "./routing-route-runtime";
 import {
   getScenarioAuthMemberRoles,
@@ -373,8 +375,9 @@ export type BackofficeScenarioTanStack = {
   cleanup(): Promise<void>;
 };
 
-/** SQLite replicas of the scopes' Upload outboxes, as browsers open them. */
+/** SQLite replicas of the scopes' outboxes, as browsers open them. */
 export type BackofficeScenarioLofi = {
+  automations: ScenarioReplicaDatabase;
   upload: ScenarioReplicaDatabase;
   syncAll(): Promise<void>;
   cleanup(): Promise<void>;
@@ -1844,6 +1847,16 @@ const createScenarioTanStack = (runtime: InMemoryBackofficeRuntime): BackofficeS
 };
 
 const createScenarioLofi = (runtime: InMemoryBackofficeRuntime): BackofficeScenarioLofi => {
+  const automations = createScenarioReplicaDatabase({
+    name: "Automations replica",
+    schemas: AUTOMATION_REPLICA_SCHEMAS,
+    localSchemas: automationViews.localSchemas,
+    projections: automationViews.projections,
+    ephemeralTables: AUTOMATION_REPLICA_EPHEMERAL_TABLES,
+    drainRuntime: () => runtime.drain(),
+    baseUrl: automationScopedBaseUrl,
+    createFetch: (scope) => createScenarioAutomationTanStackFetch(runtime, scope),
+  });
   const upload = createScenarioReplicaDatabase({
     name: "Upload replica",
     schemas: UPLOAD_REPLICA_SCHEMAS,
@@ -1852,9 +1865,14 @@ const createScenarioLofi = (runtime: InMemoryBackofficeRuntime): BackofficeScena
     createFetch: (scope) => createScenarioUploadFetch(runtime, scope),
   });
   return {
+    automations,
     upload,
-    syncAll: () => upload.syncAll(),
-    cleanup: () => upload.cleanup(),
+    syncAll: async () => {
+      await Promise.all([automations.syncAll(), upload.syncAll()]);
+    },
+    cleanup: async () => {
+      await Promise.all([automations.cleanup(), upload.cleanup()]);
+    },
   };
 };
 

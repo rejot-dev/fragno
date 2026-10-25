@@ -14,7 +14,11 @@ import { INTEGRATIONS_EVENT_SOURCE } from "./integrations/integration-events";
 
 type AdminEventsToolContext = BackofficeToolContext<Partial<{ admin: AdminRuntime }>>;
 
-/** Sources whose whole history the dashboard folds into current agents and connections. */
+/**
+ * Sources whose whole history the dashboard folds into current agents and connections. The
+ * Automations replica's projections (`automation/lofi/views.ts`) fold each event as it arrives, so
+ * they stay correct only while these events are never deleted.
+ */
 const FOLDED_EVENT_SOURCES: ReadonlySet<string> = new Set([
   PI_AUTOMATION_SOURCE,
   INTEGRATIONS_EVENT_SOURCE,

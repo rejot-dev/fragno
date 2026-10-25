@@ -2,20 +2,20 @@ import { useMemo } from "react";
 
 import type { WorkflowVisualizationSnapshot } from "@fragno-dev/workflow-visualizer-tokens";
 
-import { useWorkflowRunRecords, type WorkflowRunCollections } from "./use-script-workflow-runs";
+import { useWorkflowRunRecords, type WorkflowRunSource } from "./use-script-workflow-runs";
 import { projectWorkflowRun, type WorkflowRunReference } from "./workflow-run-presentation";
 
 export function useWorkflowRun({
-  collections,
+  source,
   reference,
   visualization,
 }: {
-  collections?: WorkflowRunCollections;
+  source?: WorkflowRunSource;
   reference: WorkflowRunReference | null;
   visualization: WorkflowVisualizationSnapshot;
 }) {
   const records = useWorkflowRunRecords({
-    collections,
+    source,
     selector: reference
       ? {
           type: "instance",
@@ -36,4 +36,4 @@ export function useWorkflowRun({
   };
 }
 
-export type { WorkflowRunCollections } from "./use-script-workflow-runs";
+export type { WorkflowRunCollections, WorkflowRunSource } from "./use-script-workflow-runs";

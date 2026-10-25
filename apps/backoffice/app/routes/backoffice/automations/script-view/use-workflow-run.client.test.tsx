@@ -22,11 +22,11 @@ const visualization = visualizeWorkflowSource(
     await step.sleep("pause briefly", "10 seconds");
   });`,
 );
-const collections = {} as never;
+const source = { kind: "collections", collections: {} as never } as const;
 
 function WorkflowRunHarness() {
   const run = useWorkflowRun({
-    collections,
+    source,
     reference: { workflowName: "codemode-script", instanceId: "run-1" },
     visualization,
   });
@@ -91,7 +91,7 @@ describe("useWorkflowRun", () => {
     assert(screen.getByText('result {"wakeReason":"timer"}'));
     assert(screen.getByText('output {"status":"pending"}'));
     assert.deepEqual(useWorkflowRunRecordsMock.mock.calls[0]?.[0], {
-      collections,
+      source,
       selector: {
         type: "instance",
         workflowName: "codemode-script",

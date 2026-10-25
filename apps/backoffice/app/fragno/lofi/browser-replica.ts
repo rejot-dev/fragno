@@ -1,6 +1,8 @@
-import { openLofiSqliteReplica, type LofiSqliteReplica } from "@fragno-dev/lofi/sqlite";
-
-import type { LofiSchemaRegistration } from "@fragno-dev/lofi";
+import {
+  openLofiSqliteReplica,
+  type LofiSqliteReplica,
+  type LofiSqliteReplicaOptions,
+} from "@fragno-dev/lofi/sqlite";
 
 import { backofficeFetch } from "@/fragno/auth/browser-auth.client";
 
@@ -13,12 +15,14 @@ const replicas = new Map<string, Promise<LofiSqliteReplica>>();
  * This tab's SQLite replica of the backend below `baseUrl`, opened once per `resourceKey`, which
  * names the backend instance, so a changed backend opens a new replica.
  */
-export function getBrowserReplica(options: {
-  name: string;
-  baseUrl: string;
-  resourceKey: string;
-  schemas: LofiSchemaRegistration[];
-}): Promise<LofiSqliteReplica> {
+export function getBrowserReplica(
+  options: {
+    name: string;
+    baseUrl: string;
+    resourceKey: string;
+  } & Pick<LofiSqliteReplicaOptions, "schemas"> &
+    Partial<Pick<LofiSqliteReplicaOptions, "localSchemas" | "projections" | "ephemeralTables">>,
+): Promise<LofiSqliteReplica> {
   const key = JSON.stringify([options.baseUrl, options.resourceKey]);
   const existing = replicas.get(key);
   if (existing) {
@@ -30,9 +34,9 @@ export function getBrowserReplica(options: {
     baseUrl: options.baseUrl,
     fetch: backofficeFetch,
     schemas: options.schemas,
-    localSchemas: [],
-    projections: [],
-    ephemeralTables: [],
+    localSchemas: options.localSchemas ?? [],
+    projections: options.projections ?? [],
+    ephemeralTables: options.ephemeralTables ?? [],
     onError(error) {
       console.error(`The ${options.name} replica failed to synchronize.`, error);
     },

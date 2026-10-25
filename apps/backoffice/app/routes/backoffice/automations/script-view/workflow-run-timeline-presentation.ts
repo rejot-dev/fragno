@@ -22,7 +22,7 @@ import {
   type WorkflowVisualizationSnapshot,
 } from "@fragno-dev/workflow-visualizer-tokens";
 
-import { useWorkflowRunRecords, type WorkflowRunCollections } from "./use-script-workflow-runs";
+import { useWorkflowRunRecords, type WorkflowRunSource } from "./use-script-workflow-runs";
 import {
   inferWorkflowStepStarts,
   projectWorkflowRun,
@@ -51,14 +51,14 @@ export type WorkflowRunTimelineProjection = {
 };
 
 export function useWorkflowRunTimeline({
-  collections,
+  source,
   reference,
 }: {
-  collections: WorkflowRunCollections;
+  source: WorkflowRunSource;
   reference: WorkflowRunReference;
 }) {
   const records = useWorkflowRunRecords({
-    collections,
+    source,
     selector: {
       type: "instance",
       workflowName: reference.workflowName,

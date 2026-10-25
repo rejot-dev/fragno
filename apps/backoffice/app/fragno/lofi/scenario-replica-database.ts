@@ -1,13 +1,15 @@
 import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { fetchFragnoInternalDescription, resolveFragnoInternalUrls } from "@fragno-dev/db/outbox";
-import { openLofiSqliteReplica, type LofiSqliteReplica } from "@fragno-dev/lofi/sqlite";
+import {
+  openLofiSqliteReplica,
+  type LofiSqliteReplica,
+  type LofiSqliteReplicaOptions,
+} from "@fragno-dev/lofi/sqlite";
 import {
   openLofiSqliteMemoryFiles,
   waitForLofiSqliteReplica,
 } from "@fragno-dev/lofi/sqlite/testing";
-
-import type { LofiSchemaRegistration } from "@fragno-dev/lofi";
 
 export type ScenarioReplicaScope = {
   readonly replica: LofiSqliteReplica;
@@ -31,13 +33,15 @@ type ScenarioReplicaScopeRuntime = ScenarioReplicaScope & { cleanup(): Promise<v
  * One SQLite replica per scope, opened like a browser tab opens it, with wa-sqlite's in-memory
  * files standing in for OPFS and Node's Web Locks and BroadcastChannel for the browser's.
  */
-export function createScenarioReplicaDatabase(options: {
-  name: string;
-  schemas: LofiSchemaRegistration[];
-  drainRuntime(): Promise<void>;
-  baseUrl(scope: BackofficeContextScope): string;
-  createFetch(scope: BackofficeContextScope): typeof fetch;
-}): ScenarioReplicaDatabaseRuntime {
+export function createScenarioReplicaDatabase(
+  options: {
+    name: string;
+    drainRuntime(): Promise<void>;
+    baseUrl(scope: BackofficeContextScope): string;
+    createFetch(scope: BackofficeContextScope): typeof fetch;
+  } & Pick<LofiSqliteReplicaOptions, "schemas"> &
+    Partial<Pick<LofiSqliteReplicaOptions, "localSchemas" | "projections" | "ephemeralTables">>,
+): ScenarioReplicaDatabaseRuntime {
   const scopes = new Map<string, ScenarioReplicaScopeRuntime>();
   let files: ReturnType<typeof openLofiSqliteMemoryFiles> | undefined;
 
@@ -59,9 +63,9 @@ export function createScenarioReplicaDatabase(options: {
           baseUrl,
           fetch,
           schemas: options.schemas,
-          localSchemas: [],
-          projections: [],
-          ephemeralTables: [],
+          localSchemas: options.localSchemas ?? [],
+          projections: options.projections ?? [],
+          ephemeralTables: options.ephemeralTables ?? [],
           onError: (error) => {
             errors.push(error);
           },

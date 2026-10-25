@@ -13,12 +13,18 @@ import { useLiveQuery } from "@tanstack/react-db";
 
 import type { BackofficeScopeSelection } from "@/backoffice-runtime/resolved-scope";
 import { useClock } from "@/components/backoffice/use-clock";
+import {
+  automationReadCollections,
+  automationReadReplica,
+  type AutomationReadSource,
+} from "@/fragno/automation/read-source";
 import type { AutomationBrowserCollections } from "@/fragno/automation/tanstack/browser-database";
 import { useAutomationRoutes } from "@/fragno/automation/tanstack/use-automation-routes";
 import {
   listAutomationEventDescriptors,
   listCapabilityEventSources,
 } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
+import { useLofiSqliteRead } from "@/fragno/lofi/use-lofi-sqlite-read";
 import type { RuntimeToolWorkflowDescriptor } from "@/fragno/runtime-tools/workflow-catalog";
 
 import type { AutomationScriptSourceRecord } from "../automations/data";
@@ -29,6 +35,7 @@ import {
   orchestrationActiveWorkflowsQuery,
   orchestrationEventId,
   projectOrchestrationGraph,
+  readOrchestrationRecords,
   routeTargetId,
   routeTriggerEventId,
   type OrchestrationCatalogEvent,
@@ -66,40 +73,21 @@ type OrchestrationCatalog = {
  * details beside it. The selection lives in the URL so other panels can link to a route or event.
  */
 export function OrchestrationPanel({
-  collections,
+  readSource,
   routes,
   recentEvents,
   selectedScope,
   workflowSource,
   runtimeToolCatalog,
 }: {
-  collections: AutomationBrowserCollections;
+  readSource: AutomationReadSource;
   routes: readonly AutomationRouteDefinition[];
   recentEvents: readonly { source: string; eventType: string }[];
   selectedScope: BackofficeScopeSelection;
   workflowSource: AutomationScriptSourceRecord;
   runtimeToolCatalog: readonly RuntimeToolWorkflowDescriptor[];
 }) {
-  const eventSourcesQuery = useLiveQuery({
-    query: (query) =>
-      query.from({ source: collections.eventSources }).select(({ source }) => ({
-        id: source.source,
-        label: source.label,
-        description: source.description,
-      })),
-  });
-  const eventDefinitionsQuery = useLiveQuery({
-    query: (query) =>
-      query.from({ definition: collections.eventDefinitions }).select(({ definition }) => ({
-        source: definition.source,
-        eventType: definition.eventType,
-        label: definition.label,
-        payloadSchema: definition.payloadSchema,
-      })),
-  });
-  const activeWorkflowsQuery = useLiveQuery({
-    query: (query) => orchestrationActiveWorkflowsQuery(query, collections),
-  });
+  const { records, errors } = useOrchestrationRecords(readSource);
 
   // Registered capabilities describe what every scope can receive; a scope's own definitions add
   // to them and take precedence.
@@ -112,14 +100,11 @@ export function OrchestrationPanel({
         description: source.description,
       });
     }
-    for (const source of eventSourcesQuery.data ?? []) {
+    for (const source of records.eventSources) {
       sources.set(normalizedSourceId(source.id), { ...source, id: normalizedSourceId(source.id) });
     }
     const eventDefinitions = new Map<string, OrchestrationCatalogEvent>();
-    for (const definition of [
-      ...listAutomationEventDescriptors(),
-      ...(eventDefinitionsQuery.data ?? []),
-    ]) {
+    for (const definition of [...listAutomationEventDescriptors(), ...records.eventDefinitions]) {
       eventDefinitions.set(orchestrationEventId(definition.source, definition.eventType), {
         source: definition.source,
         eventType: definition.eventType,
@@ -128,7 +113,7 @@ export function OrchestrationPanel({
       });
     }
     return { sources: [...sources.values()], eventDefinitions: [...eventDefinitions.values()] };
-  }, [eventSourcesQuery.data, eventDefinitionsQuery.data]);
+  }, [records.eventSources, records.eventDefinitions]);
 
   const graph = useMemo(
     () =>
@@ -137,10 +122,10 @@ export function OrchestrationPanel({
         sources: catalog.sources,
         eventDefinitions: catalog.eventDefinitions,
         routes,
-        activeWorkflows: activeWorkflowsQuery.data ?? [],
+        activeWorkflows: records.activeWorkflows,
         recentEvents,
       }),
-    [selectedScope.label, catalog, routes, activeWorkflowsQuery.data, recentEvents],
+    [selectedScope.label, catalog, routes, records.activeWorkflows, recentEvents],
   );
 
   const [searchParams, setSearchParams] = useSearchParams();
@@ -170,17 +155,11 @@ export function OrchestrationPanel({
     setSearchParams((current) => withDashboardSelection(current, item), SELECTION_NAVIGATION);
   }
 
-  const errors = [
-    eventSourcesQuery.isError ? "Event sources" : null,
-    eventDefinitionsQuery.isError ? "Event definitions" : null,
-    activeWorkflowsQuery.isError ? "Running workflows" : null,
-  ].filter((label) => label !== null);
-
   return (
     <div className="flex flex-col gap-3 pt-3">
       {errors.length > 0 ? (
         <p className="text-xs text-[var(--bo-failed)]">
-          {errors.join(", ")} could not be synchronized, so the graph may be incomplete.
+          {errors.join(", ")} could not be read, so the graph may be incomplete.
         </p>
       ) : null}
       {/* Side by side the row takes a fixed height; stacked, each box takes its own. */}
@@ -205,7 +184,7 @@ export function OrchestrationPanel({
               selection={inspected}
               workflowSource={workflowSource}
               runtimeToolCatalog={runtimeToolCatalog}
-              collections={collections}
+              readSource={readSource}
               filesScopePath={filesScopeBasePath(selectedScope)}
               eventPath={(source, eventType) =>
                 dashboardSelectionPath(selectedScope, {
@@ -260,7 +239,7 @@ export function ScopeOrchestration({
   }
   return (
     <OrchestrationPanel
-      collections={collections}
+      readSource={{ kind: "collections", collections }}
       routes={routesState.routes}
       recentEvents={eventsQuery.data ?? []}
       selectedScope={loaderData.selectedScope}
@@ -268,6 +247,81 @@ export function ScopeOrchestration({
       runtimeToolCatalog={loaderData.runtimeToolCatalog}
     />
   );
+}
+
+type OrchestrationRecords = Awaited<ReturnType<typeof readOrchestrationRecords>>;
+
+const NO_ORCHESTRATION_RECORDS: OrchestrationRecords = {
+  eventSources: [],
+  eventDefinitions: [],
+  activeWorkflows: [],
+};
+
+/**
+ * The scope's own event sources and definitions, and its runs that have not finished, with the
+ * names of those that could not be read. The graph draws what it has meanwhile.
+ */
+function useOrchestrationRecords(readSource: AutomationReadSource): {
+  records: OrchestrationRecords;
+  errors: string[];
+} {
+  const collections = automationReadCollections(readSource);
+  const eventSourcesQuery = useLiveQuery({
+    query: (query) =>
+      collections
+        ? query.from({ source: collections.eventSources }).select(({ source }) => ({
+            id: source.source,
+            label: source.label,
+            description: source.description,
+          }))
+        : undefined,
+  });
+  const eventDefinitionsQuery = useLiveQuery({
+    query: (query) =>
+      collections
+        ? query.from({ definition: collections.eventDefinitions }).select(({ definition }) => ({
+            source: definition.source,
+            eventType: definition.eventType,
+            label: definition.label,
+            payloadSchema: definition.payloadSchema,
+          }))
+        : undefined,
+  });
+  const activeWorkflowsQuery = useLiveQuery({
+    query: (query) =>
+      collections ? orchestrationActiveWorkflowsQuery(query, collections) : undefined,
+  });
+  const replicaRead = useLofiSqliteRead(
+    automationReadReplica(readSource),
+    "",
+    readOrchestrationRecords,
+  );
+  const queried = useMemo(
+    (): OrchestrationRecords => ({
+      eventSources: eventSourcesQuery.data ?? [],
+      eventDefinitions: eventDefinitionsQuery.data ?? [],
+      activeWorkflows: activeWorkflowsQuery.data ?? [],
+    }),
+    [eventSourcesQuery.data, eventDefinitionsQuery.data, activeWorkflowsQuery.data],
+  );
+
+  if (readSource.kind === "replica") {
+    return {
+      records: replicaRead.status === "ready" ? replicaRead.data : NO_ORCHESTRATION_RECORDS,
+      errors:
+        replicaRead.status === "error"
+          ? ["Event sources", "event definitions", "running workflows"]
+          : [],
+    };
+  }
+  return {
+    records: queried,
+    errors: [
+      eventSourcesQuery.isError ? "Event sources" : null,
+      eventDefinitionsQuery.isError ? "Event definitions" : null,
+      activeWorkflowsQuery.isError ? "Running workflows" : null,
+    ].filter((label) => label !== null),
+  };
 }
 
 /** What the inspector shows for a graph item; null when the item no longer exists. */
