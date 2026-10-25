@@ -124,6 +124,8 @@ export type PiAssistantMessageMetadata = {
   usage: PiTurnUsage | null;
   /** When the newest response ended; null while it streams or when Pi did not time it. */
   finishedAt: Date | null;
+  /** The notifications the agent was asked to handle in this turn; null for a turn it chose. */
+  notificationRequest: PiNotificationReference[] | null;
 };
 
 type AssistantContentBlock = ThreadMessageLike["content"] extends string | readonly (infer Block)[]
@@ -524,7 +526,7 @@ export function createAssistantUiMessages({
       converted.push({
         id: `pi-notification-request-${message.timestamp}-${index}`,
         role: "system",
-        content: [{ type: "text", text: notificationRequestLabel(message.notifications) }],
+        content: [{ type: "text", text: notificationRequestLabel(message.notifications, "asked") }],
         createdAt: messageDate(message.timestamp, index),
         metadata: {
           custom: {
@@ -621,6 +623,7 @@ export function createAssistantUiMessages({
             shouldStream || message.durationMs === undefined
               ? null
               : new Date(message.timestamp + message.durationMs),
+          notificationRequest: null,
         } satisfies PiAssistantMessageMetadata,
       },
     });
@@ -671,6 +674,7 @@ export function createAssistantUiMessages({
           stopReason: null,
           usage: null,
           finishedAt: null,
+          notificationRequest: null,
         } satisfies PiAssistantMessageMetadata,
       },
     });
@@ -693,7 +697,8 @@ function turnUsage(usage: Extract<PiConversationMessage, { role: "assistant" }>[
  * whole turn, so its thoughts and tool calls read as one piece of work. A turn is keyed by its
  * first response's start, which the live draft shares with the response it is persisted as, so
  * the turn keeps its identity while it streams. A run is split where the active context starts,
- * so the divider can sit between its halves.
+ * so the divider can sit between its halves. A request to handle notifications joins the turn
+ * that answers it, which shows it as the turn's progress and drops it when the turn says nothing.
  */
 function joinAgentTurns(
   messages: readonly ThreadMessageLike[],
@@ -701,26 +706,54 @@ function joinAgentTurns(
 ): { messages: ThreadMessageLike[]; activeContextStartMessageId: string | null } {
   const joined: ThreadMessageLike[] = [];
   let activeContextStartMessageId: string | null = null;
+  let turnStartPosition = activeContextStartPosition;
+  let notificationRequest: PiNotificationReference[] | null = null;
   messages.forEach((message, index) => {
     const previous = joined.at(-1);
+    const request = notificationRequestOf(message);
+    if (request !== null && messages[index + 1]?.role === "assistant") {
+      notificationRequest = request;
+      // The answering turn stands in for the request, at the active context's start too.
+      if (index === turnStartPosition) {
+        turnStartPosition = index + 1;
+      }
+      return;
+    }
     if (
       message.role === "assistant" &&
       previous?.role === "assistant" &&
-      index !== activeContextStartPosition
+      index !== turnStartPosition &&
+      notificationRequest === null
     ) {
       joined[joined.length - 1] = joinResponses(previous, message);
+    } else if (message.role === "assistant") {
+      const metadata = message.metadata?.custom as PiAssistantMessageMetadata;
+      joined.push({
+        ...message,
+        id: `pi-turn-${message.createdAt?.getTime()}`,
+        metadata: {
+          custom: { ...metadata, notificationRequest } satisfies PiAssistantMessageMetadata,
+        },
+      });
+      notificationRequest = null;
     } else {
-      joined.push(
-        message.role === "assistant"
-          ? { ...message, id: `pi-turn-${message.createdAt?.getTime()}` }
-          : message,
-      );
+      joined.push(message);
     }
-    if (index === activeContextStartPosition) {
+    if (index === turnStartPosition) {
       activeContextStartMessageId = joined.at(-1)?.id ?? null;
     }
   });
   return { messages: joined, activeContextStartMessageId };
+}
+
+function notificationRequestOf(message: ThreadMessageLike): PiNotificationReference[] | null {
+  if (message.role !== "system") {
+    return null;
+  }
+  const metadata = message.metadata?.custom as { kind: string };
+  return metadata.kind === "notification-request"
+    ? (metadata as PiNotificationRequestMessageMetadata).notifications
+    : null;
 }
 
 function joinResponses(turn: ThreadMessageLike, response: ThreadMessageLike): ThreadMessageLike {
@@ -740,6 +773,7 @@ function joinResponses(turn: ThreadMessageLike, response: ThreadMessageLike): Th
     metadata: {
       custom: {
         ...responseMetadata,
+        notificationRequest: turnMetadata.notificationRequest,
         usage:
           usages.length === 0
             ? null
@@ -791,7 +825,7 @@ export function piConversationQueue(
         ? item.content
         : item.content.map((part) => (part.type === "text" ? part.text : "[image]")).join("\n");
     const notifications = parsePiNotificationRequest(text);
-    const prompt = notifications ? notificationRequestLabel(notifications) : text;
+    const prompt = notifications ? notificationRequestLabel(notifications, "asked") : text;
     items.push({ id, prompt });
     labels.set(id, item.mode === "steer" ? "Steering" : "Up next");
   }
@@ -808,9 +842,12 @@ export function piConversationQueue(
   return { items, labels };
 }
 
-/** How the chat names a request to handle notifications. */
-export function notificationRequestLabel(notifications: readonly PiNotificationReference[]) {
-  return notifications.length === 1
-    ? "Handling 1 notification"
-    : `Handling ${notifications.length} notifications`;
+/** How the chat names a request to handle notifications, while the agent handles them or after. */
+export function notificationRequestLabel(
+  notifications: readonly PiNotificationReference[],
+  phase: "asked" | "handling",
+) {
+  const subject =
+    notifications.length === 1 ? "1 notification" : `${notifications.length} notifications`;
+  return phase === "handling" ? `Handling ${subject}` : `Asked to handle ${subject}`;
 }

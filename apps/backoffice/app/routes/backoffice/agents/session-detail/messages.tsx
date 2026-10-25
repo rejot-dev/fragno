@@ -165,41 +165,75 @@ export function AssistantMessage({
         failedSteps: tools.filter((tool) => tool.presentation.failed).length,
       };
 
-  return (
-    <MessagePrimitive.Root asChild>
-      <ChatAssistantMessage author={{ name: "Pi", time: createdAt ?? null }} footer={footer}>
-        {visibleSteps.length > 0 ? (
-          <ChatActivity
-            status={status}
-            artifacts={
-              artifactTool === null ? null : (
-                <ToolWorkspaceSelector
-                  options={artifactTool.workspaceOptions}
-                  toolLabel={artifactTool.presentation.label}
-                  labelled
-                />
-              )
-            }
-          >
-            {visibleSteps.map((step) => (
-              <TurnStep key={step.key} step={step} tools={toolsById} />
-            ))}
-          </ChatActivity>
-        ) : running && !answering ? (
-          <WorkingIndicator>{metadata.statusText ?? "Working…"}</WorkingIndicator>
-        ) : null}
-        {workflowRuns.map((run) => (
-          <SessionWorkflow key={run.instanceId} run={run} />
-        ))}
-        {answer.map((part) =>
-          part.kind === "text" ? (
-            <MarkdownText key={part.key} text={part.text} />
-          ) : (
-            <MessageImage key={part.key} image={part.image} />
-          ),
+  const shown = visibleSteps.length > 0 || workflowRuns.length > 0 || answer.length > 0;
+  const { notificationRequest } = metadata;
+  // A turn can end without saying anything, such as one that acknowledged a finished workflow
+  // whose card already shows the result; an author with nothing under it reads as a stuck reply.
+  // A silent answer to notifications goes with its request, whatever copy or usage it offers,
+  // unless it failed or was stopped.
+  const silent =
+    !running &&
+    !shown &&
+    (footer === null || (notificationRequest !== null && !stopped && failure === null));
+  if (silent) {
+    return null;
+  }
+  // A turn answering notifications is one line until it has something to show.
+  const handling = notificationRequest !== null && running && !shown;
+  const requestLine =
+    notificationRequest === null ? null : (
+      <ChatEventDivider marker={handling ? "progress" : "notification"} time={createdAt ?? null}>
+        {handling ? (
+          <span className="bo-shimmer-text">
+            {notificationRequestLabel(notificationRequest, "handling")}
+          </span>
+        ) : (
+          notificationRequestLabel(notificationRequest, "asked")
         )}
-      </ChatAssistantMessage>
-    </MessagePrimitive.Root>
+      </ChatEventDivider>
+    );
+  if (handling) {
+    return <>{requestLine}</>;
+  }
+
+  return (
+    <>
+      {requestLine}
+      <MessagePrimitive.Root asChild>
+        <ChatAssistantMessage author={{ name: "Pi", time: createdAt ?? null }} footer={footer}>
+          {visibleSteps.length > 0 ? (
+            <ChatActivity
+              status={status}
+              artifacts={
+                artifactTool === null ? null : (
+                  <ToolWorkspaceSelector
+                    options={artifactTool.workspaceOptions}
+                    toolLabel={artifactTool.presentation.label}
+                    labelled
+                  />
+                )
+              }
+            >
+              {visibleSteps.map((step) => (
+                <TurnStep key={step.key} step={step} tools={toolsById} />
+              ))}
+            </ChatActivity>
+          ) : running && !answering ? (
+            <WorkingIndicator>{metadata.statusText ?? "Working…"}</WorkingIndicator>
+          ) : null}
+          {workflowRuns.map((run) => (
+            <SessionWorkflow key={run.instanceId} run={run} />
+          ))}
+          {answer.map((part) =>
+            part.kind === "text" ? (
+              <MarkdownText key={part.key} text={part.text} />
+            ) : (
+              <MessageImage key={part.key} image={part.image} />
+            ),
+          )}
+        </ChatAssistantMessage>
+      </MessagePrimitive.Root>
+    </>
   );
 }
 
@@ -395,7 +429,7 @@ export function NotificationRequestMessage() {
           .map(({ routeId, eventId }) => (routeId === null ? eventId : `${eventId} via ${routeId}`))
           .join("\n")}
       >
-        {notificationRequestLabel(notifications)}
+        {notificationRequestLabel(notifications, "asked")}
       </ChatEventDivider>
     </MessagePrimitive.Root>
   );
