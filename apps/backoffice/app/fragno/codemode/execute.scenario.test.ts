@@ -207,6 +207,48 @@ test("Codemode execution retains unavailable-tool diagnostics without granting c
           });
         }),
         then.assert(
+          "a log flood past the run record budget is saved whole for the agent while its run keeps a bounded record",
+          async (ctx) => {
+            const tool = executionTool(
+              ctx,
+              createBackofficeUserExecution({ scope: owner, userId: "owner" }),
+            );
+            const flood = await tool.execute(
+              {
+                code: 'async () => { for (let i = 0; i < 6000; i++) console.log("line " + i + " " + "x".repeat(200)); return "flooded"; }',
+              },
+              { taskId: "flood" } as never,
+              BACKGROUND_CONTEXT,
+            );
+            const fullOutputPath = "/workspace/.pi/diagnostics/outputs/flood.txt";
+            expect(flood).toMatchObject({ isError: false, details: { fullOutputPath } });
+            assert(flood.details && typeof flood.details === "object" && "runId" in flood.details);
+            const run = await ctx.runtime.objects.codemode
+              .for(owner)
+              .commands.getRun(String(flood.details.runId));
+            assert(run?.status === "completed");
+            expect(run.logs.at(-1)).toMatchObject({ channel: "codemode", text: "Logs truncated." });
+            expect(new TextEncoder().encode(JSON.stringify(run.logs)).byteLength).toBeLessThan(
+              1.1 * 1024 * 1024,
+            );
+
+            const read = await tool.execute(
+              {
+                code: `async () => {
+                  const lines = (await state.readFile({ path: ${JSON.stringify(fullOutputPath)} })).split("\\n");
+                  return [lines.length, lines.at(-2).slice(0, 10), lines.at(-1)];
+                }`,
+              },
+              { taskId: "read-flood" } as never,
+              BACKGROUND_CONTEXT,
+            );
+            expect(read).toMatchObject({
+              isError: false,
+              details: { result: [6001, "line 5999 ", "flooded"] },
+            });
+          },
+        ),
+        then.assert(
           "a user's project turn reaches the user's organizations, but not foreign ones",
           async (ctx) => {
             const scope: BackofficeContextScope = {

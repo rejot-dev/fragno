@@ -13,8 +13,9 @@ export const CODEMODE_LIMITS = {
   maxDepth: 64,
   maxEntries: 10_000,
   maxRpcReferences: 1024,
-  maxLogs: 1_000,
-  maxLogBytes: 128 * 1024,
+  maxLogs: 20_000,
+  // Logs and a modest result fit one saved file in Backoffice's database upload storage (1.9 MB).
+  maxLogBytes: 1.5 * 1024 * 1024,
   connectTimeoutMs: 10_000,
   startTimeoutMs: 10_000,
   compileTimeoutMs: 60_000,

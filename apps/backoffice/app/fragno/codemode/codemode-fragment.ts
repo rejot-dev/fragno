@@ -54,6 +54,26 @@ function serializeCodemodeRunSuspensionReason(reason: CodemodeSuspensionReason) 
   return reason;
 }
 
+// Guests may log up to CODEMODE_LIMITS.maxLogBytes, but a run's outcome is one Durable Object SQLite
+// row, which Cloudflare limits to 2 MB.
+const MAX_RECORDED_LOG_BYTES = 1024 * 1024;
+
+/** The logs a run's record keeps: its first lines within the row budget, then a truncation line. */
+function recordedLogs(logs: CodemodeLogLine[]): CodemodeLogLine[] {
+  const encoder = new TextEncoder();
+  let bytes = 0;
+  for (const [index, line] of logs.entries()) {
+    bytes += encoder.encode(JSON.stringify(line)).byteLength;
+    if (bytes > MAX_RECORDED_LOG_BYTES) {
+      return [
+        ...logs.slice(0, index),
+        { at: line.at, channel: "codemode", text: "Logs truncated." },
+      ];
+    }
+  }
+  return logs;
+}
+
 type CodemodeRunOutcome =
   | { status: "completed"; logs: CodemodeLogLine[] }
   | { status: "failed"; error: CodemodeWireError; logs: CodemodeLogLine[] }
@@ -377,9 +397,9 @@ const codemodeFragmentDefinition = defineFragment<CodemodeFragmentConfig>("codem
       finishRun: function (runId: string, completion: CodemodeRunCompletion, finishedAt: Date) {
         const outcome: CodemodeRunOutcome =
           completion.status === "completed"
-            ? { status: "completed", logs: completion.logs }
+            ? { status: "completed", logs: recordedLogs(completion.logs) }
             : completion.status === "failed"
-              ? { status: "failed", error: completion.error, logs: completion.logs }
+              ? { status: "failed", error: completion.error, logs: recordedLogs(completion.logs) }
               : completion.status === "interrupted"
                 ? {
                     // History shows the tick as failed; its runner tries it again.
@@ -390,7 +410,7 @@ const codemodeFragmentDefinition = defineFragment<CodemodeFragmentConfig>("codem
                 : {
                     status: "suspended",
                     reason: serializeCodemodeRunSuspensionReason(completion.reason),
-                    logs: completion.logs,
+                    logs: recordedLogs(completion.logs),
                   };
         return this.serviceTx(codemodeSchema)
           .retrieve((uow) =>

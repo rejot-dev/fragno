@@ -1064,16 +1064,17 @@ test("a completion waits until its host's revocation holds", async () => {
   finishRevocation();
   expect(await completion).toMatchObject({ status: "completed", value: "done" });
 });
-test("log floods fail with bounded output", async () => {
+test("log floods complete with truncated logs", async () => {
   const completion = await execute(
     {
       ...base,
       kind: "immediate",
-      code: '() => { for (let i = 0; i < 10000; i++) console.log("message"); }',
+      code: `() => { for (let i = 0; i < ${CODEMODE_LIMITS.maxLogs * 2}; i++) console.log("message"); return 42; }`,
     },
     providerHost(),
   );
-  assert(completion.status === "failed");
-  assert.equal(completion.error.message, "CODEMODE_LOG_LIMIT_EXCEEDED");
-  expect(completion.logs.length).toBeLessThanOrEqual(1000);
+  assert(completion.status === "completed");
+  assert(completion.value === 42);
+  expect(completion.logs).toHaveLength(CODEMODE_LIMITS.maxLogs);
+  expect(completion.logs.at(-1)).toMatchObject({ channel: "codemode", text: "Logs truncated." });
 });
