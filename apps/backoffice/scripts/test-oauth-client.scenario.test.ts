@@ -197,9 +197,10 @@ async function createNativeTestClient(
     client = backofficeOAuthClientCreateResultSchema.parse(created.result);
     expect(created.toolCalls).toContainEqual(
       expect.objectContaining({
-        toolId: "admin.oauth-clients.create",
-        status: "success",
-        resultSummary: "[redacted]",
+        provider: "admin",
+        tool: "oauthClientsCreate",
+        status: "succeeded",
+        output: "[redacted]",
       }),
     );
     assert(client.clientSecret !== null);

@@ -286,9 +286,9 @@ describe("admin app runtime tool SQLite scenarios", () => {
                 createdAt: expect.any(String),
               },
             ]);
-            expect(result.toolCalls.map(({ toolId }) => toolId)).toEqual([
-              "admin.apps.create",
-              "admin.apps.list",
+            expect(result.toolCalls.map(({ provider, tool }) => `${provider}.${tool}`)).toEqual([
+              "admin.appsCreate",
+              "admin.appsList",
             ]);
             const { bash } = await createInteractiveBashHost({
               context: { ...context, stateBackend: context.stateBackend },

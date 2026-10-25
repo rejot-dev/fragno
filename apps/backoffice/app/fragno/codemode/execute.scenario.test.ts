@@ -41,6 +41,11 @@ afterAll(async () => {
 
 const owner = { kind: "org", orgId: "acme" } as const;
 
+/** The tool API a call gets in tests: its task, and somewhere for its live details to go. */
+function toolApi(taskId: string) {
+  return { taskId, details: async () => {} } as never;
+}
+
 function executionTool(ctx: BackofficeScenarioContext, execution: BackofficeExecutionContext) {
   return createCodemodeTool(
     createBackofficeAgentContext({
@@ -95,7 +100,7 @@ test("Codemode execution retains unavailable-tool diagnostics without granting c
               {
                 code: 'async () => { console.info("before call"); return await projects.create({ name: "Forbidden sibling" }); }',
               },
-              { taskId: "unavailable" } as never,
+              toolApi("unavailable"),
               BACKGROUND_CONTEXT,
             );
             const diagnostic = {
@@ -110,14 +115,16 @@ test("Codemode execution retains unavailable-tool diagnostics without granting c
                 runId: expect.any(String),
                 errorDetails: diagnostic,
                 logs: ["[info] before call"],
-                toolCalls: [
-                  {
-                    providerName: "projects",
-                    toolName: "create",
-                    status: "error",
-                    errorDetails: diagnostic,
-                  },
-                ],
+                calls: {
+                  items: [
+                    {
+                      subject: { kind: "call", name: "projects.create", scope: null },
+                      status: "failed",
+                      error: expect.stringContaining("TOOL_UNAVAILABLE: projects.create"),
+                    },
+                  ],
+                  omitted: 0,
+                },
               },
             });
             assert(
@@ -162,7 +169,7 @@ test("Codemode execution retains unavailable-tool diagnostics without granting c
             return { failure, scope: await context.getCurrentScope() };
           }`,
             },
-            { taskId: "recover" } as never,
+            toolApi("recover"),
             BACKGROUND_CONTEXT,
           );
           expect(result).toMatchObject({
@@ -177,13 +184,15 @@ test("Codemode execution retains unavailable-tool diagnostics without granting c
                 },
                 scope,
               },
-              toolCalls: [
-                {
-                  providerName: "current:projects",
-                  status: "error",
-                  errorDetails: { details: { code: "TOOL_UNAVAILABLE" } },
-                },
-              ],
+              calls: {
+                items: [
+                  {
+                    subject: { kind: "call", name: "projects.list", scope: null },
+                    status: "failed",
+                    error: expect.stringContaining("TOOL_UNAVAILABLE"),
+                  },
+                ],
+              },
             },
           });
         }),
@@ -194,7 +203,7 @@ test("Codemode execution retains unavailable-tool diagnostics without granting c
           );
           const result = await tool.execute(
             { code: "async () => await projects.list({})" },
-            { taskId: "owner" } as never,
+            toolApi("owner"),
             BACKGROUND_CONTEXT,
           );
           expect(result).toMatchObject({
@@ -202,7 +211,57 @@ test("Codemode execution retains unavailable-tool diagnostics without granting c
             details: {
               errorDetails: null,
               result: { projects: [{ projectId: ctx.vars.projectId, name: "Existing" }] },
-              toolCalls: [{ providerName: "projects", status: "success", errorDetails: null }],
+              calls: {
+                items: [{ subject: { kind: "call", name: "projects.list" }, status: "succeeded" }],
+              },
+            },
+          });
+        }),
+        then.assert("discovery calls read as the files and skills they looked at", async (ctx) => {
+          const tool = executionTool(
+            ctx,
+            createBackofficeUserExecution({ scope: owner, userId: "owner" }),
+          );
+          const skillPath = "/workspace/discovery/skills/reminders/SKILL.md";
+          const result = await tool.execute(
+            {
+              code: `async () => {
+                await state.writeFile({ path: ${JSON.stringify(skillPath)}, content: "---\\nname: reminders\\ndescription: Sends reminders.\\n---\\n# Reminders" });
+                await state.glob({ pattern: "/workspace/discovery/**/SKILL.md" });
+                await state.readFile({ path: ${JSON.stringify(skillPath)} });
+                await state.readFile({ path: "/workspace/discovery/missing.md" }).catch(() => null);
+                await state.searchFiles({ pattern: "/workspace/discovery/**", keywords: ["Reminders"] });
+              }`,
+            },
+            toolApi("discovery"),
+            BACKGROUND_CONTEXT,
+          );
+          expect(result).toMatchObject({
+            isError: false,
+            details: {
+              calls: {
+                items: [
+                  { subject: { kind: "call", name: "state.writeFile" }, status: "succeeded" },
+                  {
+                    subject: { kind: "list", pattern: "/workspace/discovery/**/SKILL.md" },
+                    status: "succeeded",
+                  },
+                  { subject: { kind: "skill", name: "reminders" }, status: "succeeded" },
+                  {
+                    subject: { kind: "read", path: "/workspace/discovery/missing.md" },
+                    status: "failed",
+                  },
+                  {
+                    subject: {
+                      kind: "search",
+                      pattern: "/workspace/discovery/**",
+                      keywords: ["Reminders"],
+                    },
+                    status: "succeeded",
+                  },
+                ],
+                omitted: 0,
+              },
             },
           });
         }),
@@ -217,7 +276,7 @@ test("Codemode execution retains unavailable-tool diagnostics without granting c
               {
                 code: 'async () => { for (let i = 0; i < 6000; i++) console.log("line " + i + " " + "x".repeat(200)); return "flooded"; }',
               },
-              { taskId: "flood" } as never,
+              toolApi("flood"),
               BACKGROUND_CONTEXT,
             );
             const fullOutputPath = "/workspace/.pi/diagnostics/outputs/flood.txt";
@@ -239,7 +298,7 @@ test("Codemode execution retains unavailable-tool diagnostics without granting c
                   return [lines.length, lines.at(-2).slice(0, 10), lines.at(-1)];
                 }`,
               },
-              { taskId: "read-flood" } as never,
+              toolApi("read-flood"),
               BACKGROUND_CONTEXT,
             );
             expect(read).toMatchObject({
@@ -262,7 +321,7 @@ test("Codemode execution retains unavailable-tool diagnostics without granting c
             );
             const own = await tool.execute(
               { code: 'async () => await context.org("acme").projects.list({})' },
-              { taskId: "own-org" } as never,
+              toolApi("own-org"),
               BACKGROUND_CONTEXT,
             );
             expect(own).toMatchObject({
@@ -273,7 +332,7 @@ test("Codemode execution retains unavailable-tool diagnostics without granting c
             });
             const foreign = await tool.execute(
               { code: 'async () => await context.org("globex").projects.list({})' },
-              { taskId: "foreign-org" } as never,
+              toolApi("foreign-org"),
               BACKGROUND_CONTEXT,
             );
             expect(foreign).toMatchObject({
@@ -298,7 +357,7 @@ test("Codemode execution retains unavailable-tool diagnostics without granting c
           });
           const result = await tool.execute(
             { code: 'async () => await context.org("acme").projects.list({})' },
-            { taskId: "restricted" } as never,
+            toolApi("restricted"),
             BACKGROUND_CONTEXT,
           );
           expect(result).toMatchObject({
@@ -324,7 +383,7 @@ test("Codemode execution retains unavailable-tool diagnostics without granting c
             );
             const unknown = await tool.execute(
               { code: "async () => await context.current.projects.missing({})" },
-              { taskId: "unknown" } as never,
+              toolApi("unknown"),
               BACKGROUND_CONTEXT,
             );
             expect(unknown).toMatchObject({
@@ -344,7 +403,7 @@ test("Codemode execution retains unavailable-tool diagnostics without granting c
             throw new TypeError("Independent guest failure");
           }`,
               },
-              { taskId: "unrelated" } as never,
+              toolApi("unrelated"),
               BACKGROUND_CONTEXT,
             );
             expect(unrelated).toMatchObject({
@@ -356,9 +415,9 @@ test("Codemode execution retains unavailable-tool diagnostics without granting c
                   details: null,
                   metadata: null,
                 },
-                toolCalls: [
-                  { status: "error", errorDetails: { details: { code: "TOOL_UNAVAILABLE" } } },
-                ],
+                calls: {
+                  items: [{ status: "failed", error: expect.stringContaining("TOOL_UNAVAILABLE") }],
+                },
               },
             });
           },

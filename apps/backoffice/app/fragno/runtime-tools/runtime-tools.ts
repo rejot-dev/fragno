@@ -1,8 +1,6 @@
 import { backofficeApiV0 } from "@fragno-dev/backoffice-api/v0";
 import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import type { CodemodeWireError } from "@fragno-dev/codemode/execution/codemode-error-contract";
-import { encodeCodemodeError } from "@fragno-dev/codemode/execution/codemode-errors";
 import type { ToolProvider } from "@fragno-dev/codemode/runtime-api";
 import type { Command } from "just-bash";
 import type { z } from "zod";
@@ -73,17 +71,6 @@ export const createTrustedSystemBackofficeToolContext = <
     createScopedContext: createContext,
   });
   return createContext({ kind: "system" });
-};
-
-export type BackofficeRuntimeToolCall = {
-  providerName: string;
-  toolName: string;
-  toolId: string;
-  inputSummary: string;
-  status: "success" | "error";
-  resultSummary?: string;
-  error?: string;
-  errorDetails: CodemodeWireError | null;
 };
 
 export type BackofficeBashShellContext = {
@@ -262,21 +249,6 @@ function runtimeToolInputMode(schema: z.ZodType): CodemodeToolDescriptor["inputM
   return schema._zod.def.type === "void" ? "none" : "value";
 }
 
-/** Bounds a tool's input or output to what a log or history row can hold. */
-export function summarizeToolValue(value: unknown) {
-  try {
-    const summary = JSON.stringify(value);
-    if (typeof summary === "string") {
-      return summary.length > 500 ? `${summary.slice(0, 497)}...` : summary;
-    }
-  } catch {
-    // Fall through to String(...) for unserializable values.
-  }
-
-  const summary = String(value);
-  return summary.length > 500 ? `${summary.slice(0, 497)}...` : summary;
-}
-
 function runtimeToolAuthorizationError(
   tool: AnyBackofficeRuntimeTool,
   operation: BackofficePermissionRequirement,
@@ -332,11 +304,9 @@ export async function executeBackofficeRuntimeTool<TTool extends AnyBackofficeRu
 export const createBackofficeCodemodeProviders = ({
   families,
   context,
-  toolCalls,
 }: {
   families: readonly BackofficeRuntimeToolFamily[];
   context: BackofficeToolContext;
-  toolCalls?: BackofficeRuntimeToolCall[];
 }): ToolProvider[] => {
   const grouped = new Map<string, Record<string, CodemodeToolDescriptor>>();
 
@@ -350,35 +320,14 @@ export const createBackofficeCodemodeProviders = ({
         inputMode: runtimeToolInputMode(tool.inputSchema),
         outputSchema: tool.outputSchema,
         execute: async (input) => {
-          const call: BackofficeRuntimeToolCall = {
-            providerName: tool.namespace,
-            toolName: tool.name,
-            toolId: tool.id,
-            inputSummary: summarizeToolValue(input),
-            status: "success",
-            errorDetails: null,
-          };
-
-          try {
-            if (family.isAvailable && !family.isAvailable(context)) {
-              throw new BackofficeToolUnavailableError(
-                `${tool.namespace}.${tool.name}`,
-                context.execution.scope,
-                tool.description,
-              );
-            }
-            const output = await executeBackofficeRuntimeTool(tool, input, context);
-            call.resultSummary =
-              tool.resultLogging === "redacted" ? "[redacted]" : summarizeToolValue(output);
-            toolCalls?.push(call);
-            return output;
-          } catch (error) {
-            call.status = "error";
-            call.error = error instanceof Error ? error.message : String(error);
-            call.errorDetails = encodeCodemodeError(error);
-            toolCalls?.push(call);
-            throw error;
+          if (family.isAvailable && !family.isAvailable(context)) {
+            throw new BackofficeToolUnavailableError(
+              `${tool.namespace}.${tool.name}`,
+              context.execution.scope,
+              tool.description,
+            );
           }
+          return await executeBackofficeRuntimeTool(tool, input, context);
         },
       };
     }

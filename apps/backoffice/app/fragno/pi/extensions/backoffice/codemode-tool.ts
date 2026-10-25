@@ -30,6 +30,7 @@ import {
   type CoreBackofficeToolContext,
 } from "@/fragno/runtime-tools/tool-families";
 
+import { codemodeCallsDetail } from "./codemode-call-details";
 import { fitCodemodeOutput } from "./codemode-output";
 
 export const codemodeParametersSchema = Type.Object({
@@ -143,12 +144,20 @@ export function createCodemodeTool(agent: BackofficeAgentContext) {
       if (turn.codemode === null) {
         throw new Error("Pi codemode is unavailable because the Worker Loader is not configured.");
       }
+      const startedAt = Date.now();
       const result = await runBackofficeCodemode({
         codemode: turn.codemode,
         code,
         dependencies,
         families: runtimeToolFamilies,
         toolContext,
+        // The harness paces these commits, so a burst of calls costs a few writes. A call that
+        // settles after the run ended finds the invocation over, which rejects the update.
+        onToolCalls: (calls) => {
+          api
+            .details({ calls: codemodeCallsDetail(calls, startedAt) }, durableContext)
+            .catch(() => {});
+        },
       });
 
       // Scheduling failures are failed tool results, but still carry the authored workflow for the viewer.
@@ -217,13 +226,15 @@ export function createCodemodeTool(agent: BackofficeAgentContext) {
       // session view still renders generated interfaces from the result.
       const overflowed = output.fullOutputPath !== null;
 
+      const { toolCalls, ...execution } = result;
       // Execution failures are tool results: throwing here would discard their diagnostics and run ID.
       return {
         output: [{ type: "text", text: output.text }],
         isError: Boolean(result.error || scheduleError || generatedUiError),
         details: copyJson(
           {
-            ...result,
+            ...execution,
+            calls: codemodeCallsDetail(toolCalls, startedAt),
             // Session history keeps display text; structured lines stay on the codemode run.
             logs: overflowed ? undefined : result.logs?.map(formatCodemodeLogLine),
             result: overflowed && generatedUi.kind === "ordinary" ? undefined : result.result,

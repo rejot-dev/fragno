@@ -8,7 +8,6 @@ import type { BackofficeCodemodeWorkflowDefinition } from "@/fragno/codemode/exe
 import { runBackofficeCodemodeWorkflow } from "@/fragno/codemode/workflow-execute";
 import type { CodemodeWorkflowProgram } from "@/fragno/codemode/workflow-program";
 import type { AutomationScriptHostContext } from "@/fragno/runtime-tools/automation-host";
-import type { BackofficeRuntimeToolCall } from "@/fragno/runtime-tools/runtime-tools";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
@@ -22,7 +21,6 @@ const createCodemodeAutomationRunResult = ({
     result?: unknown;
     error?: string;
     logs?: string[];
-    toolCalls?: BackofficeRuntimeToolCall[];
     workflowDefinition?: BackofficeCodemodeWorkflowDefinition;
   };
   context: AutomationScriptHostContext;
@@ -35,7 +33,6 @@ const createCodemodeAutomationRunResult = ({
     stderr: result.error ?? "",
     logs: result.logs ?? [],
     result: result.result,
-    toolCalls: result.toolCalls,
     workflowDefinition: result.workflowDefinition,
   });
 

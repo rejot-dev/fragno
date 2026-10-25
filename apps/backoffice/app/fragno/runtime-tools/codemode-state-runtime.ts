@@ -13,7 +13,6 @@ import {
   createTrustedSystemBackofficeToolContext,
   defineBackofficeRuntimeTool,
   defineBackofficeRuntimeToolFamily,
-  type BackofficeRuntimeToolCall,
   type BackofficeToolContext,
 } from "./runtime-tools";
 
@@ -301,7 +300,6 @@ export const createCodemodeStateRuntime = (
   state: BackofficeStateBackend,
   options?: {
     context?: BackofficeToolContext;
-    toolCalls?: BackofficeRuntimeToolCall[];
   },
 ): ToolProvider => {
   const baseContext =
@@ -313,7 +311,6 @@ export const createCodemodeStateRuntime = (
   const provider = createBackofficeCodemodeProviders({
     families: [codemodeStateToolFamily],
     context,
-    ...(options?.toolCalls ? { toolCalls: options.toolCalls } : {}),
   }).at(0);
   if (!provider) {
     throw new Error("Codemode state runtime did not define a provider.");

@@ -24,6 +24,7 @@ import {
   backofficeScopePathSegment,
   backofficeScopeRootOwner,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import { sanitizeToolName } from "@fragno-dev/codemode/runtime-api";
 import { zqlViewEngine } from "@fragno-dev/lofi-zql/worker";
 import { InMemoryFs, type IFileSystem } from "just-bash";
 
@@ -65,6 +66,7 @@ import { WORKSPACE_STARTER_CONTENT } from "@/files/content/starter";
 import { STATIC_FILE_CONTENT } from "@/files/content/static";
 import { SYSTEM_FILE_CONTENT } from "@/files/content/system";
 import { issueBackofficeTokenResultSchema, type UserAuthorityFacts } from "@/fragno/auth/contracts";
+import type { CodemodeRunToolCall } from "@/fragno/codemode/codemode-fragment";
 import { codemodeRunnerFor } from "@/fragno/codemode/codemode-object-execute";
 import {
   runBackofficeCodemode,
@@ -95,7 +97,6 @@ import {
   type PiClassifier,
 } from "@/fragno/pi/agent/pi-models";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
-import type { BackofficeRuntimeToolCall } from "@/fragno/runtime-tools/runtime-tools";
 import { createStateShellFileSystem } from "@/fragno/runtime-tools/state-shell-file-system";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
@@ -1913,11 +1914,24 @@ const getReadableScenarioFileSystem = async (
   return null;
 };
 
-const formatToolCallName = (call: BackofficeRuntimeToolCall) =>
-  `${call.providerName}.${call.toolName}`;
-
-const matchesToolCall = (call: BackofficeRuntimeToolCall, expected: string) =>
-  call.toolId === expected || formatToolCallName(call) === expected;
+/**
+ * Names a call as its guest wrote it (`store.set`), with the scope kind its handle named
+ * (`org:store.set`), or by its tool's operation ID (`admin.oauth-clients.create`).
+ */
+const matchesToolCall = (call: CodemodeRunToolCall, expected: string) => {
+  const name = `${call.provider}.${call.tool}`;
+  if (expected === name || expected === `${call.scope.kind}:${name}`) {
+    return true;
+  }
+  return runtimeToolFamilies.some((family) =>
+    family.tools.some(
+      (tool) =>
+        tool.id === expected &&
+        tool.namespace === call.provider &&
+        (tool.name === call.tool || sanitizeToolName(tool.name) === call.tool),
+    ),
+  );
+};
 
 const parseScenarioDurationMs = (duration: TimeAdvanceInput): number => {
   if (typeof duration === "number") {

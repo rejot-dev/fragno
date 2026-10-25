@@ -173,12 +173,9 @@ async function promoteOAuthAdministrator(
 }
 
 describe("admin OAuth client SQLite scenarios", () => {
-  test.each([
-    ["admin", "admin"],
-    ["context.current.admin", "current:admin"],
-  ])(
+  test.each([["admin"], ["context.current.admin"]])(
     "%s returns credentials without leaking them into Codemode call metadata",
-    async (provider, providerName) => {
+    async (provider) => {
       await runOAuthAdminSqliteScenario(
         defineBackofficeScenario({
           objects: scenarioObjects,
@@ -206,10 +203,11 @@ describe("admin OAuth client SQLite scenarios", () => {
               );
               expect(result.toolCalls).toEqual([
                 expect.objectContaining({
-                  providerName,
-                  toolId: "admin.oauth-clients.create",
-                  status: "success",
-                  resultSummary: "[redacted]",
+                  scope: { kind: "current" },
+                  provider: "admin",
+                  tool: "oauthClientsCreate",
+                  status: "succeeded",
+                  output: "[redacted]",
                 }),
               ]);
               expect(JSON.stringify(result.toolCalls)).not.toContain(created.clientSecret);
@@ -225,17 +223,10 @@ describe("admin OAuth client SQLite scenarios", () => {
               assert(!listed.error, listed.error ?? "OAuth listing failed");
               const page = backofficeOAuthClientPageSchema.parse(listed.result);
               expect(page.clients.map((client) => client.clientId)).toContain(created.clientId);
-              expect(listed.toolCalls).toEqual([
-                expect.objectContaining({
-                  providerName,
-                  toolId: "admin.oauth-clients.list",
-                  status: "success",
-                }),
-              ]);
-              const summary = listed.toolCalls[0].resultSummary;
-              assert(summary);
-              expect(summary).toContain(created.clientId);
-              expect(summary).not.toBe("[redacted]");
+              const [listCall] = listed.toolCalls;
+              assert(listCall?.status === "succeeded");
+              expect(listCall).toMatchObject({ provider: "admin", tool: "oauthClientsList" });
+              expect(listCall.output).toContain(created.clientId);
               expect(JSON.stringify(listed.toolCalls)).not.toContain(created.clientSecret);
             }),
           ],
@@ -649,9 +640,10 @@ describe("admin OAuth client SQLite scenarios", () => {
               ctx.vars.clientSecret = created.clientSecret;
               expect(result.toolCalls).toEqual([
                 expect.objectContaining({
-                  toolId: "admin.oauth-clients.create",
-                  status: "success",
-                  resultSummary: "[redacted]",
+                  provider: "admin",
+                  tool: "oauthClientsCreate",
+                  status: "succeeded",
+                  output: "[redacted]",
                 }),
               ]);
               expect(JSON.stringify(result.toolCalls)).not.toContain(created.clientSecret);

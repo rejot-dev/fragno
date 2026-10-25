@@ -108,6 +108,7 @@ for (const interruption of ["parent cancellation", "activation deadline"] as con
                     },
                   ],
                   redactedResults: [],
+                  toolCallLog: null,
                 },
                 codemode: codemodeRunnerFor(
                   runtime.objects.codemode.forOrg("org-1").commands,
@@ -258,6 +259,7 @@ test("remote compiled execution keeps its full guest timeout after a delayed Web
                     },
                   ],
                   redactedResults: [],
+                  toolCallLog: null,
                 },
                 codemode: codemodeRunnerFor(
                   runtime.objects.codemode.forOrg("org-1").commands,

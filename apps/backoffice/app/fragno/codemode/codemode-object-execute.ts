@@ -4,7 +4,10 @@ import type {
   CodemodeHost,
   CodemodeWorkflowHost,
 } from "@fragno-dev/codemode/execution/codemode-activation-contract";
-import { createCodemodeHost } from "@fragno-dev/codemode/host/codemode-host-capabilities";
+import {
+  createCodemodeHost,
+  observeCodemodeToolCalls,
+} from "@fragno-dev/codemode/host/codemode-host-capabilities";
 import { sanitizeToolName, type ResolvedProvider } from "@fragno-dev/codemode/runtime-api";
 
 import {
@@ -18,6 +21,7 @@ import type {
   CodemodeRunActivation,
   CodemodeRunOrigin,
 } from "./codemode-fragment";
+import { codemodeToolCallObserver, type CodemodeToolCallLog } from "./codemode-tool-call-observer";
 
 /**
  * Names a run to its Codemode object, with the run whose tool call started it. A child runs on its
@@ -28,11 +32,13 @@ export type CodemodeRunLease = { key: string; parentKey: string | null };
 
 /**
  * The tools a run's guest can call, and the `provider.tool` names whose results its history must not
- * keep, such as a credential a tool returns once.
+ * keep, such as a credential a tool returns once. A caller that reports the run's calls itself, such
+ * as in its own result, keeps them in `toolCallLog`; the run's durable history keeps them either way.
  */
 export type CodemodeRunTools = {
   providers: readonly ResolvedProvider[];
   redactedResults: readonly string[];
+  toolCallLog: CodemodeToolCallLog | null;
 };
 
 /** A run's host, the lease that relates the runs its tools start to it, and its redactions. */
@@ -47,7 +53,7 @@ const runningTool = new AsyncLocalStorage<string>();
 
 /** Creates a run's host; a run that its tools start, such as through js.run, is its child. */
 export function createCodemodeRunHost(
-  { providers, redactedResults }: CodemodeRunTools,
+  { providers, redactedResults, toolCallLog }: CodemodeRunTools,
   step: CodemodeWorkflowHost | null,
 ): CodemodeRunHost {
   const lease = { key: crypto.randomUUID(), parentKey: runningTool.getStore() ?? null };
@@ -60,7 +66,18 @@ export function createCodemodeRunHost(
       ]),
     ),
   }));
-  return { host: createCodemodeHost(toolsOfRun, step), lease, redactedResults };
+  const host = createCodemodeHost(toolsOfRun, step);
+  return {
+    host:
+      toolCallLog === null
+        ? host
+        : observeCodemodeToolCalls(
+            host,
+            codemodeToolCallObserver(redactedResults, toolCallLog.recorder),
+          ),
+    lease,
+    redactedResults,
+  };
 }
 
 /** Runs code on behalf of one execution; callers name only what they run. */
