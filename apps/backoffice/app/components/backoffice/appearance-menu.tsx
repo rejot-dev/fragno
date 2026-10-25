@@ -1,8 +1,8 @@
+import { AppearanceOptions } from "@fragno-private/design-system/appearance-menu";
 import {
-  AppearanceOptions,
   appearanceThemeIcon,
   useAppearancePreferences,
-} from "@fragno-private/design-system/appearance-menu";
+} from "@fragno-private/design-system/appearance-preferences";
 import { ButtonLink } from "@fragno-private/design-system/button";
 import {
   SelectorMenu,

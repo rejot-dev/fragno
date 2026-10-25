@@ -4,7 +4,7 @@ import { afterEach, describe, test, vi, assert } from "vitest";
 
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
 
-import { useAppearancePreferences } from "./appearance-menu";
+import { useAppearancePreferences } from "./appearance-preferences";
 
 function mediaQueryList(media: string, matches: boolean): MediaQueryList {
   return {

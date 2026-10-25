@@ -1,13 +1,12 @@
 import { Menu } from "@base-ui/react/menu";
-import { useCallback, useEffect, useState } from "react";
 
-import { Icon, type IconName } from "./icon";
+import {
+  appearanceThemeIcon,
+  isThemeChoice,
+  type AppearancePreferences,
+} from "./appearance-preferences";
+import { Icon } from "./icon";
 import { SelectorSubmenu } from "./selector-menu";
-
-type ThemeChoice = "light" | "dark" | "system";
-type StoredReducedMotionChoice = "reduce" | "no-preference";
-
-const REDUCED_MOTION_STORAGE_KEY = "reduced-motion";
 
 // Following the system comes first, as the default that most people keep.
 const THEME_OPTIONS = [
@@ -16,133 +15,11 @@ const THEME_OPTIONS = [
   { value: "dark", label: "Dark", icon: "moon" },
 ] as const;
 
-const THEME_ICONS = {
-  light: "sun",
-  dark: "moon",
-  system: "monitor",
-} as const satisfies Record<ThemeChoice, IconName>;
-
 const ITEM_CLASS_NAME =
   "group flex min-h-10 cursor-pointer items-center gap-3 rounded-[4px] px-2.5 text-sm font-medium text-[var(--bo-fg)] outline-none transition-[background-color,box-shadow] duration-150 ease-out data-[highlighted]:bg-[var(--bo-panel-2)]";
 
 const ITEM_ICON_CLASS_NAME =
   "size-4 shrink-0 text-[var(--bo-muted)] transition-colors duration-150 ease-out group-data-[highlighted]:text-[var(--bo-fg)]";
-
-function isThemeChoice(value: unknown): value is ThemeChoice {
-  return value === "light" || value === "dark" || value === "system";
-}
-
-function isStoredReducedMotionChoice(value: unknown): value is StoredReducedMotionChoice {
-  return value === "reduce" || value === "no-preference";
-}
-
-function applyReducedMotion(enabled: boolean) {
-  document.documentElement.dataset.reducedMotion = enabled ? "reduce" : "no-preference";
-}
-
-function applyTheme(choice: ThemeChoice) {
-  const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-  const isDark = choice === "dark" || (choice === "system" && prefersDark);
-  const root = document.documentElement;
-
-  root.classList.toggle("dark", isDark);
-  root.style.colorScheme = isDark ? "dark" : "light";
-}
-
-type AppearancePreferences = {
-  theme: ThemeChoice;
-  reducedMotion: boolean;
-  setTheme: (theme: ThemeChoice) => void;
-  setReducedMotion: (enabled: boolean) => void;
-};
-
-// Owns applying the stored appearance to the document, so it must stay mounted for the whole page
-// rather than living inside a popup that unmounts when closed.
-export function useAppearancePreferences(): AppearancePreferences {
-  const [theme, setThemeState] = useState<ThemeChoice>("system");
-  const [reducedMotion, setReducedMotionState] = useState(false);
-  const [followsSystemMotion, setFollowsSystemMotion] = useState(true);
-
-  const setTheme = useCallback((nextTheme: ThemeChoice) => {
-    setThemeState(nextTheme);
-    applyTheme(nextTheme);
-    try {
-      window.localStorage.setItem("theme", nextTheme);
-    } catch {
-      // Theme persistence is optional when storage is unavailable.
-    }
-  }, []);
-
-  const setReducedMotion = useCallback((enabled: boolean) => {
-    setReducedMotionState(enabled);
-    setFollowsSystemMotion(false);
-    applyReducedMotion(enabled);
-    try {
-      window.localStorage.setItem(REDUCED_MOTION_STORAGE_KEY, enabled ? "reduce" : "no-preference");
-    } catch {
-      // Motion persistence is optional when storage is unavailable.
-    }
-  }, []);
-
-  useEffect(() => {
-    let storedTheme: string | null = null;
-    let storedReducedMotion: string | null = null;
-    try {
-      storedTheme = window.localStorage.getItem("theme");
-      storedReducedMotion = window.localStorage.getItem(REDUCED_MOTION_STORAGE_KEY);
-    } catch {
-      // Fall back to system appearance preferences when storage is unavailable.
-    }
-
-    const initialTheme = isThemeChoice(storedTheme) ? storedTheme : "system";
-    const systemReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const initialReducedMotion = isStoredReducedMotionChoice(storedReducedMotion)
-      ? storedReducedMotion === "reduce"
-      : systemReducedMotion;
-
-    setThemeState(initialTheme);
-    setReducedMotionState(initialReducedMotion);
-    setFollowsSystemMotion(!isStoredReducedMotionChoice(storedReducedMotion));
-    applyTheme(initialTheme);
-    applyReducedMotion(initialReducedMotion);
-  }, []);
-
-  useEffect(() => {
-    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const handleSystemMotionChange = (event: MediaQueryListEvent) => {
-      setReducedMotionState(event.matches);
-      applyReducedMotion(event.matches);
-    };
-
-    if (followsSystemMotion) {
-      mediaQuery.addEventListener("change", handleSystemMotionChange);
-    }
-    return () => {
-      mediaQuery.removeEventListener("change", handleSystemMotionChange);
-    };
-  }, [followsSystemMotion]);
-
-  useEffect(() => {
-    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-    const handleSystemThemeChange = () => {
-      applyTheme("system");
-    };
-
-    if (theme === "system") {
-      mediaQuery.addEventListener("change", handleSystemThemeChange);
-    }
-    return () => {
-      mediaQuery.removeEventListener("change", handleSystemThemeChange);
-    };
-  }, [theme]);
-
-  return { theme, reducedMotion, setTheme, setReducedMotion };
-}
-
-/** The icon of the chosen theme, for a control that opens these options. */
-export function appearanceThemeIcon(preferences: AppearancePreferences): IconName {
-  return THEME_ICONS[preferences.theme];
-}
 
 // The theme choices and the reduced-motion switch, as items of an open menu. Items stay open on
 // click so the change is visible while the menu is still showing.
@@ -199,7 +76,7 @@ export function AppearanceOptions({ preferences }: { preferences: AppearancePref
 // Selector-menu submenu for choosing the theme and motion preference.
 export function AppearanceSubmenu({ preferences }: { preferences: AppearancePreferences }) {
   return (
-    <SelectorSubmenu icon={THEME_ICONS[preferences.theme]} label="Appearance">
+    <SelectorSubmenu icon={appearanceThemeIcon(preferences)} label="Appearance">
       <AppearanceOptions preferences={preferences} />
     </SelectorSubmenu>
   );

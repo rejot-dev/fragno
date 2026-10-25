@@ -1,4 +1,5 @@
-import { AppearanceSubmenu, useAppearancePreferences } from "./appearance-menu";
+import { AppearanceSubmenu } from "./appearance-menu";
+import { useAppearancePreferences } from "./appearance-preferences";
 import { SelectorMenu, SelectorMenuPopup, SelectorMenuTrigger } from "./selector-menu";
 
 export default { title: "Controls/Appearance menu" };
