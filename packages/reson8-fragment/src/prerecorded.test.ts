@@ -98,4 +98,31 @@ describe("reson8 prerecorded transcription routes", () => {
       message: "upstream exploded",
     });
   });
+
+  test("explains upstream problem details with their detail", async () => {
+    const ctx = createReson8TestContext();
+    ctx.fetchMock.mockResolvedValue(
+      createJsonResponse(
+        {
+          type: "about:blank",
+          title: "Bad Request",
+          status: 400,
+          code: "invalid_audio",
+          detail: "Could not decode the audio.",
+        },
+        { status: 400, headers: { "content-type": "application/problem+json" } },
+      ),
+    );
+
+    const response = await ctx.fragment.callRoute("POST", "/speech-to-text/prerecorded", {
+      body: createBinaryStream([new Uint8Array([1, 2, 3])]),
+    } as never);
+
+    assert(response.type === "error");
+    assert(response.status === 400);
+    expect(response.error).toEqual({
+      code: "invalid_audio",
+      message: "Could not decode the audio.",
+    });
+  });
 });

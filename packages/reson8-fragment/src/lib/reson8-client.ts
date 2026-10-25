@@ -121,10 +121,11 @@ const normalizeErrorResponse = <TCode extends string>(
   if (isObject(payload)) {
     const code =
       typeof payload["code"] === "string" ? payload["code"] : defaultErrorCodeForStatus(status);
+    // Reson8 reports errors as RFC 7807 problem details, which explain themselves in detail or title.
     const message =
-      typeof payload["message"] === "string"
-        ? payload["message"]
-        : `Reson8 upstream request failed with status ${status}.`;
+      [payload["message"], payload["detail"], payload["title"]].find(
+        (field): field is string => typeof field === "string" && field.trim().length > 0,
+      ) ?? `Reson8 upstream request failed with status ${status}.`;
 
     return { code: code as TCode, message };
   }
