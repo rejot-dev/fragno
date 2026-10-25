@@ -2,7 +2,7 @@ import { Button } from "@fragno-private/design-system/button";
 import { Field } from "@fragno-private/design-system/field";
 import { FormContainer } from "@fragno-private/design-system/form-container";
 import { Input } from "@fragno-private/design-system/input";
-import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
+import { PageHeading } from "@fragno-private/design-system/page-heading";
 import { Form, Link, useNavigation } from "react-router";
 import { z } from "zod";
 
@@ -28,8 +28,6 @@ export async function loader({ request }: Route.LoaderArgs) {
   await requireOperator(request);
   return { externalId: crypto.randomUUID() };
 }
-
-const BREADCRUMBS = [{ label: "Operator", to: "/operator" }, { label: "New firm" }];
 
 /** Who owns the new firm: the operator, someone invited, or someone who already accepted. */
 type FirmOwner =
@@ -118,10 +116,11 @@ export default function NewFirm({ loaderData, actionData }: Route.ComponentProps
   const externalId = actionData?.externalId ?? loaderData.externalId;
   return (
     <div className="space-y-6">
-      <BackofficePageHeader
+      <PageHeading
+        eyebrow="Operator"
         title="New firm"
-        description="Its owner gets an invitation by email. You don't become a member: the firm is theirs."
-        breadcrumbs={BREADCRUMBS}
+        meta="Its owner gets an invitation by email. You don't become a member: the firm is theirs."
+        actions={null}
       />
       <div className="max-w-2xl">
         <FormContainer title="Firm">
@@ -144,7 +143,7 @@ export default function NewFirm({ loaderData, actionData }: Route.ComponentProps
                 {actionData.error}
               </p>
             )}
-            <Button type="submit" variant="accent" disabled={navigation.state !== "idle"}>
+            <Button type="submit" variant="solid" disabled={navigation.state !== "idle"}>
               Create firm
             </Button>
           </Form>
@@ -171,7 +170,7 @@ function nextStep(owner: FirmOwner): string {
 function Created({ name, path, owner }: { name: string; path: string; owner: FirmOwner }) {
   return (
     <div className="space-y-6">
-      <BackofficePageHeader title="New firm" breadcrumbs={BREADCRUMBS} />
+      <PageHeading eyebrow="Operator" title="New firm" meta={null} actions={null} />
       <div role="status" className="max-w-2xl space-y-3 text-sm">
         <p className="font-medium">{name} was created.</p>
         <p>{nextStep(owner)}</p>

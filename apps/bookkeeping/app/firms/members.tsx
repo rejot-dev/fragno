@@ -1,4 +1,4 @@
-import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
+import { PageHeading } from "@fragno-private/design-system/page-heading";
 
 import { inviteToTeam, loadTeam } from "../members/members.server";
 import { TeamSection } from "../members/team";
@@ -22,14 +22,15 @@ export function headers() {
   return { "Cache-Control": "private, no-store" };
 }
 
-export default function FirmMembers({ loaderData, actionData, params }: Route.ComponentProps) {
+export default function FirmMembers({ loaderData, actionData }: Route.ComponentProps) {
   const { name, team } = loaderData;
   return (
     <div className="space-y-6">
-      <BackofficePageHeader
+      <PageHeading
+        eyebrow={name}
         title="Members"
-        description={`Your colleagues at ${name}. Being a member of ${name} does not open its clients' books: a client's owner invites you.`}
-        breadcrumbs={[{ label: name, to: `/f/${params.slug}` }, { label: "Members" }]}
+        meta={`Your colleagues at ${name}. Being a member of ${name} does not open its clients' books: a client's owner invites you.`}
+        actions={null}
       />
       <TeamSection team={team} result={actionData} />
     </div>

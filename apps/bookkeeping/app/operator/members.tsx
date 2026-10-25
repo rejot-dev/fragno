@@ -1,4 +1,4 @@
-import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
+import { PageHeading } from "@fragno-private/design-system/page-heading";
 
 import { inviteToTeam, loadTeam } from "../members/members.server";
 import { TeamSection } from "../members/team";
@@ -25,10 +25,11 @@ export function headers() {
 export default function OperatorMembers({ loaderData, actionData }: Route.ComponentProps) {
   return (
     <div className="space-y-6">
-      <BackofficePageHeader
+      <PageHeading
+        eyebrow="Operator"
         title="Operators"
-        description="The people who run Bookkeeping and create firms. They don't open firms' or clients' books unless those invite them."
-        breadcrumbs={[{ label: "Operator", to: "/operator" }, { label: "Operators" }]}
+        meta="The people who run Bookkeeping and create firms. They don't open firms' or clients' books unless those invite them."
+        actions={null}
       />
       <TeamSection team={loaderData.team} result={actionData} />
     </div>

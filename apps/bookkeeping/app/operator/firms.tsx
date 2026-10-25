@@ -1,12 +1,11 @@
 import { ButtonLink } from "@fragno-private/design-system/button";
-import { FormContainer } from "@fragno-private/design-system/form-container";
-import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
+import { PageHeading } from "@fragno-private/design-system/page-heading";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { env } from "cloudflare:workers";
-import { Link } from "react-router";
 
 import { requireOperator } from "../organizations/access.server";
 import { organizationPath } from "../organizations/paths";
+import { PlaceList } from "../shell/place-list";
 import type { Route } from "./+types/firms";
 
 export function meta() {
@@ -41,17 +40,17 @@ export function headers() {
 export default function Firms({ loaderData }: Route.ComponentProps) {
   const { firms } = loaderData;
   const newFirm = (
-    <ButtonLink variant="accent" to="/operator/firms/new">
+    <ButtonLink variant="solid" to="/operator/firms/new">
       New firm
     </ButtonLink>
   );
   return (
     <div className="space-y-6">
-      <BackofficePageHeader
+      <PageHeading
+        eyebrow="Operator"
         title="Firms"
-        description="Accounting firms keep the books of their clients in Bookkeeping."
-        breadcrumbs={[{ label: "Operator", to: "/operator" }, { label: "Firms" }]}
-        actions={firms.length > 0 ? newFirm : undefined}
+        meta="Accounting firms keep the books of their clients in Bookkeeping."
+        actions={firms.length > 0 ? newFirm : null}
       />
       {firms.length === 0 ? (
         <BackofficeSystemState
@@ -62,24 +61,7 @@ export default function Firms({ loaderData }: Route.ComponentProps) {
           actions={newFirm}
         />
       ) : (
-        <FormContainer title="All firms">
-          <ul className="divide-y divide-[var(--bo-border)]">
-            {firms.map(({ name, path, member }) => (
-              <li key={path} className="flex items-center justify-between gap-3 py-3 text-sm">
-                {member ? (
-                  <Link to={path} className="font-medium">
-                    {name}
-                  </Link>
-                ) : (
-                  <span className="font-medium">{name}</span>
-                )}
-                {!member && (
-                  <span className="text-xs text-[var(--bo-muted)]">You're not a member</span>
-                )}
-              </li>
-            ))}
-          </ul>
-        </FormContainer>
+        <PlaceList title="All firms" icon="briefcase" places={firms} />
       )}
     </div>
   );

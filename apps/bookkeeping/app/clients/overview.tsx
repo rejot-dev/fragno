@@ -1,13 +1,12 @@
 import { ButtonLink } from "@fragno-private/design-system/button";
-import { FormContainer } from "@fragno-private/design-system/form-container";
-import { Icon } from "@fragno-private/design-system/icon";
-import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
+import { PageHeading } from "@fragno-private/design-system/page-heading";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { env } from "cloudflare:workers";
-import { Link, useOutletContext } from "react-router";
+import { useOutletContext } from "react-router";
 
 import { canManage } from "../../workers/directory/membership";
 import { requireOrganization } from "../organizations/access.server";
+import { PlaceList } from "../shell/place-list";
 import type { Route } from "./+types/overview";
 import type { ClientOutletContext } from "./layout";
 
@@ -33,17 +32,17 @@ export default function ClientOverview({ loaderData }: Route.ComponentProps) {
   const { user, client } = useOutletContext<ClientOutletContext>();
   const { administrations, canCreate } = loaderData;
   const base = `/w/${client.slug}`;
-  const create = canCreate && (
-    <ButtonLink variant="accent" to={`${base}/administrations/new`}>
+  const create = canCreate ? (
+    <ButtonLink variant="solid" to={`${base}/administrations/new`}>
       New administration
     </ButtonLink>
-  );
+  ) : null;
   return (
     <div className="space-y-6">
-      <BackofficePageHeader
+      <PageHeading
+        eyebrow={`Welcome, ${user.name}`}
         title={client.name}
-        description={`Welcome, ${user.name}. Each administration holds the books of one business.`}
-        breadcrumbs={[{ label: client.name, to: base }, { label: "Overview" }]}
+        meta="Each administration holds the books of one business."
         actions={create}
       />
       {administrations.length === 0 ? (
@@ -59,21 +58,15 @@ export default function ClientOverview({ loaderData }: Route.ComponentProps) {
           actions={create}
         />
       ) : (
-        <FormContainer title="Administrations">
-          <ul className="divide-y divide-[var(--bo-border)]">
-            {administrations.map((administration) => (
-              <li key={administration.id}>
-                <Link
-                  to={`${base}/a/${administration.slug}`}
-                  className="flex items-center gap-3 py-3 text-sm font-medium"
-                >
-                  <Icon name="book" className="size-4" />
-                  {administration.name}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </FormContainer>
+        <PlaceList
+          title="Administrations"
+          icon="book-open"
+          places={administrations.map((administration) => ({
+            name: administration.name,
+            path: `${base}/a/${administration.slug}`,
+            member: true,
+          }))}
+        />
       )}
     </div>
   );

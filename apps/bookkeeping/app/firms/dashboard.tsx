@@ -1,12 +1,11 @@
 import { ButtonLink } from "@fragno-private/design-system/button";
-import { FormContainer } from "@fragno-private/design-system/form-container";
-import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
+import { PageHeading } from "@fragno-private/design-system/page-heading";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { env } from "cloudflare:workers";
-import { Link } from "react-router";
 
 import { requireOrganization } from "../organizations/access.server";
 import { organizationPath } from "../organizations/paths";
+import { PlaceList } from "../shell/place-list";
 import type { Route } from "./+types/dashboard";
 
 export function meta({ loaderData }: Route.MetaArgs) {
@@ -42,17 +41,17 @@ export function headers() {
 export default function FirmDashboard({ loaderData, params }: Route.ComponentProps) {
   const { firmName, clients } = loaderData;
   const newClient = (
-    <ButtonLink variant="accent" to={`/f/${params.slug}/clients/new`}>
+    <ButtonLink variant="solid" to={`/f/${params.slug}/clients/new`}>
       New client
     </ButtonLink>
   );
   return (
     <div className="space-y-6">
-      <BackofficePageHeader
+      <PageHeading
+        eyebrow={firmName}
         title="Clients"
-        description={`The businesses whose books ${firmName} keeps. You open a client's books as a member of it.`}
-        breadcrumbs={[{ label: firmName, to: `/f/${params.slug}` }, { label: "Clients" }]}
-        actions={clients.length > 0 ? newClient : undefined}
+        meta={`The businesses whose books ${firmName} keeps. You open a client's books as a member of it.`}
+        actions={clients.length > 0 ? newClient : null}
       />
       {clients.length === 0 ? (
         <BackofficeSystemState
@@ -63,24 +62,7 @@ export default function FirmDashboard({ loaderData, params }: Route.ComponentPro
           actions={newClient}
         />
       ) : (
-        <FormContainer title="All clients">
-          <ul className="divide-y divide-[var(--bo-border)]">
-            {clients.map(({ name, path, member }) => (
-              <li key={path} className="flex items-center justify-between gap-3 py-3 text-sm">
-                {member ? (
-                  <Link to={path} className="font-medium">
-                    {name}
-                  </Link>
-                ) : (
-                  <span className="font-medium">{name}</span>
-                )}
-                {!member && (
-                  <span className="text-xs text-[var(--bo-muted)]">You're not a member</span>
-                )}
-              </li>
-            ))}
-          </ul>
-        </FormContainer>
+        <PlaceList title="All clients" icon="briefcase" places={clients} />
       )}
     </div>
   );
