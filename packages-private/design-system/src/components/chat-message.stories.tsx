@@ -61,7 +61,6 @@ export function Working() {
             title="Grouping invoices by week"
             detail={null}
             durationMs={null}
-            outlined={false}
             actions={null}
           >
             <p className="text-xs leading-6">Grouping invoices by the week they were issued.</p>

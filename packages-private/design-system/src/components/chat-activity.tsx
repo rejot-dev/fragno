@@ -276,7 +276,26 @@ function StepMarker({ icon, state }: { icon: IconName | null; state: StepState }
   );
 }
 
-type StepState = "running" | "done" | "failed";
+export type StepState = "running" | "done" | "failed";
+
+/** One entry on the activity rail: its marker, then whatever the entry shows beside it. */
+export function ChatActivityItem({
+  icon,
+  state,
+  children,
+}: {
+  /** Null marks the entry with a dot, as thoughts are. */
+  icon: IconName | null;
+  state: StepState;
+  children: ReactNode;
+}) {
+  return (
+    <li className={STEP_CLASS_NAME}>
+      <StepMarker icon={icon} state={state} />
+      {children}
+    </li>
+  );
+}
 
 /**
  * One thing the agent did: a thought, under its headline, or a tool call. The body opens on
@@ -288,7 +307,6 @@ export function ChatActivityStep({
   title,
   detail,
   durationMs,
-  outlined,
   actions,
   children,
 }: {
@@ -299,8 +317,6 @@ export function ChatActivityStep({
   /** A monospace identifier beside the title, such as a path; hidden on narrow screens. */
   detail: string | null;
   durationMs: number | null;
-  /** Calls out a notable success, such as a loaded skill. */
-  outlined: boolean;
   /** Controls beside the row, such as ChatArtifactToggles. */
   actions: ReactNode | null;
   /** Null when there is nothing more to show. */
@@ -312,11 +328,7 @@ export function ChatActivityStep({
       <span
         className={cn(
           "min-w-0 truncate",
-          state === "failed"
-            ? "text-[var(--bo-failed)]"
-            : outlined
-              ? "text-[var(--bo-live)]"
-              : "text-[var(--bo-fg)]",
+          state === "failed" ? "text-[var(--bo-failed)]" : "text-[var(--bo-fg)]",
         )}
       >
         {state === "running" ? <span className="bo-shimmer-text">{title}</span> : title}
@@ -338,8 +350,7 @@ export function ChatActivityStep({
   );
 
   return (
-    <li className={STEP_CLASS_NAME}>
-      <StepMarker icon={icon} state={state} />
+    <ChatActivityItem icon={icon} state={state}>
       {children === null ? (
         <div className="flex min-h-9 min-w-0 items-center gap-2 text-xs">
           {row}
@@ -358,18 +369,17 @@ export function ChatActivityStep({
           </Collapsible.Panel>
         </Collapsible.Root>
       )}
-    </li>
+    </ChatActivityItem>
   );
 }
 
 /** Something the agent said between steps, such as what it is about to try. */
 export function ChatActivityNote({ children }: { children: ReactNode }) {
   return (
-    <li className={STEP_CLASS_NAME}>
-      <StepMarker icon="message-square" state="done" />
+    <ChatActivityItem icon="message-square" state="done">
       <div className="min-w-0 py-2 text-xs leading-5 text-pretty text-[var(--bo-muted)]">
         {children}
       </div>
-    </li>
+    </ChatActivityItem>
   );
 }

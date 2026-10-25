@@ -55,6 +55,8 @@ export type PiDraftTool = {
   argsText?: string;
   status: "starting" | "running" | "done";
   partialResult?: unknown;
+  /** What the running tool last reported for the UI, such as a codemode run's calls so far. */
+  partialDetails?: unknown;
   resultMessage?: ToolResultMessage;
 };
 export type PiDraftAgentActivity =
@@ -365,6 +367,7 @@ export function piConversationDraftAgentMessage(
           status:
             slot.status === "pending" ? "starting" : slot.status === "running" ? "running" : "done",
           ...(slot.output === undefined ? {} : { partialResult: slot.output }),
+          ...(slot.details === undefined ? {} : { partialDetails: slot.details }),
         } satisfies PiDraftTool,
       ];
     }),

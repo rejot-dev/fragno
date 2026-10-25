@@ -256,7 +256,6 @@ function TurnStep({ step, tools }: { step: AgentTurnStep; tools: ReadonlyMap<str
         title={step.headline}
         detail={null}
         durationMs={null}
-        outlined={false}
         actions={null}
       >
         {step.text.length === 0 ? null : (

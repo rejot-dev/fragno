@@ -6,7 +6,11 @@ import {
   ChatActivityStep,
   ChatArtifactToggle,
 } from "./chat-activity";
-import { LabeledSection } from "./labeled-section";
+import {
+  ChatCodemodeStep,
+  codemodeCallHeadline,
+  type ChatCodemodeCall,
+} from "./chat-codemode-step";
 import { ScrollablePre } from "./scrollable-pre";
 
 export default { title: "Agents/Chat activity" };
@@ -23,10 +27,8 @@ type SampleStep =
   | { kind: "thought"; title: string; body: string; durationMs: number }
   | { kind: "note"; text: string }
   | {
-      kind: "tool";
-      icon: "code" | "file-text" | "book-open";
-      title: string;
-      detail: string;
+      kind: "codemode";
+      calls: ChatCodemodeCall[];
       code: string;
       result: string;
       durationMs: number;
@@ -41,21 +43,27 @@ const STEPS: SampleStep[] = [
     durationMs: 2_400,
   },
   {
-    kind: "tool",
-    icon: "book-open",
-    title: "Skill loaded",
-    detail: "invoice-reminders",
-    code: '{ "path": "/starter/skills/invoice-reminders/SKILL.md" }',
-    result: "# Invoice reminders",
-    durationMs: 180,
-    failed: false,
-  },
-  {
-    kind: "tool",
-    icon: "code",
-    title: "codemode",
-    detail: "invoices.unpaid()",
-    code: "return await invoices.unpaid();",
+    kind: "codemode",
+    calls: [
+      {
+        id: "skill",
+        offsetMs: 0,
+        subject: { kind: "skill", name: "invoice-reminders" },
+        status: "succeeded",
+        durationMs: 14,
+      },
+      {
+        id: "unpaid",
+        offsetMs: 20,
+        subject: { kind: "call", name: "invoices.unpaid", scope: null, input: "{}" },
+        status: "succeeded",
+        durationMs: 1_180,
+      },
+    ],
+    code: `async () => {
+  await state.readFile({ path: "/static/skills/invoice-reminders/SKILL.md" });
+  return await invoices.unpaid();
+}`,
     result: '[\n  "INV-4182",\n  "INV-4190",\n  "INV-4203"\n]',
     durationMs: 1_240,
     failed: false,
@@ -68,21 +76,39 @@ const STEPS: SampleStep[] = [
     durationMs: 3_100,
   },
   {
-    kind: "tool",
-    icon: "code",
-    title: "codemode",
-    detail: "drafts.write()",
-    code: "await drafts.write(reminders);",
+    kind: "codemode",
+    calls: [
+      {
+        id: "drafts",
+        offsetMs: 10,
+        subject: { kind: "call", name: "drafts.write", scope: null, input: '{"count":3}' },
+        status: "failed",
+        durationMs: 610,
+        error: "/workspace/drafts is read-only",
+      },
+    ],
+    code: "async () => await drafts.write(reminders)",
     result: "Error: /workspace/drafts is read-only",
     durationMs: 640,
     failed: true,
   },
   {
-    kind: "tool",
-    icon: "code",
-    title: "codemode",
-    detail: "files.write()",
-    code: "await files.write('/workspace/drafts/', reminders);",
+    kind: "codemode",
+    calls: [
+      {
+        id: "write",
+        offsetMs: 15,
+        subject: {
+          kind: "call",
+          name: "state.writeFile",
+          scope: null,
+          input: '{"path":"/workspace/reminders.md","content":"# Reminders…"}',
+        },
+        status: "succeeded",
+        durationMs: 880,
+      },
+    ],
+    code: 'async () => await state.writeFile({ path: "/workspace/reminders.md", content })',
     result: '{ "written": 3 }',
     durationMs: 910,
     failed: false,
@@ -102,7 +128,6 @@ function renderStep(step: SampleStep, index: number, running: boolean) {
         title={step.title}
         detail={null}
         durationMs={running ? null : step.durationMs}
-        outlined={false}
         actions={null}
       >
         <Thought>{step.body}</Thought>
@@ -110,23 +135,36 @@ function renderStep(step: SampleStep, index: number, running: boolean) {
     );
   }
   return (
-    <ChatActivityStep
+    <ChatCodemodeStep
       key={index}
-      icon={step.failed ? "alert-triangle" : step.icon}
       state={running ? "running" : step.failed ? "failed" : "done"}
-      title={step.title}
-      detail={step.detail}
+      detail={null}
+      calls={{
+        startedAt: new Date(0),
+        items: running
+          ? step.calls.map(({ id, subject, offsetMs }) => ({
+              id,
+              subject,
+              offsetMs,
+              status: "running",
+            }))
+          : step.calls,
+        unrecorded: 0,
+      }}
       durationMs={running ? null : step.durationMs}
-      outlined={step.icon === "book-open"}
+      views={[
+        { label: "Code", content: <ScrollablePre>{step.code}</ScrollablePre> },
+        ...(running
+          ? []
+          : [
+              {
+                label: step.failed ? "Error" : "Result",
+                content: <ScrollablePre>{step.result}</ScrollablePre>,
+              },
+            ]),
+      ]}
       actions={null}
-    >
-      <ScrollablePre>{step.code}</ScrollablePre>
-      {running ? null : (
-        <LabeledSection label={step.failed ? "Error" : "Result"}>
-          <ScrollablePre>{step.result}</ScrollablePre>
-        </LabeledSection>
-      )}
-    </ChatActivityStep>
+    />
   );
 }
 
@@ -137,7 +175,7 @@ function headlineOf(step: SampleStep) {
   if (step.kind === "note") {
     return step.text;
   }
-  return step.icon === "book-open" ? `Loading the ${step.detail} skill` : `Running ${step.title}`;
+  return codemodeCallHeadline(step.calls[0].subject);
 }
 
 const ARTIFACTS = (

@@ -30,7 +30,6 @@ function renderTurn(status: ChatActivityStatus) {
         title="codemode"
         detail={null}
         durationMs={1_200}
-        outlined={false}
         actions={null}
       >
         <p>Result body</p>
