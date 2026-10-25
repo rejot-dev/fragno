@@ -16,7 +16,10 @@ before they write, and nothing else writes:
 - **Posted means final.** Entries are validated in full and written posted; there are no drafts and
   no update or delete. A reversal corrects an entry: it posts every line again with its side
   swapped, in the same journal and for the same source document, at most once per entry. Reversals
-  skip account and dimension rules, so an entry stays reversible after its accounts change.
+  skip account and dimension rules, so an entry stays reversible after its accounts change. A
+  reversal settles each of the entry's open items against its mirror for what is outstanding, so a
+  reversed invoice is no longer owed; what was already settled, such as a payment, stays open on the
+  mirror.
 - **References are unique per journal.** An entry's optional reference, such as an invoice number,
   is refused when the journal already has it, so posting the same entry again cannot post it twice.
 - **Entries balance** in the functional currency and have at least two lines. A line in the
