@@ -13,10 +13,17 @@ import {
 import { zodSchemaToTypeScriptRender } from "@/lib/zod/zod-formatter";
 
 function expectedBackofficePermissionRequirementDeclaration(): string {
-  return `type BackofficePermissionRequirement = ${allBackofficePermissionRequirements
+  const permissionsByNamespace = new Map<string, string[]>();
+  for (const { namespace, permission } of allBackofficePermissionRequirements) {
+    permissionsByNamespace.set(namespace, [
+      ...(permissionsByNamespace.get(namespace) ?? []),
+      JSON.stringify(permission),
+    ]);
+  }
+  return `type BackofficePermissionRequirement = ${[...permissionsByNamespace]
     .map(
-      (grant) =>
-        `{\n  namespace: ${JSON.stringify(grant.namespace)};\n  permission: ${JSON.stringify(grant.permission)};\n}`,
+      ([namespace, permissions]) =>
+        `{\n  namespace: ${JSON.stringify(namespace)};\n  permission: ${permissions.join(" | ")};\n}`,
     )
     .join(" | ")};`;
 }
@@ -47,48 +54,39 @@ describe("automation routing schemas", () => {
     ).toThrow();
   });
 
-  test("renders canonical grants for start_workflow action inputs and outputs", () => {
-    const inputRender = zodSchemaToTypeScriptRender(automationRouteCreateInputSchema, "input", {
-      rootTypeName: "RouterCreateInput",
-    });
-    const inputDeclaration = inputRender.declarations.find((candidate) =>
-      candidate.startsWith("type AutomationStartWorkflowActionInput ="),
-    );
-
-    expect(inputDeclaration).toBe(
-      [
-        "type AutomationStartWorkflowActionInput = {",
-        '  kind: "start_workflow";',
-        "  authority: {",
-        '    kind: "delegated-user";',
-        '    grants: BackofficePermissionRequirement[] | "inherit";',
-        "  } | {",
-        '    kind: "linked-user";',
-        '    grants: BackofficePermissionRequirement[] | "inherit";',
-        "  } | {",
-        '    kind: "organization-automation";',
-        "    grants: BackofficePermissionRequirement[];",
-        "  };",
-        "  workflowScriptPath: string;",
-        "  instanceIdTemplate: string;",
-        "};",
-      ].join("\n"),
-    );
-    expect(inputRender.declarations).toContain(
-      expectedBackofficePermissionRequirementDeclaration(),
-    );
-
-    const outputRender = zodSchemaToTypeScriptRender(automationRouteSchema, "output", {
-      rootTypeName: "AutomationRoute",
-    });
-    const outputDeclaration = outputRender.declarations.find((candidate) =>
-      candidate.startsWith("type AutomationStartWorkflowAction ="),
-    );
-    expect(outputDeclaration).toContain('grants: BackofficePermissionRequirement[] | "inherit";');
-    expect(outputDeclaration).not.toContain("grants: unknown[];");
-    expect(outputRender.declarations).toContain(
-      expectedBackofficePermissionRequirementDeclaration(),
-    );
+  test("renders start_workflow actions once for inputs and outputs, with a named authority", () => {
+    const renders = [
+      zodSchemaToTypeScriptRender(automationRouteCreateInputSchema, "input", {
+        rootTypeName: "RouterCreateInput",
+      }),
+      zodSchemaToTypeScriptRender(automationRouteSchema, "output", {
+        rootTypeName: "AutomationRoute",
+      }),
+    ];
+    for (const { declarations } of renders) {
+      expect(declarations).toContain(
+        [
+          "type AutomationStartWorkflowAction = {",
+          '  kind: "start_workflow";',
+          "  authority: AutomationAuthorityMode;",
+          "  workflowScriptPath: string;",
+          "  instanceIdTemplate: string;",
+          "};",
+        ].join("\n"),
+      );
+      expect(declarations).toContain(
+        [
+          "type AutomationAuthorityMode = {",
+          '  kind: "delegated-user" | "linked-user";',
+          '  grants: BackofficePermissionRequirement[] | "inherit";',
+          "} | {",
+          '  kind: "organization-automation";',
+          "  grants: BackofficePermissionRequirement[];",
+          "};",
+        ].join("\n"),
+      );
+      expect(declarations).toContain(expectedBackofficePermissionRequirementDeclaration());
+    }
   });
 
   test("accepts inherited grants for user-backed authority modes", () => {
@@ -391,10 +389,10 @@ describe("automation routing schemas", () => {
       zodSchemaToTypeScriptRender(automationRouteCreateInputSchema, "input", {
         rootTypeName: "RouterCreateInput",
       }).declarations.find((declaration) =>
-        declaration.startsWith("type AutomationSendWorkflowEventActionInput ="),
+        declaration.startsWith("type AutomationSendWorkflowEventAction ="),
       ),
     ).toMatchInlineSnapshot(`
-      "type AutomationSendWorkflowEventActionInput = {
+      "type AutomationSendWorkflowEventAction = {
         kind: "send_workflow_event";
         target: AutomationWorkflowEventTarget;
         eventType: string;

@@ -246,7 +246,7 @@ type JsRunsGetOutput =
           }
       )[];
       toolCallsTruncated: boolean;
-      status: "completed";
+      status: "completed" | "suspended";
       logs: {
         at: number;
         channel: "log" | "info" | "debug" | "warn" | "error" | "codemode";
@@ -330,83 +330,6 @@ type JsRunsGetOutput =
         text: string;
       }[];
       error: string;
-    }
-  | {
-      runId: string;
-      activation:
-        | {
-            kind: "immediate" | "module" | "module-build" | "compiled";
-          }
-        | {
-            kind: "workflow";
-            workflowInstanceId: string;
-          };
-      origin:
-        | {
-            kind: "inline";
-          }
-        | {
-            kind: "file";
-            path: string;
-          };
-      startedAt: string;
-      toolCalls: (
-        | {
-            scope:
-              | {
-                  kind: "current";
-                }
-              | {
-                  kind: "org";
-                  orgId: string;
-                }
-              | {
-                  kind: "user";
-                  userId: string;
-                }
-              | {
-                  kind: "project";
-                  projectId: string;
-                };
-            provider: string;
-            tool: string;
-            input: string;
-            calledAt: string;
-            status: "running";
-          }
-        | {
-            scope:
-              | {
-                  kind: "current";
-                }
-              | {
-                  kind: "org";
-                  orgId: string;
-                }
-              | {
-                  kind: "user";
-                  userId: string;
-                }
-              | {
-                  kind: "project";
-                  projectId: string;
-                };
-            provider: string;
-            tool: string;
-            input: string;
-            calledAt: string;
-            status: "succeeded" | "failed";
-            output: string;
-            settledAt: string;
-          }
-      )[];
-      toolCallsTruncated: boolean;
-      status: "suspended";
-      logs: {
-        at: number;
-        channel: "log" | "info" | "debug" | "warn" | "error" | "codemode";
-        text: string;
-      }[];
     };
 type JsBuildInput = {
   path: string;

@@ -52,20 +52,12 @@ type BackofficeUiComponents = {
               instanceId: string;
             }
           | {
-              kind: "route";
+              kind: "route" | "connection";
               /** 1-200 characters */
               id: string;
             }
           | {
-              kind: "connection";
-              /** 1-200 characters */
-              id: string;
-            }
-          | {
-              kind: "integrations";
-            }
-          | {
-              kind: "agents";
+              kind: "integrations" | "agents";
             };
       };
     }>,
@@ -96,20 +88,12 @@ type BackofficeUiComponents = {
               instanceId: string;
             }
           | {
-              kind: "route";
+              kind: "route" | "connection";
               /** 1-200 characters */
               id: string;
             }
           | {
-              kind: "connection";
-              /** 1-200 characters */
-              id: string;
-            }
-          | {
-              kind: "integrations";
-            }
-          | {
-              kind: "agents";
+              kind: "integrations" | "agents";
             };
       };
     }>,
@@ -129,20 +113,12 @@ type BackofficeUiComponents = {
             instanceId: string;
           }
         | {
-            kind: "route";
+            kind: "route" | "connection";
             /** 1-200 characters */
             id: string;
           }
         | {
-            kind: "connection";
-            /** 1-200 characters */
-            id: string;
-          }
-        | {
-            kind: "integrations";
-          }
-        | {
-            kind: "agents";
+            kind: "integrations" | "agents";
           };
     }>,
     children: BackofficeUiElement[] | BackofficeUiRepeat,
@@ -169,20 +145,12 @@ type BackofficeUiComponents = {
             instanceId: string;
           }
         | {
-            kind: "route";
+            kind: "route" | "connection";
             /** 1-200 characters */
             id: string;
           }
         | {
-            kind: "connection";
-            /** 1-200 characters */
-            id: string;
-          }
-        | {
-            kind: "integrations";
-          }
-        | {
-            kind: "agents";
+            kind: "integrations" | "agents";
           };
       /** at most 500 characters */
       detail?: string;
@@ -340,20 +308,12 @@ type BackofficeUiComponents = {
             instanceId: string;
           }
         | {
-            kind: "route";
+            kind: "route" | "connection";
             /** 1-200 characters */
             id: string;
           }
         | {
-            kind: "connection";
-            /** 1-200 characters */
-            id: string;
-          }
-        | {
-            kind: "integrations";
-          }
-        | {
-            kind: "agents";
+            kind: "integrations" | "agents";
           };
     }>,
   ): BackofficeUiElement;

@@ -8,29 +8,15 @@ type WebCodemodeProvider = {
 };
 declare const web: WebCodemodeProvider;
 
-type WebExtractInput =
-  | {
-      action: "content";
-      input: {
-        url?: string;
-        html?: string;
-        [key: string]: unknown;
-      };
-    }
-  | {
-      action: "markdown";
-      input: {
-        url?: string;
-        html?: string;
-        [key: string]: unknown;
-      };
-    };
-type WebExtractOutput =
-  | {
-      action: "content";
-      result: string;
-    }
-  | {
-      action: "markdown";
-      result: string;
-    };
+type WebExtractInput = {
+  action: "content" | "markdown";
+  input: {
+    url?: string;
+    html?: string;
+    [key: string]: unknown;
+  };
+};
+type WebExtractOutput = {
+  action: "content" | "markdown";
+  result: string;
+};
