@@ -1,6 +1,12 @@
 import { Checkbox } from "@fragno-private/design-system/checkbox";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
 import { PaneSpinner } from "@fragno-private/design-system/pane-message";
+import {
+  SurfacePanel,
+  SurfaceTable,
+  SurfaceTableRow,
+  type SurfaceTableColumn,
+} from "@fragno-private/design-system/surface-panel";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { BackofficeTabHeader } from "@fragno-private/design-system/tab-header";
 import { Suspense, use, useState, type ReactNode } from "react";
@@ -197,12 +203,10 @@ function IntegrationsWorkspace({
     <IntegrationsPage selectedScope={selectedScope} connectionTabs={connectionTabs}>
       {selectedConnectionId === undefined ? (
         <>
-          <section className="bo-panel-surface bg-[var(--bo-panel)]">
-            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-              <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-                {total} {total === 1 ? "connection" : "connections"}
-              </p>
-              {total > 0 ? (
+          <SurfacePanel
+            caption={`${total} ${total === 1 ? "connection" : "connections"}`}
+            actions={
+              total > 0 ? (
                 <Checkbox
                   density="compact"
                   checked={showDisconnected}
@@ -212,8 +216,9 @@ function IntegrationsWorkspace({
                   Show disconnected
                   {hiddenCount > 0 ? ` (${hiddenCount})` : null}
                 </Checkbox>
-              ) : null}
-            </div>
+              ) : null
+            }
+          >
             {connectionsQuery.isError || countsQuery.isError ? (
               <BackofficeSystemState
                 tone="error"
@@ -237,7 +242,7 @@ function IntegrationsWorkspace({
             ) : (
               <ConnectionsTable selectedScope={selectedScope} connections={visibleConnections} />
             )}
-          </section>
+          </SurfacePanel>
           <NativeServices selectedScope={selectedScope} />
         </>
       ) : (
@@ -277,6 +282,15 @@ function ProviderReturnNotice() {
   return null;
 }
 
+const CONNECTION_COLUMNS: readonly SurfaceTableColumn[] = [
+  { label: "Connection", align: "start" },
+  { label: "Kind", align: "start" },
+  { label: "Auth", align: "start" },
+  { label: "Scope", align: "start" },
+  { label: "State", align: "start" },
+  { label: "Last change", align: "start" },
+];
+
 function ConnectionsTable({
   selectedScope,
   connections,
@@ -285,56 +299,44 @@ function ConnectionsTable({
   connections: IntegrationConnectionRecord[];
 }) {
   return (
-    <div className="backoffice-scroll overflow-x-auto border-t border-[color:var(--bo-border)]">
-      <table className="min-w-full divide-y divide-[color:var(--bo-border)] text-sm">
-        <thead className="bg-[var(--bo-panel-2)] text-left">
-          <tr className="text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-            {["Connection", "Kind", "Auth", "Scope", "State", "Last change"].map((heading) => (
-              <th key={heading} scope="col" className="px-3 py-2 whitespace-nowrap">
-                {heading}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-[color:var(--bo-border)]">
-          {connections.map((connection) => {
-            const { authMethod } = connection;
-            return (
-              <tr key={connection.connectionId} className="hover:bg-[var(--bo-panel-2)]">
-                <td className="max-w-[24rem] px-3 py-2">
-                  <Link
-                    to={integrationConnectionPath(selectedScope, connection.connectionId)}
-                    title={connection.connectionId}
-                    className="group block min-w-0"
-                  >
-                    <span className="block truncate font-semibold text-[var(--bo-fg)] group-hover:underline">
-                      {connection.displayName}
-                    </span>
-                    <span className="block truncate font-mono text-[11px] text-[var(--bo-muted)]">
-                      {connection.connectionId}
-                    </span>
-                  </Link>
-                </td>
-                <td className="px-3 py-2 whitespace-nowrap text-[var(--bo-muted)]">
-                  {connection.kindLabel}
-                </td>
-                <td className="px-3 py-2 whitespace-nowrap text-[var(--bo-muted)]">
-                  {authMethod ? integrationAuthMethodLabels[authMethod] : "—"}
-                </td>
-                <td className="px-3 py-2 whitespace-nowrap text-[var(--bo-muted)]">
-                  {selectedScope.label}
-                </td>
-                <td className="px-3 py-2">
-                  <IntegrationConnectionStateLight state={connection.state} />
-                </td>
-                <td className="px-3 py-2 text-xs whitespace-nowrap text-[var(--bo-muted)]">
-                  {formatTimestamp(connection.changedAt)}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+    <SurfaceTable columns={CONNECTION_COLUMNS}>
+      {connections.map((connection) => {
+        const { authMethod } = connection;
+        return (
+          <SurfaceTableRow
+            key={connection.connectionId}
+            columns={CONNECTION_COLUMNS}
+            cells={[
+              <Link
+                key="connection"
+                to={integrationConnectionPath(selectedScope, connection.connectionId)}
+                title={connection.connectionId}
+                className="group block max-w-[24rem] min-w-0"
+              >
+                <span className="block truncate font-semibold text-[var(--bo-fg)] group-hover:underline">
+                  {connection.displayName}
+                </span>
+                <span className="block truncate font-mono text-[11px] text-[var(--bo-muted)]">
+                  {connection.connectionId}
+                </span>
+              </Link>,
+              <span key="kind" className="whitespace-nowrap">
+                {connection.kindLabel}
+              </span>,
+              <span key="auth" className="whitespace-nowrap">
+                {authMethod ? integrationAuthMethodLabels[authMethod] : "—"}
+              </span>,
+              <span key="scope" className="whitespace-nowrap">
+                {selectedScope.label}
+              </span>,
+              <IntegrationConnectionStateLight key="state" state={connection.state} />,
+              <span key="changed" className="text-xs whitespace-nowrap">
+                {formatTimestamp(connection.changedAt)}
+              </span>,
+            ]}
+          />
+        );
+      })}
+    </SurfaceTable>
   );
 }

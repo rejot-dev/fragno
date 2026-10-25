@@ -1,4 +1,5 @@
 import { ButtonLink } from "@fragno-private/design-system/button";
+import { SurfacePanel } from "@fragno-private/design-system/surface-panel";
 
 import type { BackofficeScopeSelection } from "@/backoffice-runtime/resolved-scope";
 import { backofficeConnectionCatalog } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
@@ -32,10 +33,7 @@ export function NativeServices({ selectedScope }: { selectedScope: BackofficeSco
   ];
 
   return (
-    <section className="bo-panel-surface bg-[var(--bo-panel)]">
-      <p className="px-4 py-3 text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-        Built-in services
-      </p>
+    <SurfacePanel caption="Built-in services" actions={null}>
       <ul className="divide-y divide-[color:var(--bo-border)] border-t border-[color:var(--bo-border)]">
         {services.map((service) => (
           <li
@@ -55,6 +53,6 @@ export function NativeServices({ selectedScope }: { selectedScope: BackofficeSco
           </li>
         ))}
       </ul>
-    </section>
+    </SurfacePanel>
   );
 }
