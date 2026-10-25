@@ -35,6 +35,10 @@ import {
   runBackofficeScenario,
   type BackofficeScenarioContext,
 } from "@/fragno/automation/scenario";
+import {
+  automationRoutesFromRecords,
+  automationRoutesQuery,
+} from "@/fragno/automation/tanstack/use-automation-routes";
 import { currentWorkflowWaits } from "@/fragno/automation/tanstack/workflow-waits";
 
 import { InMemoryApiObject } from "../../../../workers/api.do";
@@ -542,6 +546,14 @@ async function assertReplicaReadsMatchCollections(ctx: BackofficeScenarioContext
   await Promise.all([handle.drain(), database.drain()]);
   const { replica } = handle;
   const { collections } = database;
+
+  // The Files explorer marks workflow files with the routes that start them.
+  assert.deepEqual(
+    await readAutomationReplica(replica, "automationRoutes", undefined),
+    automationRoutesFromRecords(
+      await queryOnce((query) => automationRoutesQuery(query, collections)),
+    ).map(withoutVirtualProps),
+  );
 
   const records = await readAutomationReplica(replica, "orchestrationRecords", undefined);
   const [eventSources, eventDefinitions, activeWorkflows] = await Promise.all([
