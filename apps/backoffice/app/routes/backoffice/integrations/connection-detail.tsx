@@ -1,19 +1,14 @@
 import { integrationConnectionIdSchema } from "@fragno-dev/backoffice-api/v0/integrations";
-import { useMemo } from "react";
+import type { LofiSqliteClient } from "@fragno-dev/lofi/sqlite";
 import { isRouteErrorResponse, useOutletContext } from "react-router";
-
-import { useLiveQuery } from "@tanstack/react-db";
 
 import {
   isBackofficeForbiddenError,
   isBackofficeUnavailableError,
 } from "@/backoffice-runtime/kernel";
 import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
-import {
-  describeIntegrationConnectionKind,
-  integrationConnectionStateChanges,
-  integrationEventsQuery,
-} from "@/fragno/runtime-tools/families/integrations/integration-connections";
+import { useAutomationRead } from "@/fragno/automation/lofi/replica";
+import { describeIntegrationConnectionKind } from "@/fragno/runtime-tools/families/integrations/integration-connections";
 import { createIntegrationsRuntime } from "@/fragno/runtime-tools/families/integrations/integrations-runtime";
 import { requireRouteScope } from "@/layouts/backoffice-shell-request.server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
@@ -77,17 +72,11 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
 export default function BackofficeIntegrationConnectionDetail({
   loaderData: { connection, details },
 }: Route.ComponentProps) {
-  const { selectedScope, collections } = useOutletContext<IntegrationsLayoutContext>();
-  const eventsQuery = useLiveQuery({
-    query: (query) => integrationEventsQuery(query, collections),
+  const { selectedScope, replica } = useOutletContext<IntegrationsLayoutContext>();
+  const historyRead = useAutomationRead(replica, "integrationConnectionHistory", {
+    connectionId: connection.connectionId,
   });
-  const history = useMemo(
-    () =>
-      integrationConnectionStateChanges(eventsQuery.data ?? []).filter(
-        (change) => change.connectionId === connection.connectionId,
-      ),
-    [eventsQuery.data, connection.connectionId],
-  );
+  const history = historyRead.status === "ready" ? historyRead.data : [];
   const current = history[0];
 
   return (
@@ -111,7 +100,7 @@ export default function BackofficeIntegrationConnectionDetail({
           <ConnectionSourceDetails
             details={details}
             selectedScope={selectedScope}
-            collections={collections}
+            replica={replica}
             service={connection.integrationId}
           />
         </div>
@@ -182,19 +171,19 @@ export default function BackofficeIntegrationConnectionDetail({
 function ConnectionSourceDetails({
   details,
   selectedScope,
-  collections,
+  replica,
   service,
 }: {
   details: Route.ComponentProps["loaderData"]["details"];
   selectedScope: IntegrationsLayoutContext["selectedScope"];
-  collections: IntegrationsLayoutContext["collections"];
+  replica: LofiSqliteClient;
   service: string;
 }) {
   switch (details.kind) {
     case "api":
       return <ApiConnectionDetails details={details} />;
     case "webhook":
-      return <WebhookConnectionDetails details={details} collections={collections} />;
+      return <WebhookConnectionDetails details={details} replica={replica} />;
     case "mcp":
       return <McpConnectionDetails details={details} />;
     case "connector":

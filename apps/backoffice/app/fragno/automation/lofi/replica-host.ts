@@ -6,6 +6,10 @@ import {
   readEventTraceSummaries,
 } from "@/routes/backoffice/dashboard/event-traces-replica";
 import { readDashboardOverview } from "@/routes/backoffice/dashboard/overview-replica";
+import {
+  readIntegrationConnectionHistory,
+  readWebhookDeliveries,
+} from "@/routes/backoffice/integrations/integrations-replica";
 
 import {
   readAutomationRoutes,
@@ -19,7 +23,7 @@ import {
   AUTOMATION_REPLICA_EPHEMERAL_TABLES,
   AUTOMATION_REPLICA_SCHEMAS,
 } from "./replica-schemas";
-import { automationViews } from "./views";
+import { automationViews, readIntegrationConnections } from "./views";
 
 /**
  * The reads pages ask the replica worker for by name, with `automationReadView`. The worker runs
@@ -34,6 +38,9 @@ export const automationReads = {
   workflowRuns: readWorkflowRuns,
   startedCodemodeRuns: readStartedCodemodeRuns,
   piAgentDirectory: readPiAgentDirectory,
+  integrationConnections: readIntegrationConnections,
+  integrationConnectionHistory: readIntegrationConnectionHistory,
+  webhookDeliveries: readWebhookDeliveries,
   eventTraceSummaries: readEventTraceSummaries,
   eventTrace: readEventTrace,
 };

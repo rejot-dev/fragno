@@ -438,8 +438,8 @@ export function readPiAgentTurns(
   });
 }
 
-/** The connections that are not disconnected, by service and then connection ID. */
-export function readCurrentIntegrationConnections(
+/** Every connection, disconnected ones too, by service and then connection ID. */
+export function readIntegrationConnections(
   reader: LofiSqliteReader,
 ): IntegrationConnectionRecord[] {
   const connection = views.integration_connection.columns;
@@ -447,7 +447,6 @@ export function readCurrentIntegrationConnections(
     sql: `SELECT "id" AS "connectionId", "service", "kind", "state", "name", "authMethod",
             "eventId", "changedAt", "displayName", "kindLabel"
           FROM ${table("integration_connection")}
-          WHERE "state" <> 'disconnected'
           ORDER BY "service", "id"`,
     params: [],
     columns: {
@@ -465,4 +464,11 @@ export function readCurrentIntegrationConnections(
   });
   // Only the projection writes these rows, from `IntegrationConnectionRecord`.
   return rows as IntegrationConnectionRecord[];
+}
+
+/** The connections that are not disconnected, by service and then connection ID. */
+export function readCurrentIntegrationConnections(
+  reader: LofiSqliteReader,
+): IntegrationConnectionRecord[] {
+  return readIntegrationConnections(reader).filter(({ state }) => state !== "disconnected");
 }
