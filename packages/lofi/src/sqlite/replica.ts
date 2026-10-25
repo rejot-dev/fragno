@@ -15,6 +15,7 @@ import {
   type LofiSqliteQueryRow,
   type LofiSqliteResultColumn,
 } from "./query";
+import { registrationsNamingReplica } from "./rebuild";
 
 export type LofiSqliteReplicaOptions = {
   /** Base URL below which the backend serves `/_internal`. */
@@ -104,7 +105,7 @@ export async function openLofiSqliteReplica(
   const databaseName = await replicaDatabaseName({
     baseUrl: urls.baseUrl,
     adapterIdentity,
-    registrations: [...options.schemas, ...options.localSchemas],
+    registrations: registrationsNamingReplica(options),
   });
 
   const database = await dependencies.openDatabase({ databaseName });
@@ -266,7 +267,8 @@ export async function openLofiSqliteReplica(
 
 /**
  * A changed backend, layout, or schema opens a fresh database that replays the outbox, so
- * replicas never migrate. 32 hex characters keep the name under the 56-character OPFS limit
+ * replicas never migrate. Local schemas that only rebuildable projections write are left out:
+ * the replica rebuilds those from its rows. 32 hex characters keep the name under the 56-character OPFS limit
  * observed in some Chromium runtimes.
  */
 async function replicaDatabaseName(options: {

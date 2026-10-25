@@ -181,6 +181,59 @@ const countPostsWithTotal = defineLocalProjection({
   },
 });
 
+/**
+ * Counts each author's posts times `weight`, and can be rebuilt from the stored posts. A new weight
+ * stands for changed code.
+ */
+const rebuildablePostCount = (options: { version: number; weight: number }) =>
+  defineLocalProjection({
+    name: "post-count",
+    rebuild: {
+      version: options.version,
+      from: [{ schema: appSchema, table: "posts" }],
+      writes: [{ schema: statsSchema, table: "authorStats" }],
+    },
+    retrieve: ({ match, read }) =>
+      read.getEach(
+        [
+          ...new Set(
+            match.all(appSchema, "posts", "create").map((post) => String(post.values.authorId)),
+          ),
+        ],
+        statsSchema,
+        "authorStats",
+        (authorId) => authorId,
+      ),
+    mutate: ({ match, retrieved, tx }) => {
+      const stats = tx.forSchema(statsSchema);
+      const posts = match.all(appSchema, "posts", "create");
+      for (const { item: authorId, row } of retrieved) {
+        const created = posts.filter((post) => String(post.values.authorId) === authorId).length;
+        stats.create("authorStats", {
+          id: authorId,
+          posts: (row?.posts ?? 0) + created * options.weight,
+          updatedAt: new Date(0),
+        });
+      }
+    },
+  });
+
+/** Writes a row per user and reads nothing, so it adds no database call. */
+const rebuildableUserRows = defineLocalProjection({
+  name: "user-rows",
+  rebuild: {
+    version: 1,
+    from: [{ schema: appSchema, table: "users" }],
+    writes: [{ schema: statsSchema, table: "authorStats" }],
+  },
+  mutate: ({ match, tx }) => {
+    const stats = tx.forSchema(statsSchema);
+    for (const user of match.all(appSchema, "users", "create")) {
+      stats.create("authorStats", { id: user.externalId, posts: 0, updatedAt: new Date(0) });
+    }
+  },
+});
+
 /** Always expects a version the stats row never has, so its entry cannot commit. */
 const rejectSecondPost = defineLocalProjection({
   retrieve: ({ match, read }) =>
@@ -1198,7 +1251,14 @@ describe("SQLite replica", () => {
             uow.create("users", user(`user-${index}@example.com`));
           }),
         ),
-        openTab("a", replica({})),
+        // Checking whether the projection needs a rebuild takes no call of its own.
+        openTab(
+          "a",
+          replica({
+            localSchemas: [{ schema: statsSchema }],
+            projections: [rebuildableUserRows],
+          }),
+        ),
         waitForRows("a", `SELECT count(*) AS "count" FROM "users_app"`, [{ count: entries }]),
         assertStep(({ databaseCalls, errors }) => {
           expect(errors).toEqual([]);
@@ -1216,7 +1276,8 @@ describe("SQLite replica", () => {
             }
           }
           expect(current).toBeNull();
-          for (const calls of transactions) {
+          // The first opens the replica and builds the projection.
+          for (const calls of transactions.slice(1)) {
             expect(calls.length).toBeLessThanOrEqual(2);
           }
           const inserts = databaseCalls.join("\n").split(`INSERT INTO "users_app"`).length - 1;
@@ -1320,6 +1381,201 @@ describe("SQLite replica", () => {
         waitForRows("b", `SELECT "email" FROM "users_app"`, [{ email: "ada@example.com" }]),
         waitForStatus("a", { phase: "caught-up", error: null }),
         waitForStatus("b", { phase: "caught-up", error: null }),
+      ],
+    });
+  });
+
+  it("rebuilds a projection whose code changed from the rows it stores, without a new download", async () => {
+    let callsBefore = 0;
+    const statsSql = `SELECT "id", "posts" FROM "authorStats_stats"`;
+    const postCount = (vars: ScenarioContext["vars"], posts: number) => [
+      { id: vars["ada"]![0]!.externalId, posts },
+    ];
+
+    await runReplicaScenario({
+      serverSchemas: [appSchema],
+      statementDelayMs: 0,
+      steps: [
+        openTab(
+          "v1",
+          replica({
+            localSchemas: [{ schema: statsSchema }],
+            projections: [rebuildablePostCount({ version: 1, weight: 1 })],
+          }),
+        ),
+        write(appSchema, "ada", (uow) => {
+          uow.create("users", user("ada@example.com"));
+        }),
+        write(appSchema, "first", (uow, vars) => {
+          uow.create("posts", { authorId: vars["ada"]![0]!, title: "One" });
+        }),
+        write(appSchema, "second", (uow, vars) => {
+          uow.create("posts", { authorId: vars["ada"]![0]!, title: "Two" });
+        }),
+        assertStep(async ({ tabs, vars }) => {
+          await expect.poll(() => tabs.get("v1")!.execute(statsSql)).toEqual(postCount(vars, 2));
+        }),
+        closeTab("v1"),
+        assertStep(({ databaseCalls }) => {
+          callsBefore = databaseCalls.length;
+        }),
+        openTab(
+          "v2",
+          replica({
+            localSchemas: [{ schema: statsSchema }],
+            projections: [rebuildablePostCount({ version: 2, weight: 10 })],
+          }),
+        ),
+        // Rebuilt when the replica opened, keyed by the author's external id as from the outbox.
+        assertStep(async ({ databaseCalls, tabs, vars }) => {
+          const v2 = tabs.get("v2")!;
+          expect(await v2.execute(statsSql)).toEqual(postCount(vars, 20));
+          expect(databaseCalls.slice(callsBefore).join("\n")).not.toContain(
+            `INSERT INTO "posts_app"`,
+          );
+          expect(
+            await v2.execute(`SELECT count(*) AS "count" FROM "lofi_meta" WHERE "key" = ?`, [
+              "projection:post-count",
+            ]),
+          ).toEqual([{ count: 1 }]);
+        }),
+        write(appSchema, "third", (uow, vars) => {
+          uow.create("posts", { authorId: vars["ada"]![0]!, title: "Three" });
+        }),
+        assertStep(async ({ errors, tabs, vars }) => {
+          await expect.poll(() => tabs.get("v2")!.execute(statsSql)).toEqual(postCount(vars, 30));
+          expect(errors).toEqual([]);
+        }),
+        closeTab("v2"),
+        assertStep(({ databaseCalls }) => {
+          callsBefore = databaseCalls.length;
+        }),
+        openTab(
+          "again",
+          replica({
+            localSchemas: [{ schema: statsSchema }],
+            projections: [rebuildablePostCount({ version: 2, weight: 10 })],
+          }),
+        ),
+        // A projection that matches its stored version is not rebuilt.
+        assertStep(async ({ databaseCalls, tabs, vars }) => {
+          expect(await tabs.get("again")!.execute(statsSql)).toEqual(postCount(vars, 30));
+          expect(databaseCalls.slice(callsBefore).join("\n")).not.toContain("DROP TABLE");
+        }),
+      ],
+    });
+  });
+
+  it("rebuilds a projection whose table changed, in the same database", async () => {
+    let v1DatabaseName = "";
+
+    await runReplicaScenario({
+      serverSchemas: [appSchema],
+      statementDelayMs: 0,
+      steps: [
+        openTab(
+          "v1",
+          replica({
+            localSchemas: [{ schema: statsSchema }],
+            projections: [rebuildablePostCount({ version: 1, weight: 1 })],
+          }),
+        ),
+        write(appSchema, "ada", (uow) => {
+          const author = uow.create("users", user("ada@example.com"));
+          uow.create("posts", { authorId: author, title: "One" });
+        }),
+        waitForRows("v1", `SELECT "posts" FROM "authorStats_stats"`, [{ posts: 1 }]),
+        assertStep(({ tabs }) => {
+          v1DatabaseName = tabs.get("v1")!.databaseName;
+        }),
+        closeTab("v1"),
+        openTab(
+          "v2",
+          replica({
+            localSchemas: [{ schema: statsSchemaV2 }],
+            projections: [rebuildablePostCount({ version: 1, weight: 1 })],
+          }),
+        ),
+        waitForRows("v2", `SELECT "posts", "note" FROM "authorStats_stats"`, [
+          { posts: 1, note: null },
+        ]),
+        assertStep(({ errors, tabs }) => {
+          expect(tabs.get("v2")!.databaseName).toBe(v1DatabaseName);
+          expect(errors).toEqual([]);
+        }),
+      ],
+    });
+  });
+
+  it("rebuilds before a writer on older projection code applies, so tables never mix versions", async () => {
+    await runReplicaScenario({
+      serverSchemas: [appSchema],
+      statementDelayMs: 0,
+      steps: [
+        openTab(
+          "old",
+          replica({
+            localSchemas: [{ schema: statsSchema }],
+            projections: [rebuildablePostCount({ version: 1, weight: 1 })],
+          }),
+        ),
+        write(appSchema, "ada", (uow) => {
+          uow.create("users", user("ada@example.com"));
+        }),
+        write(appSchema, "first", (uow, vars) => {
+          uow.create("posts", { authorId: vars["ada"]![0]!, title: "One" });
+        }),
+        waitForRows("old", `SELECT "posts" FROM "authorStats_stats"`, [{ posts: 1 }]),
+        // The new tab shares the database and rebuilds it while the old one writes.
+        openTab(
+          "new",
+          replica({
+            localSchemas: [{ schema: statsSchema }],
+            projections: [rebuildablePostCount({ version: 2, weight: 10 })],
+          }),
+        ),
+        assertStep(async ({ tabs }) => {
+          expect(tabs.get("new")!.databaseName).toBe(tabs.get("old")!.databaseName);
+          expect(await tabs.get("new")!.execute(`SELECT "posts" FROM "authorStats_stats"`)).toEqual(
+            [{ posts: 10 }],
+          );
+        }),
+        write(appSchema, "second", (uow, vars) => {
+          uow.create("posts", { authorId: vars["ada"]![0]!, title: "Two" });
+        }),
+        // Not 11: the old writer rebuilt with its own code before applying the post.
+        waitForRows("old", `SELECT "posts" FROM "authorStats_stats"`, [{ posts: 2 }]),
+      ],
+    });
+  });
+
+  it("refuses a write of a rebuildable projection to a table its rebuild does not list", async () => {
+    const strayWrite = defineLocalProjection({
+      name: "stray",
+      rebuild: {
+        version: 1,
+        from: [{ schema: appSchema, table: "users" }],
+        writes: [{ schema: boardSchema, table: "lists" }],
+      },
+      mutate: ({ match, tx }) => {
+        for (const created of match.all(appSchema, "users", "create")) {
+          tx.forSchema(boardSchema).create("cards", { id: created.externalId, label: "stray" });
+        }
+      },
+    });
+
+    await runReplicaScenario({
+      serverSchemas: [appSchema],
+      statementDelayMs: 0,
+      steps: [
+        openTab(
+          "a",
+          replica({ localSchemas: [{ schema: boardSchema }], projections: [strayWrite] }),
+        ),
+        write(appSchema, "ada", (uow) => {
+          uow.create("users", user("ada@example.com"));
+        }),
+        waitForError("Projection stray writes board.cards, which its rebuild does not list."),
       ],
     });
   });

@@ -26,7 +26,17 @@ import {
   registeredSchemaName,
   type SqliteTableLayout,
 } from "./layout";
-import { decodeLofiSqliteRow, encodeSqliteValue, type SqliteValue } from "./values";
+import {
+  planProjectionRebuilds,
+  PROJECTION_META_KEY_PREFIX,
+  type ProjectionRebuildPlan,
+} from "./rebuild";
+import {
+  decodeLofiSqliteRow,
+  decodeSqliteValue,
+  encodeSqliteValue,
+  type SqliteValue,
+} from "./values";
 
 /**
  * One SQLite connection. Matches `openBrowserWASQLiteOPFSDatabase` from TanStack DB. A call without
@@ -68,10 +78,15 @@ const SCHEMA_STATEMENTS = [
  */
 const APPLIED_THROUGH_KEY_PREFIX = "applied-through:";
 
-/** Each source's applied-through versionstamp, read once per transaction and written before it commits. */
-type AppliedThrough = {
+/**
+ * What a write transaction reads of `lofi_meta` once and writes before it commits: each source's
+ * applied-through versionstamp, and whether the rebuildable projections' tables match their code.
+ */
+type TransactionMeta = {
   isApplied(sourceKey: string, versionstamp: string): Promise<boolean>;
   record(sourceKey: string, versionstamp: string): void;
+  /** Rebuilds the projections whose stored fingerprint differs, once per transaction. */
+  rebuildStaleProjections(): Promise<void>;
   write(): Promise<void>;
 };
 
@@ -88,6 +103,7 @@ export class SqliteLofiAdapter implements LofiAdapter {
   readonly #localTableMap: Map<string, Map<string, AnyTable>>;
   readonly #schemaNameAliases: LofiSchemaNameAliases;
   readonly #projections: AnyLofiLocalProjection[];
+  readonly #rebuilds: ProjectionRebuildPlan[];
   // Statements of one transaction span several `execute` calls on a shared connection, so every
   // statement waits for the previous operation to finish.
   #tail: Promise<unknown> = Promise.resolve();
@@ -141,16 +157,24 @@ export class SqliteLofiAdapter implements LofiAdapter {
       }),
     );
     this.#projections = options.projections;
+    this.#rebuilds = planProjectionRebuilds(options);
   }
 
-  /** Creates missing tables and indexes. Existing tables are never migrated; see the README. */
+  /**
+   * Creates missing tables and indexes, and rebuilds the projections whose code changed. Other
+   * existing tables are never migrated; see the README.
+   */
   static async open(options: SqliteLofiAdapterOptions): Promise<SqliteLofiAdapter> {
     const adapter = new SqliteLofiAdapter(options);
+    // A rebuild creates its projection's tables, which may have changed since they were created.
+    const rebuilt = new Set(
+      adapter.#rebuilds.flatMap(({ writes }) => writes.map(({ layout }) => layout.table)),
+    );
     const statements = [
       ...SCHEMA_STATEMENTS,
       ...[...options.schemas, ...options.localSchemas].flatMap((registration) =>
         [...createSqliteTableLayouts(registration).values()].flatMap((layout) =>
-          createSqliteTableStatements(registration, layout),
+          rebuilt.has(layout.table) ? [] : createSqliteTableStatements(registration, layout),
         ),
       ),
     ];
@@ -158,6 +182,7 @@ export class SqliteLofiAdapter implements LofiAdapter {
       for (const statement of statements) {
         await adapter.#write(statement);
       }
+      await adapter.#readTransactionMeta().rebuildStaleProjections();
     });
     return adapter;
   }
@@ -190,9 +215,9 @@ export class SqliteLofiAdapter implements LofiAdapter {
 
   applyOutboxEntry(options: OutboxEntryOptions): Promise<{ applied: boolean }> {
     return this.#transaction(async () => {
-      const appliedThrough = this.#readAppliedThrough();
-      const result = await this.#applyOutboxEntryInTransaction(options, appliedThrough);
-      await appliedThrough.write();
+      const meta = this.#readTransactionMeta();
+      const result = await this.#applyOutboxEntryInTransaction(options, meta);
+      await meta.write();
       return result;
     });
   }
@@ -204,7 +229,7 @@ export class SqliteLofiAdapter implements LofiAdapter {
    */
   applyOutboxBatch<T>(apply: (writer: LofiOutboxWriter) => Promise<T>): Promise<T> {
     return this.#transaction(async () => {
-      const appliedThrough = this.#readAppliedThrough();
+      const meta = this.#readTransactionMeta();
       let open = true;
       const whileOpen = <R>(operation: () => Promise<R>): Promise<R> =>
         open ? operation() : Promise.reject(new Error("The outbox batch has ended."));
@@ -212,29 +237,31 @@ export class SqliteLofiAdapter implements LofiAdapter {
       try {
         result = await apply({
           applyOutboxEntry: (options) =>
-            whileOpen(() => this.#applyOutboxEntryInTransaction(options, appliedThrough)),
+            whileOpen(() => this.#applyOutboxEntryInTransaction(options, meta)),
           setMeta: (key, value) => whileOpen(() => this.#writeMeta(key, value)),
         });
       } finally {
         open = false;
       }
-      await appliedThrough.write();
+      await meta.write();
       return result;
     });
   }
 
   async #applyOutboxEntryInTransaction(
     options: OutboxEntryOptions,
-    appliedThrough: AppliedThrough,
+    meta: TransactionMeta,
   ): Promise<{ applied: boolean }> {
     const knownMutations = options.mutations.flatMap((mutation) => {
       const known = this.#getKnownSourceMutation(mutation);
       return known ? [known] : [];
     });
 
-    if (await appliedThrough.isApplied(options.sourceKey, options.versionstamp)) {
+    if (await meta.isApplied(options.sourceKey, options.versionstamp)) {
       return { applied: false };
     }
+    // Before the entry's rows are written, which a rebuild would replay as well.
+    await meta.rebuildStaleProjections();
 
     const baseNow = Date.now();
     const mutations = knownMutations.map((mutation) => resolveMutation(mutation, baseNow));
@@ -242,14 +269,26 @@ export class SqliteLofiAdapter implements LofiAdapter {
       await this.#writeMutation(this.#getLayout(mutation.schema, mutation.table), mutation);
     }
 
-    await runLocalProjections({
-      projections: this.#projections,
+    await this.#runProjections(this.#projections, mutations, baseNow, {
+      sourceKey: options.sourceKey,
+      uowId: options.uowId,
+      versionstamp: options.versionstamp,
+    });
+
+    meta.record(options.sourceKey, options.versionstamp);
+    return { applied: true };
+  }
+
+  #runProjections(
+    projections: readonly AnyLofiLocalProjection[],
+    mutations: readonly LofiMutation[],
+    baseNow: number,
+    source: { sourceKey?: string; uowId?: string; versionstamp: string },
+  ): Promise<void> {
+    return runLocalProjections({
+      projections,
       mutations,
-      source: {
-        sourceKey: options.sourceKey,
-        uowId: options.uowId,
-        versionstamp: options.versionstamp,
-      },
+      source,
       localSchemaMap: this.#localSchemaMap,
       localTableMap: this.#localTableMap,
       schemaNameAliases: this.#schemaNameAliases,
@@ -267,9 +306,37 @@ export class SqliteLofiAdapter implements LofiAdapter {
           resolveMutation(mutation, baseNow) as ProjectionQueuedMutation,
         ),
     });
+  }
 
-    appliedThrough.record(options.sourceKey, options.versionstamp);
-    return { applied: true };
+  /**
+   * Recreates the projection's tables and runs it on the stored rows of its source tables, in the
+   * order they were stored, which is the order the outbox delivered them. Call inside a transaction.
+   */
+  async #rebuild(plan: ProjectionRebuildPlan): Promise<void> {
+    for (const { registration, layout } of plan.writes) {
+      await this.#write(`DROP TABLE IF EXISTS ${quoteSqliteIdentifier(layout.sqlName)}`);
+      for (const statement of createSqliteTableStatements(registration, layout)) {
+        await this.#write(statement);
+      }
+    }
+    for (const { schemaName, layout, nextPage } of plan.from) {
+      const internalId = layout.table.getInternalIdColumn().name;
+      let after: unknown = 0;
+      for (;;) {
+        const rows = await this.#read(nextPage, [after]);
+        if (rows.length === 0) {
+          break;
+        }
+        after = rows.at(-1)![internalId];
+        await this.#runProjections(
+          [plan.projection],
+          rows.map((row) => storedRowAsCreate(schemaName, layout, row)),
+          Date.now(),
+          { versionstamp: "" },
+        );
+      }
+    }
+    await this.#writeMeta(plan.metaKey, plan.fingerprint);
   }
 
   async getMeta(key: string): Promise<string | undefined> {
@@ -281,19 +348,38 @@ export class SqliteLofiAdapter implements LofiAdapter {
     return this.#serialize(() => this.#writeMeta(key, value));
   }
 
-  /** Call inside a transaction, which keeps other connections from moving the watermarks meanwhile. */
-  #readAppliedThrough(): AppliedThrough {
+  /**
+   * Call inside a transaction, which keeps other connections from moving the watermarks or
+   * rebuilding meanwhile. The first read also fetches the projections' fingerprints, so checking
+   * them costs no call of its own.
+   */
+  #readTransactionMeta(): TransactionMeta {
     const read = new Map<string, Promise<string | undefined>>();
     const recorded = new Map<string, string>();
+    let fingerprints: Promise<ReadonlyMap<string, string>> | undefined;
+    let projectionsChecked = this.#rebuilds.length === 0;
+    const readMeta = (keys: string[]) => {
+      const withFingerprints = !projectionsChecked && fingerprints === undefined;
+      const rows = this.#read(
+        `SELECT "key", "value" FROM "lofi_meta" WHERE "key" IN (${keys.map(() => "?").join(", ")})${
+          withFingerprints ? ` OR substr("key", 1, ${PROJECTION_META_KEY_PREFIX.length}) = ?` : ""
+        }`,
+        withFingerprints ? [...keys, PROJECTION_META_KEY_PREFIX] : keys,
+      ).then(
+        (found) => new Map(found.map((row) => [row["key"] as string, row["value"] as string])),
+      );
+      if (withFingerprints) {
+        fingerprints = rows;
+      }
+      return rows;
+    };
     return {
       isApplied: async (sourceKey, versionstamp) => {
         const key = `${APPLIED_THROUGH_KEY_PREFIX}${sourceKey}`;
         if (!read.has(key)) {
           read.set(
             key,
-            this.#read(`SELECT "value" FROM "lofi_meta" WHERE "key" = ?`, [key]).then(([row]) =>
-              row ? (row["value"] as string) : undefined,
-            ),
+            readMeta([key]).then((values) => values.get(key)),
           );
         }
         const through = recorded.get(key) ?? (await read.get(key));
@@ -301,6 +387,18 @@ export class SqliteLofiAdapter implements LofiAdapter {
       },
       record: (sourceKey, versionstamp) => {
         recorded.set(`${APPLIED_THROUGH_KEY_PREFIX}${sourceKey}`, versionstamp);
+      },
+      rebuildStaleProjections: async () => {
+        if (projectionsChecked) {
+          return;
+        }
+        const stored = await (fingerprints ?? readMeta([]));
+        projectionsChecked = true;
+        for (const plan of this.#rebuilds) {
+          if (stored.get(plan.metaKey) !== plan.fingerprint) {
+            await this.#rebuild(plan);
+          }
+        }
       },
       write: async () => {
         for (const [key, versionstamp] of recorded) {
@@ -486,6 +584,31 @@ export class SqliteLofiAdapter implements LofiAdapter {
 
 function toRegisteredSchema(registration: LofiSchemaRegistration): AnySchema {
   return withLofiSchemaName(registration.schema, registeredSchemaName(registration));
+}
+
+/** A stored row as the `create` mutation the outbox would have delivered it with. */
+function storedRowAsCreate(
+  schemaName: string,
+  layout: SqliteTableLayout,
+  row: Readonly<Record<string, unknown>>,
+): LofiMutation {
+  const externalId = row[layout.table.getIdColumn().name] as string;
+  const values: Record<string, unknown> = {};
+  for (const [key, column] of Object.entries(layout.table.columns)) {
+    if (column.role === "regular") {
+      values[key] = decodeSqliteValue(column, row[column.name]);
+    } else if (column.role === "reference" || column.role === "external-id") {
+      values[key] = row[column.name];
+    }
+  }
+  return {
+    op: "create",
+    schema: schemaName,
+    table: layout.table.name,
+    externalId,
+    values,
+    versionstamp: "",
+  };
 }
 
 function idColumn(layout: SqliteTableLayout): string {

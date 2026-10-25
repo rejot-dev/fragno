@@ -8,6 +8,7 @@ import type {
   LofiSqliteTabMessage,
   LofiSqliteViewResponse,
 } from "./protocol";
+import { registrationsNamingReplica } from "./rebuild";
 import {
   openLofiSqliteReplica,
   type LofiSqliteReplica,
@@ -429,11 +430,12 @@ async function openReplicaViews(
 }
 
 /**
- * Names the tabs that share a leader: those replicating one backend with the same schemas. Tabs
- * running another version of the schemas keep a replica of their own.
+ * Names the tabs that share a leader: those replicating one backend with the same schemas, which
+ * open the same database. Tabs running another version of the schemas keep a replica of their own;
+ * tabs running another version of a rebuildable projection share the leader's.
  */
 function tabGroupName(options: LofiSqliteReplicaOptions): string {
-  const schemas = [...options.schemas, ...options.localSchemas]
+  const schemas = registrationsNamingReplica(options)
     .map((registration) => `${registeredSchemaName(registration)}@${registration.schema.version}`)
     .sort((left, right) => left.localeCompare(right));
   return `fragno-lofi-sqlite:${JSON.stringify([resolveFragnoInternalUrls(options.baseUrl).baseUrl, schemas])}`;
