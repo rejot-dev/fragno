@@ -188,11 +188,11 @@ export async function assertMarketplacePublicationAuthority({
   }
   const principal = execution.actors.principal;
   if (principal?.scope === "internal" && principal.type === "user") {
-    if (
-      await runtime.objects.auth
-        .singleton()
-        .commands.hasOrganizationMember({ organizationId, userId: principal.id })
-    ) {
+    // Members of the organization that manages it publish for it too.
+    const { organizationRoles } = await runtime.objects.auth
+      .singleton()
+      .commands.getUserOrganizationAuthorityFacts({ organizationId, userId: principal.id });
+    if (organizationRoles !== null) {
       return;
     }
   } else if (backofficeWorkspaceOrganization(execution.scope)?.orgId === organizationId) {

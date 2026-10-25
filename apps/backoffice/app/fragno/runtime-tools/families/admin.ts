@@ -17,6 +17,7 @@ import type {
   AdminOrganizationMemberRecord,
   AdminOrganizationRecord,
   AdminUserEmailVerificationRecord,
+  OrganizationManagerRecord,
 } from "@/backoffice-runtime/object-registry";
 import type {
   BackofficeAppPage,
@@ -114,6 +115,10 @@ export type AdminRuntime = {
     organizationSlug: string;
     userEmail: string;
   }): Promise<AdminOrganizationMemberRecord>;
+  setOrganizationManager(input: {
+    organizationSlug: string;
+    managingOrganizationSlug: string | null;
+  }): Promise<OrganizationManagerRecord>;
   deleteOrganizationEventsOfType(
     input: { organizationSlug: string } & EventDeletionPass,
   ): Promise<{ scanned: number; deleted: number; cursor: string | null }>;
@@ -140,6 +145,11 @@ const organizationMemberChangeRecordSchema = z.strictObject({
   userId: z.string().trim().min(1),
   roles: z.array(z.string().trim().min(1)).min(1),
 });
+
+const organizationManagerRecordSchema = z.strictObject({
+  organizationId: z.string().trim().min(1),
+  managingOrganizationId: z.string().trim().min(1).nullable(),
+}) satisfies z.ZodType<OrganizationManagerRecord>;
 
 const createSignUpInvitationInputSchema = z.strictObject({
   email: z.string().trim().toLowerCase().pipe(z.email()),
@@ -529,11 +539,83 @@ const removeOrganizationMemberTool = defineBackofficeRuntimeTool({
   },
 });
 
+const setOrganizationManagerTool = defineBackofficeRuntimeTool({
+  id: "admin.org.manager.set",
+  namespace: "admin",
+  name: "orgManagerSet",
+  description:
+    "Let the members of a managing organization, such as an agency, act in an organization: in its workspace, its projects, and, as its owners and admins, its members' personal workspaces. They act with their role in the managing organization, owners as admins, without becoming members. It replaces any previous managing organization and does not chain.",
+  requiredPermissions: [BACKOFFICE_PERMISSION.admin.organizationsManage],
+  inputSchema: z.strictObject({
+    organizationSlug: z.string().trim().min(1),
+    managingOrganizationSlug: z.string().trim().min(1),
+  }),
+  outputSchema: organizationManagerRecordSchema,
+  execute: async (input, context: AdminToolContext) =>
+    await getAdminRuntime(context.runtimes.admin).setOrganizationManager(input),
+  adapters: {
+    bash: {
+      command: "admin.org.manager.set",
+      help: {
+        summary:
+          "admin.org.manager.set lets a managing organization's members act in an organization.",
+        options: [
+          organizationSlugOption,
+          {
+            name: "manager",
+            valueRequired: true,
+            valueName: "slug",
+            description: "Slug of the managing organization",
+          },
+        ],
+        examples: ["admin.org.manager.set --org client --manager agency --format json"],
+      },
+      parse: defineCliArgsParser("admin.org.manager.set", {
+        organizationSlug: { kind: "string", required: true, option: "org" },
+        managingOrganizationSlug: { kind: "string", required: true, option: "manager" },
+      }),
+      format: (result) => ({ data: result }),
+    },
+  },
+});
+
+const clearOrganizationManagerTool = defineBackofficeRuntimeTool({
+  id: "admin.org.manager.clear",
+  namespace: "admin",
+  name: "orgManagerClear",
+  description:
+    "End an organization's management: only its own members act in it again, effective for new credentials and deferred work at once.",
+  requiredPermissions: [BACKOFFICE_PERMISSION.admin.organizationsManage],
+  inputSchema: z.strictObject({ organizationSlug: z.string().trim().min(1) }),
+  outputSchema: organizationManagerRecordSchema,
+  execute: async (input, context: AdminToolContext) =>
+    await getAdminRuntime(context.runtimes.admin).setOrganizationManager({
+      ...input,
+      managingOrganizationSlug: null,
+    }),
+  adapters: {
+    bash: {
+      command: "admin.org.manager.clear",
+      help: {
+        summary: "admin.org.manager.clear ends an organization's management.",
+        options: [organizationSlugOption],
+        examples: ["admin.org.manager.clear --org client --format json"],
+      },
+      parse: defineCliArgsParser("admin.org.manager.clear", {
+        organizationSlug: { kind: "string", required: true, option: "org" },
+      }),
+      format: (result) => ({ data: result }),
+    },
+  },
+});
+
 export const adminRuntimeTools = [
   createSignUpInvitationTool,
   createOrganizationTool,
   addOrganizationMemberTool,
   removeOrganizationMemberTool,
+  setOrganizationManagerTool,
+  clearOrganizationManagerTool,
   listOrganizationsTool,
   getOrganizationTool,
   listOrganizationMembersTool,

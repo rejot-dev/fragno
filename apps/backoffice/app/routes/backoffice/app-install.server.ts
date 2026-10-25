@@ -138,7 +138,7 @@ async function listAppInstallOwners(
     .singleton()
     .commands.getBackofficeMe({ userId, activeOrganizationId: null });
   const organizations = (me?.organizations ?? [])
-    .filter(({ member }) => member.roles.some((role) => role === "owner" || role === "admin"))
+    .filter(({ roles }) => roles.some((role) => role === "owner" || role === "admin"))
     .map(({ organization }) => ({
       label: organization.name,
       owner: { kind: "org", orgId: organization.id } as const,

@@ -21,13 +21,15 @@ export function meta() {
 }
 
 export default function BackofficeOrganizationOverview() {
-  const { organization, member, me } = useOutletContext<OrganizationLayoutContext>();
+  const { organization, membership, me } = useOutletContext<OrganizationLayoutContext>();
   const revalidator = useRevalidator();
   const currentUserRole = me.user.role;
   const isActive = me.activeOrganization?.organization.id === organization.id;
+  // Better Auth renames an organization only for its own members.
   const canManageOrganization =
     currentUserRole === "admin" ||
-    member.roles.some((role) => role === "owner" || role === "admin");
+    (membership.through.kind === "membership" &&
+      membership.roles.some((role) => role === "owner" || role === "admin"));
 
   const {
     mutate: updateOrganization,
@@ -82,7 +84,16 @@ export default function BackofficeOrganizationOverview() {
           items={[
             { key: "name", label: "Name", value: organization.name },
             { key: "slug", label: "Slug", value: organization.slug },
-            { key: "roles", label: "Your roles", value: formatRoles(member.roles) },
+            { key: "roles", label: "Your roles", value: formatRoles(membership.roles) },
+            ...(membership.through.kind === "managing-organization"
+              ? [
+                  {
+                    key: "managed-by",
+                    label: "Managed by",
+                    value: membership.through.organization.name,
+                  },
+                ]
+              : []),
             { key: "created", label: "Created", value: formatDate(organization.createdAt) },
           ]}
         />
@@ -121,7 +132,9 @@ export default function BackofficeOrganizationOverview() {
               </Button>
               {!canManageOrganization ? (
                 <span className="text-xs text-[var(--bo-muted-2)]">
-                  Admin or owner access required.
+                  {membership.through.kind === "managing-organization"
+                    ? `Only ${organization.name}'s own admins and owners can rename it.`
+                    : "Admin or owner access required."}
                 </span>
               ) : null}
             </div>

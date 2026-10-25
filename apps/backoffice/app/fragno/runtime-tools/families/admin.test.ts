@@ -123,6 +123,9 @@ describe("admin runtime tools", () => {
         userId: "user-1",
         roles: ["member"],
       })),
+      setOrganizationManager: async () => {
+        throw new Error("Organization management is not configured in this fixture.");
+      },
       listOrganizations: async () => {
         throw new Error("Organization listing is not configured in this fixture.");
       },

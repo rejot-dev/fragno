@@ -13,7 +13,11 @@ import type { AuthContext } from "better-auth";
 import { Cursor, decodeCursor } from "@fragno-dev/db";
 
 import { splitOrganizationRoles } from "@/fragno/auth/contracts";
-import type { OrganizationInvitationPage, OrganizationPage } from "@/fragno/auth/directory-records";
+import type {
+  OrganizationInvitationPage,
+  OrganizationMemberNumberedPage,
+  OrganizationPage,
+} from "@/fragno/auth/directory-records";
 
 type AuthAdapter = AuthContext["adapter"];
 type AuthWhere = NonNullable<Parameters<AuthAdapter["findMany"]>[0]["where"]>;
@@ -137,32 +141,6 @@ export async function readAccountProfile(
     : null;
 }
 
-export async function readAccountOrganizations(
-  adapter: AuthAdapter,
-  userId: string,
-): Promise<OrganizationMembershipRecord[]> {
-  const memberships = await adapter.findMany<MemberRow>({
-    model: "member",
-    where: [{ field: "userId", value: userId }],
-    sortBy: { field: "createdAt", direction: "asc" },
-  });
-  const organizations = await readOrganizationsById(
-    adapter,
-    memberships.map((membership) => membership.organizationId),
-  );
-  return memberships.flatMap((membership) => {
-    const organization = organizations.get(membership.organizationId);
-    return organization
-      ? [
-          {
-            organization: toOrganizationRecord(organization),
-            roles: splitOrganizationRoles(membership.role),
-          },
-        ]
-      : [];
-  });
-}
-
 export async function readOrganizationMembership(
   adapter: AuthAdapter,
   input: { organizationId: string; userId: string },
@@ -284,6 +262,50 @@ export async function readOrganizationMemberPage(
     }),
     nextCursor,
     hasNextPage: nextCursor !== null,
+  };
+}
+
+export async function readOrganizationMemberNumberedPage(
+  adapter: AuthAdapter,
+  input: { organizationId: string; page: number; pageSize: number },
+): Promise<OrganizationMemberNumberedPage> {
+  const where = [{ field: "organizationId", value: input.organizationId }];
+  const [members, total] = await Promise.all([
+    adapter.findMany<MemberRow>({
+      model: "member",
+      where,
+      sortBy: { field: "createdAt", direction: "asc" },
+      limit: input.pageSize,
+      offset: (input.page - 1) * input.pageSize,
+    }),
+    adapter.count({ model: "member", where }),
+  ]);
+  const users =
+    members.length === 0
+      ? []
+      : await adapter.findMany<Pick<UserRow, "id" | "name" | "email">>({
+          model: "user",
+          select: ["id", "name", "email"],
+          where: [{ field: "id", operator: "in", value: members.map((member) => member.userId) }],
+        });
+  const usersById = new Map(users.map((user) => [user.id, user]));
+  return {
+    members: members.flatMap((member) => {
+      const user = usersById.get(member.userId);
+      return user
+        ? [
+            {
+              memberId: member.id,
+              userId: user.id,
+              name: user.name,
+              email: user.email,
+              roles: splitOrganizationRoles(member.role),
+              joinedAt: member.createdAt,
+            },
+          ]
+        : [];
+    }),
+    total,
   };
 }
 

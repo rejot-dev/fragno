@@ -56,7 +56,7 @@ export default function BackofficeConnectionsUpload() {
         </div>
       ) : (
         <section className="grid gap-3 md:grid-cols-2">
-          {organizations.map(({ organization, member }) => (
+          {organizations.map(({ organization, roles }) => (
             <div
               key={organization.id}
               className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4"
@@ -81,7 +81,7 @@ export default function BackofficeConnectionsUpload() {
                     Roles
                   </span>
                   <span className="font-semibold text-[var(--bo-fg)]">
-                    {member.roles.join(", ") || "Member"}
+                    {roles.join(", ") || "Member"}
                   </span>
                 </p>
                 <p className="flex items-center justify-between">

@@ -384,6 +384,74 @@
     ]
   },
   {
+    "command": "admin.org.manager.set",
+    "summary": "admin.org.manager.set lets a managing organization's members act in an organization.",
+    "options": [
+      {
+        "name": "org",
+        "valueRequired": true,
+        "valueName": "slug",
+        "description": "Organization slug"
+      },
+      {
+        "name": "manager",
+        "valueRequired": true,
+        "valueName": "slug",
+        "description": "Slug of the managing organization"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "admin.org.manager.clear",
+    "summary": "admin.org.manager.clear ends an organization's management.",
+    "options": [
+      {
+        "name": "org",
+        "valueRequired": true,
+        "valueName": "slug",
+        "description": "Organization slug"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "admin.org.list",
     "summary": "admin.org.list lists every organization.",
     "options": [

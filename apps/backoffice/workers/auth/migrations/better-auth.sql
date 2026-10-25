@@ -58,7 +58,8 @@ CREATE TABLE "organization" (
   "logo" text,
   "createdAt" date NOT NULL,
   "metadata" text,
-  "createdBy" text NOT NULL
+  "createdBy" text NOT NULL,
+  "managingOrganizationId" text REFERENCES "organization" ("id") ON DELETE SET NULL
 );
 
 CREATE TABLE "member" (
@@ -231,6 +232,8 @@ CREATE INDEX "session_userId_idx" ON "session" ("userId");
 CREATE INDEX "account_userId_idx" ON "account" ("userId");
 
 CREATE INDEX "verification_identifier_idx" ON "verification" ("identifier");
+
+CREATE INDEX "organization_managingOrganizationId_idx" ON "organization" ("managingOrganizationId");
 
 CREATE INDEX "member_organizationId_idx" ON "member" ("organizationId");
 

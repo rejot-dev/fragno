@@ -53,10 +53,13 @@ const MEMBER_COLUMNS: readonly SurfaceTableColumn[] = [
 
 export default function BackofficeOrganizationMembers() {
   const posthog = usePostHog();
-  const { organization, member, me } = useOutletContext<OrganizationLayoutContext>();
+  const { organization, membership, me } = useOutletContext<OrganizationLayoutContext>();
   const currentUserId = me.user.id;
-  const administersOrganization = administersMembers(member.roles);
-  const canManageMembers = me.user.role === "admin" || administersOrganization;
+  const administersOrganization = administersMembers(membership.roles);
+  // Better Auth changes membership only for the organization's own members.
+  const canManageMembers =
+    membership.through.kind === "membership" &&
+    (me.user.role === "admin" || administersOrganization);
 
   const membersData = useLoaderData<typeof loader>();
   const members = membersData.members;

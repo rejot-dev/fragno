@@ -23,6 +23,16 @@ type AdminCodemodeProvider = {
    */
   orgMembersRemove(input: AdminOrgMembersRemoveInput): Promise<AdminOrgMembersRemoveOutput>;
   /**
+   * Let the members of a managing organization, such as an agency, act in an organization: in its workspace, its projects, and, as its owners and admins, its members' personal workspaces. They act with their role in the managing organization, owners as admins, without becoming members. It replaces any previous managing organization and does not chain.
+   * Requires `admin.organizations.manage`.
+   */
+  orgManagerSet(input: AdminOrgManagerSetInput): Promise<AdminOrgManagerSetOutput>;
+  /**
+   * End an organization's management: only its own members act in it again, effective for new credentials and deferred work at once.
+   * Requires `admin.organizations.manage`.
+   */
+  orgManagerClear(input: AdminOrgManagerClearInput): Promise<AdminOrgManagerClearOutput>;
+  /**
    * List every organization, using cursor pagination.
    * Requires `admin.organizations.manage`.
    */
@@ -540,6 +550,21 @@ type AdminOrgMembersRemoveOutput = {
   organizationId: string;
   userId: string;
   roles: string[];
+};
+type AdminOrgManagerSetInput = {
+  organizationSlug: string;
+  managingOrganizationSlug: string;
+};
+type AdminOrgManagerSetOutput = {
+  organizationId: string;
+  managingOrganizationId: string | null;
+};
+type AdminOrgManagerClearInput = {
+  organizationSlug: string;
+};
+type AdminOrgManagerClearOutput = {
+  organizationId: string;
+  managingOrganizationId: string | null;
 };
 type AdminOrgListInput = DirectoryPageInput;
 type AdminOrgListOutput = OrganizationPage;

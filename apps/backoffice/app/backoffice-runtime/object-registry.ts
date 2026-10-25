@@ -68,7 +68,11 @@ import type {
   VerifyUserEmailInput,
   VerifyUserEmailResult,
 } from "@/fragno/auth/contracts";
-import type { OrganizationInvitationPage, OrganizationPage } from "@/fragno/auth/directory-records";
+import type {
+  OrganizationInvitationPage,
+  OrganizationMemberNumberedPage,
+  OrganizationPage,
+} from "@/fragno/auth/directory-records";
 import type {
   BackofficeExecutionTokenExchangeInput,
   BackofficeExecutionTokenResult,
@@ -294,6 +298,12 @@ export type AdminOrganizationMemberRecord = {
   roles: string[];
 };
 
+/** The organization whose members act in another, or null when only its own members do. */
+export type OrganizationManagerRecord = {
+  organizationId: string;
+  managingOrganizationId: string | null;
+};
+
 export type AuthObject = DurableHookCommands &
   AuthAppProvisioningCommands & {
     enqueueEmailVerificationHook(
@@ -405,10 +415,24 @@ export type AuthObject = DurableHookCommands &
       organizationId: string;
       name: string;
     }): Promise<OrganizationRecord>;
+    /**
+     * Lets the managing organization's members act in the organization, with their role there as
+     * admin at most, or with null ends that. Their access is not membership and does not chain.
+     */
+    setOrganizationManager(input: {
+      organizationId: string;
+      managingOrganizationId: string | null;
+    }): Promise<OrganizationManagerRecord>;
     listOrganizations(input: DirectoryPageInput): Promise<OrganizationPage>;
     listOrganizationMembers(
       input: { organizationId: string } & DirectoryPageInput,
     ): Promise<OrganizationMemberPage>;
+    /** The members page's numbered pages, oldest member first. */
+    listOrganizationMembersByPage(input: {
+      organizationId: string;
+      page: number;
+      pageSize: number;
+    }): Promise<OrganizationMemberNumberedPage>;
     listOrganizationInvitations(
       input: { organizationId: string } & DirectoryPageInput,
     ): Promise<OrganizationInvitationPage>;

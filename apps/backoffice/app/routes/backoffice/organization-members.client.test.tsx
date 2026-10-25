@@ -17,7 +17,7 @@ describe("Backoffice organization members", () => {
           <Outlet
             context={{
               organization: { id: "organization-1" },
-              member: { roles: ["owner"] },
+              membership: { roles: ["owner"], through: { kind: "membership" } },
               me: { user: { id: "xPJUkt7ICr36M63V1TAhA16t33WmMkoY", role: "user" } },
             }}
           />
