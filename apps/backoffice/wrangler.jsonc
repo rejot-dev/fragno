@@ -79,12 +79,6 @@
       "RESON8_API_KEY",
     ],
   },
-  "r2_buckets": [
-    {
-      "binding": "UPLOAD_BUCKET",
-      "bucket_name": "rejot-backoffice-upload",
-    },
-  ],
   // Codemode guests compile and run in the bridge, one request each; Backoffice loads none itself.
   "services": [
     {

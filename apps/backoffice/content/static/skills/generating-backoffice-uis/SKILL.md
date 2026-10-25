@@ -24,8 +24,11 @@ description:
 - When returning `$ui` from `step.do` or as workflow output, read
   `/static/skills/workflows/SKILL.md` before authoring the workflow, then apply **Durable results**.
 - When the interface collects input, apply **Collecting workflow input**.
-- When the interface contains `ui.fileUpload`, read `/static/skills/using-prepared-uploads/SKILL.md`
-  before composing it.
+- When the interface contains `ui.fileUpload`, set its `scope` to `{ kind: "current" }` unless the
+  file belongs to another declared scope, and start its field at `null`. Uploading writes the file
+  into that scope's workspace; the submitted field holds its `scope`, `/workspace` `path`,
+  `filename`, `sizeBytes`, and `contentType`. Read the file from `path` with the `state` tools of
+  that scope, and remove it with `state.rm` when the workflow rejects it.
 - When a tool result or step error reports an invalid generated UI, fix the element its id names.
   Ids are tree positions: `root.1.0` is the first child of the root's second child.
 

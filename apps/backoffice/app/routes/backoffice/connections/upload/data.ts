@@ -1,23 +1,8 @@
 import { createRouteCaller } from "@fragno-dev/core/api";
 import type { RouterContextProvider } from "react-router";
 
-import type { UploadAdminConfigResponse } from "@/fragno/upload";
 import type { UploadFragment } from "@/fragno/upload-server";
 import { getUploadDurableObject } from "@/worker-runtime/durable-objects";
-
-type UploadConfigResult = {
-  configState: UploadAdminConfigResponse | null;
-  configError: string | null;
-};
-
-type UploadDownloadUrlResult = {
-  result: {
-    url: string;
-    headers?: Record<string, string>;
-    expiresAt: string | Date;
-  } | null;
-  error: string | null;
-};
 
 type UploadDeleteFileResult = {
   ok: boolean;
@@ -58,67 +43,6 @@ const toByKeyQuery = (provider: string, fileKey: string) => ({
   provider,
   key: fileKey,
 });
-
-export async function fetchUploadConfig(
-  context: Readonly<RouterContextProvider>,
-  orgId: string,
-): Promise<UploadConfigResult> {
-  try {
-    const uploadDo = getUploadDurableObject(context, orgId);
-    const configState = await uploadDo.commands.getAdminConfig();
-    return { configState, configError: null };
-  } catch (error) {
-    return {
-      configState: null,
-      configError: error instanceof Error ? error.message : "Failed to load configuration.",
-    };
-  }
-}
-
-export async function fetchUploadDownloadUrl(
-  request: Request,
-  context: Readonly<RouterContextProvider>,
-  orgId: string,
-  provider: string,
-  fileKey: string,
-): Promise<UploadDownloadUrlResult> {
-  try {
-    const callRoute = createUploadRouteCaller(request, context, orgId);
-    const response = await callRoute("GET", "/files/by-key/download-url", {
-      query: toByKeyQuery(provider, fileKey),
-    });
-
-    if (response.type === "json" && isSuccessStatus(response.status)) {
-      return {
-        result: response.data as UploadDownloadUrlResult["result"],
-        error: null,
-      };
-    }
-
-    if (response.type === "error") {
-      return { result: null, error: response.error.message };
-    }
-
-    if (response.type === "json" && !isSuccessStatus(response.status)) {
-      return {
-        result: null,
-        error:
-          readMessageFromPayload(response.data) ??
-          `Failed to get download URL (${response.status}).`,
-      };
-    }
-
-    return {
-      result: null,
-      error: `Failed to get download URL (${response.status}).`,
-    };
-  } catch (error) {
-    return {
-      result: null,
-      error: error instanceof Error ? error.message : "Failed to get download URL.",
-    };
-  }
-}
 
 export async function deleteUploadFile(
   request: Request,

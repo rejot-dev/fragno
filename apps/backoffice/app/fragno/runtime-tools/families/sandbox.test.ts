@@ -7,7 +7,8 @@ import {
   createTrustedSystemBackofficeToolContext,
   type BackofficeToolContext,
 } from "../runtime-tools";
-import { sandboxRuntimeTools, type SandboxRuntime } from "./sandbox";
+import { sandboxRuntimeTools } from "./sandbox";
+import type { SandboxRuntime } from "./sandbox-runtime";
 
 const summary = (id: string) => ({
   id,

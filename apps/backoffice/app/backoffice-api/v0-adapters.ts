@@ -18,6 +18,4 @@ export const backofficeApiV0Adapters: RuntimeToolAdapters<typeof backofficeApiV0
     await runTool({ path, content: base64ToBytes(content) }),
   "state.appendFile": async ({ path, content, encoding }, runTool) =>
     await runTool({ path, content: encoding === "base64" ? base64ToBytes(content) : content }),
-  // The API never requests the `bytes` encoding, so the tool's result already fits the operation.
-  "upload.prepared.read": async (input, runTool) => await runTool(input),
 };

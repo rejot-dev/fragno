@@ -42,7 +42,7 @@ export default function BackofficeConnectionsUpload() {
         ]}
         eyebrow="Administration"
         title="Upload connection workspace."
-        description="Pick an organization to configure storage and manage files."
+        description="Pick an organization to manage its workspace files."
         actions={
           <ButtonLink variant="secondary" to="/backoffice/internals">
             Back to internals

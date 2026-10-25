@@ -1,6 +1,6 @@
 import { assert, expect, test, vi } from "vitest";
 
-import type { FileLink } from "@fragno-dev/backoffice-api/v0/upload";
+import type { FileLink } from "@fragno-dev/backoffice-api/v0/state";
 import { packTar, unpackTar, type TarEntry } from "modern-tar";
 import { matchPath } from "react-router";
 
@@ -52,8 +52,8 @@ async function createLink(
 ) {
   const run = await ctx.runCodemode({
     scope: ORG_SCOPE,
-    code: `async () => await upload.${tool}(${JSON.stringify({ path })})`,
-    assertToolCalls: [`upload.${tool}`],
+    code: `async () => await state.${tool}(${JSON.stringify({ path })})`,
+    assertToolCalls: [`state.${tool}`],
   });
   return run.result as FileLink;
 }
@@ -169,6 +169,45 @@ test("a sandbox pulls a workspace folder and pushes its results back through fil
           );
           assert.equal(escaped.status, 404);
           assert.equal(await escaped.text(), "File link not found.");
+        }),
+      ],
+    }),
+  );
+});
+
+test("an organization's sandbox reads personal workspace files through their file link", async () => {
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      objects: scenarioObjects,
+      name: "File links reach the workspace of the scope that created them",
+      setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+      steps: ({ then }) => [
+        then.assert("a personal file links from an organization run", async (ctx) => {
+          const personalScope = { kind: "user", userId: "user-1" } as const;
+          const personalState = createRuntimeStateBackend({
+            runtime: ctx.runtime.services,
+            kernel: new BackofficeKernel(ctx.runtime.services),
+            execution: createBackofficeSystemExecution(personalScope),
+          });
+          await personalState.writeFileBytes(
+            "/workspace/voice.oga",
+            new Uint8Array([79, 103, 103]),
+          );
+
+          const run = await ctx.runCodemode({
+            scope: ORG_SCOPE,
+            code: 'async () => await context.user("user-1").state.createDownloadLink({ path: "/workspace/voice.oga" })',
+            assertToolCalls: ["state.createDownloadLink"],
+          });
+          const link = run.result as FileLink;
+          assert(link.format === "file");
+          expect(link.url).toContain("/api/file-links/user/user-1/");
+
+          const pulled = await sendToLink(ctx, link.url);
+          assert.equal(pulled.status, 200, await pulled.clone().text());
+          expect(new Uint8Array(await pulled.arrayBuffer())).toEqual(
+            new Uint8Array([79, 103, 103]),
+          );
         }),
       ],
     }),

@@ -1243,7 +1243,7 @@ describe("Marketplace package publication scenarios", () => {
           name: `Capture detects concurrent ${mutation} changes`,
           objects: {
             ...scenarioObjects,
-            UPLOAD: ({ state, env, runtime, implementation }) =>
+            UPLOAD: ({ state, env, implementation }) =>
               new (class extends InMemoryUploadObject {
                 override async fetch(request: Request): Promise<Response> {
                   const response = await super.fetch(request);
@@ -1286,7 +1286,6 @@ describe("Marketplace package publication scenarios", () => {
               })({
                 state,
                 env: env as unknown as ConstructorParameters<typeof InMemoryUploadObject>[0]["env"],
-                runtime,
                 implementation,
               }),
           },
@@ -1334,7 +1333,7 @@ describe("Marketplace package publication scenarios", () => {
         vars: () => ({ publication: null, creationsBeforeRestart: 0 }),
         objects: {
           ...scenarioObjects,
-          UPLOAD: ({ state, env, runtime, implementation }) =>
+          UPLOAD: ({ state, env, implementation }) =>
             new (class extends InMemoryUploadObject {
               override async fetch(request: Request): Promise<Response> {
                 const path = new URL(request.url).pathname;
@@ -1360,7 +1359,6 @@ describe("Marketplace package publication scenarios", () => {
             })({
               state,
               env: env as unknown as ConstructorParameters<typeof InMemoryUploadObject>[0]["env"],
-              runtime,
               implementation,
             }),
         },
@@ -1619,7 +1617,7 @@ describe("Marketplace package publication scenarios", () => {
         options: { allowErroredWorkflows: true },
         objects: {
           ...scenarioObjects,
-          UPLOAD: ({ state, env, runtime, implementation }) =>
+          UPLOAD: ({ state, env, implementation }) =>
             new (class extends InMemoryUploadObject {
               override async fetch(request: Request): Promise<Response> {
                 const response = await super.fetch(request);
@@ -1636,7 +1634,6 @@ describe("Marketplace package publication scenarios", () => {
             })({
               state,
               env: env as unknown as ConstructorParameters<typeof InMemoryUploadObject>[0]["env"],
-              runtime,
               implementation,
             }),
         },

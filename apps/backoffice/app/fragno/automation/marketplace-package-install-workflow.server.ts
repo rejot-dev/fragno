@@ -304,21 +304,6 @@ export function defineMarketplacePackageInstallWorkflow(
         },
       );
 
-      if (input.targetScope.kind === "org") {
-        const targetOrganizationId = input.targetScope.orgId;
-        await step.do(
-          "prepare marketplace ingestion destination",
-          MARKETPLACE_EXTERNAL_STEP_RETRIES,
-          async function prepareMarketplaceIngestionDestination() {
-            const upload = runtime.objects.upload.forOrg(targetOrganizationId);
-            const uploadConfig = await upload.commands.getAdminConfig();
-            if (!uploadConfig.providers.database?.configured) {
-              await upload.commands.setAdminConfig({ provider: "database" }, targetOrganizationId);
-            }
-          },
-        );
-      }
-
       const release = await step.do(
         "resolve published marketplace package",
         MARKETPLACE_EXTERNAL_STEP_RETRIES,

@@ -1,485 +1,77 @@
+import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject } from "cloudflare:workers";
-import { z } from "zod";
 
 import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
 import { resolveBackofficeInternalRequestSecret } from "@/backoffice-runtime/internal-object-request";
 import {
+  assertBackofficeObjectAddressAllowed,
   decodeBackofficeObjectScope,
   type UploadObject,
 } from "@/backoffice-runtime/object-registry";
-import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
-import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
-import { uploadConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/upload";
-import type { DurableHookQueueOptions } from "@/fragno/durable-hooks";
 import {
-  UPLOAD_ADMIN_CONFIG_KEY,
-  UPLOAD_PROVIDER_DATABASE,
-  UPLOAD_PROVIDER_R2,
-  UPLOAD_PROVIDER_R2_BINDING,
-  buildUploadAdminConfigResponse,
-  createNamedDatabaseUploadConfig,
-  createOrganizationDatabaseUploadConfig,
-  normalizeStoredUploadAdminConfig,
-  resolveUploadAdminConfigInput,
-  type StoredUploadAdminConfig,
-  type UploadAdminConfigResponse,
-  type UploadProvider,
-} from "@/fragno/upload";
-import { createUploadServerForProvider, type UploadFragment } from "@/fragno/upload-server";
+  loadDurableHook,
+  loadDurableHookQueue,
+  type DurableHookQueueOptions,
+} from "@/fragno/durable-hooks";
+import { uploadStorageKeyPrefix } from "@/fragno/upload";
+import { createUploadServer, type UploadFragment } from "@/fragno/upload-server";
 
-import type {
-  BackofficeDurableHookDependencies,
-  BackofficeFragmentDurableObject,
-  BackofficeObjectState,
-} from "./lib/backoffice-fragment-durable-object";
-import type {
-  BackofficeObjectFragmentDatabase,
-  BackofficeObjectImplementation,
-} from "./lib/backoffice-object-implementation";
+import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
+import type { BackofficeObjectImplementation } from "./lib/backoffice-object-implementation";
 import { createCloudflareBackofficeObjectContext } from "./lib/cloudflare-backoffice-object-implementation";
 
-const hasOwn = (record: Record<string, unknown>, key: string) =>
-  Object.prototype.hasOwnProperty.call(record, key);
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
-type ProviderResolution = {
-  provider: UploadProvider | null;
-  invalidProvider: string | null;
-};
-
-const uploadProviderSchema = z.enum([
-  UPLOAD_PROVIDER_DATABASE,
-  UPLOAD_PROVIDER_R2,
-  UPLOAD_PROVIDER_R2_BINDING,
-]);
-
-const setAdminConfigArgsSchema = z.object({
-  orgId: z.string().trim().min(1, "Missing organization id."),
-});
-
-const hookQueueOptionsSchema = z
-  .object({
-    cursor: z
-      .string()
-      .trim()
-      .transform((value) => value || undefined)
-      .optional(),
-    pageSize: z
-      .number()
-      .refine((value) => Number.isFinite(value) && Number.isInteger(value), {
-        message: "pageSize must be an integer.",
-      })
-      .optional(),
-  })
-  .optional();
-
-const parseUploadProviderInput = (value: string): ProviderResolution => {
-  const parsed = z.string().trim().pipe(uploadProviderSchema).safeParse(value);
-  if (!parsed.success) {
-    return { provider: null, invalidProvider: value.trim() || value };
-  }
-  return { provider: parsed.data, invalidProvider: null };
-};
-
-const configuredProvidersFromResponse = (response: UploadAdminConfigResponse): UploadProvider[] => {
-  const providers: UploadProvider[] = [];
-  if (response.providers[UPLOAD_PROVIDER_DATABASE]?.configured) {
-    providers.push(UPLOAD_PROVIDER_DATABASE);
-  }
-  if (response.providers[UPLOAD_PROVIDER_R2_BINDING]?.configured) {
-    providers.push(UPLOAD_PROVIDER_R2_BINDING);
-  }
-  if (response.providers[UPLOAD_PROVIDER_R2]?.configured) {
-    providers.push(UPLOAD_PROVIDER_R2);
-  }
-  return providers;
-};
-
-const resolveHooksProvider = (response: UploadAdminConfigResponse): UploadProvider | null =>
-  response.defaultProvider ?? configuredProvidersFromResponse(response)[0] ?? null;
-
-const uploadNotConfiguredResponse = () =>
-  Response.json(
-    { message: "Upload is not configured for this organization.", code: "NOT_CONFIGURED" },
-    { status: 400 },
-  );
-
-const invalidProviderResponse = (provider: string) =>
-  Response.json(
-    {
-      message: `Upload provider '${provider}' is not supported.`,
-      code: "INVALID_PROVIDER",
-    },
-    { status: 400 },
-  );
-
-const providerNotConfiguredResponse = (provider: UploadProvider) =>
-  Response.json(
-    {
-      message: `Upload provider '${provider}' is not configured for this organization.`,
-      code: "PROVIDER_NOT_CONFIGURED",
-    },
-    { status: 400 },
-  );
-
-type UploadRuntime = {
-  config: StoredUploadAdminConfig;
-  response: UploadAdminConfigResponse;
-  fragmentsByProvider: Map<UploadProvider, UploadFragment>;
-};
-
-type UploadObjectEnv = Parameters<typeof createUploadServerForProvider>[3] &
-  Pick<BackofficeRuntimeEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">;
-
-type UploadStoragePolicy =
-  | { kind: "configurable-organization"; orgId: string }
-  | { kind: "fixed-database"; namespace: string };
-
-function resolveUploadStoragePolicy(id: DurableObjectId): UploadStoragePolicy {
-  if (!id.name) {
-    throw new Error("Upload Durable Object requires a named identity.");
-  }
-
-  const objectScope = decodeBackofficeObjectScope(id.name);
-  if (!objectScope) {
-    throw new Error("Upload Durable Object has an invalid named identity.");
-  }
-
-  switch (objectScope.kind) {
-    case "org":
-      return { kind: "configurable-organization", orgId: objectScope.orgId };
-    case "named":
-      return { kind: "fixed-database", namespace: objectScope.name };
-    case "user":
-    case "app":
-    case "project":
-      return { kind: "fixed-database", namespace: id.name };
-    case "singleton":
-      throw new Error("Upload Durable Object does not support singleton scope.");
-  }
-
-  throw new Error("Upload Durable Object has an unsupported scope.");
-}
-
-function createDefaultUploadConfig(policy: UploadStoragePolicy): StoredUploadAdminConfig {
-  return policy.kind === "configurable-organization"
-    ? createOrganizationDatabaseUploadConfig(policy.orgId)
-    : createNamedDatabaseUploadConfig(policy.namespace);
-}
-
-function assertUploadConfigMatchesStoragePolicy(
-  stored: StoredUploadAdminConfig,
-  policy: UploadStoragePolicy,
-): void {
-  const matchesPolicy =
-    policy.kind === "configurable-organization"
-      ? stored.namespace.kind === "org" && stored.namespace.orgId === policy.orgId
-      : stored.namespace.kind === "named" && stored.namespace.name === policy.namespace;
-  if (!matchesPolicy) {
-    throw new Error("Stored Upload configuration belongs to a different Durable Object scope.");
-  }
-}
-
+/** Stores one scope's files, the workspace, in the object's own database. */
 export class InMemoryUploadObject implements UploadObject {
-  readonly #state: BackofficeObjectState & Pick<DurableObjectState, "id">;
-  readonly #storagePolicy: UploadStoragePolicy;
-  readonly #env: UploadObjectEnv;
-  readonly #runtimeServices: BackofficeRuntimeServices;
-  readonly #fragmentDatabase: BackofficeObjectFragmentDatabase;
-  readonly #host: BackofficeFragmentDurableObject<
-    StoredUploadAdminConfig,
-    StoredUploadAdminConfig,
-    UploadRuntime
-  >;
+  readonly #host: FragmentDurableObjectHost<void, UploadFragment>;
   readonly #initialization: Promise<void>;
+  #fragment: UploadFragment | null = null;
 
   constructor({
     state,
     env,
-    runtime,
     implementation,
-    durableHooks,
   }: {
     state: BackofficeObjectState & Pick<DurableObjectState, "id">;
-    env: UploadObjectEnv;
-    runtime: BackofficeRuntimeServices;
+    env: Pick<BackofficeRuntimeEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">;
     implementation: BackofficeObjectImplementation;
-    durableHooks?: BackofficeDurableHookDependencies;
   }) {
-    this.#state = state;
-    this.#storagePolicy = resolveUploadStoragePolicy(state.id);
-    this.#env = env;
-    this.#runtimeServices = runtime;
-    this.#fragmentDatabase = implementation.fragmentDatabase;
-    this.#host = implementation.createConfiguredFragmentHost({
+    const objectName = state.id.name;
+    const scope = objectName ? decodeBackofficeObjectScope(objectName) : null;
+    if (!objectName || !scope || scope.kind === "singleton") {
+      throw new Error("Upload Durable Object requires a named, non-singleton identity.");
+    }
+    assertBackofficeObjectAddressAllowed({ binding: "UPLOAD", scope });
+
+    this.#host = implementation.createFragmentHost({
       name: "Upload",
-      configKey: UPLOAD_ADMIN_CONFIG_KEY,
-      parseStored: (raw) =>
-        normalizeStoredUploadAdminConfig(raw) ?? (raw as StoredUploadAdminConfig),
-      isConfigured: (stored): stored is StoredUploadAdminConfig => {
-        if (!stored) {
-          return false;
-        }
-        return configuredProvidersFromResponse(buildUploadAdminConfigResponse(stored)).length > 0;
+      createRuntime: () =>
+        createUploadServer({
+          storageKeyPrefix: uploadStorageKeyPrefix(scope, objectName),
+          runtime: implementation.fragmentDatabase,
+          // The object name identifies the file namespace, so links only open files of the object
+          // that signed them.
+          fileLinkSigning: {
+            secret: resolveBackofficeInternalRequestSecret(env),
+            audience: objectName,
+          },
+        }),
+      onProcessError: (error) => {
+        console.error("Upload hook processor error", error);
       },
-      getStoredScope: (stored) =>
-        stored.namespace.kind === "org"
-          ? { kind: "org", orgId: stored.namespace.orgId }
-          : { kind: "system" },
-      durableHooks,
-      createRuntime: (stored) => this.#createRuntime(stored),
-      getMigrationFragments: (runtime) => [...runtime.fragmentsByProvider.values()],
-      getHookFragments: (runtime) => [...runtime.fragmentsByProvider.values()],
-      hostRuntime: (runtime, { hostFragment }) => ({
-        ...runtime,
-        fragmentsByProvider: new Map(
-          [...runtime.fragmentsByProvider].map(([provider, fragment]) => [
-            provider,
-            hostFragment(fragment),
-          ]),
-        ),
-      }),
-      outbox: {
-        dispatch: async (item, { stored }) => {
-          // A reset clears the namespace the event names, so the configuration is no longer reported.
-          if (item.type !== "capability.configured" || stored?.namespace.kind !== "org") {
-            return;
-          }
-
-          await this.#runtimeServices.objects.automations
-            .forOrg(stored.namespace.orgId)
-            .commands.ingestEvent({
-              id: item.id,
-              scopeRestriction: null,
-              scope: { kind: "org", orgId: stored.namespace.orgId },
-              source: "upload",
-              eventType: "capability.configured",
-              occurredAt: item.createdAt,
-              payload: {
-                capabilityId: "upload",
-                capabilityLabel: "Upload",
-              },
-              actors: {
-                initiator: AUTOMATION_SYSTEM_INITIATOR,
-                principal: null,
-                delegation: [],
-              },
-              subject: {
-                orgId: stored.namespace.orgId,
-                capabilityId: "upload",
-              },
-              causation: { kind: "origin" },
-            });
-        },
+      onDispatcherError: (error) => {
+        console.warn("Upload hook dispatcher initialization failed", error);
       },
     });
-
     this.#initialization = state.blockConcurrencyWhile(async () => {
-      const stored = await this.#loadConfig();
-      if (stored) {
-        assertUploadConfigMatchesStoragePolicy(stored, this.#storagePolicy);
-        await this.#host.initializeFromStored(stored);
-        return;
-      }
-
-      await this.#host.storeAndInitialize(createDefaultUploadConfig(this.#storagePolicy));
+      this.#fragment = await this.#host.initialize(undefined);
     });
   }
 
-  async #loadConfig() {
-    const raw = await this.#state.storage.get(UPLOAD_ADMIN_CONFIG_KEY);
-    if (raw === undefined || raw === null) {
-      return null;
+  #getFragment(): UploadFragment {
+    if (!this.#fragment) {
+      throw new Error("Upload is unavailable.");
     }
-
-    const normalized = normalizeStoredUploadAdminConfig(raw);
-    if (!normalized) {
-      throw new Error("Stored Upload configuration is invalid.");
-    }
-
-    const needsMigration =
-      isRecord(raw) && (!hasOwn(raw, "providers") || !hasOwn(raw, "defaultProvider"));
-    if (needsMigration) {
-      await this.#state.storage.put(UPLOAD_ADMIN_CONFIG_KEY, normalized);
-    }
-
-    return normalized;
-  }
-
-  #createRuntime(stored: StoredUploadAdminConfig): UploadRuntime {
-    const response = buildUploadAdminConfigResponse(stored);
-    const fragmentsByProvider = new Map<UploadProvider, UploadFragment>();
-
-    // The object name identifies the file namespace, so links only open files of the object that signed them.
-    const fileLinkSigning = {
-      secret: resolveBackofficeInternalRequestSecret(this.#env),
-      audience: this.#state.id.name!,
-    };
-    for (const provider of configuredProvidersFromResponse(response)) {
-      fragmentsByProvider.set(
-        provider,
-        createUploadServerForProvider(
-          stored,
-          provider,
-          this.#fragmentDatabase,
-          this.#env,
-          fileLinkSigning,
-        ),
-      );
-    }
-
-    return {
-      config: stored,
-      response,
-      fragmentsByProvider,
-    };
-  }
-
-  async #resolveProviderFromRequest(
-    request: Request,
-    defaultProvider: UploadProvider | null,
-  ): Promise<ProviderResolution> {
-    const url = new URL(request.url);
-    const queryProvider = url.searchParams.get("provider")?.trim();
-    if (queryProvider) {
-      return parseUploadProviderInput(queryProvider);
-    }
-
-    const method = request.method.toUpperCase();
-    const readsBody =
-      method === "POST" || method === "PATCH" || method === "PUT" || method === "DELETE";
-
-    if (readsBody) {
-      const contentType = request.headers.get("content-type") ?? "";
-
-      if (contentType.includes("application/json")) {
-        try {
-          const payload = await request.clone().json();
-          if (
-            isRecord(payload) &&
-            typeof payload.provider === "string" &&
-            payload.provider.trim()
-          ) {
-            return parseUploadProviderInput(payload.provider);
-          }
-        } catch {
-          // Ignore invalid JSON and continue with fallback/default provider behavior.
-        }
-      } else if (
-        contentType.includes("multipart/form-data") ||
-        contentType.includes("application/x-www-form-urlencoded")
-      ) {
-        try {
-          const formData = await request.clone().formData();
-          const providerValue = formData.get("provider");
-          if (typeof providerValue === "string" && providerValue.trim()) {
-            return parseUploadProviderInput(providerValue);
-          }
-        } catch {
-          // Ignore form parsing errors and continue with fallback/default provider behavior.
-        }
-      }
-    }
-
-    return { provider: defaultProvider, invalidProvider: null };
-  }
-
-  async #refreshConfigured() {
-    await this.#initialization;
-    await this.#host.initializeFromStored(await this.#loadConfig());
-    return this.#host.getConfigured();
-  }
-
-  async #resolveRequestFragment(request: Request, runtime: UploadRuntime) {
-    const providerResolution = await this.#resolveProviderFromRequest(
-      request,
-      runtime.response.defaultProvider,
-    );
-
-    if (providerResolution.invalidProvider) {
-      return invalidProviderResponse(providerResolution.invalidProvider);
-    }
-
-    if (!providerResolution.provider) {
-      return uploadNotConfiguredResponse();
-    }
-
-    return (
-      runtime.fragmentsByProvider.get(providerResolution.provider) ??
-      providerNotConfiguredResponse(providerResolution.provider)
-    );
-  }
-
-  async getAdminConfig(): Promise<UploadAdminConfigResponse> {
-    await this.#initialization;
-    return buildUploadAdminConfigResponse(await this.#loadConfig());
-  }
-
-  async resetAdminConfig(): Promise<UploadAdminConfigResponse> {
-    await this.#initialization;
-    if (this.#storagePolicy.kind === "fixed-database") {
-      throw new Error("This upload instance uses fixed database storage.");
-    }
-
-    const baseline = createDefaultUploadConfig(this.#storagePolicy);
-    await this.#state.blockConcurrencyWhile(async () => {
-      await this.#host.clearConfig(null);
-      await this.#host.storeAndInitialize(baseline);
-    });
-    return buildUploadAdminConfigResponse(baseline);
-  }
-
-  async setAdminConfig(
-    payload: unknown,
-    orgId: string,
-    _origin?: string,
-  ): Promise<UploadAdminConfigResponse> {
-    await this.#initialization;
-    const parsedPayload = uploadConfigureInputSchema.safeParse(payload);
-    if (!parsedPayload.success) {
-      throw new Error("Only providers 'database', 'r2', and 'r2-binding' are supported.");
-    }
-    if (this.#storagePolicy.kind === "fixed-database") {
-      if (parsedPayload.data.provider !== UPLOAD_PROVIDER_DATABASE) {
-        throw new Error("This upload instance uses fixed database storage.");
-      }
-      await this.#refreshConfigured();
-      return buildUploadAdminConfigResponse(await this.#loadConfig());
-    }
-
-    const args = setAdminConfigArgsSchema.parse({ orgId });
-    if (args.orgId !== this.#storagePolicy.orgId) {
-      throw new Error("Upload Durable Object is bound to a different organization.");
-    }
-    const existing = await this.#loadConfig();
-    const resolved = resolveUploadAdminConfigInput({
-      payload: parsedPayload.data,
-      orgId: args.orgId,
-      existing,
-    });
-
-    if (!resolved.ok) {
-      throw new Error(resolved.message);
-    }
-
-    try {
-      await this.#state.blockConcurrencyWhile(async () => {
-        await this.#host.storeAndInitialize(resolved.config);
-        const configuredAt = new Date().toISOString();
-        await this.#host.dispatch({
-          id: crypto.randomUUID(),
-          type: "capability.configured",
-          createdAt: configuredAt,
-        });
-      });
-    } catch (error) {
-      console.log("Upload migration failed", { error });
-      throw new Error("Failed to migrate Upload schema.");
-    }
-
-    return buildUploadAdminConfigResponse(resolved.config);
+    return this.#fragment;
   }
 
   async warm(): Promise<void> {
@@ -487,82 +79,32 @@ export class InMemoryUploadObject implements UploadObject {
   }
 
   async getDurableHookQueue(options?: DurableHookQueueOptions) {
-    await this.#refreshConfigured();
-    return await this.#host.getDurableHookQueue(
-      ({ runtime }) => {
-        const provider = resolveHooksProvider(runtime.response);
-        if (!provider) {
-          throw new Error("Upload does not have a configured durable hook provider.");
-        }
-        return runtime.fragmentsByProvider.get(provider)!;
-      },
-      options,
-      (value) => hookQueueOptionsSchema.parse(value),
-    );
+    await this.#initialization;
+    return await loadDurableHookQueue(this.#getFragment(), options);
   }
 
   async getDurableHook(hookId: string) {
-    await this.#refreshConfigured();
-    return await this.#host.getDurableHook(({ runtime }) => {
-      const provider = resolveHooksProvider(runtime.response);
-      if (!provider) {
-        throw new Error("Upload does not have a configured durable hook provider.");
-      }
-      return runtime.fragmentsByProvider.get(provider)!;
-    }, hookId);
+    await this.#initialization;
+    return await loadDurableHook(this.#getFragment(), hookId);
   }
 
   async alarm(): Promise<void> {
-    await this.#refreshConfigured();
+    await this.#initialization;
     await this.#host.alarm();
   }
 
   async fetch(request: Request): Promise<Response> {
-    const configured = await this.#refreshConfigured();
-    if (!configured) {
-      return uploadNotConfiguredResponse();
-    }
-
-    const fragment = await this.#resolveRequestFragment(request, configured.runtime);
-    if (fragment instanceof Response) {
-      return fragment;
-    }
-
-    return await fragment.handler(request);
+    await this.#initialization;
+    return await this.#host.fetch(this.#getFragment(), request);
   }
 }
 
 export class Upload extends DurableObject<CloudflareEnv> implements UploadObject {
   readonly #object: InMemoryUploadObject;
 
-  constructor(
-    state: DurableObjectState,
-    env: CloudflareEnv,
-    durableHooks?: BackofficeDurableHookDependencies,
-  ) {
+  constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
-    this.#object = new InMemoryUploadObject({
-      ...createCloudflareBackofficeObjectContext(state, env),
-      // Upload reads R2 buckets by their configured binding name and validates each one it finds.
-      env: env as unknown as UploadObjectEnv,
-      durableHooks,
-    });
-  }
-
-  async getAdminConfig(): Promise<UploadAdminConfigResponse> {
-    return await this.#object.getAdminConfig();
-  }
-
-  async resetAdminConfig(): Promise<UploadAdminConfigResponse> {
-    return await this.#object.resetAdminConfig();
-  }
-
-  async setAdminConfig(
-    payload: unknown,
-    orgId: string,
-    origin?: string,
-  ): Promise<UploadAdminConfigResponse> {
-    return await this.#object.setAdminConfig(payload, orgId, origin);
+    this.#object = new InMemoryUploadObject(createCloudflareBackofficeObjectContext(state, env));
   }
 
   async warm(): Promise<void> {

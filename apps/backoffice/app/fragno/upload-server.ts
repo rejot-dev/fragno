@@ -1,204 +1,46 @@
 import { createRouteCaller, type RouteCallerForFragment } from "@fragno-dev/core/api";
 import { createDatabaseStorageAdapter } from "@fragno-dev/upload/storage/db";
-import { AwsClient } from "aws4fetch";
 
-import {
-  createR2BindingStorageAdapter,
-  createR2StorageAdapter,
-  createUploadFragment,
-  resolveR2BindingBucket,
-  type S3Signer,
-  type S3SignerInput,
-} from "@fragno-dev/upload";
+import { createUploadFragment } from "@fragno-dev/upload";
 
 import type { BackofficeFragmentRuntimeOptions } from "@/backoffice-runtime/fragment-runtime";
 import type { FetchObject } from "@/backoffice-runtime/object-registry";
 import { inferFileContentType } from "@/file-collection/file-content-type";
 
-import {
-  UPLOAD_DATABASE_MAX_SINGLE_UPLOAD_BYTES,
-  UPLOAD_PROVIDER_DATABASE,
-  UPLOAD_PROVIDER_R2,
-  resolveUploadProviderStorageKeyPrefix,
-  type StoredUploadAdminConfig,
-  type UploadProvider,
-  type UploadR2SignerConfig,
-} from "./upload";
+import { UPLOAD_DATABASE_MAX_SINGLE_UPLOAD_BYTES, UPLOAD_PROVIDER_DATABASE } from "./upload";
 
 // Sandbox pushes write into the shared workspace without preconditions, so one archive stays sized
 // for task outputs rather than whole projects.
 const FILE_LINK_MAX_ARCHIVE_WRITE_FILES = 200;
 const FILE_LINK_MAX_ARCHIVE_WRITE_BYTES = 25 * 1024 * 1024;
 
-const toBody = (value: S3SignerInput["body"]): BodyInit | undefined => {
-  if (value === undefined || value === null) {
-    return undefined;
-  }
-  return value as unknown as BodyInit;
-};
-
-const toHeaderRecord = (headers: Headers): Record<string, string> => {
-  const out: Record<string, string> = {};
-  headers.forEach((value, key) => {
-    out[key] = value;
-  });
-  return out;
-};
-
-const createR2Signer = (config: UploadR2SignerConfig): S3Signer => {
-  const client = new AwsClient({
-    accessKeyId: config.accessKeyId,
-    secretAccessKey: config.secretAccessKey,
-    sessionToken: config.sessionToken,
-    service: "s3",
-    region: config.region,
-  });
-
-  return {
-    sign: async (input) => {
-      const request = await client.sign(input.url, {
-        method: input.method,
-        headers: input.headers,
-        body: toBody(input.body),
-      });
-
-      return {
-        url: request.url,
-        headers: toHeaderRecord(request.headers),
-      };
-    },
-    presign: async (input) => {
-      const url = new URL(input.url);
-      if (typeof input.expiresInSeconds === "number" && Number.isFinite(input.expiresInSeconds)) {
-        url.searchParams.set(
-          "X-Amz-Expires",
-          String(Math.max(1, Math.floor(input.expiresInSeconds))),
-        );
-      }
-
-      const request = await client.sign(url.toString(), {
-        method: input.method,
-        headers: input.headers,
-        body: toBody(input.body),
-        aws: { signQuery: true },
-      });
-
-      const headers = toHeaderRecord(request.headers);
-      return {
-        url: request.url,
-        ...(Object.keys(headers).length > 0 ? { headers } : {}),
-      };
-    },
-  };
-};
-
-const withDefined = <T extends object>(source: T, keys: readonly (keyof T)[]) =>
-  keys.reduce<Partial<T>>((acc, key) => {
-    const value = source[key];
-    if (value !== undefined) {
-      acc[key] = value;
-    }
-    return acc;
-  }, {});
-
-const getProviderConfig = (config: StoredUploadAdminConfig, provider: UploadProvider) => {
-  const providerConfig = config.providers[provider];
-  if (!providerConfig) {
-    throw new Error(`Upload provider '${provider}' is not configured.`);
-  }
-  return providerConfig;
-};
-
-export function createUploadServerForProvider(
-  config: StoredUploadAdminConfig,
-  provider: UploadProvider,
-  runtime: BackofficeFragmentRuntimeOptions,
-  bindings: Parameters<typeof resolveR2BindingBucket>[0],
-  fileLinkSigning: { secret: string; audience: string },
-): ReturnType<typeof createUploadFragment> {
-  const providerConfig = getProviderConfig(config, provider);
-  const limits =
-    providerConfig.provider === UPLOAD_PROVIDER_DATABASE
-      ? {
-          ...providerConfig.database.limits,
-          // Configs saved before the Durable Object SQLite cap may hold a larger limit.
-          maxSingleUploadBytes: Math.min(
-            providerConfig.database.limits?.maxSingleUploadBytes ??
-              UPLOAD_DATABASE_MAX_SINGLE_UPLOAD_BYTES,
-            UPLOAD_DATABASE_MAX_SINGLE_UPLOAD_BYTES,
-          ),
-        }
-      : providerConfig.provider === UPLOAD_PROVIDER_R2
-        ? (providerConfig.r2.limits ?? {})
-        : (providerConfig.r2Binding.limits ?? {});
-  const storageKeyPrefix = resolveUploadProviderStorageKeyPrefix(config, provider);
-  const databaseAdapter = runtime.adapters.createAdapter({
-    kind: "upload",
-  });
-
-  const storage =
-    providerConfig.provider === UPLOAD_PROVIDER_DATABASE
-      ? createDatabaseStorageAdapter({
-          databaseAdapter,
-          providerName: UPLOAD_PROVIDER_DATABASE,
-          storageKeyPrefix,
-          uploadExpiresInSeconds: limits.uploadExpiresInSeconds,
-          maxObjectBytes: limits.maxSingleUploadBytes,
-        })
-      : providerConfig.provider === UPLOAD_PROVIDER_R2
-        ? createR2StorageAdapter({
-            bucket: providerConfig.r2.bucket,
-            endpoint: providerConfig.r2.endpoint,
-            pathStyle: providerConfig.r2.pathStyle,
-            storageKeyPrefix,
-            signer: createR2Signer(providerConfig.r2.signer),
-            ...withDefined(limits, [
-              "directUploadThresholdBytes",
-              "multipartThresholdBytes",
-              "multipartPartSizeBytes",
-              "uploadExpiresInSeconds",
-              "signedUrlExpiresInSeconds",
-              "maxSingleUploadBytes",
-              "maxMultipartUploadBytes",
-              "maxMetadataBytes",
-            ]),
-          })
-        : createR2BindingStorageAdapter({
-            bucket: resolveR2BindingBucket(bindings, providerConfig.r2Binding.bindingName),
-            storageKeyPrefix,
-            ...withDefined(limits, [
-              "directUploadThresholdBytes",
-              "multipartThresholdBytes",
-              "multipartPartSizeBytes",
-              "uploadExpiresInSeconds",
-              "signedUrlExpiresInSeconds",
-              "maxSingleUploadBytes",
-              "maxMultipartUploadBytes",
-              "maxMetadataBytes",
-            ]),
-          });
+export function createUploadServer({
+  storageKeyPrefix,
+  runtime,
+  fileLinkSigning,
+}: {
+  storageKeyPrefix: string;
+  runtime: BackofficeFragmentRuntimeOptions;
+  fileLinkSigning: { secret: string; audience: string };
+}): ReturnType<typeof createUploadFragment> {
+  const databaseAdapter = runtime.adapters.createAdapter({ kind: "upload" });
 
   return createUploadFragment(
     {
-      storage,
+      storage: createDatabaseStorageAdapter({
+        databaseAdapter,
+        providerName: UPLOAD_PROVIDER_DATABASE,
+        storageKeyPrefix,
+        maxObjectBytes: UPLOAD_DATABASE_MAX_SINGLE_UPLOAD_BYTES,
+      }),
       fileLinks: {
         ...fileLinkSigning,
         contentTypeForKey: inferFileContentType,
         maxArchiveWriteFiles: FILE_LINK_MAX_ARCHIVE_WRITE_FILES,
         maxArchiveWriteBytes: FILE_LINK_MAX_ARCHIVE_WRITE_BYTES,
       },
-      ...(providerConfig.provider === UPLOAD_PROVIDER_DATABASE
-        ? { textIndex: { enabled: true } }
-        : {}),
-      ...withDefined(limits, [
-        "directUploadThresholdBytes",
-        "multipartThresholdBytes",
-        "multipartPartSizeBytes",
-        "uploadExpiresInSeconds",
-        "signedUrlExpiresInSeconds",
-        "maxSingleUploadBytes",
-        "maxMultipartUploadBytes",
-      ]),
+      textIndex: { enabled: true },
+      maxSingleUploadBytes: UPLOAD_DATABASE_MAX_SINGLE_UPLOAD_BYTES,
     },
     {
       databaseAdapter,
@@ -208,7 +50,7 @@ export function createUploadServerForProvider(
   );
 }
 
-export type UploadFragment = ReturnType<typeof createUploadServerForProvider>;
+export type UploadFragment = ReturnType<typeof createUploadServer>;
 
 export type UploadRouteCaller = RouteCallerForFragment<UploadFragment>;
 

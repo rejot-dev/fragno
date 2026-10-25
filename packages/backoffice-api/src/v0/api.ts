@@ -21,7 +21,6 @@ import { reson8Operations } from "./reson8";
 import { sandboxOperations } from "./sandbox";
 import { stateOperations } from "./state";
 import { storeOperations } from "./store";
-import { uploadOperations } from "./upload";
 import { webOperations } from "./web";
 import { workflowOperations } from "./workflow";
 
@@ -51,7 +50,6 @@ export const backofficeApiV0 = {
     ...sandboxOperations,
     ...stateOperations,
     ...storeOperations,
-    ...uploadOperations,
     ...webOperations,
     ...workflowOperations,
   },

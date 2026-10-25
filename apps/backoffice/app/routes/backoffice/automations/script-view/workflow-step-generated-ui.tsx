@@ -2,7 +2,7 @@ import type { BackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shar
 import {
   resolveGeneratedUiUploadScope,
   type GeneratedUiUploadScope,
-} from "@fragno-private/backoffice-ui/generated-ui-upload-scope";
+} from "@fragno-private/backoffice-ui/generated-ui-upload";
 import {
   parseBackofficeUiResult,
   type BackofficeUiResultV1,
@@ -15,7 +15,7 @@ import {
   type BackofficeRoutableResolvedScope,
   backofficeRuntimeScopeFromResolvedScope,
 } from "@/backoffice-runtime/resolved-scope";
-import { uploadPreparedGeneratedUiFile } from "@/backoffice-ui/prepared-upload.client";
+import { uploadGeneratedUiFile } from "@/backoffice-ui/generated-ui-upload.client";
 
 import { WorkflowGeneratedUi, type WorkflowEventSender } from "./workflow-generated-ui";
 import type { WorkflowRunEvent, WorkflowStepRunState } from "./workflow-run-presentation";
@@ -189,13 +189,12 @@ function InteractiveWorkflowStepGeneratedUi({
               canEditInput: () => activeEventTypes.size > 0 && !draft?.submittedEventType,
               canSendEvent: (eventType) =>
                 activeEventTypes.has(eventType) && draft?.submittedEventType !== eventType,
-              uploadFile: ({ scope, file, onProgress }) =>
-                uploadPreparedGeneratedUiFile({
+              uploadFile: ({ scope, file, replaces, onProgress }) =>
+                uploadGeneratedUiFile({
                   scope: resolveUploadScope(scope),
                   file,
-                  workflowName,
+                  replaces,
                   instanceId: workflowInstanceId,
-                  stepRecordId,
                   onProgress,
                 }),
               sendEvent: async ({ eventId: fallbackEventId, eventType, payload }) => {

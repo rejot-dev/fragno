@@ -1,7 +1,9 @@
-import { preparedUploadedFileReferenceSchema } from "@fragno-dev/backoffice-api/v0/upload";
 import { z } from "zod";
 
-import { generatedUiUploadScopeSchema } from "../generated-ui-upload-scope";
+import {
+  generatedUiUploadedFileSchema,
+  generatedUiUploadScopeSchema,
+} from "../generated-ui-upload";
 
 const acceptedFileTypeSchema = z
   .string()
@@ -19,7 +21,7 @@ export const fileUploadDefinition = {
   props: z.strictObject({
     label: z.string().min(1).max(120),
     scope: generatedUiUploadScopeSchema,
-    value: preparedUploadedFileReferenceSchema.nullable(),
+    value: generatedUiUploadedFileSchema.nullable(),
     description: z.string().max(500).optional(),
     accept: z.array(acceptedFileTypeSchema).min(1).max(20).optional(),
     maxSizeBytes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
@@ -28,7 +30,7 @@ export const fileUploadDefinition = {
   }),
   slots: [],
   description:
-    "Uploads one private file as a prepared Upload draft. Use the current workflow context or a declared org, project, or personal scope. Bind value with form.bind(field); the field receives one serializable prepared-upload reference.",
+    "Uploads one file into the workspace of the current workflow context or a declared org, project, or personal scope. Bind value with form.bind(field); the field receives the uploaded file's scope, /workspace path, filename, size, and content type. Delete the file when the workflow rejects it.",
   example: {
     label: "Supporting document",
     scope: { kind: "current" },

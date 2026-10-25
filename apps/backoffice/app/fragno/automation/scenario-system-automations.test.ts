@@ -387,15 +387,6 @@ describe("system automation scenarios", () => {
             await expect(fs.readdir("/workspace")).resolves.toEqual([]);
             await fs.writeFile("/workspace/notes.txt", "project notes");
             await expect(fs.readFile("/workspace/notes.txt")).resolves.toBe("project notes");
-
-            const config = await ctx.runtime.objects.upload
-              .for({
-                kind: "project",
-                owner: { kind: "org", orgId: "org-1" },
-                projectId: ctx.vars.projectId,
-              })
-              .commands.getAdminConfig();
-            assert(config.providers.database?.configured);
           }),
           then.workflow.noErrored({ orgId: "org-1" }),
           then.hooks.noPending({ orgId: "org-1", fragments: ["automations"] }),
@@ -493,25 +484,6 @@ describe("system automation scenarios", () => {
           }),
 
           then.router.missing({ orgId: "org-1", id: "system-project-files-configure" }),
-
-          then.assert(
-            "organization upload storage initializes without a workflow step",
-            async (ctx) => {
-              const config = await ctx.runtime.objects.upload
-                .forOrg("org-1")
-                .commands.getAdminConfig();
-              expect(config).toMatchObject({
-                configured: true,
-                defaultProvider: "database",
-                providers: {
-                  database: {
-                    configured: true,
-                    config: { storageKeyPrefix: "org/org-1" },
-                  },
-                },
-              });
-            },
-          ),
 
           then.files.exists({ orgId: "org-1", path: "/workspace/AGENTS.md" }),
           then.files.missing({
@@ -796,8 +768,8 @@ describe("system automation scenarios", () => {
           }),
           then.files.contains({
             orgId: "org-1",
-            path: "/static/codemode/providers/upload.d.ts",
-            text: "configureStorage(input: UploadConfigureStorageInput)",
+            path: "/static/codemode/providers/state.d.ts",
+            text: "createUploadLink(input: StateCreateUploadLinkInput)",
           }),
           then.files.contains({
             orgId: "org-1",

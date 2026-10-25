@@ -40,8 +40,8 @@ import type { RegisteredPiCommandContext } from "./families/pi";
 import type { ProjectsRuntime } from "./families/projects-runtime";
 import type { Reson8Runtime } from "./families/reson8-runtime";
 import type { SandboxRuntime } from "./families/sandbox-runtime";
-import type { UploadRuntime } from "./families/upload-runtime";
 import type { WebRuntime } from "./families/web-runtime";
+import type { FileLinkRuntime } from "./file-links-runtime";
 
 export type RegisteredAutomationsRuntime = AutomationStoreRuntime & AutomationRouterRuntime;
 
@@ -57,6 +57,7 @@ export type BashHostContext = {
   execution: BackofficeExecutionContext;
   backofficeKernel: BackofficeKernel;
   stateBackend?: BackofficeStateBackend;
+  fileLinks?: { runtime: FileLinkRuntime } | null;
   createBackofficeScopedContext(scope: BackofficeContextScope): BashHostContext;
   account?: { runtime: AccountRuntime } | null;
   admin?: { runtime: AdminRuntime } | null;
@@ -83,7 +84,6 @@ export type BashHostContext = {
   reson8?: { runtime: Reson8Runtime } | null;
   sandbox?: { runtime: SandboxRuntime } | null;
   javascript?: { runtime: JavaScriptRuntime } | null;
-  upload?: { runtime: UploadRuntime } | null;
   web?: { runtime: WebRuntime } | null;
   models?: { runtime: ModelsRuntime } | null;
 };

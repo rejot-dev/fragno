@@ -1,17 +1,20 @@
 # Moving files between Backoffice and a sandbox
 
 The sandbox's `/workspace` is its own disk, separate from the Backoffice `/workspace`, and the
-sandbox holds no Backoffice credentials. Move files with **file links**: `upload.createDownloadLink`
-and `upload.createUploadLink` (see "/static/codemode/providers/upload.d.ts", which lists their
-limits) return a temporary URL for sandbox commands to `curl`, so file bytes stay out of command
-text and output. Pass `link.url` to the command exactly as returned: its host may resolve only
-inside sandboxes.
+sandbox holds no Backoffice credentials. Move files with **file links**: `state.createDownloadLink`
+and `state.createUploadLink` (see "/static/codemode/providers/state.d.ts", which lists their limits)
+return a temporary URL for sandbox commands to `curl`, so file bytes stay out of command text and
+output. Pass `link.url` to the command exactly as returned: its host may resolve only inside
+sandboxes.
+
+A link reaches the workspace of the scope that created it, and any sandbox can use it: create it
+with `context.project(projectId).state` or `context.user(userId).state` to move that scope's files.
 
 **Pull** a folder in:
 
 ```js
 async () => {
-  const link = await upload.createDownloadLink({ path: "/workspace/data/" });
+  const link = await state.createDownloadLink({ path: "/workspace/data/" });
   return await sandbox.executeCommand({
     sandboxId: "dev",
     command: `set -o pipefail; mkdir -p data && curl -sS --fail-with-body '${link.url}' | tar -x -C data`,
@@ -24,7 +27,7 @@ async () => {
 
 ```js
 async () => {
-  const link = await upload.createUploadLink({ path: "/workspace/results/" });
+  const link = await state.createUploadLink({ path: "/workspace/results/" });
   return await sandbox.executeCommand({
     sandboxId: "dev",
     command: `set -o pipefail; tar -ch -C out . | curl -sS --fail-with-body -H 'Expect:' -T - '${link.url}'`,
