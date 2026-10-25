@@ -45,6 +45,15 @@ export function inferFileContentType(path: string): string {
       return "text/plain";
     case ".sh":
       return "text/x-shellscript";
+    case ".zip":
+      return "application/zip";
+    case ".tar":
+      return "application/x-tar";
+    case ".gz":
+    case ".tgz":
+      return "application/gzip";
+    case ".7z":
+      return "application/x-7z-compressed";
     default:
       return "application/octet-stream";
   }
