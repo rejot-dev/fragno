@@ -413,6 +413,15 @@ export function projectEventTraceSummaries({
     });
 }
 
+/** Records by `timeOf`, then by ID, so records from any source come out in one order. */
+function byTime<T extends { id: string }>(records: readonly T[], timeOf: (record: T) => Date): T[] {
+  return [...records].sort(
+    (left, right) =>
+      timeOf(left).getTime() - timeOf(right).getTime() ||
+      (left.id < right.id ? -1 : left.id > right.id ? 1 : 0),
+  );
+}
+
 function groupBy<T>(items: readonly T[], keyOf: (item: T) => string): Map<string, T[]> {
   const groups = new Map<string, T[]>();
   for (const item of items) {
@@ -580,8 +589,8 @@ export function projectEventTrace({
   events,
   dispatches,
   runs,
-  steps,
-  deliveries,
+  steps: unorderedSteps,
+  deliveries: unorderedDeliveries,
 }: {
   rootEventId: string;
   events: readonly EventTraceEvent[];
@@ -590,12 +599,22 @@ export function projectEventTrace({
   steps: readonly EventTraceStep[];
   deliveries: readonly EventTraceDelivery[];
 }): EventTrace | null {
-  const traceEvents = events.filter((event) => rootIdOf(event) === rootEventId);
+  // Siblings keep the order of these lists, so the trace orders them by time rather than by how
+  // its source happened to return them.
+  const traceEvents = byTime(
+    events.filter((event) => rootIdOf(event) === rootEventId),
+    (event) => event.occurredAt,
+  );
   const root = traceEvents.find((event) => event.id === rootEventId);
   if (!root) {
     return null;
   }
-  const traceDispatches = dispatches.filter((dispatch) => dispatch.rootEventId === rootEventId);
+  const traceDispatches = byTime(
+    dispatches.filter((dispatch) => dispatch.rootEventId === rootEventId),
+    (dispatch) => dispatch.dispatchedAt,
+  );
+  const steps = byTime(unorderedSteps, (step) => step.createdAt);
+  const deliveries = byTime(unorderedDeliveries, (delivery) => delivery.createdAt);
   const runsByKey = new Map(runs.map((run) => [runKey(run.workflowName, run.instanceId), run]));
   const dispatchKeys = new Set(
     traceDispatches.map((dispatch) => dispatchKey(dispatch.routeId, dispatch.eventId)),
