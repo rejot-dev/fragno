@@ -123,9 +123,10 @@ type CodemodeWorkflowRunHandle = {
 };
 
 /**
- * Return defineWorkflow(...) from codemode or a codemode automation script to schedule durable
- * workflow execution. The callback runs later with real workflow step controls. Pass the returned
- * instanceId to workflow.getInstance(...) to observe completion across isolated code-mode calls.
+ * Define a durable workflow. As the whole codemode program, it starts a run; as the default
+ * export of a saved .workflow.js file, it is the workflow that routes and workflow.createInstance
+ * start. The callback runs later with real workflow step controls. Pass the returned instanceId to
+ * workflow.getInstance(...) to observe completion across isolated code-mode calls.
  */
 declare function defineWorkflow<TPayload = unknown, TOutput = unknown>(
   options: CodemodeWorkflowDefinitionOptions,
