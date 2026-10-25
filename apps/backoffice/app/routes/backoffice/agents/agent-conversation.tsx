@@ -1,4 +1,5 @@
 import type { PiManagerAgent, PiPromptReceipt } from "@fragno-dev/backoffice-api/v0/pi";
+import type { LofiSqliteClient } from "@fragno-dev/lofi/sqlite";
 import { ChatComposerModel } from "@fragno-private/design-system/chat-composer";
 import { ChatWorkspaceSplit } from "@fragno-private/design-system/chat-workspace-split";
 import { PaneMessage, PaneSpinner } from "@fragno-private/design-system/pane-message";
@@ -14,12 +15,9 @@ import {
   type ExternalThreadQueueAdapter,
 } from "@assistant-ui/react";
 import type { ConversationView, EntryRecord } from "@earendil-works/pi-durable";
-import { eq, inArray, useLiveQuery } from "@tanstack/react-db";
 
 import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scope";
-import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
-import type { AutomationBrowserCollections } from "@/fragno/automation/tanstack/browser-database";
-import { useAutomationBrowserCollections } from "@/fragno/automation/tanstack/use-automation-browser-collections";
+import { useAutomationRead, useCurrentAutomationReplica } from "@/fragno/automation/lofi/replica";
 import type {
   PiAgentCompactionStatus,
   PiAvailableModel,
@@ -209,28 +207,16 @@ function transcriptWithInactiveHistory(
 }
 
 function useStartedWorkflowRunIds(
-  collections: AutomationBrowserCollections | null,
+  replica: LofiSqliteClient | null,
   sessionWorkflowRunIds: string[],
 ): ReadonlySet<string> {
-  const query = useLiveQuery({
-    query: (builder) => {
-      if (!collections || sessionWorkflowRunIds.length === 0) {
-        return undefined;
-      }
-      return builder
-        .from({ step: collections.workflowSteps })
-        .innerJoin({ instance: collections.workflowInstances }, ({ step, instance }) =>
-          eq(step.instanceRef, instance.id),
-        )
-        .where(({ instance }) => eq(instance.workflowName, CODEMODE_WORKFLOW))
-        .where(({ instance }) => inArray(instance.instanceId, sessionWorkflowRunIds))
-        .select(({ instance }) => ({ instanceId: instance.instanceId }));
-    },
-  });
-  return useMemo(
-    () => new Set((query.data ?? []).map(({ instanceId }) => instanceId)),
-    [query.data],
+  const started = useAutomationRead(
+    sessionWorkflowRunIds.length > 0 ? replica : null,
+    "startedCodemodeRuns",
+    { instanceIds: sessionWorkflowRunIds },
   );
+  const instanceIds = started.status === "ready" ? started.data : null;
+  return useMemo(() => new Set(instanceIds), [instanceIds]);
 }
 
 async function waitForPiCompaction(url: string, signal: AbortSignal) {
@@ -669,13 +655,13 @@ function AgentConversationWithWorkspace({
   conversation: ReactNode;
 }) {
   const { state: workspaceState, update: updateWorkspaceState } = workspace;
-  const workflowCollections = useAutomationBrowserCollections();
+  const automationReplica = useCurrentAutomationReplica();
   const sessionWorkflowRunIds = useMemo(
     () => getSessionWorkflowRunIds({ draftAgentMessage, messages }),
     [draftAgentMessage, messages],
   );
   const startedWorkflowRunIds = useStartedWorkflowRunIds(
-    workflowCollections.collections,
+    automationReplica.replica,
     sessionWorkflowRunIds,
   );
   const workspaceItems = useMemo(
@@ -730,8 +716,8 @@ function AgentConversationWithWorkspace({
             <SessionWorkspacePanel
               key={selectedWorkspaceItem.id}
               item={selectedWorkspaceItem}
-              workflowCollections={workflowCollections.collections ?? undefined}
-              workflowCollectionsError={workflowCollections.error}
+              runReplica={automationReplica.replica ?? undefined}
+              runReplicaError={automationReplica.error}
               resolvedScope={workspace.resolvedScope}
               onClose={closeWorkspace}
             />

@@ -1,3 +1,4 @@
+import type { LofiSqliteClient } from "@fragno-dev/lofi/sqlite";
 import { parseBackofficeUiResult } from "@fragno-private/backoffice-ui/result";
 import {
   ChatWorkspacePanel,
@@ -27,10 +28,7 @@ import type {
   ScriptViewMode,
   WorkflowGraphDetailMode,
 } from "@/routes/backoffice/automations/script-view/script-view-mode";
-import {
-  useWorkflowRun,
-  type WorkflowRunCollections,
-} from "@/routes/backoffice/automations/script-view/use-workflow-run";
+import { useWorkflowRun } from "@/routes/backoffice/automations/script-view/use-workflow-run";
 import { ScriptWorkflowGraph } from "@/routes/backoffice/automations/script-view/workflow-graph";
 import type { WorkflowRunReference } from "@/routes/backoffice/automations/script-view/workflow-run-presentation";
 
@@ -51,14 +49,15 @@ const WORKFLOW_DISPLAY_OPTIONS = [
 
 export function SessionWorkspacePanel({
   item,
-  workflowCollections,
-  workflowCollectionsError,
+  runReplica,
+  runReplicaError,
   resolvedScope,
   onClose,
 }: {
   item: SessionWorkspaceItem;
-  workflowCollections?: WorkflowRunCollections;
-  workflowCollectionsError?: string | null;
+  /** The scope's Automations replica, which the workspace reads a workflow's run from. */
+  runReplica?: LofiSqliteClient;
+  runReplicaError?: string | null;
   resolvedScope: BackofficeResolvedScope;
   onClose: () => void;
 }) {
@@ -128,8 +127,8 @@ export function SessionWorkspacePanel({
           viewMode={display === "code" ? "code" : "graph"}
           detailMode={display === "simple" ? "simple" : "ui"}
           runReference={item.view.run}
-          workflowCollections={workflowCollections}
-          workflowCollectionsError={workflowCollectionsError}
+          runReplica={runReplica}
+          runReplicaError={runReplicaError}
           resolvedScope={resolvedScope}
           onGeneratedUiAvailable={showGeneratedUi}
         />
@@ -168,8 +167,8 @@ function SessionWorkflowWorkspace({
   viewMode,
   detailMode,
   runReference,
-  workflowCollections,
-  workflowCollectionsError,
+  runReplica,
+  runReplicaError,
   resolvedScope,
   onGeneratedUiAvailable,
 }: {
@@ -177,8 +176,8 @@ function SessionWorkflowWorkspace({
   viewMode: ScriptViewMode;
   detailMode: WorkflowGraphDetailMode;
   runReference: WorkflowRunReference | null;
-  workflowCollections?: WorkflowRunCollections;
-  workflowCollectionsError?: string | null;
+  runReplica?: LofiSqliteClient;
+  runReplicaError?: string | null;
   resolvedScope: BackofficeResolvedScope;
   onGeneratedUiAvailable: () => void;
 }) {
@@ -190,14 +189,12 @@ function SessionWorkflowWorkspace({
     viewMode === "split",
   );
   const workflowRun = useWorkflowRun({
-    source: workflowCollections
-      ? { kind: "collections", collections: workflowCollections }
-      : undefined,
+    source: runReplica ? { kind: "replica", replica: runReplica } : undefined,
     reference: runReference,
     visualization: projection.visualization,
   });
   const synchronizationError =
-    workflowRun.error ?? (runReference && !workflowCollections ? workflowCollectionsError : null);
+    workflowRun.error ?? (runReference && !runReplica ? runReplicaError : null);
   const hasGeneratedUi = workflowRun.selectedRun
     ? [
         workflowRun.selectedRun.output,

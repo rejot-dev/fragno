@@ -68,6 +68,29 @@ export function readWorkflowRunSummaries(reader: LofiSqliteReader) {
   });
 }
 
+/** Which of the Codemode runs named by `instanceIds` have recorded a step, by instance ID. */
+export function readStartedCodemodeRuns(
+  reader: LofiSqliteReader,
+  { instanceIds }: { instanceIds: string[] },
+): string[] {
+  if (instanceIds.length === 0) {
+    return [];
+  }
+  const { workflow_instance } = workflowsSchema.tables;
+  // Steps reference a run by its internal ID.
+  const internalId = `"${workflow_instance.getInternalIdColumn().name}"`;
+  const rows = reader.query({
+    sql: `SELECT "instanceId" FROM ${workflowTable("workflow_instance")} AS "instance"
+          WHERE "workflowName" = ? AND "instanceId" IN (${instanceIds.map(() => "?").join(", ")})
+            AND EXISTS (SELECT 1 FROM ${workflowTable("workflow_step")} AS "step"
+              WHERE "step"."instanceRef" = "instance".${internalId})
+          ORDER BY "instanceId"`,
+    params: [CODEMODE_WORKFLOW, ...instanceIds],
+    columns: { instanceId: workflow_instance.columns.instanceId },
+  });
+  return rows.map(({ instanceId }) => instanceId);
+}
+
 /** Which runs a run read selects, as `workflowRunRecordsQuery` selects them. */
 function selectedRuns(selector: WorkflowRunRecordSelector): { where: string; params: string[] } {
   switch (selector.type) {

@@ -215,7 +215,7 @@ function BackofficeShellFrame({
       </div>
       <AgentDrawer
         open={agentDrawerOpen}
-        // Agents read their directory from the scope's synchronized automation collections.
+        // Agents read their directory from the scope's Automations replica.
         resolvedScope={automationCollectionSource ? resolvedScope : null}
         onClose={() => {
           setAgentDrawerOpen(false);

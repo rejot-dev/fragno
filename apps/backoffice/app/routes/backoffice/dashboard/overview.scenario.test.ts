@@ -20,7 +20,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
 
 import { createStateStore } from "@json-render/react";
-import { eq, queryOnce } from "@tanstack/react-db";
+import { eq, gte, inArray, queryOnce } from "@tanstack/react-db";
 
 import { loadPage } from "@/artifacts/pages/build.server";
 import { checkPageSource } from "@/artifacts/pages/page-source.test-support";
@@ -28,6 +28,7 @@ import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { GENERAL_SKILL_CONTENT } from "@/files/content/skills";
+import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
 import { readAutomationReplica } from "@/fragno/automation/lofi/testing";
 import {
   backofficeFiles,
@@ -524,6 +525,42 @@ const byJson = (rows: readonly ReadRecord[]) =>
  * Views shared with pages that still read the TanStack collections read the replica on the
  * dashboard, so both sources must give them the same records.
  */
+/** The Agents directory reads from the replica what it read from the TanStack collections. */
+async function assertAgentDirectoryMatchesCollections(ctx: BackofficeScenarioContext) {
+  const handle = ctx.lofi.automations.forOrg(orgId);
+  const database = ctx.tanstack.automations.forOrg(orgId);
+  await Promise.all([handle.drain(), database.drain()]);
+  const { collections } = database;
+  const bucketStarts = dashboardBucketStarts(ctx.runtime.now());
+  const since = new Date(bucketStarts[0] ?? 0);
+  const [agents, turns] = await Promise.all([
+    queryOnce((query) =>
+      query
+        .from({ agent: collections.agents })
+        .orderBy(({ agent }) => agent.builtIn, "desc")
+        .orderBy(({ agent }) => agent.agentName, "asc"),
+    ),
+    queryOnce((query) =>
+      query
+        .from({ turn: collections.agentTurns })
+        .where(({ turn }) => gte(turn.endedAt, since))
+        .select(({ turn }) => ({ agentName: turn.agentName, endedAt: turn.endedAt })),
+    ),
+  ]);
+  const directory = await readAutomationReplica(handle.replica, "piAgentDirectory", {
+    bucketStarts,
+  });
+  assert.isNotEmpty(turns);
+  assert.deepEqual(
+    directory,
+    piAgentListings(
+      agents.map((agent) => withoutVirtualProps(agent) as (typeof agents)[number]),
+      turns,
+      bucketStarts,
+    ),
+  );
+}
+
 async function assertReplicaReadsMatchCollections(ctx: BackofficeScenarioContext) {
   // The scope's own catalog adds to what registered capabilities describe.
   await ctx.runtime.objects.automations.for(scope).commands.ensureEventSource({
@@ -597,6 +634,25 @@ async function assertReplicaReadsMatchCollections(ctx: BackofficeScenarioContext
     })),
     { type: "instance", workflowName: "missing", instanceId: "missing" },
   ];
+  // An agent conversation opens the Codemode runs it started once they record a step.
+  const instanceIds = [...allRuns.map(({ instanceId }) => instanceId), "missing"];
+  const stepsOfRuns = await queryOnce((query) =>
+    query
+      .from({ step: collections.workflowSteps })
+      .innerJoin({ instance: collections.workflowInstances }, ({ step, instance }) =>
+        eq(step.instanceRef, instance.id),
+      )
+      .where(({ instance }) => eq(instance.workflowName, CODEMODE_WORKFLOW))
+      .where(({ instance }) => inArray(instance.instanceId, instanceIds))
+      .select(({ instance }) => ({ instanceId: instance.instanceId })),
+  );
+  const startedRuns = await readAutomationReplica(replica, "startedCodemodeRuns", { instanceIds });
+  assert.isNotEmpty(startedRuns);
+  assert.deepEqual(
+    startedRuns,
+    [...new Set(stepsOfRuns.map(({ instanceId }) => instanceId))].sort(),
+  );
+
   for (const selector of selectors) {
     assert.deepEqual(
       await readAutomationReplica(replica, "workflowRuns", selector),
@@ -826,6 +882,12 @@ describe("dashboard", () => {
             "the example home page shows the agents as the dashboard does",
             async (ctx) => {
               await assertHomePageMatchesDashboard(ctx);
+            },
+          ),
+          then.assert(
+            "the Agents directory reads what the TanStack collections hold",
+            async (ctx) => {
+              await assertAgentDirectoryMatchesCollections(ctx);
             },
           ),
         ],

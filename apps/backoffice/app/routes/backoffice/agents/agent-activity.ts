@@ -1,26 +1,11 @@
 import { formatRelativeTime } from "@fragno-private/design-system/relative-time";
 
-import { gte, type InitialQueryBuilder } from "@tanstack/react-db";
-
-import type { AutomationCollections } from "@/fragno/automation/tanstack/collections";
 import type { PiAgentRecord } from "@/fragno/pi/agent/pi-agent-records";
 
 import { dashboardBucketIndex } from "../dashboard/overview";
 
 /** An agent with the turns it ended in each hourly bucket of the window. */
 export type PiAgentListing = PiAgentRecord & { turnsPerBucket: number[] };
-
-/** Every turn ended since the window's first bucket began. */
-export function piAgentTurnsQuery(
-  query: InitialQueryBuilder,
-  collections: Pick<AutomationCollections, "agentTurns">,
-  since: Date,
-) {
-  return query
-    .from({ turn: collections.agentTurns })
-    .where(({ turn }) => gte(turn.endedAt, since))
-    .select(({ turn }) => ({ agentName: turn.agentName, endedAt: turn.endedAt }));
-}
 
 /** Each agent with its turns counted per bucket, from turns that ended within the window. */
 export function piAgentListings(

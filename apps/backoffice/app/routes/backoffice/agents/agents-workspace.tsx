@@ -1,15 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Outlet } from "react-router";
 
-import { useLiveQuery } from "@tanstack/react-db";
-
 import { backofficeRouteScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import { backofficeRouteScopePath } from "@/backoffice-runtime/route-scope";
 import { useClock } from "@/components/backoffice/use-clock";
-import { useAutomationBrowserCollections } from "@/fragno/automation/tanstack/use-automation-browser-collections";
+import { useAutomationRead, useCurrentAutomationReplica } from "@/fragno/automation/lofi/replica";
 
 import { dashboardBucketStarts } from "../dashboard/overview";
-import { piAgentListings, piAgentTurnsQuery } from "./agent-activity";
 import type { PiAgentDirectoryState, PiAgentsOutletContext } from "./agent-types";
 import {
   createSessionWorkspaceState,
@@ -94,38 +91,21 @@ function writeStoredWorkspaceState(
 
 /** The scope's agents as its synchronized `pi` events record them. */
 export function usePiAgentDirectory(): PiAgentDirectoryState {
-  const { collections, error } = useAutomationBrowserCollections();
+  const { replica, caughtUp, error } = useCurrentAutomationReplica();
   const now = useClock(CLOCK_TICK_MS);
-  // Every moment of an hour has that hour's window, so the projection only reruns when one begins.
+  // Every moment of an hour has that hour's window, so the read only reopens when one begins.
   const hourStart = dashboardBucketStarts(now).at(-1) ?? now;
   const bucketStarts = useMemo(() => dashboardBucketStarts(hourStart), [hourStart]);
-  const windowStart = bucketStarts[0] ?? hourStart;
-  // Built-in agents come first, then the others by name.
-  const agentsQuery = useLiveQuery({
-    query: (query) =>
-      collections
-        ? query
-            .from({ agent: collections.agents })
-            .orderBy(({ agent }) => agent.builtIn, "desc")
-            .orderBy(({ agent }) => agent.agentName, "asc")
-        : undefined,
-  });
-  const turnsQuery = useLiveQuery({
-    query: (query) =>
-      collections ? piAgentTurnsQuery(query, collections, new Date(windowStart)) : undefined,
-  });
-  const agents = useMemo(
-    () => piAgentListings(agentsQuery.data ?? [], turnsQuery.data ?? [], bucketStarts),
-    [agentsQuery.data, turnsQuery.data, bucketStarts],
-  );
+  const directory = useAutomationRead(replica, "piAgentDirectory", { bucketStarts });
   if (error !== null) {
     return { status: "unavailable", message: error };
   }
-  if (agentsQuery.isError || turnsQuery.isError) {
+  if (directory.status === "error") {
     return { status: "unavailable", message: "Agent events could not be read." };
   }
-  if (!collections || !agentsQuery.isReady || !turnsQuery.isReady) {
+  // Until the replica first catches up, it may lack agents and turns.
+  if (directory.status === "loading" || !caughtUp) {
     return { status: "loading" };
   }
-  return { status: "ready", agents, now };
+  return { status: "ready", agents: directory.data, now };
 }

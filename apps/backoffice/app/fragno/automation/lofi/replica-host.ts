@@ -1,5 +1,6 @@
 import { readViewEngine } from "@fragno-dev/lofi/sqlite/worker";
 
+import { readPiAgentDirectory } from "@/routes/backoffice/agents/agents-replica";
 import {
   readEventTrace,
   readEventTraceSummaries,
@@ -10,6 +11,7 @@ import {
   readAutomationRoutes,
   readLatestEventsOfType,
   readOrchestrationRecords,
+  readStartedCodemodeRuns,
   readWorkflowRuns,
 } from "./reads";
 import {
@@ -30,6 +32,8 @@ export const automationReads = {
   orchestrationRecords: readOrchestrationRecords,
   latestEventsOfType: readLatestEventsOfType,
   workflowRuns: readWorkflowRuns,
+  startedCodemodeRuns: readStartedCodemodeRuns,
+  piAgentDirectory: readPiAgentDirectory,
   eventTraceSummaries: readEventTraceSummaries,
   eventTrace: readEventTrace,
 };
