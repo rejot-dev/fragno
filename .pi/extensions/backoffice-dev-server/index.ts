@@ -16,6 +16,9 @@ export default function registerBackofficeDevServerExtension(pi: ExtensionAPI) {
     }
 
     event.systemPromptOptions.sections[BACKOFFICE_DEV_SERVER_SECTION] =
-      `In this worktree, Backoffice's \`pnpm dev\` and \`pnpm preview\` (apps/backoffice) listen on http://127.0.0.1:${port}. The port is fixed: if it is taken, a Backoffice server from this worktree is probably already running, so probe it instead of starting another one.`;
+      `In this worktree, Backoffice's \`pnpm dev\` and \`pnpm preview\` (apps/backoffice) listen on ` +
+      `http://127.0.0.1:${port}. The port is fixed: if it is taken, a Backoffice server from this ` +
+      `worktree is probably already running, so probe it instead of starting another one. ` +
+      `If you kill it to start your own, make sure to cleanup when you are done.`;
   });
 }
