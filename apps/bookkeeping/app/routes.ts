@@ -27,7 +27,17 @@ export default [
   route("w/:slug", "clients/layout.tsx", [
     index("clients/overview.tsx"),
     route("administrations/new", "administrations/new.tsx"),
-    route("a/:administration", "administrations/administration.tsx"),
+    // One administration's books.
+    route("a/:administration", "books/layout.tsx", [
+      index("books/journal.tsx"),
+      route("entries/new", "books/new-entry.tsx"),
+      route("accounts", "books/accounts.tsx"),
+      route("accounts/:accountId", "books/account.tsx"),
+      route("trial-balance", "books/trial-balance.tsx"),
+      route("parties", "books/parties.tsx"),
+      route("parties/:partyAccountId", "books/party-account.tsx"),
+      route("settings", "books/settings.tsx"),
+    ]),
     route("members", "clients/members.tsx"),
   ]),
 ] satisfies RouteConfig;

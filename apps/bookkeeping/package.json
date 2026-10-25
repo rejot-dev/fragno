@@ -20,6 +20,7 @@
     "@fragno-dev/backoffice-api": "workspace:*",
     "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",
+    "@fragno-dev/ledger": "workspace:*",
     "@fragno-private/design-system": "workspace:*",
     "better-auth": "1.7.1",
     "isbot": "^5.1.32",

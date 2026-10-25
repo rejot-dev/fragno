@@ -1,50 +1,181 @@
+import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
+import { DurableObjectDialect } from "@fragno-dev/db/dialects/durable-object";
+import { CloudflareDurableObjectsDriverConfig } from "@fragno-dev/db/drivers";
+import { LedgerError, type LedgerErrorCode } from "@fragno-dev/ledger/errors";
 import { DurableObject } from "cloudflare:workers";
 
-import { applyMigrations } from "../migrations";
+import { migrate } from "@fragno-dev/db";
+import { createLedgerFragment } from "@fragno-dev/ledger";
+
 import { FUNCTIONAL_CURRENCIES, type FunctionalCurrency } from "./currencies";
-import { bookkeepingSchema } from "./schema";
+import { DEFAULT_ACCOUNTS, DEFAULT_JOURNALS } from "./default-books";
+import { periodEndDates, today } from "./fiscal-years";
 
-/** What the books say about their administration. */
-export type BooksSummary = { name: string; functionalCurrency: FunctionalCurrency };
+type Ledger = ReturnType<typeof createLedgerFragment>;
+type LedgerServices = Ledger["services"];
+type Input<TOperation extends keyof LedgerServices> = Parameters<LedgerServices[TOperation]>[0];
 
-/** One administration's books: its own SQLite database, named by the administration's ID. */
+/**
+ * What a ledger operation produced, or why the ledger refused it. Refusals are values because
+ * errors crossing Durable Object RPC keep only their message, and the page must tell a refusal,
+ * which it shows, from a failure.
+ */
+export type Outcome<T> =
+  | { ok: true; value: T }
+  | { ok: false; code: LedgerErrorCode; message: string };
+
+/**
+ * One administration's books: the ledger fragment on the object's own SQLite database, named by
+ * the administration's ID.
+ */
 export class Books extends DurableObject<CloudflareEnv> {
+  private readonly ledger: Ledger;
+
   constructor(ctx: DurableObjectState, env: CloudflareEnv) {
     super(ctx, env);
-    void ctx.blockConcurrencyWhile(async () => {
-      applyMigrations(ctx, [bookkeepingSchema]);
+    this.ledger = createLedgerFragment({
+      databaseAdapter: new SqlAdapter({
+        dialect: new DurableObjectDialect({ ctx, queryInstrumentation: null }),
+        driverConfig: new CloudflareDurableObjectsDriverConfig(),
+      }),
     });
+    void ctx.blockConcurrencyWhile(() => migrate(this.ledger));
   }
 
   /**
-   * Opens the books of a new administration. Opening them again keeps what the first opening
-   * set, so creating an administration can be repeated after a failure.
+   * Opens the books of a new administration, ready to post to: this calendar year in monthly
+   * periods, and the default journals and chart of accounts. Opening them again keeps what the
+   * first opening set, so creating an administration can be repeated after a failure.
    */
-  open(input: { name: string; functionalCurrency: FunctionalCurrency }): void {
-    this.ctx.storage.transactionSync(() => {
-      this.ctx.storage.sql.exec(
-        `INSERT INTO currency (code, minor_unit_digits) VALUES (?, ?) ON CONFLICT DO NOTHING`,
-        input.functionalCurrency,
-        FUNCTIONAL_CURRENCIES[input.functionalCurrency],
-      );
-      this.ctx.storage.sql.exec(
-        `INSERT INTO administration (singleton, name, functional_currency) VALUES (1, ?, ?)
-         ON CONFLICT DO NOTHING`,
-        input.name,
-        input.functionalCurrency,
-      );
-    });
+  async open(input: { name: string; functionalCurrency: FunctionalCurrency }): Promise<void> {
+    const services = this.ledger.services;
+    const year = today().slice(0, 4);
+    const startDate = `${year}-01-01`;
+    try {
+      await this.ledger.callServices(() => [
+        services.openLedger({
+          name: input.name,
+          functionalCurrency: {
+            code: input.functionalCurrency,
+            minorUnitDigits: FUNCTIONAL_CURRENCIES[input.functionalCurrency],
+          },
+        }),
+        services.openFiscalYear({
+          name: year,
+          startDate,
+          periodEndDates: periodEndDates(startDate, "month"),
+        }),
+        ...DEFAULT_JOURNALS.map((journal) => services.createJournal(journal)),
+        ...DEFAULT_ACCOUNTS.map((account) =>
+          services.createAccount({ ...account, currency: null, dimensionRules: {} }),
+        ),
+      ]);
+    } catch (error) {
+      // Opening runs in one transaction, so open books are fully set up.
+      if (!(error instanceof LedgerError && error.code === "LEDGER_ALREADY_OPEN")) {
+        throw error;
+      }
+    }
   }
 
-  summarize(): BooksSummary {
-    const [summary] = this.ctx.storage.sql
-      .exec<BooksSummary>(
-        `SELECT name, functional_currency AS functionalCurrency FROM administration`,
-      )
-      .toArray();
-    if (!summary) {
-      throw new Error("These books were never opened.");
+  /** Everything the books' pages name and choose from, read together. */
+  async describe() {
+    const services = this.ledger.services;
+    const [ledger, currencies, fiscalYears, accounts, journals, dimensions, parties] =
+      await this.ledger.callServices(() => [
+        services.getLedger(),
+        services.listCurrencies(),
+        services.listFiscalYears(),
+        services.listAccounts(),
+        services.listJournals(),
+        services.listDimensions(),
+        services.listParties(),
+      ]);
+    return { ...ledger, currencies, fiscalYears, accounts, journals, dimensions, parties };
+  }
+
+  listEntries(input: Input<"listEntries">) {
+    return this.ledger.callServices(() => this.ledger.services.listEntries(input));
+  }
+
+  getEntry(input: Input<"getEntry">) {
+    return this.ledger.callServices(() => this.ledger.services.getEntry(input));
+  }
+
+  listAccountLines(input: Input<"listAccountLines">) {
+    return this.ledger.callServices(() => this.ledger.services.listAccountLines(input));
+  }
+
+  listOpenItems(input: Input<"listOpenItems">) {
+    return this.ledger.callServices(() => this.ledger.services.listOpenItems(input));
+  }
+
+  getTrialBalance(input: Input<"getTrialBalance">) {
+    return this.ledger.callServices(() => this.ledger.services.getTrialBalance(input));
+  }
+
+  addCurrency(input: Input<"addCurrency">) {
+    return attempt(this.ledger.callServices(() => this.ledger.services.addCurrency(input)));
+  }
+
+  openFiscalYear(input: Input<"openFiscalYear">) {
+    return attempt(this.ledger.callServices(() => this.ledger.services.openFiscalYear(input)));
+  }
+
+  transitionPeriod(input: Input<"transitionPeriod">) {
+    return attempt(this.ledger.callServices(() => this.ledger.services.transitionPeriod(input)));
+  }
+
+  createAccount(input: Input<"createAccount">) {
+    return attempt(this.ledger.callServices(() => this.ledger.services.createAccount(input)));
+  }
+
+  updateAccount(input: Input<"updateAccount">) {
+    return attempt(this.ledger.callServices(() => this.ledger.services.updateAccount(input)));
+  }
+
+  createJournal(input: Input<"createJournal">) {
+    return attempt(this.ledger.callServices(() => this.ledger.services.createJournal(input)));
+  }
+
+  createDimension(input: Input<"createDimension">) {
+    return attempt(this.ledger.callServices(() => this.ledger.services.createDimension(input)));
+  }
+
+  createDimensionValue(input: Input<"createDimensionValue">) {
+    return attempt(
+      this.ledger.callServices(() => this.ledger.services.createDimensionValue(input)),
+    );
+  }
+
+  createPartyAccount(input: Input<"createPartyAccount">) {
+    return attempt(this.ledger.callServices(() => this.ledger.services.createPartyAccount(input)));
+  }
+
+  postEntry(input: Input<"postEntry">) {
+    return attempt(this.ledger.callServices(() => this.ledger.services.postEntry(input)));
+  }
+
+  reverseEntry(input: Input<"reverseEntry">) {
+    return attempt(this.ledger.callServices(() => this.ledger.services.reverseEntry(input)));
+  }
+
+  allocate(input: Input<"allocate">) {
+    return attempt(this.ledger.callServices(() => this.ledger.services.allocate(input)));
+  }
+
+  reverseAllocation(input: Input<"reverseAllocation">) {
+    return attempt(this.ledger.callServices(() => this.ledger.services.reverseAllocation(input)));
+  }
+}
+
+async function attempt<T>(operation: Promise<T>): Promise<Outcome<T>> {
+  try {
+    return { ok: true, value: await operation };
+  } catch (error) {
+    if (error instanceof LedgerError) {
+      return { ok: false, code: error.code, message: error.message };
     }
-    return summary;
+    throw error;
   }
 }
