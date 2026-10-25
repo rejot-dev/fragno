@@ -25,10 +25,8 @@ import { InMemoryAutomationsObject } from "../../../../../workers/automations.do
 import { InMemoryBillingObject } from "../../../../../workers/billing.do";
 import { InMemoryCodemodeObject } from "../../../../../workers/codemode.do";
 import { InMemoryFormsObject } from "../../../../../workers/forms.do";
-import {
-  automationWorkflowRunsFromRecords,
-  workflowRunRecordsQuery,
-} from "./use-script-workflow-runs";
+import { workflowRunRecordsQuery } from "./use-script-workflow-runs";
+import { automationWorkflowRunsFromRecords } from "./workflow-run-records";
 import { projectWorkflowRunTimeline } from "./workflow-run-timeline-presentation";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {

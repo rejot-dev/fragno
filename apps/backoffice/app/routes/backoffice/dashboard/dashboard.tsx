@@ -34,10 +34,8 @@ import {
 
 import { piAgentListings, piAgentTurnsQuery } from "../agents/agent-activity";
 import { createAutomationProject } from "../automations/data.server";
-import {
-  automationWorkflowRunsFromRecords,
-  workflowRunRecordsQuery,
-} from "../automations/script-view/use-script-workflow-runs";
+import { workflowRunRecordsQuery } from "../automations/script-view/use-script-workflow-runs";
+import { automationWorkflowRunsFromRecords } from "../automations/script-view/workflow-run-records";
 import { loadPageSources, type PageSources } from "../pages/load.server";
 import type { Route } from "./+types/dashboard";
 import { AutomationBrowserPersistenceDiagnosticPanel } from "./browser-persistence-diagnostics";

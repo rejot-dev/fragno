@@ -56,10 +56,8 @@ import { InMemoryResendObject } from "../../../../workers/resend.do";
 import { InMemoryTelegramObject } from "../../../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../../../workers/upload.do";
 import { piAgentListings, piAgentQueueStatus, piAgentTurnsQuery } from "../agents/agent-activity";
-import {
-  automationWorkflowRunsFromRecords,
-  workflowRunRecordsQuery,
-} from "../automations/script-view/use-script-workflow-runs";
+import { workflowRunRecordsQuery } from "../automations/script-view/use-script-workflow-runs";
+import { automationWorkflowRunsFromRecords } from "../automations/script-view/workflow-run-records";
 import {
   orchestrationActiveWorkflowsQuery,
   projectOrchestrationGraph,
