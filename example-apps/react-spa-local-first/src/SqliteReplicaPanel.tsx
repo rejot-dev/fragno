@@ -1,6 +1,6 @@
 import type { AnySchema } from "@fragno-dev/db/schema";
 import { openLofiSqliteReplica, type LofiSqliteReplica } from "@fragno-dev/lofi/sqlite";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { AnyLofiLocalProjection } from "@fragno-dev/lofi";
 
@@ -37,7 +37,8 @@ export function SqliteReplicaPanel({
 }: SqliteReplicaPanelProps) {
   const [replica, setReplica] = useState<LofiSqliteReplica | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
-  const [syncErrors, setSyncErrors] = useState<string[]>([]);
+  const [syncErrors, setSyncErrors] = useState<Array<{ id: number; message: string }>>([]);
+  const nextSyncErrorId = useRef(0);
   const [changes, setChanges] = useState(0);
   const [tables, setTables] = useState<TableSummary[]>([]);
   const [sql, setSql] = useState("");
@@ -57,7 +58,8 @@ export function SqliteReplicaPanel({
       projections,
       ephemeralTables: [],
       onError: (error) => {
-        setSyncErrors((errors) => [...errors.slice(-4), String(error)]);
+        const id = nextSyncErrorId.current++;
+        setSyncErrors((errors) => [...errors.slice(-4), { id, message: String(error) }]);
       },
       retryDelayMs: 5_000,
     }).then(
@@ -192,9 +194,9 @@ export function SqliteReplicaPanel({
               </div>
             </>
           ) : null}
-          {syncErrors.map((error, index) => (
-            <div className="status-error" key={index}>
-              {error}
+          {syncErrors.map((error) => (
+            <div className="status-error" key={error.id}>
+              {error.message}
             </div>
           ))}
         </div>
@@ -208,15 +210,20 @@ export function SqliteReplicaPanel({
           </div>
         </div>
         <div className="panel-body">
-          <textarea
-            className="textarea mono"
-            onChange={(event) => {
-              setSql(event.target.value);
-            }}
-            placeholder='SELECT * FROM "comment_comment"'
-            rows={4}
-            value={sql}
-          />
+          <div className="command-form">
+            <label>
+              SQL
+              <textarea
+                className="textarea mono"
+                onChange={(event) => {
+                  setSql(event.target.value);
+                }}
+                placeholder='SELECT * FROM "comment_comment"'
+                rows={4}
+                value={sql}
+              />
+            </label>
+          </div>
           <div className="command-actions">
             <button
               className="btn"
@@ -243,8 +250,8 @@ export function SqliteReplicaPanel({
                   </tr>
                 </thead>
                 <tbody>
-                  {result.rows.map((row, index) => (
-                    <tr className="db-row" key={index}>
+                  {withRowKeys(result.rows, columns).map(({ key, row }) => (
+                    <tr className="db-row" key={key}>
                       {columns.map((column) => (
                         <td className="db-cell mono" key={column}>
                           {formatCell(row[column])}
@@ -261,6 +268,20 @@ export function SqliteReplicaPanel({
       </section>
     </main>
   );
+}
+
+/** Keys rows by their cells, and repeated rows by how often they appeared before. */
+function withRowKeys(
+  rows: readonly Record<string, unknown>[],
+  columns: readonly string[],
+): Array<{ key: string; row: Record<string, unknown> }> {
+  const seen = new Map<string, number>();
+  return rows.map((row) => {
+    const cells = JSON.stringify(columns.map((column) => formatCell(row[column])));
+    const repeat = seen.get(cells) ?? 0;
+    seen.set(cells, repeat + 1);
+    return { key: `${cells}#${repeat}`, row };
+  });
 }
 
 function formatCell(value: unknown): string {

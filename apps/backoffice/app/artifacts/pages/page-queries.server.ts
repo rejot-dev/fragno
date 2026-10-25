@@ -59,10 +59,10 @@ export async function pageQueriesError(definition: PageDefinition): Promise<stri
     if (result.status === "error") {
       return `queries.${name}: ${result.message}`;
     }
-    const selected = result.columns;
-    const missing = Object.keys(query.columns).filter((column) => !selected.includes(column));
+    const selected = new Set(result.columns);
+    const missing = Object.keys(query.columns).filter((column) => !selected.has(column));
     if (missing.length > 0) {
-      return `queries.${name}: The query declares ${missing.map((column) => `"${column}"`).join(", ")}, which it does not select. It selects: ${selected.join(", ")}.`;
+      return `queries.${name}: The query declares ${missing.map((column) => `"${column}"`).join(", ")}, which it does not select. It selects: ${result.columns.join(", ")}.`;
     }
   }
   return null;
