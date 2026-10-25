@@ -562,7 +562,8 @@ command targets and are only written by projection code. Projection reads are in
 to local schemas, so projections behave like reducers over applied mutations plus projection-owned
 state. Projection `retrieve`/`mutate` functions must not return promises; adapters own all async
 IndexedDB work to keep transactions active. If local schema or projection code changes, delete the
-whole IndexedDB database and sync again.
+whole IndexedDB database and sync again. The SQLite replica can rebuild a projection from the rows
+it stores instead; see "Rebuildable projections" below.
 
 ## SQLite replica (browser)
 
@@ -668,8 +669,54 @@ registered schema fails, because it means the client's schema is behind the serv
 The database is a replayable cache, so it is never migrated. Its OPFS file name is
 `fragno-lofi-<hash>.sqlite`, where the hash covers the normalized base URL, the backend's
 `adapterIdentity` (from `GET /_internal`), `LOFI_SQLITE_LAYOUT_VERSION`, and the name and version of
-every registered source and local schema. Changing any of them opens a fresh database, which replays
-the outbox from the start.
+every registered source schema and of every local schema that a projection without `rebuild` writes.
+Changing any of them opens a fresh database, which replays the outbox from the start. Local schemas
+written only by rebuildable projections are left out, because the replica rebuilds those in place.
+
+### Rebuildable projections
+
+A projection that declares `rebuild` can change without a new download. It names its version, the
+source tables it reads, and the local tables it alone writes:
+
+```ts
+const postCounts = defineLocalProjection({
+  ...countPostsPerAuthor, // its `retrieve` and `mutate`
+  name: "post-counts", // required with `rebuild`
+  rebuild: {
+    version: 2, // bump when it writes different rows for the same input
+    from: [{ schema: appSchema, table: "posts" }],
+    writes: [{ schema: statsSchema, table: "authorStats" }],
+  },
+});
+```
+
+`lofi_meta` stores, per projection, its version, its source tables, and the statements that create
+its tables. When the replica opens, and in each write transaction before its first entry, a
+projection whose stored value differs is rebuilt in that transaction: its tables are dropped and
+created again, and the projection runs on the stored rows of `from`, table by table in the order the
+replica stored them, which is the order the outbox delivered them, 500 rows per call. So changing a
+table's columns or indexes rebuilds on its own; changing what the projection computes needs a
+version bump. Checking costs no database call of its own: the transaction's first read fetches the
+stored values with the applied-through watermark. A writer still running older code rebuilds to its
+own version before it applies anything, so a table never holds rows of two versions; two tabs on
+different versions rebuild each time the writer changes.
+
+Replayed rows arrive as `create` mutations with decoded values, and references as the referenced
+row's external id, as from the outbox; `source.versionstamp` is empty. That reproduces what the
+outbox built when:
+
+- the projection gives the same rows however its input is split into calls;
+- the rows it reads are never deleted, and never updated in what it reads;
+- its references point at rows the replica holds: one the replica stored as NULL arrives as null.
+
+A projection that folds events which are never deleted fits; one over rows that are updated or
+deleted does not, and should leave `rebuild` out. A projection with `rebuild` may write only the
+tables it lists, and two projections may not list the same table. Only the SQLite replica rebuilds;
+other adapters ignore `rebuild` except for checking what it writes.
+
+`rebuildLofiSqliteProjections` from `@fragno-dev/lofi/sqlite/testing` rebuilds a replica's
+projections on a second connection and returns their tables before and after, so a test can check
+that a projection rebuilds to the rows the outbox built.
 
 ### Tabs
 
@@ -737,9 +784,12 @@ changed since. A reconnect or a new writer catches up again without sending view
   database that loses the race to a replica's worker still fails. wa-sqlite 2.x ignores the
   directory that is already gone, but `@tanstack/browser-db-sqlite-persistence` accepts only
   wa-sqlite `^1.4.1`, and 1.7.2 is the last 1.x release; a patch of 1.7.2 would cover both.
-- **Projection changes.** Changing projection code does not change the database name, so rows
-  projected by the old code stay until a registered schema's version changes. A projection version
-  in the database name would fix this.
+- **Projection changes.** A projection without `rebuild` keeps the rows its old code wrote until a
+  registered schema's version changes. A rebuildable one that computes something new without a
+  version bump does the same.
+- **Rebuilds block.** A rebuild runs in one transaction, and decodes every stored row of its source
+  tables, also those it ignores; reads wait meanwhile. Two stale projections over the same table
+  read it twice. Projections cannot filter what is replayed yet.
 - **Growth.** Databases left behind by a name change stay in OPFS and need cleanup.
 - **Exact checkpoints.** The cursor is a versionstamp, as in `LofiClient`, and entries at or below
   the last one applied are skipped. That trusts the outbox to deliver ascending versionstamps:
@@ -908,7 +958,8 @@ only to the tab that shows it.
   scratch, so views stop updating for a moment when the leader closes.
 - **Tabs do not share views.** Two tabs with the same query get two views in the leader.
 - **Tabs on other code.** Tabs whose schemas have the same versions share a leader even if they run
-  different versions of lofi, whose messages could differ.
+  different versions of lofi, whose messages could differ, or of a rebuildable projection, whose
+  rows are then the leader's version.
 - **SQL and read views run again after every batch.** Every SQL view and read runs again whether or
   not the batch touched its tables, and a read's whole result is compared with the last one sent.
   Knowing which tables a batch changed, and which a query reads, would let the worker skip the rest.

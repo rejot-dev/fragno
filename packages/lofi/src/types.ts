@@ -394,10 +394,39 @@ type LofiLocalProjectionMutateHandler<TRetrieved> = {
   bivarianceHack(ctx: LofiLocalProjectionMutateContext<TRetrieved>): unknown;
 }["bivarianceHack"];
 
+/** A table a projection names, with the schema that defines it. */
+export type LofiProjectionTable = { schema: AnySchema; table: string };
+
+/**
+ * Lets the SQLite replica rebuild a projection from the rows it already stores, instead of opening a
+ * new database that replays the outbox. A rebuild empties the projection's tables, recreates them,
+ * and runs the projection on the stored rows of `from` as `create` mutations, table by table in
+ * the order the replica stored them, in calls of several rows each. That reproduces what the outbox
+ * built only when the projection gives the same rows however its input is split into calls, and
+ * when the rows it reads are never deleted, nor updated in what it reads. During a rebuild,
+ * `source.versionstamp` is empty. References arrive as external ids, as from the outbox, except
+ * that one the replica stored as NULL, because it did not hold the referenced row, arrives as null.
+ */
+export type LofiLocalProjectionRebuild = {
+  /**
+   * Bump when the projection writes different rows for the same input. A replica whose stored
+   * version, source tables, or table layout differ rebuilds the projection when it opens and before
+   * it applies an entry.
+   */
+  version: number;
+  /** Source tables whose stored rows a rebuild replays, in this order. */
+  from: readonly LofiProjectionTable[];
+  /** The local tables this projection alone writes, which a rebuild empties. */
+  writes: readonly LofiProjectionTable[];
+};
+
 export type LofiLocalProjection<TRetrieve extends LofiProjectionReadPlan | void = undefined> = {
+  /** Required with `rebuild`, which stores the projection's version under it. */
   name?: string;
   retrieve?: (ctx: LofiLocalProjectionRetrieveContext) => TRetrieve;
   mutate: LofiLocalProjectionMutateHandler<LofiProjectionRetrieved<TRetrieve>>;
+  /** Only the SQLite replica rebuilds projections; other adapters check only `writes`. */
+  rebuild?: LofiLocalProjectionRebuild;
 };
 
 export type AnyLofiLocalProjection = LofiLocalProjection<LofiProjectionReadPlan | void>;

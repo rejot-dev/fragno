@@ -67,7 +67,10 @@ export async function runLocalProjections(options: {
       externalId,
     );
 
-  const writeMutation = async (mutation: ProjectionQueuedMutation): Promise<void> => {
+  const writeMutation = async (
+    projection: AnyLofiLocalProjection,
+    mutation: ProjectionQueuedMutation,
+  ): Promise<void> => {
     const targetSchema = localSchemaMap.get(
       resolveLofiSchemaName(mutation.schema, schemaNameAliases),
     );
@@ -81,6 +84,19 @@ export async function runLocalProjections(options: {
       localTableMap,
       schemaNameAliases,
     });
+    // A rebuild empties only the tables the projection declares, so it may write no others.
+    if (
+      projection.rebuild &&
+      !projection.rebuild.writes.some(
+        ({ schema, table }) =>
+          resolveLofiSchemaName(schema.name, schemaNameAliases) === target.schema.name &&
+          table === target.table.name,
+      )
+    ) {
+      throw new Error(
+        `Projection ${projection.name ?? "(unnamed)"} writes ${target.schema.name}.${target.table.name}, which its rebuild does not list.`,
+      );
+    }
     await options.writeMutation(mutation, target);
   };
 
@@ -116,7 +132,7 @@ export async function runLocalProjections(options: {
     });
     assertSynchronousProjectionResult(mutateResult, "mutate");
     for (const projectionMutation of tx.drainMutations()) {
-      await writeMutation(projectionMutation);
+      await writeMutation(projection, projectionMutation);
     }
   }
 }
