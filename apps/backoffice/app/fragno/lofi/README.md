@@ -219,15 +219,6 @@ download the outbox again.
 
 - **The explorer flashes on a first visit.** It renders the server's snapshot of the tree, then the
   download while the Upload replica catches up, then the replica's tree.
-- **Workers race at startup.** Each database worker (wa-sqlite 1.7.2's `OPFSCoopSyncVFS`) deletes
-  the temporary `.ahp-*` directories closed workers left in OPFS. Two workers that list the
-  directory at the same time both try to delete the same one, and the second fails its open with
-  `NotFoundError`; three workers running that loop against three leftover directories failed in 14
-  of 30 trials. Replica workers retry their open, and every route opens only replica workers: 12 of
-  12 reloads of a workflow file, which opens both, showed its tree and its routes. wa-sqlite 2.x
-  ignores the `NotFoundError`; lofi still opens `openLofiSqliteReplica`'s database through
-  `@tanstack/browser-db-sqlite-persistence` (0.2.37), which accepts only `^1.4.1`, so backporting
-  that change as a pnpm patch of 1.7.2 would let the retry go.
 - **Returning visits show older data without saying so.** A replica that caught up before opens at
   once and replays what changed since in the background, with no indicator.
 - **Failures show as text.** The download and the Files views show the leading tab's last error

@@ -50,7 +50,7 @@
     "@fragno-dev/core": "workspace:*",
     "@fragno-private/typescript-config": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
-    "@journeyapps/wa-sqlite": "^1.4.1",
+    "@journeyapps/wa-sqlite": "^2.0.8",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.19.7",
     "@vitest/coverage-istanbul": "^4.1.0",

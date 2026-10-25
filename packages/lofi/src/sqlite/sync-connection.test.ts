@@ -64,6 +64,14 @@ describe("synchronous wa-sqlite statements", () => {
     expect(rows(database, `SELECT count(*) FROM "runs"`)).toEqual([[2]]);
   });
 
+  it("read text as it was stored, with NULs and a leading byte order mark", async () => {
+    const database = await openDatabase();
+    const texts = ["a\u0000b", "\uFEFFbom", "漢😀", ""];
+    expect(rows(database, `SELECT ?1 AS "a", ?2 AS "b", ?3 AS "c", ?4 AS "d"`, texts)).toEqual([
+      texts,
+    ]);
+  });
+
   it("guard what statements read, which functions they call, and how much work they do", async () => {
     const database = await openDatabase();
     const { connection } = database;

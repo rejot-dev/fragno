@@ -755,9 +755,10 @@ call carrying the queued writes was still running, could otherwise miss them. Re
 6,559-entry Upload outbox took 273 calls instead of about 7,250, and 0.49 s instead of 0.72 s in
 headless Chrome.
 
-Two database workers that start at once can race to delete the temporary directories that closed
-workers left in OPFS, and the loser fails to open. A page that opens several replicas, or a replica
-and a TanStack DB database, hits this on reloads, so the replica retries a failed open twice.
+On wa-sqlite 1.x, two database workers that start at once can race to delete the temporary
+directories that closed workers left in OPFS, and the loser fails to open. A page that opens several
+replicas, or a replica and a TanStack DB database, hits this on reloads, so the replica retries a
+failed open twice. wa-sqlite 2.x ignores the directory that is already gone.
 
 The writing tab tells the other tabs over a `BroadcastChannel` once a batch commits; `subscribe`
 fires in every tab. `execute` waits for the tab's pending replication writes, so a read never sees
@@ -791,10 +792,11 @@ changed since. A reconnect or a new writer catches up again without sending view
 - **Catch-up speed.** A batch takes two worker calls, so the statements themselves and their parsing
   are now most of the cost. Statements are not prepared once and reused, because the worker takes
   only SQL text.
-- **Other databases still race at startup.** The retry covers the replica's own open. A TanStack DB
-  database that loses the race to a replica's worker still fails. wa-sqlite 2.x ignores the
-  directory that is already gone, but `@tanstack/browser-db-sqlite-persistence` accepts only
-  wa-sqlite `^1.4.1`, and 1.7.2 is the last 1.x release; a patch of 1.7.2 would cover both.
+- **`openLofiSqliteReplica` needs wa-sqlite 1.x.** It opens its database through
+  `@tanstack/browser-db-sqlite-persistence`, which accepts only wa-sqlite `^1.4.1`, so apps that use
+  it stay on 1.7.2 and keep the startup race: the retry covers the replica's own open, but a
+  TanStack DB database that loses the race to a replica's worker still fails. Replica workers
+  (`@fragno-dev/lofi/sqlite/worker`) run on wa-sqlite 2.x, which does not race.
 - **Projection changes.** A projection without `rebuild` keeps the rows its old code wrote until a
   registered schema's version changes. A rebuildable one that computes something new without a
   version bump does the same.

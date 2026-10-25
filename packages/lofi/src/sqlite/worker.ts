@@ -62,8 +62,9 @@ async function openOpfsDatabase(options: {
         },
       });
     } catch (error) {
-      // Every OPFSCoopSyncVFS deletes the temporary directories closed workers left, and loses the
-      // race when another worker deletes one first; see the README.
+      // On wa-sqlite 1.x, every OPFSCoopSyncVFS deletes the temporary directories closed workers
+      // left, and loses the race when another worker deletes one first; see the README. 2.x
+      // ignores the directory that is already gone.
       if (
         attempt === OPEN_ATTEMPTS ||
         !(error instanceof DOMException) ||
