@@ -337,8 +337,8 @@ importers:
         specifier: ^1.19.14
         version: 1.19.14(hono@4.13.0)
       '@journeyapps/wa-sqlite':
-        specifier: ^1.4.1
-        version: 1.7.2
+        specifier: ^2.0.8
+        version: 2.0.8
       '@json-render/core':
         specifier: 0.20.0
         version: 0.20.0(zod@4.6.7)
@@ -2076,8 +2076,8 @@ importers:
         specifier: workspace:*
         version: link:../vitest-config
       '@journeyapps/wa-sqlite':
-        specifier: ^1.4.1
-        version: 1.7.2
+        specifier: ^2.0.8
+        version: 2.0.8
       '@storybook/react-vite':
         specifier: ^10.6.0
         version: 10.6.0(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(@typescript/typescript6@6.0.2)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(rollup@4.61.1)(storybook@10.6.0(@types/react@19.2.17)(prettier@3.9.6)(react@19.2.7))(vite@8.0.16(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
@@ -3262,11 +3262,11 @@ importers:
         specifier: workspace:*
         version: link:../../packages-private/vitest-config
       '@journeyapps/wa-sqlite':
-        specifier: ^1.4.1
-        version: 1.7.2
+        specifier: ^2.0.8
+        version: 2.0.8
       '@tanstack/browser-db-sqlite-persistence':
         specifier: ^0.2.36
-        version: 0.2.36(@journeyapps/wa-sqlite@1.7.2)(@typescript/typescript6@6.0.2)
+        version: 0.2.36(@journeyapps/wa-sqlite@2.0.8)(@typescript/typescript6@6.0.2)
       '@types/better-sqlite3':
         specifier: ^7.6.13
         version: 7.6.13
@@ -3323,8 +3323,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages-private/vitest-config
       '@journeyapps/wa-sqlite':
-        specifier: ^1.4.1
-        version: 1.7.2
+        specifier: ^2.0.8
+        version: 2.0.8
       '@types/better-sqlite3':
         specifier: ^7.6.13
         version: 7.6.13
@@ -6593,6 +6593,9 @@ packages:
 
   '@journeyapps/wa-sqlite@1.7.2':
     resolution: {integrity: sha512-EVRMzqHtHgJBFcTGOgQ5/YlxrYFSXLFFztC5yo6+jQx2mqFR+a1kkLV4IirquiBzIonjmYXfBtvZ26fmI8r9Nw==}
+
+  '@journeyapps/wa-sqlite@2.0.8':
+    resolution: {integrity: sha512-WRXEms2515S/0DFSWzmlggHu9hSJomhugDUO17rWkL6VpokV/hfjIDLs954Egx/eqrk3WADmiOMzOc7MuJbznQ==}
 
   '@jridgewell/gen-mapping@0.3.13':
     resolution: {integrity: sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA==}
@@ -23641,6 +23644,8 @@ snapshots:
 
   '@journeyapps/wa-sqlite@1.7.2': {}
 
+  '@journeyapps/wa-sqlite@2.0.8': {}
+
   '@jridgewell/gen-mapping@0.3.13':
     dependencies:
       '@jridgewell/sourcemap-codec': 1.5.5
@@ -28162,6 +28167,12 @@ snapshots:
   '@tanstack/browser-db-sqlite-persistence@0.2.36(@journeyapps/wa-sqlite@1.7.2)(@typescript/typescript6@6.0.2)':
     dependencies:
       '@journeyapps/wa-sqlite': 1.7.2
+      '@tanstack/db-sqlite-persistence-core': 0.4.11(@typescript/typescript6@6.0.2)
+      typescript: '@typescript/typescript6@6.0.2'
+
+  '@tanstack/browser-db-sqlite-persistence@0.2.36(@journeyapps/wa-sqlite@2.0.8)(@typescript/typescript6@6.0.2)':
+    dependencies:
+      '@journeyapps/wa-sqlite': 2.0.8
       '@tanstack/db-sqlite-persistence-core': 0.4.11(@typescript/typescript6@6.0.2)
       typescript: '@typescript/typescript6@6.0.2'
 

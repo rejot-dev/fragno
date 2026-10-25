@@ -167,7 +167,7 @@ function createStatements(module: WaSqliteModule, sqlite3: SQLiteAPI, db: number
     columnType: module.cwrap("sqlite3_column_type", n, [n, n]),
     columnInt64: module.cwrap("sqlite3_column_int64", n, [n, n]),
     columnDouble: module.cwrap("sqlite3_column_double", n, [n, n]),
-    columnText: module.cwrap("sqlite3_column_text", "string", [n, n]),
+    columnText: module.cwrap("sqlite3_column_text", n, [n, n]),
     columnBlob: module.cwrap("sqlite3_column_blob", n, [n, n]),
     columnBytes: module.cwrap("sqlite3_column_bytes", n, [n, n]),
     stmtReadonly: module.cwrap("sqlite3_stmt_readonly", n, [n]),
@@ -177,6 +177,8 @@ function createStatements(module: WaSqliteModule, sqlite3: SQLiteAPI, db: number
   };
   const sqliteFree = module._getSqliteFree();
   const encoder = new TextEncoder();
+  // Keeps a leading byte order mark, which the default decoder drops, so text reads as it was stored.
+  const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
   const live = new Set<number>();
   const finalizer = new FinalizationRegistry<number>((statement) => {
     if (live.delete(statement)) {
@@ -241,8 +243,13 @@ function createStatements(module: WaSqliteModule, sqlite3: SQLiteAPI, db: number
       }
       case SQLite.SQLITE_FLOAT:
         return c.columnDouble(statement, column) as number;
-      case SQLite.SQLITE_TEXT:
-        return c.columnText(statement, column) as string;
+      case SQLite.SQLITE_TEXT: {
+        // Read by length, so a NUL in the text does not end it. sqlite3_column_bytes comes second,
+        // as SQLite asks: a conversion it makes can invalidate the pointer column_text returned.
+        const pointer = c.columnText(statement, column) as number;
+        const length = c.columnBytes(statement, column) as number;
+        return decoder.decode(module.HEAPU8.subarray(pointer, pointer + length));
+      }
       default: {
         const pointer = c.columnBlob(statement, column) as number;
         // Copied, since the bytes live in wasm memory until the next step.

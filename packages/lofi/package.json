@@ -74,7 +74,7 @@
   "devDependencies": {
     "@fragno-private/typescript-config": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
-    "@journeyapps/wa-sqlite": "^1.4.1",
+    "@journeyapps/wa-sqlite": "^2.0.8",
     "@tanstack/browser-db-sqlite-persistence": "^0.2.36",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.19.7",
@@ -85,7 +85,7 @@
     "vitest": "catalog:"
   },
   "peerDependencies": {
-    "@journeyapps/wa-sqlite": "^1.4.1",
+    "@journeyapps/wa-sqlite": "^1.4.1 || ^2.0.0",
     "@tanstack/browser-db-sqlite-persistence": "^0.2.36"
   },
   "peerDependenciesMeta": {

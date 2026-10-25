@@ -52,7 +52,7 @@
     "@fragno-dev/workflows": "workspace:*",
     "@fragno-private/typescript-config": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
-    "@journeyapps/wa-sqlite": "^1.4.1",
+    "@journeyapps/wa-sqlite": "^2.0.8",
     "@storybook/react-vite": "^10.6.0",
     "@tailwindcss/vite": "^4.2.1",
     "@testing-library/react": "^16.3.2",

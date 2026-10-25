@@ -80,7 +80,7 @@
     "@fragno-private/backoffice-ui": "workspace:*",
     "@fragno-private/design-system": "workspace:*",
     "@hono/node-server": "^1.19.14",
-    "@journeyapps/wa-sqlite": "^1.4.1",
+    "@journeyapps/wa-sqlite": "^2.0.8",
     "@json-render/core": "0.20.0",
     "@json-render/react": "0.20.0",
     "@jsonforms/core": "^3.7.0",
