@@ -246,6 +246,69 @@ const resolveRefType = (ref: string, context: JsonSchemaTypeScriptContext): stri
   return typeName;
 };
 
+/** Nested unions without constraints of their own, such as a union of discriminated unions. */
+function flattenUnionMembers(members: JsonSchemaObject[]): JsonSchemaObject[] {
+  return members.flatMap((member) => {
+    const { oneOf, anyOf, ...constraints } = member;
+    const nested = oneOf ?? anyOf;
+    return nested && !(oneOf && anyOf) && Object.keys(constraints).length === 0
+      ? flattenUnionMembers(nested)
+      : [member];
+  });
+}
+
+function literalValues(schema: JsonSchemaObject): unknown[] | null {
+  const { type: _type, const: constValue, enum: enumValues, ...constraints } = schema;
+  if (Object.keys(constraints).length > 0) {
+    return null;
+  }
+  return constValue === undefined ? (enumValues ?? null) : [constValue];
+}
+
+/** Joins the object variants that differ only in the literal value of `key`. */
+function mergeVariantsOn(members: JsonSchemaObject[], key: string): JsonSchemaObject[] {
+  const variants: { schema: JsonSchemaObject; values: unknown[]; merged: boolean }[] = [];
+  const variantsByRest = new Map<string, (typeof variants)[number]>();
+  for (const schema of members) {
+    const property = schema.type === "object" && !schema.id ? schema.properties?.[key] : undefined;
+    const values = property ? literalValues(property) : null;
+    if (!values) {
+      variants.push({ schema, values: [], merged: false });
+      continue;
+    }
+    const { [key]: _merged, ...rest } = schema.properties ?? {};
+    const identity = JSON.stringify({ ...schema, properties: rest });
+    const variant = variantsByRest.get(identity);
+    if (variant) {
+      variant.values.push(...values);
+      variant.merged = true;
+    } else {
+      const created = { schema, values: [...values], merged: false };
+      variantsByRest.set(identity, created);
+      variants.push(created);
+    }
+  }
+  return variants.map(({ schema, values, merged }) =>
+    merged
+      ? { ...schema, properties: { ...schema.properties, [key]: { enum: [...new Set(values)] } } }
+      : schema,
+  );
+}
+
+// Writes `{ namespace: "store"; permission: "read" | "modify" }` instead of one variant per
+// permission; the merged union accepts the same values. It merges on one property, the last that
+// merges any: leading properties usually name the variant, as `namespace` does here.
+function mergeLiteralVariants(members: JsonSchemaObject[]): JsonSchemaObject[] {
+  const keys = [...new Set(members.flatMap((member) => Object.keys(member.properties ?? {})))];
+  for (const key of keys.reverse()) {
+    const merged = mergeVariantsOn(members, key);
+    if (merged.length < members.length) {
+      return merged;
+    }
+  }
+  return members;
+}
+
 const renderJsonSchemaType = (
   schema: JsonSchemaObject | undefined,
   depth: number,
@@ -272,12 +335,13 @@ const renderJsonSchemaType = (
     return renderUnion(schema.enum.map(literalToType));
   }
 
-  if (schema.oneOf?.length) {
-    return renderUnion(schema.oneOf.map((entry) => renderJsonSchemaType(entry, depth, context)));
-  }
-
-  if (schema.anyOf?.length) {
-    return renderUnion(schema.anyOf.map((entry) => renderJsonSchemaType(entry, depth, context)));
+  const unionMembers = schema.oneOf?.length ? schema.oneOf : schema.anyOf;
+  if (unionMembers?.length) {
+    return renderUnion(
+      mergeLiteralVariants(flattenUnionMembers(unionMembers)).map((entry) =>
+        renderJsonSchemaType(entry, depth, context),
+      ),
+    );
   }
 
   if (schema.allOf?.length) {

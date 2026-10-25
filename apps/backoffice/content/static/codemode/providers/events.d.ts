@@ -43,6 +43,52 @@ type EventsCodemodeProvider = {
 };
 declare const events: EventsCodemodeProvider;
 
+type AutomationActors = {
+  initiator:
+    | {
+        scope: "internal";
+        type: string;
+        id: string;
+        role: "initiator";
+      }
+    | {
+        scope: "external";
+        source: string;
+        type: string;
+        id: string;
+        role: "initiator";
+      };
+  principal:
+    | {
+        scope: "internal";
+        type: string;
+        id: string;
+        role: "principal";
+      }
+    | {
+        scope: "external";
+        source: string;
+        type: string;
+        id: string;
+        role: "principal";
+      }
+    | null;
+  delegation: (
+    | {
+        scope: "internal";
+        type: string;
+        id: string;
+        role: "delegate" | "assistant";
+      }
+    | {
+        scope: "external";
+        source: string;
+        type: string;
+        id: string;
+        role: "delegate" | "assistant";
+      }
+  )[];
+};
 type EventsFireInput = {
   eventType: string;
   source?: string;
@@ -276,65 +322,7 @@ type EventsListOutput = {
     payload: {
       [key: string]: unknown;
     };
-    actors: {
-      initiator:
-        | {
-            scope: "internal";
-            type: string;
-            id: string;
-            role: "initiator";
-          }
-        | {
-            scope: "external";
-            source: string;
-            type: string;
-            id: string;
-            role: "initiator";
-          };
-      principal:
-        | {
-            scope: "internal";
-            type: string;
-            id: string;
-            role: "principal";
-          }
-        | {
-            scope: "external";
-            source: string;
-            type: string;
-            id: string;
-            role: "principal";
-          }
-        | null;
-      delegation: (
-        | {
-            scope: "internal";
-            type: string;
-            id: string;
-            role: "delegate";
-          }
-        | {
-            scope: "external";
-            source: string;
-            type: string;
-            id: string;
-            role: "delegate";
-          }
-        | {
-            scope: "internal";
-            type: string;
-            id: string;
-            role: "assistant";
-          }
-        | {
-            scope: "external";
-            source: string;
-            type: string;
-            id: string;
-            role: "assistant";
-          }
-      )[];
-    };
+    actors: AutomationActors;
     subject: {
       orgId?: string;
       userId?: string;
@@ -382,7 +370,7 @@ type EventsListOutput = {
                 routeName: string;
                 /** ISO 8601 datetime string. */
                 matchedAt: string;
-                status: "retrying";
+                status: "retrying" | "failed";
                 failedAttempts: number;
                 error: string;
               }
@@ -475,15 +463,6 @@ type EventsListOutput = {
                         | "caused_by_notified_agent";
                     };
                 failedAttempts: number;
-              }
-            | {
-                routeId: string;
-                routeName: string;
-                /** ISO 8601 datetime string. */
-                matchedAt: string;
-                status: "failed";
-                failedAttempts: number;
-                error: string;
               }
           )[];
         };
@@ -606,65 +585,7 @@ type EventsGetOutput = {
   payload: {
     [key: string]: unknown;
   };
-  actors: {
-    initiator:
-      | {
-          scope: "internal";
-          type: string;
-          id: string;
-          role: "initiator";
-        }
-      | {
-          scope: "external";
-          source: string;
-          type: string;
-          id: string;
-          role: "initiator";
-        };
-    principal:
-      | {
-          scope: "internal";
-          type: string;
-          id: string;
-          role: "principal";
-        }
-      | {
-          scope: "external";
-          source: string;
-          type: string;
-          id: string;
-          role: "principal";
-        }
-      | null;
-    delegation: (
-      | {
-          scope: "internal";
-          type: string;
-          id: string;
-          role: "delegate";
-        }
-      | {
-          scope: "external";
-          source: string;
-          type: string;
-          id: string;
-          role: "delegate";
-        }
-      | {
-          scope: "internal";
-          type: string;
-          id: string;
-          role: "assistant";
-        }
-      | {
-          scope: "external";
-          source: string;
-          type: string;
-          id: string;
-          role: "assistant";
-        }
-    )[];
-  };
+  actors: AutomationActors;
   subject: {
     orgId?: string;
     userId?: string;
@@ -712,7 +633,7 @@ type EventsGetOutput = {
               routeName: string;
               /** ISO 8601 datetime string. */
               matchedAt: string;
-              status: "retrying";
+              status: "retrying" | "failed";
               failedAttempts: number;
               error: string;
             }
@@ -806,15 +727,6 @@ type EventsGetOutput = {
                   };
               failedAttempts: number;
             }
-          | {
-              routeId: string;
-              routeName: string;
-              /** ISO 8601 datetime string. */
-              matchedAt: string;
-              status: "failed";
-              failedAttempts: number;
-              error: string;
-            }
         )[];
       };
 } | null;
@@ -839,7 +751,7 @@ type EventsRoutesListOutput = {
           routeName: string;
           /** ISO 8601 datetime string. */
           matchedAt: string;
-          status: "retrying";
+          status: "retrying" | "failed";
           failedAttempts: number;
           error: string;
         }
@@ -932,15 +844,6 @@ type EventsRoutesListOutput = {
                   | "caused_by_notified_agent";
               };
           failedAttempts: number;
-        }
-      | {
-          routeId: string;
-          routeName: string;
-          /** ISO 8601 datetime string. */
-          matchedAt: string;
-          status: "failed";
-          failedAttempts: number;
-          error: string;
         };
   }[];
   nextCursor?: string;
@@ -963,7 +866,7 @@ type EventsRoutesRetryOutput =
       routeName: string;
       /** ISO 8601 datetime string. */
       matchedAt: string;
-      status: "retrying";
+      status: "retrying" | "failed";
       failedAttempts: number;
       error: string;
     }
@@ -1056,15 +959,6 @@ type EventsRoutesRetryOutput =
               | "caused_by_notified_agent";
           };
       failedAttempts: number;
-    }
-  | {
-      routeId: string;
-      routeName: string;
-      /** ISO 8601 datetime string. */
-      matchedAt: string;
-      status: "failed";
-      failedAttempts: number;
-      error: string;
     }
   | null;
 type EventsCatalogListOutput = {

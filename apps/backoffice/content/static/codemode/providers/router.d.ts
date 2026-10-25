@@ -42,124 +42,8 @@ type AutomationRoute = {
   action: AutomationRouteAction;
   description?: string | null;
   metadata: {
-    createdByActors: {
-      initiator:
-        | {
-            scope: "internal";
-            type: string;
-            id: string;
-            role: "initiator";
-          }
-        | {
-            scope: "external";
-            source: string;
-            type: string;
-            id: string;
-            role: "initiator";
-          };
-      principal:
-        | {
-            scope: "internal";
-            type: string;
-            id: string;
-            role: "principal";
-          }
-        | {
-            scope: "external";
-            source: string;
-            type: string;
-            id: string;
-            role: "principal";
-          }
-        | null;
-      delegation: (
-        | {
-            scope: "internal";
-            type: string;
-            id: string;
-            role: "delegate";
-          }
-        | {
-            scope: "external";
-            source: string;
-            type: string;
-            id: string;
-            role: "delegate";
-          }
-        | {
-            scope: "internal";
-            type: string;
-            id: string;
-            role: "assistant";
-          }
-        | {
-            scope: "external";
-            source: string;
-            type: string;
-            id: string;
-            role: "assistant";
-          }
-      )[];
-    };
-    updatedByActors: {
-      initiator:
-        | {
-            scope: "internal";
-            type: string;
-            id: string;
-            role: "initiator";
-          }
-        | {
-            scope: "external";
-            source: string;
-            type: string;
-            id: string;
-            role: "initiator";
-          };
-      principal:
-        | {
-            scope: "internal";
-            type: string;
-            id: string;
-            role: "principal";
-          }
-        | {
-            scope: "external";
-            source: string;
-            type: string;
-            id: string;
-            role: "principal";
-          }
-        | null;
-      delegation: (
-        | {
-            scope: "internal";
-            type: string;
-            id: string;
-            role: "delegate";
-          }
-        | {
-            scope: "external";
-            source: string;
-            type: string;
-            id: string;
-            role: "delegate";
-          }
-        | {
-            scope: "internal";
-            type: string;
-            id: string;
-            role: "assistant";
-          }
-        | {
-            scope: "external";
-            source: string;
-            type: string;
-            id: string;
-            role: "assistant";
-          }
-      )[];
-    };
+    createdByActors: AutomationActors;
+    updatedByActors: AutomationActors;
     managedBy: AutomationRouteManagedBy | null;
   } | null;
   nextOccurrenceAt: string | null;
@@ -191,6 +75,52 @@ type AutomationRouteAction =
   | AutomationForwardEventAction
   | AutomationReclassifyEventAction
   | AutomationNotifyAgentAction;
+type AutomationActors = {
+  initiator:
+    | {
+        scope: "internal";
+        type: string;
+        id: string;
+        role: "initiator";
+      }
+    | {
+        scope: "external";
+        source: string;
+        type: string;
+        id: string;
+        role: "initiator";
+      };
+  principal:
+    | {
+        scope: "internal";
+        type: string;
+        id: string;
+        role: "principal";
+      }
+    | {
+        scope: "external";
+        source: string;
+        type: string;
+        id: string;
+        role: "principal";
+      }
+    | null;
+  delegation: (
+    | {
+        scope: "internal";
+        type: string;
+        id: string;
+        role: "delegate" | "assistant";
+      }
+    | {
+        scope: "external";
+        source: string;
+        type: string;
+        id: string;
+        role: "delegate" | "assistant";
+      }
+  )[];
+};
 type AutomationRouteManagedBy = {
   kind: "marketplace";
   listingId: string;
@@ -201,26 +131,13 @@ type AutomationEventMatcher =
   | {
       actor:
         | {
-            participation: "initiator";
+            participation: "initiator" | "principal";
             scope: "internal";
             type?: string;
             id?: string;
           }
         | {
-            participation: "initiator";
-            scope: "external";
-            source?: string;
-            type?: string;
-            id?: string;
-          }
-        | {
-            participation: "principal";
-            scope: "internal";
-            type?: string;
-            id?: string;
-          }
-        | {
-            participation: "principal";
+            participation: "initiator" | "principal";
             scope: "external";
             source?: string;
             type?: string;
@@ -262,19 +179,7 @@ type AutomationEventMatcher =
     };
 type AutomationStartWorkflowAction = {
   kind: "start_workflow";
-  authority:
-    | {
-        kind: "delegated-user";
-        grants: BackofficePermissionRequirement[] | "inherit";
-      }
-    | {
-        kind: "linked-user";
-        grants: BackofficePermissionRequirement[] | "inherit";
-      }
-    | {
-        kind: "organization-automation";
-        grants: BackofficePermissionRequirement[];
-      };
+  authority: AutomationAuthorityMode;
   workflowScriptPath: string;
   instanceIdTemplate: string;
 };
@@ -298,256 +203,16 @@ type AutomationReclassifyEventAction = {
 type AutomationNotifyAgentAction = {
   kind: "notify_agent";
   agentName: string;
-  authority:
-    | {
-        kind: "delegated-user";
-        grants: BackofficePermissionRequirement[] | "inherit";
-      }
-    | {
-        kind: "linked-user";
-        grants: BackofficePermissionRequirement[] | "inherit";
-      }
-    | {
-        kind: "organization-automation";
-        grants: BackofficePermissionRequirement[];
-      };
+  authority: AutomationAuthorityMode;
 };
-type BackofficePermissionRequirement =
+type AutomationAuthorityMode =
   | {
-      namespace: "account";
-      permission: "read";
+      kind: "delegated-user" | "linked-user";
+      grants: BackofficePermissionRequirement[] | "inherit";
     }
   | {
-      namespace: "account";
-      permission: "manage";
-    }
-  | {
-      namespace: "admin";
-      permission: "apps.manage";
-    }
-  | {
-      namespace: "admin";
-      permission: "apps.read";
-    }
-  | {
-      namespace: "admin";
-      permission: "oauth-clients.manage";
-    }
-  | {
-      namespace: "admin";
-      permission: "oauth-clients.read";
-    }
-  | {
-      namespace: "admin";
-      permission: "sign-up-invitations.manage";
-    }
-  | {
-      namespace: "admin";
-      permission: "organizations.manage";
-    }
-  | {
-      namespace: "admin";
-      permission: "users.manage";
-    }
-  | {
-      namespace: "apps";
-      permission: "read";
-    }
-  | {
-      namespace: "apps";
-      permission: "manage";
-    }
-  | {
-      namespace: "capabilities";
-      permission: "read";
-    }
-  | {
-      namespace: "cloudflare";
-      permission: "browserRun";
-    }
-  | {
-      namespace: "connections";
-      permission: "manage";
-    }
-  | {
-      namespace: "connections";
-      permission: "read";
-    }
-  | {
-      namespace: "events";
-      permission: "emit";
-    }
-  | {
-      namespace: "events";
-      permission: "manage";
-    }
-  | {
-      namespace: "events";
-      permission: "read";
-    }
-  | {
-      namespace: "events";
-      permission: "route";
-    }
-  | {
-      namespace: "forms";
-      permission: "create";
-    }
-  | {
-      namespace: "forms";
-      permission: "read";
-    }
-  | {
-      namespace: "forms";
-      permission: "update";
-    }
-  | {
-      namespace: "hooks";
-      permission: "read";
-    }
-  | {
-      namespace: "identity";
-      permission: "link";
-    }
-  | {
-      namespace: "identity";
-      permission: "bind";
-    }
-  | {
-      namespace: "identity";
-      permission: "read";
-    }
-  | {
-      namespace: "identity";
-      permission: "resolve";
-    }
-  | {
-      namespace: "identity";
-      permission: "revoke";
-    }
-  | {
-      namespace: "integrations";
-      permission: "read";
-    }
-  | {
-      namespace: "integrations";
-      permission: "manage";
-    }
-  | {
-      namespace: "integrations";
-      permission: "execute";
-    }
-  | {
-      namespace: "internal";
-      permission: "manage";
-    }
-  | {
-      namespace: "org";
-      permission: "read";
-    }
-  | {
-      namespace: "org";
-      permission: "manage";
-    }
-  | {
-      namespace: "models";
-      permission: "classify";
-    }
-  | {
-      namespace: "models";
-      permission: "generateImage";
-    }
-  | {
-      namespace: "marketplace";
-      permission: "read";
-    }
-  | {
-      namespace: "marketplace";
-      permission: "publish";
-    }
-  | {
-      namespace: "marketplace";
-      permission: "feature";
-    }
-  | {
-      namespace: "packages";
-      permission: "read";
-    }
-  | {
-      namespace: "packages";
-      permission: "install";
-    }
-  | {
-      namespace: "otp";
-      permission: "create";
-    }
-  | {
-      namespace: "pi";
-      permission: "manage";
-    }
-  | {
-      namespace: "pi";
-      permission: "modify";
-    }
-  | {
-      namespace: "pi";
-      permission: "read";
-    }
-  | {
-      namespace: "projects";
-      permission: "create";
-    }
-  | {
-      namespace: "projects";
-      permission: "read";
-    }
-  | {
-      namespace: "reson8";
-      permission: "transcribe";
-    }
-  | {
-      namespace: "router";
-      permission: "modify";
-    }
-  | {
-      namespace: "router";
-      permission: "read";
-    }
-  | {
-      namespace: "sandbox";
-      permission: "modify";
-    }
-  | {
-      namespace: "sandbox";
-      permission: "read";
-    }
-  | {
-      namespace: "store";
-      permission: "modify";
-    }
-  | {
-      namespace: "store";
-      permission: "read";
-    }
-  | {
-      namespace: "upload";
-      permission: "modify";
-    }
-  | {
-      namespace: "upload";
-      permission: "read";
-    }
-  | {
-      namespace: "workflow";
-      permission: "executeCode";
-    }
-  | {
-      namespace: "workflow";
-      permission: "modify";
-    }
-  | {
-      namespace: "workflow";
-      permission: "read";
+      kind: "organization-automation";
+      grants: BackofficePermissionRequirement[];
     };
 type AutomationWorkflowEventTarget =
   | AutomationWorkflowEventInstanceIdTarget
@@ -609,6 +274,114 @@ type AutomationEventPayloadProjection = {
     [key: string]: string;
   };
 };
+type BackofficePermissionRequirement =
+  | {
+      namespace: "account";
+      permission: "read" | "manage";
+    }
+  | {
+      namespace: "admin";
+      permission:
+        | "apps.manage"
+        | "apps.read"
+        | "oauth-clients.manage"
+        | "oauth-clients.read"
+        | "sign-up-invitations.manage"
+        | "organizations.manage"
+        | "users.manage";
+    }
+  | {
+      namespace: "apps";
+      permission: "read" | "manage";
+    }
+  | {
+      namespace: "capabilities";
+      permission: "read";
+    }
+  | {
+      namespace: "cloudflare";
+      permission: "browserRun";
+    }
+  | {
+      namespace: "connections";
+      permission: "manage" | "read";
+    }
+  | {
+      namespace: "events";
+      permission: "emit" | "manage" | "read" | "route";
+    }
+  | {
+      namespace: "forms";
+      permission: "create" | "read" | "update";
+    }
+  | {
+      namespace: "hooks";
+      permission: "read";
+    }
+  | {
+      namespace: "identity";
+      permission: "link" | "bind" | "read" | "resolve" | "revoke";
+    }
+  | {
+      namespace: "integrations";
+      permission: "read" | "manage" | "execute";
+    }
+  | {
+      namespace: "internal";
+      permission: "manage";
+    }
+  | {
+      namespace: "org";
+      permission: "read" | "manage";
+    }
+  | {
+      namespace: "models";
+      permission: "classify" | "generateImage";
+    }
+  | {
+      namespace: "marketplace";
+      permission: "read" | "publish" | "feature";
+    }
+  | {
+      namespace: "packages";
+      permission: "read" | "install";
+    }
+  | {
+      namespace: "otp";
+      permission: "create";
+    }
+  | {
+      namespace: "pi";
+      permission: "manage" | "modify" | "read";
+    }
+  | {
+      namespace: "projects";
+      permission: "create" | "read";
+    }
+  | {
+      namespace: "reson8";
+      permission: "transcribe";
+    }
+  | {
+      namespace: "router";
+      permission: "modify" | "read";
+    }
+  | {
+      namespace: "sandbox";
+      permission: "modify" | "read";
+    }
+  | {
+      namespace: "store";
+      permission: "modify" | "read";
+    }
+  | {
+      namespace: "upload";
+      permission: "modify" | "read";
+    }
+  | {
+      namespace: "workflow";
+      permission: "executeCode" | "modify" | "read";
+    };
 type AutomationWorkflowEventInstanceIdTarget = {
   kind: "instance_id";
   template: string;
@@ -638,64 +411,6 @@ type AutomationRouteTriggerInput =
             timeZone?: string;
           };
     };
-type AutomationRouteActionInput =
-  | AutomationStartWorkflowActionInput
-  | AutomationSendWorkflowEventActionInput
-  | AutomationForwardEventActionInput
-  | AutomationReclassifyEventActionInput
-  | AutomationNotifyAgentActionInput;
-type AutomationStartWorkflowActionInput = {
-  kind: "start_workflow";
-  authority:
-    | {
-        kind: "delegated-user";
-        grants: BackofficePermissionRequirement[] | "inherit";
-      }
-    | {
-        kind: "linked-user";
-        grants: BackofficePermissionRequirement[] | "inherit";
-      }
-    | {
-        kind: "organization-automation";
-        grants: BackofficePermissionRequirement[];
-      };
-  workflowScriptPath: string;
-  instanceIdTemplate: string;
-};
-type AutomationSendWorkflowEventActionInput = {
-  kind: "send_workflow_event";
-  target: AutomationWorkflowEventTarget;
-  eventType: string;
-  payload?: unknown;
-};
-type AutomationForwardEventActionInput = {
-  kind: "forward_event";
-  targetScope: AutomationRouteScopeTemplate;
-  idTemplate?: string;
-};
-type AutomationReclassifyEventActionInput = {
-  kind: "reclassify_event";
-  source: string;
-  eventType: string;
-  payload: AutomationEventPayloadProjection;
-};
-type AutomationNotifyAgentActionInput = {
-  kind: "notify_agent";
-  agentName: string;
-  authority:
-    | {
-        kind: "delegated-user";
-        grants: BackofficePermissionRequirement[] | "inherit";
-      }
-    | {
-        kind: "linked-user";
-        grants: BackofficePermissionRequirement[] | "inherit";
-      }
-    | {
-        kind: "organization-automation";
-        grants: BackofficePermissionRequirement[];
-      };
-};
 type RouterListOutput = AutomationRoute[];
 type RouterGetInput = {
   id: string;
@@ -709,7 +424,7 @@ type RouterCreateInput = {
   description?: string | null;
   managedBy?: AutomationRouteManagedBy | null;
   trigger: AutomationRouteTriggerInput;
-  action: AutomationRouteActionInput;
+  action: AutomationRouteAction;
 };
 type RouterCreateOutput = AutomationRoute;
 type RouterUpdateInput = {
@@ -718,7 +433,7 @@ type RouterUpdateInput = {
   enabled?: boolean;
   priority?: number;
   trigger?: AutomationRouteTriggerInput;
-  action?: AutomationRouteActionInput;
+  action?: AutomationRouteAction;
   description?: string | null;
   managedBy?: AutomationRouteManagedBy | null;
 };

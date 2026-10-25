@@ -15,23 +15,14 @@ type CloudflareCodemodeProvider = {
 };
 declare const cloudflare: CloudflareCodemodeProvider;
 
-type CloudflareBrowserRunCaptureInput =
-  | {
-      action: "pdf";
-      input: {
-        url?: string;
-        html?: string;
-        [key: string]: unknown;
-      };
-    }
-  | {
-      action: "screenshot";
-      input: {
-        url?: string;
-        html?: string;
-        [key: string]: unknown;
-      };
-    };
+type CloudflareBrowserRunCaptureInput = {
+  action: "pdf" | "screenshot";
+  input: {
+    url?: string;
+    html?: string;
+    [key: string]: unknown;
+  };
+};
 type CloudflareBrowserRunCaptureOutput = {
   contentType: string;
   data: string;
@@ -45,11 +36,7 @@ type CloudflareBrowserRunCrawlInput =
       };
     }
   | {
-      action: "get";
-      jobId: string;
-    }
-  | {
-      action: "cancel";
+      action: "get" | "cancel";
       jobId: string;
     };
 type CloudflareBrowserRunCrawlOutput =
@@ -60,10 +47,6 @@ type CloudflareBrowserRunCrawlOutput =
       };
     }
   | {
-      action: "get";
-      result: unknown;
-    }
-  | {
-      action: "cancel";
+      action: "get" | "cancel";
       result: unknown;
     };

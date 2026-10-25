@@ -110,6 +110,42 @@ describe("zodSchemaToTypeScript", () => {
     `);
   });
 
+  test("merges variants that differ only in one literal, keeping their leading property apart", () => {
+    const grant = (namespace: string, permission: string) =>
+      z.strictObject({ namespace: z.literal(namespace), permission: z.literal(permission) });
+    expect(
+      zodSchemaToTypeScript(
+        z.union([
+          z.discriminatedUnion("namespace", [grant("store", "read"), grant("router", "read")]),
+          grant("store", "modify"),
+          grant("router", "modify"),
+          grant("upload", "read"),
+          grant("upload", "modify"),
+          grant("pi", "manage"),
+          z.strictObject({ namespace: z.literal("pi"), permission: z.string() }),
+        ]),
+        "output",
+      ),
+    ).toMatchInlineSnapshot(`
+      "{
+        namespace: "store";
+        permission: "read" | "modify";
+      } | {
+        namespace: "router";
+        permission: "read" | "modify";
+      } | {
+        namespace: "upload";
+        permission: "read" | "modify";
+      } | {
+        namespace: "pi";
+        permission: "manage";
+      } | {
+        namespace: "pi";
+        permission: string;
+      }"
+    `);
+  });
+
   test("renders descriptions and date-time jsdoc", () => {
     expect(
       zodSchemaToTypeScript(

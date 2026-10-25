@@ -94,34 +94,36 @@ export const automationDelegatedActorSchema = z.lazy(() =>
   z.discriminatedUnion("role", [automationDelegateActorSchema, automationAssistantActorSchema]),
 );
 
-export const automationActorsSchema: z.ZodType<AutomationActors> = z.lazy(() =>
-  z
-    .strictObject({
-      initiator: automationInitiatorActorSchema,
-      principal: automationPrincipalActorSchema.nullable(),
-      delegation: z.array(automationDelegatedActorSchema),
-    })
-    .superRefine((actors, context) => {
-      const actorSequence = [
-        actors.initiator,
-        ...(actors.principal ? [actors.principal] : []),
-        ...actors.delegation,
-      ];
+export const automationActorsSchema: z.ZodType<AutomationActors> = z
+  .lazy(() =>
+    z
+      .strictObject({
+        initiator: automationInitiatorActorSchema,
+        principal: automationPrincipalActorSchema.nullable(),
+        delegation: z.array(automationDelegatedActorSchema),
+      })
+      .superRefine((actors, context) => {
+        const actorSequence = [
+          actors.initiator,
+          ...(actors.principal ? [actors.principal] : []),
+          ...actors.delegation,
+        ];
 
-      const hasDuplicateIdentity = actorSequence.some((actor, actorIndex) =>
-        actorSequence
-          .slice(0, actorIndex)
-          .some((previousActor) => automationEntityRefsEqual(previousActor, actor)),
-      );
+        const hasDuplicateIdentity = actorSequence.some((actor, actorIndex) =>
+          actorSequence
+            .slice(0, actorIndex)
+            .some((previousActor) => automationEntityRefsEqual(previousActor, actor)),
+        );
 
-      if (hasDuplicateIdentity) {
-        context.addIssue({
-          code: "custom",
-          message: "Automation actor provenance contains duplicate identities.",
-        });
-      }
-    }),
-);
+        if (hasDuplicateIdentity) {
+          context.addIssue({
+            code: "custom",
+            message: "Automation actor provenance contains duplicate identities.",
+          });
+        }
+      }),
+  )
+  .meta({ id: "AutomationActors" });
 
 /**
  * Explicit grants narrow the user's authority. `inherit` leaves the user's current permissions
@@ -509,22 +511,24 @@ const automationRouteGrantsSchema = z.lazy(() =>
   }),
 ) satisfies z.ZodType<readonly BackofficePermissionRequirement[]>;
 
-const automationAuthorityModeSchema = z.lazy(() =>
-  z.discriminatedUnion("kind", [
-    z.strictObject({
-      kind: z.literal("delegated-user"),
-      grants: z.union([automationRouteGrantsSchema, z.literal("inherit")]),
-    }),
-    z.strictObject({
-      kind: z.literal("linked-user"),
-      grants: z.union([automationRouteGrantsSchema, z.literal("inherit")]),
-    }),
-    z.strictObject({
-      kind: z.literal("organization-automation"),
-      grants: automationRouteGrantsSchema,
-    }),
-  ]),
-);
+const automationAuthorityModeSchema = z
+  .lazy(() =>
+    z.discriminatedUnion("kind", [
+      z.strictObject({
+        kind: z.literal("delegated-user"),
+        grants: z.union([automationRouteGrantsSchema, z.literal("inherit")]),
+      }),
+      z.strictObject({
+        kind: z.literal("linked-user"),
+        grants: z.union([automationRouteGrantsSchema, z.literal("inherit")]),
+      }),
+      z.strictObject({
+        kind: z.literal("organization-automation"),
+        grants: automationRouteGrantsSchema,
+      }),
+    ]),
+  )
+  .meta({ id: "AutomationAuthorityMode" });
 
 const automationStartWorkflowActionSchema = z
   .lazy(() =>
@@ -535,10 +539,7 @@ const automationStartWorkflowActionSchema = z
       instanceIdTemplate: z.string().trim().min(1),
     }),
   )
-  .meta({
-    id: "AutomationStartWorkflowAction",
-    codemodeInputId: "AutomationStartWorkflowActionInput",
-  }) satisfies z.ZodType<AutomationStartWorkflowAction>;
+  .meta({ id: "AutomationStartWorkflowAction" }) satisfies z.ZodType<AutomationStartWorkflowAction>;
 
 const automationWorkflowEventTargetSchema: z.ZodType<AutomationWorkflowEventTarget> = z
   .lazy(() =>
@@ -566,7 +567,6 @@ const automationSendWorkflowEventActionSchema = z
   )
   .meta({
     id: "AutomationSendWorkflowEventAction",
-    codemodeInputId: "AutomationSendWorkflowEventActionInput",
   }) satisfies z.ZodType<AutomationSendWorkflowEventAction>;
 
 const automationForwardEventActionSchema = z
@@ -577,10 +577,7 @@ const automationForwardEventActionSchema = z
       idTemplate: z.string().trim().min(1).optional(),
     }),
   )
-  .meta({
-    id: "AutomationForwardEventAction",
-    codemodeInputId: "AutomationForwardEventActionInput",
-  }) satisfies z.ZodType<AutomationForwardEventAction>;
+  .meta({ id: "AutomationForwardEventAction" }) satisfies z.ZodType<AutomationForwardEventAction>;
 
 const automationEventPayloadProjectionSchema = z
   .lazy(() =>
@@ -612,7 +609,6 @@ const automationReclassifyEventActionSchema = z
   )
   .meta({
     id: "AutomationReclassifyEventAction",
-    codemodeInputId: "AutomationReclassifyEventActionInput",
   }) satisfies z.ZodType<AutomationReclassifyEventAction>;
 
 const automationNotifyAgentActionSchema = z
@@ -623,10 +619,7 @@ const automationNotifyAgentActionSchema = z
       authority: automationAuthorityModeSchema,
     }),
   )
-  .meta({
-    id: "AutomationNotifyAgentAction",
-    codemodeInputId: "AutomationNotifyAgentActionInput",
-  }) satisfies z.ZodType<AutomationNotifyAgentAction>;
+  .meta({ id: "AutomationNotifyAgentAction" }) satisfies z.ZodType<AutomationNotifyAgentAction>;
 
 export const automationRouteActionSchema = z
   .lazy(() =>
@@ -638,10 +631,7 @@ export const automationRouteActionSchema = z
       automationNotifyAgentActionSchema,
     ]),
   )
-  .meta({
-    id: "AutomationRouteAction",
-    codemodeInputId: "AutomationRouteActionInput",
-  }) satisfies z.ZodType<AutomationRouteAction>;
+  .meta({ id: "AutomationRouteAction" }) satisfies z.ZodType<AutomationRouteAction>;
 
 export const automationRouteManagedBySchema: z.ZodType<AutomationRouteManagedBy> = z
   .lazy(() =>

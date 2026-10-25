@@ -103,20 +103,11 @@ type ConfiguredIntegrationConnection = {
 };
 type IntegrationAuthorizationStatus =
   | {
-      status: "not-required";
-    }
-  | {
-      status: "not-checked";
-    }
-  | {
-      status: "missing";
+      status: "not-required" | "not-checked" | "missing" | "expired";
     }
   | {
       /** Credentials or confirmed consent exist; this does not prove live service access. */
       status: "available";
-    }
-  | {
-      status: "expired";
     };
 type IntegrationVerificationCheck =
   | {
@@ -202,12 +193,7 @@ type IntegrationSetupProgress =
     }
   | {
       connectionId: IntegrationConnectionId;
-      status: "blocked";
-      reason: string;
-    }
-  | {
-      connectionId: IntegrationConnectionId;
-      status: "expired";
+      status: "blocked" | "expired";
       reason: string;
     };
 type IntegrationJsonSchema =

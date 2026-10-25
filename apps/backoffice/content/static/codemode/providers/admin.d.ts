@@ -145,47 +145,22 @@ type OrganizationMemberRecord = {
 type BackofficePermissionRequirement =
   | {
       namespace: "account";
-      permission: "read";
-    }
-  | {
-      namespace: "account";
-      permission: "manage";
+      permission: "read" | "manage";
     }
   | {
       namespace: "admin";
-      permission: "apps.manage";
-    }
-  | {
-      namespace: "admin";
-      permission: "apps.read";
-    }
-  | {
-      namespace: "admin";
-      permission: "oauth-clients.manage";
-    }
-  | {
-      namespace: "admin";
-      permission: "oauth-clients.read";
-    }
-  | {
-      namespace: "admin";
-      permission: "sign-up-invitations.manage";
-    }
-  | {
-      namespace: "admin";
-      permission: "organizations.manage";
-    }
-  | {
-      namespace: "admin";
-      permission: "users.manage";
+      permission:
+        | "apps.manage"
+        | "apps.read"
+        | "oauth-clients.manage"
+        | "oauth-clients.read"
+        | "sign-up-invitations.manage"
+        | "organizations.manage"
+        | "users.manage";
     }
   | {
       namespace: "apps";
-      permission: "read";
-    }
-  | {
-      namespace: "apps";
-      permission: "manage";
+      permission: "read" | "manage";
     }
   | {
       namespace: "capabilities";
@@ -197,39 +172,15 @@ type BackofficePermissionRequirement =
     }
   | {
       namespace: "connections";
-      permission: "manage";
-    }
-  | {
-      namespace: "connections";
-      permission: "read";
+      permission: "manage" | "read";
     }
   | {
       namespace: "events";
-      permission: "emit";
-    }
-  | {
-      namespace: "events";
-      permission: "manage";
-    }
-  | {
-      namespace: "events";
-      permission: "read";
-    }
-  | {
-      namespace: "events";
-      permission: "route";
+      permission: "emit" | "manage" | "read" | "route";
     }
   | {
       namespace: "forms";
-      permission: "create";
-    }
-  | {
-      namespace: "forms";
-      permission: "read";
-    }
-  | {
-      namespace: "forms";
-      permission: "update";
+      permission: "create" | "read" | "update";
     }
   | {
       namespace: "hooks";
@@ -237,35 +188,11 @@ type BackofficePermissionRequirement =
     }
   | {
       namespace: "identity";
-      permission: "link";
-    }
-  | {
-      namespace: "identity";
-      permission: "bind";
-    }
-  | {
-      namespace: "identity";
-      permission: "read";
-    }
-  | {
-      namespace: "identity";
-      permission: "resolve";
-    }
-  | {
-      namespace: "identity";
-      permission: "revoke";
+      permission: "link" | "bind" | "read" | "resolve" | "revoke";
     }
   | {
       namespace: "integrations";
-      permission: "read";
-    }
-  | {
-      namespace: "integrations";
-      permission: "manage";
-    }
-  | {
-      namespace: "integrations";
-      permission: "execute";
+      permission: "read" | "manage" | "execute";
     }
   | {
       namespace: "internal";
@@ -273,39 +200,19 @@ type BackofficePermissionRequirement =
     }
   | {
       namespace: "org";
-      permission: "read";
-    }
-  | {
-      namespace: "org";
-      permission: "manage";
+      permission: "read" | "manage";
     }
   | {
       namespace: "models";
-      permission: "classify";
-    }
-  | {
-      namespace: "models";
-      permission: "generateImage";
+      permission: "classify" | "generateImage";
     }
   | {
       namespace: "marketplace";
-      permission: "read";
-    }
-  | {
-      namespace: "marketplace";
-      permission: "publish";
-    }
-  | {
-      namespace: "marketplace";
-      permission: "feature";
+      permission: "read" | "publish" | "feature";
     }
   | {
       namespace: "packages";
-      permission: "read";
-    }
-  | {
-      namespace: "packages";
-      permission: "install";
+      permission: "read" | "install";
     }
   | {
       namespace: "otp";
@@ -313,23 +220,11 @@ type BackofficePermissionRequirement =
     }
   | {
       namespace: "pi";
-      permission: "manage";
-    }
-  | {
-      namespace: "pi";
-      permission: "modify";
-    }
-  | {
-      namespace: "pi";
-      permission: "read";
+      permission: "manage" | "modify" | "read";
     }
   | {
       namespace: "projects";
-      permission: "create";
-    }
-  | {
-      namespace: "projects";
-      permission: "read";
+      permission: "create" | "read";
     }
   | {
       namespace: "reson8";
@@ -337,47 +232,23 @@ type BackofficePermissionRequirement =
     }
   | {
       namespace: "router";
-      permission: "modify";
-    }
-  | {
-      namespace: "router";
-      permission: "read";
+      permission: "modify" | "read";
     }
   | {
       namespace: "sandbox";
-      permission: "modify";
-    }
-  | {
-      namespace: "sandbox";
-      permission: "read";
+      permission: "modify" | "read";
     }
   | {
       namespace: "store";
-      permission: "modify";
-    }
-  | {
-      namespace: "store";
-      permission: "read";
+      permission: "modify" | "read";
     }
   | {
       namespace: "upload";
-      permission: "modify";
-    }
-  | {
-      namespace: "upload";
-      permission: "read";
+      permission: "modify" | "read";
     }
   | {
       namespace: "workflow";
-      permission: "executeCode";
-    }
-  | {
-      namespace: "workflow";
-      permission: "modify";
-    }
-  | {
-      namespace: "workflow";
-      permission: "read";
+      permission: "executeCode" | "modify" | "read";
     };
 type AppActionsDeclaration =
   | {
