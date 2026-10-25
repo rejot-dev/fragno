@@ -150,7 +150,9 @@ function decodeResultWithSerializer(
         version: columnValues["_version"] as number,
       });
     } else if (col.role === "reference") {
-      output[k] = FragnoReference.fromInternal(columnValues[k] as bigint);
+      output[k] = isNullish(columnValues[k])
+        ? null
+        : FragnoReference.fromInternal(columnValues[k] as bigint);
     } else {
       output[k] = columnValues[k];
     }
