@@ -1,4 +1,4 @@
-import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import { backofficeScopeRootOwner } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { IconName } from "@fragno-private/design-system/icon";
 import { MobileNavigation, SidebarNavigation } from "@fragno-private/design-system/navigation";
 import type { NavigationItem } from "@fragno-private/design-system/navigation-item";
@@ -81,11 +81,11 @@ const SETTINGS_SECTIONS = [
 /**
  * Internals for system administrators, in whichever scope they are in, then Settings. Both stay
  * open across scope switches like every section. Settings appear in every scope that has them:
- * an organization's settings in it and its projects, and in the user's own workspace theirs, which
+ * an organization's settings in its scopes, and in the user's own scopes theirs, which
  * list their organizations. System and another person's workspace have none; that workspace's
  * banner leads back to the organization.
  */
-export function resolveContextNavigationItems(
+function resolveContextNavigationItems(
   scope: SidebarScope | null,
   me: BackofficeMeData | null,
   pathname: string,
@@ -93,12 +93,13 @@ export function resolveContextNavigationItems(
   if (!scope || !me) {
     return [];
   }
-  const organization = backofficeScopeOrganization(scope)?.organization ?? null;
-  const settingsPath = organization
-    ? `/backoffice/organizations/${encodeURIComponent(organization.slug)}`
-    : scope.kind === "user" && scope.userId === me.user.id
-      ? "/backoffice/settings"
-      : null;
+  const owner = backofficeScopeRootOwner(scope);
+  const settingsPath =
+    owner?.kind === "org"
+      ? `/backoffice/organizations/${encodeURIComponent(owner.organization.slug)}`
+      : owner?.kind === "user" && owner.userId === me.user.id
+        ? "/backoffice/settings"
+        : null;
   return [
     ...(me.user.role === "admin"
       ? [
