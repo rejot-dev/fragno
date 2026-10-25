@@ -32,6 +32,10 @@ import {
   type EventTraceRun,
   type EventTraceStep,
 } from "@/routes/backoffice/dashboard/event-traces";
+import {
+  readEventTrace,
+  readEventTraceList,
+} from "@/routes/backoffice/dashboard/event-traces-replica";
 
 import { buildGitHubAutomationEvent } from "../github";
 import { CODEMODE_WORKFLOW } from "./engine/codemode-invocation";
@@ -74,6 +78,15 @@ function gitHubIssueEvent(hookId: string, issue: { number: number; title: string
 }
 
 /** One line per node, siblings in label order, so the tree reads like the flame graph's chain. */
+/** A value as JSON, without the virtual properties, such as `$synced`, TanStack DB adds to rows. */
+function comparable(value: unknown): unknown {
+  return JSON.parse(
+    JSON.stringify(value, (key, nested: unknown) =>
+      key.startsWith("$") ? undefined : nested instanceof Map ? [...nested] : nested,
+    ),
+  );
+}
+
 function outline(node: CausalFlameNode, depth = 0): string[] {
   const detail = node.detail === null ? "" : ` (${node.detail})`;
   return [
@@ -309,6 +322,25 @@ test("events record the routes and workflows that caused them back to their orig
             effects: expect.arrayContaining(["issue-log", "triage-issue"]),
             outcome: { kind: "settled", failedCount: 0 },
           });
+
+          // The Events tab reads the replica: the same trace and list from only the rows they use.
+          const replica = ctx.lofi.automations.forOrg(scope.orgId);
+          await replica.sync();
+          const replicaTrace = projectEventTrace({
+            rootEventId: webhookEventId,
+            ...(await readEventTrace(replica.replica, webhookEventId)),
+          });
+          expect(comparable(replicaTrace)).toEqual(comparable(trace));
+          expect(
+            comparable(
+              projectEventTraceSummaries({
+                ...(await readEventTraceList(replica.replica, 10)),
+                limit: 10,
+              }),
+            ),
+          ).toEqual(
+            comparable(projectEventTraceSummaries({ events, dispatches, runs, limit: 10 })),
+          );
         }),
         then.hooks.noFailed({ orgId: scope.orgId, fragments: ["automations"] }),
       ],

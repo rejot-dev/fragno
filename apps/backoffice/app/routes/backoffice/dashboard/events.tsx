@@ -1,4 +1,5 @@
 import type { AutomationEventCausation } from "@fragno-dev/backoffice-api/v0/events";
+import type { LofiSqliteReplica } from "@fragno-dev/lofi/sqlite";
 import { Button } from "@fragno-private/design-system/button";
 import { CausalFlameGraph } from "@fragno-private/design-system/causal-flame-graph";
 import {
@@ -10,6 +11,7 @@ import {
 import { ClientOnly } from "@fragno-private/design-system/client-only";
 import { cn } from "@fragno-private/design-system/cn";
 import { CopyButton } from "@fragno-private/design-system/copy-button";
+import { BackofficeDownloadState } from "@fragno-private/design-system/download-state";
 import { Icon } from "@fragno-private/design-system/icon";
 import { PaneSpinner } from "@fragno-private/design-system/pane-message";
 import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
@@ -19,8 +21,6 @@ import { formatWorkflowDuration } from "@fragno-private/design-system/workflow-r
 import { Fragment, Suspense, use, useMemo, useState, type ReactNode } from "react";
 import { Link, useFetcher, useSearchParams, type ShouldRevalidateFunctionArgs } from "react-router";
 
-import { useLiveQuery } from "@tanstack/react-db";
-
 import {
   backofficeRouteScopeFromResolvedScope,
   type BackofficeScopeSelection,
@@ -29,11 +29,11 @@ import type { BackofficeRouteScope } from "@/backoffice-runtime/route-scope";
 import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
 import { backofficePageBodyClassName } from "@/components/backoffice/page-body";
 import { useClock } from "@/components/backoffice/use-clock";
-import {
-  describeAutomationCollectionSource,
-  getAutomationBrowserDatabase,
-  type AutomationBrowserCollections,
-} from "@/fragno/automation/tanstack/browser-database";
+import { getAutomationReplica } from "@/fragno/automation/lofi/replica";
+import type { AutomationReadSource } from "@/fragno/automation/read-source";
+import { describeAutomationCollectionSource } from "@/fragno/automation/tanstack/browser-database";
+import { LofiReplicaGate } from "@/fragno/lofi/replica-gate";
+import { useLofiSqliteRead } from "@/fragno/lofi/use-lofi-sqlite-read";
 import { requireScopeSelection } from "@/layouts/backoffice-shell-request.server";
 
 import { formatTimestamp } from "../automations/formatting";
@@ -43,28 +43,19 @@ import { DashboardTabs } from "./dashboard-tabs";
 import {
   describeRouteDispatchProgress,
   describeRouteDispatchSkipReason,
-  eventTraceDispatch,
-  eventTraceDispatchesQuery,
-  eventTraceEventsQuery,
-  eventTraceRunIds,
-  eventTraceRunsQuery,
   eventTraceStepNodeId,
-  eventTraceStepsQuery,
-  eventTraceDeliveriesQuery,
   projectEventTrace,
   projectEventTraceList,
   projectEventTraceSummaries,
   type EventTrace,
   type EventTraceDispatch,
-  type EventTraceDispatchRow,
   type EventTraceEvent,
   type EventTraceListEntry,
   type EventTraceRecord,
   type EventTraceRun,
-  type EventTraceStep,
-  type EventTraceDelivery,
   type EventTraceSummary,
 } from "./event-traces";
+import { readEventTrace, readEventTraceList } from "./event-traces-replica";
 import {
   dashboardEventsPath,
   dashboardOpenedTrace,
@@ -76,13 +67,14 @@ import { retryEventRoute, type RouteRetryActionData } from "./route-retry.server
 import { WorkflowRunDetail } from "./workflow-run-detail";
 
 const TRACE_LIMIT = 100;
+const DOWNLOAD_TITLE = "Downloading automation activity…";
 const CLOCK_TICK_MS = 60_000;
 const pageClassName = `${backofficePageBodyClassName} flex flex-col gap-4`;
 const sectionHeaderClassName =
   "flex h-9 items-center gap-2 border-b border-[color:var(--bo-border)]";
 const sectionTitleClassName = "text-sm font-semibold text-[var(--bo-fg)]";
 
-/** Traces come from synchronized collections; the loader only selects scope. */
+/** Traces come from the scope's Automations replica; the loader only selects scope. */
 export async function loader({ context }: Route.LoaderArgs) {
   return {
     selectedScope: requireScopeSelection(context),
@@ -121,7 +113,8 @@ export function meta({ loaderData }: Route.MetaArgs) {
 
 export default function BackofficeDashboardEvents({ loaderData }: Route.ComponentProps) {
   const { selectedScope, pageSources } = loaderData;
-  const loading = <PaneSpinner label="Synchronizing automation events" />;
+  // The replica's database opens before its download reports progress.
+  const loading = <BackofficeDownloadState title={DOWNLOAD_TITLE} fraction={null} error={null} />;
 
   return (
     <>
@@ -155,88 +148,69 @@ function EventsClient({ selectedScope }: { selectedScope: BackofficeScopeSelecti
     );
   }
   const source = automationCollectionSource.source;
+  const replica = use(getAutomationReplica(source));
   return (
-    <EventTracesWorkspace
-      key={describeAutomationCollectionSource(source).resourceKey}
-      selectedScope={selectedScope}
-      collections={use(getAutomationBrowserDatabase(source)).collections}
-    />
+    <LofiReplicaGate replica={replica} title={DOWNLOAD_TITLE}>
+      <EventTracesWorkspace
+        key={describeAutomationCollectionSource(source).resourceKey}
+        selectedScope={selectedScope}
+        replica={replica}
+      />
+    </LofiReplicaGate>
   );
 }
 
-/** One empty list for queries without data, so memoized projections keep their inputs. */
-const NO_ROWS: never[] = [];
-
 function EventTracesWorkspace({
   selectedScope,
-  collections,
+  replica,
 }: {
   selectedScope: BackofficeScopeSelection;
-  collections: AutomationBrowserCollections;
+  replica: LofiSqliteReplica;
 }) {
   const [searchParams] = useSearchParams();
   const now = useClock(CLOCK_TICK_MS);
-  const eventsQuery = useLiveQuery({ query: (query) => eventTraceEventsQuery(query, collections) });
-  const dispatchesQuery = useLiveQuery({
-    query: (query) => eventTraceDispatchesQuery(query, collections),
-  });
-  const runsQuery = useLiveQuery({ query: (query) => eventTraceRunsQuery(query, collections) });
-  // Synchronized rows are written by the automations fragment, so their JSON columns and status
-  // strings hold the shapes it persists.
-  const events = (eventsQuery.data ?? NO_ROWS) as EventTraceEvent[];
-  const dispatchRows = dispatchesQuery.data as EventTraceDispatchRow[] | undefined;
-  const dispatches = useMemo(
-    () => (dispatchRows ?? NO_ROWS).map(eventTraceDispatch),
-    [dispatchRows],
+  const readSource = useMemo(() => ({ kind: "replica", replica }) as const, [replica]);
+  const listRead = useLofiSqliteRead(replica, "", (replica) =>
+    readEventTraceList(replica, TRACE_LIMIT),
   );
-  const runs = (runsQuery.data ?? NO_ROWS) as EventTraceRun[];
-
   const summaries = useMemo(
-    () => projectEventTraceSummaries({ events, dispatches, runs, limit: TRACE_LIMIT }),
-    [events, dispatches, runs],
+    () =>
+      listRead.status === "ready"
+        ? projectEventTraceSummaries({ ...listRead.data, limit: TRACE_LIMIT })
+        : null,
+    [listRead],
   );
-  const entries = useMemo(() => projectEventTraceList(summaries), [summaries]);
+  const entries = useMemo(() => (summaries ? projectEventTraceList(summaries) : []), [summaries]);
   const openedTrace = dashboardOpenedTrace(searchParams) ?? newestTraceOf(entries[0]) ?? null;
-  const runIds = useMemo(
-    () =>
-      openedTrace === null ? [] : eventTraceRunIds({ rootEventId: openedTrace, dispatches, runs }),
-    [openedTrace, dispatches, runs],
-  );
-  const stepsQuery = useLiveQuery({
-    query: (query) => eventTraceStepsQuery(query, collections, runIds),
-  });
-  const steps = (stepsQuery.data ?? NO_ROWS) as EventTraceStep[];
-  const deliveriesQuery = useLiveQuery({
-    query: (query) => eventTraceDeliveriesQuery(query, collections, runIds),
-  });
-  const deliveries = (deliveriesQuery.data ?? NO_ROWS) as EventTraceDelivery[];
-  const trace = useMemo(
-    () =>
-      openedTrace === null
-        ? null
-        : projectEventTrace({
-            rootEventId: openedTrace,
-            events,
-            dispatches,
-            runs,
-            steps,
-            deliveries,
-          }),
-    [openedTrace, events, dispatches, runs, steps, deliveries],
+  const traceRead = useLofiSqliteRead(
+    openedTrace === null ? null : replica,
+    openedTrace ?? "",
+    async (replica) => {
+      const rootEventId = openedTrace ?? "";
+      return {
+        rootEventId,
+        trace: projectEventTrace({ rootEventId, ...(await readEventTrace(replica, rootEventId)) }),
+      };
+    },
   );
 
-  const queries = [eventsQuery, dispatchesQuery, runsQuery, stepsQuery, deliveriesQuery];
-  if (queries.some((query) => query.isError)) {
+  if (listRead.status === "error" || traceRead.status === "error") {
+    const error =
+      listRead.status === "error"
+        ? listRead.error
+        : traceRead.status === "error"
+          ? traceRead.error
+          : null;
     return (
       <BackofficeSystemState
         tone="error"
         title="Automation events could not be read."
-        description="Some synchronized collections failed to load. Reload to try again."
+        description={error instanceof Error ? error.message : "Reload to try again."}
       />
     );
   }
-  if (queries.some((query) => !query.isReady)) {
-    return <PaneSpinner label="Synchronizing automation events" />;
+  if (summaries === null) {
+    return <PaneSpinner label="Reading automation events" />;
   }
   if (summaries.length === 0) {
     return (
@@ -247,6 +221,11 @@ function EventTracesWorkspace({
       />
     );
   }
+  // A read for the previously opened trace can still land after another one opens.
+  const trace =
+    traceRead.status === "ready" && traceRead.data.rootEventId === openedTrace
+      ? traceRead.data.trace
+      : undefined;
 
   return (
     <div className="grid items-start gap-x-10 gap-y-8 xl:grid-cols-[21rem_minmax(0,1fr)]">
@@ -257,7 +236,9 @@ function EventTracesWorkspace({
         selectedScope={selectedScope}
         now={now}
       />
-      {trace === null ? (
+      {trace === undefined ? (
+        <PaneSpinner label="Reading the trace" />
+      ) : trace === null ? (
         <p className="py-5 text-sm text-[var(--bo-muted)]">
           There is no event {openedTrace} in this scope.
         </p>
@@ -266,7 +247,7 @@ function EventTracesWorkspace({
           key={openedTrace}
           trace={trace}
           selectedScope={selectedScope}
-          collections={collections}
+          readSource={readSource}
         />
       )}
     </div>
@@ -709,11 +690,11 @@ function RepeatsRow({
 function TraceView({
   trace,
   selectedScope,
-  collections,
+  readSource,
 }: {
   trace: EventTrace;
   selectedScope: BackofficeScopeSelection;
-  collections: AutomationBrowserCollections;
+  readSource: AutomationReadSource;
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [cursor, setCursor] = useState<number | null>(null);
@@ -755,7 +736,7 @@ function TraceView({
           record={record}
           cursor={cursor}
           selectedScope={selectedScope}
-          collections={collections}
+          readSource={readSource}
           onSelect={select}
           onHoverStepRecord={setHoveredStepRecordId}
         />
@@ -769,7 +750,7 @@ function TraceSelection({
   record,
   cursor,
   selectedScope,
-  collections,
+  readSource,
   onSelect,
   onHoverStepRecord,
 }: {
@@ -778,7 +759,7 @@ function TraceSelection({
   record: EventTraceRecord;
   cursor: number | null;
   selectedScope: BackofficeScopeSelection;
-  collections: AutomationBrowserCollections;
+  readSource: AutomationReadSource;
   onSelect: (nodeId: string) => void;
   onHoverStepRecord: (stepRecordId: string | null) => void;
 }) {
@@ -816,7 +797,7 @@ function TraceSelection({
           selectedStepRecordId={null}
           cursor={cursor}
           selectedScope={selectedScope}
-          collections={collections}
+          readSource={readSource}
           onSelect={onSelect}
           onHoverStepRecord={onHoverStepRecord}
         />
@@ -830,7 +811,7 @@ function TraceSelection({
           selectedStepRecordId={record.step.id}
           cursor={cursor}
           selectedScope={selectedScope}
-          collections={collections}
+          readSource={readSource}
           onSelect={onSelect}
           onHoverStepRecord={onHoverStepRecord}
         />
@@ -846,7 +827,7 @@ function RunSelection({
   selectedStepRecordId,
   cursor,
   selectedScope,
-  collections,
+  readSource,
   onSelect,
   onHoverStepRecord,
 }: {
@@ -856,7 +837,7 @@ function RunSelection({
   selectedStepRecordId: string | null;
   cursor: number | null;
   selectedScope: BackofficeScopeSelection;
-  collections: AutomationBrowserCollections;
+  readSource: AutomationReadSource;
   onSelect: (nodeId: string) => void;
   onHoverStepRecord: (stepRecordId: string | null) => void;
 }) {
@@ -886,7 +867,7 @@ function RunSelection({
         ]}
       />
       <WorkflowRunDetail
-        readSource={{ kind: "collections", collections }}
+        readSource={readSource}
         reference={reference}
         presentation={{
           kind: "embedded",

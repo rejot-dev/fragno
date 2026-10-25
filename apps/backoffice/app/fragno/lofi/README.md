@@ -5,9 +5,9 @@ Lofi's browser SQLite replica (`@fragno-dev/lofi/sqlite`) mirrors two of a scope
 - **Upload** (`/api/upload-scoped/<scope>`, schema `upload`, whose outbox carries only the `file`
   table), in `../upload/lofi`. It replaced the TanStack collection there.
 - **Automations** (`/api/automations-scoped/<scope>`, schemas `automations` and `workflows`), in
-  `../automation/lofi`, for the dashboard's Overview tab. The same outbox also feeds the TanStack DB
-  collections in `../automation/tanstack`, which every other Automations view still reads, including
-  the dashboard's Events tab and the Files explorer's workflow routes.
+  `../automation/lofi`, for the dashboard's Overview and Events tabs. The same outbox also feeds the
+  TanStack DB collections in `../automation/tanstack`, which every other Automations view still
+  reads, including the Files explorer's workflow routes.
 
 Shared pieces in this directory:
 
@@ -33,8 +33,8 @@ instead.
 
 ## What reads the Automations replica
 
-The dashboard's Overview tab (`routes/backoffice/dashboard/dashboard.tsx`), which opens no TanStack
-database:
+The dashboard's Overview and Events tabs, which open no TanStack database. Overview
+(`routes/backoffice/dashboard/dashboard.tsx`):
 
 - The overview, through `readDashboardOverview` in `overview-replica.ts`: workflow health, failing
   and waiting runs, event volume, scheduled routes, connections, and agents.
@@ -48,12 +48,19 @@ database:
   runs, running Codemode runs, or one run by workflow and instance. A run's waits are derived from
   its steps with `currentWorkflowWaits`.
 
+Events (`routes/backoffice/dashboard/events.tsx`), through `event-traces-replica.ts`:
+`readEventTraceList` reads the newest 100 origin events with the events they caused, their route
+dispatches, and the runs those started or sent events to; `readEventTrace` reads one origin's
+events, dispatches, runs, and those runs' steps and workflow events. `projectEventTraceSummaries`
+and `projectEventTrace` build the list and the trace from them, as they did from every synchronized
+row. Only origins carry their payload in the list.
+
 The project menu in the top bar reads no synchronized data: the layout's loader lists the owner's
 projects through the Automations object's `GET /projects` (`../automation/project-list.server.ts`)
 and streams them to the menu, so no page opens a database for it.
 
-Those run views are shared with pages that still read the TanStack collections: the Events tab,
-pages, Marketplace, Agents, and the Automations script view. They take an `AutomationReadSource`
+Those run views are shared with pages that still read the TanStack collections: pages, Marketplace,
+Agents, and the Automations script view. They take an `AutomationReadSource`
 (`../automation/read-source.ts`) naming the replica or the collections, so each page passes the
 source it already holds and none opens a second copy of the scope's history for them.
 
@@ -78,7 +85,10 @@ derives waits from them with `currentWorkflowWaits`.
 `dashboard/overview.scenario.test.ts` reads the overview and the orchestration graph from the
 replica, and the example home page from the TanStack collections, and asserts they agree. It also
 reads every shared view's records from both sources, for each kind of run selection, and asserts
-they are equal.
+they are equal. `automation/scenario-starter-router.test.ts` and
+`automation/scenario-event-causation.bridge.scenario.test.ts` (run by `pnpm test:bridge`) build
+traces and the trace list from the replica and from every TanStack row, and assert they are equal.
+The TanStack trace queries in `event-traces.ts` remain only as that reference.
 
 ## Measurements (Upload)
 
@@ -106,7 +116,7 @@ a background tab, with only the Upload replica empty:
   after the same `GET /_internal`, and 3 of 12 reloads showed the route's error page. Files pages
   now start the TanStack database at 260–440 ms and the Upload replica at 790–1,580 ms, after its
   own `GET /_internal`, so their cleanups do not overlap: 20 of 20 reloads opened. Tabs share OPFS,
-  so workers of two tabs opening at once can still race. The dashboard's Overview opens only the
+  so workers of two tabs opening at once can still race. The dashboard's tabs open only the
   Automations replica. The replica retries its open; the TanStack database does not. wa-sqlite 2.x
   ignores the `NotFoundError` there, but `@tanstack/browser-db-sqlite-persistence` (0.2.37) accepts
   only `^1.4.1`; backporting that change as a pnpm patch of 1.7.2 would fix both.
@@ -118,9 +128,9 @@ a background tab, with only the Upload replica empty:
   identity or the schema version changes. Nothing deletes old ones.
 - **Two streams and two workers per Files tab:** the Upload replica and the Automations TanStack
   collections, each with its own `GET /_internal`, outbox stream, OPFS database, and worker.
-- **Pages that mix both follow the Automations outbox twice.** Leaving the Overview for Events,
-  Files, Integrations, pages, or Marketplace opens the TanStack collections next to the replica that
-  stays open in the tab, each with its own stream, database, and worker.
+- **Pages that mix both follow the Automations outbox twice.** Leaving the dashboard for Files,
+  Integrations, pages, or Marketplace opens the TanStack collections next to the replica that stays
+  open in the tab, each with its own stream, database, and worker.
 - **The project menu refreshes on navigation, not live.** It lists projects as of the last time the
   layout's loader ran, which actions such as creating a project rerun; a project an agent creates
   shows after the next navigation. Once every page reads the Automations replica, pages outside a
@@ -140,10 +150,12 @@ a background tab, with only the Upload replica empty:
   downloads the outbox afterwards would not, since their history goes too.
 - **Ties may break differently.** Of two changes to a connection in the same millisecond, the
   projection keeps the first it applies, in outbox order; the TanStack collection keeps whichever
-  its stable sort puts first.
+  its stable sort puts first. Origins that occurred in the same millisecond list newest ID first,
+  where TanStack listed them in collection order.
 - **Every applied entry re-reads every open view,** the overview's seven queries, the graph's three,
-  and an opened run's four, because `subscribe` does not say which tables changed. Waiting runs come
-  with all their steps, events, and emissions.
+  an opened run's four, and on Events the list's four and the trace's up to five, because
+  `subscribe` does not say which tables changed. Waiting runs come with all their steps, events, and
+  emissions.
 - **One read is not a snapshot.** The overview's queries run one after another, so an entry the
   writing tab applies between two of them shows in the later one only. The next notification reads
   again.
