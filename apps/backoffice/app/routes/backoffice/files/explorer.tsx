@@ -17,11 +17,8 @@ import type { WorkflowFileRouting } from "@/components/backoffice/files-explorer
 import type { FilesExplorerSearchGroup } from "@/components/backoffice/files-explorer/view";
 import { createUploadFileTree } from "@/file-collection/create-upload-file-tree";
 import { resolveSynchronizedFileTree } from "@/file-collection/resolve-synchronized-file-tree";
-import {
-  getAutomationBrowserDatabase,
-  type AutomationCollectionSource,
-} from "@/fragno/automation/tanstack/browser-database";
-import { useAutomationRoutes } from "@/fragno/automation/tanstack/use-automation-routes";
+import { getAutomationReplica, useAutomationRead } from "@/fragno/automation/lofi/replica";
+import type { AutomationCollectionSource } from "@/fragno/automation/tanstack/browser-database";
 import { LofiReplicaGate, useLofiReplicaStatus } from "@/fragno/lofi/replica-gate";
 import {
   describeUploadReplicaSource,
@@ -90,25 +87,28 @@ function LocalFirstFilesExplorer({
   return (
     <SynchronizedAutomationRoutesFilesExplorer
       {...props}
-      collectionSource={automationCollectionSource.source}
+      source={automationCollectionSource.source}
     />
   );
 }
 
+/** Which routes start each workflow file, from the scope's Automations replica. */
 function SynchronizedAutomationRoutesFilesExplorer({
-  collectionSource,
+  source,
   ...props
 }: FilesExplorerLocalDataProps & {
-  collectionSource: AutomationCollectionSource;
+  source: AutomationCollectionSource;
 }) {
-  const { collections } = use(getAutomationBrowserDatabase(collectionSource));
-  const routesState = useAutomationRoutes(collections);
+  const replica = use(getAutomationReplica(source));
+  const status = useLofiReplicaStatus(replica);
+  const routes = useAutomationRead(replica, "automationRoutes", undefined);
+  // Until the replica first catches up, it may lack routes, which would mark files unrouted.
   const workflowRouting: WorkflowFileRouting =
-    routesState.status === "loading"
-      ? { status: "loading" }
-      : routesState.status === "error"
-        ? { status: "error", message: routesState.message }
-        : { status: "ready", routes: routesState.routes };
+    routes.status === "error"
+      ? { status: "error", message: routes.message }
+      : routes.status === "loading" || status.phase !== "caught-up"
+        ? { status: "loading" }
+        : { status: "ready", routes: routes.data };
 
   return <FilesExplorerWithLocalData {...props} workflowRouting={workflowRouting} />;
 }

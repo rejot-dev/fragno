@@ -6,7 +6,12 @@ import {
 } from "@/routes/backoffice/dashboard/event-traces-replica";
 import { readDashboardOverview } from "@/routes/backoffice/dashboard/overview-replica";
 
-import { readLatestEventsOfType, readOrchestrationRecords, readWorkflowRuns } from "./reads";
+import {
+  readAutomationRoutes,
+  readLatestEventsOfType,
+  readOrchestrationRecords,
+  readWorkflowRuns,
+} from "./reads";
 import {
   AUTOMATION_READ_VIEWS,
   AUTOMATION_REPLICA_EPHEMERAL_TABLES,
@@ -21,6 +26,7 @@ import { automationViews } from "./views";
  */
 export const automationReads = {
   dashboardOverview: readDashboardOverview,
+  automationRoutes: readAutomationRoutes,
   orchestrationRecords: readOrchestrationRecords,
   latestEventsOfType: readLatestEventsOfType,
   workflowRuns: readWorkflowRuns,
