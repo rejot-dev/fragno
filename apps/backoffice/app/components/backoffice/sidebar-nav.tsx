@@ -1,9 +1,14 @@
+import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { IconName } from "@fragno-private/design-system/icon";
 import { MobileNavigation, SidebarNavigation } from "@fragno-private/design-system/navigation";
 import type { NavigationItem } from "@fragno-private/design-system/navigation-item";
 import { useLocation } from "react-router";
 
-import type { BackofficeRouteScope } from "@/backoffice-runtime/route-scope";
+import {
+  backofficeRouteScopeFromResolvedScope,
+  type BackofficeResolvedScope,
+} from "@/backoffice-runtime/resolved-scope";
+import type { BackofficeMeData, Organization } from "@/fragno/auth/contracts";
 
 import { scopeSwitchPath } from "./scope-switch-path";
 
@@ -53,26 +58,84 @@ const PRIMARY_NAVIGATION: PrimaryNavigationItem[] = [
   },
 ];
 
+type SidebarScope = BackofficeResolvedScope<Organization>;
+
 // Section links carry the current scope so switching sections keeps the
 // selected organization/project instead of falling back to the default scope.
-function resolveNavigationItems(
-  scope: BackofficeRouteScope | null,
-  pathname: string,
-): NavigationItem[] {
+function resolveNavigationItems(scope: SidebarScope | null, pathname: string): NavigationItem[] {
+  const routeScope = scope ? backofficeRouteScopeFromResolvedScope(scope) : null;
   return PRIMARY_NAVIGATION.map((item) => ({
     label: item.label,
-    to: scope ? scopeSwitchPath(item.to, scope) : item.to,
+    to: routeScope ? scopeSwitchPath(item.to, routeScope) : item.to,
     icon: item.icon,
     active: item.isActive(pathname),
   }));
 }
 
+const SETTINGS_SECTIONS = [
+  "/backoffice/settings",
+  "/backoffice/organizations",
+  "/backoffice/usage",
+];
+
+/**
+ * Internals for system administrators, in whichever scope they are in, then Settings. Both stay
+ * open across scope switches like every section. Settings appear in every scope that has them:
+ * an organization's settings in it and its projects, and in the user's own workspace theirs, which
+ * list their organizations. System and another person's workspace have none; that workspace's
+ * banner leads back to the organization.
+ */
+export function resolveContextNavigationItems(
+  scope: SidebarScope | null,
+  me: BackofficeMeData | null,
+  pathname: string,
+): NavigationItem[] {
+  if (!scope || !me) {
+    return [];
+  }
+  const organization = backofficeScopeOrganization(scope)?.organization ?? null;
+  const settingsPath = organization
+    ? `/backoffice/organizations/${encodeURIComponent(organization.slug)}`
+    : scope.kind === "user" && scope.userId === me.user.id
+      ? "/backoffice/settings"
+      : null;
+  return [
+    ...(me.user.role === "admin"
+      ? [
+          {
+            label: "Internals",
+            to: scopeSwitchPath(
+              "/backoffice/internals",
+              backofficeRouteScopeFromResolvedScope(scope),
+            ),
+            icon: "shield" as const,
+            active: pathname.startsWith("/backoffice/internals"),
+          },
+        ]
+      : []),
+    ...(settingsPath
+      ? [
+          {
+            label: "Settings",
+            to: settingsPath,
+            icon: "settings" as const,
+            active: SETTINGS_SECTIONS.some(
+              (section) => pathname === section || pathname.startsWith(`${section}/`),
+            ),
+          },
+        ]
+      : []),
+  ];
+}
+
 export function BackofficeSidebarNav({
   currentScope,
+  me,
   collapsed,
   onCollapsedChange,
 }: {
-  currentScope: BackofficeRouteScope | null;
+  currentScope: SidebarScope | null;
+  me: BackofficeMeData | null;
   collapsed: boolean;
   onCollapsedChange: (collapsed: boolean) => void;
 }) {
@@ -81,7 +144,7 @@ export function BackofficeSidebarNav({
   return (
     <SidebarNavigation
       items={resolveNavigationItems(currentScope, location.pathname)}
-      secondaryItems={[]}
+      secondaryItems={resolveContextNavigationItems(currentScope, me, location.pathname)}
       ariaLabel="Backoffice"
       collapsed={collapsed}
       onCollapsedChange={onCollapsedChange}
@@ -91,14 +154,19 @@ export function BackofficeSidebarNav({
 
 export function BackofficeMobileNav({
   currentScope,
+  me,
 }: {
-  currentScope: BackofficeRouteScope | null;
+  currentScope: SidebarScope | null;
+  me: BackofficeMeData | null;
 }) {
   const location = useLocation();
 
   return (
     <MobileNavigation
-      items={resolveNavigationItems(currentScope, location.pathname)}
+      items={[
+        ...resolveNavigationItems(currentScope, location.pathname),
+        ...resolveContextNavigationItems(currentScope, me, location.pathname),
+      ]}
       ariaLabel="Backoffice"
     />
   );

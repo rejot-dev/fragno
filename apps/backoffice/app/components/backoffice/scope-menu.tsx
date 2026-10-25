@@ -2,12 +2,15 @@ import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/share
 import type { IconName } from "@fragno-private/design-system/icon";
 import {
   SelectorMenu,
+  SelectorMenuButton,
   SelectorMenuGroup,
   SelectorMenuLink,
+  SelectorMenuNote,
   SelectorMenuOption,
   SelectorMenuPopup,
   SelectorMenuTrigger,
 } from "@fragno-private/design-system/selector-menu";
+import { usePostHog } from "@posthog/react/slim";
 import { useLocation } from "react-router";
 
 import {
@@ -15,6 +18,7 @@ import {
   backofficeRouteScopeFromResolvedScope,
   type BackofficeResolvedScope,
 } from "@/backoffice-runtime/resolved-scope";
+import { authClient } from "@/fragno/auth/auth-client";
 import {
   type AdministeredMember,
   administersMembers,
@@ -167,6 +171,8 @@ export function BackofficeScopeMenu({
   sidebarCollapsed: boolean;
 }) {
   const location = useLocation();
+  const posthog = usePostHog();
+  const { mutate: signOut, loading: signingOut, error: signOutError } = authClient.useSignOut();
   if (!me?.user || !currentScope) {
     return null;
   }
@@ -198,6 +204,7 @@ export function BackofficeScopeMenu({
                 to={scopeSwitchPath(
                   location.pathname,
                   backofficeRouteScopeFromResolvedScope(option.scope),
+                  me.user.id,
                 )}
                 label={option.label}
                 description={option.description}
@@ -222,6 +229,30 @@ export function BackofficeScopeMenu({
             ) : null}
           </SelectorMenuGroup>
         ))}
+        {/* Signing out leaves every scope, so it closes the list of them. */}
+        <SelectorMenuGroup label={null}>
+          <SelectorMenuButton
+            icon="log-out"
+            disabled={signingOut}
+            onClick={() => {
+              void signOut({ body: {} })
+                .then(() => {
+                  if (posthog) {
+                    posthog.reset();
+                  }
+                  window.location.replace("/backoffice/login");
+                })
+                .catch(() => undefined);
+            }}
+          >
+            {signingOut ? "Signing out…" : "Sign out"}
+          </SelectorMenuButton>
+          {signOutError ? (
+            <SelectorMenuNote tone="error">
+              {signOutError instanceof Error ? signOutError.message : "Unable to sign out."}
+            </SelectorMenuNote>
+          ) : null}
+        </SelectorMenuGroup>
       </SelectorMenuPopup>
     </SelectorMenu>
   );

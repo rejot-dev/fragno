@@ -1,7 +1,12 @@
 import { BackofficeTabHeader } from "@fragno-private/design-system/tab-header";
 
 /** Both settings pages open with these tabs, so moving between them keeps the content in place. */
-export function SettingsTabs({ active }: { active: "permissions" | "applications" }) {
+/** The user's own settings, which the sidebar's Settings opens in their personal workspace. */
+export function SettingsTabs({
+  active,
+}: {
+  active: "permissions" | "organizations" | "usage" | "applications";
+}) {
   return (
     <BackofficeTabHeader
       items={[
@@ -10,6 +15,18 @@ export function SettingsTabs({ active }: { active: "permissions" | "applications
           label: "My permissions",
           to: "/backoffice/settings",
           active: active === "permissions",
+        },
+        {
+          id: "organizations",
+          label: "Organizations",
+          to: "/backoffice/organizations",
+          active: active === "organizations",
+        },
+        {
+          id: "usage",
+          label: "Usage",
+          to: "/backoffice/usage",
+          active: active === "usage",
         },
         {
           id: "applications",

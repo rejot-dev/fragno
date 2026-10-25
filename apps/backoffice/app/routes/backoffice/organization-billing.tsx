@@ -8,7 +8,6 @@ import {
   type SurfaceTableColumn,
 } from "@fragno-private/design-system/surface-panel";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
-import { BackofficeTabHeader } from "@fragno-private/design-system/tab-header";
 import { Form, useParams } from "react-router";
 
 import { backofficePageBodyClassName } from "@/components/backoffice/page-body";
@@ -18,6 +17,7 @@ import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { Route } from "./+types/organization-billing";
 import { throwBackofficeOrganizationNotFound } from "./route-errors";
+import { SettingsTabs } from "./settings-tabs";
 
 const TOTAL_COST_METER = "ai.cost.total";
 
@@ -105,19 +105,15 @@ export function meta({ loaderData }: Route.MetaArgs) {
 export default function BackofficeOrganizationBilling({ loaderData }: Route.ComponentProps) {
   const { orgSlug } = useParams();
   const usage = <BillingUsage {...loaderData} />;
-  // Organization billing sits under the organization's tabs; personal usage is a page of its own.
+  // Organization billing sits under the organization's tabs, personal usage under the user's
+  // settings, so each is where the other is in its own scope.
   if (orgSlug !== undefined) {
     return usage;
   }
   return (
     <div className="flex flex-1 flex-col">
       <h1 className="sr-only">Personal usage</h1>
-      <BackofficeTabHeader
-        items={[{ id: "usage", label: "Usage", to: "/backoffice/usage", active: true }]}
-        ariaLabel="Usage"
-        trailing={null}
-        options={null}
-      />
+      <SettingsTabs active="usage" />
       <div className={`${backofficePageBodyClassName} flex flex-col gap-4`}>{usage}</div>
     </div>
   );

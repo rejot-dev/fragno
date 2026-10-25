@@ -10,7 +10,6 @@ import {
   type SurfaceTableColumn,
 } from "@fragno-private/design-system/surface-panel";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
-import { BackofficeTabHeader } from "@fragno-private/design-system/tab-header";
 import { useState } from "react";
 import {
   data,
@@ -43,6 +42,7 @@ import {
   getErrorMessage,
 } from "./organization-utils";
 import { sortOrganizationsByPreference } from "./organizations-preference";
+import { SettingsTabs } from "./settings-tabs";
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   return await loadUserInvitations({ request, context });
@@ -127,19 +127,7 @@ export default function BackofficeOrganizations({ actionData }: Route.ComponentP
   return (
     <div className="flex flex-1 flex-col">
       <h1 className="sr-only">Organizations</h1>
-      <BackofficeTabHeader
-        items={[
-          {
-            id: "organizations",
-            label: "Organizations",
-            to: "/backoffice/organizations",
-            active: true,
-          },
-        ]}
-        ariaLabel="Organizations"
-        trailing={null}
-        options={null}
-      />
+      <SettingsTabs active="organizations" />
       <div className={`${backofficePageBodyClassName} flex flex-col gap-4`}>
         <SurfacePanel
           caption={`${organizations.length} ${organizations.length === 1 ? "organization" : "organizations"}`}
