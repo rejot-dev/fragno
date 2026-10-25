@@ -1,12 +1,12 @@
 // Cloudflare sandboxes with a real shell. Read when work needs command-line tools.
 type SandboxCodemodeProvider = {
   /**
-   * Start a Cloudflare sandbox for the current organization.
+   * Start a Cloudflare sandbox for the current scope.
    * Requires `sandbox.modify`.
    */
   startSandbox(input: SandboxStartSandboxInput): Promise<SandboxStartSandboxOutput>;
   /**
-   * List Cloudflare sandboxes for the current organization.
+   * List Cloudflare sandboxes for the current scope.
    * Requires `sandbox.read`.
    */
   listSandboxes(): Promise<SandboxListSandboxesOutput>;

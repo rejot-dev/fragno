@@ -10,8 +10,9 @@ description:
 
 Treat a sandbox as a leased environment: **acquire → execute → release**. Stopping a sandbox saves
 its workspace, and starting the same id again resumes it with files, installed packages, and
-repositories intact. The `sandbox` provider is available only when the deployment exposes the
-Sandbox capability.
+repositories intact. Every organization, project, and personal scope has its own sandboxes; the
+`sandbox` provider manages the current scope's, and `context.org(orgId).sandbox` another's. The
+`sandbox` provider is available only when the deployment exposes the Sandbox capability.
 
 ## Required process
 
