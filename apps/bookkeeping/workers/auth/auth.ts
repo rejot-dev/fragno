@@ -199,7 +199,31 @@ export class Auth extends DurableObject<CloudflareEnv> {
     if (!session) {
       throw new Error("Backoffice access requires a signed-in Bookkeeping session.");
     }
-    const account = await this.findBackofficeAccount(session.user.id);
+    return await this.backofficeAccessToken(await this.findBackofficeAccount(session.user.id));
+  }
+
+  /**
+   * `getBackofficeAccessToken` for a call Backoffice signed as the user, such as their agent's,
+   * which carries no session. Null when they never signed in to Bookkeeping.
+   */
+  async getBackofficeAccessTokenOf(
+    backofficeUserId: string,
+  ): Promise<BackofficeAccessToken | null> {
+    const [row] = this.ctx.storage.sql
+      .exec<{ userId: string }>(
+        `SELECT "userId" FROM "account" WHERE "providerId" = ? AND "accountId" = ?`,
+        BACKOFFICE_PROVIDER_ID,
+        backofficeUserId,
+      )
+      .toArray();
+    return row
+      ? await this.backofficeAccessToken(await this.findBackofficeAccount(row.userId))
+      : null;
+  }
+
+  private async backofficeAccessToken(
+    account: StoredBackofficeAccount,
+  ): Promise<BackofficeAccessToken> {
     const expiresAt = account.accessTokenExpiresAt
       ? new Date(account.accessTokenExpiresAt).getTime()
       : null;

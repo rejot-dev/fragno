@@ -5,13 +5,27 @@ import {
   type BackofficeApiErrorCode,
 } from "@fragno-dev/backoffice-api/errors";
 import { backofficeApiV0 } from "@fragno-dev/backoffice-api/v0";
+import {
+  APP_ACTION_TOKEN_LIFETIME_SECONDS,
+  appActionBodySha256,
+  BACKOFFICE_TOKEN_ISSUER,
+  type AppActionTokenClaims,
+} from "@fragno-dev/backoffice-api/v0/app-actions";
 import type { OrganizationMembershipRecord } from "@fragno-dev/backoffice-api/v0/organization";
 import { backofficeProvisioningOperations } from "@fragno-dev/backoffice-api/v0/provisioning";
 import {
   backofficeContextScopeSchema,
   parseBackofficeScopePathSegment,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { z } from "zod";
+
+/**
+ * The key Backoffice signs action requests with, one for the whole test run as a deployment has
+ * one: Bookkeeping's verifier caches signing keys for as long as its isolate lives.
+ */
+const ACTION_SIGNING_KEY_ID = "scenario-action-key";
+const actionSigningKey = generateKeyPair("ES256");
 
 type Role = "owner" | "admin" | "member";
 type User = { id: string; email: string; name: string };
@@ -243,7 +257,72 @@ export class FakeBackoffice {
     uninstall: (slug: string) => {
       this.#organizationBySlug(slug).installation = "uninstalled";
     },
+    /** A project made in Backoffice itself, which Bookkeeping did not provision. */
+    createProject: (slug: string, name: string) => {
+      const organization = this.#organizationBySlug(slug);
+      const project = { id: crypto.randomUUID(), slug: slugify(name), name };
+      organization.projects.set(`backoffice:${project.id}`, project);
+    },
   };
+
+  /**
+   * Backoffice calls Bookkeeping's action endpoint at `endpointUrl` with `body`, as
+   * `integrations.execute` does: for a member's agent, or for an automation as the installation,
+   * in one of the organization's projects or, with `project` null, in the organization. Returns
+   * the signed request.
+   */
+  async actionRequest(input: {
+    endpointUrl: string;
+    actor: { email: string } | "installation";
+    organization: string;
+    project: string | null;
+    body: unknown;
+  }): Promise<Request> {
+    const organization = this.#organizationBySlug(input.organization);
+    const actor: AppActionTokenClaims["actor"] =
+      input.actor === "installation"
+        ? { kind: "installation" }
+        : { kind: "user", userId: this.userId(input.actor.email) };
+    if (actor.kind === "user" && !organization.members.has(actor.userId)) {
+      throw new Error(`Backoffice runs no actions for a non-member in ${organization.slug}.`);
+    }
+    const orgScope = { kind: "org" as const, orgId: organization.id };
+    let scopeRestriction: AppActionTokenClaims["scopeRestriction"] = orgScope;
+    if (input.project !== null) {
+      const project = [...organization.projects.values()].find(
+        ({ name }) => name === input.project,
+      );
+      if (!project) {
+        throw new Error(`${organization.slug} has no project ${input.project}.`);
+      }
+      scopeRestriction = { kind: "project", owner: orgScope, projectId: project.id };
+    }
+    const body = JSON.stringify(input.body);
+    const now = Math.floor(Date.now() / 1000);
+    const token = await new SignJWT({
+      actor,
+      installation: {
+        appId: this.client.id,
+        activation: 1,
+        externalAccount: { id: organization.externalId, label: organization.name },
+      },
+      scopeRestriction,
+      bodySha256: await appActionBodySha256(body),
+    } satisfies Omit<AppActionTokenClaims, "iss" | "aud" | "iat" | "exp" | "jti" | "sub">)
+      .setProtectedHeader({ alg: "ES256", kid: ACTION_SIGNING_KEY_ID })
+      .setIssuer(BACKOFFICE_TOKEN_ISSUER)
+      .setAudience(input.endpointUrl)
+      .setSubject(actor.kind === "user" ? actor.userId : `app:${this.client.id}`)
+      .setJti(randomToken())
+      .setIssuedAt(now)
+      .setExpirationTime(now + APP_ACTION_TOKEN_LIFETIME_SECONDS)
+      .sign((await actionSigningKey).privateKey);
+    return new Request(input.endpointUrl, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body,
+    });
+  }
 
   async fetch(request: Request): Promise<Response> {
     if (!this.#reachable) {
@@ -256,6 +335,12 @@ export class FakeBackoffice {
       }
       if (url.pathname === "/api/auth/oauth2/userinfo") {
         return this.#userInfo(request);
+      }
+      if (url.pathname === "/api/auth/jwks") {
+        const publicJwk = await exportJWK((await actionSigningKey).publicKey);
+        return Response.json({
+          keys: [{ ...publicJwk, kid: ACTION_SIGNING_KEY_ID, alg: "ES256", use: "sig" }],
+        });
       }
       if (url.pathname === "/api/backoffice/execution-token") {
         return await this.#executionToken(request);

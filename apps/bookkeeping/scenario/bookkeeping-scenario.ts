@@ -10,6 +10,7 @@ import {
 
 import routeConfig from "../app/routes";
 import { Auth } from "../workers/auth/auth";
+import { BACKOFFICE_ACTIONS_PATH, handleBackofficeAction } from "../workers/backoffice/actions";
 import { Books } from "../workers/books/books";
 import { Directory } from "../workers/directory/directory";
 import { env as workerEnv } from "./cloudflare-workers";
@@ -178,6 +179,47 @@ export class ScenarioBrowser {
         this.#cookies.set(name, value);
       }
     }
+  }
+}
+
+/** What Bookkeeping answered an action: its JSON body, or `{ message }` when it refused. */
+export type ActionAnswer = { status: number; body: unknown };
+
+type AgentCaller = {
+  actor: { email: string } | "installation";
+  organization: string;
+  project: string | null;
+};
+
+/**
+ * Someone's Backoffice agent, or an automation, calling Bookkeeping's actions through Backoffice
+ * in one organization's project, or in the organization itself when `project` is null.
+ */
+export class ScenarioAgent {
+  readonly #scenario: BookkeepingScenario;
+  readonly #caller: AgentCaller;
+
+  constructor(scenario: BookkeepingScenario, caller: AgentCaller) {
+    this.#scenario = scenario;
+    this.#caller = caller;
+  }
+
+  async call(actionId: string, input: unknown): Promise<ActionAnswer> {
+    return await this.send(await this.request(actionId, input));
+  }
+
+  /** The signed request for an action, to send later or tamper with. */
+  async request(actionId: string, input: unknown): Promise<Request> {
+    return await this.#scenario.backoffice.actionRequest({
+      ...this.#caller,
+      endpointUrl: new URL(BACKOFFICE_ACTIONS_PATH, BOOKKEEPING_ORIGIN).toString(),
+      body: { type: "action", actionId, input },
+    });
+  }
+
+  async send(request: Request): Promise<ActionAnswer> {
+    const response = await handleBackofficeAction(request, this.#scenario.env);
+    return { status: response.status, body: await response.json() };
   }
 }
 
@@ -350,6 +392,14 @@ export class BookkeepingScenario {
       throw new Error(`${name} did not open: ${JSON.stringify(opened)}`);
     }
     return opened.path;
+  }
+
+  /** Someone's Backoffice agent, or an automation, in the organization at `organization`. */
+  agent(
+    actor: { email: string } | "installation",
+    { organization, project }: { organization: string; project: string | null },
+  ): ScenarioAgent {
+    return new ScenarioAgent(this, { actor, organization, project });
   }
 
   /** Moves every clock forward: sessions, tokens, and confirmations. */

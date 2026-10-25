@@ -372,13 +372,17 @@ export class Directory extends DurableObject<CloudflareEnv> {
       .toArray();
   }
 
-  findAdministration(input: { clientId: string; slug: string }): Administration | null {
+  /** The client's administration with this slug, or with this ID: its Backoffice project's. */
+  findAdministration(
+    input: { clientId: string } & ({ slug: string } | { id: string }),
+  ): Administration | null {
+    const [column, value] = "slug" in input ? ["slug", input.slug] : ["id", input.id];
     const [row] = this.ctx.storage.sql
       .exec<Administration>(
         `SELECT "id", "clientId", "slug", "name" FROM "administration"
-         WHERE "clientId" = ? AND "slug" = ?`,
+         WHERE "clientId" = ? AND "${column}" = ?`,
         input.clientId,
-        input.slug,
+        value,
       )
       .toArray();
     return row ?? null;

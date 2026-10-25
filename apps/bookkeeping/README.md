@@ -220,6 +220,30 @@ or through a client from `integrations.generateClient`. `workers/backoffice/acti
 `POST /api/backoffice/actions`: it verifies Backoffice's per-request token with
 `createAppActionVerifier`, then describes the firm or client the request was signed for.
 
+Agents also keep an administration's books with the actions in
+`workers/backoffice/books-actions.ts`, one per operation of its pages. Each declares zod input and
+output schemas, which registration sends as JSON Schema and the handler parses with. They run in the
+administration's Backoffice project: the signed project, never the input, picks the books, and calls
+in any other scope are refused. Inputs name accounts, journals, customers, suppliers, and dimensions
+by code and amounts as decimals; `books.describe` lists them.
+
+| Access                      | Actions                                                                                                                                                          |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Anyone Backoffice signs for | `books.describe`, `entries.list`, `entries.get`, `accounts.lines`, `reports.trial-balance`, `parties.open-items`                                                 |
+| Members                     | `entries.post`, `entries.reverse`, `parties.create`, `settlements.create`, `settlements.reverse`                                                                 |
+| Owners and admins           | `accounts.create`, `accounts.update`, `journals.create`, `dimensions.create`, `dimension-values.create`, `currencies.add`, `fiscal-years.open`, `periods.reopen` |
+
+Only people close and lock periods, on the settings page. Changing the books needs a person: calls
+Backoffice makes as the installation, for automations, only read. The person must have signed in to
+Bookkeeping, which names them on the entries and settlements their agent makes ("Ada Lovelace via
+Backoffice"). Their roles are confirmed as the pages confirm them: a membership Backoffice confirmed
+within the last minute is trusted, otherwise Bookkeeping asks Backoffice again with their stored
+authorization. An entry's reference, such as an invoice number, is unique in its journal, so an
+agent posting again after a lost answer cannot post twice. The ledger's refusals answer HTTP 422
+with its message, which Backoffice passes to the agent.
+
+After changing the actions, run `pnpm backoffice:connect` to register them.
+
 ## Administrations
 
 An administration is the books of one business. A client can have several, e.g. for a holding and
@@ -271,25 +295,25 @@ administration is created, and administrations from before a storage change do n
 feature: a page sits with its server code and scenario tests, and each Durable Object has its own
 folder with its migrations.
 
-| Path                  | Holds                                                                 |
-| --------------------- | --------------------------------------------------------------------- |
-| `app/auth`            | the session, the auth client, and signing in and out                  |
-| `app/public`          | pages outside the areas: home, login, help, name, account             |
-| `app/shell`           | the frame every area shares, its modes, and the places someone can go |
-| `app/organizations`   | `/start`, access confirmation, and provisioning firms and clients     |
-| `app/operator`        | the operator's area: every firm, creating firms, and the operators    |
-| `app/firms`           | a firm's area: its clients, creating clients, and its members         |
-| `app/clients`         | a client's workspace: its administrations and its members             |
-| `app/administrations` | creating an administration                                            |
-| `app/books`           | an administration's books: journal, accounts, reports, parties, setup |
-| `app/members`         | a firm's or client's team: members, invitations, and inviting         |
-| `app/invitations`     | inviting someone, and accepting an invitation                         |
-| `workers/worker.ts`   | the Worker's `fetch` entry, which exports the Durable Objects         |
-| `workers/auth`        | the `Auth` object                                                     |
-| `workers/directory`   | the `Directory` object                                                |
-| `workers/backoffice`  | Backoffice's API client and the actions Backoffice calls              |
-| `workers/books`       | the `Books` object, the books it opens, and the reference schema      |
-| `scenario/`           | the scenario test harness                                             |
+| Path                  | Holds                                                                    |
+| --------------------- | ------------------------------------------------------------------------ |
+| `app/auth`            | the session, the auth client, and signing in and out                     |
+| `app/public`          | pages outside the areas: home, login, help, name, account                |
+| `app/shell`           | the frame every area shares, its modes, and the places someone can go    |
+| `app/organizations`   | `/start`, access confirmation, and provisioning firms and clients        |
+| `app/operator`        | the operator's area: every firm, creating firms, and the operators       |
+| `app/firms`           | a firm's area: its clients, creating clients, and its members            |
+| `app/clients`         | a client's workspace: its administrations and its members                |
+| `app/administrations` | creating an administration                                               |
+| `app/books`           | an administration's books: journal, accounts, reports, parties, setup    |
+| `app/members`         | a firm's or client's team: members, invitations, and inviting            |
+| `app/invitations`     | inviting someone, and accepting an invitation                            |
+| `workers/worker.ts`   | the Worker's `fetch` entry, which exports the Durable Objects            |
+| `workers/auth`        | the `Auth` object                                                        |
+| `workers/directory`   | the `Directory` object                                                   |
+| `workers/backoffice`  | Backoffice's API client and the actions Backoffice calls, books ones too |
+| `workers/books`       | the `Books` object, the books it opens, and the reference schema         |
+| `scenario/`           | the scenario test harness                                                |
 
 ## Checks
 
