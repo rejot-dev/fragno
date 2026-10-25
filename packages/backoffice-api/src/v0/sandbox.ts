@@ -89,13 +89,13 @@ const startInputSchema = z.lazy(() =>
 
 export const sandboxOperations = {
   "sandbox.start": {
-    description: "Start a Cloudflare sandbox for the current organization.",
+    description: "Start a Cloudflare sandbox for the current scope.",
     permissions: [BACKOFFICE_PERMISSION.sandbox.modify],
     input: startInputSchema,
     output: sandboxSummarySchema,
   },
   "sandbox.list": {
-    description: "List Cloudflare sandboxes for the current organization.",
+    description: "List Cloudflare sandboxes for the current scope.",
     permissions: [BACKOFFICE_PERMISSION.sandbox.read],
     input: z.void(),
     output: z.lazy(() => z.array(sandboxSummarySchema)),

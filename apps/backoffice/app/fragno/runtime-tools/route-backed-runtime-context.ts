@@ -15,7 +15,10 @@ import {
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
 import { isBackofficeUnavailableError, type BackofficeKernel } from "@/backoffice-runtime/kernel";
-import type { CodemodeObject } from "@/backoffice-runtime/object-registry";
+import {
+  isBackofficeObjectAvailableInContext,
+  type CodemodeObject,
+} from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { createStaticFileCollection } from "@/file-collection/create-static-file-collection";
 import { createBackofficeStaticFileCollection } from "@/files/content/static";
@@ -72,7 +75,7 @@ import {
 import { createPackagesRuntime } from "@/fragno/runtime-tools/families/packages-runtime";
 import { createProjectsRuntime } from "@/fragno/runtime-tools/families/projects-runtime";
 import { createReson8Runtime } from "@/fragno/runtime-tools/families/reson8-runtime";
-import { createSandboxRouteRuntime } from "@/fragno/runtime-tools/families/sandbox-route-runtime";
+import { createSandboxRuntime } from "@/fragno/runtime-tools/families/sandbox-runtime";
 import { createWebRuntime } from "@/fragno/runtime-tools/families/web-runtime";
 import { createFileLinkRuntime } from "@/fragno/runtime-tools/file-links-runtime";
 
@@ -553,10 +556,13 @@ export const createRouteBackedRuntimeContext = ({
     sandbox:
       runtime.config.bindings.sandbox && runtime.config.bindings.automations
         ? {
-            runtime: selectedOrg
-              ? createSandboxRouteRuntime({
-                  objects: runtime.objects,
-                  orgId: selectedOrg.orgId,
+            runtime: isBackofficeObjectAvailableInContext("SANDBOX_MANAGER", execution.scope)
+              ? createSandboxRuntime({
+                  lifecycle: kernel.scoped(
+                    "SANDBOX_MANAGER",
+                    execution.scope,
+                    runtime.objects.sandboxManager,
+                  ).commands,
                 })
               : unavailableRuntime(unavailableMessage("SANDBOX", execution)),
           }
