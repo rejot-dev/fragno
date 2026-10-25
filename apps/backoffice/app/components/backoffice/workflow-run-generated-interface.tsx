@@ -81,7 +81,8 @@ function GeneratedInterfaceContent({
       workflowEvents={run.workflowEvents}
       workflowRunRecordId={run.id}
       currentScope={resolvedScope.kind !== "system" ? resolvedScope : undefined}
-      workflowName={run.remoteWorkflowName ?? run.workflowName}
+      // Events address the run by its runner's name; the authored name only labels it.
+      workflowName={run.workflowName}
       workflowInstanceId={run.instanceId}
       waitingEventTypes={currentWorkflowWaitingEventTypes(run.steps)}
       workflowEventSender={async ({ eventId, workflowName, instanceId, eventType, payload }) => {
