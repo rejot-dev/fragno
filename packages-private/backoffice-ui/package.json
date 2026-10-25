@@ -16,7 +16,7 @@
     "./catalog": "./src/catalog.ts",
     "./demo": "./src/demo.ts",
     "./file-image": "./src/file-image.tsx",
-    "./generated-ui-upload-scope": "./src/generated-ui-upload-scope.ts",
+    "./generated-ui-upload": "./src/generated-ui-upload.ts",
     "./link": "./src/components/link.ts",
     "./render-context": "./src/render-context.tsx",
     "./renderer": "./src/renderer.tsx",

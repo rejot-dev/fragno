@@ -115,7 +115,7 @@ test("a maximum-size release captures destination revisions in one batch without
       name: "Batch destination snapshots for 100-file publication",
       objects: {
         ...scenarioObjects,
-        UPLOAD: ({ state, env, runtime, implementation }) =>
+        UPLOAD: ({ state, env, implementation }) =>
           new (class extends InMemoryUploadObject {
             override async fetch(request: Request): Promise<Response> {
               const url = new URL(request.url);
@@ -133,7 +133,6 @@ test("a maximum-size release captures destination revisions in one batch without
           })({
             state,
             env: env as unknown as ConstructorParameters<typeof InMemoryUploadObject>[0]["env"],
-            runtime,
             implementation,
           }),
       },
@@ -232,7 +231,7 @@ test("reused files are revision-asserted atomically with the metadata guard", as
       options: { allowErroredWorkflows: true },
       objects: {
         ...scenarioObjects,
-        UPLOAD: ({ state, env, runtime, implementation }) =>
+        UPLOAD: ({ state, env, implementation }) =>
           new (class extends InMemoryUploadObject {
             override async fetch(request: Request): Promise<Response> {
               const response = await super.fetch(request);
@@ -262,7 +261,6 @@ test("reused files are revision-asserted atomically with the metadata guard", as
           })({
             state,
             env: env as unknown as ConstructorParameters<typeof InMemoryUploadObject>[0]["env"],
-            runtime,
             implementation,
           }),
       },

@@ -60,7 +60,7 @@ describe("Backoffice codemode scenarios", () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         objects: scenarioObjects,
-        name: "codemode configures upload storage and writes automation state",
+        name: "codemode writes automation state",
 
         files: backofficeFiles.workspaceStarter(),
 
@@ -69,10 +69,8 @@ describe("Backoffice codemode scenarios", () => {
         steps: ({ when, then }) => [
           when.codemode.run({
             scope: { kind: "org", orgId: "org-1" },
-            label: "configure upload storage and write store from codemode",
+            label: "write store and workspace state from codemode",
             code: `async () => {
-  const storage = await upload.configureStorage({ provider: "database", default: true });
-
   await store.set({
     key: "foo",
     value: "bar",
@@ -82,19 +80,12 @@ describe("Backoffice codemode scenarios", () => {
     path: "/workspace/codemode-output.txt",
     content: "codemode wrote this",
   });
-  return storage;
 }`,
-            assertToolCalls: ["upload.configureStorage", "store.set"],
-          }),
-          then.assert("codemode reads back the storage it configured", (ctx) => {
-            expect(ctx.codemodeRuns.at(-1)?.result.result).toEqual({
-              defaultProvider: "database",
-              providers: ["database"],
-            });
+            assertToolCalls: ["store.set"],
           }),
 
           then.codemode.toolCalls({
-            include: ["upload.configureStorage", "store.set"],
+            include: ["store.set"],
           }),
           then.store.entry({ orgId: "org-1", key: "foo", value: "bar" }),
           then.files.contains({

@@ -540,7 +540,6 @@ describe("marketplace lock scenarios", () => {
             runner.drain(),
             then.assert("write an invalid lock and request installation", async (ctx) => {
               const upload = ctx.runtime.objects.upload.for(TARGET_SCOPE);
-              await upload.commands.setAdminConfig({ provider: "database" }, "org-1");
               await writeUploadFile({
                 fileKey: "marketplace-lock.json",
                 content,
@@ -593,7 +592,7 @@ describe("marketplace lock scenarios", () => {
         name: "preserve concurrently changed files during a Marketplace install",
         objects: {
           ...scenarioObjects,
-          UPLOAD: ({ name, state, env, runtime, implementation }) =>
+          UPLOAD: ({ name, state, env, implementation }) =>
             new (class extends InMemoryUploadObject {
               async fetch(request: Request): Promise<Response> {
                 const url = new URL(request.url);
@@ -615,7 +614,7 @@ describe("marketplace lock scenarios", () => {
                 }
                 return await super.fetch(request);
               }
-            })({ state, env: env as never, runtime, implementation }),
+            })({ state, env: env as never, implementation }),
         },
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then, runner }) => [
@@ -625,7 +624,6 @@ describe("marketplace lock scenarios", () => {
             const entry = getStaticMarketplaceEntry({ slug: "telegram-channel", version: "1.0.1" });
             assert(entry);
             const upload = ctx.runtime.objects.upload.for(TARGET_SCOPE);
-            await upload.commands.setAdminConfig({ provider: "database" }, "org-1");
             await writeUploadFile({
               fileKey: `atomic/${matchingFile}`,
               content: entry.files[matchingFile],
@@ -736,7 +734,7 @@ describe("marketplace lock scenarios", () => {
         name: "replay a committed Marketplace lock write",
         objects: {
           ...scenarioObjects,
-          UPLOAD: ({ name, state, env, runtime, implementation }) =>
+          UPLOAD: ({ name, state, env, implementation }) =>
             new (class extends InMemoryUploadObject {
               async fetch(request: Request): Promise<Response> {
                 const destination = name.endsWith("v1:org:org-1");
@@ -754,7 +752,7 @@ describe("marketplace lock scenarios", () => {
                 }
                 return await super.fetch(request);
               }
-            })({ state, env: env as never, runtime, implementation }),
+            })({ state, env: env as never, implementation }),
         },
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then, runner, when }) => [
@@ -825,7 +823,7 @@ describe("marketplace lock scenarios", () => {
         name: "preserve a concurrent Marketplace lock writer",
         objects: {
           ...scenarioObjects,
-          UPLOAD: ({ name, state, env, runtime, implementation }) =>
+          UPLOAD: ({ name, state, env, implementation }) =>
             new (class extends InMemoryUploadObject {
               async fetch(request: Request): Promise<Response> {
                 const url = new URL(request.url);
@@ -855,7 +853,7 @@ describe("marketplace lock scenarios", () => {
                 }
                 return await super.fetch(request);
               }
-            })({ state, env: env as never, runtime, implementation }),
+            })({ state, env: env as never, implementation }),
         },
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then, runner, when }) => [

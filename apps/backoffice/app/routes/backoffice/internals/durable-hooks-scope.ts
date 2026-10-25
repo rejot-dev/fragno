@@ -221,10 +221,6 @@ export const DURABLE_HOOKS_OBJECT_CONFIGURE_META: Partial<
     path: (orgSlug) => `/backoffice/integrations/org/${orgSlug}`,
     label: "Open integrations",
   },
-  upload: {
-    path: (orgSlug) => `/backoffice/connections/upload/${orgSlug}/configuration`,
-    label: "Configure Upload",
-  },
   github: {
     path: (orgSlug) => `/backoffice/integrations/org/${orgSlug}/github/configuration`,
     label: "Configure GitHub",

@@ -42,7 +42,6 @@ import type { GitHub } from "workers/github.do";
 import type { IssueIdentityClaimInput, IssueIdentityClaimResult, Otp } from "workers/otp.do";
 import type { Resend } from "workers/resend.do";
 import type { TelegramAdminConfigResponse } from "workers/telegram.do";
-import type { Upload } from "workers/upload.do";
 
 import type { FragnoExecutionContext } from "@fragno-dev/core";
 import type { ResendSendEmailInput } from "@fragno-dev/resend-fragment";
@@ -736,9 +735,7 @@ export type ResendObject = DurableHookCommands &
 export type McpObject = DurableHookCommands;
 /** Connector has HTTP operations only; provider tokens stay upstream. */
 export type ProjectConnectorObject = Record<never, never>;
-export type UploadObject = WarmableObject &
-  DurableHookCommands &
-  AdminConfigurableObject<AwaitedMethodReturn<Upload, "getAdminConfig">>;
+export type UploadObject = WarmableObject & DurableHookCommands;
 export type CloudflareObject = Record<never, never>;
 export type FormsObject = DurableHookCommands;
 export type GitHubObject = DurableHookCommands & {

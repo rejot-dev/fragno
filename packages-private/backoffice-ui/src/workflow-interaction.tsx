@@ -1,9 +1,8 @@
-import type { PreparedUploadedFileReference } from "@fragno-dev/backoffice-api/v0/upload";
 import { createContext, useContext, type ReactNode } from "react";
 
 import type { UploadProgress } from "@fragno-dev/upload";
 
-import type { GeneratedUiUploadScope } from "./generated-ui-upload-scope";
+import type { GeneratedUiUploadedFile, GeneratedUiUploadScope } from "./generated-ui-upload";
 
 export type WorkflowUiEventInput = {
   eventId: string;
@@ -14,6 +13,8 @@ export type WorkflowUiEventInput = {
 export type WorkflowUiFileUploadInput = {
   scope: GeneratedUiUploadScope;
   file: File;
+  /** The file the form held before this upload, which the new file replaces. */
+  replaces: GeneratedUiUploadedFile | null;
   bindingPath?: string;
   onProgress: (progress: UploadProgress) => void;
 };
@@ -22,7 +23,7 @@ export type WorkflowUiInteractionHost = {
   canEditInput(): boolean;
   canSendEvent(eventType: string): boolean;
   sendEvent(input: WorkflowUiEventInput): Promise<void>;
-  uploadFile(input: WorkflowUiFileUploadInput): Promise<PreparedUploadedFileReference>;
+  uploadFile(input: WorkflowUiFileUploadInput): Promise<GeneratedUiUploadedFile>;
 };
 
 const WorkflowUiInteractionContext = createContext<WorkflowUiInteractionHost | null>(null);

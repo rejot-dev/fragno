@@ -497,7 +497,7 @@ type BackofficeUiComponents = {
       disabled?: boolean;
     }>,
   ): BackofficeUiElement;
-  /** Builds FileUpload. Uploads one private file as a prepared Upload draft. Use the current workflow context or a declared org, project, or personal scope. Bind value with form.bind(field); the field receives one serializable prepared-upload reference. */
+  /** Builds FileUpload. Uploads one file into the workspace of the current workflow context or a declared org, project, or personal scope. Bind value with form.bind(field); the field receives the uploaded file's scope, /workspace path, filename, size, and content type. Delete the file when the workflow rejects it. */
   fileUpload(
     props: BackofficeUiProps<{
       /** 1-120 characters */
@@ -565,7 +565,6 @@ type BackofficeUiComponents = {
             projectId: string;
           };
       value: {
-        kind: "prepared-upload";
         scope:
           | {
               kind: "org";
@@ -625,20 +624,14 @@ type BackofficeUiComponents = {
               /** at least 1 characters */
               projectId: string;
             };
-        /** 1-240 characters */
-        uploadId: string;
-        /** 1-120 characters */
-        provider: string;
-        /** 1-1024 characters */
-        fileKey: string;
+        /** at most 1100 characters */
+        path: string;
         /** 1-500 characters */
         filename: string;
         /** 0-9007199254740991 */
         sizeBytes: number;
         /** 1-240 characters */
         contentType: string;
-        /** ISO 8601 datetime string. */
-        expiresAt: string;
       } | null;
       /** at most 500 characters */
       description?: string;

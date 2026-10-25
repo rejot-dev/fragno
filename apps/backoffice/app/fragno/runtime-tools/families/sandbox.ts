@@ -16,8 +16,6 @@ import {
 } from "../runtime-tools";
 import type { SandboxExecuteCommandArgs, SandboxKillArgs, SandboxRuntime } from "./sandbox-runtime";
 
-export type { SandboxRuntime } from "./sandbox-runtime";
-
 type SandboxToolContext = BackofficeToolContext<{ sandbox?: SandboxRuntime }>;
 
 const getSandboxRuntime = (runtime: SandboxToolContext["runtimes"]["sandbox"]): SandboxRuntime => {

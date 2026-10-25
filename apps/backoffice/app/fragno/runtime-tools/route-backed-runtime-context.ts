@@ -73,12 +73,8 @@ import { createPackagesRuntime } from "@/fragno/runtime-tools/families/packages-
 import { createProjectsRuntime } from "@/fragno/runtime-tools/families/projects-runtime";
 import { createReson8Runtime } from "@/fragno/runtime-tools/families/reson8-runtime";
 import { createSandboxRouteRuntime } from "@/fragno/runtime-tools/families/sandbox-route-runtime";
-import {
-  createUploadLinkRuntime,
-  createUploadRuntime,
-  createUploadStorageRuntime,
-} from "@/fragno/runtime-tools/families/upload-runtime";
 import { createWebRuntime } from "@/fragno/runtime-tools/families/web-runtime";
+import { createFileLinkRuntime } from "@/fragno/runtime-tools/file-links-runtime";
 
 import type { InteractiveRuntimeToolContext } from "./bash-host";
 import { buildJavaScriptModuleFile } from "./families/javascript-build";
@@ -268,6 +264,16 @@ export const createRouteBackedRuntimeContext = ({
     execution,
     backofficeKernel: kernel,
     stateBackend,
+    fileLinks:
+      runtime.config.bindings.upload && isBackofficeRoutableScope(execution.scope)
+        ? {
+            runtime: createFileLinkRuntime({
+              uploadObject: () => uploadObject().http,
+              scope: execution.scope,
+              baseUrl: runtime.config.sandboxBackofficeBaseUrl,
+            }),
+          }
+        : null,
     account:
       runtime.config.bindings.auth && userId
         ? {
@@ -599,20 +605,6 @@ export const createRouteBackedRuntimeContext = ({
                       }
                     }
                   : null,
-            },
-          }
-        : null,
-    upload:
-      runtime.config.bindings.upload && isBackofficeRoutableScope(execution.scope)
-        ? {
-            runtime: {
-              ...createUploadRuntime(uploadObject().http),
-              ...createUploadStorageRuntime(uploadObject().commands, execution.scope),
-              ...createUploadLinkRuntime({
-                object: uploadObject().http,
-                scope: execution.scope,
-                baseUrl: runtime.config.sandboxBackofficeBaseUrl,
-              }),
             },
           }
         : null,

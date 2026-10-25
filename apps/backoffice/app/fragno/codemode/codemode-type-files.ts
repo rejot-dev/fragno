@@ -40,7 +40,7 @@ const CODEMODE_AUTHORED_REFERENCES = [
 ];
 const CODEMODE_PROVIDER_SUMMARIES: Record<string, string> = {
   state:
-    "Files in /workspace and /static. Read for file work beyond searching, reading, and writing.",
+    "Files in /workspace and /static, and links that share them. Read for file work beyond searching, reading, and writing, or to share or move files.",
   account:
     "Your own account: profile, organizations, invitations, authorized apps. Read when the user asks about themselves.",
   admin:
@@ -73,8 +73,6 @@ const CODEMODE_PROVIDER_SUMMARIES: Record<string, string> = {
   sandbox: "Cloudflare sandboxes with a real shell. Read when work needs command-line tools.",
   js: "Saved JavaScript: check, run, build modules, and inspect codemode runs. Read to save, run, or debug a script file.",
   artifacts: "Page builds and their errors. Read to verify a page after writing it.",
-  upload:
-    "Prepared uploads, sandbox file URLs, and upload storage. Read to handle an uploaded file or move files to a sandbox.",
   marketplace:
     "Marketplace packages: search, inspect, publish, feature. Read to find or publish a package.",
   packages:

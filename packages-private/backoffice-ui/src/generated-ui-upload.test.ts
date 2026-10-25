@@ -1,9 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import {
-  generatedUiUploadScopeSchema,
-  resolveGeneratedUiUploadScope,
-} from "./generated-ui-upload-scope";
+import { generatedUiUploadScopeSchema, resolveGeneratedUiUploadScope } from "./generated-ui-upload";
 
 const currentScope = {
   kind: "project" as const,

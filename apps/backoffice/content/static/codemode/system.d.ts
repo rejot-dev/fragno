@@ -5,7 +5,7 @@
 /// <reference path="/static/codemode/ui.d.ts" />
 // Page builder: live queries bound to a ui. Read before writing a .page.js page.
 /// <reference path="/static/codemode/page.d.ts" />
-// Files in /workspace and /static. Read for file work beyond searching, reading, and writing.
+// Files in /workspace and /static, and links that share them. Read for file work beyond searching, reading, and writing, or to share or move files.
 /// <reference path="/static/codemode/providers/state.d.ts" />
 // Your own account: profile, organizations, invitations, authorized apps. Read when the user asks about themselves.
 /// <reference path="/static/codemode/providers/account.d.ts" />
@@ -53,8 +53,6 @@
 /// <reference path="/static/codemode/providers/js.d.ts" />
 // Page builds and their errors. Read to verify a page after writing it.
 /// <reference path="/static/codemode/providers/artifacts.d.ts" />
-// Prepared uploads, sandbox file URLs, and upload storage. Read to handle an uploaded file or move files to a sandbox.
-/// <reference path="/static/codemode/providers/upload.d.ts" />
 // Marketplace packages: search, inspect, publish, feature. Read to find or publish a package.
 /// <reference path="/static/codemode/providers/marketplace.d.ts" />
 // Package installs into the workspace. Read to install a Marketplace package or list installed ones.
@@ -103,7 +101,6 @@ interface BackofficeCodemodeScopedProviders {
   sandbox: SandboxCodemodeProvider;
   js: JsCodemodeProvider;
   artifacts: ArtifactsCodemodeProvider;
-  upload: UploadCodemodeProvider;
   marketplace: MarketplaceCodemodeProvider;
   packages: PackagesCodemodeProvider;
 }

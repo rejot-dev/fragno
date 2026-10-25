@@ -50,6 +50,82 @@
     ]
   },
   {
+    "command": "state.createDownloadLink",
+    "summary": "Create a temporary URL that reads a workspace file, folder, or glob.",
+    "options": [
+      {
+        "name": "path",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "path",
+        "description": "A /workspace file, a folder ending in /, or a glob such as /workspace/out/**."
+      },
+      {
+        "name": "expires-in-seconds",
+        "valueRequired": true,
+        "valueName": "seconds",
+        "description": "How long the link works, from 60 to 3600. Defaults to 900."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "state.createUploadLink",
+    "summary": "Create a temporary URL that writes a workspace file, folder, or glob.",
+    "options": [
+      {
+        "name": "path",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "path",
+        "description": "A /workspace file, a folder ending in /, or a glob such as /workspace/out/**."
+      },
+      {
+        "name": "expires-in-seconds",
+        "valueRequired": true,
+        "valueName": "seconds",
+        "description": "How long the link works, from 60 to 3600. Defaults to 900."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "account.me",
     "summary": "account.me prints your own account profile.",
     "options": [
@@ -4306,247 +4382,6 @@
         "required": true,
         "valueRequired": true,
         "description": "Output built JSON module under /workspace."
-      },
-      {
-        "name": "help",
-        "description": "Show this help text",
-        "valueRequired": false,
-        "valueName": ""
-      },
-      {
-        "name": "print",
-        "description": "Extract a nested JSON field (kebab-case path) from command result",
-        "valueRequired": true,
-        "valueName": "selector",
-        "required": false
-      },
-      {
-        "name": "format",
-        "description": "Output format: text (default) or json",
-        "valueRequired": true,
-        "valueName": "format"
-      }
-    ]
-  },
-  {
-    "command": "upload.prepared.read",
-    "summary": "Read one prepared upload as UTF-8, base64, or bytes.",
-    "options": [
-      {
-        "name": "file-json",
-        "required": true,
-        "valueRequired": true,
-        "valueName": "json",
-        "description": "Prepared-upload reference as JSON."
-      },
-      {
-        "name": "encoding",
-        "valueRequired": true,
-        "valueName": "utf8|base64|bytes",
-        "description": "Content encoding; defaults to utf8."
-      },
-      {
-        "name": "max-bytes",
-        "valueRequired": true,
-        "valueName": "number",
-        "description": "Maximum bytes to read."
-      },
-      {
-        "name": "help",
-        "description": "Show this help text",
-        "valueRequired": false,
-        "valueName": ""
-      },
-      {
-        "name": "print",
-        "description": "Extract a nested JSON field (kebab-case path) from command result",
-        "valueRequired": true,
-        "valueName": "selector",
-        "required": false
-      },
-      {
-        "name": "format",
-        "description": "Output format: text (default) or json",
-        "valueRequired": true,
-        "valueName": "format"
-      }
-    ]
-  },
-  {
-    "command": "upload.prepared.commit",
-    "summary": "Commit one prepared upload.",
-    "options": [
-      {
-        "name": "file-json",
-        "required": true,
-        "valueRequired": true,
-        "valueName": "json",
-        "description": "Prepared-upload reference as JSON."
-      },
-      {
-        "name": "help",
-        "description": "Show this help text",
-        "valueRequired": false,
-        "valueName": ""
-      },
-      {
-        "name": "print",
-        "description": "Extract a nested JSON field (kebab-case path) from command result",
-        "valueRequired": true,
-        "valueName": "selector",
-        "required": false
-      },
-      {
-        "name": "format",
-        "description": "Output format: text (default) or json",
-        "valueRequired": true,
-        "valueName": "format"
-      }
-    ]
-  },
-  {
-    "command": "upload.prepared.discard",
-    "summary": "Discard one prepared upload.",
-    "options": [
-      {
-        "name": "file-json",
-        "required": true,
-        "valueRequired": true,
-        "valueName": "json",
-        "description": "Prepared-upload reference as JSON."
-      },
-      {
-        "name": "help",
-        "description": "Show this help text",
-        "valueRequired": false,
-        "valueName": ""
-      },
-      {
-        "name": "print",
-        "description": "Extract a nested JSON field (kebab-case path) from command result",
-        "valueRequired": true,
-        "valueName": "selector",
-        "required": false
-      },
-      {
-        "name": "format",
-        "description": "Output format: text (default) or json",
-        "valueRequired": true,
-        "valueName": "format"
-      }
-    ]
-  },
-  {
-    "command": "upload.createDownloadLink",
-    "summary": "Create a temporary URL that reads a workspace file, folder, or glob.",
-    "options": [
-      {
-        "name": "path",
-        "required": true,
-        "valueRequired": true,
-        "valueName": "path",
-        "description": "A /workspace file, a folder ending in /, or a glob such as /workspace/out/**."
-      },
-      {
-        "name": "expires-in-seconds",
-        "valueRequired": true,
-        "valueName": "seconds",
-        "description": "How long the link works, from 60 to 3600. Defaults to 900."
-      },
-      {
-        "name": "help",
-        "description": "Show this help text",
-        "valueRequired": false,
-        "valueName": ""
-      },
-      {
-        "name": "print",
-        "description": "Extract a nested JSON field (kebab-case path) from command result",
-        "valueRequired": true,
-        "valueName": "selector",
-        "required": false
-      },
-      {
-        "name": "format",
-        "description": "Output format: text (default) or json",
-        "valueRequired": true,
-        "valueName": "format"
-      }
-    ]
-  },
-  {
-    "command": "upload.createUploadLink",
-    "summary": "Create a temporary URL that writes a workspace file, folder, or glob.",
-    "options": [
-      {
-        "name": "path",
-        "required": true,
-        "valueRequired": true,
-        "valueName": "path",
-        "description": "A /workspace file, a folder ending in /, or a glob such as /workspace/out/**."
-      },
-      {
-        "name": "expires-in-seconds",
-        "valueRequired": true,
-        "valueName": "seconds",
-        "description": "How long the link works, from 60 to 3600. Defaults to 900."
-      },
-      {
-        "name": "help",
-        "description": "Show this help text",
-        "valueRequired": false,
-        "valueName": ""
-      },
-      {
-        "name": "print",
-        "description": "Extract a nested JSON field (kebab-case path) from command result",
-        "valueRequired": true,
-        "valueName": "selector",
-        "required": false
-      },
-      {
-        "name": "format",
-        "description": "Output format: text (default) or json",
-        "valueRequired": true,
-        "valueName": "format"
-      }
-    ]
-  },
-  {
-    "command": "upload.storage.get",
-    "summary": "Show the configured upload storage providers and the default.",
-    "options": [
-      {
-        "name": "help",
-        "description": "Show this help text",
-        "valueRequired": false,
-        "valueName": ""
-      },
-      {
-        "name": "print",
-        "description": "Extract a nested JSON field (kebab-case path) from command result",
-        "valueRequired": true,
-        "valueName": "selector",
-        "required": false
-      },
-      {
-        "name": "format",
-        "description": "Output format: text (default) or json",
-        "valueRequired": true,
-        "valueName": "format"
-      }
-    ]
-  },
-  {
-    "command": "upload.storage.configure",
-    "summary": "Store one upload storage provider's configuration.",
-    "options": [
-      {
-        "name": "input-json",
-        "required": true,
-        "valueRequired": true,
-        "valueName": "json",
-        "description": "Provider configuration as JSON."
       },
       {
         "name": "help",

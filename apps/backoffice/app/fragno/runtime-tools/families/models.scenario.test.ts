@@ -482,9 +482,6 @@ test("invalid image evidence never reaches Decisions and corrected files preserv
         then.assert(
           "reject missing files, unsupported content, unsafe paths, and too many images",
           async (ctx) => {
-            await ctx.runtime.objects.upload
-              .for(scope)
-              .commands.setAdminConfig({ provider: "database" }, scope.orgId);
             const execution = createBackofficeSystemExecution(scope);
             const context = createBackofficeToolContext(
               createRouteBackedRuntimeContext({

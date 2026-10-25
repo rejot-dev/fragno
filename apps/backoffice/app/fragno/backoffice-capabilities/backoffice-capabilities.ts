@@ -186,8 +186,8 @@ export const backofficeConnectionCatalog: readonly BackofficeConnectionCatalogEn
     id: "upload",
     label: "Upload",
     kind: "connection",
-    configurable: true,
-    description: "Configure org-scoped storage, inspect files, and run manual upload actions.",
+    configurable: false,
+    description: "Inspect workspace files and run manual upload actions.",
     routeSegment: "upload",
   },
   {

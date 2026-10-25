@@ -72,7 +72,6 @@ export default [
         "connections/upload/:orgSlug",
         "routes/backoffice/connections/upload/organization-layout.tsx",
         [
-          route("configuration", "routes/backoffice/connections/upload/configuration.tsx"),
           route("uploads", "routes/backoffice/connections/upload/uploads.tsx"),
           route("files", "routes/backoffice/connections/upload/files.tsx", [
             index("routes/backoffice/connections/upload/files-index.tsx"),

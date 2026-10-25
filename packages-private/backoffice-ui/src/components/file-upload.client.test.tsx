@@ -2,12 +2,12 @@
 
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import type { PreparedUploadedFileReference } from "@fragno-dev/backoffice-api/v0/upload";
-
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
+import type { GeneratedUiUploadedFile } from "../generated-ui-upload";
 import { BackofficeUiRenderer } from "../renderer";
 import { parseBackofficeUiResult } from "../result";
+import type { WorkflowUiInteractionHost } from "../workflow-interaction";
 
 const scope = {
   kind: "project" as const,
@@ -60,17 +60,13 @@ if (uploadUi.kind !== "valid") {
 afterEach(() => cleanup());
 
 describe("FileUpload", () => {
-  test("uploads a File and binds only the prepared reference into workflow state", async () => {
-    const reference: PreparedUploadedFileReference = {
-      kind: "prepared-upload",
+  test("uploads a File and binds only the uploaded workspace file into workflow state", async () => {
+    const reference: GeneratedUiUploadedFile = {
       scope,
-      uploadId: "upload-1",
-      provider: "database",
-      fileKey: "generated-ui/workflows/run/step/file.pdf",
+      path: "/workspace/uploads/run/2f0c6f1e-4d0b-4b8f-9c1a-6b8e1f2d3c4a/file.pdf",
       filename: "evidence.pdf",
       sizeBytes: 8,
       contentType: "application/pdf",
-      expiresAt: "2027-01-01T00:00:00.000Z",
     };
     const uploadFile = vi.fn(async () => reference);
     const sendEvent = vi.fn(async () => undefined);
@@ -95,9 +91,14 @@ describe("FileUpload", () => {
       target: { files: [file] },
     });
 
-    await screen.findByText("8 B · Prepared");
+    await screen.findByText("8 B · Uploaded");
     expect(uploadFile).toHaveBeenCalledWith(
-      expect.objectContaining({ scope, file, bindingPath: "/response/attachment" }),
+      expect.objectContaining({
+        scope,
+        file,
+        replaces: null,
+        bindingPath: "/response/attachment",
+      }),
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Submit document" }));
@@ -109,6 +110,48 @@ describe("FileUpload", () => {
         }),
       );
     });
+  });
+
+  test("replacing an uploaded file hands the file it replaces to the host", async () => {
+    const first: GeneratedUiUploadedFile = {
+      scope,
+      path: "/workspace/uploads/run/9a1d6f0e-1c2b-4d3e-8f4a-5b6c7d8e9f01/draft.pdf",
+      filename: "draft.pdf",
+      sizeBytes: 5,
+      contentType: "application/pdf",
+    };
+    const second: GeneratedUiUploadedFile = {
+      ...first,
+      path: "/workspace/uploads/run/0b2e7a1f-2d3c-4e4f-9a5b-6c7d8e9f0a12/final.pdf",
+      filename: "final.pdf",
+    };
+    const uploadFile = vi.fn<WorkflowUiInteractionHost["uploadFile"]>();
+    uploadFile.mockResolvedValueOnce(first).mockResolvedValueOnce(second);
+
+    render(
+      <BackofficeUiRenderer
+        ui={uploadUi.value.$ui}
+        workflowInteractionHost={{
+          canEditInput: () => true,
+          canSendEvent: () => true,
+          sendEvent: vi.fn(async () => undefined),
+          uploadFile,
+        }}
+      />,
+    );
+
+    const input = screen.getByLabelText(/Supporting document/);
+    fireEvent.change(input, {
+      target: { files: [new File(["draft"], "draft.pdf", { type: "application/pdf" })] },
+    });
+    await screen.findByText("draft.pdf");
+    const replacement = new File(["final"], "final.pdf", { type: "application/pdf" });
+    fireEvent.change(input, { target: { files: [replacement] } });
+    await screen.findByText("final.pdf");
+
+    expect(uploadFile).toHaveBeenLastCalledWith(
+      expect.objectContaining({ file: replacement, replaces: first }),
+    );
   });
 
   test("rejects disallowed files before invoking the upload host", async () => {

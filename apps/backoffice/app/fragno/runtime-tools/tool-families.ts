@@ -66,10 +66,10 @@ import { piToolFamily } from "./families/pi";
 import { projectsToolFamily } from "./families/projects";
 import type { ProjectsRuntime } from "./families/projects-runtime";
 import { reson8ToolFamily, type Reson8Runtime } from "./families/reson8";
-import { sandboxToolFamily, type SandboxRuntime } from "./families/sandbox";
-import { uploadToolFamily } from "./families/upload";
-import type { UploadRuntime } from "./families/upload-runtime";
+import { sandboxToolFamily } from "./families/sandbox";
+import type { SandboxRuntime } from "./families/sandbox-runtime";
 import { webToolFamily, type WebRuntime } from "./families/web";
+import type { FileLinkRuntime } from "./file-links-runtime";
 import {
   getAvailableRuntimeTools,
   type BackofficeRuntimeToolFamily,
@@ -78,6 +78,7 @@ import {
 
 export type CoreBackofficeRuntimeMap = {
   state?: BackofficeStateBackend;
+  fileLinks?: FileLinkRuntime;
   account?: AccountRuntime;
   admin?: AdminRuntime;
   org?: OrganizationRuntime;
@@ -102,7 +103,6 @@ export type CoreBackofficeRuntimeMap = {
   reson8?: Reson8Runtime;
   sandbox?: SandboxRuntime;
   javascript?: JavaScriptRuntime;
-  upload?: UploadRuntime;
   web?: WebRuntime;
   models?: ModelsRuntime;
 };
@@ -143,7 +143,6 @@ export const runtimeToolFamilies = [
   javaScriptRunHistoryToolFamily,
   javaScriptBuildToolFamily,
   artifactsToolFamily,
-  uploadToolFamily,
   marketplaceToolFamily,
   packagesToolFamily,
   internalWorkspaceToolFamily,

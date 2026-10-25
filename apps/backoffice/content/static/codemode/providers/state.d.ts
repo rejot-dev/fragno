@@ -1,4 +1,4 @@
-// Files in /workspace and /static. Read for file work beyond searching, reading, and writing.
+// Files in /workspace and /static, and links that share them. Read for file work beyond searching, reading, and writing, or to share or move files.
 type StateCodemodeProvider = {
   /**
    * Read a UTF-8 text file from codemode state.
@@ -114,6 +114,16 @@ type StateCodemodeProvider = {
    * Requires `upload.read`.
    */
   hashFile(input: StateHashFileInput): Promise<string>;
+  /**
+   * Create a temporary URL that sandbox commands use to read workspace files without credentials; it may not work outside sandboxes. A file path links the file: `curl -sS --fail-with-body "$url" -o file`. A folder or glob links an uncompressed tar archive of up to 500 matching files named relative to `root`: `curl -sS --fail-with-body "$url" | tar -x -C dir`. When the archive response has an X-Next-Cursor header, request the URL again with ?cursor=<value> for the next files. Anyone holding the URL can read these files until it expires.
+   * Requires `upload.read`.
+   */
+  createDownloadLink(input: StateCreateDownloadLinkInput): Promise<StateCreateDownloadLinkOutput>;
+  /**
+   * Create a temporary URL that sandbox commands use to write workspace files without credentials; it may not work outside sandboxes. Writes replace existing files. Each file may be at most 1.9 MB. A file path accepts the file: `curl -sS --fail-with-body -H "Expect:" -T file "$url"`. A folder or glob accepts an uncompressed tar archive of at most 200 regular files and 25 MB, without symlinks, whose entry names are relative to `root` and must match: `tar -ch -C dir . | curl -sS --fail-with-body -H "Expect:" -T - "$url"`. Push only the files the task produced, never a whole project; an archive is written all-or-nothing. A successful write returns `{"fileCount","sizeBytes"}`. Anyone holding the URL can write these files until it expires.
+   * Requires `upload.modify`.
+   */
+  createUploadLink(input: StateCreateUploadLinkInput): Promise<StateCreateUploadLinkOutput>;
 };
 declare const state: StateCodemodeProvider;
 
@@ -332,3 +342,57 @@ type StateHashFileInput = {
   path: string;
   algorithm?: "md5" | "sha1" | "sha256";
 };
+type StateCreateDownloadLinkInput = {
+  /** A /workspace file path, a folder ending in /, or a glob with * or ?, for example /workspace/data/*.csv. */
+  path: string;
+  /** How long the link works. Defaults to 900 seconds. */
+  expiresInSeconds?: number;
+};
+type StateCreateDownloadLinkOutput =
+  | {
+      /** The URL's body is the file itself. */
+      format: "file";
+      /** Use unchanged in a sandbox command; its host may resolve only inside sandboxes. */
+      url: string;
+      path: string;
+      /** ISO 8601 datetime string. */
+      expiresAt: string;
+    }
+  | {
+      /** The URL's body is a tar archive of the matching files. */
+      format: "tar";
+      /** Use unchanged in a sandbox command; its host may resolve only inside sandboxes. */
+      url: string;
+      glob: string;
+      /** The /workspace folder that archive entry names are relative to. */
+      root: string;
+      /** ISO 8601 datetime string. */
+      expiresAt: string;
+    };
+type StateCreateUploadLinkInput = {
+  /** A /workspace file path, a folder ending in /, or a glob with * or ?, for example /workspace/data/*.csv. */
+  path: string;
+  /** How long the link works. Defaults to 900 seconds. */
+  expiresInSeconds?: number;
+};
+type StateCreateUploadLinkOutput =
+  | {
+      /** The URL's body is the file itself. */
+      format: "file";
+      /** Use unchanged in a sandbox command; its host may resolve only inside sandboxes. */
+      url: string;
+      path: string;
+      /** ISO 8601 datetime string. */
+      expiresAt: string;
+    }
+  | {
+      /** The URL's body is a tar archive of the matching files. */
+      format: "tar";
+      /** Use unchanged in a sandbox command; its host may resolve only inside sandboxes. */
+      url: string;
+      glob: string;
+      /** The /workspace folder that archive entry names are relative to. */
+      root: string;
+      /** ISO 8601 datetime string. */
+      expiresAt: string;
+    };

@@ -18,11 +18,6 @@ vi.mock("@/routes/backoffice/connections/resend/data", async (importOriginal) =>
     await importOriginal<typeof import("@/routes/backoffice/connections/resend/data")>();
   return { ...actual, fetchResendConfig: vi.fn(actual.fetchResendConfig) };
 });
-vi.mock("@/routes/backoffice/connections/upload/data", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@/routes/backoffice/connections/upload/data")>();
-  return { ...actual, fetchUploadConfig: vi.fn(actual.fetchUploadConfig) };
-});
 
 import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
@@ -53,11 +48,7 @@ import {
 } from "@/routes/backoffice/connections/telegram/messages";
 import { loader as telegramIndexLoader } from "@/routes/backoffice/connections/telegram/organization-index";
 import { loader as telegramLayoutLoader } from "@/routes/backoffice/connections/telegram/organization-layout";
-import { fetchUploadConfig } from "@/routes/backoffice/connections/upload/data";
-import {
-  loader as uploadFilesLoader,
-  middleware as uploadFilesMiddleware,
-} from "@/routes/backoffice/connections/upload/files";
+import { loader as uploadFilesLoader } from "@/routes/backoffice/connections/upload/files";
 import { loader as uploadLayoutLoader } from "@/routes/backoffice/connections/upload/organization-layout";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
@@ -110,11 +101,11 @@ const pages = {
 const uploadFilesPage = [
   uploadLayout,
   // The files index has no loader.
-  { middleware: uploadFilesMiddleware, loader: uploadFilesLoader },
+  { middleware: [], loader: uploadFilesLoader },
 ] satisfies MatchedRoute[];
 
 function configurationLoads() {
-  return [fetchTelegramConfig, fetchResendConfig, fetchUploadConfig].reduce(
+  return [fetchTelegramConfig, fetchResendConfig].reduce(
     (count, fetchConfig) => count + vi.mocked(fetchConfig).mock.calls.length,
     0,
   );
@@ -306,12 +297,12 @@ test("connection pages share one configuration load and open only once configure
               from: "loader",
               configurationLoads: 1,
             });
-            // Upload stores files in the database until an organization configures storage.
+            // Upload stores files in the organization's database and has nothing to configure.
             expect(await openUploadFiles(ctx, "acme")).toMatchObject({
               renders: "page",
-              layout: { organization: { slug: "acme" }, configState: { configured: true } },
-              leaf: { configState: { defaultProvider: "database" }, selectedNodeKind: "root" },
-              configurationLoads: 1,
+              layout: { organization: { slug: "acme" } },
+              leaf: { selectedNodeKind: "root" },
+              configurationLoads: 0,
             });
           },
         ),

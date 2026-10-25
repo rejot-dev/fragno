@@ -43,7 +43,6 @@ import { createUnavailableAutomationRouterRuntime } from "@/fragno/runtime-tools
 import { type EventRuntime } from "@/fragno/runtime-tools/families/event";
 import { createUnavailableEventRuntime } from "@/fragno/runtime-tools/families/event-runtime";
 import { type OtpRuntime } from "@/fragno/runtime-tools/families/otp";
-import type { UploadRuntime } from "@/fragno/runtime-tools/families/upload-runtime";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import { createTrustedSystemBackofficeToolContext } from "@/fragno/runtime-tools/runtime-tools";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
@@ -404,68 +403,20 @@ describe("runBackofficeCodemode", () => {
     ]);
   });
 
-  test("preserves prepared upload bytes through codemode providers", async () => {
-    const uploadRuntime: UploadRuntime = {
-      readPrepared: async ({ file, encoding }) => {
-        expect(encoding).toBe("bytes");
-        return {
-          file,
-          encoding: "bytes",
-          bytes: new Uint8Array([0, 1, 2, 255]),
-          byteLength: 4,
-        };
-      },
-      commitPrepared: async ({ file }) => ({
-        kind: "uploaded-file",
-        scope: file.scope,
-        uploadId: file.uploadId,
-        provider: file.provider,
-        fileKey: file.fileKey,
-        filename: file.filename,
-        sizeBytes: file.sizeBytes,
-        contentType: file.contentType,
-      }),
-      discardPrepared: async ({ file }) => ({ discarded: true, uploadId: file.uploadId }),
-      getStorage: async () => {
-        throw new Error("Upload storage is not used in this test.");
-      },
-      configureStorage: async () => {
-        throw new Error("Upload storage is not used in this test.");
-      },
-      createDownloadLink: async () => {
-        throw new Error("File links are not used in this test.");
-      },
-      createUploadLink: async () => {
-        throw new Error("File links are not used in this test.");
-      },
-    };
-    const systemContext = createTrustedSystemBackofficeToolContext({
-      runtimes: { upload: uploadRuntime },
+  test("preserves workspace file bytes through codemode providers", async () => {
+    const stateBackend = createTestStateBackend({
+      upload: new MemoryUploadObject({ "audio.oga": new Uint8Array([0, 1, 2, 255]) }),
     });
 
     const result = await runBackofficeCodemode({
       codemode,
       families: runtimeToolFamilies,
-      toolContext: systemContext.createScopedContext({ kind: "org", orgId: "org-1" }),
+      toolContext: createTrustedSystemBackofficeToolContext({
+        runtimes: { state: stateBackend },
+      }),
       code: `async () => {
-        const prepared = await upload.readPrepared({
-          file: {
-            kind: "prepared-upload",
-            scope: { kind: "org", orgId: "org-1" },
-            uploadId: "upload-1",
-            provider: "database",
-            fileKey: "generated-ui/audio.oga",
-            filename: "audio.oga",
-            sizeBytes: 4,
-            contentType: "audio/ogg",
-            expiresAt: "2027-01-01T00:00:00.000Z",
-          },
-          encoding: "bytes",
-        });
-        return {
-          isUint8Array: prepared.bytes instanceof Uint8Array,
-          bytes: Array.from(prepared.bytes),
-        };
+        const bytes = await state.readFileBytes({ path: "/workspace/audio.oga" });
+        return { isUint8Array: bytes instanceof Uint8Array, bytes: Array.from(bytes) };
       }`,
     });
 

@@ -1,11 +1,13 @@
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
-import { pathInputSchema } from "@fragno-dev/backoffice-api/v0/state";
+import { pathInputSchema, type FileLinkInput } from "@fragno-dev/backoffice-api/v0/state";
 import type { ToolProvider } from "@fragno-dev/codemode/runtime-api";
 import { z } from "zod";
 
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
+import { defineCliArgsParser } from "@/fragno/runtime-tools/bash-cli";
 import { backofficeApiOperationToolFields } from "@/fragno/runtime-tools/runtime-tools";
 
+import type { FileLinkRuntime } from "./file-links-runtime";
 import {
   createBackofficeCodemodeProviders,
   createTrustedSystemBackofficeToolContext,
@@ -16,7 +18,7 @@ import {
 } from "./runtime-tools";
 
 export type StateToolContext = BackofficeToolContext<
-  Record<string, unknown> & { state?: BackofficeStateBackend }
+  Record<string, unknown> & { state?: BackofficeStateBackend; fileLinks?: FileLinkRuntime }
 >;
 
 const getStateRuntime = (context: StateToolContext): BackofficeStateBackend => {
@@ -25,6 +27,36 @@ const getStateRuntime = (context: StateToolContext): BackofficeStateBackend => {
   }
   return context.runtimes.state;
 };
+
+// Only scopes with an Upload workspace have file links; other state, such as /static, has none.
+const getFileLinkRuntime = (context: StateToolContext): FileLinkRuntime => {
+  if (!context.runtimes.fileLinks) {
+    throw new Error("File links are not available in this execution context.");
+  }
+  return context.runtimes.fileLinks;
+};
+
+const parseFileLink = (command: string) =>
+  defineCliArgsParser<FileLinkInput>(command, {
+    path: { required: true },
+    expiresInSeconds: { kind: "positiveInteger" },
+  });
+
+const fileLinkHelpOptions = [
+  {
+    name: "path",
+    required: true,
+    valueRequired: true,
+    valueName: "path",
+    description: "A /workspace file, a folder ending in /, or a glob such as /workspace/out/**.",
+  },
+  {
+    name: "expires-in-seconds",
+    valueRequired: true,
+    valueName: "seconds",
+    description: "How long the link works, from 60 to 3600. Defaults to 900.",
+  },
+];
 
 const bytesSchema = z
   .custom<Uint8Array>((value) => value instanceof Uint8Array, "Expected Uint8Array")
@@ -219,6 +251,48 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       name: "hashFile",
       execute: async ({ path, algorithm }, context: StateToolContext) =>
         await getStateRuntime(context).hashFile(path, algorithm),
+    }),
+    defineBackofficeRuntimeTool({
+      ...backofficeApiOperationToolFields("state.createDownloadLink"),
+      namespace: "state",
+      name: "createDownloadLink",
+      getResource: ({ path }) => ({ path }),
+      execute: async (input, context: StateToolContext) =>
+        await getFileLinkRuntime(context).createDownloadLink(input),
+      adapters: {
+        bash: {
+          command: "state.createDownloadLink",
+          help: {
+            summary: "Create a temporary URL that reads a workspace file, folder, or glob.",
+            options: fileLinkHelpOptions,
+            examples: ["state.createDownloadLink --path /workspace/data/"],
+          },
+          parse: parseFileLink("state.createDownloadLink"),
+          format: (result, options) =>
+            options.format === "json" ? { data: result } : { stdout: `${result.url}\n` },
+        },
+      },
+    }),
+    defineBackofficeRuntimeTool({
+      ...backofficeApiOperationToolFields("state.createUploadLink"),
+      namespace: "state",
+      name: "createUploadLink",
+      getResource: ({ path }) => ({ path }),
+      execute: async (input, context: StateToolContext) =>
+        await getFileLinkRuntime(context).createUploadLink(input),
+      adapters: {
+        bash: {
+          command: "state.createUploadLink",
+          help: {
+            summary: "Create a temporary URL that writes a workspace file, folder, or glob.",
+            options: fileLinkHelpOptions,
+            examples: ["state.createUploadLink --path /workspace/results/"],
+          },
+          parse: parseFileLink("state.createUploadLink"),
+          format: (result, options) =>
+            options.format === "json" ? { data: result } : { stdout: `${result.url}\n` },
+        },
+      },
     }),
   ],
 });

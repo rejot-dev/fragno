@@ -31,13 +31,7 @@ import { Collapsible, Progress } from "@base-ui/react";
 import { eq, useLiveQuery } from "@tanstack/react-db";
 
 import { isUploadDirectoryMarker } from "@/file-collection/create-upload-file-tree";
-import {
-  UPLOAD_PROVIDER_DATABASE,
-  UPLOAD_PROVIDER_R2,
-  UPLOAD_PROVIDER_R2_BINDING,
-  type UploadAdminConfigResponse,
-  type UploadProvider,
-} from "@/fragno/upload";
+import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
 import { createUploadClient } from "@/fragno/upload-client";
 import { toUploadFileRecord, type UploadFileRecord } from "@/fragno/upload/file-record";
 import {
@@ -46,37 +40,26 @@ import {
   type UploadCollectionSource,
 } from "@/fragno/upload/tanstack/browser-database";
 
-import type { Route } from "./+types/files";
 import { uploadConnection } from "./connection.server";
-import { deleteUploadFile, fetchUploadDownloadUrl } from "./data";
+import { deleteUploadFile } from "./data";
 import { formatUploadTimestamp } from "./formatting";
 import type { UploadLayoutContext } from "./layout-context";
-import { shouldAutoStartUploads } from "./upload-queue";
 
 type ExplorerSelectionKind = "root" | "folder" | "file";
 
 type FilesLoaderData = {
-  configState: UploadAdminConfigResponse | null;
-  configError: string | null;
   selectedFileProvider: string | null;
   selectedFileKey: string | null;
   selectedNodeKind: ExplorerSelectionKind;
   selectedPrefix: string;
 };
 
-type FilesActionIntent = "download-url" | "delete-file";
-
 type FilesActionData = {
   ok: boolean;
   message: string;
-  intent?: FilesActionIntent;
+  intent?: "delete-file";
   provider?: string;
   fileKey?: string;
-  downloadUrl?: {
-    url: string;
-    expiresAt: string | Date;
-    headers?: Record<string, string>;
-  } | null;
 };
 
 type UploadQueueStatus = "queued" | "uploading" | "completed" | "failed";
@@ -95,7 +78,7 @@ type UploadQueueItem = {
 };
 
 type UploadProviderTree = {
-  provider: UploadProvider;
+  provider: string;
   label: string;
   root: UploadTreeFolderNode;
   foldersByPrefix: Map<string, UploadTreeFolderNode>;
@@ -122,36 +105,8 @@ type MutableUploadTreeFolderNode = {
 };
 
 const SORT_COLLATOR = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
-const UPLOAD_PROVIDER_ORDER: readonly UploadProvider[] = [
-  UPLOAD_PROVIDER_DATABASE,
-  UPLOAD_PROVIDER_R2_BINDING,
-  UPLOAD_PROVIDER_R2,
-];
-
-const toProviderLabel = (provider: string) => {
-  if (provider === UPLOAD_PROVIDER_DATABASE) {
-    return "Workspace";
-  }
-  if (provider === UPLOAD_PROVIDER_R2_BINDING) {
-    return "R2";
-  }
-  if (provider === UPLOAD_PROVIDER_R2) {
-    return "R2 remote";
-  }
-  return provider;
-};
-
-const getConfiguredUploadProviders = (
-  configState: UploadAdminConfigResponse | null | undefined,
-): UploadProvider[] =>
-  UPLOAD_PROVIDER_ORDER.filter((provider) => configState?.providers[provider]?.configured);
-
-const isConfiguredUploadProvider = (
-  configState: UploadAdminConfigResponse | null | undefined,
-  provider: string | null,
-): provider is UploadProvider =>
-  Boolean(provider && UPLOAD_PROVIDER_ORDER.includes(provider as UploadProvider)) &&
-  Boolean(configState?.providers[provider as UploadProvider]?.configured);
+// Every scope stores its files in its own database, which the explorer shows as one workspace tree.
+const WORKSPACE_PROVIDERS = [UPLOAD_PROVIDER_DATABASE] as const;
 
 const composeVirtualFolderKey = (provider: string, prefix: string) => `${provider}\u0000${prefix}`;
 const hasControlCharacters = (value: string): boolean => {
@@ -534,30 +489,15 @@ const createSyntheticFolderNode = (prefix: string): UploadTreeFolderNode => ({
   providers: [],
 });
 
-export const middleware: Route.MiddlewareFunction[] = [uploadConnection.requireConfigured];
-
 export async function loader({ request, context, url }: LoaderFunctionArgs) {
-  const { configState, configError } = await uploadConnection
-    .require({ request, context })
-    .configuration();
-  if (configError) {
-    return {
-      configState,
-      configError,
-      selectedFileProvider: null,
-      selectedFileKey: null,
-      selectedNodeKind: "root",
-      selectedPrefix: "",
-    } satisfies FilesLoaderData;
-  }
+  uploadConnection.require({ request, context });
 
   let selectedNodeKind = parseSelectedNodeKind(url.searchParams.get("node"));
   let selectedPrefix = normalizeFolderPrefix(url.searchParams.get("prefix"));
   const requestedFileKey = url.searchParams.get("fileKey")?.trim() || null;
   const requestedProvider = url.searchParams.get("provider")?.trim() || null;
-  const selectedProvider = isConfiguredUploadProvider(configState, requestedProvider)
-    ? requestedProvider
-    : null;
+  const selectedProvider =
+    requestedProvider === UPLOAD_PROVIDER_DATABASE ? requestedProvider : null;
 
   if (selectedNodeKind === "folder" && (!selectedPrefix || !selectedProvider)) {
     selectedNodeKind = "root";
@@ -569,8 +509,6 @@ export async function loader({ request, context, url }: LoaderFunctionArgs) {
   }
 
   return {
-    configState,
-    configError: null,
     selectedFileProvider: selectedProvider,
     selectedFileKey: selectedNodeKind === "file" ? requestedFileKey : null,
     selectedNodeKind,
@@ -604,31 +542,6 @@ export async function action({ request, context }: ActionFunctionArgs) {
     } satisfies FilesActionData;
   }
 
-  if (intent === "download-url") {
-    const result = await fetchUploadDownloadUrl(
-      request,
-      context,
-      organization.id,
-      provider,
-      fileKey,
-    );
-    if (result.error || !result.result) {
-      return {
-        ok: false,
-        message: result.error ?? "Unable to fetch download URL.",
-      } satisfies FilesActionData;
-    }
-
-    return {
-      ok: true,
-      message: "Download URL generated.",
-      intent: "download-url",
-      provider,
-      fileKey,
-      downloadUrl: result.result,
-    } satisfies FilesActionData;
-  }
-
   if (intent === "delete-file") {
     const deleted = await deleteUploadFile(request, context, organization.id, provider, fileKey);
     if (!deleted.ok) {
@@ -644,7 +557,6 @@ export async function action({ request, context }: ActionFunctionArgs) {
       intent: "delete-file",
       provider,
       fileKey,
-      downloadUrl: null,
     } satisfies FilesActionData;
   }
 
@@ -661,11 +573,7 @@ export default function BackofficeOrganizationUploadFiles() {
 
   if (!layoutContext.persistenceSource) {
     const message =
-      layoutContext.configError ??
-      layoutContext.persistenceError ??
-      (layoutContext.configState?.configured
-        ? "Local Upload file persistence is unavailable."
-        : "Configure Upload before opening files.");
+      layoutContext.persistenceError ?? "Local Upload file persistence is unavailable.";
 
     return (
       <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
@@ -806,14 +714,8 @@ function useUploadFilesViewState({
   files: UploadFileRecord[];
   filesError: string | null;
 }) {
-  const {
-    configState,
-    configError,
-    selectedFileProvider,
-    selectedFileKey,
-    selectedNodeKind,
-    selectedPrefix,
-  } = useLoaderData<typeof loader>();
+  const { selectedFileProvider, selectedFileKey, selectedNodeKind, selectedPrefix } =
+    useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const navigate = useNavigate();
@@ -847,11 +749,6 @@ function useUploadFilesViewState({
           (!selectedFileProvider || file.provider === selectedFileProvider),
       ) ?? null);
   const selectedProvider = selectedFile?.provider ?? selectedFileProvider ?? null;
-  const supportsSignedDownload = selectedProvider === UPLOAD_PROVIDER_R2;
-  const configuredProviders = useMemo(
-    () => getConfiguredUploadProviders(configState),
-    [configState],
-  );
   const actionBusy = navigation.state === "submitting";
   const selectedExplorerPrefix =
     selectedNodeKind === "file"
@@ -877,18 +774,18 @@ function useUploadFilesViewState({
   }, [selectedExplorerPrefix, selectedProvider, virtualFolders]);
   const providerTrees = useMemo<UploadProviderTree[]>(
     () =>
-      configuredProviders.map((provider) => {
+      WORKSPACE_PROVIDERS.map((provider) => {
         const tree = buildUploadFileTree(
           files.filter((file) => file.provider === provider),
           provider === selectedProvider ? extraFolderPrefixes : [],
         );
         return {
           provider,
-          label: toProviderLabel(provider),
+          label: "Workspace",
           ...tree,
         };
       }),
-    [configuredProviders, extraFolderPrefixes, files, selectedProvider],
+    [extraFolderPrefixes, files, selectedProvider],
   );
   const selectedProviderTree = providerTrees.find((tree) => tree.provider === selectedProvider);
   const allFolderPrefixes = providerTrees.flatMap((tree) =>
@@ -950,13 +847,6 @@ function useUploadFilesViewState({
               item.targetPrefix !== uploadTargetPrefix) &&
             (item.status === "queued" || item.status === "uploading" || item.status === "failed"),
         ).length;
-  const downloadUrl =
-    actionData?.downloadUrl &&
-    selectedFile &&
-    actionData.fileKey === selectedFile.fileKey &&
-    actionData.provider === selectedFile.provider
-      ? actionData.downloadUrl
-      : null;
   const missingFileParentHref = buildSelectionHref(
     orgSlug,
     selectedProvider && selectedPrefix
@@ -1071,14 +961,7 @@ function useUploadFilesViewState({
   }, [selectedNodeKind, selectedPrefix, selectedFileKey, selectedFileProvider]);
 
   useEffect(() => {
-    if (
-      !shouldAutoStartUploads({
-        uploadingFiles,
-        defaultProvider: nextQueuedUpload?.targetProvider,
-        nextQueuedUploadPrefix: nextQueuedUpload?.targetPrefix ?? null,
-      }) ||
-      !nextQueuedUpload
-    ) {
+    if (uploadingFiles || !nextQueuedUpload) {
       return;
     }
 
@@ -1086,13 +969,6 @@ function useUploadFilesViewState({
       includeFailed: false,
     });
   }, [nextQueuedUpload, startUploads, uploadingFiles]);
-
-  if (configError) {
-    return {
-      status: "config-error",
-      message: configError,
-    } as const;
-  }
 
   const queueFilesForPrefix = (
     incomingFiles: File[],
@@ -1236,7 +1112,7 @@ function useUploadFilesViewState({
     try {
       const response = await uploadHelpers.downloadFile(selectedFile.fileKey, {
         provider: selectedFile.provider,
-        method: supportsSignedDownload ? "signed-url" : "content",
+        method: "content",
       });
       const blob = await response.blob();
       downloadBlob(blob, selectedFile.filename || "download");
@@ -1248,7 +1124,6 @@ function useUploadFilesViewState({
   };
 
   return {
-    status: "ready",
     files,
     filesError,
     actionError,
@@ -1263,8 +1138,6 @@ function useUploadFilesViewState({
     selectedNodeKind,
     selectedFile,
     missingFileParentHref,
-    downloadUrl,
-    supportsSignedDownload,
     actionBusy,
     downloadingFile,
     handleDownloadFile,
@@ -1272,7 +1145,6 @@ function useUploadFilesViewState({
     selectedPrefix,
     uploadTargetProvider,
     uploadTargetPrefix,
-    selectedProvider,
     createFolder,
     isDragActive,
     handleDropFiles,
@@ -1292,10 +1164,7 @@ function useUploadFilesViewState({
   } as const;
 }
 
-type ReadyUploadFilesViewState = Extract<
-  ReturnType<typeof useUploadFilesViewState>,
-  { status: "ready" }
->;
+type UploadFilesViewState = ReturnType<typeof useUploadFilesViewState>;
 
 function UploadFilesView({
   files,
@@ -1305,14 +1174,6 @@ function UploadFilesView({
   filesError: string | null;
 }) {
   const state = useUploadFilesViewState({ files, filesError });
-
-  if (state.status === "config-error") {
-    return (
-      <div className="border border-red-200 bg-red-50 p-4 text-sm text-red-600">
-        {state.message}
-      </div>
-    );
-  }
 
   const { actionError, actionSuccess, uploadError, downloadError } = state;
 
@@ -1332,7 +1193,7 @@ function UploadFilesView({
   );
 }
 
-function UploadExplorerPanel({ state }: { state: ReadyUploadFilesViewState }) {
+function UploadExplorerPanel({ state }: { state: UploadFilesViewState }) {
   const { files, orgSlug, selectedNodeKey, providerTrees, openFolders, setFolderOpen } = state;
 
   return (
@@ -1398,7 +1259,7 @@ function UploadExplorerPanel({ state }: { state: ReadyUploadFilesViewState }) {
   );
 }
 
-function UploadSelectionPanel({ state }: { state: ReadyUploadFilesViewState }) {
+function UploadSelectionPanel({ state }: { state: UploadFilesViewState }) {
   return (
     <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
       {state.selectedNodeKind === "file" ? (
@@ -1410,16 +1271,9 @@ function UploadSelectionPanel({ state }: { state: ReadyUploadFilesViewState }) {
   );
 }
 
-function UploadFileSelectionPanel({ state }: { state: ReadyUploadFilesViewState }) {
-  const {
-    selectedFile,
-    missingFileParentHref,
-    downloadUrl,
-    supportsSignedDownload,
-    actionBusy,
-    downloadingFile,
-    handleDownloadFile,
-  } = state;
+function UploadFileSelectionPanel({ state }: { state: UploadFilesViewState }) {
+  const { selectedFile, missingFileParentHref, actionBusy, downloadingFile, handleDownloadFile } =
+    state;
 
   if (!selectedFile) {
     return (
@@ -1478,40 +1332,16 @@ function UploadFileSelectionPanel({ state }: { state: ReadyUploadFilesViewState 
         </div>
       </div>
 
-      {downloadUrl ? (
-        <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
-          <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-            Download URL
-          </p>
-          <p className="mt-2 break-all text-[var(--bo-fg)]">{downloadUrl.url}</p>
-          <p className="mt-1 text-xs text-[var(--bo-muted-2)]">
-            Expires: {formatUploadTimestamp(downloadUrl.expiresAt)}
-          </p>
-        </div>
-      ) : null}
-
       <div className="grid gap-2">
-        {supportsSignedDownload ? (
-          <Form method="post">
-            <input type="hidden" name="intent" value="download-url" />
-            <input type="hidden" name="provider" value={selectedFile.provider} />
-            <input type="hidden" name="fileKey" value={selectedFile.fileKey} />
-            <Button variant="secondary" type="submit" disabled={actionBusy} className="w-full">
-              <Icon name="download" className="h-3.5 w-3.5" />
-              Generate download URL
-            </Button>
-          </Form>
-        ) : (
-          <Button
-            variant="secondary"
-            onClick={() => void handleDownloadFile()}
-            disabled={actionBusy || downloadingFile}
-            className="w-full"
-          >
-            <Icon name="download" className="h-3.5 w-3.5" />
-            {downloadingFile ? "Downloading…" : "Download file"}
-          </Button>
-        )}
+        <Button
+          variant="secondary"
+          onClick={() => void handleDownloadFile()}
+          disabled={actionBusy || downloadingFile}
+          className="w-full"
+        >
+          <Icon name="download" className="h-3.5 w-3.5" />
+          {downloadingFile ? "Downloading…" : "Download file"}
+        </Button>
 
         <Form method="post">
           <input type="hidden" name="intent" value="delete-file" />
@@ -1531,14 +1361,13 @@ function UploadFileSelectionPanel({ state }: { state: ReadyUploadFilesViewState 
   );
 }
 
-function UploadFolderSelectionPanel({ state }: { state: ReadyUploadFilesViewState }) {
+function UploadFolderSelectionPanel({ state }: { state: UploadFilesViewState }) {
   const {
     selectedNodeKind,
     selectedFolderNode,
     selectedPrefix,
     uploadTargetProvider,
     uploadTargetPrefix,
-    selectedProvider,
     createFolder,
     isDragActive,
     handleDropFiles,
@@ -1580,14 +1409,10 @@ function UploadFolderSelectionPanel({ state }: { state: ReadyUploadFilesViewStat
                   using readable collision-safe keys.
                 </>
               ) : (
-                "Select a configured upload root to browse, create folders, or upload files."
+                "Select the workspace root to browse, create folders, or upload files."
               )}
             </p>
           </div>
-
-          <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
-            Uploads via: {selectedProvider ? toProviderLabel(selectedProvider) : "select a root"}
-          </span>
         </div>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-3">

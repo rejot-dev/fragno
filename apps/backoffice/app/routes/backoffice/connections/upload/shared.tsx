@@ -1,12 +1,8 @@
 import { ButtonLink } from "@fragno-private/design-system/button";
-import { OverflowTabRow } from "@fragno-private/design-system/overflow-tab-row";
 import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
 import { isRouteErrorResponse } from "react-router";
 
 import { getRouteErrorMessage, getBackofficeOrganizationNotFound } from "../../route-errors";
-import type { UploadConfigurableProvider, UploadTab } from "./layout-context";
-
-type UploadProviderTab = UploadConfigurableProvider | "s3" | "direct";
 
 export function UploadHeader({ organizationLabel }: { organizationLabel: string }) {
   return (
@@ -19,142 +15,13 @@ export function UploadHeader({ organizationLabel }: { organizationLabel: string 
       ]}
       eyebrow="Integrations"
       title={`Upload for ${organizationLabel}`}
-      description="Configure organization-scoped upload storage with an enforced org namespace."
+      description="Browse, upload, and delete the organization's workspace files."
       actions={
         <ButtonLink variant="secondary" to="/backoffice/connections/upload">
           Back to Upload
         </ButtonLink>
       }
     />
-  );
-}
-
-export function UploadWorkspaceTabs({
-  orgSlug,
-  activeTab,
-  isConfigured,
-}: {
-  orgSlug: string;
-  activeTab: UploadTab;
-  isConfigured: boolean;
-}) {
-  const basePath = `/backoffice/connections/upload/${encodeURIComponent(orgSlug)}`;
-  const tabs = [
-    {
-      id: "files" as const,
-      label: "Files",
-      to: `${basePath}/files`,
-      disabled: !isConfigured,
-    },
-    {
-      id: "configuration" as const,
-      label: "Configuration",
-      to: `${basePath}/configuration`,
-      disabled: false,
-    },
-  ];
-
-  return (
-    <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2">
-      <OverflowTabRow
-        items={tabs.map((tab) => ({ ...tab, active: tab.id === activeTab }))}
-        ariaLabel="Upload workspace tabs"
-        trailing={null}
-      />
-    </div>
-  );
-}
-
-export function UploadProviderTabs({
-  activeProvider,
-  onSelect,
-}: {
-  activeProvider: UploadProviderTab;
-  onSelect?: (provider: UploadConfigurableProvider) => void;
-}) {
-  const tabs = [
-    {
-      id: "database" as const,
-      label: "Database",
-      description: null,
-      disabled: false,
-    },
-    {
-      id: "r2-binding" as const,
-      label: "R2 Binding",
-      description: null,
-      disabled: false,
-    },
-    {
-      id: "r2" as const,
-      label: "R2 Keys",
-      description: null,
-      disabled: false,
-    },
-    {
-      id: "s3" as const,
-      label: "S3",
-      description: "Coming soon",
-      disabled: true,
-    },
-    {
-      id: "direct" as const,
-      label: "Direct",
-      description: "Coming soon",
-      disabled: true,
-    },
-  ];
-
-  return (
-    <div
-      role="tablist"
-      aria-label="Upload provider tabs"
-      className="flex flex-wrap items-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2"
-    >
-      {tabs.map((tab) => {
-        const isActive = activeProvider === tab.id;
-        const className = isActive
-          ? "border border-[color:var(--bo-selected-border)] bg-[var(--bo-selected-bg)] shadow-[var(--bo-selected-shadow)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-fg)]"
-          : tab.disabled
-            ? "cursor-not-allowed border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted-2)] opacity-60"
-            : "border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)]";
-
-        if (!tab.disabled && onSelect) {
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              role="tab"
-              aria-selected={isActive}
-              className={className}
-              onClick={() => {
-                onSelect(tab.id as UploadConfigurableProvider);
-              }}
-            >
-              {tab.label}
-              {tab.description ? (
-                <span className="ml-1 text-[9px] opacity-70">{tab.description}</span>
-              ) : null}
-            </button>
-          );
-        }
-
-        return (
-          <span
-            key={tab.id}
-            role="tab"
-            aria-selected={isActive}
-            aria-disabled={tab.disabled}
-            className={className}
-          >
-            {tab.label}
-            {tab.description ? (
-              <span className="ml-1 text-[9px] opacity-70">{tab.description}</span>
-            ) : null}
-          </span>
-        );
-      })}
-    </div>
   );
 }
 

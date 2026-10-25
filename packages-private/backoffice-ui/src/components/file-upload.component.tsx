@@ -1,4 +1,3 @@
-import type { PreparedUploadedFileReference } from "@fragno-dev/backoffice-api/v0/upload";
 import { Button } from "@fragno-private/design-system/button";
 import { Field } from "@fragno-private/design-system/field";
 import { FileInput } from "@fragno-private/design-system/file-input";
@@ -10,6 +9,7 @@ import type { UploadProgress } from "@fragno-dev/upload";
 import { useBoundProp, type ComponentFn } from "@json-render/react";
 
 import type { backofficeUiCatalog } from "../catalog";
+import type { GeneratedUiUploadedFile } from "../generated-ui-upload";
 import { useWorkflowUiInteractionHost } from "../workflow-interaction";
 
 type UploadState = "idle" | "uploading" | "failed" | "complete";
@@ -44,7 +44,7 @@ export const FileUpload: ComponentFn<typeof backofficeUiCatalog, "FileUpload"> =
   const statusId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const retryFileRef = useRef<File | undefined>(undefined);
-  const [value, setValue] = useBoundProp<PreparedUploadedFileReference | null>(
+  const [value, setValue] = useBoundProp<GeneratedUiUploadedFile | null>(
     props.value,
     bindings?.value,
   );
@@ -94,6 +94,7 @@ export const FileUpload: ComponentFn<typeof backofficeUiCatalog, "FileUpload"> =
       const reference = await host.uploadFile({
         scope: props.scope,
         file,
+        replaces: value ?? null,
         bindingPath: bindings?.value,
         onProgress: setProgress,
       });
@@ -155,8 +156,8 @@ export const FileUpload: ComponentFn<typeof backofficeUiCatalog, "FileUpload"> =
                   ? "Uploading…"
                   : `Uploading · ${progressValue}%`
                 : value
-                  ? `${formattedBytes(value.sizeBytes)} · Prepared`
-                  : "The workflow will decide whether to keep this upload."}
+                  ? `${formattedBytes(value.sizeBytes)} · Uploaded`
+                  : "Uploads into the workspace."}
             </p>
           </div>
           <label
@@ -204,7 +205,7 @@ export const FileUpload: ComponentFn<typeof backofficeUiCatalog, "FileUpload"> =
         {uploadState === "uploading"
           ? "Uploading file."
           : uploadState === "complete" && value
-            ? `${value.filename} uploaded and prepared.`
+            ? `${value.filename} uploaded.`
             : uploadState === "failed"
               ? error
               : "No file selected."}
