@@ -38,11 +38,15 @@ type CurrentAutomationReplica = {
   replica: LofiSqliteClient | null;
   /** Whether the replica holds everything its backend had when synchronization started. */
   caughtUp: boolean;
+  /**
+   * Why the replica cannot be read: the scope has none, it could not open, or its download fails
+   * before it caught up, while it retries.
+   */
   error: string | null;
 };
 
 const subscribeToNothing = () => () => {};
-const notCaughtUp = () => false;
+const noStatus = () => null;
 
 /**
  * The current scope's Automations replica, for views that render before it opens instead of
@@ -91,12 +95,15 @@ export function useCurrentAutomationReplica(): CurrentAutomationReplica {
   // A replica opened for another scope is not this one's.
   const current = opened?.sourceKey === sourceKey ? opened : null;
   const replica = current?.replica ?? null;
-  const caughtUp = useSyncExternalStore(
+  const status = useSyncExternalStore(
     replica?.subscribeStatus ?? subscribeToNothing,
-    replica ? () => replica.getStatus().phase === "caught-up" : notCaughtUp,
-    notCaughtUp,
+    replica?.getStatus ?? noStatus,
+    noStatus,
   );
-  return { replica, caughtUp, error: unavailable ?? current?.error ?? null };
+  const caughtUp = status?.phase === "caught-up";
+  // A replica that caught up keeps its views through later failures, which the stream retries.
+  const downloadError = caughtUp ? null : (status?.error ?? null);
+  return { replica, caughtUp, error: unavailable ?? current?.error ?? downloadError };
 }
 
 type AutomationReads = typeof automationReads;
