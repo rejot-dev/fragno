@@ -14,7 +14,7 @@ import {
   type BackofficeJwtPayload,
   type BackofficeJwtVerificationResult,
 } from "@/fragno/auth/token-lifecycle";
-import type { AutomationCollectionSource } from "@/fragno/automation/tanstack/browser-database";
+import type { AutomationReplicaSource } from "@/fragno/automation/lofi/replica-source";
 
 import type {
   BackofficeAuthenticationResult,
@@ -36,9 +36,9 @@ export type BackofficeRequestStateDependencies = {
     requestUrl: string,
     authObject: FetchObject,
   ): Promise<BackofficeJwtVerificationResult>;
-  loadAutomationCollectionSource<TOrganization extends BackofficeOrganizationIdentity>(
+  loadAutomationReplicaSource<TOrganization extends BackofficeOrganizationIdentity>(
     resolvedScope: BackofficeResolvedScope<TOrganization>,
-  ): Promise<AutomationCollectionSource<TOrganization>>;
+  ): Promise<AutomationReplicaSource<TOrganization>>;
 };
 
 export function principalFromBackofficeJwt(
@@ -74,7 +74,7 @@ export function createBackofficeRequestState(
   let authenticationPromise: Promise<BackofficeAuthenticationResult> | null = null;
   let principalPromise: Promise<BackofficePrincipalResult> | null = null;
   let backofficeMePromise: Promise<BackofficeMeLookupResult> | null = null;
-  const automationCollectionSourcePromises = new Map<string, Promise<AutomationCollectionSource>>();
+  const automationReplicaSourcePromises = new Map<string, Promise<AutomationReplicaSource>>();
 
   function getAuthObject(): BackofficeRequestAuthObject {
     authObject ??= dependencies.getAuthObject();
@@ -155,22 +155,22 @@ export function createBackofficeRequestState(
     return backofficeMePromise;
   }
 
-  function getAutomationCollectionSource<TOrganization extends BackofficeOrganizationIdentity>(
+  function getAutomationReplicaSource<TOrganization extends BackofficeOrganizationIdentity>(
     resolvedScope: BackofficeResolvedScope<TOrganization>,
-  ): Promise<AutomationCollectionSource<TOrganization>> {
+  ): Promise<AutomationReplicaSource<TOrganization>> {
     const operationKey = backofficeResolvedScopeId(resolvedScope);
-    let sourcePromise = automationCollectionSourcePromises.get(operationKey);
+    let sourcePromise = automationReplicaSourcePromises.get(operationKey);
     if (!sourcePromise) {
-      sourcePromise = dependencies.loadAutomationCollectionSource(resolvedScope);
-      automationCollectionSourcePromises.set(operationKey, sourcePromise);
+      sourcePromise = dependencies.loadAutomationReplicaSource(resolvedScope);
+      automationReplicaSourcePromises.set(operationKey, sourcePromise);
     }
-    return sourcePromise as Promise<AutomationCollectionSource<TOrganization>>;
+    return sourcePromise as Promise<AutomationReplicaSource<TOrganization>>;
   }
 
   return {
     resolveAuthentication,
     getPrincipal,
     getBackofficeMe,
-    getAutomationCollectionSource,
+    getAutomationReplicaSource,
   };
 }

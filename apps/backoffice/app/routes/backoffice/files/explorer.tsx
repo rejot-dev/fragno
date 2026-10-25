@@ -8,7 +8,7 @@ import {
   type BackofficeScopeSelection,
 } from "@/backoffice-runtime/resolved-scope";
 import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
-import type { AutomationCollectionSourceState } from "@/components/backoffice/current-context-state";
+import type { AutomationReplicaSourceState } from "@/components/backoffice/current-context-state";
 import {
   FilesExplorerView,
   type FilesExplorerSource,
@@ -18,7 +18,7 @@ import type { FilesExplorerSearchGroup } from "@/components/backoffice/files-exp
 import { createUploadFileTree } from "@/file-collection/create-upload-file-tree";
 import { resolveSynchronizedFileTree } from "@/file-collection/resolve-synchronized-file-tree";
 import { getAutomationReplica, useAutomationRead } from "@/fragno/automation/lofi/replica";
-import type { AutomationCollectionSource } from "@/fragno/automation/tanstack/browser-database";
+import type { AutomationReplicaSource } from "@/fragno/automation/lofi/replica-source";
 import { LofiReplicaGate, useLofiReplicaStatus } from "@/fragno/lofi/replica-gate";
 import {
   describeUploadReplicaSource,
@@ -46,7 +46,7 @@ export function meta({ loaderData }: Route.MetaArgs) {
 export default function BackofficeFilesExplorer() {
   const loaderData = useLoaderData<typeof loader>();
   const { selectedScope } = useOutletContext<FilesLayoutContext>();
-  const { automationCollectionSource } = useCurrentBackofficeContext();
+  const { automationReplicaSource } = useCurrentBackofficeContext();
   // The server's snapshot shows until this tab's replica opens.
   const initialView = (
     <FilesExplorerRouteView
@@ -62,7 +62,7 @@ export default function BackofficeFilesExplorer() {
         <LocalFirstFilesExplorer
           {...loaderData}
           selectedScope={selectedScope}
-          automationCollectionSource={automationCollectionSource}
+          automationReplicaSource={automationReplicaSource}
         />
       </Suspense>
     </ClientOnly>
@@ -70,25 +70,22 @@ export default function BackofficeFilesExplorer() {
 }
 
 function LocalFirstFilesExplorer({
-  automationCollectionSource,
+  automationReplicaSource,
   ...props
 }: FilesExplorerLocalDataProps & {
-  automationCollectionSource: AutomationCollectionSourceState;
+  automationReplicaSource: AutomationReplicaSourceState;
 }) {
-  if (automationCollectionSource.status === "unavailable") {
+  if (automationReplicaSource.status === "unavailable") {
     return (
       <FilesExplorerWithLocalData
         {...props}
-        workflowRouting={{ status: "error", message: automationCollectionSource.message }}
+        workflowRouting={{ status: "error", message: automationReplicaSource.message }}
       />
     );
   }
 
   return (
-    <SynchronizedAutomationRoutesFilesExplorer
-      {...props}
-      source={automationCollectionSource.source}
-    />
+    <SynchronizedAutomationRoutesFilesExplorer {...props} source={automationReplicaSource.source} />
   );
 }
 
@@ -97,7 +94,7 @@ function SynchronizedAutomationRoutesFilesExplorer({
   source,
   ...props
 }: FilesExplorerLocalDataProps & {
-  source: AutomationCollectionSource;
+  source: AutomationReplicaSource;
 }) {
   const replica = use(getAutomationReplica(source));
   const status = useLofiReplicaStatus(replica);

@@ -21,7 +21,7 @@ const {
   getPublishedListingMock,
   getListingStorageMock,
   restartMarketplaceIngestionMock,
-  fetchAutomationCollectionSourceMock,
+  fetchAutomationReplicaSourceMock,
   loadPublishedMarketplacePackageExplorerMock,
 } = vi.hoisted(() => ({
   shellMeMock: vi.fn(),
@@ -29,15 +29,15 @@ const {
   getPublishedListingMock: vi.fn(),
   getListingStorageMock: vi.fn(),
   restartMarketplaceIngestionMock: vi.fn(),
-  fetchAutomationCollectionSourceMock: vi.fn(),
+  fetchAutomationReplicaSourceMock: vi.fn(),
   loadPublishedMarketplacePackageExplorerMock: vi.fn(),
 }));
 
 vi.mock("@/fragno/auth/backoffice-principal.server", () => ({
   requireBackofficeContext: requireBackofficeContextMock,
 }));
-vi.mock("@/fragno/automation/tanstack/server", () => ({
-  fetchAutomationCollectionSource: fetchAutomationCollectionSourceMock,
+vi.mock("@/fragno/automation/lofi/replica-source.server", () => ({
+  fetchAutomationReplicaSource: fetchAutomationReplicaSourceMock,
 }));
 vi.mock("@fragno-private/design-system/client-only", () => ({
   ClientOnly: ({ children }: { children: () => never }) => children(),
@@ -212,7 +212,7 @@ beforeEach(() => {
   getPublishedListingMock.mockReset();
   getListingStorageMock.mockReset();
   restartMarketplaceIngestionMock.mockReset();
-  fetchAutomationCollectionSourceMock.mockReset();
+  fetchAutomationReplicaSourceMock.mockReset();
   loadPublishedMarketplacePackageExplorerMock.mockReset();
   forOrgMock.mockClear();
   shellMeMock.mockResolvedValue(authenticatedUser);
@@ -240,7 +240,7 @@ beforeEach(() => {
     hasNextVersionPage: false,
   });
   getListingStorageMock.mockResolvedValue(null);
-  fetchAutomationCollectionSourceMock.mockImplementation(
+  fetchAutomationReplicaSourceMock.mockImplementation(
     async (_request, _context, resolvedScope) => ({
       resolvedScope,
       adapterIdentity: "automations-test-adapter",
@@ -371,7 +371,7 @@ describe("marketplace detail loader", () => {
     }).catch((error: unknown) => error);
     assert(response instanceof Response);
     assert(response.status === 404);
-    expect(fetchAutomationCollectionSourceMock).not.toHaveBeenCalled();
+    expect(fetchAutomationReplicaSourceMock).not.toHaveBeenCalled();
   });
 
   test("rejects a persisted personal coordinator after membership is removed", async () => {
@@ -381,7 +381,7 @@ describe("marketplace detail loader", () => {
     }).catch((error: unknown) => error);
     assert(response instanceof Response);
     assert(response.status === 404);
-    expect(fetchAutomationCollectionSourceMock).not.toHaveBeenCalled();
+    expect(fetchAutomationReplicaSourceMock).not.toHaveBeenCalled();
   });
 
   test("rejects invalid persisted installation paths before loading workflow data", async () => {
@@ -391,11 +391,11 @@ describe("marketplace detail loader", () => {
     }).catch((error: unknown) => error);
     assert(response instanceof Response);
     assert(response.status === 400);
-    expect(fetchAutomationCollectionSourceMock).not.toHaveBeenCalled();
+    expect(fetchAutomationReplicaSourceMock).not.toHaveBeenCalled();
   });
 
   test("propagates workflow synchronization failures", async () => {
-    fetchAutomationCollectionSourceMock.mockRejectedValueOnce(
+    fetchAutomationReplicaSourceMock.mockRejectedValueOnce(
       new Error("Workflow synchronization failed."),
     );
 

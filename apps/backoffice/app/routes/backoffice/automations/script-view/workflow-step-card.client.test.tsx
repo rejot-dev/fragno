@@ -76,7 +76,11 @@ const runState: WorkflowStepRunState = {
   }),
 };
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  localStorage.clear();
+  vi.unstubAllGlobals();
+});
 
 describe("WorkflowStepCard generated UI state", () => {
   test("enables workflow event buttons with literal payloads", async () => {
@@ -113,6 +117,36 @@ describe("WorkflowStepCard generated UI state", () => {
         }),
       );
     });
+  });
+
+  test("shows saved input it cannot read, and sends nothing until it is discarded", async () => {
+    localStorage.setItem("fragno-backoffice-workflow-ui-drafts", "{");
+    const confirm = vi.fn(() => true);
+    vi.stubGlobal("confirm", confirm);
+    const workflowEventSender = vi.fn<WorkflowEventSender>().mockResolvedValue(undefined);
+    render(
+      <WorkflowStepCard
+        step={step}
+        runState={runState}
+        workflowEvents={[]}
+        workflowRunRecordId={`workflow-run:${crypto.randomUUID()}`}
+        workflowEventSender={workflowEventSender}
+        workflowEventWorkflowName="codemode-script"
+        workflowInstanceId="instance-1"
+        waitingEventTypes={["approval"]}
+      />,
+    );
+
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Saved workflow input is not JSON.",
+    );
+    expect(screen.queryByRole("button", { name: "Submit decision" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Discard saved input" }));
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(localStorage.getItem("fragno-backoffice-workflow-ui-drafts")).toBeNull();
+    fireEvent.click(await screen.findByRole("button", { name: "Submit decision" }));
+    await waitFor(() => expect(workflowEventSender).toHaveBeenCalledOnce());
   });
 
   test("persists the event id before sending and reuses it after remounting", async () => {

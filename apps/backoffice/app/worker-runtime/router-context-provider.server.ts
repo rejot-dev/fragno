@@ -1,7 +1,7 @@
 import { RouterContextProvider } from "react-router";
 
 import { verifyBackofficeJwt } from "@/fragno/auth/token-lifecycle";
-import { loadAutomationCollectionSource } from "@/fragno/automation/tanstack/server";
+import { loadAutomationReplicaSource } from "@/fragno/automation/lofi/replica-source.server";
 import { BackofficePostHogContext } from "@/posthog.server";
 
 import { BackofficeRequestStateContext } from "./request-state";
@@ -27,8 +27,8 @@ export function createBackofficeRouterContextProvider(
         }
         return result;
       },
-      loadAutomationCollectionSource: (resolvedScope) =>
-        loadAutomationCollectionSource(request, workerContext, resolvedScope),
+      loadAutomationReplicaSource: (resolvedScope) =>
+        loadAutomationReplicaSource(request, workerContext, resolvedScope),
     }),
   );
   return context;

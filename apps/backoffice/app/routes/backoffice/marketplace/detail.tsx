@@ -28,8 +28,8 @@ import {
 
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import type { BackofficeMeData } from "@/fragno/auth/contracts";
+import { fetchAutomationReplicaSource } from "@/fragno/automation/lofi/replica-source.server";
 import { buildMarketplacePackageInstallWorkflowInstanceId } from "@/fragno/automation/marketplace-package-install-identity";
-import { fetchAutomationCollectionSource } from "@/fragno/automation/tanstack/server";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
 import {
   decodeMarketplacePublishedVersionCursor,
@@ -274,7 +274,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
       requestedVersion: url.searchParams.get("packageVersion")?.trim() || undefined,
     }),
     installationOrganization
-      ? fetchAutomationCollectionSource(request, context, {
+      ? fetchAutomationReplicaSource(request, context, {
           kind: "org",
           organization: installationOrganization,
         })

@@ -11,28 +11,11 @@ import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/perm
 import { createCodemodeTestServer } from "@fragno-dev/codemode/testing/codemode-test-server";
 import type { CausalFlameNode } from "@fragno-private/design-system/causal-flame-graph-model";
 
-import { queryOnce } from "@tanstack/react-db";
-
 import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
 import { createNodeBackofficeRuntimeConfiguration } from "@/backoffice-runtime/node/node-runtime-env";
 import { readAutomationReplica } from "@/fragno/automation/lofi/testing";
-import {
-  eventTraceDeliveriesQuery,
-  eventTraceDispatch,
-  eventTraceDispatchesQuery,
-  eventTraceEventsQuery,
-  eventTraceRunIds,
-  eventTraceRunsQuery,
-  eventTraceStepsQuery,
-  projectEventTrace,
-  projectEventTraceSummaries,
-  type EventTraceDelivery,
-  type EventTraceDispatchRow,
-  type EventTraceEvent,
-  type EventTraceRun,
-  type EventTraceStep,
-} from "@/routes/backoffice/dashboard/event-traces";
+import { projectEventTrace } from "@/routes/backoffice/dashboard/event-traces";
 
 import { buildGitHubAutomationEvent } from "../github";
 import { CODEMODE_WORKFLOW } from "./engine/codemode-invocation";
@@ -75,15 +58,6 @@ function gitHubIssueEvent(hookId: string, issue: { number: number; title: string
 }
 
 /** One line per node, siblings in label order, so the tree reads like the flame graph's chain. */
-/** A value as JSON, without the virtual properties, such as `$synced`, TanStack DB adds to rows. */
-function comparable(value: unknown): unknown {
-  return JSON.parse(
-    JSON.stringify(value, (key, nested: unknown) =>
-      key.startsWith("$") ? undefined : nested instanceof Map ? [...nested] : nested,
-    ),
-  );
-}
-
 function outline(node: CausalFlameNode, depth = 0): string[] {
   const detail = node.detail === null ? "" : ` (${node.detail})`;
   return [
@@ -252,29 +226,13 @@ test("events record the routes and workflows that caused them back to their orig
           },
         }),
         then.assert("the synchronized trace shows the whole chain", async (ctx) => {
-          const database = ctx.tanstack.automations.forOrg(scope.orgId);
-          await database.sync();
-          const { collections } = database;
-          const [events, dispatchRows, runs] = (await Promise.all([
-            queryOnce((query) => eventTraceEventsQuery(query, collections)),
-            queryOnce((query) => eventTraceDispatchesQuery(query, collections)),
-            queryOnce((query) => eventTraceRunsQuery(query, collections)),
-          ])) as [EventTraceEvent[], EventTraceDispatchRow[], EventTraceRun[]];
-          const dispatches = dispatchRows.map(eventTraceDispatch);
-          const runIds = eventTraceRunIds({ rootEventId: webhookEventId, dispatches, runs });
-          const [steps, deliveries] = (await Promise.all([
-            queryOnce((query) => eventTraceStepsQuery(query, collections, runIds)),
-            queryOnce((query) => eventTraceDeliveriesQuery(query, collections, runIds)),
-          ])) as [EventTraceStep[], EventTraceDelivery[]];
-
-          const trace = projectEventTrace({
+          // As the Events tab reads it, from the replica.
+          const replica = ctx.lofi.automations.forOrg(scope.orgId);
+          await replica.sync();
+          const rows = await readAutomationReplica(replica.replica, "eventTrace", {
             rootEventId: webhookEventId,
-            events,
-            dispatches,
-            runs,
-            steps,
-            deliveries,
           });
+          const trace = projectEventTrace({ rootEventId: webhookEventId, ...rows });
 
           expect(trace && outline(trace.root)).toEqual([
             "event github · webhook.received [ok]",
@@ -294,8 +252,7 @@ test("events record the routes and workflows that caused them back to their orig
           // Live, a dispatch can synchronize before the run it started.
           const runless = projectEventTrace({
             rootEventId: webhookEventId,
-            events,
-            dispatches,
+            ...rows,
             runs: [],
             steps: [],
             deliveries: [],
@@ -312,31 +269,15 @@ test("events record the routes and workflows that caused them back to their orig
             "          event github · issue.triaged [ok] (fired by triage-issue-42)",
           ]);
 
-          const [summary] = projectEventTraceSummaries({ events, dispatches, runs, limit: 10 });
+          const [summary] = await readAutomationReplica(replica.replica, "eventTraceSummaries", {
+            limit: 10,
+          });
           expect(summary).toMatchObject({
             rootEventId: webhookEventId,
             headline: "#42 Flaky deploy check",
             effects: expect.arrayContaining(["issue-log", "triage-issue"]),
             outcome: { kind: "settled", failedCount: 0 },
           });
-
-          // The Events tab reads the replica: the same trace and list from only the rows they use.
-          const replica = ctx.lofi.automations.forOrg(scope.orgId);
-          await replica.sync();
-          const replicaTrace = projectEventTrace({
-            rootEventId: webhookEventId,
-            ...(await readAutomationReplica(replica.replica, "eventTrace", {
-              rootEventId: webhookEventId,
-            })),
-          });
-          expect(comparable(replicaTrace)).toEqual(comparable(trace));
-          expect(
-            comparable(
-              await readAutomationReplica(replica.replica, "eventTraceSummaries", { limit: 10 }),
-            ),
-          ).toEqual(
-            comparable(projectEventTraceSummaries({ events, dispatches, runs, limit: 10 })),
-          );
         }),
         then.hooks.noFailed({ orgId: scope.orgId, fragments: ["automations"] }),
       ],

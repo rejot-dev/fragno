@@ -1,3 +1,4 @@
+import type { LofiSqliteClient } from "@fragno-dev/lofi/sqlite";
 import {
   projectWorkflowStepExecutionActivity,
   selectCanonicalWorkflowStepEmissions,
@@ -22,7 +23,7 @@ import {
   type WorkflowVisualizationSnapshot,
 } from "@fragno-dev/workflow-visualizer-tokens";
 
-import { useWorkflowRunRecords, type WorkflowRunSource } from "./use-script-workflow-runs";
+import { useWorkflowRunRecords } from "./use-script-workflow-runs";
 import {
   inferWorkflowStepStarts,
   projectWorkflowRun,
@@ -51,14 +52,14 @@ export type WorkflowRunTimelineProjection = {
 };
 
 export function useWorkflowRunTimeline({
-  source,
+  replica,
   reference,
 }: {
-  source: WorkflowRunSource;
+  replica: LofiSqliteClient;
   reference: WorkflowRunReference;
 }) {
   const records = useWorkflowRunRecords({
-    source,
+    replica,
     selector: {
       type: "instance",
       workflowName: reference.workflowName,

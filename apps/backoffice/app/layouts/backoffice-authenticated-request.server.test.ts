@@ -47,7 +47,7 @@ function createAuthenticationContext(
       throw new Error("Authentication middleware must not resolve the principal separately.");
     },
     getBackofficeMe,
-    async getAutomationCollectionSource() {
+    async getAutomationReplicaSource() {
       throw new Error("Authentication middleware must not initialize Automations.");
     },
   });

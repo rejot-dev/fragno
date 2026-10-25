@@ -25,7 +25,6 @@ import {
   backofficeScopeRootOwner,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { zqlViewEngine } from "@fragno-dev/lofi-zql/worker";
-import { workflowsSchema } from "@fragno-dev/workflows/schema";
 import { InMemoryFs, type IFileSystem } from "just-bash";
 
 import type { ResendSendEmailInput } from "@fragno-dev/resend-fragment";
@@ -66,11 +65,6 @@ import { WORKSPACE_STARTER_CONTENT } from "@/files/content/starter";
 import { STATIC_FILE_CONTENT } from "@/files/content/static";
 import { SYSTEM_FILE_CONTENT } from "@/files/content/system";
 import { issueBackofficeTokenResultSchema, type UserAuthorityFacts } from "@/fragno/auth/contracts";
-import { automationFragmentSchema } from "@/fragno/automation/schema";
-import {
-  createAutomationCollections,
-  type AutomationCollections,
-} from "@/fragno/automation/tanstack/collections";
 import { codemodeRunnerFor } from "@/fragno/codemode/codemode-object-execute";
 import {
   runBackofficeCodemode,
@@ -105,10 +99,6 @@ import type { BackofficeRuntimeToolCall } from "@/fragno/runtime-tools/runtime-t
 import { createStateShellFileSystem } from "@/fragno/runtime-tools/state-shell-file-system";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
-import {
-  createScenarioCollectionDatabase,
-  type ScenarioCollectionDatabase,
-} from "@/fragno/tanstack/scenario-collection-database";
 import { UPLOAD_REPLICA_SCHEMAS } from "@/fragno/upload/lofi/replica-schemas";
 import { bytesToBase64 } from "@/lib/base64";
 import type { CreateSandboxRuntimeProviders } from "@/sandbox/contracts";
@@ -369,12 +359,6 @@ export type BackofficeScenarioFileSystems = {
   ): Promise<FileDiffEntry[]>;
 };
 
-export type BackofficeScenarioTanStack = {
-  automations: ScenarioCollectionDatabase<AutomationCollections>;
-  drainAll(): Promise<void>;
-  cleanup(): Promise<void>;
-};
-
 /** SQLite replicas of the scopes' outboxes, as browsers open them. */
 export type BackofficeScenarioLofi = {
   automations: ScenarioReplicaDatabase;
@@ -389,7 +373,6 @@ export type BackofficeScenarioContext<TVars extends ScenarioVars = ScenarioVars>
   files: BackofficeScenarioFileSystems;
   vars: TVars;
   fakes: ScenarioFakes;
-  tanstack: BackofficeScenarioTanStack;
   lofi: BackofficeScenarioLofi;
   codemodeRuns: ScenarioCodemodeRun[];
   kernelActions: readonly BackofficeKernelAction[];
@@ -1785,7 +1768,7 @@ const internalRouteSuffix = (requestUrl: URL) => {
     : requestUrl.pathname;
 };
 
-const createScenarioAutomationTanStackFetch = (
+const createScenarioAutomationFetch = (
   runtime: InMemoryBackofficeRuntime,
   scope: BackofficeContextScope,
 ): typeof fetch => {
@@ -1825,34 +1808,13 @@ const createScenarioUploadFetch = (
   };
 };
 
-const createScenarioTanStack = (runtime: InMemoryBackofficeRuntime): BackofficeScenarioTanStack => {
-  const automations = createScenarioCollectionDatabase({
-    name: "Automation collections",
-    schemas: [automationFragmentSchema, workflowsSchema] as const,
-    drainRuntime: () => runtime.drain(),
-    baseUrl: automationScopedBaseUrl,
-    createFetch: (scope) => createScenarioAutomationTanStackFetch(runtime, scope),
-    createCollections: createAutomationCollections,
-  });
-  return {
-    automations,
-    drainAll: async () => {
-      await runtime.drain();
-      await automations.syncAll();
-    },
-    cleanup: async () => {
-      await automations.cleanup();
-    },
-  };
-};
-
 const createScenarioLofi = (runtime: InMemoryBackofficeRuntime): BackofficeScenarioLofi => {
   const automations = createScenarioReplicaDatabase({
     name: "Automations replica",
     ...automationReplicaHost,
     drainRuntime: () => runtime.drain(),
     baseUrl: automationScopedBaseUrl,
-    createFetch: (scope) => createScenarioAutomationTanStackFetch(runtime, scope),
+    createFetch: (scope) => createScenarioAutomationFetch(runtime, scope),
   });
   const upload = createScenarioReplicaDatabase({
     name: "Upload replica",
@@ -4669,7 +4631,6 @@ export const runBackofficeScenario = async <TVars extends ScenarioVars = Scenari
   });
   const journal: ScenarioJournal = { entries: [] };
   const vars = scenario.vars?.() ?? ({} as TVars);
-  const tanstack = createScenarioTanStack(runtime);
   const lofi = createScenarioLofi(runtime);
 
   let ctx: BackofficeScenarioContext<TVars>;
@@ -4679,19 +4640,18 @@ export const runBackofficeScenario = async <TVars extends ScenarioVars = Scenari
     files,
     vars,
     fakes,
-    tanstack,
     lofi,
     codemodeRuns: [],
     kernelActions,
     journal,
     drain: async () => {
-      await tanstack.drainAll();
+      await runtime.drain();
       await lofi.syncAll();
     },
     runCodemode: (input) => runScenarioCodemode(ctx, input),
     cleanup: async () => {
       try {
-        await Promise.all([tanstack.cleanup(), lofi.cleanup()]);
+        await lofi.cleanup();
       } finally {
         await runtime.cleanup();
       }

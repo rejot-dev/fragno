@@ -213,7 +213,7 @@ function startRun(workflow: string, instanceId: string) {
       source: "shop",
       eventType: "order.manual",
       occurredAt: new Date(ctx.runtime.now()).toISOString(),
-      // Payloads are JSON, whose fields may start with $ as TanStack's virtual fields do.
+      // Payloads are JSON, whose fields may start with $.
       payload: { $schema: "https://example.com/order.json", instanceId },
       actors: createBackofficeSystemExecution(scope).actors,
       subject: { orgId },

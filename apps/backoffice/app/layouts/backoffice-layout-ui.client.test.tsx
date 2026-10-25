@@ -44,7 +44,7 @@ describe("Backoffice layout organization preference", () => {
       organization: { id: "org-current", slug: "current-org", name: "Current Org" },
       projectId: "project-1",
     };
-    const automationCollectionSource = {
+    const automationReplicaSource = {
       status: "unavailable" as const,
       resolvedScope,
       message: "Workflow synchronization is unavailable.",
@@ -57,7 +57,7 @@ describe("Backoffice layout organization preference", () => {
             me: { activeOrganizationId: "org-current", user },
             accessTokenExpiresAt: "2026-09-01T12:15:00.000Z",
             resolvedScope,
-            automationCollectionSource,
+            automationReplicaSource,
             projectList: null,
           } as never
         }
@@ -67,7 +67,7 @@ describe("Backoffice layout organization preference", () => {
     );
 
     expect(backofficeShellMock).toHaveBeenCalledWith(
-      expect.objectContaining({ resolvedScope, automationCollectionSource }),
+      expect.objectContaining({ resolvedScope, automationReplicaSource }),
     );
   });
 });

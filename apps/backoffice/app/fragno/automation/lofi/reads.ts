@@ -10,7 +10,6 @@ import {
 
 import { CODEMODE_WORKFLOW } from "../engine/codemode-invocation";
 import { automationFragmentSchema } from "../schema";
-import { automationRoutesFromRecords } from "../tanstack/use-automation-routes";
 
 const automationTable = (name: keyof typeof automationFragmentSchema.tables) =>
   `"${lofiSqliteTableName({ schema: automationFragmentSchema }, name)}"`;
@@ -42,7 +41,12 @@ export function readAutomationRoutes(reader: LofiSqliteReader): AutomationRouteD
       nextOccurrenceAt: schedule.nextOccurrenceAt,
     },
   });
-  return automationRoutesFromRecords(rows as Parameters<typeof automationRoutesFromRecords>[0]);
+  // Only the automations fragment writes routes, so their JSON columns hold the shapes it persists.
+  return (
+    rows as (Omit<AutomationRouteDefinition, "nextOccurrenceAt"> & {
+      nextOccurrenceAt: Date | null;
+    })[]
+  ).map((route) => ({ ...route, nextOccurrenceAt: route.nextOccurrenceAt?.toISOString() ?? null }));
 }
 
 /** Every run, with what the dashboard reports about it. */
@@ -325,8 +329,7 @@ export const ACTIVE_WORKFLOW_STATUSES = ["active", "waiting", "paused"];
 
 /**
  * What the orchestration graph reads besides routes and recent events: the scope's own event
- * sources and definitions, and the runs that have not finished, as
- * `orchestrationActiveWorkflowsQuery` selects them.
+ * sources and definitions, and the runs that have not finished.
  */
 export function readOrchestrationRecords(reader: LofiSqliteReader) {
   return {

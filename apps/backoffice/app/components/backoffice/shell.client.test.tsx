@@ -72,7 +72,7 @@ describe("BackofficeShell resolved scope", () => {
         resolvedScope={resolvedScope}
         administeredMember={null}
         accessTokenExpiresAt={null}
-        automationCollectionSource={{
+        automationReplicaSource={{
           status: "unavailable",
           resolvedScope,
           message: "Workflow synchronization is unavailable.",

@@ -49,11 +49,7 @@ export function BackofficePageView({
     (): BackofficeUiHostWidgets => ({
       orchestration: () => <ScopeOrchestration replica={replica} loaderData={orchestration} />,
       workflowResponse: (run) => (
-        <WorkflowRunResponse
-          readSource={{ kind: "replica", replica }}
-          resolvedScope={resolvedScope}
-          run={run}
-        />
+        <WorkflowRunResponse replica={replica} resolvedScope={resolvedScope} run={run} />
       ),
     }),
     [replica, orchestration, resolvedScope],

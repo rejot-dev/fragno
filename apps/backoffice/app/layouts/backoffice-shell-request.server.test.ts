@@ -111,7 +111,7 @@ function createShellContext({
     async getBackofficeMe() {
       throw new Error("Shell middleware must reuse established membership.");
     },
-    async getAutomationCollectionSource() {
+    async getAutomationReplicaSource() {
       throw new Error("Shell middleware must not initialize Automations.");
     },
   });

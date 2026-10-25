@@ -1,6 +1,6 @@
 import { Button, ButtonLink, IconButton } from "@fragno-private/design-system/button";
 import { Icon } from "@fragno-private/design-system/icon";
-import { use, useMemo, type ReactNode } from "react";
+import { use, type ReactNode } from "react";
 
 import {
   backofficeRuntimeScopeFromResolvedScope,
@@ -9,11 +9,11 @@ import {
 import { sendBackofficeWorkflowEvent } from "@/backoffice-ui/workflow-events.client";
 import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
 import { getAutomationReplica } from "@/fragno/automation/lofi/replica";
+import type { AutomationReplicaSource } from "@/fragno/automation/lofi/replica-source";
 import {
   MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
   marketplaceInstallationWorkflowInstanceId,
 } from "@/fragno/automation/marketplace-package-install-identity";
-import type { AutomationCollectionSource } from "@/fragno/automation/tanstack/browser-database";
 import { useWorkflowRunRecords } from "@/routes/backoffice/automations/script-view/use-script-workflow-runs";
 import { WorkflowGeneratedUi } from "@/routes/backoffice/automations/script-view/workflow-generated-ui";
 import {
@@ -36,7 +36,7 @@ export function MarketplaceInstallationWorkflow({
   requested,
   targetScope,
 }: {
-  collectionSource: AutomationCollectionSource | null;
+  collectionSource: AutomationReplicaSource | null;
   fallback: ReactNode;
   ingestionWorkflowInstanceId: string;
   installedFolderHref: string;
@@ -77,7 +77,7 @@ function SynchronizedMarketplaceInstallationWorkflow({
   requested,
   targetScope,
 }: {
-  collectionSource: AutomationCollectionSource;
+  collectionSource: AutomationReplicaSource;
   fallback: ReactNode;
   ingestionWorkflowInstanceId: string;
   installedFolderHref: string;
@@ -86,9 +86,8 @@ function SynchronizedMarketplaceInstallationWorkflow({
   targetScope: BackofficeRoutableResolvedScope;
 }) {
   const replica = use(getAutomationReplica(collectionSource));
-  const readSource = useMemo(() => ({ kind: "replica", replica }) as const, [replica]);
   const ingestionRecords = useWorkflowRunRecords({
-    source: readSource,
+    replica,
     selector: {
       type: "instance",
       workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
@@ -99,7 +98,7 @@ function SynchronizedMarketplaceInstallationWorkflow({
     ingestionWorkflowInstanceId,
   );
   const installerRecords = useWorkflowRunRecords({
-    source: readSource,
+    replica,
     selector: {
       type: "instance",
       workflowName: CODEMODE_WORKFLOW,
@@ -206,7 +205,7 @@ export function MarketplaceInstallerGeneratedUi({
   instance,
   targetScope,
 }: {
-  collectionSource: AutomationCollectionSource;
+  collectionSource: AutomationReplicaSource;
   instance: AutomationWorkflowRun;
   targetScope: BackofficeRoutableResolvedScope;
 }) {

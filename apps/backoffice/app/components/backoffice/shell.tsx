@@ -30,7 +30,7 @@ type BackofficeShellProps = {
   resolvedScope: BackofficeShellResolvedScope | null;
   administeredMember: AdministeredMember | null;
   accessTokenExpiresAt: string | null;
-  automationCollectionSource: CurrentBackofficeContext["automationCollectionSource"] | null;
+  automationReplicaSource: CurrentBackofficeContext["automationReplicaSource"] | null;
   /** The project owner's projects, streamed in after the page; null without a project owner. */
   projectList: Promise<AutomationProjectList> | null;
   isLoading?: boolean;
@@ -79,10 +79,10 @@ export function BackofficeShell(props: BackofficeShellProps) {
     </GlobalHotkeysProvider>
   );
   const currentContext =
-    props.resolvedScope && props.automationCollectionSource
+    props.resolvedScope && props.automationReplicaSource
       ? {
           resolvedScope: props.resolvedScope,
-          automationCollectionSource: props.automationCollectionSource,
+          automationReplicaSource: props.automationReplicaSource,
         }
       : null;
   return currentContext ? (
@@ -108,7 +108,7 @@ function BackofficeShellFrame({
   resolvedScope,
   administeredMember,
   accessTokenExpiresAt,
-  automationCollectionSource,
+  automationReplicaSource,
   projectList,
   isLoading,
 }: BackofficeShellProps) {
@@ -216,7 +216,7 @@ function BackofficeShellFrame({
       <AgentDrawer
         open={agentDrawerOpen}
         // Agents read their directory from the scope's Automations replica.
-        resolvedScope={automationCollectionSource ? resolvedScope : null}
+        resolvedScope={automationReplicaSource ? resolvedScope : null}
         onClose={() => {
           setAgentDrawerOpen(false);
         }}

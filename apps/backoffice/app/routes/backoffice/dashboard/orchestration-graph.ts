@@ -13,11 +13,6 @@ import type {
 } from "@fragno-private/design-system/orchestration-graph-model";
 import { z } from "zod";
 
-import { inArray, type InitialQueryBuilder } from "@tanstack/react-db";
-
-import { ACTIVE_WORKFLOW_STATUSES } from "@/fragno/automation/lofi/reads";
-import type { AutomationCollections } from "@/fragno/automation/tanstack/collections";
-
 import { formatTimestamp } from "../automations/formatting";
 import {
   automationRouteMatchesWorkflowInstance,
@@ -38,21 +33,6 @@ const SCHEDULER_SOURCE_ID = "scheduler";
 const codemodeWorkflowScriptReferenceSchema = z.object({
   program: z.object({ filename: z.string() }),
 });
-
-/** Runs that have not finished, which the graph counts on the workflows that started them. */
-export function orchestrationActiveWorkflowsQuery(
-  query: InitialQueryBuilder,
-  collections: Pick<AutomationCollections, "workflowInstances">,
-) {
-  return query
-    .from({ instance: collections.workflowInstances })
-    .where(({ instance }) => inArray(instance.status, ACTIVE_WORKFLOW_STATUSES))
-    .select(({ instance }) => ({
-      workflowName: instance.workflowName,
-      remoteWorkflowName: instance.remoteWorkflowName,
-      params: instance.params,
-    }));
-}
 
 type ActiveWorkflow = {
   workflowName: string;

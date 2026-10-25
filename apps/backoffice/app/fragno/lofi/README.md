@@ -1,13 +1,15 @@
 # Backoffice SQLite replica
 
-Lofi's browser SQLite replica (`@fragno-dev/lofi/sqlite`) mirrors two of a scope's backends:
+Lofi's browser SQLite replica (`@fragno-dev/lofi/sqlite`) mirrors two of a scope's backends, and
+every view of their data reads it; Backoffice no longer uses TanStack DB:
 
 - **Upload** (`/api/upload-scoped/<scope>`, schema `upload`, whose outbox carries only the `file`
-  table), in `../upload/lofi`. It replaced the TanStack collection there.
+  table), in `../upload/lofi`.
 - **Automations** (`/api/automations-scoped/<scope>`, schemas `automations` and `workflows`), in
-  `../automation/lofi`, for the dashboard's Overview and Events tabs. The same outbox also feeds the
-  TanStack DB collections in `../automation/tanstack`, which every other Automations view still
-  reads, including the Files explorer's workflow routes.
+  `../automation/lofi`: the dashboard, user pages, Agents, Integrations, the Files explorer's
+  workflow routes, Marketplace installs, and the Automations script view. The layout's loader
+  describes the scope's backend (`../automation/lofi/replica-source.server.ts`), whose identity
+  names the replica.
 
 Each tab starts a replica worker per backend (`../upload/lofi/replica.worker.ts`,
 `../automation/lofi/replica.worker.ts`), which serves the replica with
@@ -19,8 +21,9 @@ with `@fragno-dev/lofi/sqlite` and read live views:
 
 - Upload's are ZQL views (`@fragno-dev/lofi-zql`), which the leader updates incrementally.
 - Automations' are read views: named functions in `../automation/lofi/replica-host.ts` that the
-  leader runs again after every batch, with the database locked, so all of a read's queries see one
-  state. It sends a view's result only when it changed.
+  leader runs again after a batch that wrote a table their last run read, with the database locked,
+  so all of a read's queries see one state. It sends a view's result only when it changed.
+- User pages' are guarded SQL views (`../automation/lofi/page-relations.ts`); see Pages below.
 
 Shared pieces in this directory:
 
@@ -43,27 +46,24 @@ The Files explorer's workspace tree (`routes/backoffice/files/explorer.tsx`) and
 manager (`routes/backoffice/connections/upload/files.tsx`), through `useReadyUploadFiles`: a view of
 the `file` rows whose status is `ready`, of one provider or of all. Both build their tree from the
 whole list whenever it changes. `upload/lofi/replica.scenario.test.ts` uploads, deletes, and lists
-files through the view. The explorer no longer previews pages, which render over the Automations
-TanStack collections; it links to them instead.
+files through the view. The explorer does not preview pages; it links to their route.
 
 ## What reads the Automations replica
 
-The dashboard's Overview and Events tabs, which open no TanStack database. Each view is one of
-`automationReads` (`../automation/lofi/replica-host.ts`), which a component opens with
-`useAutomationRead` (`../automation/lofi/replica.ts`). Overview
-(`routes/backoffice/dashboard/dashboard.tsx`):
+The dashboard's Overview and Events tabs. Each view is one of `automationReads`
+(`../automation/lofi/replica-host.ts`), which a component opens with `useAutomationRead`
+(`../automation/lofi/replica.ts`). Overview (`routes/backoffice/dashboard/dashboard.tsx`):
 
 - The overview, through `readDashboardOverview` in `overview-replica.ts`: workflow health, failing
   and waiting runs, event volume, scheduled routes, connections, and agents.
-  `projectBackofficeDashboard` turns what it reads into the page, as it did with the TanStack
-  queries.
+  `projectBackofficeDashboard` turns what it reads into the page.
 - The orchestration graph, through `readOrchestrationRecords` (`../automation/lofi/reads.ts`): the
   scope's own event sources and definitions, and its unfinished runs. Its inspector reads an event
   type's latest events with `readLatestEventsOfType`, and a workflow's running Codemode runs.
-- An opened run's timeline, and a page's form for a waiting run, through `readWorkflowRuns`
-  (`../automation/lofi/reads.ts`), which selects runs as `workflowRunRecordsQuery` does: waiting
-  runs, running Codemode runs, or one run by workflow and instance. A run's waits are derived from
-  its steps with `currentWorkflowWaits`.
+- An opened run's timeline, a page's form for a waiting run, and the Automations script view's runs,
+  through `readWorkflowRuns` (`../automation/lofi/reads.ts`): waiting runs, running Codemode runs,
+  or one run by workflow and instance. A run's waits are derived from its steps with
+  `currentWorkflowWaits` (`../automation/workflow-waits.ts`).
 
 Events (`routes/backoffice/dashboard/events.tsx`), through `event-traces-replica.ts`:
 `readEventTraceSummaries` reads the newest 100 origin events with the events they caused, their
@@ -71,7 +71,7 @@ route dispatches, and the runs those started or sent events to, and summarizes t
 `projectEventTraceSummaries` in the worker, so the origins' payloads, which the list needs only for
 headlines, do not cross to the page. `readEventTrace` reads one origin's events, dispatches, runs,
 and those runs' steps and workflow events, which `projectEventTrace` turns into the trace on the
-page. Both project as they did from every synchronized row.
+page.
 
 The Files explorer (`routes/backoffice/files/explorer.tsx`) reads the routes that start each
 workflow file with `readAutomationRoutes`, the overview's read of the routes, and shows them as
@@ -102,15 +102,13 @@ The project menu in the top bar reads no synchronized data: the layout's loader 
 projects through the Automations object's `GET /projects` (`../automation/project-list.server.ts`)
 and streams them to the menu, so no page opens a database for it.
 
-Those run views are shared with pages that still read the TanStack collections: pages and the
-Automations script view. They take an `AutomationReadSource` (`../automation/read-source.ts`) naming
-the replica or the collections, so each page passes the source it already holds and none opens a
-second copy of the scope's history for them.
+Views shared between routes take the `LofiSqliteClient` of the replica their route opened, so no
+route opens a second copy of the scope's history.
 
 What Backoffice derives from events, rather than reads off a table, is kept by local projections
 (`../automation/lofi/views.ts`) in the local schema `automation_views`. They run in the leading
-tab's worker, in the same transaction as each outbox entry, and fold each new event with the
-functions the TanStack collections derive the same rows with:
+tab's worker, in the same transaction as each outbox entry, and fold each new event with
+Backoffice's own functions:
 
 - `pi_agent`, `pi_agent_request`, and `pi_agent_turn`, by `applyPiAgentEvent` and
   `piAgentTurnEndedBy` (`../pi/agent/pi-agent-records.ts`). An agent's counts of running, queued,
@@ -130,23 +128,58 @@ rebuilds the projection from the events the browser already holds, in the order 
 them, instead of downloading the history again. On the production fixture of Oct 23 (11,970 events),
 rebuilding both took 1.6 s in Node and gave exactly the rows the stream built. The agents and
 Integrations scenario tests check the same with `assertAutomationProjectionsRebuild`, which rebuilds
-the scope's replica on a second connection and compares. Workflow waits are not projected: the
-overview reads the waiting runs with their steps anyway, and derives waits from them with
-`currentWorkflowWaits`.
+the scope's replica on a second connection and compares. Workflow waits are not projected: they
+follow from runs and steps, which change, so the overview derives them from the waiting runs it
+reads anyway, and pages from a derived relation (see Pages).
 
-The tests read the replica through its views, as pages do, with `readAutomationReplica`
-(`../automation/lofi/testing.ts`). `dashboard/overview.scenario.test.ts` reads the overview and the
-orchestration graph from the replica, and the example home page from the TanStack collections, and
-asserts they agree. It also reads every shared view's records from both sources, for each kind of
-run selection, and asserts they are equal. `automation/scenario-starter-router.test.ts` and
-`automation/scenario-event-causation.bridge.scenario.test.ts` (run by `pnpm test:bridge`) build
-traces and the trace list from the replica and from every TanStack row, and assert they are equal.
-The TanStack trace queries in `event-traces.ts` remain only as that reference.
+## Pages
+
+A user page (`/workspace/**/<name>.page.js`, built by `../../artifacts/pages/build.server.ts`) holds
+SQL queries, each one SELECT over the relations `../automation/lofi/page-relations.ts` gives pages,
+with the columns its rows show. The route (`routes/backoffice/pages/page.tsx`) waits for the scope's
+replica to catch up, then `../../artifacts/pages/view.tsx` opens each query as a guarded SQL view of
+the replica worker; a query whose times move with `now` opens a new view each minute.
+`@fragno-private/backoffice-ui/pages` decodes rows by their declared columns and binds them to the
+page's interface.
+
+- **Relations.** Temporary views on the leader's connection give pages the synchronized tables under
+  short names, such as `runs`, `steps`, and `events`, with `id` the row's id, references as the
+  referenced row's id (`steps.runId`), and the replica's bookkeeping columns left out. `connections`
+  and `agent_turns` are views of the projections. `agents` and `workflow_waits` are derived in the
+  worker with `readPiAgents` and `currentWorkflowWaits`, the functions the dashboard uses, so a page
+  repeats none of their logic; they are computed again only after a batch wrote what they read.
+  `page-schema.d.ts`, which agents read, is generated from the same list.
+- **Guard.** Pages read only those relations, call only the functions listed there, cannot write,
+  and stop at 500 rows, 4 MB of text, and 25 million operations, which take about 200 ms. A page's
+  query that cannot run shows its error in place of the page.
+- **Build.** The build runs each query once on wa-sqlite in the server, on an empty in-memory
+  database with the replica's tables and the same relations and guard
+  (`../../artifacts/pages/page-queries.server.ts`), and fails with the query's error, such as a
+  misspelled column, or a declared column the query does not select. The Worker imports
+  `wa-sqlite.wasm` as a module; Node builds and tests alias that import to
+  `shims/node-wa-sqlite-wasm.ts`. A cached build is checked again when the relations change.
+- **Older pages.** Pages written for version 4, which queried TanStack DB's collections, fail their
+  build with a message that says to rewrite their queries in SQL.
+
+On the production fixture of Oct 23, the example home page's eleven queries take 12 ms together the
+first time, deriving `agents` and `workflow_waits` included, and 4 ms after, in Node.
+
+## Tests
+
+The tests read the replica through its views, as pages do: `readAutomationReplica` reads one of
+`automationReads`, `readAutomationPageQuery` a page's query, and `queryAutomationReplica` any SQL
+over the page relations (`../automation/lofi/testing.ts`). `dashboard/overview.scenario.test.ts`
+builds the example home page as its route does, reads it from the replica, and asserts it shows what
+the dashboard shows; it also states what each view beside the dashboard reads.
+`artifacts/pages/page.scenario.test.ts` builds pages, including the skill's example, and checks the
+errors of SQL that cannot run. `automation/scenario-starter-router.test.ts` and
+`automation/scenario-event-causation.bridge.scenario.test.ts` (run by `pnpm test:bridge`) check
+traces as the Events tab reads them.
 
 ## Measurements (Upload)
 
-These were taken while the replica still ran on the page, reaching TanStack DB's database worker
-through one message per call. In its own worker, its statements run without a round trip.
+These were taken while the replica still ran on the page, reaching a database worker through one
+message per call. In its own worker, its statements run without a round trip.
 
 A scope with 50 files rewritten 120 times has 6,559 outbox entries (6.9 MB of stream). In Chrome, in
 a background tab, with only the Upload replica empty:
@@ -162,9 +195,9 @@ a background tab, with only the Upload replica empty:
 
 ## Measurements (Automations)
 
-What the leader pays to run a read view, which it does for every open view after every batch,
-replaying the production fixture of Oct 23 (16,104 entries) into wa-sqlite's in-memory VFS in Node,
-in the median of 5 runs after catch-up:
+What the leader pays to run a read view, which it does for every open view that reads a table a
+batch wrote, replaying the production fixture of Oct 23 (16,104 entries) into wa-sqlite's in-memory
+VFS in Node, in the median of 5 runs after catch-up:
 
 | Read                    | Time   | Result |
 | ----------------------- | ------ | ------ |
@@ -188,15 +221,11 @@ download the outbox again.
   the temporary `.ahp-*` directories closed workers left in OPFS. Two workers that list the
   directory at the same time both try to delete the same one, and the second fails its open with
   `NotFoundError`; three workers running that loop against three leftover directories failed in 14
-  of 30 trials. While the Automations replica opened next to the TanStack DB database, both started
-  after the same `GET /_internal`, and 3 of 12 reloads showed the route's error page. Replica
-  workers retry their open; the TanStack database does not. Only user pages
-  (`routes/backoffice/pages/page.tsx`, `../../artifacts/pages/view.tsx`) still open the TanStack
-  database; every other route opens only replica workers, the Upload and the Automations replica's
-  on Files: 12 of 12 reloads of a workflow file showed its tree and its routes. Tabs share OPFS, so
-  on pages, workers of two tabs opening at once can still fail. wa-sqlite 2.x ignores the
-  `NotFoundError`, but `@tanstack/browser-db-sqlite-persistence` (0.2.37) accepts only `^1.4.1`;
-  backporting that change as a pnpm patch of 1.7.2 would fix it.
+  of 30 trials. Replica workers retry their open, and every route opens only replica workers: 12 of
+  12 reloads of a workflow file, which opens both, showed its tree and its routes. wa-sqlite 2.x
+  ignores the `NotFoundError`; lofi still opens `openLofiSqliteReplica`'s database through
+  `@tanstack/browser-db-sqlite-persistence` (0.2.37), which accepts only `^1.4.1`, so backporting
+  that change as a pnpm patch of 1.7.2 would let the retry go.
 - **Returning visits show older data without saying so.** A replica that caught up before opens at
   once and replays what changed since in the background, with no indicator.
 - **Failures show as text.** The download and the Files views show the leading tab's last error
@@ -207,27 +236,25 @@ download the outbox again.
   the Files tree's whole list when a file changes, and the whole overview, waiting runs with all
   their steps included, when anything in it changes. Sending the changes would let pages update in
   place.
-- **A frozen leader stalls every tab's Files and dashboard views.** See the risks of the replica
-  worker in lofi's README.
+- **A frozen leader stalls every tab's views,** of Files, the dashboard, pages, Agents, and
+  Integrations. See the risks of the replica worker in lofi's README.
 - **The worker path has no automated browser test.** The scenario tests run the same hosts in Node.
   It was checked by hand in Chrome: the Files explorer, and the dashboard's Overview and Events in
   two tabs, where an event fired showed in both within about 110 ms, and after the leading tab
-  closed, the other took the lead and showed the next event within about 300 ms.
+  closed, the other took the lead and showed the next event within about 300 ms. A user page showed
+  an event fired within about 400 ms.
 - **Two streams and two databases on Files:** the Upload and the Automations replica, each with its
   own `GET /_internal`, outbox stream, OPFS database, and worker, since they follow two backends.
-- **Pages that mix both follow the Automations outbox twice.** Leaving any other route for a user
-  page opens the TanStack collections next to the replica that stays open in the tab, each with its
-  own stream, database, and worker.
 - **The project menu refreshes on navigation, not live.** It lists projects as of the last time the
   layout's loader ran, which actions such as creating a project rerun; a project an agent creates
-  shows after the next navigation. Once every page reads the Automations replica, pages outside a
-  project scope already hold the scope's `project` table, so the menu can read it there and follow
-  it live. Project scopes list their owner's projects, which only the owner's replica holds, so they
-  would keep the server query rather than download the owner's history for the menu.
+  shows after the next navigation. Pages outside a project scope hold the scope's `project` table in
+  the replica, so the menu could read it there and follow it live. Project scopes list their owner's
+  projects, which only the owner's replica holds, so they would keep the server query rather than
+  download the owner's history for the menu.
 - **The Automations download is the whole history.** A first visit replays every entry of the
-  scope's outbox, as the TanStack collections do. In the production fixture of Oct 23 that is 16,104
-  entries and 316 MB, 91% of it the bodies of GitHub `webhook.received` events stored before
-  Backoffice stopped storing them. Stripping those from the outbox is planned separately.
+  scope's outbox. In the production fixture of Oct 23 that is 16,104 entries and 316 MB, 91% of it
+  the bodies of GitHub `webhook.received` events stored before Backoffice stopped storing them.
+  Stripping those from the outbox is planned separately.
 - **A changed projection needs its version bumped.** A changed table rebuilds on its own, but a
   projection that folds the same events into different values, with the same tables, rebuilds only
   when its `rebuild.version` changes. Forgetting the bump keeps the old rows until it happens.
@@ -240,14 +267,34 @@ download the outbox again.
   `pi` or `integrations` events, a replica would keep what deleted events did, and one that
   downloads the outbox afterwards would not, since their history goes too. A rebuild would then drop
   what the deleted events did, so the same browser could show different agents before and after one.
-- **Ties may break differently.** Of two changes to a connection in the same millisecond, the
-  projection keeps the first it applies, in outbox order; the TanStack collection keeps whichever
-  its stable sort puts first. Origins that occurred in the same millisecond list newest ID first,
-  where TanStack listed them in collection order.
-- **Every batch reruns every open read view,** in the leader, for every tab: the overview's ten
-  queries, the graph's three, an opened run's four, and on Events the list's four and the trace's up
-  to five, because the leader does not know which tables a batch changed. Waiting runs come with all
-  their steps, events, and emissions. The leader then compares each result with the last it sent. On
-  the production fixture that is under 10 ms per batch; see the measurements. The list still reads
-  its origins' payloads to summarize them, and the overview's runs and event counts grow with the
-  scope's history.
+- **Ties break by outbox order.** Of two changes to a connection in the same millisecond, the
+  projection keeps the first it applies. Origins that occurred in the same millisecond list newest
+  ID first. Steps created in the same millisecond order by their random ID, which decides which of
+  them is a run's latest interface.
+- **Busy tables rerun most views.** A batch reruns, in the leader and for every tab, each open view
+  that reads a table it wrote. Most batches write `automation_event` or the workflow tables, which
+  the overview's ten queries, the graph's three, an opened run's four, the Events list's four and
+  trace's up to five, and most page queries read. Waiting runs come with all their steps, events,
+  and emissions. On the production fixture the overview's reads are under 10 ms per batch; see the
+  measurements. The list still reads its origins' payloads to summarize them, and the overview's
+  runs and event counts grow with the scope's history.
+- **Pages are only as fast as their SQL.** A query that scans every event to group a few runs takes
+  that time after every batch that writes events, up to the 25 million operations its guard allows,
+  about 200 ms. The budget is per query, so a page of eleven slow queries can hold the leader for
+  about 2 s per batch.
+- **The replica has only the backend's indexes,** and pages cannot add any. Filtering `runs` by
+  `status`, such as for waiting runs, scans every run, and `events` by `type` alone cannot use the
+  index on `source`, `type`, and `occurredAt`. The replica's indexes are not unique, so indexes for
+  what pages read could be added to the replica alone.
+- **Pages reopen every view each minute.** The page keys its views on all queries' parameters, so
+  when the minute moves, every query is prepared and run again, also those that do not read `now`.
+  The home page's eleven take about 12 ms on the production fixture. Keying each view on its own
+  query would reopen only those whose times moved.
+- **Derived relations run for pages that do not read them.** While any page is open, `agents` is
+  computed again after every batch that writes agent events, and `workflow_waits`, which reads every
+  waiting run with all its steps, after every batch that writes runs or steps, whether or not the
+  page reads either. See lofi's README.
+- **Pages and the dashboard compute alike things twice.** The home page and the Overview tab read
+  much the same, through separate views, and two tabs on one page get two of each.
+- **Saved version 4 pages stop working.** A page written for the TanStack builder fails until an
+  agent rewrites its queries; nothing rewrites them on its own.

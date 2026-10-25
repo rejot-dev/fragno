@@ -8,7 +8,7 @@ import type {
 import { findBackofficeMe, requireBackofficeMe } from "@/fragno/auth/auth-server";
 import type { BackofficeMeData } from "@/fragno/auth/contracts";
 import type { BackofficeJwtPayload } from "@/fragno/auth/token-lifecycle";
-import type { AutomationCollectionSource } from "@/fragno/automation/tanstack/browser-database";
+import type { AutomationReplicaSource } from "@/fragno/automation/lofi/replica-source";
 
 import { BackofficeRequestStateContext, type BackofficeRequestState } from "./request-state";
 import { createBackofficeRequestState } from "./request-state.server";
@@ -44,30 +44,28 @@ const authenticatedMe: BackofficeMeData = {
 
 function createAuthenticatedDependencies(
   getBackofficeMe: Pick<AuthObject, "getBackofficeMe">["getBackofficeMe"],
-  automationCollectionSourceFailure: Error | null = null,
+  automationReplicaSourceFailure: Error | null = null,
 ) {
   const verifyJwt = vi.fn(async () => ({ ok: true as const, payload: authenticatedPayload }));
   const getAuthObject = vi.fn(() => ({
     http: { fetch: vi.fn() },
     commands: { getBackofficeMe },
   }));
-  const loadAutomationCollectionSourceCall = vi.fn();
-  async function loadAutomationCollectionSource<
-    TOrganization extends BackofficeOrganizationIdentity,
-  >(
+  const loadAutomationReplicaSourceCall = vi.fn();
+  async function loadAutomationReplicaSource<TOrganization extends BackofficeOrganizationIdentity>(
     resolvedScope: BackofficeResolvedScope<TOrganization>,
-  ): Promise<AutomationCollectionSource<TOrganization>> {
-    loadAutomationCollectionSourceCall(resolvedScope);
-    if (automationCollectionSourceFailure) {
-      throw automationCollectionSourceFailure;
+  ): Promise<AutomationReplicaSource<TOrganization>> {
+    loadAutomationReplicaSourceCall(resolvedScope);
+    if (automationReplicaSourceFailure) {
+      throw automationReplicaSourceFailure;
     }
     return { resolvedScope, adapterIdentity: "adapter-test" };
   }
   return {
-    dependencies: { getAuthObject, verifyJwt, loadAutomationCollectionSource },
+    dependencies: { getAuthObject, verifyJwt, loadAutomationReplicaSource },
     getAuthObject,
     verifyJwt,
-    loadAutomationCollectionSourceCall,
+    loadAutomationReplicaSourceCall,
   };
 }
 
@@ -150,7 +148,7 @@ describe("Backoffice request state", () => {
 
   test("coalesces concurrent Automations collection-source loads by canonical scope", async () => {
     const getBackofficeMe = vi.fn(async () => authenticatedMe);
-    const { dependencies, loadAutomationCollectionSourceCall } =
+    const { dependencies, loadAutomationReplicaSourceCall } =
       createAuthenticatedDependencies(getBackofficeMe);
     const state = createBackofficeRequestState(
       new Request("https://backoffice.example/backoffice/dashboard"),
@@ -165,19 +163,19 @@ describe("Backoffice request state", () => {
       organization: { id: "org-1", slug: "renamed-acme" },
     };
 
-    const first = state.getAutomationCollectionSource(firstScope);
-    const second = state.getAutomationCollectionSource(equivalentScope);
+    const first = state.getAutomationReplicaSource(firstScope);
+    const second = state.getAutomationReplicaSource(equivalentScope);
     const [firstSource, secondSource] = await Promise.all([first, second]);
 
     expect(second).toBe(first);
     expect(secondSource).toBe(firstSource);
     expect(firstSource).toEqual({ resolvedScope: firstScope, adapterIdentity: "adapter-test" });
-    expect(loadAutomationCollectionSourceCall).toHaveBeenCalledOnce();
+    expect(loadAutomationReplicaSourceCall).toHaveBeenCalledOnce();
   });
 
   test("keeps organization and project collection-source operations distinct", async () => {
     const getBackofficeMe = vi.fn(async () => authenticatedMe);
-    const { dependencies, loadAutomationCollectionSourceCall } =
+    const { dependencies, loadAutomationReplicaSourceCall } =
       createAuthenticatedDependencies(getBackofficeMe);
     const state = createBackofficeRequestState(
       new Request("https://backoffice.example/backoffice/dashboard"),
@@ -186,21 +184,21 @@ describe("Backoffice request state", () => {
     const organization = { id: "org-1", slug: "acme" };
 
     await Promise.all([
-      state.getAutomationCollectionSource({ kind: "org", organization }),
-      state.getAutomationCollectionSource({
+      state.getAutomationReplicaSource({ kind: "org", organization }),
+      state.getAutomationReplicaSource({
         kind: "project",
         owner: { kind: "org", organization },
         project: { id: "project-1", slug: "project-1" },
       }),
     ]);
 
-    expect(loadAutomationCollectionSourceCall).toHaveBeenCalledTimes(2);
+    expect(loadAutomationReplicaSourceCall).toHaveBeenCalledTimes(2);
   });
 
   test("shares a rejected collection-source load without retrying it", async () => {
     const failure = new Error("Automations adapter description unavailable.");
     const getBackofficeMe = vi.fn(async () => authenticatedMe);
-    const { dependencies, loadAutomationCollectionSourceCall } = createAuthenticatedDependencies(
+    const { dependencies, loadAutomationReplicaSourceCall } = createAuthenticatedDependencies(
       getBackofficeMe,
       failure,
     );
@@ -213,18 +211,18 @@ describe("Backoffice request state", () => {
       userId: "user-1",
     };
 
-    const first = state.getAutomationCollectionSource(resolvedScope);
-    const second = state.getAutomationCollectionSource(resolvedScope);
+    const first = state.getAutomationReplicaSource(resolvedScope);
+    const second = state.getAutomationReplicaSource(resolvedScope);
 
     await expect(first).rejects.toBe(failure);
     await expect(second).rejects.toBe(failure);
     expect(second).toBe(first);
-    expect(loadAutomationCollectionSourceCall).toHaveBeenCalledOnce();
+    expect(loadAutomationReplicaSourceCall).toHaveBeenCalledOnce();
   });
 
   test("does not share promises between request state instances", async () => {
     const getBackofficeMe = vi.fn(async () => authenticatedMe);
-    const { dependencies, verifyJwt, loadAutomationCollectionSourceCall } =
+    const { dependencies, verifyJwt, loadAutomationReplicaSourceCall } =
       createAuthenticatedDependencies(getBackofficeMe);
     const request = new Request("https://backoffice.example/private", {
       headers: { authorization: "Bearer signed-token" },
@@ -236,13 +234,13 @@ describe("Backoffice request state", () => {
     await Promise.all([
       firstState.getBackofficeMe(),
       secondState.getBackofficeMe(),
-      firstState.getAutomationCollectionSource(resolvedScope),
-      secondState.getAutomationCollectionSource(resolvedScope),
+      firstState.getAutomationReplicaSource(resolvedScope),
+      secondState.getAutomationReplicaSource(resolvedScope),
     ]);
 
     expect(verifyJwt).toHaveBeenCalledTimes(2);
     expect(getBackofficeMe).toHaveBeenCalledTimes(2);
-    expect(loadAutomationCollectionSourceCall).toHaveBeenCalledTimes(2);
+    expect(loadAutomationReplicaSourceCall).toHaveBeenCalledTimes(2);
   });
 
   test("preserves invalid cookie recovery headers and bearer precedence", async () => {
@@ -252,11 +250,11 @@ describe("Backoffice request state", () => {
       http: { fetch: vi.fn() },
       commands: { getBackofficeMe },
     }));
-    async function loadAutomationCollectionSource<
+    async function loadAutomationReplicaSource<
       TOrganization extends BackofficeOrganizationIdentity,
     >(
       _resolvedScope: BackofficeResolvedScope<TOrganization>,
-    ): Promise<AutomationCollectionSource<TOrganization>> {
+    ): Promise<AutomationReplicaSource<TOrganization>> {
       throw new Error("Authentication recovery must not initialize Automations.");
     }
     const cookieRequest = new Request("https://backoffice.example/private", {
@@ -272,12 +270,12 @@ describe("Backoffice request state", () => {
     const cookieAuthentication = await createBackofficeRequestState(cookieRequest, {
       getAuthObject,
       verifyJwt,
-      loadAutomationCollectionSource,
+      loadAutomationReplicaSource,
     }).resolveAuthentication();
     const bearerAuthentication = await createBackofficeRequestState(bearerRequest, {
       getAuthObject,
       verifyJwt,
-      loadAutomationCollectionSource,
+      loadAutomationReplicaSource,
     }).resolveAuthentication();
 
     expect(cookieAuthentication).toMatchObject({ ok: false, reason: "expired" });

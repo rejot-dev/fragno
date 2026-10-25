@@ -8,26 +8,9 @@ import {
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import type { CausalFlameNode } from "@fragno-private/design-system/causal-flame-graph-model";
 
-import { and, eq, queryOnce } from "@tanstack/react-db";
-
-import { readAutomationReplica } from "@/fragno/automation/lofi/testing";
+import { queryAutomationReplica, readAutomationReplica } from "@/fragno/automation/lofi/testing";
 import { getStaticMarketplaceEntry } from "@/fragno/marketplace/static-entries";
-import {
-  eventTraceDeliveriesQuery,
-  eventTraceDispatch,
-  eventTraceDispatchesQuery,
-  eventTraceEventsQuery,
-  eventTraceRunIds,
-  eventTraceRunsQuery,
-  eventTraceStepsQuery,
-  projectEventTrace,
-  projectEventTraceSummaries,
-  type EventTraceDelivery,
-  type EventTraceDispatchRow,
-  type EventTraceEvent,
-  type EventTraceRun,
-  type EventTraceStep,
-} from "@/routes/backoffice/dashboard/event-traces";
+import { projectEventTrace } from "@/routes/backoffice/dashboard/event-traces";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
   class MockDurableObject {
@@ -100,17 +83,26 @@ const fanoutRetryProjectScope = {
   projectId: "fanout-retry-project",
 } as const;
 
-/** What each route matched to an event did, as the dashboard reads it. */
+/** What each route matched to an event did, as the dashboard reads it from the replica. */
 async function routeDispatchStates(ctx: BackofficeScenarioContext, eventId: string) {
-  const database = ctx.tanstack.automations.forOrg("org-1");
-  await database.drain();
-  const dispatches = await queryOnce((query) =>
-    query
-      .from({ dispatch: database.collections.routeDispatches })
-      .where(({ dispatch }) => eq(dispatch.eventId, eventId)),
+  const replica = ctx.lofi.automations.forOrg("org-1");
+  await replica.drain();
+  const dispatches = await queryAutomationReplica(
+    replica,
+    `SELECT routeId, status, outcome, failedAttempts, error FROM route_dispatches WHERE eventId = ?1`,
+    [eventId],
   );
   return Object.fromEntries(
-    dispatches.map((dispatch) => [dispatch.routeId, readRouteDispatchState(dispatch)]),
+    dispatches.map(({ routeId, status, outcome, failedAttempts, error }) => [
+      routeId,
+      readRouteDispatchState({
+        status: status as string,
+        // Only the automations fragment writes dispatches, so the outcome holds what it persists.
+        outcome: outcome === null ? null : JSON.parse(outcome as string),
+        failedAttempts: failedAttempts as number,
+        error: error as string | null,
+      }),
+    ]),
   );
 }
 
@@ -136,55 +128,29 @@ async function routeFailedEvents(ctx: BackofficeScenarioContext) {
   );
 }
 
-/** One line per node, siblings in label order, as in the event causation scenario. */
-/** A value as JSON, without the virtual properties, such as `$synced`, TanStack DB adds to rows. */
-function comparable(value: unknown): unknown {
-  return JSON.parse(
-    JSON.stringify(value, (key, nested: unknown) =>
-      key.startsWith("$") ? undefined : nested instanceof Map ? [...nested] : nested,
-    ),
-  );
-}
-
 /**
- * The Events tab reads the replica, only the rows a trace and the list use. Both must project to
- * what every synchronized TanStack row projects to.
+ * An event's trace and the list's summaries as the Events tab reads them from the replica. Without
+ * `runs`, the trace is what shows while dispatches have synchronized and their runs have not.
  */
-async function assertReplicaTracesMatchCollections(
+async function replicaTrace(
   ctx: BackofficeScenarioContext,
   rootEventId: string,
+  { runs }: { runs: boolean } = { runs: true },
 ) {
-  const database = ctx.tanstack.automations.forOrg("org-1");
   const replica = ctx.lofi.automations.forOrg("org-1");
-  await Promise.all([database.sync(), replica.sync()]);
-  const { collections } = database;
-  const [events, dispatchRows, runs] = (await Promise.all([
-    queryOnce((query) => eventTraceEventsQuery(query, collections)),
-    queryOnce((query) => eventTraceDispatchesQuery(query, collections)),
-    queryOnce((query) => eventTraceRunsQuery(query, collections)),
-  ])) as [EventTraceEvent[], EventTraceDispatchRow[], EventTraceRun[]];
-  const dispatches = dispatchRows.map(eventTraceDispatch);
-  const runIds = eventTraceRunIds({ rootEventId, dispatches, runs });
-  const [steps, deliveries] = (await Promise.all([
-    queryOnce((query) => eventTraceStepsQuery(query, collections, runIds)),
-    queryOnce((query) => eventTraceDeliveriesQuery(query, collections, runIds)),
-  ])) as [EventTraceStep[], EventTraceDelivery[]];
-
-  const trace = projectEventTrace({ rootEventId, events, dispatches, runs, steps, deliveries });
-  assert(trace);
-  expect(
-    comparable(
-      projectEventTrace({
-        rootEventId,
-        ...(await readAutomationReplica(replica.replica, "eventTrace", { rootEventId })),
-      }),
-    ),
-  ).toEqual(comparable(trace));
-  expect(
-    comparable(await readAutomationReplica(replica.replica, "eventTraceSummaries", { limit: 10 })),
-  ).toEqual(comparable(projectEventTraceSummaries({ events, dispatches, runs, limit: 10 })));
+  await replica.sync();
+  const rows = await readAutomationReplica(replica.replica, "eventTrace", { rootEventId });
+  return {
+    trace: projectEventTrace({
+      rootEventId,
+      ...rows,
+      ...(runs ? {} : { runs: [], steps: [], deliveries: [] }),
+    }),
+    summaries: await readAutomationReplica(replica.replica, "eventTraceSummaries", { limit: 10 }),
+  };
 }
 
+/** One line per node, siblings in label order, as in the event causation scenario. */
 function outline(node: CausalFlameNode, depth = 0): string[] {
   const detail = node.detail === null ? "" : ` (${node.detail})`;
   return [
@@ -312,11 +278,11 @@ const telegramMessageEvent = ({
 };
 
 describe("starter automation router scenarios", () => {
-  test("scenario TanStack DB helper drains and queries frontend-visible data", async () => {
+  test("scenario replica helper drains and queries frontend-visible data", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         objects: scenarioObjects,
-        name: "scenario TanStack DB helper drains and queries frontend-visible data",
+        name: "scenario replica helper drains and queries frontend-visible data",
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then, when }) => [
           when.automation.ingestEvent(
@@ -325,14 +291,13 @@ describe("starter automation router scenarios", () => {
               payload: { ok: true },
             }),
           ),
-          then.assert("assert event is visible through TanStack DB", async (ctx) => {
-            const database = ctx.tanstack.automations.forOrg("org-1");
-            await database.drain();
-            const event = await queryOnce((query) =>
-              query
-                .from({ event: database.collections.events })
-                .where(({ event }) => eq(event.id, "tanstack-event-1"))
-                .findOne(),
+          then.assert("assert event is visible through the replica", async (ctx) => {
+            const replica = ctx.lofi.automations.forOrg("org-1");
+            await replica.drain();
+            const [event] = await queryAutomationReplica(
+              replica,
+              `SELECT source, eventType FROM events WHERE id = ?1`,
+              ["tanstack-event-1"],
             );
             assert.equal(event?.source, "custom");
             assert.equal(event?.eventType, "thing.happened");
@@ -343,27 +308,26 @@ describe("starter automation router scenarios", () => {
               payload: { updated: true },
             }),
           ),
-          then.assert("assert a started TanStack DB scope catches up", async (ctx) => {
-            const database = ctx.tanstack.automations.forOrg("org-1");
-            await database.drain();
-            const event = await queryOnce((query) =>
-              query
-                .from({ event: database.collections.events })
-                .where(({ event }) => eq(event.id, "tanstack-event-2"))
-                .findOne(),
+          then.assert("assert a started replica catches up", async (ctx) => {
+            const replica = ctx.lofi.automations.forOrg("org-1");
+            await replica.drain();
+            const [event] = await queryAutomationReplica(
+              replica,
+              `SELECT payload FROM events WHERE id = ?1`,
+              ["tanstack-event-2"],
             );
-            assert.deepEqual(event?.payload, { updated: true });
+            assert.deepEqual(JSON.parse(event?.payload as string), { updated: true });
           }),
         ],
       }),
     );
   });
 
-  test("scenario TanStack DB exposes workflow state through the automation outbox", async () => {
+  test("scenario replica exposes workflow state through the automation outbox", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         objects: scenarioObjects,
-        name: "scenario TanStack DB exposes automation workflow state",
+        name: "scenario replica exposes automation workflow state",
         files: marketplaceTelegramTestWorkspace(),
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then, when }) => [
@@ -377,33 +341,23 @@ describe("starter automation router scenarios", () => {
             }),
           }),
           then.assert("assert workflow instance and waiting step are visible", async (ctx) => {
-            const database = ctx.tanstack.automations.forOrg("org-1");
-            await database.drain();
-
-            const instance = await queryOnce((query) =>
-              query
-                .from({ instance: database.collections.workflowInstances })
-                .where(({ instance }) =>
-                  and(
-                    eq(instance.workflowName, "codemode-script"),
-                    eq(instance.instanceId, "tanstack-workflow-run"),
-                  ),
-                )
-                .findOne(),
+            const replica = ctx.lofi.automations.forOrg("org-1");
+            await replica.drain();
+            const [instance] = await queryAutomationReplica(
+              replica,
+              `SELECT id, remoteWorkflowName, status FROM runs
+               WHERE workflowName = 'codemode-script' AND instanceId = 'tanstack-workflow-run'`,
             );
-            assert(instance, "Expected the workflow instance to synchronize through TanStack DB.");
+            assert(instance, "Expected the workflow instance to synchronize to the replica.");
             assert.equal(instance.remoteWorkflowName, "telegram-test-command");
             assert.equal(instance.status, "waiting");
 
-            const waitingStep = await queryOnce((query) =>
-              query
-                .from({ step: database.collections.workflowSteps })
-                .where(({ step }) =>
-                  and(eq(step.instanceRef, instance.id), eq(step.name, "wait 3 seconds")),
-                )
-                .findOne(),
+            const [waitingStep] = await queryAutomationReplica(
+              replica,
+              `SELECT type, status FROM steps WHERE runId = ?1 AND name = 'wait 3 seconds'`,
+              [instance.id],
             );
-            assert(waitingStep, "Expected the workflow step to synchronize through TanStack DB.");
+            assert(waitingStep, "Expected the workflow step to synchronize to the replica.");
             assert.equal(waitingStep.type, "sleep");
             assert.equal(waitingStep.status, "waiting");
           }),
@@ -467,12 +421,10 @@ describe("starter automation router scenarios", () => {
               managedBy: { kind: "marketplace", resourceKey: "telegram-agent", version: "1.3.0" },
             });
           }),
-          then.assert("assert channel routes are visible through TanStack DB", async (ctx) => {
-            const database = ctx.tanstack.automations.forOrg("org-1");
-            await database.drain();
-            const routes = await queryOnce((query) =>
-              query.from({ route: database.collections.routes }),
-            );
+          then.assert("assert channel routes are visible through the replica", async (ctx) => {
+            const replica = ctx.lofi.automations.forOrg("org-1");
+            await replica.drain();
+            const routes = await queryAutomationReplica(replica, `SELECT id FROM routes`);
             const expectedIds = ["telegram-identity-claim-completed"];
             const missing = expectedIds.filter(
               (expectedId) => !routes.some((route) => route.id === expectedId),
@@ -639,23 +591,21 @@ describe("starter automation router scenarios", () => {
             customAutomationEvent({ id: "beta-1", payload: { kind: "beta" } }),
           ),
 
-          then.assert("assert automation events are visible through TanStack DB", async (ctx) => {
-            const database = ctx.tanstack.automations.forOrg("org-1");
-            await database.drain();
-            const alphaEvent = await queryOnce((query) =>
-              query
-                .from({ event: database.collections.events })
-                .where(({ event }) => eq(event.id, "alpha-1"))
-                .findOne(),
+          then.assert("assert automation events are visible through the replica", async (ctx) => {
+            const replica = ctx.lofi.automations.forOrg("org-1");
+            await replica.drain();
+            const payloads = await queryAutomationReplica(
+              replica,
+              `SELECT id, payload FROM events WHERE id IN (?1, ?2) ORDER BY id`,
+              ["alpha-1", "beta-1"],
             );
-            const betaEvent = await queryOnce((query) =>
-              query
-                .from({ event: database.collections.events })
-                .where(({ event }) => eq(event.id, "beta-1"))
-                .findOne(),
+            assert.deepEqual(
+              payloads.map(({ id, payload }) => [id, JSON.parse(payload as string)]),
+              [
+                ["alpha-1", { kind: "alpha" }],
+                ["beta-1", { kind: "beta" }],
+              ],
             );
-            assert.deepEqual(alphaEvent?.payload, { kind: "alpha" });
-            assert.deepEqual(betaEvent?.payload, { kind: "beta" });
           }),
 
           then.workflow.instance({
@@ -689,15 +639,13 @@ describe("starter automation router scenarios", () => {
             value: "alpha",
           }),
           then.assert(
-            "assert custom workflow store output is visible through TanStack DB",
+            "assert custom workflow store output is visible through the replica",
             async (ctx) => {
-              const database = ctx.tanstack.automations.forOrg("org-1");
-              await database.drain();
-              const entry = await queryOnce((query) =>
-                query
-                  .from({ entry: database.collections.kvStore })
-                  .where(({ entry }) => eq(entry.key, "custom/alpha-1"))
-                  .findOne(),
+              const replica = ctx.lofi.automations.forOrg("org-1");
+              await replica.drain();
+              const [entry] = await queryAutomationReplica(
+                replica,
+                `SELECT value FROM kv_store WHERE key = 'custom/alpha-1'`,
               );
               assert.equal(entry?.value, "alpha");
             },
@@ -1066,27 +1014,12 @@ describe("starter automation router scenarios", () => {
             expect(await eventsWithFailedRoutes(ctx)).toEqual([]);
           }),
           then.assert("the trace keeps the failure next to the delivery", async (ctx) => {
-            const database = ctx.tanstack.automations.forOrg("org-1");
-            await database.sync();
-            const { collections } = database;
-            const [events, dispatchRows] = (await Promise.all([
-              queryOnce((query) => eventTraceEventsQuery(query, collections)),
-              queryOnce((query) => eventTraceDispatchesQuery(query, collections)),
-            ])) as [EventTraceEvent[], EventTraceDispatchRow[]];
-            const trace = projectEventTrace({
-              rootEventId: event.id,
-              events,
-              dispatches: dispatchRows.map(eventTraceDispatch),
-              runs: [],
-              steps: [],
-              deliveries: [],
-            });
+            const { trace } = await replicaTrace(ctx, event.id, { runs: false });
             expect(trace && outline(trace.root)).toEqual([
               "event custom · fanout.exhausted [ok]",
               "  route Send to a workflow that is never created [ok] (Delivered fanout-ready to run missing-waiter-1)",
               "    event automations · route.failed [ok]",
             ]);
-            await assertReplicaTracesMatchCollections(ctx, event.id);
           }),
           then.workflow.instance({
             remoteWorkflowName: "missing-waiter",
@@ -1245,22 +1178,7 @@ describe("starter automation router scenarios", () => {
             });
           }),
           then.assert("the trace shows each failure under its route", async (ctx) => {
-            const database = ctx.tanstack.automations.forOrg("org-1");
-            await database.sync();
-            const { collections } = database;
-            const [events, dispatchRows] = (await Promise.all([
-              queryOnce((query) => eventTraceEventsQuery(query, collections)),
-              queryOnce((query) => eventTraceDispatchesQuery(query, collections)),
-            ])) as [EventTraceEvent[], EventTraceDispatchRow[]];
-            const dispatches = dispatchRows.map(eventTraceDispatch);
-            const trace = projectEventTrace({
-              rootEventId: event.id,
-              events,
-              dispatches,
-              runs: [],
-              steps: [],
-              deliveries: [],
-            });
+            const { trace, summaries } = await replicaTrace(ctx, event.id, { runs: false });
             const gaveUp = `Gave up after 1 attempt: ${finishedRunError}`;
             expect(trace && outline(trace.root)).toEqual([
               "event custom · late.signal [ok]",
@@ -1271,16 +1189,9 @@ describe("starter automation router scenarios", () => {
               `          route Relay the alert [failed] (${gaveUp})`,
               `      route Tell the finished run [failed] (${gaveUp})`,
             ]);
-            const summaries = projectEventTraceSummaries({
-              events,
-              dispatches,
-              runs: [],
-              limit: 10,
-            });
             expect(summaries.find((summary) => summary.rootEventId === event.id)).toMatchObject({
               outcome: { kind: "settled", failedCount: 3 },
             });
-            await assertReplicaTracesMatchCollections(ctx, event.id);
           }),
           then.assert("no failed route retried", async (ctx) => {
             const queue = await ctx.runtime.objects.automations

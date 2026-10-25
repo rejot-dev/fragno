@@ -8,10 +8,9 @@ import {
 
 import { visualizeWorkflowSource } from "@fragno-dev/workflow-visualizer-tokens";
 
-import { queryOnce } from "@tanstack/react-db";
-
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
+import { readAutomationReplica } from "@/fragno/automation/lofi/testing";
 import {
   backofficeFiles,
   defineBackofficeScenario,
@@ -25,8 +24,6 @@ import { InMemoryAutomationsObject } from "../../../../../workers/automations.do
 import { InMemoryBillingObject } from "../../../../../workers/billing.do";
 import { InMemoryCodemodeObject } from "../../../../../workers/codemode.do";
 import { InMemoryFormsObject } from "../../../../../workers/forms.do";
-import { workflowRunRecordsQuery } from "./use-script-workflow-runs";
-import { automationWorkflowRunsFromRecords } from "./workflow-run-records";
 import { projectWorkflowRunTimeline } from "./workflow-run-timeline-presentation";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
@@ -88,16 +85,13 @@ const orderPlaced: AutomationEvent = {
 
 /** Reads the run the way the run page does and flattens the laid-out rows. */
 async function timelineRows(ctx: BackofficeScenarioContext) {
-  const database = ctx.tanstack.automations.forOrg("org-1");
-  await database.drain();
-  const records = await queryOnce((query) =>
-    workflowRunRecordsQuery(query, database.collections, {
-      type: "instance",
-      workflowName: "codemode-script",
-      instanceId: INSTANCE_ID,
-    }),
-  );
-  const [instance] = automationWorkflowRunsFromRecords(records);
+  const replica = ctx.lofi.automations.forOrg("org-1");
+  await replica.drain();
+  const [instance] = await readAutomationReplica(replica.replica, "workflowRuns", {
+    type: "instance",
+    workflowName: "codemode-script",
+    instanceId: INSTANCE_ID,
+  });
   assert(instance?.codemode, "Expected the Codemode run to synchronize.");
   const timeline = projectWorkflowRunTimeline({
     instance,

@@ -1,3 +1,4 @@
+import type { LofiSqliteClient } from "@fragno-dev/lofi/sqlite";
 import { ButtonLink } from "@fragno-private/design-system/button";
 import { Icon } from "@fragno-private/design-system/icon";
 import { Select } from "@fragno-private/design-system/select";
@@ -30,7 +31,7 @@ import {
   searchParamsWithWorkflowGraphDetailMode,
   workflowGraphDetailModeFromSearchParam,
 } from "./script-view-mode";
-import { useScriptWorkflowRuns, type WorkflowRunSource } from "./use-script-workflow-runs";
+import { useScriptWorkflowRuns } from "./use-script-workflow-runs";
 import { ScriptWorkflowGraph } from "./workflow-graph";
 import type { ScriptWorkflowRun } from "./workflow-run-presentation";
 import { useWorkflowRunTimeline } from "./workflow-run-timeline-presentation";
@@ -39,13 +40,13 @@ export function ScriptSourcePanel({
   absolutePath,
   source,
   runtimeToolCatalog,
-  readSource,
+  replica,
   resolvedScope,
 }: {
   absolutePath: string;
   source: { script: string | null; scriptError: string | null };
   runtimeToolCatalog: readonly RuntimeToolWorkflowDescriptor[];
-  readSource: WorkflowRunSource;
+  replica: LofiSqliteClient;
   resolvedScope: BackofficeResolvedScope;
 }) {
   const runtimeScope = backofficeRuntimeScopeFromResolvedScope(resolvedScope);
@@ -68,7 +69,7 @@ export function ScriptSourcePanel({
   );
   const workflowRuns = useScriptWorkflowRuns({
     absolutePath,
-    source: readSource,
+    replica,
     selectedInstanceId: searchParams.get(WORKFLOW_RUN_SEARCH_PARAM),
     visualization,
   });
@@ -135,7 +136,7 @@ export function ScriptSourcePanel({
       {showGraph && workflowRuns.selectedRun ? (
         <ScriptRunTimeline
           key={workflowRuns.selectedRun.id}
-          readSource={readSource}
+          replica={replica}
           run={workflowRuns.selectedRun}
           runPath={dashboardRunPath(resolvedScope, {
             workflowName: workflowRuns.selectedRun.instanceWorkflowName,
@@ -200,18 +201,18 @@ export function ScriptSourcePanel({
  * graph while the file still holds that program, so selecting one reveals its card.
  */
 function ScriptRunTimeline({
-  readSource,
+  replica,
   run,
   runPath,
   onSelectStep,
 }: {
-  readSource: WorkflowRunSource;
+  replica: LofiSqliteClient;
   run: ScriptWorkflowRun;
   runPath: string;
   onSelectStep: (stepId: string) => void;
 }) {
   const { timeline } = useWorkflowRunTimeline({
-    source: readSource,
+    replica,
     reference: { workflowName: run.instanceWorkflowName, instanceId: run.instanceId },
   });
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);

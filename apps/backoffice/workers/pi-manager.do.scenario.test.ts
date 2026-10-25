@@ -33,7 +33,6 @@ import {
   type ConversationView,
   type LiveState,
 } from "@earendil-works/pi-durable";
-import { eq, queryOnce } from "@tanstack/react-db";
 
 import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import {
@@ -45,6 +44,8 @@ import type { InMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-r
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { backofficeObjectScopeFromContextScope } from "@/backoffice-runtime/object-registry";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
+import { queryAutomationReplica } from "@/fragno/automation/lofi/testing";
+import { readRouteDispatchState } from "@/fragno/automation/route-dispatches-storage-runtime";
 import { createRouteBackedAutomationRouterRuntime } from "@/fragno/automation/routing-route-runtime";
 import {
   defineBackofficeScenario,
@@ -58,11 +59,6 @@ import {
   PI_NOTIFICATION_ENTRY_KIND,
   renderPiNotificationRequest,
 } from "@/fragno/pi/agent/pi-agent-notification-entry";
-import {
-  eventTraceDispatch,
-  eventTraceDispatchesQuery,
-  type EventTraceDispatchRow,
-} from "@/routes/backoffice/dashboard/event-traces";
 
 import {
   createPiScenarioDependencies,
@@ -1045,18 +1041,14 @@ test("an agent's turns and queue are recorded as they move, so its events say wh
 
   /** What the agent page reads of the assistant from the synchronized events. */
   async function assistantState(ctx: BackofficeScenarioContext) {
-    const database = ctx.tanstack.automations.forOrg(orgId);
-    await database.sync();
-    const assistant = await queryOnce((query) =>
-      query
-        .from({ agent: database.collections.agents })
-        .where(({ agent }) => eq(agent.agentName, "assistant"))
-        .findOne(),
+    const [assistant] = await queryAutomationReplica(
+      ctx.lofi.automations.forOrg(orgId),
+      `SELECT answering, paused, queued, steering, latestAt FROM agents WHERE agentName = 'assistant'`,
     );
     return assistant && assistant.latestAt !== null
       ? {
-          answering: assistant.answering,
-          paused: assistant.paused,
+          answering: assistant.answering === 1,
+          paused: assistant.paused === 1,
           queued: assistant.queued,
           steering: assistant.steering,
         }
@@ -1323,16 +1315,16 @@ test("a backfill records what the agent events lack, once, so they list the defi
               expect(event.actors.initiator).toEqual(AUTOMATION_SYSTEM_INITIATOR);
             }
 
-            const database = ctx.tanstack.automations.forOrg(orgId);
-            await database.sync();
-            const agents = await queryOnce((query) =>
-              query
-                .from({ agent: database.collections.agents })
-                .orderBy(({ agent }) => agent.builtIn, "desc")
-                .orderBy(({ agent }) => agent.agentName, "asc"),
+            const agents = await queryAutomationReplica(
+              ctx.lofi.automations.forOrg(orgId),
+              `SELECT definition ->> '$.agentName' AS agentName,
+                 definition ->> '$.description' AS description
+               FROM agents ORDER BY builtIn DESC, agentName`,
             );
             expect(
-              agents.map(({ definition }) => `${definition.agentName}: ${definition.description}`),
+              agents.map(
+                ({ agentName, description }) => `${String(agentName)}: ${String(description)}`,
+              ),
             ).toEqual([
               `assistant: ${BUILT_IN_PI_AGENT_DEFINITIONS[0]?.description}`,
               "drafter: Drafts replies.",
@@ -1563,7 +1555,7 @@ test("a notify_agent route delivers events as turns but never the agent's own wo
         }),
       ],
       steps: ({ then }) => [
-        then.assert("a started agent answers a delivered event", async ({ runtime, tanstack }) => {
+        then.assert("a started agent answers a delivered event", async ({ runtime, lofi }) => {
           const started = await prompt(runtime, scope, { requestId: "start", content: "Start." });
           assert.equal(started.status, 202, await started.clone().text());
           await runtime.drain();
@@ -1624,13 +1616,22 @@ test("a notify_agent route delivers events as turns but never the agent's own wo
           ]);
 
           // Event traces show the notification, and the notifications the guard held back.
-          const database = tanstack.automations.forOrg(orgId);
-          await database.sync();
           const dispatches = (
-            (await queryOnce((query) =>
-              eventTraceDispatchesQuery(query, database.collections),
-            )) as EventTraceDispatchRow[]
-          ).map(eventTraceDispatch);
+            await queryAutomationReplica(
+              lofi.automations.forOrg(orgId),
+              `SELECT routeId, eventId, status, outcome, failedAttempts, error FROM route_dispatches`,
+            )
+          ).map(({ routeId, eventId, status, outcome, failedAttempts, error }) => ({
+            routeId: routeId as string,
+            eventId: eventId as string,
+            state: readRouteDispatchState({
+              status: status as string,
+              // Only the automations fragment writes dispatches, so the outcome is what it stored.
+              outcome: outcome === null ? null : JSON.parse(outcome as string),
+              failedAttempts: failedAttempts as number,
+              error: error as string | null,
+            }),
+          }));
           expect(
             dispatches
               .filter((dispatch) => dispatch.routeId.startsWith("notify-"))

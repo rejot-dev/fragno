@@ -1,4 +1,5 @@
 import type { AutomationRouteDefinition } from "@fragno-dev/backoffice-api/v0/automation";
+import type { LofiSqliteClient } from "@fragno-dev/lofi/sqlite";
 import { IconButton } from "@fragno-private/design-system/button";
 import { Icon } from "@fragno-private/design-system/icon";
 import {
@@ -9,20 +10,12 @@ import { useMemo, type ReactNode } from "react";
 
 import { visualizeWorkflowSource } from "@fragno-dev/workflow-visualizer-tokens";
 
-import { eq, useLiveQuery } from "@tanstack/react-db";
-
 import {
   backofficeRuntimeScopeFromResolvedScope,
   type BackofficeResolvedScope,
 } from "@/backoffice-runtime/resolved-scope";
 import { sendBackofficeWorkflowEvent } from "@/backoffice-ui/workflow-events.client";
 import { useAutomationRead } from "@/fragno/automation/lofi/replica";
-import {
-  automationReadCollections,
-  automationReadReplica,
-  type AutomationReadSource,
-} from "@/fragno/automation/read-source";
-import type { AutomationCollections } from "@/fragno/automation/tanstack/collections";
 import type { RuntimeToolWorkflowDescriptor } from "@/fragno/runtime-tools/workflow-catalog";
 import { resolveWorkflowRuntimeToolCalls } from "@/fragno/runtime-tools/workflow-catalog";
 import { jsonSchemaToTypeScript } from "@/lib/zod/zod-formatter";
@@ -31,10 +24,7 @@ import type { AutomationScriptSourceRecord } from "../automations/data";
 import { formatTimestamp } from "../automations/formatting";
 import { AutomationRouteDetail } from "../automations/route-detail";
 import { useLinkedScrollViewports } from "../automations/script-view/linked-scroll";
-import {
-  useScriptWorkflowRuns,
-  type WorkflowRunCollections,
-} from "../automations/script-view/use-script-workflow-runs";
+import { useScriptWorkflowRuns } from "../automations/script-view/use-script-workflow-runs";
 import { ScriptWorkflowGraph } from "../automations/script-view/workflow-graph";
 import type { OrchestrationCatalogEvent, OrchestrationCatalogSource } from "./orchestration-graph";
 
@@ -59,7 +49,7 @@ export function OrchestrationInspector({
   selection,
   workflowSource,
   runtimeToolCatalog,
-  readSource,
+  replica,
   filesScopePath,
   eventPath,
   scope,
@@ -69,7 +59,7 @@ export function OrchestrationInspector({
   selection: OrchestrationInspectorSelection;
   workflowSource: AutomationScriptSourceRecord;
   runtimeToolCatalog: readonly RuntimeToolWorkflowDescriptor[];
-  readSource: AutomationReadSource<RecentEventCollections & WorkflowRunCollections>;
+  replica: LofiSqliteClient;
   filesScopePath: string;
   eventPath: (source: string, eventType: string) => string;
   scope: BackofficeResolvedScope;
@@ -81,7 +71,7 @@ export function OrchestrationInspector({
       absolutePath={absolutePath}
       source={workflowSource}
       runtimeToolCatalog={runtimeToolCatalog}
-      readSource={readSource}
+      replica={replica}
       scope={scope}
     />
   );
@@ -100,10 +90,7 @@ export function OrchestrationInspector({
       <div className="backoffice-scroll min-h-0 flex-1 overflow-y-auto">
         {selection.kind === "source" ? <SourceInspector selection={selection} /> : null}
         {selection.kind === "event" ? (
-          <RecentEventInspector
-            eventDefinition={selection.eventDefinition}
-            readSource={readSource}
-          />
+          <RecentEventInspector eventDefinition={selection.eventDefinition} replica={replica} />
         ) : null}
         {selection.kind === "route" ? (
           <div className="space-y-3 p-3">
@@ -229,51 +216,24 @@ function SourceInspector({
   );
 }
 
-type RecentEventCollections = Pick<AutomationCollections, "events">;
-
 const RECENT_EVENT_LIMIT = 10;
 
 function RecentEventInspector({
   eventDefinition,
-  readSource,
+  replica,
 }: {
   eventDefinition: OrchestrationCatalogEvent;
-  readSource: AutomationReadSource<RecentEventCollections>;
+  replica: LofiSqliteClient;
 }) {
   const { source, eventType } = eventDefinition;
-  const collections = automationReadCollections(readSource);
-  const recentEventsQuery = useLiveQuery({
-    query: (query) =>
-      collections
-        ? query
-            .from({ event: collections.events })
-            .where(({ event }) => eq(event.source, source))
-            .where(({ event }) => eq(event.eventType, eventType))
-            .orderBy(({ event }) => event.occurredAt, "desc")
-            .orderBy(({ event }) => event.id, "desc")
-            .limit(RECENT_EVENT_LIMIT)
-            .select(({ event }) => ({
-              id: event.id,
-              occurredAt: event.occurredAt,
-              subject: event.subject,
-              payload: event.payload,
-            }))
-        : undefined,
-  });
-  const replicaRead = useAutomationRead(automationReadReplica(readSource), "latestEventsOfType", {
+  const recentRead = useAutomationRead(replica, "latestEventsOfType", {
     source,
     eventType,
     limit: RECENT_EVENT_LIMIT,
   });
-  const replicaEvents = replicaRead.status === "ready" ? replicaRead.data : null;
-  const recentEvents =
-    readSource.kind === "replica" ? (replicaEvents ?? []) : (recentEventsQuery.data ?? []);
-  const isLoading =
-    readSource.kind === "replica"
-      ? replicaEvents === null && replicaRead.status !== "error"
-      : recentEventsQuery.isLoading;
-  const readFailed =
-    readSource.kind === "replica" ? replicaRead.status === "error" : recentEventsQuery.isError;
+  const recentEvents = recentRead.status === "ready" ? recentRead.data : [];
+  const isLoading = recentRead.status === "loading";
+  const readFailed = recentRead.status === "error";
 
   return (
     <div className="p-3">
@@ -403,13 +363,13 @@ function WorkflowGraph({
   absolutePath,
   source,
   runtimeToolCatalog,
-  readSource,
+  replica,
   scope,
 }: {
   absolutePath: string;
   source: AutomationScriptSourceRecord;
   runtimeToolCatalog: readonly RuntimeToolWorkflowDescriptor[];
-  readSource: AutomationReadSource<WorkflowRunCollections>;
+  replica: LofiSqliteClient;
   scope: BackofficeResolvedScope;
 }) {
   const runtimeScope = backofficeRuntimeScopeFromResolvedScope(scope);
@@ -424,7 +384,7 @@ function WorkflowGraph({
   );
   const workflowRuns = useScriptWorkflowRuns({
     absolutePath,
-    source: readSource,
+    replica,
     selectedInstanceId: null,
     visualization,
   });

@@ -1,21 +1,22 @@
+import type { LofiSqliteClient } from "@fragno-dev/lofi/sqlite";
 import { useMemo } from "react";
 
 import type { WorkflowVisualizationSnapshot } from "@fragno-dev/workflow-visualizer-tokens";
 
-import { useWorkflowRunRecords, type WorkflowRunSource } from "./use-script-workflow-runs";
+import { useWorkflowRunRecords } from "./use-script-workflow-runs";
 import { projectWorkflowRun, type WorkflowRunReference } from "./workflow-run-presentation";
 
 export function useWorkflowRun({
-  source,
+  replica,
   reference,
   visualization,
 }: {
-  source?: WorkflowRunSource;
+  replica: LofiSqliteClient | null;
   reference: WorkflowRunReference | null;
   visualization: WorkflowVisualizationSnapshot;
 }) {
   const records = useWorkflowRunRecords({
-    source,
+    replica,
     selector: reference
       ? {
           type: "instance",
@@ -35,5 +36,3 @@ export function useWorkflowRun({
     isLoading: records.isLoading,
   };
 }
-
-export type { WorkflowRunCollections, WorkflowRunSource } from "./use-script-workflow-runs";

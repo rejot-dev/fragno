@@ -1,7 +1,5 @@
 import { expect, test, vi } from "vitest";
 
-import { queryOnce } from "@tanstack/react-db";
-
 const workers = vi.hoisted(() => ({
   DurableObject: class {},
   RpcTarget: class {},
@@ -12,6 +10,7 @@ vi.mock("cloudflare:workers", () => workers);
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
+import { readAutomationReplica } from "@/fragno/automation/lofi/testing";
 import {
   defineBackofficeScenario,
   runBackofficeScenario,
@@ -113,13 +112,13 @@ test("the integrations section shows each connection's reported state and source
         }),
         runner.drain(),
         then.assert("the overview lists each connection's latest state and label", async (ctx) => {
-          const database = ctx.tanstack.automations.forOrg(orgId);
-          await database.drain();
-          const connections = await queryOnce((query) =>
-            query
-              .from({ connection: database.collections.connections })
-              .orderBy(({ connection }) => connection.service, "asc")
-              .orderBy(({ connection }) => connection.connectionId, "asc"),
+          const replica = ctx.lofi.automations.forOrg(orgId);
+          await replica.drain();
+          // By service, then connection ID.
+          const connections = await readAutomationReplica(
+            replica.replica,
+            "integrationConnections",
+            undefined,
           );
           expect(
             connections.map((connection) => ({
