@@ -2074,9 +2074,6 @@ importers:
       '@json-render/react':
         specifier: 0.20.0
         version: 0.20.0(react@19.2.7)(zod@4.6.7)
-      '@tanstack/react-db':
-        specifier: 0.5.11
-        version: 0.5.11(@typescript/typescript6@6.0.2)(react@19.2.7)
       zod:
         specifier: 4.6.7
         version: 4.6.7
@@ -2090,6 +2087,9 @@ importers:
       '@fragno-private/vitest-config':
         specifier: workspace:*
         version: link:../vitest-config
+      '@journeyapps/wa-sqlite':
+        specifier: ^1.4.1
+        version: 1.7.2
       '@storybook/react-vite':
         specifier: ^10.6.0
         version: 10.6.0(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(@typescript/typescript6@6.0.2)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(rollup@4.61.1)(storybook@10.6.0(@types/react@19.2.17)(prettier@3.9.6)(react@19.2.7))(vite@8.0.16(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))

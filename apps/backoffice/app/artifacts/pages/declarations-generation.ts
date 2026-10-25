@@ -1,69 +1,40 @@
 import {
   PAGE_DEFINITION_VERSION,
   PAGE_LIMITS,
-  type PageFieldType,
 } from "@fragno-private/backoffice-ui/pages/definition";
-import { RUN_STATUSES } from "@fragno-private/backoffice-ui/run-status";
 
-import { PAGE_COLLECTIONS, type PageCollection } from "./collections";
+import {
+  AUTOMATION_PAGE_FUNCTIONS,
+  AUTOMATION_PAGE_RELATIONS,
+  type PageRelationColumnType,
+} from "@/fragno/automation/lofi/page-relations";
 
-const FIELD_TYPES: Record<PageFieldType, string> = {
-  string: "string",
+const COLUMN_TYPES: Record<PageRelationColumnType, string> = {
+  text: "string",
+  integer: "number",
   number: "number",
-  bigint: "bigint",
-  boolean: "boolean",
-  time: "Date",
-  json: "unknown",
-  binary: "Uint8Array",
-};
-
-const COLLECTION_NOTES: Partial<Record<PageCollection, string>> = {
-  workflowInstances:
-    "Workflow runs. workflowName is the runner's internal name; remoteWorkflowName is the workflow's own name.",
-  workflowSteps: "Steps of workflow runs; instanceRef is the run's id.",
-  events: "Automation events, newest by occurredAt.",
-  routes:
-    "Automation routes; routeScheduleStates holds a scheduled route's next occurrence by the same id.",
-  kvStore: "Values stored with the store provider.",
-  connections:
-    "Integration connections as their latest state change reports them, disconnected ones included; name and authMethod are null until a change carries a label. displayName is what people call the connection and kindLabel its kind, such as MCP.",
-  agents:
-    "Pi agents as their events record them now; latestKind and latestAt are null for an agent with no recorded activity. displayName is the name people read and activity what the agent does or did last, such as Answered. definition holds description, permissions, and managedBy.",
-  agentTurns: "Turns agents ended, one row each; outcome is answered, cut-off, or failed.",
-  workflowWaits:
-    "Event types waiting runs wait for, one row each; runId is the run's id. interfaceStepKey names the completed step whose interface asks a person to answer, or is null.",
+  boolean: "PageSqlBoolean",
+  time: "PageSqlTime",
+  json: "PageSqlJson",
+  blob: "Uint8Array",
 };
 
 /**
- * Fields whose writer stores only these values, declared as their union so a page can pass them to
- * components that take one of them, such as ui.runStatus.
- */
-const FIELD_VALUES: Partial<Record<PageCollection, Record<string, readonly string[]>>> = {
-  workflowInstances: { status: RUN_STATUSES },
-};
-
-/**
- * Declares what page.d.ts reads from the host: every collection's row type, the limits a page
- * stays within, and the version page.define writes.
+ * Declares what page.d.ts reads from the host: the relations page queries read, the functions they
+ * call, the limits a page stays within, and the version page.define writes.
  */
 export function generatePageSchemaDeclarations(): string {
-  const collections = (Object.keys(PAGE_COLLECTIONS) as PageCollection[]).map((collection) => {
-    const fields = PAGE_COLLECTIONS[collection].map(({ name, type, nullable }) => {
-      const values = FIELD_VALUES[collection]?.[name];
+  const relations = AUTOMATION_PAGE_RELATIONS.map(({ name, description, columns }) => {
+    const fields = columns.map(({ name: column, type, nullable, values }) => {
       const declared = values ? values.map((value) => JSON.stringify(value)).join(" | ") : null;
-      return `    ${name}: ${declared ?? FIELD_TYPES[type]}${nullable ? " | null" : ""};`;
+      return `    ${column}: ${declared ?? COLUMN_TYPES[type]}${nullable ? " | null" : ""};`;
     });
-    const note = COLLECTION_NOTES[collection];
-    return [
-      ...(note ? [`  /** ${note} */`] : []),
-      `  ${collection}: PageCollection<{`,
-      ...fields,
-      "  }>;",
-    ].join("\n");
+    return [`  /** ${description} */`, `  ${name}: {`, ...fields, "  };"].join("\n");
   });
   const limits = Object.entries(PAGE_LIMITS).map(([name, limit]) => `  ${name}: ${limit};`);
-  return `// Generated from the page collections and the page limits; page.d.ts declares the page
-// builder that reads them.
+  const functions = wrap(AUTOMATION_PAGE_FUNCTIONS.join(", "), " * ");
+  return `// Generated from the page relations and the page limits; page.d.ts declares the page
+// builder whose queries read them.
 
 /** The most a page asks for; a build beyond them fails. */
 type PageLimits = {
@@ -73,8 +44,39 @@ ${limits.join("\n")}
 /** The version of the definition page.define writes. */
 type PageDefinitionVersion = ${PAGE_DEFINITION_VERSION};
 
-type PageCollections = {
-${collections.join("\n")}
+/** A time as SQL reads it: milliseconds since the epoch. Declare its column "time" to show it. */
+type PageSqlTime = number;
+/** A boolean as SQL reads it: 0 or 1. Declare its column "boolean" to show it as true or false. */
+type PageSqlBoolean = 0 | 1;
+/**
+ * JSON text. Read a field with ->> such as payload ->> '$.action', which returns SQL values, or
+ * nest it in other JSON with json(...) or ->.
+ */
+type PageSqlJson = string;
+
+/**
+ * The relations page queries read, by name, with their columns as SQL reads them. Queries read
+ * nothing else; their SQL calls only these functions:
+${functions}
+ */
+type PageRelations = {
+${relations.join("\n")}
 };
 `;
+}
+
+/** Wraps a list at 100 columns, each line starting with `prefix`. */
+function wrap(text: string, prefix: string): string {
+  const lines: string[] = [];
+  let line = "";
+  for (const word of text.split(" ")) {
+    if (line && prefix.length + line.length + 1 + word.length > 100) {
+      lines.push(prefix + line);
+      line = word;
+    } else {
+      line = line ? `${line} ${word}` : word;
+    }
+  }
+  lines.push(prefix + line);
+  return lines.join("\n");
 }

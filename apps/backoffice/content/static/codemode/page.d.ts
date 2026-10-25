@@ -1,121 +1,98 @@
 /// <reference path="/static/codemode/page-schema.d.ts" />
-// The page builder. page.define records live queries over the scope's collections, in TanStack
-// DB's query style, and binds their results to a ui interface. Default-export it from a
-// /workspace/**/<name>.page.js file; the system builds it when it opens. page-schema.d.ts declares
-// the collections, their fields, and PageLimits.
+// The page builder. page.define records live SQL queries over the scope's relations and binds
+// their rows to a ui interface. Default-export it from a /workspace/**/<name>.page.js file; the
+// system builds it when it opens. page-schema.d.ts declares the relations, their columns, the
+// functions queries call, and PageLimits.
 
-declare const pageExpressionType: unique symbol;
-declare const pageRowType: unique symbol;
-declare const pageArrayRows: unique symbol;
+declare const pageSqlText: unique symbol;
+declare const pageTimeValue: unique symbol;
 
-/** A value inside a query: a field, the current time, or a page function's result. */
-type PageExpression<T> = { readonly [pageExpressionType]: T };
-/** An expression, or a plain string, number, boolean, or null. */
-type PageOperand<T> = PageExpression<T> | T;
-type PageCondition = PageExpression<boolean | null>;
-type PageValueOf<TValue> = TValue extends PageExpression<infer T> ? T : TValue;
 /** Milliseconds, or a duration such as "30 minutes", "24 hours", or "7 days". */
 type PageDuration = number | string;
-/** A time relative to the moment the page renders. */
-type PageTime = PageExpression<Date> & {
+/** A time relative to the moment the page renders; SQL reads it as milliseconds since the epoch. */
+type PageTime = {
+  readonly [pageTimeValue]: true;
   minus(duration: PageDuration): PageTime;
   plus(duration: PageDuration): PageTime;
 };
 /** Consecutive intervals from since through now. Group times with bucket; charts take it as axis. */
 type PageIntervals = BackofficeUiLive<{ every: number; since: number }>;
-/** A JSON field. Read nested values by property, such as route.trigger.kind. */
-type PageJsonField = PageExpression<unknown> & { readonly [key: string]: PageJsonField };
-type PageFields<TRow> = {
-  readonly [TKey in keyof TRow]-?: unknown extends TRow[TKey]
-    ? PageJsonField
-    : PageExpression<TRow[TKey]>;
-};
-type PageNullable<TRow> = { [TKey in keyof TRow]: TRow[TKey] | null };
-/** Rows a query reads: a collection's, or another query's. */
-type PageSource<TRow> = { readonly [pageRowType]: TRow };
-type PageCollection<TRow> = PageSource<TRow>;
-type PageRowOf<TSource> = TSource extends PageSource<infer TRow> ? TRow : never;
-/** How a value reaches the interface: times as ISO 8601 strings, everything else as it is. */
-type PageShown<T> = T extends Date
+
+type PageSqlLiteral = string | number | boolean | null;
+/**
+ * What sql`...` takes between ${ and }: a value it binds as a parameter, never writing it into the
+ * SQL; a list of values for IN (...); a time; or SQL to include, such as another query's.
+ */
+type PageSqlValue =
+  | PageSqlLiteral
+  | readonly PageSqlLiteral[]
+  | PageTime
+  | PageSql
+  | PageQuery<unknown>;
+
+type PageScalarColumn = "string" | "number" | "boolean" | "time" | "json";
+/**
+ * How a query's column reads: "string", "number", "boolean" (from 0 or 1), "time" (from
+ * milliseconds since the epoch, shown as an ISO 8601 string), or "json" (parsed from JSON text),
+ * each with ? when it may be null, such as "time?"; a list of the strings it holds, such as
+ * ["live", "failed"], with null when it may be null; or { rows: { ...columns } } for JSON text
+ * holding rows, such as json_group_array(json_object('status', run.status)).
+ */
+type PageColumn =
+  | PageScalarColumn
+  | `${PageScalarColumn}?`
+  | readonly (string | null)[]
+  | { readonly rows: PageColumns };
+type PageColumns = { readonly [name: string]: PageColumn };
+
+type PageScalarValue<TColumn> = TColumn extends "string" | "time"
   ? string
-  : T extends readonly (infer TItem)[]
-    ? PageShown<TItem>[]
-    : T extends object
-      ? { [TKey in keyof T]: PageShown<T[TKey]> }
-      : T;
-/** A query's rows as a live value for props such as ui.table rows, or rows for ui.each. */
-type PageRows<TRow> = PageSource<TRow> & BackofficeUiLive<PageShown<TRow>[]>;
-/** A query's rows nested in each selecting row; see toArray. */
-type PageArray<TRow> = { readonly [pageArrayRows]: TRow[] };
-type PageSelected<TValue> = TValue extends PageArray<infer TRow> ? TRow[] : PageValueOf<TValue>;
-type PageValueField<TRow> = {
-  /** One field of the first row, such as a count for ui.metric value; whenEmpty shows while there are no rows. */
-  value<TField extends keyof TRow & string>(
-    field: TField,
-    whenEmpty: PageShown<TRow[TField]>,
-  ): BackofficeUiLive<PageShown<TRow[TField]>>;
+  : TColumn extends "number"
+    ? number
+    : TColumn extends "boolean"
+      ? boolean
+      : unknown;
+type PageColumnValue<TColumn> = TColumn extends `${infer TScalar}?`
+  ? PageScalarValue<TScalar> | null
+  : TColumn extends PageScalarColumn
+    ? PageScalarValue<TColumn>
+    : TColumn extends readonly (infer TValue)[]
+      ? TValue
+      : TColumn extends { readonly rows: infer TRows }
+        ? PageRow<TRows>[]
+        : never;
+/** A row as its query's columns declare it. */
+type PageRow<TColumns> = { -readonly [TName in keyof TColumns]: PageColumnValue<TColumns[TName]> };
+
+/** SQL with its values, which a query and other SQL can include. */
+type PageSql = {
+  readonly [pageSqlText]: true;
+  /**
+   * Declares the columns the rows show, which makes the SQL a live query. Its SELECT names each
+   * column, such as count(*) AS total.
+   */
+  columns<const TColumns extends PageColumns>(columns: TColumns): PageQuery<PageRow<TColumns>>;
 };
 
 /**
  * A live query. Pass it to a prop that shows rows, such as ui.table rows, repeat it with ui.each,
- * or read it as another query's source. Values keep their types; times arrive as ISO 8601 strings.
+ * or include its SQL in another query, such as WITH runs AS (${query}).
  */
-type PageQuery<TSources, TRow> = PageRows<TRow> &
-  PageValueField<TRow> & {
-    /**
-     * Keeps rows that match a row of source. on returns eq(left, right), where one side reads the
-     * sources before the join and the other the joined source, such as eq(run.id, step.instanceRef)
-     * or eq(lower(user.email), lower(invite.email)).
-     */
-    join<TAlias extends string, TJoined>(
-      source: Record<TAlias, PageSource<TJoined>>,
-      on: (sources: TSources & Record<TAlias, PageFields<TJoined>>) => PageCondition,
-    ): PageQuery<TSources & Record<TAlias, PageFields<TJoined>>, TRow>;
-    /** Keeps every row; source's fields are null where nothing matches. on is as for join. */
-    leftJoin<TAlias extends string, TJoined>(
-      source: Record<TAlias, PageSource<TJoined>>,
-      on: (sources: TSources & Record<TAlias, PageFields<TJoined>>) => PageCondition,
-    ): PageQuery<TSources & Record<TAlias, PageFields<PageNullable<TJoined>>>, TRow>;
-    where(condition: (sources: TSources) => PageCondition): PageQuery<TSources, TRow>;
-    /** Groups rows by one or more keys; select the keys and aggregates to show. */
-    groupBy(
-      keys: (sources: TSources) => PageExpression<unknown> | PageExpression<unknown>[],
-    ): PageQuery<TSources, TRow>;
-    /** Filters groups, usually by an aggregate. */
-    having(condition: (sources: TSources) => PageCondition): PageQuery<TSources, TRow>;
-    /** Names the fields each row shows. Joined and grouped queries select their fields. */
-    select<TSelected extends Record<string, PageOperand<unknown> | PageArray<unknown>>>(
-      fields: (sources: TSources) => TSelected,
-    ): PageQuery<TSources, { [TKey in keyof TSelected]: PageSelected<TSelected[TKey]> }>;
-    /** Sorts rows; call it again for ties. Aggregates sort groups. */
-    orderBy(
-      value: (sources: TSources) => PageExpression<unknown>,
-      direction?: "asc" | "desc",
-    ): PageQuery<TSources, TRow>;
-    /** Keeps the first count rows, 1 to PageLimits["rowsPerQuery"]; needs orderBy. */
-    limit(count: number): PageQuery<TSources, TRow>;
-  };
-
-/** Several queries' rows as one list; order or limit it by reading it as a source with from. */
-type PageUnion<TRow> = PageRows<TRow> & PageValueField<TRow>;
+type PageQuery<TRow> = BackofficeUiLive<TRow[]> & {
+  readonly [pageSqlText]: true;
+  /** One field of the first row, such as a count for ui.metric value; whenEmpty shows while there are no rows. */
+  value<TField extends keyof TRow & string>(
+    field: TField,
+    whenEmpty: TRow[TField],
+  ): BackofficeUiLive<TRow[TField]>;
+};
 
 type PageContext = {
-  collections: PageCollections;
-  /** Starts a query over a collection or another query's rows under an alias, such as from({ run: collections.workflowInstances }). */
-  from<TAlias extends string, TRow>(
-    source: Record<TAlias, PageSource<TRow>>,
-  ): PageQuery<Record<TAlias, PageFields<TRow>>, TRow>;
   /**
-   * A select field holding the rows of query for each selecting row, such as each workflow's
-   * latest run. The query is a from, not a unionAll, whose where matches the selecting row with eq,
-   * such as eq(run.workflow, workflow.workflow). A grouped query cannot select it, so group in a
-   * subquery and read that with from.
+   * SQL over PageRelations, as a tagged template: sql`SELECT ... WHERE run.createdAt >= ${day}`.
+   * Each query is one SELECT, and may start with WITH.
    */
-  toArray<TRow>(query: PageRows<TRow>): PageArray<TRow>;
-  /** One list of every row of 2 to PageLimits["unionBranches"] queries that select the same fields. */
-  unionAll<TQueries extends [PageRows<unknown>, PageRows<unknown>, ...PageRows<unknown>[]]>(
-    ...queries: TQueries
-  ): PageUnion<PageRowOf<TQueries[number]>>;
+  sql(strings: TemplateStringsArray, ...values: PageSqlValue[]): PageSql;
   /** The moment the page renders; it moves every minute. */
   now: PageTime;
   /**
@@ -123,85 +100,18 @@ type PageContext = {
    * 1 hour is 25; at most PageLimits["buckets"].
    */
   intervals(options: { every: PageDuration; since: PageTime }): PageIntervals;
-  /** The start of the interval a time falls in, or null before the first. */
-  bucket(time: PageExpression<Date | null>, intervals: PageIntervals): PageExpression<Date | null>;
-  eq<T>(left: PageOperand<T>, right: PageOperand<T>): PageExpression<boolean>;
-  gt<T>(left: PageOperand<T>, right: PageOperand<T>): PageExpression<boolean>;
-  gte<T>(left: PageOperand<T>, right: PageOperand<T>): PageExpression<boolean>;
-  lt<T>(left: PageOperand<T>, right: PageOperand<T>): PageExpression<boolean>;
-  lte<T>(left: PageOperand<T>, right: PageOperand<T>): PageExpression<boolean>;
-  and(...conditions: PageCondition[]): PageExpression<boolean>;
-  or(...conditions: PageCondition[]): PageExpression<boolean>;
-  not(condition: PageCondition): PageExpression<boolean>;
-  isNull(value: PageExpression<unknown>): PageExpression<boolean>;
-  /** True when value is one of at most PageLimits["listItems"] plain values. */
-  inArray<T>(value: PageOperand<T>, list: readonly T[]): PageExpression<boolean>;
-  /** SQL LIKE: % matches any text and _ one character. ilike ignores case. */
-  like(value: PageOperand<string | null>, pattern: PageOperand<string>): PageExpression<boolean>;
-  ilike(value: PageOperand<string | null>, pattern: PageOperand<string>): PageExpression<boolean>;
-  /** The first value that is not null. */
-  coalesce<T>(...values: PageOperand<T>[]): PageExpression<NonNullable<T>>;
   /**
-   * caseWhen(condition, value, ...more pairs, default?): the value of the first true condition, or
-   * the default. Literal values keep their type, so a query can choose a ui tone.
+   * SQL for the start of the interval a time falls in, or null before the first, such as
+   * bucket("run.createdAt", hours). Declare its column "time?", and group by it.
    */
-  caseWhen<const T>(
-    condition: PageCondition,
-    value: PageOperand<T>,
-    otherwise: PageOperand<T>,
-  ): PageExpression<T>;
-  caseWhen<const T>(
-    condition: PageCondition,
-    value: PageOperand<T>,
-    condition2: PageCondition,
-    value2: PageOperand<T>,
-    otherwise: PageOperand<T>,
-  ): PageExpression<T>;
-  caseWhen<const T>(
-    condition: PageCondition,
-    value: PageOperand<T>,
-    condition2: PageCondition,
-    value2: PageOperand<T>,
-    condition3: PageCondition,
-    value3: PageOperand<T>,
-    otherwise: PageOperand<T>,
-  ): PageExpression<T>;
-  /** Without a default, rows no condition matches hold null. */
-  caseWhen<const T>(
-    condition: PageCondition,
-    value: PageOperand<T>,
-    ...rest: (PageCondition | PageOperand<T>)[]
-  ): PageExpression<T | null>;
-  concat(...values: PageOperand<unknown>[]): PageExpression<string>;
-  upper(value: PageOperand<string | null>): PageExpression<string | null>;
-  lower(value: PageOperand<string | null>): PageExpression<string | null>;
-  length(value: PageOperand<string | null>): PageExpression<number>;
-  add(left: PageOperand<number | null>, right: PageOperand<number | null>): PageExpression<number>;
-  subtract(
-    left: PageOperand<number | Date | null>,
-    right: PageOperand<number | Date | null>,
-  ): PageExpression<number>;
-  multiply(
-    left: PageOperand<number | null>,
-    right: PageOperand<number | null>,
-  ): PageExpression<number>;
-  divide(
-    left: PageOperand<number | null>,
-    right: PageOperand<number | null>,
-  ): PageExpression<number | null>;
-  /** Counts rows where value is not null. Aggregates belong in select, having, and orderBy. */
-  count(value: PageExpression<unknown>): PageExpression<number>;
-  sum(value: PageOperand<number | null>): PageExpression<number>;
-  avg(value: PageOperand<number | null>): PageExpression<number>;
-  min<T>(value: PageExpression<T>): PageExpression<T>;
-  max<T>(value: PageExpression<T>): PageExpression<T>;
+  bucket(time: string | PageSql, intervals: PageIntervals): PageSql;
 };
 
-/** A built page: its queries as JSON and the interface bound to them. */
+/** A built page: its queries and the interface bound to them. */
 type PageDefinition = {
   version: PageDefinitionVersion;
   title: string;
-  queries: Record<string, unknown>;
+  queries: Record<string, { sql: string; params: unknown[]; columns: PageColumns }>;
   values: Record<
     string,
     { query: string; field: string; whenEmpty: string | number | boolean | null }

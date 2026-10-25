@@ -11,7 +11,7 @@ import {
   readPiAgents,
   readPiAgentTurns,
 } from "@/fragno/automation/lofi/views";
-import { currentWorkflowWaits } from "@/fragno/automation/tanstack/workflow-waits";
+import { currentWorkflowWaits } from "@/fragno/automation/workflow-waits";
 
 /**
  * What the dashboard overview shows, read from the scope's Automations replica: the inputs of

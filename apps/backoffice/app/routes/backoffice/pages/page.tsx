@@ -2,16 +2,12 @@ import type { PageDefinition, PageLoad } from "@fragno-private/backoffice-ui/pag
 import { ClientOnly } from "@fragno-private/design-system/client-only";
 import { PaneSpinner } from "@fragno-private/design-system/pane-message";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
-import { Suspense, use } from "react";
 import { data } from "react-router";
 
 import { BackofficePageView } from "@/artifacts/pages/view";
-import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
 import { backofficePageBodyClassName } from "@/components/backoffice/page-body";
-import {
-  describeAutomationCollectionSource,
-  getAutomationBrowserDatabase,
-} from "@/fragno/automation/tanstack/browser-database";
+import { useCurrentAutomationReplica } from "@/fragno/automation/lofi/replica";
+import { LofiReplicaGate } from "@/fragno/lofi/replica-gate";
 
 import { DashboardTabs } from "../dashboard/dashboard-tabs";
 import { loadOrchestration } from "../dashboard/orchestration-loader.server";
@@ -71,9 +67,7 @@ export default function PageRoute({ loaderData }: Route.ComponentProps) {
           />
         ) : (
           <ClientOnly fallback={loading}>
-            <Suspense fallback={loading}>
-              <PageClient definition={result.definition} orchestration={orchestration} />
-            </Suspense>
+            <PageClient definition={result.definition} orchestration={orchestration} />
           </ClientOnly>
         )}
       </div>
@@ -81,6 +75,7 @@ export default function PageRoute({ loaderData }: Route.ComponentProps) {
   );
 }
 
+/** The page over the scope's replica, once the replica holds the scope's whole history. */
 function PageClient({
   definition,
   orchestration,
@@ -88,24 +83,28 @@ function PageClient({
   definition: PageDefinition;
   orchestration: OrchestrationLoaderData;
 }) {
-  const { automationCollectionSource } = useCurrentBackofficeContext();
-  if (automationCollectionSource.status === "unavailable") {
+  const { replica, error } = useCurrentAutomationReplica();
+  if (replica !== null) {
+    // The download, with its progress and any error while it retries, until the replica caught up.
+    return (
+      <LofiReplicaGate replica={replica} title="Downloading automation activity…">
+        <BackofficePageView
+          definition={definition}
+          replica={replica}
+          orchestration={orchestration}
+        />
+      </LofiReplicaGate>
+    );
+  }
+  if (error !== null) {
     return (
       <BackofficeSystemState
         tone="error"
         label="Unavailable"
         title="Automation data could not be synchronized."
-        description={automationCollectionSource.message}
+        description={error}
       />
     );
   }
-  const source = automationCollectionSource.source;
-  return (
-    <BackofficePageView
-      key={describeAutomationCollectionSource(source).resourceKey}
-      definition={definition}
-      collections={use(getAutomationBrowserDatabase(source)).collections}
-      orchestration={orchestration}
-    />
-  );
+  return <PaneSpinner label="Synchronizing automation data" />;
 }

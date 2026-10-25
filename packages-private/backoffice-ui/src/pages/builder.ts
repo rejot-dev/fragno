@@ -1,24 +1,23 @@
-import { PAGE_DEFINITION_VERSION, PAGE_QUERY_AGGREGATES, PAGE_QUERY_FUNCTIONS } from "./definition";
+import { PAGE_DEFINITION_VERSION, PAGE_LIMITS } from "./definition";
 
 /**
- * Guest-side `page` builder. It records TanStack-style calls as the file's query JSON and checks
- * only what cannot be recorded, such as a Date where a value belongs. `page.define` renders the
- * interface with `ui.render`, where each query or value a prop, condition, or repeat reads becomes
- * the state path the page fills. Every rule of the recorded queries is the host's:
- * `parsePageDefinition` validates the definition in the build that produced it.
+ * Guest-side `page` builder. `sql` records a query's SQL as text with its interpolated values as
+ * parameters, which are never written into the text, and `.columns` makes it a live query.
+ * `page.define` renders the interface with `ui.render`, where each query or value a prop,
+ * condition, or repeat reads becomes the state path the page fills. Every rule of the recorded
+ * queries is the host's: `parsePageDefinition` validates the definition, and the host checks the
+ * SQL against the scope's relations, in the build that produced it.
  */
-const PAGE_BUILDER_SOURCE = String.raw`({ functions, aggregates, version }) => (ui, live) => {
-  const expressions = new WeakMap();
-  const sources = new WeakMap();
+const PAGE_BUILDER_SOURCE = String.raw`({ version, listItems, legacy }) => (ui, live) => {
+  const fragments = new WeakMap();
   const queries = new WeakMap();
-  const arrays = new WeakMap();
+  const times = new WeakMap();
   const windows = new WeakMap();
   const isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
   const describe = (value) => (Array.isArray(value) ? "an array" : value === null ? "null" : typeof value);
   const fail = (message) => {
     throw new TypeError(message);
   };
-  const ignoredKey = (key) => typeof key !== "string" || key === "then" || key === "toJSON";
   // page.define names the queries and values its interface reads while it renders.
   let binding = null;
   const bound = (kind) => {
@@ -26,61 +25,43 @@ const PAGE_BUILDER_SOURCE = String.raw`({ functions, aggregates, version }) => (
     return binding;
   };
 
-  const expression = (ir, methods = {}) => {
-    const handle = Object.freeze(methods);
-    expressions.set(handle, ir);
-    return handle;
-  };
-  const toExpression = (value, label) => {
-    if (expressions.has(value)) return expressions.get(value);
-    if (value === null || typeof value === "string" || typeof value === "boolean") return { kind: "value", value };
+  // A query's SQL is a list of text and parameters, joined with numbered placeholders by define.
+  const literal = (value, label) => {
+    if (value === null || typeof value === "string" || typeof value === "boolean") return { param: value };
     if (typeof value === "number") {
       // JSON writes NaN and the infinities as null, so the host would read a different value.
       if (!Number.isFinite(value)) fail(label + " must be a finite number.");
-      return { kind: "value", value };
+      return { param: value };
     }
     if (value instanceof Date) {
-      fail(label + " is a Date; pages compare times against now, such as now.minus(\"24 hours\").");
+      fail(label + " is a Date; pages compare times against now, such as ${"$"}{now.minus(\"24 hours\")}.");
     }
-    if (queries.has(value)) fail(label + " is a query; select nested rows with toArray(query), or pass it to props such as ui.table rows.");
-    if (arrays.has(value)) fail(label + " is toArray(query), which is a whole select field.");
-    return fail(label + " expects a field, a page function, or a string, number, boolean, or null; received " + describe(value) + ".");
+    if (windows.has(value)) fail(label + " is intervals(...); pass it to bucket(time, intervals).");
+    return fail(label + " expects a string, number, boolean, null, a list of them, a time such as now.minus(\"1 hour\"), or sql\`...\`; received " + describe(value) + ".");
   };
-  // A field reads nested values by property, such as route.trigger.kind; the host checks that the
-  // field exists and is JSON.
-  const fieldRef = (path) => {
-    const ref = new Proxy(Object.freeze({}), {
-      get: (_, key) => (ignoredKey(key) ? undefined : fieldRef([...path, key])),
-    });
-    expressions.set(ref, { kind: "ref", path });
-    return ref;
-  };
-  const refsFor = (aliases) =>
-    new Proxy(Object.freeze({}), {
-      get: (_, key) => (ignoredKey(key) || !aliases.includes(key) ? undefined : fieldRef([key])),
-    });
-  const callback = (fn, label) => {
-    if (typeof fn !== "function") fail(label + " expects a callback such as ({ run }) => run.status.");
-    return fn;
-  };
-
-  const collections = new Proxy(Object.freeze({}), {
-    get: (_, key) => {
-      if (ignoredKey(key)) return undefined;
-      const handle = Object.freeze({});
-      sources.set(handle, key);
-      return handle;
-    },
-  });
-  const readSource = (source, label) => {
-    const entries = isRecord(source) && !queries.has(source) ? Object.entries(source) : [];
-    if (entries.length !== 1) {
-      fail(label + " expects one aliased collection or query, such as { run: collections.workflowInstances }.");
+  const tokensOf = (value, label) => {
+    if (fragments.has(value)) return fragments.get(value);
+    if (queries.has(value)) return queries.get(value).tokens;
+    if (times.has(value)) return [{ param: { now: times.get(value) } }];
+    if (Array.isArray(value)) {
+      if (value.length > listItems) fail(label + " lists at most " + listItems + " values.");
+      return value.flatMap((item, index) => [...(index === 0 ? [] : [{ text: ", " }]), literal(item, label + " item " + index)]);
     }
-    const [[alias, handle]] = entries;
-    if (queries.has(handle)) return { kind: "query", alias, query: queries.get(handle) };
-    if (!sources.has(handle)) fail(label + " " + alias + " must be one of collections, such as collections.workflowInstances, or a query.");
-    return { kind: "collection", alias, collection: sources.get(handle) };
+    return [literal(value, label)];
+  };
+  const fragment = (tokens) => {
+    const handle = Object.freeze({ columns: (columns) => makeQuery(tokens, columns) });
+    fragments.set(handle, tokens);
+    return handle;
+  };
+  const sql = (strings, ...values) => {
+    if (!Array.isArray(strings) || !Array.isArray(strings.raw)) fail("sql is a tagged template, such as sql\`SELECT count(*) AS total FROM runs\`.");
+    const tokens = [];
+    strings.forEach((text, index) => {
+      tokens.push({ text });
+      if (index < values.length) tokens.push(...tokensOf(values[index], "sql\`...\` value " + index));
+    });
+    return fragment(tokens);
   };
 
   const valueOf = (handle) => (field, whenEmpty) => {
@@ -88,70 +69,27 @@ const PAGE_BUILDER_SOURCE = String.raw`({ functions, aggregates, version }) => (
     live.set(value, () => ({ $state: "/values/" + bound("values").value(value, { query: handle, field, whenEmpty }) }));
     return value;
   };
-  const register = (handle, state) => {
-    queries.set(handle, state);
+  const makeQuery = (tokens, columns) => {
+    if (!isRecord(columns)) {
+      fail(".columns({ ... }) declares the columns the query's rows show, such as { workflow: \"string\", startedAt: \"time\" }.");
+    }
+    const handle = Object.freeze({ value: (field, whenEmpty) => valueOf(handle)(field, whenEmpty) });
+    queries.set(handle, { tokens, columns });
     live.set(handle, () => ({ $state: "/data/" + bound("queries").query(handle) }));
     return handle;
   };
-
-  const makeQuery = (state) => {
-    const aliases = [state.from.alias, ...state.joins.map(({ source }) => source.alias)];
-    const read = (fn, label) => callback(fn, label)(refsFor(aliases));
-    const next = (changes) => makeQuery({ ...state, ...changes });
-    const join = (type, method) => (source, on) => {
-      const joined = readSource(source, method + "(source, on)");
-      const condition = toExpression(callback(on, method)(refsFor([...aliases, joined.alias])), method + " on");
-      return next({ joins: [...state.joins, { type, source: joined, on: condition }] });
-    };
-    const handle = Object.freeze({
-      join: join("inner", "join"),
-      leftJoin: join("left", "leftJoin"),
-      where: (fn) => next({ where: [...state.where, toExpression(read(fn, "where"), "where")] }),
-      groupBy: (fn) => {
-        const result = read(fn, "groupBy");
-        const keys = Array.isArray(result) ? result : [result];
-        return next({ groupBy: [...state.groupBy, ...keys.map((key, index) => toExpression(key, "groupBy key " + index))] });
-      },
-      having: (fn) => next({ having: [...state.having, toExpression(read(fn, "having"), "having")] }),
-      select: (fn) => {
-        const result = read(fn, "select");
-        if (!isRecord(result) || expressions.has(result) || queries.has(result)) {
-          fail("select returns an object of fields, such as ({ run }) => ({ status: run.status }).");
-        }
-        return next({
-          select: Object.fromEntries(
-            Object.entries(result).map(([name, value]) => [name, arrays.has(value) ? arrays.get(value) : toExpression(value, "select " + name)]),
-          ),
-        });
-      },
-      orderBy: (fn, direction = "asc") =>
-        next({ orderBy: [...state.orderBy, { expression: toExpression(read(fn, "orderBy"), "orderBy"), direction }] }),
-      limit: (count) => next({ limit: count }),
-      value: (field, whenEmpty) => valueOf(handle)(field, whenEmpty),
-    });
-    return register(handle, state);
-  };
-
-  const from = (source) =>
-    makeQuery({ kind: "select", from: readSource(source, "from(source)"), joins: [], where: [], groupBy: [], having: [], select: null, orderBy: [], limit: null });
-
-  const toArray = (query) => {
-    if (!queries.has(query)) fail("toArray(query) selects the rows of a query, such as toArray(from({ step: collections.workflowSteps }).where(...)).");
-    const selected = Object.freeze({});
-    arrays.set(selected, { kind: "toArray", query: queries.get(query) });
-    return selected;
-  };
-
-  const unionAll = (...branches) => {
-    const state = {
-      kind: "union",
-      branches: branches.map((branch, index) => {
-        if (!queries.has(branch)) fail("unionAll argument " + index + " is not a query.");
-        return queries.get(branch);
-      }),
-    };
-    const handle = Object.freeze({ value: (field, whenEmpty) => valueOf(handle)(field, whenEmpty) });
-    return register(handle, state);
+  const compile = ({ tokens, columns }) => {
+    const params = [];
+    let text = "";
+    for (const token of tokens) {
+      if ("text" in token) {
+        text += token.text;
+      } else {
+        params.push(token.param);
+        text += "?" + params.length;
+      }
+    }
+    return { sql: text.trim(), params, columns };
   };
 
   const units = new Map([
@@ -167,46 +105,48 @@ const PAGE_BUILDER_SOURCE = String.raw`({ functions, aggregates, version }) => (
     if (!match || !unit) fail(label + " expects milliseconds or a duration such as \"30 minutes\", \"24 hours\", or \"7 days\".");
     return Number(match[1]) * unit;
   };
-  const time = (offset) =>
-    expression(
-      { kind: "now", offset },
-      {
-        minus: (amount) => time(offset - duration(amount, "now.minus")),
-        plus: (amount) => time(offset + duration(amount, "now.plus")),
-      },
-    );
+  const time = (offset) => {
+    const handle = Object.freeze({
+      minus: (amount) => time(offset - duration(amount, "now.minus")),
+      plus: (amount) => time(offset + duration(amount, "now.plus")),
+    });
+    times.set(handle, offset);
+    return handle;
+  };
   const intervals = (options) => {
     if (!isRecord(options)) fail("intervals({ every, since }) expects options such as { every: \"1 hour\", since: now.minus(\"24 hours\") }.");
-    const since = expressions.get(options.since);
-    if (!since || since.kind !== "now") fail("intervals since is a time relative to now, such as now.minus(\"24 hours\").");
-    const window = { every: duration(options.every, "intervals every"), since: since.offset };
+    if (!times.has(options.since)) fail("intervals since is a time relative to now, such as now.minus(\"24 hours\").");
+    const window = { every: duration(options.every, "intervals every"), since: times.get(options.since) };
     const handle = Object.freeze({});
     windows.set(handle, window);
     // A chart's axis shows every interval, including those no row falls in.
     live.set(handle, () => window);
     return handle;
   };
+  // The start of the interval a time falls in, aligned to whole intervals as chart axes are; null
+  // before the first, and the newest interval for times after now.
   const bucket = (value, window) => {
-    if (!windows.has(window)) fail("bucket(time, intervals) groups by intervals({ every, since }), such as intervals({ every: \"1 hour\", since: now.minus(\"24 hours\") }).");
-    return expression({ kind: "bucket", time: toExpression(value, "bucket time"), ...windows.get(window) });
+    if (!windows.has(window)) fail("bucket(time, intervals) groups by intervals({ every, since }), such as bucket(\"run.createdAt\", intervals({ every: \"1 hour\", since: now.minus(\"24 hours\") })).");
+    const tokens = typeof value === "string" ? [{ text: value }] : fragments.has(value) ? fragments.get(value) : fail("bucket(time, intervals) takes the time as SQL, such as \"run.createdAt\".");
+    const { every, since } = windows.get(window);
+    const timed = [{ text: "(" }, ...tokens, { text: ")" }];
+    const start = (operand) => [...operand, { text: " / " + every + " * " + every }];
+    return fragment([
+      { text: "(CASE WHEN " }, ...timed, { text: " >= " }, { param: { now: since } },
+      { text: " THEN min(" }, ...start(timed), { text: ", " }, ...start([{ param: { now: 0 } }]), { text: ") END)" },
+    ]);
   };
 
-  const operators = {};
-  for (const name of functions) {
-    operators[name] = (...args) =>
-      expression({
-        kind: "fn",
-        name,
-        args: args.map((arg, index) =>
-          name === "inArray" && index === 1 && Array.isArray(arg) ? { kind: "value", value: arg } : toExpression(arg, name + " argument " + index),
-        ),
-      });
+  const context = { sql, now: time(0), intervals, bucket };
+  // Sources written for the builder of version 4 destructure its functions, which fail clearly.
+  for (const name of legacy) {
+    Object.defineProperty(context, name, {
+      enumerable: false,
+      get: () =>
+        fail("This page is written for an older page format: its build function reads " + name + ", which pages no longer get. Pages now query with sql\`...\`: rewrite its queries in SQL, as /static/skills/building-pages/SKILL.md describes."),
+    });
   }
-  for (const name of aggregates) {
-    operators[name] = (arg) => expression({ kind: "aggregate", name, arg: toExpression(arg, name + " argument") });
-  }
-
-  const context = Object.freeze({ collections, from, toArray, unionAll, now: time(0), intervals, bucket, ...operators });
+  Object.freeze(context);
 
   const define = (options, build) => {
     if (!isRecord(options) || typeof options.title !== "string") {
@@ -222,7 +162,7 @@ const PAGE_BUILDER_SOURCE = String.raw`({ functions, aggregates, version }) => (
       if (!queryNames.has(query)) {
         const name = "q" + queryNames.size;
         queryNames.set(query, name);
-        fileQueries[name] = queries.get(query);
+        fileQueries[name] = compile(queries.get(query));
       }
       return queryNames.get(query);
     };
@@ -250,10 +190,45 @@ const PAGE_BUILDER_SOURCE = String.raw`({ functions, aggregates, version }) => (
   return Object.freeze({ define });
 }`;
 
+/** What the builder of version 4 gave a page's build function, which version 5 does not. */
+const LEGACY_CONTEXT = [
+  "collections",
+  "from",
+  "toArray",
+  "unionAll",
+  "eq",
+  "gt",
+  "gte",
+  "lt",
+  "lte",
+  "and",
+  "or",
+  "not",
+  "isNull",
+  "inArray",
+  "like",
+  "ilike",
+  "coalesce",
+  "caseWhen",
+  "concat",
+  "upper",
+  "lower",
+  "length",
+  "add",
+  "subtract",
+  "multiply",
+  "divide",
+  "count",
+  "sum",
+  "avg",
+  "min",
+  "max",
+];
+
 const builderConfig = JSON.stringify({
-  functions: Object.keys(PAGE_QUERY_FUNCTIONS),
-  aggregates: PAGE_QUERY_AGGREGATES,
   version: PAGE_DEFINITION_VERSION,
+  listItems: PAGE_LIMITS.listItems,
+  legacy: LEGACY_CONTEXT,
 });
 
 /** An expression that, given the guest's `ui` builder and its live values, evaluates to `page`. */

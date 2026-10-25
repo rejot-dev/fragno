@@ -1,10 +1,13 @@
-import { BTreeIndex, createCollection, localOnlyCollectionOptions } from "@tanstack/react-db";
+import SQLiteESMFactory from "@journeyapps/wa-sqlite/dist/wa-sqlite.mjs";
 
-import type { PageCollectionFields, PageField, PageFieldType } from "../definition";
-import type { PageSources } from "../query";
+import * as SQLite from "@journeyapps/wa-sqlite";
+
+import type { PageDefinition } from "../definition";
+import { pageQueryParams } from "../rows";
+import type { PageQueryState } from "../view";
 
 /**
- * A scope's collections as Backoffice synchronizes and derives them, with the fields the example
+ * A scope's relations as Backoffice synchronizes and derives them, with the columns the example
  * pages read. Every time is relative to STORY_NOW, so relative times and hourly charts read the
  * same in every run of a story.
  */
@@ -16,8 +19,8 @@ const days = (count: number) => hours(count * 24);
 
 type Row = Record<string, unknown>;
 
-/** Rows by collection, with the field each collection's rows are keyed by. */
-export type StoryScope = Record<string, { key: string; rows: Row[] }>;
+/** Rows by relation. */
+export type StoryScope = Record<string, Row[]>;
 
 type Run = {
   workflow: string;
@@ -129,17 +132,17 @@ const runs: Row[] = [
 const steps: Row[] = [
   {
     id: "step-1",
-    instanceRef: transcriptionLoop.id,
+    runId: transcriptionLoop.id,
     stepKey: "show-form",
     name: "show OGA upload form 0",
   },
   {
     id: "step-2",
-    instanceRef: uploadLoop.id,
+    runId: uploadLoop.id,
     stepKey: "request-upload",
     name: "request OGA upload 0",
   },
-  { id: "step-3", instanceRef: approval.id, stepKey: "notify", name: "notify approver" },
+  { id: "step-3", runId: approval.id, stepKey: "notify", name: "notify approver" },
 ];
 
 const waits: Row[] = [
@@ -210,142 +213,162 @@ const agentTurns: Row[] = [1, 1, 2, 3, 3, 5, 8, 9, 13, 20, 26].map((ago, index) 
 
 /** A scope where automations ran over the last day and some work waits on a person. */
 export const BUSY_SCOPE: StoryScope = {
-  workflowInstances: { key: "id", rows: runs },
-  workflowSteps: { key: "id", rows: steps },
-  workflowWaits: { key: "id", rows: waits },
-  events: { key: "id", rows: eventRows },
-  connections: {
-    key: "connectionId",
-    rows: [
-      connection("mcp#agensi", "agensi", ["mcp", "MCP"], [null, "agensi"], "ready", days(8)),
-      connection(
-        "backoffice#telegram",
-        "telegram",
-        ["native", "Native · telegram"],
-        [null, "telegram"],
-        "ready",
-        days(10),
-      ),
-      connection(
-        "webhook#recivo",
-        "recivo",
-        ["webhook", "Webhook"],
-        [null, "recivo"],
-        "ready",
-        days(8),
-      ),
-      connection(
-        "mcp#github",
-        "github",
-        ["mcp", "MCP"],
-        ["GitHub", "GitHub"],
-        "unavailable",
-        hours(2),
-      ),
-    ],
-  },
-  routes: {
-    key: "id",
-    rows: [
-      {
-        id: "route-digest",
-        name: "Morning digest",
-        enabled: true,
-        trigger: { kind: "schedule", cron: "0 7 * * *" },
-      },
-      {
-        id: "route-telegram",
-        name: "Telegram /start identity linking",
-        enabled: true,
-        trigger: { kind: "event", eventType: "telegram.message.received" },
-      },
-    ],
-  },
-  routeScheduleStates: {
-    key: "id",
-    rows: [{ id: "route-digest", nextOccurrenceAt: hours(-17) }],
-  },
-  agents: {
-    key: "agentName",
-    rows: [
-      {
-        agentName: "assistant",
-        definition: { description: "Answers questions about this organization." },
-        builtIn: true,
-        latestKind: "answered",
-        latestAt: days(1),
-        answering: false,
-        queued: 0,
-        steering: 0,
-        paused: false,
-        displayName: "Assistant",
-        activity: "Answered",
-      },
-      {
-        agentName: "triage",
-        definition: { description: "Sorts incoming email into projects." },
-        builtIn: false,
-        latestKind: "started",
-        latestAt: minutes(2),
-        answering: true,
-        queued: 2,
-        steering: 0,
-        paused: false,
-        displayName: "Triage",
-        activity: "Answering",
-      },
-    ],
-  },
-  agentTurns: { key: "id", rows: agentTurns },
+  runs,
+  steps,
+  workflow_waits: waits,
+  events: eventRows,
+  connections: [
+    connection("mcp#agensi", "agensi", ["mcp", "MCP"], [null, "agensi"], "ready", days(8)),
+    connection(
+      "backoffice#telegram",
+      "telegram",
+      ["native", "Native · telegram"],
+      [null, "telegram"],
+      "ready",
+      days(10),
+    ),
+    connection(
+      "webhook#recivo",
+      "recivo",
+      ["webhook", "Webhook"],
+      [null, "recivo"],
+      "ready",
+      days(8),
+    ),
+    connection(
+      "mcp#github",
+      "github",
+      ["mcp", "MCP"],
+      ["GitHub", "GitHub"],
+      "unavailable",
+      hours(2),
+    ),
+  ],
+  routes: [
+    {
+      id: "route-digest",
+      name: "Morning digest",
+      enabled: true,
+      trigger: { kind: "schedule", cron: "0 7 * * *" },
+    },
+    {
+      id: "route-telegram",
+      name: "Telegram /start identity linking",
+      enabled: true,
+      trigger: { kind: "event", eventType: "telegram.message.received" },
+    },
+  ],
+  route_schedules: [{ id: "route-digest", nextOccurrenceAt: hours(-17) }],
+  agents: [
+    {
+      agentName: "assistant",
+      definition: { description: "Answers questions about this organization." },
+      builtIn: true,
+      latestKind: "answered",
+      latestAt: days(1),
+      answering: false,
+      queued: 0,
+      steering: 0,
+      paused: false,
+      displayName: "Assistant",
+      activity: "Answered",
+    },
+    {
+      agentName: "triage",
+      definition: { description: "Sorts incoming email into projects." },
+      builtIn: false,
+      latestKind: "started",
+      latestAt: minutes(2),
+      answering: true,
+      queued: 2,
+      steering: 0,
+      paused: false,
+      displayName: "Triage",
+      activity: "Answering",
+    },
+  ],
+  agent_turns: agentTurns,
 };
 
-/** The same collections with no rows, as a new scope has them. */
+/** The same relations with no rows, as a new scope has them. */
 export const EMPTY_SCOPE: StoryScope = Object.fromEntries(
-  Object.entries(BUSY_SCOPE).map(([name, { key }]) => [name, { key, rows: [] }]),
+  Object.keys(BUSY_SCOPE).map((name) => [name, []]),
 );
 
-/** Each collection's fields, read off the busy scope's rows. */
-export const STORY_COLLECTION_FIELDS: PageCollectionFields = Object.fromEntries(
-  Object.entries(BUSY_SCOPE).map(([name, { rows }]) => [name, fieldsOf(rows)]),
+/** Each relation's columns, read off the busy scope's rows, so an empty scope has them too. */
+const STORY_COLUMNS = Object.fromEntries(
+  Object.entries(BUSY_SCOPE).map(([name, rows]) => [
+    name,
+    [...new Set(rows.flatMap((row) => Object.keys(row)))],
+  ]),
 );
 
-function fieldsOf(rows: Row[]): PageField[] {
-  const names = [...new Set(rows.flatMap((row) => Object.keys(row)))];
-  return names.map((name) => {
-    const values = rows.map((row) => row[name]);
-    const present = values.find((value) => value !== null && value !== undefined);
-    return { name, type: fieldType(present), nullable: values.includes(null) };
-  });
-}
-
-function fieldType(value: unknown): PageFieldType {
+/** A value as the replica stores it: times as milliseconds, booleans as 0 or 1, JSON as text. */
+function storedValue(value: unknown): SQLiteCompatibleType {
+  if (value === null || value === undefined) {
+    return null;
+  }
   if (value instanceof Date) {
-    return "time";
+    return value.getTime();
   }
-  if (typeof value === "string") {
-    return "string";
+  if (typeof value === "boolean") {
+    return value ? 1 : 0;
   }
-  if (typeof value === "number") {
-    return "number";
+  if (typeof value === "string" || typeof value === "number") {
+    return value;
   }
-  return typeof value === "boolean" ? "boolean" : "json";
+  return JSON.stringify(value);
 }
 
-/** Local collections holding a story's rows, which pages read as they read synchronized ones. */
-export function storySources(scope: StoryScope): PageSources {
-  return Object.fromEntries(
-    Object.entries(scope).map(([name, { key, rows }]) => [
-      name,
-      createCollection(
-        localOnlyCollectionOptions({
-          id: `story-${name}`,
-          getKey: (row: Row) => String(row[key]),
-          initialData: rows,
-          // Indexed as Backoffice indexes its synchronized collections.
-          autoIndex: "eager",
-          defaultIndexType: BTreeIndex,
-        }),
-      ),
-    ]),
-  );
+/**
+ * Runs each of the page's queries over an in-memory SQLite database holding the scope's rows, as
+ * the replica worker runs them over the replica's relations.
+ */
+export async function storyResults(
+  scope: StoryScope,
+  definition: PageDefinition,
+): Promise<Record<string, PageQueryState>> {
+  const sqlite3 = SQLite.Factory(await SQLiteESMFactory());
+  const db = await sqlite3.open_v2(":memory:");
+  try {
+    const run = async (sql: string, params: SQLiteCompatibleType[] = []) => {
+      const result = { columns: [] as string[], rows: [] as SQLiteCompatibleType[][] };
+      for await (const statement of sqlite3.statements(db, sql)) {
+        if (params.length > 0) {
+          sqlite3.bind_collection(statement, params);
+        }
+        result.columns = sqlite3.column_names(statement);
+        while ((await sqlite3.step(statement)) === SQLite.SQLITE_ROW) {
+          result.rows.push(sqlite3.row(statement));
+        }
+      }
+      return result;
+    };
+    for (const [name, columns] of Object.entries(STORY_COLUMNS)) {
+      await run(`CREATE TABLE "${name}" (${columns.map((column) => `"${column}"`).join(", ")})`);
+      for (const row of scope[name] ?? []) {
+        await run(
+          `INSERT INTO "${name}" VALUES (${columns.map(() => "?").join(", ")})`,
+          columns.map((column) => storedValue(row[column])),
+        );
+      }
+    }
+    const results: Record<string, PageQueryState> = {};
+    for (const [name, query] of Object.entries(definition.queries)) {
+      try {
+        results[name] = {
+          status: "ready",
+          result: await run(query.sql, pageQueryParams(query, STORY_NOW).map(storedValue)),
+        };
+      } catch (error) {
+        results[name] = {
+          status: "error",
+          message: error instanceof Error ? error.message : String(error),
+        };
+      }
+    }
+    return results;
+  } finally {
+    await sqlite3.close(db);
+  }
 }

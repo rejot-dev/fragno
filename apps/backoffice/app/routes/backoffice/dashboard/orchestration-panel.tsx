@@ -1,4 +1,5 @@
 import type { AutomationRouteDefinition } from "@fragno-dev/backoffice-api/v0/automation";
+import type { LofiSqliteClient } from "@fragno-dev/lofi/sqlite";
 import type {
   OrchestrationGraph,
   OrchestrationGraphItem,
@@ -19,8 +20,6 @@ import {
   automationReadReplica,
   type AutomationReadSource,
 } from "@/fragno/automation/read-source";
-import type { AutomationBrowserCollections } from "@/fragno/automation/tanstack/browser-database";
-import { useAutomationRoutes } from "@/fragno/automation/tanstack/use-automation-routes";
 import {
   listAutomationEventDescriptors,
   listCapabilityEventSources,
@@ -44,7 +43,7 @@ import {
   OrchestrationInspector,
   type OrchestrationInspectorSelection,
 } from "./orchestration-inspector";
-import { dashboardBucketStarts, dashboardEventsQuery } from "./overview";
+import { dashboardBucketStarts } from "./overview";
 import {
   WORKFLOW_SCRIPT_PARAM,
   dashboardSelection,
@@ -208,39 +207,36 @@ export function OrchestrationPanel({
 
 /**
  * The orchestration panel on its own, as a page shows it. The dashboard shares routes and the
- * last day's events with its other panels; here the panel reads them itself.
+ * last day's events with its other panels; here the panel reads them from the replica itself.
  */
 export function ScopeOrchestration({
-  collections,
+  replica,
   loaderData,
 }: {
-  collections: AutomationBrowserCollections;
+  replica: LofiSqliteClient;
   loaderData: OrchestrationLoaderData;
 }) {
   const now = useClock(CLOCK_TICK_MS);
-  // The window start only moves when a new bucket begins, so the event query restarts rarely.
-  const windowStart = dashboardBucketStarts(now)[0] ?? now;
-  const routesState = useAutomationRoutes(collections);
-  const eventsQuery = useLiveQuery({
-    query: (query) => dashboardEventsQuery(query, collections, new Date(windowStart)),
-  });
-  if (routesState.status === "error" || eventsQuery.isError) {
+  // The window start only moves when a new bucket begins, so the event read restarts rarely.
+  const since = dashboardBucketStarts(now)[0] ?? now;
+  const inputs = useAutomationRead(replica, "orchestrationGraphInputs", { since });
+  if (inputs.status === "error") {
     return (
       <BackofficeSystemState
         tone="error"
         title="The orchestration graph could not be read."
-        description="Routes or events failed to synchronize. Reload to try again."
+        description={inputs.message}
       />
     );
   }
-  if (routesState.status === "loading" || !eventsQuery.isReady) {
-    return <PaneSpinner label="Synchronizing routes and events" />;
+  if (inputs.status === "loading") {
+    return <PaneSpinner label="Reading routes and events" />;
   }
   return (
     <OrchestrationPanel
-      readSource={{ kind: "collections", collections }}
-      routes={routesState.routes}
-      recentEvents={eventsQuery.data ?? []}
+      readSource={{ kind: "replica", replica }}
+      routes={inputs.data.routes}
+      recentEvents={inputs.data.recentEvents}
       selectedScope={loaderData.selectedScope}
       workflowSource={loaderData.workflowSource}
       runtimeToolCatalog={loaderData.runtimeToolCatalog}

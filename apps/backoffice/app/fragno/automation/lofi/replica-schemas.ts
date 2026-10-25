@@ -19,3 +19,6 @@ export const AUTOMATION_REPLICA_EPHEMERAL_TABLES = [
 
 /** The kind of the read views the replica worker maintains with `automationReads`. */
 export const AUTOMATION_READ_VIEWS = "automation-reads";
+
+/** The kind of the guarded SQL views the replica worker maintains for pages. */
+export const AUTOMATION_PAGE_VIEWS = "automation-pages";
