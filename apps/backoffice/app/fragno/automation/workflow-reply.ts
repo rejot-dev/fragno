@@ -43,6 +43,7 @@ export const workflowCompletionEventId = (input: {
 
 /** The source of the events a workflow reports to the agent that started it. */
 const WORKFLOW_NOTIFICATION_SOURCE = "workflows";
+const WORKFLOW_COMPLETED_NOTIFICATION_TYPE = "instance.completed";
 
 /** The event telling an agent that a workflow it started has ended. */
 export function workflowCompletedNotificationEvent({
@@ -57,7 +58,7 @@ export function workflowCompletedNotificationEvent({
   return {
     id: workflowCompletionEventId(terminal),
     source: WORKFLOW_NOTIFICATION_SOURCE,
-    eventType: "instance.completed",
+    eventType: WORKFLOW_COMPLETED_NOTIFICATION_TYPE,
     occurredAt: occurredAt.toISOString(),
     subject: { workflowName, instanceId: terminal.instanceId },
     payload: {
@@ -65,5 +66,23 @@ export function workflowCompletedNotificationEvent({
       output: terminal.output ?? null,
       error: terminal.error ?? null,
     },
+  };
+}
+
+/** The run an agent's notification reports the end of, and its output; null for other events. */
+export function workflowCompletionFromNotification(
+  event: PiAgentNotification["event"],
+): { workflowName: string; instanceId: string; output: unknown } | null {
+  if (
+    event.source !== WORKFLOW_NOTIFICATION_SOURCE ||
+    event.eventType !== WORKFLOW_COMPLETED_NOTIFICATION_TYPE
+  ) {
+    return null;
+  }
+  // Written by workflowCompletedNotificationEvent above.
+  return {
+    workflowName: event.subject?.workflowName as string,
+    instanceId: event.subject?.instanceId as string,
+    output: event.payload.output,
   };
 }

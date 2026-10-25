@@ -1,18 +1,10 @@
 import { describe, expect, test } from "vitest";
 
 import {
-  autoOpenNewWorkflowWorkspaceItem,
   createSessionWorkspaceState,
   generatedUiWorkspaceId,
   toggleSessionWorkspaceItem,
-  workflowGraphWorkspaceId,
-  type SessionWorkspaceItem,
 } from "./workspace-model";
-
-const workspaceItem = (
-  id: string,
-  type: SessionWorkspaceItem["view"]["type"],
-): SessionWorkspaceItem => ({ id, view: { type } }) as SessionWorkspaceItem;
 
 describe("session workspace selection", () => {
   test("starts closed before workspace information is observed", () => {
@@ -22,47 +14,8 @@ describe("session workspace selection", () => {
     });
   });
 
-  test("automatically opens a newly produced workflow", () => {
-    const interfaceItem = workspaceItem(generatedUiWorkspaceId("tool-call"), "generated-ui");
-    const workflowItem = workspaceItem(workflowGraphWorkspaceId("tool-call"), "workflow-graph");
-
-    expect(
-      autoOpenNewWorkflowWorkspaceItem(createSessionWorkspaceState(), [
-        workflowItem,
-        interfaceItem,
-      ]),
-    ).toEqual({
-      open: true,
-      selectedItemId: workflowItem.id,
-      observedItemIds: [workflowItem.id, interfaceItem.id],
-    });
-  });
-
-  test("does not reopen a workflow after the user closes it", () => {
-    const workflowItem = workspaceItem(workflowGraphWorkspaceId("first"), "workflow-graph");
-    const opened = autoOpenNewWorkflowWorkspaceItem(createSessionWorkspaceState(), [workflowItem]);
-    const closed = { ...opened, open: false };
-
-    expect(autoOpenNewWorkflowWorkspaceItem(closed, [workflowItem])).toBe(closed);
-  });
-
-  test("opens the latest workflow when another codemode workflow is produced", () => {
-    const firstWorkflow = workspaceItem(workflowGraphWorkspaceId("first"), "workflow-graph");
-    const secondWorkflow = workspaceItem(workflowGraphWorkspaceId("second"), "workflow-graph");
-    const firstOpened = autoOpenNewWorkflowWorkspaceItem(createSessionWorkspaceState(), [
-      firstWorkflow,
-    ]);
-    const firstClosed = { ...firstOpened, open: false };
-
-    expect(autoOpenNewWorkflowWorkspaceItem(firstClosed, [firstWorkflow, secondWorkflow])).toEqual({
-      open: true,
-      selectedItemId: secondWorkflow.id,
-      observedItemIds: [firstWorkflow.id, secondWorkflow.id],
-    });
-  });
-
   test("opens the panel for the selected tool information", () => {
-    const itemId = workflowGraphWorkspaceId("workflow");
+    const itemId = generatedUiWorkspaceId("interface");
 
     expect(toggleSessionWorkspaceItem(createSessionWorkspaceState(), itemId)).toEqual({
       open: true,
@@ -71,11 +24,11 @@ describe("session workspace selection", () => {
   });
 
   test("switches the open panel when different information is selected", () => {
-    const workflowId = workflowGraphWorkspaceId("workflow");
+    const firstId = generatedUiWorkspaceId("first");
     const interfaceId = generatedUiWorkspaceId("interface");
-    const workflowSelected = toggleSessionWorkspaceItem(createSessionWorkspaceState(), workflowId);
+    const firstSelected = toggleSessionWorkspaceItem(createSessionWorkspaceState(), firstId);
 
-    expect(toggleSessionWorkspaceItem(workflowSelected, interfaceId)).toEqual({
+    expect(toggleSessionWorkspaceItem(firstSelected, interfaceId)).toEqual({
       open: true,
       selectedItemId: interfaceId,
     });

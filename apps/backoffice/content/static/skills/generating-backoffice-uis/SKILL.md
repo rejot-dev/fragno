@@ -115,3 +115,8 @@ const { payload } = await step.waitForEvent("approval", { type: approval.eventTy
 Render content through component props as plain text. Raw HTML, scripts, iframes, embeds, arbitrary
 URLs, class names, styles, and presentation colors are invalid. Let the rendered interface carry the
 primary presentation rather than repeating it in Markdown.
+
+An inline workflow shows in the conversation as one card holding its status, every interface its
+steps return, and its final output. Do not narrate the card: skip instructions for filling in its
+form, which go stale once the reader submits it, and do not repeat its output when the
+`instance.completed` event arrives. Reply to that event only with what the card does not show.

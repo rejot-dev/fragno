@@ -200,7 +200,7 @@ export function ChatActivity({
 }
 
 /**
- * Shows or hides something the agent produced, such as a workflow graph, in a side panel. The
+ * Shows or hides something the agent produced, such as a generated interface, in a side panel. The
  * label hides on narrow screens and when `labelled` is false, as it is beside a single step.
  */
 export function ChatArtifactToggle({
@@ -211,7 +211,7 @@ export function ChatArtifactToggle({
   onClick,
 }: {
   icon: IconName;
-  /** What the panel shows, such as "Workflow graph"; the button names the action from it. */
+  /** What the panel shows, such as "Interface"; the button names the action from it. */
   label: string;
   labelled: boolean;
   pressed: boolean;

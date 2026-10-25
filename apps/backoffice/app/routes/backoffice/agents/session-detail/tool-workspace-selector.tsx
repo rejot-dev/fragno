@@ -1,17 +1,11 @@
 import { ChatArtifactToggle } from "@fragno-private/design-system/chat-activity";
-import type { IconName } from "@fragno-private/design-system/icon";
 
 import { useSessionWorkspaceNavigation } from "./workspace-context";
 
+/** A generated interface a tool call produced, which the side panel shows. */
 export type ToolWorkspaceSelectorOption = {
   id: string;
-  kind: "generated-ui" | "workflow-graph";
   label: string;
-};
-
-const workspaceIcons: Record<ToolWorkspaceSelectorOption["kind"], IconName> = {
-  "generated-ui": "layout",
-  "workflow-graph": "share-2",
 };
 
 export function ToolWorkspaceSelector({
@@ -38,7 +32,7 @@ export function ToolWorkspaceSelector({
       {options.map((option) => (
         <ChatArtifactToggle
           key={option.id}
-          icon={workspaceIcons[option.kind]}
+          icon="layout"
           label={option.label}
           labelled={labelled}
           pressed={navigation.isItemSelected(option.id)}

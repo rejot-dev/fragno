@@ -121,6 +121,7 @@ export function ChatEventDisclosure({
   title,
   note,
   time,
+  defaultOpen,
   children,
   ...props
 }: Omit<ComponentProps<"div">, "className" | "children" | "title"> & {
@@ -129,9 +130,11 @@ export function ChatEventDisclosure({
   /** Short context beside the title, such as why or through what it happened. */
   note: string | null;
   time: Date | null;
+  /** Opens it from the start, for what the reader should see without asking, such as a result. */
+  defaultOpen: boolean;
   children: ReactNode;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   return (
     <div {...props} className="bo-chat-enter mb-7 min-w-0">
       <Collapsible.Root open={open} onOpenChange={setOpen}>
