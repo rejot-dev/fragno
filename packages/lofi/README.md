@@ -567,18 +567,18 @@ it stores instead; see "Rebuildable projections" below.
 
 ## SQLite replica (browser)
 
-`@fragno-dev/lofi/sqlite` mirrors one backend's outbox into a SQLite database in the browser's
-Origin Private File System (OPFS), using the same wa-sqlite setup as
-`@fragno-dev/tanstack-db-adapter`. Tables are laid out like the backend's SQLite tables, so you read
-them with plain SQL. Local projections run in the same transaction as the outbox entry. The replica
-only receives server state: it has no query engine, no optimistic writes, and no submit.
+`openLofiSqliteReplica` from `@fragno-dev/lofi/sqlite/browser` mirrors one backend's outbox into a
+SQLite database in the browser's Origin Private File System (OPFS), using the same wa-sqlite setup
+as `@fragno-dev/tanstack-db-adapter`. Tables are laid out like the backend's SQLite tables, so you
+read them with plain SQL. Local projections run in the same transaction as the outbox entry. The
+replica only receives server state: it has no query engine, no optimistic writes, and no submit.
 
 ```bash
 pnpm add @tanstack/browser-db-sqlite-persistence @journeyapps/wa-sqlite
 ```
 
 ```ts
-import { openLofiSqliteReplica } from "@fragno-dev/lofi/sqlite";
+import { openLofiSqliteReplica } from "@fragno-dev/lofi/sqlite/browser";
 
 const replica = await openLofiSqliteReplica({
   baseUrl: "https://example.com/api/my-fragment", // serves /_internal
@@ -1069,10 +1069,6 @@ only to the tab that shows it.
 - **Limits are per view.** Each run of a view gets its own operations budget, so a page of eleven
   queries that each approach it holds the leader, and every tab's views and synchronization, for
   eleven times as long after a batch. A budget per refresh would bound the whole.
-- **TanStack's OPFS worker is still bundled.** `openLofiSqliteReplica` opens its database through
-  `@tanstack/browser-db-sqlite-persistence`. Replica workers no longer reach it, but a bundler that
-  follows `@fragno-dev/lofi/sqlite` still emits that package's worker as an unused asset; moving
-  `openLofiSqliteReplica` to an entry of its own would leave it out.
 - **Whole results cross to the page.** The worker posts a view's full data whenever it changes. For
   large views, posting the changes and applying them in the page would cost less.
 - **No optimistic writes or submit.** As with the replica, views show server state only.
@@ -1122,8 +1118,11 @@ export const schema = schema("app", (s) =>
 - `IndexedDbAdapter` - IndexedDB-backed `LofiAdapter` and query engine.
 - `InMemoryLofiAdapter` - in-memory `LofiAdapter` for optimistic overlays/tests.
 - `StackedLofiAdapter` - merges base + overlay adapters for optimistic reads.
-- `@fragno-dev/lofi/sqlite`: `openLofiSqliteReplica`, `SqliteLofiAdapter`, `decodeLofiSqliteRow`,
-  `lofiSqliteTableName`, `quoteSqliteIdentifier` - the browser SQLite replica.
+- `@fragno-dev/lofi/sqlite/browser`: `openLofiSqliteReplica` - the browser SQLite replica, opened in
+  the tab through `@tanstack/browser-db-sqlite-persistence`. It is an entry of its own so apps that
+  only use replica workers do not bundle that package's OPFS worker.
+- `@fragno-dev/lofi/sqlite`: `SqliteLofiAdapter`, `decodeLofiSqliteRow`, `lofiSqliteTableName`,
+  `quoteSqliteIdentifier`, and the replica's types.
 - `@fragno-dev/lofi/sqlite/testing`: `openLofiSqliteMemoryFiles` opens replicas in Node on
   wa-sqlite's in-memory VFS, `openLofiSqliteTab` opens a replica worker's host and its page's client
   over a `MessageChannel`, and `waitForLofiSqliteReplica` waits until a replica reaches a

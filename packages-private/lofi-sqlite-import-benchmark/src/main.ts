@@ -1,8 +1,5 @@
-import {
-  lofiSqliteTableName,
-  openLofiSqliteReplica,
-  type LofiSqliteReplica,
-} from "@fragno-dev/lofi/sqlite";
+import { lofiSqliteTableName, type LofiSqliteReplica } from "@fragno-dev/lofi/sqlite";
+import { openLofiSqliteReplica } from "@fragno-dev/lofi/sqlite/browser";
 
 import { openBrowserWASQLiteOPFSDatabase } from "@tanstack/browser-db-sqlite-persistence";
 

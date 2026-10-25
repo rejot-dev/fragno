@@ -9,7 +9,6 @@ export {
   quoteSqliteIdentifier,
   registeredSchemaName,
 } from "./sqlite/layout";
-export { openLofiSqliteReplica } from "./sqlite/browser-replica";
 export {
   type LofiSqliteReplica,
   type LofiSqliteReplicaChange,

@@ -1,5 +1,6 @@
 import type { AnySchema } from "@fragno-dev/db/schema";
-import { openLofiSqliteReplica, type LofiSqliteReplica } from "@fragno-dev/lofi/sqlite";
+import type { LofiSqliteReplica } from "@fragno-dev/lofi/sqlite";
+import { openLofiSqliteReplica } from "@fragno-dev/lofi/sqlite/browser";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { AnyLofiLocalProjection } from "@fragno-dev/lofi";
