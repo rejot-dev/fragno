@@ -2,7 +2,7 @@ import { workflowsSchema } from "@fragno-dev/workflows/schema";
 
 import { automationFragmentSchema } from "../schema";
 
-/** The schemas the replica mirrors, the same ones the scope's TanStack collections do. */
+/** The schemas the replica mirrors: the Automations fragment's and its workflows'. */
 export const AUTOMATION_REPLICA_SCHEMAS = [
   { schema: automationFragmentSchema },
   { schema: workflowsSchema },

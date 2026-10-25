@@ -2,8 +2,6 @@ import { assert, describe, test, vi } from "vitest";
 
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 
-import { eq, or, queryOnce } from "@tanstack/react-db";
-
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
   DurableObject: class {},
   RpcTarget: class {},
@@ -15,6 +13,7 @@ import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import {
   assertAutomationProjectionsRebuild,
+  queryAutomationReplica,
   readAutomationReplica,
 } from "@/fragno/automation/lofi/testing";
 import {
@@ -22,10 +21,7 @@ import {
   runBackofficeScenario,
   type BackofficeScenarioContext,
 } from "@/fragno/automation/scenario";
-import {
-  integrationConnectionStateChanges,
-  integrationEventsQuery,
-} from "@/fragno/runtime-tools/families/integrations/integration-connections";
+import { integrationConnectionStateChanges } from "@/fragno/runtime-tools/families/integrations/integration-connections";
 
 const orgId = "org-1";
 const scope = { kind: "org" as const, orgId };
@@ -81,36 +77,37 @@ function delivery(id: string, endpointId: string, at: number) {
   });
 }
 
-/** The Integrations pages read from the replica what they read from the TanStack collections. */
-async function assertIntegrationReadsMatchCollections(ctx: BackofficeScenarioContext) {
+/**
+ * The Integrations pages' reads give what folding and filtering the stored events in JavaScript
+ * gives, from the same events as the replica holds them.
+ */
+async function assertIntegrationReads(ctx: BackofficeScenarioContext) {
   const handle = ctx.lofi.automations.forOrg(orgId);
-  const database = ctx.tanstack.automations.forOrg(orgId);
-  await Promise.all([handle.drain(), database.drain()]);
+  await handle.drain();
   const { replica } = handle;
-  const { collections } = database;
+  const storedEvents = (
+    await queryAutomationReplica(
+      handle,
+      `SELECT id, source, eventType, payload, subject, occurredAt FROM events
+       WHERE source IN ('integrations', 'api') OR source LIKE 'endpoint-%'`,
+    )
+  ).map(({ id, source, eventType, payload, subject, occurredAt }) => ({
+    id: id as string,
+    source: source as string,
+    eventType: eventType as string,
+    payload: JSON.parse(payload as string) as unknown,
+    subject: subject === null ? null : (JSON.parse(subject as string) as Record<string, unknown>),
+    occurredAt: new Date(occurredAt as number),
+  }));
 
-  const connections = await queryOnce((query) =>
-    query
-      .from({ connection: collections.connections })
-      .orderBy(({ connection }) => connection.service, "asc")
-      .orderBy(({ connection }) => connection.connectionId, "asc"),
-  );
-  assert.deepEqual(
-    await readAutomationReplica(replica, "integrationConnections", undefined),
-    connections.map(
-      (connection) =>
-        Object.fromEntries(
-          Object.entries(connection).filter(([key]) => !key.startsWith("$")),
-        ) as (typeof connections)[number],
-    ),
-  );
+  const connections = await readAutomationReplica(replica, "integrationConnections", undefined);
   assert.deepEqual(
     connections.map(({ connectionId, state }) => `${connectionId}: ${state}`),
     ["api#billing: ready", "mcp#agensi: disconnected", "webhook#orders: unavailable"],
   );
 
   const changes = integrationConnectionStateChanges(
-    await queryOnce((query) => integrationEventsQuery(query, collections)),
+    storedEvents.filter(({ source }) => source === "integrations"),
   );
   for (const connectionId of ["api#billing", "mcp#agensi", "webhook#orders", "missing"]) {
     assert.deepEqual(
@@ -121,18 +118,7 @@ async function assertIntegrationReadsMatchCollections(ctx: BackofficeScenarioCon
   }
 
   for (const endpointId of [ENDPOINT_ID, "endpoint-2", "missing"]) {
-    const events = await queryOnce((query) =>
-      query
-        .from({ event: collections.events })
-        .where(({ event }) => or(eq(event.source, "api"), eq(event.source, endpointId)))
-        .select(({ event }) => ({
-          id: event.id,
-          source: event.source,
-          eventType: event.eventType,
-          subject: event.subject,
-          occurredAt: event.occurredAt,
-        })),
-    );
+    const events = storedEvents.filter(({ source }) => source === "api" || source === endpointId);
     const deliveries = events
       .filter(
         (event) =>
@@ -204,8 +190,8 @@ describe("integrations replica", () => {
           ),
           when.automation.ingestEvent(delivery("raw-2", ENDPOINT_ID, at(9))),
           when.automation.ingestEvent(delivery("raw-3", ENDPOINT_ID, at(10))),
-          then.assert("the replica reads what the TanStack collections hold", async (ctx) => {
-            await assertIntegrationReadsMatchCollections(ctx);
+          then.assert("the replica reads what the stored events say", async (ctx) => {
+            await assertIntegrationReads(ctx);
           }),
           then.assert(
             "rebuilding the connections from the stored events gives the same rows",

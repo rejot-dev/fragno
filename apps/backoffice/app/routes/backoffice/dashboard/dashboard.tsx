@@ -20,7 +20,7 @@ import { useCurrentBackofficeContext } from "@/components/backoffice/current-con
 import { backofficePageBodyClassName } from "@/components/backoffice/page-body";
 import { useClock } from "@/components/backoffice/use-clock";
 import { getAutomationReplica, useAutomationRead } from "@/fragno/automation/lofi/replica";
-import { describeAutomationCollectionSource } from "@/fragno/automation/tanstack/browser-database";
+import { describeAutomationReplicaSource } from "@/fragno/automation/lofi/replica-source";
 import { LofiReplicaGate } from "@/fragno/lofi/replica-gate";
 import {
   getBackofficeShellRequest,
@@ -207,23 +207,23 @@ function CreateProjectPanel({ cancelPath }: { cancelPath: string }) {
 }
 
 function DashboardClient({ loaderData }: { loaderData: DashboardLoaderData }) {
-  const { automationCollectionSource } = useCurrentBackofficeContext();
-  if (automationCollectionSource.status === "unavailable") {
+  const { automationReplicaSource } = useCurrentBackofficeContext();
+  if (automationReplicaSource.status === "unavailable") {
     return (
       <BackofficeSystemState
         tone="error"
         label="Unavailable"
         title="Automation activity could not be synchronized."
-        description={automationCollectionSource.message}
+        description={automationReplicaSource.message}
       />
     );
   }
-  const source = automationCollectionSource.source;
+  const source = automationReplicaSource.source;
   const replica = use(getAutomationReplica(source));
   return (
     <LofiReplicaGate replica={replica} title={DOWNLOAD_TITLE}>
       <DashboardWorkspace
-        key={describeAutomationCollectionSource(source).resourceKey}
+        key={describeAutomationReplicaSource(source).resourceKey}
         loaderData={loaderData}
         replica={replica}
       />
@@ -238,7 +238,6 @@ function DashboardWorkspace({
   loaderData: DashboardLoaderData;
   replica: LofiSqliteClient;
 }) {
-  const readSource = useMemo(() => ({ kind: "replica", replica }) as const, [replica]);
   const now = useClock(CLOCK_TICK_MS);
   // The window start only moves when a new bucket begins, so the view opens again rarely.
   const windowStart = dashboardBucketStarts(now)[0] ?? now;
@@ -284,7 +283,7 @@ function DashboardWorkspace({
       dashboard={dashboard}
       now={now}
       loaderData={loaderData}
-      readSource={readSource}
+      replica={replica}
       routes={overview.routes}
       recentEvents={overview.events}
       agents={agents}

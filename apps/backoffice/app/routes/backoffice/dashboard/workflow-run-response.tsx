@@ -1,13 +1,11 @@
+import type { LofiSqliteClient } from "@fragno-dev/lofi/sqlite";
 import type { BackofficeUiRun } from "@fragno-private/backoffice-ui/render-context";
 
 import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import { WorkflowRunGeneratedInterface } from "@/components/backoffice/workflow-run-generated-interface";
-import { currentWorkflowWaits } from "@/fragno/automation/tanstack/workflow-waits";
+import { currentWorkflowWaits } from "@/fragno/automation/workflow-waits";
 
-import {
-  useWorkflowRunRecords,
-  type WorkflowRunSource,
-} from "../automations/script-view/use-script-workflow-runs";
+import { useWorkflowRunRecords } from "../automations/script-view/use-script-workflow-runs";
 import { awaitingInputStep } from "./overview";
 
 /**
@@ -15,16 +13,16 @@ import { awaitingInputStep } from "./overview";
  * nothing once the run stops asking, such as after the answer arrives.
  */
 export function WorkflowRunResponse({
-  readSource,
+  replica,
   resolvedScope,
   run: { workflowName, instanceId },
 }: {
-  readSource: WorkflowRunSource;
+  replica: LofiSqliteClient;
   resolvedScope: BackofficeResolvedScope;
   run: BackofficeUiRun;
 }) {
   const { instances, error } = useWorkflowRunRecords({
-    source: readSource,
+    replica,
     selector: { type: "instance", workflowName, instanceId },
   });
   const run = instances[0] ?? null;

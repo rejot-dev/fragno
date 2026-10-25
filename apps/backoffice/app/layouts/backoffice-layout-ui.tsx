@@ -29,7 +29,7 @@ export default function BackofficeLayout({
     accessTokenExpiresAt,
     resolvedScope,
     administeredMember,
-    automationCollectionSource,
+    automationReplicaSource,
     projectList,
   } = loaderData;
 
@@ -54,7 +54,7 @@ export default function BackofficeLayout({
       resolvedScope={resolvedScope}
       administeredMember={administeredMember}
       accessTokenExpiresAt={accessTokenExpiresAt}
-      automationCollectionSource={automationCollectionSource}
+      automationReplicaSource={automationReplicaSource}
       projectList={projectList}
       isLoading={false}
     >
@@ -100,7 +100,7 @@ export function ErrorBoundary() {
       resolvedScope={layoutData?.resolvedScope ?? null}
       administeredMember={layoutData?.administeredMember ?? null}
       accessTokenExpiresAt={layoutData?.accessTokenExpiresAt ?? null}
-      automationCollectionSource={layoutData?.automationCollectionSource ?? null}
+      automationReplicaSource={layoutData?.automationReplicaSource ?? null}
       projectList={layoutData?.projectList ?? null}
       isLoading={false}
     >

@@ -6,7 +6,7 @@ import type {
 } from "@/backoffice-runtime/resolved-scope";
 import type { BackofficeAuthPrincipal, BackofficeMeData } from "@/fragno/auth/contracts";
 import type { BackofficeJwtPayload } from "@/fragno/auth/token-lifecycle";
-import type { AutomationCollectionSource } from "@/fragno/automation/tanstack/browser-database";
+import type { AutomationReplicaSource } from "@/fragno/automation/lofi/replica-source";
 
 /** Identifies why a Backoffice request credential could not establish authentication. */
 export type BackofficeAuthenticationFailureReason = "missing" | "expired" | "invalid";
@@ -45,9 +45,9 @@ export type BackofficeRequestState = {
   resolveAuthentication(): Promise<BackofficeAuthenticationResult>;
   getPrincipal(): Promise<BackofficePrincipalResult>;
   getBackofficeMe(): Promise<BackofficeMeLookupResult>;
-  getAutomationCollectionSource<TOrganization extends BackofficeOrganizationIdentity>(
+  getAutomationReplicaSource<TOrganization extends BackofficeOrganizationIdentity>(
     resolvedScope: BackofficeResolvedScope<TOrganization>,
-  ): Promise<AutomationCollectionSource<TOrganization>>;
+  ): Promise<AutomationReplicaSource<TOrganization>>;
 };
 
 const backofficeRequestStateContextKey = Symbol.for("fragno.backoffice.request-state-context");

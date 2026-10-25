@@ -16,6 +16,7 @@ import {
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
+import { queryAutomationReplica } from "@/fragno/automation/lofi/testing";
 import {
   defineBackofficeScenario,
   runBackofficeScenario,
@@ -168,14 +169,15 @@ test("an administrator deletes old events of one type from storage and sync hist
         when.automation.ingestEvent(laterWorkflowRun),
         then.assert("only matching old events leave storage and sync history", async (ctx) => {
           await ctx.drain();
-          const browser = ctx.tanstack.automations.forOrg("org-1");
-          await browser.sync();
-          const storedEventIds = () =>
-            [...browser.collections.events.values()]
-              .filter((event) => event.source === "github")
-              .map((event) => event.id)
-              .sort();
-          expect(storedEventIds()).toEqual(
+          const browser = ctx.lofi.automations.forOrg("org-1");
+          const storedEventIds = async () =>
+            (
+              await queryAutomationReplica(
+                browser,
+                `SELECT id FROM events WHERE source = 'github' ORDER BY id`,
+              )
+            ).map(({ id }) => id);
+          expect(await storedEventIds()).toEqual(
             [oldPush.id, oldWorkflowRun.id, laterWorkflowRun.id].sort(),
           );
 
@@ -209,7 +211,7 @@ test("an administrator deletes old events of one type from storage and sync hist
           assert.equal(dryRun.exitCode, 0, dryRun.stderr);
           expect(dryRun.stdout).toContain("Scanned 2, would delete 1.");
           await browser.drain();
-          expect(storedEventIds()).toHaveLength(3);
+          expect(await storedEventIds()).toHaveLength(3);
 
           const filtered = await bash.exec(workflowRuns);
           assert.equal(filtered.exitCode, 0, filtered.stderr);
@@ -221,7 +223,7 @@ test("an administrator deletes old events of one type from storage and sync hist
           expect(remaining.stdout).toContain("Scanned 1, deleted 1.");
 
           await browser.drain();
-          expect(storedEventIds()).toEqual([laterWorkflowRun.id]);
+          expect(await storedEventIds()).toEqual([laterWorkflowRun.id]);
 
           const replayed = await replayAutomationEventOperations(ctx);
           const deletedIds = [oldWorkflowRun.id, oldPush.id];

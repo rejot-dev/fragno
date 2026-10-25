@@ -1,10 +1,7 @@
 import type { AutomationRouteDefinition } from "@fragno-dev/backoffice-api/v0/automation";
 import type { WorkflowInstanceStatus } from "@fragno-dev/workflows/workflow";
 
-import { gte, type InitialQueryBuilder } from "@tanstack/react-db";
-
-import type { AutomationCollections } from "@/fragno/automation/tanstack/collections";
-import type { WorkflowWaitRecord } from "@/fragno/automation/tanstack/workflow-waits";
+import type { WorkflowWaitRecord } from "@/fragno/automation/workflow-waits";
 import type { IntegrationConnectionRecord } from "@/fragno/runtime-tools/families/integrations/integration-connections";
 import type {
   AutomationWorkflowRun,
@@ -35,21 +32,6 @@ export function dashboardBucketStarts(now: number): number[] {
 export function dashboardBucketIndex(bucketStarts: readonly number[], time: Date): number {
   const windowStart = bucketStarts[0] ?? time.getTime();
   return Math.min(bucketStarts.length - 1, Math.floor((time.getTime() - windowStart) / BUCKET_MS));
-}
-
-export function dashboardEventsQuery(
-  query: InitialQueryBuilder,
-  collections: Pick<AutomationCollections, "events">,
-  since: Date,
-) {
-  return query
-    .from({ event: collections.events })
-    .where(({ event }) => gte(event.occurredAt, since))
-    .select(({ event }) => ({
-      source: event.source,
-      eventType: event.eventType,
-      occurredAt: event.occurredAt,
-    }));
 }
 
 type DashboardRunRecord = {

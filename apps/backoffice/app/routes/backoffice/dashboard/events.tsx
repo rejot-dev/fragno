@@ -30,8 +30,7 @@ import { useCurrentBackofficeContext } from "@/components/backoffice/current-con
 import { backofficePageBodyClassName } from "@/components/backoffice/page-body";
 import { useClock } from "@/components/backoffice/use-clock";
 import { getAutomationReplica, useAutomationRead } from "@/fragno/automation/lofi/replica";
-import type { AutomationReadSource } from "@/fragno/automation/read-source";
-import { describeAutomationCollectionSource } from "@/fragno/automation/tanstack/browser-database";
+import { describeAutomationReplicaSource } from "@/fragno/automation/lofi/replica-source";
 import { LofiReplicaGate } from "@/fragno/lofi/replica-gate";
 import { requireScopeSelection } from "@/layouts/backoffice-shell-request.server";
 
@@ -133,23 +132,23 @@ export default function BackofficeDashboardEvents({ loaderData }: Route.Componen
 }
 
 function EventsClient({ selectedScope }: { selectedScope: BackofficeScopeSelection }) {
-  const { automationCollectionSource } = useCurrentBackofficeContext();
-  if (automationCollectionSource.status === "unavailable") {
+  const { automationReplicaSource } = useCurrentBackofficeContext();
+  if (automationReplicaSource.status === "unavailable") {
     return (
       <BackofficeSystemState
         tone="error"
         label="Unavailable"
         title="Automation events could not be synchronized."
-        description={automationCollectionSource.message}
+        description={automationReplicaSource.message}
       />
     );
   }
-  const source = automationCollectionSource.source;
+  const source = automationReplicaSource.source;
   const replica = use(getAutomationReplica(source));
   return (
     <LofiReplicaGate replica={replica} title={DOWNLOAD_TITLE}>
       <EventTracesWorkspace
-        key={describeAutomationCollectionSource(source).resourceKey}
+        key={describeAutomationReplicaSource(source).resourceKey}
         selectedScope={selectedScope}
         replica={replica}
       />
@@ -166,7 +165,6 @@ function EventTracesWorkspace({
 }) {
   const [searchParams] = useSearchParams();
   const now = useClock(CLOCK_TICK_MS);
-  const readSource = useMemo(() => ({ kind: "replica", replica }) as const, [replica]);
   const listRead = useAutomationRead(replica, "eventTraceSummaries", { limit: TRACE_LIMIT });
   const summaries = listRead.status === "ready" ? listRead.data : null;
   const entries = useMemo(() => (summaries ? projectEventTraceList(summaries) : []), [summaries]);
@@ -230,7 +228,7 @@ function EventTracesWorkspace({
           key={openedTrace}
           trace={trace}
           selectedScope={selectedScope}
-          readSource={readSource}
+          replica={replica}
         />
       )}
     </div>
@@ -673,11 +671,11 @@ function RepeatsRow({
 function TraceView({
   trace,
   selectedScope,
-  readSource,
+  replica,
 }: {
   trace: EventTrace;
   selectedScope: BackofficeScopeSelection;
-  readSource: AutomationReadSource;
+  replica: LofiSqliteClient;
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [cursor, setCursor] = useState<number | null>(null);
@@ -719,7 +717,7 @@ function TraceView({
           record={record}
           cursor={cursor}
           selectedScope={selectedScope}
-          readSource={readSource}
+          replica={replica}
           onSelect={select}
           onHoverStepRecord={setHoveredStepRecordId}
         />
@@ -733,7 +731,7 @@ function TraceSelection({
   record,
   cursor,
   selectedScope,
-  readSource,
+  replica,
   onSelect,
   onHoverStepRecord,
 }: {
@@ -742,7 +740,7 @@ function TraceSelection({
   record: EventTraceRecord;
   cursor: number | null;
   selectedScope: BackofficeScopeSelection;
-  readSource: AutomationReadSource;
+  replica: LofiSqliteClient;
   onSelect: (nodeId: string) => void;
   onHoverStepRecord: (stepRecordId: string | null) => void;
 }) {
@@ -780,7 +778,7 @@ function TraceSelection({
           selectedStepRecordId={null}
           cursor={cursor}
           selectedScope={selectedScope}
-          readSource={readSource}
+          replica={replica}
           onSelect={onSelect}
           onHoverStepRecord={onHoverStepRecord}
         />
@@ -794,7 +792,7 @@ function TraceSelection({
           selectedStepRecordId={record.step.id}
           cursor={cursor}
           selectedScope={selectedScope}
-          readSource={readSource}
+          replica={replica}
           onSelect={onSelect}
           onHoverStepRecord={onHoverStepRecord}
         />
@@ -810,7 +808,7 @@ function RunSelection({
   selectedStepRecordId,
   cursor,
   selectedScope,
-  readSource,
+  replica,
   onSelect,
   onHoverStepRecord,
 }: {
@@ -820,7 +818,7 @@ function RunSelection({
   selectedStepRecordId: string | null;
   cursor: number | null;
   selectedScope: BackofficeScopeSelection;
-  readSource: AutomationReadSource;
+  replica: LofiSqliteClient;
   onSelect: (nodeId: string) => void;
   onHoverStepRecord: (stepRecordId: string | null) => void;
 }) {
@@ -850,7 +848,7 @@ function RunSelection({
         ]}
       />
       <WorkflowRunDetail
-        readSource={readSource}
+        replica={replica}
         reference={reference}
         presentation={{
           kind: "embedded",

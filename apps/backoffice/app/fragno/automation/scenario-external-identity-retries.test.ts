@@ -5,10 +5,9 @@ import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/perm
 import type { HookContext } from "@fragno-dev/db";
 import type { OtpConfirmedHookPayload } from "@fragno-dev/otp-fragment";
 
-import { eq, queryOnce } from "@tanstack/react-db";
-
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
+import { queryAutomationReplica } from "@/fragno/automation/lofi/testing";
 import type { BackofficeScenarioStep } from "@/fragno/automation/scenario";
 import { IDENTITY_LINK_TYPE } from "@/fragno/otp";
 
@@ -331,16 +330,15 @@ describe("external identity retry regressions", () => {
           whenIdentityIsRevoked("revoke the binding before the confirmed hook retries"),
           whenConfirmedClaimHookRetries("claim-1", completionEventId),
           then.assert("the revoked claim completion event was not emitted", async (ctx) => {
-            const database = ctx.tanstack.automations.forOrg(orgId);
-            await database.drain();
-            const completionEvent = await queryOnce((query) =>
-              query
-                .from({ event: database.collections.events })
-                .where(({ event }) => eq(event.id, completionEventId))
-                .findOne(),
+            const replica = ctx.lofi.automations.forOrg(orgId);
+            await replica.drain();
+            const completionEvents = await queryAutomationReplica(
+              replica,
+              `SELECT id FROM events WHERE id = ?1`,
+              [completionEventId],
             );
 
-            assert.equal(completionEvent, undefined);
+            assert.deepEqual(completionEvents, []);
           }),
           then.identity.unresolved({
             scope,

@@ -11,52 +11,14 @@ import type {
   CausalFlameStatus,
 } from "@fragno-private/design-system/causal-flame-graph-model";
 
-import { inArray, type InitialQueryBuilder } from "@tanstack/react-db";
-
 import { readRouteDispatchState } from "@/fragno/automation/route-dispatches-storage-runtime";
-import type { AutomationCollections } from "@/fragno/automation/tanstack/collections";
 
 import {
   inferWorkflowStepStarts,
   workflowRunTime,
 } from "../automations/script-view/workflow-run-presentation";
 
-export function eventTraceEventsQuery(
-  query: InitialQueryBuilder,
-  collections: Pick<AutomationCollections, "events">,
-) {
-  return query.from({ event: collections.events }).select(({ event }) => ({
-    id: event.id,
-    source: event.source,
-    eventType: event.eventType,
-    occurredAt: event.occurredAt,
-    payload: event.payload,
-    subject: event.subject,
-    causation: event.causation,
-    rootEventId: event.rootEventId,
-    routesMatched: event.routesMatched,
-  }));
-}
-
-export function eventTraceDispatchesQuery(
-  query: InitialQueryBuilder,
-  collections: Pick<AutomationCollections, "routeDispatches">,
-) {
-  return query.from({ dispatch: collections.routeDispatches }).select(({ dispatch }) => ({
-    id: dispatch.id,
-    eventId: dispatch.eventId,
-    rootEventId: dispatch.rootEventId,
-    routeId: dispatch.routeId,
-    routeName: dispatch.routeName,
-    status: dispatch.status,
-    outcome: dispatch.outcome,
-    failedAttempts: dispatch.failedAttempts,
-    error: dispatch.error,
-    dispatchedAt: dispatch.dispatchedAt,
-  }));
-}
-
-/** A synchronized dispatch row, as `eventTraceDispatchesQuery` selects it. */
+/** A synchronized dispatch row, as the replica stores it. */
 export type EventTraceDispatchRow = Omit<EventTraceDispatch, "state"> & {
   status: string;
   outcome: AutomationRouteDispatchOutcome | null;
@@ -72,70 +34,6 @@ export function eventTraceDispatch({
   ...dispatch
 }: EventTraceDispatchRow): EventTraceDispatch {
   return { ...dispatch, state: readRouteDispatchState({ status, outcome, failedAttempts, error }) };
-}
-
-export function eventTraceRunsQuery(
-  query: InitialQueryBuilder,
-  collections: Pick<AutomationCollections, "workflowInstances">,
-) {
-  return query.from({ instance: collections.workflowInstances }).select(({ instance }) => ({
-    id: instance.id,
-    workflowName: instance.workflowName,
-    instanceId: instance.instanceId,
-    remoteWorkflowName: instance.remoteWorkflowName,
-    status: instance.status,
-    errorMessage: instance.errorMessage,
-    createdAt: instance.createdAt,
-    startedAt: instance.startedAt,
-    completedAt: instance.completedAt,
-  }));
-}
-
-/** Only the steps of the runs in the open trace, by workflow instance row id. */
-export function eventTraceStepsQuery(
-  query: InitialQueryBuilder,
-  collections: Pick<AutomationCollections, "workflowSteps">,
-  instanceRefs: readonly string[],
-) {
-  return query
-    .from({ step: collections.workflowSteps })
-    .where(({ step }) => inArray(step.instanceRef, [...instanceRefs]))
-    .select(({ step }) => ({
-      id: step.id,
-      instanceRef: step.instanceRef,
-      stepKey: step.stepKey,
-      parentStepKey: step.parentStepKey,
-      name: step.name,
-      type: step.type,
-      status: step.status,
-      attempts: step.attempts,
-      waitEventType: step.waitEventType,
-      errorMessage: step.errorMessage,
-      createdAt: step.createdAt,
-      updatedAt: step.updatedAt,
-    }));
-}
-
-/**
- * The workflow events of the runs in the open trace, so a route's delivery to a run that was
- * already going can be followed into the steps it set off.
- */
-export function eventTraceDeliveriesQuery(
-  query: InitialQueryBuilder,
-  collections: Pick<AutomationCollections, "workflowEvents">,
-  instanceRefs: readonly string[],
-) {
-  return query
-    .from({ delivery: collections.workflowEvents })
-    .where(({ delivery }) => inArray(delivery.instanceRef, [...instanceRefs]))
-    .select(({ delivery }) => ({
-      id: delivery.id,
-      instanceRef: delivery.instanceRef,
-      type: delivery.type,
-      createdAt: delivery.createdAt,
-      deliveredAt: delivery.deliveredAt,
-      consumedByStepKey: delivery.consumedByStepKey,
-    }));
 }
 
 export type EventTraceEvent = {

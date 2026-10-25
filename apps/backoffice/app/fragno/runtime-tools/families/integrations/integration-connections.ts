@@ -1,15 +1,4 @@
 import {
-  createLiveQueryCollection,
-  eq,
-  type Collection,
-  type InitialQueryBuilder,
-} from "@tanstack/react-db";
-
-import type { AutomationTableCollections } from "@/fragno/automation/tanstack/collections";
-import { createDerivedCollection } from "@/fragno/tanstack/derived-collection";
-
-import {
-  INTEGRATIONS_EVENT_SOURCE,
   readIntegrationConnectionEvent,
   type IntegrationConnectionLabel,
   type IntegrationConnectionState,
@@ -27,24 +16,6 @@ const kindsByNamespace = new Map<string, IntegrationConnectionKind>([
   ["github", "native"],
   ["app", "native"],
 ]);
-
-/** The events that report connection state, with the fields reading them takes. */
-export function integrationEventsQuery(
-  query: InitialQueryBuilder,
-  collections: Pick<AutomationTableCollections, "events">,
-) {
-  return query
-    .from({ event: collections.events })
-    .where(({ event }) => eq(event.source, INTEGRATIONS_EVENT_SOURCE))
-    .select(({ event }) => ({
-      id: event.id,
-      source: event.source,
-      eventType: event.eventType,
-      payload: event.payload,
-      subject: event.subject,
-      occurredAt: event.occurredAt,
-    }));
-}
 
 type StoredEvent = {
   id: string;
@@ -153,38 +124,6 @@ export function integrationConnectionRecord({
     displayName: integrationConnectionName({ ...latest, name }),
     kindLabel: describeIntegrationConnectionKind(latest),
   };
-}
-
-function currentIntegrationConnections(
-  changes: readonly IntegrationConnectionStateChange[],
-): IntegrationConnectionRecord[] {
-  const connections = new Map<string, IntegrationConnectionFold>();
-  for (const change of changes) {
-    connections.set(
-      change.connectionId,
-      applyIntegrationConnectionChange(connections.get(change.connectionId) ?? null, change),
-    );
-  }
-  return [...connections.values()].map(integrationConnectionRecord);
-}
-
-/** Every connection the scope's integration events report, as it currently stands. */
-export function createIntegrationConnectionsCollection(
-  collections: Pick<AutomationTableCollections, "events">,
-): Collection<IntegrationConnectionRecord, string> {
-  return createDerivedCollection({
-    source: createLiveQueryCollection({
-      query: (query) => integrationEventsQuery(query, collections),
-    }),
-    getKey: (connection) => connection.connectionId,
-    derive: (events) =>
-      currentIntegrationConnections(
-        events.flatMap((event) => {
-          const change = readIntegrationConnectionStateChange(event);
-          return change ? [change] : [];
-        }),
-      ),
-  });
 }
 
 const integrationConnectionKindLabels = {

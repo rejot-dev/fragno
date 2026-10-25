@@ -22,11 +22,12 @@ const visualization = visualizeWorkflowSource(
     await step.sleep("pause briefly", "10 seconds");
   });`,
 );
-const source = { kind: "collections", collections: {} as never } as const;
+// The records hook is mocked, so the hook never reads the replica.
+const replica = {} as never;
 
 function WorkflowRunHarness() {
   const run = useWorkflowRun({
-    source,
+    replica,
     reference: { workflowName: "codemode-script", instanceId: "run-1" },
     visualization,
   });
@@ -51,7 +52,7 @@ afterEach(() => {
 });
 
 describe("useWorkflowRun", () => {
-  test("projects an exact run from the shared TanStack workflow records query", () => {
+  test("projects an exact run from the shared workflow records read", () => {
     useWorkflowRunRecordsMock.mockReturnValue({
       instances: [
         {
@@ -91,7 +92,7 @@ describe("useWorkflowRun", () => {
     assert(screen.getByText('result {"wakeReason":"timer"}'));
     assert(screen.getByText('output {"status":"pending"}'));
     assert.deepEqual(useWorkflowRunRecordsMock.mock.calls[0]?.[0], {
-      source,
+      replica,
       selector: {
         type: "instance",
         workflowName: "codemode-script",

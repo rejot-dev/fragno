@@ -1,28 +1,12 @@
 import type { PiAgentDefinition } from "@fragno-dev/backoffice-api/v0/pi";
 
-import { createLiveQueryCollection, eq, type Collection } from "@tanstack/react-db";
-
-import type { AutomationTableCollections } from "@/fragno/automation/tanstack/collections";
 import {
-  PI_AUTOMATION_SOURCE,
-  readPiAgentEvent,
   type PiAgentActivityKind,
   type PiAgentEvent,
 } from "@/fragno/backoffice-capabilities/capabilities/pi";
-import { createDerivedCollection } from "@/fragno/tanstack/derived-collection";
 
 import { BUILT_IN_PI_AGENT_DEFINITIONS } from "./agent-definitions";
 import { formatPiAgentName } from "./pi-agent-name";
-
-type StoredPiEvent = {
-  id: string;
-  source: string;
-  eventType: string;
-  payload: unknown;
-  subject: unknown;
-  occurredAt: Date;
-  createdAt: Date;
-};
 
 /**
  * An agent of the scope as its `pi` events record it now. An agent its events record nothing
@@ -239,39 +223,6 @@ export function piAgentRecord(agentName: string, agent: PiAgentState | null): Pi
   };
 }
 
-/** The scope's agents: Backoffice's built-in agents, and those their events define. */
-function currentPiAgents(events: readonly StoredPiEvent[]): PiAgentRecord[] {
-  const agents = new Map<string, PiAgentState>();
-  const requests = new Map<string, PiAgentRequestState>();
-  for (const event of events) {
-    const read = readPiAgentEvent(event);
-    if (!read) {
-      continue;
-    }
-    const requestId = piAgentEventRequestId(read);
-    const requestKey = requestId === null ? null : piAgentRequestKey(read.agentName, requestId);
-    const applied = applyPiAgentEvent(
-      agents.get(read.agentName) ?? null,
-      requestKey === null ? null : (requests.get(requestKey) ?? null),
-      read,
-      event,
-    );
-    agents.set(read.agentName, applied.agent);
-    if (requestKey !== null && applied.request) {
-      requests.set(requestKey, applied.request);
-    }
-  }
-
-  const names = new Set([
-    ...BUILT_IN_PI_AGENT_DEFINITIONS.map(({ agentName }) => agentName),
-    ...agents.keys(),
-  ]);
-  return [...names].flatMap((agentName) => {
-    const record = piAgentRecord(agentName, agents.get(agentName) ?? null);
-    return record ? [record] : [];
-  });
-}
-
 /** Names a request of one agent; request IDs are compared per agent. */
 export function piAgentRequestKey(agentName: string, requestId: string): string {
   return JSON.stringify([agentName, requestId]);
@@ -300,45 +251,4 @@ export function piAgentTurnEndedBy(
   return read?.kind === "answered" || read?.kind === "cut-off" || read?.kind === "failed"
     ? { id: event.id, agentName: read.agentName, outcome: read.kind, endedAt: event.occurredAt }
     : null;
-}
-
-function endedPiAgentTurns(events: readonly StoredPiEvent[]): PiAgentTurnRecord[] {
-  return events.flatMap((event) => {
-    const turn = piAgentTurnEndedBy(event, readPiAgentEvent(event));
-    return turn ? [turn] : [];
-  });
-}
-
-/** The scope's agents and the turns they ended, as its `pi` events record them. */
-export function createPiAgentCollections(collections: Pick<AutomationTableCollections, "events">): {
-  agents: Collection<PiAgentRecord, string>;
-  agentTurns: Collection<PiAgentTurnRecord, string>;
-} {
-  const events = createLiveQueryCollection({
-    query: (query) =>
-      query
-        .from({ event: collections.events })
-        .where(({ event }) => eq(event.source, PI_AUTOMATION_SOURCE))
-        .select(({ event }) => ({
-          id: event.id,
-          source: event.source,
-          eventType: event.eventType,
-          payload: event.payload,
-          subject: event.subject,
-          occurredAt: event.occurredAt,
-          createdAt: event.createdAt,
-        })),
-  });
-  return {
-    agents: createDerivedCollection({
-      source: events,
-      getKey: (agent) => agent.agentName,
-      derive: currentPiAgents,
-    }),
-    agentTurns: createDerivedCollection({
-      source: events,
-      getKey: (turn) => turn.id,
-      derive: endedPiAgentTurns,
-    }),
-  };
 }

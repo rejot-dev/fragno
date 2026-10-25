@@ -3,8 +3,8 @@ import "@fragno-private/design-system/components.css";
 import { backofficeScopeProjectOwner } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import type { CurrentBackofficeContext } from "@/components/backoffice/current-context-state";
+import { fetchAutomationReplicaSource } from "@/fragno/automation/lofi/replica-source.server";
 import { loadAutomationProjectList } from "@/fragno/automation/project-list.server";
-import { fetchAutomationCollectionSource } from "@/fragno/automation/tanstack/server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { Route } from "./+types/backoffice-layout";
@@ -39,16 +39,16 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const projectList = projectOwner
     ? loadAutomationProjectList(request, context.get(BackofficeWorkerContext), projectOwner)
     : null;
-  const automationCollectionSource = await fetchAutomationCollectionSource(
+  const automationReplicaSource = await fetchAutomationReplicaSource(
     request,
     context,
     resolvedScope,
   ).then(
-    (source): CurrentBackofficeContext["automationCollectionSource"] => ({
+    (source): CurrentBackofficeContext["automationReplicaSource"] => ({
       status: "ready",
       source,
     }),
-    (error: unknown): CurrentBackofficeContext["automationCollectionSource"] => ({
+    (error: unknown): CurrentBackofficeContext["automationReplicaSource"] => ({
       status: "unavailable",
       resolvedScope,
       message: error instanceof Error ? error.message : "Workflow synchronization is unavailable.",
@@ -60,7 +60,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     accessTokenExpiresAt,
     resolvedScope,
     administeredMember,
-    automationCollectionSource,
+    automationReplicaSource,
     projectList,
   };
 }

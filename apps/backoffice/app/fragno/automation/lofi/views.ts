@@ -43,7 +43,7 @@ const jsonColumn = <T>() => column("json") as Column<"json", T, T>;
 
 /**
  * What Backoffice derives from the scope's events, kept up to date by the projections below with
- * the same functions the TanStack collections derive it with. Only those projections write these
+ * the functions Backoffice's own records use. Only those projections write these
  * tables, and the replica rebuilds them from its stored events, so this schema does not name the
  * replica's database: changing a table rebuilds the projection that writes it. When a projection
  * changes what it writes for the same events, bump its `rebuild.version`.

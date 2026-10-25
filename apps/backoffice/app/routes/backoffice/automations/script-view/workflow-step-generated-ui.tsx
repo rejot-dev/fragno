@@ -7,6 +7,7 @@ import {
   parseBackofficeUiResult,
   type BackofficeUiResultV1,
 } from "@fragno-private/backoffice-ui/result";
+import { Button } from "@fragno-private/design-system/button";
 import { useEffect, useState } from "react";
 
 import { setByPath } from "@json-render/core";
@@ -21,6 +22,7 @@ import { WorkflowGeneratedUi, type WorkflowEventSender } from "./workflow-genera
 import type { WorkflowRunEvent, WorkflowStepRunState } from "./workflow-run-presentation";
 import {
   deleteWorkflowUiDraft,
+  discardWorkflowUiDrafts,
   getOrCreateWorkflowUiDraftEventId,
   markWorkflowUiDraftSubmitted,
   saveWorkflowUiDraft,
@@ -125,16 +127,23 @@ function InteractiveWorkflowStepGeneratedUi({
   const stepRecordId = state.stepRecordId;
   const usesBrowserDraft = Boolean(draftId && !submitted && activeEventTypes.size > 0);
   const [draft, setDraft] = useState<WorkflowUiDraft | null>();
+  const [draftError, setDraftError] = useState<string | null>(null);
 
   useEffect(() => {
+    setDraftError(null);
     if (!usesBrowserDraft || !draftId) {
       setDraft(undefined);
       return undefined;
     }
     let active = true;
     void workflowUiDrafts.preload().then(() => {
-      if (active) {
+      if (!active) {
+        return;
+      }
+      try {
         setDraft(workflowUiDrafts.get(draftId) ?? null);
+      } catch (error) {
+        setDraftError(error instanceof Error ? error.message : String(error));
       }
     });
     return () => {
@@ -149,6 +158,30 @@ function InteractiveWorkflowStepGeneratedUi({
     }
   }, [draftId, submittedEventId]);
 
+  // Without its saved event IDs, the form could send an answer it already sent.
+  if (usesBrowserDraft && draftError !== null) {
+    return (
+      <div className="flex flex-col items-start gap-2">
+        <p role="alert" className="text-xs text-[var(--bo-failed)]">
+          Saved input in this browser could not be read, so this form cannot tell what it already
+          sent: {draftError}
+        </p>
+        <Button
+          variant="secondary"
+          onClick={() => {
+            // Every form's saved input goes, since none of it can be read.
+            if (window.confirm("Discard the input every form saved in this browser?")) {
+              discardWorkflowUiDrafts();
+              setDraftError(null);
+              setDraft(null);
+            }
+          }}
+        >
+          Discard saved input
+        </Button>
+      </div>
+    );
+  }
   if (usesBrowserDraft && draft === undefined) {
     return (
       <p aria-live="polite" className="text-xs text-[var(--bo-muted-2)]">

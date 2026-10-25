@@ -1,4 +1,5 @@
 import type { AutomationRouteDefinition } from "@fragno-dev/backoffice-api/v0/automation";
+import type { LofiSqliteClient } from "@fragno-dev/lofi/sqlite";
 import { RunStatusLight } from "@fragno-private/backoffice-ui/run-status-light";
 import { Icon } from "@fragno-private/design-system/icon";
 import { ListRow, ListRowIcon, RowList } from "@fragno-private/design-system/list-row";
@@ -21,7 +22,6 @@ import {
   type BackofficeScopeSelection,
 } from "@/backoffice-runtime/resolved-scope";
 import { WorkflowRunGeneratedInterface } from "@/components/backoffice/workflow-run-generated-interface";
-import type { AutomationReadSource } from "@/fragno/automation/read-source";
 
 import {
   describePiAgentActivity,
@@ -58,7 +58,7 @@ export function DashboardSections({
   dashboard,
   now,
   loaderData,
-  readSource,
+  replica,
   routes,
   recentEvents,
   agents,
@@ -66,7 +66,7 @@ export function DashboardSections({
   dashboard: BackofficeDashboard;
   now: number;
   loaderData: DashboardLoaderData;
-  readSource: AutomationReadSource;
+  replica: LofiSqliteClient;
   routes: readonly AutomationRouteDefinition[];
   recentEvents: readonly { source: string; eventType: string }[];
   agents: readonly PiAgentListing[];
@@ -80,7 +80,7 @@ export function DashboardSections({
 
       <Panel title="Orchestration" leading={null} footer={null}>
         <OrchestrationPanel
-          readSource={readSource}
+          replica={replica}
           routes={routes}
           recentEvents={recentEvents}
           selectedScope={selectedScope}
@@ -95,7 +95,7 @@ export function DashboardSections({
             workflows={dashboard.workflows}
             now={now}
             selectedScope={selectedScope}
-            readSource={readSource}
+            replica={replica}
           />
           <EventVolumePanel eventVolume={dashboard.eventVolume} />
         </div>
@@ -250,12 +250,12 @@ function WorkflowHealthPanel({
   workflows,
   now,
   selectedScope,
-  readSource,
+  replica,
 }: {
   workflows: BackofficeDashboard["workflows"];
   now: number;
   selectedScope: BackofficeScopeSelection;
-  readSource: AutomationReadSource;
+  replica: LofiSqliteClient;
 }) {
   const [showAll, setShowAll] = useState(false);
   const [searchParams] = useSearchParams();
@@ -281,7 +281,7 @@ function WorkflowHealthPanel({
         >
           <WorkflowRunDetail
             key={openedRunKey}
-            readSource={readSource}
+            replica={replica}
             reference={openedRun}
             presentation={{ kind: "standalone" }}
           />

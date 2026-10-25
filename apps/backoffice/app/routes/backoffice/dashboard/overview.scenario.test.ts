@@ -15,7 +15,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
 
 import { createStateStore } from "@json-render/react";
-import { eq, gte, inArray, queryOnce } from "@tanstack/react-db";
 
 import { loadPage } from "@/artifacts/pages/build.server";
 import { checkPageSource } from "@/artifacts/pages/page-source.test-support";
@@ -35,11 +34,7 @@ import {
   runBackofficeScenario,
   type BackofficeScenarioContext,
 } from "@/fragno/automation/scenario";
-import {
-  automationRoutesFromRecords,
-  automationRoutesQuery,
-} from "@/fragno/automation/tanstack/use-automation-routes";
-import { currentWorkflowWaits } from "@/fragno/automation/tanstack/workflow-waits";
+import { currentWorkflowWaits } from "@/fragno/automation/workflow-waits";
 
 import { InMemoryApiObject } from "../../../../workers/api.do";
 import { InMemoryAppInstallationsObject } from "../../../../workers/app-installations.do";
@@ -58,15 +53,8 @@ import { InMemoryResendObject } from "../../../../workers/resend.do";
 import { InMemoryTelegramObject } from "../../../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../../../workers/upload.do";
 import { piAgentListings, piAgentQueueStatus } from "../agents/agent-activity";
-import { workflowRunRecordsQuery } from "../automations/script-view/use-script-workflow-runs";
-import {
-  automationWorkflowRunsFromRecords,
-  type WorkflowRunRecordSelector,
-} from "../automations/script-view/workflow-run-records";
-import {
-  orchestrationActiveWorkflowsQuery,
-  projectOrchestrationGraph,
-} from "./orchestration-graph";
+import type { AutomationWorkflowRun } from "../automations/script-view/workflow-run-presentation";
+import { projectOrchestrationGraph } from "./orchestration-graph";
 import { dashboardBucketStarts, projectBackofficeDashboard } from "./overview";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
@@ -506,59 +494,26 @@ async function readDashboard(ctx: BackofficeScenarioContext) {
   };
 }
 
-/** A record either source reads: a replica row, or a TanStack DB query row. */
-type ReadRecord = Record<string, unknown>;
-
-/** A query row without the virtual properties, such as `$synced`, TanStack DB adds to it. */
-const withoutVirtualProps = (row: ReadRecord) =>
-  Object.fromEntries(Object.entries(row).filter(([key]) => !key.startsWith("$")));
-
-const byJson = (rows: readonly ReadRecord[]) =>
-  rows
-    .map((row) => JSON.stringify(withoutVirtualProps(row)))
-    .sort((left, right) => left.localeCompare(right));
-
-/**
- * Views shared with pages that still read the TanStack collections read the replica on the
- * dashboard, so both sources must give them the same records.
- */
-/** The Agents directory reads from the replica what it read from the TanStack collections. */
-async function assertAgentDirectoryMatchesCollections(ctx: BackofficeScenarioContext) {
+/** The Agents directory, one line per agent: its activity and the turns it ended per hour. */
+async function readAgentDirectory(ctx: BackofficeScenarioContext): Promise<string[]> {
   const handle = ctx.lofi.automations.forOrg(orgId);
-  const database = ctx.tanstack.automations.forOrg(orgId);
-  await Promise.all([handle.drain(), database.drain()]);
-  const { collections } = database;
+  await handle.drain();
   const bucketStarts = dashboardBucketStarts(ctx.runtime.now());
-  const since = new Date(bucketStarts[0] ?? 0);
-  const [agents, turns] = await Promise.all([
-    queryOnce((query) =>
-      query
-        .from({ agent: collections.agents })
-        .orderBy(({ agent }) => agent.builtIn, "desc")
-        .orderBy(({ agent }) => agent.agentName, "asc"),
-    ),
-    queryOnce((query) =>
-      query
-        .from({ turn: collections.agentTurns })
-        .where(({ turn }) => gte(turn.endedAt, since))
-        .select(({ turn }) => ({ agentName: turn.agentName, endedAt: turn.endedAt })),
-    ),
-  ]);
   const directory = await readAutomationReplica(handle.replica, "piAgentDirectory", {
     bucketStarts,
   });
-  assert.isNotEmpty(turns);
-  assert.deepEqual(
-    directory,
-    piAgentListings(
-      agents.map((agent) => withoutVirtualProps(agent) as (typeof agents)[number]),
-      turns,
-      bucketStarts,
-    ),
+  return directory.map(
+    ({ agentName, builtIn, activity, queued, paused, turnsPerBucket }) =>
+      `${agentName}${builtIn ? " (built in)" : ""}: ${activity}, ${queued} queued${paused ? ", paused" : ""}; turns ${turnsPerBucket.filter((count) => count > 0).join(" + ") || "none"}`,
   );
 }
 
-async function assertReplicaReadsMatchCollections(ctx: BackofficeScenarioContext) {
+/**
+ * What the views beside the dashboard read from the replica: the routes the Files explorer marks
+ * workflows with, the orchestration graph's records and an event's latest occurrences, the runs
+ * the run views show, and the Codemode runs an agent conversation opens.
+ */
+async function readReplicaReads(ctx: BackofficeScenarioContext) {
   // The scope's own catalog adds to what registered capabilities describe.
   await ctx.runtime.objects.automations.for(scope).commands.ensureEventSource({
     source: "shop",
@@ -576,126 +531,75 @@ async function assertReplicaReadsMatchCollections(ctx: BackofficeScenarioContext
     })})`,
   });
   const handle = ctx.lofi.automations.forOrg(orgId);
-  const database = ctx.tanstack.automations.forOrg(orgId);
-  await Promise.all([handle.drain(), database.drain()]);
+  await handle.drain();
   const { replica } = handle;
-  const { collections } = database;
-
-  // The Files explorer marks workflow files with the routes that start them.
-  assert.deepEqual(
-    await readAutomationReplica(replica, "automationRoutes", undefined),
-    automationRoutesFromRecords(
-      await queryOnce((query) => automationRoutesQuery(query, collections)),
-    ).map(withoutVirtualProps),
-  );
+  // Steps created in the same millisecond tie on time, so they are listed by name.
+  const runLine = (run: AutomationWorkflowRun) =>
+    `${run.remoteWorkflowName ?? run.workflowName} ${run.status}: ${
+      run.workflowSteps
+        .map(({ name, status }) => `${name} ${status}`)
+        .sort()
+        .join(", ") || "no steps"
+    }; ${run.workflowEvents.length} events, ${run.workflowStepEmissions.length} emissions`;
 
   const records = await readAutomationReplica(replica, "orchestrationRecords", undefined);
-  const [eventSources, eventDefinitions, activeWorkflows] = await Promise.all([
-    queryOnce((query) =>
-      query.from({ source: collections.eventSources }).select(({ source }) => ({
-        id: source.source,
-        label: source.label,
-        description: source.description,
-      })),
-    ),
-    queryOnce((query) =>
-      query.from({ definition: collections.eventDefinitions }).select(({ definition }) => ({
-        source: definition.source,
-        eventType: definition.eventType,
-        label: definition.label,
-        payloadSchema: definition.payloadSchema,
-      })),
-    ),
-    queryOnce((query) => orchestrationActiveWorkflowsQuery(query, collections)),
-  ]);
-  assert.deepEqual(byJson(records.eventSources), byJson(eventSources));
-  assert.deepEqual(byJson(records.eventDefinitions), byJson(eventDefinitions));
-  assert.deepEqual(byJson(records.activeWorkflows), byJson(activeWorkflows));
-  assert.isNotEmpty(records.eventSources);
-  assert.isNotEmpty(records.eventDefinitions);
-  assert.isNotEmpty(records.activeWorkflows);
-
-  const queriedRuns = async (selector: WorkflowRunRecordSelector) =>
-    automationWorkflowRunsFromRecords(
-      await queryOnce((query) => workflowRunRecordsQuery(query, collections, selector)),
-    );
-  const allRuns = await queriedRuns({ type: "active-codemode" });
-  assert.isNotEmpty(allRuns);
-  const selectors: WorkflowRunRecordSelector[] = [
-    { type: "waiting" },
-    { type: "active-codemode" },
-    ...allRuns.map(({ workflowName, instanceId }) => ({
-      type: "instance" as const,
-      workflowName,
-      instanceId,
-    })),
-    { type: "instance", workflowName: "missing", instanceId: "missing" },
-  ];
-  // An agent conversation opens the Codemode runs it started once they record a step.
-  const instanceIds = [...allRuns.map(({ instanceId }) => instanceId), "missing"];
-  const stepsOfRuns = await queryOnce((query) =>
-    query
-      .from({ step: collections.workflowSteps })
-      .innerJoin({ instance: collections.workflowInstances }, ({ step, instance }) =>
-        eq(step.instanceRef, instance.id),
-      )
-      .where(({ instance }) => eq(instance.workflowName, CODEMODE_WORKFLOW))
-      .where(({ instance }) => inArray(instance.instanceId, instanceIds))
-      .select(({ instance }) => ({ instanceId: instance.instanceId })),
-  );
-  const startedRuns = await readAutomationReplica(replica, "startedCodemodeRuns", { instanceIds });
-  assert.isNotEmpty(startedRuns);
-  assert.deepEqual(
-    startedRuns,
-    [...new Set(stepsOfRuns.map(({ instanceId }) => instanceId))].sort(),
-  );
-
-  for (const selector of selectors) {
-    assert.deepEqual(
-      await readAutomationReplica(replica, "workflowRuns", selector),
-      (await queriedRuns(selector)).map(withoutVirtualProps),
-      JSON.stringify(selector),
-    );
-  }
-
-  // `WorkflowRunResponse` derives a run's waits from the run, as the waits collection does.
-  const waitingRuns = await readAutomationReplica(replica, "workflowRuns", { type: "waiting" });
-  assert.isNotEmpty(waitingRuns);
-  assert.deepEqual(
-    byJson(
-      waitingRuns.flatMap((run) =>
-        currentWorkflowWaits([{ id: run.id, output: run.output, steps: run.workflowSteps }]),
-      ),
-    ),
-    byJson(await queryOnce((query) => query.from({ wait: collections.workflowWaits }))),
-  );
-
+  const activeCodemode = await readAutomationReplica(replica, "workflowRuns", {
+    type: "active-codemode",
+  });
+  const waiting = await readAutomationReplica(replica, "workflowRuns", { type: "waiting" });
+  const instanceIds = [...activeCodemode.map(({ instanceId }) => instanceId), "missing"];
+  const latestEvents: Record<string, string[]> = {};
   for (const [source, eventType] of [
     ["acme", "webhook.received"],
     ["shop", "order.placed"],
     ["shop", "missing"],
   ] as const) {
-    const latest = await queryOnce((query) =>
-      query
-        .from({ event: collections.events })
-        .where(({ event }) => eq(event.source, source))
-        .where(({ event }) => eq(event.eventType, eventType))
-        .orderBy(({ event }) => event.occurredAt, "desc")
-        .orderBy(({ event }) => event.id, "desc")
-        .limit(2)
-        .select(({ event }) => ({
-          id: event.id,
-          occurredAt: event.occurredAt,
-          subject: event.subject,
-          payload: event.payload,
-        })),
-    );
-    assert.deepEqual(
-      await readAutomationReplica(replica, "latestEventsOfType", { source, eventType, limit: 2 }),
-      latest.map(withoutVirtualProps),
-      `${source}:${eventType}`,
-    );
+    latestEvents[`${source}:${eventType}`] = (
+      await readAutomationReplica(replica, "latestEventsOfType", { source, eventType, limit: 2 })
+    ).map(({ id, payload }) => `${id} ${JSON.stringify(payload)}`);
   }
+  return {
+    routes: (await readAutomationReplica(replica, "automationRoutes", undefined)).map(
+      ({ id, name, enabled, priority, trigger, action, nextOccurrenceAt }) =>
+        `${priority} ${id} "${name}"${enabled ? "" : " disabled"}: ${trigger.kind} -> ${action.kind}${nextOccurrenceAt ? ` at ${nextOccurrenceAt}` : ""}`,
+    ),
+    eventSources: records.eventSources.map(({ id, label }) => `${id}: ${label}`).sort(),
+    eventDefinitions: records.eventDefinitions
+      .map(
+        ({ source, eventType, label, payloadSchema }) =>
+          `${source}.${eventType}: ${label}${payloadSchema ? " (schema)" : ""}`,
+      )
+      .sort(),
+    activeWorkflows: records.activeWorkflows
+      .map(({ workflowName, remoteWorkflowName }) => remoteWorkflowName ?? workflowName)
+      .sort(),
+    activeCodemodeRuns: activeCodemode.map(runLine),
+    waitingRuns: waiting.map(runLine),
+    instanceRuns: await Promise.all(
+      instanceIds.map(async (instanceId) =>
+        (
+          await readAutomationReplica(replica, "workflowRuns", {
+            type: "instance",
+            workflowName: CODEMODE_WORKFLOW,
+            instanceId,
+          })
+        ).map(runLine),
+      ),
+    ),
+    startedCodemodeRuns: await readAutomationReplica(replica, "startedCodemodeRuns", {
+      instanceIds,
+    }),
+    // `WorkflowRunResponse` derives a run's waits from the run, as the waits relation does.
+    waits: waiting
+      .flatMap((run) =>
+        currentWorkflowWaits([{ id: run.id, output: run.output, steps: run.workflowSteps }]),
+      )
+      .map(
+        ({ eventType, interfaceStepKey }) =>
+          `${eventType}${interfaceStepKey ? ` asks at ${interfaceStepKey}` : ""}`,
+      ),
+    latestEvents,
+  };
 }
 
 describe("dashboard", () => {
@@ -810,9 +714,34 @@ describe("dashboard", () => {
           then.assert("the example home page shows what the dashboard shows", async (ctx) => {
             await assertHomePageMatchesDashboard(ctx);
           }),
-          then.assert("the replica reads what the TanStack collections hold", async (ctx) => {
-            await assertReplicaReadsMatchCollections(ctx);
-          }),
+          then.assert(
+            "the views beside the dashboard read the scope from the replica",
+            async (ctx) => {
+              const waitingRuns = [
+                "await-shipment waiting: shipment waiting; 0 events, 0 emissions",
+                "approve-refund waiting: approval waiting, ask for approval completed; 0 events, 0 emissions",
+              ];
+              assert.deepEqual(await readReplicaReads(ctx), {
+                routes: [
+                  '100 ship-placed-orders "Ship placed orders": event -> start_workflow',
+                  `200 new-year-digest "New year digest": schedule -> start_workflow at ${SCHEDULED_AT}`,
+                ],
+                eventSources: ["shop: Shop"],
+                eventDefinitions: ["shop.order.placed: Order placed (schema)"],
+                activeWorkflows: ["approve-refund", "await-shipment"],
+                activeCodemodeRuns: waitingRuns,
+                waitingRuns,
+                instanceRuns: [[waitingRuns[0]], [waitingRuns[1]], []],
+                startedCodemodeRuns: ["refund-1", "shipment-1"],
+                waits: ["shipped", "refund-approved asks at do:ask for approval"],
+                latestEvents: {
+                  "acme:webhook.received": ['hook-3 {"id":"hook-3"}', 'hook-2 {"id":"hook-2"}'],
+                  "shop:order.placed": ['order-1 {"id":"order-1"}'],
+                  "shop:missing": [],
+                },
+              });
+            },
+          ),
         ],
       }),
     );
@@ -881,12 +810,12 @@ describe("dashboard", () => {
               await assertHomePageMatchesDashboard(ctx);
             },
           ),
-          then.assert(
-            "the Agents directory reads what the TanStack collections hold",
-            async (ctx) => {
-              await assertAgentDirectoryMatchesCollections(ctx);
-            },
-          ),
+          then.assert("the Agents directory lists each agent with its turns", async (ctx) => {
+            assert.deepEqual(await readAgentDirectory(ctx), [
+              "assistant (built in): Answering, 1 queued, paused; turns 2",
+              "reviewer: Definition updated, 0 queued; turns none",
+            ]);
+          }),
           then.assert(
             "rebuilding the agent projections from the stored events gives the same rows",
             async (ctx) => {

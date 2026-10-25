@@ -12,8 +12,6 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 import { createCodemodeTestServer } from "@fragno-dev/codemode/testing/codemode-test-server";
 import { isWorkflowStepStartedControlPayload } from "@fragno-dev/workflows/step-emission-control";
 
-import { and, eq, queryOnce } from "@tanstack/react-db";
-
 import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
@@ -24,6 +22,7 @@ import {
   createCodemodeWorkflowInstanceInput,
   prepareCodemodeWorkflowInstance,
 } from "./engine/codemode-invocation";
+import { readAutomationReplica } from "./lofi/testing";
 import { backofficeFiles, defineBackofficeScenario, runBackofficeScenario } from "./scenario";
 import { createRouteBackedAutomationWorkflowRuntime } from "./workflow-route-runtime";
 
@@ -185,34 +184,25 @@ test("scenario TanStack DB exposes an in-flight step.do lifecycle", async () => 
           });
           await workflow.createInternalInstance(workflowInput);
 
-          const database = ctx.tanstack.automations.forOrg("org-1");
+          const replica = ctx.lofi.automations.forOrg("org-1");
+          // The run as the browser reads it, with its steps and their emissions.
+          const readRun = async () => {
+            await replica.sync();
+            const [run] = await readAutomationReplica(replica.replica, "workflowRuns", {
+              type: "instance",
+              workflowName: "codemode-script",
+              instanceId: "tanstack-live-step-run",
+            });
+            return run ?? null;
+          };
           const drainPromise = ctx.runtime.drain();
           let released = false;
           let drainCompleted = false;
           try {
             const activeEmission = await waitForValue(async () => {
-              await database.sync();
-              const instance = await queryOnce((query) =>
-                query
-                  .from({ instance: database.collections.workflowInstances })
-                  .where(({ instance }) =>
-                    and(
-                      eq(instance.workflowName, "codemode-script"),
-                      eq(instance.instanceId, "tanstack-live-step-run"),
-                    ),
-                  )
-                  .findOne(),
-              );
-              if (!instance) {
-                return null;
-              }
-              const emissions = await queryOnce((query) =>
-                query
-                  .from({ emission: database.collections.workflowStepEmissions })
-                  .where(({ emission }) => eq(emission.instanceRef, instance.id)),
-              );
+              const run = await readRun();
               return (
-                emissions.find(
+                run?.workflowStepEmissions.find(
                   (emission) =>
                     emission.actor === "system" &&
                     emission.stepKey === "do:blocked operation" &&
@@ -231,18 +221,12 @@ test("scenario TanStack DB exposes an in-flight step.do lifecycle", async () => 
             await drainPromise;
             drainCompleted = true;
 
-            await database.sync();
-            const completedStep = await queryOnce((query) =>
-              query
-                .from({ step: database.collections.workflowSteps })
-                .where(({ step }) => eq(step.stepKey, "do:blocked operation"))
-                .findOne(),
+            const completed = await readRun();
+            const completedStep = completed?.workflowSteps.find(
+              (step) => step.stepKey === "do:blocked operation",
             );
             assert.equal(completedStep?.status, "completed");
-            const remainingEmissions = await queryOnce((query) =>
-              query.from({ emission: database.collections.workflowStepEmissions }),
-            );
-            assert.equal(remainingEmissions.length, 0);
+            assert.equal(completed?.workflowStepEmissions.length, 0);
           } finally {
             if (!released) {
               await settleTestCleanupWithin(() =>

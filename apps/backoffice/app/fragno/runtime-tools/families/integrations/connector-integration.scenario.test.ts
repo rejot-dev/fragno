@@ -4,8 +4,6 @@ import { Buffer } from "node:buffer";
 
 import { integrationSetupProgressSchema } from "@fragno-dev/backoffice-api/v0/integrations";
 
-import { queryOnce } from "@tanstack/react-db";
-
 const workers = vi.hoisted(() => ({
   DurableObject: class {},
   RpcTarget: class {},
@@ -14,6 +12,7 @@ const workers = vi.hoisted(() => ({
 vi.mock("cloudflare:workers", () => workers);
 
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
+import { readAutomationReplica } from "@/fragno/automation/lofi/testing";
 
 import { InMemoryApiObject } from "../../../../../workers/api.do";
 import { InMemoryAppInstallationsObject } from "../../../../../workers/app-installations.do";
@@ -179,13 +178,11 @@ test("Connector setup resumes consent across restarts and binds the account only
       then.assert(
         "the overview titles accounts by service, adding names other than the default",
         async (ctx) => {
-          const database = ctx.tanstack.automations.forScope(owner);
-          await database.drain();
-          const connections = await queryOnce((query) =>
-            query
-              .from({ connection: database.collections.connections })
-              .orderBy(({ connection }) => connection.displayName, "asc"),
-          );
+          const replica = ctx.lofi.automations.forScope(owner);
+          await replica.drain();
+          const connections = (
+            await readAutomationReplica(replica.replica, "integrationConnections", undefined)
+          ).sort((left, right) => left.displayName.localeCompare(right.displayName));
           expect(
             connections.map(({ connectionId, displayName, kindLabel }) => ({
               connectionId,

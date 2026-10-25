@@ -1,9 +1,9 @@
+import type { LofiSqliteClient } from "@fragno-dev/lofi/sqlite";
 import { PaneSpinner } from "@fragno-private/design-system/pane-message";
 import { WorkflowRunTimeline } from "@fragno-private/design-system/workflow-run-timeline";
 import { useMemo, useState, type ReactNode } from "react";
 
 import { formatTimestamp } from "../automations/formatting";
-import type { WorkflowRunSource } from "../automations/script-view/use-script-workflow-runs";
 import type {
   AutomationWorkflowRun,
   WorkflowRunReference,
@@ -32,15 +32,15 @@ export type WorkflowRunDetailPresentation =
  * draws no frame of its own because it fills a dashboard section.
  */
 export function WorkflowRunDetail({
-  readSource,
+  replica,
   reference,
   presentation,
 }: {
-  readSource: WorkflowRunSource;
+  replica: LofiSqliteClient;
   reference: WorkflowRunReference;
   presentation: WorkflowRunDetailPresentation;
 }) {
-  const run = useWorkflowRunTimeline({ source: readSource, reference });
+  const run = useWorkflowRunTimeline({ replica, reference });
   const [ownSelectedStepId, setOwnSelectedStepId] = useState<string | null>(null);
   const stepRecordsByStepId = run.timeline?.stepRecordsByStepId;
   const stepIdsByRecordId = useMemo(

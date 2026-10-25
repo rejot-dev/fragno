@@ -10,23 +10,17 @@ import { useCurrentBackofficeContext } from "@/components/backoffice/current-con
 import { getWorkerReplica } from "@/fragno/lofi/browser-replica";
 import { useLofiView } from "@/fragno/lofi/use-lofi-view";
 
-import {
-  describeAutomationCollectionSource,
-  type AutomationCollectionSource,
-} from "../tanstack/browser-database";
 import type { automationReads } from "./replica-host";
 import { AUTOMATION_READ_VIEWS, AUTOMATION_REPLICA_SCHEMAS } from "./replica-schemas";
+import { describeAutomationReplicaSource, type AutomationReplicaSource } from "./replica-source";
 import { automationViews } from "./views";
 
 /**
  * The scope's Automations replica in this tab, served by its replica worker, with the views its
- * projections keep. It streams the same outbox as the scope's TanStack coordinator, over its own
- * connection.
+ * projections keep. Tabs of one scope share the worker that leads.
  */
-export function getAutomationReplica(
-  source: AutomationCollectionSource,
-): Promise<LofiSqliteClient> {
-  const description = describeAutomationCollectionSource(source);
+export function getAutomationReplica(source: AutomationReplicaSource): Promise<LofiSqliteClient> {
+  const description = describeAutomationReplicaSource(source);
   return getWorkerReplica({
     baseUrl: description.baseUrl,
     resourceKey: description.resourceKey,
@@ -55,12 +49,11 @@ const notCaughtUp = () => false;
  * suspending, such as the agent drawer and pages rendered on the server.
  */
 export function useCurrentAutomationReplica(): CurrentAutomationReplica {
-  const { automationCollectionSource } = useCurrentBackofficeContext();
-  const source =
-    automationCollectionSource.status === "ready" ? automationCollectionSource.source : null;
-  const sourceKey = source ? describeAutomationCollectionSource(source).resourceKey : null;
+  const { automationReplicaSource } = useCurrentBackofficeContext();
+  const source = automationReplicaSource.status === "ready" ? automationReplicaSource.source : null;
+  const sourceKey = source ? describeAutomationReplicaSource(source).resourceKey : null;
   const unavailable =
-    automationCollectionSource.status === "unavailable" ? automationCollectionSource.message : null;
+    automationReplicaSource.status === "unavailable" ? automationReplicaSource.message : null;
   const [opened, setOpened] = useState<{
     sourceKey: string;
     replica: LofiSqliteClient | null;
@@ -120,7 +113,7 @@ export const automationReadView = lofiSqliteReadViews<AutomationReads>(AUTOMATIO
 
 /**
  * The live result of one of `automationReads`. Without a replica it stays loading, so views that
- * read the TanStack collections on some pages can call it unconditionally.
+ * render before the replica opens can call it unconditionally.
  */
 export function useAutomationRead<TName extends AutomationReadName>(
   replica: LofiSqliteClient | null,

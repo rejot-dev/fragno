@@ -10,16 +10,9 @@ import { BackofficeSystemState } from "@fragno-private/design-system/system-stat
 import { useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router";
 
-import { useLiveQuery } from "@tanstack/react-db";
-
 import type { BackofficeScopeSelection } from "@/backoffice-runtime/resolved-scope";
 import { useClock } from "@/components/backoffice/use-clock";
 import { useAutomationRead, type AutomationReadData } from "@/fragno/automation/lofi/replica";
-import {
-  automationReadCollections,
-  automationReadReplica,
-  type AutomationReadSource,
-} from "@/fragno/automation/read-source";
 import {
   listAutomationEventDescriptors,
   listCapabilityEventSources,
@@ -31,7 +24,6 @@ import { toAutomationScriptIdFromAbsolutePath } from "../automations/script-reco
 import { filesScopeBasePath } from "../files/scope";
 import {
   normalizedSourceId,
-  orchestrationActiveWorkflowsQuery,
   orchestrationEventId,
   projectOrchestrationGraph,
   routeTargetId,
@@ -71,21 +63,21 @@ type OrchestrationCatalog = {
  * details beside it. The selection lives in the URL so other panels can link to a route or event.
  */
 export function OrchestrationPanel({
-  readSource,
+  replica,
   routes,
   recentEvents,
   selectedScope,
   workflowSource,
   runtimeToolCatalog,
 }: {
-  readSource: AutomationReadSource;
+  replica: LofiSqliteClient;
   routes: readonly AutomationRouteDefinition[];
   recentEvents: readonly { source: string; eventType: string }[];
   selectedScope: BackofficeScopeSelection;
   workflowSource: AutomationScriptSourceRecord;
   runtimeToolCatalog: readonly RuntimeToolWorkflowDescriptor[];
 }) {
-  const { records, errors } = useOrchestrationRecords(readSource);
+  const { records, errors } = useOrchestrationRecords(replica);
 
   // Registered capabilities describe what every scope can receive; a scope's own definitions add
   // to them and take precedence.
@@ -182,7 +174,7 @@ export function OrchestrationPanel({
               selection={inspected}
               workflowSource={workflowSource}
               runtimeToolCatalog={runtimeToolCatalog}
-              readSource={readSource}
+              replica={replica}
               filesScopePath={filesScopeBasePath(selectedScope)}
               eventPath={(source, eventType) =>
                 dashboardSelectionPath(selectedScope, {
@@ -234,7 +226,7 @@ export function ScopeOrchestration({
   }
   return (
     <OrchestrationPanel
-      readSource={{ kind: "replica", replica }}
+      replica={replica}
       routes={inputs.data.routes}
       recentEvents={inputs.data.recentEvents}
       selectedScope={loaderData.selectedScope}
@@ -256,66 +248,15 @@ const NO_ORCHESTRATION_RECORDS: OrchestrationRecords = {
  * The scope's own event sources and definitions, and its runs that have not finished, with the
  * names of those that could not be read. The graph draws what it has meanwhile.
  */
-function useOrchestrationRecords(readSource: AutomationReadSource): {
+function useOrchestrationRecords(replica: LofiSqliteClient): {
   records: OrchestrationRecords;
   errors: string[];
 } {
-  const collections = automationReadCollections(readSource);
-  const eventSourcesQuery = useLiveQuery({
-    query: (query) =>
-      collections
-        ? query.from({ source: collections.eventSources }).select(({ source }) => ({
-            id: source.source,
-            label: source.label,
-            description: source.description,
-          }))
-        : undefined,
-  });
-  const eventDefinitionsQuery = useLiveQuery({
-    query: (query) =>
-      collections
-        ? query.from({ definition: collections.eventDefinitions }).select(({ definition }) => ({
-            source: definition.source,
-            eventType: definition.eventType,
-            label: definition.label,
-            payloadSchema: definition.payloadSchema,
-          }))
-        : undefined,
-  });
-  const activeWorkflowsQuery = useLiveQuery({
-    query: (query) =>
-      collections ? orchestrationActiveWorkflowsQuery(query, collections) : undefined,
-  });
-  const replicaRead = useAutomationRead(
-    automationReadReplica(readSource),
-    "orchestrationRecords",
-    undefined,
-  );
-  const queried = useMemo(
-    (): OrchestrationRecords => ({
-      eventSources: eventSourcesQuery.data ?? [],
-      eventDefinitions: eventDefinitionsQuery.data ?? [],
-      activeWorkflows: activeWorkflowsQuery.data ?? [],
-    }),
-    [eventSourcesQuery.data, eventDefinitionsQuery.data, activeWorkflowsQuery.data],
-  );
-
-  if (readSource.kind === "replica") {
-    return {
-      records: replicaRead.status === "ready" ? replicaRead.data : NO_ORCHESTRATION_RECORDS,
-      errors:
-        replicaRead.status === "error"
-          ? ["Event sources", "event definitions", "running workflows"]
-          : [],
-    };
-  }
+  const read = useAutomationRead(replica, "orchestrationRecords", undefined);
   return {
-    records: queried,
-    errors: [
-      eventSourcesQuery.isError ? "Event sources" : null,
-      eventDefinitionsQuery.isError ? "Event definitions" : null,
-      activeWorkflowsQuery.isError ? "Running workflows" : null,
-    ].filter((label) => label !== null),
+    records: read.status === "ready" ? read.data : NO_ORCHESTRATION_RECORDS,
+    errors:
+      read.status === "error" ? ["Event sources", "event definitions", "running workflows"] : [],
   };
 }
 

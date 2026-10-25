@@ -3,12 +3,12 @@ import type {
   BackofficeResolvedScope,
 } from "@/backoffice-runtime/resolved-scope";
 import type { Organization } from "@/fragno/auth/contracts";
-import type { AutomationCollectionSource } from "@/fragno/automation/tanstack/browser-database";
+import type { AutomationReplicaSource } from "@/fragno/automation/lofi/replica-source";
 
-export type AutomationCollectionSourceState<
+export type AutomationReplicaSourceState<
   TOrganization extends BackofficeOrganizationIdentity = BackofficeOrganizationIdentity,
 > =
-  | { status: "ready"; source: AutomationCollectionSource<TOrganization> }
+  | { status: "ready"; source: AutomationReplicaSource<TOrganization> }
   | {
       status: "unavailable";
       resolvedScope: BackofficeResolvedScope<TOrganization>;
@@ -17,5 +17,5 @@ export type AutomationCollectionSourceState<
 
 export type CurrentBackofficeContext = {
   resolvedScope: BackofficeResolvedScope<Organization>;
-  automationCollectionSource: AutomationCollectionSourceState<Organization>;
+  automationReplicaSource: AutomationReplicaSourceState<Organization>;
 };

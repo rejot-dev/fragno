@@ -22,7 +22,7 @@ import type { BackofficeScopeSelection } from "@/backoffice-runtime/resolved-sco
 import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
 import { backofficePageBodyClassName } from "@/components/backoffice/page-body";
 import { getAutomationReplica, useAutomationRead } from "@/fragno/automation/lofi/replica";
-import { describeAutomationCollectionSource } from "@/fragno/automation/tanstack/browser-database";
+import { describeAutomationReplicaSource } from "@/fragno/automation/lofi/replica-source";
 import { LofiReplicaGate } from "@/fragno/lofi/replica-gate";
 import type { IntegrationConnectionRecord } from "@/fragno/runtime-tools/families/integrations/integration-connections";
 import { requireScopeSelection } from "@/layouts/backoffice-shell-request.server";
@@ -132,25 +132,25 @@ type WorkspaceProps = {
 };
 
 function IntegrationsClient(props: WorkspaceProps) {
-  const { automationCollectionSource } = useCurrentBackofficeContext();
-  if (automationCollectionSource.status === "unavailable") {
+  const { automationReplicaSource } = useCurrentBackofficeContext();
+  if (automationReplicaSource.status === "unavailable") {
     return (
       <IntegrationsPage selectedScope={props.selectedScope} connectionTabs={[]}>
         <BackofficeSystemState
           tone="error"
           label="Unavailable"
           title="Connection events could not be synchronized."
-          description={automationCollectionSource.message}
+          description={automationReplicaSource.message}
         />
       </IntegrationsPage>
     );
   }
-  const source = automationCollectionSource.source;
+  const source = automationReplicaSource.source;
   const replica = use(getAutomationReplica(source));
   return (
     <LofiReplicaGate replica={replica} title={DOWNLOAD_TITLE}>
       <IntegrationsWorkspace
-        key={describeAutomationCollectionSource(source).resourceKey}
+        key={describeAutomationReplicaSource(source).resourceKey}
         {...props}
         replica={replica}
       />

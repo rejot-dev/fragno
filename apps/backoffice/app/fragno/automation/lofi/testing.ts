@@ -1,6 +1,10 @@
 import { assert } from "vitest";
 
-import type { LofiSqliteClient, LofiSqliteGuardedResult } from "@fragno-dev/lofi/sqlite";
+import type {
+  LofiSqliteClient,
+  LofiSqliteGuardedResult,
+  SqliteValue,
+} from "@fragno-dev/lofi/sqlite";
 import { lofiSqliteTableName } from "@fragno-dev/lofi/sqlite";
 import type { PageQuery } from "@fragno-private/backoffice-ui/pages/definition";
 import { pageQueryParams } from "@fragno-private/backoffice-ui/pages/rows";
@@ -45,6 +49,29 @@ export async function readAutomationPageQuery(
     throw new Error(result.message);
   }
   return result;
+}
+
+/**
+ * The rows SQL over the page relations, such as `runs` and `events`, returns once the scope's
+ * replica holds what the runtime wrote so far, by column, as the replica stores them: times in
+ * milliseconds, booleans as 0 or 1, and JSON as text. For checking what reached the browser; drain
+ * the scope first to read what pending work writes.
+ */
+export async function queryAutomationReplica(
+  scope: ScenarioReplicaScope,
+  sql: string,
+  params: readonly SqliteValue[] = [],
+): Promise<Record<string, SqliteValue>[]> {
+  await scope.sync();
+  const result = await readScenarioReplicaView(
+    scope.replica.view<LofiSqliteGuardedResult>(AUTOMATION_PAGE_VIEWS, { sql, params }),
+  );
+  if (result.status === "error") {
+    throw new Error(result.message);
+  }
+  return result.rows.map((row) =>
+    Object.fromEntries(result.columns.map((column, index) => [column, row[index] ?? null])),
+  );
 }
 
 /**
