@@ -1,7 +1,4 @@
-import type {
-  CapabilitiesListOutput,
-  HookScopesListOutput,
-} from "@fragno-dev/backoffice-api/v0/capabilities";
+import type { HookScopesListOutput } from "@fragno-dev/backoffice-api/v0/hooks";
 import {
   type BackofficeContextScope,
   backofficeWorkspaceOrganization,
@@ -15,7 +12,6 @@ import {
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
 import {
   backofficeCapabilities,
-  getBackofficeCapabilityKind,
   listHookScopes,
   type BackofficeCapability,
   type BackofficeCapabilityContext,
@@ -34,7 +30,6 @@ import {
 } from "../runtime-tools";
 
 export type BackofficeCapabilitiesRuntime = {
-  listCapabilities(): Promise<CapabilitiesListOutput>;
   listHookScopes(): Promise<HookScopesListOutput>;
 };
 
@@ -88,23 +83,6 @@ const renderTable = (headers: readonly string[], rows: readonly (readonly unknow
   ].join("\n")}\n`;
 };
 
-const formatCapabilitiesList = (data: CapabilitiesListOutput, options: OutputOptions) =>
-  shouldReturnData(options)
-    ? dataFormat(data)
-    : {
-        stdout: renderTable(
-          ["capability", "kind", "available", "configured", "healthy", "reason"],
-          data.map((item) => [
-            item.id,
-            item.kind,
-            item.available,
-            item.configured,
-            item.healthy ?? "-",
-            item.reason ?? "",
-          ]),
-        ),
-      };
-
 const formatHookScopesList = (data: HookScopesListOutput, options: OutputOptions) =>
   shouldReturnData(options)
     ? dataFormat(data)
@@ -121,27 +99,6 @@ const formatHookScopesList = (data: HookScopesListOutput, options: OutputOptions
           ]),
         ),
       };
-
-const capabilitiesListTool = defineBackofficeRuntimeTool({
-  ...backofficeApiOperationToolFields("capabilities.list"),
-  namespace: "capabilities",
-  name: "list",
-  execute: async (_input, context: BackofficeCapabilitiesToolContext) =>
-    await getRuntime(context).listCapabilities(),
-  adapters: {
-    bash: {
-      command: "capabilities.list",
-      help: {
-        summary: "capabilities.list lists Backoffice capabilities and status.",
-        options: [],
-        examples: ["capabilities.list", "capabilities.list --format json"],
-      },
-      parse: defineNoInputArgsParser("capabilities.list"),
-      outputOptions: readOutput,
-      format: formatCapabilitiesList,
-    },
-  },
-});
 
 const hookScopesListTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("hooks.scopes.list"),
@@ -193,58 +150,6 @@ export const createBackofficeCapabilitiesRuntime = ({
   };
 
   return {
-    listCapabilities: async () =>
-      await Promise.all(
-        backofficeCapabilities.map(async (capability) => {
-          const kind = getBackofficeCapabilityKind(capability);
-          const connection = capability.contributions.connection;
-          if (!scopeSupported(capability)) {
-            return {
-              id: capability.id,
-              label: capability.label,
-              kind,
-              available: false,
-              configured: false,
-              healthy: false,
-              reason: `${capability.label} is not available in ${scope.kind} context.`,
-            };
-          }
-          if (!connection) {
-            return {
-              id: capability.id,
-              label: capability.label,
-              kind,
-              available: true,
-              configured: true,
-              healthy: true,
-            };
-          }
-          try {
-            const status = await connection.getStatus(capabilityContext);
-            return {
-              id: capability.id,
-              label: capability.label,
-              kind,
-              available: true,
-              configured: status.configured,
-              ...(status.verification ? { healthy: status.verification.ok } : {}),
-              ...(status.missing?.length
-                ? { reason: `missing: ${status.missing.join(", ")}` }
-                : {}),
-            };
-          } catch (error) {
-            return {
-              id: capability.id,
-              label: capability.label,
-              kind,
-              available: false,
-              configured: false,
-              healthy: false,
-              reason: error instanceof Error ? error.message : String(error),
-            };
-          }
-        }),
-      ),
     listHookScopes: async () => {
       const statuses = new Map(
         (await Promise.all(
@@ -283,10 +188,7 @@ export const createBackofficeCapabilitiesRuntime = ({
   };
 };
 
-export const backofficeCapabilitiesRuntimeTools = [
-  capabilitiesListTool,
-  hookScopesListTool,
-] as const;
+export const backofficeCapabilitiesRuntimeTools = [hookScopesListTool] as const;
 
 export const backofficeCapabilitiesToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "backoffice-capabilities",

@@ -111,7 +111,7 @@ type CapabilityEventSourceContribution = {
   description: string;
 };
 
-/** Reports a connection capability's configuration for capabilities.list and hooks.scopes.list. */
+/** Reports a connection capability's configuration for hooks.scopes.list. */
 type BackofficeConnectionDescriptor = {
   getStatus(input: BackofficeCapabilityContext): Promise<ConnectionStatus>;
 };

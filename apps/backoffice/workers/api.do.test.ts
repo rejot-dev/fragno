@@ -56,17 +56,13 @@ describe("API system capability", () => {
 
   test("does not advertise API or MCP in system scope", async () => {
     const runtime = await createRuntime();
-    const capabilities = createBackofficeCapabilitiesRuntime({
+    const backoffice = createBackofficeCapabilitiesRuntime({
       objects: runtime.objects,
       config: runtime.config,
       scope: { kind: "system" },
     });
 
-    const listed = await capabilities.listCapabilities();
-    expect(listed.find(({ id }) => id === "api")).toMatchObject({ available: false });
-    expect(listed.find(({ id }) => id === "mcp")).toMatchObject({ available: false });
-
-    const hookScopes = await capabilities.listHookScopes();
+    const hookScopes = await backoffice.listHookScopes();
     expect(hookScopes.map(({ id }) => id)).not.toContain("api");
     expect(hookScopes.map(({ id }) => id)).not.toContain("mcp");
   });

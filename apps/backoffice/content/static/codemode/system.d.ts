@@ -15,8 +15,6 @@
 /// <reference path="/static/codemode/providers/org.d.ts" />
 // Installed apps: review, install, grants, action approval, uninstall. Read to install or manage an app.
 /// <reference path="/static/codemode/providers/apps.d.ts" />
-// Backoffice capabilities and whether each is configured. Read to check that a service is set up.
-/// <reference path="/static/codemode/providers/capabilities.d.ts" />
 // Durable hook queues. Read to debug stuck or retrying background delivery.
 /// <reference path="/static/codemode/providers/hooks.d.ts" />
 // External service connections: set up, inspect, run actions, generate typed clients. Read for any third-party service.
@@ -82,7 +80,6 @@ interface BackofficeCodemodeScopedProviders {
   admin: AdminCodemodeProvider;
   org: OrgCodemodeProvider;
   apps: AppsCodemodeProvider;
-  capabilities: CapabilitiesCodemodeProvider;
   hooks: HooksCodemodeProvider;
   integrations: IntegrationsCodemodeProvider;
   store: StoreCodemodeProvider;

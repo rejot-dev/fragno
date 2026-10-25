@@ -301,8 +301,8 @@ describe("system automation scenarios", () => {
       };
       const fs = createScopedTestFileSystem(runtime, systemExecution);
       await expect(fs.readFile("/workspace/AGENTS.md")).resolves.toContain("Workspace guidance");
-      await expect(fs.readFile("/static/codemode/providers/capabilities.d.ts")).resolves.toContain(
-        "declare const capabilities",
+      await expect(fs.readFile("/static/codemode/providers/hooks.d.ts")).resolves.toContain(
+        "declare const hooks",
       );
 
       // Seeded files are ordinary scope-owned state, editable by authorized org members.
@@ -763,8 +763,8 @@ describe("system automation scenarios", () => {
         steps: ({ then }) => [
           then.files.contains({
             orgId: "org-1",
-            path: "/static/codemode/providers/capabilities.d.ts",
-            text: "declare const capabilities",
+            path: "/static/codemode/providers/hooks.d.ts",
+            text: "declare const hooks",
           }),
           then.files.contains({
             orgId: "org-1",

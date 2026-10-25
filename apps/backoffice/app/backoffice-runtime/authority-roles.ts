@@ -78,7 +78,6 @@ const PERSONAL_WORKSPACE_PERMISSION_DECISIONS = {
     usersManage: "deny",
   },
   apps: { read: "deny", manage: "deny" },
-  capabilities: { read: "grant" },
   cloudflare: { browserRun: "grant" },
   connections: { manage: "grant", read: "grant" },
   events: { emit: "grant", manage: "grant", read: "grant", route: "deny" },
@@ -133,7 +132,6 @@ export const USER_AUTHORITY_ROLE_PERMISSION_DECISIONS = {
       usersManage: "grant",
     },
     apps: { read: "grant", manage: "grant" },
-    capabilities: { read: "grant" },
     cloudflare: { browserRun: "grant" },
     connections: { manage: "grant", read: "grant" },
     events: { emit: "grant", manage: "grant", read: "grant", route: "grant" },
@@ -173,7 +171,6 @@ export const USER_AUTHORITY_ROLE_PERMISSION_DECISIONS = {
     },
     // Resolved from live organization roles, never from the Backoffice user role.
     apps: { read: "deny", manage: "deny" },
-    capabilities: { read: "grant" },
     cloudflare: { browserRun: "grant" },
     connections: { manage: "grant", read: "grant" },
     events: { emit: "grant", manage: "grant", read: "grant", route: "grant" },
@@ -213,7 +210,6 @@ export const USER_AUTHORITY_ROLE_PERMISSION_DECISIONS = {
       usersManage: "deny",
     },
     apps: { read: "deny", manage: "deny" },
-    capabilities: { read: "grant" },
     cloudflare: { browserRun: "deny" },
     // Integrations are not available in a workspace, so there is nothing of them to read.
     connections: { manage: "deny", read: "deny" },
