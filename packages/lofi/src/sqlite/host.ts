@@ -467,8 +467,9 @@ async function openReplicaViews(
 
 /**
  * Names the tabs that share a leader: those replicating one backend with the same schemas, which
- * open the same database. Tabs running another version of the schemas keep a replica of their own;
- * tabs running another version of a rebuildable projection share the leader's.
+ * open the same database. Tabs running another version of the schemas, or expecting another
+ * backend identity, keep a replica of their own; tabs running another version of a rebuildable
+ * projection share the leader's.
  */
 function tabGroupName(options: LofiSqliteReplicaOptions): string {
   const schemas = registrationsNamingReplica(options)
@@ -476,6 +477,7 @@ function tabGroupName(options: LofiSqliteReplicaOptions): string {
     .sort((left, right) => left.localeCompare(right));
   return `fragno-lofi-sqlite:${JSON.stringify([
     resolveFragnoInternalUrls(options.baseUrl).baseUrl,
+    options.adapterIdentity ?? null,
     schemas,
   ])}`;
 }
