@@ -1,14 +1,22 @@
 import { oauthConsentPageSchema } from "@fragno-dev/backoffice-api/v0/account";
-import { BackofficeBreadcrumbs } from "@fragno-private/design-system/breadcrumbs";
 import { Button, ButtonLink } from "@fragno-private/design-system/button";
-import { OverflowTabRow } from "@fragno-private/design-system/overflow-tab-row";
+import { DetailList } from "@fragno-private/design-system/detail-list";
+import { InlineAlert } from "@fragno-private/design-system/inline-alert";
+import {
+  SurfacePanel,
+  SurfacePanelBody,
+  SurfacePanelFooter,
+} from "@fragno-private/design-system/surface-panel";
+import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { Form, data, redirect, useNavigation } from "react-router";
 
+import { backofficePageBodyClassName } from "@/components/backoffice/page-body";
 import { callBetterAuth } from "@/fragno/auth/auth-server";
 import { requireBackofficeBrowserSession } from "@/fragno/auth/browser-session.server";
 import { backofficeOAuthConsentRevokeInputSchema } from "@/fragno/auth/oauth-consent";
 
 import type { Route } from "./+types/authorized-applications";
+import { SettingsTabs } from "./settings-tabs";
 
 export async function loader({ request, context, url }: Route.LoaderArgs) {
   await requireBackofficeBrowserSession({ request, context, url });
@@ -62,114 +70,138 @@ export default function AuthorizedApplications({
   const navigation = useNavigation();
   const pending = navigation.state !== "idle";
   return (
-    <div className="space-y-4">
-      <section className="bo-fragment-surface bo-panel-surface overflow-hidden bg-[var(--bo-header-bg)]">
-        <div className="p-3 md:px-4">
-          <h1 className="sr-only">Authorized applications</h1>
-          <BackofficeBreadcrumbs
-            items={[{ label: "Backoffice", to: "/backoffice" }, { label: "Settings" }]}
-          />
-        </div>
-        <div className="border-t border-[color:var(--bo-border)] p-2">
-          <OverflowTabRow
-            items={[
-              {
-                id: "permissions",
-                label: "My permissions",
-                to: "/backoffice/settings",
-                active: false,
-              },
-              {
-                id: "applications",
-                label: "Authorized applications",
-                to: "/backoffice/settings/authorized-applications",
-                active: true,
-              },
-            ]}
-            ariaLabel="Settings sections"
-            trailing={null}
-          />
-        </div>
-      </section>
-      <section className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)]">
-        <div className="border-b border-[color:var(--bo-border)] p-4 sm:p-5">
-          <h2 className="text-xl font-semibold text-[var(--bo-fg)]">Applications you authorized</h2>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-pretty text-[var(--bo-muted)]">
-            These are your personal OAuth authorizations, including Codemode device approval. They
-            are separate from organization app installations and permission grants.
-          </p>
-          <p className="mt-2 max-w-3xl text-xs leading-5 text-[var(--bo-muted-2)]">
-            Revoking removes the authorization and this client's refresh and stored access tokens,
-            cancels pending device approvals, and blocks new Backoffice execution credentials.
-            Previously issued self-contained tokens may remain usable elsewhere until they expire;
-            existing Backoffice execution tokens expire within 15 minutes.
-          </p>
-          {actionData ? (
-            <p role="alert" className="mt-3 text-sm text-[var(--bo-failed)]">
-              {actionData.message}
-            </p>
-          ) : null}
-        </div>
-        {page.consents.length === 0 ? (
-          <p className="p-5 text-sm text-[var(--bo-muted)]">You have no authorized applications.</p>
-        ) : (
-          <div className="divide-y divide-[color:var(--bo-border)]">
-            {page.consents.map((consent) => (
-              <article key={consent.id} className="grid gap-4 p-4 sm:p-5 md:grid-cols-[1fr_auto]">
-                <div className="min-w-0">
-                  <h3 className="font-semibold text-[var(--bo-fg)]">{consent.clientName}</h3>
-                  <p className="mt-1 font-mono text-xs break-all text-[var(--bo-muted-2)]">
-                    {consent.clientId}
-                  </p>
-                  <p className="mt-3 text-sm text-[var(--bo-muted)]">
-                    OAuth scopes:{" "}
-                    <span className="font-mono">{consent.scopes.join(", ") || "none"}</span>
-                  </p>
-                  {consent.requestedUserInfoClaims.length > 0 ? (
-                    <p className="mt-2 text-sm text-[var(--bo-muted)]">
-                      Additional userinfo claims:{" "}
-                      <span className="font-mono">
-                        {consent.requestedUserInfoClaims.join(", ")}
-                      </span>
-                    </p>
-                  ) : null}
-                  {consent.resources.length > 0 ? (
-                    <div className="mt-2 text-xs text-[var(--bo-muted)]">
-                      <p>Resources</p>
-                      <ul className="mt-1 space-y-1 font-mono break-all">
-                        {consent.resources.map((resource) => (
-                          <li key={resource}>{resource}</li>
-                        ))}
-                      </ul>
+    <div className="flex flex-1 flex-col">
+      <h1 className="sr-only">Authorized applications</h1>
+      <SettingsTabs active="applications" />
+      <div className={`${backofficePageBodyClassName} flex flex-col gap-4`}>
+        <SurfacePanel
+          caption={`${page.consents.length} ${page.consents.length === 1 ? "application" : "applications"} you authorized`}
+          actions={null}
+        >
+          <SurfacePanelBody>
+            <div className="max-w-3xl space-y-2 text-sm text-pretty text-[var(--bo-muted)]">
+              <p>
+                These are your personal OAuth authorizations, including Codemode device approval.
+                They are separate from organization app installations and permission grants.
+              </p>
+              <p className="text-xs text-[var(--bo-muted-2)]">
+                Revoking removes the authorization and this client&apos;s refresh and stored access
+                tokens, cancels pending device approvals, and blocks new Backoffice execution
+                credentials. Previously issued self-contained tokens may remain usable elsewhere
+                until they expire; existing Backoffice execution tokens expire within 15 minutes.
+              </p>
+              {actionData ? <InlineAlert>{actionData.message}</InlineAlert> : null}
+            </div>
+          </SurfacePanelBody>
+          {page.consents.length === 0 ? (
+            <BackofficeSystemState
+              tone="empty"
+              title="You have no authorized applications."
+              description="Applications you approve, such as Codemode, appear here."
+              flush
+            />
+          ) : (
+            <ul className="divide-y divide-[color:var(--bo-border)] border-t border-[color:var(--bo-border)]">
+              {page.consents.map((consent) => (
+                <li
+                  key={consent.id}
+                  className="flex flex-col gap-3 px-4 py-4 md:flex-row md:items-start md:justify-between"
+                >
+                  <div className="min-w-0 space-y-2">
+                    <div>
+                      <h2 className="font-semibold text-[var(--bo-fg)]">{consent.clientName}</h2>
+                      <p className="font-mono text-[11px] break-all text-[var(--bo-muted-2)]">
+                        {consent.clientId}
+                      </p>
                     </div>
-                  ) : null}
-                  <p className="mt-2 text-xs text-[var(--bo-muted-2)]">
-                    Last approved: <time dateTime={consent.updatedAt}>{consent.updatedAt}</time>
-                  </p>
-                </div>
-                <Form method="post" className="self-start">
-                  <input type="hidden" name="clientId" value={consent.clientId} />
-                  <Button
-                    variant="secondary"
-                    type="submit"
-                    disabled={pending}
-                    aria-label={`Revoke access for ${consent.clientName}`}
-                  >
-                    {pending && navigation.formData?.get("clientId") === consent.clientId
-                      ? "Revoking…"
-                      : "Revoke access"}
-                  </Button>
-                </Form>
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
-      {page.nextCursor !== null ? (
-        <ButtonLink variant="secondary" to={`?cursor=${encodeURIComponent(page.nextCursor)}`}>
-          Next page
-        </ButtonLink>
-      ) : null}
+                    <DetailList
+                      items={[
+                        {
+                          key: "scopes",
+                          label: "OAuth scopes",
+                          value: (
+                            <span className="font-mono break-all">
+                              {consent.scopes.join(", ") || "none"}
+                            </span>
+                          ),
+                        },
+                        ...(consent.requestedUserInfoClaims.length > 0
+                          ? [
+                              {
+                                key: "claims",
+                                label: "Additional userinfo claims",
+                                value: (
+                                  <span className="font-mono break-all">
+                                    {consent.requestedUserInfoClaims.join(", ")}
+                                  </span>
+                                ),
+                              },
+                            ]
+                          : []),
+                        ...(consent.resources.length > 0
+                          ? [
+                              {
+                                key: "resources",
+                                label: "Resources",
+                                value: (
+                                  <ul className="space-y-0.5 font-mono break-all">
+                                    {consent.resources.map((resource) => (
+                                      <li key={resource}>{resource}</li>
+                                    ))}
+                                  </ul>
+                                ),
+                              },
+                            ]
+                          : []),
+                        {
+                          key: "approved",
+                          label: "Last approved",
+                          value: (
+                            <time dateTime={consent.updatedAt}>
+                              {formatApprovedAt(consent.updatedAt)}
+                            </time>
+                          ),
+                        },
+                      ]}
+                    />
+                  </div>
+                  <Form method="post" className="shrink-0">
+                    <input type="hidden" name="clientId" value={consent.clientId} />
+                    <Button
+                      variant="danger"
+                      type="submit"
+                      disabled={pending}
+                      aria-label={`Revoke access for ${consent.clientName}`}
+                    >
+                      {pending && navigation.formData?.get("clientId") === consent.clientId
+                        ? "Revoking…"
+                        : "Revoke access"}
+                    </Button>
+                  </Form>
+                </li>
+              ))}
+            </ul>
+          )}
+          {page.nextCursor !== null ? (
+            <SurfacePanelFooter>
+              <ButtonLink variant="secondary" to={`?cursor=${encodeURIComponent(page.nextCursor)}`}>
+                Next page
+              </ButtonLink>
+            </SurfacePanelFooter>
+          ) : null}
+        </SurfacePanel>
+      </div>
     </div>
   );
+}
+
+const APPROVED_AT_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  dateStyle: "medium",
+  timeStyle: "short",
+  // UTC keeps the server render and the hydrated page identical.
+  timeZone: "UTC",
+});
+
+function formatApprovedAt(value: string) {
+  return `${APPROVED_AT_FORMATTER.format(new Date(value))} UTC`;
 }
