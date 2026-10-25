@@ -1,21 +1,22 @@
-import { Button, ButtonLink } from "@fragno-private/design-system/button";
-import { Input } from "@fragno-private/design-system/input";
-import { OverflowTabRow } from "@fragno-private/design-system/overflow-tab-row";
+import { ButtonLink } from "@fragno-private/design-system/button";
+import { PageHeading } from "@fragno-private/design-system/page-heading";
+import { Select } from "@fragno-private/design-system/select";
+import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
 import {
-  SurfacePanel,
+  SurfaceCard,
   SurfacePanelFooter,
   SurfaceTable,
+  SurfaceTableGroupRow,
   SurfaceTableRow,
 } from "@fragno-private/design-system/surface-panel";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
-import { Form, Link, redirect, useNavigation, useOutletContext } from "react-router";
-import { z } from "zod";
+import { Fragment } from "react";
+import { Link, useNavigate, useOutletContext } from "react-router";
 
-import { formatAmount } from "../../workers/books/money";
 import type { Route } from "./+types/journal";
-import { accountLabel, indexBooks } from "./books";
-import { formResult, parseForm, requireBooks, requireBooksSubmission } from "./books.server";
-import { FormError } from "./forms";
+import { entryPath, formatDate, indexBooks } from "./books";
+import { requireBooks } from "./books.server";
+import { LINE_COLUMNS, lineCells } from "./entry-lines";
 import type { BooksOutletContext } from "./layout";
 
 export function meta() {
@@ -43,81 +44,58 @@ export function headers() {
   return { "Cache-Control": "private, no-store" };
 }
 
-const reverseSchema = z.object({
-  intent: z.literal("reverse"),
-  entryId: z.string().min(1),
-  postingDate: z.iso.date("Choose the date to reverse the entry on."),
-});
-
-/** Reverses an entry: posts its lines again, sides swapped, on the date chosen. */
-export async function action({ request, params }: Route.ActionArgs) {
-  const { user, books } = await requireBooksSubmission(request, params, "keep");
-  const parsed = await parseForm(request, reverseSchema);
-  if ("refusal" in parsed) {
-    return parsed.refusal;
-  }
-  const { entryId, postingDate } = parsed.data;
-  const outcome = await books.reverseEntry({
-    entryId,
-    postingDate,
-    description: "Reversal",
-    postedBy: user.name,
-  });
-  if (!outcome.ok) {
-    return formResult(parsed.resultIntent, outcome);
-  }
-  // The reversal is the journal's newest entry: the first page shows it.
-  const url = new URL(request.url);
-  url.searchParams.delete("cursor");
-  url.searchParams.delete("index");
-  throw redirect(url.pathname + url.search);
-}
-
-const LINE_COLUMNS = [
-  { label: "Account", align: "start" },
-  { label: "Description", align: "start" },
-  { label: "Debit", align: "end" },
-  { label: "Credit", align: "end" },
-] as const;
-
-export default function JournalPage({ loaderData, actionData }: Route.ComponentProps) {
-  const { books, base } = useOutletContext<BooksOutletContext>();
-  const navigation = useNavigation();
+export default function JournalPage({ loaderData }: Route.ComponentProps) {
+  const context = useOutletContext<BooksOutletContext>();
+  const { books, base } = context;
+  const navigate = useNavigate();
   const { journalId, entries, paged } = loaderData;
   const index = indexBooks(books);
   const journal = journalId === null ? undefined : index.journals.get(journalId);
   if (!journal) {
     return (
-      <BackofficeSystemState
-        tone="empty"
-        label="Journal"
-        title="No journals yet"
-        description="Add a journal in the books' settings to start posting entries."
-      />
+      <>
+        <PageHeading eyebrow={books.name} title="Journal" meta={null} actions={null} />
+        <BackofficeSystemState
+          tone="empty"
+          label="Journal"
+          title="No journals yet"
+          description="Add a journal in the books' settings to start posting entries."
+        />
+      </>
     );
   }
-  const functionalDigits = index.minorUnitDigits(books.functionalCurrency);
   const journalPath = `${base}?journal=${journal.id}`;
+  const count = journal.lastEntryNumber;
   return (
-    <div className="space-y-4">
-      <OverflowTabRow
-        ariaLabel="Journals"
-        trailing={null}
-        items={books.journals.map((row) => ({
-          id: row.id,
-          label: row.name,
-          to: `${base}?journal=${row.id}`,
-          active: row.id === journal.id,
-        }))}
-      />
-      <SurfacePanel
-        caption={`${journal.code} ${journal.name} · ${journal.lastEntryNumber} ${journal.lastEntryNumber === 1 ? "entry" : "entries"}`}
+    <>
+      <PageHeading
+        eyebrow={books.name}
+        title={`${journal.name} journal`}
+        meta={`${count} ${count === 1 ? "entry" : "entries"} · amounts in ${books.functionalCurrency}`}
         actions={
-          <ButtonLink variant="accent" to={`${base}/entries/new?journal=${journal.id}`}>
-            New entry
-          </ButtonLink>
+          <>
+            <div className="w-48">
+              <Select
+                aria-label="Journal"
+                options={books.journals.map((row) => ({
+                  label: `${row.code} · ${row.name}`,
+                  value: row.id,
+                }))}
+                value={journal.id}
+                onValueChange={(id) => {
+                  if (id !== null && id !== journal.id) {
+                    void navigate(`${base}?journal=${id}`);
+                  }
+                }}
+              />
+            </div>
+            <ButtonLink variant="solid" to={`${base}/entries/new?journal=${journal.id}`}>
+              New entry
+            </ButtonLink>
+          </>
         }
-      >
+      />
+      <SurfaceCard>
         {entries.items.length === 0 ? (
           <BackofficeSystemState
             flush
@@ -126,117 +104,66 @@ export default function JournalPage({ loaderData, actionData }: Route.ComponentP
             title="No entries yet"
             description="Entries posted to this journal show here, newest first."
           />
-        ) : null}
-      </SurfacePanel>
-      {entries.items.map((entry) => {
-        const intent = `reverse-${entry.id}`;
-        return (
-          <SurfacePanel
-            key={entry.id}
-            caption={[
-              `${journal.code} ${entry.entryNumber}`,
-              entry.postingDate,
-              ...(entry.reference === null ? [] : [entry.reference]),
-              entry.description,
-            ].join(" · ")}
-            actions={
-              entry.reverses ? (
-                <span className="text-xs text-[var(--bo-muted)]">
-                  Reverses {journal.code} {entry.reverses.entryNumber}
-                </span>
-              ) : entry.reversedBy ? (
-                <span className="text-xs text-[var(--bo-muted)]">
-                  Reversed by {journal.code} {entry.reversedBy.entryNumber}
-                </span>
-              ) : (
-                <Form method="post" className="flex items-center gap-2">
-                  <input type="hidden" name="intent" value="reverse" />
-                  {/* Each entry has its own form. */}
-                  <input type="hidden" name="resultIntent" value={intent} />
-                  <input type="hidden" name="entryId" value={entry.id} />
-                  <Input
-                    density="compact"
-                    type="date"
-                    name="postingDate"
-                    defaultValue={entry.postingDate}
-                    aria-label={`Date to reverse ${journal.code} ${entry.entryNumber} on`}
-                    required
-                  />
-                  <Button type="submit" variant="ghost" disabled={navigation.state !== "idle"}>
-                    Reverse
-                  </Button>
-                </Form>
-              )
-            }
-          >
-            <SurfaceTable columns={LINE_COLUMNS}>
-              {entry.lines.map((line) => {
-                const account = index.accounts.get(line.accountId)!;
-                const partyAccount =
-                  line.openItem && index.partyAccounts.get(line.openItem.partyAccountId)!;
-                const amount = formatAmount(line.functionalAmountMinor, functionalDigits);
-                const foreign =
-                  line.currency === books.functionalCurrency
-                    ? null
-                    : `${line.currency} ${formatAmount(line.amountMinor, index.minorUnitDigits(line.currency))}`;
-                const dimensions = line.dimensionValueIds.map(
-                  (valueId) => index.dimensionValues.get(valueId)!.name,
-                );
-                return (
+        ) : (
+          <SurfaceTable columns={LINE_COLUMNS}>
+            {entries.items.map((entry) => (
+              <Fragment key={entry.id}>
+                <SurfaceTableGroupRow columns={LINE_COLUMNS}>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                    <Link
+                      to={entryPath(base, journal.code, entry.entryNumber)}
+                      className="font-semibold tabular-nums hover:underline"
+                    >
+                      {journal.code} {entry.entryNumber}
+                    </Link>
+                    <span className="text-[var(--bo-muted)] tabular-nums">
+                      {formatDate(entry.postingDate)}
+                    </span>
+                    <span className="min-w-0 font-medium">{entry.description}</span>
+                    {entry.reference === null ? null : (
+                      <span className="text-[var(--bo-muted)]">Ref. {entry.reference}</span>
+                    )}
+                    <span className="ml-auto flex items-center gap-3">
+                      {entry.reverses ? (
+                        <BackofficeStatusLight tone="muted">
+                          Reverses {journal.code} {entry.reverses.entryNumber}
+                        </BackofficeStatusLight>
+                      ) : null}
+                      {entry.reversedBy ? (
+                        <BackofficeStatusLight tone="waiting">
+                          Reversed by {journal.code} {entry.reversedBy.entryNumber}
+                        </BackofficeStatusLight>
+                      ) : null}
+                      <span className="text-xs text-[var(--bo-muted-2)]">{entry.postedBy}</span>
+                    </span>
+                  </div>
+                </SurfaceTableGroupRow>
+                {entry.lines.map((line) => (
                   <SurfaceTableRow
                     key={line.id}
                     columns={LINE_COLUMNS}
-                    // Fixed widths line the columns of every entry's table up.
-                    cells={[
-                      <Link
-                        key="account"
-                        to={`${base}/accounts/${account.id}`}
-                        className="inline-block w-56"
-                      >
-                        {accountLabel(account)}
-                      </Link>,
-                      [
-                        line.description,
-                        partyAccount && `${partyAccount.party.name} (${partyAccount.code})`,
-                        foreign,
-                        ...dimensions,
-                      ]
-                        .filter((part) => part !== null && part !== "")
-                        .join(" · "),
-                      <span key="debit" className="inline-block w-24">
-                        {line.side === "debit" ? amount : ""}
-                      </span>,
-                      <span key="credit" className="inline-block w-24">
-                        {line.side === "credit" ? amount : ""}
-                      </span>,
-                    ]}
+                    cells={lineCells(line, context, index)}
                   />
-                );
-              })}
-            </SurfaceTable>
-            <SurfacePanelFooter>
-              <span className="mr-auto text-xs text-[var(--bo-muted)]">
-                Posted by {entry.postedBy}
-              </span>
-              <FormError result={actionData} intent={intent} />
-            </SurfacePanelFooter>
-          </SurfacePanel>
-        );
-      })}
-      {entries.cursor !== null || paged ? (
-        <div className="flex justify-end gap-2">
-          {paged ? (
-            <ButtonLink variant="ghost" to={journalPath}>
-              Newest entries
-            </ButtonLink>
-          ) : null}
-          {entries.cursor !== null ? (
-            <ButtonLink variant="secondary" to={`${journalPath}&cursor=${entries.cursor}`}>
-              Older entries
-            </ButtonLink>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
+                ))}
+              </Fragment>
+            ))}
+          </SurfaceTable>
+        )}
+        {entries.cursor !== null || paged ? (
+          <SurfacePanelFooter>
+            {paged ? (
+              <ButtonLink variant="ghost" to={journalPath}>
+                Newest entries
+              </ButtonLink>
+            ) : null}
+            {entries.cursor !== null ? (
+              <ButtonLink variant="secondary" to={`${journalPath}&cursor=${entries.cursor}`}>
+                Older entries
+              </ButtonLink>
+            ) : null}
+          </SurfacePanelFooter>
+        ) : null}
+      </SurfaceCard>
+    </>
   );
 }

@@ -1,17 +1,16 @@
-import { Button, ButtonLink } from "@fragno-private/design-system/button";
+import { ButtonLink } from "@fragno-private/design-system/button";
 import { Field } from "@fragno-private/design-system/field";
 import { Input } from "@fragno-private/design-system/input";
+import { PageHeading } from "@fragno-private/design-system/page-heading";
 import { Select } from "@fragno-private/design-system/select";
 import {
-  SurfaceFacts,
-  SurfacePanel,
-  SurfacePanelBody,
+  SurfaceCard,
   SurfacePanelFooter,
   SurfaceTable,
   SurfaceTableRow,
 } from "@fragno-private/design-system/surface-panel";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
-import { Form, Link, useNavigation, useOutletContext } from "react-router";
+import { Link, useOutletContext } from "react-router";
 import { z } from "zod";
 
 import { formatAmount } from "../../workers/books/money";
@@ -21,6 +20,8 @@ import {
   accountKind,
   accountLabel,
   DIMENSION_RULE_OPTIONS,
+  entryPath,
+  formatDate,
   indexBooks,
 } from "./books";
 import {
@@ -31,7 +32,7 @@ import {
   requireBooksSubmission,
   type FormResult,
 } from "./books.server";
-import { FormError } from "./forms";
+import { FormDialog } from "./forms";
 import type { BooksOutletContext } from "./layout";
 
 export function meta() {
@@ -97,36 +98,71 @@ const COLUMNS = [
 
 export default function AccountPage({ loaderData, actionData, params }: Route.ComponentProps) {
   const { books, base, canSetUp } = useOutletContext<BooksOutletContext>();
-  const navigation = useNavigation();
   const index = indexBooks(books);
   const account = index.accounts.get(params.accountId)!;
   const { lines, paged } = loaderData;
   const functionalDigits = index.minorUnitDigits(books.functionalCurrency);
   const accountPath = `${base}/accounts/${account.id}`;
   return (
-    <div className="space-y-6">
-      <SurfacePanel
-        caption={accountLabel(account)}
-        actions={
-          <ButtonLink variant="ghost" to={`${base}/accounts`}>
-            All accounts
-          </ButtonLink>
+    <>
+      <PageHeading
+        eyebrow={
+          <Link to={`${base}/accounts`} className="hover:underline">
+            Chart of accounts
+          </Link>
         }
-      >
-        <SurfaceFacts
-          items={[
-            { key: "kind", label: "Kind", value: ACCOUNT_KINDS[accountKind(account)].label },
-            {
-              key: "side",
-              label: "Normal side",
-              value: account.normalSide === "debit" ? "Debit" : "Credit",
-            },
-            { key: "currency", label: "Currency", value: account.currency ?? "Any" },
-            { key: "status", label: "Status", value: account.active ? "Active" : "Inactive" },
-          ]}
-        />
-      </SurfacePanel>
-      <SurfacePanel caption="Lines" actions={null}>
+        title={accountLabel(account)}
+        meta={[
+          ACCOUNT_KINDS[accountKind(account)].label,
+          `${account.normalSide === "debit" ? "Debit" : "Credit"} normal side`,
+          account.currency === null ? "Any currency" : `${account.currency} only`,
+          ...(account.active ? [] : ["Inactive"]),
+        ].join(" · ")}
+        actions={
+          canSetUp ? (
+            <FormDialog
+              label="Edit account"
+              variant="secondary"
+              title={`Edit ${accountLabel(account)}`}
+              description="An account's kind, normal side, and currency never change, so what was posted keeps its meaning. Make it inactive and add a new account instead."
+              intent={INTENT}
+              resultIntent={INTENT}
+              submit="Save account"
+              result={actionData}
+            >
+              <div className="grid gap-4 sm:grid-cols-[1fr_10rem]">
+                <Field label="Name">
+                  <Input className="w-full" name="name" defaultValue={account.name} required />
+                </Field>
+                <Field label="Status">
+                  <Select
+                    name="status"
+                    options={[
+                      { label: "Active", value: "active" },
+                      { label: "Inactive", value: "inactive" },
+                    ]}
+                    defaultValue={account.active ? "active" : "inactive"}
+                  />
+                </Field>
+              </div>
+              {books.dimensions.length > 0 ? (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {books.dimensions.map((dimension) => (
+                    <Field key={dimension.id} label={dimension.name}>
+                      <Select
+                        name={`dimension.${dimension.id}`}
+                        options={DIMENSION_RULE_OPTIONS}
+                        defaultValue={account.dimensionRules[dimension.id] ?? "optional"}
+                      />
+                    </Field>
+                  ))}
+                </div>
+              ) : null}
+            </FormDialog>
+          ) : null
+        }
+      />
+      <SurfaceCard>
         {lines.items.length === 0 ? (
           <BackofficeSystemState
             flush
@@ -149,8 +185,14 @@ export default function AccountPage({ loaderData, actionData, params }: Route.Co
                   key={line.id}
                   columns={COLUMNS}
                   cells={[
-                    line.postingDate,
-                    <Link key="entry" to={`${base}?journal=${journal.id}`}>
+                    <span key="date" className="whitespace-nowrap tabular-nums">
+                      {formatDate(line.postingDate)}
+                    </span>,
+                    <Link
+                      key="entry"
+                      to={entryPath(base, journal.code, line.entryNumber)}
+                      className="font-medium whitespace-nowrap text-[var(--bo-fg)] tabular-nums hover:underline"
+                    >
                       {journal.code} {line.entryNumber}
                     </Link>,
                     [line.description, foreign].filter((part) => part).join(" · "),
@@ -176,53 +218,7 @@ export default function AccountPage({ loaderData, actionData, params }: Route.Co
             ) : null}
           </SurfacePanelFooter>
         ) : null}
-      </SurfacePanel>
-      {canSetUp ? (
-        <SurfacePanel caption="Change account" actions={null}>
-          <SurfacePanelBody>
-            <p className="mb-4 max-w-2xl text-sm text-[var(--bo-muted)]">
-              An account's kind, normal side, and currency never change, so what was posted keeps
-              its meaning. Make it inactive and add a new account instead.
-            </p>
-            {/* Keyed by account so another account's page starts from its own values. */}
-            <Form method="post" key={account.id} className="max-w-2xl space-y-4">
-              <input type="hidden" name="intent" value={INTENT} />
-              <div className="grid gap-4 sm:grid-cols-[1fr_12rem]">
-                <Field label="Name">
-                  <Input className="w-full" name="name" defaultValue={account.name} required />
-                </Field>
-                <Field label="Status">
-                  <Select
-                    name="status"
-                    options={[
-                      { label: "Active", value: "active" },
-                      { label: "Inactive", value: "inactive" },
-                    ]}
-                    defaultValue={account.active ? "active" : "inactive"}
-                  />
-                </Field>
-              </div>
-              {books.dimensions.length > 0 ? (
-                <div className="grid gap-4 sm:grid-cols-3">
-                  {books.dimensions.map((dimension) => (
-                    <Field key={dimension.id} label={dimension.name}>
-                      <Select
-                        name={`dimension.${dimension.id}`}
-                        options={DIMENSION_RULE_OPTIONS}
-                        defaultValue={account.dimensionRules[dimension.id] ?? "optional"}
-                      />
-                    </Field>
-                  ))}
-                </div>
-              ) : null}
-              <FormError result={actionData} intent={INTENT} />
-              <Button type="submit" variant="accent" disabled={navigation.state !== "idle"}>
-                Save account
-              </Button>
-            </Form>
-          </SurfacePanelBody>
-        </SurfacePanel>
-      ) : null}
-    </div>
+      </SurfaceCard>
+    </>
   );
 }

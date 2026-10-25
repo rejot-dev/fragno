@@ -2,8 +2,10 @@ import { Button, ButtonLink, IconButton } from "@fragno-private/design-system/bu
 import { Field } from "@fragno-private/design-system/field";
 import { Icon } from "@fragno-private/design-system/icon";
 import { Input } from "@fragno-private/design-system/input";
+import { PageHeading } from "@fragno-private/design-system/page-heading";
 import { Select } from "@fragno-private/design-system/select";
-import { SurfacePanel, SurfacePanelBody } from "@fragno-private/design-system/surface-panel";
+import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
+import { SurfaceCard, SurfacePanelBody } from "@fragno-private/design-system/surface-panel";
 import { useState } from "react";
 import { Form, redirect, useNavigation, useOutletContext } from "react-router";
 import { z } from "zod";
@@ -12,7 +14,7 @@ import type { Books } from "../../workers/books/books";
 import { today } from "../../workers/books/fiscal-years";
 import { formatAmount, parseAmount } from "../../workers/books/money";
 import type { Route } from "./+types/new-entry";
-import { accountLabel, indexBooks } from "./books";
+import { accountLabel, booksPath, indexBooks } from "./books";
 import { requireBooks, requireBooksSubmission, type FormResult } from "./books.server";
 import { FormError } from "./forms";
 import type { BooksOutletContext } from "./layout";
@@ -148,8 +150,7 @@ export async function action({ request, params }: Route.ActionArgs): Promise<For
   if (!outcome.ok) {
     return { intent: INTENT, error: outcome.message };
   }
-  const base = new URL(request.url).pathname.replace(/\/entries\/new$/u, "");
-  throw redirect(`${base}?journal=${journalId}`);
+  throw redirect(`${booksPath(params)}?journal=${journalId}`);
 }
 
 /** What the form tracks of a line to show its totals and the fields its account needs. */
@@ -189,57 +190,75 @@ export default function NewEntryPage({ loaderData, actionData }: Route.Component
   const debits = lines.reduce((sum, line) => sum + functionalAmount(line, "debit"), 0n);
   const credits = lines.reduce((sum, line) => sum + functionalAmount(line, "credit"), 0n);
   const activeAccounts = books.accounts.filter((account) => account.active);
+  const difference = debits - credits;
+  const grid =
+    "grid items-center gap-2 md:grid-cols-[minmax(14rem,18rem)_1fr_8.5rem_8.5rem_2.25rem]";
 
   return (
-    <SurfacePanel caption="New entry" actions={null}>
-      <SurfacePanelBody>
-        <Form method="post" className="space-y-6">
-          <div className="grid gap-4 md:grid-cols-[1fr_12rem_10rem_2fr]">
-            <Field label="Journal">
-              <Select
-                name="journalId"
-                options={books.journals.map((journal) => ({
-                  label: `${journal.code} ${journal.name}`,
-                  value: journal.id,
-                }))}
-                defaultValue={loaderData.journalId ?? books.journals[0]?.id ?? null}
-                required
-              />
-            </Field>
-            <Field label="Date">
-              <Input
-                className="w-full"
-                type="date"
-                name="postingDate"
-                defaultValue={loaderData.today}
-                required
-              />
-            </Field>
-            <Field label="Reference">
-              <Input className="w-full" name="reference" placeholder="e.g. invoice number" />
-            </Field>
-            <Field label="Description">
-              <Input className="w-full" name="description" required />
-            </Field>
-          </div>
+    <>
+      <PageHeading eyebrow={books.name} title="New entry" meta={null} actions={null} />
+      <SurfaceCard>
+        <Form method="post">
+          <SurfacePanelBody>
+            <div className="grid gap-4 md:grid-cols-[14rem_11rem_11rem_1fr]">
+              <Field label="Journal">
+                <Select
+                  name="journalId"
+                  options={books.journals.map((journal) => ({
+                    label: `${journal.code} · ${journal.name}`,
+                    value: journal.id,
+                  }))}
+                  defaultValue={loaderData.journalId ?? books.journals[0]?.id ?? null}
+                  required
+                />
+              </Field>
+              <Field label="Date">
+                <Input
+                  className="w-full"
+                  type="date"
+                  name="postingDate"
+                  defaultValue={loaderData.today}
+                  required
+                />
+              </Field>
+              <Field label="Reference">
+                <Input className="w-full" name="reference" placeholder="Invoice number" />
+              </Field>
+              <Field label="Description">
+                <Input className="w-full" name="description" required />
+              </Field>
+            </div>
+          </SurfacePanelBody>
 
-          <div className="space-y-3">
+          <div className="border-t border-[color:var(--bo-border)] px-4 pt-3 pb-2">
+            <div
+              aria-hidden="true"
+              className={`${grid} hidden pb-2 text-xs font-medium text-[var(--bo-muted-2)] md:grid`}
+            >
+              <span>Account</span>
+              <span>Description</span>
+              <span className="text-right">Debit</span>
+              <span className="text-right">Credit</span>
+              <span />
+            </div>
             {lines.map((line, position) => {
               const account = index.accounts.get(line.accountId);
               const label = `Line ${position + 1}`;
               const foreign = line.currency !== books.functionalCurrency;
-              const partyAccounts = account
+              const control = account !== undefined && account.role !== "ordinary";
+              const partyAccounts = control
                 ? [...index.partyAccounts.values()].filter(
                     (partyAccount) => partyAccount.controlAccountId === account.id,
                   )
                 : [];
+              const details = control || books.currencies.length > 1 || books.dimensions.length > 0;
               return (
                 <fieldset
                   key={line.key}
-                  className="space-y-2 border-b border-[var(--bo-border)] pb-3"
+                  className="space-y-2 border-b border-[var(--bo-border)] py-2 last:border-b-0"
                   aria-label={label}
                 >
-                  <div className="grid items-center gap-2 md:grid-cols-[16rem_1fr_9rem_9rem_auto]">
+                  <div className={grid}>
                     <Select
                       aria-label={`${label} account`}
                       name={`lines.${line.key}.accountId`}
@@ -247,7 +266,7 @@ export default function NewEntryPage({ loaderData, actionData }: Route.Component
                         label: accountLabel(row),
                         value: row.id,
                       }))}
-                      placeholder="Account"
+                      placeholder="Choose an account"
                       value={line.accountId}
                       onValueChange={(accountId) => {
                         update(line.key, { accountId: accountId ?? "" });
@@ -256,13 +275,12 @@ export default function NewEntryPage({ loaderData, actionData }: Route.Component
                     <Input
                       aria-label={`${label} description`}
                       name={`lines.${line.key}.description`}
-                      placeholder="Description"
+                      placeholder="Optional"
                     />
                     <Input
                       aria-label={`${label} debit`}
                       name={`lines.${line.key}.debit`}
                       inputMode="decimal"
-                      placeholder="Debit"
                       className="text-right tabular-nums"
                       value={line.debit}
                       onChange={(event) => {
@@ -273,7 +291,6 @@ export default function NewEntryPage({ loaderData, actionData }: Route.Component
                       aria-label={`${label} credit`}
                       name={`lines.${line.key}.credit`}
                       inputMode="decimal"
-                      placeholder="Credit"
                       className="text-right tabular-nums"
                       value={line.credit}
                       onChange={(event) => {
@@ -290,82 +307,93 @@ export default function NewEntryPage({ loaderData, actionData }: Route.Component
                       <Icon name="x" className="size-4" />
                     </IconButton>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    {books.currencies.length > 1 ? (
-                      <div className="w-28">
-                        <Select
-                          aria-label={`${label} currency`}
-                          name={`lines.${line.key}.currency`}
-                          density="compact"
-                          options={books.currencies.map((row) => ({
-                            label: row.code,
-                            value: row.code,
-                          }))}
-                          value={line.currency}
-                          onValueChange={(currency) => {
-                            update(line.key, { currency: currency ?? books.functionalCurrency });
-                          }}
-                        />
-                      </div>
-                    ) : null}
-                    {foreign ? (
-                      <Input
-                        aria-label={`${label} amount in ${books.functionalCurrency}`}
-                        name={`lines.${line.key}.functionalAmount`}
-                        density="compact"
-                        inputMode="decimal"
-                        placeholder={`Amount in ${books.functionalCurrency}`}
-                        value={line.functionalAmount}
-                        onChange={(event) => {
-                          update(line.key, { functionalAmount: event.target.value });
-                        }}
-                      />
-                    ) : null}
-                    {account && account.role !== "ordinary" ? (
-                      <>
-                        <div className="w-64">
+                  {details ? (
+                    <div className="flex flex-wrap items-center gap-2 md:pl-4">
+                      {control ? (
+                        <>
+                          <div className="w-64">
+                            <Select
+                              aria-label={`${label} ${account.role === "receivable" ? "customer" : "supplier"}`}
+                              name={`lines.${line.key}.partyAccountId`}
+                              density="compact"
+                              options={partyAccounts.map((partyAccount) => ({
+                                label: `${partyAccount.code} · ${partyAccount.party.name}`,
+                                value: partyAccount.id,
+                              }))}
+                              placeholder={
+                                account.role === "receivable"
+                                  ? "Choose a customer"
+                                  : "Choose a supplier"
+                              }
+                            />
+                          </div>
+                          <label className="flex items-center gap-2 text-xs text-[var(--bo-muted)]">
+                            Due
+                            <Input
+                              aria-label={`${label} due date`}
+                              name={`lines.${line.key}.dueDate`}
+                              density="compact"
+                              type="date"
+                            />
+                          </label>
+                        </>
+                      ) : null}
+                      {books.currencies.length > 1 ? (
+                        <div className="w-24">
                           <Select
-                            aria-label={`${label} ${account.role === "receivable" ? "customer" : "supplier"}`}
-                            name={`lines.${line.key}.partyAccountId`}
+                            aria-label={`${label} currency`}
+                            name={`lines.${line.key}.currency`}
                             density="compact"
-                            options={partyAccounts.map((partyAccount) => ({
-                              label: `${partyAccount.code} ${partyAccount.party.name}`,
-                              value: partyAccount.id,
+                            options={books.currencies.map((row) => ({
+                              label: row.code,
+                              value: row.code,
                             }))}
-                            placeholder={account.role === "receivable" ? "Customer" : "Supplier"}
+                            value={line.currency}
+                            onValueChange={(currency) => {
+                              update(line.key, { currency: currency ?? books.functionalCurrency });
+                            }}
                           />
                         </div>
+                      ) : null}
+                      {foreign ? (
                         <Input
-                          aria-label={`${label} due date`}
-                          name={`lines.${line.key}.dueDate`}
+                          aria-label={`${label} amount in ${books.functionalCurrency}`}
+                          name={`lines.${line.key}.functionalAmount`}
                           density="compact"
-                          type="date"
+                          inputMode="decimal"
+                          className="text-right tabular-nums"
+                          placeholder={`In ${books.functionalCurrency}`}
+                          value={line.functionalAmount}
+                          onChange={(event) => {
+                            update(line.key, { functionalAmount: event.target.value });
+                          }}
                         />
-                      </>
-                    ) : null}
-                    {books.dimensions.map((dimension) => (
-                      <div key={dimension.id} className="w-48">
-                        <Select
-                          aria-label={`${label} ${dimension.name}`}
-                          name={`lines.${line.key}.dimension.${dimension.id}`}
-                          density="compact"
-                          options={[
-                            { label: `No ${dimension.name.toLowerCase()}`, value: "none" },
-                            ...dimension.values.map((value) => ({
-                              label: `${value.code} ${value.name}`,
-                              value: value.id,
-                            })),
-                          ]}
-                          placeholder={dimension.name}
-                        />
-                      </div>
-                    ))}
-                  </div>
+                      ) : null}
+                      {books.dimensions.map((dimension) => (
+                        <div key={dimension.id} className="w-48">
+                          <Select
+                            aria-label={`${label} ${dimension.name}`}
+                            name={`lines.${line.key}.dimension.${dimension.id}`}
+                            density="compact"
+                            options={[
+                              { label: `No ${dimension.name.toLowerCase()}`, value: "none" },
+                              ...dimension.values.map((value) => ({
+                                label: `${value.code} · ${value.name}`,
+                                value: value.id,
+                              })),
+                            ]}
+                            placeholder={dimension.name}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                 </fieldset>
               );
             })}
             <Button
               variant="ghost"
+              className="mt-1"
               onClick={() => {
                 setLines((current) => [
                   ...current,
@@ -378,26 +406,43 @@ export default function NewEntryPage({ loaderData, actionData }: Route.Component
             </Button>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm text-[var(--bo-muted)] tabular-nums" role="status">
-              Debits {formatAmount(debits, functionalDigits)} · Credits{" "}
-              {formatAmount(credits, functionalDigits)}
-              {debits === credits
-                ? ""
-                : ` · Off by ${formatAmount(debits - credits, functionalDigits)}`}
-            </p>
-            <div className="flex gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--bo-border)] px-4 py-3">
+            <div className="flex flex-wrap items-center gap-4 text-sm tabular-nums" role="status">
+              <span className="text-[var(--bo-muted)]">
+                Debits{" "}
+                <span className="font-semibold text-[var(--bo-fg)]">
+                  {formatAmount(debits, functionalDigits)}
+                </span>
+              </span>
+              <span className="text-[var(--bo-muted)]">
+                Credits{" "}
+                <span className="font-semibold text-[var(--bo-fg)]">
+                  {formatAmount(credits, functionalDigits)}
+                </span>
+              </span>
+              {debits === 0n && credits === 0n ? null : difference === 0n ? (
+                <BackofficeStatusLight tone="live">Balanced</BackofficeStatusLight>
+              ) : (
+                <BackofficeStatusLight tone="failed">
+                  Off by{" "}
+                  {formatAmount(difference < 0n ? -difference : difference, functionalDigits)}
+                </BackofficeStatusLight>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
               <ButtonLink variant="ghost" to={base}>
                 Cancel
               </ButtonLink>
-              <Button type="submit" variant="accent" disabled={navigation.state !== "idle"}>
+              <Button type="submit" variant="solid" disabled={navigation.state !== "idle"}>
                 Post entry
               </Button>
             </div>
           </div>
-          <FormError result={actionData} intent={INTENT} />
+          <div className="px-4 pb-3 empty:hidden">
+            <FormError result={actionData} intent={INTENT} />
+          </div>
         </Form>
-      </SurfacePanelBody>
-    </SurfacePanel>
+      </SurfaceCard>
+    </>
   );
 }

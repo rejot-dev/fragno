@@ -19,10 +19,7 @@ export type FormResult = { intent: string; error: string | null };
  */
 export async function requireBooks(request: Request, params: BooksParams) {
   const context = await requireOrganization(request, params.slug, "client");
-  const administration = await env.DIRECTORY.getByName("directory").findAdministration({
-    clientId: context.organization.id,
-    slug: params.administration,
-  });
+  const administration = await findAdministration(context.organization.id, params.administration);
   if (!administration) {
     throw new Response("This administration does not exist.", { status: 404 });
   }
@@ -32,6 +29,11 @@ export async function requireBooks(request: Request, params: BooksParams) {
     canSetUp: canManage(context.roles),
     books: env.BOOKS.getByName(administration.id),
   };
+}
+
+/** The client's administration at `slug`, or null when it has none there. */
+export async function findAdministration(clientId: string, slug: string) {
+  return await env.DIRECTORY.getByName("directory").findAdministration({ clientId, slug });
 }
 
 /** `requireBooks` for a form submission, which may need to set the books up. */
@@ -53,8 +55,8 @@ export async function requireBooksSubmission(
  * the books' own records; or the form result naming its first problem.
  *
  * `resultIntent` is the intent the form's result answers to. A form shown once per record submits
- * its own, e.g. `reverse-<entryId>`, so its result shows under that record's form, refusals of
- * the schema included; other forms answer to their intent.
+ * its own, e.g. `create-dimension-value-<dimensionId>`, so its result shows under that record's
+ * form, refusals of the schema included; other forms answer to their intent.
  */
 export async function parseForm<TSchema extends z.ZodType<{ intent: string }>>(
   request: Request,

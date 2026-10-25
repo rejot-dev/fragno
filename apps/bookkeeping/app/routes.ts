@@ -31,6 +31,7 @@ export default [
     route("a/:administration", "books/layout.tsx", [
       index("books/journal.tsx"),
       route("entries/new", "books/new-entry.tsx"),
+      route("entries/:journal/:entryNumber", "books/entry.tsx"),
       route("accounts", "books/accounts.tsx"),
       route("accounts/:accountId", "books/account.tsx"),
       route("trial-balance", "books/trial-balance.tsx"),

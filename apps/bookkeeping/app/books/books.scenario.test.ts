@@ -283,32 +283,29 @@ test("a sale and its payment are posted, settled against each other, and add up 
     });
     expect(await trialBalance(ada, books.fiscalYears[0].periods[1].id)).toEqual({});
 
-    // A reversal undoes the sale in its journal; an entry is reversed only once.
-    const [entry] = (await journal(ada, books, "SAL")) as unknown as { id: string }[];
-    // Each entry has its own reversal form, which its refusals show under.
-    const reverse = {
-      intent: "reverse",
-      resultIntent: `reverse-${entry.id}`,
-      entryId: entry.id,
-      postingDate: `${year}-03-31`,
-    };
-    expect(await ada.submit(`${BOOKS}?index`, { ...reverse, postingDate: "" })).toMatchObject({
-      actionData: {
-        intent: `reverse-${entry.id}`,
-        error: "Choose the date to reverse the entry on.",
-      },
+    // A reversal undoes the sale in its journal, from the sale's page; an entry is reversed once.
+    const salePage = `${BOOKS}/entries/SAL/1`;
+    const reverse = { intent: "reverse", postingDate: `${year}-03-31` };
+    expect(await ada.submit(salePage, { ...reverse, postingDate: "" })).toMatchObject({
+      actionData: { intent: "reverse", error: "Choose the date to reverse the entry on." },
     });
-    expect(await ada.submit(`${BOOKS}?index`, reverse)).toMatchObject({
-      path: BOOKS,
-    });
-    expect(await ada.submit(`${BOOKS}?index`, reverse)).toMatchObject({
-      actionData: { intent: `reverse-${entry.id}`, error: "The entry is already reversed." },
+    expect(await ada.submit(salePage, reverse)).toMatchObject({ path: `${BOOKS}/entries/SAL/2` });
+    expect(await ada.submit(salePage, reverse)).toMatchObject({
+      actionData: { intent: "reverse", error: "The entry is already reversed." },
     });
     expect(await journal(ada, books, "SAL")).toMatchObject([
       { entryNumber: 2, reverses: { entryNumber: 1 } },
       { entryNumber: 1, reversedBy: { entryNumber: 2 } },
     ]);
     expect(await trialBalance(ada, march)).toMatchObject({ "8000": [10000n, 10000n] });
+    // The reversal settles the invoice, so only Byron's payment is left open: owed back to him.
+    expect((await openItems(ada, byron)).map((item) => [item.side, item.outstandingMinor])).toEqual(
+      [
+        ["debit", 0n],
+        ["credit", 0n],
+        ["credit", 12100n],
+      ],
+    );
   });
 });
 
