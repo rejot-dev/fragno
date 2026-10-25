@@ -1,6 +1,6 @@
 import { Button, ButtonLink, IconButton } from "@fragno-private/design-system/button";
 import { Icon } from "@fragno-private/design-system/icon";
-import { use, type ReactNode } from "react";
+import { use, useMemo, type ReactNode } from "react";
 
 import {
   backofficeRuntimeScopeFromResolvedScope,
@@ -8,14 +8,12 @@ import {
 } from "@/backoffice-runtime/resolved-scope";
 import { sendBackofficeWorkflowEvent } from "@/backoffice-ui/workflow-events.client";
 import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
+import { getAutomationReplica } from "@/fragno/automation/lofi/replica";
 import {
   MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
   marketplaceInstallationWorkflowInstanceId,
 } from "@/fragno/automation/marketplace-package-install-identity";
-import {
-  getAutomationBrowserDatabase,
-  type AutomationCollectionSource,
-} from "@/fragno/automation/tanstack/browser-database";
+import type { AutomationCollectionSource } from "@/fragno/automation/tanstack/browser-database";
 import { useWorkflowRunRecords } from "@/routes/backoffice/automations/script-view/use-script-workflow-runs";
 import { WorkflowGeneratedUi } from "@/routes/backoffice/automations/script-view/workflow-generated-ui";
 import {
@@ -87,8 +85,8 @@ function SynchronizedMarketplaceInstallationWorkflow({
   requested: boolean;
   targetScope: BackofficeRoutableResolvedScope;
 }) {
-  const database = use(getAutomationBrowserDatabase(collectionSource));
-  const readSource = { kind: "collections", collections: database.collections } as const;
+  const replica = use(getAutomationReplica(collectionSource));
+  const readSource = useMemo(() => ({ kind: "replica", replica }) as const, [replica]);
   const ingestionRecords = useWorkflowRunRecords({
     source: readSource,
     selector: {
