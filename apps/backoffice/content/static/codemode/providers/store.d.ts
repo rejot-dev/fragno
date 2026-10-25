@@ -1,12 +1,24 @@
 // Scope-owned key/value store. Read to keep small values across runs.
 type StoreCodemodeProvider = {
-  /** Get an automation store entry by key. */
+  /**
+   * Get an automation store entry by key.
+   * Requires `store.read`.
+   */
   get(input: StoreGetInput): Promise<StoreGetOutput>;
-  /** Create or update an automation store entry. */
+  /**
+   * Create or update an automation store entry.
+   * Requires `store.modify`.
+   */
   set(input: StoreSetInput): Promise<StoreSetOutput>;
-  /** Delete an automation store entry by key. */
+  /**
+   * Delete an automation store entry by key.
+   * Requires `store.modify`.
+   */
   delete(input: StoreDeleteInput): Promise<StoreDeleteOutput>;
-  /** List automation store entries, optionally filtered by key prefix. */
+  /**
+   * List automation store entries, optionally filtered by key prefix.
+   * Requires `store.read`.
+   */
   list(input: StoreListInput): Promise<StoreListOutput>;
 };
 declare const store: StoreCodemodeProvider;

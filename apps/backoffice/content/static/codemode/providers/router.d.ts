@@ -1,16 +1,34 @@
 // Automation routes: event or schedule triggers that start or signal workflows, forward events, or notify agents. Read to automate anything later or recurring.
 type RouterCodemodeProvider = {
-  /** List database-backed automation routing rules. */
+  /**
+   * List database-backed automation routing rules.
+   * Requires `router.read`.
+   */
   list(): Promise<RouterListOutput>;
-  /** Get one database-backed automation routing rule. */
+  /**
+   * Get one database-backed automation routing rule.
+   * Requires `router.read`.
+   */
   get(input: RouterGetInput): Promise<RouterGetOutput>;
-  /** Create a database-backed automation routing rule. */
+  /**
+   * Create a database-backed automation routing rule.
+   * Requires `router.modify`.
+   */
   create(input: RouterCreateInput): Promise<RouterCreateOutput>;
-  /** Update a database-backed automation routing rule. */
+  /**
+   * Update a database-backed automation routing rule.
+   * Requires `router.modify`.
+   */
   update(input: RouterUpdateInput): Promise<RouterUpdateOutput>;
-  /** Idempotently delete a database-backed automation route. */
+  /**
+   * Idempotently delete a database-backed automation route.
+   * Requires `router.modify`.
+   */
   delete(input: RouterDeleteInput): Promise<RouterDeleteOutput>;
-  /** Trigger a scheduled automation route immediately without changing its cadence. */
+  /**
+   * Trigger a scheduled automation route immediately without changing its cadence.
+   * Requires `router.modify`.
+   */
   triggerNow(input: RouterTriggerNowInput): Promise<RouterTriggerNowOutput>;
 };
 declare const router: RouterCodemodeProvider;

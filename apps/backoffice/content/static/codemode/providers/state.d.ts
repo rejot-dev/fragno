@@ -1,52 +1,118 @@
 // Files in /workspace and /static. Read for file work beyond searching, reading, and writing.
 type StateCodemodeProvider = {
-  /** Read a UTF-8 text file from codemode state. */
+  /**
+   * Read a UTF-8 text file from codemode state.
+   * Requires `upload.read`.
+   */
   readFile(input: StateReadFileInput): Promise<string>;
-  /** Read a file from codemode state as bytes. */
+  /**
+   * Read a file from codemode state as bytes.
+   * Requires `upload.read`.
+   */
   readFileBytes(input: StateReadFileBytesInput): Promise<StateReadFileBytesOutput>;
-  /** Write a UTF-8 text file to mutable codemode state. */
+  /**
+   * Write a UTF-8 text file to mutable codemode state.
+   * Requires `upload.modify`.
+   */
   writeFile(input: StateWriteFileInput): Promise<void>;
-  /** Write bytes to mutable codemode state. */
+  /**
+   * Write bytes to mutable codemode state.
+   * Requires `upload.modify`.
+   */
   writeFileBytes(input: StateWriteFileBytesInput): Promise<void>;
-  /** Append text or bytes to a file in mutable codemode state. */
+  /**
+   * Append text or bytes to a file in mutable codemode state.
+   * Requires `upload.modify`.
+   */
   appendFile(input: StateAppendFileInput): Promise<void>;
-  /** Check whether a codemode state path exists. */
+  /**
+   * Check whether a codemode state path exists.
+   * Requires `upload.read`.
+   */
   exists(input: StateExistsInput): Promise<boolean>;
-  /** Read metadata for a codemode state path. */
+  /**
+   * Read metadata for a codemode state path.
+   * Requires `upload.read`.
+   */
   stat(input: StateStatInput): Promise<StateStatOutput>;
-  /** Read metadata for a codemode state path without following links. */
+  /**
+   * Read metadata for a codemode state path without following links.
+   * Requires `upload.read`.
+   */
   lstat(input: StateLstatInput): Promise<StateLstatOutput>;
-  /** Create a directory in mutable codemode state. */
+  /**
+   * Create a directory in mutable codemode state.
+   * Requires `upload.modify`.
+   */
   mkdir(input: StateMkdirInput): Promise<void>;
-  /** List the names directly below a codemode state directory. */
+  /**
+   * List the names directly below a codemode state directory.
+   * Requires `upload.read`.
+   */
   readdir(input: StateReaddirInput): Promise<StateReaddirOutput>;
-  /** List names and entry types directly below a codemode state directory. */
+  /**
+   * List names and entry types directly below a codemode state directory.
+   * Requires `upload.read`.
+   */
   readdirWithFileTypes(
     input: StateReaddirWithFileTypesInput,
   ): Promise<StateReaddirWithFileTypesOutput>;
-  /** Remove a file or empty directory from mutable codemode state. */
+  /**
+   * Remove a file or empty directory from mutable codemode state.
+   * Requires `upload.modify`.
+   */
   rm(input: StateRmInput): Promise<void>;
-  /** Copy one file within mutable codemode state. */
+  /**
+   * Copy one file within mutable codemode state.
+   * Requires `upload.read` and `upload.modify`.
+   */
   cp(input: StateCpInput): Promise<void>;
-  /** Move one file within mutable codemode state. */
+  /**
+   * Move one file within mutable codemode state.
+   * Requires `upload.read` and `upload.modify`.
+   */
   mv(input: StateMvInput): Promise<void>;
-  /** Resolve and validate a codemode state path. */
+  /**
+   * Resolve and validate a codemode state path.
+   * Requires `upload.read`.
+   */
   realpath(input: StateRealpathInput): Promise<string>;
   /** Resolve a path against a base path without accessing storage. */
   resolvePath(input: StateResolvePathInput): Promise<string>;
-  /** Find codemode state paths matching a glob pattern. */
+  /**
+   * Find codemode state paths matching a glob pattern.
+   * Requires `upload.read`.
+   */
   glob(input: StateGlobInput): Promise<StateGlobOutput>;
-  /** Read and parse a JSON file from codemode state. */
+  /**
+   * Read and parse a JSON file from codemode state.
+   * Requires `upload.read`.
+   */
   readJson(input: StateReadJsonInput): Promise<StateReadJsonOutput>;
-  /** Serialize and write a JSON value to mutable codemode state. */
+  /**
+   * Serialize and write a JSON value to mutable codemode state.
+   * Requires `upload.modify`.
+   */
   writeJson(input: StateWriteJsonInput): Promise<void>;
-  /** Atomically apply text and JSON edits to mutable codemode state files. */
+  /**
+   * Atomically apply text and JSON edits to mutable codemode state files.
+   * Requires `upload.modify`.
+   */
   applyEdits(input: StateApplyEditsInput): Promise<StateApplyEditsOutput>;
-  /** Search for text within one codemode state file. */
+  /**
+   * Search for text within one codemode state file.
+   * Requires `upload.read`.
+   */
   searchText(input: StateSearchTextInput): Promise<StateSearchTextOutput>;
-  /** Search codemode state files matching a glob pattern for lines containing any of the keywords. */
+  /**
+   * Search codemode state files matching a glob pattern for lines containing any of the keywords.
+   * Requires `upload.read`.
+   */
   searchFiles(input: StateSearchFilesInput): Promise<StateSearchFilesOutput>;
-  /** Hash the bytes of one codemode state file. */
+  /**
+   * Hash the bytes of one codemode state file.
+   * Requires `upload.read`.
+   */
   hashFile(input: StateHashFileInput): Promise<string>;
 };
 declare const state: StateCodemodeProvider;

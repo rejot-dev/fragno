@@ -1,10 +1,19 @@
 // Durable hook queues. Read to debug stuck or retrying background delivery.
 type HooksCodemodeProvider = {
-  /** List hook scopes usable with hooks.list --fragment. */
+  /**
+   * List hook scopes usable with hooks.list --fragment.
+   * Requires `hooks.read`.
+   */
   scopesList(): Promise<HooksScopesListOutput>;
-  /** List durable hook queue entries for a runtime fragment. */
+  /**
+   * List durable hook queue entries for a runtime fragment.
+   * Requires `hooks.read`.
+   */
   list(input: HooksListInput): Promise<HooksListOutput>;
-  /** Get a durable hook queue entry by id. An automations ingest entry's payload is the event envelope, so the event's own payload is at payload.payload. */
+  /**
+   * Get a durable hook queue entry by id. An automations ingest entry's payload is the event envelope, so the event's own payload is at payload.payload.
+   * Requires `hooks.read`.
+   */
   get(input: HooksGetInput): Promise<HooksGetOutput>;
 };
 declare const hooks: HooksCodemodeProvider;

@@ -1,10 +1,16 @@
 // Cloudflare Browser Run: screenshots, PDFs, crawls. Read to capture or crawl a page in a real browser.
 type CloudflareCodemodeProvider = {
-  /** Capture a page as a PDF or screenshot with Cloudflare Browser Run. */
+  /**
+   * Capture a page as a PDF or screenshot with Cloudflare Browser Run.
+   * Requires `cloudflare.browserRun`.
+   */
   browserRunCapture(
     input: CloudflareBrowserRunCaptureInput,
   ): Promise<CloudflareBrowserRunCaptureOutput>;
-  /** Start, inspect, or cancel a Cloudflare Browser Run crawl job. */
+  /**
+   * Start, inspect, or cancel a Cloudflare Browser Run crawl job.
+   * Requires `cloudflare.browserRun`.
+   */
   browserRunCrawl(input: CloudflareBrowserRunCrawlInput): Promise<CloudflareBrowserRunCrawlOutput>;
 };
 declare const cloudflare: CloudflareCodemodeProvider;

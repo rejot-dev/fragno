@@ -1,20 +1,44 @@
 // Automation events: catalog, stored events and the routes they matched, firing, retries. Read to see what can trigger automations or why one did not act.
 type EventsCodemodeProvider = {
-  /** Fire an automation event for the current context or a selected target scope. Sources starting with `app:` belong to installed apps, and only an app's own credential emits them. */
+  /**
+   * Fire an automation event for the current context or a selected target scope. Sources starting with `app:` belong to installed apps, and only an app's own credential emits them.
+   * Requires `events.emit`.
+   */
   fire(input: EventsFireInput): Promise<EventsFireOutput>;
-  /** List stored automation events in the current scope, newest first, each with the routes it matched and where they stand. */
+  /**
+   * List stored automation events in the current scope, newest first, each with the routes it matched and where they stand.
+   * Requires `events.read`.
+   */
   list(input: EventsListInput): Promise<EventsListOutput>;
-  /** Get one stored automation event by id in the current scope, with each route it matched and where that route stands: about to act, retrying after an error, completed with what it did, or failed for good. */
+  /**
+   * Get one stored automation event by id in the current scope, with each route it matched and where that route stands: about to act, retrying after an error, completed with what it did, or failed for good.
+   * Requires `events.read`.
+   */
   get(input: EventsGetInput): Promise<EventsGetOutput>;
-  /** List the routes in one state on stored events in the current scope, such as those that failed for good or are retrying, each with the event it matched, newest match first. Use events.get for the whole event. */
+  /**
+   * List the routes in one state on stored events in the current scope, such as those that failed for good or are retrying, each with the event it matched, newest match first. Use events.get for the whole event.
+   * Requires `events.read`.
+   */
   routesList(input: EventsRoutesListInput): Promise<EventsRoutesListOutput>;
-  /** Retry a route that failed for good on a stored event, with a fresh set of attempts. The route acts as it was when the event matched it, with the route's current permissions, so retry after fixing what it depends on, such as a missing workflow run or permission; changes to the route's action apply only to new events. Returns the route, now pending, or null when the event did not match it. */
+  /**
+   * Retry a route that failed for good on a stored event, with a fresh set of attempts. The route acts as it was when the event matched it, with the route's current permissions, so retry after fixing what it depends on, such as a missing workflow run or permission; changes to the route's action apply only to new events. Returns the route, now pending, or null when the event did not match it.
+   * Requires `router.modify`.
+   */
   routesRetry(input: EventsRoutesRetryInput): Promise<EventsRoutesRetryOutput>;
-  /** List known automation event source/type pairs from the Backoffice capability registry. */
+  /**
+   * List known automation event source/type pairs from the Backoffice capability registry.
+   * Requires `events.read`.
+   */
   catalogList(): Promise<EventsCatalogListOutput>;
-  /** Get one automation event descriptor and its JSON schemas. */
+  /**
+   * Get one automation event descriptor and its JSON schemas.
+   * Requires `events.read`.
+   */
   catalogGet(input: EventsCatalogGetInput): Promise<EventsCatalogGetOutput>;
-  /** Create a scoped dynamic automation event definition with optional JSON schemas. */
+  /**
+   * Create a scoped dynamic automation event definition with optional JSON schemas.
+   * Requires `events.manage`.
+   */
   catalogCreate(input: EventsCatalogCreateInput): Promise<EventsCatalogCreateOutput>;
 };
 declare const events: EventsCodemodeProvider;

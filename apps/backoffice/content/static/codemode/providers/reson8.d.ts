@@ -1,10 +1,16 @@
 // Reson8 speech-to-text. Read to transcribe audio.
 type Reson8CodemodeProvider = {
-  /** Transcribe a prerecorded audio file from the workspace with Reson8. */
+  /**
+   * Transcribe a prerecorded audio file from the workspace with Reson8.
+   * Requires `reson8.transcribe` and `upload.read`.
+   */
   transcribePrerecorded(
     input: Reson8TranscribePrerecordedInput,
   ): Promise<Reson8TranscribePrerecordedOutput>;
-  /** Mint a short-lived Reson8 token for streaming audio to Reson8 directly. Open a WebSocket to url with the subprotocols bearer and the access token, send audio as binary frames, and read transcript messages. The audio does not pass through Backoffice, so realtime transcription is not billed. */
+  /**
+   * Mint a short-lived Reson8 token for streaming audio to Reson8 directly. Open a WebSocket to url with the subprotocols bearer and the access token, send audio as binary frames, and read transcript messages. The audio does not pass through Backoffice, so realtime transcription is not billed.
+   * Requires `reson8.transcribe`.
+   */
   createRealtimeToken(): Promise<Reson8CreateRealtimeTokenOutput>;
 };
 declare const reson8: Reson8CodemodeProvider;

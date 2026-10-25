@@ -1,14 +1,29 @@
 // Current organization: name, members, invitations. Read to rename it, list members, or invite someone.
 type OrgCodemodeProvider = {
-  /** Read the current organization and your roles in it. List every organization you belong to with account.orgs.list. */
+  /**
+   * Read the current organization and your roles in it. List every organization you belong to with account.orgs.list.
+   * Requires `org.read`.
+   */
   get(): Promise<OrgGetOutput>;
-  /** Rename the current organization. Requires the owner or admin role. */
+  /**
+   * Rename the current organization. Requires the owner or admin role.
+   * Requires `org.manage`.
+   */
   update(input: OrgUpdateInput): Promise<OrgUpdateOutput>;
-  /** List members of the current organization with their roles, using cursor pagination. */
+  /**
+   * List members of the current organization with their roles, using cursor pagination.
+   * Requires `org.read`.
+   */
   membersList(input: OrgMembersListInput): Promise<OrgMembersListOutput>;
-  /** List pending, unexpired invitations to the current organization with their shareable links, using cursor pagination. */
+  /**
+   * List pending, unexpired invitations to the current organization with their shareable links, using cursor pagination.
+   * Requires `org.read`.
+   */
   invitationsList(input: OrgInvitationsListInput): Promise<OrgInvitationsListOutput>;
-  /** Invite an email address to the current organization and return a shareable link. Invitations are not emailed. Requires the owner or admin role; only owners may invite owners. */
+  /**
+   * Invite an email address to the current organization and return a shareable link. Invitations are not emailed. Requires the owner or admin role; only owners may invite owners.
+   * Requires `org.manage`.
+   */
   invitationsCreate(input: OrgInvitationsCreateInput): Promise<OrgInvitationsCreateOutput>;
 };
 declare const org: OrgCodemodeProvider;

@@ -1,26 +1,59 @@
 // External service connections: set up, inspect, run actions, generate typed clients. Read for any third-party service.
 type IntegrationsCodemodeProvider = {
-  /** Discover available services and unconfigured services in the selected scope. Service availability does not prove live health. */
+  /**
+   * Discover available services and unconfigured services in the selected scope. Service availability does not prove live health.
+   * Requires `integrations.read`.
+   */
   discover(): Promise<IntegrationsDiscoverOutput>;
-  /** List existing configured connections in the selected scope, one cursor page at a time. Deterministic IDs reuse source-owned identities; configuration does not imply live access. */
+  /**
+   * List existing configured connections in the selected scope, one cursor page at a time. Deterministic IDs reuse source-owned identities; configuration does not imply live access.
+   * Requires `integrations.read`.
+   */
   list(input: IntegrationsListInput): Promise<IntegrationsListOutput>;
-  /** Inspect source-owned connection configuration, its stored non-secret settings, and available evidence without performing a live health check. The connection ID resolves only within the selected scope. */
+  /**
+   * Inspect source-owned connection configuration, its stored non-secret settings, and available evidence without performing a live health check. The connection ID resolves only within the selected scope.
+   * Requires `integrations.read`.
+   */
   get(input: IntegrationsGetInput): Promise<IntegrationsGetOutput>;
-  /** Read current requirements or submit input for a deterministic connection address. Setup is source-owned; this operation retains no attempt state or independent binding. Ready connections keep their configuration and credentials; reconfigure replaces them. */
+  /**
+   * Read current requirements or submit input for a deterministic connection address. Setup is source-owned; this operation retains no attempt state or independent binding. Ready connections keep their configuration and credentials; reconfigure replaces them.
+   * Requires `integrations.manage`.
+   */
   setup(input: IntegrationsSetupInput): Promise<IntegrationsSetupOutput>;
-  /** Read replacement requirements or submit replacement configuration or credentials for an existing connection. Build the replacement from integrations.get settings so unchanged values carry over. Submission replaces source-owned state; continue with setup checks until ready. A missing connection needs setup. */
+  /**
+   * Read replacement requirements or submit replacement configuration or credentials for an existing connection. Build the replacement from integrations.get settings so unchanged values carry over. Submission replaces source-owned state; continue with setup checks until ready. A missing connection needs setup.
+   * Requires `integrations.manage`.
+   */
   reconfigure(input: IntegrationsReconfigureInput): Promise<IntegrationsReconfigureOutput>;
-  /** Remove a connection's source-owned configuration and credentials in the selected scope. The address stays valid for a later setup. Requires confirm to repeat the connection ID. */
+  /**
+   * Remove a connection's source-owned configuration and credentials in the selected scope. The address stays valid for a later setup. Requires confirm to repeat the connection ID.
+   * Requires `integrations.manage`.
+   */
   disconnect(input: IntegrationsDisconnectInput): Promise<IntegrationsDisconnectOutput>;
-  /** Record every configured connection's current state in the selected scope as an integrations.connection.ready or connection.unavailable event, for connections that existed before those events were recorded. Routes on those events run for each new event. Events carry each connection's name and auth method. A rerun records a connection again only when its state, name, or auth method differs from every earlier backfill of it, so a rerun adds names to connections recorded before events carried them. A connection last recorded ready or unavailable at an address no source owns anymore, because its integration was removed, is recorded as connection.disconnected, once. */
+  /**
+   * Record every configured connection's current state in the selected scope as an integrations.connection.ready or connection.unavailable event, for connections that existed before those events were recorded. Routes on those events run for each new event. Events carry each connection's name and auth method. A rerun records a connection again only when its state, name, or auth method differs from every earlier backfill of it, so a rerun adds names to connections recorded before events carried them. A connection last recorded ready or unavailable at an address no source owns anymore, because its integration was removed, is recorded as connection.disconnected, once.
+   * Requires `integrations.manage`.
+   */
   backfillConnectionEvents(): Promise<IntegrationsBackfillConnectionEventsOutput>;
-  /** Discover the selected connection's supported actions and authoritative input/output contracts without executing them. Never infer schemas from action IDs. */
+  /**
+   * Discover the selected connection's supported actions and authoritative input/output contracts without executing them. Never infer schemas from action IDs.
+   * Requires `integrations.read`.
+   */
   actions(input: IntegrationsActionsInput): Promise<IntegrationsActionsOutput>;
-  /** Execute an explicit connection action with JSON input/output, validated against its live contracts and service permissions. Unchecked actions run only with unchecked: true. Binary inputs are schema-declared byte arrays; results retain the action's domain and asynchronous semantics. */
+  /**
+   * Execute an explicit connection action with JSON input/output, validated against its live contracts and service permissions. Unchecked actions run only with unchecked: true. Binary inputs are schema-declared byte arrays; results retain the action's domain and asynchronous semantics.
+   * Requires `integrations.execute`.
+   */
   execute(input: IntegrationsExecuteInput): Promise<IntegrationsExecuteOutput>;
-  /** Write a JavaScript module with one typed async function per action of the selected connection, for codemode and saved modules to import. Each function calls integrations.execute; its JSDoc types snapshot the action contracts, so regenerate after the connection's actions change. */
+  /**
+   * Write a JavaScript module with one typed async function per action of the selected connection, for codemode and saved modules to import. Each function calls integrations.execute; its JSDoc types snapshot the action contracts, so regenerate after the connection's actions change.
+   * Requires `integrations.read` and `upload.modify`.
+   */
   generateClient(input: IntegrationsGenerateClientInput): Promise<IntegrationsGenerateClientOutput>;
-  /** Perform explicit supported live checks without authorizing the connection or executing service actions. Return timestamped evidence, not blanket health or retained verification state. */
+  /**
+   * Perform explicit supported live checks without authorizing the connection or executing service actions. Return timestamped evidence, not blanket health or retained verification state.
+   * Requires `integrations.manage`.
+   */
   verify(input: IntegrationsVerifyInput): Promise<IntegrationsVerifyOutput>;
 };
 declare const integrations: IntegrationsCodemodeProvider;

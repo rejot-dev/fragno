@@ -1,6 +1,9 @@
 // URL and HTML extraction to content or Markdown. Read to fetch a web page.
 type WebCodemodeProvider = {
-  /** Extract page content or Markdown from a URL or HTML. */
+  /**
+   * Extract page content or Markdown from a URL or HTML.
+   * Requires `cloudflare.browserRun`.
+   */
   extract(input: WebExtractInput): Promise<WebExtractOutput>;
 };
 declare const web: WebCodemodeProvider;

@@ -1,12 +1,24 @@
 // Cloudflare sandboxes with a real shell. Read when work needs command-line tools.
 type SandboxCodemodeProvider = {
-  /** Start a Cloudflare sandbox for the current organization. */
+  /**
+   * Start a Cloudflare sandbox for the current organization.
+   * Requires `sandbox.modify`.
+   */
   startSandbox(input: SandboxStartSandboxInput): Promise<SandboxStartSandboxOutput>;
-  /** List Cloudflare sandboxes for the current organization. */
+  /**
+   * List Cloudflare sandboxes for the current organization.
+   * Requires `sandbox.read`.
+   */
   listSandboxes(): Promise<SandboxListSandboxesOutput>;
-  /** Save a Cloudflare sandbox's workspace and stop it. Starting the same sandbox ID resumes the workspace. */
+  /**
+   * Save a Cloudflare sandbox's workspace and stop it. Starting the same sandbox ID resumes the workspace.
+   * Requires `sandbox.modify`.
+   */
   killSandbox(input: SandboxKillSandboxInput): Promise<SandboxKillSandboxOutput>;
-  /** Execute a command in a Cloudflare sandbox. */
+  /**
+   * Execute a command in a Cloudflare sandbox.
+   * Requires `sandbox.modify`.
+   */
   executeCommand(input: SandboxExecuteCommandInput): Promise<SandboxExecuteCommandOutput>;
 };
 declare const sandbox: SandboxCodemodeProvider;
