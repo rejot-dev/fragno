@@ -1,4 +1,4 @@
-// projects tools
+// Projects in an organization or personal scope. Read to create or list projects.
 type ProjectsCodemodeProvider = {
   /** Create a project in the selected organization or personal scope as the current user. Select the owner scope, not a project, app workspace, or System. Omit slug to derive it from the name; slugs must be unique within the owner. */
   create(input: ProjectsCreateInput): Promise<ProjectsCreateOutput>;

@@ -2,6 +2,7 @@ import { renderStaticGuidance } from "@/files/content/static";
 import {
   CODEMODE_SYSTEM_DTS_PATH,
   createCodemodeTypeFiles as createCodemodeTypeFilesFromTemplates,
+  renderCodemodeStateExcerpt,
 } from "@/fragno/codemode/codemode-type-files";
 import type { BackofficeRuntimeToolFamily } from "@/fragno/runtime-tools/runtime-tools";
 
@@ -16,6 +17,7 @@ export const renderCodemodeSystemPrompt = async ({
 }) =>
   renderStaticGuidance({
     codemodeDts: await state.readFile(CODEMODE_SYSTEM_DTS_PATH),
+    stateExcerpt: renderCodemodeStateExcerpt(),
   });
 
 /** Generates codemode declarations from the application templates for tests and transient use. */

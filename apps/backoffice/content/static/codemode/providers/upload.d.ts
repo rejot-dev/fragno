@@ -1,4 +1,4 @@
-// upload tools
+// Prepared uploads, sandbox file URLs, and upload storage. Read to handle an uploaded file or move files to a sandbox.
 type UploadCodemodeProvider = {
   /** Read the content of a prepared private upload before commit or discard. */
   readPrepared(input: UploadReadPreparedInput): Promise<UploadReadPreparedOutput>;

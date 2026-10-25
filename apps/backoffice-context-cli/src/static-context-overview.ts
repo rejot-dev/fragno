@@ -4,14 +4,16 @@ import { basename, posix, relative, resolve } from "node:path";
 import { parse } from "yaml";
 
 const SYSTEM_PATH = "/static/SYSTEM.md";
-const CODEMODE_SYSTEM_PATH = "/static/codemode/system.d.ts";
-const CODEMODE_PLACEHOLDER = "__BACKOFFICE_CODEMODE_DTS__";
+// Placeholders in SYSTEM.md that Backoffice replaces with these files' declarations; the state
+// placeholder receives an excerpt of its file.
+const SYSTEM_EXPANSIONS = [
+  { placeholder: "__BACKOFFICE_STATE_EXCERPT__", path: "/static/codemode/providers/state.d.ts" },
+  { placeholder: "__BACKOFFICE_CODEMODE_DTS__", path: "/static/codemode/system.d.ts" },
+] as const;
 
-type StaticFileReference = {
-  kind: "file" | "system-expansion";
-  targetPath: string;
-  line: number;
-};
+type StaticFileReference =
+  | { kind: "file"; targetPath: string; line: number }
+  | { kind: "system-expansion"; placeholder: string; targetPath: string; line: number };
 
 type StaticFileNode = {
   path: string;
@@ -95,13 +97,16 @@ function extractStaticFileReferences(sourcePath: string, content: string): Stati
   }
 
   if (sourcePath === SYSTEM_PATH) {
-    const placeholderIndex = content.indexOf(CODEMODE_PLACEHOLDER);
-    if (placeholderIndex !== -1) {
-      references.push({
-        kind: "system-expansion",
-        targetPath: CODEMODE_SYSTEM_PATH,
-        line: lineNumberAt(content, placeholderIndex),
-      });
+    for (const { placeholder, path } of SYSTEM_EXPANSIONS) {
+      const placeholderIndex = content.indexOf(placeholder);
+      if (placeholderIndex !== -1) {
+        references.push({
+          kind: "system-expansion",
+          placeholder,
+          targetPath: path,
+          line: lineNumberAt(content, placeholderIndex),
+        });
+      }
     }
   }
 
@@ -298,7 +303,7 @@ function renderReferenceGraph(rootPath: string, nodes: Map<string, StaticFileNod
       const targetNode = nodes.get(reference.targetPath);
       const source =
         reference.kind === "system-expansion"
-          ? `${CODEMODE_PLACEHOLDER} expands from ${reference.targetPath}`
+          ? `${reference.placeholder} expands from ${reference.targetPath}`
           : reference.targetPath;
       const summary = targetNode ? ` — ${targetNode.summary}` : " [missing]";
       const location =
@@ -368,7 +373,10 @@ function renderStaticContextMarkdown(analysis: StaticContextAnalysis): string {
     "- `SYSTEM.md` is injected automatically.",
     "- Each `SKILL.md` is a top-level candidate; its description tells the agent when to load it.",
     "- Nested paths are follow-up reads mentioned by an already loaded file.",
-    `- \`${CODEMODE_PLACEHOLDER}\` is expanded from \`${CODEMODE_SYSTEM_PATH}\`; it is not left opaque.`,
+    ...SYSTEM_EXPANSIONS.map(
+      ({ placeholder, path }) =>
+        `- \`${placeholder}\` is expanded from \`${path}\`; it is not left opaque.`,
+    ),
     "",
     "## System entry point",
     "",

@@ -1,4 +1,4 @@
-// js tools
+// Saved JavaScript: check, run, build modules, and inspect codemode runs. Read to save, run, or debug a script file.
 type JsCodemodeProvider = {
   /** Type check a standalone JavaScript file under /static or /workspace against static declarations. */
   check(input: JsCheckInput): Promise<JsCheckOutput>;

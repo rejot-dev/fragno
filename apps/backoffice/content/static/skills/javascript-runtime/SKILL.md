@@ -14,7 +14,7 @@ consumed by another runtime.
 
 ## 1. Preflight
 
-Read `/static/codemode/providers/js.d.ts` and `/static/codemode/providers/state.d.ts`. Apply the
+Read `/static/codemode/providers/js.d.ts`; the system guidance already declares `state`. Apply the
 system's closed-world preflight to every provider the script calls. Treat live declarations and
 runtime availability as authoritative: if the required method or compiler is unavailable, report
 that blocker rather than guessing a replacement API.

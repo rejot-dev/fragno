@@ -22,8 +22,8 @@ organized around Pi Durable:
   turn that owns the agent's current work; extensions receive it as their only Backoffice
   collaborator.
 - `extensions/`: everything installed into the registry. `backoffice/` (guidance and agent
-  instruction sections, and the `read`, `search`, and `codemode` tools), `billing/` (usage delivery
-  task and document), and `posthog/` (generation analytics, production Cloudflare only).
+  instruction sections, and the `codemode` tool), `billing/` (usage delivery task and document), and
+  `posthog/` (generation analytics, production Cloudflare only).
 - `manager/`: the scoped agent directory fragment and the runtime that runtime tools and codemode
   use to call it.
 
@@ -323,11 +323,14 @@ too, so the first publication after waking is taken whatever its revision.
 
 ## Backoffice execution
 
-`extensions/backoffice/backoffice-extension.ts` installs the shared Backoffice `read`, `search`, and
-`codemode` implementations. They use the scoped filesystem, route-backed service runtimes, existing
-codemode execution environment, and kernel permission checks of the active turn. Authorization does
-not rely on prompt sections or extension environment hooks: Pi reports their errors but continues
-generation, so the model boundary and every tool check fail closed.
+`extensions/backoffice/backoffice-extension.ts` installs the shared Backoffice `codemode`
+implementation. It uses the scoped filesystem, route-backed service runtimes, existing codemode
+execution environment, and kernel permission checks of the active turn. Agents discover guidance,
+skills, and declarations inside codemode through `state`, whose discovery methods the guidance
+section inlines, so discovery shares a turn with other reads. The guidance lists every other
+declaration file with a one-line summary of when to read it. Authorization does not rely on prompt
+sections or extension environment hooks: Pi reports their errors but continues generation, so the
+model boundary and every tool check fail closed.
 
 Pi, codemode, and prerecorded transcription attribute usage to the execution scope's root owner.
 Scoped tool calls use the selected scope, not the calling agent's owner. Workflows snapshot the
@@ -384,11 +387,11 @@ to the agent's view socket, which reconnects with backoff until the agent refuse
 
 ## Recovery
 
-`read` and `search` are replay-safe. `codemode` is replay-unsafe: recovery reports an interrupted
-call that may have partially run instead of automatically repeating mutations. Prompt deduplication
-is not tool-effect deduplication. Scenarios restore a real SQLite snapshot taken after a codemode
-mutation and before tool-result settlement, verifying exactly one effect and that the restored turn
-record is the recovered tools' authority.
+`codemode` is replay-unsafe: recovery reports an interrupted call that may have partially run
+instead of automatically repeating mutations. Prompt deduplication is not tool-effect deduplication.
+Scenarios restore a real SQLite snapshot taken after a codemode mutation and before tool-result
+settlement, verifying exactly one effect and that the restored turn record is the recovered tools'
+authority.
 
 Production registers OpenAI, Anthropic, and Google providers with credentials from Worker bindings
 or Node configuration. An agent-scoped billing document and ownerless durable task deliver

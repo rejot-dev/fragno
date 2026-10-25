@@ -5,15 +5,14 @@ import { defineExtension, section, type Extension } from "@earendil-works/pi-dur
 import type { BackofficeAgentContext } from "@/fragno/pi/agent/backoffice-agent-context";
 
 import { createCodemodeTool } from "./codemode-tool";
-import { createReadTool } from "./read-tool";
-import { createSearchTool } from "./search-tool";
 import { buildBackofficePiSystemPrompt } from "./system-prompt";
 
 /** Backoffice guidance, the agent's own instructions, and the tools every agent runs with. */
 export function createBackofficeExtension(agent: BackofficeAgentContext): Extension {
   return defineExtension({
     name: "backoffice",
-    tools: [createCodemodeTool(agent), createReadTool(agent), createSearchTool(agent)],
+    // Discovery runs inside codemode through `state`, so it shares a turn with other reads.
+    tools: [createCodemodeTool(agent)],
     sections: [
       section(
         "backoffice",

@@ -1,4 +1,4 @@
-// identity tools
+// External identities bound to users. Read when a workflow acts for an external sender.
 type IdentityCodemodeProvider = {
   /** Resolve an active external identity binding so the workflow can choose its internal user. */
   resolveExternal(input: IdentityResolveExternalInput): Promise<IdentityResolveExternalOutput>;

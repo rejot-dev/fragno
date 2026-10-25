@@ -5,8 +5,17 @@ import { GENERAL_SKILL_CONTENT } from "./skills";
 import { STATIC_AUTOMATION_CONTENT } from "./static-automations";
 import { STATIC_CODEMODE_CONTENT } from "./static-codemode";
 
-export const renderStaticGuidance = ({ codemodeDts }: { codemodeDts: string }) =>
-  systemGuidanceTemplate.replace("__BACKOFFICE_CODEMODE_DTS__", codemodeDts.trimEnd());
+export const renderStaticGuidance = ({
+  codemodeDts,
+  stateExcerpt,
+}: {
+  codemodeDts: string;
+  stateExcerpt: string;
+}) =>
+  // The formatter ends each placeholder with a statement semicolon that the declarations already have.
+  systemGuidanceTemplate
+    .replace("__BACKOFFICE_CODEMODE_DTS__;", codemodeDts.trimEnd())
+    .replace("__BACKOFFICE_STATE_EXCERPT__;", stateExcerpt.trimEnd());
 
 export const STATIC_FILE_CONTENT = {
   "SYSTEM.md": systemGuidanceTemplate,

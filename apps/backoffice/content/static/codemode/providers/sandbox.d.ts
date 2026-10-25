@@ -1,4 +1,4 @@
-// sandbox tools
+// Cloudflare sandboxes with a real shell. Read when work needs command-line tools.
 type SandboxCodemodeProvider = {
   /** Start a Cloudflare sandbox for the current organization. */
   startSandbox(input: SandboxStartSandboxInput): Promise<SandboxStartSandboxOutput>;

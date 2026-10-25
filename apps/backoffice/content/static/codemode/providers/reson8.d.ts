@@ -1,4 +1,4 @@
-// reson8 tools
+// Reson8 speech-to-text. Read to transcribe audio.
 type Reson8CodemodeProvider = {
   /** Transcribe a prerecorded audio file from the workspace with Reson8. */
   transcribePrerecorded(

@@ -1,4 +1,4 @@
-// marketplace tools
+// Marketplace packages: search, inspect, publish, feature. Read to find or publish a package.
 type MarketplaceCodemodeProvider = {
   /** Search published package metadata in the public Marketplace, or in the current organization's Marketplace with organization visibility. Follow nextCursor while hasNextPage is true, even when a candidate page has no matches. */
   search(input: MarketplaceSearchInput): Promise<MarketplaceSearchOutput>;
