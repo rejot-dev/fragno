@@ -21,9 +21,29 @@ export type LofiSqliteViews = {
   /** Builds the view of `query` and reports its data now and whenever it changes. */
   materialize(id: string, query: unknown, listener: (data: unknown) => void): void;
   destroy(id: string): void;
-  /** Brings every view up to date after the replica applied entries. */
-  refresh(): void;
+  /**
+   * Brings the views up to date after the replica applied entries. `changed` names the tables the
+   * entries wrote, by SQL name; views that read none of them can skip their refresh. Null when the
+   * tables are unknown, in which case every view refreshes.
+   */
+  refresh(changed: ReadonlySet<string> | null): void;
 };
+
+/** Whether a view that reads `tables` may have changed. */
+export function readsChangedTable(
+  tables: ReadonlySet<string>,
+  changed: ReadonlySet<string> | null,
+): boolean {
+  if (changed === null) {
+    return true;
+  }
+  for (const table of tables) {
+    if (changed.has(table)) {
+      return true;
+    }
+  }
+  return false;
+}
 
 /** A SQL view's query, as pages send it. */
 export type LofiSqliteSqlViewQuery = { sql: string; params: readonly SqliteValue[] };
@@ -32,8 +52,8 @@ export type LofiSqliteSqlViewQuery = { sql: string; params: readonly SqliteValue
 export type LofiSqliteRawRow = Record<string, SqliteValue>;
 
 /**
- * Runs each SQL view again after every batch, and reports its rows only when they changed. A query
- * that would write is refused, since writes would bypass the replica.
+ * Runs each SQL view again after every batch that wrote a table it reads, and reports its rows only
+ * when they changed. A query that would write is refused, since writes would bypass the replica.
  */
 export const sqlViewEngine: LofiSqliteViewEngine = {
   kind: "sql",
@@ -42,6 +62,7 @@ export const sqlViewEngine: LofiSqliteViewEngine = {
       string,
       {
         read: () => LofiSqliteRawRow[];
+        tables: ReadonlySet<string>;
         rows: LofiSqliteRawRow[];
         listener: (data: unknown) => void;
       }
@@ -58,14 +79,17 @@ export const sqlViewEngine: LofiSqliteViewEngine = {
             Object.fromEntries(statement.columnNames.map((name, index) => [name, values[index]])),
           );
         const rows = read();
-        views.set(id, { read, rows, listener });
+        views.set(id, { read, tables: statement.tables, rows, listener });
         listener(rows);
       },
       destroy(id) {
         views.delete(id);
       },
-      refresh() {
+      refresh(changed) {
         for (const view of views.values()) {
+          if (!readsChangedTable(view.tables, changed)) {
+            continue;
+          }
           const rows = view.read();
           if (!sameRows(rows, view.rows)) {
             view.rows = rows;

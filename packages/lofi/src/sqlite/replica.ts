@@ -53,7 +53,7 @@ export type LofiSqliteReplica = {
   /** Runs `read` in a read transaction on this tab's connection, after its pending replication writes. */
   read: SqliteLofiAdapter["read"];
   /** Calls `listener` after any tab applies outbox entries to this replica. */
-  subscribe(listener: () => void): () => void;
+  subscribe(listener: (change: LofiSqliteReplicaChange) => void): () => void;
   /**
    * How far this replica has caught up with its backend, as this tab knows it. This and
    * `subscribeStatus` need no `this`, so they can go to React's `useSyncExternalStore` directly.
@@ -77,9 +77,16 @@ export type LofiSqliteReplicaStatus =
   | { phase: "catching-up"; fraction: number | null; error: string | null }
   | { phase: "caught-up"; error: string | null };
 
+/**
+ * What applying outbox entries changed: the tables it wrote, by SQL name, as `lofiSqliteTableName`
+ * names them, or null when the tab that wrote does not say.
+ */
+export type LofiSqliteReplicaChange = { tables: readonly string[] | null };
+
 /** What tabs tell each other. Only the writing tab answers a status request. */
 type ReplicaMessage =
-  | { type: "changed" }
+  // Tabs running an older lofi send no tables.
+  | { type: "changed"; tables?: readonly string[] }
   | { type: "status"; status: LofiSqliteReplicaStatus }
   | { type: "status-request" };
 
@@ -90,12 +97,13 @@ export const LOFI_SQLITE_ENDPOINT_NAME = "lofi-sqlite";
 const CAUGHT_UP_META_KEY = `caught-up:${LOFI_SQLITE_ENDPOINT_NAME}`;
 
 /**
- * Opens a SQLite replica of one Fragno backend's outbox in this tab. Every tab reads through its
- * own connection; one tab at a time, elected with a Web Lock, streams the outbox and writes.
+ * Opens a SQLite replica of one Fragno backend's outbox in this tab, on the database
+ * `dependencies` opens. Every tab reads through its own connection; one tab at a time, elected
+ * with a Web Lock, streams the outbox and writes. `openLofiSqliteReplica` opens it in OPFS.
  */
-export async function openLofiSqliteReplica(
+export async function openLofiSqliteReplicaOn(
   options: LofiSqliteReplicaOptions,
-  dependencies: LofiSqliteReplicaDependencies = { openDatabase: openBrowserOpfsDatabase },
+  dependencies: LofiSqliteReplicaDependencies,
 ): Promise<LofiSqliteReplica> {
   const urls = resolveFragnoInternalUrls(options.baseUrl);
   const { adapterIdentity } = await fetchFragnoInternalDescription({
@@ -122,10 +130,10 @@ export async function openLofiSqliteReplica(
     throw error;
   }
 
-  const listeners = new Set<() => void>();
-  const notify = () => {
+  const listeners = new Set<(change: LofiSqliteReplicaChange) => void>();
+  const notify = (change: LofiSqliteReplicaChange) => {
     for (const listener of listeners) {
-      listener();
+      listener(change);
     }
   };
   const channel = new BroadcastChannel(`fragno-lofi:${databaseName}`);
@@ -159,7 +167,7 @@ export async function openLofiSqliteReplica(
   channel.onmessage = (event: MessageEvent<ReplicaMessage>) => {
     const message = event.data;
     if (message.type === "changed") {
-      notify();
+      notify({ tables: message.tables ?? null });
     } else if (message.type === "status") {
       updateStatus(message.status);
     } else if (writing) {
@@ -198,11 +206,13 @@ export async function openLofiSqliteReplica(
               if (status.error !== null) {
                 report({ ...status, error: null });
               }
-              if (result.appliedDurableMutations === 0) {
+              // A rebuild changes tables even in a batch whose entries were applied before.
+              const tables = adapter.takeChangedTables();
+              if (result.appliedDurableMutations === 0 && tables.length === 0) {
                 return;
               }
-              notify();
-              post({ type: "changed" });
+              notify({ tables });
+              post({ type: "changed", tables });
             },
             onCatchUp: (progress) => {
               if (progress.status === "caught-up" && status.phase === "catching-up") {
@@ -366,36 +376,4 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
       });
     }),
   ]);
-}
-
-/** Opens after failing this many times, waiting `OPEN_RETRY_DELAY_MS` times the attempt between. */
-const OPEN_ATTEMPTS = 3;
-const OPEN_RETRY_DELAY_MS = 50;
-
-/**
- * Every database worker starting in this origin deletes the temporary directories that closed
- * workers left behind, and two starting at once can both try to delete the same one. The second
- * fails its open with "A requested file or directory could not be found", so the open is retried.
- * The worker reports that as an `OPFSWorkerRequestError`, unlike a missing OPFS or a bad
- * configuration, which are not retried.
- */
-async function openBrowserOpfsDatabase(options: { databaseName: string }) {
-  const { openBrowserWASQLiteOPFSDatabase } =
-    await import("@tanstack/browser-db-sqlite-persistence");
-  for (let attempt = 1; ; attempt++) {
-    try {
-      return await openBrowserWASQLiteOPFSDatabase({ databaseName: options.databaseName });
-    } catch (error) {
-      if (
-        attempt === OPEN_ATTEMPTS ||
-        !(error instanceof Error) ||
-        error.name !== "OPFSWorkerRequestError"
-      ) {
-        throw error;
-      }
-      await new Promise((resolve) => {
-        setTimeout(resolve, OPEN_RETRY_DELAY_MS * attempt);
-      });
-    }
-  }
 }

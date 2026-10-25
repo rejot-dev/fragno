@@ -8,7 +8,44 @@ import type { SqliteValue } from "./values";
  * of a push, so they cannot wait for their database.
  */
 export type LofiSqliteSyncConnection = {
+  /**
+   * Prepares one statement. SQL that holds no statement, or more SQL after the statement than
+   * whitespace and comments, throws, so a query cannot run a second statement unseen.
+   */
   prepare(sql: string): LofiSqliteSyncStatement;
+  /**
+   * Runs `run`, during which `guard` decides what the statements prepared may do and limits the
+   * work each statement does as it steps. Synchronous, so no other statement on the connection
+   * runs meanwhile.
+   */
+  guarded<T>(guard: LofiSqliteGuard, run: () => T): T;
+};
+
+/** One access a statement makes, as SQLite's authorizer reports it while preparing the statement. */
+export type LofiSqliteAccess = {
+  /** SQLite's action code, such as `SQLITE_READ` (20) or `SQLITE_FUNCTION` (31). */
+  action: number;
+  /**
+   * The action's details, such as the table and column a read reads, or, second, the function a
+   * call calls.
+   */
+  details: readonly [string | null, string | null];
+  /** The database the access touches, such as `"main"` or `"temp"`. */
+  database: string | null;
+  /** The innermost view or trigger the access is made through, or null for the statement's own. */
+  source: string | null;
+};
+
+export type LofiSqliteGuard = {
+  /** Whether a statement may make `access`; preparing one that makes a refused access throws. */
+  authorize(access: LofiSqliteAccess): boolean;
+  /**
+   * How many of SQLite's virtual machine operations one run of a statement may take, counted in
+   * thousands; a run that takes more throws.
+   */
+  maxOperations: number;
+  /** The longest string or blob, in bytes, a statement may produce. */
+  maxLength: number;
 };
 
 export type LofiSqliteSyncStatement = {
@@ -16,6 +53,13 @@ export type LofiSqliteSyncStatement = {
   readonly columnNames: readonly string[];
   /** Whether the statement leaves the database unchanged. */
   readonly isReadOnly: boolean;
+  /**
+   * The tables and views the statement reads, by name, including the tables it reads through
+   * views. Changes to other tables cannot change its rows.
+   */
+  readonly tables: ReadonlySet<string>;
+  /** How many parameters the statement takes. */
+  readonly parameterCount: number;
   /**
    * Runs the statement and yields each row's values, with integers outside the safe range as
    * bigints. Returning the iterator early ends the run.
@@ -36,6 +80,10 @@ export type LofiSqliteSyncDatabase = LofiSqliteDatabase & {
 
 /** What statements call on the Emscripten module of wa-sqlite's synchronous build. */
 type WaSqliteModule = {
+  // wa-sqlite's hooks are installed per module, so a connection installs them only while it runs
+  // synchronously, and removes them before any other connection of the module can run.
+  set_authorizer(db: number, authorizer: null, app: number): number;
+  progress_handler(db: number, operations: number, handler: null, app: number): void;
   cwrap(
     name: string,
     returnType: "number" | "string" | null,
@@ -62,7 +110,7 @@ export function wrapWaSqliteDatabase(options: {
   close: () => Promise<void>;
 }): LofiSqliteSyncDatabase {
   const { sqlite3, db } = options;
-  const statements = createStatements(options.module as WaSqliteModule, db);
+  const statements = createStatements(options.module as WaSqliteModule, sqlite3, db);
   return {
     async execute(sql, params = []) {
       const rows: Record<string, unknown>[] = [];
@@ -95,7 +143,13 @@ export function wrapWaSqliteDatabase(options: {
   };
 }
 
-function createStatements(module: WaSqliteModule, db: number) {
+const SQLITE_READ = 20;
+const SQLITE_DENY = 1;
+const SQLITE_LIMIT_LENGTH = 0;
+// How many operations SQLite runs between calls of the progress handler.
+const OPERATIONS_PER_PROGRESS = 1000;
+
+function createStatements(module: WaSqliteModule, sqlite3: SQLiteAPI, db: number) {
   const n = "number" as const;
   const c = {
     prepare: module.cwrap("sqlite3_prepare_v3", n, [n, n, n, n, n, n]),
@@ -117,6 +171,8 @@ function createStatements(module: WaSqliteModule, db: number) {
     columnBlob: module.cwrap("sqlite3_column_blob", n, [n, n]),
     columnBytes: module.cwrap("sqlite3_column_bytes", n, [n, n]),
     stmtReadonly: module.cwrap("sqlite3_stmt_readonly", n, [n]),
+    parameterCount: module.cwrap("sqlite3_bind_parameter_count", n, [n]),
+    limit: module.cwrap("sqlite3_limit", n, [n, n, n]),
     errmsg: module.cwrap("sqlite3_errmsg", "string", [n]),
   };
   const sqliteFree = module._getSqliteFree();
@@ -195,34 +251,107 @@ function createStatements(module: WaSqliteModule, db: number) {
     }
   };
 
-  const prepare = (sql: string): LofiSqliteSyncStatement => {
-    const bytes = encoder.encode(sql);
+  // The guard of the statements run in `guarded`, which spends `operations` as they step.
+  let active: {
+    guard: LofiSqliteGuard;
+    operations: number;
+    refused: LofiSqliteAccess | null;
+  } | null = null;
+
+  /**
+   * Prepares the first statement of `sql`, and returns it with the byte offset where it ends; zero
+   * when `sql` holds only whitespace and comments. `tables` collects the tables it reads.
+   */
+  const prepareOne = (bytes: Uint8Array, tables: Set<string>) => {
     const text = copyIn(bytes);
-    const out = module._sqlite3_malloc(4);
-    let statement: number;
+    const out = module._sqlite3_malloc(8);
+    // wa-sqlite passes an absent string as "", which no name SQLite reports is.
+    const name = (value: string | null) => (value === "" ? null : value);
+    sqlite3.set_authorizer(
+      db,
+      (_app, action, first, second, database, source) => {
+        const access: LofiSqliteAccess = {
+          action,
+          details: [name(first), name(second)],
+          database: name(database),
+          source: name(source),
+        };
+        if (active && !active.guard.authorize(access)) {
+          active.refused ??= access;
+          return SQLITE_DENY;
+        }
+        if (action === SQLITE_READ && access.details[0] !== null) {
+          tables.add(access.details[0]);
+        }
+        return SQLite.SQLITE_OK;
+      },
+      null,
+    );
     try {
-      check(c.prepare(db, text, bytes.byteLength, SQLITE_PREPARE_PERSISTENT, out, 0));
-      statement = module.getValue(out, "*");
+      check(c.prepare(db, text, bytes.byteLength, SQLITE_PREPARE_PERSISTENT, out, out + 4));
+      return {
+        statement: module.getValue(out, "*"),
+        end: module.getValue(out + 4, "*") - text,
+      };
     } finally {
+      module.set_authorizer(db, null, 0);
       module._sqlite3_free(out);
       module._sqlite3_free(text);
     }
+  };
+
+  const prepare = (sql: string): LofiSqliteSyncStatement => {
+    const bytes = encoder.encode(sql);
+    const tables = new Set<string>();
+    const { statement, end } = prepareOne(bytes, tables);
+    if (statement === 0) {
+      throw new Error(`SQL holds no statement: ${sql}`);
+    }
     live.add(statement);
+    try {
+      // What follows the statement must prepare to nothing, as whitespace and comments do.
+      for (let offset = end; offset < bytes.byteLength; ) {
+        const next = prepareOne(bytes.subarray(offset), new Set());
+        if (next.statement !== 0) {
+          c.finalize(next.statement);
+          throw new Error(`SQL holds more than one statement: ${sql}`);
+        }
+        if (next.end === 0) {
+          break;
+        }
+        offset += next.end;
+      }
+    } catch (error) {
+      live.delete(statement);
+      c.finalize(statement);
+      throw error;
+    }
     const columnNames = Array.from({ length: c.columnCount(statement) as number }, (_, index) =>
       String(c.columnName(statement, index)),
     );
     const prepared: LofiSqliteSyncStatement = {
       columnNames,
       isReadOnly: c.stmtReadonly(statement) !== 0,
+      tables,
+      parameterCount: c.parameterCount(statement) as number,
       *rows(params) {
         c.reset(statement);
         c.clearBindings(statement);
         for (const [index, value] of params.entries()) {
           check(bind(statement, index + 1, value));
         }
+        if (active) {
+          active.operations = 0;
+        }
         try {
           for (;;) {
-            const result = check(c.step(statement), [SQLite.SQLITE_ROW, SQLite.SQLITE_DONE]);
+            const result = c.step(statement) as number;
+            if (result === SQLite.SQLITE_INTERRUPT && active) {
+              throw new Error(
+                `The statement took more than ${active.guard.maxOperations * OPERATIONS_PER_PROGRESS} operations.`,
+              );
+            }
+            check(result, [SQLite.SQLITE_ROW, SQLite.SQLITE_DONE]);
             if (result === SQLite.SQLITE_DONE) {
               return;
             }
@@ -237,8 +366,39 @@ function createStatements(module: WaSqliteModule, db: number) {
     return prepared;
   };
 
+  const guarded = <T>(guard: LofiSqliteGuard, run: () => T): T => {
+    if (active) {
+      throw new Error("Guarded runs do not nest.");
+    }
+    const state = { guard, operations: 0, refused: null as LofiSqliteAccess | null };
+    active = state;
+    const length = c.limit(db, SQLITE_LIMIT_LENGTH, guard.maxLength) as number;
+    sqlite3.progress_handler(
+      db,
+      OPERATIONS_PER_PROGRESS,
+      () => {
+        state.operations += 1;
+        return state.operations > guard.maxOperations ? 1 : 0;
+      },
+      null,
+    );
+    try {
+      return run();
+    } catch (error) {
+      // SQLite reports a refused access as "not authorized", without naming it.
+      if (state.refused) {
+        throw new LofiSqliteAccessError(state.refused, { cause: error });
+      }
+      throw error;
+    } finally {
+      module.progress_handler(db, 0, null, 0);
+      c.limit(db, SQLITE_LIMIT_LENGTH, length);
+      active = null;
+    }
+  };
+
   return {
-    connection: { prepare },
+    connection: { prepare, guarded },
     finalizeAll() {
       for (const statement of live) {
         c.finalize(statement);
@@ -246,4 +406,21 @@ function createStatements(module: WaSqliteModule, db: number) {
       live.clear();
     },
   };
+}
+
+/** A statement prepared in a guarded run made an access its guard refused. */
+export class LofiSqliteAccessError extends Error {
+  readonly access: LofiSqliteAccess;
+
+  constructor(access: LofiSqliteAccess, options: { cause: unknown }) {
+    super(`Not authorized: ${describeAccess(access)}.`, options);
+    this.name = "LofiSqliteAccessError";
+    this.access = access;
+  }
+}
+
+function describeAccess({ action, details, source }: LofiSqliteAccess): string {
+  const [first, second] = details;
+  const parts = [`action ${action}`, first, second, source && `through ${source}`];
+  return parts.filter((part) => part !== null && part !== "").join(" ");
 }

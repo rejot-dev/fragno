@@ -10,7 +10,7 @@ import type {
 } from "./protocol";
 import { registrationsNamingReplica } from "./rebuild";
 import {
-  openLofiSqliteReplica,
+  openLofiSqliteReplicaOn,
   type LofiSqliteReplica,
   type LofiSqliteReplicaOptions,
 } from "./replica";
@@ -349,17 +349,28 @@ async function openLeader(
     }
   };
 
-  // Notifications that arrive while a refresh waits for the lock are covered by it.
+  // Notifications that arrive while a refresh waits for the lock are covered by it, so the tables
+  // they changed add up until it runs; null once one did not say which.
   let refreshQueued = false;
-  const unsubscribe = replica.subscribe(() => {
+  let changed: Set<string> | null = new Set();
+  const unsubscribe = replica.subscribe(({ tables }) => {
+    if (tables === null) {
+      changed = null;
+    } else {
+      for (const table of tables) {
+        changed?.add(table);
+      }
+    }
     if (refreshQueued) {
       return;
     }
     refreshQueued = true;
     withViews((views) => {
       refreshQueued = false;
+      const tables = changed;
+      changed = new Set();
       for (const engine of views.values()) {
-        engine.refresh();
+        engine.refresh(tables);
       }
     }).catch(options.replica.onError);
   });
@@ -409,7 +420,7 @@ async function openReplicaViews(
   engines: ReadonlyMap<string, LofiSqliteViewEngine>,
 ) {
   let database: LofiSqliteSyncDatabase | undefined;
-  const replica = await openLofiSqliteReplica(options.replica, {
+  const replica = await openLofiSqliteReplicaOn(options.replica, {
     openDatabase: async (open) => (database = await options.openDatabase(open)),
   });
   const { connection } = database!;

@@ -5,8 +5,8 @@ import {
   type LofiSqliteQueryRow,
   type LofiSqliteResultColumn,
 } from "./query";
-import type { LofiSqliteSyncStatement } from "./sync-connection";
-import type { LofiSqliteViewEngine } from "./views";
+import type { LofiSqliteSyncConnection, LofiSqliteSyncStatement } from "./sync-connection";
+import { readsChangedTable, type LofiSqliteViewEngine } from "./views";
 
 /** Reads the replica synchronously, decoding each row like `replica.query`. */
 export type LofiSqliteReader = {
@@ -58,10 +58,67 @@ export function lofiSqliteReadViews<TReads extends LofiSqliteReads>(
 const STATEMENT_CACHE_SIZE = 256;
 
 /**
- * Maintains views computed by read functions: each view runs its read again after every batch the
- * replica applied, with the database locked, so the read's queries see one state. The view reports
- * its data only when it changed. A query that would write is refused, since writes would bypass the
- * replica.
+ * A reader of `connection` that refuses writes, and `track`, which runs a function that reads with
+ * it and returns what it returned with the tables its queries read.
+ */
+export function createTrackingReader(connection: LofiSqliteSyncConnection): {
+  reader: LofiSqliteReader;
+  track: <T>(read: () => T) => { result: T; tables: ReadonlySet<string> };
+} {
+  const statements = new Map<string, LofiSqliteSyncStatement>();
+  const prepare = (sql: string) => {
+    const cached = statements.get(sql);
+    if (cached) {
+      statements.delete(sql);
+      statements.set(sql, cached);
+      return cached;
+    }
+    const statement = connection.prepare(sql);
+    if (!statement.isReadOnly) {
+      throw new Error(`A read view must not write: ${sql}`);
+    }
+    statements.set(sql, statement);
+    if (statements.size > STATEMENT_CACHE_SIZE) {
+      statements.delete(statements.keys().next().value!);
+    }
+    return statement;
+  };
+  // The tables the running read's queries read so far.
+  let reading: Set<string> | null = null;
+  return {
+    reader: {
+      query(query) {
+        const statement = prepare(query.sql);
+        for (const table of statement.tables) {
+          reading?.add(table);
+        }
+        const rows = Array.from(statement.rows(query.params), (values) =>
+          Object.fromEntries(statement.columnNames.map((name, index) => [name, values[index]])),
+        );
+        return decodeLofiSqliteQueryRows(query, rows);
+      },
+    },
+    track: (read) => {
+      const tables = new Set<string>();
+      const outer = reading;
+      reading = tables;
+      try {
+        return { result: read(), tables };
+      } finally {
+        reading = outer;
+        for (const table of tables) {
+          outer?.add(table);
+        }
+      }
+    },
+  };
+}
+
+/**
+ * Maintains views computed by read functions: each view runs its read again after every batch that
+ * wrote a table its last run read, with the database locked, so the read's queries see one state.
+ * The view reports its data only when it changed. A query that would write is refused, since
+ * writes would bypass the replica.
  */
 export function readViewEngine(options: {
   kind: string;
@@ -70,37 +127,16 @@ export function readViewEngine(options: {
   return {
     kind: options.kind,
     open({ connection }) {
-      const statements = new Map<string, LofiSqliteSyncStatement>();
-      const prepare = (sql: string) => {
-        const cached = statements.get(sql);
-        if (cached) {
-          statements.delete(sql);
-          statements.set(sql, cached);
-          return cached;
-        }
-        const statement = connection.prepare(sql);
-        if (!statement.isReadOnly) {
-          throw new Error(`A read view must not write: ${sql}`);
-        }
-        statements.set(sql, statement);
-        if (statements.size > STATEMENT_CACHE_SIZE) {
-          statements.delete(statements.keys().next().value!);
-        }
-        return statement;
-      };
-      const reader: LofiSqliteReader = {
-        query(query) {
-          const statement = prepare(query.sql);
-          const rows = Array.from(statement.rows(query.params), (values) =>
-            Object.fromEntries(statement.columnNames.map((name, index) => [name, values[index]])),
-          );
-          return decodeLofiSqliteQueryRows(query, rows);
-        },
-      };
+      const { reader, track } = createTrackingReader(connection);
 
       const views = new Map<
         string,
-        { run: () => unknown; data: unknown; listener: (data: unknown) => void }
+        {
+          run: () => { data: unknown; tables: ReadonlySet<string> };
+          data: unknown;
+          tables: ReadonlySet<string>;
+          listener: (data: unknown) => void;
+        }
       >();
       return {
         materialize(id, query, listener) {
@@ -109,20 +145,28 @@ export function readViewEngine(options: {
           if (!readFunction) {
             throw new Error(`No read named "${read}" in read views of kind "${options.kind}".`);
           }
-          const run = () => readFunction(reader, args as never);
-          const data = run();
-          views.set(id, { run, data, listener });
+          const run = () => {
+            const { result, tables } = track(() => readFunction(reader, args as never));
+            return { data: result, tables };
+          };
+          const { data, tables } = run();
+          views.set(id, { run, data, tables, listener });
           listener(data);
         },
         destroy(id) {
           views.delete(id);
         },
-        refresh() {
+        refresh(changed) {
           // One failing read leaves its view's data as it was, and the others still refresh.
           const errors: unknown[] = [];
           for (const view of views.values()) {
+            // A read reads only what its last run read until one of those tables changes.
+            if (!readsChangedTable(view.tables, changed)) {
+              continue;
+            }
             try {
-              const data = view.run();
+              const { data, tables } = view.run();
+              view.tables = tables;
               if (!sameData(data, view.data)) {
                 view.data = data;
                 view.listener(data);
@@ -141,7 +185,7 @@ export function readViewEngine(options: {
 }
 
 /** Whether two results of a read hold the same data: plain objects, arrays, dates, and bytes. */
-function sameData(left: unknown, right: unknown): boolean {
+export function sameData(left: unknown, right: unknown): boolean {
   if (Object.is(left, right)) {
     return true;
   }
