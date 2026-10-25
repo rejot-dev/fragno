@@ -14,6 +14,7 @@ import { guardedSqlViewEngine, type LofiSqliteGuardedQuery } from "./guarded-vie
 import { lofiSqliteTableName, quoteSqliteIdentifier } from "./layout";
 import { lofiSqliteReadViews, readViewEngine, type LofiSqliteReads } from "./read-views";
 import { openLofiSqliteMemoryFiles, openLofiSqliteTab } from "./testing";
+import type { LofiSqliteViewEngine } from "./views";
 
 const appSchema = schema("app", (s) =>
   s
@@ -74,6 +75,18 @@ const appReads = {
       })
       .map(({ title }) => title);
   },
+  // Fails while Ada is gone.
+  ada: (reader) => {
+    const [ada] = reader.query({
+      sql: `SELECT "email" FROM ${table("users")} WHERE "email" = 'ada@example.com'`,
+      params: [],
+      columns: { email: appSchema.tables.users.columns.email },
+    });
+    if (!ada) {
+      throw new Error("Ada is gone.");
+    }
+    return ada;
+  },
   deleteUsers: (reader) =>
     reader.query({ sql: `DELETE FROM ${table("users")}`, params: [], columns: {} }),
 } satisfies LofiSqliteReads;
@@ -105,6 +118,24 @@ const guardedEngine = guardedSqlViewEngine({
   functions: ["count", "upper"],
   limits: { rows: 2, bytes: 200, operations: 100, length: 1_000 },
 });
+// An engine with no views, which records the tables of each refresh and fails while `failures`
+// is above zero.
+const flaky = { failures: 0, refreshes: [] as Array<string[] | null> };
+const flakyEngine: LofiSqliteViewEngine = {
+  kind: "flaky",
+  open: () => ({
+    materialize() {},
+    destroy() {},
+    refresh(changed) {
+      flaky.refreshes.push(changed === null ? null : [...changed].sort());
+      if (flaky.failures > 0) {
+        flaky.failures -= 1;
+        throw new Error("The flaky engine failed.");
+      }
+    },
+  }),
+};
+
 const guardedView =
   (sql: string, params: unknown[] = []) =>
   (client: LofiSqliteClient) =>
@@ -230,30 +261,33 @@ async function runScenario(steps: ScenarioStep[]): Promise<ScenarioContext> {
 
   for (const step of steps) {
     switch (step.type) {
-      case "openTab":
-        ctx.tabs.set(
-          step.tab,
-          await openLofiSqliteTab({
-            replica: {
-              baseUrl: "http://host.test",
-              fetch: fetch as typeof globalThis.fetch,
-              schemas: [{ schema: appSchema }],
-              localSchemas: [],
-              projections: [],
-              ephemeralTables: [],
-              onError: (error) => ctx.errors.push(error),
-              retryDelayMs: 10,
-            },
-            engines: [readViewEngine({ kind: "app-reads", reads: appReads }), guardedEngine],
-            openDatabase: async (open) => {
-              ctx.databasesOpened++;
-              return await files.open(open);
-            },
-            heartbeatIntervalMs: step.beats ? 20 : 60 * 60_000,
-            leaderTimeoutMs: 200,
-          }),
-        );
+      case "openTab": {
+        const opening = openLofiSqliteTab({
+          replica: {
+            baseUrl: "http://host.test",
+            fetch: fetch as typeof globalThis.fetch,
+            schemas: [{ schema: appSchema }],
+            localSchemas: [],
+            projections: [],
+            ephemeralTables: [],
+            onError: (error) => ctx.errors.push(error),
+            retryDelayMs: 10,
+          },
+          engines: [
+            readViewEngine({ kind: "app-reads", reads: appReads }),
+            flakyEngine,
+            guardedEngine,
+          ],
+          openDatabase: async (open) => {
+            ctx.databasesOpened++;
+            return await files.open(open);
+          },
+          heartbeatIntervalMs: step.beats ? 20 : 60 * 60_000,
+          leaderTimeoutMs: 200,
+        });
+        ctx.tabs.set(step.tab, await opening);
         break;
+      }
       case "closeTab": {
         const tab = ctx.tabs.get(step.tab)!;
         ctx.tabs.delete(step.tab);
@@ -528,5 +562,105 @@ describe("Lofi SQLite host", () => {
       }),
     ]);
     expect(ctx.errors).toEqual([]);
+  });
+
+  it("reports a read that fails to refresh to its view, and its recovery", async () => {
+    const people = { status: "ready", columns: ["email"], truncated: false };
+    const ctx = await runScenario([
+      openTab("a"),
+      write("ada", (uow) => {
+        uow.create("users", { email: "ada@example.com", active: true });
+      }),
+      watch("a", "people", guardedView(`SELECT "email" FROM people ORDER BY "email"`)),
+      waitForView("a", "people", { ...people, rows: [["ada@example.com"]] }),
+      watch("a", "ada", (client) => appReadViews(client, "ada", undefined)),
+      waitForView("a", "ada", { email: "ada@example.com" }),
+
+      // The read fails in the same batch that the guarded view, of an engine refreshed after the
+      // read engine, sees.
+      write("bob", (uow, vars) => {
+        uow.delete("users", vars["ada"]![0]!);
+        uow.create("users", { email: "bob@example.com", active: true });
+      }),
+      waitForError("a", "ada", "Ada is gone."),
+      waitForView("a", "people", { ...people, rows: [["bob@example.com"]] }),
+
+      // Ada's return gives the read the data it had before it failed, which it reports again.
+      write("ada again", (uow) => {
+        uow.create("users", { email: "ada@example.com", active: true });
+      }),
+      waitForView("a", "ada", { email: "ada@example.com" }),
+      check((ctx) => {
+        expect(ctx.views.get("a/ada")!.results.map(({ status }) => status)).toEqual([
+          "loading",
+          "ready",
+          "error",
+          "ready",
+        ]);
+      }),
+    ]);
+    expect(ctx.errors).toEqual([]);
+  });
+
+  it("reports a SQL view that fails to refresh to its view, and its recovery", async () => {
+    const ctx = await runScenario([
+      openTab("a"),
+      watch("a", "json", (client) =>
+        client.sql({
+          sql: `SELECT json("email") AS "email" FROM ${table("users")}`,
+          params: [],
+          columns: { email: "text" },
+        }),
+      ),
+      waitForView("a", "json", []),
+      write("ada", (uow) => {
+        uow.create("users", { email: "ada@example.com", active: true });
+      }),
+      waitForError("a", "json", "malformed JSON"),
+      // The view's rows are again what they were before it failed, which it reports again.
+      write("gone", (uow, vars) => {
+        uow.delete("users", vars["ada"]![0]!);
+      }),
+      waitForView("a", "json", []),
+      check((ctx) => {
+        expect(ctx.views.get("a/json")!.results.map(({ status }) => status)).toEqual([
+          "loading",
+          "ready",
+          "error",
+          "ready",
+        ]);
+      }),
+    ]);
+    expect(ctx.errors).toEqual([]);
+  });
+
+  it("refreshes the other engines while one fails, and gives it the tables again", async () => {
+    const users = lofiSqliteTableName({ schema: appSchema }, "users");
+    const posts = lofiSqliteTableName({ schema: appSchema }, "posts");
+    const ctx = await runScenario([
+      openTab("a"),
+      watch("a", "people", guardedView(`SELECT "email" FROM people ORDER BY "email"`)),
+      watch("a", "posts", postCountView),
+      waitForView("a", "posts", [{ count: 0 }]),
+      check(() => {
+        flaky.failures = 1;
+        flaky.refreshes = [];
+      }),
+      // The guarded engine, which refreshes after the failing one, still sees the batch.
+      write("ada", (uow) => {
+        uow.create("users", { email: "ada@example.com", active: true });
+      }),
+      waitForView("a", "people", { rows: [["ada@example.com"]] }),
+      // The next batch writes only posts, and the failed engine gets users again with it.
+      write("post", (uow) => {
+        uow.create("posts", { title: "Hello" });
+      }),
+      waitForView("a", "posts", [{ count: 1 }]),
+      check((ctx) => {
+        expect(flaky.refreshes).toEqual([[users], [posts, users].sort()]);
+        expect(ctx.errors).toEqual([new Error("The flaky engine failed.")]);
+      }),
+    ]);
+    ctx.errors.length = 0;
   });
 });

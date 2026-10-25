@@ -332,9 +332,16 @@ async function openLeader(
         if (!engine) {
           throw new Error(`No view engine maintains views of kind "${request.kind}".`);
         }
-        engine.materialize(key, request.query, (data) => {
-          respond(tab, { type: "data", id: request.id, data });
-        });
+        engine.materialize(
+          key,
+          request.query,
+          (data) => {
+            respond(tab, { type: "data", id: request.id, data });
+          },
+          (error) => {
+            respond(tab, { type: "error", id: request.id, message: errorMessage(error) });
+          },
+        );
       }).catch((error: unknown) => {
         respond(tab, { type: "error", id: request.id, message: errorMessage(error) });
       });
@@ -350,16 +357,26 @@ async function openLeader(
   };
 
   // Notifications that arrive while a refresh waits for the lock are covered by it, so the tables
-  // they changed add up until it runs; null once one did not say which.
+  // they changed add up until it runs; null once one did not say which. Each engine has its own, so
+  // an engine that fails to refresh gets its tables again with the next batch's, and the others
+  // refresh regardless.
   let refreshQueued = false;
-  let changed: Set<string> | null = new Set();
+  const changed = new Map<string, Set<string> | null>();
+  const addChanged = (kind: string, tables: Iterable<string> | null) => {
+    const pending = changed.get(kind);
+    if (tables === null || pending === null) {
+      changed.set(kind, null);
+      return;
+    }
+    const next = pending ?? new Set<string>();
+    for (const table of tables) {
+      next.add(table);
+    }
+    changed.set(kind, next);
+  };
   const unsubscribe = replica.subscribe(({ tables }) => {
-    if (tables === null) {
-      changed = null;
-    } else {
-      for (const table of tables) {
-        changed?.add(table);
-      }
+    for (const kind of context.engines.keys()) {
+      addChanged(kind, tables);
     }
     if (refreshQueued) {
       return;
@@ -367,10 +384,18 @@ async function openLeader(
     refreshQueued = true;
     withViews((views) => {
       refreshQueued = false;
-      const tables = changed;
-      changed = new Set();
-      for (const engine of views.values()) {
-        engine.refresh(tables);
+      for (const [kind, engine] of views) {
+        if (!changed.has(kind)) {
+          continue;
+        }
+        const tables = changed.get(kind)!;
+        changed.delete(kind);
+        try {
+          engine.refresh(tables);
+        } catch (error) {
+          addChanged(kind, tables);
+          options.replica.onError(error);
+        }
       }
     }).catch(options.replica.onError);
   });
@@ -449,7 +474,10 @@ function tabGroupName(options: LofiSqliteReplicaOptions): string {
   const schemas = registrationsNamingReplica(options)
     .map((registration) => `${registeredSchemaName(registration)}@${registration.schema.version}`)
     .sort((left, right) => left.localeCompare(right));
-  return `fragno-lofi-sqlite:${JSON.stringify([resolveFragnoInternalUrls(options.baseUrl).baseUrl, schemas])}`;
+  return `fragno-lofi-sqlite:${JSON.stringify([
+    resolveFragnoInternalUrls(options.baseUrl).baseUrl,
+    schemas,
+  ])}`;
 }
 
 function leaderLockName(group: string): string {

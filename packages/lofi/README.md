@@ -889,15 +889,23 @@ statement reads while preparing it, as `statement.tables`, including the tables 
   tables only once one it read changed;
 - an engine that cannot tell, such as `@fragno-dev/lofi-zql`'s, refreshes after every batch.
 
+A view whose refresh fails reports the error to its page, which shows it instead of the data, and
+the others refresh regardless. It runs again after a batch that wrote a table its last successful
+run read, and reports its data again once it succeeds, even if the data is what it was before. An
+engine whose `refresh` throws as a whole goes to `onError`; the other engines still refresh, and it
+gets the tables again with the next batch's.
+
 ### View engines
 
 A view engine maintains one kind of view. In the worker,
 `engine.open({ connection, registrations })` starts it on the leader's synchronous connection, and
-returns the engine's `materialize(id, query, listener)`, `destroy(id)`, and `refresh(changed)`. The
-leader calls them only while it holds a lock on the database, after every batch in the case of
-`refresh`, so they read synchronously. Engines must not write the replica's tables: only the replica
-does. On the page, `replica.view(kind, query)` asks the leader's engine of `kind` for a view;
-`query` must survive `postMessage`.
+returns the engine's `materialize(id, query, listener, fail)`, `destroy(id)`, and
+`refresh(changed)`. A view that fails to build throws from `materialize`; one that fails to refresh
+reports it to `fail`, and calls `listener` again once it succeeds. The leader calls them only while
+it holds a lock on the database, after every batch in the case of `refresh`, so they read
+synchronously. Engines must not write the replica's tables: only the replica does. On the page,
+`replica.view(kind, query)` asks the leader's engine of `kind` for a view; `query` must survive
+`postMessage`.
 
 `connection.prepare(sql)` prepares one statement and reports its `columnNames`, `isReadOnly`,
 `tables`, and `parameterCount`. `connection.guarded(guard, run)` runs `run` with a `guard` that
@@ -1025,6 +1033,9 @@ only to the tab that shows it.
 - **Tabs on other code.** Tabs whose schemas have the same versions share a leader even if they run
   different versions of lofi, whose messages could differ, or of a rebuildable projection, whose
   rows are then the leader's version.
+- **A view that fails to build stays failed.** Only refreshes recover; a read that throws when its
+  view is first built, for example because the replica has not caught up yet, fails until the page
+  asks for the view again.
 - **Views refresh by table.** A view refreshes after any batch that wrote a table it reads, even
   when the batch touched none of its rows, and a read's whole result is compared with the last one
   sent.
