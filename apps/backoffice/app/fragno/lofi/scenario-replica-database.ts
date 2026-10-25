@@ -10,7 +10,9 @@ import type {
 import {
   openLofiSqliteMemoryFiles,
   openLofiSqliteTab,
+  rebuildLofiSqliteProjections,
   waitForLofiSqliteReplica,
+  type LofiSqliteProjectionTables,
 } from "@fragno-dev/lofi/sqlite/testing";
 import type { LofiSqliteViewEngine } from "@fragno-dev/lofi/sqlite/worker";
 
@@ -18,6 +20,15 @@ export type ScenarioReplicaScope = {
   readonly replica: LofiSqliteClient;
   sync(): Promise<void>;
   drain(): Promise<void>;
+  /**
+   * Rebuilds the replica's projections from the rows it stores, as changed projection code would,
+   * and returns their tables before and after; see `rebuildLofiSqliteProjections`. Call it after
+   * `drain()`.
+   */
+  rebuildProjections(): Promise<{
+    before: LofiSqliteProjectionTables;
+    after: LofiSqliteProjectionTables;
+  }>;
 };
 
 export type ScenarioReplicaDatabase = {
@@ -52,6 +63,7 @@ type OpenedScenarioReplica = {
   replica: LofiSqliteClient;
   /** The replica that applies the outbox, which `sync` waits for. */
   writer: LofiSqliteReplica;
+  rebuildProjections: ScenarioReplicaScope["rebuildProjections"];
   close(): Promise<void>;
 };
 
@@ -87,7 +99,20 @@ export function createScenarioReplicaDatabase(
       heartbeatIntervalMs: 1_000,
       leaderTimeoutMs: 10_000,
     });
-    return { replica: tab.client, writer: await tab.host.leading, close: () => tab.close() };
+    const writer = await tab.host.leading;
+    return {
+      replica: tab.client,
+      writer,
+      rebuildProjections: async () => {
+        const database = await connection.openDatabase({ databaseName: writer.databaseName });
+        try {
+          return await rebuildLofiSqliteProjections({ ...options, database });
+        } finally {
+          await database.close();
+        }
+      },
+      close: () => tab.close(),
+    };
   });
 }
 
@@ -172,6 +197,7 @@ function createScenarioReplicaScopes(
         await options.drainRuntime();
         await sync();
       },
+      rebuildProjections: async () => (await opening).rebuildProjections(),
       cleanup: async () => {
         await opening.then(
           (opened) => opened.close(),

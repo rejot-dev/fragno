@@ -122,8 +122,17 @@ functions the TanStack collections derive the same rows with:
 Both readers (`readPiAgentEvent`, `readIntegrationConnectionStateChange`) validate each event once,
 when it arrives. Folding events as they arrive relies on nothing deleting them:
 `admin.events.delete` refuses `pi` and `integrations` events, so the projections never see one go.
-Workflow waits are not projected: the overview reads the waiting runs with their steps anyway, and
-derives waits from them with `currentWorkflowWaits`.
+
+Both projections are rebuildable: they list the tables they write and replay the stored
+`automation_event` rows, so `automation_views` does not name the replica's database. Changing one of
+their tables, or bumping a projection's `rebuild.version` when it folds the same events differently,
+rebuilds the projection from the events the browser already holds, in the order the outbox delivered
+them, instead of downloading the history again. On the production fixture of Oct 23 (11,970 events),
+rebuilding both took 1.6 s in Node and gave exactly the rows the stream built. The agents and
+Integrations scenario tests check the same with `assertAutomationProjectionsRebuild`, which rebuilds
+the scope's replica on a second connection and compares. Workflow waits are not projected: the
+overview reads the waiting runs with their steps anyway, and derives waits from them with
+`currentWorkflowWaits`.
 
 The tests read the replica through its views, as pages do, with `readAutomationReplica`
 (`../automation/lofi/testing.ts`). `dashboard/overview.scenario.test.ts` reads the overview and the
@@ -167,9 +176,9 @@ in the median of 5 runs after catch-up:
 Before the list was summarized in the worker, its result was 2.4 MB, 98% of it origins' payloads,
 mostly GitHub webhook bodies, and copying it took 3.8 ms each time it was sent. With reads this
 cheap, maintaining the list incrementally, with a projection that keeps a summary per origin and a
-ZQL view of it, would save the leader about 5 ms per batch while the Events tab is open; the
-projection would need a schema change, and so a new download of the whole outbox, whenever its
-summary changes.
+ZQL view of it, would save the leader about 5 ms per batch while the Events tab is open; as a
+rebuildable projection, changing its summary would rebuild it from the stored events rather than
+download the outbox again.
 
 ## Risks and follow-ups
 
@@ -219,13 +228,18 @@ summary changes.
   scope's outbox, as the TanStack collections do. In the production fixture of Oct 23 that is 16,104
   entries and 316 MB, 91% of it the bodies of GitHub `webhook.received` events stored before
   Backoffice stopped storing them. Stripping those from the outbox is planned separately.
-- **Projection changes need a schema change.** The replica's database is named by the registered
-  schemas' versions, not by the projections' code, so rows a changed projection would write
-  differently stay until `automation_views` gets a new operation, such as `.noOp(...)`, which opens
-  a new database that replays the outbox.
+- **A changed projection needs its version bumped.** A changed table rebuilds on its own, but a
+  projection that folds the same events into different values, with the same tables, rebuilds only
+  when its `rebuild.version` changes. Forgetting the bump keeps the old rows until it happens.
+- **Rebuilding blocks the leader.** The rebuild runs in the leader's worker, in one transaction,
+  when the replica opens; views wait meanwhile. It decodes every stored event, not just `pi` and
+  `integrations` ones, once per stale projection: 1.6 s in Node for both on the production fixture,
+  likely more in a browser. A filter on the replayed rows, such as by `source`, would skip the rest,
+  but would state again which events each projection folds.
 - **The projections assume folded events are never deleted.** If `admin.events.delete` ever allows
   `pi` or `integrations` events, a replica would keep what deleted events did, and one that
-  downloads the outbox afterwards would not, since their history goes too.
+  downloads the outbox afterwards would not, since their history goes too. A rebuild would then drop
+  what the deleted events did, so the same browser could show different agents before and after one.
 - **Ties may break differently.** Of two changes to a connection in the same millisecond, the
   projection keeps the first it applies, in outbox order; the TanStack collection keeps whichever
   its stable sort puts first. Origins that occurred in the same millisecond list newest ID first,

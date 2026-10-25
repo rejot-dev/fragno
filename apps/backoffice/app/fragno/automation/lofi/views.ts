@@ -43,9 +43,10 @@ const jsonColumn = <T>() => column("json") as Column<"json", T, T>;
 
 /**
  * What Backoffice derives from the scope's events, kept up to date by the projections below with
- * the same functions the TanStack collections derive it with. The replica's database is named by
- * this schema's version, not by the projections' code: when a projection changes what it writes,
- * add an operation, such as `.noOp(...)`, so replicas replay their outbox into a new database.
+ * the same functions the TanStack collections derive it with. Only those projections write these
+ * tables, and the replica rebuilds them from its stored events, so this schema does not name the
+ * replica's database: changing a table rebuilds the projection that writes it. When a projection
+ * changes what it writes for the same events, bump its `rebuild.version`.
  */
 export const automationViewsSchema = schema("automation_views", (s) =>
   s
@@ -191,7 +192,8 @@ const entryEvents = new WeakMap<LofiMutationMatcher, EntryEvents>();
 /**
  * What the entry's events mean to these views. Neither kind is ever deleted: `admin.events.delete`
  * refuses `pi` and `integrations` events, which is what lets the projections fold them as they
- * arrive instead of deriving rows from the events that remain.
+ * arrive, and rebuild by folding the stored ones again, instead of deriving rows from the events
+ * that remain.
  */
 function eventsOf(match: LofiMutationMatcher): EntryEvents {
   const cached = entryEvents.get(match);
@@ -217,9 +219,20 @@ function requestKeyOf({ read }: PiEvent): string | null {
   return requestId === null ? null : piAgentRequestKey(read.agentName, requestId);
 }
 
+/** Replays the scope's stored events, which `eventsOf` says are never deleted. */
+const fromEvents = [{ schema: automationFragmentSchema, table: "automation_event" }];
+
 /** Agents and their requests, by `applyPiAgentEvent`, and the turns their events ended. */
 const piAgents = defineLocalProjection({
   name: "pi-agents",
+  rebuild: {
+    version: 1,
+    from: fromEvents,
+    writes: (["pi_agent", "pi_agent_request", "pi_agent_turn"] as const).map((table) => ({
+      schema: automationViewsSchema,
+      table,
+    })),
+  },
   retrieve: ({ match, read }) => {
     const events = eventsOf(match).pi;
     if (events.length === 0) {
@@ -299,6 +312,11 @@ const piAgents = defineLocalProjection({
 /** Connections, by `applyIntegrationConnectionChange`. */
 const integrationConnections = defineLocalProjection({
   name: "integration-connections",
+  rebuild: {
+    version: 1,
+    from: fromEvents,
+    writes: [{ schema: automationViewsSchema, table: "integration_connection" }],
+  },
   retrieve: ({ match, read }) => {
     const changes = eventsOf(match).connectionChanges;
     return changes.length === 0
