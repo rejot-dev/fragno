@@ -37,6 +37,10 @@
       "types": "./dist/sqlite.d.ts",
       "default": "./dist/sqlite.js"
     },
+    "./sqlite/browser": {
+      "types": "./dist/sqlite-browser.d.ts",
+      "default": "./dist/sqlite-browser.js"
+    },
     "./sqlite/worker": {
       "types": "./dist/sqlite-worker.d.ts",
       "default": "./dist/sqlite-worker.js"

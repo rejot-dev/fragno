@@ -8,8 +8,9 @@ import {
 /**
  * Opens a SQLite replica of one Fragno backend's outbox in this tab, by default in OPFS through
  * TanStack DB's wa-sqlite worker. Every tab reads through its own connection; one tab at a time,
- * elected with a Web Lock, streams the outbox and writes. Kept apart from the replica itself, so
- * replica workers, which open their own database, do not bundle that worker.
+ * elected with a Web Lock, streams the outbox and writes. It is the only export of
+ * `@fragno-dev/lofi/sqlite/browser`, so apps that open replicas in a worker of their own, through
+ * `@fragno-dev/lofi/sqlite/worker`, do not bundle TanStack's worker.
  */
 export function openLofiSqliteReplica(
   options: LofiSqliteReplicaOptions,
