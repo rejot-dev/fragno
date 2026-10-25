@@ -5,9 +5,20 @@ import type { WorkflowVisualizationSnapshot } from "@fragno-dev/workflow-visuali
 import { and, eq, or, toArray, useLiveQuery, type InitialQueryBuilder } from "@tanstack/react-db";
 
 import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
+import { readWorkflowRuns } from "@/fragno/automation/lofi/reads";
+import {
+  automationReadCollections,
+  automationReadReplica,
+  type AutomationReadSource,
+} from "@/fragno/automation/read-source";
 import type { AutomationCollections } from "@/fragno/automation/tanstack/collections";
+import { useLofiSqliteRead } from "@/fragno/lofi/use-lofi-sqlite-read";
 
-import { projectScriptWorkflowRuns, selectScriptWorkflowRun } from "./workflow-run-presentation";
+import {
+  projectScriptWorkflowRuns,
+  selectScriptWorkflowRun,
+  type AutomationWorkflowRun,
+} from "./workflow-run-presentation";
 import {
   automationWorkflowRunsFromRecords,
   type WorkflowRunRecordSelector,
@@ -123,44 +134,67 @@ export function workflowRunRecordsQuery(
     }));
 }
 
+/** Where a run view reads its runs. */
+export type WorkflowRunSource = AutomationReadSource<WorkflowRunCollections>;
+
 export function useWorkflowRunRecords({
-  collections,
+  source,
   selector,
 }: {
-  collections?: WorkflowRunCollections;
+  source?: WorkflowRunSource;
   selector: WorkflowRunRecordSelector | null;
 }) {
+  const collections = automationReadCollections(source);
   const runsQuery = useLiveQuery({
     query: (query) =>
       selector && collections ? workflowRunRecordsQuery(query, collections, selector) : undefined,
   });
-  const error = selector && runsQuery.isError ? "Workflow synchronization failed." : null;
-  const instances = useMemo(
+  const selectorKey = selector ? JSON.stringify(selector) : null;
+  const replicaRead = useLofiSqliteRead(
+    selector ? automationReadReplica(source) : null,
+    selectorKey ?? "",
+    async (replica) => ({
+      selectorKey,
+      instances: selector ? await readWorkflowRuns(replica, selector) : [],
+    }),
+  );
+  const queriedInstances = useMemo(
     () => automationWorkflowRunsFromRecords(runsQuery.data ?? []),
     [runsQuery.data],
   );
 
+  if (source?.kind === "replica") {
+    // A read for an earlier selector can still land after the selector changes.
+    const current = replicaRead.status === "ready" && replicaRead.data.selectorKey === selectorKey;
+    return {
+      instances: current ? replicaRead.data.instances : NO_RUNS,
+      error: selector && replicaRead.status === "error" ? "Workflow runs could not be read." : null,
+      isLoading: Boolean(selector && !current && replicaRead.status !== "error"),
+    };
+  }
   return {
-    instances,
-    error,
+    instances: queriedInstances,
+    error: selector && runsQuery.isError ? "Workflow synchronization failed." : null,
     isLoading: Boolean(selector && collections && !runsQuery.isReady),
   };
 }
 
+const NO_RUNS: AutomationWorkflowRun[] = [];
+
 export function useScriptWorkflowRuns({
   absolutePath,
-  collections,
+  source,
   selectedInstanceId,
   visualization,
 }: {
   absolutePath: string;
-  collections: WorkflowRunCollections;
+  source: WorkflowRunSource;
   selectedInstanceId?: string | null;
   visualization: WorkflowVisualizationSnapshot;
 }) {
   const hasWorkflowDefinitions = visualization.graph.nodes.some((node) => node.kind === "workflow");
   const records = useWorkflowRunRecords({
-    collections,
+    source,
     selector: hasWorkflowDefinitions ? { type: "active-codemode" } : null,
   });
   const runs = useMemo(

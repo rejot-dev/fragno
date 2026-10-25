@@ -886,7 +886,7 @@ function RunSelection({
         ]}
       />
       <WorkflowRunDetail
-        collections={collections}
+        readSource={{ kind: "collections", collections }}
         reference={reference}
         presentation={{
           kind: "embedded",

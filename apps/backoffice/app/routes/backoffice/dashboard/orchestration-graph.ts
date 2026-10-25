@@ -3,6 +3,7 @@ import type {
   AutomationRouteAction,
   AutomationRouteDefinition,
 } from "@fragno-dev/backoffice-api/v0/automation";
+import type { LofiSqliteReplica } from "@fragno-dev/lofi/sqlite";
 import type { IconName } from "@fragno-private/design-system/icon";
 import type {
   OrchestrationEvent,
@@ -15,6 +16,11 @@ import { z } from "zod";
 
 import { inArray, type InitialQueryBuilder } from "@tanstack/react-db";
 
+import {
+  readAutomationEventDefinitions,
+  readAutomationEventSources,
+  readWorkflowsInStatus,
+} from "@/fragno/automation/lofi/reads";
 import type { AutomationCollections } from "@/fragno/automation/tanstack/collections";
 
 import { formatTimestamp } from "../automations/formatting";
@@ -38,6 +44,19 @@ const ACTIVE_WORKFLOW_STATUSES = ["active", "waiting", "paused"];
 const codemodeWorkflowScriptReferenceSchema = z.object({
   program: z.object({ filename: z.string() }),
 });
+
+/**
+ * What the graph reads from the scope's replica besides routes and recent events: the scope's own
+ * event sources and definitions, and the runs `orchestrationActiveWorkflowsQuery` selects.
+ */
+export async function readOrchestrationRecords(replica: LofiSqliteReplica) {
+  const [eventSources, eventDefinitions, activeWorkflows] = await Promise.all([
+    readAutomationEventSources(replica),
+    readAutomationEventDefinitions(replica),
+    readWorkflowsInStatus(replica, ACTIVE_WORKFLOW_STATUSES),
+  ]);
+  return { eventSources, eventDefinitions, activeWorkflows };
+}
 
 /** Runs that have not finished, which the graph counts on the workflows that started them. */
 export function orchestrationActiveWorkflowsQuery(

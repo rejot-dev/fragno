@@ -20,7 +20,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
 
 import { createStateStore } from "@json-render/react";
-import { eq, not, queryOnce } from "@tanstack/react-db";
+import { eq, queryOnce } from "@tanstack/react-db";
 
 import { loadPage } from "@/artifacts/pages/build.server";
 import { checkPageSource } from "@/artifacts/pages/page-source.test-support";
@@ -28,16 +28,14 @@ import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { GENERAL_SKILL_CONTENT } from "@/files/content/skills";
+import { readLatestEventsOfType, readWorkflowRuns } from "@/fragno/automation/lofi/reads";
 import {
   backofficeFiles,
   defineBackofficeScenario,
   runBackofficeScenario,
   type BackofficeScenarioContext,
 } from "@/fragno/automation/scenario";
-import {
-  automationRoutesFromRecords,
-  automationRoutesQuery,
-} from "@/fragno/automation/tanstack/use-automation-routes";
+import { currentWorkflowWaits } from "@/fragno/automation/tanstack/workflow-waits";
 
 import { InMemoryApiObject } from "../../../../workers/api.do";
 import { InMemoryAppInstallationsObject } from "../../../../workers/app-installations.do";
@@ -55,19 +53,19 @@ import { InMemoryProjectConnectorObject } from "../../../../workers/project-conn
 import { InMemoryResendObject } from "../../../../workers/resend.do";
 import { InMemoryTelegramObject } from "../../../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../../../workers/upload.do";
-import { piAgentListings, piAgentQueueStatus, piAgentTurnsQuery } from "../agents/agent-activity";
+import { piAgentListings, piAgentQueueStatus } from "../agents/agent-activity";
 import { workflowRunRecordsQuery } from "../automations/script-view/use-script-workflow-runs";
-import { automationWorkflowRunsFromRecords } from "../automations/script-view/workflow-run-records";
+import {
+  automationWorkflowRunsFromRecords,
+  type WorkflowRunRecordSelector,
+} from "../automations/script-view/workflow-run-records";
 import {
   orchestrationActiveWorkflowsQuery,
   projectOrchestrationGraph,
+  readOrchestrationRecords,
 } from "./orchestration-graph";
-import {
-  dashboardBucketStarts,
-  dashboardEventsQuery,
-  dashboardRunsQuery,
-  projectBackofficeDashboard,
-} from "./overview";
+import { dashboardBucketStarts, projectBackofficeDashboard } from "./overview";
+import { readDashboardOverview } from "./overview-replica";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
   class MockDurableObject {
@@ -435,56 +433,18 @@ async function assertHomePageMatchesDashboard(ctx: BackofficeScenarioContext) {
   assert.deepEqual(page, dashboard);
 }
 
-/** Reads the dashboard the way the page does: the same live queries, run once. */
+/** Reads the dashboard the way the page does: from the scope's Automations replica. */
 async function readDashboard(ctx: BackofficeScenarioContext) {
-  const database = ctx.tanstack.automations.forOrg(orgId);
-  await database.drain();
-  const { collections } = database;
+  const replica = ctx.lofi.automations.forOrg(orgId);
+  await replica.drain();
   const now = ctx.runtime.now();
   const since = new Date(dashboardBucketStarts(now)[0] ?? now);
-  const [
-    runs,
-    waitingRuns,
-    waits,
-    events,
-    connections,
-    agents,
-    agentTurns,
-    routeRecords,
-    activeWorkflows,
-  ] = await Promise.all([
-    queryOnce((query) => dashboardRunsQuery(query, collections)),
-    queryOnce((query) => workflowRunRecordsQuery(query, collections, { type: "waiting" })),
-    queryOnce((query) => query.from({ wait: collections.workflowWaits })),
-    queryOnce((query) => dashboardEventsQuery(query, collections, since)),
-    queryOnce((query) =>
-      query
-        .from({ connection: collections.connections })
-        .where(({ connection }) => not(eq(connection.state, "disconnected")))
-        .orderBy(({ connection }) => connection.service, "asc")
-        .orderBy(({ connection }) => connection.connectionId, "asc"),
-    ),
-    queryOnce((query) =>
-      query
-        .from({ agent: collections.agents })
-        .orderBy(({ agent }) => agent.latestAt, { direction: "desc", nulls: "last" })
-        .orderBy(({ agent }) => agent.builtIn, "desc")
-        .orderBy(({ agent }) => agent.agentName, "asc"),
-    ),
-    queryOnce((query) => piAgentTurnsQuery(query, collections, since)),
-    queryOnce((query) => automationRoutesQuery(query, collections)),
-    queryOnce((query) => orchestrationActiveWorkflowsQuery(query, collections)),
+  const [overview, { activeWorkflows }] = await Promise.all([
+    readDashboardOverview(replica.replica, since),
+    readOrchestrationRecords(replica.replica),
   ]);
-  const routes = automationRoutesFromRecords(routeRecords);
-  const dashboard = projectBackofficeDashboard({
-    now,
-    runs,
-    waitingRuns: automationWorkflowRunsFromRecords(waitingRuns),
-    waits,
-    events,
-    connections,
-    routes,
-  });
+  const { routes, events, agents, agentTurns } = overview;
+  const dashboard = projectBackofficeDashboard({ now, ...overview });
   // Catalogs are left out so the graph holds only what this scope's data puts there.
   const graph = projectOrchestrationGraph({
     scopeLabel: "Ada Labs",
@@ -544,6 +504,135 @@ async function readDashboard(ctx: BackofficeScenarioContext) {
         : `waiting: ${entry.workflow} for ${entry.waitingFor.join(", ")}`,
     ),
   };
+}
+
+/** A record either source reads: a replica row, or a TanStack DB query row. */
+type ReadRecord = Record<string, unknown>;
+
+/** A query row without the virtual properties, such as `$synced`, TanStack DB adds to it. */
+const withoutVirtualProps = (row: ReadRecord) =>
+  Object.fromEntries(Object.entries(row).filter(([key]) => !key.startsWith("$")));
+
+const byJson = (rows: readonly ReadRecord[]) =>
+  rows
+    .map((row) => JSON.stringify(withoutVirtualProps(row)))
+    .sort((left, right) => left.localeCompare(right));
+
+/**
+ * Views shared with pages that still read the TanStack collections read the replica on the
+ * dashboard, so both sources must give them the same records.
+ */
+async function assertReplicaReadsMatchCollections(ctx: BackofficeScenarioContext) {
+  // The scope's own catalog adds to what registered capabilities describe.
+  await ctx.runtime.objects.automations.for(scope).commands.ensureEventSource({
+    source: "shop",
+    label: "Shop",
+    description: "Orders placed in the shop.",
+    category: "custom",
+  });
+  await ctx.runCodemode({
+    scope,
+    code: `async () => await events.catalogCreate(${JSON.stringify({
+      source: "shop",
+      eventType: "order.placed",
+      label: "Order placed",
+      payloadSchema: { type: "object", properties: { id: { type: "string" } } },
+    })})`,
+  });
+  const handle = ctx.lofi.automations.forOrg(orgId);
+  const database = ctx.tanstack.automations.forOrg(orgId);
+  await Promise.all([handle.drain(), database.drain()]);
+  const { replica } = handle;
+  const { collections } = database;
+
+  const records = await readOrchestrationRecords(replica);
+  const [eventSources, eventDefinitions, activeWorkflows] = await Promise.all([
+    queryOnce((query) =>
+      query.from({ source: collections.eventSources }).select(({ source }) => ({
+        id: source.source,
+        label: source.label,
+        description: source.description,
+      })),
+    ),
+    queryOnce((query) =>
+      query.from({ definition: collections.eventDefinitions }).select(({ definition }) => ({
+        source: definition.source,
+        eventType: definition.eventType,
+        label: definition.label,
+        payloadSchema: definition.payloadSchema,
+      })),
+    ),
+    queryOnce((query) => orchestrationActiveWorkflowsQuery(query, collections)),
+  ]);
+  assert.deepEqual(byJson(records.eventSources), byJson(eventSources));
+  assert.deepEqual(byJson(records.eventDefinitions), byJson(eventDefinitions));
+  assert.deepEqual(byJson(records.activeWorkflows), byJson(activeWorkflows));
+  assert.isNotEmpty(records.eventSources);
+  assert.isNotEmpty(records.eventDefinitions);
+  assert.isNotEmpty(records.activeWorkflows);
+
+  const queriedRuns = async (selector: WorkflowRunRecordSelector) =>
+    automationWorkflowRunsFromRecords(
+      await queryOnce((query) => workflowRunRecordsQuery(query, collections, selector)),
+    );
+  const allRuns = await queriedRuns({ type: "active-codemode" });
+  assert.isNotEmpty(allRuns);
+  const selectors: WorkflowRunRecordSelector[] = [
+    { type: "waiting" },
+    { type: "active-codemode" },
+    ...allRuns.map(({ workflowName, instanceId }) => ({
+      type: "instance" as const,
+      workflowName,
+      instanceId,
+    })),
+    { type: "instance", workflowName: "missing", instanceId: "missing" },
+  ];
+  for (const selector of selectors) {
+    assert.deepEqual(
+      await readWorkflowRuns(replica, selector),
+      (await queriedRuns(selector)).map(withoutVirtualProps),
+      JSON.stringify(selector),
+    );
+  }
+
+  // `WorkflowRunResponse` derives a run's waits from the run, as the waits collection does.
+  const waitingRuns = await readWorkflowRuns(replica, { type: "waiting" });
+  assert.isNotEmpty(waitingRuns);
+  assert.deepEqual(
+    byJson(
+      waitingRuns.flatMap((run) =>
+        currentWorkflowWaits([{ id: run.id, output: run.output, steps: run.workflowSteps }]),
+      ),
+    ),
+    byJson(await queryOnce((query) => query.from({ wait: collections.workflowWaits }))),
+  );
+
+  for (const [source, eventType] of [
+    ["acme", "webhook.received"],
+    ["shop", "order.placed"],
+    ["shop", "missing"],
+  ] as const) {
+    const latest = await queryOnce((query) =>
+      query
+        .from({ event: collections.events })
+        .where(({ event }) => eq(event.source, source))
+        .where(({ event }) => eq(event.eventType, eventType))
+        .orderBy(({ event }) => event.occurredAt, "desc")
+        .orderBy(({ event }) => event.id, "desc")
+        .limit(2)
+        .select(({ event }) => ({
+          id: event.id,
+          occurredAt: event.occurredAt,
+          subject: event.subject,
+          payload: event.payload,
+        })),
+    );
+    assert.deepEqual(
+      await readLatestEventsOfType(replica, { source, eventType, limit: 2 }),
+      latest.map(withoutVirtualProps),
+      `${source}:${eventType}`,
+    );
+  }
 }
 
 describe("dashboard", () => {
@@ -657,6 +746,9 @@ describe("dashboard", () => {
           ),
           then.assert("the example home page shows what the dashboard shows", async (ctx) => {
             await assertHomePageMatchesDashboard(ctx);
+          }),
+          then.assert("the replica reads what the TanStack collections hold", async (ctx) => {
+            await assertReplicaReadsMatchCollections(ctx);
           }),
         ],
       }),

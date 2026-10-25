@@ -1,12 +1,13 @@
 import type { BackofficeUiRun } from "@fragno-private/backoffice-ui/render-context";
 
-import { eq, useLiveQuery } from "@tanstack/react-db";
-
 import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import { WorkflowRunGeneratedInterface } from "@/components/backoffice/workflow-run-generated-interface";
-import type { AutomationBrowserCollections } from "@/fragno/automation/tanstack/browser-database";
+import { currentWorkflowWaits } from "@/fragno/automation/tanstack/workflow-waits";
 
-import { useWorkflowRunRecords } from "../automations/script-view/use-script-workflow-runs";
+import {
+  useWorkflowRunRecords,
+  type WorkflowRunSource,
+} from "../automations/script-view/use-script-workflow-runs";
 import { awaitingInputStep } from "./overview";
 
 /**
@@ -14,36 +15,32 @@ import { awaitingInputStep } from "./overview";
  * nothing once the run stops asking, such as after the answer arrives.
  */
 export function WorkflowRunResponse({
-  collections,
+  readSource,
   resolvedScope,
   run: { workflowName, instanceId },
 }: {
-  collections: AutomationBrowserCollections;
+  readSource: WorkflowRunSource;
   resolvedScope: BackofficeResolvedScope;
   run: BackofficeUiRun;
 }) {
   const { instances, error } = useWorkflowRunRecords({
-    collections,
+    source: readSource,
     selector: { type: "instance", workflowName, instanceId },
   });
   const run = instances[0] ?? null;
-  const runId = run?.id ?? null;
-  const waitsQuery = useLiveQuery({
-    query: (query) =>
-      runId === null
-        ? undefined
-        : query
-            .from({ wait: collections.workflowWaits })
-            .where(({ wait }) => eq(wait.runId, runId)),
-  });
-  if (error !== null || waitsQuery.isError) {
+  if (error !== null) {
     return (
       <p className="text-xs text-[var(--bo-failed)]">
         This run could not be read, so its form cannot show.
       </p>
     );
   }
-  const step = run === null ? null : awaitingInputStep(run, waitsQuery.data ?? []);
+  // Only waiting runs wait, as the scope's `workflowWaits` collection derives them.
+  const waits =
+    run?.status === "waiting"
+      ? currentWorkflowWaits([{ id: run.id, output: run.output, steps: run.workflowSteps }])
+      : [];
+  const step = run === null ? null : awaitingInputStep(run, waits);
   if (run === null || step === null) {
     return null;
   }

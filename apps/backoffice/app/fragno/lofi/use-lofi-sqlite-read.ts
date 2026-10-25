@@ -9,16 +9,21 @@ export type LofiSqliteReadState<T> =
 /**
  * Reads the replica, and reads again whenever any tab applies outbox entries or `key` changes.
  * Reads never overlap: changes during a read start one more read after it, which sees them all.
+ * Without a replica it reads nothing and stays loading, so views that read another source on some
+ * pages can still call it unconditionally.
  */
 export function useLofiSqliteRead<T>(
-  replica: LofiSqliteReplica,
+  replica: LofiSqliteReplica | null,
   key: string,
   read: (replica: LofiSqliteReplica) => Promise<T>,
 ): LofiSqliteReadState<T> {
   const [state, setState] = useState<LofiSqliteReadState<T>>({ status: "loading" });
-  const readReplica = useEffectEvent(() => read(replica));
+  const readReplica = useEffectEvent((replica: LofiSqliteReplica) => read(replica));
 
   useEffect(() => {
+    if (!replica) {
+      return () => {};
+    }
     let active = true;
     let reading = false;
     let stale = false;
@@ -31,7 +36,7 @@ export function useLofiSqliteRead<T>(
       do {
         stale = false;
         try {
-          const data = await readReplica();
+          const data = await readReplica(replica);
           if (active && !stale) {
             setState({ status: "ready", data });
           }
