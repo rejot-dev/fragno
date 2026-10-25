@@ -7,16 +7,22 @@ import {
   type NavigationItem,
 } from "./navigation-item";
 
+/**
+ * A group of the sidebar's destinations. A labelled group, such as the record the reader is in,
+ * follows the unlabelled ones; collapsed, its label gives way to a rule.
+ */
+export type NavigationSection = { label: string | null; items: NavigationItem[] };
+
 // `secondaryItems` sit in the sidebar's footer, for places about the current context rather than
 // work in it, such as its settings. The last one shares its row with the collapse toggle.
 export function SidebarNavigation({
-  items,
+  sections,
   secondaryItems,
   ariaLabel,
   collapsed,
   onCollapsedChange,
 }: {
-  items: NavigationItem[];
+  sections: readonly NavigationSection[];
   secondaryItems: NavigationItem[];
   ariaLabel: string;
   collapsed: boolean;
@@ -36,8 +42,21 @@ export function SidebarNavigation({
     >
       <nav aria-label={ariaLabel} className="flex min-h-0 flex-1 flex-col">
         <div className={cn("flex flex-col gap-2.5 py-4", inset)}>
-          {items.map((item) => (
-            <SidebarNavigationItem key={item.to} item={item} collapsed={collapsed} />
+          {sections.map((section, index) => (
+            // Sections are positional: the unlabelled ones have nothing else to tell them apart.
+            // oxlint-disable-next-line no-array-index-key
+            <div key={index} className="flex flex-col gap-2.5">
+              {section.label === null ? null : collapsed ? (
+                <hr className="mx-2 mt-2 border-[color:var(--bo-border)]" />
+              ) : (
+                <p className="mt-4 truncate px-2 text-xs font-semibold text-[var(--bo-muted-2)]">
+                  {section.label}
+                </p>
+              )}
+              {section.items.map((item) => (
+                <SidebarNavigationItem key={item.to} item={item} collapsed={collapsed} />
+              ))}
+            </div>
           ))}
         </div>
         {/* Ruled off across the sidebar's width, so the footer reads as one row of its own. */}

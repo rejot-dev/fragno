@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { MobileNavigation, SidebarNavigation } from "./navigation";
+import { MobileNavigation, SidebarNavigation, type NavigationSection } from "./navigation";
 import type { NavigationItem } from "./navigation-item";
 
 export default { title: "Navigation/Main navigation" };
@@ -16,13 +16,24 @@ const items: NavigationItem[] = [
   { label: "Marketplace", to: "/marketplace", icon: "shopping-bag", active: false },
 ];
 
+const sections = [
+  { label: null, items },
+  {
+    label: "Acme Holding",
+    items: [
+      { label: "Journal", to: "/books", icon: "book-open", active: false },
+      { label: "Accounts", to: "/books/accounts", icon: "list", active: false },
+    ],
+  },
+] satisfies NavigationSection[];
+
 // The sidebar only shows from 960px wide, matching the Backoffice shell breakpoint.
 export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   return (
     <div className="flex h-[32rem] border border-[color:var(--bo-border)]">
       <SidebarNavigation
-        items={items}
+        sections={sections}
         secondaryItems={secondaryItems}
         ariaLabel="Backoffice"
         collapsed={collapsed}
@@ -38,7 +49,7 @@ export function SidebarCollapsed() {
   return (
     <div className="flex h-[32rem] border border-[color:var(--bo-border)]">
       <SidebarNavigation
-        items={items}
+        sections={sections}
         secondaryItems={secondaryItems}
         ariaLabel="Backoffice"
         collapsed={collapsed}

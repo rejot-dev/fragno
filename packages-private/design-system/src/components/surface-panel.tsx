@@ -30,6 +30,52 @@ export function SurfacePanel({
   );
 }
 
+/**
+ * A raised panel headed by its title, for pages made of a few panels the reader came for, such as
+ * a report or a record's lines. SurfacePanel's quiet caption suits lists among many; here the title
+ * reads first, with a short note beside it and the panel's actions at the end.
+ */
+export function SurfaceSection({
+  title,
+  meta,
+  actions,
+  children,
+}: {
+  title: string;
+  meta: string | null;
+  actions: ReactNode | null;
+  children: ReactNode;
+}) {
+  return (
+    <section aria-label={title} className="bo-panel-surface min-w-0 bg-[var(--bo-panel)]">
+      <div className="flex min-h-14 flex-wrap items-center justify-between gap-3 px-4 py-2.5">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5">
+          <h2 className="text-[15px] font-semibold text-balance text-[var(--bo-fg)]">{title}</h2>
+          {meta === null ? null : (
+            <p className="text-sm text-[var(--bo-muted)] tabular-nums">{meta}</p>
+          )}
+        </div>
+        {actions === null ? null : (
+          <div className="flex flex-wrap items-center gap-2">{actions}</div>
+        )}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+/**
+ * A raised panel without a caption, for a page's one table or form under the page's own heading.
+ * Its first part is the panel's top edge, so that part's rule is dropped.
+ */
+export function SurfaceCard({ children }: { children: ReactNode }) {
+  return (
+    <div className="bo-panel-surface min-w-0 bg-[var(--bo-panel)] [&>:first-child]:border-t-0">
+      {children}
+    </div>
+  );
+}
+
 /** Free-form panel content, such as a form. */
 export function SurfacePanelBody({ children }: { children: ReactNode }) {
   return <div className="border-t border-[color:var(--bo-border)] p-4">{children}</div>;
@@ -122,6 +168,50 @@ export function SurfaceTableRow({
         <td
           key={index}
           className={`px-4 py-2.5 ${columns[index]?.align === "end" ? "text-right tabular-nums" : ""}`}
+        >
+          {cell}
+        </td>
+      ))}
+    </tr>
+  );
+}
+
+/**
+ * A row heading the rows after it, such as an entry above its lines or a group of accounts; it
+ * spans every column of its SurfaceTable.
+ */
+export function SurfaceTableGroupRow({
+  columns,
+  children,
+}: {
+  columns: readonly SurfaceTableColumn[];
+  children: ReactNode;
+}) {
+  return (
+    <tr className="bg-[var(--bo-panel-2)]">
+      <td colSpan={columns.length} className="px-4 py-2 text-[var(--bo-fg)]">
+        {children}
+      </td>
+    </tr>
+  );
+}
+
+/** The SurfaceTable's closing row of totals, set off from the rows it adds up. */
+export function SurfaceTableTotalRow({
+  columns,
+  cells,
+}: {
+  columns: readonly SurfaceTableColumn[];
+  cells: readonly ReactNode[];
+}) {
+  return (
+    <tr className="border-t border-[color:color-mix(in_srgb,var(--bo-fg)_22%,transparent)] font-semibold text-[var(--bo-fg)]">
+      {cells.map((cell, index) => (
+        // Cells are positional, so their index is their identity.
+        // oxlint-disable-next-line no-array-index-key
+        <td
+          key={index}
+          className={`px-4 py-3 ${columns[index]?.align === "end" ? "text-right tabular-nums" : ""}`}
         >
           {cell}
         </td>

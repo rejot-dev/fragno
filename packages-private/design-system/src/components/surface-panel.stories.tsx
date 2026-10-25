@@ -9,8 +9,11 @@ import {
   SurfacePanelBody,
   SurfacePanelFooter,
   SurfacePanelRows,
+  SurfaceSection,
   SurfaceTable,
+  SurfaceTableGroupRow,
   SurfaceTableRow,
+  SurfaceTableTotalRow,
   type SurfaceTableColumn,
 } from "./surface-panel";
 import { BackofficeSystemState } from "./system-state";
@@ -139,6 +142,37 @@ export function Rows() {
           </RowList>
         </SurfacePanelRows>
       </SurfacePanel>
+    </div>
+  );
+}
+
+const ledgerColumns: SurfaceTableColumn[] = [
+  { label: "Account", align: "start" },
+  { label: "Debit", align: "end" },
+  { label: "Credit", align: "end" },
+];
+
+export function Section() {
+  return (
+    <div className="max-w-3xl">
+      <SurfaceSection
+        title="Journal"
+        meta="Sales · 2 entries"
+        actions={<Button variant="solid">New entry</Button>}
+      >
+        <SurfaceTable columns={ledgerColumns}>
+          <SurfaceTableGroupRow columns={ledgerColumns}>
+            <span className="font-semibold">SAL 1</span> · 10 Mar 2026 · Invoice 2026-001
+          </SurfaceTableGroupRow>
+          <SurfaceTableRow
+            columns={ledgerColumns}
+            cells={["1300 Accounts receivable", "1,210.00", ""]}
+          />
+          <SurfaceTableRow columns={ledgerColumns} cells={["8000 Revenue", "", "1,000.00"]} />
+          <SurfaceTableRow columns={ledgerColumns} cells={["1700 VAT payable", "", "210.00"]} />
+          <SurfaceTableTotalRow columns={ledgerColumns} cells={["Total", "1,210.00", "1,210.00"]} />
+        </SurfaceTable>
+      </SurfaceSection>
     </div>
   );
 }

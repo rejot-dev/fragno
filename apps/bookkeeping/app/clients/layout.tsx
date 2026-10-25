@@ -42,13 +42,18 @@ export default function ClientLayout({ loaderData }: Route.ComponentProps) {
     <AppShell
       shell={loaderData}
       ariaLabel="Workspace navigation"
-      items={[
-        { label: "Overview", to: base, icon: "grid", active: pathname !== `${base}/members` },
+      sections={[
         {
-          label: "Members",
-          to: `${base}/members`,
-          icon: "users",
-          active: pathname === `${base}/members`,
+          label: null,
+          items: [
+            { label: "Overview", to: base, icon: "grid", active: pathname !== `${base}/members` },
+            {
+              label: "Members",
+              to: `${base}/members`,
+              icon: "users",
+              active: pathname === `${base}/members`,
+            },
+          ],
         },
       ]}
     >
