@@ -9,10 +9,11 @@ type StoredReducedMotionChoice = "reduce" | "no-preference";
 
 const REDUCED_MOTION_STORAGE_KEY = "reduced-motion";
 
+// Following the system comes first, as the default that most people keep.
 const THEME_OPTIONS = [
+  { value: "system", label: "System", icon: "monitor" },
   { value: "light", label: "Light", icon: "sun" },
   { value: "dark", label: "Dark", icon: "moon" },
-  { value: "system", label: "System", icon: "monitor" },
 ] as const;
 
 const THEME_ICONS = {
@@ -138,11 +139,16 @@ export function useAppearancePreferences(): AppearancePreferences {
   return { theme, reducedMotion, setTheme, setReducedMotion };
 }
 
-// Selector-menu submenu for choosing the theme and motion preference. Items stay open on click so
-// the change is visible while the menu is still showing.
-export function AppearanceSubmenu({ preferences }: { preferences: AppearancePreferences }) {
+/** The icon of the chosen theme, for a control that opens these options. */
+export function appearanceThemeIcon(preferences: AppearancePreferences): IconName {
+  return THEME_ICONS[preferences.theme];
+}
+
+// The theme choices and the reduced-motion switch, as items of an open menu. Items stay open on
+// click so the change is visible while the menu is still showing.
+export function AppearanceOptions({ preferences }: { preferences: AppearancePreferences }) {
   return (
-    <SelectorSubmenu icon={THEME_ICONS[preferences.theme]} label="Appearance">
+    <>
       <Menu.RadioGroup
         value={preferences.theme}
         aria-label="Theme"
@@ -186,6 +192,15 @@ export function AppearanceSubmenu({ preferences }: { preferences: AppearancePref
           <span className="size-4 rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.2)] transition-transform duration-150 ease-out group-data-[checked]:translate-x-4" />
         </span>
       </Menu.CheckboxItem>
+    </>
+  );
+}
+
+// Selector-menu submenu for choosing the theme and motion preference.
+export function AppearanceSubmenu({ preferences }: { preferences: AppearancePreferences }) {
+  return (
+    <SelectorSubmenu icon={THEME_ICONS[preferences.theme]} label="Appearance">
+      <AppearanceOptions preferences={preferences} />
     </SelectorSubmenu>
   );
 }

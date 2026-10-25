@@ -81,6 +81,7 @@ export function BackofficeSidebarNav({
   return (
     <SidebarNavigation
       items={resolveNavigationItems(currentScope, location.pathname)}
+      secondaryItems={[]}
       ariaLabel="Backoffice"
       collapsed={collapsed}
       onCollapsedChange={onCollapsedChange}

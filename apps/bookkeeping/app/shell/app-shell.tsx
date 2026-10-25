@@ -64,6 +64,7 @@ export function AppShell({
       <div className="flex min-w-0">
         <SidebarNavigation
           items={items}
+          secondaryItems={[]}
           ariaLabel={ariaLabel}
           collapsed={collapsed}
           onCollapsedChange={setCollapsed}

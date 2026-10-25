@@ -21,9 +21,12 @@ export function SelectorMenu({ children }: { children: ReactNode }) {
 // - "workspace" fills like "fill" with a coloured workspace tile on the left. When collapsed, only
 //   the tile is shown, centered, from the sidebar breakpoint (960px) up, so it lines up with a
 //   collapsed sidebar; below that breakpoint there is no sidebar to line up with.
+// - "icon" shows only an icon, for a setting whose state the icon itself shows; the label and
+//   value stay in the accessible name.
 type SelectorMenuTriggerLayout =
   | { kind: "fill" }
   | { kind: "hug"; initials: string }
+  | { kind: "icon"; icon: IconName }
   | { kind: "workspace"; mark: WorkspaceMark; color: WorkspaceColor; collapsed: boolean };
 
 // What the workspace tile shows: a single letter (e.g. an organization's initial) or an icon.
@@ -80,7 +83,11 @@ export function SelectorMenuTrigger({
       aria-label={ariaLabel}
       className={cn(
         "group flex min-h-12 min-w-0 cursor-pointer items-center gap-2.5 py-3.5 pr-4 pl-6 text-left outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30",
-        layout.kind === "hug" ? "shrink-0 self-stretch pr-5.5" : "w-full",
+        layout.kind === "hug"
+          ? "shrink-0 self-stretch pr-5.5"
+          : layout.kind === "icon"
+            ? "shrink-0 self-stretch px-4"
+            : "w-full",
         layout.kind === "workspace" && "pl-5",
         layout.kind === "workspace" &&
           layout.collapsed &&
@@ -95,10 +102,19 @@ export function SelectorMenuTrigger({
       {layout.kind === "workspace" ? (
         <WorkspaceTile mark={layout.mark} color={layout.color} collapsed={layout.collapsed} />
       ) : null}
+      {layout.kind === "icon" ? (
+        <span className="flex size-8 shrink-0 items-center justify-center text-[var(--bo-muted)] transition-colors duration-150 ease-out group-hover:text-[var(--bo-fg)] group-data-[popup-open]:text-[var(--bo-fg)]">
+          <Icon name={layout.icon} className="size-4" strokeWidth={1.75} />
+        </span>
+      ) : null}
       <span
         className={cn(
           "min-w-0 flex-col gap-0.5",
-          layout.kind === "hug" ? "hidden xl:flex" : "flex flex-1",
+          layout.kind === "hug"
+            ? "hidden xl:flex"
+            : layout.kind === "icon"
+              ? "hidden"
+              : "flex flex-1",
           layout.kind === "workspace" && layout.collapsed && "min-[960px]:hidden",
         )}
       >
@@ -120,6 +136,7 @@ export function SelectorMenuTrigger({
         className={cn(
           "size-3.5 shrink-0 text-[var(--bo-muted-2)] transition-[transform,color] duration-150 ease-out group-data-[popup-open]:rotate-180 group-data-[popup-open]:text-[var(--bo-accent-fg)]",
           layout.kind === "hug" && "hidden sm:block",
+          layout.kind === "icon" && "hidden",
           layout.kind === "workspace" && layout.collapsed && "min-[960px]:hidden",
         )}
       />
