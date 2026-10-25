@@ -7,6 +7,7 @@ import {
 } from "@/backoffice-runtime/resolved-scope";
 import { scheduleBackofficeTokenRefresh } from "@/fragno/auth/browser-auth.client";
 import type { AdministeredMember, BackofficeMeData } from "@/fragno/auth/contracts";
+import type { AutomationProjectList } from "@/fragno/automation/project-list";
 
 import { AgentDrawer } from "./agent-drawer";
 import { BackofficeClsDebugger } from "./cls-debugger";
@@ -30,7 +31,8 @@ type BackofficeShellProps = {
   administeredMember: AdministeredMember | null;
   accessTokenExpiresAt: string | null;
   automationCollectionSource: CurrentBackofficeContext["automationCollectionSource"] | null;
-  projectCollectionSource: CurrentBackofficeContext["projectCollectionSource"];
+  /** The project owner's projects, streamed in after the page; null without a project owner. */
+  projectList: Promise<AutomationProjectList> | null;
   isLoading?: boolean;
 };
 
@@ -81,7 +83,6 @@ export function BackofficeShell(props: BackofficeShellProps) {
       ? {
           resolvedScope: props.resolvedScope,
           automationCollectionSource: props.automationCollectionSource,
-          projectCollectionSource: props.projectCollectionSource,
         }
       : null;
   return currentContext ? (
@@ -108,7 +109,7 @@ function BackofficeShellFrame({
   administeredMember,
   accessTokenExpiresAt,
   automationCollectionSource,
-  projectCollectionSource,
+  projectList,
   isLoading,
 }: BackofficeShellProps) {
   const [agentDrawerOpen, setAgentDrawerOpen] = useState(false);
@@ -187,7 +188,7 @@ function BackofficeShellFrame({
           me={me}
           resolvedScope={resolvedScope}
           administeredMember={administeredMember}
-          projectCollectionSource={projectCollectionSource}
+          projectList={projectList}
           isLoading={isLoading}
           sidebarCollapsed={sidebarCollapsed}
           agentDrawerOpen={agentDrawerOpen}

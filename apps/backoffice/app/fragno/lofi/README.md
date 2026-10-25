@@ -66,3 +66,9 @@ a background tab, with only the Upload replica empty:
   identity or the schema version changes. Nothing deletes old ones.
 - **Two streams and two workers per Files tab:** the Upload replica and the Automations TanStack
   collections, each with its own `GET /_internal`, outbox stream, OPFS database, and worker.
+- **The project menu refreshes on navigation, not live.** It lists projects as of the last time the
+  layout's loader ran, which actions such as creating a project rerun; a project an agent creates
+  shows after the next navigation. Once every page reads the Automations replica, pages outside a
+  project scope already hold the scope's `project` table, so the menu can read it there and follow
+  it live. Project scopes list their owner's projects, which only the owner's replica holds, so they
+  would keep the server query rather than download the owner's history for the menu.

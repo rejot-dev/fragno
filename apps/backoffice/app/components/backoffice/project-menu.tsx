@@ -105,7 +105,7 @@ export function BackofficeProjectMenu({
             />
           ))}
           {projectsLoading ? (
-            <SelectorMenuNote tone="muted">Synchronizing projects…</SelectorMenuNote>
+            <SelectorMenuNote tone="muted">Loading projects…</SelectorMenuNote>
           ) : projects.length === 0 && !projectsError ? (
             <SelectorMenuNote tone="muted">
               {description.name} has no projects yet.

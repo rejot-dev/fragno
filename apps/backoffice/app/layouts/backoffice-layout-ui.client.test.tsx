@@ -58,7 +58,7 @@ describe("Backoffice layout organization preference", () => {
             accessTokenExpiresAt: "2026-09-01T12:15:00.000Z",
             resolvedScope,
             automationCollectionSource,
-            projectCollectionSource: null,
+            projectList: null,
           } as never
         }
       >
