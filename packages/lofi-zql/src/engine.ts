@@ -196,9 +196,11 @@ export class LofiZqlEngine {
         const before = `json_array(${Object.keys(table.columns)
           .map((column) => `OLD.${quoteSqliteIdentifier(column)}`)
           .join(", ")})`;
-        // Only a row's first change since IVM caught up holds its earlier values.
+        // Only a row's first change since IVM caught up holds its earlier values. The trigger checks
+        // for an earlier one rather than using OR IGNORE, which an outer upsert's conflict handling
+        // overrides, failing the replica's second write of a row in one batch.
         const record = (row: string, values: string) =>
-          `INSERT OR IGNORE INTO ${CHANGES_TABLE} VALUES (${sqlString(table.sqlName)}, ${row}, ${values})`;
+          `INSERT INTO ${CHANGES_TABLE} SELECT ${sqlString(table.sqlName)}, ${row}, ${values} WHERE NOT EXISTS (SELECT 1 FROM ${CHANGES_TABLE} WHERE "table" = ${sqlString(table.sqlName)} AND "row" = ${row})`;
         this.#run(
           `CREATE TEMP TRIGGER IF NOT EXISTS ${name("insert")} AFTER INSERT ON ${target} BEGIN ${record(`NEW.${internalId}`, "NULL")}; END`,
         );

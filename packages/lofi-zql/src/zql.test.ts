@@ -10,6 +10,11 @@ import { SqliteDialect } from "kysely";
 
 import { defineFragment, instantiate } from "@fragno-dev/core";
 import { migrate, withDatabase, type TypedUnitOfWork } from "@fragno-dev/db";
+import {
+  defineLocalProjection,
+  type AnyLofiLocalProjection,
+  type LofiSchemaRegistration,
+} from "@fragno-dev/lofi";
 
 import { lofiZql, type LofiZqlSchemaClient } from "./client";
 import { zqlViewEngine } from "./worker";
@@ -36,6 +41,22 @@ const appSchema = schema("app", (s) =>
 
 type AppClient = LofiZqlSchemaClient<typeof appSchema>;
 
+const latestSchema = schema("latest", (s) =>
+  s.addTable("latestPost", (t) =>
+    t.addColumn("id", idColumn()).addColumn("title", column("string")),
+  ),
+);
+
+/** Keeps the title of the latest post in one row, which it writes once per post it sees. */
+const latestPostProjection = defineLocalProjection({
+  mutate: ({ match, tx }) => {
+    const latest = tx.forSchema(latestSchema);
+    for (const post of match.all(appSchema, "posts", "create")) {
+      latest.create("latestPost", { id: "latest", title: post.values["title"] });
+    }
+  },
+});
+
 // ---------------------------------------------------------------------------------------------
 // Scenario DSL: a fragment on fragno-db's SQLite backend serves the outbox. Each "tab" runs a
 // replica host with the ZQL engine, as its worker would, and a client talking to it over a
@@ -43,7 +64,14 @@ type AppClient = LofiZqlSchemaClient<typeof appSchema>;
 // ---------------------------------------------------------------------------------------------
 
 type ScenarioContext = {
-  tabs: Map<string, { app: AppClient; close(): Promise<void> }>;
+  tabs: Map<
+    string,
+    {
+      app: AppClient;
+      latest: () => LofiZqlSchemaClient<typeof latestSchema>;
+      close(): Promise<void>;
+    }
+  >;
   /** Every result a watched view reported, by `<tab>/<view>`. */
   views: Map<string, { results: LofiSqliteViewResult<unknown>[]; unwatch: () => void }>;
   errors: unknown[];
@@ -58,6 +86,7 @@ type ScenarioStep =
   | { type: "openTab"; tab: string }
   | { type: "closeTab"; tab: string }
   | { type: "watch"; tab: string; view: string; query: (app: AppClient) => unknown }
+  | { type: "watchLatest"; tab: string; view: string }
   | { type: "unwatch"; tab: string; view: string }
   | {
       type: "write";
@@ -75,6 +104,12 @@ const watch = (tab: string, view: string, query: (app: AppClient) => unknown): S
   tab,
   view,
   query,
+});
+/** Watches the latest post row of `latestPostProjection`. */
+const watchLatest = (tab: string, view: string): ScenarioStep => ({
+  type: "watchLatest",
+  tab,
+  view,
 });
 const unwatch = (tab: string, view: string): ScenarioStep => ({ type: "unwatch", tab, view });
 const write = (
@@ -98,7 +133,13 @@ afterEach(async () => {
   }
 });
 
-async function runZqlScenario(steps: ScenarioStep[]): Promise<ScenarioContext> {
+async function runZqlScenario(
+  steps: ScenarioStep[],
+  local: { schemas: LofiSchemaRegistration[]; projections: AnyLofiLocalProjection[] } = {
+    schemas: [],
+    projections: [],
+  },
+): Promise<ScenarioContext> {
   const server = new BetterSqlite3(":memory:");
   const adapter = new SqlAdapter({
     dialect: new SqliteDialect({ database: server }),
@@ -169,8 +210,8 @@ async function runZqlScenario(steps: ScenarioStep[]): Promise<ScenarioContext> {
             baseUrl: "http://zql.test",
             fetch: fetch as typeof globalThis.fetch,
             schemas: [{ schema: appSchema }],
-            localSchemas: [],
-            projections: [],
+            localSchemas: local.schemas,
+            projections: local.projections,
             ephemeralTables: [],
             onError: (error) => ctx.errors.push(error),
             retryDelayMs: 10,
@@ -180,7 +221,11 @@ async function runZqlScenario(steps: ScenarioStep[]): Promise<ScenarioContext> {
           heartbeatIntervalMs: 20,
           leaderTimeoutMs: 200,
         });
-        ctx.tabs.set(step.tab, { app: lofiZql(tab.client, appSchema), close: tab.close });
+        ctx.tabs.set(step.tab, {
+          app: lofiZql(tab.client, appSchema),
+          latest: () => lofiZql(tab.client, latestSchema),
+          close: tab.close,
+        });
         break;
       }
       case "closeTab": {
@@ -189,9 +234,13 @@ async function runZqlScenario(steps: ScenarioStep[]): Promise<ScenarioContext> {
         await tab.close();
         break;
       }
-      case "watch": {
-        const { app } = ctx.tabs.get(step.tab)!;
-        const store = app.store(step.query(app) as never);
+      case "watch":
+      case "watchLatest": {
+        const { app, latest } = ctx.tabs.get(step.tab)!;
+        const store =
+          step.type === "watch"
+            ? app.store(step.query(app) as never)
+            : latest().store(latest().query.latestPost.orderBy("id", "asc"));
         const results: LofiSqliteViewResult<unknown>[] = [];
         const unwatch = store.subscribe((result) => {
           results.push(result);
@@ -403,6 +452,29 @@ describe("Lofi ZQL", () => {
         expect(ctx.rowsRead).toBeLessThan(10);
       }),
     ]);
+    expect(ctx.errors).toEqual([]);
+  });
+
+  it("keeps views as a projection writes one row several times in a batch", async () => {
+    const ctx = await runZqlScenario(
+      [
+        openTab("a"),
+        watchLatest("a", "latest"),
+        waitForView("a", "latest", []),
+        // One outbox entry with two posts, so the projection writes its row twice in one batch.
+        write("posts", (uow) => {
+          const author = uow.create("users", user("a@example.com"));
+          uow.create("posts", { authorId: author, title: "First" });
+          uow.create("posts", { authorId: author, title: "Second" });
+        }),
+        waitForView("a", "latest", [{ id: "latest", title: "Second" }]),
+        write("third", (uow, vars) => {
+          uow.create("posts", { authorId: vars["posts"]![0]!, title: "Third" });
+        }),
+        waitForView("a", "latest", [{ id: "latest", title: "Third" }]),
+      ],
+      { schemas: [{ schema: latestSchema }], projections: [latestPostProjection] },
+    );
     expect(ctx.errors).toEqual([]);
   });
 });
