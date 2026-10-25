@@ -2,8 +2,7 @@
 name: sandbox
 description:
   "Sandbox isolated shell work in Backoffice-managed Cloudflare containers. Use when the task
-  requires starting, listing, executing commands in, or terminating a sandbox runtime, or moving
-  files between Backoffice and a sandbox."
+  requires starting, listing, executing commands in, or terminating a sandbox runtime."
 ---
 
 # Sandbox
@@ -65,10 +64,9 @@ repositories intact. Every organization, project, and personal scope has its own
 
    Trust command output only when `result.ok` is true. On failure, use `reason`, `retryable`,
    stdout, and stderr to decide whether to correct the command, restart the sandbox, or report the
-   failure. When the task moves files between Backoffice and the sandbox, read
-   `/static/skills/sandbox/references/moving-files.md` first. **Complete when** every command
-   succeeded and its expected output was checked, or a non-retryable failure was identified
-   precisely.
+   failure. When the task moves files between Backoffice and the sandbox, read the file-links skill
+   (`/static/skills/file-links/SKILL.md`) first. **Complete when** every command succeeded and its
+   expected output was checked, or a non-retryable failure was identified precisely.
 
 4. Release the lease when the task no longer needs the environment. Killing saves the workspace for
    a later start of the same id:
