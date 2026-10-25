@@ -2,8 +2,8 @@ import { Button } from "@fragno-private/design-system/button";
 import { Field } from "@fragno-private/design-system/field";
 import { FormContainer } from "@fragno-private/design-system/form-container";
 import { Input } from "@fragno-private/design-system/input";
-import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
-import { Form, redirect, useNavigation } from "react-router";
+import { PageHeading } from "@fragno-private/design-system/page-heading";
+import { Form, Link, redirect, useNavigation } from "react-router";
 import { z } from "zod";
 
 import { assertSameOrigin } from "../auth/session.server";
@@ -74,10 +74,15 @@ export default function NewClient({ loaderData, actionData, params }: Route.Comp
   const externalId = actionData?.externalId ?? loaderData.externalId;
   return (
     <div className="space-y-6">
-      <BackofficePageHeader
+      <PageHeading
+        eyebrow={
+          <Link to={`/f/${params.slug}`} className="hover:underline">
+            Clients
+          </Link>
+        }
         title="New client"
-        description="You become the owner of the client's workspace, and invite the client next."
-        breadcrumbs={[{ label: "Clients", to: `/f/${params.slug}` }, { label: "New client" }]}
+        meta="You become the owner of the client's workspace, and invite the client next."
+        actions={null}
       />
       <div className="max-w-2xl">
         <FormContainer title="Client">
@@ -91,7 +96,7 @@ export default function NewClient({ loaderData, actionData, params }: Route.Comp
                 {actionData.error}
               </p>
             )}
-            <Button type="submit" variant="accent" disabled={navigation.state !== "idle"}>
+            <Button type="submit" variant="solid" disabled={navigation.state !== "idle"}>
               Create client
             </Button>
           </Form>

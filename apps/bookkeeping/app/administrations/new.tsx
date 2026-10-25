@@ -3,7 +3,7 @@ import { Button } from "@fragno-private/design-system/button";
 import { Field } from "@fragno-private/design-system/field";
 import { FormContainer } from "@fragno-private/design-system/form-container";
 import { Input } from "@fragno-private/design-system/input";
-import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
+import { PageHeading } from "@fragno-private/design-system/page-heading";
 import { Select } from "@fragno-private/design-system/select";
 import { env } from "cloudflare:workers";
 import { Form, redirect, useNavigation, useOutletContext } from "react-router";
@@ -104,13 +104,13 @@ export function headers() {
 export default function NewAdministration({ loaderData, actionData }: Route.ComponentProps) {
   const navigation = useNavigation();
   const { client } = useOutletContext<ClientOutletContext>();
-  const base = `/w/${client.slug}`;
   return (
     <div className="space-y-6">
-      <BackofficePageHeader
+      <PageHeading
+        eyebrow={client.name}
         title="New administration"
-        description="An administration holds the books of one business."
-        breadcrumbs={[{ label: client.name, to: base }, { label: "New administration" }]}
+        meta="An administration holds the books of one business."
+        actions={null}
       />
       <div className="max-w-2xl">
         <FormContainer title="Administration">
@@ -138,7 +138,7 @@ export default function NewAdministration({ loaderData, actionData }: Route.Comp
                 {actionData.error}
               </p>
             )}
-            <Button type="submit" variant="accent" disabled={navigation.state !== "idle"}>
+            <Button type="submit" variant="solid" disabled={navigation.state !== "idle"}>
               Create administration
             </Button>
           </Form>

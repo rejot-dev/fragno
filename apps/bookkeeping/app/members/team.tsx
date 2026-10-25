@@ -71,7 +71,7 @@ export function TeamSection({ team, result }: { team: Team; result: InviteResult
                 />
               </div>
             )}
-            <Button type="submit" variant="accent" disabled={navigation.state !== "idle"}>
+            <Button type="submit" variant="solid" disabled={navigation.state !== "idle"}>
               Create invitation
             </Button>
           </Form>
