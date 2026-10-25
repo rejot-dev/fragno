@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { ChatActivity, ChatActivityStep, ChatArtifactToggle } from "./chat-activity";
+import { ChatCodemodeStep } from "./chat-codemode-step";
 import {
   ChatComposer,
   ChatComposerButton,
@@ -20,7 +21,6 @@ import {
 } from "./chat-message";
 import { ContextUsageMeter } from "./context-usage-meter";
 import { CopyButton } from "./copy-button";
-import { LabeledSection } from "./labeled-section";
 import { RadioMenu, type RadioMenuOption } from "./radio-menu";
 import { ScrollablePre } from "./scrollable-pre";
 
@@ -151,27 +151,43 @@ export function SampleConversation({
             title="Loading the unpaid invoices"
             detail={null}
             durationMs={2_100}
-            outlined={false}
             actions={null}
           >
             <p className="text-xs leading-6">
               Load the unpaid invoices first, then draft one reminder per customer.
             </p>
           </ChatActivityStep>
-          <ChatActivityStep
-            icon="code"
+          <ChatCodemodeStep
             state="done"
-            title="codemode"
-            detail="invoices.unpaid()"
+            detail={null}
+            calls={{
+              startedAt: SAMPLE_TIME,
+              items: [
+                {
+                  id: "unpaid",
+                  offsetMs: 40,
+                  subject: { kind: "call", name: "invoices.unpaid", scope: null, input: "{}" },
+                  status: "succeeded",
+                  durationMs: 1_180,
+                },
+              ],
+              unrecorded: 0,
+            }}
             durationMs={1_240}
-            outlined={false}
+            views={[
+              {
+                label: "Code",
+                content: <ScrollablePre>{"async () => await invoices.unpaid()"}</ScrollablePre>,
+              },
+              {
+                label: "Result",
+                content: (
+                  <ScrollablePre>{`[\n  "INV-4182",\n  "INV-4190",\n  "INV-4203"\n]`}</ScrollablePre>
+                ),
+              },
+            ]}
             actions={null}
-          >
-            <ScrollablePre>{"return await invoices.unpaid();"}</ScrollablePre>
-            <LabeledSection label="Result">
-              <ScrollablePre>{`[\n  "INV-4182",\n  "INV-4190",\n  "INV-4203"\n]`}</ScrollablePre>
-            </LabeledSection>
-          </ChatActivityStep>
+          />
         </ChatActivity>
         <p>
           Three invoices are still unpaid. The oldest, <strong>INV-4182</strong> from Acme, is 32

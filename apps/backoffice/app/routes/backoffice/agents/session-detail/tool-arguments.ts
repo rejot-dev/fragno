@@ -1,5 +1,3 @@
-import type { ToolResultMessage } from "@earendil-works/pi-ai";
-
 export const formatJson = (value: unknown) => {
   try {
     return JSON.stringify(value, null, 2);
@@ -29,44 +27,6 @@ export const getCodeArgument = (value: unknown) => {
 
   const { code, ...rest } = value;
   return { code, rest };
-};
-
-export const getReadPath = (value: unknown) => {
-  if (!isRecord(value) || typeof value.path !== "string") {
-    return null;
-  }
-  return value.path;
-};
-
-const getSkillNameFromPath = (path: string | null | undefined) => {
-  if (!path) {
-    return null;
-  }
-
-  const pathSegments = path.split(/[\\/]+/).filter(Boolean);
-  if (pathSegments.at(-1) !== "SKILL.md") {
-    return null;
-  }
-
-  return pathSegments.at(-2) ?? null;
-};
-
-export const getLoadedSkillName = ({
-  argumentsValue,
-  completedToolResult,
-  name,
-}: {
-  argumentsValue: unknown;
-  completedToolResult: ToolResultMessage | null;
-  name: string;
-}) => {
-  if (name !== "read" || !completedToolResult || completedToolResult.isError) {
-    return null;
-  }
-
-  const resultPath = getReadPath(completedToolResult.details);
-  const argumentPath = getReadPath(argumentsValue);
-  return getSkillNameFromPath(resultPath ?? argumentPath);
 };
 
 const decodeStreamingJsonString = (value: string) => {

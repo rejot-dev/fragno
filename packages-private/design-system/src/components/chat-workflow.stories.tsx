@@ -267,7 +267,6 @@ export function InConversation() {
                   title="Starting a reminder workflow"
                   detail={null}
                   durationMs={1_900}
-                  outlined={false}
                   actions={null}
                 >
                   <p className="text-xs leading-6">
@@ -280,7 +279,6 @@ export function InConversation() {
                   title="codemode"
                   detail="workflows.start(chaseUnpaidInvoices)"
                   durationMs={840}
-                  outlined={false}
                   actions={null}
                 >
                   <ScrollablePre>
