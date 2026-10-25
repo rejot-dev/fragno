@@ -20,11 +20,16 @@ export function createCodemodeFunctionSource(
     "    const { __dispatchers = {}, __input } = __rpcTargets;",
     "    const __logs = [];",
     `    let __logBytes = 0;
+    let __logsTruncated = false;
+    // Logs past the limits are dropped rather than thrown, so a chatty program still completes.
     const __captureLog = (channel, args) => {
+      if (__logsTruncated) return;
       const text = args.map(String).join(" ");
       __logBytes += new TextEncoder().encode(text).byteLength;
-      if (__logs.length >= ${CODEMODE_LIMITS.maxLogs} || __logBytes > ${CODEMODE_LIMITS.maxLogBytes}) {
-        throw new Error("CODEMODE_LOG_LIMIT_EXCEEDED");
+      if (__logs.length >= ${CODEMODE_LIMITS.maxLogs - 1} || __logBytes > ${CODEMODE_LIMITS.maxLogBytes}) {
+        __logsTruncated = true;
+        __logs.push({ at: Date.now(), channel: "codemode", text: "Logs truncated." });
+        return;
       }
       __logs.push({ at: Date.now(), channel, text });
     };

@@ -135,8 +135,8 @@ retry/suspension takes precedence over an incidental socket error.
   holds. Only the caller's executor reports an activation as interrupted, when it never heard the
   bridge's answer or the bridge declined to run it; guests cannot produce that outcome.
 - Compiler warnings and guest logs share count and UTF-8 byte budgets. Overflow preserves a prefix
-  followed by `[codemode] Logs truncated.` without changing the execution outcome. Guest log floods
-  still fail at the logging limit. Logs are returned at completion, not streamed, and may be lost on
+  followed by `[codemode] Logs truncated.` without changing the execution outcome; guest log floods
+  are truncated the same way. Logs are returned at completion, not streamed, and may be lost on
   interruption.
 - Both peers emit `codemode.activation` summaries with identity, duration, outcome, and transport
   counters, excluding source and tool payloads.

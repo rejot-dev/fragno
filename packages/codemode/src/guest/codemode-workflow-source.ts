@@ -23,10 +23,17 @@ ${createCodemodeProviderProxySource(input.providers)}
 ${createCodemodeProviderGlobalsSource(input.providers)}
 const logs = [];
 let logBytes = 0;
+let logsTruncated = false;
+// Logs past the limits are dropped rather than thrown, so a chatty step still completes.
 const captureLog = (channel, args) => {
+  if (logsTruncated) return;
   const text = args.map(String).join(" ");
   logBytes += new TextEncoder().encode(text).byteLength;
-  if (logs.length >= ${CODEMODE_LIMITS.maxLogs} || logBytes > ${CODEMODE_LIMITS.maxLogBytes}) throw new Error("CODEMODE_LOG_LIMIT_EXCEEDED");
+  if (logs.length >= ${CODEMODE_LIMITS.maxLogs - 1} || logBytes > ${CODEMODE_LIMITS.maxLogBytes}) {
+    logsTruncated = true;
+    logs.push({ at: Date.now(), channel: "codemode", text: "Logs truncated." });
+    return;
+  }
   logs.push({ at: Date.now(), channel, text });
 };
 for (const channel of ["log", "info", "debug", "warn", "error"]) {
