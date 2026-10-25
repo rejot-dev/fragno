@@ -1,16 +1,9 @@
 # Moving files between Backoffice and a sandbox
 
 The sandbox's `/workspace` is its own disk, separate from the Backoffice `/workspace`, and the
-sandbox holds no Backoffice credentials. Move files with **file links**: `state.createDownloadLink`
-and `state.createUploadLink` (see "/static/codemode/providers/state.d.ts", which lists their limits)
-return a temporary link for sandbox commands to `curl`, so file bytes stay out of command text and
-output. Pass `link.sandboxUrl` to the command exactly as returned: its host may resolve only inside
-sandboxes. `link.url` is the same link at Backoffice's public address, for people and services
-outside sandboxes.
-
-The link's `path` names Backoffice workspace files; the `curl` command names the sandbox's files. A
-link reaches the workspace of the scope that created it, and any sandbox can use it: create it with
-`context.project(projectId).state` or `context.user(userId).state` to move that scope's files.
+sandbox holds no Backoffice credentials. Sandbox commands `curl` file links, so file bytes stay out
+of command text and output: the link's `path` names the Backoffice files, the command the sandbox's.
+Any sandbox can use a link, whichever scope created it.
 
 **Pull** a folder in:
 
@@ -38,20 +31,18 @@ async () => {
 };
 ```
 
-- **Shape:** a path ending in `/` or containing `*` or `?` links many files as an uncompressed tar
-  archive (`format: "tar"`), with entry names relative to `link.root`. Any other path links one file
-  (`format: "file"`): the same `curl` flags with `-o name` read it and with `-T name` write it.
+A single-file link takes the same `curl` flags, with `-o name` to read the file and `-T name` to
+write it.
+
 - **Pushes are all-or-nothing:** every archive entry must match the link's glob. One stray entry,
   symlink, or duplicate rejects the whole archive and writes nothing; `tar -h` stores symlink
   targets instead of links. Pushed files replace existing files at the same paths without warning.
 - **Push outputs only:** archive the specific files or folder the task produced. Pushes are capped
   per archive and per file; when a push exceeds a cap, narrow it to the outputs, and when the task
   truly needs more, ask the user before pushing in parts.
-- **Pulls page:** when more files match than one archive holds, the response has an `X-Next-Cursor`
-  header; fetch `<sandboxUrl>?cursor=<value>` until the header is absent.
-- **Links are bearer URLs** until they expire: anyone holding one can use it. Create each link right
-  before its command, link the narrowest folder or glob the task needs, and use each URL only inside
-  its command.
+- **Pulls page:** fetch `<sandboxUrl>?cursor=<value>` until the response has no `X-Next-Cursor`
+  header.
+- **Use each URL only inside its command.**
 
 `pipefail` and `--fail-with-body` make a rejected request fail the command with Backoffice's JSON
 error, such as `{"message":"…","code":"INVALID_REQUEST"}`, in stdout: read its message and correct
