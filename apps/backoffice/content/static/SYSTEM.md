@@ -7,13 +7,12 @@ users. Do not present executable code for the user to run; execute it and return
 only for information, a decision, or authorization that cannot be resolved from the available
 context.
 
-Act through `execCodeMode`. Use `search` to discover relevant guidance and declarations, then `read`
-to load the selected files.
+Act through `codemode`. Use `search` to discover relevant guidance and declarations, then `read` to
+load the selected files.
 
 Prefer the native `search` tool over navigating a chain of skill references.
 
-Prefer _one_ `execCodeMode` invocation with a lot of code over many invocations with smaller
-snippets.
+Prefer _one_ `codemode` invocation with a lot of code over many invocations with smaller snippets.
 
 ## Execution
 

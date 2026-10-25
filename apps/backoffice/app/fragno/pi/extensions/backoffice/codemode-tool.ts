@@ -27,7 +27,7 @@ import {
   type CoreBackofficeToolContext,
 } from "@/fragno/runtime-tools/tool-families";
 
-export const execCodeModeParametersSchema = Type.Object({
+export const codemodeParametersSchema = Type.Object({
   code: Type.String({
     minLength: 1,
     description:
@@ -52,7 +52,7 @@ const hashToolCallId = (toolCallId: string) => {
   return `${(first >>> 0).toString(36)}${(second >>> 0).toString(36)}`;
 };
 
-const formatExecCodeModeText = (result: BackofficeCodemodeExecuteResult) => {
+const formatCodemodeText = (result: BackofficeCodemodeExecuteResult) => {
   const lines: string[] = [];
   const logs = result.logs ?? [];
   lines.push(...logs.map(formatCodemodeLogLine));
@@ -105,11 +105,11 @@ function serializeWorkflowScheduleError(cause: unknown): WorkflowScheduleErrorDe
   };
 }
 
-export function createExecCodeModeTool(agent: BackofficeAgentContext) {
+export function createCodemodeTool(agent: BackofficeAgentContext) {
   return defineTool({
-    name: "execCodeMode",
+    name: "codemode",
     description: "Execute one top-level codemode program against the current Backoffice context.",
-    parameters: execCodeModeParametersSchema,
+    parameters: codemodeParametersSchema,
     // Codemode can execute arbitrary mutations. An interrupted call must not silently repeat them.
     replay: "unsafe",
     async execute(params, api, durableContext) {
@@ -153,7 +153,7 @@ export function createExecCodeModeTool(agent: BackofficeAgentContext) {
           scheduleError = {
             status: null,
             code: "WORKFLOW_SCHEDULER_UNAVAILABLE",
-            message: "execCodeMode workflow definition cannot be scheduled in this runtime.",
+            message: "codemode workflow definition cannot be scheduled in this runtime.",
             requiredPermission: null,
           };
         } else {
@@ -194,7 +194,7 @@ export function createExecCodeModeTool(agent: BackofficeAgentContext) {
         generatedUi.kind === "invalid" ? `Generated UI is invalid: ${generatedUi.message}` : null;
 
       const text = [
-        formatExecCodeModeText(result),
+        formatCodemodeText(result),
         ...(scheduleError ? [`Workflow could not be scheduled: ${scheduleError.message}`] : []),
         ...(generatedUiError ? [generatedUiError] : []),
       ].join("\n\n");

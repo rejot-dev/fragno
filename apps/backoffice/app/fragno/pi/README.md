@@ -22,8 +22,8 @@ organized around Pi Durable:
   turn that owns the agent's current work; extensions receive it as their only Backoffice
   collaborator.
 - `extensions/`: everything installed into the registry. `backoffice/` (guidance and agent
-  instruction sections, and the `read`, `search`, and `execCodeMode` tools), `billing/` (usage
-  delivery task and document), and `posthog/` (generation analytics, production Cloudflare only).
+  instruction sections, and the `read`, `search`, and `codemode` tools), `billing/` (usage delivery
+  task and document), and `posthog/` (generation analytics, production Cloudflare only).
 - `manager/`: the scoped agent directory fragment and the runtime that runtime tools and codemode
   use to call it.
 
@@ -210,11 +210,11 @@ it follows, so a rerun records nothing new.
 ## Notifications
 
 A `notify_agent` Automations route delivers an event to an agent of the route's scope through
-`POST /agents/:agentName/notifications`. A workflow an agent starts with `execCodeMode` replies
-through the same route, with no route ID and the run's execution: when the run ends, Automations
-notifies the agent with a `workflows` `instance.completed` event carrying its status, output, and
-error. The workflows middleware accepts a codemode run's `replyTo` agent only from that agent's own
-turn, which it recognizes by the agent's delegate actor.
+`POST /agents/:agentName/notifications`. A workflow an agent starts with `codemode` replies through
+the same route, with no route ID and the run's execution: when the run ends, Automations notifies
+the agent with a `workflows` `instance.completed` event carrying its status, output, and error. The
+workflows middleware accepts a codemode run's `replyTo` agent only from that agent's own turn, which
+it recognizes by the agent's delegate actor.
 
 A notification is a queue item whose sender is the route's or the workflow run's execution, so the
 request to handle it waits its turn like a prompt (see Queue). Its request ID is
@@ -324,10 +324,10 @@ too, so the first publication after waking is taken whatever its revision.
 ## Backoffice execution
 
 `extensions/backoffice/backoffice-extension.ts` installs the shared Backoffice `read`, `search`, and
-`execCodeMode` implementations. They use the scoped filesystem, route-backed service runtimes,
-existing codemode execution environment, and kernel permission checks of the active turn.
-Authorization does not rely on prompt sections or extension environment hooks: Pi reports their
-errors but continues generation, so the model boundary and every tool check fail closed.
+`codemode` implementations. They use the scoped filesystem, route-backed service runtimes, existing
+codemode execution environment, and kernel permission checks of the active turn. Authorization does
+not rely on prompt sections or extension environment hooks: Pi reports their errors but continues
+generation, so the model boundary and every tool check fail closed.
 
 Pi, codemode, and prerecorded transcription attribute usage to the execution scope's root owner.
 Scoped tool calls use the selected scope, not the calling agent's owner. Workflows snapshot the
@@ -384,11 +384,11 @@ to the agent's view socket, which reconnects with backoff until the agent refuse
 
 ## Recovery
 
-`read` and `search` are replay-safe. `execCodeMode` is replay-unsafe: recovery reports an
-interrupted call that may have partially run instead of automatically repeating mutations. Prompt
-deduplication is not tool-effect deduplication. Scenarios restore a real SQLite snapshot taken after
-a codemode mutation and before tool-result settlement, verifying exactly one effect and that the
-restored turn record is the recovered tools' authority.
+`read` and `search` are replay-safe. `codemode` is replay-unsafe: recovery reports an interrupted
+call that may have partially run instead of automatically repeating mutations. Prompt deduplication
+is not tool-effect deduplication. Scenarios restore a real SQLite snapshot taken after a codemode
+mutation and before tool-result settlement, verifying exactly one effect and that the restored turn
+record is the recovered tools' authority.
 
 Production registers OpenAI, Anthropic, and Google providers with credentials from Worker bindings
 or Node configuration. An agent-scoped billing document and ownerless durable task deliver

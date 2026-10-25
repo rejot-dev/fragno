@@ -38,9 +38,9 @@ import { createTrustedSystemBackofficeToolContext } from "@/fragno/runtime-tools
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
 import {
-  createExecCodeModeTool as createPiExecCodeModeTool,
-  execCodeModeParametersSchema,
-} from "./exec-code-mode-tool";
+  createCodemodeTool as createPiCodemodeTool,
+  codemodeParametersSchema,
+} from "./codemode-tool";
 
 const codemode = codemodeRunnerFor(
   createCloudflareBackofficeObjectRegistry(env as CloudflareEnv).codemode.singleton().commands,
@@ -120,11 +120,11 @@ const createPiWorkflowRuntime = (
   ...overrides,
 });
 
-describe("Pi execCodeMode tool", () => {
+describe("Pi codemode tool", () => {
   afterAll(drainCodemodeAlarms);
 
   test("its parameter schema rejects empty programs and accepts immediate and durable ones", () => {
-    const validate = new Ajv().compile(execCodeModeParametersSchema);
+    const validate = new Ajv().compile(codemodeParametersSchema);
 
     assert(!validate({ code: "" }));
     expect(validate.errors).toEqual(
@@ -139,7 +139,7 @@ describe("Pi execCodeMode tool", () => {
       upload: new MemoryUploadObject({ "input.txt": "hello" }),
     });
 
-    const tool = await createExecCodeModeTool({ stateBackend });
+    const tool = await createCodemodeTool({ stateBackend });
 
     const result = await tool.execute(
       {
@@ -160,14 +160,14 @@ describe("Pi execCodeMode tool", () => {
     const content = result.output[0];
     assert(content?.type === "text");
     if (content?.type !== "text") {
-      throw new Error("Expected text content from execCodeMode.");
+      throw new Error("Expected text content from codemode.");
     }
     expect(content.text).toContain("hello from pi");
     await expect(stateBackend.readFile("/workspace/output.txt")).resolves.toBe("hello from pi");
   });
 
   test("preserves an immediate generated UI result in details.result", async () => {
-    const tool = await createExecCodeModeTool({});
+    const tool = await createCodemodeTool({});
 
     const result = await tool.execute(
       {
@@ -226,7 +226,7 @@ describe("Pi execCodeMode tool", () => {
   });
 
   test("renders a ui builder tree into a generated UI with positional element ids", async () => {
-    const tool = await createExecCodeModeTool({});
+    const tool = await createCodemodeTool({});
 
     const result = await tool.execute(
       {
@@ -297,7 +297,7 @@ describe("Pi execCodeMode tool", () => {
   });
 
   test("fails the tool call with the element and prop that make a generated UI invalid", async () => {
-    const tool = await createExecCodeModeTool({});
+    const tool = await createCodemodeTool({});
 
     const result = await tool.execute(
       {
@@ -329,7 +329,7 @@ describe("Pi execCodeMode tool", () => {
   });
 
   test("rejects form bindings to undeclared fields before the interface leaves the guest", async () => {
-    const tool = await createExecCodeModeTool({});
+    const tool = await createCodemodeTool({});
 
     const result = await tool.execute(
       {
@@ -353,8 +353,8 @@ describe("Pi execCodeMode tool", () => {
     });
   });
 
-  test("surfaces workflow definitions from execCodeMode", async () => {
-    const tool = await createExecCodeModeTool({
+  test("surfaces workflow definitions from codemode", async () => {
+    const tool = await createCodemodeTool({
       workflowRuntime: createPiWorkflowRuntime(),
     });
 
@@ -378,14 +378,14 @@ describe("Pi execCodeMode tool", () => {
     const content = result.output[0];
     assert(content?.type === "text");
     if (content?.type !== "text") {
-      throw new Error("Expected text content from execCodeMode.");
+      throw new Error("Expected text content from codemode.");
     }
     expect(content.text).toContain("12zjsps1wxc2bo");
   });
 
   test("returns structured scheduling failures as failed tool results", async () => {
     const requiredPermission = BACKOFFICE_PERMISSION.workflow.executeCode;
-    const tool = await createExecCodeModeTool({
+    const tool = await createCodemodeTool({
       workflowRuntime: createPiWorkflowRuntime({
         createInternalInstance: async () => {
           throw new AutomationWorkflowRuntimeRequestError(
@@ -420,7 +420,7 @@ describe("Pi execCodeMode tool", () => {
     expect(result.details).not.toHaveProperty("run");
   });
 
-  test("schedules and runs a workflow defined from execCodeMode", async () => {
+  test("schedules and runs a workflow defined from codemode", async () => {
     const stateBackend = createTestStateBackend();
     const workflow = defineRemoteWorkflow({ name: "codemode-script" }, async (event, remote) => {
       const params = codemodeWorkflowParamsSchema.parse(event.payload);
@@ -454,7 +454,7 @@ describe("Pi execCodeMode tool", () => {
       autoTickHooks: false,
     });
 
-    const tool = await createExecCodeModeTool({
+    const tool = await createCodemodeTool({
       stateBackend,
       workflowRuntime: createPiWorkflowRuntime({
         createInternalInstance: async ({
@@ -480,7 +480,7 @@ describe("Pi execCodeMode tool", () => {
           return await step.do("write-session-file", async () => {
             await state.writeFile({
               path: "/workspace/from-workflow.txt",
-              content: "ran from execCodeMode workflow",
+              content: "ran from codemode workflow",
             });
             return await state.readFile({ path: "/workspace/from-workflow.txt" });
           });
@@ -501,17 +501,17 @@ describe("Pi execCodeMode tool", () => {
     });
     await expect(harness.getStatus("PI_CODEMODE_SCRIPT", "12zjsps1wxc2bo")).resolves.toMatchObject({
       status: "complete",
-      output: "ran from execCodeMode workflow",
+      output: "ran from codemode workflow",
     });
     await expect(stateBackend.readFile("/workspace/from-workflow.txt")).resolves.toBe(
-      "ran from execCodeMode workflow",
+      "ran from codemode workflow",
     );
   });
 
   // cf-sandbox-bridge's compiler tests install and execute npm dependencies.
   test("schedules a workflow with its requested npm dependencies", async () => {
     const scheduledParams: unknown[] = [];
-    const tool = await createExecCodeModeTool({
+    const tool = await createCodemodeTool({
       workflowRuntime: createPiWorkflowRuntime({
         createInternalInstance: async ({ workflowName, instanceId, params }) => {
           scheduledParams.push(params);
@@ -543,7 +543,7 @@ describe("Pi execCodeMode tool", () => {
   });
 
   test("rejects codemode details that cannot be persisted as strict JSON", async () => {
-    const tool = await createExecCodeModeTool({});
+    const tool = await createCodemodeTool({});
 
     await expect(
       tool.execute(
@@ -559,7 +559,7 @@ describe("Pi execCodeMode tool", () => {
   });
 
   test("calls workflow domain tools through codemode when configured", async () => {
-    const tool = await createExecCodeModeTool({
+    const tool = await createCodemodeTool({
       workflowRuntime: createPiWorkflowRuntime({
         getInstance: async (input) => ({
           id: input.instanceId,
@@ -632,7 +632,7 @@ describe("Pi execCodeMode tool", () => {
       },
     };
 
-    const tool = await createExecCodeModeTool({
+    const tool = await createCodemodeTool({
       automationsRuntime,
     });
 
@@ -673,7 +673,7 @@ describe("Pi execCodeMode tool", () => {
     const content = result.output[0];
     assert(content?.type === "text");
     if (content?.type !== "text") {
-      throw new Error("Expected text content from execCodeMode.");
+      throw new Error("Expected text content from codemode.");
     }
     assert(
       content.text ===
@@ -712,7 +712,7 @@ describe("Pi execCodeMode tool", () => {
       },
     };
 
-    const tool = await createExecCodeModeTool({ automationsRuntime });
+    const tool = await createCodemodeTool({ automationsRuntime });
     const result = await tool.execute(
       {
         code: `async () => {
@@ -734,7 +734,7 @@ describe("Pi execCodeMode tool", () => {
   });
 });
 
-const createExecCodeModeTool = async ({
+const createCodemodeTool = async ({
   automationsRuntime,
   workflowRuntime,
   stateBackend = createTestStateBackend(),
@@ -759,7 +759,7 @@ const createExecCodeModeTool = async ({
     authorize: async () => undefined,
     toolContext: () => runtimeToolContext,
   };
-  const tool = createPiExecCodeModeTool({
+  const tool = createPiCodemodeTool({
     agentName: "assistant",
     scope: { kind: "system" },
     activeTurn: async () => turn,
@@ -774,7 +774,7 @@ const createExecCodeModeTool = async ({
     ) {
       const result = await tool.execute(args, api, context);
       if (!result.output || result.details === undefined) {
-        throw new Error("Expected execCodeMode to return persisted output and details.");
+        throw new Error("Expected codemode to return persisted output and details.");
       }
       return {
         output: result.output,

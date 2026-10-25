@@ -27,7 +27,7 @@ function renderTurn(status: ChatActivityStatus) {
       <ChatActivityStep
         icon="code"
         state="done"
-        title="execCodeMode"
+        title="codemode"
         detail={null}
         durationMs={1_200}
         outlined={false}
@@ -46,7 +46,7 @@ function isOpen(name: RegExp) {
 test("a turn's card stays open while it runs and folds when it settles", () => {
   const turn = render(renderTurn(running));
   assert.isTrue(isOpen(/Finding the unpaid invoices/));
-  assert.isNotNull(screen.queryByText("execCodeMode"));
+  assert.isNotNull(screen.queryByText("codemode"));
 
   turn.rerender(renderTurn(settled));
   assert.isFalse(isOpen(/Worked for 4\.2s/));

@@ -71,7 +71,7 @@ its `.js` extension. Each run and check reads the imported modules as they are s
 
 Every saved file is such a module, including a `.workflow.js` file, whose default export is its
 workflow: `export default defineWorkflow(...)`. Workflows start through `workflow.createInstance` or
-a route, not `js.run`; `js.check` checks a workflow file's default export too. Inline `execCodeMode`
+a route, not `js.run`; `js.check` checks a workflow file's default export too. Inline `codemode`
 code is one expression instead of a module, so it loads saved modules with
 `await import("/workspace/...")` by absolute path.
 

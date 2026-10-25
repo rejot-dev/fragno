@@ -32,7 +32,7 @@ const rawResult = {
 const toolResult = {
   role: "toolResult",
   toolCallId: "tool-ui",
-  toolName: "execCodeMode",
+  toolName: "codemode",
   content: [{ type: "text", text: "raw-sidecar-marker" }],
   details: { result: rawResult, logs: ["log-sidecar-marker"] },
   isError: false,
@@ -43,12 +43,12 @@ function renderToolResult({
   expanded = false,
   rawValue = rawResult,
   result = toolResult,
-  useExecCodeModeFormatting = true,
+  useCodemodeFormatting = true,
 }: {
   expanded?: boolean;
   rawValue?: unknown;
   result?: typeof toolResult;
-  useExecCodeModeFormatting?: boolean;
+  useCodemodeFormatting?: boolean;
 }) {
   return renderToStaticMarkup(
     createElement(ToolResultContent, {
@@ -57,7 +57,7 @@ function renderToolResult({
       parsedResult: parseBackofficeUiResult(rawValue),
       rawResult: rawValue,
       result,
-      useExecCodeModeFormatting,
+      useCodemodeFormatting,
     }),
   );
 }
@@ -79,7 +79,7 @@ describe("ToolResultContent", () => {
     const ordinaryResult = {
       role: "toolResult",
       toolCallId: "tool-ordinary",
-      toolName: "execCodeMode",
+      toolName: "codemode",
       content: [{ type: "text", text: "log-sidecar-marker\nordinary-value" }],
       details: { result: "ordinary-value", logs: ["log-sidecar-marker"] },
       isError: false,
@@ -135,7 +135,7 @@ describe("ToolResultContent", () => {
     const markup = renderToolResult({
       rawValue: undefined,
       result: nonCodemodeResult,
-      useExecCodeModeFormatting: false,
+      useCodemodeFormatting: false,
     });
 
     expect(markup).toContain("read failed");

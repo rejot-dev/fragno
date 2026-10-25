@@ -12,14 +12,14 @@ export function ToolResultContent({
   parsedResult,
   rawResult,
   result,
-  useExecCodeModeFormatting,
+  useCodemodeFormatting,
 }: {
   expanded: boolean;
   hasRawResult: boolean;
   parsedResult: BackofficeUiParseResult;
   rawResult: unknown;
   result: ToolResultMessage;
-  useExecCodeModeFormatting: boolean;
+  useCodemodeFormatting: boolean;
 }) {
   const messageContent = (
     <div className="space-y-2">
@@ -40,7 +40,7 @@ export function ToolResultContent({
     </div>
   );
 
-  if (!useExecCodeModeFormatting || !hasRawResult) {
+  if (!useCodemodeFormatting || !hasRawResult) {
     return messageContent;
   }
 

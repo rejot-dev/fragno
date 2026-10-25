@@ -40,13 +40,13 @@ describe("tool results", () => {
         result: {
           role: "toolResult",
           toolCallId: "generated",
-          toolName: "execCodeMode",
+          toolName: "codemode",
           content: [],
           details: { result: value },
           isError: false,
           timestamp: 1,
         } as never,
-        useExecCodeModeFormatting: true,
+        useCodemodeFormatting: true,
       }),
     );
 

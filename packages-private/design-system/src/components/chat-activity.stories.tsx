@@ -53,7 +53,7 @@ const STEPS: SampleStep[] = [
   {
     kind: "tool",
     icon: "code",
-    title: "execCodeMode",
+    title: "codemode",
     detail: "invoices.unpaid()",
     code: "return await invoices.unpaid();",
     result: '[\n  "INV-4182",\n  "INV-4190",\n  "INV-4203"\n]',
@@ -70,7 +70,7 @@ const STEPS: SampleStep[] = [
   {
     kind: "tool",
     icon: "code",
-    title: "execCodeMode",
+    title: "codemode",
     detail: "drafts.write()",
     code: "await drafts.write(reminders);",
     result: "Error: /workspace/drafts is read-only",
@@ -80,7 +80,7 @@ const STEPS: SampleStep[] = [
   {
     kind: "tool",
     icon: "code",
-    title: "execCodeMode",
+    title: "codemode",
     detail: "files.write()",
     code: "await files.write('/workspace/drafts/', reminders);",
     result: '{ "written": 3 }',

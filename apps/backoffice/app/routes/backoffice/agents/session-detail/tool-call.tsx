@@ -12,7 +12,7 @@ import { useState } from "react";
 
 import type { ToolCallPart } from "./agent-turn";
 import type { PiToolCallArtifact } from "./assistant-runtime";
-import { getExecCodeModeResultDetails } from "./exec-code-mode";
+import { getCodemodeResultDetails, isCodemodeTool } from "./codemode-result";
 import { getCodeArgument, formatJson, getLoadedSkillName, getReadPath } from "./tool-arguments";
 import { ToolResultContent } from "./tool-result-content";
 import { ToolArgumentsBlock } from "./tool-result-details";
@@ -23,6 +23,7 @@ import { generatedUiWorkspaceId, workflowGraphWorkspaceId } from "./workspace-mo
 const ordinaryResultPresentation: BackofficeUiParseResult = { kind: "ordinary" };
 
 const TOOL_ICONS: Record<string, IconName> = {
+  codemode: "code",
   execCodeMode: "code",
   bash: "terminal",
   read: "file-text",
@@ -46,19 +47,18 @@ export function toolCallPresentation(part: ToolCallPart) {
     part.toolName === "read"
       ? (getReadPath(part.args) ?? getReadPath(completedToolResult?.details))
       : null;
-  const execCodeModeDetails =
-    part.toolName === "execCodeMode"
-      ? getExecCodeModeResultDetails(completedToolResult?.details)
-      : null;
-  const resultPresentation = execCodeModeDetails?.hasResult
-    ? parseBackofficeUiResult(execCodeModeDetails.result)
+  const codemodeDetails = isCodemodeTool(part.toolName)
+    ? getCodemodeResultDetails(completedToolResult?.details)
+    : null;
+  const resultPresentation = codemodeDetails?.hasResult
+    ? parseBackofficeUiResult(codemodeDetails.result)
     : ordinaryResultPresentation;
   const running =
     part.status.type === "running" || Boolean(draftTool && draftTool.status !== "done");
   return {
     draftTool,
     completedToolResult,
-    execCodeModeDetails,
+    codemodeDetails,
     resultPresentation,
     loadedSkillName,
     readPath,
@@ -143,7 +143,7 @@ export function ToolCallStep({
   const {
     draftTool,
     completedToolResult,
-    execCodeModeDetails,
+    codemodeDetails,
     resultPresentation,
     loadedSkillName,
     readPath,
@@ -153,7 +153,7 @@ export function ToolCallStep({
   } = presentation;
   const hasTaggedGeneratedUi = resultPresentation.kind !== "ordinary";
   const canExpandOrdinaryResult =
-    (execCodeModeDetails?.hasResult ?? false) && resultPresentation.kind === "ordinary";
+    (codemodeDetails?.hasResult ?? false) && resultPresentation.kind === "ordinary";
   const [resultExpanded, setResultExpanded] = useState(false);
 
   const completedResultSection = completedToolResult ? (
@@ -174,11 +174,11 @@ export function ToolCallStep({
     >
       <ToolResultContent
         expanded={canExpandOrdinaryResult && resultExpanded}
-        hasRawResult={execCodeModeDetails?.hasResult ?? false}
+        hasRawResult={codemodeDetails?.hasResult ?? false}
         parsedResult={resultPresentation}
-        rawResult={execCodeModeDetails?.result}
+        rawResult={codemodeDetails?.result}
         result={completedToolResult}
-        useExecCodeModeFormatting={execCodeModeDetails !== null}
+        useCodemodeFormatting={codemodeDetails !== null}
       />
     </LabeledSection>
   ) : null;
@@ -188,8 +188,8 @@ export function ToolCallStep({
       <ScrollablePre>{formatJson(draftTool.partialResult)}</ScrollablePre>
     ) : null;
   const logs =
-    execCodeModeDetails && execCodeModeDetails.logs.length > 0 ? (
-      <ScrollablePre>{execCodeModeDetails.logs.join("\n")}</ScrollablePre>
+    codemodeDetails && codemodeDetails.logs.length > 0 ? (
+      <ScrollablePre>{codemodeDetails.logs.join("\n")}</ScrollablePre>
     ) : null;
 
   return (
