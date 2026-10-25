@@ -30,7 +30,7 @@ export default function BackofficeLayout({
     resolvedScope,
     administeredMember,
     automationCollectionSource,
-    projectCollectionSource,
+    projectList,
   } = loaderData;
 
   useEffect(
@@ -55,7 +55,7 @@ export default function BackofficeLayout({
       administeredMember={administeredMember}
       accessTokenExpiresAt={accessTokenExpiresAt}
       automationCollectionSource={automationCollectionSource}
-      projectCollectionSource={projectCollectionSource}
+      projectList={projectList}
       isLoading={false}
     >
       {children ?? <Outlet context={{ me }} />}
@@ -101,7 +101,7 @@ export function ErrorBoundary() {
       administeredMember={layoutData?.administeredMember ?? null}
       accessTokenExpiresAt={layoutData?.accessTokenExpiresAt ?? null}
       automationCollectionSource={layoutData?.automationCollectionSource ?? null}
-      projectCollectionSource={layoutData?.projectCollectionSource ?? null}
+      projectList={layoutData?.projectList ?? null}
       isLoading={false}
     >
       <div className="space-y-4">

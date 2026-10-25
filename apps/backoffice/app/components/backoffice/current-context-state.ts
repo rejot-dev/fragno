@@ -18,5 +18,4 @@ export type AutomationCollectionSourceState<
 export type CurrentBackofficeContext = {
   resolvedScope: BackofficeResolvedScope<Organization>;
   automationCollectionSource: AutomationCollectionSourceState<Organization>;
-  projectCollectionSource: AutomationCollectionSourceState<Organization> | null;
 };

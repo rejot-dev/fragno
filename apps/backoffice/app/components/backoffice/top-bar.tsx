@@ -1,19 +1,13 @@
 import { backofficeScopeProjectOwner } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import { ClientOnly } from "@fragno-private/design-system/client-only";
-import { Suspense, use } from "react";
+import { Suspense, use, type ReactNode } from "react";
 
 import {
   type BackofficeNamedProject,
   backofficeRouteScopeFromResolvedScope,
   type BackofficeResolvedScope,
 } from "@/backoffice-runtime/resolved-scope";
-import type { AutomationCollectionSourceState } from "@/components/backoffice/current-context-state";
 import type { AdministeredMember, BackofficeMeData, Organization } from "@/fragno/auth/contracts";
-import {
-  getAutomationBrowserDatabase,
-  type AutomationCollectionSource,
-} from "@/fragno/automation/tanstack/browser-database";
-import { useAutomationProjects } from "@/fragno/automation/tanstack/use-automation-projects";
+import type { AutomationProjectList } from "@/fragno/automation/project-list";
 
 import { AGENT_DRAWER_ID } from "./agent-drawer";
 import { BackofficeAppearanceMenu } from "./appearance-menu";
@@ -32,98 +26,67 @@ type BackofficeTopBarProps = {
   me: BackofficeMeData | null;
   resolvedScope: BackofficeResolvedScope<Organization, BackofficeNamedProject> | null;
   administeredMember: AdministeredMember | null;
-  projectCollectionSource: AutomationCollectionSourceState | null;
+  projectList: Promise<AutomationProjectList> | null;
   isLoading?: boolean;
   sidebarCollapsed: boolean;
   agentDrawerOpen?: boolean;
   onAgentDrawerToggle?: () => void;
 };
 
-function LocalFirstBackofficeProjectMenu({
+/** The project menu, which lists the owner's projects once the layout's loader streams them in. */
+function StreamedBackofficeProjectMenu({
   owner,
   administeredMember,
   currentProject,
-  sourceState,
+  projectList,
 }: {
   owner: BackofficeProjectMenuOwner;
   administeredMember: AdministeredMember | null;
   currentProject: BackofficeProjectOption | null;
-  sourceState: AutomationCollectionSourceState | null;
+  projectList: Promise<AutomationProjectList> | null;
 }) {
-  const loadingMenu = (
+  const menu = (list: AutomationProjectList | null) => (
     <BackofficeProjectMenu
       owner={owner}
       administeredMember={administeredMember}
       currentProject={currentProject}
-      projects={EMPTY_PROJECTS}
-      projectsError={null}
-      projectsLoading
+      projects={
+        list?.kind === "listed"
+          ? list.projects.map((project) => ({
+              slug: project.slug,
+              label: project.name.trim() || project.slug,
+            }))
+          : EMPTY_PROJECTS
+      }
+      projectsError={list?.kind === "failed" ? list.message : null}
+      projectsLoading={list === null}
     />
   );
-  if (!sourceState || sourceState.status === "unavailable") {
-    return (
-      <BackofficeProjectMenu
-        owner={owner}
-        administeredMember={administeredMember}
-        currentProject={currentProject}
-        projects={EMPTY_PROJECTS}
-        projectsError={sourceState?.message ?? "Project synchronization is unavailable."}
-        projectsLoading={false}
-      />
-    );
+  if (!projectList) {
+    return menu({ kind: "failed", message: "Projects are unavailable here." });
   }
-
-  // Backoffice cannot operate without its local-first database, so initialization failures are
-  // intentionally allowed to reach the route error boundary instead of rendering degraded UI.
   return (
-    <ClientOnly fallback={loadingMenu}>
-      <Suspense fallback={loadingMenu}>
-        <SynchronizedBackofficeProjectMenu
-          owner={owner}
-          administeredMember={administeredMember}
-          currentProject={currentProject}
-          source={sourceState.source}
-        />
-      </Suspense>
-    </ClientOnly>
+    <Suspense fallback={menu(null)}>
+      <ListedProjects projectList={projectList}>{menu}</ListedProjects>
+    </Suspense>
   );
 }
 
-function SynchronizedBackofficeProjectMenu({
-  owner,
-  administeredMember,
-  currentProject,
-  source,
+function ListedProjects({
+  projectList,
+  children,
 }: {
-  owner: BackofficeProjectMenuOwner;
-  administeredMember: AdministeredMember | null;
-  currentProject: BackofficeProjectOption | null;
-  source: AutomationCollectionSource;
+  projectList: Promise<AutomationProjectList>;
+  children: (list: AutomationProjectList) => ReactNode;
 }) {
-  const { collections } = use(getAutomationBrowserDatabase(source));
-  const projectsState = useAutomationProjects(collections);
-  const projects = projectsState.projects.map((project) => ({
-    slug: project.slug,
-    label: project.name.trim() || project.slug,
-  }));
-
-  return (
-    <BackofficeProjectMenu
-      owner={owner}
-      administeredMember={administeredMember}
-      currentProject={currentProject}
-      projects={projects}
-      projectsError={projectsState.status === "error" ? projectsState.message : null}
-      projectsLoading={projectsState.status === "loading"}
-    />
-  );
+  return children(use(projectList));
 }
 
 export function BackofficeTopBar({
   me,
   resolvedScope,
   administeredMember,
-  projectCollectionSource,
+  projectList,
   isLoading,
   sidebarCollapsed,
   agentDrawerOpen = false,
@@ -148,7 +111,7 @@ export function BackofficeTopBar({
 
         {resolvedScope && projectOwner ? (
           <div className="flex min-w-0 flex-1 items-stretch min-[960px]:w-72 min-[960px]:flex-none min-[960px]:border-r min-[960px]:border-[color:var(--bo-border)]">
-            <LocalFirstBackofficeProjectMenu
+            <StreamedBackofficeProjectMenu
               owner={backofficeRouteScopeFromResolvedScope(projectOwner)}
               administeredMember={administeredMember}
               currentProject={
@@ -156,7 +119,7 @@ export function BackofficeTopBar({
                   ? { slug: resolvedScope.project.slug, label: resolvedScope.project.name }
                   : null
               }
-              sourceState={projectCollectionSource}
+              projectList={projectList}
             />
           </div>
         ) : null}

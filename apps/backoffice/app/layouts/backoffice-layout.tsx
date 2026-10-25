@@ -1,7 +1,11 @@
 import "@fragno-private/design-system/components.css";
 
+import { backofficeScopeProjectOwner } from "@fragno-dev/backoffice-api/v0/shared/scope";
+
 import type { CurrentBackofficeContext } from "@/components/backoffice/current-context-state";
+import { loadAutomationProjectList } from "@/fragno/automation/project-list.server";
 import { fetchAutomationCollectionSource } from "@/fragno/automation/tanstack/server";
+import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { Route } from "./+types/backoffice-layout";
 import { establishBackofficeAuthenticatedRequest } from "./backoffice-authenticated-request.server";
@@ -29,7 +33,13 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const { me, resolvedScope, administeredMember } = shellRequest;
   const accessTokenExpiresAt = shellRequest.accessTokenExpiresAt.toISOString();
 
-  const automationCollectionSourcePromise = fetchAutomationCollectionSource(
+  // The project menu lists the projects beside the workspace, which their owner stores. Only the
+  // menu waits for them, so they stream in after the page renders.
+  const projectOwner = backofficeScopeProjectOwner(resolvedScope);
+  const projectList = projectOwner
+    ? loadAutomationProjectList(request, context.get(BackofficeWorkerContext), projectOwner)
+    : null;
+  const automationCollectionSource = await fetchAutomationCollectionSource(
     request,
     context,
     resolvedScope,
@@ -44,30 +54,6 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       message: error instanceof Error ? error.message : "Workflow synchronization is unavailable.",
     }),
   );
-  const projectCollectionSourcePromise: Promise<
-    CurrentBackofficeContext["projectCollectionSource"]
-  > | null =
-    // The project menu lists the projects beside the workspace, which their owner stores.
-    resolvedScope.kind === "system"
-      ? null
-      : resolvedScope.kind === "project"
-        ? fetchAutomationCollectionSource(request, context, resolvedScope.owner).then(
-            (source): CurrentBackofficeContext["automationCollectionSource"] => ({
-              status: "ready",
-              source,
-            }),
-            (error: unknown): CurrentBackofficeContext["automationCollectionSource"] => ({
-              status: "unavailable",
-              resolvedScope: resolvedScope.owner,
-              message:
-                error instanceof Error ? error.message : "Project synchronization is unavailable.",
-            }),
-          )
-        : automationCollectionSourcePromise;
-  const [automationCollectionSource, projectCollectionSource] = await Promise.all([
-    automationCollectionSourcePromise,
-    projectCollectionSourcePromise,
-  ]);
 
   return {
     me,
@@ -75,7 +61,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     resolvedScope,
     administeredMember,
     automationCollectionSource,
-    projectCollectionSource,
+    projectList,
   };
 }
 

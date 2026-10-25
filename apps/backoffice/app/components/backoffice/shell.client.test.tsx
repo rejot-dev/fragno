@@ -77,7 +77,7 @@ describe("BackofficeShell resolved scope", () => {
           resolvedScope,
           message: "Workflow synchronization is unavailable.",
         }}
-        projectCollectionSource={null}
+        projectList={null}
       >
         <div>Backoffice</div>
       </BackofficeShell>,
