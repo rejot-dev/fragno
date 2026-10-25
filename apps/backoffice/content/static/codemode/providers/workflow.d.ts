@@ -1,16 +1,34 @@
 // Workflow instances: start saved workflows, check status and history, send events, retry steps. Read to run or follow a workflow.
 type WorkflowCodemodeProvider = {
-  /** Start a saved .workflow.js file by path. Inline defineWorkflow declarations start automatically. */
+  /**
+   * Start a saved .workflow.js file by path. Inline defineWorkflow declarations start automatically.
+   * Requires `workflow.modify`.
+   */
   createInstance(input: WorkflowCreateInstanceInput): Promise<WorkflowCreateInstanceOutput>;
-  /** List durable saved-workflow instances. */
+  /**
+   * List durable saved-workflow instances.
+   * Requires `workflow.read`.
+   */
   listInstances(input: WorkflowListInstancesInput): Promise<WorkflowListInstancesOutput>;
-  /** Get durable workflow instance details. */
+  /**
+   * Get durable workflow instance details.
+   * Requires `workflow.read`.
+   */
   getInstance(input: WorkflowGetInstanceInput): Promise<WorkflowGetInstanceOutput>;
-  /** Get durable workflow step, event, and emission history. */
+  /**
+   * Get durable workflow step, event, and emission history.
+   * Requires `workflow.read`.
+   */
   getHistory(input: WorkflowGetHistoryInput): Promise<WorkflowGetHistoryOutput>;
-  /** Send an event to a waiting durable workflow instance. */
+  /**
+   * Send an event to a waiting durable workflow instance.
+   * Requires `workflow.modify`.
+   */
   sendEvent(input: WorkflowSendEventInput): Promise<WorkflowSendEventOutput>;
-  /** Retry an errored instance's failed top-level step. */
+  /**
+   * Retry an errored instance's failed top-level step.
+   * Requires `workflow.modify`.
+   */
   retryFailedStep(input: WorkflowRetryFailedStepInput): Promise<WorkflowRetryFailedStepOutput>;
 };
 declare const workflow: WorkflowCodemodeProvider;

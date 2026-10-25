@@ -1,8 +1,14 @@
 // External identities bound to users. Read when a workflow acts for an external sender.
 type IdentityCodemodeProvider = {
-  /** Resolve an active external identity binding so the workflow can choose its internal user. */
+  /**
+   * Resolve an active external identity binding so the workflow can choose its internal user.
+   * Requires `identity.resolve`.
+   */
   resolveExternal(input: IdentityResolveExternalInput): Promise<IdentityResolveExternalOutput>;
-  /** List external identities bound to users in the current scope, active and revoked, ordered by source, type, and id. */
+  /**
+   * List external identities bound to users in the current scope, active and revoked, ordered by source, type, and id.
+   * Requires `identity.read`.
+   */
   listExternal(input: IdentityListExternalInput): Promise<IdentityListExternalOutput>;
 };
 declare const identity: IdentityCodemodeProvider;

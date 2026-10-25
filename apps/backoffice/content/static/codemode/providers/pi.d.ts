@@ -1,24 +1,54 @@
 // Agents: define, prompt, stop, and read conversations. Read to work with an agent, including your own definition.
 type PiCodemodeProvider = {
-  /** List the built-in agents and the agents defined in the current scope. */
+  /**
+   * List the built-in agents and the agents defined in the current scope.
+   * Requires `pi.read`.
+   */
   listAgents(input: PiListAgentsInput): Promise<PiListAgentsOutput>;
-  /** Get one defined agent. */
+  /**
+   * Get one defined agent.
+   * Requires `pi.read`.
+   */
   getAgent(input: PiGetAgentInput): Promise<PiGetAgentOutput>;
-  /** Read the most recent messages of a started agent's conversation, oldest first, by the agent's name; call `pi.listAgents` to find the agent a request means rather than assuming it is you: what users said and the agent answered, without thinking, tool calls, or tool results. Pass the returned `before` to read further back; it is null at the conversation's start. Includes history before compactions and resets. */
+  /**
+   * Read the most recent messages of a started agent's conversation, oldest first, by the agent's name; call `pi.listAgents` to find the agent a request means rather than assuming it is you: what users said and the agent answered, without thinking, tool calls, or tool results. Pass the returned `before` to read further back; it is null at the conversation's start. Includes history before compactions and resets.
+   * Requires `pi.read`.
+   */
   listMessages(input: PiListMessagesInput): Promise<PiListMessagesOutput>;
-  /** Write a started agent's whole conversation history to a JSONL file, by the agent's name; call `pi.listAgents` to find the agent a request means rather than assuming it is you. The file holds a header line, then every durable entry oldest first, including thinking, tool calls, tool results, and history before compactions and resets. */
+  /**
+   * Write a started agent's whole conversation history to a JSONL file, by the agent's name; call `pi.listAgents` to find the agent a request means rather than assuming it is you. The file holds a header line, then every durable entry oldest first, including thinking, tool calls, tool results, and history before compactions and resets.
+   * Requires `pi.read` and `upload.modify`.
+   */
   exportConversation(input: PiExportConversationInput): Promise<PiExportConversationOutput>;
-  /** Define an agent in the current scope. Use permissions ["*"] unless the agent should be limited: each turn already runs with the prompter's permissions, and the grants only narrow them. */
+  /**
+   * Define an agent in the current scope. Use permissions ["*"] unless the agent should be limited: each turn already runs with the prompter's permissions, and the grants only narrow them.
+   * Requires `pi.manage`.
+   */
   createAgent(input: PiCreateAgentInput): Promise<PiCreateAgentOutput>;
-  /** Replace an agent's whole definition, including its permissions (["*"] narrows nothing). The agent keeps its conversation; the new definition applies from its next turn. */
+  /**
+   * Replace an agent's whole definition, including its permissions (["*"] narrows nothing). The agent keeps its conversation; the new definition applies from its next turn.
+   * Requires `pi.manage`.
+   */
   updateAgent(input: PiUpdateAgentInput): Promise<PiUpdateAgentOutput>;
-  /** Idempotently delete an agent's definition. Its stored conversation is kept and resumes if the name is defined again. */
+  /**
+   * Idempotently delete an agent's definition. Its stored conversation is kept and resumes if the name is defined again.
+   * Requires `pi.manage`.
+   */
   deleteAgent(input: PiDeleteAgentInput): Promise<PiDeleteAgentOutput>;
-  /** Durably queue a prompt for an agent, or steer its running turn, and return a receipt saying which. A request ID still queued is not queued twice. The prompt's outcome is recorded as a pi turn.completed event naming the answer's entry, or turn.failed, turn.aborted, or queue.dropped, each with the request ID in its subject. The turn runs with the caller's current permissions, narrowed by the agent's definition. Usage belongs to the agent scope's root owner, independently of the caller or their active organization. */
+  /**
+   * Durably queue a prompt for an agent, or steer its running turn, and return a receipt saying which. A request ID still queued is not queued twice. The prompt's outcome is recorded as a pi turn.completed event naming the answer's entry, or turn.failed, turn.aborted, or queue.dropped, each with the request ID in its subject. The turn runs with the caller's current permissions, narrowed by the agent's definition. Usage belongs to the agent scope's root owner, independently of the caller or their active organization.
+   * Requires `pi.modify`.
+   */
   submitPrompt(input: PiSubmitPromptInput): Promise<PiSubmitPromptOutput>;
-  /** Stop an agent: abort its running turn and background work, and pause its queue. Queued and new prompts wait until someone resumes the agent in Backoffice. */
+  /**
+   * Stop an agent: abort its running turn and background work, and pause its queue. Queued and new prompts wait until someone resumes the agent in Backoffice.
+   * Requires `pi.modify`.
+   */
   stopAgent(input: PiStopAgentInput): Promise<PiStopAgentOutput>;
-  /** Record the scope's defined agents as pi agent.* events, for agents defined before those events were recorded, so views and routes built on the events see every agent. For each agent the events record missing, deleted, or with a different definition, it records agent.created or agent.updated with the current definition, and for each agent they record that is no longer defined, agent.deleted. Routes on those events run for each new event. A rerun records nothing new. Built-in agents are left out: they are defined in every scope. Returns the events it recorded. */
+  /**
+   * Record the scope's defined agents as pi agent.* events, for agents defined before those events were recorded, so views and routes built on the events see every agent. For each agent the events record missing, deleted, or with a different definition, it records agent.created or agent.updated with the current definition, and for each agent they record that is no longer defined, agent.deleted. Routes on those events run for each new event. A rerun records nothing new. Built-in agents are left out: they are defined in every scope. Returns the events it recorded.
+   * Requires `pi.manage`.
+   */
   backfillAgentEvents(input: PiBackfillAgentEventsInput): Promise<PiBackfillAgentEventsOutput>;
 };
 declare const pi: PiCodemodeProvider;

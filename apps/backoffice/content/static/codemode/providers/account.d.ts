@@ -1,16 +1,34 @@
 // Your own account: profile, organizations, invitations, authorized apps. Read when the user asks about themselves.
 type AccountCodemodeProvider = {
-  /** Read your own Backoffice account profile. */
+  /**
+   * Read your own Backoffice account profile.
+   * Requires `account.read`.
+   */
   me(): Promise<AccountMeOutput>;
-  /** Change the display name on your own Backoffice account. */
+  /**
+   * Change the display name on your own Backoffice account.
+   * Requires `account.manage`.
+   */
   profileUpdate(input: AccountProfileUpdateInput): Promise<AccountProfileUpdateOutput>;
-  /** List the organizations you belong to and your roles in each. */
+  /**
+   * List the organizations you belong to and your roles in each.
+   * Requires `account.read`.
+   */
   orgsList(): Promise<AccountOrgsListOutput>;
-  /** List pending, unexpired organization invitations addressed to your email. */
+  /**
+   * List pending, unexpired organization invitations addressed to your email.
+   * Requires `account.read`.
+   */
   invitationsList(): Promise<AccountInvitationsListOutput>;
-  /** Accept a pending organization invitation addressed to your email. */
+  /**
+   * Accept a pending organization invitation addressed to your email.
+   * Requires `account.manage`.
+   */
   invitationsAccept(input: AccountInvitationsAcceptInput): Promise<AccountInvitationsAcceptOutput>;
-  /** List OAuth applications you have authorized and their granted scopes, using cursor pagination. Never exposes tokens. */
+  /**
+   * List OAuth applications you have authorized and their granted scopes, using cursor pagination. Never exposes tokens.
+   * Requires `account.read`.
+   */
   applicationsList(input: AccountApplicationsListInput): Promise<AccountApplicationsListOutput>;
 };
 declare const account: AccountCodemodeProvider;

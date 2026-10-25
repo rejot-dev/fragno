@@ -1,8 +1,14 @@
 // Classifiers for typed questions about data and images, and image generation. Read to classify or generate images.
 type ModelsCodemodeProvider = {
-  /** Answer typed questions about JSON state and workspace images with a fast classifier model. A `choice` question picks one option with probabilities, a `score` question rates against ordered levels, and a `bool` question returns the probability that a condition holds. Use it for routing, triage, and filtering; it does not generate text. Independent questions about the same state and images belong in one call. Image paths require upload.read; text-only calls do not. Each call is billed by input tokens, including image tokens. */
+  /**
+   * Answer typed questions about JSON state and workspace images with a fast classifier model. A `choice` question picks one option with probabilities, a `score` question rates against ordered levels, and a `bool` question returns the probability that a condition holds. Use it for routing, triage, and filtering; it does not generate text. Independent questions about the same state and images belong in one call. Image paths require upload.read; text-only calls do not. Each call is billed by input tokens, including image tokens.
+   * Requires `models.classify`.
+   */
   classify(input: ModelsClassifyInput): Promise<ModelsClassifyOutput>;
-  /** Generate an image from a prompt and write it to the workspace. Generation can take up to two minutes, longer than an immediate codemode run is allowed, so call it inside a workflow step. Each call is billed by input and output tokens, which grow with size and quality. */
+  /**
+   * Generate an image from a prompt and write it to the workspace. Generation can take up to two minutes, longer than an immediate codemode run is allowed, so call it inside a workflow step. Each call is billed by input and output tokens, which grow with size and quality.
+   * Requires `models.generateImage` and `upload.modify`.
+   */
   generateImage(input: ModelsGenerateImageInput): Promise<ModelsGenerateImageOutput>;
 };
 declare const models: ModelsCodemodeProvider;

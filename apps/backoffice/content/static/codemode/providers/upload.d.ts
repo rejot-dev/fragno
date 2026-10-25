@@ -1,18 +1,39 @@
 // Prepared uploads, sandbox file URLs, and upload storage. Read to handle an uploaded file or move files to a sandbox.
 type UploadCodemodeProvider = {
-  /** Read the content of a prepared private upload before commit or discard. */
+  /**
+   * Read the content of a prepared private upload before commit or discard.
+   * Requires `upload.read`.
+   */
   readPrepared(input: UploadReadPreparedInput): Promise<UploadReadPreparedOutput>;
-  /** Commit a prepared private upload so the file persists. */
+  /**
+   * Commit a prepared private upload so the file persists.
+   * Requires `upload.modify`.
+   */
   commitPrepared(input: UploadCommitPreparedInput): Promise<UploadCommitPreparedOutput>;
-  /** Discard a temporary prepared private upload. */
+  /**
+   * Discard a temporary prepared private upload.
+   * Requires `upload.modify`.
+   */
   discardPrepared(input: UploadDiscardPreparedInput): Promise<UploadDiscardPreparedOutput>;
-  /** Create a temporary URL that sandbox commands use to read workspace files without credentials; it may not work outside sandboxes. A file path links the file: `curl -sS --fail-with-body "$url" -o file`. A folder or glob links an uncompressed tar archive of up to 500 matching files named relative to `root`: `curl -sS --fail-with-body "$url" | tar -x -C dir`. When the archive response has an X-Next-Cursor header, request the URL again with ?cursor=<value> for the next files. Anyone holding the URL can read these files until it expires. */
+  /**
+   * Create a temporary URL that sandbox commands use to read workspace files without credentials; it may not work outside sandboxes. A file path links the file: `curl -sS --fail-with-body "$url" -o file`. A folder or glob links an uncompressed tar archive of up to 500 matching files named relative to `root`: `curl -sS --fail-with-body "$url" | tar -x -C dir`. When the archive response has an X-Next-Cursor header, request the URL again with ?cursor=<value> for the next files. Anyone holding the URL can read these files until it expires.
+   * Requires `upload.read`.
+   */
   createDownloadLink(input: UploadCreateDownloadLinkInput): Promise<UploadCreateDownloadLinkOutput>;
-  /** Create a temporary URL that sandbox commands use to write workspace files without credentials; it may not work outside sandboxes. Writes replace existing files. Each file may be at most 1.9 MB. A file path accepts the file: `curl -sS --fail-with-body -H "Expect:" -T file "$url"`. A folder or glob accepts an uncompressed tar archive of at most 200 regular files and 25 MB, without symlinks, whose entry names are relative to `root` and must match: `tar -ch -C dir . | curl -sS --fail-with-body -H "Expect:" -T - "$url"`. Push only the files the task produced, never a whole project; an archive is written all-or-nothing. A successful write returns `{"fileCount","sizeBytes"}`. Anyone holding the URL can write these files until it expires. */
+  /**
+   * Create a temporary URL that sandbox commands use to write workspace files without credentials; it may not work outside sandboxes. Writes replace existing files. Each file may be at most 1.9 MB. A file path accepts the file: `curl -sS --fail-with-body -H "Expect:" -T file "$url"`. A folder or glob accepts an uncompressed tar archive of at most 200 regular files and 25 MB, without symlinks, whose entry names are relative to `root` and must match: `tar -ch -C dir . | curl -sS --fail-with-body -H "Expect:" -T - "$url"`. Push only the files the task produced, never a whole project; an archive is written all-or-nothing. A successful write returns `{"fileCount","sizeBytes"}`. Anyone holding the URL can write these files until it expires.
+   * Requires `upload.modify`.
+   */
   createUploadLink(input: UploadCreateUploadLinkInput): Promise<UploadCreateUploadLinkOutput>;
-  /** Read the organization's upload storage: the configured providers and the one new uploads use. */
+  /**
+   * Read the organization's upload storage: the configured providers and the one new uploads use.
+   * Requires `connections.read`.
+   */
   getStorage(): Promise<UploadGetStorageOutput>;
-  /** Store one upload storage provider's configuration for the organization, replacing that provider's earlier configuration. Secrets are never returned. */
+  /**
+   * Store one upload storage provider's configuration for the organization, replacing that provider's earlier configuration. Secrets are never returned.
+   * Requires `connections.manage`.
+   */
   configureStorage(input: UploadConfigureStorageInput): Promise<UploadConfigureStorageOutput>;
 };
 declare const upload: UploadCodemodeProvider;

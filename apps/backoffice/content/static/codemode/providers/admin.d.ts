@@ -1,52 +1,112 @@
 // System administration: organizations, sign-ups, app registrations, OAuth clients, Marketplace features. Read in System scope.
 type AdminCodemodeProvider = {
-  /** Create an email-bound link that authorizes one Backoffice account sign-up and email it to the invitee. */
+  /**
+   * Create an email-bound link that authorizes one Backoffice account sign-up and email it to the invitee.
+   * Requires `admin.sign-up-invitations.manage`.
+   */
   signupInvitationsCreate(
     input: AdminSignupInvitationsCreateInput,
   ): Promise<AdminSignupInvitationsCreateOutput>;
-  /** Create an organization and assign its owner. */
+  /**
+   * Create an organization and assign its owner.
+   * Requires `admin.organizations.manage`.
+   */
   orgCreate(input: AdminOrgCreateInput): Promise<AdminOrgCreateOutput>;
-  /** Add a user to an organization with explicit roles. */
+  /**
+   * Add a user to an organization with explicit roles.
+   * Requires `admin.organizations.manage`.
+   */
   orgMembersAdd(input: AdminOrgMembersAddInput): Promise<AdminOrgMembersAddOutput>;
-  /** Remove a user from an organization. */
+  /**
+   * Remove a user from an organization.
+   * Requires `admin.organizations.manage`.
+   */
   orgMembersRemove(input: AdminOrgMembersRemoveInput): Promise<AdminOrgMembersRemoveOutput>;
-  /** List every organization, using cursor pagination. */
+  /**
+   * List every organization, using cursor pagination.
+   * Requires `admin.organizations.manage`.
+   */
   orgList(input: AdminOrgListInput): Promise<AdminOrgListOutput>;
-  /** Read one organization by slug. */
+  /**
+   * Read one organization by slug.
+   * Requires `admin.organizations.manage`.
+   */
   orgGet(input: AdminOrgGetInput): Promise<AdminOrgGetOutput>;
-  /** List members of any organization with their roles, using cursor pagination. */
+  /**
+   * List members of any organization with their roles, using cursor pagination.
+   * Requires `admin.organizations.manage`.
+   */
   orgMembersList(input: AdminOrgMembersListInput): Promise<AdminOrgMembersListOutput>;
-  /** Mark a user's email address as verified without sending a verification email, for example on a deployment without email delivery. */
+  /**
+   * Mark a user's email address as verified without sending a verification email, for example on a deployment without email delivery.
+   * Requires `admin.users.manage`.
+   */
   usersVerifyEmail(input: AdminUsersVerifyEmailInput): Promise<AdminUsersVerifyEmailOutput>;
-  /** Register a Backoffice app for an existing Better Auth OAuth client. Does not provision OAuth credentials or install the app. */
+  /**
+   * Register a Backoffice app for an existing Better Auth OAuth client. Does not provision OAuth credentials or install the app.
+   * Requires `admin.apps.manage`.
+   */
   appsCreate(input: AdminAppsCreateInput): Promise<AdminAppsCreateOutput>;
-  /** List global Backoffice app registrations using cursor pagination. Does not expose OAuth credentials or organization installations. */
+  /**
+   * List global Backoffice app registrations using cursor pagination. Does not expose OAuth credentials or organization installations.
+   * Requires `admin.apps.read`.
+   */
   appsList(input: AdminAppsListInput): Promise<AdminAppsListOutput>;
-  /** Replace a registered app's action declaration. A changed declaration gets a new revision; installations approve it before new or changed actions run, unless its changeApproval is automatic. */
+  /**
+   * Replace a registered app's action declaration. A changed declaration gets a new revision; installations approve it before new or changed actions run, unless its changeApproval is automatic.
+   * Requires `admin.apps.manage`.
+   */
   appsUpdateActions(input: AdminAppsUpdateActionsInput): Promise<AdminAppsUpdateActionsOutput>;
-  /** Replace the permissions a registered app requests. A first-party app's installations follow the new request within a minute. A third-party app's installations keep the grants their owner approved: an added permission applies once an owner grants it (apps.installations.update or the install page), and a removed one stays granted until an owner changes the installation's access. */
+  /**
+   * Replace the permissions a registered app requests. A first-party app's installations follow the new request within a minute. A third-party app's installations keep the grants their owner approved: an added permission applies once an owner grants it (apps.installations.update or the install page), and a removed one stays granted until an owner changes the installation's access.
+   * Requires `admin.apps.manage`.
+   */
   appsUpdatePermissions(
     input: AdminAppsUpdatePermissionsInput,
   ): Promise<AdminAppsUpdatePermissionsOutput>;
-  /** Set whether Backoffice operates a registered app. A first-party app is authorized without a consent screen and cannot be revoked by users, is linked to organizations without a permission review, lets anyone sign up through it, has Backoffice's sign-in speak in its name (its branding), and may call the provisioning operations it is granted. */
+  /**
+   * Set whether Backoffice operates a registered app. A first-party app is authorized without a consent screen and cannot be revoked by users, is linked to organizations without a permission review, lets anyone sign up through it, has Backoffice's sign-in speak in its name (its branding), and may call the provisioning operations it is granted.
+   * Requires `admin.apps.manage`.
+   */
   appsUpdateTrust(input: AdminAppsUpdateTrustInput): Promise<AdminAppsUpdateTrustOutput>;
-  /** Create an Auth-owned authorization-code OAuth web or native client for the current System administrator. Confidential clients return an initial secret and may use client credentials; public clients use PKCE without a secret. Does not register or install a Backoffice app. */
+  /**
+   * Create an Auth-owned authorization-code OAuth web or native client for the current System administrator. Confidential clients return an initial secret and may use client credentials; public clients use PKCE without a secret. Does not register or install a Backoffice app.
+   * Requires `admin.oauth-clients.manage`.
+   */
   oauthClientsCreate(input: AdminOauthClientsCreateInput): Promise<AdminOauthClientsCreateOutput>;
-  /** List the global Auth-owned OAuth client catalog, including other owners and the internal Codemode client, using cursor pagination. Never exposes credentials or credential hashes. */
+  /**
+   * List the global Auth-owned OAuth client catalog, including other owners and the internal Codemode client, using cursor pagination. Never exposes credentials or credential hashes.
+   * Requires `admin.oauth-clients.read`.
+   */
   oauthClientsList(input: AdminOauthClientsListInput): Promise<AdminOauthClientsListOutput>;
-  /** Replace the redirect URIs, OAuth scopes, and client-credentials access of an OAuth client owned by the current System administrator. Widened scopes apply to new authorizations only; existing users authorize again. */
+  /**
+   * Replace the redirect URIs, OAuth scopes, and client-credentials access of an OAuth client owned by the current System administrator. Widened scopes apply to new authorizations only; existing users authorize again.
+   * Requires `admin.oauth-clients.manage`.
+   */
   oauthClientsUpdate(input: AdminOauthClientsUpdateInput): Promise<AdminOauthClientsUpdateOutput>;
-  /** Replace the secret of a confidential OAuth client owned by the current System administrator. The previous secret stops working immediately; the new one is returned once. */
+  /**
+   * Replace the secret of a confidential OAuth client owned by the current System administrator. The previous secret stops working immediately; the new one is returned once.
+   * Requires `admin.oauth-clients.manage`.
+   */
   oauthClientsRotateSecret(
     input: AdminOauthClientsRotateSecretInput,
   ): Promise<AdminOauthClientsRotateSecretOutput>;
-  /** Feature a published Marketplace listing, optionally scheduled with startsAt and ending at until, ordered by priority (higher first) with an optional curator note. Featuring an already featured listing replaces its settings. Expired and unpublished entries are removed to make room. System scope curates the public Marketplace (System administrators); organization scope curates that organization's Marketplace (owners and admins). */
+  /**
+   * Feature a published Marketplace listing, optionally scheduled with startsAt and ending at until, ordered by priority (higher first) with an optional curator note. Featuring an already featured listing replaces its settings. Expired and unpublished entries are removed to make room. System scope curates the public Marketplace (System administrators); organization scope curates that organization's Marketplace (owners and admins).
+   * Requires `marketplace.read`.
+   */
   marketplaceFeature(input: AdminMarketplaceFeatureInput): Promise<AdminMarketplaceFeatureOutput>;
-  /** Remove a Marketplace listing's feature entry. Removing an entry that does not exist succeeds with removed false. System scope curates the public Marketplace (System administrators); organization scope curates that organization's Marketplace (owners and admins). */
+  /**
+   * Remove a Marketplace listing's feature entry. Removing an entry that does not exist succeeds with removed false. System scope curates the public Marketplace (System administrators); organization scope curates that organization's Marketplace (owners and admins).
+   * Requires `marketplace.read`.
+   */
   marketplaceUnfeature(
     input: AdminMarketplaceUnfeatureInput,
   ): Promise<AdminMarketplaceUnfeatureOutput>;
-  /** Publish the bundled static marketplace entries from System context. */
+  /**
+   * Publish the bundled static marketplace entries from System context.
+   * Requires `internal.manage`.
+   */
   marketplacePushStatic(
     input: AdminMarketplacePushStaticInput,
   ): Promise<AdminMarketplacePushStaticOutput>;

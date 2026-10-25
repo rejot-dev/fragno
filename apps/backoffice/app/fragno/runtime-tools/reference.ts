@@ -65,6 +65,18 @@ const typeNameFor = (tool: AnyBackofficeRuntimeTool, suffix: "Input" | "Output")
 
 const firstLine = (value: string) => value.trim().split("\n")[0]?.trim() ?? "";
 
+// Route and workflow grants name these permissions, so agents read the grants a call needs here.
+function describeCodemodeTool(tool: AnyBackofficeRuntimeTool) {
+  const description = tool.reference?.codemode?.description ?? tool.description;
+  if (tool.requiredPermissions.length === 0) {
+    return description;
+  }
+  const permissions = tool.requiredPermissions
+    .map(({ namespace, permission }) => `\`${namespace}.${permission}\``)
+    .join(" and ");
+  return `${description.trimEnd()}\nRequires ${permissions}.`;
+}
+
 export const toRuntimeToolReference = (tool: AnyBackofficeRuntimeTool): RuntimeToolReference => {
   const inputTypeName = typeNameFor(tool, "Input");
   const outputTypeName = typeNameFor(tool, "Output");
@@ -83,7 +95,7 @@ export const toRuntimeToolReference = (tool: AnyBackofficeRuntimeTool): RuntimeT
     codemode: {
       providerName: tool.namespace,
       toolName: tool.name,
-      description: tool.reference?.codemode?.description ?? tool.description,
+      description: describeCodemodeTool(tool),
       inputTypeName,
       outputTypeName,
       inputType: inputType.type,

@@ -1,8 +1,14 @@
 // Projects in an organization or personal scope. Read to create or list projects.
 type ProjectsCodemodeProvider = {
-  /** Create a project in the selected organization or personal scope as the current user. Select the owner scope, not a project, app workspace, or System. Omit slug to derive it from the name; slugs must be unique within the owner. */
+  /**
+   * Create a project in the selected organization or personal scope as the current user. Select the owner scope, not a project, app workspace, or System. Omit slug to derive it from the name; slugs must be unique within the owner.
+   * Requires `projects.create`.
+   */
   create(input: ProjectsCreateInput): Promise<ProjectsCreateOutput>;
-  /** List projects in the selected organization or personal scope, ordered by slug, including archived projects. Select the owner scope, not a project, app workspace, or System. Resume with nextCursor and the same pageSize. */
+  /**
+   * List projects in the selected organization or personal scope, ordered by slug, including archived projects. Select the owner scope, not a project, app workspace, or System. Resume with nextCursor and the same pageSize.
+   * Requires `projects.read`.
+   */
   list(input: ProjectsListInput): Promise<ProjectsListOutput>;
 };
 declare const projects: ProjectsCodemodeProvider;

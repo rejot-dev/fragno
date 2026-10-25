@@ -1,14 +1,29 @@
 // Saved JavaScript: check, run, build modules, and inspect codemode runs. Read to save, run, or debug a script file.
 type JsCodemodeProvider = {
-  /** Type check a standalone JavaScript file under /static or /workspace against static declarations. */
+  /**
+   * Type check a standalone JavaScript file under /static or /workspace against static declarations.
+   * Requires `upload.read`.
+   */
   check(input: JsCheckInput): Promise<JsCheckOutput>;
-  /** Run top-level statements in a saved .js source file or a built .json module under /static or /workspace. Ignores exports; built modules run without compilation and startup errors are returned. */
+  /**
+   * Run top-level statements in a saved .js source file or a built .json module under /static or /workspace. Ignores exports; built modules run without compilation and startup errors are returned.
+   * Requires `upload.read`.
+   */
   run(input: JsRunInput): Promise<JsRunOutput>;
-  /** List codemode runs in the current scope, newest first, with their status and what they ran. Lists only runs readable with js.runs.get, so a page can hold fewer runs than its limit (1-20; defaults to 20). Runs are kept for 7 days. */
+  /**
+   * List codemode runs in the current scope, newest first, with their status and what they ran. Lists only runs readable with js.runs.get, so a page can hold fewer runs than its limit (1-20; defaults to 20). Runs are kept for 7 days.
+   * Requires `upload.read`.
+   */
   runsList(input: JsRunsListInput): Promise<JsRunsListOutput>;
-  /** Show one codemode run in the current scope: its outcome, console logs, and every tool call it made with summaries of their input and output, recorded as they happen. Readable only with at least the authority the run had: same principal, no extra delegation, no narrower scope restriction. Runs are kept for 7 days. */
+  /**
+   * Show one codemode run in the current scope: its outcome, console logs, and every tool call it made with summaries of their input and output, recorded as they happen. Readable only with at least the authority the run had: same principal, no extra delegation, no narrower scope restriction. Runs are kept for 7 days.
+   * Requires `upload.read`.
+   */
   runsGet(input: JsRunsGetInput): Promise<JsRunsGetOutput>;
-  /** Compile a saved JavaScript ES module into a reusable built JSON module under /workspace without executing or activating it. Consumers validate exports. */
+  /**
+   * Compile a saved JavaScript ES module into a reusable built JSON module under /workspace without executing or activating it. Consumers validate exports.
+   * Requires `upload.read` and `upload.modify`.
+   */
   build(input: JsBuildInput): Promise<JsBuildOutput>;
 };
 declare const js: JsCodemodeProvider;

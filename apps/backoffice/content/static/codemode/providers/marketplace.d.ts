@@ -1,12 +1,24 @@
 // Marketplace packages: search, inspect, publish, feature. Read to find or publish a package.
 type MarketplaceCodemodeProvider = {
-  /** Search published package metadata in the public Marketplace, or in the current organization's Marketplace with organization visibility. Follow nextCursor while hasNextPage is true, even when a candidate page has no matches. */
+  /**
+   * Search published package metadata in the public Marketplace, or in the current organization's Marketplace with organization visibility. Follow nextCursor while hasNextPage is true, even when a candidate page has no matches.
+   * Requires `marketplace.read`.
+   */
   search(input: MarketplaceSearchInput): Promise<MarketplaceSearchOutput>;
-  /** Inspect published package metadata and cursor-paginated releases in the public Marketplace, or in the current organization's Marketplace with organization visibility. */
+  /**
+   * Inspect published package metadata and cursor-paginated releases in the public Marketplace, or in the current organization's Marketplace with organization visibility.
+   * Requires `marketplace.read`.
+   */
   view(input: MarketplaceViewInput): Promise<MarketplaceViewOutput>;
-  /** Publish a captured package from a root manifest.json containing name @<organization-slug>/<package-slug>. Public visibility publishes to the public Marketplace; organization visibility publishes to the owning organization's members-only Marketplace. Versions are immutable by default; System may explicitly replace them. Dry runs write nothing. Author and version overrides require System context. */
+  /**
+   * Publish a captured package from a root manifest.json containing name @<organization-slug>/<package-slug>. Public visibility publishes to the public Marketplace; organization visibility publishes to the owning organization's members-only Marketplace. Versions are immutable by default; System may explicitly replace them. Dry runs write nothing. Author and version overrides require System context.
+   * Requires `marketplace.publish`.
+   */
   publish(input: MarketplacePublishInput): Promise<MarketplacePublishOutput>;
-  /** List every feature entry with its state: active, scheduled, expired, or hidden (the listing is no longer published). In System scope this curates the public Marketplace and requires a System administrator; in organization scope it curates that organization's Marketplace and requires an organization owner or admin. */
+  /**
+   * List every feature entry with its state: active, scheduled, expired, or hidden (the listing is no longer published). In System scope this curates the public Marketplace and requires a System administrator; in organization scope it curates that organization's Marketplace and requires an organization owner or admin.
+   * Requires `marketplace.read`.
+   */
   featured(input: MarketplaceFeaturedInput): Promise<MarketplaceFeaturedOutput>;
 };
 declare const marketplace: MarketplaceCodemodeProvider;
