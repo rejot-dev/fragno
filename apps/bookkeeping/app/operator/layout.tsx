@@ -23,19 +23,29 @@ export default function OperatorLayout({ loaderData }: Route.ComponentProps) {
     <AppShell
       shell={loaderData}
       ariaLabel="Operator navigation"
-      items={[
-        { label: "Firms", to: "/operator", icon: "briefcase", active: pathname === "/operator" },
+      sections={[
         {
-          label: "New firm",
-          to: "/operator/firms/new",
-          icon: "plus-circle",
-          active: pathname === "/operator/firms/new",
-        },
-        {
-          label: "Operators",
-          to: "/operator/members",
-          icon: "users",
-          active: pathname === "/operator/members",
+          label: null,
+          items: [
+            {
+              label: "Firms",
+              to: "/operator",
+              icon: "briefcase",
+              active: pathname === "/operator",
+            },
+            {
+              label: "New firm",
+              to: "/operator/firms/new",
+              icon: "plus-circle",
+              active: pathname === "/operator/firms/new",
+            },
+            {
+              label: "Operators",
+              to: "/operator/members",
+              icon: "users",
+              active: pathname === "/operator/members",
+            },
+          ],
         },
       ]}
     >

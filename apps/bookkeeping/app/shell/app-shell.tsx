@@ -1,7 +1,10 @@
 import { ButtonLink } from "@fragno-private/design-system/button";
 import { Icon } from "@fragno-private/design-system/icon";
-import { MobileNavigation, SidebarNavigation } from "@fragno-private/design-system/navigation";
-import type { NavigationItem } from "@fragno-private/design-system/navigation-item";
+import {
+  MobileNavigation,
+  SidebarNavigation,
+  type NavigationSection,
+} from "@fragno-private/design-system/navigation";
 import { Select } from "@fragno-private/design-system/select";
 import { useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router";
@@ -11,16 +14,17 @@ import type { ShellData } from "./shell.server";
 
 /**
  * The frame every signed-in area shares: the place, a switcher between places, who is signed in,
- * and the area's own navigation.
+ * and the area's own navigation. Narrow screens show only the last section's destinations, the
+ * ones of where the reader is.
  */
 export function AppShell({
   shell,
-  items,
+  sections,
   ariaLabel,
   children,
 }: {
   shell: ShellData;
-  items: NavigationItem[];
+  sections: NavigationSection[];
   ariaLabel: string;
   children: ReactNode;
 }) {
@@ -59,11 +63,11 @@ export function AppShell({
         </ButtonLink>
       </header>
       <div className="border-b border-[var(--bo-border)] min-[960px]:hidden">
-        <MobileNavigation items={items} ariaLabel={ariaLabel} />
+        <MobileNavigation items={sections.at(-1)?.items ?? []} ariaLabel={ariaLabel} />
       </div>
       <div className="flex min-w-0">
         <SidebarNavigation
-          items={items}
+          sections={sections}
           secondaryItems={[]}
           ariaLabel={ariaLabel}
           collapsed={collapsed}

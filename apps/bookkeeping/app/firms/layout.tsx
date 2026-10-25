@@ -29,19 +29,24 @@ export default function FirmLayout({ loaderData }: Route.ComponentProps) {
     <AppShell
       shell={loaderData}
       ariaLabel="Firm navigation"
-      items={[
-        // Clients covers the dashboard and creating a client: every page but Members.
+      sections={[
         {
-          label: "Clients",
-          to: base,
-          icon: "briefcase",
-          active: pathname !== `${base}/members`,
-        },
-        {
-          label: "Members",
-          to: `${base}/members`,
-          icon: "users",
-          active: pathname === `${base}/members`,
+          label: null,
+          items: [
+            // Clients covers the dashboard and creating a client: every page but Members.
+            {
+              label: "Clients",
+              to: base,
+              icon: "briefcase",
+              active: pathname !== `${base}/members`,
+            },
+            {
+              label: "Members",
+              to: `${base}/members`,
+              icon: "users",
+              active: pathname === `${base}/members`,
+            },
+          ],
         },
       ]}
     >
