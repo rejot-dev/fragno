@@ -27,6 +27,7 @@ describe("decodeResult", () => {
           .addColumn("title", column("string"))
           .addColumn("content", column("text"))
           .addColumn("userId", referenceColumn({ table: "users" }))
+          .addColumn("editorId", referenceColumn({ table: "users" }).nullable())
           .addColumn("viewCount", column("integer"))
           .addColumn("publishedAt", column("timestamp").nullable());
       });
@@ -148,6 +149,12 @@ describe("decodeResult", () => {
       const result = decodeResult({ publishedAt: null }, postsTable, sqliteConfig);
 
       expect(result).toEqual({ publishedAt: null });
+    });
+
+    it("should decode a null reference as null", () => {
+      const result = decodeResult({ editorId: null }, postsTable, sqliteConfig);
+
+      expect(result).toEqual({ editorId: null });
     });
   });
 
