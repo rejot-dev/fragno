@@ -1,5 +1,6 @@
 export { serveLofiSqlite, type LofiSqliteHost, type LofiSqliteHostOptions } from "./sqlite/host";
 export { serveLofiSqliteWorker } from "./sqlite/worker";
+export { readViewEngine } from "./sqlite/read-views";
 export {
   wrapWaSqliteDatabase,
   type LofiSqliteSyncConnection,

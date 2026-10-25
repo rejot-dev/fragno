@@ -833,6 +833,40 @@ so they read synchronously. Engines must not write: only the replica does. On th
 `replica.view(kind, query)` asks the leader's engine of `kind` for a view; `query` must survive
 `postMessage`.
 
+### Read views
+
+A read view runs a function of several queries, for results one SQL statement cannot shape, such as
+rows parsed and folded by the app's own code. `readViewEngine` runs named reads in the worker; each
+gets a `LofiSqliteReader`, whose `query` decodes rows like `replica.query` but synchronously, and
+returns data that survives `postMessage`. The leader runs a view's read again after every batch,
+with the database locked, so all of its queries see one state, and sends the result only when it
+changed. Reads must not write.
+
+```ts
+// reads.ts, imported by the worker
+import type { LofiSqliteReader } from "@fragno-dev/lofi/sqlite";
+
+export const appReads = {
+  activity: (reader: LofiSqliteReader, { since }: { since: number }) => ({
+    users: reader.query({ sql: `SELECT ...`, params: [since], columns: { ... } }),
+    posts: reader.query({ sql: `SELECT ...`, params: [], columns: { ... } }),
+  }),
+};
+
+// replica.worker.ts
+serveLofiSqliteWorker({
+  replica: { ... },
+  engines: [readViewEngine({ kind: "app-reads", reads: appReads })],
+});
+
+// The page needs only the reads' types.
+import { lofiSqliteReadViews } from "@fragno-dev/lofi/sqlite";
+import type { appReads } from "./reads";
+
+const appReadView = lofiSqliteReadViews<typeof appReads>("app-reads");
+const $activity = appReadView(replica, "activity", { since: 0 });
+```
+
 ### Leader tab
 
 The workers of the tabs that replicate one backend with the same schemas elect a leader with a Web
@@ -875,9 +909,9 @@ only to the tab that shows it.
 - **Tabs do not share views.** Two tabs with the same query get two views in the leader.
 - **Tabs on other code.** Tabs whose schemas have the same versions share a leader even if they run
   different versions of lofi, whose messages could differ.
-- **SQL views run again after every batch.** Every SQL view runs again whether or not the batch
-  touched its tables. Knowing which tables a batch changed, and which a query reads, would let the
-  worker skip the rest.
+- **SQL and read views run again after every batch.** Every SQL view and read runs again whether or
+  not the batch touched its tables, and a read's whole result is compared with the last one sent.
+  Knowing which tables a batch changed, and which a query reads, would let the worker skip the rest.
 - **Whole results cross to the page.** The worker posts a view's full data whenever it changes. For
   large views, posting the changes and applying them in the page would cost less.
 - **No optimistic writes or submit.** As with the replica, views show server state only.
