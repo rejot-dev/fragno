@@ -1,4 +1,6 @@
-import { connectLofiZql, type LofiZqlResult } from "@fragno-dev/lofi/zql";
+import { connectLofiSqlite, type LofiSqliteViewResult } from "@fragno-dev/lofi/sqlite";
+
+import { lofiZql } from "@fragno-dev/lofi-zql";
 
 import { uploadSchema } from "../../../packages/fragment-upload/src/schema";
 import { ZQL_ERRORS_CHANNEL } from "./zql-errors";
@@ -7,7 +9,7 @@ type ViewRun = {
   updates: number;
   firstDataMs: number | null;
   lastUpdateMs: number | null;
-  result: LofiZqlResult<unknown>;
+  result: LofiSqliteViewResult<unknown>;
 };
 
 declare global {
@@ -20,9 +22,10 @@ declare global {
 const startedAt = performance.now();
 const worker = new Worker(new URL("./zql.worker.ts", import.meta.url), { type: "module" });
 // The page replays an Upload outbox, whose text documents reference their files.
-const upload = (
-  await connectLofiZql({ port: worker, schemas: [{ schema: uploadSchema }] })
-).forSchema(uploadSchema);
+const upload = lofiZql(
+  await connectLofiSqlite({ port: worker, schemas: [{ schema: uploadSchema }] }),
+  uploadSchema,
+);
 
 const stores = {
   latestReadyFiles: upload.store(

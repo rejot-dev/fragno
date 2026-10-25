@@ -30,7 +30,7 @@
     "**/next-env.d.ts",
     "**/content/static/**",
     "packages/docs/.source/**",
-    "**/src/zql/vendor/**"
+    "**/src/vendor/**"
   ],
   "rules": {
     "typescript/await-thenable": "error",

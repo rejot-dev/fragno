@@ -728,8 +728,8 @@ changed since. A reconnect or a new writer catches up again without sending view
   name per base URL would let a tab open the existing replica and start synchronizing once the
   backend is back.
 - **Reads in other tabs during heavy writes.** OPFSCoopSyncVFS hands file access between
-  connections. If reading tabs stall while the writing tab catches up, send their reads to the
-  writing tab over the `BroadcastChannel` instead, as `@fragno-dev/tanstack-db-adapter` does.
+  connections, so reading tabs can stall while the writing tab catches up. The replica worker below
+  avoids this: only its leader opens the database.
 - **Catch-up speed.** A batch takes two worker calls, so the statements themselves and their parsing
   are now most of the cost. Statements are not prepared once and reused, because the worker takes
   only SQL text.
@@ -763,92 +763,124 @@ changed since. A reconnect or a new writer catches up again without sending view
 - **JSON `null`.** A JSON column holding `null` is stored as SQL `NULL`, the same as a missing
   value.
 
-## ZQL views (experimental)
+## Replica worker and live views
 
-`@fragno-dev/lofi/zql` runs [ZQL](https://zero.rocicorp.dev/docs/reading-data) queries against the
-SQLite replica and keeps their results up to date incrementally (IVM) as outbox entries arrive,
-instead of running them again. The replica and the IVM operators live in a dedicated worker, where
-OPFS can be read synchronously: operators read rows from SQLite as they need them, so memory grows
-with the open views, not with the replicated tables.
+`@fragno-dev/lofi/sqlite/worker` runs the replica in a dedicated worker, and pages read it through
+live views: queries whose results the worker keeps up to date as outbox entries arrive. One tab's
+worker opens the replica and maintains the views of every tab. SQL views are built in; other kinds
+of views come from view engines, such as `@fragno-dev/lofi-zql`, which maintains ZQL views
+incrementally.
 
-The worker opens the replica, with the same options as `openLofiSqliteReplica`:
+The worker opens the replica in OPFS through wa-sqlite's OPFSCoopSyncVFS, with a synchronous
+connection that view engines read, so it needs only `@journeyapps/wa-sqlite`. Each tab starts a
+worker, with the same replica options as `openLofiSqliteReplica`:
 
 ```ts
 // replica.worker.ts
-import { serveLofiZqlWorker } from "@fragno-dev/lofi/zql/worker";
+import { serveLofiSqliteWorker } from "@fragno-dev/lofi/sqlite/worker";
 
-void serveLofiZqlWorker({
-  baseUrl: "/api/my-fragment",
-  fetch: fetch.bind(globalThis),
-  schemas: [{ schema: appSchema }],
-  localSchemas: [],
-  projections: [],
-  ephemeralTables: [],
-  onError: (error) => console.error(error),
-  retryDelayMs: 5_000,
+serveLofiSqliteWorker({
+  replica: {
+    baseUrl: "/api/my-fragment",
+    fetch: fetch.bind(globalThis),
+    schemas: [{ schema: appSchema }],
+    localSchemas: [],
+    projections: [],
+    ephemeralTables: [],
+    onError: (error) => console.error(error),
+    retryDelayMs: 5_000,
+  },
+  // View engines beyond SQL, such as `zqlViewEngine` from `@fragno-dev/lofi-zql/worker`.
+  engines: [],
 });
 ```
 
-The page connects once the worker has opened the replica, and queries it. A view's result is
-maintained while the view has listeners:
+The page connects once a tab has opened the replica. A view's result is maintained while the view
+has listeners:
 
 ```ts
-import { connectLofiZql } from "@fragno-dev/lofi/zql";
+import { connectLofiSqlite } from "@fragno-dev/lofi/sqlite";
 
 const worker = new Worker(new URL("./replica.worker.ts", import.meta.url), { type: "module" });
-// Rejects if the replica fails to open.
-const replica = await connectLofiZql({ port: worker, schemas: [{ schema: appSchema }] });
-const app = replica.forSchema(appSchema);
+// Rejects if the replica fails to open in the tab that tried.
+const replica = await connectLofiSqlite({ port: worker, schemas: [{ schema: appSchema }] });
 
-const $posts = app.store(
-  app.query.posts
-    .whereExists("author", (author) => author.where("active", true))
-    .related("author")
-    .orderBy("title", "asc")
-    .limit(20),
-);
-$posts.subscribe((result) => {
+const { users } = appSchema.tables;
+const $adults = replica.sql({
+  sql: `SELECT "email", "joinedAt" FROM "users_app" WHERE "age" >= ?1 ORDER BY "email"`,
+  params: [21],
+  columns: { email: users.columns.email, joinedAt: users.columns.joinedAt },
+});
+$adults.subscribe((result) => {
   // { status: "loading" } | { status: "ready", data } | { status: "error", message }
 });
 ```
 
-`replica.getStatus()` and `replica.subscribeStatus()` report the worker's replica status, as
+`replica.getStatus()` and `replica.subscribeStatus()` report the replica's status, as
 `LofiSqliteReplica`'s do, so a page can wait for the catch-up before showing views.
 
-Tables and columns are named as in the Fragno schema, and rows hold the replica's values: the
-external `id` (the primary key), `_internalId`, `_version`, dates and timestamps as epoch
-milliseconds, and references as the referenced row's `_internalId`. Each reference column gives a
-`one` relationship named like Fragno's forward relation (`authorId` → `author`). Binary columns are
-left out, and an integer beyond `Number.MAX_SAFE_INTEGER` fails the view. Because the replica holds
-whole tables, `NOT EXISTS` is allowed.
+A SQL view's rows decode like `replica.query`'s (see Layout above). The worker runs the query again
+after every batch the replica applies, and sends the rows only when they changed. The query is one
+statement, and a statement that would write is refused, since a write would bypass the replica.
 
-### How views stay current
+### View engines
 
-The IVM operators are Zero's, vendored from [rocicorp/mono](https://github.com/rocicorp/mono) into
-`src/zql/vendor` by `scripts/vendor-zql.mjs`, which also lists the two patches applied to them.
-zqlite's `TableSource` reads the replica through a synchronous wa-sqlite connection.
+A view engine maintains one kind of view. In the worker,
+`engine.open({ connection, registrations })` starts it on the leader's synchronous connection, and
+returns the engine's `materialize(id, query, listener)`, `destroy(id)`, and `refresh()`. The leader
+calls them only while it holds a lock on the database, after every batch in the case of `refresh`,
+so they read synchronously. Engines must not write: only the replica does. On the page,
+`replica.view(kind, query)` asks the leader's engine of `kind` for a view; `query` must survive
+`postMessage`.
 
-An operator pushing a change reads other rows, and must see the database as it was before that
-change. The replica has already committed the whole batch by then. So temporary triggers on this
-tab's connection record each touched row's values from before the batch, and the worker, holding a
-read lock, rewinds every source to those rows in an in-memory overlay and pushes the changes one at
-a time. Writes by another tab's connection are not recorded; `PRAGMA data_version` shows them, and
-the tab's views are built again instead.
+### Leader tab
+
+The workers of the tabs that replicate one backend with the same schemas elect a leader with a Web
+Lock. The leader opens the replica, which makes it the writer too, and keeps the views of every tab.
+The other tabs open no database: their workers send their page's requests to the leader over a
+`BroadcastChannel`, and the leader answers each tab on a channel of its own, so a view's data goes
+only to the tab that shows it.
+
+- **Status.** The leader shares the replica's status with every tab, and a tab that opens asks for
+  it. Pages connect once the first status arrives.
+- **Closed tabs.** Each tab holds a Web Lock of its own while it lives. The leader waits for the
+  locks of the tabs it serves, and drops a tab's views once it gets its lock.
+- **A new leader.** When the leader closes, the next tab acquires the lock, opens the replica, which
+  opens `caught-up` if it was, and tells the others, which send their views again. Each view shows
+  its earlier data until its first new result.
+- **A silent leader.** The leader sends a heartbeat every second from the moment it holds the lock.
+  A tab waiting for the lock that hears nothing for 10 seconds steals it, and the deposed leader
+  closes its replica once it runs again, sends its views to the new leader, and waits its turn.
+- **A failed open.** A tab that fails to open the replica tells every tab, releases the lock, and
+  stops competing; pages that had not connected yet reject. The next tab tries again.
+- **Unknown kinds.** Tabs share a leader whatever engines they pass, since two leaders on one
+  database would both open it. A view of a kind the leader's worker has no engine for fails.
 
 ### Risks and follow-ups
 
-- **Reading tabs rebuild.** Only the writing tab updates views incrementally. Other tabs rebuild
-  every view after each batch and send every view again, even unchanged ones. Sending the writer's
-  recorded changes to them over the `BroadcastChannel` would let them push instead.
+- **The worker's OPFS path has no automated test.** The scenario tests run the host in Node, with
+  wa-sqlite's in-memory VFS standing in for OPFS and Node's Web Locks and `BroadcastChannel` for the
+  browser's.
+- **A frozen leader still stalls every tab.** A browser can freeze a background tab without closing
+  it. Chrome documents that it does not freeze pages holding a Web Lock, but whether a lock held by
+  a worker counts, and what other browsers do, is untested. A tab steals the lead from a frozen
+  leader, but the frozen tab keeps the database's OPFS access handles, which wa-sqlite's VFS
+  releases only when asked, so the new leader opens the replica once the frozen tab resumes or is
+  discarded.
+- **Late timers move the lead.** If a browser delays a hidden leader's timers past the timeout,
+  another tab takes the lead and builds every view again. The lead then sits in a tab whose timers
+  run.
+- **Handover rebuilds.** A new leader opens the replica and then builds every tab's views from
+  scratch, so views stop updating for a moment when the leader closes.
+- **Tabs do not share views.** Two tabs with the same query get two views in the leader.
+- **Tabs on other code.** Tabs whose schemas have the same versions share a leader even if they run
+  different versions of lofi, whose messages could differ.
+- **SQL views run again after every batch.** Every SQL view runs again whether or not the batch
+  touched its tables. Knowing which tables a batch changed, and which a query reads, would let the
+  worker skip the rest.
 - **Whole results cross to the page.** The worker posts a view's full data whenever it changes. For
   large views, posting the changes and applying them in the page would cost less.
-- **No `many` relationships.** Only references give relationships, so a user's posts are queried
-  from `posts` by `authorId`, not with `related("posts")`.
-- **Relationship name collisions.** Fragno renames a forward relation whose name another reference
-  column already produced (`author2`); the ZQL types do not.
 - **No optimistic writes or submit.** As with the replica, views show server state only.
-- **Upstream drift.** The vendored engine is pinned to the commit in `src/zql/vendor/UPSTREAM`.
-  Re-run the script to update it; it fails when a patch no longer applies.
 
 ## Notes
 
@@ -898,12 +930,14 @@ export const schema = schema("app", (s) =>
 - `@fragno-dev/lofi/sqlite`: `openLofiSqliteReplica`, `SqliteLofiAdapter`, `decodeLofiSqliteRow`,
   `lofiSqliteTableName` - the browser SQLite replica.
 - `@fragno-dev/lofi/sqlite/testing`: `openLofiSqliteMemoryFiles` opens replicas in Node on
-  wa-sqlite's in-memory VFS, and `waitForLofiSqliteReplica` waits until a replica reaches a
+  wa-sqlite's in-memory VFS, `openLofiSqliteTab` opens a replica worker's host and its page's client
+  over a `MessageChannel`, and `waitForLofiSqliteReplica` waits until a replica reaches a
   versionstamp - for scenario tests of apps that read a replica.
-- `@fragno-dev/lofi/zql`: `connectLofiZql`, `lofiZqlSchema` - live ZQL views of the replica, queried
-  from the page.
-- `@fragno-dev/lofi/zql/worker`: `serveLofiZqlWorker`, `serveLofiZql`, `wrapWaSqliteDatabase` - the
-  worker that maintains them.
+- `@fragno-dev/lofi/sqlite` also has `connectLofiSqlite`, which connects a page to its replica
+  worker for live views.
+- `@fragno-dev/lofi/sqlite/worker`: `serveLofiSqliteWorker`, `serveLofiSqlite`,
+  `wrapWaSqliteDatabase`, and the `LofiSqliteViewEngine` type - the replica worker, which maintains
+  every tab's views.
 - `LofiOverlayManager` - overlay manager that rebuilds queued optimistic commands.
 - Outbox helpers: `decodeOutboxPayload`, `resolveOutboxRefs`, `outboxMutationsToUowOperations`.
 - Types: `LofiClientOptions`, `LofiAdapter`, `LofiMutation`, `LofiQueryInterface`, and more.

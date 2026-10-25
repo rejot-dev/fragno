@@ -16,6 +16,7 @@
     "@fragno-dev/backoffice-api": "workspace:*",
     "@fragno-dev/db": "workspace:*",
     "@fragno-dev/lofi": "workspace:*",
+    "@fragno-dev/lofi-zql": "workspace:*",
     "@journeyapps/wa-sqlite": "^1.4.1",
     "@tanstack/browser-db-sqlite-persistence": "^0.2.36",
     "zod": "^4.5.4"

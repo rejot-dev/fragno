@@ -9,18 +9,20 @@ Lofi's browser SQLite replica (`@fragno-dev/lofi/sqlite`) mirrors two of a scope
   TanStack DB collections in `../automation/tanstack`, which every other Automations view still
   reads, including the Files explorer's workflow routes.
 
-The Upload replica lives in a dedicated worker (`../upload/lofi/replica.worker.ts`), which serves it
-with `@fragno-dev/lofi/zql/worker`. Pages query it with ZQL (`@fragno-dev/lofi/zql`), and the worker
-keeps each view's result up to date incrementally as outbox entries arrive, instead of reading the
-tables again. The worker synchronizes with `backofficeFetch`, so an expired token refreshes there
-too. It starts with only its name, so the page names it after the backend's URL. The Automations
-replica still runs on the page, and its views read it again after every applied entry.
+For Upload, each tab starts a replica worker (`../upload/lofi/replica.worker.ts`), which serves it
+with `@fragno-dev/lofi/sqlite/worker` and `@fragno-dev/lofi-zql`'s view engine. Pages connect with
+`@fragno-dev/lofi/sqlite` and query it with ZQL (`@fragno-dev/lofi-zql`). The workers of a scope's
+tabs elect a leader, which opens the replica and keeps every tab's views up to date incrementally as
+outbox entries arrive, instead of reading the tables again; the other tabs' workers relay to it. The
+leader synchronizes with `backofficeFetch`, so an expired token refreshes there too. A worker starts
+with only its name, so the page names it after the backend's URL. The Automations replica still runs
+on the page, and its views read it again after every applied entry.
 
 Shared pieces in this directory:
 
 - `browser-replica.ts`: `getBrowserReplica`, one replica per backend instance and tab, cached so
-  Suspense sees one promise, and `getWorkerReplica`, the same for a replica in a worker, which
-  resolves once the worker opened the replica.
+  Suspense sees one promise, and `getWorkerReplica`, the same for a replica worker, which resolves
+  once a tab has opened the replica.
 - `replica-gate.tsx`: `LofiReplicaGate` shows the download, with its percentage, until the replica
   has caught up, and only then the view. The download panel is the design system's
   `BackofficeDownloadState`. A replica that caught up in an earlier session opens caught up, so the
@@ -28,10 +30,11 @@ Shared pieces in this directory:
   a new database.
 - `use-lofi-sqlite-read.ts`: `useLofiSqliteRead`, which reads a replica again whenever any tab
   applies outbox entries.
-- `use-lofi-zql.ts`: `useLofiZql`, a worker view's live result in a component.
+- `use-lofi-view.ts`: `useLofiView`, a replica worker's view's live result in a component, for ZQL
+  and SQL views.
 - `scenario-replica-database.ts`: the scenario harness's replicas (`ctx.lofi.automations` on the
-  page, `ctx.lofi.upload` in a worker, with a `MessageChannel` in place of it), on wa-sqlite's
-  in-memory VFS.
+  page, `ctx.lofi.upload` in a replica worker, with a `MessageChannel` in place of the worker), on
+  wa-sqlite's in-memory VFS.
 
 ## What reads the Upload replica
 
@@ -143,13 +146,14 @@ a background tab, with only the Upload replica empty:
 - **Whole lists cross to the page.** The worker posts the view's full result whenever a file
   changes, and the page rebuilds the tree from it. Sending the changes would let the tree update in
   place.
-- **Only the writing tab updates incrementally.** Other tabs' workers rebuild the view after every
-  batch the writing tab commits.
+- **A frozen leader stalls every tab's Files views.** See the risks of the replica worker in lofi's
+  README.
 - **The worker path is checked only by building it.** The scenario test runs the same host in Node.
   The dev server transforms the worker and serves wa-sqlite's WASM, and the production build emits
   both, but no browser has opened the explorer on the worker yet.
-- **Two streams and two workers per Files tab:** the Upload replica and the Automations TanStack
-  collections, each with its own `GET /_internal`, outbox stream, OPFS database, and worker.
+- **Two streams and two databases:** the Upload replica, in the leading tab, and the Automations
+  TanStack collections, each with its own `GET /_internal`, outbox stream, OPFS database, and
+  worker.
 - **Pages that mix both follow the Automations outbox twice.** Leaving the dashboard for Files,
   Integrations, pages, or Marketplace opens the TanStack collections next to the replica that stays
   open in the tab, each with its own stream, database, and worker.

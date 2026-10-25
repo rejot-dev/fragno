@@ -1,4 +1,4 @@
-import type { LofiZqlClient } from "@fragno-dev/lofi/zql";
+import type { LofiSqliteClient } from "@fragno-dev/lofi/sqlite";
 import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
 import { BackofficeDownloadState } from "@fragno-private/design-system/download-state";
@@ -622,7 +622,7 @@ function SynchronizedUploadFiles({ source }: { source: UploadReplicaSource }) {
   );
 }
 
-function UploadReplicaFiles({ replica }: { replica: LofiZqlClient }) {
+function UploadReplicaFiles({ replica }: { replica: LofiSqliteClient }) {
   const status = useLofiReplicaStatus(replica);
   const reading = useReadyUploadFiles(replica, null);
   const files = useMemo<UploadFileRecord[]>(

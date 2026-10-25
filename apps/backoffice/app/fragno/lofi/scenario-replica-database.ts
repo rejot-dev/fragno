@@ -1,17 +1,19 @@
 import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { fetchFragnoInternalDescription, resolveFragnoInternalUrls } from "@fragno-dev/db/outbox";
+import { zqlViewEngine } from "@fragno-dev/lofi-zql/worker";
 import {
   openLofiSqliteReplica,
+  type LofiSqliteClient,
   type LofiSqliteReplica,
   type LofiSqliteReplicaOptions,
+  type LofiSqliteView,
 } from "@fragno-dev/lofi/sqlite";
 import {
   openLofiSqliteMemoryFiles,
+  openLofiSqliteTab,
   waitForLofiSqliteReplica,
 } from "@fragno-dev/lofi/sqlite/testing";
-import { connectLofiZql, type LofiZqlClient, type LofiZqlView } from "@fragno-dev/lofi/zql";
-import { serveLofiZql } from "@fragno-dev/lofi/zql/worker";
 
 import type { LofiSchemaRegistration } from "@fragno-dev/lofi";
 
@@ -84,40 +86,31 @@ export function createScenarioReplicaDatabase(
 }
 
 /**
- * One SQLite replica per scope, opened like a browser tab's replica worker opens it, with a
- * MessageChannel for the worker's port. Read its views with `readScenarioReplicaView`.
+ * One SQLite replica per scope, opened like the replica worker of a browser's only tab opens it,
+ * with the ZQL view engine. Read its views with `readScenarioReplicaView`.
  */
 export function createScenarioReplicaWorkerDatabase(
   options: ScenarioReplicaOptions & { schemas: LofiSchemaRegistration[] },
-): ScenarioReplicaDatabaseRuntime<LofiZqlClient> {
+): ScenarioReplicaDatabaseRuntime<LofiSqliteClient> {
   return createScenarioReplicaScopes(options, async (connection) => {
-    const channel = new MessageChannel();
-    const [host, client] = await Promise.all([
-      serveLofiZql({
-        replica: {
-          baseUrl: connection.baseUrl,
-          fetch: connection.fetch,
-          schemas: options.schemas,
-          localSchemas: [],
-          projections: [],
-          ephemeralTables: [],
-          onError: connection.onError,
-          retryDelayMs: 10,
-        },
-        port: channel.port1,
-        openDatabase: connection.openDatabase,
-      }),
-      connectLofiZql({ port: channel.port2, schemas: options.schemas }),
-    ]);
-    return {
-      replica: client,
-      writer: host.replica,
-      close: async () => {
-        await host.close();
-        channel.port1.close();
-        channel.port2.close();
+    // The scope's only tab, so it leads.
+    const tab = await openLofiSqliteTab({
+      replica: {
+        baseUrl: connection.baseUrl,
+        fetch: connection.fetch,
+        schemas: options.schemas,
+        localSchemas: [],
+        projections: [],
+        ephemeralTables: [],
+        onError: connection.onError,
+        retryDelayMs: 10,
       },
-    };
+      engines: [zqlViewEngine],
+      openDatabase: connection.openDatabase,
+      heartbeatIntervalMs: 1_000,
+      leaderTimeoutMs: 10_000,
+    });
+    return { replica: tab.client, writer: await tab.host.leading, close: () => tab.close() };
   });
 }
 
@@ -125,7 +118,7 @@ export function createScenarioReplicaWorkerDatabase(
  * The data a new view first shows: the worker builds it after everything already applied. Pass a
  * view no one else mounted. Fails when the view does.
  */
-export function readScenarioReplicaView<TData>(view: LofiZqlView<TData>): Promise<TData> {
+export function readScenarioReplicaView<TData>(view: LofiSqliteView<TData>): Promise<TData> {
   return new Promise((resolve, reject) => {
     const unsubscribe = view.subscribe((result) => {
       if (result.status === "loading") {

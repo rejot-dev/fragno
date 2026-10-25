@@ -1,17 +1,36 @@
 import * as SQLite from "@journeyapps/wa-sqlite";
 
-import type { LofiSqliteDatabase } from "../sqlite/adapter";
-import type { SQLiteValue } from "./vendor/zqlite/src/table-source.ts";
-import type { LofiZqlConnection, LofiZqlStatement } from "./zqlite-database.ts";
+import type { LofiSqliteDatabase } from "./adapter";
+import type { SqliteValue } from "./values";
 
-/** One wa-sqlite connection, read synchronously by IVM and asynchronously by the replica. */
-export type LofiZqlSqliteDatabase = LofiSqliteDatabase & {
+/**
+ * A synchronous SQLite connection, which view engines read. IVM operators pull rows in the middle
+ * of a push, so they cannot wait for their database.
+ */
+export type LofiSqliteSyncConnection = {
+  prepare(sql: string): LofiSqliteSyncStatement;
+};
+
+export type LofiSqliteSyncStatement = {
+  /** The result columns, in the order of a row's values. */
+  readonly columnNames: readonly string[];
+  /** Whether the statement leaves the database unchanged. */
+  readonly isReadOnly: boolean;
+  /**
+   * Runs the statement and yields each row's values, with integers outside the safe range as
+   * bigints. Returning the iterator early ends the run.
+   */
+  rows(params: readonly unknown[]): IterableIterator<SqliteValue[]>;
+};
+
+/** One wa-sqlite connection, read synchronously by view engines and asynchronously by the replica. */
+export type LofiSqliteSyncDatabase = LofiSqliteDatabase & {
   /**
    * Statements that run synchronously. A VFS like OPFSCoopSyncVFS can only lock the database
    * asynchronously, so they work only while the connection already holds a lock, such as inside a
    * transaction that has read.
    */
-  readonly connection: LofiZqlConnection;
+  readonly connection: LofiSqliteSyncConnection;
   close(): Promise<void>;
 };
 
@@ -41,7 +60,7 @@ export function wrapWaSqliteDatabase(options: {
   sqlite3: SQLiteAPI;
   db: number;
   close: () => Promise<void>;
-}): LofiZqlSqliteDatabase {
+}): LofiSqliteSyncDatabase {
   const { sqlite3, db } = options;
   const statements = createStatements(options.module as WaSqliteModule, db);
   return {
@@ -95,6 +114,9 @@ function createStatements(module: WaSqliteModule, db: number) {
     columnInt64: module.cwrap("sqlite3_column_int64", n, [n, n]),
     columnDouble: module.cwrap("sqlite3_column_double", n, [n, n]),
     columnText: module.cwrap("sqlite3_column_text", "string", [n, n]),
+    columnBlob: module.cwrap("sqlite3_column_blob", n, [n, n]),
+    columnBytes: module.cwrap("sqlite3_column_bytes", n, [n, n]),
+    stmtReadonly: module.cwrap("sqlite3_stmt_readonly", n, [n]),
     errmsg: module.cwrap("sqlite3_errmsg", "string", [n]),
   };
   const sqliteFree = module._getSqliteFree();
@@ -149,7 +171,7 @@ function createStatements(module: WaSqliteModule, db: number) {
     throw new TypeError(`Cannot bind ${typeof value} to SQLite`);
   };
 
-  const readValue = (statement: number, column: number): SQLiteValue => {
+  const readValue = (statement: number, column: number): SqliteValue => {
     switch (c.columnType(statement, column)) {
       case SQLite.SQLITE_NULL:
         return null;
@@ -165,13 +187,15 @@ function createStatements(module: WaSqliteModule, db: number) {
         return c.columnDouble(statement, column) as number;
       case SQLite.SQLITE_TEXT:
         return c.columnText(statement, column) as string;
-      default:
-        // Replica tables hold blobs only in binary columns, which IVM does not read.
-        throw new Error("IVM cannot read SQLite blobs");
+      default: {
+        const pointer = c.columnBlob(statement, column) as number;
+        // Copied, since the bytes live in wasm memory until the next step.
+        return module.HEAPU8.slice(pointer, pointer + (c.columnBytes(statement, column) as number));
+      }
     }
   };
 
-  const prepare = (sql: string): LofiZqlStatement => {
+  const prepare = (sql: string): LofiSqliteSyncStatement => {
     const bytes = encoder.encode(sql);
     const text = copyIn(bytes);
     const out = module._sqlite3_malloc(4);
@@ -187,8 +211,9 @@ function createStatements(module: WaSqliteModule, db: number) {
     const columnNames = Array.from({ length: c.columnCount(statement) as number }, (_, index) =>
       String(c.columnName(statement, index)),
     );
-    const prepared: LofiZqlStatement = {
+    const prepared: LofiSqliteSyncStatement = {
       columnNames,
+      isReadOnly: c.stmtReadonly(statement) !== 0,
       *rows(params) {
         c.reset(statement);
         c.clearBindings(statement);

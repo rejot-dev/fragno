@@ -1,9 +1,10 @@
 import {
+  connectLofiSqlite,
   openLofiSqliteReplica,
+  type LofiSqliteClient,
   type LofiSqliteReplica,
   type LofiSqliteReplicaOptions,
 } from "@fragno-dev/lofi/sqlite";
-import { connectLofiZql, type LofiZqlClient } from "@fragno-dev/lofi/zql";
 
 import type { LofiSchemaRegistration } from "@fragno-dev/lofi";
 
@@ -13,7 +14,7 @@ import { backofficeFetch } from "@/fragno/auth/browser-auth.client";
 const RETRY_DELAY_MS = 5_000;
 
 const replicas = new Map<string, Promise<LofiSqliteReplica>>();
-const workerReplicas = new Map<string, Promise<LofiZqlClient>>();
+const workerReplicas = new Map<string, Promise<LofiSqliteClient>>();
 
 /**
  * This tab's SQLite replica of the backend below `baseUrl`, opened once per `resourceKey`, which
@@ -53,21 +54,21 @@ export function getBrowserReplica(
 /**
  * This tab's connection to the SQLite replica of the backend below `baseUrl`, opened once per
  * `resourceKey` like `getBrowserReplica`'s. The replica lives in the worker `startWorker` starts,
- * which serves it with `serveLofiZqlWorker`.
+ * which serves it with `serveLofiSqliteWorker`.
  */
 export function getWorkerReplica(options: {
   baseUrl: string;
   resourceKey: string;
   schemas: LofiSchemaRegistration[];
   startWorker(baseUrl: string): Worker;
-}): Promise<LofiZqlClient> {
+}): Promise<LofiSqliteClient> {
   const key = JSON.stringify([options.baseUrl, options.resourceKey]);
   const existing = workerReplicas.get(key);
   if (existing) {
     return existing;
   }
   // A failed open stays cached, as in `getBrowserReplica`.
-  const replica = connectLofiZql({
+  const replica = connectLofiSqlite({
     port: options.startWorker(options.baseUrl),
     schemas: options.schemas,
   });

@@ -24,8 +24,7 @@ import {
   backofficeScopePathSegment,
   backofficeScopeRootOwner,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import type { LofiSqliteReplica } from "@fragno-dev/lofi/sqlite";
-import type { LofiZqlClient } from "@fragno-dev/lofi/zql";
+import type { LofiSqliteClient, LofiSqliteReplica } from "@fragno-dev/lofi/sqlite";
 import { workflowsSchema } from "@fragno-dev/workflows/schema";
 import { InMemoryFs, type IFileSystem } from "just-bash";
 
@@ -381,7 +380,7 @@ export type BackofficeScenarioTanStack = {
 /** SQLite replicas of the scopes' outboxes, as browsers open them. */
 export type BackofficeScenarioLofi = {
   automations: ScenarioReplicaDatabase<LofiSqliteReplica>;
-  upload: ScenarioReplicaDatabase<LofiZqlClient>;
+  upload: ScenarioReplicaDatabase<LofiSqliteClient>;
   syncAll(): Promise<void>;
   cleanup(): Promise<void>;
 };
