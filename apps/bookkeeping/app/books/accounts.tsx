@@ -1,18 +1,21 @@
-import { Button } from "@fragno-private/design-system/button";
 import { Field } from "@fragno-private/design-system/field";
 import { Input } from "@fragno-private/design-system/input";
+import { PageHeading } from "@fragno-private/design-system/page-heading";
 import { Select } from "@fragno-private/design-system/select";
+import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
 import {
-  SurfacePanel,
-  SurfacePanelBody,
+  SurfaceCard,
   SurfaceTable,
+  SurfaceTableGroupRow,
   SurfaceTableRow,
 } from "@fragno-private/design-system/surface-panel";
-import { Form, Link, useNavigation, useOutletContext } from "react-router";
+import { Fragment } from "react";
+import { Link, useOutletContext } from "react-router";
 import { z } from "zod";
 
 import type { Route } from "./+types/accounts";
-import { ACCOUNT_KINDS, accountKind, DIMENSION_RULE_OPTIONS, type AccountKind } from "./books";
+import { AccountName } from "./amounts";
+import { ACCOUNT_KINDS, DIMENSION_RULE_OPTIONS, type AccountKind } from "./books";
 import {
   dimensionRules,
   formResult,
@@ -20,7 +23,7 @@ import {
   requireBooksSubmission,
   type FormResult,
 } from "./books.server";
-import { FormError, useFormReset } from "./forms";
+import { FormDialog } from "./forms";
 import type { BooksOutletContext } from "./layout";
 
 export function meta() {
@@ -81,48 +84,43 @@ export async function action({ request, params }: Route.ActionArgs): Promise<For
 }
 
 const COLUMNS = [
-  { label: "Code", align: "start" },
-  { label: "Name", align: "start" },
-  { label: "Kind", align: "start" },
-  { label: "Currency", align: "start" },
-  { label: "Status", align: "start" },
+  { label: "Account", align: "start" },
+  { label: "", align: "end" },
+] as const;
+
+/** The chart's sections, in the order balance sheet and income statement show them. */
+const TYPE_GROUPS = [
+  { type: "asset", label: "Assets" },
+  { type: "liability", label: "Liabilities" },
+  { type: "equity", label: "Equity" },
+  { type: "revenue", label: "Revenue" },
+  { type: "expense", label: "Expenses" },
 ] as const;
 
 export default function AccountsPage({ actionData }: Route.ComponentProps) {
   const { books, base, canSetUp } = useOutletContext<BooksOutletContext>();
-  const navigation = useNavigation();
-  const form = useFormReset(actionData, INTENT);
+  const dimensionNames = new Map(
+    books.dimensions.map((dimension) => [dimension.id, dimension.name]),
+  );
   return (
-    <div className="space-y-6">
-      <SurfacePanel caption={`Chart of accounts · ${books.accounts.length}`} actions={null}>
-        <SurfaceTable columns={COLUMNS}>
-          {books.accounts.map((account) => (
-            <SurfaceTableRow
-              key={account.id}
-              columns={COLUMNS}
-              cells={[
-                account.code,
-                <Link
-                  key="name"
-                  to={`${base}/accounts/${account.id}`}
-                  className="font-medium text-[var(--bo-fg)]"
-                >
-                  {account.name}
-                </Link>,
-                ACCOUNT_KINDS[accountKind(account)].label,
-                account.currency ?? "Any",
-                account.active ? "Active" : "Inactive",
-              ]}
-            />
-          ))}
-        </SurfaceTable>
-      </SurfacePanel>
-      {canSetUp ? (
-        <SurfacePanel caption="New account" actions={null}>
-          <SurfacePanelBody>
-            <Form method="post" ref={form} className="max-w-2xl space-y-4">
-              <input type="hidden" name="intent" value={INTENT} />
-              <div className="grid gap-4 sm:grid-cols-[10rem_1fr]">
+    <>
+      <PageHeading
+        eyebrow={books.name}
+        title="Chart of accounts"
+        meta={`${books.accounts.length} accounts`}
+        actions={
+          canSetUp ? (
+            <FormDialog
+              label="New account"
+              variant="solid"
+              title="New account"
+              description="An account's kind, normal side, and currency never change once it exists."
+              intent={INTENT}
+              resultIntent={INTENT}
+              submit="Add account"
+              result={actionData}
+            >
+              <div className="grid gap-4 sm:grid-cols-[8rem_1fr]">
                 <Field label="Code">
                   <Input className="w-full" name="code" required />
                 </Field>
@@ -130,18 +128,18 @@ export default function AccountsPage({ actionData }: Route.ComponentProps) {
                   <Input className="w-full" name="name" required />
                 </Field>
               </div>
-              <div className="grid gap-4 sm:grid-cols-3">
-                <Field label="Kind">
-                  <Select
-                    name="kind"
-                    options={KINDS.map((kind) => ({
-                      label: ACCOUNT_KINDS[kind].label,
-                      value: kind,
-                    }))}
-                    placeholder="Choose a kind"
-                    required
-                  />
-                </Field>
+              <Field label="Kind">
+                <Select
+                  name="kind"
+                  options={KINDS.map((kind) => ({
+                    label: ACCOUNT_KINDS[kind].label,
+                    value: kind,
+                  }))}
+                  placeholder="Choose a kind"
+                  required
+                />
+              </Field>
+              <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="Normal side">
                   <Select
                     name="normalSide"
@@ -165,7 +163,7 @@ export default function AccountsPage({ actionData }: Route.ComponentProps) {
                 </Field>
               </div>
               {books.dimensions.length > 0 ? (
-                <div className="grid gap-4 sm:grid-cols-3">
+                <div className="grid gap-4 sm:grid-cols-2">
                   {books.dimensions.map((dimension) => (
                     <Field key={dimension.id} label={dimension.name}>
                       <Select
@@ -177,14 +175,62 @@ export default function AccountsPage({ actionData }: Route.ComponentProps) {
                   ))}
                 </div>
               ) : null}
-              <FormError result={actionData} intent={INTENT} />
-              <Button type="submit" variant="accent" disabled={navigation.state !== "idle"}>
-                Add account
-              </Button>
-            </Form>
-          </SurfacePanelBody>
-        </SurfacePanel>
-      ) : null}
-    </div>
+            </FormDialog>
+          ) : null
+        }
+      />
+      <SurfaceCard>
+        <SurfaceTable columns={COLUMNS}>
+          {TYPE_GROUPS.map((group) => {
+            const accounts = books.accounts.filter((account) => account.type === group.type);
+            return accounts.length === 0 ? null : (
+              <Fragment key={group.type}>
+                <SurfaceTableGroupRow columns={COLUMNS}>
+                  <span className="text-xs font-semibold text-[var(--bo-muted)]">
+                    {group.label}
+                  </span>
+                </SurfaceTableGroupRow>
+                {accounts.map((account) => (
+                  <SurfaceTableRow
+                    key={account.id}
+                    columns={COLUMNS}
+                    cells={[
+                      <Link
+                        key="name"
+                        to={`${base}/accounts/${account.id}`}
+                        className={`hover:underline ${account.active ? "text-[var(--bo-fg)]" : "text-[var(--bo-muted-2)]"}`}
+                      >
+                        <AccountName account={account} />
+                      </Link>,
+                      <span key="notes" className="inline-flex flex-wrap justify-end gap-1.5">
+                        {account.role === "ordinary" ? null : (
+                          <BackofficeStatusLight tone="info" dot={false}>
+                            {account.role === "receivable" ? "Customers" : "Suppliers"}
+                          </BackofficeStatusLight>
+                        )}
+                        {account.currency === null ? null : (
+                          <BackofficeStatusLight tone="info" dot={false}>
+                            {account.currency} only
+                          </BackofficeStatusLight>
+                        )}
+                        {Object.entries(account.dimensionRules).map(([dimensionId, rule]) => (
+                          <BackofficeStatusLight key={dimensionId} tone="muted" dot={false}>
+                            {dimensionNames.get(dimensionId)}{" "}
+                            {rule === "required" ? "required" : "not allowed"}
+                          </BackofficeStatusLight>
+                        ))}
+                        {account.active ? null : (
+                          <BackofficeStatusLight tone="muted">Inactive</BackofficeStatusLight>
+                        )}
+                      </span>,
+                    ]}
+                  />
+                ))}
+              </Fragment>
+            );
+          })}
+        </SurfaceTable>
+      </SurfaceCard>
+    </>
   );
 }

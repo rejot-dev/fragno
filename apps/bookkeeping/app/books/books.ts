@@ -28,6 +28,37 @@ export function indexBooks(books: Books) {
   };
 }
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** A calendar date as people read it, e.g. `31 Mar 2026` for `2026-03-31`. */
+export function formatDate(date: string): string {
+  const [year, month, day] = date.split("-");
+  return `${Number(day)} ${MONTHS[Number(month) - 1]} ${year}`;
+}
+
+/** Two dates as a range, naming a shared year once, e.g. `1 Jan – 31 Mar 2026`. */
+export function formatDateRange(start: string, end: string): string {
+  const from = formatDate(start);
+  return start.slice(0, 4) === end.slice(0, 4)
+    ? `${from.slice(0, -5)} – ${formatDate(end)}`
+    : `${from} – ${formatDate(end)}`;
+}
+
+/** The short month a date falls in, e.g. `Mar`. */
+export function monthOf(date: string): string {
+  return MONTHS[Number(date.slice(5, 7)) - 1];
+}
+
+/** The books' own path, which their pages extend. */
+export function booksPath(params: { slug: string; administration: string }): string {
+  return `/w/${params.slug}/a/${params.administration}`;
+}
+
+/** An entry's page; entries are named by their journal's code and number, e.g. `SAL 3`. */
+export function entryPath(base: string, journalCode: string, entryNumber: number): string {
+  return `${base}/entries/${encodeURIComponent(journalCode)}/${entryNumber}`;
+}
+
 /** `Code Name`, as accounts are named in lists and choices. */
 export function accountLabel(account: { code: string; name: string }): string {
   return `${account.code} ${account.name}`;

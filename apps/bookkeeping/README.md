@@ -273,17 +273,20 @@ refusals as form errors:
 
 | Path                                   | What                                                                                             |
 | -------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| the books' own path                    | A journal's entries, newest first, and reversing one; `?journal=` picks the journal              |
+| the books' own path                    | A journal's entries, newest first; `?journal=` picks the journal                                 |
+| `/entries/:journal/:entryNumber`       | One entry, named by its journal's code, e.g. `/entries/SAL/3`, and reversing it                  |
 | `/entries/new`                         | Posting an entry: its lines, with a customer or supplier, currency, and dimension values         |
 | `/accounts`, `/accounts/:accountId`    | The chart of accounts and adding to it; an account's lines, and renaming or deactivating it      |
 | `/trial-balance`                       | Each account's totals for the fiscal year through a period; `?period=` picks it                  |
 | `/parties`, `/parties/:partyAccountId` | Customers and suppliers; one's open items, settling them against each other, and undoing that    |
 | `/settings`                            | Fiscal years, and closing, reopening, or locking their periods; journals, dimensions, currencies |
 
+The client's sidebar lists these pages under the administration's name while its books are open.
 Everyone in the client's workspace keeps the books: posting and reversing entries, adding customers
-and suppliers, and settling their items. Owners and admins also set them up: the calendar, journals,
-dimensions, currencies, and chart of accounts. Entries and settlements record the name of the person
-who made them. Amounts are entered as decimals with a dot or a comma and no thousands separators.
+and suppliers, and settling their items. A reversal settles the open items of the entry it reverses.
+Owners and admins also set them up: the calendar, journals, dimensions, currencies, and chart of
+accounts. Entries and settlements record the name of the person who made them. Amounts are entered
+as decimals with a dot or a comma and no thousands separators.
 
 Bookkeeping is not live, so its storage keeps no compatibility: books are set up only when their
 administration is created, and administrations from before a storage change do not open. Delete

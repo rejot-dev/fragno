@@ -1,8 +1,10 @@
+import { PageHeading } from "@fragno-private/design-system/page-heading";
 import { Select } from "@fragno-private/design-system/select";
 import {
-  SurfacePanel,
+  SurfaceCard,
   SurfaceTable,
   SurfaceTableRow,
+  SurfaceTableTotalRow,
 } from "@fragno-private/design-system/surface-panel";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { Link, useNavigate, useOutletContext } from "react-router";
@@ -10,7 +12,8 @@ import { Link, useNavigate, useOutletContext } from "react-router";
 import { today } from "../../workers/books/fiscal-years";
 import { formatAmount } from "../../workers/books/money";
 import type { Route } from "./+types/trial-balance";
-import { indexBooks } from "./books";
+import { AccountName, Balance } from "./amounts";
+import { formatDate, formatDateRange, indexBooks } from "./books";
 import { requireBooks } from "./books.server";
 import type { BooksOutletContext } from "./layout";
 
@@ -43,7 +46,6 @@ export function headers() {
 }
 
 const COLUMNS = [
-  { label: "Code", align: "start" },
   { label: "Account", align: "start" },
   { label: "Debit", align: "end" },
   { label: "Credit", align: "end" },
@@ -56,87 +58,97 @@ export default function TrialBalancePage({ loaderData }: Route.ComponentProps) {
   const { periodId, rows } = loaderData;
   if (periodId === null) {
     return (
-      <BackofficeSystemState
-        tone="empty"
-        label="Trial balance"
-        title="No fiscal years yet"
-        description="Open a fiscal year in the books' settings to post and report."
-      />
+      <>
+        <PageHeading eyebrow={books.name} title="Trial balance" meta={null} actions={null} />
+        <BackofficeSystemState
+          tone="empty"
+          label="Trial balance"
+          title="No fiscal years yet"
+          description="Open a fiscal year in the books' settings to post and report."
+        />
+      </>
     );
   }
   const digits = indexBooks(books).minorUnitDigits(books.functionalCurrency);
-  const amount = (minor: bigint) => formatAmount(minor, digits);
-  const balance = (minor: bigint) =>
-    minor === 0n
-      ? amount(0n)
-      : `${amount(minor > 0n ? minor : -minor)} ${minor > 0n ? "Dr" : "Cr"}`;
+  // Zero shows as nothing, so the amounts that make up the totals stand out.
+  const amount = (minor: bigint) => (minor === 0n ? "" : formatAmount(minor, digits));
   const debits = rows.reduce((sum, row) => sum + row.debitMinor, 0n);
   const credits = rows.reduce((sum, row) => sum + row.creditMinor, 0n);
-  const periodOptions = books.fiscalYears.flatMap((year) =>
-    year.periods.map((period) => ({
-      label: `${year.name} · period ${period.number} (through ${period.endDate})`,
-      value: period.id,
-    })),
-  );
   const year = books.fiscalYears.find((row) =>
     row.periods.some((period) => period.id === periodId),
   )!;
+  const period = year.periods.find((row) => row.id === periodId)!;
   return (
-    <SurfacePanel
-      caption={`Trial balance in ${books.functionalCurrency} · from ${year.startDate}`}
-      actions={
-        <div className="w-80">
-          <Select
-            aria-label="Through period"
-            density="compact"
-            options={periodOptions}
-            value={periodId}
-            onValueChange={(period) => {
-              if (period !== null) {
-                void navigate(`${base}/trial-balance?period=${period}`);
-              }
-            }}
+    <>
+      <PageHeading
+        eyebrow={books.name}
+        title="Trial balance"
+        meta={`${formatDateRange(year.startDate, period.endDate)} · ${books.functionalCurrency}`}
+        actions={
+          <div className="w-64">
+            <Select
+              aria-label="Through period"
+              options={books.fiscalYears.flatMap((row) =>
+                row.periods.map((option) => ({
+                  label: `Through ${formatDate(option.endDate)}`,
+                  value: option.id,
+                })),
+              )}
+              value={periodId}
+              onValueChange={(next) => {
+                if (next !== null) {
+                  void navigate(`${base}/trial-balance?period=${next}`);
+                }
+              }}
+            />
+          </div>
+        }
+      />
+      <SurfaceCard>
+        {rows.length === 0 ? (
+          <BackofficeSystemState
+            flush
+            tone="empty"
+            label="Trial balance"
+            title="Nothing posted yet"
+            description="Accounts show here once entries in this fiscal year post to them."
           />
-        </div>
-      }
-    >
-      {rows.length === 0 ? (
-        <BackofficeSystemState
-          flush
-          tone="empty"
-          label="Trial balance"
-          title="Nothing posted yet"
-          description="Accounts show here once entries in this fiscal year post to them."
-        />
-      ) : (
-        <SurfaceTable columns={COLUMNS}>
-          {rows.map((row) => (
-            <SurfaceTableRow
-              key={row.accountId}
+        ) : (
+          <SurfaceTable columns={COLUMNS}>
+            {rows.map((row) => (
+              <SurfaceTableRow
+                key={row.accountId}
+                columns={COLUMNS}
+                cells={[
+                  <Link
+                    key="account"
+                    to={`${base}/accounts/${row.accountId}`}
+                    className="text-[var(--bo-fg)] hover:underline"
+                  >
+                    <AccountName account={row} />
+                  </Link>,
+                  amount(row.debitMinor),
+                  amount(row.creditMinor),
+                  <Balance
+                    key="balance"
+                    minor={row.debitMinor - row.creditMinor}
+                    digits={digits}
+                  />,
+                ]}
+              />
+            ))}
+            <SurfaceTableTotalRow
               columns={COLUMNS}
               cells={[
-                row.code,
-                <Link key="account" to={`${base}/accounts/${row.accountId}`}>
-                  {row.name}
-                </Link>,
-                amount(row.debitMinor),
-                amount(row.creditMinor),
-                balance(row.debitMinor - row.creditMinor),
+                "Total",
+                formatAmount(debits, digits),
+                formatAmount(credits, digits),
+                <Balance key="balance" minor={debits - credits} digits={digits} />,
               ]}
             />
-          ))}
-          <SurfaceTableRow
-            columns={COLUMNS}
-            cells={[
-              "",
-              <strong key="total">Total</strong>,
-              <strong key="debits">{amount(debits)}</strong>,
-              <strong key="credits">{amount(credits)}</strong>,
-              "",
-            ]}
-          />
-        </SurfaceTable>
-      )}
-    </SurfacePanel>
+          </SurfaceTable>
+        )}
+      </SurfaceCard>
+    </>
   );
 }

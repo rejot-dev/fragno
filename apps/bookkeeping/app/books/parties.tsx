@@ -1,23 +1,22 @@
-import { Button } from "@fragno-private/design-system/button";
 import { Field } from "@fragno-private/design-system/field";
 import { Input } from "@fragno-private/design-system/input";
+import { PageHeading } from "@fragno-private/design-system/page-heading";
 import { Select } from "@fragno-private/design-system/select";
 import {
-  SurfacePanel,
-  SurfacePanelBody,
+  SurfaceCard,
   SurfaceTable,
   SurfaceTableRow,
 } from "@fragno-private/design-system/surface-panel";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { useState } from "react";
-import { Form, Link, useNavigation, useOutletContext } from "react-router";
+import { Link, useOutletContext } from "react-router";
 import { z } from "zod";
 
 import { CONTROL_ROLES, usualControlAccount } from "../../workers/books/parties";
 import type { Route } from "./+types/parties";
 import { accountLabel } from "./books";
 import { parseForm, requireBooksSubmission, type FormResult } from "./books.server";
-import { FormError, useFormReset } from "./forms";
+import { FormDialog } from "./forms";
 import type { BooksOutletContext } from "./layout";
 
 export function meta() {
@@ -79,8 +78,6 @@ const COLUMNS = [
 
 export default function PartiesPage({ actionData }: Route.ComponentProps) {
   const { books, base } = useOutletContext<BooksOutletContext>();
-  const navigation = useNavigation();
-  const form = useFormReset(actionData, INTENT);
   const [partyId, setPartyId] = useState("new");
   const controlAccounts = books.accounts.filter(
     (account) => account.active && account.role !== "ordinary",
@@ -88,7 +85,11 @@ export default function PartiesPage({ actionData }: Route.ComponentProps) {
   const roleCell = (party: (typeof books.parties)[number], role: "customer" | "supplier") => {
     const account = party.accounts.find((row) => row.role === role);
     return account ? (
-      <Link key={role} to={`${base}/parties/${account.id}`} className="font-medium">
+      <Link
+        key={role}
+        to={`${base}/parties/${account.id}`}
+        className="font-medium text-[var(--bo-fg)] tabular-nums hover:underline"
+      >
         {account.code}
       </Link>
     ) : (
@@ -96,32 +97,22 @@ export default function PartiesPage({ actionData }: Route.ComponentProps) {
     );
   };
   return (
-    <div className="space-y-6">
-      <SurfacePanel caption={`Customers & suppliers · ${books.parties.length}`} actions={null}>
-        {books.parties.length === 0 ? (
-          <BackofficeSystemState
-            flush
-            tone="empty"
-            label="Parties"
-            title="No customers or suppliers yet"
-            description="Add the businesses and people you invoice and pay. Their open invoices and payments show on their page."
-          />
-        ) : (
-          <SurfaceTable columns={COLUMNS}>
-            {books.parties.map((party) => (
-              <SurfaceTableRow
-                key={party.id}
-                columns={COLUMNS}
-                cells={[party.name, roleCell(party, "customer"), roleCell(party, "supplier")]}
-              />
-            ))}
-          </SurfaceTable>
-        )}
-      </SurfacePanel>
-      <SurfacePanel caption="Add a customer or supplier" actions={null}>
-        <SurfacePanelBody>
-          <Form method="post" ref={form} className="max-w-2xl space-y-4">
-            <input type="hidden" name="intent" value={INTENT} />
+    <>
+      <PageHeading
+        eyebrow={books.name}
+        title="Customers & suppliers"
+        meta={`${books.parties.length} ${books.parties.length === 1 ? "party" : "parties"}`}
+        actions={
+          <FormDialog
+            label="Add customer or supplier"
+            variant="solid"
+            title="Add a customer or supplier"
+            description="A party can be both: add it again in its other role. Its open invoices and payments show on its page."
+            intent={INTENT}
+            resultIntent={INTENT}
+            submit="Add"
+            result={actionData}
+          >
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Party">
                 <Select
@@ -142,7 +133,7 @@ export default function PartiesPage({ actionData }: Route.ComponentProps) {
                 </Field>
               ) : null}
             </div>
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-[1fr_8rem]">
               <Field label="As">
                 <Select
                   name="role"
@@ -156,27 +147,50 @@ export default function PartiesPage({ actionData }: Route.ComponentProps) {
               <Field label="Code">
                 <Input className="w-full" name="code" required />
               </Field>
-              <Field label="Control account">
-                <Select
-                  name="controlAccountId"
-                  options={[
-                    { label: "The usual one", value: "usual" },
-                    ...controlAccounts.map((account) => ({
-                      label: accountLabel(account),
-                      value: account.id,
-                    })),
-                  ]}
-                  defaultValue="usual"
-                />
-              </Field>
             </div>
-            <FormError result={actionData} intent={INTENT} />
-            <Button type="submit" variant="accent" disabled={navigation.state !== "idle"}>
-              Add
-            </Button>
-          </Form>
-        </SurfacePanelBody>
-      </SurfacePanel>
-    </div>
+            <Field label="Control account">
+              <Select
+                name="controlAccountId"
+                options={[
+                  { label: "The usual one", value: "usual" },
+                  ...controlAccounts.map((account) => ({
+                    label: accountLabel(account),
+                    value: account.id,
+                  })),
+                ]}
+                defaultValue="usual"
+              />
+            </Field>
+          </FormDialog>
+        }
+      />
+      <SurfaceCard>
+        {books.parties.length === 0 ? (
+          <BackofficeSystemState
+            flush
+            tone="empty"
+            label="Parties"
+            title="No customers or suppliers yet"
+            description="Add the businesses and people you invoice and pay. Their open invoices and payments show on their page."
+          />
+        ) : (
+          <SurfaceTable columns={COLUMNS}>
+            {books.parties.map((party) => (
+              <SurfaceTableRow
+                key={party.id}
+                columns={COLUMNS}
+                cells={[
+                  <span key="name" className="font-medium text-[var(--bo-fg)]">
+                    {party.name}
+                  </span>,
+                  roleCell(party, "customer"),
+                  roleCell(party, "supplier"),
+                ]}
+              />
+            ))}
+          </SurfaceTable>
+        )}
+      </SurfaceCard>
+    </>
   );
 }

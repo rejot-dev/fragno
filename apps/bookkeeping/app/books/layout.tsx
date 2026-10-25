@@ -1,9 +1,8 @@
-import { OverflowTabRow } from "@fragno-private/design-system/overflow-tab-row";
-import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
-import { Outlet, useLocation, useOutletContext } from "react-router";
+import { Outlet, useOutletContext } from "react-router";
 
 import type { ClientOutletContext } from "../clients/layout";
 import type { Route } from "./+types/layout";
+import { booksPath } from "./books";
 import { requireBooks } from "./books.server";
 
 export function meta({ loaderData }: Route.MetaArgs) {
@@ -31,45 +30,16 @@ export type BooksOutletContext = ClientOutletContext & {
   base: string;
 };
 
-const TABS = [
-  { id: "journal", label: "Journal", path: "" },
-  { id: "accounts", label: "Accounts", path: "/accounts" },
-  { id: "trial-balance", label: "Trial balance", path: "/trial-balance" },
-  { id: "parties", label: "Customers & suppliers", path: "/parties" },
-  { id: "settings", label: "Settings", path: "/settings" },
-] as const;
-
-/** One administration's books: its journal, accounts, reports, parties, and settings. */
+/**
+ * One administration's books: its journal, accounts, reports, parties, and settings. The client's
+ * sidebar lists them; each page heads itself.
+ */
 export default function BooksLayout({ loaderData }: Route.ComponentProps) {
   const client = useOutletContext<ClientOutletContext>();
-  const { pathname } = useLocation();
   const { administration, books, canSetUp } = loaderData;
-  const base = `/w/${client.client.slug}/a/${administration.slug}`;
-  // The journal's own pages, such as a new entry, sit under the books' path, not a tab's.
-  const current =
-    TABS.find((tab) => tab.path !== "" && pathname.startsWith(`${base}${tab.path}`)) ?? TABS[0];
+  const base = booksPath({ slug: client.client.slug, administration: administration.slug });
   return (
     <div className="space-y-6">
-      <BackofficePageHeader
-        title={books.name}
-        description={`Books kept in ${books.functionalCurrency}.`}
-        breadcrumbs={[
-          { label: client.client.name, to: `/w/${client.client.slug}` },
-          { label: books.name },
-        ]}
-        code="BKS"
-      />
-      <OverflowTabRow
-        ariaLabel="Books"
-        variant="underline"
-        trailing={null}
-        items={TABS.map((tab) => ({
-          id: tab.id,
-          label: tab.label,
-          to: `${base}${tab.path}`,
-          active: tab.id === current.id,
-        }))}
-      />
       <Outlet context={{ ...client, books, canSetUp, base } satisfies BooksOutletContext} />
     </div>
   );
