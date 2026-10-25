@@ -44,6 +44,7 @@ import type {
   AuthObject,
   GrantBackofficeAdminResult,
   OrganizationManagerRecord,
+  OrganizationRelations,
   ScenarioAuthFixture,
 } from "@/backoffice-runtime/object-registry";
 import {
@@ -182,7 +183,9 @@ import {
   findAdministeredMember,
   findOrganizationAccess,
   listAccessibleOrganizations,
+  readOrganizationRelations,
 } from "./auth/organization-access";
+import { type StoredDate, toDate } from "./auth/stored-date";
 import {
   completeBetterAuthDurableHook,
   deleteBetterAuthDurableHooksForFixture,
@@ -204,8 +207,6 @@ import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-ob
 type AuthOrganizationAutomationEventType =
   | typeof AUTH_AUTOMATION_EVENT_ORGANIZATION_CREATED
   | typeof AUTH_AUTOMATION_EVENT_ORGANIZATION_UPDATED;
-
-type StoredDate = Date | string | number;
 
 export type AuthDatabase = BetterAuthDurableHooksDatabase & {
   user: {
@@ -314,16 +315,6 @@ async function adminGrantTokensMatch(
   }
   return difference === 0;
 }
-
-const toDate = (value: StoredDate): Date => {
-  if (value instanceof Date) {
-    return value;
-  }
-  if (typeof value === "number") {
-    return new Date(value < 10_000_000_000 ? value * 1_000 : value);
-  }
-  return new Date(value);
-};
 
 const toIsoString = (date: Date | string): string =>
   date instanceof Date ? date.toISOString() : new Date(date).toISOString();
@@ -2379,6 +2370,13 @@ export class InMemoryAuthObject implements AuthObject {
     };
   }
 
+  async getOrganizationRelations(input: {
+    organizationId: string;
+  }): Promise<OrganizationRelations> {
+    await this.#ready;
+    return await readOrganizationRelations(this.#database, input.organizationId);
+  }
+
   async listOrganizations(input: DirectoryPageInput): Promise<OrganizationPage> {
     const { adapter } = await this.#authContext();
     return await readOrganizationPage(adapter, input);
@@ -2917,6 +2915,10 @@ export class Auth extends DurableObject<CloudflareEnv> implements AuthObject {
     managingOrganizationId: string | null;
   }) {
     return await this.#object.setOrganizationManager(input);
+  }
+
+  async getOrganizationRelations(input: { organizationId: string }) {
+    return await this.#object.getOrganizationRelations(input);
   }
 
   async listOrganizations(input: DirectoryPageInput) {

@@ -49,6 +49,7 @@ type AdminAuthCommands = Pick<
   | "verifyAdminUserEmail"
   | "getOrganizationBySlug"
   | "getOrganization"
+  | "getOrganizationRelations"
   | "listOrganizations"
   | "listOrganizationMembers"
   | "addAdminOrganizationMember"
@@ -189,13 +190,15 @@ export function createAdminRuntime({
         await requireAdminOrganizationId(auth, organizationSlug),
       ).deleteEventsOfType(pass),
     getOrganization: async ({ organizationSlug }) => {
-      const organization = await auth.getOrganization({
-        organizationId: await requireAdminOrganizationId(auth, organizationSlug),
-      });
+      const organizationId = await requireAdminOrganizationId(auth, organizationSlug);
+      const [organization, relations] = await Promise.all([
+        auth.getOrganization({ organizationId }),
+        auth.getOrganizationRelations({ organizationId }),
+      ]);
       if (!organization) {
         throw new Error(`Admin organization command could not find slug '${organizationSlug}'.`);
       }
-      return organization;
+      return { ...organization, managingOrganization: relations.managingOrganization };
     },
     listOrganizationMembers: async ({ organizationSlug, ...page }) =>
       await auth.listOrganizationMembers({

@@ -86,7 +86,13 @@ export default function BackofficeOrganizations({ actionData }: Route.ComponentP
   const [activeInvitationId, setActiveInvitationId] = useState<string | null>(null);
   const me = initialMe;
   const organizations = me?.organizations ?? [];
-  const sortedOrganizations = sortOrganizationsByPreference(organizations, me.activeOrganizationId);
+  const sortedOrganizations = groupOrganizationsByAccess(
+    sortOrganizationsByPreference(organizations, me.activeOrganizationId),
+  );
+  const [createOpen, setCreateOpen] = useState(false);
+  const showCreate = createOpen || organizations.length === 0 || Boolean(actionData?.error);
+  const openInvitations =
+    userInvitations.status === "listed" ? userInvitations.invitations : ([] as UserInvitation[]);
 
   const handleInvitationAction = async (entry: UserInvitation, action: "accept" | "reject") => {
     if (action === "reject") {
@@ -137,7 +143,19 @@ export default function BackofficeOrganizations({ actionData }: Route.ComponentP
       <div className={`${backofficePageBodyClassName} flex flex-col gap-4`}>
         <SurfacePanel
           caption={`${organizations.length} ${organizations.length === 1 ? "organization" : "organizations"}`}
-          actions={null}
+          actions={
+            showCreate ? null : (
+              <Button
+                variant="secondary"
+                type="button"
+                onClick={() => {
+                  setCreateOpen(true);
+                }}
+              >
+                New organization
+              </Button>
+            )
+          }
         >
           {organizations.length === 0 ? (
             <BackofficeSystemState
@@ -158,30 +176,22 @@ export default function BackofficeOrganizations({ actionData }: Route.ComponentP
                       to={`/backoffice/organizations/${encodeURIComponent(organization.slug)}`}
                       className="group block max-w-[24rem] min-w-0"
                     >
-                      <span className="block truncate font-semibold text-[var(--bo-fg)] group-hover:underline">
-                        {organization.name}
+                      <span className="flex items-center gap-2">
+                        <span className="truncate font-semibold text-[var(--bo-fg)] group-hover:underline">
+                          {organization.name}
+                        </span>
+                        {organization.id === me.activeOrganizationId ? (
+                          <BackofficeStatusLight tone="live">Active</BackofficeStatusLight>
+                        ) : null}
                       </span>
                       <span className="block truncate font-mono text-[11px]">
                         {organization.slug}
                       </span>
                     </Link>,
-                    <span key="roles" className="block">
-                      <span className="block">{formatRoles(roles)}</span>
-                      {through.kind === "managing-organization" ? (
-                        <span className="block text-[11px]">
-                          Managed by {through.organization.name}
-                        </span>
-                      ) : null}
-                    </span>,
-                    organization.id === me.activeOrganizationId ? (
-                      <BackofficeStatusLight key="status" tone="live">
-                        Active
-                      </BackofficeStatusLight>
-                    ) : (
-                      <BackofficeStatusLight key="status" tone="muted">
-                        Available
-                      </BackofficeStatusLight>
-                    ),
+                    formatRoles(roles),
+                    through.kind === "managing-organization"
+                      ? `Through ${through.organization.name}`
+                      : "Member",
                     <span key="created" className="whitespace-nowrap">
                       {formatDate(organization.createdAt)}
                     </span>,
@@ -192,80 +202,82 @@ export default function BackofficeOrganizations({ actionData }: Route.ComponentP
           )}
         </SurfacePanel>
 
-        <SurfacePanel
-          caption={
-            userInvitations.status === "listed"
-              ? `${userInvitations.invitations.length} ${userInvitations.invitations.length === 1 ? "invitation" : "invitations"} for you`
-              : "Invitations for you"
-          }
-          actions={null}
-        >
-          {userInvitations.status === "email-unverified" ? (
-            <BackofficeSystemState
-              tone="empty"
-              label="Unverified"
-              title="Verify your email address to see invitations sent to it."
-              flush
-            />
-          ) : userInvitations.invitations.length === 0 ? (
-            <BackofficeSystemState
-              tone="empty"
-              title="No open invitations."
-              description="Invitations addressed to your account appear here. Accepting adds you to the organization."
-              flush
-            />
-          ) : (
-            <SurfaceTable columns={INVITATION_COLUMNS}>
-              {userInvitations.invitations.map((entry) => {
-                const isWorking =
-                  respondingInvitation && activeInvitationId === entry.invitation.id;
-                return (
-                  <SurfaceTableRow
-                    key={entry.invitation.id}
-                    columns={INVITATION_COLUMNS}
-                    cells={[
-                      <span key="organization" className="font-semibold text-[var(--bo-fg)]">
-                        {entry.organization.name}
-                      </span>,
-                      formatRoles(entry.invitation.roles),
-                      <span key="sent" className="whitespace-nowrap">
-                        {formatDateTime(entry.invitation.createdAt)}
-                      </span>,
-                      <span key="expires" className="whitespace-nowrap">
-                        {formatDateTime(entry.invitation.expiresAt)}
-                      </span>,
-                      <div key="actions" className="flex flex-wrap justify-end gap-2">
-                        <Button
-                          variant="accent"
-                          type="button"
-                          onClick={() => void handleInvitationAction(entry, "accept")}
-                          disabled={respondingInvitation}
-                        >
-                          {isWorking ? "Accepting…" : "Accept"}
-                        </Button>
-                        <Button
-                          variant="danger"
-                          type="button"
-                          onClick={() => void handleInvitationAction(entry, "reject")}
-                          disabled={respondingInvitation}
-                        >
-                          {isWorking ? "Rejecting…" : "Reject"}
-                        </Button>
-                      </div>,
-                    ]}
-                  />
-                );
-              })}
-            </SurfaceTable>
-          )}
-          {invitationNotice ? (
-            <SurfacePanelBody>
-              <Notice notice={invitationNotice} />
-            </SurfacePanelBody>
-          ) : null}
-        </SurfacePanel>
+        {/* Only open invitations are worth a panel; there is nothing to do without them. */}
+        {openInvitations.length === 0 && !invitationNotice ? null : (
+          <SurfacePanel
+            caption={`${openInvitations.length} ${openInvitations.length === 1 ? "invitation" : "invitations"} for you`}
+            actions={null}
+          >
+            {openInvitations.length === 0 ? null : (
+              <SurfaceTable columns={INVITATION_COLUMNS}>
+                {openInvitations.map((entry) => {
+                  const isWorking =
+                    respondingInvitation && activeInvitationId === entry.invitation.id;
+                  return (
+                    <SurfaceTableRow
+                      key={entry.invitation.id}
+                      columns={INVITATION_COLUMNS}
+                      cells={[
+                        <span key="organization" className="font-semibold text-[var(--bo-fg)]">
+                          {entry.organization.name}
+                        </span>,
+                        formatRoles(entry.invitation.roles),
+                        <span key="sent" className="whitespace-nowrap">
+                          {formatDateTime(entry.invitation.createdAt)}
+                        </span>,
+                        <span key="expires" className="whitespace-nowrap">
+                          {formatDateTime(entry.invitation.expiresAt)}
+                        </span>,
+                        <div key="actions" className="flex flex-wrap justify-end gap-2">
+                          <Button
+                            variant="accent"
+                            type="button"
+                            onClick={() => void handleInvitationAction(entry, "accept")}
+                            disabled={respondingInvitation}
+                          >
+                            {isWorking ? "Accepting…" : "Accept"}
+                          </Button>
+                          <Button
+                            variant="danger"
+                            type="button"
+                            onClick={() => void handleInvitationAction(entry, "reject")}
+                            disabled={respondingInvitation}
+                          >
+                            {isWorking ? "Rejecting…" : "Reject"}
+                          </Button>
+                        </div>,
+                      ]}
+                    />
+                  );
+                })}
+              </SurfaceTable>
+            )}
+            {invitationNotice ? (
+              <SurfacePanelBody>
+                <Notice notice={invitationNotice} />
+              </SurfacePanelBody>
+            ) : null}
+          </SurfacePanel>
+        )}
 
-        <CreateOrganizationForm error={actionData?.error ?? null} />
+        {userInvitations.status === "email-unverified" ? (
+          <p className="text-xs text-[var(--bo-muted-2)]">
+            Verify your email address to see invitations sent to it.
+          </p>
+        ) : null}
+
+        {showCreate ? (
+          <CreateOrganizationForm
+            error={actionData?.error ?? null}
+            onCancel={
+              organizations.length === 0
+                ? null
+                : () => {
+                    setCreateOpen(false);
+                  }
+            }
+          />
+        ) : null}
       </div>
     </div>
   );
@@ -274,9 +286,33 @@ export default function BackofficeOrganizations({ actionData }: Route.ComponentP
 const ORGANIZATION_COLUMNS: readonly SurfaceTableColumn[] = [
   { label: "Organization", align: "start" },
   { label: "Your roles", align: "start" },
-  { label: "Status", align: "start" },
+  { label: "Access", align: "start" },
   { label: "Created", align: "start" },
 ];
+
+/**
+ * The organizations the user belongs to first, then each managing organization's clients together,
+ * in the order their managers are listed, so an agency's clients read as one block.
+ */
+function groupOrganizationsByAccess<
+  TEntry extends {
+    organization: { id: string };
+    through:
+      | { kind: "membership" }
+      | { kind: "managing-organization"; organization: { id: string } };
+  },
+>(entries: TEntry[]): TEntry[] {
+  const memberships = entries.filter(({ through }) => through.kind === "membership");
+  return [
+    ...memberships,
+    ...memberships.flatMap(({ organization: manager }) =>
+      entries.filter(
+        ({ through }) =>
+          through.kind === "managing-organization" && through.organization.id === manager.id,
+      ),
+    ),
+  ];
+}
 
 const INVITATION_COLUMNS: readonly SurfaceTableColumn[] = [
   { label: "Organization", align: "start" },
@@ -286,7 +322,13 @@ const INVITATION_COLUMNS: readonly SurfaceTableColumn[] = [
   { label: "Actions", align: "end" },
 ];
 
-function CreateOrganizationForm({ error }: { error: string | null }) {
+function CreateOrganizationForm({
+  error,
+  onCancel,
+}: {
+  error: string | null;
+  onCancel: (() => void) | null;
+}) {
   const navigation = useNavigation();
   const [name, setName] = useState("");
   const creating = navigation.state !== "idle" && navigation.formMethod === "POST";
@@ -321,14 +363,16 @@ function CreateOrganizationForm({ error }: { error: string | null }) {
               />
             </Field>
           </div>
-          <Button
-            variant="accent"
-            type="submit"
-            disabled={!name.trim() || creating}
-            className="self-start"
-          >
-            {creating ? "Creating…" : "Create organization"}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="accent" type="submit" disabled={!name.trim() || creating}>
+              {creating ? "Creating…" : "Create organization"}
+            </Button>
+            {onCancel ? (
+              <Button variant="secondary" type="button" onClick={onCancel} disabled={creating}>
+                Cancel
+              </Button>
+            ) : null}
+          </div>
           <Notice notice={error ? { type: "error", message: error } : null} />
         </Form>
       </SurfacePanelBody>

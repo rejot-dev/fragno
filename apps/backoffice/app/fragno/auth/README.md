@@ -192,6 +192,14 @@ changing roles, removing members, and the rename form. So someone acting through
 the organization's members but cannot change its membership, and can rename it only with
 `org.update`.
 
+Both sides can see the relationship. An organization's Overview has a "Who can act here" panel,
+showing its member count, the organization managing it, and how many it manages. A managing
+organization also gets a Clients tab. Both read `getOrganizationRelations`, which lists clients only
+to the managing organization's own members, since management reaches one organization deep.
+`admin.org.get` reports the manager too. Managers see one notice on the organization's settings
+pages instead of forms they cannot use. In a member's personal workspace, a banner names whose
+workspace it is and the organization that grants access to it.
+
 `app/layouts/backoffice-managed-organizations.scenario.test.ts` drives an agency through managing a
 customer and ending it.
 

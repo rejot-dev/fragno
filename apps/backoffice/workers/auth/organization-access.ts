@@ -1,5 +1,9 @@
 import type { Kysely } from "kysely";
 
+import type {
+  ManagedOrganizationRecord,
+  OrganizationRelations,
+} from "@/backoffice-runtime/object-registry";
 import {
   type AdministeredMember,
   administersMembers,
@@ -7,6 +11,7 @@ import {
 } from "@/fragno/auth/contracts";
 
 import type { AuthDatabase } from "../auth.do";
+import { toDate } from "./stored-date";
 
 /**
  * How a person acts in an organization: as one of its members, or as a member of the organization
@@ -158,13 +163,94 @@ export async function findAdministeredMember(
       ),
     )
     .innerJoin("user", "user.id", "administered.userId")
-    .select(["administrator.role", "user.id", "user.email"])
+    .select([
+      "administrator.role",
+      "administrator.organizationId as administratorOrganizationId",
+      "organization.id as organizationId",
+      "organization.name as organizationName",
+      "organization.slug as organizationSlug",
+      "user.id",
+      "user.name",
+      "user.email",
+    ])
     .where("administrator.userId", "=", input.administratorId)
     .where("administered.userId", "=", input.memberId)
+    .orderBy("organization.createdAt")
+    .orderBy("organization.id")
     .execute();
   // Managing caps owners at admin, which still administers members.
-  const administered = administrations.find(({ role }) =>
+  const administering = administrations.filter(({ role }) =>
     administersMembers(splitOrganizationRoles(role)),
   );
-  return administered ? { userId: administered.id, email: administered.email } : null;
+  // An organization both belong to names the relationship better than one reached by managing it.
+  const administered =
+    administering.find(
+      ({ administratorOrganizationId, organizationId }) =>
+        administratorOrganizationId === organizationId,
+    ) ?? administering[0];
+  return administered
+    ? {
+        userId: administered.id,
+        name: administered.name,
+        email: administered.email,
+        organization: {
+          id: administered.organizationId,
+          name: administered.organizationName,
+          slug: administered.organizationSlug,
+        },
+      }
+    : null;
+}
+
+/**
+ * Three reads keyed by the organization, run together: its member count, the organization managing
+ * it, and the organizations it manages with their member counts, ordered by name.
+ */
+export async function readOrganizationRelations(
+  database: Kysely<AuthDatabase>,
+  organizationId: string,
+): Promise<OrganizationRelations> {
+  const [members, managing, managed] = await Promise.all([
+    database
+      .selectFrom("member")
+      .select((eb) => eb.fn.countAll<number>().as("count"))
+      .where("organizationId", "=", organizationId)
+      .executeTakeFirstOrThrow(),
+    database
+      .selectFrom("organization")
+      .innerJoin("organization as managing", "managing.id", "organization.managingOrganizationId")
+      .select(["managing.id", "managing.name", "managing.slug"])
+      .where("organization.id", "=", organizationId)
+      .executeTakeFirst(),
+    database
+      .selectFrom("organization")
+      .leftJoin("member", "member.organizationId", "organization.id")
+      .select((eb) => [
+        "organization.id",
+        "organization.name",
+        "organization.slug",
+        "organization.createdAt",
+        eb.fn.count<number>("member.id").as("memberCount"),
+      ])
+      .where("organization.managingOrganizationId", "=", organizationId)
+      .groupBy("organization.id")
+      .orderBy("organization.name")
+      .orderBy("organization.id")
+      .execute(),
+  ]);
+  return {
+    memberCount: members.count,
+    managingOrganization: managing
+      ? { organizationId: managing.id, name: managing.name, slug: managing.slug }
+      : null,
+    managedOrganizations: managed.map(
+      (organization): ManagedOrganizationRecord => ({
+        organizationId: organization.id,
+        name: organization.name,
+        slug: organization.slug,
+        createdAt: toDate(organization.createdAt).toISOString(),
+        memberCount: organization.memberCount,
+      }),
+    ),
+  };
 }
