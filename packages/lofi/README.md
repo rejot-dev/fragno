@@ -673,11 +673,12 @@ every registered source schema and of every local schema that a projection witho
 Changing any of them opens a fresh database, which replays the outbox from the start. Local schemas
 written only by rebuildable projections are left out, because the replica rebuilds those in place.
 
-Replay applies each historical entry to today's tables: a column takes the value an entry gives it
-under its current name, and NULL otherwise. A source schema change that renames a column, or adds
-one with a default, therefore leaves the rows written before it without those values, although the
-backend's migration filled them in. Only adding nullable columns and tables replays to the backend's
-state; see the risks below.
+Replay applies each historical entry to today's tables, so an entry written before a column existed
+does not mention it. Columns with a fixed default (`defaultTo("open")`) have that default in the
+replica's tables too, which such rows get, as the backend's migration gave them. Defaults computed
+by application code (`defaultTo$`) leave those rows NULL, as on the backend, and a backend that adds
+a column defaulting to the database's `now()` gives them the migration's time, which the outbox does
+not carry, so the replica has NULL. Renamed columns are not replayed; see the risks below.
 
 A page that knows the backend's identity, for example from its server, can pass it as
 `adapterIdentity`. The replica then refuses to open on a backend that reports another one, such as a
@@ -1049,10 +1050,10 @@ only to the tab that shows it.
 - **Tabs on other code.** Tabs whose schemas have the same versions share a leader even if they run
   different versions of lofi, whose messages could differ, or of a rebuildable projection, whose
   rows are then the leader's version.
-- **Replay assumes today's columns.** A fresh database replays historical entries against the
-  current schema, so renamed columns and columns added with a default are NULL in rows written
-  before the change. Replaying correctly needs the schema history, or a snapshot of the backend's
-  current rows to start from.
+- **Replay assumes today's column names.** A fresh database replays historical entries against the
+  current schema, so a renamed column is NULL in rows written before the rename, and a column added
+  later with a `now()` default is NULL where the backend has its migration's time. Replaying those
+  needs the schema history, or a snapshot of the backend's current rows to start from.
 - **A view that fails to build stays failed.** Only refreshes recover; a read that throws when its
   view is first built, for example because the replica has not caught up yet, fails until the page
   asks for the view again.

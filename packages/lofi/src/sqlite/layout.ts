@@ -3,12 +3,13 @@ import { getTableForeignKey, type AnyColumn, type AnyTable } from "@fragno-dev/d
 
 import { normalizeLofiSchemaName } from "../local/projection";
 import type { LofiSchemaRegistration } from "../types";
+import { encodeSqliteValue, type SqliteValue } from "./values";
 
 /**
  * Bump when the physical layout changes. Replicas are named by this version, so a bump opens a
  * fresh database and replays the outbox instead of migrating.
  */
-export const LOFI_SQLITE_LAYOUT_VERSION = 2;
+export const LOFI_SQLITE_LAYOUT_VERSION = 3;
 
 /** Physical table of one registered Fragno table. */
 export type SqliteTableLayout = {
@@ -100,8 +101,40 @@ const COLUMN_DEFINITIONS: Record<AnyColumn["role"], (column: AnyColumn) => strin
   "external-id": () => "TEXT NOT NULL UNIQUE",
   version: () => "INTEGER NOT NULL DEFAULT 0",
   reference: () => "INTEGER",
-  regular: sqliteStorageType,
+  regular: (column) => `${sqliteStorageType(column)}${defaultClause(column)}`,
 };
+
+/**
+ * A regular column's fixed default, as the backend's migration declares it. Creates that leave the
+ * column out get it, as rows did on the backend: an outbox entry written before the column existed
+ * does not mention it. Defaults computed by the database or by application code have no fixed
+ * value; the backend gives rows from before such a column NULL, or the migration's time, which the
+ * outbox does not carry.
+ */
+function defaultClause(column: AnyColumn): string {
+  const fixed = column.default;
+  if (!fixed || !("value" in fixed) || fixed.value === undefined) {
+    return "";
+  }
+  const literal = sqliteLiteral(encodeSqliteValue(column, fixed.value));
+  return literal === null ? "" : ` DEFAULT ${literal}`;
+}
+
+function sqliteLiteral(value: SqliteValue): string | null {
+  if (value === null) {
+    return null;
+  }
+  if (typeof value === "string") {
+    return `'${value.replaceAll("'", "''")}'`;
+  }
+  if (value instanceof Uint8Array) {
+    return `X'${Array.from(value, (byte) => byte.toString(16).padStart(2, "0")).join("")}'`;
+  }
+  if (typeof value === "number" && !Number.isFinite(value)) {
+    return null;
+  }
+  return String(value);
+}
 
 function columnDefinition(column: AnyColumn): string {
   return COLUMN_DEFINITIONS[column.role](column);
