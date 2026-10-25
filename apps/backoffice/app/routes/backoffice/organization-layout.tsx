@@ -25,7 +25,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 
   return {
     organization: entry.organization,
-    member: entry.member,
+    membership: entry,
     me,
   };
 }
@@ -44,7 +44,7 @@ export default function BackofficeOrganizationLayout({
   loaderData,
   matches,
 }: Route.ComponentProps) {
-  const { organization, member, me } = loaderData;
+  const { organization, membership, me } = loaderData;
 
   let activeTab: OrganizationTab = "overview";
   const currentPath = (matches[matches.length - 1]?.pathname || "").replace(/\/+$/, "");
@@ -60,9 +60,13 @@ export default function BackofficeOrganizationLayout({
   return (
     <div className="flex flex-1 flex-col">
       <h1 className="sr-only">Organization {organization.name || organization.id}</h1>
-      <OrganizationTabs orgSlug={organization.slug} activeTab={activeTab} />
+      <OrganizationTabs
+        orgSlug={organization.slug}
+        activeTab={activeTab}
+        managed={membership.through.kind === "managing-organization"}
+      />
       <div className={organizationPageBodyClassName}>
-        <Outlet context={{ organization, member, me }} />
+        <Outlet context={{ organization, membership, me }} />
       </div>
     </div>
   );
@@ -70,6 +74,6 @@ export default function BackofficeOrganizationLayout({
 
 export type OrganizationLayoutContext = {
   organization: Route.ComponentProps["loaderData"]["organization"];
-  member: Route.ComponentProps["loaderData"]["member"];
+  membership: Route.ComponentProps["loaderData"]["membership"];
   me: NonNullable<Route.ComponentProps["loaderData"]["me"]>;
 };

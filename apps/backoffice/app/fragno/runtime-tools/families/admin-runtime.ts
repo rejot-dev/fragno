@@ -53,6 +53,7 @@ type AdminAuthCommands = Pick<
   | "listOrganizationMembers"
   | "addAdminOrganizationMember"
   | "removeAdminOrganizationMember"
+  | "setOrganizationManager"
 >;
 
 type AdminOtpCommands = Pick<OtpObject, "issueSignUpInvitation">;
@@ -210,6 +211,14 @@ export function createAdminRuntime({
       await auth.removeAdminOrganizationMember({
         ...input,
         organizationId: await requireAdminOrganizationId(auth, organizationSlug),
+      }),
+    setOrganizationManager: async ({ organizationSlug, managingOrganizationSlug }) =>
+      await auth.setOrganizationManager({
+        organizationId: await requireAdminOrganizationId(auth, organizationSlug),
+        managingOrganizationId:
+          managingOrganizationSlug === null
+            ? null
+            : await requireAdminOrganizationId(auth, managingOrganizationSlug),
       }),
   };
 }

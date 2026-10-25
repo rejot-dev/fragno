@@ -171,6 +171,30 @@ whether the user administers an organization that user belongs to, and the reque
 authority carries the answer. Requests in the user's own scopes never ask, and leaving the
 organization ends access on the next request.
 
+## Managed organizations
+
+An organization can have one managing organization, such as an automation agency managing a
+customer. The managing organization's members act in it with their role there, owners as admins: in
+its workspace and projects and, as admins, in its members' personal workspaces. This is access, not
+membership. They are not listed among its members and do not become its owners. The access does not
+chain, and the organization's own members gain nothing in the managing organization.
+
+A system administrator sets it with `admin.org.manager.set --org <client> --manager <agency>` and
+ends it with `admin.org.manager.clear --org <client>`. Every membership question Auth answers for
+authority counts it: credential selection, `me`, the live facts deferred work and organization roles
+resolve from, and the personal workspaces a user administers
+(`workers/auth/organization-access.ts`). Pages follow `me`, so ending management or leaving the
+managing organization takes the organization away on the next page. Credentials already issued in it
+stay valid until they expire, as after leaving any organization.
+
+Better Auth's organization endpoints only serve an organization's own members. They handle inviting,
+changing roles, removing members, and the rename form. So someone acting through management can read
+the organization's members but cannot change its membership, and can rename it only with
+`org.update`.
+
+`app/layouts/backoffice-managed-organizations.scenario.test.ts` drives an agency through managing a
+customer and ending it.
+
 ## Versioned HTTP API
 
 `/api/v0/…` (`app/backoffice-api/backoffice-api-router.ts`) serves the `@fragno-dev/backoffice-api`

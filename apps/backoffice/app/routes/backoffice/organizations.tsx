@@ -148,7 +148,7 @@ export default function BackofficeOrganizations({ actionData }: Route.ComponentP
             />
           ) : (
             <SurfaceTable columns={ORGANIZATION_COLUMNS}>
-              {sortedOrganizations.map(({ organization, member }) => (
+              {sortedOrganizations.map(({ organization, roles, through }) => (
                 <SurfaceTableRow
                   key={organization.id}
                   columns={ORGANIZATION_COLUMNS}
@@ -165,7 +165,14 @@ export default function BackofficeOrganizations({ actionData }: Route.ComponentP
                         {organization.slug}
                       </span>
                     </Link>,
-                    formatRoles(member.roles),
+                    <span key="roles" className="block">
+                      <span className="block">{formatRoles(roles)}</span>
+                      {through.kind === "managing-organization" ? (
+                        <span className="block text-[11px]">
+                          Managed by {through.organization.name}
+                        </span>
+                      ) : null}
+                    </span>,
                     organization.id === me.activeOrganizationId ? (
                       <BackofficeStatusLight key="status" tone="live">
                         Active

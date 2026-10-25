@@ -3,7 +3,7 @@ import { sql, type Kysely } from "kysely";
 import betterAuthSchemaSql from "./migrations/better-auth.sql?raw";
 
 /** Current application-owned Better Auth schema version stored by the Auth Durable Object. */
-export const BACKOFFICE_BETTER_AUTH_SCHEMA_VERSION = "better-auth-v2";
+export const BACKOFFICE_BETTER_AUTH_SCHEMA_VERSION = "better-auth-v3";
 
 function readBetterAuthGeneratedMigrationStatements(migrationSql: string): string[] {
   const trimmedMigration = migrationSql.trim();
@@ -18,26 +18,40 @@ function readBetterAuthGeneratedMigrationStatements(migrationSql: string): strin
     .map((statement) => statement.trim());
 }
 
-/** Applies the committed Better Auth SQL schema to a fresh database. */
+/** v3 lets an organization be managed by another; the committed SQL creates it for new databases. */
+async function addManagingOrganization<Database>(database: Kysely<Database>): Promise<void> {
+  await sql`
+    ALTER TABLE "organization"
+    ADD COLUMN "managingOrganizationId" text REFERENCES "organization" ("id") ON DELETE SET NULL
+  `.execute(database);
+  await sql`
+    CREATE INDEX "organization_managingOrganizationId_idx"
+    ON "organization" ("managingOrganizationId")
+  `.execute(database);
+}
+
+/** Applies the committed Better Auth SQL schema to a fresh database, or upgrades an older one. */
 export async function applyBackofficeBetterAuthSchemaMigrations<Database>(
   database: Kysely<Database>,
   installedVersion: string | null,
 ): Promise<void> {
-  if (installedVersion === BACKOFFICE_BETTER_AUTH_SCHEMA_VERSION) {
-    return;
-  }
-  // v2 adds the password-reset outbox trigger, installed by installBetterAuthDurableHooks
-  // in the same migration transaction. The Better Auth tables themselves are unchanged.
-  if (installedVersion === "better-auth-v1") {
-    return;
-  }
-  if (installedVersion !== null) {
-    throw new Error(
-      `Backoffice Better Auth schema version '${installedVersion}' has no migration path.`,
-    );
-  }
-
-  for (const statement of readBetterAuthGeneratedMigrationStatements(betterAuthSchemaSql)) {
-    await sql.raw(statement).execute(database);
+  switch (installedVersion) {
+    case BACKOFFICE_BETTER_AUTH_SCHEMA_VERSION:
+      return;
+    // v2 added the password-reset outbox trigger, installed by installBetterAuthDurableHooks in
+    // the same migration transaction, so v1 tables are v2 tables.
+    case "better-auth-v1":
+    case "better-auth-v2":
+      await addManagingOrganization(database);
+      return;
+    case null:
+      for (const statement of readBetterAuthGeneratedMigrationStatements(betterAuthSchemaSql)) {
+        await sql.raw(statement).execute(database);
+      }
+      return;
+    default:
+      throw new Error(
+        `Backoffice Better Auth schema version '${installedVersion}' has no migration path.`,
+      );
   }
 }

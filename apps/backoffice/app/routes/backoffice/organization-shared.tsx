@@ -26,12 +26,18 @@ export function Notice({ notice }: { notice: ActionNotice }) {
   );
 }
 
+/**
+ * Better Auth lets only an organization's own members invite to it, so someone who acts in it
+ * through the organization that manages it has no invites to manage.
+ */
 export function OrganizationTabs({
   orgSlug,
   activeTab,
+  managed,
 }: {
   orgSlug: string;
   activeTab: OrganizationTab | null;
+  managed: boolean;
 }) {
   const basePath = `/backoffice/organizations/${encodeURIComponent(orgSlug)}`;
   const tabs = [
@@ -43,7 +49,9 @@ export function OrganizationTabs({
 
   return (
     <BackofficeTabHeader
-      items={tabs.map((tab) => ({ ...tab, active: tab.id === activeTab }))}
+      items={tabs
+        .filter((tab) => !managed || tab.id !== "invites")
+        .map((tab) => ({ ...tab, active: tab.id === activeTab }))}
       ariaLabel="Organization management tabs"
       trailing={null}
       options={null}
@@ -74,7 +82,10 @@ export function OrganizationErrorBoundary({
   return (
     <div className="flex flex-1 flex-col">
       <h1 className="sr-only">Organization unavailable</h1>
-      {params.orgSlug ? <OrganizationTabs orgSlug={params.orgSlug} activeTab={null} /> : null}
+      {/* Without the loader's data, the error does not say how the user reaches the organization. */}
+      {params.orgSlug ? (
+        <OrganizationTabs orgSlug={params.orgSlug} activeTab={null} managed={false} />
+      ) : null}
       <div className={organizationPageBodyClassName}>
         <BackofficeSystemState
           tone="error"

@@ -32,17 +32,7 @@ function createOrganization(id: string, slug: string, name: string): Organizatio
 }
 
 function createMembership(organization: Organization): OrganizationMembership {
-  return {
-    organization,
-    member: {
-      id: `member-${organization.id}`,
-      organizationId: organization.id,
-      userId: "user-1",
-      roles: ["member"],
-      createdAt: new Date("2026-09-01T00:00:00.000Z"),
-      updatedAt: new Date("2026-09-01T00:00:00.000Z"),
-    },
-  };
+  return { organization, roles: ["member"], through: { kind: "membership" } };
 }
 
 const activeOrganization = createMembership(createOrganization("org-1", "acme", "Acme"));

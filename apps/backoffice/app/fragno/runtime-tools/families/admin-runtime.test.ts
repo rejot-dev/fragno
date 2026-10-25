@@ -48,6 +48,9 @@ function createAdminRuntimeDependencies() {
         userId: "user-1",
         roles: ["member"],
       }),
+      setOrganizationManager: async () => {
+        throw new Error("Organization management is not configured in this fixture.");
+      },
     },
     otp: {
       issueSignUpInvitation: vi.fn(async (input) => ({

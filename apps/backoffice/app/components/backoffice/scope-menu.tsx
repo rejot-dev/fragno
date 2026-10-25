@@ -159,7 +159,7 @@ export function BackofficeScopeMenu({
   const triggerLabel = currentScopeLabel(currentScope, me, administeredMember);
   // Members are listed, paginated, on each organization's members page rather than here.
   const administeredOrganizations = me.organizations
-    .filter(({ member }) => administersMembers(member.roles))
+    .filter(({ roles }) => administersMembers(roles))
     .map(({ organization }) => organization);
 
   return (

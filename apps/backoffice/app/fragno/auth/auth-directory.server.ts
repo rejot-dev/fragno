@@ -1,16 +1,14 @@
-import type { User } from "better-auth";
 import type { UserWithRole } from "better-auth/plugins/admin";
-import type { Invitation, Member } from "better-auth/plugins/organization";
+import type { Invitation } from "better-auth/plugins/organization";
 import type { RouterContextProvider } from "react-router";
 import { z } from "zod";
 
+import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
+
 import { callBetterAuth, requireBackofficeMe } from "./auth-server";
+import type { OrganizationMembership } from "./contracts";
 
 // Cast the authoritative SDK endpoint responses at acquisition, not in UI consumers.
-type Members = {
-  members: Array<Member & { user: Pick<User, "id" | "name" | "email" | "image"> }>;
-  total: number;
-};
 type Invitations = Invitation[];
 type Users = { users: UserWithRole[]; total: number };
 
@@ -31,48 +29,50 @@ function directoryPage(request: Request): number {
   return parsed.data;
 }
 
-async function organizationIdForDirectory(
+async function membershipForDirectory(
   { request, context }: DirectoryRequest,
   slug: string,
-): Promise<string> {
+): Promise<OrganizationMembership> {
   const me = await requireBackofficeMe(request, context);
-  const organization = me.organizations.find(
-    (entry) => entry.organization.slug === slug,
-  )?.organization;
-  if (!organization) {
+  const membership = me.organizations.find((entry) => entry.organization.slug === slug);
+  if (!membership) {
     throw new Response("Organization not found.", { status: 404 });
   }
-  return organization.id;
+  return membership;
 }
 
+/**
+ * The members page reads members from Auth rather than Better Auth, which lists them only to the
+ * organization's own members and not to those acting through the organization that manages it.
+ */
 export async function loadOrganizationMembers(input: DirectoryRequest, slug: string) {
-  const organizationId = await organizationIdForDirectory(input, slug);
+  const membership = await membershipForDirectory(input, slug);
   const page = directoryPage(input.request);
-  const limit = 25;
-  const query = new URLSearchParams({
-    organizationId,
-    limit: String(limit),
-    offset: String((page - 1) * limit),
-  });
-  const response = await callBetterAuth(
-    input.request,
-    input.context,
-    `/organization/list-members?${query}`,
-  );
-  if (!response.ok) {
-    throw response;
-  }
-  const result = (await response.json()) as Members;
+  const pageSize = 25;
+  const result = await input.context
+    .get(BackofficeWorkerContext)
+    .runtime.objects.auth.singleton()
+    .commands.listOrganizationMembersByPage({
+      organizationId: membership.organization.id,
+      page,
+      pageSize,
+    });
   return {
-    members: result.members.map((member) => ({ ...member, roles: member.role.split(",") })),
+    members: result.members.map((member) => ({
+      id: member.memberId,
+      userId: member.userId,
+      roles: member.roles,
+      createdAt: member.joinedAt,
+      user: { name: member.name, email: member.email },
+    })),
     page,
     total: result.total,
-    totalPages: Math.max(1, Math.ceil(result.total / limit)),
+    totalPages: Math.max(1, Math.ceil(result.total / pageSize)),
   };
 }
 
 export async function loadOrganizationInvitations(input: DirectoryRequest, slug: string) {
-  const organizationId = await organizationIdForDirectory(input, slug);
+  const organizationId = (await membershipForDirectory(input, slug)).organization.id;
   const response = await callBetterAuth(
     input.request,
     input.context,

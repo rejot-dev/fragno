@@ -13,6 +13,22 @@ export const organizationPageSchema = z
   .meta({ id: "OrganizationPage" });
 export type OrganizationPage = z.output<typeof organizationPageSchema>;
 
+/**
+ * One numbered page of an organization's members for Backoffice's members page, with the Better Auth
+ * member IDs its actions change membership by.
+ */
+export type OrganizationMemberNumberedPage = {
+  members: Array<{
+    memberId: string;
+    userId: string;
+    name: string;
+    email: string;
+    roles: string[];
+    joinedAt: Date;
+  }>;
+  total: number;
+};
+
 export const organizationInvitationPageSchema = z
   .strictObject({
     invitations: z.array(organizationInvitationRecordSchema),

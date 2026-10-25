@@ -41,15 +41,6 @@ export type Organization = {
   deletedAt?: Date | null;
 };
 
-export type OrganizationMember = {
-  id: string;
-  organizationId: string;
-  userId: string;
-  roles: string[];
-  createdAt: Date;
-  updatedAt: Date;
-};
-
 export type OrganizationInvitation = {
   id: string;
   organizationId: string;
@@ -61,9 +52,19 @@ export type OrganizationInvitation = {
   createdAt: Date;
 };
 
+/**
+ * An organization the user acts in, with their roles there: as one of its members, or as a member
+ * of the organization that manages it, which grants access but not membership.
+ */
 export type OrganizationMembership = {
   organization: Organization;
-  member: OrganizationMember;
+  roles: string[];
+  through:
+    | { kind: "membership" }
+    | {
+        kind: "managing-organization";
+        organization: Pick<Organization, "id" | "name" | "slug">;
+      };
 };
 
 export type BackofficeMeData = {
@@ -124,19 +125,17 @@ const organizationSchema = z.object({
   deletedAt: z.coerce.date().nullable().optional(),
 }) satisfies z.ZodType<Organization>;
 
-const organizationMemberSchema = z.object({
-  id: z.string(),
-  organizationId: z.string(),
-  userId: z.string(),
-  roles: z.array(z.string()),
-  createdAt: z.coerce.date(),
-  updatedAt: z.coerce.date(),
-}) satisfies z.ZodType<OrganizationMember>;
-
 const organizationMembershipSchema = z.object({
   organization: organizationSchema,
-  member: organizationMemberSchema,
-});
+  roles: z.array(z.string()),
+  through: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("membership") }),
+    z.object({
+      kind: z.literal("managing-organization"),
+      organization: z.object({ id: z.string(), name: z.string(), slug: z.string() }),
+    }),
+  ]),
+}) satisfies z.ZodType<OrganizationMembership>;
 
 export const backofficeMeDataSchema = z.object({
   user: authUserSchema,

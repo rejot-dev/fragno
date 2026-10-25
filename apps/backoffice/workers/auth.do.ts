@@ -43,6 +43,7 @@ import type {
   AdminUserEmailVerificationRecord,
   AuthObject,
   GrantBackofficeAdminResult,
+  OrganizationManagerRecord,
   ScenarioAuthFixture,
 } from "@/backoffice-runtime/object-registry";
 import {
@@ -58,7 +59,6 @@ import type {
 } from "@/fragno/auth/app-provisioning";
 import {
   type AdministeredMember,
-  administersMembers,
   type AuthHookContext,
   type AuthUser,
   type BackofficeCliOAuthConfig,
@@ -68,7 +68,6 @@ import {
   type OrganizationHookPayload,
   type OrganizationHooks,
   type OrganizationInvitation,
-  type OrganizationMember,
   type Role,
   resolveLiveAccessTokenSecret,
   splitOrganizationRoles,
@@ -81,7 +80,11 @@ import {
   type VerifyUserEmailResult,
   CLIENT_IP_HEADER,
 } from "@/fragno/auth/contracts";
-import type { OrganizationInvitationPage, OrganizationPage } from "@/fragno/auth/directory-records";
+import type {
+  OrganizationInvitationPage,
+  OrganizationMemberNumberedPage,
+  OrganizationPage,
+} from "@/fragno/auth/directory-records";
 import {
   backofficeExecutionTokenExchangeInputSchema,
   type BackofficeExecutionTokenExchangeInput,
@@ -167,14 +170,19 @@ import {
 import { createBackofficeSignUpInvitationPlugin } from "./auth/better-auth-sign-up-invitation";
 import {
   readAccountInvitations,
-  readAccountOrganizations,
   readAccountProfile,
   readOrganization,
   readOrganizationInvitationPage,
+  readOrganizationMemberNumberedPage,
   readOrganizationMemberPage,
   readOrganizationMembership,
   readOrganizationPage,
 } from "./auth/directory-queries";
+import {
+  findAdministeredMember,
+  findOrganizationAccess,
+  listAccessibleOrganizations,
+} from "./auth/organization-access";
 import {
   completeBetterAuthDurableHook,
   deleteBetterAuthDurableHooksForFixture,
@@ -235,6 +243,7 @@ export type AuthDatabase = BetterAuthDurableHooksDatabase & {
     logo: string | null;
     metadata: string | Record<string, unknown> | null;
     createdBy: string;
+    managingOrganizationId: string | null;
     createdAt: StoredDate;
     updatedAt: StoredDate | null;
   };
@@ -431,15 +440,6 @@ function deserializeBetterAuthDurableHook(row: BetterAuthDurableHookRow): Stored
     },
   };
 }
-
-const toOrganizationMember = (member: StoreMember): OrganizationMember => ({
-  id: member.id,
-  organizationId: member.organizationId,
-  userId: member.userId,
-  roles: splitOrganizationRoles(member.role),
-  createdAt: toDate(member.createdAt),
-  updatedAt: toDate(member.createdAt),
-});
 
 const buildOrganizationPayload = (organization: Organization) => ({
   organization: {
@@ -642,29 +642,6 @@ const findStoreUserByEmail = async (
     where: [{ field: "email", value: userEmail.trim().toLowerCase() }],
   });
 
-async function findAdministeredMember(
-  database: Kysely<AuthDatabase>,
-  input: { administratorId: string; memberId: string },
-): Promise<AdministeredMember | null> {
-  // Joining reads only the organizations both users share, however many each belongs to.
-  const sharedMemberships = await database
-    .selectFrom("member as administrator")
-    .innerJoin(
-      "member as administered",
-      "administered.organizationId",
-      "administrator.organizationId",
-    )
-    .innerJoin("user", "user.id", "administered.userId")
-    .select(["administrator.role", "user.id", "user.email"])
-    .where("administrator.userId", "=", input.administratorId)
-    .where("administered.userId", "=", input.memberId)
-    .execute();
-  const administered = sharedMemberships.find(({ role }) =>
-    administersMembers(splitOrganizationRoles(role)),
-  );
-  return administered ? { userId: administered.id, email: administered.email } : null;
-}
-
 async function resolveBackofficeUserTokenGrant(
   adapter: BetterAuthAdapter,
   database: Kysely<AuthDatabase>,
@@ -720,15 +697,8 @@ async function resolveBackofficeUserTokenGrant(
     };
   }
 
-  const memberships = await adapter.findMany<StoreMember>({
-    model: "member",
-    where: [{ field: "userId", value: storedUser.id }],
-  });
-  memberships.sort((left, right) => {
-    const createdAtDifference =
-      toDate(left.createdAt).getTime() - toDate(right.createdAt).getTime();
-    return createdAtDifference || left.id.localeCompare(right.id);
-  });
+  // An organization's own members list theirs first, so a user's default is one they belong to.
+  const memberships = await listAccessibleOrganizations(database, storedUser.id);
 
   const requestedOrganizationId = input.scope
     ? (backofficeScopeOrganization(input.scope)?.orgId ?? null)
@@ -751,7 +721,7 @@ async function resolveBackofficeUserTokenGrant(
   }
 
   const requestedMembership = requestedOrganizationId
-    ? memberships.find((membership) => membership.organizationId === requestedOrganizationId)
+    ? memberships.find(({ organization }) => organization.id === requestedOrganizationId)
     : null;
   if (
     requestedOrganizationId &&
@@ -767,16 +737,7 @@ async function resolveBackofficeUserTokenGrant(
   const selectedScope: BackofficeContextScope =
     requestedMembership && input.scope
       ? input.scope
-      : { kind: "org", orgId: selectedMembership.organizationId };
-  const selectedOrganization = await adapter.findOne<StoreOrganization>({
-    model: "organization",
-    where: [{ field: "id", value: selectedMembership.organizationId }],
-  });
-  if (!selectedOrganization) {
-    throw new Error(
-      `Stored organization membership '${selectedMembership.id}' references missing organization '${selectedMembership.organizationId}'.`,
-    );
-  }
+      : { kind: "org", orgId: selectedMembership.organization.id };
 
   return {
     userId: storedUser.id,
@@ -784,15 +745,16 @@ async function resolveBackofficeUserTokenGrant(
     globalRole,
     scope: selectedScope,
     organization: {
-      id: selectedOrganization.id,
-      slug: selectedOrganization.slug,
-      roles: splitOrganizationRoles(selectedMembership.role),
+      id: selectedMembership.organization.id,
+      slug: selectedMembership.organization.slug,
+      roles: selectedMembership.roles,
     },
   };
 }
 
 const buildBackofficeMe = async (
   adapter: BetterAuthAdapter,
+  database: Kysely<AuthDatabase>,
   input: { userId: string; activeOrganizationId: string | null },
 ): Promise<BackofficeMeData | null> => {
   const storedUser = await findStoreUser(adapter, input.userId);
@@ -800,25 +762,23 @@ const buildBackofficeMe = async (
     return null;
   }
 
-  const memberships = await adapter.findMany<StoreMember>({
-    model: "member",
-    where: [{ field: "userId", value: input.userId }],
-  });
-  const organizations = await adapter.findMany<StoreOrganization>({
-    model: "organization",
-    where: memberships.length
-      ? [{ field: "id", value: memberships.map((member) => member.organizationId), operator: "in" }]
-      : [{ field: "id", value: "__none__" }],
-  });
-  const organizationById = new Map(
-    organizations.map((organization) => [organization.id, organization]),
+  const mappedOrganizations = (await listAccessibleOrganizations(database, input.userId)).map(
+    ({ organization, roles, through }) => ({
+      organization: toOrganization(organization),
+      roles,
+      through:
+        through.kind === "membership"
+          ? through
+          : {
+              kind: "managing-organization" as const,
+              organization: {
+                id: through.organization.id,
+                name: through.organization.name,
+                slug: through.organization.slug,
+              },
+            },
+    }),
   );
-  const mappedOrganizations = memberships.flatMap((member) => {
-    const organization = organizationById.get(member.organizationId);
-    return organization
-      ? [{ organization: toOrganization(organization), member: toOrganizationMember(member) }]
-      : [];
-  });
 
   return {
     user: toAuthUser(storedUser),
@@ -1425,7 +1385,7 @@ export class InMemoryAuthObject implements AuthObject {
     activeOrganizationId: string | null;
   }): Promise<BackofficeMeData | null> {
     const { adapter } = await this.#authContext();
-    return await buildBackofficeMe(adapter, input);
+    return await buildBackofficeMe(adapter, this.#database, input);
   }
 
   /** Creates Auth-owned credentials; the caller identity comes from the authorized runtime tool. */
@@ -2302,8 +2262,18 @@ export class InMemoryAuthObject implements AuthObject {
   async listAccountOrganizations(input: {
     userId: string;
   }): Promise<OrganizationMembershipRecord[]> {
-    const { adapter } = await this.#authContext();
-    return await readAccountOrganizations(adapter, input.userId);
+    await this.#ready;
+    return (await listAccessibleOrganizations(this.#database, input.userId)).map(
+      ({ organization, roles }) => ({
+        organization: {
+          organizationId: organization.id,
+          name: organization.name,
+          slug: organization.slug,
+          createdAt: toDate(organization.createdAt).toISOString(),
+        },
+        roles,
+      }),
+    );
   }
 
   async listAccountInvitations(input: { userId: string }): Promise<AccountInvitationListing> {
@@ -2366,7 +2336,11 @@ export class InMemoryAuthObject implements AuthObject {
     userId: string;
   }): Promise<OrganizationMembershipRecord | null> {
     const { adapter } = await this.#authContext();
-    return await readOrganizationMembership(adapter, input);
+    const [organization, access] = await Promise.all([
+      readOrganization(adapter, input.organizationId),
+      findOrganizationAccess(this.#database, input),
+    ]);
+    return organization && access ? { organization, roles: access.roles } : null;
   }
 
   async updateOrganization(input: {
@@ -2386,6 +2360,25 @@ export class InMemoryAuthObject implements AuthObject {
     return organization;
   }
 
+  async setOrganizationManager(input: {
+    organizationId: string;
+    managingOrganizationId: string | null;
+  }): Promise<OrganizationManagerRecord> {
+    if (input.managingOrganizationId === input.organizationId) {
+      throw new Error(`Organization '${input.organizationId}' cannot manage itself.`);
+    }
+    const { adapter } = await this.#authContext();
+    await adapter.update<StoreOrganization>({
+      model: "organization",
+      where: [{ field: "id", value: input.organizationId }],
+      update: { managingOrganizationId: input.managingOrganizationId },
+    });
+    return {
+      organizationId: input.organizationId,
+      managingOrganizationId: input.managingOrganizationId,
+    };
+  }
+
   async listOrganizations(input: DirectoryPageInput): Promise<OrganizationPage> {
     const { adapter } = await this.#authContext();
     return await readOrganizationPage(adapter, input);
@@ -2397,6 +2390,15 @@ export class InMemoryAuthObject implements AuthObject {
   }: { organizationId: string } & DirectoryPageInput): Promise<OrganizationMemberPage> {
     const { adapter } = await this.#authContext();
     return await readOrganizationMemberPage(adapter, { organizationId, page });
+  }
+
+  async listOrganizationMembersByPage(input: {
+    organizationId: string;
+    page: number;
+    pageSize: number;
+  }): Promise<OrganizationMemberNumberedPage> {
+    const { adapter } = await this.#authContext();
+    return await readOrganizationMemberNumberedPage(adapter, input);
   }
 
   async listOrganizationInvitations({
@@ -2439,15 +2441,10 @@ export class InMemoryAuthObject implements AuthObject {
       return { active: false, role: null, organizationMember: false };
     }
     const organizationMember = input.organizationId
-      ? Boolean(
-          await adapter.findOne({
-            model: "member",
-            where: [
-              { field: "organizationId", value: input.organizationId },
-              { field: "userId", value: input.userId },
-            ],
-          }),
-        )
+      ? (await findOrganizationAccess(this.#database, {
+          userId: input.userId,
+          organizationId: input.organizationId,
+        })) !== null
       : false;
     return {
       active: !normalizeBoolean(user.banned),
@@ -2469,20 +2466,14 @@ export class InMemoryAuthObject implements AuthObject {
   ): Promise<UserOrganizationAuthorityFacts> {
     const { userId, organizationId } = userOrganizationAuthorityInputSchema.parse(input);
     const { adapter } = await this.#authContext();
-    const [user, member] = await Promise.all([
+    const [user, access] = await Promise.all([
       findStoreUser(adapter, userId),
-      adapter.findOne<StoreMember>({
-        model: "member",
-        where: [
-          { field: "organizationId", value: organizationId },
-          { field: "userId", value: userId },
-        ],
-      }),
+      findOrganizationAccess(this.#database, { userId, organizationId }),
     ]);
     return {
       active: Boolean(user && !normalizeBoolean(user.banned)),
       role: user ? normalizeRole(user.role) : null,
-      organizationRoles: member ? splitOrganizationRoles(member.role) : null,
+      organizationRoles: access?.roles ?? null,
     };
   }
 
@@ -2921,12 +2912,27 @@ export class Auth extends DurableObject<CloudflareEnv> implements AuthObject {
     return await this.#object.updateOrganization(input);
   }
 
+  async setOrganizationManager(input: {
+    organizationId: string;
+    managingOrganizationId: string | null;
+  }) {
+    return await this.#object.setOrganizationManager(input);
+  }
+
   async listOrganizations(input: DirectoryPageInput) {
     return await this.#object.listOrganizations(input);
   }
 
   async listOrganizationMembers(input: { organizationId: string } & DirectoryPageInput) {
     return await this.#object.listOrganizationMembers(input);
+  }
+
+  async listOrganizationMembersByPage(input: {
+    organizationId: string;
+    page: number;
+    pageSize: number;
+  }) {
+    return await this.#object.listOrganizationMembersByPage(input);
   }
 
   async listOrganizationInvitations(input: { organizationId: string } & DirectoryPageInput) {

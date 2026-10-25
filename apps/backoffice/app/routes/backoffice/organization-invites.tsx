@@ -103,9 +103,10 @@ export function meta() {
 
 export default function BackofficeOrganizationInvites() {
   const posthog = usePostHog();
-  const { organization, member, me } = useOutletContext<OrganizationLayoutContext>();
+  const { organization, membership, me } = useOutletContext<OrganizationLayoutContext>();
   const canManageMembers =
-    me.user.role === "admin" || member.roles.some((role) => role === "owner" || role === "admin");
+    me.user.role === "admin" ||
+    membership.roles.some((role) => role === "owner" || role === "admin");
 
   const [origin, setOrigin] = useState("");
   const invitationsData = useLoaderData<typeof loader>();

@@ -28,6 +28,15 @@ export function createBackofficeBetterAuthSchemaPlugins(input: {
       organization: {
         additionalFields: {
           createdBy: { type: "string", required: true, input: false },
+          // The organization whose members act in this one, as its admins at most; null when
+          // only its own members do. One hop: what this organization manages, they do not reach.
+          managingOrganizationId: {
+            type: "string",
+            required: false,
+            input: false,
+            references: { model: "organization", field: "id", onDelete: "set null" },
+            index: true,
+          },
         },
       },
     },

@@ -21,9 +21,29 @@ Backoffice gains one relationship between scopes, not three concepts: "operator"
 others and is managed by none. A solo bookkeeper works through an organization of one, which can
 grow into a team without moving its clients.
 
-This is a proposal; the relationship is not implemented. Two pieces it builds on are:
-`organizations.provisionForInvitee` (Linear BO-8) creates an organization for an owner who has not
-signed in yet, and Bookkeeping's operators are the members of an operator organization.
+Two pieces it builds on are: `organizations.provisionForInvitee` (Linear BO-8) creates an
+organization for an owner who has not signed in yet, and Bookkeeping's operators are the members of
+an operator organization.
+
+## Status
+
+The relationship and access through it exist inside Backoffice, for automation agencies managing
+their customers (see [Managed organizations](../app/fragno/auth/README.md#managed-organizations)).
+This version differs from the proposal below:
+
+- `organization.managingOrganizationId` replaces `managedBy`. It has no role ceiling: owners act as
+  admins and everyone else keeps their role.
+- A system administrator sets and ends it (`admin.org.manager.set`, `admin.org.manager.clear`). It
+  is not fixed at provisioning.
+- Its admins also act in O's members' personal workspaces, and like O's own members, everyone
+  reaching O can read its app workspaces.
+- Membership changes in O stay with O's own members, because Better Auth's organization endpoints
+  serve only members. `invitations.create` and the members page's actions refuse managers.
+- Credentials record no `via`. They are live through `me` and deferred authority, and an issued
+  credential lasts until it expires, as after leaving an organization.
+
+Everything for first-party apps is still open: managed provisioning, `managed.list`, `org.get`'s
+`managedBy`/`access`, ownerless managed organizations, and Bookkeeping's and MI's migrations.
 
 ## Motivation
 
