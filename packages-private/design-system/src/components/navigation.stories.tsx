@@ -5,6 +5,10 @@ import type { NavigationItem } from "./navigation-item";
 
 export default { title: "Navigation/Main navigation" };
 
+const secondaryItems: NavigationItem[] = [
+  { label: "Settings", to: "/settings", icon: "settings", active: false },
+];
+
 const items: NavigationItem[] = [
   { label: "Automations", to: "/automations", icon: "share-2", active: true },
   { label: "Sessions", to: "/sessions", icon: "message-square", active: false },
@@ -19,6 +23,7 @@ export function Sidebar() {
     <div className="flex h-[32rem] border border-[color:var(--bo-border)]">
       <SidebarNavigation
         items={items}
+        secondaryItems={secondaryItems}
         ariaLabel="Backoffice"
         collapsed={collapsed}
         onCollapsedChange={setCollapsed}
@@ -34,6 +39,7 @@ export function SidebarCollapsed() {
     <div className="flex h-[32rem] border border-[color:var(--bo-border)]">
       <SidebarNavigation
         items={items}
+        secondaryItems={secondaryItems}
         ariaLabel="Backoffice"
         collapsed={collapsed}
         onCollapsedChange={setCollapsed}
