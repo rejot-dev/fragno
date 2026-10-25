@@ -1,4 +1,4 @@
-// pi tools
+// Agents: define, prompt, stop, and read conversations. Read to work with an agent, including your own definition.
 type PiCodemodeProvider = {
   /** List the built-in agents and the agents defined in the current scope. */
   listAgents(input: PiListAgentsInput): Promise<PiListAgentsOutput>;

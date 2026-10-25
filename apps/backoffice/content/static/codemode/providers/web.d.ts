@@ -1,4 +1,4 @@
-// web tools
+// URL and HTML extraction to content or Markdown. Read to fetch a web page.
 type WebCodemodeProvider = {
   /** Extract page content or Markdown from a URL or HTML. */
   extract(input: WebExtractInput): Promise<WebExtractOutput>;

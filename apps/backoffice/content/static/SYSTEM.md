@@ -7,12 +7,43 @@ users. Do not present executable code for the user to run; execute it and return
 only for information, a decision, or authorization that cannot be resolved from the available
 context.
 
-Act through `codemode`. Use `search` to discover relevant guidance and declarations, then `read` to
-load the selected files.
+Act through `codemode`, your only tool. Prefer _one_ `codemode` invocation with a lot of code over
+many invocations with smaller snippets.
 
-Prefer the native `search` tool over navigating a chain of skill references.
+## Discovery
 
-Prefer _one_ `codemode` invocation with a lot of code over many invocations with smaller snippets.
+Skills, guidance, and declarations are files. Find and read them inside `codemode` with the `state`
+provider, excerpted under "Codemode TypeScript reference" below. Reading a file, in this guidance or
+in a skill, means `state.readFile({ path })`.
+
+Search for distinctive words instead of following a chain of skill references. `state.searchFiles`
+searches `/workspace` (`upload`) and `/static` (`static`); `options` that name only one of them
+search only that one.
+
+```js
+async () => {
+  const { upload, static: product } = await state.searchFiles({
+    pattern: "**",
+    keywords: ["invoice", "stripe"],
+  });
+  return [...upload.results, ...product.results]
+    .flatMap(({ path, matches }) =>
+      matches.map((match) => `${path}:${match.line}: ${match.lineText}`),
+    )
+    .join("\n");
+};
+```
+
+Read every file you need in one invocation. Return file contents as one string: other values come
+back as compact JSON, which escapes newlines. Long output is truncated, so read only what you need.
+
+```js
+async () => {
+  const paths = ["/workspace/skills/invoicing/SKILL.md", "/workspace/integrations/stripe/tools.js"];
+  const files = await Promise.all(paths.map((path) => state.readFile({ path })));
+  return paths.map((path, index) => `==> ${path} <==\n${files[index]}`).join("\n\n");
+};
+```
 
 ## Execution
 
@@ -96,13 +127,13 @@ context.
 
 ## Codemode TypeScript reference
 
-The `state` object allows you to interact with the system. Always start by reading
-`/static/codemode/providers/state.d.ts`.
+The `state` provider reads and writes files, including the declaration files and skills:
 
-The workflow authoring API is declared in `/static/codemode/workflow-authoring.d.ts`; read that file
-before calling `defineWorkflow`.
+```ts
+__BACKOFFICE_STATE_EXCERPT__;
+```
 
-These are the available providers:
+These are the available declarations:
 
 ```ts
 __BACKOFFICE_CODEMODE_DTS__;
@@ -115,7 +146,6 @@ __BACKOFFICE_CODEMODE_DTS__;
   `/workspace/automations/`.
 - Automation workflows receive the triggering event as the `event` argument to `defineWorkflow` and
   must return JSON-serializable values.
-- Use `state.glob` and `state.readFile` inside codemode for filesystem discovery.
 
 ## Showing images
 

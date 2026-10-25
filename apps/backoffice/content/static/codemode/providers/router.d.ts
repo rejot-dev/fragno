@@ -1,4 +1,4 @@
-// router tools
+// Automation routes: event or schedule triggers that start or signal workflows, forward events, or notify agents. Read to automate anything later or recurring.
 type RouterCodemodeProvider = {
   /** List database-backed automation routing rules. */
   list(): Promise<RouterListOutput>;

@@ -210,19 +210,8 @@ test("durable Pi runs a workspace agent with its instructions, scoped skills, Ba
       expect(system).toContain("/workspace/skills/durable/SKILL.md");
       expect(system).toContain("/static/skills/");
       expect(system).toContain("/static/codemode/");
-      expect(
-        context.messages
-          .filter((message) => message.role === "system")
-          .flatMap((message) => message.toolsAdded ?? [])
-          .map((tool) => tool.name),
-      ).toEqual(expect.arrayContaining(["read", "search", "codemode"]));
       return fauxAssistantMessage(
         [
-          fauxToolCall("read", { path: "/workspace/durable-notes.txt", offset: 2, limit: 1 }),
-          fauxToolCall("search", {
-            keywords: ["Durable marker"],
-            glob: "/workspace/durable-notes.txt",
-          }),
           fauxToolCall("codemode", {
             code: `async () => {
           await state.writeFile({ path: "/workspace/durable-result.txt", content: "executed through Backoffice" });
@@ -242,12 +231,11 @@ test("durable Pi runs a workspace agent with its instructions, scoped skills, Ba
         { stopReason: "toolUse" },
       );
     }
-    expect(results).toHaveLength(3);
+    expect(results).toHaveLength(1);
     assert(
       results.every((result) => !result.isError),
       JSON.stringify(results),
     );
-    expect(JSON.stringify(results)).toContain("Durable marker");
     expect(results.find((result) => result.toolName === "codemode")?.details).toMatchObject({
       result: {
         first: "queued",
@@ -266,11 +254,6 @@ test("durable Pi runs a workspace agent with its instructions, scoped skills, Ba
       piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
       setup: ({ given }) => [
         given.organization.exists({ id: "org-1" }),
-        given.codemode.writeFile({
-          orgId: "org-1",
-          path: "/workspace/durable-notes.txt",
-          content: "first line\nDurable marker\nlast line",
-        }),
         given.codemode.writeFile({
           orgId: "org-1",
           path: "/workspace/skills/durable/SKILL.md",
@@ -329,7 +312,9 @@ test("agents and users read another agent's messages and export its whole conver
             [
               fauxThinking("The notes are in the workspace."),
               fauxText("Checking the notes."),
-              fauxToolCall("read", { path: "/workspace/notes.txt" }),
+              fauxToolCall("codemode", {
+                code: `async () => await state.readFile({ path: "/workspace/notes.txt" })`,
+              }),
             ],
             { stopReason: "toolUse" },
           )
@@ -442,7 +427,7 @@ test("agents and users read another agent's messages and export its whole conver
           expect(ids).toEqual([...ids].sort((a, b) => a - b));
           const lines = JSON.stringify(entries);
           expect(lines).toContain("The notes are in the workspace.");
-          expect(lines).toContain('"toolName":"read"');
+          expect(lines).toContain('"toolName":"codemode"');
           expect(lines.indexOf("What do the notes say?")).toBeLessThan(
             lines.indexOf("The notes say: Durable marker."),
           );
@@ -537,27 +522,37 @@ test("durable Pi lists Marketplace-installed skills and finds them by any keywor
       ).toContain(skillPath);
       return fauxAssistantMessage(
         [
-          fauxToolCall("search", {
+          fauxToolCall("codemode", {
+            code: `async () => {
+          const lines = (page) =>
+            [...page.upload.results, ...page.static.results].flatMap(({ path, matches }) =>
+              matches.map((match) => path + ":" + match.line + ": " + match.lineText),
+            );
+          const found = await state.searchFiles({
+            pattern: "/workspace/**",
             keywords: ["Slack integration", "createConnection"],
-            glob: "/workspace/**",
+          });
+          const missing = await state.searchFiles({ pattern: "**", keywords: ["no-such-keyword"] });
+          return { found: lines(found), hasMore: found.upload.hasMore, missing: lines(missing) };
+        }`,
           }),
-          fauxToolCall("search", { keywords: ["no-such-keyword"] }),
         ],
         { stopReason: "toolUse" },
       );
     },
     (context) => {
-      const [found, missing] = context.messages.flatMap((message) =>
-        message.role === "toolResult" && message.toolName === "search"
-          ? [message.content.map((part) => (part.type === "text" ? part.text : "")).join("")]
-          : [],
-      );
-      expect(found).toContain(`${skillPath}\n`);
-      expect(found).toContain("Connect the Slack integration");
-      expect(found).toContain("await api.createConnection");
-      expect(found).not.toContain("noise.md");
-      expect(found).not.toContain("cursor");
-      expect(missing).toBe('No matches for "no-such-keyword" in **.');
+      const result = toolResults(context).at(-1);
+      assert.equal(result?.isError, false, JSON.stringify(result));
+      expect(result?.details).toMatchObject({
+        result: {
+          found: [
+            `${skillPath}:6: Connect the Slack integration with a bot token.`,
+            `${skillPath}:7: await api.createConnection({ slug: "slack" });`,
+          ],
+          hasMore: false,
+          missing: [],
+        },
+      });
       return fauxAssistantMessage("Search finished.");
     },
   ]);
@@ -1387,7 +1382,11 @@ test("durable Pi restores scoped tools and reports interrupted codemode without 
                     "Tool codemode was interrupted and may have partially run",
                   );
                   return fauxAssistantMessage(
-                    [fauxToolCall("read", { path: "/workspace/codemode-effects.txt" })],
+                    [
+                      fauxToolCall("codemode", {
+                        code: `async () => await state.readFile({ path: "/workspace/codemode-effects.txt" })`,
+                      }),
+                    ],
                     { stopReason: "toolUse" },
                   );
                 },

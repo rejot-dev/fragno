@@ -1,4 +1,4 @@
-// otp tools
+// Identity-claim links for external senders. Read to let an external user link their account.
 type OtpCodemodeProvider = {
   /** Create a short-lived identity claim URL for the trusted external initiator. */
   createIdentityClaim(input: OtpCreateIdentityClaimInput): Promise<OtpCreateIdentityClaimOutput>;

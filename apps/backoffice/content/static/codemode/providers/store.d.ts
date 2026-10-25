@@ -1,4 +1,4 @@
-// store tools
+// Scope-owned key/value store. Read to keep small values across runs.
 type StoreCodemodeProvider = {
   /** Get an automation store entry by key. */
   get(input: StoreGetInput): Promise<StoreGetOutput>;

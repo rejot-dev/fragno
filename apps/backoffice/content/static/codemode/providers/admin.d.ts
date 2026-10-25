@@ -1,4 +1,4 @@
-// admin tools
+// System administration: organizations, sign-ups, app registrations, OAuth clients, Marketplace features. Read in System scope.
 type AdminCodemodeProvider = {
   /** Create an email-bound link that authorizes one Backoffice account sign-up and email it to the invitee. */
   signupInvitationsCreate(

@@ -229,10 +229,12 @@ const groupReferencesByNamespace = (references: readonly RuntimeToolReference[])
 
 const renderCodemodeProviderSection = ({
   namespace,
+  summary,
   references,
   renderedSharedTypeDeclarations,
 }: {
   namespace: string;
+  summary: string;
   references: readonly RuntimeToolReference[];
   renderedSharedTypeDeclarations?: Set<string>;
 }) => {
@@ -281,7 +283,7 @@ const renderCodemodeProviderSection = ({
   const providerTypeName = `${pascalCase(namespace)}CodemodeProvider`;
 
   return [
-    `// ${namespace} tools`,
+    `// ${summary}`,
     `type ${providerTypeName} = {`,
     ...methods,
     `};`,
@@ -293,11 +295,13 @@ const renderCodemodeProviderSection = ({
 
 export const renderCodemodeProviderNamespaceTypes = ({
   namespace,
+  summary,
   references,
 }: {
   namespace: string;
+  summary: string;
   references: readonly RuntimeToolReference[];
-}) => renderCodemodeProviderSection({ namespace, references });
+}) => renderCodemodeProviderSection({ namespace, summary, references });
 
 export const renderCodemodeScopedContextTypes = (namespaces: readonly string[]) => {
   const scopedProviderEntries = namespaces.map(
@@ -337,6 +341,7 @@ function renderCodemodeProviderSections(references: readonly RuntimeToolReferenc
   const providerSections = [...byNamespace.entries()].map(([namespace, namespaceReferences]) =>
     renderCodemodeProviderSection({
       namespace,
+      summary: `${namespace} tools`,
       references: namespaceReferences,
       renderedSharedTypeDeclarations,
     }),

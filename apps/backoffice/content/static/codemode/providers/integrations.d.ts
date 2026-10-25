@@ -1,4 +1,4 @@
-// integrations tools
+// External service connections: set up, inspect, run actions, generate typed clients. Read for any third-party service.
 type IntegrationsCodemodeProvider = {
   /** Discover available services and unconfigured services in the selected scope. Service availability does not prove live health. */
   discover(): Promise<IntegrationsDiscoverOutput>;

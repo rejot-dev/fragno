@@ -1,4 +1,4 @@
-// hooks tools
+// Durable hook queues. Read to debug stuck or retrying background delivery.
 type HooksCodemodeProvider = {
   /** List hook scopes usable with hooks.list --fragment. */
   scopesList(): Promise<HooksScopesListOutput>;

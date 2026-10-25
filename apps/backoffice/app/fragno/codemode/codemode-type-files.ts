@@ -1,9 +1,11 @@
 import { generatePageSchemaDeclarations } from "@/artifacts/pages/declarations-generation";
 import { generateBackofficeUiCatalogDeclarations } from "@/backoffice-ui/component-reference-generation";
+import { codemodeStateToolFamily } from "@/fragno/runtime-tools/codemode-state-runtime";
 import {
   createRuntimeToolReferences,
   renderCodemodeProviderNamespaceTypes,
   renderCodemodeScopedContextTypes,
+  toRuntimeToolReference,
   type RuntimeToolReference,
 } from "@/fragno/runtime-tools/reference";
 import type { BackofficeRuntimeToolFamily } from "@/fragno/runtime-tools/runtime-tools";
@@ -16,6 +18,71 @@ const CODEMODE_UI_CATALOG_DTS_PATH = `${CODEMODE_TYPES_DIR_PATH}/ui-catalog.d.ts
 const CODEMODE_PAGE_DTS_PATH = `${CODEMODE_TYPES_DIR_PATH}/page.d.ts`;
 const CODEMODE_PAGE_SCHEMA_DTS_PATH = `${CODEMODE_TYPES_DIR_PATH}/page-schema.d.ts`;
 const CODEMODE_PROVIDER_TYPES_DIR_PATH = `${CODEMODE_TYPES_DIR_PATH}/providers`;
+
+/**
+ * Agents see these lines, not the files, until they read a file: like a skill description, each says
+ * what its file declares, then when to read it. One per authored file and per visible provider.
+ */
+const CODEMODE_AUTHORED_REFERENCES = [
+  {
+    path: CODEMODE_WORKFLOW_AUTHORING_DTS_PATH,
+    summary:
+      "Workflow authoring: defineWorkflow, steps, sleeps, and waits. Read before defining a workflow.",
+  },
+  {
+    path: CODEMODE_UI_DTS_PATH,
+    summary: "Interface builder for generated UIs. Read before returning a ui.",
+  },
+  {
+    path: CODEMODE_PAGE_DTS_PATH,
+    summary: "Page builder: live queries bound to a ui. Read before writing a .page.js page.",
+  },
+];
+const CODEMODE_PROVIDER_SUMMARIES: Record<string, string> = {
+  state:
+    "Files in /workspace and /static. Read for file work beyond searching, reading, and writing.",
+  account:
+    "Your own account: profile, organizations, invitations, authorized apps. Read when the user asks about themselves.",
+  admin:
+    "System administration: organizations, sign-ups, app registrations, OAuth clients, Marketplace features. Read in System scope.",
+  org: "Current organization: name, members, invitations. Read to rename it, list members, or invite someone.",
+  apps: "Installed apps: review, install, grants, action approval, uninstall. Read to install or manage an app.",
+  capabilities:
+    "Backoffice capabilities and whether each is configured. Read to check that a service is set up.",
+  hooks: "Durable hook queues. Read to debug stuck or retrying background delivery.",
+  integrations:
+    "External service connections: set up, inspect, run actions, generate typed clients. Read for any third-party service.",
+  store: "Scope-owned key/value store. Read to keep small values across runs.",
+  identity: "External identities bound to users. Read when a workflow acts for an external sender.",
+  router:
+    "Automation routes: event or schedule triggers that start or signal workflows, forward events, or notify agents. Read to automate anything later or recurring.",
+  workflow:
+    "Workflow instances: start saved workflows, check status and history, send events, retry steps. Read to run or follow a workflow.",
+  events:
+    "Automation events: catalog, stored events and the routes they matched, firing, retries. Read to see what can trigger automations or why one did not act.",
+  forms: "Schema-backed forms and their submissions. Read to create a form or read responses.",
+  cloudflare:
+    "Cloudflare Browser Run: screenshots, PDFs, crawls. Read to capture or crawl a page in a real browser.",
+  web: "URL and HTML extraction to content or Markdown. Read to fetch a web page.",
+  models:
+    "Classifiers for typed questions about data and images, and image generation. Read to classify or generate images.",
+  otp: "Identity-claim links for external senders. Read to let an external user link their account.",
+  pi: "Agents: define, prompt, stop, and read conversations. Read to work with an agent, including your own definition.",
+  projects: "Projects in an organization or personal scope. Read to create or list projects.",
+  reson8: "Reson8 speech-to-text. Read to transcribe audio.",
+  sandbox: "Cloudflare sandboxes with a real shell. Read when work needs command-line tools.",
+  js: "Saved JavaScript: check, run, build modules, and inspect codemode runs. Read to save, run, or debug a script file.",
+  artifacts: "Page builds and their errors. Read to verify a page after writing it.",
+  upload:
+    "Prepared uploads, sandbox file URLs, and upload storage. Read to handle an uploaded file or move files to a sandbox.",
+  marketplace:
+    "Marketplace packages: search, inspect, publish, feature. Read to find or publish a package.",
+  packages:
+    "Package installs into the workspace. Read to install a Marketplace package or list installed ones.",
+};
+
+// Discovery itself runs through these, so the agent has them before it has read anything.
+const STATE_EXCERPT_TOOL_NAMES = ["readFile", "glob", "searchFiles", "writeFile"];
 
 const VALID_DECLARE_CONST_NAME = /^[A-Za-z_$][\w$]*$/u;
 const VALID_PROVIDER_FILE_NAME = /^[A-Za-z0-9_$-]+$/u;
@@ -32,11 +99,21 @@ function typePathForNamespace(directory: string, namespace: string) {
   return `${directory}/${namespace}.d.ts`;
 }
 
-function renderReference(path: string) {
+function renderReference({ path, summary }: { path: string; summary: string }) {
   if (!path.startsWith(`${CODEMODE_TYPES_DIR_PATH}/`)) {
     throw new Error(`Codemode reference must live under ${CODEMODE_TYPES_DIR_PATH}: ${path}`);
   }
-  return `/// <reference path="${path}" />`;
+  return `// ${summary}\n/// <reference path="${path}" />`;
+}
+
+function providerSummary(namespace: string) {
+  const summary = CODEMODE_PROVIDER_SUMMARIES[namespace];
+  if (summary === undefined) {
+    throw new Error(
+      `Codemode provider '${namespace}' needs a summary in CODEMODE_PROVIDER_SUMMARIES.`,
+    );
+  }
+  return summary;
 }
 
 function renderDtsContent(...sections: string[]) {
@@ -50,7 +127,12 @@ function renderCodemodeSystemTypes({
   references: string;
   scopedContext: string;
 }) {
-  return [references, "", scopedContext].join("\n");
+  return [
+    "// Codemode globals. Each reference says when to read its declarations.",
+    references,
+    "",
+    scopedContext,
+  ].join("\n");
 }
 
 function getCodemodeRuntimeToolReferences(families: readonly BackofficeRuntimeToolFamily[]) {
@@ -90,30 +172,35 @@ export function createCodemodeStaticTypeFiles({
   const runtimeReferencesByNamespace = groupReferencesByNamespace(
     getCodemodeRuntimeToolReferences(families),
   );
-  const providerFiles = [...runtimeReferencesByNamespace.entries()].map(
+  const staleSummaries = Object.keys(CODEMODE_PROVIDER_SUMMARIES).filter(
+    (namespace) => !runtimeReferencesByNamespace.has(namespace),
+  );
+  if (staleSummaries.length > 0) {
+    throw new Error(`Codemode summaries name unknown providers: ${staleSummaries.join(", ")}.`);
+  }
+  const providers = [...runtimeReferencesByNamespace.entries()].map(
     ([namespace, namespaceReferences]) => ({
+      namespace,
       path: typePathForNamespace(CODEMODE_PROVIDER_TYPES_DIR_PATH, namespace),
-      content: renderDtsContent(
-        renderCodemodeProviderNamespaceTypes({
-          namespace,
-          references: namespaceReferences,
-        }),
-      ),
+      summary: providerSummary(namespace),
+      references: namespaceReferences,
     }),
   );
-  const referencePaths = [
-    CODEMODE_WORKFLOW_AUTHORING_DTS_PATH,
-    CODEMODE_UI_DTS_PATH,
-    CODEMODE_PAGE_DTS_PATH,
-    ...providerFiles.map((file) => file.path),
-  ];
+  const providerFiles = providers.map(({ namespace, path, summary, references }) => ({
+    path,
+    content: renderDtsContent(
+      renderCodemodeProviderNamespaceTypes({ namespace, summary, references }),
+    ),
+  }));
 
   return [
     {
       path: CODEMODE_SYSTEM_DTS_PATH,
       content: renderDtsContent(
         renderCodemodeSystemTypes({
-          references: referencePaths.map(renderReference).join("\n"),
+          references: [...CODEMODE_AUTHORED_REFERENCES, ...providers]
+            .map(renderReference)
+            .join("\n"),
           scopedContext: renderCodemodeScopedContextTypes([...runtimeReferencesByNamespace.keys()]),
         }),
       ),
@@ -141,4 +228,23 @@ export function createCodemodeTypeFiles({
       { path: CODEMODE_PAGE_DTS_PATH, content: authoredTypes.page },
     ].map(({ path, content }) => ({ path, content: renderDtsContent(content.trimEnd()) })),
   ];
+}
+
+/**
+ * The state methods discovery needs, for the system prompt. A file would also be a declaration that
+ * js.check loads beside the full state.d.ts, so the excerpt is rendered where it is used.
+ */
+export function renderCodemodeStateExcerpt() {
+  const references = STATE_EXCERPT_TOOL_NAMES.map((name) => {
+    const tool = codemodeStateToolFamily.tools.find((candidate) => candidate.name === name);
+    if (!tool) {
+      throw new Error(`The state excerpt names an unknown state tool: ${name}.`);
+    }
+    return toRuntimeToolReference(tool);
+  });
+  return renderCodemodeProviderNamespaceTypes({
+    namespace: "state",
+    summary: `Excerpt of ${typePathForNamespace(CODEMODE_PROVIDER_TYPES_DIR_PATH, "state")}: finding, reading, and writing files. Read that file for the rest.`,
+    references,
+  });
 }

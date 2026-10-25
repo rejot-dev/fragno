@@ -1,4 +1,4 @@
-// events tools
+// Automation events: catalog, stored events and the routes they matched, firing, retries. Read to see what can trigger automations or why one did not act.
 type EventsCodemodeProvider = {
   /** Fire an automation event for the current context or a selected target scope. Sources starting with `app:` belong to installed apps, and only an app's own credential emits them. */
   fire(input: EventsFireInput): Promise<EventsFireOutput>;

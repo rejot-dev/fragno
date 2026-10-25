@@ -1,4 +1,4 @@
-// forms tools
+// Schema-backed forms and their submissions. Read to create a form or read responses.
 type FormsCodemodeProvider = {
   /** List forms stored in the global system Forms integration. */
   listForms(): Promise<FormsListFormsOutput>;

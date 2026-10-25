@@ -1,4 +1,4 @@
-// apps tools
+// Installed apps: review, install, grants, action approval, uninstall. Read to install or manage an app.
 type AppsCodemodeProvider = {
   /** Review a registered app's requested permissions and declared actions before approving an installation. */
   get(input: AppsGetInput): Promise<AppsGetOutput>;

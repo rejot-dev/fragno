@@ -1,4 +1,4 @@
-// state tools
+// Files in /workspace and /static. Read for file work beyond searching, reading, and writing.
 type StateCodemodeProvider = {
   /** Read a UTF-8 text file from codemode state. */
   readFile(input: StateReadFileInput): Promise<string>;

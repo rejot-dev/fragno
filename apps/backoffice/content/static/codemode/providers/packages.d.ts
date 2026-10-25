@@ -1,4 +1,4 @@
-// packages tools
+// Package installs into the workspace. Read to install a Marketplace package or list installed ones.
 type PackagesCodemodeProvider = {
   /** Start the existing Marketplace installation workflow in the current workspace at a required folder under /workspace. Installs from the public Marketplace, or from the installing organization's Marketplace with organization visibility. Installation is asynchronous. Installing another version at a folder that already holds the item upgrades it in place, replacing and removing files that still match the installed version; it fails without changes if a file it would replace was edited. Omit version to use the existing latest-release resolution. */
   install(input: PackagesInstallInput): Promise<PackagesInstallOutput>;

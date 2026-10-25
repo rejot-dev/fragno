@@ -7,7 +7,8 @@ and every discoverable `SKILL.md`.
 The graph shows:
 
 - references to `/static/...` files and relative Markdown links;
-- `__BACKOFFICE_CODEMODE_DTS__` expanded through `/static/codemode/system.d.ts`;
+- `__BACKOFFICE_STATE_EXCERPT__` expanded through `/static/codemode/providers/state.d.ts`, which it
+  excerpts, and `__BACKOFFICE_CODEMODE_DTS__` through `/static/codemode/system.d.ts`;
 - each skill's frontmatter description, which tells the agent when to load it;
 - recursive follow-up reads, cycles, repeated expansions, and missing targets;
 - files that are not reachable from `SYSTEM.md` or any skill.
@@ -81,7 +82,8 @@ references textually rather than parsing Markdown or TypeScript syntax trees.
 - Every `/SKILL.md` must contain string `name` and `description` YAML frontmatter fields.
 - Markdown summaries use the first level-one heading.
 - TypeScript declaration summaries use the first non-triple-slash line comment.
-- `SYSTEM.md` receives a synthetic expansion edge to `/static/codemode/system.d.ts` when it contains
+- `SYSTEM.md` receives a synthetic expansion edge to `/static/codemode/providers/state.d.ts` when it
+  contains `__BACKOFFICE_STATE_EXCERPT__`, and to `/static/codemode/system.d.ts` when it contains
   `__BACKOFFICE_CODEMODE_DTS__`.
 
 Bare relative paths, reference-style Markdown links, glob paths, and instructions without a concrete

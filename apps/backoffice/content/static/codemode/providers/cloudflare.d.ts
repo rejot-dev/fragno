@@ -1,4 +1,4 @@
-// cloudflare tools
+// Cloudflare Browser Run: screenshots, PDFs, crawls. Read to capture or crawl a page in a real browser.
 type CloudflareCodemodeProvider = {
   /** Capture a page as a PDF or screenshot with Cloudflare Browser Run. */
   browserRunCapture(

@@ -34,7 +34,7 @@ describe("Backoffice static context overview", () => {
     await writeFixtureFile(
       root,
       "SYSTEM.md",
-      "# Test system\n\nRead /static/codemode/providers/state.d.ts.\n\n__BACKOFFICE_CODEMODE_DTS__;\n",
+      "# Test system\n\n__BACKOFFICE_STATE_EXCERPT__;\n\n__BACKOFFICE_CODEMODE_DTS__;\n",
     );
     await writeFixtureFile(
       root,
@@ -68,6 +68,9 @@ describe("Backoffice static context overview", () => {
 
     expect(output).toContain("# Backoffice static agent-context graph");
     expect(output).toContain("## System entry point\n\n```text");
+    expect(output).toContain(
+      "__BACKOFFICE_STATE_EXCERPT__ expands from /static/codemode/providers/state.d.ts",
+    );
     expect(output).toContain(
       "__BACKOFFICE_CODEMODE_DTS__ expands from /static/codemode/system.d.ts",
     );

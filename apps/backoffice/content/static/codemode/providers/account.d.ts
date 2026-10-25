@@ -1,4 +1,4 @@
-// account tools
+// Your own account: profile, organizations, invitations, authorized apps. Read when the user asks about themselves.
 type AccountCodemodeProvider = {
   /** Read your own Backoffice account profile. */
   me(): Promise<AccountMeOutput>;

@@ -1,4 +1,4 @@
-// workflow tools
+// Workflow instances: start saved workflows, check status and history, send events, retry steps. Read to run or follow a workflow.
 type WorkflowCodemodeProvider = {
   /** Start a saved .workflow.js file by path. Inline defineWorkflow declarations start automatically. */
   createInstance(input: WorkflowCreateInstanceInput): Promise<WorkflowCreateInstanceOutput>;

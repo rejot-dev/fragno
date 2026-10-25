@@ -1,4 +1,4 @@
-// org tools
+// Current organization: name, members, invitations. Read to rename it, list members, or invite someone.
 type OrgCodemodeProvider = {
   /** Read the current organization and your roles in it. List every organization you belong to with account.orgs.list. */
   get(): Promise<OrgGetOutput>;
