@@ -26,7 +26,7 @@ import {
   type Organization,
 } from "@/fragno/auth/contracts";
 
-import { administeredMemberName } from "./member-workspace-banner";
+import { administeredMemberName } from "./administered-member-name";
 import { scopeSwitchPath } from "./scope-switch-path";
 
 type ScopeMenuOption = {
@@ -273,14 +273,15 @@ function scopeMenuGroups(
     const scope = { kind: "org" as const, organization };
     return { id: scopeOptionId(scope), label: organization.name, description: null, scope };
   };
+  const organizationsById = new Map(
+    me.organizations.map(({ organization }) => [organization.id, organization]),
+  );
   const clientsByManager = new Map<string, { manager: Organization; clients: Organization[] }>();
   for (const { organization, through } of me.organizations) {
     if (through.kind !== "managing-organization") {
       continue;
     }
-    const manager = me.organizations.find(
-      (entry) => entry.organization.id === through.organization.id,
-    )?.organization;
+    const manager = organizationsById.get(through.organization.id);
     if (!manager) {
       continue;
     }

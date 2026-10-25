@@ -6,10 +6,7 @@ import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scop
 import type { AdministeredMember, BackofficeMeData, Organization } from "@/fragno/auth/contracts";
 import { dashboardPath } from "@/routes/backoffice/dashboard/path";
 
-/** The member's name when they set one, otherwise the address they sign in with. */
-export function administeredMemberName(member: AdministeredMember): string {
-  return member.name.trim() || member.email;
-}
+import { administeredMemberName } from "./administered-member-name";
 
 /**
  * Says whose personal workspace this is and why the user may work in it, on every page of it:
