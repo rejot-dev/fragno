@@ -7,6 +7,7 @@ import {
   collapsiblePanelClassName,
   type ActivityMarker,
 } from "./chat-activity";
+import { Icon } from "./icon";
 
 const timeFormatter = new Intl.DateTimeFormat("en-US", {
   hour: "numeric",
@@ -55,6 +56,57 @@ export function ChatEventDivider({
           {timeFormatter.format(time)}
         </time>
       )}
+    </div>
+  );
+}
+
+/**
+ * Something that happened to what the thread already shows, such as a workflow above finishing:
+ * a divider that brings the reader to it rather than repeating it. Spreads its props so a chat
+ * runtime can render it as a message root.
+ */
+export function ChatEventLink({
+  marker,
+  title,
+  note,
+  time,
+  action,
+  onShow,
+  ...props
+}: Omit<ComponentProps<"div">, "className" | "children" | "title"> & {
+  marker: ActivityMarker;
+  title: string;
+  /** Short context beside the title, such as what it happened to. */
+  note: string | null;
+  time: Date | null;
+  /** What showing it brings the reader to, such as "View result". */
+  action: string;
+  onShow: () => void;
+}) {
+  return (
+    <div {...props} className="bo-chat-enter mb-7 min-w-0">
+      <button
+        type="button"
+        onClick={onShow}
+        className="group/event flex min-h-9 w-full min-w-0 items-center gap-3 text-left text-[10px] text-[var(--bo-muted-2)] outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30"
+      >
+        <span className="h-px w-4 shrink-0 bg-[var(--bo-border)]" />
+        <span className="flex min-w-0 items-center gap-2">
+          <ActivityMarkerDot marker={marker} />
+          <span className="truncate font-medium text-[var(--bo-muted)]">{title}</span>
+          {note === null ? null : <span className="truncate">{note}</span>}
+        </span>
+        <span className="h-px min-w-4 flex-1 bg-[var(--bo-border)]" />
+        {time === null ? null : (
+          <time dateTime={time.toISOString()} className="shrink-0 tabular-nums">
+            {timeFormatter.format(time)}
+          </time>
+        )}
+        <span className="flex shrink-0 items-center gap-1 font-medium text-[var(--bo-muted)] transition-colors duration-150 group-hover/event:text-[var(--bo-fg)]">
+          {action}
+          <Icon name="arrow-up" className="size-3" />
+        </span>
+      </button>
     </div>
   );
 }
