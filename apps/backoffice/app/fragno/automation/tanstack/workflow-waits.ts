@@ -4,6 +4,7 @@ import { createDerivedCollection } from "@/fragno/tanstack/derived-collection";
 import {
   currentWorkflowWaitingEventTypes,
   latestWorkflowRunGeneratedUi,
+  type WorkflowRunStep,
 } from "@/routes/backoffice/automations/script-view/workflow-run-presentation";
 
 import type { AutomationTableCollections } from "./collections";
@@ -34,7 +35,17 @@ type WaitingRun = {
   }[];
 };
 
-function currentWorkflowWaits(runs: readonly WaitingRun[]): WorkflowWaitRecord[] {
+/** What waiting runs wait for, from their output and steps in the order they were created. */
+export function currentWorkflowWaits(
+  runs: readonly {
+    id: string;
+    output: unknown;
+    steps: readonly Pick<
+      WorkflowRunStep,
+      "stepKey" | "parentStepKey" | "type" | "status" | "waitEventType" | "result"
+    >[];
+  }[],
+): WorkflowWaitRecord[] {
   return runs.flatMap((run) => {
     const generatedUi = latestWorkflowRunGeneratedUi({ output: run.output, steps: run.steps });
     const interfaceStepKey = generatedUi?.type === "step" ? generatedUi.step.stepKey : null;

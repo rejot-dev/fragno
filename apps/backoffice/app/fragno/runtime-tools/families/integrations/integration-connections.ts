@@ -65,17 +65,25 @@ export type IntegrationConnectionStateChange = {
   occurredAt: Date;
 };
 
-/** Connection state changes, newest first; events naming no known source are left out. */
+/** The connection state change an event reports, or null; events naming no known source are null. */
+export function readIntegrationConnectionStateChange(
+  event: StoredEvent,
+): IntegrationConnectionStateChange | null {
+  const change = readIntegrationConnectionEvent(event);
+  const kind = change && kindsByNamespace.get(change.connectionId.split("#", 1)[0]);
+  return change && kind
+    ? { ...change, eventId: event.id, kind, occurredAt: event.occurredAt }
+    : null;
+}
+
+/** Connection state changes, newest first. */
 export function integrationConnectionStateChanges(
   events: readonly StoredEvent[],
 ): IntegrationConnectionStateChange[] {
   return events
     .flatMap((event) => {
-      const change = readIntegrationConnectionEvent(event);
-      const kind = change && kindsByNamespace.get(change.connectionId.split("#", 1)[0]);
-      return change && kind
-        ? [{ ...change, eventId: event.id, kind, occurredAt: event.occurredAt }]
-        : [];
+      const change = readIntegrationConnectionStateChange(event);
+      return change ? [change] : [];
     })
     .sort((left, right) => right.occurredAt.getTime() - left.occurredAt.getTime());
 }
@@ -100,36 +108,64 @@ export type IntegrationConnectionRecord = {
 };
 
 /**
- * Each connection's latest state change is its current state, labeled by its latest labeled
- * change: disconnections carry no label, so a removed connection keeps the name it had.
+ * A connection as its changes so far leave it: the state of its latest change, and the label of its
+ * latest labeled change, with when that change happened.
  */
+export type IntegrationConnectionFold = {
+  latest: IntegrationConnectionStateChange;
+  label: IntegrationConnectionLabel | null;
+  labelAt: Date | null;
+};
+
+/**
+ * Applies one change to what the connection's earlier changes left. Disconnections carry no label,
+ * so a removed connection keeps the name it had. Of changes made in the same instant, the first
+ * applied wins.
+ */
+export function applyIntegrationConnectionChange(
+  current: IntegrationConnectionFold | null,
+  change: IntegrationConnectionStateChange,
+): IntegrationConnectionFold {
+  const relabels =
+    change.label !== null && (current?.labelAt == null || change.occurredAt > current.labelAt);
+  return {
+    latest:
+      current === null || change.occurredAt > current.latest.occurredAt ? change : current.latest,
+    label: relabels ? change.label : (current?.label ?? null),
+    labelAt: relabels ? change.occurredAt : (current?.labelAt ?? null),
+  };
+}
+
+export function integrationConnectionRecord({
+  latest,
+  label,
+}: IntegrationConnectionFold): IntegrationConnectionRecord {
+  const name = label?.name ?? null;
+  return {
+    connectionId: latest.connectionId,
+    service: latest.service,
+    kind: latest.kind,
+    state: latest.state,
+    name,
+    authMethod: label?.authMethod ?? null,
+    eventId: latest.eventId,
+    changedAt: latest.occurredAt,
+    displayName: integrationConnectionName({ ...latest, name }),
+    kindLabel: describeIntegrationConnectionKind(latest),
+  };
+}
+
 function currentIntegrationConnections(
   changes: readonly IntegrationConnectionStateChange[],
 ): IntegrationConnectionRecord[] {
-  const latest = new Map<string, IntegrationConnectionStateChange>();
+  const connections = new Map<string, IntegrationConnectionFold>();
   for (const change of changes) {
-    const current = latest.get(change.connectionId);
-    if (!current) {
-      latest.set(change.connectionId, change);
-    } else if (current.label === null && change.label !== null) {
-      latest.set(change.connectionId, { ...current, label: change.label });
-    }
+    connections.set(
+      change.connectionId,
+      applyIntegrationConnectionChange(connections.get(change.connectionId) ?? null, change),
+    );
   }
-  return [...latest.values()].map((change) => {
-    const name = change.label?.name ?? null;
-    return {
-      connectionId: change.connectionId,
-      service: change.service,
-      kind: change.kind,
-      state: change.state,
-      name,
-      authMethod: change.label?.authMethod ?? null,
-      eventId: change.eventId,
-      changedAt: change.occurredAt,
-      displayName: integrationConnectionName({ ...change, name }),
-      kindLabel: describeIntegrationConnectionKind(change),
-    };
-  });
+  return [...connections.values()].map(integrationConnectionRecord);
 }
 
 /** Every connection the scope's integration events report, as it currently stands. */
@@ -141,7 +177,13 @@ export function createIntegrationConnectionsCollection(
       query: (query) => integrationEventsQuery(query, collections),
     }),
     getKey: (connection) => connection.connectionId,
-    derive: (events) => currentIntegrationConnections(integrationConnectionStateChanges(events)),
+    derive: (events) =>
+      currentIntegrationConnections(
+        events.flatMap((event) => {
+          const change = readIntegrationConnectionStateChange(event);
+          return change ? [change] : [];
+        }),
+      ),
   });
 }
 

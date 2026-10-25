@@ -7,6 +7,7 @@ import {
   PI_AUTOMATION_SOURCE,
   readPiAgentEvent,
   type PiAgentActivityKind,
+  type PiAgentEvent,
 } from "@/fragno/backoffice-capabilities/capabilities/pi";
 import { createDerivedCollection } from "@/fragno/tanstack/derived-collection";
 
@@ -56,133 +57,224 @@ export type PiAgentTurnRecord = {
   endedAt: Date;
 };
 
-/** Requests by what their events record of them, and when the agent was last stopped or resumed. */
-type AgentEvents = {
-  latest: { kind: PiAgentActivityKind; at: StoredPiEvent };
-  started: Set<string>;
-  ended: Set<string>;
-  /** Waiting requests, by whether each is a steer. */
-  waiting: Map<string, { steer: boolean }>;
-  /** Requests whose wait ended: dispatched, dropped, or started or ended by Pi. */
-  dequeued: Set<string>;
-  pause: { paused: boolean; at: StoredPiEvent } | null;
-};
+/** When an event happened; changes made in the same instant are ordered by when they were stored. */
+export type PiAgentEventOrder = { occurredAt: Date; createdAt: Date };
 
-/** Changes made in the same instant are ordered by when they were stored. */
-function isLater(event: StoredPiEvent, than: StoredPiEvent | undefined) {
+function isLater(event: PiAgentEventOrder, than: PiAgentEventOrder | null) {
   return (
-    !than ||
+    than === null ||
     event.occurredAt > than.occurredAt ||
     (event.occurredAt.getTime() === than.occurredAt.getTime() && event.createdAt > than.createdAt)
   );
 }
 
 /**
- * The scope's agents: Backoffice's built-in agents, and those whose latest definition event
- * defines them. Events are matched by request ID, not order, so a turn whose start was recorded
- * after its end does not read as running.
+ * What one request's events record of it. Events are matched by request ID, not order, so a turn
+ * whose start was recorded after its end does not read as running.
  */
+export type PiAgentRequestState = {
+  started: boolean;
+  ended: boolean;
+  /** Whether it was queued, and as a steer by its latest queueing. */
+  waiting: boolean;
+  steer: boolean;
+  /** Whether its wait ended: dispatched, dropped, or started or ended by Pi. */
+  dequeued: boolean;
+};
+
+/**
+ * An agent as its events record it: its latest event, definition change, and stop or resume, and
+ * how many of its requests are running, queued, and steering.
+ */
+export type PiAgentState = {
+  latest: PiAgentEventOrder & { kind: PiAgentActivityKind };
+  definition: (PiAgentEventOrder & { definition: PiAgentDefinition | null }) | null;
+  pause: (PiAgentEventOrder & { paused: boolean }) | null;
+  running: number;
+  queued: number;
+  steering: number;
+};
+
+const NO_REQUEST: PiAgentRequestState = {
+  started: false,
+  ended: false,
+  waiting: false,
+  steer: false,
+  dequeued: false,
+};
+
+/** The event's request, for an event about one. */
+export function piAgentEventRequestId(read: PiAgentEvent): string | null {
+  return "requestId" in read ? read.requestId : null;
+}
+
+function requestAfter(request: PiAgentRequestState, read: PiAgentEvent): PiAgentRequestState {
+  switch (read.kind) {
+    case "started":
+      return { ...request, started: true, dequeued: true };
+    case "answered":
+    case "cut-off":
+    case "failed":
+      // A steer its turn's stop cut off before Pi placed it ends without starting.
+      return { ...request, ended: true, dequeued: true };
+    case "queued":
+      return { ...request, waiting: true, steer: read.steer };
+    case "dispatched":
+    case "dropped":
+      return { ...request, dequeued: true };
+    case "created":
+    case "updated":
+    case "deleted":
+    case "stopped":
+    case "resumed":
+      return request;
+  }
+  throw new Error("Unsupported Pi agent event.");
+}
+
+function requestCounts(request: PiAgentRequestState) {
+  const waiting = request.waiting && !request.dequeued;
+  return {
+    running: request.started && !request.ended ? 1 : 0,
+    queued: waiting && !request.steer ? 1 : 0,
+    steering: waiting && request.steer ? 1 : 0,
+  };
+}
+
+/**
+ * Applies one of an agent's events to what its earlier events recorded: to the agent, and for a
+ * request event to that request, which is null until an event names it. Events may come in any
+ * order; later ones by occurrence win.
+ */
+export function applyPiAgentEvent(
+  agent: PiAgentState | null,
+  request: PiAgentRequestState | null,
+  read: PiAgentEvent,
+  order: PiAgentEventOrder,
+): { agent: PiAgentState; request: PiAgentRequestState | null } {
+  const latest = { ...order, kind: read.kind };
+  let next: PiAgentState = agent
+    ? { ...agent, latest: isLater(order, agent.latest) ? latest : agent.latest }
+    : { latest, definition: null, pause: null, running: 0, queued: 0, steering: 0 };
+
+  switch (read.kind) {
+    case "created":
+    case "updated":
+    case "deleted":
+      if (isLater(order, next.definition)) {
+        next = {
+          ...next,
+          definition: { ...order, definition: read.kind === "deleted" ? null : read.definition },
+        };
+      }
+      break;
+    case "stopped":
+    case "resumed":
+      if (isLater(order, next.pause)) {
+        next = { ...next, pause: { ...order, paused: read.kind === "stopped" } };
+      }
+      break;
+    case "started":
+    case "answered":
+    case "cut-off":
+    case "failed":
+    case "queued":
+    case "dispatched":
+    case "dropped":
+      break;
+  }
+
+  if (piAgentEventRequestId(read) === null) {
+    return { agent: next, request };
+  }
+  const before = request ?? NO_REQUEST;
+  const after = requestAfter(before, read);
+  const [counted, uncounted] = [requestCounts(after), requestCounts(before)];
+  return {
+    agent: {
+      ...next,
+      running: next.running + counted.running - uncounted.running,
+      queued: next.queued + counted.queued - uncounted.queued,
+      steering: next.steering + counted.steering - uncounted.steering,
+    },
+    request: after,
+  };
+}
+
+/**
+ * The agent people see: a built-in agent, or one whose latest definition event defines it, which
+ * takes the place of a built-in agent of the same name; null for any other agent.
+ */
+export function piAgentRecord(agentName: string, agent: PiAgentState | null): PiAgentRecord | null {
+  const defined = agent?.definition?.definition ?? null;
+  const definition =
+    defined ??
+    BUILT_IN_PI_AGENT_DEFINITIONS.find((builtIn) => builtIn.agentName === agentName) ??
+    null;
+  if (!definition) {
+    return null;
+  }
+  const latestKind = agent?.latest.kind ?? null;
+  const answering = (agent?.running ?? 0) > 0;
+  const paused = agent?.pause?.paused ?? false;
+  return {
+    agentName,
+    definition,
+    builtIn: defined === null,
+    latestKind,
+    latestAt: agent?.latest.occurredAt ?? null,
+    answering,
+    queued: agent?.queued ?? 0,
+    steering: agent?.steering ?? 0,
+    paused,
+    displayName: formatPiAgentName(agentName),
+    activity:
+      latestKind === null
+        ? "No recorded activity"
+        : answering
+          ? "Answering"
+          : paused
+            ? "Stopped"
+            : activityLabels[latestKind],
+  };
+}
+
+/** The scope's agents: Backoffice's built-in agents, and those their events define. */
 function currentPiAgents(events: readonly StoredPiEvent[]): PiAgentRecord[] {
-  const definitions = new Map<
-    string,
-    { definition: PiAgentDefinition | null; at: StoredPiEvent }
-  >();
-  const records = new Map<string, AgentEvents>();
+  const agents = new Map<string, PiAgentState>();
+  const requests = new Map<string, PiAgentRequestState>();
   for (const event of events) {
     const read = readPiAgentEvent(event);
     if (!read) {
       continue;
     }
-    let record = records.get(read.agentName);
-    if (!record) {
-      record = {
-        latest: { kind: read.kind, at: event },
-        started: new Set(),
-        ended: new Set(),
-        waiting: new Map(),
-        dequeued: new Set(),
-        pause: null,
-      };
-      records.set(read.agentName, record);
-    } else if (isLater(event, record.latest.at)) {
-      record.latest = { kind: read.kind, at: event };
-    }
-
-    switch (read.kind) {
-      case "created":
-      case "updated":
-      case "deleted":
-        if (isLater(event, definitions.get(read.agentName)?.at)) {
-          definitions.set(read.agentName, {
-            definition: read.kind === "deleted" ? null : read.definition,
-            at: event,
-          });
-        }
-        break;
-      case "stopped":
-      case "resumed":
-        if (isLater(event, record.pause?.at)) {
-          record.pause = { paused: read.kind === "stopped", at: event };
-        }
-        break;
-      case "started":
-        record.started.add(read.requestId);
-        record.dequeued.add(read.requestId);
-        break;
-      case "answered":
-      case "cut-off":
-      case "failed":
-        record.ended.add(read.requestId);
-        // A steer its turn's stop cut off before Pi placed it ends without starting.
-        record.dequeued.add(read.requestId);
-        break;
-      case "queued":
-        record.waiting.set(read.requestId, { steer: read.steer });
-        break;
-      case "dispatched":
-      case "dropped":
-        record.dequeued.add(read.requestId);
-        break;
+    const requestId = piAgentEventRequestId(read);
+    const requestKey = requestId === null ? null : piAgentRequestKey(read.agentName, requestId);
+    const applied = applyPiAgentEvent(
+      agents.get(read.agentName) ?? null,
+      requestKey === null ? null : (requests.get(requestKey) ?? null),
+      read,
+      event,
+    );
+    agents.set(read.agentName, applied.agent);
+    if (requestKey !== null && applied.request) {
+      requests.set(requestKey, applied.request);
     }
   }
 
-  const defined = [...definitions.values()].flatMap(({ definition }) =>
-    definition ? [definition] : [],
-  );
-  return [
-    ...BUILT_IN_PI_AGENT_DEFINITIONS.map((definition) => ({ definition, builtIn: true })),
-    ...defined.map((definition) => ({ definition, builtIn: false })),
-  ].map(({ definition, builtIn }) => {
-    const record = records.get(definition.agentName);
-    const stillWaiting = record
-      ? [...record.waiting].filter(([requestId]) => !record.dequeued.has(requestId))
-      : [];
-    const latestKind = record?.latest.kind ?? null;
-    const answering = record
-      ? [...record.started].some((requestId) => !record.ended.has(requestId))
-      : false;
-    const paused = record?.pause?.paused ?? false;
-    return {
-      agentName: definition.agentName,
-      definition,
-      builtIn,
-      latestKind,
-      latestAt: record?.latest.at.occurredAt ?? null,
-      answering,
-      queued: stillWaiting.filter(([, { steer }]) => !steer).length,
-      steering: stillWaiting.filter(([, { steer }]) => steer).length,
-      paused,
-      displayName: formatPiAgentName(definition.agentName),
-      activity:
-        latestKind === null
-          ? "No recorded activity"
-          : answering
-            ? "Answering"
-            : paused
-              ? "Stopped"
-              : activityLabels[latestKind],
-    };
+  const names = new Set([
+    ...BUILT_IN_PI_AGENT_DEFINITIONS.map(({ agentName }) => agentName),
+    ...agents.keys(),
+  ]);
+  return [...names].flatMap((agentName) => {
+    const record = piAgentRecord(agentName, agents.get(agentName) ?? null);
+    return record ? [record] : [];
   });
+}
+
+/** Names a request of one agent; request IDs are compared per agent. */
+export function piAgentRequestKey(agentName: string, requestId: string): string {
+  return JSON.stringify([agentName, requestId]);
 }
 
 const activityLabels: Record<PiAgentActivityKind, string> = {
@@ -200,12 +292,20 @@ const activityLabels: Record<PiAgentActivityKind, string> = {
   resumed: "Resumed",
 };
 
+/** The turn an event ended, or null for any other event. */
+export function piAgentTurnEndedBy(
+  event: { id: string; occurredAt: Date },
+  read: PiAgentEvent | null,
+): PiAgentTurnRecord | null {
+  return read?.kind === "answered" || read?.kind === "cut-off" || read?.kind === "failed"
+    ? { id: event.id, agentName: read.agentName, outcome: read.kind, endedAt: event.occurredAt }
+    : null;
+}
+
 function endedPiAgentTurns(events: readonly StoredPiEvent[]): PiAgentTurnRecord[] {
   return events.flatMap((event) => {
-    const read = readPiAgentEvent(event);
-    return read?.kind === "answered" || read?.kind === "cut-off" || read?.kind === "failed"
-      ? [{ id: event.id, agentName: read.agentName, outcome: read.kind, endedAt: event.occurredAt }]
-      : [];
+    const turn = piAgentTurnEndedBy(event, readPiAgentEvent(event));
+    return turn ? [turn] : [];
   });
 }
 
