@@ -1,7 +1,12 @@
+import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
+
 export default function BackofficeCodemodeRunsIndex() {
   return (
-    <div className="text-sm text-[var(--bo-muted)]">
-      Select a run to review its tool calls, with their input and output.
-    </div>
+    <BackofficeSystemState
+      tone="empty"
+      label="Codemode run"
+      title="Select a run to inspect it."
+      description="Its logs and tool calls, with their input and output, appear here."
+    />
   );
 }

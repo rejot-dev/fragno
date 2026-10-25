@@ -1,7 +1,12 @@
+import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
+
 export default function BackofficeDurableHooksScopeIndex() {
   return (
-    <div className="text-sm text-[var(--bo-muted)]">
-      Select a durable hook to review its payload and error details.
-    </div>
+    <BackofficeSystemState
+      tone="empty"
+      label="Durable hook"
+      title="Select a hook to inspect it."
+      description="Its attempts, error, and payload appear here."
+    />
   );
 }

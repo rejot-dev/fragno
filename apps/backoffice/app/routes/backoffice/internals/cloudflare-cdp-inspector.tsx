@@ -1,8 +1,9 @@
 import { Button } from "@fragno-private/design-system/button";
 import { Field } from "@fragno-private/design-system/field";
-import { FormContainer } from "@fragno-private/design-system/form-container";
+import { InlineAlert } from "@fragno-private/design-system/inline-alert";
 import { Input } from "@fragno-private/design-system/input";
 import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
+import { SurfacePanel, SurfacePanelBody } from "@fragno-private/design-system/surface-panel";
 import { useEffect, useRef, useState, type SubmitEvent } from "react";
 import { z } from "zod";
 
@@ -542,89 +543,94 @@ export function CloudflareCdpInspector({
   ];
 
   return (
-    <FormContainer
-      eyebrow="Raw Chrome DevTools Protocol"
-      title={targetTitle || targetId}
-      description="Connect directly to this target's short-lived signed WebSocket URL and issue CDP commands from your browser."
+    <SurfacePanel
+      caption={`CDP · ${targetTitle || targetId}`}
+      actions={
+        <>
+          <BackofficeStatusLight tone={connected ? "live" : "waiting"}>
+            {connectionStatus}
+          </BackofficeStatusLight>
+          {connected ? (
+            <Button variant="secondary" onClick={disconnect}>
+              Disconnect
+            </Button>
+          ) : (
+            <Button
+              variant="accent"
+              disabled={connectionStatus === "connecting"}
+              onClick={() => void connect()}
+            >
+              {connectionStatus === "connecting" ? "Connecting…" : "Connect WebSocket"}
+            </Button>
+          )}
+          <Button variant="ghost" onClick={onClose}>
+            Hide inspector
+          </Button>
+        </>
+      }
     >
-      <div className="flex flex-wrap items-center gap-2">
-        <BackofficeStatusLight tone={connected ? "live" : "waiting"}>
-          {connectionStatus}
-        </BackofficeStatusLight>
-        <code className="min-w-0 flex-1 text-xs break-all text-[var(--bo-muted)]">{targetId}</code>
-        {connected ? (
-          <Button variant="secondary" onClick={disconnect}>
-            Disconnect
-          </Button>
-        ) : (
-          <Button
-            variant="accent"
-            disabled={connectionStatus === "connecting"}
-            onClick={() => void connect()}
-          >
-            {connectionStatus === "connecting" ? "Connecting…" : "Connect WebSocket"}
-          </Button>
-        )}
-        <Button variant="secondary" onClick={onClose}>
-          Hide inspector
-        </Button>
-      </div>
+      <SurfacePanelBody>
+        <div className="flex flex-col gap-4">
+          <p className="text-sm text-pretty text-[var(--bo-muted)]">
+            Connects straight to target{" "}
+            <code className="font-mono text-xs text-[var(--bo-fg)]">{targetId}</code> through its
+            short-lived signed WebSocket URL and issues Chrome DevTools Protocol commands from your
+            browser.
+          </p>
 
-      {error ? (
-        <p className="border border-[color:var(--bo-failed)] bg-[var(--bo-failed-bg)] p-3 text-sm text-[var(--bo-failed)]">
-          {error}
-        </p>
-      ) : null}
+          {error ? <InlineAlert>{error}</InlineAlert> : null}
 
-      <form
-        className="flex flex-col gap-3 md:flex-row md:items-end"
-        onSubmit={(event) => void navigate(event)}
-      >
-        <div className="min-w-0 flex-1">
-          <Field
-            label="Navigate target"
-            description="Runs Page.navigate through the active connection."
+          <form
+            className="flex flex-col gap-3 md:flex-row md:items-end"
+            onSubmit={(event) => void navigate(event)}
           >
-            <Input
-              className="min-h-10 w-full"
-              value={navigationUrl}
-              inputMode="url"
-              onChange={(event) => {
-                setNavigationUrl(event.target.value);
-              }}
-            />
-          </Field>
+            <div className="min-w-0 flex-1">
+              <Field
+                label="Navigate target"
+                description="Runs Page.navigate through the active connection."
+              >
+                <Input
+                  className="min-h-10 w-full"
+                  value={navigationUrl}
+                  inputMode="url"
+                  onChange={(event) => {
+                    setNavigationUrl(event.target.value);
+                  }}
+                />
+              </Field>
+            </div>
+            <Button variant="accent" disabled={!connected || operation !== null} type="submit">
+              Navigate
+            </Button>
+          </form>
+
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            {inspectionOperations.map(({ label, run }) => (
+              <Button
+                key={label}
+                variant="secondary"
+                disabled={!connected || operation !== null}
+                onClick={() => void run()}
+              >
+                {operation === label ? `${label}…` : label}
+              </Button>
+            ))}
+          </div>
+
+          <CommandOutput
+            screenshotUrl={screenshotUrl}
+            screenshotAlt={`Remote browser screenshot of ${targetTitle || targetId}`}
+            result={result}
+          />
+
+          <EventLog
+            events={events}
+            onClear={() => {
+              setEvents([]);
+            }}
+          />
         </div>
-        <Button variant="accent" disabled={!connected || operation !== null} type="submit">
-          Navigate
-        </Button>
-      </form>
-
-      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-        {inspectionOperations.map(({ label, run }) => (
-          <Button
-            key={label}
-            variant="secondary"
-            disabled={!connected || operation !== null}
-            onClick={() => void run()}
-          >
-            {operation === label ? `${label}…` : label}
-          </Button>
-        ))}
-      </div>
-
-      <CommandOutput
-        screenshotUrl={screenshotUrl}
-        screenshotAlt={`Remote browser screenshot of ${targetTitle || targetId}`}
-        result={result}
-      />
-
-      <EventLog
-        events={events}
-        onClear={() => {
-          setEvents([]);
-        }}
-      />
-    </FormContainer>
+      </SurfacePanelBody>
+    </SurfacePanel>
   );
 }

@@ -1,5 +1,13 @@
-import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
-import { Link, Outlet, useLoaderData, useLocation, useParams } from "react-router";
+import { InlineAlert } from "@fragno-private/design-system/inline-alert";
+import { ListRow, RowList } from "@fragno-private/design-system/list-row";
+import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
+import {
+  SurfacePanel,
+  SurfacePanelBody,
+  SurfacePanelRows,
+} from "@fragno-private/design-system/surface-panel";
+import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
+import { Outlet, useLoaderData, useLocation, useParams } from "react-router";
 
 import { backofficeContextScopeLabel } from "@/backoffice-runtime/context";
 import { backofficeRouteScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
@@ -8,7 +16,7 @@ import { requireRouteScope } from "@/layouts/backoffice-shell-request.server";
 import type { Route } from "./+types/workflows-organization";
 import { internalsScopeBasePath } from "./internals-scope";
 import { loadWorkflowInstanceSummaries, parsePageSize, WorkflowApiError } from "./workflows-data";
-import { formatTimestamp, getWorkflowStatusBadgeClasses } from "./workflows-shared";
+import { formatTimestamp, workflowStatusTone } from "./workflows-shared";
 
 type WorkflowsOrgLoaderData = {
   internalsBasePath: string;
@@ -72,144 +80,83 @@ export function meta({ loaderData }: Route.MetaArgs) {
 }
 
 export default function BackofficeWorkflowsOrganization() {
-  const { internalsBasePath, scopeLabel, configured, workflows, instances, warnings, error } =
+  const { internalsBasePath, configured, workflows, instances, warnings, error } =
     useLoaderData<typeof loader>();
   const location = useLocation();
   const params = useParams();
 
-  const selectedWorkflowName = params.workflowName ?? null;
-  const selectedInstanceId = params.instanceId ?? null;
-  const isDetailRoute = Boolean(selectedWorkflowName && selectedInstanceId);
-
+  const isDetailRoute = Boolean(params.workflowName && params.instanceId);
   const listVisibility = isDetailRoute ? "hidden lg:block" : "block";
   const detailVisibility = isDetailRoute ? "block" : "hidden lg:block";
 
   const baseScopePath = `${internalsBasePath}/workflows`;
 
   return (
-    <div className="min-w-0 space-y-4">
-      <BackofficePageHeader
-        breadcrumbs={[
-          { label: "Backoffice", to: "/backoffice" },
-          { label: "Internals", to: internalsBasePath },
-          { label: "Workflows" },
-        ]}
-        eyebrow="Internals"
-        title={`Workflow instances · ${scopeLabel}`}
-        description="Review workflow execution state, current step, and event history for the globally selected scope."
-      />
-
-      <section className="grid min-w-0 gap-4 lg:grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)]">
-        <div
-          className={`${listVisibility} min-w-0 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4`}
+    <section className="grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(18rem,24rem)_minmax(0,1fr)]">
+      <div className={`${listVisibility} min-w-0`}>
+        <SurfacePanel
+          caption={`${instances.length} ${instances.length === 1 ? "instance" : "instances"} · ${workflows.length} ${workflows.length === 1 ? "workflow" : "workflows"}`}
+          actions={null}
         >
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-                Workflow queue
-              </p>
-              <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">Workflow instances</h2>
-              <p className="mt-1 text-xs text-[var(--bo-muted-2)]">
-                {workflows.length} workflow{workflows.length === 1 ? "" : "s"} registered
-              </p>
-            </div>
-            <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
-              {instances.length} shown
-            </span>
-          </div>
+          {error ? (
+            <SurfacePanelBody>
+              <InlineAlert>{error}</InlineAlert>
+            </SurfacePanelBody>
+          ) : !configured ? (
+            <BackofficeSystemState
+              tone="empty"
+              label="Not configured"
+              title="Workflows are not configured for this scope yet."
+              flush
+            />
+          ) : workflows.length === 0 ? (
+            <BackofficeSystemState
+              tone="empty"
+              title="No workflows are registered for this scope."
+              flush
+            />
+          ) : instances.length === 0 ? (
+            <BackofficeSystemState
+              tone="empty"
+              title="No workflow instances yet."
+              description="Instances of the registered workflows appear here once they start."
+              flush
+            />
+          ) : (
+            <SurfacePanelRows>
+              <RowList empty={null}>
+                {instances.map((instance) => {
+                  const detailPath = `${baseScopePath}/${encodeURIComponent(instance.workflowName)}/${encodeURIComponent(instance.instanceId)}`;
+                  return (
+                    <ListRow
+                      key={`${instance.workflowName}:${instance.instanceId}`}
+                      to={`${detailPath}${location.search}`}
+                      leading={null}
+                      title={instance.workflowName}
+                      detail={`${instance.instanceId} · ${formatTimestamp(instance.createdAt) || "Unknown"}`}
+                      trailing={
+                        <BackofficeStatusLight tone={workflowStatusTone(instance.status)}>
+                          {instance.status}
+                        </BackofficeStatusLight>
+                      }
+                      expansion={null}
+                    />
+                  );
+                })}
+              </RowList>
+            </SurfacePanelRows>
+          )}
+          {warnings.length > 0 ? (
+            <p className="border-t border-[color:var(--bo-border)] px-4 py-3 text-xs text-pretty text-[var(--bo-muted)]">
+              {warnings.join(" ")}
+            </p>
+          ) : null}
+        </SurfacePanel>
+      </div>
 
-          <div className="mt-4 space-y-3">
-            {error ? (
-              <div className="border border-red-200 bg-red-50 p-3 text-sm text-red-600">
-                {error}
-              </div>
-            ) : !configured ? (
-              <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
-                Workflows are not configured for this scope yet.
-              </div>
-            ) : workflows.length === 0 ? (
-              <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
-                No workflows are registered for this scope.
-              </div>
-            ) : instances.length === 0 ? (
-              <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
-                No workflow instances were found for the registered workflows.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <div className="space-y-2">
-                  {instances.map((instance) => {
-                    const isSelected =
-                      selectedWorkflowName === instance.workflowName &&
-                      selectedInstanceId === instance.instanceId;
-                    const detailPath = `${baseScopePath}/${encodeURIComponent(instance.workflowName)}/${encodeURIComponent(instance.instanceId)}`;
-                    const detailHref = location.search
-                      ? `${detailPath}${location.search}`
-                      : detailPath;
-
-                    return (
-                      <Link
-                        key={`${instance.workflowName}:${instance.instanceId}`}
-                        to={detailHref}
-                        aria-label={`View workflow instance ${instance.workflowName} ${instance.instanceId}`}
-                        className={
-                          isSelected
-                            ? "block border border-[color:var(--bo-selected-border)] bg-[var(--bo-selected-bg)] p-3 text-[var(--bo-fg)] shadow-[var(--bo-selected-shadow)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--bo-accent)]"
-                            : "block border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--bo-accent)]"
-                        }
-                      >
-                        <div className="flex min-w-0 items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <p
-                              className={
-                                isSelected
-                                  ? "truncate font-semibold text-[var(--bo-accent-fg)]"
-                                  : "truncate font-semibold text-[var(--bo-fg)]"
-                              }
-                            >
-                              {instance.workflowName}
-                            </p>
-                            <p
-                              className={
-                                isSelected
-                                  ? "mt-1 truncate font-mono text-[11px] text-[var(--bo-accent-fg)]/80"
-                                  : "mt-1 truncate font-mono text-[11px] text-[var(--bo-muted-2)]"
-                              }
-                              title={instance.instanceId}
-                            >
-                              {instance.instanceId}
-                            </p>
-                          </div>
-                          <span
-                            className={`shrink-0 border px-2 py-1 text-[9px] tracking-[0.16em] uppercase ${getWorkflowStatusBadgeClasses(instance.status)}`}
-                          >
-                            {instance.status}
-                          </span>
-                        </div>
-                        <p className="mt-2 text-[11px] text-[var(--bo-muted-2)]">
-                          {formatTimestamp(instance.createdAt) || "Unknown"}
-                        </p>
-                      </Link>
-                    );
-                  })}
-                </div>
-
-                {warnings.length > 0 ? (
-                  <div className="border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
-                    {warnings.join(" ")}
-                  </div>
-                ) : null}
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div
-          className={`${detailVisibility} min-w-0 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4`}
-        >
-          <Outlet />
-        </div>
-      </section>
-    </div>
+      <div className={`${detailVisibility} min-w-0`}>
+        <Outlet />
+      </div>
+    </section>
   );
 }

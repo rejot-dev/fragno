@@ -1,14 +1,21 @@
 import { formatCodemodeLogLine } from "@fragno-dev/codemode/runtime-api";
-import { Button } from "@fragno-private/design-system/button";
+import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { CodeBlock } from "@fragno-private/design-system/code-block";
 import { DataTable } from "@fragno-private/design-system/data-table";
+import { InlineAlert } from "@fragno-private/design-system/inline-alert";
+import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
+import {
+  SurfaceFacts,
+  SurfacePanel,
+  SurfacePanelBody,
+} from "@fragno-private/design-system/surface-panel";
 import { useLoaderData, useRevalidator } from "react-router";
 
 import { requireRouteScope } from "@/layouts/backoffice-shell-request.server";
 import { getBackofficeObjects } from "@/worker-runtime/durable-objects";
 
 import type { Route } from "./+types/codemode-run-detail";
-import { formatTimestamp, getStepStatusBadgeClasses } from "./workflows-shared";
+import { formatTimestamp, stepStatusTone } from "./workflows-shared";
 
 const TOOL_CALL_COLUMNS = [
   { key: "calledAt", label: "Called at", align: "start" },
@@ -63,26 +70,13 @@ export default function BackofficeCodemodeRunDetail() {
   const revalidator = useRevalidator();
 
   return (
-    <div className="min-w-0 space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-            {run.activationKind} · {formatTimestamp(run.createdAt)}
-          </p>
-          <h2
-            className="mt-2 truncate text-xl font-semibold text-[var(--bo-fg)]"
-            title={run.origin}
-          >
-            {run.origin}
-          </h2>
-          <p className="mt-1 font-mono text-[11px] text-[var(--bo-muted-2)]">{run.id}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span
-            className={`border px-2 py-1 text-[9px] tracking-[0.16em] uppercase ${getStepStatusBadgeClasses(run.status)}`}
-          >
+    <SurfacePanel
+      caption="Codemode run"
+      actions={
+        <>
+          <BackofficeStatusLight tone={stepStatusTone(run.status)}>
             {run.status}
-          </span>
+          </BackofficeStatusLight>
           {/* Calls are stored as they happen, so a running run shows more on each refresh. */}
           <Button
             variant="secondary"
@@ -91,34 +85,57 @@ export default function BackofficeCodemodeRunDetail() {
           >
             Refresh
           </Button>
+          <ButtonLink to=".." variant="secondary" className="lg:hidden">
+            Back to runs
+          </ButtonLink>
+        </>
+      }
+    >
+      <SurfaceFacts
+        items={[
+          {
+            key: "origin",
+            label: "Origin",
+            value: <span className="font-mono text-xs break-all">{run.origin}</span>,
+          },
+          { key: "activation", label: "Activation", value: run.activationKind },
+          { key: "started", label: "Started", value: formatTimestamp(run.createdAt) },
+          {
+            key: "id",
+            label: "ID",
+            value: <span className="font-mono text-xs font-normal">{run.id}</span>,
+          },
+        ]}
+      />
+      <SurfacePanelBody>
+        <div className="flex min-w-0 flex-col gap-4">
+          {run.error ? <InlineAlert>{run.error}</InlineAlert> : null}
+
+          {run.logs === null ? (
+            <p className="text-sm text-[var(--bo-muted)]">Logs appear once the run finishes.</p>
+          ) : run.logs === "" ? (
+            <p className="text-sm text-[var(--bo-muted)]">This run logged nothing.</p>
+          ) : (
+            <CodeBlock label="Logs" code={run.logs} />
+          )}
+
+          {toolCalls.length === 0 ? (
+            <p className="text-sm text-[var(--bo-muted)]">This run made no tool calls.</p>
+          ) : (
+            <DataTable
+              caption="Tool calls, oldest first"
+              columns={TOOL_CALL_COLUMNS}
+              rows={toolCalls}
+            />
+          )}
+
+          {toolCallsTruncated ? (
+            <p className="text-sm text-[var(--bo-muted)]">
+              Only the first 200 tool calls are shown.
+            </p>
+          ) : null}
         </div>
-      </div>
-
-      {run.error ? (
-        <div className="border border-red-200 bg-red-50 p-3 text-sm text-red-700">{run.error}</div>
-      ) : null}
-
-      {run.logs === null ? (
-        <p className="text-sm text-[var(--bo-muted)]">Logs appear once the run finishes.</p>
-      ) : run.logs === "" ? (
-        <p className="text-sm text-[var(--bo-muted)]">This run logged nothing.</p>
-      ) : (
-        <CodeBlock label="Logs" code={run.logs} />
-      )}
-
-      {toolCalls.length === 0 ? (
-        <p className="text-sm text-[var(--bo-muted)]">This run made no tool calls.</p>
-      ) : (
-        <DataTable
-          caption="Tool calls, oldest first"
-          columns={TOOL_CALL_COLUMNS}
-          rows={toolCalls}
-        />
-      )}
-
-      {toolCallsTruncated ? (
-        <p className="text-sm text-[var(--bo-muted)]">Only the first 200 tool calls are shown.</p>
-      ) : null}
-    </div>
+      </SurfacePanelBody>
+    </SurfacePanel>
   );
 }

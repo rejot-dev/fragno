@@ -1,7 +1,12 @@
+import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
+
 export default function BackofficeWorkflowsOrganizationIndex() {
   return (
-    <div className="text-sm text-[var(--bo-muted)]">
-      Select a workflow instance to review its current step, state, and history.
-    </div>
+    <BackofficeSystemState
+      tone="empty"
+      label="Workflow instance"
+      title="Select an instance to inspect it."
+      description="Its current step, state, and step, event, and emission history appear here."
+    />
   );
 }

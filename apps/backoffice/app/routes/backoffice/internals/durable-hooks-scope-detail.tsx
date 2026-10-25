@@ -1,12 +1,20 @@
 import { ButtonLink } from "@fragno-private/design-system/button";
-import type { ReactNode } from "react";
+import { CodeBlock } from "@fragno-private/design-system/code-block";
+import { InlineAlert } from "@fragno-private/design-system/inline-alert";
+import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
+import {
+  SurfaceFacts,
+  SurfacePanel,
+  SurfacePanelBody,
+} from "@fragno-private/design-system/surface-panel";
+import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { useLocation, useOutletContext } from "react-router";
 
 import type { DurableHookQueueEntry } from "@/fragno/durable-hooks";
 
 import type { Route } from "./+types/durable-hooks-scope-detail";
 import type { DurableHooksScopeOutletContext } from "./durable-hooks-scope-layout";
-import { formatPayload, formatTimestamp, getStatusBadgeClasses } from "./durable-hooks-shared";
+import { durableHookStatusTone, formatPayload, formatTimestamp } from "./durable-hooks-shared";
 
 export default function BackofficeDurableHooksScopeDetail({ params }: Route.ComponentProps) {
   const { hooks, objectBasePath } = useOutletContext<DurableHooksScopeOutletContext>();
@@ -15,9 +23,12 @@ export default function BackofficeDurableHooksScopeDetail({ params }: Route.Comp
 
   if (!hook) {
     return (
-      <div className="text-sm text-[var(--bo-muted)]">
-        Select a durable hook to review its payload and error details.
-      </div>
+      <BackofficeSystemState
+        tone="empty"
+        label="Durable hook"
+        title="Select a hook to inspect it."
+        description="Its attempts, error, and payload appear here."
+      />
     );
   }
 
@@ -33,74 +44,48 @@ function DurableHookDetailPanel({
   hook: DurableHookQueueEntry;
   backToListHref: string;
 }) {
-  const payloadText = formatPayload(hook.payload);
-
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-            Durable hook
-          </p>
-          <h3 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">{hook.hookName}</h3>
-          <p className="text-xs text-[var(--bo-muted-2)]">Hook ID: {hook.id}</p>
+    <SurfacePanel
+      caption="Durable hook"
+      actions={
+        <>
+          <BackofficeStatusLight tone={durableHookStatusTone(hook.status)}>
+            {hook.status}
+          </BackofficeStatusLight>
+          <ButtonLink to={backToListHref} variant="secondary" className="lg:hidden">
+            Back to queue
+          </ButtonLink>
+        </>
+      }
+    >
+      <SurfaceFacts
+        items={[
+          { key: "name", label: "Hook", value: hook.hookName },
+          {
+            key: "id",
+            label: "ID",
+            value: <span className="font-mono text-xs font-normal">{hook.id}</span>,
+          },
+          { key: "attempts", label: "Attempts", value: `${hook.attempts} / ${hook.maxAttempts}` },
+          {
+            key: "last",
+            label: "Last attempt",
+            value: formatTimestamp(hook.lastAttemptAt) || "Not attempted",
+          },
+          {
+            key: "next",
+            label: "Next retry",
+            value: formatTimestamp(hook.nextRetryAt) || "Not scheduled",
+          },
+          { key: "created", label: "Created", value: formatTimestamp(hook.createdAt) || "Unknown" },
+        ]}
+      />
+      <SurfacePanelBody>
+        <div className="flex flex-col gap-3">
+          {hook.error ? <InlineAlert>{hook.error}</InlineAlert> : null}
+          <CodeBlock label="Payload" code={formatPayload(hook.payload) || "No payload recorded."} />
         </div>
-        <ButtonLink to={backToListHref} variant="secondary" className="lg:hidden">
-          Back to queue
-        </ButtonLink>
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-2">
-        <DetailItem
-          label="Status"
-          value={
-            <span
-              className={`inline-flex border px-2 py-1 text-[10px] tracking-[0.22em] uppercase ${getStatusBadgeClasses(hook.status)}`}
-            >
-              {hook.status}
-            </span>
-          }
-        />
-        <DetailItem label="Attempts" value={`${hook.attempts} / ${hook.maxAttempts}`} />
-        <DetailItem
-          label="Last attempt"
-          value={formatTimestamp(hook.lastAttemptAt) || "Not attempted"}
-        />
-        <DetailItem
-          label="Next retry"
-          value={formatTimestamp(hook.nextRetryAt) || "Not scheduled"}
-        />
-        <DetailItem label="Created" value={formatTimestamp(hook.createdAt) || "Unknown"} />
-        <DetailItem label="Hook name" value={hook.hookName} />
-      </div>
-
-      {hook.error ? (
-        <div className="border border-red-200 bg-red-50 p-3 text-sm text-red-600">{hook.error}</div>
-      ) : (
-        <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
-          No error recorded for this hook.
-        </div>
-      )}
-
-      <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)]">
-        <div className="border-b border-[color:var(--bo-border)] px-3 py-2">
-          <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-            Payload
-          </p>
-        </div>
-        <pre className="max-h-[360px] overflow-auto p-3 text-xs text-[var(--bo-fg)]">
-          {payloadText || "No payload recorded."}
-        </pre>
-      </div>
-    </div>
-  );
-}
-
-function DetailItem({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
-      <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">{label}</p>
-      <div className="mt-2 text-sm text-[var(--bo-fg)]">{value}</div>
-    </div>
+      </SurfacePanelBody>
+    </SurfacePanel>
   );
 }

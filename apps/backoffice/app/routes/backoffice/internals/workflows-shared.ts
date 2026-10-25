@@ -1,3 +1,5 @@
+import type { BackofficeStatusTone } from "@fragno-private/design-system/status-tone";
+
 import type { WorkflowInstanceStatus } from "./workflows-data";
 
 export const formatTimestamp = (value?: string | Date | number | null) => {
@@ -26,42 +28,39 @@ export const formatJson = (value: unknown) => {
   }
 };
 
-export const getWorkflowStatusBadgeClasses = (status: WorkflowInstanceStatus) => {
+export function workflowStatusTone(status: WorkflowInstanceStatus): BackofficeStatusTone {
   switch (status) {
     case "active":
-      return "border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]";
+      return "info";
     case "waiting":
-      return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200";
+      return "waiting";
     case "complete":
-      return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-200";
+      return "live";
     case "errored":
-      return "border-red-200 bg-red-50 text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200";
+      return "failed";
     case "terminated":
-      return "border-[color:var(--bo-border-strong)] bg-[var(--bo-panel-2)] text-[var(--bo-muted)]";
     case "paused":
-      return "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-200";
-    default:
-      return "border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] text-[var(--bo-muted)]";
+      return "muted";
   }
-};
+  throw new Error("Unsupported workflow instance status.");
+}
 
-export const getStepStatusBadgeClasses = (status: string) => {
+/** Steps and codemode runs report free-form statuses, so unknown ones read as muted. */
+export function stepStatusTone(status: string): BackofficeStatusTone {
   switch (status.toLowerCase()) {
     case "complete":
     case "completed":
     case "succeeded":
-      return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-200";
+      return "live";
     case "running":
     case "active":
-      return "border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]";
+      return "info";
     case "waiting":
-      return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200";
+      return "waiting";
     case "errored":
     case "failed":
-      return "border-red-200 bg-red-50 text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200";
-    case "paused":
-      return "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-200";
+      return "failed";
     default:
-      return "border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] text-[var(--bo-muted)]";
+      return "muted";
   }
-};
+}

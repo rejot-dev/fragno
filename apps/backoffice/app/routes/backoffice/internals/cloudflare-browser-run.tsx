@@ -1,12 +1,17 @@
-import { Button, ButtonLink } from "@fragno-private/design-system/button";
+import { Button } from "@fragno-private/design-system/button";
 import { Checkbox } from "@fragno-private/design-system/checkbox";
 import { Field } from "@fragno-private/design-system/field";
-import { FormContainer } from "@fragno-private/design-system/form-container";
+import { InlineAlert } from "@fragno-private/design-system/inline-alert";
 import { Input } from "@fragno-private/design-system/input";
-import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
 import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
+import {
+  SurfaceFacts,
+  SurfacePanel,
+  SurfacePanelBody,
+  SurfacePanelRows,
+} from "@fragno-private/design-system/surface-panel";
+import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { useState, type SubmitEvent } from "react";
-import { useOutletContext } from "react-router";
 
 import type { BrowserRunSessions } from "@fragno-dev/cloudflare-fragment";
 
@@ -14,14 +19,10 @@ import { cloudflareClient } from "@/fragno/cloudflare-client";
 
 import type { Route } from "./+types/cloudflare-browser-run";
 import { CloudflareCdpInspector } from "./cloudflare-cdp-inspector";
-import { internalsScopeBasePath } from "./internals-scope";
-import type { InternalsLayoutContext } from "./layout";
 
 type BrowserSession = Awaited<ReturnType<BrowserRunSessions["list"]>>[number];
 type BrowserTarget = Awaited<ReturnType<BrowserRunSessions["listTargets"]>>[number];
 
-const dangerButtonClassName =
-  "inline-flex min-h-9 items-center justify-center border border-[color:var(--bo-failed)] bg-[var(--bo-failed-bg)] px-3 text-[10px] font-semibold tracking-[0.18em] text-[var(--bo-failed)] uppercase transition-[opacity,scale] active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50";
 const timestampFormatter = new Intl.DateTimeFormat("en-US", {
   dateStyle: "medium",
   timeStyle: "medium",
@@ -129,70 +130,75 @@ function SessionTargets({ sessionId }: { sessionId: string }) {
   };
 
   return (
-    <FormContainer
-      eyebrow="Browser targets"
-      title="Tabs and debuggable targets"
-      description="Open a tab, inspect its debugger endpoints, bring it forward, or close it."
-    >
-      <form
-        className="flex flex-col gap-3 md:flex-row md:items-end"
-        onSubmit={(event) => void handleCreateTarget(event)}
+    <>
+      <SurfacePanel
+        caption={`${targets.length} ${targets.length === 1 ? "target" : "targets"}`}
+        actions={null}
       >
-        <div className="min-w-0 flex-1">
-          <Field label="Initial URL" description="Leave empty to create a blank target.">
-            <Input
-              className="min-h-10 w-full"
-              value={url}
-              onChange={(event) => {
-                setUrl(event.target.value);
-              }}
-              placeholder="https://fragno.dev"
-              inputMode="url"
-            />
-          </Field>
-        </div>
-        <Button variant="accent" disabled={busy} type="submit">
-          {createTarget.loading ? "Opening…" : "Open target"}
-        </Button>
-      </form>
+        <SurfacePanelBody>
+          <form
+            className="flex flex-col gap-3 md:flex-row md:items-end"
+            onSubmit={(event) => void handleCreateTarget(event)}
+          >
+            <div className="min-w-0 flex-1">
+              <Field label="Initial URL" description="Leave empty to create a blank target.">
+                <Input
+                  className="w-full"
+                  value={url}
+                  onChange={(event) => {
+                    setUrl(event.target.value);
+                  }}
+                  placeholder="https://fragno.dev"
+                  inputMode="url"
+                />
+              </Field>
+            </div>
+            <Button variant="accent" disabled={busy} type="submit">
+              {createTarget.loading ? "Opening…" : "Open target"}
+            </Button>
+          </form>
+          {operationError ? (
+            <div className="mt-3">
+              <InlineAlert>{operationError}</InlineAlert>
+            </div>
+          ) : null}
+        </SurfacePanelBody>
 
-      {operationError ? (
-        <p className="border border-[color:var(--bo-failed)] bg-[var(--bo-failed-bg)] p-3 text-sm text-[var(--bo-failed)]">
-          {operationError}
-        </p>
-      ) : null}
-
-      {targetsQuery.loading && targets.length === 0 ? (
-        <p className="text-sm text-[var(--bo-muted)]">Loading targets…</p>
-      ) : targets.length === 0 ? (
-        <p className="border border-dashed border-[color:var(--bo-border)] p-4 text-sm text-[var(--bo-muted)]">
-          No targets are currently reported for this session.
-        </p>
-      ) : (
-        <div className="space-y-2">
-          {targets.map((target: BrowserTarget) => (
-            <article
-              key={target.id}
-              className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3"
-            >
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        {targetsQuery.loading && targets.length === 0 ? (
+          <p className="border-t border-[color:var(--bo-border)] px-4 py-5 text-sm text-[var(--bo-muted)]">
+            Loading targets…
+          </p>
+        ) : targets.length === 0 ? (
+          <BackofficeSystemState
+            tone="empty"
+            title="No targets are reported for this session."
+            description="Open a target above to load a page in this browser."
+            flush
+          />
+        ) : (
+          <ul className="divide-y divide-[color:var(--bo-border)] border-t border-[color:var(--bo-border)]">
+            {targets.map((target: BrowserTarget) => (
+              <li
+                key={target.id}
+                className="flex flex-col gap-3 px-4 py-3 lg:flex-row lg:items-start lg:justify-between"
+              >
                 <div className="min-w-0 space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <BackofficeStatusLight tone="live">{target.type}</BackofficeStatusLight>
-                    <code className="text-xs text-[var(--bo-muted)]">{target.id}</code>
+                    <code className="text-xs text-[var(--bo-muted-2)]">{target.id}</code>
                   </div>
                   <p className="truncate text-sm font-semibold text-[var(--bo-fg)]">
                     {target.title || "Untitled target"}
                   </p>
                   <p className="text-xs break-all text-[var(--bo-muted)]">{target.url}</p>
                   {target.webSocketDebuggerUrl ? (
-                    <p className="text-xs break-all text-[var(--bo-muted-2)]">
+                    <p className="font-mono text-[11px] break-all text-[var(--bo-muted-2)]">
                       CDP: {target.webSocketDebuggerUrl}
                     </p>
                   ) : null}
                   {target.devtoolsFrontendUrl ? (
                     <button
-                      className="inline-block text-xs font-semibold text-[var(--bo-accent-fg)] underline underline-offset-4 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="text-xs font-semibold text-[var(--bo-accent-fg)] hover:underline disabled:cursor-not-allowed disabled:opacity-50"
                       disabled={busy}
                       type="button"
                       onClick={() => void handleOpenDevTools(target.id)}
@@ -222,10 +228,9 @@ function SessionTargets({ sessionId }: { sessionId: string }) {
                   >
                     Activate
                   </Button>
-                  <button
-                    className={dangerButtonClassName}
+                  <Button
+                    variant="danger"
                     disabled={busy}
-                    type="button"
                     onClick={() =>
                       void closeTarget.mutate({
                         path: { sessionId, targetId: target.id },
@@ -233,13 +238,13 @@ function SessionTargets({ sessionId }: { sessionId: string }) {
                     }
                   >
                     Close
-                  </button>
+                  </Button>
                 </div>
-              </div>
-            </article>
-          ))}
-        </div>
-      )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </SurfacePanel>
 
       {visibleInspectedTarget?.webSocketDebuggerUrl ? (
         <CloudflareCdpInspector
@@ -252,7 +257,7 @@ function SessionTargets({ sessionId }: { sessionId: string }) {
           }}
         />
       ) : null}
-    </FormContainer>
+    </>
   );
 }
 
@@ -263,36 +268,35 @@ function SessionInspector({ session }: { session: BrowserSession }) {
   const detail = sessionQuery.data ?? session;
 
   return (
-    <div className="space-y-4">
-      <FormContainer
-        eyebrow="Selected session"
-        title={detail.sessionId}
-        description="Cloudflare's current metadata for this Browser Run process."
-      >
+    <div className="flex min-w-0 flex-col gap-4">
+      <SurfacePanel caption={`Session ${detail.sessionId}`} actions={null}>
         {sessionQuery.error ? (
-          <p className="text-sm text-[var(--bo-failed)]">{errorMessage(sessionQuery.error)}</p>
+          <SurfacePanelBody>
+            <InlineAlert>{errorMessage(sessionQuery.error)}</InlineAlert>
+          </SurfacePanelBody>
         ) : null}
-        <dl className="grid gap-px overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-border)] sm:grid-cols-2 xl:grid-cols-4">
-          {[
-            ["Started", formatTimestamp(detail.startTime)],
-            ["Last updated", formatTimestamp(detail.lastUpdated)],
-            ["Connection", detail.connectionId ?? "Disconnected"],
-            ["Close reason", detail.closeReasonText ?? detail.closeReason ?? "Active"],
-          ].map(([label, value]) => (
-            <div key={label} className="min-w-0 bg-[var(--bo-panel-2)] p-3">
-              <dt className="text-[10px] tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
-                {label}
-              </dt>
-              <dd className="mt-2 text-sm font-semibold break-all text-[var(--bo-fg)]">{value}</dd>
-            </div>
-          ))}
-        </dl>
+        <SurfaceFacts
+          items={[
+            { key: "started", label: "Started", value: formatTimestamp(detail.startTime) },
+            { key: "updated", label: "Last updated", value: formatTimestamp(detail.lastUpdated) },
+            {
+              key: "connection",
+              label: "Connection",
+              value: detail.connectionId ?? "Disconnected",
+            },
+            {
+              key: "close-reason",
+              label: "Close reason",
+              value: detail.closeReasonText ?? detail.closeReason ?? "Active",
+            },
+          ]}
+        />
         {detail.webSocketDebuggerUrl ? (
-          <p className="text-xs break-all text-[var(--bo-muted)]">
+          <p className="border-t border-[color:var(--bo-border)] px-4 py-3 font-mono text-[11px] break-all text-[var(--bo-muted)]">
             Browser CDP: {detail.webSocketDebuggerUrl}
           </p>
         ) : null}
-      </FormContainer>
+      </SurfacePanel>
 
       <SessionTargets sessionId={session.sessionId} />
     </div>
@@ -300,8 +304,6 @@ function SessionInspector({ session }: { session: BrowserSession }) {
 }
 
 export default function CloudflareBrowserRunInternals() {
-  const { selectedRouteScope } = useOutletContext<InternalsLayoutContext>();
-  const internalsBasePath = internalsScopeBasePath(selectedRouteScope);
   const sessionsQuery = cloudflareClient.useBrowserRunSessions({
     query: { limit: "100", offset: "0" },
   });
@@ -346,37 +348,24 @@ export default function CloudflareBrowserRunInternals() {
   };
 
   return (
-    <div className="space-y-4">
-      <BackofficePageHeader
-        breadcrumbs={[
-          { label: "Backoffice", to: "/backoffice" },
-          { label: "Internals", to: internalsBasePath },
-          { label: "Browser Run" },
-        ]}
-        eyebrow="Cloudflare"
-        title="Browser Run session console"
-        description="Exercise the fragment's HTTP session and target lifecycle APIs without loading Playwright."
-        actions={
-          <ButtonLink variant="secondary" to={internalsBasePath}>
-            Back to internals
-          </ButtonLink>
-        }
-      />
-
-      <div className="grid gap-4 xl:grid-cols-[minmax(19rem,0.75fr)_minmax(0,1.25fr)]">
-        <div className="space-y-4">
-          <FormContainer
-            eyebrow="Acquire browser"
-            title="Start a session"
-            description="The session remains billable until closed or timed out by Cloudflare."
-          >
-            <form className="space-y-3" onSubmit={(event) => void handleCreateSession(event)}>
+    <div className="grid gap-4 xl:grid-cols-[minmax(19rem,0.75fr)_minmax(0,1.25fr)]">
+      <div className="flex min-w-0 flex-col gap-4">
+        <SurfacePanel caption="Start a session" actions={null}>
+          <SurfacePanelBody>
+            <form
+              className="flex flex-col gap-3"
+              onSubmit={(event) => void handleCreateSession(event)}
+            >
+              <p className="text-sm text-pretty text-[var(--bo-muted)]">
+                Exercises the fragment&apos;s HTTP session and target lifecycle APIs without loading
+                Playwright. A session stays billable until it is closed or Cloudflare times it out.
+              </p>
               <Field
                 label="Keep alive"
                 description="Inactivity timeout in milliseconds, from 10,000 to 1,200,000."
               >
                 <Input
-                  className="min-h-10 w-full"
+                  className="w-full"
                   type="number"
                   min={10_000}
                   max={1_200_000}
@@ -389,7 +378,7 @@ export default function CloudflareBrowserRunInternals() {
                 />
               </Field>
 
-              <div className="grid gap-2 sm:grid-cols-3">
+              <div className="flex flex-wrap gap-x-4 gap-y-2">
                 {(
                   [
                     ["Record", recording, setRecording],
@@ -397,112 +386,97 @@ export default function CloudflareBrowserRunInternals() {
                     ["Targets", includeTargets, setIncludeTargets],
                   ] as const
                 ).map(([label, checked, setChecked]) => (
-                  <Checkbox
-                    key={label}
-                    appearance="card"
-                    density="compact"
-                    checked={checked}
-                    onCheckedChange={setChecked}
-                  >
+                  <Checkbox key={label} checked={checked} onCheckedChange={setChecked}>
                     {label}
                   </Checkbox>
                 ))}
               </div>
 
-              <Button
-                variant="accent"
-                className="w-full"
-                disabled={Boolean(createSession.loading)}
-                type="submit"
-              >
-                {createSession.loading ? "Starting…" : "Start browser session"}
-              </Button>
+              <div>
+                <Button variant="accent" disabled={Boolean(createSession.loading)} type="submit">
+                  {createSession.loading ? "Starting…" : "Start browser session"}
+                </Button>
+              </div>
             </form>
-          </FormContainer>
+          </SurfacePanelBody>
+        </SurfacePanel>
 
-          <FormContainer
-            eyebrow="Active fleet"
-            title={`${sessions.length} session${sessions.length === 1 ? "" : "s"}`}
-            description="Select a session to inspect its current targets."
-          >
-            {operationError ? (
-              <p className="border border-[color:var(--bo-failed)] bg-[var(--bo-failed-bg)] p-3 text-sm text-[var(--bo-failed)]">
-                {operationError}
-              </p>
-            ) : null}
+        <SurfacePanel
+          caption={`${sessions.length} ${sessions.length === 1 ? "session" : "sessions"}`}
+          actions={null}
+        >
+          {operationError ? (
+            <SurfacePanelBody>
+              <InlineAlert>{operationError}</InlineAlert>
+            </SurfacePanelBody>
+          ) : null}
 
-            {sessionsQuery.loading && sessions.length === 0 ? (
-              <p className="text-sm text-[var(--bo-muted)]">Loading sessions…</p>
-            ) : sessions.length === 0 ? (
-              <p className="border border-dashed border-[color:var(--bo-border)] p-4 text-sm text-[var(--bo-muted)]">
-                No active Browser Run sessions. Start one above.
-              </p>
-            ) : (
-              <div className="space-y-2">
+          {sessionsQuery.loading && sessions.length === 0 ? (
+            <p className="border-t border-[color:var(--bo-border)] px-4 py-5 text-sm text-[var(--bo-muted)]">
+              Loading sessions…
+            </p>
+          ) : sessions.length === 0 ? (
+            <BackofficeSystemState
+              tone="empty"
+              title="No active Browser Run sessions."
+              description="Start one above to inspect its targets."
+              flush
+            />
+          ) : (
+            <SurfacePanelRows>
+              <ul className="divide-y divide-[color:var(--bo-border)]">
                 {sessions.map((session: BrowserSession) => {
                   const selected = session.sessionId === selectedSessionId;
                   return (
-                    <article
-                      key={session.sessionId}
-                      className={`border p-3 transition-colors ${
-                        selected
-                          ? "border-[color:var(--bo-selected-border)] bg-[var(--bo-selected-bg)] shadow-[var(--bo-selected-shadow)]"
-                          : "border-[color:var(--bo-border)] bg-[var(--bo-panel-2)]"
-                      }`}
-                    >
+                    <li key={session.sessionId} className="flex items-center gap-3 py-2.5">
                       <button
-                        className="block w-full text-left"
+                        className="group min-w-0 flex-1 text-left"
                         type="button"
+                        aria-pressed={selected}
                         onClick={() => {
                           setSelectedSessionId(session.sessionId);
                         }}
                       >
-                        <div className="flex items-center justify-between gap-2">
-                          <BackofficeStatusLight tone={session.endTime ? "waiting" : "live"}>
-                            {session.endTime ? "Ended" : "Active"}
-                          </BackofficeStatusLight>
-                          <span className="text-[10px] text-[var(--bo-muted-2)]">
-                            {formatTimestamp(session.startTime)}
-                          </span>
-                        </div>
-                        <code className="mt-3 block text-xs break-all text-[var(--bo-fg)]">
+                        <span
+                          className={`block truncate font-mono text-xs font-semibold group-hover:underline ${
+                            selected ? "text-[var(--bo-accent-fg)]" : "text-[var(--bo-fg)]"
+                          }`}
+                        >
                           {session.sessionId}
-                        </code>
+                        </span>
+                        <span className="block text-xs text-[var(--bo-muted-2)]">
+                          Started {formatTimestamp(session.startTime)}
+                        </span>
                       </button>
-                      <button
-                        className={`${dangerButtonClassName} mt-3 w-full`}
+                      <BackofficeStatusLight tone={session.endTime ? "waiting" : "live"}>
+                        {session.endTime ? "Ended" : "Active"}
+                      </BackofficeStatusLight>
+                      <Button
+                        variant="danger"
                         disabled={Boolean(closeSession.loading)}
-                        type="button"
                         onClick={() => void handleCloseSession(session.sessionId)}
                       >
-                        Close session
-                      </button>
-                    </article>
+                        Close
+                      </Button>
+                    </li>
                   );
                 })}
-              </div>
-            )}
-          </FormContainer>
-        </div>
-
-        {selectedSession ? (
-          <SessionInspector session={selectedSession} />
-        ) : (
-          <div className="flex min-h-96 items-center justify-center border border-dashed border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-8 text-center">
-            <div className="max-w-sm">
-              <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-                Session inspector
-              </p>
-              <h2 className="mt-3 text-xl font-semibold text-[var(--bo-fg)]">
-                Select an active browser
-              </h2>
-              <p className="mt-2 text-sm text-[var(--bo-muted)]">
-                Its metadata, CDP endpoint, and browser targets will appear here.
-              </p>
-            </div>
-          </div>
-        )}
+              </ul>
+            </SurfacePanelRows>
+          )}
+        </SurfacePanel>
       </div>
+
+      {selectedSession ? (
+        <SessionInspector session={selectedSession} />
+      ) : (
+        <BackofficeSystemState
+          tone="empty"
+          label="Session inspector"
+          title="Select a session to inspect it."
+          description="Its metadata, CDP endpoint, and browser targets appear here."
+        />
+      )}
     </div>
   );
 }

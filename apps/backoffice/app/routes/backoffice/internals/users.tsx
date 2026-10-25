@@ -1,8 +1,14 @@
 import { Button } from "@fragno-private/design-system/button";
-import { cn } from "@fragno-private/design-system/cn";
 import { Input } from "@fragno-private/design-system/input";
-import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
 import { Select } from "@fragno-private/design-system/select";
+import {
+  SurfacePanel,
+  SurfacePanelFooter,
+  SurfaceTable,
+  SurfaceTableRow,
+  type SurfaceTableColumn,
+} from "@fragno-private/design-system/surface-panel";
+import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { useState } from "react";
 import {
   useLoaderData,
@@ -16,10 +22,16 @@ import { authClient } from "@/fragno/auth/auth-client";
 import { loadSystemUsers } from "@/fragno/auth/auth-directory.server";
 
 import type { Route } from "./+types/users";
-import { internalsScopeBasePath } from "./internals-scope";
 import type { InternalsLayoutContext } from "./layout";
 
 const GLOBAL_ROLES = ["user", "admin"] as const;
+
+const USER_COLUMNS: SurfaceTableColumn[] = [
+  { label: "User", align: "start" },
+  { label: "Created", align: "start" },
+  { label: "Global role", align: "start" },
+  { label: "Action", align: "end" },
+];
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   return await loadSystemUsers({ request, context });
@@ -46,8 +58,7 @@ export function meta() {
 }
 
 export default function BackofficeInternalUsers() {
-  const { me, selectedRouteScope } = useOutletContext<InternalsLayoutContext>();
-  const internalsBasePath = internalsScopeBasePath(selectedRouteScope);
+  const { me } = useOutletContext<InternalsLayoutContext>();
   const { search, users, page, total, totalPages } = useLoaderData<typeof loader>();
   const [searchInput, setSearchInput] = useState(search);
   const [, setSearchParams] = useSearchParams();
@@ -67,136 +78,93 @@ export default function BackofficeInternalUsers() {
     void revalidator.revalidate();
   };
 
+  const caption = `${total} ${total === 1 ? "account" : "accounts"}${search ? ` matching “${search}”` : ""}`;
+
   return (
-    <div className="space-y-4">
-      <BackofficePageHeader
-        breadcrumbs={[
-          { label: "Backoffice", to: "/backoffice" },
-          { label: "Internals", to: internalsBasePath },
-          { label: "Users" },
-        ]}
-        eyebrow="Identity control"
-        title="System users and global authority."
-        description="Review every account known to Auth and assign the global user or administrator role. Organization roles are managed separately."
-      />
-
-      <section className="bo-fragment-surface bo-panel-surface bg-[var(--bo-panel)] p-4">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-              Global directory
-            </p>
-            <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">
-              {total} {total === 1 ? "account" : "accounts"}
-            </h2>
-          </div>
-
-          <form
-            className="flex w-full gap-2 sm:w-auto"
-            onSubmit={(event) => {
-              event.preventDefault();
-              runSearch();
+    <SurfacePanel
+      caption={caption}
+      actions={
+        <form
+          className="flex gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            runSearch();
+          }}
+        >
+          <Input
+            type="search"
+            value={searchInput}
+            onChange={(event) => {
+              setSearchInput(event.target.value);
             }}
-          >
-            <Input
-              type="search"
-              value={searchInput}
-              onChange={(event) => {
-                setSearchInput(event.target.value);
-              }}
-              placeholder="Search by email"
-              aria-label="Search system users by email"
-              className="min-w-0 flex-1 sm:w-64"
-            />
-            <Button type="submit" disabled={loading} variant="accent">
-              Search
-            </Button>
-          </form>
-        </div>
-
-        {search ? (
-          <div className="mt-3 flex items-center gap-2 text-xs text-[var(--bo-muted)]">
-            <span>Results for “{search}”</span>
-            <button
-              type="button"
+            placeholder="Search by email"
+            aria-label="Search system users by email"
+            className="w-56"
+          />
+          <Button type="submit" disabled={loading} variant="secondary">
+            Search
+          </Button>
+          {search ? (
+            <Button
               disabled={loading}
               onClick={() => {
                 setSearchInput("");
                 setSearchParams({});
               }}
-              className="font-semibold text-[var(--bo-fg)] underline underline-offset-4 disabled:opacity-60"
+              variant="ghost"
             >
               Clear
-            </button>
-          </div>
-        ) : null}
-
-        <div className="mt-4">
-          {users.length === 0 ? (
-            <p className="py-8 text-center text-sm text-[var(--bo-muted)]">No users found.</p>
-          ) : (
-            <div className="overflow-x-auto border border-[color:var(--bo-border)]">
-              <table className="min-w-full divide-y divide-[color:var(--bo-border)] text-sm">
-                <thead className="bg-[var(--bo-panel-2)] text-left">
-                  <tr className="text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-                    <th scope="col" className="px-3 py-2">
-                      User
-                    </th>
-                    <th scope="col" className="px-3 py-2">
-                      Created
-                    </th>
-                    <th scope="col" className="px-3 py-2">
-                      Global role
-                    </th>
-                    <th scope="col" className="px-3 py-2">
-                      Action
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[color:var(--bo-border)] bg-[var(--bo-panel)]">
-                  {users.map((user) => (
-                    <SystemUserRow
-                      key={user.id}
-                      user={user}
-                      isCurrentUser={user.id === me.user.id}
-                      onUpdated={updateUser}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {users.length > 0 ? (
-            <div className="mt-3 flex items-center justify-between gap-3">
-              <p className="text-xs text-[var(--bo-muted-2)]">
-                Page {page} of {totalPages}
-              </p>
-              <div className="flex items-center gap-2">
-                <Button
-                  disabled={loading || page === 1}
-                  onClick={() => {
-                    setSearchParams({ search, page: String(page - 1) });
-                  }}
-                  variant="secondary"
-                >
-                  Previous
-                </Button>
-                <Button
-                  disabled={loading || page >= totalPages}
-                  onClick={() => {
-                    setSearchParams({ search, page: String(page + 1) });
-                  }}
-                  variant="secondary"
-                >
-                  Next
-                </Button>
-              </div>
-            </div>
+            </Button>
           ) : null}
-        </div>
-      </section>
-    </div>
+        </form>
+      }
+    >
+      {users.length === 0 ? (
+        <BackofficeSystemState
+          tone="empty"
+          title={search ? `No accounts match “${search}”.` : "No accounts yet."}
+          description="Every account known to Auth appears here, with its global role. Organization roles are managed per organization."
+          flush
+        />
+      ) : (
+        <SurfaceTable columns={USER_COLUMNS}>
+          {users.map((user) => (
+            <SystemUserRow
+              key={user.id}
+              user={user}
+              isCurrentUser={user.id === me.user.id}
+              onUpdated={updateUser}
+            />
+          ))}
+        </SurfaceTable>
+      )}
+
+      {totalPages > 1 ? (
+        <SurfacePanelFooter>
+          <span className="mr-auto text-xs text-[var(--bo-muted-2)] tabular-nums">
+            Page {page} of {totalPages}
+          </span>
+          <Button
+            disabled={loading || page === 1}
+            onClick={() => {
+              setSearchParams({ search, page: String(page - 1) });
+            }}
+            variant="secondary"
+          >
+            Previous
+          </Button>
+          <Button
+            disabled={loading || page >= totalPages}
+            onClick={() => {
+              setSearchParams({ search, page: String(page + 1) });
+            }}
+            variant="secondary"
+          >
+            Next
+          </Button>
+        </SurfacePanelFooter>
+      ) : null}
+    </SurfacePanel>
   );
 }
 
@@ -239,14 +207,18 @@ function SystemUserRow({
   };
 
   return (
-    <tr className="text-[var(--bo-muted)]">
-      <td className="px-3 py-3">
-        <div className="font-semibold text-[var(--bo-fg)]">{user.email}</div>
-        <div className="mt-1 font-mono text-[10px] text-[var(--bo-muted-2)]">{user.id}</div>
-      </td>
-      <td className="px-3 py-3 whitespace-nowrap">{formatDate(user.createdAt)}</td>
-      <td className="px-3 py-3">
+    <SurfaceTableRow
+      columns={USER_COLUMNS}
+      cells={[
+        <div key="user" className="min-w-0">
+          <div className="font-semibold text-[var(--bo-fg)]">{user.email}</div>
+          <div className="font-mono text-[11px] text-[var(--bo-muted-2)]">{user.id}</div>
+        </div>,
+        <span key="created" className="whitespace-nowrap">
+          {formatDate(user.createdAt)}
+        </span>,
         <Select
+          key="role"
           aria-label={`Global role for ${user.email}`}
           density="compact"
           disabled={isCurrentUser}
@@ -259,13 +231,11 @@ function SystemUserRow({
             setRoleSelection({ userRole: user.role, selectedRole: role });
             setNotice(null);
           }}
-          className="min-w-32 font-semibold tracking-[0.16em] uppercase"
-        />
-      </td>
-      <td className="px-3 py-3">
-        <div className="flex min-w-36 flex-col items-start gap-1.5">
+          className="min-w-28"
+        />,
+        <div key="action" className="flex flex-col items-end gap-1">
           {isCurrentUser ? (
-            <span className="text-[11px] text-[var(--bo-muted-2)]">
+            <span className="max-w-36 text-right text-xs text-[var(--bo-muted-2)]">
               You cannot change your own role.
             </span>
           ) : (
@@ -279,17 +249,19 @@ function SystemUserRow({
           )}
           {notice ? (
             <span
-              className={cn(
-                "text-[11px]",
-                notice.tone === "error" ? "text-red-600" : "text-[var(--bo-muted)]",
-              )}
+              role={notice.tone === "error" ? "alert" : "status"}
+              className={
+                notice.tone === "error"
+                  ? "text-xs text-[var(--bo-failed)]"
+                  : "text-xs text-[var(--bo-live)]"
+              }
             >
               {notice.message}
             </span>
           ) : null}
-        </div>
-      </td>
-    </tr>
+        </div>,
+      ]}
+    />
   );
 }
 

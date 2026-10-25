@@ -1,5 +1,19 @@
+import { Tabs } from "@base-ui/react/tabs";
 import { ButtonLink } from "@fragno-private/design-system/button";
-import type { ReactNode } from "react";
+import { CodeBlock } from "@fragno-private/design-system/code-block";
+import { DetailList } from "@fragno-private/design-system/detail-list";
+import { InlineAlert } from "@fragno-private/design-system/inline-alert";
+import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
+import {
+  SurfaceFacts,
+  SurfacePanel,
+  SurfacePanelBody,
+  SurfaceTable,
+  SurfaceTableRow,
+  type SurfaceTableColumn,
+} from "@fragno-private/design-system/surface-panel";
+import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
+import { UnderlineTab, UnderlineTabList } from "@fragno-private/design-system/underline-tabs";
 import { useLoaderData, useSearchParams } from "react-router";
 
 import { backofficeRouteScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
@@ -11,8 +25,8 @@ import { loadWorkflowInstanceDetail, WorkflowApiError } from "./workflows-data";
 import {
   formatJson,
   formatTimestamp,
-  getStepStatusBadgeClasses,
-  getWorkflowStatusBadgeClasses,
+  stepStatusTone,
+  workflowStatusTone,
 } from "./workflows-shared";
 
 const WORKFLOW_DETAIL_TABS = [
@@ -23,6 +37,28 @@ const WORKFLOW_DETAIL_TABS = [
 ] as const;
 
 type WorkflowDetailTab = (typeof WORKFLOW_DETAIL_TABS)[number]["id"];
+
+const STEP_COLUMNS: SurfaceTableColumn[] = [
+  { label: "Step", align: "start" },
+  { label: "Status", align: "start" },
+  { label: "Attempts", align: "end" },
+  { label: "Updated", align: "start" },
+  { label: "Result", align: "start" },
+];
+
+const EVENT_COLUMNS: SurfaceTableColumn[] = [
+  { label: "Event", align: "start" },
+  { label: "Created", align: "start" },
+  { label: "Consumed by", align: "start" },
+  { label: "Payload", align: "start" },
+];
+
+const EMISSION_COLUMNS: SurfaceTableColumn[] = [
+  { label: "Step", align: "start" },
+  { label: "Direction", align: "start" },
+  { label: "Created", align: "start" },
+  { label: "Payload", align: "start" },
+];
 
 const resolveDetailTab = (value: string | null): WorkflowDetailTab => {
   return WORKFLOW_DETAIL_TABS.some((tab) => tab.id === value)
@@ -77,59 +113,57 @@ export default function BackofficeWorkflowsOrganizationDetail() {
   };
 
   return (
-    <div className="min-w-0 space-y-3">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-            Workflow instance
-          </p>
-          <h3 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">
-            {detail.meta.workflowName}
-          </h3>
-          <p className="text-xs text-[var(--bo-muted-2)]">Instance ID: {detail.id}</p>
-        </div>
-        <ButtonLink to={basePath} variant="secondary" className="lg:hidden">
-          Back to list
-        </ButtonLink>
-      </div>
-
-      <div
-        role="tablist"
-        aria-label="Workflow instance detail tabs"
-        className="flex flex-wrap items-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2"
+    <SurfacePanel
+      caption="Workflow instance"
+      actions={
+        <>
+          <BackofficeStatusLight tone={workflowStatusTone(detail.details.status)}>
+            {detail.details.status}
+          </BackofficeStatusLight>
+          <ButtonLink to={basePath} variant="secondary" className="lg:hidden">
+            Back to list
+          </ButtonLink>
+        </>
+      }
+    >
+      <SurfaceFacts
+        items={[
+          { key: "workflow", label: "Workflow", value: detail.meta.workflowName },
+          {
+            key: "id",
+            label: "Instance ID",
+            value: <span className="font-mono text-xs font-normal break-all">{detail.id}</span>,
+          },
+        ]}
+      />
+      <Tabs.Root
+        value={activeTab}
+        onValueChange={(value: WorkflowDetailTab) => {
+          setActiveTab(value);
+        }}
+        className="border-t border-[color:var(--bo-border)]"
       >
-        {WORKFLOW_DETAIL_TABS.map((tab) => {
-          const isActive = activeTab === tab.id;
-
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              role="tab"
-              aria-selected={isActive}
-              onClick={() => {
-                setActiveTab(tab.id);
-              }}
-              className={
-                isActive
-                  ? "border border-[color:var(--bo-selected-border)] bg-[var(--bo-selected-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-fg)] uppercase shadow-[var(--bo-selected-shadow)]"
-                  : "border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-              }
-            >
+        <UnderlineTabList aria-label="Workflow instance detail tabs" className="px-2">
+          {WORKFLOW_DETAIL_TABS.map((tab) => (
+            <UnderlineTab key={tab.id} value={tab.id}>
               {tab.label}
-            </button>
-          );
-        })}
-      </div>
-
-      {activeTab === "overview" ? <WorkflowOverviewTab detail={detail} /> : null}
-
-      {activeTab === "steps" ? <WorkflowStepsTab detail={detail} /> : null}
-
-      {activeTab === "events" ? <WorkflowEventsTab detail={detail} /> : null}
-
-      {activeTab === "emissions" ? <WorkflowEmissionsTab detail={detail} /> : null}
-    </div>
+            </UnderlineTab>
+          ))}
+        </UnderlineTabList>
+        <Tabs.Panel value="overview">
+          <WorkflowOverviewTab detail={detail} />
+        </Tabs.Panel>
+        <Tabs.Panel value="steps">
+          <WorkflowStepsTab detail={detail} />
+        </Tabs.Panel>
+        <Tabs.Panel value="events">
+          <WorkflowEventsTab detail={detail} />
+        </Tabs.Panel>
+        <Tabs.Panel value="emissions">
+          <WorkflowEmissionsTab detail={detail} />
+        </Tabs.Panel>
+      </Tabs.Root>
+    </SurfacePanel>
   );
 }
 
@@ -140,332 +174,222 @@ function WorkflowOverviewTab({ detail }: { detail: WorkflowDetailLoaderData }) {
 
   return (
     <>
-      <div className="grid gap-3 md:grid-cols-2">
-        <DetailItem
-          label="State"
-          value={
-            <span
-              className={`inline-flex border px-2 py-1 text-[10px] tracking-[0.22em] uppercase ${getWorkflowStatusBadgeClasses(detail.details.status)}`}
-            >
-              {detail.details.status}
-            </span>
-          }
-        />
-        <DetailItem
-          label="Remote workflow"
-          value={detail.meta.remoteWorkflowName ?? "Not remote"}
-        />
-        <DetailItem label="Created" value={formatTimestamp(detail.meta.createdAt) || "Unknown"} />
-        <DetailItem label="Updated" value={formatTimestamp(detail.meta.updatedAt) || "Unknown"} />
-        <DetailItem
-          label="Started"
-          value={formatTimestamp(detail.meta.startedAt) || "Not started yet"}
-        />
-        <DetailItem
-          label="Completed"
-          value={formatTimestamp(detail.meta.completedAt) || "Not completed"}
-        />
-      </div>
+      <SurfaceFacts
+        items={[
+          {
+            key: "remote",
+            label: "Remote workflow",
+            value: detail.meta.remoteWorkflowName ?? "Not remote",
+          },
+          {
+            key: "created",
+            label: "Created",
+            value: formatTimestamp(detail.meta.createdAt) || "Unknown",
+          },
+          {
+            key: "updated",
+            label: "Updated",
+            value: formatTimestamp(detail.meta.updatedAt) || "Unknown",
+          },
+          {
+            key: "started",
+            label: "Started",
+            value: formatTimestamp(detail.meta.startedAt) || "Not started yet",
+          },
+          {
+            key: "completed",
+            label: "Completed",
+            value: formatTimestamp(detail.meta.completedAt) || "Not completed",
+          },
+        ]}
+      />
+      <SurfacePanelBody>
+        <div className="flex min-w-0 flex-col gap-4">
+          {detail.details.error ? (
+            <InlineAlert>
+              {detail.details.error.name}: {detail.details.error.message}
+            </InlineAlert>
+          ) : null}
 
-      <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
-        <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-          Current step
-        </p>
-        {!currentStep ? (
-          <p className="mt-2 text-sm text-[var(--bo-muted)]">No active step for this instance.</p>
-        ) : (
-          <div className="mt-3 space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-semibold text-[var(--bo-fg)]">{currentStep.name}</span>
-              <span className="text-xs text-[var(--bo-muted-2)]">{currentStep.type}</span>
-              <span
-                className={`inline-flex border px-2 py-1 text-[10px] tracking-[0.22em] uppercase ${getStepStatusBadgeClasses(currentStep.status)}`}
-              >
-                {currentStep.status}
-              </span>
-            </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              <DetailItem
-                label="Attempts"
-                value={`${currentStep.attempts} / ${currentStep.maxAttempts}`}
-              />
-              <DetailItem
-                label="Waiting event"
-                value={currentStep.waitEventType ?? "Not waiting for event"}
-              />
-              <DetailItem
-                label="Next retry"
-                value={formatTimestamp(currentStep.nextRetryAt) || "Not scheduled"}
-              />
-              <DetailItem
-                label="Wake at"
-                value={formatTimestamp(currentStep.wakeAt) || "Not scheduled"}
-              />
-            </div>
-            {currentStep.error ? (
-              <div className="border border-red-200 bg-red-50 p-3 text-sm text-red-600">
-                {currentStep.error.name}: {currentStep.error.message}
-              </div>
-            ) : null}
-          </div>
-        )}
-      </div>
+          <section aria-label="Current step" className="flex flex-col gap-2">
+            <h3 className="text-sm font-semibold text-[var(--bo-fg)]">Current step</h3>
+            {!currentStep ? (
+              <p className="text-sm text-[var(--bo-muted)]">No active step for this instance.</p>
+            ) : (
+              <>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-semibold text-[var(--bo-fg)]">
+                    {currentStep.name}
+                  </span>
+                  <span className="text-xs text-[var(--bo-muted-2)]">{currentStep.type}</span>
+                  <BackofficeStatusLight tone={stepStatusTone(currentStep.status)}>
+                    {currentStep.status}
+                  </BackofficeStatusLight>
+                </div>
+                <DetailList
+                  items={[
+                    {
+                      key: "attempts",
+                      label: "Attempts",
+                      value: `${currentStep.attempts} / ${currentStep.maxAttempts}`,
+                    },
+                    {
+                      key: "event",
+                      label: "Waiting event",
+                      value: currentStep.waitEventType ?? "Not waiting for event",
+                    },
+                    {
+                      key: "retry",
+                      label: "Next retry",
+                      value: formatTimestamp(currentStep.nextRetryAt) || "Not scheduled",
+                    },
+                    {
+                      key: "wake",
+                      label: "Wake at",
+                      value: formatTimestamp(currentStep.wakeAt) || "Not scheduled",
+                    },
+                  ]}
+                />
+                {currentStep.error ? (
+                  <InlineAlert>
+                    {currentStep.error.name}: {currentStep.error.message}
+                  </InlineAlert>
+                ) : null}
+              </>
+            )}
+          </section>
 
-      {detail.details.error ? (
-        <div className="border border-red-200 bg-red-50 p-3 text-sm text-red-600">
-          {detail.details.error.name}: {detail.details.error.message}
+          <CodeBlock label="Params" code={paramsText || "No params recorded."} />
+          <CodeBlock label="Output" code={outputText || "No output recorded."} />
         </div>
-      ) : null}
-
-      <div className="max-w-full min-w-0 overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)]">
-        <div className="border-b border-[color:var(--bo-border)] px-3 py-2">
-          <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">Params</p>
-        </div>
-        <pre className="backoffice-scroll max-h-[220px] w-full max-w-full min-w-0 overflow-auto p-3 text-xs whitespace-pre text-[var(--bo-fg)]">
-          {paramsText || "No params recorded."}
-        </pre>
-      </div>
-
-      <div className="max-w-full min-w-0 overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)]">
-        <div className="border-b border-[color:var(--bo-border)] px-3 py-2">
-          <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">Output</p>
-        </div>
-        <pre className="backoffice-scroll max-h-[220px] w-full max-w-full min-w-0 overflow-auto p-3 text-xs whitespace-pre text-[var(--bo-fg)]">
-          {outputText || "No output recorded."}
-        </pre>
-      </div>
+      </SurfacePanelBody>
     </>
   );
 }
 
 function WorkflowStepsTab({ detail }: { detail: WorkflowDetailLoaderData }) {
+  if (detail.history.steps.length === 0) {
+    return <BackofficeSystemState tone="empty" title="No recorded steps for this run yet." flush />;
+  }
   return (
-    <section className="min-w-0 space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">Steps</p>
-        <span className="text-xs text-[var(--bo-muted-2)]">
-          {detail.history.steps.length} step
-          {detail.history.steps.length === 1 ? "" : "s"}
-        </span>
-      </div>
-      {detail.history.steps.length === 0 ? (
-        <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
-          No recorded steps for this run yet.
-        </div>
-      ) : (
-        <div className="backoffice-scroll max-w-full overflow-x-auto border border-[color:var(--bo-border)]">
-          <table className="w-full table-fixed divide-y divide-[color:var(--bo-border)] text-sm">
-            <thead className="bg-[var(--bo-panel-2)] text-left">
-              <tr className="text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-                <th scope="col" className="w-72 px-4 py-2">
-                  Step
-                </th>
-                <th scope="col" className="w-40 px-4 py-2">
-                  Status
-                </th>
-                <th scope="col" className="w-28 px-4 py-2">
-                  Attempts
-                </th>
-                <th scope="col" className="w-48 px-4 py-2">
-                  Updated
-                </th>
-                <th scope="col" className="px-3 py-2">
-                  Result
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[color:var(--bo-border)] bg-[var(--bo-panel)]">
-              {detail.history.steps.map((step) => (
-                <tr key={step.id} className="text-[var(--bo-muted)]">
-                  <td className="px-4 py-2 align-top">
-                    <p className="truncate font-semibold text-[var(--bo-fg)]" title={step.name}>
-                      {step.name}
-                    </p>
-                    <p
-                      className="truncate text-xs text-[var(--bo-muted-2)]"
-                      title={`${step.stepKey} · ${step.type}`}
-                    >
-                      {step.stepKey} · {step.type}
-                    </p>
-                  </td>
-                  <td className="px-4 py-2 align-top">
-                    <span
-                      className={`border px-2 py-1 text-[10px] tracking-[0.22em] uppercase ${getStepStatusBadgeClasses(step.status)}`}
-                    >
-                      {step.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2 align-top text-xs">
-                    {step.attempts} / {step.maxAttempts}
-                  </td>
-                  <td className="px-4 py-2 align-top text-xs">
-                    {formatTimestamp(step.updatedAt) || "Unknown"}
-                  </td>
-                  <td className="min-w-0 px-3 py-2 align-top">
-                    <pre className="backoffice-scroll max-h-80 w-full min-w-0 overflow-auto border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 font-mono text-xs whitespace-pre text-[var(--bo-fg)]">
-                      {formatJson(step.result) || "No result recorded."}
-                    </pre>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </section>
+    <SurfaceTable columns={STEP_COLUMNS}>
+      {detail.history.steps.map((step) => (
+        <SurfaceTableRow
+          key={step.id}
+          columns={STEP_COLUMNS}
+          cells={[
+            <div key="step" className="max-w-64 min-w-0">
+              <p className="truncate font-semibold text-[var(--bo-fg)]" title={step.name}>
+                {step.name}
+              </p>
+              <p
+                className="truncate text-xs text-[var(--bo-muted-2)]"
+                title={`${step.stepKey} · ${step.type}`}
+              >
+                {step.stepKey} · {step.type}
+              </p>
+            </div>,
+            <BackofficeStatusLight key="status" tone={stepStatusTone(step.status)}>
+              {step.status}
+            </BackofficeStatusLight>,
+            `${step.attempts} / ${step.maxAttempts}`,
+            <span key="updated" className="text-xs whitespace-nowrap">
+              {formatTimestamp(step.updatedAt) || "Unknown"}
+            </span>,
+            <JsonCell key="result" json={formatJson(step.result)} empty="No result recorded." />,
+          ]}
+        />
+      ))}
+    </SurfaceTable>
   );
 }
 
 function WorkflowEventsTab({ detail }: { detail: WorkflowDetailLoaderData }) {
+  if (detail.history.events.length === 0) {
+    return (
+      <BackofficeSystemState
+        tone="empty"
+        title="No events have been delivered for this run."
+        flush
+      />
+    );
+  }
   return (
-    <section className="min-w-0 space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">Events</p>
-        <span className="text-xs text-[var(--bo-muted-2)]">
-          {detail.history.events.length} event
-          {detail.history.events.length === 1 ? "" : "s"}
-        </span>
-      </div>
-      {detail.history.events.length === 0 ? (
-        <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
-          No events have been delivered for this run.
-        </div>
-      ) : (
-        <div className="backoffice-scroll max-w-full overflow-x-auto border border-[color:var(--bo-border)]">
-          <table className="w-full table-fixed divide-y divide-[color:var(--bo-border)] text-sm">
-            <thead className="bg-[var(--bo-panel-2)] text-left">
-              <tr className="text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-                <th scope="col" className="w-44 px-3 py-2">
-                  Event
-                </th>
-                <th scope="col" className="w-44 px-3 py-2">
-                  Created
-                </th>
-                <th scope="col" className="w-52 px-3 py-2">
-                  Consumed by
-                </th>
-                <th scope="col" className="px-3 py-2">
-                  Payload
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[color:var(--bo-border)] bg-[var(--bo-panel)]">
-              {detail.history.events.map((event) => (
-                <tr key={event.id} className="text-[var(--bo-muted)]">
-                  <td className="px-3 py-2 align-top">
-                    <p className="truncate font-semibold text-[var(--bo-fg)]" title={event.type}>
-                      {event.type}
-                    </p>
-                    <p
-                      className="truncate font-mono text-xs text-[var(--bo-muted-2)]"
-                      title={event.id}
-                    >
-                      {event.id}
-                    </p>
-                  </td>
-                  <td className="px-3 py-2 align-top text-xs">
-                    {formatTimestamp(event.createdAt) || "Unknown"}
-                  </td>
-                  <td className="px-3 py-2 align-top text-xs">
-                    <span className="block truncate" title={event.consumedByStepKey ?? undefined}>
-                      {event.consumedByStepKey ?? "Not consumed yet"}
-                    </span>
-                  </td>
-                  <td className="min-w-0 px-3 py-2 align-top">
-                    <pre className="backoffice-scroll max-h-80 w-full min-w-0 overflow-auto border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 font-mono text-xs whitespace-pre text-[var(--bo-fg)]">
-                      {formatJson(event.payload) || "No payload"}
-                    </pre>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </section>
+    <SurfaceTable columns={EVENT_COLUMNS}>
+      {detail.history.events.map((event) => (
+        <SurfaceTableRow
+          key={event.id}
+          columns={EVENT_COLUMNS}
+          cells={[
+            <div key="event" className="max-w-56 min-w-0">
+              <p className="truncate font-semibold text-[var(--bo-fg)]" title={event.type}>
+                {event.type}
+              </p>
+              <p className="truncate font-mono text-xs text-[var(--bo-muted-2)]" title={event.id}>
+                {event.id}
+              </p>
+            </div>,
+            <span key="created" className="text-xs whitespace-nowrap">
+              {formatTimestamp(event.createdAt) || "Unknown"}
+            </span>,
+            <span key="consumed" className="text-xs">
+              {event.consumedByStepKey ?? "Not consumed yet"}
+            </span>,
+            <JsonCell key="payload" json={formatJson(event.payload)} empty="No payload" />,
+          ]}
+        />
+      ))}
+    </SurfaceTable>
   );
 }
 
 function WorkflowEmissionsTab({ detail }: { detail: WorkflowDetailLoaderData }) {
+  if (detail.history.emissions.length === 0) {
+    return (
+      <BackofficeSystemState
+        tone="empty"
+        title="No step emissions are recorded for this run."
+        flush
+      />
+    );
+  }
   return (
-    <section className="min-w-0 space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-          Step emissions
-        </p>
-        <span className="text-xs text-[var(--bo-muted-2)]">
-          {detail.history.emissions.length} emission
-          {detail.history.emissions.length === 1 ? "" : "s"}
-        </span>
-      </div>
-      {detail.history.emissions.length === 0 ? (
-        <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
-          No step emissions are currently recorded for this run.
-        </div>
-      ) : (
-        <div className="backoffice-scroll max-w-full overflow-x-auto border border-[color:var(--bo-border)]">
-          <table className="w-full table-fixed divide-y divide-[color:var(--bo-border)] text-sm">
-            <thead className="bg-[var(--bo-panel-2)] text-left">
-              <tr className="text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-                <th scope="col" className="w-72 px-3 py-2">
-                  Step
-                </th>
-                <th scope="col" className="w-32 px-3 py-2">
-                  Direction
-                </th>
-                <th scope="col" className="w-44 px-3 py-2">
-                  Created
-                </th>
-                <th scope="col" className="px-3 py-2">
-                  Payload
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[color:var(--bo-border)] bg-[var(--bo-panel)]">
-              {detail.history.emissions.map((emission) => (
-                <tr key={emission.id} className="text-[var(--bo-muted)]">
-                  <td className="px-3 py-2 align-top">
-                    <p
-                      className="truncate font-semibold text-[var(--bo-fg)]"
-                      title={emission.stepKey}
-                    >
-                      {emission.stepKey}
-                    </p>
-                    <p
-                      className="truncate font-mono text-xs text-[var(--bo-muted-2)]"
-                      title={`${emission.epoch} · #${emission.sequence} · ${emission.id}`}
-                    >
-                      {emission.epoch} · #{emission.sequence}
-                    </p>
-                  </td>
-                  <td className="px-3 py-2 align-top text-xs">
-                    <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] tracking-[0.18em] text-[var(--bo-fg)] uppercase">
-                      {emission.actor}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 align-top text-xs">
-                    {formatTimestamp(emission.createdAt) || "Unknown"}
-                  </td>
-                  <td className="min-w-0 px-3 py-2 align-top">
-                    <pre className="backoffice-scroll max-h-80 w-full min-w-0 overflow-auto border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 font-mono text-xs whitespace-pre text-[var(--bo-fg)]">
-                      {formatJson(emission.payload) || "No payload"}
-                    </pre>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </section>
+    <SurfaceTable columns={EMISSION_COLUMNS}>
+      {detail.history.emissions.map((emission) => (
+        <SurfaceTableRow
+          key={emission.id}
+          columns={EMISSION_COLUMNS}
+          cells={[
+            <div key="step" className="max-w-64 min-w-0">
+              <p className="truncate font-semibold text-[var(--bo-fg)]" title={emission.stepKey}>
+                {emission.stepKey}
+              </p>
+              <p
+                className="truncate font-mono text-xs text-[var(--bo-muted-2)]"
+                title={`${emission.epoch} · #${emission.sequence} · ${emission.id}`}
+              >
+                {emission.epoch} · #{emission.sequence}
+              </p>
+            </div>,
+            <BackofficeStatusLight key="direction" tone="muted" dot={false}>
+              {emission.actor}
+            </BackofficeStatusLight>,
+            <span key="created" className="text-xs whitespace-nowrap">
+              {formatTimestamp(emission.createdAt) || "Unknown"}
+            </span>,
+            <JsonCell key="payload" json={formatJson(emission.payload)} empty="No payload" />,
+          ]}
+        />
+      ))}
+    </SurfaceTable>
   );
 }
 
-function DetailItem({ label, value }: { label: string; value: ReactNode }) {
+/** JSON in a table cell scrolls within a capped box, so one large payload cannot widen the table. */
+function JsonCell({ json, empty }: { json: string; empty: string }) {
   return (
-    <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
-      <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">{label}</p>
-      <div className="mt-2 text-sm text-[var(--bo-fg)]">{value}</div>
-    </div>
+    <pre className="backoffice-scroll max-h-80 max-w-[32rem] min-w-48 overflow-auto bg-[var(--bo-panel-2)] p-2 font-mono text-[11px] leading-5 whitespace-pre text-[var(--bo-fg)] shadow-[inset_0_0_0_1px_var(--bo-border)]">
+      {json || empty}
+    </pre>
   );
 }

@@ -1,7 +1,11 @@
-import { ButtonLink } from "@fragno-private/design-system/button";
-import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
 import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
-import { useOutletContext } from "react-router";
+import {
+  SurfacePanel,
+  SurfaceTable,
+  SurfaceTableRow,
+  type SurfaceTableColumn,
+} from "@fragno-private/design-system/surface-panel";
+import { Link, useOutletContext } from "react-router";
 
 import { internalsScopeBasePath } from "./internals-scope";
 import type { InternalsLayoutContext } from "./layout";
@@ -10,9 +14,14 @@ type InternalDestination = {
   id: string;
   name: string;
   description: string;
-  status: "Available" | "Planned";
   to: string | null;
 };
+
+const COLUMNS: SurfaceTableColumn[] = [
+  { label: "Tool", align: "start" },
+  { label: "What it covers", align: "start" },
+  { label: "Status", align: "end" },
+];
 
 function internalDestinations(
   hasOrganization: boolean,
@@ -23,7 +32,6 @@ function internalDestinations(
       id: "users",
       name: "Users",
       description: "Review every system account and manage global administrator access.",
-      status: "Available",
       to: `${internalsBasePath}/users`,
     },
     {
@@ -31,14 +39,12 @@ function internalDestinations(
       name: "GitHub",
       description:
         "Inspect GitHub App runtime configuration and singleton installation routing state.",
-      status: "Available",
       to: `${internalsBasePath}/github`,
     },
     {
       id: "cloudflare-browser-run",
       name: "Cloudflare Browser Run",
       description: "Create Browser Run sessions and exercise their target lifecycle APIs.",
-      status: "Available",
       to: `${internalsBasePath}/cloudflare/browser-run`,
     },
     {
@@ -46,14 +52,12 @@ function internalDestinations(
       name: "Generated UI",
       description:
         "Preview every component and semantic variant in the production codemode presentation catalog.",
-      status: "Available",
       to: `${internalsBasePath}/generated-ui`,
     },
     {
       id: "upload",
       name: "Upload",
       description: "Configure upload storage and inspect organization-scoped upload operations.",
-      status: hasOrganization ? "Available" : "Planned",
       to: hasOrganization ? "/backoffice/connections/upload" : null,
     },
     {
@@ -61,7 +65,6 @@ function internalDestinations(
       name: "Durable hooks",
       description:
         "Inspect durable hook queues and retry state across organization and singleton scopes.",
-      status: "Available",
       to: `${internalsBasePath}/durable-hooks`,
     },
     {
@@ -69,7 +72,6 @@ function internalDestinations(
       name: "Codemode runs",
       description:
         "Review codemode runs in this scope and the tool calls each one made, with their input and output.",
-      status: "Available",
       to: `${internalsBasePath}/codemode`,
     },
     {
@@ -77,7 +79,6 @@ function internalDestinations(
       name: "Workflows",
       description:
         "Inspect workflow instances, state transitions, and step/event history by fragment.",
-      status: "Available",
       to: `${internalsBasePath}/workflows`,
     },
   ];
@@ -92,56 +93,48 @@ export function meta() {
 
 export default function BackofficeInternals() {
   const { me, selectedRouteScope } = useOutletContext<InternalsLayoutContext>();
-  const hasOrganization = me.organizations.length > 0;
-  const internalsBasePath = internalsScopeBasePath(selectedRouteScope);
-  const destinations = internalDestinations(hasOrganization, internalsBasePath);
+  const destinations = internalDestinations(
+    me.organizations.length > 0,
+    internalsScopeBasePath(selectedRouteScope),
+  );
 
   return (
-    <div className="space-y-4">
-      <BackofficePageHeader
-        breadcrumbs={[{ label: "Backoffice", to: "/backoffice" }, { label: "Internals" }]}
-        eyebrow="Administration"
-        title="Durable systems and operational tooling."
-        description="Inspect the internal queues, hooks, service adapters, and control planes that power fragments."
-      />
-
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {destinations.map((item) => {
-          const isAvailable = Boolean(item.to);
-          return (
-            <div
-              key={item.id}
-              className="bo-fragment-surface bo-panel-surface flex min-h-52 flex-col bg-[var(--bo-panel)] p-4"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-                    {item.status}
-                  </p>
-                  <h2 className="mt-2 text-xl font-semibold text-balance text-[var(--bo-fg)]">
-                    {item.name}
-                  </h2>
-                </div>
-                <BackofficeStatusLight tone={isAvailable ? "live" : "waiting"}>
-                  {isAvailable ? "Online" : "Planned"}
+    <SurfacePanel caption={`${destinations.length} internal tools`} actions={null}>
+      <SurfaceTable columns={COLUMNS}>
+        {destinations.map((item) => (
+          <SurfaceTableRow
+            key={item.id}
+            columns={COLUMNS}
+            cells={[
+              item.to === null ? (
+                <span key="name" className="font-semibold whitespace-nowrap text-[var(--bo-muted)]">
+                  {item.name}
+                </span>
+              ) : (
+                <Link
+                  key="name"
+                  to={item.to}
+                  className="font-semibold whitespace-nowrap text-[var(--bo-fg)] hover:underline"
+                >
+                  {item.name}
+                </Link>
+              ),
+              <span key="description" className="text-pretty">
+                {item.description}
+              </span>,
+              item.to === null ? (
+                <BackofficeStatusLight key="status" tone="waiting">
+                  Needs an organization
                 </BackofficeStatusLight>
-              </div>
-              <p className="mt-4 text-sm text-pretty text-[var(--bo-muted)]">{item.description}</p>
-              <div className="mt-auto pt-4">
-                {isAvailable ? (
-                  <ButtonLink to={item.to!} variant="accent">
-                    Open
-                  </ButtonLink>
-                ) : (
-                  <span className="inline-flex min-h-10 items-center bg-[var(--bo-panel-2)] px-3 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted-2)] uppercase shadow-[inset_0_0_0_1px_var(--bo-border)]">
-                    Coming soon
-                  </span>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </section>
-    </div>
+              ) : (
+                <BackofficeStatusLight key="status" tone="live">
+                  Available
+                </BackofficeStatusLight>
+              ),
+            ]}
+          />
+        ))}
+      </SurfaceTable>
+    </SurfacePanel>
   );
 }
