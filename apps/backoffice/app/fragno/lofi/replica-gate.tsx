@@ -1,9 +1,9 @@
-import type { LofiSqliteReplica, LofiSqliteReplicaStatus } from "@fragno-dev/lofi/sqlite";
+import type { LofiSqliteClient, LofiSqliteReplicaStatus } from "@fragno-dev/lofi/sqlite";
 import { BackofficeDownloadState } from "@fragno-private/design-system/download-state";
 import { useSyncExternalStore, type ReactNode } from "react";
 
-/** A replica on the page or a connection to one in a worker: both report the replica's status. */
-type LofiReplicaStatusSource = Pick<LofiSqliteReplica, "getStatus" | "subscribeStatus">;
+/** A connection to a replica worker, which reports the replica's status. */
+type LofiReplicaStatusSource = Pick<LofiSqliteClient, "getStatus" | "subscribeStatus">;
 
 export function useLofiReplicaStatus(replica: LofiReplicaStatusSource): LofiSqliteReplicaStatus {
   return useSyncExternalStore(replica.subscribeStatus, replica.getStatus, replica.getStatus);

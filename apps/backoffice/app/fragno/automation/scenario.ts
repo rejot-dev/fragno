@@ -24,7 +24,7 @@ import {
   backofficeScopePathSegment,
   backofficeScopeRootOwner,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import type { LofiSqliteClient, LofiSqliteReplica } from "@fragno-dev/lofi/sqlite";
+import { zqlViewEngine } from "@fragno-dev/lofi-zql/worker";
 import { workflowsSchema } from "@fragno-dev/workflows/schema";
 import { InMemoryFs, type IFileSystem } from "just-bash";
 
@@ -80,7 +80,6 @@ import { createRuntimeStateBackend } from "@/fragno/codemode/runtime-state-backe
 import { readSavedWorkflowProgram } from "@/fragno/codemode/workflow-program";
 import {
   createScenarioReplicaDatabase,
-  createScenarioReplicaWorkerDatabase,
   type ScenarioReplicaDatabase,
 } from "@/fragno/lofi/scenario-replica-database";
 import type { MarketplaceStaticEntry } from "@/fragno/marketplace/contracts";
@@ -124,8 +123,7 @@ import {
   createCodemodeWorkflowInstanceInput,
   prepareCodemodeWorkflowInstance,
 } from "./engine/codemode-invocation";
-import { AUTOMATION_REPLICA_EPHEMERAL_TABLES, AUTOMATION_REPLICA_SCHEMAS } from "./lofi/replica";
-import { automationViews } from "./lofi/views";
+import { automationReplicaHost } from "./lofi/replica-host";
 import { createRouteBackedAutomationRouterRuntime } from "./routing-route-runtime";
 import {
   getScenarioAuthMemberRoles,
@@ -379,8 +377,8 @@ export type BackofficeScenarioTanStack = {
 
 /** SQLite replicas of the scopes' outboxes, as browsers open them. */
 export type BackofficeScenarioLofi = {
-  automations: ScenarioReplicaDatabase<LofiSqliteReplica>;
-  upload: ScenarioReplicaDatabase<LofiSqliteClient>;
+  automations: ScenarioReplicaDatabase;
+  upload: ScenarioReplicaDatabase;
   syncAll(): Promise<void>;
   cleanup(): Promise<void>;
 };
@@ -1851,17 +1849,18 @@ const createScenarioTanStack = (runtime: InMemoryBackofficeRuntime): BackofficeS
 const createScenarioLofi = (runtime: InMemoryBackofficeRuntime): BackofficeScenarioLofi => {
   const automations = createScenarioReplicaDatabase({
     name: "Automations replica",
-    schemas: AUTOMATION_REPLICA_SCHEMAS,
-    localSchemas: automationViews.localSchemas,
-    projections: automationViews.projections,
-    ephemeralTables: AUTOMATION_REPLICA_EPHEMERAL_TABLES,
+    ...automationReplicaHost,
     drainRuntime: () => runtime.drain(),
     baseUrl: automationScopedBaseUrl,
     createFetch: (scope) => createScenarioAutomationTanStackFetch(runtime, scope),
   });
-  const upload = createScenarioReplicaWorkerDatabase({
+  const upload = createScenarioReplicaDatabase({
     name: "Upload replica",
     schemas: UPLOAD_REPLICA_SCHEMAS,
+    localSchemas: [],
+    projections: [],
+    ephemeralTables: [],
+    engines: [zqlViewEngine],
     drainRuntime: () => runtime.drain(),
     baseUrl: uploadScopedBaseUrl,
     createFetch: (scope) => createScenarioUploadFetch(runtime, scope),

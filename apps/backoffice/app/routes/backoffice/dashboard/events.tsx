@@ -1,5 +1,5 @@
 import type { AutomationEventCausation } from "@fragno-dev/backoffice-api/v0/events";
-import type { LofiSqliteReplica } from "@fragno-dev/lofi/sqlite";
+import type { LofiSqliteClient } from "@fragno-dev/lofi/sqlite";
 import { Button } from "@fragno-private/design-system/button";
 import { CausalFlameGraph } from "@fragno-private/design-system/causal-flame-graph";
 import {
@@ -29,11 +29,10 @@ import type { BackofficeRouteScope } from "@/backoffice-runtime/route-scope";
 import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
 import { backofficePageBodyClassName } from "@/components/backoffice/page-body";
 import { useClock } from "@/components/backoffice/use-clock";
-import { getAutomationReplica } from "@/fragno/automation/lofi/replica";
+import { getAutomationReplica, useAutomationRead } from "@/fragno/automation/lofi/replica";
 import type { AutomationReadSource } from "@/fragno/automation/read-source";
 import { describeAutomationCollectionSource } from "@/fragno/automation/tanstack/browser-database";
 import { LofiReplicaGate } from "@/fragno/lofi/replica-gate";
-import { useLofiSqliteRead } from "@/fragno/lofi/use-lofi-sqlite-read";
 import { requireScopeSelection } from "@/layouts/backoffice-shell-request.server";
 
 import { formatTimestamp } from "../automations/formatting";
@@ -46,7 +45,6 @@ import {
   eventTraceStepNodeId,
   projectEventTrace,
   projectEventTraceList,
-  projectEventTraceSummaries,
   type EventTrace,
   type EventTraceDispatch,
   type EventTraceEvent,
@@ -55,7 +53,6 @@ import {
   type EventTraceRun,
   type EventTraceSummary,
 } from "./event-traces";
-import { readEventTrace, readEventTraceList } from "./event-traces-replica";
 import {
   dashboardEventsPath,
   dashboardOpenedTrace,
@@ -165,47 +162,38 @@ function EventTracesWorkspace({
   replica,
 }: {
   selectedScope: BackofficeScopeSelection;
-  replica: LofiSqliteReplica;
+  replica: LofiSqliteClient;
 }) {
   const [searchParams] = useSearchParams();
   const now = useClock(CLOCK_TICK_MS);
   const readSource = useMemo(() => ({ kind: "replica", replica }) as const, [replica]);
-  const listRead = useLofiSqliteRead(replica, "", (replica) =>
-    readEventTraceList(replica, TRACE_LIMIT),
-  );
-  const summaries = useMemo(
-    () =>
-      listRead.status === "ready"
-        ? projectEventTraceSummaries({ ...listRead.data, limit: TRACE_LIMIT })
-        : null,
-    [listRead],
-  );
+  const listRead = useAutomationRead(replica, "eventTraceSummaries", { limit: TRACE_LIMIT });
+  const summaries = listRead.status === "ready" ? listRead.data : null;
   const entries = useMemo(() => (summaries ? projectEventTraceList(summaries) : []), [summaries]);
   const openedTrace = dashboardOpenedTrace(searchParams) ?? newestTraceOf(entries[0]) ?? null;
-  const traceRead = useLofiSqliteRead(
-    openedTrace === null ? null : replica,
-    openedTrace ?? "",
-    async (replica) => {
-      const rootEventId = openedTrace ?? "";
-      return {
-        rootEventId,
-        trace: projectEventTrace({ rootEventId, ...(await readEventTrace(replica, rootEventId)) }),
-      };
-    },
+  const traceRead = useAutomationRead(openedTrace === null ? null : replica, "eventTrace", {
+    rootEventId: openedTrace ?? "",
+  });
+  const trace = useMemo(
+    () =>
+      traceRead.status === "ready" && openedTrace !== null
+        ? projectEventTrace({ rootEventId: openedTrace, ...traceRead.data })
+        : undefined,
+    [traceRead, openedTrace],
   );
 
   if (listRead.status === "error" || traceRead.status === "error") {
-    const error =
+    const message =
       listRead.status === "error"
-        ? listRead.error
+        ? listRead.message
         : traceRead.status === "error"
-          ? traceRead.error
+          ? traceRead.message
           : null;
     return (
       <BackofficeSystemState
         tone="error"
         title="Automation events could not be read."
-        description={error instanceof Error ? error.message : "Reload to try again."}
+        description={message ?? "Reload to try again."}
       />
     );
   }
@@ -221,11 +209,6 @@ function EventTracesWorkspace({
       />
     );
   }
-  // A read for the previously opened trace can still land after another one opens.
-  const trace =
-    traceRead.status === "ready" && traceRead.data.rootEventId === openedTrace
-      ? traceRead.data.trace
-      : undefined;
 
   return (
     <div className="grid items-start gap-x-10 gap-y-8 xl:grid-cols-[21rem_minmax(0,1fr)]">

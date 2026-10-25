@@ -1,39 +1,36 @@
 import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { fetchFragnoInternalDescription, resolveFragnoInternalUrls } from "@fragno-dev/db/outbox";
-import { zqlViewEngine } from "@fragno-dev/lofi-zql/worker";
-import {
-  openLofiSqliteReplica,
-  type LofiSqliteClient,
-  type LofiSqliteReplica,
-  type LofiSqliteReplicaOptions,
-  type LofiSqliteView,
+import type {
+  LofiSqliteClient,
+  LofiSqliteReplica,
+  LofiSqliteReplicaOptions,
+  LofiSqliteView,
 } from "@fragno-dev/lofi/sqlite";
 import {
   openLofiSqliteMemoryFiles,
   openLofiSqliteTab,
   waitForLofiSqliteReplica,
 } from "@fragno-dev/lofi/sqlite/testing";
+import type { LofiSqliteViewEngine } from "@fragno-dev/lofi/sqlite/worker";
 
-import type { LofiSchemaRegistration } from "@fragno-dev/lofi";
-
-export type ScenarioReplicaScope<TReplica> = {
-  readonly replica: TReplica;
+export type ScenarioReplicaScope = {
+  readonly replica: LofiSqliteClient;
   sync(): Promise<void>;
   drain(): Promise<void>;
 };
 
-export type ScenarioReplicaDatabase<TReplica> = {
-  forScope(scope: BackofficeContextScope): ScenarioReplicaScope<TReplica>;
-  forOrg(orgId: string): ScenarioReplicaScope<TReplica>;
+export type ScenarioReplicaDatabase = {
+  forScope(scope: BackofficeContextScope): ScenarioReplicaScope;
+  forOrg(orgId: string): ScenarioReplicaScope;
 };
 
-export type ScenarioReplicaDatabaseRuntime<TReplica> = ScenarioReplicaDatabase<TReplica> & {
+export type ScenarioReplicaDatabaseRuntime = ScenarioReplicaDatabase & {
   syncAll(): Promise<void>;
   cleanup(): Promise<void>;
 };
 
-type ScenarioReplicaScopeRuntime<TReplica> = ScenarioReplicaScope<TReplica> & {
+type ScenarioReplicaScopeRuntime = ScenarioReplicaScope & {
   cleanup(): Promise<void>;
 };
 
@@ -51,47 +48,27 @@ type ScenarioReplicaConnection = {
   openDatabase: Awaited<ReturnType<typeof openLofiSqliteMemoryFiles>>["open"];
 };
 
-type OpenedScenarioReplica<TReplica> = {
-  replica: TReplica;
+type OpenedScenarioReplica = {
+  replica: LofiSqliteClient;
   /** The replica that applies the outbox, which `sync` waits for. */
   writer: LofiSqliteReplica;
   close(): Promise<void>;
 };
 
 /**
- * One SQLite replica per scope, opened like a browser tab opens it on the page, with wa-sqlite's
- * in-memory files standing in for OPFS and Node's Web Locks and BroadcastChannel for the browser's.
+ * One SQLite replica per scope, opened like the replica worker of a browser's only tab opens it,
+ * with wa-sqlite's in-memory files standing in for OPFS and Node's Web Locks and BroadcastChannel
+ * for the browser's. Read its views with `readScenarioReplicaView`.
  */
 export function createScenarioReplicaDatabase(
   options: ScenarioReplicaOptions &
-    Pick<LofiSqliteReplicaOptions, "schemas"> &
-    Partial<Pick<LofiSqliteReplicaOptions, "localSchemas" | "projections" | "ephemeralTables">>,
-): ScenarioReplicaDatabaseRuntime<LofiSqliteReplica> {
-  return createScenarioReplicaScopes(options, async (connection) => {
-    const replica = await openLofiSqliteReplica(
-      {
-        baseUrl: connection.baseUrl,
-        fetch: connection.fetch,
-        schemas: options.schemas,
-        localSchemas: options.localSchemas ?? [],
-        projections: options.projections ?? [],
-        ephemeralTables: options.ephemeralTables ?? [],
-        onError: connection.onError,
-        retryDelayMs: 10,
-      },
-      { openDatabase: connection.openDatabase },
-    );
-    return { replica, writer: replica, close: () => replica.close() };
-  });
-}
-
-/**
- * One SQLite replica per scope, opened like the replica worker of a browser's only tab opens it,
- * with the ZQL view engine. Read its views with `readScenarioReplicaView`.
- */
-export function createScenarioReplicaWorkerDatabase(
-  options: ScenarioReplicaOptions & { schemas: LofiSchemaRegistration[] },
-): ScenarioReplicaDatabaseRuntime<LofiSqliteClient> {
+    Pick<
+      LofiSqliteReplicaOptions,
+      "schemas" | "localSchemas" | "projections" | "ephemeralTables"
+    > & {
+      engines: LofiSqliteViewEngine[];
+    },
+): ScenarioReplicaDatabaseRuntime {
   return createScenarioReplicaScopes(options, async (connection) => {
     // The scope's only tab, so it leads.
     const tab = await openLofiSqliteTab({
@@ -99,13 +76,13 @@ export function createScenarioReplicaWorkerDatabase(
         baseUrl: connection.baseUrl,
         fetch: connection.fetch,
         schemas: options.schemas,
-        localSchemas: [],
-        projections: [],
-        ephemeralTables: [],
+        localSchemas: options.localSchemas,
+        projections: options.projections,
+        ephemeralTables: options.ephemeralTables,
         onError: connection.onError,
         retryDelayMs: 10,
       },
-      engines: [zqlViewEngine],
+      engines: options.engines,
       openDatabase: connection.openDatabase,
       heartbeatIntervalMs: 1_000,
       leaderTimeoutMs: 10_000,
@@ -134,14 +111,14 @@ export function readScenarioReplicaView<TData>(view: LofiSqliteView<TData>): Pro
   });
 }
 
-function createScenarioReplicaScopes<TReplica>(
+function createScenarioReplicaScopes(
   options: ScenarioReplicaOptions,
-  open: (connection: ScenarioReplicaConnection) => Promise<OpenedScenarioReplica<TReplica>>,
-): ScenarioReplicaDatabaseRuntime<TReplica> {
-  const scopes = new Map<string, ScenarioReplicaScopeRuntime<TReplica>>();
+  open: (connection: ScenarioReplicaConnection) => Promise<OpenedScenarioReplica>,
+): ScenarioReplicaDatabaseRuntime {
+  const scopes = new Map<string, ScenarioReplicaScopeRuntime>();
   let files: ReturnType<typeof openLofiSqliteMemoryFiles> | undefined;
 
-  const forScope = (scope: BackofficeContextScope): ScenarioReplicaScope<TReplica> => {
+  const forScope = (scope: BackofficeContextScope): ScenarioReplicaScope => {
     const key = backofficeScopePathSegment(scope);
     const existing = scopes.get(key);
     if (existing) {
@@ -151,7 +128,7 @@ function createScenarioReplicaScopes<TReplica>(
     const fetch = options.createFetch(scope);
     const baseUrl = options.baseUrl(scope);
     const errors: unknown[] = [];
-    let replica: TReplica | undefined;
+    let replica: LofiSqliteClient | undefined;
     files ??= openLofiSqliteMemoryFiles({ statementDelayMs: 0 });
     const opening = files.then(async (memoryFiles) => {
       const opened = await open({
@@ -183,7 +160,7 @@ function createScenarioReplicaScopes<TReplica>(
       }
     };
 
-    const scopeRuntime: ScenarioReplicaScopeRuntime<TReplica> = {
+    const scopeRuntime: ScenarioReplicaScopeRuntime = {
       get replica() {
         if (!replica) {
           throw new Error(`Call sync() or drain() before reading ${options.name}.replica.`);

@@ -16,14 +16,13 @@ import {
   type BackofficeResolvedScope,
 } from "@/backoffice-runtime/resolved-scope";
 import { sendBackofficeWorkflowEvent } from "@/backoffice-ui/workflow-events.client";
-import { readLatestEventsOfType } from "@/fragno/automation/lofi/reads";
+import { useAutomationRead } from "@/fragno/automation/lofi/replica";
 import {
   automationReadCollections,
   automationReadReplica,
   type AutomationReadSource,
 } from "@/fragno/automation/read-source";
 import type { AutomationCollections } from "@/fragno/automation/tanstack/collections";
-import { useLofiSqliteRead } from "@/fragno/lofi/use-lofi-sqlite-read";
 import type { RuntimeToolWorkflowDescriptor } from "@/fragno/runtime-tools/workflow-catalog";
 import { resolveWorkflowRuntimeToolCalls } from "@/fragno/runtime-tools/workflow-catalog";
 import { jsonSchemaToTypeScript } from "@/lib/zod/zod-formatter";
@@ -261,24 +260,12 @@ function RecentEventInspector({
             }))
         : undefined,
   });
-  const eventKey = JSON.stringify([source, eventType]);
-  const replicaRead = useLofiSqliteRead(
-    automationReadReplica(readSource),
-    eventKey,
-    async (replica) => ({
-      eventKey,
-      events: await readLatestEventsOfType(replica, {
-        source,
-        eventType,
-        limit: RECENT_EVENT_LIMIT,
-      }),
-    }),
-  );
-  // A read for the previously selected event can still land after the selection changes.
-  const replicaEvents =
-    replicaRead.status === "ready" && replicaRead.data.eventKey === eventKey
-      ? replicaRead.data.events
-      : null;
+  const replicaRead = useAutomationRead(automationReadReplica(readSource), "latestEventsOfType", {
+    source,
+    eventType,
+    limit: RECENT_EVENT_LIMIT,
+  });
+  const replicaEvents = replicaRead.status === "ready" ? replicaRead.data : null;
   const recentEvents =
     readSource.kind === "replica" ? (replicaEvents ?? []) : (recentEventsQuery.data ?? []);
   const isLoading =

@@ -1,5 +1,5 @@
 import type { AutomationRouteDefinition } from "@fragno-dev/backoffice-api/v0/automation";
-import { lofiSqliteTableName, type LofiSqliteReplica } from "@fragno-dev/lofi/sqlite";
+import { lofiSqliteTableName, type LofiSqliteReader } from "@fragno-dev/lofi/sqlite";
 import { workflowsSchema } from "@fragno-dev/workflows/schema";
 
 import type { AutomationWorkflowRun } from "@/routes/backoffice/automations/script-view/workflow-run-presentation";
@@ -18,12 +18,10 @@ const workflowTable = (name: keyof typeof workflowsSchema.tables) =>
   `"${lofiSqliteTableName({ schema: workflowsSchema }, name)}"`;
 
 /** The scope's routes by priority, with when each scheduled route next fires. */
-export async function readAutomationRoutes(
-  replica: LofiSqliteReplica,
-): Promise<AutomationRouteDefinition[]> {
+export function readAutomationRoutes(reader: LofiSqliteReader): AutomationRouteDefinition[] {
   const route = automationFragmentSchema.tables.automation_route.columns;
   const schedule = automationFragmentSchema.tables.automation_route_schedule_state.columns;
-  const rows = await replica.query({
+  const rows = reader.query({
     sql: `SELECT "route"."id", "route"."name", "route"."enabled", "route"."priority",
             "route"."trigger", "route"."action", "route"."description",
             "schedule"."nextOccurrenceAt"
@@ -48,9 +46,9 @@ export async function readAutomationRoutes(
 }
 
 /** Every run, with what the dashboard reports about it. */
-export async function readWorkflowRunSummaries(replica: LofiSqliteReplica) {
+export function readWorkflowRunSummaries(reader: LofiSqliteReader) {
   const instance = workflowsSchema.tables.workflow_instance.columns;
-  return await replica.query({
+  return reader.query({
     sql: `SELECT "id", "instanceId", "workflowName", "remoteWorkflowName", "status", "errorName",
             "errorMessage", "createdAt", "updatedAt", "completedAt"
           FROM ${workflowTable("workflow_instance")}`,
@@ -93,10 +91,10 @@ function selectedRuns(selector: WorkflowRunRecordSelector): { where: string; par
  * The selected runs in full, most recently updated first, as `workflowRunRecordsQuery` reads them:
  * each with its steps, events, and step emissions in the order they were recorded.
  */
-export async function readWorkflowRuns(
-  replica: LofiSqliteReplica,
+export function readWorkflowRuns(
+  reader: LofiSqliteReader,
   selector: WorkflowRunRecordSelector,
-): Promise<AutomationWorkflowRun[]> {
+): AutomationWorkflowRun[] {
   const { workflow_instance, workflow_step, workflow_event, workflow_step_emission } =
     workflowsSchema.tables;
   const instance = workflow_instance.columns;
@@ -108,97 +106,95 @@ export async function readWorkflowRuns(
   const { where, params } = selectedRuns(selector);
   const selected = `SELECT ${internalId} FROM ${workflowTable("workflow_instance")} WHERE ${where}`;
 
-  const [instances, steps, events, emissions] = await Promise.all([
-    replica.query({
-      sql: `SELECT ${internalId} AS "ref", "id", "instanceId", "workflowName",
+  const instances = reader.query({
+    sql: `SELECT ${internalId} AS "ref", "id", "instanceId", "workflowName",
               "remoteWorkflowName", "status", "params", "output", "errorName", "errorMessage",
               "createdAt", "updatedAt", "startedAt", "completedAt"
             FROM ${workflowTable("workflow_instance")}
             WHERE ${where}
             ORDER BY "updatedAt" DESC, "id" DESC`,
-      params,
-      columns: {
-        ref: "integer",
-        id: "text",
-        instanceId: instance.instanceId,
-        workflowName: instance.workflowName,
-        remoteWorkflowName: instance.remoteWorkflowName,
-        status: instance.status,
-        params: instance.params,
-        output: instance.output,
-        errorName: instance.errorName,
-        errorMessage: instance.errorMessage,
-        createdAt: instance.createdAt,
-        updatedAt: instance.updatedAt,
-        startedAt: instance.startedAt,
-        completedAt: instance.completedAt,
-      },
-    }),
-    replica.query({
-      sql: `SELECT "instanceRef" AS "ref", "id", "stepKey", "parentStepKey", "name", "type",
+    params,
+    columns: {
+      ref: "integer",
+      id: "text",
+      instanceId: instance.instanceId,
+      workflowName: instance.workflowName,
+      remoteWorkflowName: instance.remoteWorkflowName,
+      status: instance.status,
+      params: instance.params,
+      output: instance.output,
+      errorName: instance.errorName,
+      errorMessage: instance.errorMessage,
+      createdAt: instance.createdAt,
+      updatedAt: instance.updatedAt,
+      startedAt: instance.startedAt,
+      completedAt: instance.completedAt,
+    },
+  });
+  const steps = reader.query({
+    sql: `SELECT "instanceRef" AS "ref", "id", "stepKey", "parentStepKey", "name", "type",
               "status", "committedByExecutionId", "attempts", "maxAttempts", "waitEventType",
               "result", "errorName", "errorMessage", "createdAt", "updatedAt"
             FROM ${workflowTable("workflow_step")}
             WHERE "instanceRef" IN (${selected})
             ORDER BY "createdAt", "id"`,
-      params,
-      columns: {
-        ref: "integer",
-        id: "text",
-        stepKey: step.stepKey,
-        parentStepKey: step.parentStepKey,
-        name: step.name,
-        type: step.type,
-        status: step.status,
-        committedByExecutionId: step.committedByExecutionId,
-        attempts: step.attempts,
-        maxAttempts: step.maxAttempts,
-        waitEventType: step.waitEventType,
-        result: step.result,
-        errorName: step.errorName,
-        errorMessage: step.errorMessage,
-        createdAt: step.createdAt,
-        updatedAt: step.updatedAt,
-      },
-    }),
-    replica.query({
-      sql: `SELECT "instanceRef" AS "ref", "id", "actor", "type", "payload", "createdAt",
+    params,
+    columns: {
+      ref: "integer",
+      id: "text",
+      stepKey: step.stepKey,
+      parentStepKey: step.parentStepKey,
+      name: step.name,
+      type: step.type,
+      status: step.status,
+      committedByExecutionId: step.committedByExecutionId,
+      attempts: step.attempts,
+      maxAttempts: step.maxAttempts,
+      waitEventType: step.waitEventType,
+      result: step.result,
+      errorName: step.errorName,
+      errorMessage: step.errorMessage,
+      createdAt: step.createdAt,
+      updatedAt: step.updatedAt,
+    },
+  });
+  const events = reader.query({
+    sql: `SELECT "instanceRef" AS "ref", "id", "actor", "type", "payload", "createdAt",
               "deliveredAt", "consumedByStepKey"
             FROM ${workflowTable("workflow_event")}
             WHERE "instanceRef" IN (${selected})
             ORDER BY "createdAt", "id"`,
-      params,
-      columns: {
-        ref: "integer",
-        id: "text",
-        actor: event.actor,
-        type: event.type,
-        payload: event.payload,
-        createdAt: event.createdAt,
-        deliveredAt: event.deliveredAt,
-        consumedByStepKey: event.consumedByStepKey,
-      },
-    }),
-    replica.query({
-      sql: `SELECT "instanceRef" AS "ref", "id", "actor", "stepKey", "executionId", "epoch",
+    params,
+    columns: {
+      ref: "integer",
+      id: "text",
+      actor: event.actor,
+      type: event.type,
+      payload: event.payload,
+      createdAt: event.createdAt,
+      deliveredAt: event.deliveredAt,
+      consumedByStepKey: event.consumedByStepKey,
+    },
+  });
+  const emissions = reader.query({
+    sql: `SELECT "instanceRef" AS "ref", "id", "actor", "stepKey", "executionId", "epoch",
               "sequence", "payload", "createdAt"
             FROM ${workflowTable("workflow_step_emission")}
             WHERE "instanceRef" IN (${selected})
             ORDER BY "createdAt", "sequence", "id"`,
-      params,
-      columns: {
-        ref: "integer",
-        id: "text",
-        actor: emission.actor,
-        stepKey: emission.stepKey,
-        executionId: emission.executionId,
-        epoch: emission.epoch,
-        sequence: emission.sequence,
-        payload: emission.payload,
-        createdAt: emission.createdAt,
-      },
-    }),
-  ]);
+    params,
+    columns: {
+      ref: "integer",
+      id: "text",
+      actor: emission.actor,
+      stepKey: emission.stepKey,
+      executionId: emission.executionId,
+      epoch: emission.epoch,
+      sequence: emission.sequence,
+      payload: emission.payload,
+      createdAt: emission.createdAt,
+    },
+  });
 
   const byRun = <T extends { ref: number }>(rows: readonly T[]) => {
     const groups = new Map<number, Omit<T, "ref">[]>();
@@ -224,9 +220,9 @@ export async function readWorkflowRuns(
 }
 
 /** The events that occurred since `since`, as the dashboard counts them. */
-export async function readAutomationEventsSince(replica: LofiSqliteReplica, since: Date) {
+export function readAutomationEventsSince(reader: LofiSqliteReader, since: Date) {
   const event = automationFragmentSchema.tables.automation_event.columns;
-  return await replica.query({
+  return reader.query({
     sql: `SELECT "source", "eventType", "occurredAt"
           FROM ${automationTable("automation_event")}
           WHERE "occurredAt" >= ?`,
@@ -236,9 +232,9 @@ export async function readAutomationEventsSince(replica: LofiSqliteReplica, sinc
 }
 
 /** The scope's own event sources. Registered capabilities describe the rest. */
-export async function readAutomationEventSources(replica: LofiSqliteReplica) {
+export function readAutomationEventSources(reader: LofiSqliteReader) {
   const source = automationFragmentSchema.tables.automation_event_source.columns;
-  return await replica.query({
+  return reader.query({
     sql: `SELECT "source" AS "id", "label", "description"
           FROM ${automationTable("automation_event_source")}`,
     params: [],
@@ -247,9 +243,9 @@ export async function readAutomationEventSources(replica: LofiSqliteReplica) {
 }
 
 /** The scope's own event definitions. Registered capabilities describe the rest. */
-export async function readAutomationEventDefinitions(replica: LofiSqliteReplica) {
+export function readAutomationEventDefinitions(reader: LofiSqliteReader) {
   const definition = automationFragmentSchema.tables.automation_event_definition.columns;
-  return await replica.query({
+  return reader.query({
     sql: `SELECT "source", "eventType", "label", "payloadSchema"
           FROM ${automationTable("automation_event_definition")}`,
     params: [],
@@ -263,12 +259,9 @@ export async function readAutomationEventDefinitions(replica: LofiSqliteReplica)
 }
 
 /** The runs in one of `statuses`, with what names the workflow each runs. */
-export async function readWorkflowsInStatus(
-  replica: LofiSqliteReplica,
-  statuses: readonly string[],
-) {
+export function readWorkflowsInStatus(reader: LofiSqliteReader, statuses: readonly string[]) {
   const instance = workflowsSchema.tables.workflow_instance.columns;
-  return await replica.query({
+  return reader.query({
     sql: `SELECT "workflowName", "remoteWorkflowName", "params"
           FROM ${workflowTable("workflow_instance")}
           WHERE "status" IN (${statuses.map(() => "?").join(", ")})`,
@@ -281,13 +274,29 @@ export async function readWorkflowsInStatus(
   });
 }
 
+/** The statuses of runs that have not finished. */
+export const ACTIVE_WORKFLOW_STATUSES = ["active", "waiting", "paused"];
+
+/**
+ * What the orchestration graph reads besides routes and recent events: the scope's own event
+ * sources and definitions, and the runs that have not finished, as
+ * `orchestrationActiveWorkflowsQuery` selects them.
+ */
+export function readOrchestrationRecords(reader: LofiSqliteReader) {
+  return {
+    eventSources: readAutomationEventSources(reader),
+    eventDefinitions: readAutomationEventDefinitions(reader),
+    activeWorkflows: readWorkflowsInStatus(reader, ACTIVE_WORKFLOW_STATUSES),
+  };
+}
+
 /** The latest `limit` events of one type, newest first. */
-export async function readLatestEventsOfType(
-  replica: LofiSqliteReplica,
+export function readLatestEventsOfType(
+  reader: LofiSqliteReader,
   { source, eventType, limit }: { source: string; eventType: string; limit: number },
 ) {
   const event = automationFragmentSchema.tables.automation_event.columns;
-  return await replica.query({
+  return reader.query({
     sql: `SELECT "id", "occurredAt", "subject", "payload"
           FROM ${automationTable("automation_event")}
           WHERE "source" = ? AND "eventType" = ?

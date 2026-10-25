@@ -16,6 +16,7 @@ import { queryOnce } from "@tanstack/react-db";
 import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
 import { createNodeBackofficeRuntimeConfiguration } from "@/backoffice-runtime/node/node-runtime-env";
+import { readAutomationReplica } from "@/fragno/automation/lofi/testing";
 import {
   eventTraceDeliveriesQuery,
   eventTraceDispatch,
@@ -32,10 +33,6 @@ import {
   type EventTraceRun,
   type EventTraceStep,
 } from "@/routes/backoffice/dashboard/event-traces";
-import {
-  readEventTrace,
-  readEventTraceList,
-} from "@/routes/backoffice/dashboard/event-traces-replica";
 
 import { buildGitHubAutomationEvent } from "../github";
 import { CODEMODE_WORKFLOW } from "./engine/codemode-invocation";
@@ -328,15 +325,14 @@ test("events record the routes and workflows that caused them back to their orig
           await replica.sync();
           const replicaTrace = projectEventTrace({
             rootEventId: webhookEventId,
-            ...(await readEventTrace(replica.replica, webhookEventId)),
+            ...(await readAutomationReplica(replica.replica, "eventTrace", {
+              rootEventId: webhookEventId,
+            })),
           });
           expect(comparable(replicaTrace)).toEqual(comparable(trace));
           expect(
             comparable(
-              projectEventTraceSummaries({
-                ...(await readEventTraceList(replica.replica, 10)),
-                limit: 10,
-              }),
+              await readAutomationReplica(replica.replica, "eventTraceSummaries", { limit: 10 }),
             ),
           ).toEqual(
             comparable(projectEventTraceSummaries({ events, dispatches, runs, limit: 10 })),

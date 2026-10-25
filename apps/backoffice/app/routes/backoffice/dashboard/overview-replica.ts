@@ -1,4 +1,4 @@
-import type { LofiSqliteReplica } from "@fragno-dev/lofi/sqlite";
+import type { LofiSqliteReader } from "@fragno-dev/lofi/sqlite";
 
 import {
   readAutomationEventsSince,
@@ -15,21 +15,23 @@ import { currentWorkflowWaits } from "@/fragno/automation/tanstack/workflow-wait
 
 /**
  * What the dashboard overview shows, read from the scope's Automations replica: the inputs of
- * `projectBackofficeDashboard`, and the agents with the turns they ended since `since`.
+ * `projectBackofficeDashboard`, and the agents with the turns they ended since `since`, in epoch
+ * milliseconds.
  */
-export async function readDashboardOverview(replica: LofiSqliteReplica, since: Date) {
-  const [runs, waitingRuns, events, connections, agents, agentTurns, routes] = await Promise.all([
-    readWorkflowRunSummaries(replica),
-    readWorkflowRuns(replica, { type: "waiting" }),
-    readAutomationEventsSince(replica, since),
-    readCurrentIntegrationConnections(replica),
-    readPiAgents(replica),
-    readPiAgentTurns(replica, since),
-    readAutomationRoutes(replica),
-  ]);
+export function readDashboardOverview(reader: LofiSqliteReader, { since }: { since: number }) {
+  const waitingRuns = readWorkflowRuns(reader, { type: "waiting" });
   // Waits follow from the waiting runs' current steps, which the overview reads anyway.
   const waits = currentWorkflowWaits(
     waitingRuns.map((run) => ({ id: run.id, output: run.output, steps: run.workflowSteps })),
   );
-  return { runs, waitingRuns, waits, events, connections, agents, agentTurns, routes };
+  return {
+    runs: readWorkflowRunSummaries(reader),
+    waitingRuns,
+    waits,
+    events: readAutomationEventsSince(reader, new Date(since)),
+    connections: readCurrentIntegrationConnections(reader),
+    agents: readPiAgents(reader),
+    agentTurns: readPiAgentTurns(reader, new Date(since)),
+    routes: readAutomationRoutes(reader),
+  };
 }
