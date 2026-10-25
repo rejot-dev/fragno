@@ -11,6 +11,7 @@ import { migrate, withDatabase, type TypedUnitOfWork } from "@fragno-dev/db";
 
 import type { LofiSqliteClient, LofiSqliteView, LofiSqliteViewResult } from "./client";
 import { lofiSqliteTableName, quoteSqliteIdentifier } from "./layout";
+import { lofiSqliteReadViews, readViewEngine, type LofiSqliteReads } from "./read-views";
 import { openLofiSqliteMemoryFiles, openLofiSqliteTab } from "./testing";
 
 const appSchema = schema("app", (s) =>
@@ -43,6 +44,28 @@ const postCountView = (client: LofiSqliteClient) =>
     params: [],
     columns: { count: "integer" },
   });
+
+const appReads = {
+  // Two queries, which see the same state, and data that is not rows.
+  activity: (reader, args: { since: number }) => ({
+    since: new Date(args.since),
+    activeUsers: reader
+      .query({
+        sql: `SELECT "email" FROM ${table("users")} WHERE "active" = 1 ORDER BY "email"`,
+        params: [],
+        columns: { email: appSchema.tables.users.columns.email },
+      })
+      .map(({ email }) => email),
+    posts: reader.query({
+      sql: `SELECT count(*) AS "count" FROM ${table("posts")}`,
+      params: [],
+      columns: { count: "integer" },
+    })[0]!.count,
+  }),
+  deleteUsers: (reader) =>
+    reader.query({ sql: `DELETE FROM ${table("users")}`, params: [], columns: {} }),
+} satisfies LofiSqliteReads;
+const appReadViews = lofiSqliteReadViews<typeof appReads>("app-reads");
 
 // ---------------------------------------------------------------------------------------------
 // Scenario DSL: a fragment on fragno-db's SQLite backend serves the outbox. Each "tab" runs a host,
@@ -178,7 +201,7 @@ async function runScenario(steps: ScenarioStep[]): Promise<ScenarioContext> {
               onError: (error) => ctx.errors.push(error),
               retryDelayMs: 10,
             },
-            engines: [],
+            engines: [readViewEngine({ kind: "app-reads", reads: appReads })],
             openDatabase: async (open) => {
               ctx.databasesOpened++;
               return await files.open(open);
@@ -284,6 +307,43 @@ describe("Lofi SQLite host", () => {
       check((ctx) => {
         assert.equal(ctx.databasesOpened, 2);
       }),
+    ]);
+    expect(ctx.errors).toEqual([]);
+  });
+
+  it("maintains read views, which run several queries on one state", async () => {
+    const ctx = await runScenario([
+      openTab("a"),
+      openTab("b"),
+      watch("b", "activity", (client) => appReadViews(client, "activity", { since: 0 })),
+      waitForView("b", "activity", { since: new Date(0), activeUsers: [], posts: 0 }),
+      write("users", (uow) => {
+        uow.create("users", { email: "ada@example.com", active: true });
+        uow.create("posts", { title: "Hello" });
+      }),
+      waitForView("b", "activity", { activeUsers: ["ada@example.com"], posts: 1 }),
+
+      // A batch that leaves the read's data as it was sends the view nothing.
+      write("bob", (uow) => {
+        uow.create("users", { email: "bob@example.com", active: false });
+      }),
+      write("post", (uow) => {
+        uow.create("posts", { title: "Again" });
+      }),
+      waitForView("b", "activity", { activeUsers: ["ada@example.com"], posts: 2 }),
+      check((ctx) => {
+        expect(readyData(ctx, "b/activity")).toEqual([
+          { since: new Date(0), activeUsers: [], posts: 0 },
+          { since: new Date(0), activeUsers: ["ada@example.com"], posts: 1 },
+          { since: new Date(0), activeUsers: ["ada@example.com"], posts: 2 },
+        ]);
+      }),
+
+      // Reads that would write, and reads the worker does not have, fail their view.
+      watch("b", "writes", (client) => appReadViews(client, "deleteUsers", undefined)),
+      waitForError("b", "writes", "must not write"),
+      watch("b", "unknown", (client) => client.view("app-reads", { read: "nope", args: null })),
+      waitForError("b", "unknown", 'No read named "nope"'),
     ]);
     expect(ctx.errors).toEqual([]);
   });

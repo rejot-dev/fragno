@@ -24,3 +24,12 @@ export {
   type LofiSqliteViewResult,
 } from "./sqlite/client";
 export type { LofiSqlitePort } from "./sqlite/protocol";
+export {
+  lofiSqliteReadViews,
+  type LofiSqliteRead,
+  type LofiSqliteReadArgs,
+  type LofiSqliteReader,
+  type LofiSqliteReads,
+  type LofiSqliteReadViewQuery,
+  type LofiSqliteReadViews,
+} from "./sqlite/read-views";
