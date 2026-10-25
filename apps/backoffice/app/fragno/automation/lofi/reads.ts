@@ -254,6 +254,29 @@ export function readAutomationEventsSince(reader: LofiSqliteReader, since: Date)
   });
 }
 
+/**
+ * What the orchestration graph draws besides its records: the routes, and the source and type of
+ * every event that occurred since `since`, in epoch milliseconds.
+ */
+export function readOrchestrationGraphInputs(
+  reader: LofiSqliteReader,
+  { since }: { since: number },
+) {
+  return {
+    routes: readAutomationRoutes(reader),
+    recentEvents: reader.query({
+      sql: `SELECT DISTINCT "source", "eventType"
+            FROM ${automationTable("automation_event")}
+            WHERE "occurredAt" >= ?`,
+      params: [since],
+      columns: {
+        source: automationFragmentSchema.tables.automation_event.columns.source,
+        eventType: automationFragmentSchema.tables.automation_event.columns.eventType,
+      },
+    }),
+  };
+}
+
 /** The scope's own event sources. Registered capabilities describe the rest. */
 export function readAutomationEventSources(reader: LofiSqliteReader) {
   const source = automationFragmentSchema.tables.automation_event_source.columns;

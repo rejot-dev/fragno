@@ -1,30 +1,33 @@
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { Component, useEffect, useMemo, type ReactNode } from "react";
 
-import { createStateStore, type StateStore } from "@json-render/react";
-import { useLiveQuery } from "@tanstack/react-db";
+import { createStateStore } from "@json-render/react";
 
 import type { BackofficeUiHostWidgets, BackofficeUiLinks } from "../render-context";
 import { BackofficeUiStoreRenderer } from "../renderer";
-import {
-  pageDataPath,
-  pageValuePath,
-  type PageDefinition,
-  type PageQuery,
-  type PageValue,
-} from "./definition";
-import { pageQuery, pageRows, pageValue, type PageSources } from "./query";
+import { pageDataPath, pageValuePath, type PageDefinition } from "./definition";
+import { pageRows, PageRowsError, pageValue, type PageData, type PageQueryResult } from "./rows";
+
+/** One query's live result, as the host maintains it. */
+export type PageQueryState =
+  | { status: "loading" }
+  | { status: "ready"; result: PageQueryResult }
+  | { status: "error"; message: string };
 
 type PageViewProps = {
   definition: PageDefinition;
-  sources: PageSources;
-  /** The clock the page's queries and relative times read, such as `useMinuteClock()`. */
+  /**
+   * Each query's result, by name, for the parameters `pageQueryParams` gives at `now`. A query
+   * without one shows no rows yet.
+   */
+  results: Readonly<Record<string, PageQueryState>>;
+  /** The clock the page's relative times read, such as `useMinuteClock()`. */
   now: number;
   links: BackofficeUiLinks;
   widgets: BackofficeUiHostWidgets;
 };
 
-/** Renders a page's interface over its queries' live results from the host's collections. */
+/** Renders a page's interface over its queries' live results. */
 export function PageView(props: PageViewProps) {
   return (
     <PageErrorBoundary definition={props.definition}>
@@ -34,9 +37,9 @@ export function PageView(props: PageViewProps) {
 }
 
 /**
- * Validation cannot foresee everything TanStack DB or a component rejects, so a page that throws
- * while rendering fails in place, leaving the views around it, such as its source, usable. A new
- * definition, built from an edited source, renders again.
+ * Validation cannot foresee everything a component rejects, so a page that throws while rendering
+ * fails in place, leaving the views around it, such as its source, usable. A new definition, built
+ * from an edited source, renders again.
  */
 class PageErrorBoundary extends Component<
   { definition: PageDefinition; children: ReactNode },
@@ -58,18 +61,22 @@ class PageErrorBoundary extends Component<
     if (this.state.error === null) {
       return this.props.children;
     }
-    return (
-      <BackofficeSystemState
-        tone="error"
-        label="Invalid page"
-        title="This page could not be shown."
-        description={this.state.error.message}
-      />
-    );
+    return <PageFailure message={this.state.error.message} />;
   }
 }
 
-function PageContent({ definition, sources, now, links, widgets }: PageViewProps) {
+function PageFailure({ message }: { message: string }) {
+  return (
+    <BackofficeSystemState
+      tone="error"
+      label="Invalid page"
+      title="This page could not be shown."
+      description={message}
+    />
+  );
+}
+
+function PageContent({ definition, results, now, links, widgets }: PageViewProps) {
   // Every query starts empty, so bound props hold rows and values before the first results arrive.
   const store = useMemo(() => {
     const created = createStateStore({});
@@ -81,66 +88,59 @@ function PageContent({ definition, sources, now, links, widgets }: PageViewProps
     }
     return created;
   }, [definition]);
-  const valuesByQuery = useMemo(
-    () =>
-      Object.fromEntries(
-        Object.keys(definition.queries).map((query) => [
-          query,
-          Object.entries(definition.values).filter(([, value]) => value.query === query),
-        ]),
-      ),
-    [definition],
-  );
+  const decoded = useMemo(() => decodeResults(definition, results), [definition, results]);
 
+  useEffect(() => {
+    if (decoded.kind === "failed") {
+      return;
+    }
+    for (const [name, rows] of Object.entries(decoded.rows)) {
+      store.set(pageDataPath(name), rows);
+    }
+    for (const [name, value] of Object.entries(definition.values)) {
+      const rows = decoded.rows[value.query];
+      if (rows) {
+        store.set(pageValuePath(name), pageValue(value, rows));
+      }
+    }
+  }, [decoded, definition, store]);
+
+  if (decoded.kind === "failed") {
+    return <PageFailure message={decoded.message} />;
+  }
   return (
-    <>
-      {Object.entries(definition.queries).map(([name, query]) => (
-        <PageQueryResults
-          key={name}
-          name={name}
-          query={query}
-          values={valuesByQuery[name] ?? []}
-          sources={sources}
-          now={now}
-          store={store}
-        />
-      ))}
-      <BackofficeUiStoreRenderer
-        spec={definition.spec}
-        store={store}
-        now={now}
-        links={links}
-        widgets={widgets}
-      />
-    </>
+    <BackofficeUiStoreRenderer
+      spec={definition.spec}
+      store={store}
+      now={now}
+      links={links}
+      widgets={widgets}
+    />
   );
 }
 
-/** Keeps one query's live rows, and the values read from them, in the page's state. */
-function PageQueryResults({
-  name,
-  query,
-  values,
-  sources,
-  now,
-  store,
-}: {
-  name: string;
-  query: PageQuery;
-  values: [string, PageValue][];
-  sources: PageSources;
-  now: number;
-  store: StateStore;
-}) {
-  const { data } = useLiveQuery({
-    query: (builder) => pageQuery(builder, sources, query, now),
-  });
-  useEffect(() => {
-    const rows = pageRows(data);
-    store.set(pageDataPath(name), rows);
-    for (const [valueName, value] of values) {
-      store.set(pageValuePath(valueName), pageValue(value, rows));
+/** The rows of every query that has a result, or why one cannot be shown. */
+function decodeResults(
+  definition: PageDefinition,
+  results: Readonly<Record<string, PageQueryState>>,
+): { kind: "decoded"; rows: Record<string, PageData[]> } | { kind: "failed"; message: string } {
+  const rows: Record<string, PageData[]> = {};
+  for (const [name, query] of Object.entries(definition.queries)) {
+    const state = Object.hasOwn(results, name) ? results[name] : undefined;
+    if (state?.status === "error") {
+      return { kind: "failed", message: `queries.${name}: ${state.message}` };
     }
-  }, [data, name, values, store]);
-  return null;
+    if (state?.status !== "ready") {
+      continue;
+    }
+    try {
+      rows[name] = pageRows(query, state.result);
+    } catch (error) {
+      if (!(error instanceof PageRowsError)) {
+        throw error;
+      }
+      return { kind: "failed", message: `queries.${name}: ${error.message}` };
+    }
+  }
+  return { kind: "decoded", rows };
 }

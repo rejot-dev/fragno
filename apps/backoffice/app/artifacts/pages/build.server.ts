@@ -23,14 +23,14 @@ import {
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 
-import { PAGE_COLLECTIONS } from "./collections";
+import { PAGE_QUERY_CATALOG, pageQueriesError } from "./page-queries.server";
 
 const BUILD_TIMEOUT_MS = 10_000;
 
 /**
- * Loads a page from its source, building it only when the source, a module it imports, or the
- * builders changed since the cached build. The build runs without providers, so a source can only
- * describe a page, never act with the viewer's authority.
+ * Loads a page from its source, building it only when the source, a module it imports, the
+ * builders, or the relations its queries read changed since the cached build. The build runs
+ * without providers, so a source can only describe a page, never act with the viewer's authority.
  */
 export async function loadPage({
   runtime,
@@ -60,13 +60,16 @@ export async function loadPage({
     return imports;
   }
   const { modules } = imports;
-  const key = await artifactBuildKey(withBackofficeUiBuilder(code), modules);
+  const key = await artifactBuildKey(
+    JSON.stringify([withBackofficeUiBuilder(code), PAGE_QUERY_CATALOG]),
+    modules,
+  );
   const cached = await readArtifactBuild(state, sourcePath, key);
   if (cached?.kind === "failed") {
     return cached;
   }
   // A current build that no longer validates was edited by hand, so it is rebuilt.
-  const cachedDefinition = cached ? parsePageDefinition(cached.output, PAGE_COLLECTIONS) : null;
+  const cachedDefinition = cached ? parsePageDefinition(cached.output) : null;
   if (cachedDefinition?.kind === "valid") {
     return { kind: "ready", definition: cachedDefinition.definition };
   }
@@ -86,7 +89,7 @@ export async function loadPage({
   if (run.error !== undefined) {
     return { kind: "failed", message: `The page could not be built right now: ${run.error}` };
   }
-  const outcome = buildOutcome(run.result);
+  const outcome = await buildOutcome(run.result);
   const system = createCodemodeRouteBackedRuntimeContext({
     emitter: { kind: "caller" },
     runtime,
@@ -141,25 +144,32 @@ async function readPageImports(
   }
 }
 
-/** The source's own failures and invalid definitions are cached, so they are not rebuilt on every view. */
-function buildOutcome(result: unknown): ArtifactBuildOutcome {
+/**
+ * The source's own failures, invalid definitions, and queries that cannot run are cached, so they
+ * are not rebuilt on every view.
+ */
+async function buildOutcome(result: unknown): Promise<ArtifactBuildOutcome> {
   // The build program returns one of its two shapes.
   const built = result as { ok: true; definition: unknown } | { ok: false; message: string };
   if (!built.ok) {
     return { kind: "failed", message: built.message };
   }
-  const parsed = parsePageDefinition(built.definition, PAGE_COLLECTIONS);
-  return parsed.kind === "valid"
+  const parsed = parsePageDefinition(built.definition);
+  if (parsed.kind === "invalid") {
+    return { kind: "failed", message: parsed.message };
+  }
+  const queries = await pageQueriesError(parsed.definition);
+  return queries === null
     ? // Codemode results cross the guest boundary as JSON.
       { kind: "built", output: built.definition as JsonValue }
-    : { kind: "failed", message: parsed.message };
+    : { kind: "failed", message: queries };
 }
 
 function loadOutcome(outcome: ArtifactBuildOutcome): PageLoad {
   if (outcome.kind === "failed") {
     return outcome;
   }
-  const parsed = parsePageDefinition(outcome.output, PAGE_COLLECTIONS);
+  const parsed = parsePageDefinition(outcome.output);
   return parsed.kind === "valid"
     ? { kind: "ready", definition: parsed.definition }
     : { kind: "failed", message: parsed.message };

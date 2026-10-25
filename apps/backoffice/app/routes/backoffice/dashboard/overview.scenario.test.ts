@@ -8,12 +8,7 @@ import {
   pageValuePath,
   type PageDefinition,
 } from "@fragno-private/backoffice-ui/pages/definition";
-import {
-  pageQuery,
-  pageRows,
-  pageValue,
-  type PageData,
-} from "@fragno-private/backoffice-ui/pages/query";
+import { pageRows, pageValue, type PageData } from "@fragno-private/backoffice-ui/pages/rows";
 import { BackofficeUiStoreRenderer } from "@fragno-private/backoffice-ui/renderer";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -31,6 +26,7 @@ import { GENERAL_SKILL_CONTENT } from "@/files/content/skills";
 import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
 import {
   assertAutomationProjectionsRebuild,
+  readAutomationPageQuery,
   readAutomationReplica,
 } from "@/fragno/automation/lofi/testing";
 import {
@@ -283,7 +279,7 @@ function sectionQueries({ spec, queries }: PageDefinition): Record<string, strin
 type HomePageRows = {
   "Needs attention": [
     { workflow: string; step: string; instanceId: string }[],
-    { workflow: string; errored: number; latest: { error: string }[] }[],
+    { workflow: string; errored: number; error: string }[],
     { id: string }[],
   ];
   Automations: [
@@ -292,7 +288,7 @@ type HomePageRows = {
       started: number;
       completed: number;
       errored: number;
-      latest: { status: string }[];
+      status: string;
     }[],
   ];
   Events: [{ source: string; events: number }[]];
@@ -334,15 +330,13 @@ async function buildHomePage(ctx: BackofficeScenarioContext): Promise<PageDefini
  * two compare where the page covers the dashboard.
  */
 async function readHomePage(ctx: BackofficeScenarioContext, definition: PageDefinition) {
-  const database = ctx.tanstack.automations.forOrg(orgId);
-  await database.drain();
+  const handle = ctx.lofi.automations.forOrg(orgId);
+  await handle.drain();
   const now = ctx.runtime.now();
   const store = createStateStore({});
   const data: Record<string, PageData[]> = {};
   for (const [name, query] of Object.entries(definition.queries)) {
-    data[name] = pageRows(
-      await queryOnce((builder) => pageQuery(builder, database.collections, query, now)),
-    );
+    data[name] = pageRows(query, await readAutomationPageQuery(handle.replica, query, now));
     store.set(pageDataPath(name), data[name]);
     for (const [valueName, value] of Object.entries(definition.values)) {
       if (value.query === name) {
@@ -369,7 +363,7 @@ async function readHomePage(ctx: BackofficeScenarioContext, definition: PageDefi
   );
   assert.notInclude(markup, "cannot show its data");
 
-  // The page's queries select these fields, and pageRows reads them as JSON.
+  // The page's queries declare these columns, which pageRows decodes.
   const sections = Object.fromEntries(
     Object.entries(sectionQueries(definition)).map(([label, queries]) => [
       label,
@@ -391,14 +385,14 @@ async function readHomePage(ctx: BackofficeScenarioContext, definition: PageDefi
           `input: ${workflow} (${step})${responses.has(instanceId) ? "" : " without a form"}`,
       ),
       ...failing.map(
-        ({ workflow, errored, latest }) => `failing: ${workflow} ×${errored} (${latest[0]?.error})`,
+        ({ workflow, errored, error }) => `failing: ${workflow} ×${errored} (${error})`,
       ),
       ...unavailable.map(({ id }) => `unavailable: ${id}`),
     ],
     workflows: sections.Automations[0]
       .map(
-        ({ workflow, started, completed, errored, latest }) =>
-          `${workflow}: ${started} started, ${completed} complete, ${errored} errored, last ${latest[0]?.status}`,
+        ({ workflow, started, completed, errored, status }) =>
+          `${workflow}: ${started} started, ${completed} complete, ${errored} errored, last ${status}`,
       )
       .sort(),
     sources: [...eventsBySource]

@@ -2,7 +2,7 @@ import type { ComponentFn } from "@json-render/react";
 
 import type { backofficeUiCatalog } from "../catalog";
 
-// Queries cannot round, since TanStack DB has no rounding function, so numbers round as they show.
+// Numbers round as they show, so a page passes the value it computed, such as a ratio.
 const numberFormats = {
   integer: new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }),
   decimal: new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }),

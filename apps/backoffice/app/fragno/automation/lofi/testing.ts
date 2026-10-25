@@ -1,7 +1,9 @@
 import { assert } from "vitest";
 
-import type { LofiSqliteClient } from "@fragno-dev/lofi/sqlite";
+import type { LofiSqliteClient, LofiSqliteGuardedResult } from "@fragno-dev/lofi/sqlite";
 import { lofiSqliteTableName } from "@fragno-dev/lofi/sqlite";
+import type { PageQuery } from "@fragno-private/backoffice-ui/pages/definition";
+import { pageQueryParams } from "@fragno-private/backoffice-ui/pages/rows";
 
 import {
   readScenarioReplicaView,
@@ -9,6 +11,7 @@ import {
 } from "@/fragno/lofi/scenario-replica-database";
 
 import { automationReadView, type AutomationReadArgs, type AutomationReadName } from "./replica";
+import { AUTOMATION_PAGE_VIEWS } from "./replica-schemas";
 import { automationViewsSchema } from "./views";
 
 /**
@@ -21,6 +24,27 @@ export function readAutomationReplica<TName extends AutomationReadName>(
   args: AutomationReadArgs<TName>,
 ) {
   return readScenarioReplicaView(automationReadView(replica, read, args));
+}
+
+/**
+ * A page query's result at `now` for everything the replica applied, read through the replica's
+ * worker as the page reads it. Fails when the query cannot run.
+ */
+export async function readAutomationPageQuery(
+  replica: LofiSqliteClient,
+  query: PageQuery,
+  now: number,
+) {
+  const result = await readScenarioReplicaView(
+    replica.view<LofiSqliteGuardedResult>(AUTOMATION_PAGE_VIEWS, {
+      sql: query.sql,
+      params: pageQueryParams(query, now),
+    }),
+  );
+  if (result.status === "error") {
+    throw new Error(result.message);
+  }
+  return result;
 }
 
 /**

@@ -4,17 +4,17 @@ import { ORGANIZATION_GRAPH } from "@fragno-private/design-system/orchestration-
 import { OrchestrationLayeredGraph } from "@fragno-private/design-system/orchestration-layered-graph";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { backofficePageColumnClassName } from "@fragno-private/design-system/tab-header";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import type { BackofficeUiLinkTarget } from "../../components/link";
 import type { BackofficeUiHostWidgets } from "../../render-context";
-import { PageView } from "../view";
+import type { PageDefinition } from "../definition";
+import { PageView, type PageQueryState } from "../view";
 import {
   BUSY_SCOPE,
   EMPTY_SCOPE,
-  STORY_COLLECTION_FIELDS,
   STORY_NOW,
-  storySources,
+  storyResults,
   type StoryScope,
 } from "./backoffice-scope.fixture";
 import { buildPageSource } from "./build-page-source";
@@ -50,8 +50,7 @@ const storyWidgets: BackofficeUiHostWidgets = {
 
 /** The home page as its route shows it, built from the source Backoffice ships. */
 function HomePage({ scope }: { scope: StoryScope }) {
-  const built = useMemo(() => buildPageSource(homePageSource, STORY_COLLECTION_FIELDS), []);
-  const sources = useMemo(() => storySources(scope), [scope]);
+  const built = useMemo(() => buildPageSource(homePageSource), []);
   return (
     <div className={`${backofficePageColumnClassName} flex flex-col gap-4`}>
       <h1 className="text-lg font-semibold text-[var(--bo-fg)]">
@@ -65,15 +64,34 @@ function HomePage({ scope }: { scope: StoryScope }) {
           description={built.message}
         />
       ) : (
-        <PageView
-          definition={built.definition}
-          sources={sources}
-          now={STORY_NOW}
-          links={storyLink}
-          widgets={storyWidgets}
-        />
+        <StoryPage definition={built.definition} scope={scope} />
       )}
     </div>
+  );
+}
+
+/** The page over the scope's rows, which its queries read from an in-memory SQLite database. */
+function StoryPage({ definition, scope }: { definition: PageDefinition; scope: StoryScope }) {
+  const [results, setResults] = useState<Record<string, PageQueryState>>({});
+  useEffect(() => {
+    let cancelled = false;
+    void storyResults(scope, definition).then((next) => {
+      if (!cancelled) {
+        setResults(next);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [definition, scope]);
+  return (
+    <PageView
+      definition={definition}
+      results={results}
+      now={STORY_NOW}
+      links={storyLink}
+      widgets={storyWidgets}
+    />
   );
 }
 
