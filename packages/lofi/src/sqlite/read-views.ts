@@ -117,8 +117,8 @@ export function createTrackingReader(connection: LofiSqliteSyncConnection): {
 /**
  * Maintains views computed by read functions: each view runs its read again after every batch that
  * wrote a table its last run read, with the database locked, so the read's queries see one state.
- * The view reports its data only when it changed. A query that would write is refused, since
- * writes would bypass the replica.
+ * The view reports its data only when it changed, and a read that throws as its view's error. A
+ * query that would write is refused, since writes would bypass the replica.
  */
 export function readViewEngine(options: {
   kind: string;
@@ -135,11 +135,13 @@ export function readViewEngine(options: {
           run: () => { data: unknown; tables: ReadonlySet<string> };
           data: unknown;
           tables: ReadonlySet<string>;
+          failed: boolean;
           listener: (data: unknown) => void;
+          fail: (error: unknown) => void;
         }
       >();
       return {
-        materialize(id, query, listener) {
+        materialize(id, query, listener, fail) {
           const { read, args } = query as LofiSqliteReadViewQuery;
           const readFunction = Object.hasOwn(options.reads, read) ? options.reads[read] : undefined;
           if (!readFunction) {
@@ -150,33 +152,33 @@ export function readViewEngine(options: {
             return { data: result, tables };
           };
           const { data, tables } = run();
-          views.set(id, { run, data, tables, listener });
+          views.set(id, { run, data, tables, failed: false, listener, fail });
           listener(data);
         },
         destroy(id) {
           views.delete(id);
         },
         refresh(changed) {
-          // One failing read leaves its view's data as it was, and the others still refresh.
-          const errors: unknown[] = [];
           for (const view of views.values()) {
-            // A read reads only what its last run read until one of those tables changes.
+            // A read reads only what its last run read until one of those tables changes. A failed
+            // read runs again when a table its last successful run read changes.
             if (!readsChangedTable(view.tables, changed)) {
               continue;
             }
+            let run: { data: unknown; tables: ReadonlySet<string> };
             try {
-              const { data, tables } = view.run();
-              view.tables = tables;
-              if (!sameData(data, view.data)) {
-                view.data = data;
-                view.listener(data);
-              }
+              run = view.run();
             } catch (error) {
-              errors.push(error);
+              view.failed = true;
+              view.fail(error);
+              continue;
             }
-          }
-          if (errors.length > 0) {
-            throw new AggregateError(errors, "Read views failed to refresh.");
+            view.tables = run.tables;
+            if (view.failed || !sameData(run.data, view.data)) {
+              view.failed = false;
+              view.data = run.data;
+              view.listener(run.data);
+            }
           }
         },
       };

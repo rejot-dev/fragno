@@ -50,7 +50,15 @@ async function openEngine({
     reported,
     watch(id: string, sql: string, params: SqliteValue[] = []) {
       reported.set(id, []);
-      views.materialize(id, { sql, params }, (data) => reported.get(id)!.push(data));
+      // Guarded views report their failures as results, so `fail` never runs.
+      views.materialize(
+        id,
+        { sql, params },
+        (data) => reported.get(id)!.push(data),
+        (error) => {
+          throw error;
+        },
+      );
     },
   };
 }

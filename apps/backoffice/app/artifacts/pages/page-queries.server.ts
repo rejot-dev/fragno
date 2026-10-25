@@ -43,9 +43,15 @@ export async function pageQueriesError(definition: PageDefinition): Promise<stri
     const id = `check-${crypto.randomUUID()}`;
     let result: LofiSqliteGuardedResult | undefined;
     // Views report their first result before materialize returns, and nothing runs meanwhile.
-    views.materialize(id, { sql: query.sql, params: pageQueryParams(query, 0) }, (data) => {
-      result = data as LofiSqliteGuardedResult;
-    });
+    // Guarded views report their failures as results, and these are destroyed before a refresh.
+    views.materialize(
+      id,
+      { sql: query.sql, params: pageQueryParams(query, 0) },
+      (data) => {
+        result = data as LofiSqliteGuardedResult;
+      },
+      () => {},
+    );
     views.destroy(id);
     if (result === undefined) {
       throw new Error("A guarded view reports its result as it materializes.");
