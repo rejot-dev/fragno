@@ -31,10 +31,10 @@ const codemode = codemodeRunnerFor(
 );
 
 describe("executeWorkflowCodemodeAutomation", () => {
-  test("exposes Backoffice capability tools to workflow codemode automations", async () => {
+  test("exposes Backoffice runtime tools to workflow codemode automations", async () => {
     const calls: unknown[] = [];
     const event: AutomationEvent = {
-      id: "event-workflow-list-capabilities",
+      id: "event-workflow-list-hook-scopes",
       scopeRestriction: null,
       scope: { kind: "org", orgId: "org-1" },
       source: "auth",
@@ -63,10 +63,10 @@ describe("executeWorkflowCodemodeAutomation", () => {
             filename: "/workflow.js",
             modules: {},
             code: `defineWorkflow(
-            { name: "list-capabilities" },
+            { name: "list-hook-scopes" },
             async (event, step) => {
-              return await step.do("list capabilities", async () => ({
-                capabilities: await capabilities.list(),
+              return await step.do("list hook scopes", async () => ({
+                hookScopes: await hooks.scopesList(),
                 eventId: event.id,
               }));
             },
@@ -83,7 +83,7 @@ describe("executeWorkflowCodemodeAutomation", () => {
 
     const instanceId = await harness.createInstance("WORKFLOW", {
       id: "codemode-workflow-capabilities-test-1",
-      remoteWorkflowName: "list-capabilities",
+      remoteWorkflowName: "list-hook-scopes",
       params: { automationEvent: event },
     });
     await harness.runUntilIdle({
@@ -97,12 +97,12 @@ describe("executeWorkflowCodemodeAutomation", () => {
       output: expect.objectContaining({
         exitCode: 0,
         result: {
-          capabilities: [uploadCapabilitySummary],
-          eventId: "event-workflow-list-capabilities",
+          hookScopes: [uploadHookScope],
+          eventId: "event-workflow-list-hook-scopes",
         },
       }),
     });
-    expect(calls).toEqual(["listCapabilities"]);
+    expect(calls).toEqual(["listHookScopes"]);
   });
 
   test("rejects persisted capability grants outside the execution actor chain", async () => {
@@ -289,20 +289,22 @@ const createUnusedAutomationRuntime = (): AutomationRuntime => ({
   },
 });
 
-const uploadCapabilitySummary = {
+const uploadHookScope = {
   id: "upload",
   label: "Upload",
-  kind: "connection" as const,
-  available: true,
+  capabilityId: "upload",
+  capabilityLabel: "Upload",
+  kind: "system" as const,
   configured: true,
+  healthy: true,
 };
 
 const createRecordingBackofficeRuntime = (calls: unknown[]): BackofficeCapabilitiesRuntime =>
   new Proxy(
     {
-      listCapabilities: async () => {
-        calls.push("listCapabilities");
-        return [uploadCapabilitySummary];
+      listHookScopes: async () => {
+        calls.push("listHookScopes");
+        return [uploadHookScope];
       },
     },
     {

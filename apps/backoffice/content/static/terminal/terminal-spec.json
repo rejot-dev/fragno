@@ -1686,31 +1686,6 @@
     ]
   },
   {
-    "command": "capabilities.list",
-    "summary": "capabilities.list lists Backoffice capabilities and status.",
-    "options": [
-      {
-        "name": "help",
-        "description": "Show this help text",
-        "valueRequired": false,
-        "valueName": ""
-      },
-      {
-        "name": "print",
-        "description": "Extract a nested JSON field (kebab-case path) from command result",
-        "valueRequired": true,
-        "valueName": "selector",
-        "required": false
-      },
-      {
-        "name": "format",
-        "description": "Output format: text (default) or json",
-        "valueRequired": true,
-        "valueName": "format"
-      }
-    ]
-  },
-  {
     "command": "hooks.scopes.list",
     "summary": "hooks.scopes.list lists hook scopes available to hooks.list --fragment.",
     "options": [

@@ -31,7 +31,29 @@ const durableHookQueueResponseSchema = z.lazy(() =>
   }),
 );
 
+const hookScopeOutputSchema = z.lazy(() =>
+  z.object({
+    id: z.string(),
+    label: z.string(),
+    capabilityId: z.string(),
+    capabilityLabel: z.string(),
+    kind: z.enum(["connection", "system"]),
+    configured: z.boolean().optional(),
+    healthy: z.boolean().optional(),
+  }),
+);
+
+const hookScopesListOutputSchema = z.lazy(() => z.array(hookScopeOutputSchema));
+
+export type HookScopesListOutput = z.infer<typeof hookScopesListOutputSchema>;
+
 export const hooksOperations = {
+  "hooks.scopes.list": {
+    description: "List hook scopes usable with hooks.list --fragment.",
+    permissions: [BACKOFFICE_PERMISSION.hooks.read],
+    input: z.void(),
+    output: hookScopesListOutputSchema,
+  },
   "hooks.list": {
     description: "List durable hook queue entries for a runtime fragment.",
     permissions: [BACKOFFICE_PERMISSION.hooks.read],

@@ -47,8 +47,6 @@ const CODEMODE_PROVIDER_SUMMARIES: Record<string, string> = {
     "System administration: organizations, sign-ups, app registrations, OAuth clients, Marketplace features. Read in System scope.",
   org: "Current organization: name, members, invitations. Read to rename it, list members, or invite someone.",
   apps: "Installed apps: review, install, grants, action approval, uninstall. Read to install or manage an app.",
-  capabilities:
-    "Backoffice capabilities and whether each is configured. Read to check that a service is set up.",
   hooks: "Durable hook queues. Read to debug stuck or retrying background delivery.",
   integrations:
     "External service connections: set up, inspect, run actions, generate typed clients. Read for any third-party service.",

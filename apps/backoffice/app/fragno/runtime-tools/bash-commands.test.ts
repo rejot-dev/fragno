@@ -374,7 +374,6 @@ describe("createBackofficeBashCommands", () => {
 const createBackofficeRuntime = (
   overrides: Partial<BackofficeCapabilitiesRuntime & EventCatalogRuntime> = {},
 ): BackofficeCapabilitiesRuntime & EventCatalogRuntime => ({
-  listCapabilities: async () => [],
   listHookScopes: async () => [],
   listAutomationEvents: async () => [],
   getAutomationEvent: async () => null,

@@ -74,10 +74,6 @@ type BackofficePermissionRequirement =
       permission: "read" | "manage";
     }
   | {
-      namespace: "capabilities";
-      permission: "read";
-    }
-  | {
       namespace: "cloudflare";
       permission: "browserRun";
     }

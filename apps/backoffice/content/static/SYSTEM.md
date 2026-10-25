@@ -101,8 +101,9 @@ completion.
 Declarations tell you what can be called; runtime checks tell you what is currently usable.
 
 - `/providers` contains the complete, stable Backoffice API.
-- Before executing, confirm the method exists, required services are configured, scopes are
-  concrete, and event types are exact; report an unavailable requirement as blocking.
+- Before executing, confirm the method exists, any connection it needs is listed by
+  `integrations.list`, scopes are concrete, and event types are exact; report an unavailable
+  requirement as blocking. Other providers report their own unavailability when called.
 
 Classify execution errors from their messages. Correct and re-execute declaration or input
 mismatches; report permission, configuration, and backend failures with the observed error. Report
