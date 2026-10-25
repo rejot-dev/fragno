@@ -78,6 +78,9 @@ export class FragnoInternalCollection {
         persistence,
         schemaVersion: options.schemaVersion,
         syncMode: "eager",
+        // The coordinator writes through these sync controls for as long as it runs, usually with
+        // no subscriber; collecting the idle collection would drop them and stop synchronization.
+        gcTime: 0,
         sync: {
           rowUpdateMode: "full",
           sync: (controls) => {
