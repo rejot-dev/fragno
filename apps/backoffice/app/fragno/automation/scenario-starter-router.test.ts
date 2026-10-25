@@ -12,14 +12,25 @@ import { and, eq, queryOnce } from "@tanstack/react-db";
 
 import { getStaticMarketplaceEntry } from "@/fragno/marketplace/static-entries";
 import {
+  eventTraceDeliveriesQuery,
   eventTraceDispatch,
   eventTraceDispatchesQuery,
   eventTraceEventsQuery,
+  eventTraceRunIds,
+  eventTraceRunsQuery,
+  eventTraceStepsQuery,
   projectEventTrace,
   projectEventTraceSummaries,
+  type EventTraceDelivery,
   type EventTraceDispatchRow,
   type EventTraceEvent,
+  type EventTraceRun,
+  type EventTraceStep,
 } from "@/routes/backoffice/dashboard/event-traces";
+import {
+  readEventTrace,
+  readEventTraceList,
+} from "@/routes/backoffice/dashboard/event-traces-replica";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
   class MockDurableObject {
@@ -129,6 +140,53 @@ async function routeFailedEvents(ctx: BackofficeScenarioContext) {
 }
 
 /** One line per node, siblings in label order, as in the event causation scenario. */
+/** A value as JSON, without the virtual properties, such as `$synced`, TanStack DB adds to rows. */
+function comparable(value: unknown): unknown {
+  return JSON.parse(
+    JSON.stringify(value, (key, nested: unknown) =>
+      key.startsWith("$") ? undefined : nested instanceof Map ? [...nested] : nested,
+    ),
+  );
+}
+
+/**
+ * The Events tab reads the replica, only the rows a trace and the list use. Both must project to
+ * what every synchronized TanStack row projects to.
+ */
+async function assertReplicaTracesMatchCollections(
+  ctx: BackofficeScenarioContext,
+  rootEventId: string,
+) {
+  const database = ctx.tanstack.automations.forOrg("org-1");
+  const replica = ctx.lofi.automations.forOrg("org-1");
+  await Promise.all([database.sync(), replica.sync()]);
+  const { collections } = database;
+  const [events, dispatchRows, runs] = (await Promise.all([
+    queryOnce((query) => eventTraceEventsQuery(query, collections)),
+    queryOnce((query) => eventTraceDispatchesQuery(query, collections)),
+    queryOnce((query) => eventTraceRunsQuery(query, collections)),
+  ])) as [EventTraceEvent[], EventTraceDispatchRow[], EventTraceRun[]];
+  const dispatches = dispatchRows.map(eventTraceDispatch);
+  const runIds = eventTraceRunIds({ rootEventId, dispatches, runs });
+  const [steps, deliveries] = (await Promise.all([
+    queryOnce((query) => eventTraceStepsQuery(query, collections, runIds)),
+    queryOnce((query) => eventTraceDeliveriesQuery(query, collections, runIds)),
+  ])) as [EventTraceStep[], EventTraceDelivery[]];
+
+  const trace = projectEventTrace({ rootEventId, events, dispatches, runs, steps, deliveries });
+  assert(trace);
+  expect(
+    comparable(
+      projectEventTrace({ rootEventId, ...(await readEventTrace(replica.replica, rootEventId)) }),
+    ),
+  ).toEqual(comparable(trace));
+  expect(
+    comparable(
+      projectEventTraceSummaries({ ...(await readEventTraceList(replica.replica, 10)), limit: 10 }),
+    ),
+  ).toEqual(comparable(projectEventTraceSummaries({ events, dispatches, runs, limit: 10 })));
+}
+
 function outline(node: CausalFlameNode, depth = 0): string[] {
   const detail = node.detail === null ? "" : ` (${node.detail})`;
   return [
@@ -1030,6 +1088,7 @@ describe("starter automation router scenarios", () => {
               "  route Send to a workflow that is never created [ok] (Delivered fanout-ready to run missing-waiter-1)",
               "    event automations · route.failed [ok]",
             ]);
+            await assertReplicaTracesMatchCollections(ctx, event.id);
           }),
           then.workflow.instance({
             remoteWorkflowName: "missing-waiter",
@@ -1223,6 +1282,7 @@ describe("starter automation router scenarios", () => {
             expect(summaries.find((summary) => summary.rootEventId === event.id)).toMatchObject({
               outcome: { kind: "settled", failedCount: 3 },
             });
+            await assertReplicaTracesMatchCollections(ctx, event.id);
           }),
           then.assert("no failed route retried", async (ctx) => {
             const queue = await ctx.runtime.objects.automations
