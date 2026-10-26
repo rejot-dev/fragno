@@ -265,5 +265,10 @@ export const automationFragmentSchema = schema("automations", (s) => {
       .alterTable("automation_event_definition", (t) =>
         t.addColumn("steward", jsonColumn<AutomationSteward>().nullable()),
       )
+      // The install run that last wrote the installation, so a run can tell whether another one, or
+      // an uninstall, changed it since it read it. Empty for installations recorded otherwise.
+      .alterTable("package_installation", (t) =>
+        t.addColumn("operation", column("string").defaultTo("")),
+      )
   );
 });

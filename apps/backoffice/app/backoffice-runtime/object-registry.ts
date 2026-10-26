@@ -121,6 +121,7 @@ import type {
   PackageInstallationInput,
   PackageInstallationOutcome,
 } from "@/fragno/automation/package-installations";
+import type { PackageInstallationRecord } from "@/fragno/automation/package-installations-storage-runtime";
 import type {
   BillingEventInput,
   BillingRecordEventResult,
@@ -530,6 +531,10 @@ export type PiManagerCommands = WarmableCommands & {
   }): Promise<{ answers: ClassifierResult["answers"] }>;
   /** Generates one image, recorded like `classify`. */
   generateImage(input: { request: PiImageGenerationRequest }): Promise<{ bytes: Uint8Array }>;
+  /** Whether `applyPackageAgents` would accept a package's agents, checked before installing. */
+  checkPackageAgents(
+    input: Omit<PackageAgentsInput, "actors">,
+  ): Promise<PackageInstallationOutcome>;
   /** Makes a package's agents in this scope match its declaration; installing calls it. */
   applyPackageAgents(input: PackageAgentsInput): Promise<PackageInstallationOutcome>;
   /** Deletes a package's agents in this scope and returns their names; uninstalling calls it. */
@@ -700,6 +705,10 @@ export type AutomationsCommands = {
   }): Promise<AutomationProjectExecutionTarget | null>;
   listPackageInstallations(): Promise<PackageInstallation[]>;
   getPackageInstallation(input: { listingId: string }): Promise<PackageInstallation | null>;
+  /** The installation and the install run that last wrote it, which installing checks against. */
+  getPackageInstallationRecord(input: {
+    listingId: string;
+  }): Promise<PackageInstallationRecord | null>;
   /** Records a package installation and syncs the routes and event definitions it declares here. */
   applyPackageInstallation(input: PackageInstallationInput): Promise<PackageInstallationOutcome>;
   uninstallPackage(input: { listingId: string }): Promise<PackageAutomationsUninstallation | null>;

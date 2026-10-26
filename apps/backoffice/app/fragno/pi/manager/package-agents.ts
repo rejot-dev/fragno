@@ -18,6 +18,22 @@ export type PackageAgentsInput = {
   actors: AutomationActors;
 };
 
+/** Whether `applyPackageAgents` would accept the declared agents; it writes nothing. */
+export async function checkPackageAgents(
+  fragment: PiManagerFragment,
+  { listingId, agents }: Omit<PackageAgentsInput, "actors">,
+): Promise<PackageInstallationOutcome> {
+  try {
+    await fragment.callServices(() => fragment.services.checkPackageAgents(listingId, agents));
+    return { ok: true };
+  } catch (error) {
+    if (error instanceof AutomationStewardError) {
+      return { ok: false, message: error.message };
+    }
+    throw error;
+  }
+}
+
 /**
  * Makes a package's agents in this scope match its declaration. Taking over an agent the package
  * doesn't steward is refused, as a value, since installing again can't fix it.

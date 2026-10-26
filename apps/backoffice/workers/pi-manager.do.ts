@@ -64,6 +64,10 @@ export class PiManager extends DurableObject<CloudflareEnv> implements PiManager
     return await this.#object.generateImage(input);
   }
 
+  async checkPackageAgents(input: Omit<PackageAgentsInput, "actors">) {
+    return await this.#object.checkPackageAgents(input);
+  }
+
   async applyPackageAgents(input: PackageAgentsInput) {
     return await this.#object.applyPackageAgents(input);
   }
