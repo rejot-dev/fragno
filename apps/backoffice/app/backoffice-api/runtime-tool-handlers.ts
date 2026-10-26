@@ -6,8 +6,10 @@ import type {
 import type { z } from "zod";
 
 import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
+import { imageViewerToolFamily } from "@/fragno/runtime-tools/families/image-viewer";
 import {
   executeBackofficeRuntimeTool,
+  type BackofficeRuntimeToolFamily,
   type BackofficeToolContext,
 } from "@/fragno/runtime-tools/runtime-tools";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
@@ -31,6 +33,11 @@ const API_DENIED_FAMILY_NAMESPACES: ReadonlySet<string> = new Set(["admin", "int
  * types in its fragment and need real schemas there first.
  */
 const API_PENDING_FAMILY_NAMESPACES: ReadonlySet<string> = new Set(["cloudflare"]);
+
+/** Families that share an exposed namespace but serve only agents, such as viewing an image. */
+const AGENT_ONLY_FAMILIES: ReadonlySet<BackofficeRuntimeToolFamily> = new Set([
+  imageViewerToolFamily,
+]);
 
 /**
  * Converts between an operation whose wire shape differs from its tool and that tool. `runTool`
@@ -106,7 +113,8 @@ export function createRuntimeToolHandlers<TApi extends BackofficeApi>(
   for (const family of runtimeToolFamilies) {
     if (
       API_DENIED_FAMILY_NAMESPACES.has(family.namespace) ||
-      API_PENDING_FAMILY_NAMESPACES.has(family.namespace)
+      API_PENDING_FAMILY_NAMESPACES.has(family.namespace) ||
+      AGENT_ONLY_FAMILIES.has(family)
     ) {
       continue;
     }

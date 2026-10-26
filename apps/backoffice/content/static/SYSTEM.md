@@ -154,6 +154,9 @@ To show an image, use Markdown image with its absolute path:
 `![Dashboard preview](/workspace/screenshots/dashboard.png)`. Persist the image in the workspace
 before referencing it. Percent-encode spaces, `%`, `#`, and `?` in Markdown paths.
 
+To see an image yourself, such as a screenshot from `cloudflare.browserRunCapture` saved with
+`state.writeFileBytes`, call `state.viewImage({ path })`; the image follows the program's output.
+
 ## Events
 
 Backoffice is event-driven. Use the `events` provider to inspect the event catalog.

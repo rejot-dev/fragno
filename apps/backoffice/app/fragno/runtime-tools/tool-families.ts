@@ -43,6 +43,7 @@ import {
 } from "./families/event";
 import { eventCatalogToolFamily, type EventCatalogRuntime } from "./families/event-catalog";
 import { formsToolFamily, type FormsRuntime } from "./families/forms";
+import { imageViewerToolFamily, type ImageViewer } from "./families/image-viewer";
 import {
   integrationsToolFamily,
   type IntegrationsRuntime,
@@ -78,6 +79,8 @@ import {
 
 export type CoreBackofficeRuntimeMap = {
   state?: BackofficeStateBackend;
+  /** Only an agent's codemode call has one: its images go to the model. */
+  imageViewer?: ImageViewer;
   fileLinks?: FileLinkRuntime;
   account?: AccountRuntime;
   admin?: AdminRuntime;
@@ -111,6 +114,7 @@ export type CoreBackofficeToolContext = BackofficeToolContext<Partial<CoreBackof
 
 export const runtimeToolFamilies = [
   codemodeStateToolFamily,
+  imageViewerToolFamily,
   accountToolFamily,
   adminToolFamily,
   adminEventsToolFamily,

@@ -24,6 +24,7 @@ import type {
   InternalAutomationWorkflowRuntime,
   WorkflowCreateInstanceResult,
 } from "@/fragno/runtime-tools/families/automations-workflow";
+import { createViewedImages, type ImageViewer } from "@/fragno/runtime-tools/families/image-viewer";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import {
   runtimeToolFamilies,
@@ -46,6 +47,18 @@ export const codemodeParametersSchema = Type.Object({
     }),
   ),
 });
+
+/** The context with `viewer` in every scope it reaches, so a program can view another scope's images. */
+function withImageViewer(
+  context: CoreBackofficeToolContext,
+  viewer: ImageViewer,
+): CoreBackofficeToolContext {
+  return {
+    ...context,
+    runtimes: { ...context.runtimes, imageViewer: viewer },
+    createScopedContext: (scope) => withImageViewer(context.createScopedContext(scope), viewer),
+  };
+}
 
 const hashToolCallId = (toolCallId: string) => {
   let first = 0x811c9dc5;
@@ -136,10 +149,14 @@ export function createCodemodeTool(agent: BackofficeAgentContext) {
         workflowRuntime && "createInternalInstance" in workflowRuntime
           ? (workflowRuntime as Pick<InternalAutomationWorkflowRuntime, "createInternalInstance">)
           : undefined;
-      const toolContext: CoreBackofficeToolContext = createBackofficeToolContext({
-        ...runtimeToolContext,
-        workflow: workflowRuntime ? { runtime: workflowRuntime } : null,
-      });
+      const viewedImages = createViewedImages();
+      const toolContext = withImageViewer(
+        createBackofficeToolContext({
+          ...runtimeToolContext,
+          workflow: workflowRuntime ? { runtime: workflowRuntime } : null,
+        }),
+        viewedImages.viewer,
+      );
 
       if (turn.codemode === null) {
         throw new Error("Pi codemode is unavailable because the Worker Loader is not configured.");
@@ -229,7 +246,8 @@ export function createCodemodeTool(agent: BackofficeAgentContext) {
       const { toolCalls, ...execution } = result;
       // Execution failures are tool results: throwing here would discard their diagnostics and run ID.
       return {
-        output: [{ type: "text", text: output.text }],
+        // Images a program viewed before it failed still reach the model.
+        output: [{ type: "text", text: output.text }, ...viewedImages.images],
         isError: Boolean(result.error || scheduleError || generatedUiError),
         details: copyJson(
           {

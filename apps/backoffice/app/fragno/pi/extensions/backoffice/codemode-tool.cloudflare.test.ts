@@ -36,6 +36,7 @@ import type {
 } from "@/fragno/runtime-tools/families/automations-workflow";
 import { createTrustedSystemBackofficeToolContext } from "@/fragno/runtime-tools/runtime-tools";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
+import { bytesToBase64 } from "@/lib/base64";
 
 import {
   createCodemodeTool as createPiCodemodeTool,
@@ -170,6 +171,65 @@ describe("Pi codemode tool", () => {
     }
     expect(content.text).toContain("hello from pi");
     await expect(stateBackend.readFile("/workspace/output.txt")).resolves.toBe("hello from pi");
+  });
+
+  test("shows the model the workspace images its program views", async () => {
+    const screenshot = pngHeader(1280, 800);
+    // Each fits on its own, but not beside the other in one tool result.
+    const largeScreenshot = pngHeader(1920, 1080, 600_000);
+    const tool = await createCodemodeTool({
+      stateBackend: createTestStateBackend({
+        upload: new MemoryUploadObject({
+          "shots/page.png": screenshot,
+          "shots/dashboard.png": largeScreenshot,
+          "shots/settings.png": pngHeader(1920, 1080, 600_000),
+          "shots/full-page.png": pngHeader(1280, 9000),
+          "notes.txt": "not an image",
+        }),
+      }),
+    });
+
+    const result = await tool.execute(
+      {
+        code: `async () => {
+          const refused = async (path) => {
+            try {
+              await state.viewImage({ path });
+              return null;
+            } catch (error) {
+              return error.message;
+            }
+          };
+          return {
+            page: await state.viewImage({ path: "/workspace/shots/page.png" }),
+            dashboard: await state.viewImage({ path: "/workspace/shots/dashboard.png" }),
+            settings: await refused("/workspace/shots/settings.png"),
+            fullPage: await refused("/workspace/shots/full-page.png"),
+            notes: await refused("/workspace/notes.txt"),
+          };
+        }`,
+      },
+      toolApi("tool-call-view-image"),
+      BACKGROUND_CONTEXT,
+    );
+
+    assert(!result.isError);
+    expect(result.details).toMatchObject({
+      result: {
+        page: { mimeType: "image/png", width: 1280, height: 800 },
+        dashboard: { mimeType: "image/png", width: 1920, height: 1080 },
+        settings: expect.stringContaining("view the rest in another program"),
+        fullPage: expect.stringContaining(
+          "is 1280×9000 pixels; the most you can view is 2000×2000",
+        ),
+        notes: expect.stringContaining("must contain a PNG, JPEG, or WebP image"),
+      },
+    });
+    // Only the images the program could view follow its text.
+    expect(result.output.slice(1)).toEqual([
+      { type: "image", mimeType: "image/png", data: bytesToBase64(screenshot) },
+      { type: "image", mimeType: "image/png", data: bytesToBase64(largeScreenshot) },
+    ]);
   });
 
   test("preserves an immediate generated UI result in details.result", async () => {
@@ -748,6 +808,16 @@ describe("Pi codemode tool", () => {
     expect(calls).toEqual([]);
   });
 });
+
+/** A PNG signature and IHDR chunk, padded to `byteLength`: enough to read its type and size, though not to decode it. */
+function pngHeader(width: number, height: number, byteLength = 33): Uint8Array {
+  const bytes = new Uint8Array(byteLength);
+  bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(16, width);
+  view.setUint32(20, height);
+  return bytes;
+}
 
 const createCodemodeTool = async ({
   automationsRuntime,

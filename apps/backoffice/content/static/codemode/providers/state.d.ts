@@ -124,6 +124,11 @@ type StateCodemodeProvider = {
    * Requires `upload.modify`.
    */
   createUploadLink(input: StateCreateUploadLinkInput): Promise<StateCreateUploadLinkOutput>;
+  /**
+   * Look at a PNG, JPEG, or WebP image in state yourself: it follows the program's output in your tool result. Only agents can view images, each at most 2000×2000 pixels; one program views at most 8 images of 1125000 bytes together.
+   * Requires `upload.read`.
+   */
+  viewImage(input: StateViewImageInput): Promise<StateViewImageOutput>;
 };
 declare const state: StateCodemodeProvider;
 
@@ -408,3 +413,11 @@ type StateCreateUploadLinkOutput =
       /** ISO 8601 datetime string. */
       expiresAt: string;
     };
+type StateViewImageInput = {
+  path: string;
+};
+type StateViewImageOutput = {
+  mimeType: "image/png" | "image/jpeg" | "image/webp";
+  width: number;
+  height: number;
+};
