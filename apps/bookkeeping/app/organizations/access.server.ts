@@ -7,11 +7,12 @@ import {
   organizationRoleSchema,
   type OrganizationRole,
 } from "@fragno-dev/backoffice-api/v0/organization";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { env } from "cloudflare:workers";
 import { redirect } from "react-router";
 
 import type { SessionUser } from "../../workers/auth/auth";
-import { exchangeForOrganization, isBackofficeUnavailable } from "../../workers/backoffice/client";
+import { exchangeForScope, isBackofficeUnavailable } from "../../workers/backoffice/client";
 import type { Organization, OrganizationKind } from "../../workers/directory/directory";
 import { MEMBERSHIP_CONFIRMATION_LIFETIME_MS } from "../../workers/directory/membership";
 import { currentPath, requireSessionUser } from "../auth/session.server";
@@ -66,12 +67,12 @@ function reauthorize(request: Request): Response {
 }
 
 /**
- * Backoffice's API as the signed-in person, in one organization. Backoffice checks again that they
- * are a member; null means it refused.
+ * Backoffice's API as the signed-in person, in one scope: an organization, or one of its projects.
+ * Backoffice checks again that they are a member; null means it refused.
  */
 export async function connectAsUser(
   request: Request,
-  organizationId: string,
+  scope: BackofficeContextScope,
 ): Promise<BackofficeApiClient | null> {
   const token = await env.AUTH.getByName("auth").getBackofficeAccessToken(
     request.headers.get("cookie") ?? "",
@@ -85,7 +86,7 @@ export async function connectAsUser(
       break;
   }
   const credential = await callBackoffice(() =>
-    exchangeForOrganization(env, { oauthAccessToken: token.accessToken, organizationId }),
+    exchangeForScope(env, { oauthAccessToken: token.accessToken, scope }),
   );
   if (credential.status === "unauthorized") {
     throw reauthorize(request);
@@ -98,7 +99,7 @@ export async function connectAsUser(
  * it; null when Backoffice refuses them, because they were removed or Bookkeeping was uninstalled.
  */
 async function confirmWithBackoffice(request: Request, organizationId: string) {
-  const backoffice = await connectAsUser(request, organizationId);
+  const backoffice = await connectAsUser(request, { kind: "org", orgId: organizationId });
   if (!backoffice) {
     return null;
   }

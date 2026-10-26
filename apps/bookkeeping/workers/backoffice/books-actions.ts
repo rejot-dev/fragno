@@ -13,7 +13,7 @@ import { dayAfter, PERIOD_LENGTHS, periodEndDates } from "../books/fiscal-years"
 import { decimalAmount, parseAmount } from "../books/money";
 import { CONTROL_ROLES, usualControlAccount } from "../books/parties";
 import { canManage, MEMBERSHIP_CONFIRMATION_LIFETIME_MS } from "../directory/membership";
-import { exchangeForOrganization, isBackofficeUnavailable } from "./client";
+import { exchangeForScope, isBackofficeUnavailable } from "./client";
 
 /**
  * The actions Backoffice agents keep an administration's books with. They run in the
@@ -1140,9 +1140,9 @@ async function confirmPerson(env: CloudflareEnv, organizationId: string, userId:
     case "authorized":
       break;
   }
-  const credential = await exchangeForOrganization(env, {
+  const credential = await exchangeForScope(env, {
     oauthAccessToken: token.accessToken,
-    organizationId,
+    scope: { kind: "org", orgId: organizationId },
   });
   if (credential.status === "unauthorized") {
     throw new ActionFailure(403, reauthorize);

@@ -4,6 +4,7 @@ import {
   type BackofficeApiClient,
   type BackofficeProvisioningClient,
 } from "@fragno-dev/backoffice-api/v0/client";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
 type BackofficeEnv = Pick<
@@ -74,25 +75,25 @@ export async function createProvisioningClient(
 }
 
 /**
- * What Backoffice answers when asked for a credential in one organization: `refused` when
- * Bookkeeping is not installed there or a user is no longer a member, and `unauthorized` when the
- * OAuth token itself is no longer valid.
+ * What Backoffice answers when asked for a credential in one scope, such as an organization or one
+ * of its projects: `refused` when Bookkeeping is not installed there or a user is no longer a
+ * member, and `unauthorized` when the OAuth token itself is no longer valid.
  */
-export type OrganizationCredential =
+export type ScopeCredential =
   | { status: "issued"; client: BackofficeApiClient }
   | { status: "refused" }
   | { status: "unauthorized" };
 
-export async function exchangeForOrganization(
+export async function exchangeForScope(
   env: BackofficeEnv,
-  input: { oauthAccessToken: string; organizationId: string },
-): Promise<OrganizationCredential> {
+  input: { oauthAccessToken: string; scope: BackofficeContextScope },
+): Promise<ScopeCredential> {
   const response = await post(`${backofficeOrigin(env)}/api/backoffice/execution-token`, {
     headers: {
       authorization: `Bearer ${input.oauthAccessToken}`,
       "content-type": "application/json",
     },
-    body: JSON.stringify({ scope: { kind: "org", orgId: input.organizationId } }),
+    body: JSON.stringify({ scope: input.scope }),
   });
   if (response.status === 401) {
     return { status: "unauthorized" };
