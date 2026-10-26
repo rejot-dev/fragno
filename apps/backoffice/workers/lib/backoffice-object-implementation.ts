@@ -8,8 +8,8 @@ import type { DurableHooksInstrumentation } from "@fragno-dev/db/hooks";
 import type { DatabaseTransactionInstrumentation } from "@fragno-dev/db/transaction-instrumentation";
 
 import type {
+  BackofficeHostTelemetry,
   BackofficeTelemetry,
-  BackofficeTelemetryObject,
 } from "@/backoffice-runtime/backoffice-telemetry";
 import type { BackofficeDatabaseAdapterFactory } from "@/backoffice-runtime/database-adapters";
 import { decodeBackofficeObjectScope } from "@/backoffice-runtime/object-registry";
@@ -56,6 +56,11 @@ export type BackofficeObjectImplementation = {
     >,
   ): BackofficeFragmentDurableObject<TStored, TSource, TRuntime, TOutbox>;
   registerRuntimeRefresh(refresh: () => Promise<void>): void;
+  /**
+   * Reports signals as the host named `host`. Hosts already report their hook attempts and errors;
+   * runtimes use this for their own outcomes, such as finished workflows.
+   */
+  hostTelemetry(host: string): BackofficeHostTelemetry;
 };
 
 /** Telemetry names the host that reported a signal. */
@@ -83,22 +88,28 @@ export function createBackofficeObjectImplementation<TEnv>(
     adapters: options.adapters,
     transactionInstrumentation: options.instrumentation.databaseTransactions,
   };
-  const durableHooksInstrumentation = (host: string) =>
-    reportDurableHookAttempts(options.instrumentation.durableHooks, options.telemetry, {
-      host,
-      scope: options.state.id.name ? decodeBackofficeObjectScope(options.state.id.name) : null,
-    });
+  const scope = options.state.id.name ? decodeBackofficeObjectScope(options.state.id.name) : null;
+  const hostTelemetry = (host: string): BackofficeHostTelemetry => ({
+    record(signal) {
+      options.telemetry.record({ ...signal, object: { host, scope } });
+    },
+  });
 
   return {
     fragmentDatabase,
     createFragmentHost<TSource, TRuntime>(
       definition: NamedFragmentHostDefinition<TSource, TRuntime>,
     ) {
+      const telemetry = hostTelemetry(definition.name);
       return createFragmentDurableObjectHost({
         ...definition,
+        ...reportHostErrors(definition, telemetry),
         state: options.state,
         env: options.env,
-        durableHooksInstrumentation: durableHooksInstrumentation(definition.name),
+        durableHooksInstrumentation: reportDurableHookAttempts(
+          options.instrumentation.durableHooks,
+          telemetry,
+        ),
         initializationInstrumentation: options.instrumentation.fragmentInitialization,
         operations: options.fragmentHostOperations,
       } as never) as unknown as FragmentDurableObjectHost<TSource, TRuntime>;
@@ -117,12 +128,17 @@ export function createBackofficeObjectImplementation<TEnv>(
         unknown
       >,
     ) {
+      const telemetry = hostTelemetry(definition.name);
       return createBackofficeFragmentDurableObject<TStored, TSource, TRuntime, TOutbox, TEnv>({
         ...definition,
         state: options.state,
         env: options.env,
         configuredObjectLifecycle: options.configuredObjectLifecycle,
-        durableHooksInstrumentation: durableHooksInstrumentation(definition.name),
+        telemetry,
+        durableHooksInstrumentation: reportDurableHookAttempts(
+          options.instrumentation.durableHooks,
+          telemetry,
+        ),
         initializationInstrumentation: options.instrumentation.fragmentInitialization,
         fragmentHostOperations: options.fragmentHostOperations,
       });
@@ -130,20 +146,46 @@ export function createBackofficeObjectImplementation<TEnv>(
     registerRuntimeRefresh(refresh) {
       options.configuredObjectLifecycle.registerRefresh(refresh);
     },
+    hostTelemetry,
+  };
+}
+
+type HostErrorObservers = Record<
+  "onMigrationError" | "onDispatcherError" | "onProcessError",
+  (error: unknown) => void | Promise<void>
+>;
+
+/** Reports the failures a host sees, then hands them to the host's own observers. */
+function reportHostErrors(
+  definition: Partial<HostErrorObservers>,
+  telemetry: BackofficeHostTelemetry,
+): HostErrorObservers {
+  return {
+    onMigrationError: async (error) => {
+      telemetry.record({ kind: "host-error", stage: "migration", error });
+      await definition.onMigrationError?.(error);
+    },
+    onDispatcherError: async (error) => {
+      telemetry.record({ kind: "host-error", stage: "dispatcher", error });
+      await definition.onDispatcherError?.(error);
+    },
+    onProcessError: async (error) => {
+      telemetry.record({ kind: "host-error", stage: "hook-processor", error });
+      await definition.onProcessError?.(error);
+    },
   };
 }
 
 /** Records every committed hook attempt outcome on top of the runtime's own instrumentation. */
 function reportDurableHookAttempts(
   instrumentation: DurableHooksInstrumentation,
-  telemetry: BackofficeTelemetry,
-  object: BackofficeTelemetryObject,
+  telemetry: BackofficeHostTelemetry,
 ): DurableHooksInstrumentation {
   return {
     ...instrumentation,
     observeAttemptOutcome(attempt, outcome) {
       instrumentation.observeAttemptOutcome?.(attempt, outcome);
-      telemetry.record({ kind: "durable-hook-attempt", object, attempt, outcome });
+      telemetry.record({ kind: "durable-hook-attempt", attempt, outcome });
     },
   };
 }

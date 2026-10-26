@@ -12,10 +12,15 @@ import {
   type DurableHooksDispatcherDurableObjectHandler,
 } from "@fragno-dev/db/dispatchers/cloudflare-do";
 import type { DurableHooksInstrumentation } from "@fragno-dev/db/hooks";
+import type { WorkflowTerminalHookPayload } from "@fragno-dev/workflows/workflow";
 
 import { defaultFragnoRuntime } from "@fragno-dev/core";
 import { createWorkflowsFragment } from "@fragno-dev/workflows";
 
+import {
+  reportFinishedWorkflows,
+  type BackofficeHostTelemetry,
+} from "@/backoffice-runtime/backoffice-telemetry";
 import {
   backofficeExecutionScopeRestriction,
   type BackofficeExecutionContext,
@@ -134,6 +139,14 @@ const withTrustedWorkflowContext = ({
   };
 };
 
+/** Codemode workflows share one workflow; each instance runs the program it was created with. */
+function codemodeWorkflowProgram(payload: WorkflowTerminalHookPayload) {
+  return payload.workflowName === CODEMODE_WORKFLOW
+    ? // Every params shape this workflow has persisted names its program.
+      (payload.params as CodemodeWorkflowParams).program.workflowName
+    : null;
+}
+
 export const createAutomationsRuntime = (
   runtime: BackofficeFragmentRuntimeOptions,
   config: Pick<
@@ -141,6 +154,7 @@ export const createAutomationsRuntime = (
     "env" | "runtime" | "readAutomationSource" | "ownerScope"
   > & {
     kernel: BackofficeKernel;
+    telemetry: BackofficeHostTelemetry;
   },
 ): AutomationsRuntime => {
   const databaseAdapter = runtime.adapters.createAdapter({
@@ -187,73 +201,80 @@ export const createAutomationsRuntime = (
         }),
       },
       runtime: fragnoRuntime,
-      onWorkflowTerminal: async function notifyWorkflowOwnerOfTerminalInstance(payload) {
-        if (
-          config.ownerScope.kind === "system" &&
-          payload.workflowName === MARKETPLACE_PACKAGE_PUBLISH_WORKFLOW_NAME &&
-          (payload.status === "errored" || payload.status === "terminated") &&
-          config.runtime
-        ) {
-          const params = payload.params as MarketplacePackagePublishWorkflowParams;
-          const current = await workflowsFragment.callServices(() =>
-            workflowsFragment.services.getInstanceStatus(payload.workflowName, payload.instanceId),
-          );
-          // A delayed terminal hook from an earlier run must not release a restarted publisher.
+      onWorkflowTerminal: reportFinishedWorkflows(
+        config.telemetry,
+        codemodeWorkflowProgram,
+        async function notifyWorkflowOwnerOfTerminalInstance(payload) {
           if (
-            current.runGeneration === payload.runGeneration &&
-            current.status === payload.status
+            config.ownerScope.kind === "system" &&
+            payload.workflowName === MARKETPLACE_PACKAGE_PUBLISH_WORKFLOW_NAME &&
+            (payload.status === "errored" || payload.status === "terminated") &&
+            config.runtime
           ) {
-            await config.runtime.objects.marketplace
-              .for(params.request.intent.marketplace)
-              .commands.failPackagePublish({
-                listingId: params.request.intent.release.listingId,
-                version: params.request.intent.release.version,
-                workflowInstanceId: payload.instanceId,
-              });
+            const params = payload.params as MarketplacePackagePublishWorkflowParams;
+            const current = await workflowsFragment.callServices(() =>
+              workflowsFragment.services.getInstanceStatus(
+                payload.workflowName,
+                payload.instanceId,
+              ),
+            );
+            // A delayed terminal hook from an earlier run must not release a restarted publisher.
+            if (
+              current.runGeneration === payload.runGeneration &&
+              current.status === payload.status
+            ) {
+              await config.runtime.objects.marketplace
+                .for(params.request.intent.marketplace)
+                .commands.failPackagePublish({
+                  listingId: params.request.intent.release.listingId,
+                  version: params.request.intent.release.version,
+                  workflowInstanceId: payload.instanceId,
+                });
+            }
           }
-        }
-        if (payload.workflowName !== CODEMODE_WORKFLOW) {
-          return;
-        }
-        const params = codemodeWorkflowParamsSchema.parse(payload.params);
-        const { replyTo } = params;
-        if (replyTo === null) {
-          return;
-        }
-        if (replyTo.kind === "agent") {
-          await notifyReplyAgent(
-            params,
-            replyTo.agentName,
-            workflowCompletedNotificationEvent({
-              terminal: payload,
-              workflowName: params.program.workflowName,
-              occurredAt: fragnoRuntime.time.now(),
+          if (payload.workflowName !== CODEMODE_WORKFLOW) {
+            return;
+          }
+          const params = codemodeWorkflowParamsSchema.parse(payload.params);
+          const { replyTo } = params;
+          if (replyTo === null) {
+            return;
+          }
+          if (replyTo.kind === "agent") {
+            await notifyReplyAgent(
+              params,
+              replyTo.agentName,
+              workflowCompletedNotificationEvent({
+                terminal: payload,
+                workflowName: params.program.workflowName,
+                occurredAt: fragnoRuntime.time.now(),
+              }),
+            );
+            return;
+          }
+
+          await workflowsFragment.callServices(() =>
+            workflowsFragment.services.sendEvent(replyTo.workflowName, replyTo.instanceId, {
+              id: workflowCompletionEventId({
+                instanceRef: payload.instanceRef,
+                runGeneration: payload.runGeneration,
+                terminalTransitionId: payload.terminalTransitionId,
+              }),
+              type: workflowCompletedEventType(payload.runGeneration),
+              payload: {
+                terminalTransitionId: payload.terminalTransitionId,
+                workflowName: payload.workflowName,
+                instanceId: payload.instanceId,
+                runGeneration: payload.runGeneration,
+                status: payload.status,
+                ...(payload.output === undefined ? {} : { output: payload.output }),
+                ...(payload.error === undefined ? {} : { error: payload.error }),
+              },
+              ignoreTerminal: true,
             }),
           );
-          return;
-        }
-
-        await workflowsFragment.callServices(() =>
-          workflowsFragment.services.sendEvent(replyTo.workflowName, replyTo.instanceId, {
-            id: workflowCompletionEventId({
-              instanceRef: payload.instanceRef,
-              runGeneration: payload.runGeneration,
-              terminalTransitionId: payload.terminalTransitionId,
-            }),
-            type: workflowCompletedEventType(payload.runGeneration),
-            payload: {
-              terminalTransitionId: payload.terminalTransitionId,
-              workflowName: payload.workflowName,
-              instanceId: payload.instanceId,
-              runGeneration: payload.runGeneration,
-              status: payload.status,
-              ...(payload.output === undefined ? {} : { output: payload.output }),
-              ...(payload.error === undefined ? {} : { error: payload.error }),
-            },
-            ignoreTerminal: true,
-          }),
-        );
-      },
+        },
+      ),
     },
     {
       databaseAdapter,

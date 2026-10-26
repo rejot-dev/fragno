@@ -305,6 +305,7 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
           ownerScope: config.scope,
           kernel: this.#kernel,
           readAutomationSource: automationSourceReader,
+          telemetry: implementation.hostTelemetry("Automations"),
         }),
       getMigrationFragments: (runtime) => [runtime.workflowsFragment, runtime.automationFragment],
       hostRuntime: (runtime, { hostFragment }) => ({

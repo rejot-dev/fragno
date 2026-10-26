@@ -1,6 +1,10 @@
 import { defaultFragnoRuntime } from "@fragno-dev/core";
 import { createWorkflowsFragment } from "@fragno-dev/workflows";
 
+import {
+  reportFinishedWorkflows,
+  type BackofficeHostTelemetry,
+} from "@/backoffice-runtime/backoffice-telemetry";
 import type { BackofficeFragmentRuntimeOptions } from "@/backoffice-runtime/fragment-runtime";
 
 import type { SandboxManagerFragmentConfig } from "./definition";
@@ -11,6 +15,7 @@ import { SANDBOX_LIFECYCLE_WORKFLOW_NAME } from "./services";
 export function createSandboxManagerRuntime(
   runtime: BackofficeFragmentRuntimeOptions,
   config: SandboxManagerFragmentConfig,
+  telemetry: BackofficeHostTelemetry,
 ) {
   const databaseAdapter = runtime.adapters.createAdapter({ kind: "sandbox-manager" });
   let sandboxManagerFragment: ReturnType<typeof createSandboxManagerFragment> | undefined;
@@ -24,17 +29,22 @@ export function createSandboxManagerRuntime(
         }),
       },
       runtime: defaultFragnoRuntime,
-      onWorkflowTerminal: async function reconcileTerminalSandboxLifecycle(payload) {
-        if (payload.workflowName !== SANDBOX_LIFECYCLE_WORKFLOW_NAME || !sandboxManagerFragment) {
-          return;
-        }
-        const fragment = sandboxManagerFragment;
-        await fragment.callServices(() =>
-          fragment.services.stopSandboxInstanceForTerminalWorkflow({
-            workflowInstanceId: payload.instanceId,
-          }),
-        );
-      },
+      onWorkflowTerminal: reportFinishedWorkflows(
+        telemetry,
+        // Sandbox lifecycle workflows run no script of their own.
+        () => null,
+        async function reconcileTerminalSandboxLifecycle(payload) {
+          if (payload.workflowName !== SANDBOX_LIFECYCLE_WORKFLOW_NAME || !sandboxManagerFragment) {
+            return;
+          }
+          const fragment = sandboxManagerFragment;
+          await fragment.callServices(() =>
+            fragment.services.stopSandboxInstanceForTerminalWorkflow({
+              workflowInstanceId: payload.instanceId,
+            }),
+          );
+        },
+      ),
     },
     {
       databaseAdapter,

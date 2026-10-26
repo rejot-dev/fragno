@@ -52,8 +52,11 @@ test("a hook that fails for good reports one failed attempt for its object's sco
           causation: { kind: "origin" },
         }),
         then.assert("the route's dispatch hook reports its failure once", (ctx) => {
-          const dispatches = ctx.telemetry.filter(
-            (signal) => signal.attempt.hookName === "internalDispatchRoute",
+          const dispatches = ctx.telemetry.flatMap((signal) =>
+            signal.kind === "durable-hook-attempt" &&
+            signal.attempt.hookName === "internalDispatchRoute"
+              ? [signal]
+              : [],
           );
           expect(dispatches).toHaveLength(1);
           const [dispatch] = dispatches;

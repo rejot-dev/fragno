@@ -17,6 +17,7 @@ import type { DurableHooksInstrumentation } from "@fragno-dev/db/hooks";
 
 import type { FragnoRequestLifecycleContext } from "@fragno-dev/core";
 
+import type { BackofficeHostTelemetry } from "@/backoffice-runtime/backoffice-telemetry";
 import {
   createUnconfiguredDurableHookQueueResponse,
   loadDurableHook,
@@ -204,6 +205,8 @@ export type BackofficeFragmentDurableObjectOptions<
   /** Runtime-specific environment passed through to hosted fragments. */
   env: TEnv;
   configuredObjectLifecycle: BackofficeConfiguredObjectLifecycle;
+  /** Receives the failures the host would otherwise only log. */
+  telemetry: BackofficeHostTelemetry;
   durableHooksInstrumentation?: DurableHooksInstrumentation;
   initializationInstrumentation?: FragmentDurableObjectInitializationInstrumentation;
   /** Replaces Cloudflare alarm dispatch with a runtime-specific Fragno hook dispatcher. */
@@ -382,9 +385,14 @@ export function createBackofficeFragmentDurableObject<
     operations: options.fragmentHostOperations,
     onProcessError: (error: unknown) => {
       console.error(`${options.name} hook processor error`, error);
+      options.telemetry.record({ kind: "host-error", stage: "hook-processor", error });
     },
     onDispatcherError: (error: unknown) => {
       console.warn(`${options.name} hook dispatcher initialization failed`, error);
+      options.telemetry.record({ kind: "host-error", stage: "dispatcher", error });
+    },
+    onMigrationError: (error: unknown) => {
+      options.telemetry.record({ kind: "host-error", stage: "migration", error });
     },
   } as never) as unknown as FragmentDurableObjectHost<TSource, TRuntime>;
 

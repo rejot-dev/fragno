@@ -20,6 +20,7 @@ import { z } from "zod";
 
 import { decodeCursor, type HookContext } from "@fragno-dev/db";
 
+import { reportFinishedCodemodeRuns } from "@/backoffice-runtime/backoffice-telemetry";
 import {
   requireBackofficeContextScopeFromDurableObjectId,
   type CodemodeCommands,
@@ -271,7 +272,10 @@ export class CodemodeObject extends RpcTarget implements CodemodeCommands {
         createCodemodeFragment(
           {
             onRunStarted: billRunStarted,
-            onRunFinished: ingestRunFailed,
+            onRunFinished: reportFinishedCodemodeRuns(
+              implementation.hostTelemetry("Codemode"),
+              ingestRunFailed,
+            ),
           },
           {
             databaseAdapter: implementation.fragmentDatabase.adapters.createAdapter({
