@@ -15,7 +15,10 @@ import {
 } from "@/backoffice-runtime/backoffice-telemetry";
 import type { BackofficeDatabaseAdapterFactory } from "@/backoffice-runtime/database-adapters";
 import { decodeBackofficeObjectScope } from "@/backoffice-runtime/object-registry";
-import type { BackofficeRuntimeInstrumentation } from "@/backoffice-runtime/runtime-instrumentation";
+import type {
+  BackofficeRuntimeInstrumentation,
+  BackofficeStorageConfirmation,
+} from "@/backoffice-runtime/runtime-instrumentation";
 
 import {
   createBackofficeFragmentDurableObject,
@@ -63,6 +66,8 @@ export type BackofficeObjectImplementation = {
    * runtimes use this for their own outcomes, such as finished workflows.
    */
   hostTelemetry(host: string): BackofficeHostTelemetry;
+  /** Observes, without waiting, when this object's writes so far become durable. */
+  observeStorageConfirmation(confirmation: BackofficeStorageConfirmation): void;
 };
 
 /** Telemetry names the host that reported a signal. */
@@ -151,6 +156,9 @@ export function createBackofficeObjectImplementation<TEnv>(
       options.configuredObjectLifecycle.registerRefresh(refresh);
     },
     hostTelemetry,
+    observeStorageConfirmation(confirmation) {
+      instrumentation.storageConfirmation(options.state.storage, confirmation);
+    },
   };
 }
 

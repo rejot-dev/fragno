@@ -2,6 +2,7 @@ import type {
   BackofficeScopeFields,
   BackofficeTelemetry,
 } from "@/backoffice-runtime/backoffice-telemetry";
+import type { BackofficeStorageConfirmation } from "@/backoffice-runtime/runtime-instrumentation";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { createCloudflareDurableObjectRuntimeServices } from "@/backoffice-runtime/runtime-services";
 
@@ -14,12 +15,19 @@ import { createCloudflareDatabaseTransactionInstrumentation } from "./cloudflare
 import { createCloudflareDurableHooksInstrumentation } from "./cloudflare-durable-hooks-instrumentation";
 import { createCloudflareFragmentInitializationInstrumentation } from "./cloudflare-fragment-initialization-instrumentation";
 import { createCloudflarePostHogTelemetry } from "./cloudflare-posthog-telemetry";
+import { observeCloudflareStorageConfirmation } from "./cloudflare-storage-confirmation";
 
 function createCloudflareBackofficeRuntimeInstrumentation(scope: BackofficeScopeFields) {
   return {
     databaseTransactions: createCloudflareDatabaseTransactionInstrumentation(scope),
     durableHooks: createCloudflareDurableHooksInstrumentation(scope),
     fragmentInitialization: createCloudflareFragmentInitializationInstrumentation(scope),
+    storageConfirmation: (
+      storage: DurableObjectStorage,
+      confirmation: BackofficeStorageConfirmation,
+    ) => {
+      observeCloudflareStorageConfirmation(storage, scope, confirmation);
+    },
   };
 }
 

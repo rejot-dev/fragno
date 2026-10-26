@@ -242,6 +242,7 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
   > | null;
   readonly #nowEpochMs: () => number;
   readonly #kernel: BackofficeKernel;
+  readonly #implementation: BackofficeObjectImplementation;
   readonly #host: BackofficeFragmentDurableObject<
     AutomationDurableObjectConfig,
     AutomationDurableObjectConfig,
@@ -284,6 +285,7 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
     };
     this.#nowEpochMs = nowEpochMs;
     this.#kernel = new BackofficeKernel(this.#runtimeServices);
+    this.#implementation = implementation;
     this.#scope = backofficeContextScopeFromDurableObjectId(state.id, "AUTOMATIONS");
     const automationSourceReader =
       readAutomationSource ??
@@ -1149,6 +1151,12 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
   }
 
   async alarm() {
+    const startedAt = performance.now();
     await this.#host.alarm();
+    // The alarm, and with it the next workflow step's alarm, completes once its writes are durable.
+    this.#implementation.observeStorageConfirmation({
+      event: "automations.alarm_returned",
+      handlerDurationMs: performance.now() - startedAt,
+    });
   }
 }

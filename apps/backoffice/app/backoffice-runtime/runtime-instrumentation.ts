@@ -10,11 +10,21 @@ import type {
 
 import type { BackofficeScopeFields } from "./backoffice-telemetry";
 
+/** A point after which an object's writes so far should become durable. */
+export type BackofficeStorageConfirmation =
+  | { event: "codemode.run_started"; runId: string }
+  | { event: "automations.alarm_returned"; handlerDurationMs: number };
+
 /** Supplies runtime-specific tracing for one object's Fragment and durable-hook operations. */
 export type BackofficeRuntimeInstrumentation = {
   databaseTransactions: DatabaseTransactionInstrumentation;
   durableHooks: DurableHooksInstrumentation;
   fragmentInitialization: FragmentDurableObjectInitializationInstrumentation;
+  /** Observes, without waiting, when the object's writes so far become durable. */
+  storageConfirmation: (
+    storage: DurableObjectStorage,
+    confirmation: BackofficeStorageConfirmation,
+  ) => void;
 };
 
 /** Returns the stable span name for one named Fragno database transaction or callback. */

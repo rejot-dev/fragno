@@ -198,6 +198,7 @@ function codemodeRunFailedEvent(
 export class CodemodeObject extends RpcTarget implements CodemodeCommands {
   readonly #host: FragmentDurableObjectHost<void, CodemodeFragment>;
   readonly #executor: CodemodeExecutor | null;
+  readonly #implementation: BackofficeObjectImplementation;
   readonly #nowEpochMs: () => number;
   readonly #slots = new CodemodeActivationSlots(CODEMODE_SCOPE_MAX_ACTIVATIONS);
   /** Each admitted run lends its slot to the runs its tool calls start, one at a time. */
@@ -217,6 +218,7 @@ export class CodemodeObject extends RpcTarget implements CodemodeCommands {
   }) {
     super();
     this.#executor = runtime.codemodeExecutor;
+    this.#implementation = implementation;
     this.#nowEpochMs = nowEpochMs;
     const scope = requireBackofficeContextScopeFromDurableObjectId(state.id, "CODEMODE");
     const billing = usageBillingForScope(runtime, scope);
@@ -315,6 +317,8 @@ export class CodemodeObject extends RpcTarget implements CodemodeCommands {
     const runId = await fragment.callServices(() =>
       fragment.services.startRun(activation, context, new Date(this.#nowEpochMs())),
     );
+    // The executor call waits behind the run's write, so slow confirmation delays every run.
+    this.#implementation.observeStorageConfirmation({ event: "codemode.run_started", runId });
     // The run is recorded first, so history shows it running while it waits for a slot. A child
     // waits for its parent's slot instead: when every scope slot holds a parent awaiting its child,
     // waiting for a scope slot would hold both until the parents time out.

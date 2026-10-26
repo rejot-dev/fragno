@@ -139,5 +139,7 @@ function createNodeBackofficeRuntimeInstrumentation(
         );
       },
     },
+    // Local SQLite writes are durable when they return; there is no output gate to observe.
+    storageConfirmation() {},
   };
 }
