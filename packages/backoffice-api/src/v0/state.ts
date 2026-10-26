@@ -6,6 +6,12 @@ import { isoDateTimeOutputSchema } from "./shared/datetime";
 import { jsonValueSchema } from "./shared/json";
 import { BACKOFFICE_PERMISSION } from "./shared/permissions";
 
+/**
+ * The most bytes one workspace file holds. Backoffice stores each file in one Durable Object SQLite
+ * row, which holds at most 2 MB; the margin covers the row's other columns.
+ */
+export const STATE_FILE_MAX_BYTES = 1_900_000;
+
 export const fileSearchOptionsSchema = z.lazy(() =>
   z.strictObject({
     caseSensitive: z.boolean().optional(),
@@ -404,8 +410,7 @@ export const stateOperations = {
     output: fileLinkSchema,
   },
   "state.createUploadLink": {
-    description:
-      'Create a temporary URL that writes workspace files without credentials. Give `url` to services outside Backoffice; sandbox commands use `sandboxUrl`. Writes replace existing files. Each file may be at most 1.9 MB. A file path accepts the file: `curl -sS --fail-with-body -H "Expect:" -T file "$sandboxUrl"`. A folder or glob accepts an uncompressed tar archive of at most 200 regular files and 25 MB, without symlinks, whose entry names are relative to `root` and must match: `tar -ch -C dir . | curl -sS --fail-with-body -H "Expect:" -T - "$sandboxUrl"`. Push only the files the task produced, never a whole project; an archive is written all-or-nothing. A successful write returns `{"fileCount","sizeBytes"}`. Anyone holding the URL can write these files until it expires.',
+    description: `Create a temporary URL that writes workspace files without credentials. Give \`url\` to services outside Backoffice; sandbox commands use \`sandboxUrl\`. Writes replace existing files. Each file may be at most ${STATE_FILE_MAX_BYTES} bytes. A file path accepts the file: \`curl -sS --fail-with-body -H "Expect:" -T file "$sandboxUrl"\`. A folder or glob accepts an uncompressed tar archive of at most 200 regular files and 25 MB, without symlinks, whose entry names are relative to \`root\` and must match: \`tar -ch -C dir . | curl -sS --fail-with-body -H "Expect:" -T - "$sandboxUrl"\`. Push only the files the task produced, never a whole project; an archive is written all-or-nothing. A successful write returns \`{"fileCount","sizeBytes"}\`. Anyone holding the URL can write these files until it expires.`,
     permissions: [BACKOFFICE_PERMISSION.upload.modify],
     input: fileLinkInputSchema,
     output: fileLinkSchema,
