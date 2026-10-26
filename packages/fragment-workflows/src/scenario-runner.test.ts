@@ -1575,7 +1575,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
   });
 
   test("delivers generation-aware callbacks for restart and both completed runs", async () => {
-    const terminalRuns: Array<{ status: string; runGeneration: number }> = [];
+    const terminalRuns: Array<{ status: string; runGeneration: number; attempts: number }> = [];
     const restarts: Array<{ previousRunGeneration: number; runGeneration: number }> = [];
     const Workflow = defineWorkflow(
       { name: "scenario-restart-terminal-callback" },
@@ -1592,8 +1592,8 @@ describe("Workflows Runner (Scenario DSL)", () => {
             onWorkflowRestarted: ({ previousRunGeneration, runGeneration }) => {
               restarts.push({ previousRunGeneration, runGeneration });
             },
-            onWorkflowTerminal: ({ status, runGeneration }) => {
-              terminalRuns.push({ status, runGeneration });
+            onWorkflowTerminal: ({ status, runGeneration }, { attempts }) => {
+              terminalRuns.push({ status, runGeneration, attempts });
             },
           },
         },
@@ -1605,8 +1605,8 @@ describe("Workflows Runner (Scenario DSL)", () => {
           runner.drainHooks(),
           workflow.assert(() => {
             expect(terminalRuns).toEqual([
-              { status: "complete", runGeneration: 1 },
-              { status: "complete", runGeneration: 2 },
+              { status: "complete", runGeneration: 1, attempts: 0 },
+              { status: "complete", runGeneration: 2, attempts: 0 },
             ]);
             expect(restarts).toEqual([{ previousRunGeneration: 1, runGeneration: 2 }]);
           }),

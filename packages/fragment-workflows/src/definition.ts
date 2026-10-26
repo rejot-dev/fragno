@@ -362,7 +362,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
         await config.onWorkflowRestarted?.(payload);
       }),
       onWorkflowTerminal: defineHook(async function (payload: WorkflowTerminalHookPayload) {
-        await config.onWorkflowTerminal?.(payload);
+        await config.onWorkflowTerminal?.(payload, this);
       }),
       onWorkflowStepEmissionsCleanup: defineHook(async function (
         payload: WorkflowStepEmissionsCleanupHookPayload,
