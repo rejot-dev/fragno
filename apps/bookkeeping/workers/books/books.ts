@@ -9,11 +9,20 @@ import { createLedgerFragment } from "@fragno-dev/ledger";
 
 import { FUNCTIONAL_CURRENCIES, type FunctionalCurrency } from "./currencies";
 import { DEFAULT_ACCOUNTS, DEFAULT_JOURNALS } from "./default-books";
+import {
+  createDocumentsFragment,
+  describeDocument,
+  DOCUMENT_SOURCE_KIND,
+  DocumentError,
+  type DocumentErrorCode,
+  type NewDocument,
+} from "./documents/documents";
 import { periodEndDates, today } from "./fiscal-years";
 
 type Ledger = ReturnType<typeof createLedgerFragment>;
 type LedgerServices = Ledger["services"];
 type Input<TOperation extends keyof LedgerServices> = Parameters<LedgerServices[TOperation]>[0];
+type Documents = ReturnType<typeof createDocumentsFragment>;
 
 /**
  * What a ledger operation produced, or why the ledger refused it. Refusals are values because
@@ -22,24 +31,29 @@ type Input<TOperation extends keyof LedgerServices> = Parameters<LedgerServices[
  */
 export type Outcome<T> =
   | { ok: true; value: T }
-  | { ok: false; code: LedgerErrorCode; message: string };
+  | { ok: false; code: LedgerErrorCode | DocumentErrorCode; message: string };
 
 /**
- * One administration's books: the ledger fragment on the object's own SQLite database, named by
- * the administration's ID.
+ * One administration's books: the ledger fragment and the documents booked through it, on the
+ * object's own SQLite database, named by the administration's ID.
  */
 export class Books extends DurableObject<CloudflareEnv> {
   private readonly ledger: Ledger;
+  private readonly documents: Documents;
 
   constructor(ctx: DurableObjectState, env: CloudflareEnv) {
     super(ctx, env);
-    this.ledger = createLedgerFragment({
-      databaseAdapter: new SqlAdapter({
-        dialect: new DurableObjectDialect({ ctx, queryInstrumentation: null }),
-        driverConfig: new CloudflareDurableObjectsDriverConfig(),
-      }),
+    // One adapter, so a document is booked in the same transaction as its entry.
+    const databaseAdapter = new SqlAdapter({
+      dialect: new DurableObjectDialect({ ctx, queryInstrumentation: null }),
+      driverConfig: new CloudflareDurableObjectsDriverConfig(),
     });
-    void ctx.blockConcurrencyWhile(() => migrate(this.ledger));
+    this.ledger = createLedgerFragment({ databaseAdapter });
+    this.documents = createDocumentsFragment({ databaseAdapter }, { ledger: this.ledger.services });
+    void ctx.blockConcurrencyWhile(async () => {
+      await migrate(this.ledger);
+      await migrate(this.documents);
+    });
   }
 
   /**
@@ -156,8 +170,20 @@ export class Books extends DurableObject<CloudflareEnv> {
     return attempt(this.ledger.callServices(() => this.ledger.services.postEntry(input)));
   }
 
-  reverseEntry(input: Input<"reverseEntry">) {
-    return attempt(this.ledger.callServices(() => this.ledger.services.reverseEntry(input)));
+  /**
+   * Reverses an entry, read with its source document. A document's entries are reversed by the
+   * documents' rules too, as reversing a reversal books the document again.
+   */
+  reverseEntry(input: Input<"reverseEntry"> & { sourceDocument: { id: string; kind: string } }) {
+    const { sourceDocument, ...reversal } = input;
+    if (sourceDocument.kind === DOCUMENT_SOURCE_KIND) {
+      return attempt(
+        this.documents.callServices(() =>
+          this.documents.services.reverseDocumentEntry({ documentId: sourceDocument.id, reversal }),
+        ),
+      );
+    }
+    return attempt(this.ledger.callServices(() => this.ledger.services.reverseEntry(reversal)));
   }
 
   allocate(input: Input<"allocate">) {
@@ -167,13 +193,49 @@ export class Books extends DurableObject<CloudflareEnv> {
   reverseAllocation(input: Input<"reverseAllocation">) {
     return attempt(this.ledger.callServices(() => this.ledger.services.reverseAllocation(input)));
   }
+
+  recordDocument(document: NewDocument) {
+    return attempt(
+      this.documents.callServices(() => this.documents.services.recordDocument(document)),
+    );
+  }
+
+  /** A page of documents, newest first, with what the ledger records of each. */
+  async listDocuments(input: { cursor: string | null }) {
+    const page = await this.documents.callServices(() =>
+      this.documents.services.listDocuments(input),
+    );
+    const sources = await this.ledger.callServices(() =>
+      this.ledger.services.getSourceDocuments({ ids: page.items.map((document) => document.id) }),
+    );
+    return {
+      cursor: page.cursor,
+      items: page.items.map((document) =>
+        describeDocument(document, sources.find((source) => source.id === document.id) ?? null),
+      ),
+    };
+  }
+
+  getDocument(id: string) {
+    return this.documents.callServices(() => this.documents.services.getDocument(id));
+  }
+
+  bookDocument(input: Parameters<Documents["services"]["bookDocument"]>[0]) {
+    return attempt(this.documents.callServices(() => this.documents.services.bookDocument(input)));
+  }
+
+  dismissDocument(input: { documentId: string; dismissedBy: string }) {
+    return attempt(
+      this.documents.callServices(() => this.documents.services.dismissDocument(input)),
+    );
+  }
 }
 
 async function attempt<T>(operation: Promise<T>): Promise<Outcome<T>> {
   try {
     return { ok: true, value: await operation };
   } catch (error) {
-    if (error instanceof LedgerError) {
+    if (error instanceof LedgerError || error instanceof DocumentError) {
       return { ok: false, code: error.code, message: error.message };
     }
     throw error;

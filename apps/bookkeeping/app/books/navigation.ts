@@ -12,6 +12,7 @@ export function booksNavigation(base: string, pathname: string): NavigationItem[
       // Entries are the journal's pages.
       active: pathname === base || at("/entries"),
     },
+    { label: "Documents", to: `${base}/documents`, icon: "inbox", active: at("/documents") },
     { label: "Accounts", to: `${base}/accounts`, icon: "list", active: at("/accounts") },
     {
       label: "Trial balance",

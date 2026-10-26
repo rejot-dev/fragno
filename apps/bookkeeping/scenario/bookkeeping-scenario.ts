@@ -23,7 +23,13 @@ const MAX_REDIRECTS = 10;
 
 type RouteModule = { loader?: RouteObject["loader"]; action?: RouteObject["action"] };
 
-const routeModules = import.meta.glob<RouteModule>("../app/**/*.tsx", { eager: true });
+// Resource routes, such as a document's file, are `.ts` modules.
+const routeModules = import.meta.glob<RouteModule>(
+  ["../app/**/*.{ts,tsx}", "!../app/**/*.test.ts"],
+  {
+    eager: true,
+  },
+);
 
 /** Route IDs are the route's file without its extension, as React Router names them. */
 function toRouteObjects(entries: RouteConfigEntry[]): RouteObject[] {
@@ -131,6 +137,63 @@ export class ScenarioBrowser {
         body: new URLSearchParams(form),
       }),
     );
+  }
+
+  /** Submits a form with a file on the page at `path`, as `<Form encType="multipart/form-data">` does. */
+  async upload(
+    path: string,
+    form: Record<string, string>,
+    file: { name: string; type: string; bytes: Uint8Array<ArrayBuffer> },
+  ): Promise<ScenarioPage> {
+    const body = new FormData();
+    for (const [name, value] of Object.entries(form)) {
+      body.set(name, value);
+    }
+    body.set("file", new File([file.bytes], file.name, { type: file.type }));
+    return await this.#request(
+      new Request(new URL(path, BOOKKEEPING_ORIGIN), {
+        method: "POST",
+        headers: { cookie: this.cookie, origin: BOOKKEEPING_ORIGIN },
+        body,
+      }),
+    );
+  }
+
+  /** Posts a body to the page at `path` as it streams in, as a client other than a page may. */
+  async post(
+    path: string,
+    body: ReadableStream<Uint8Array>,
+    contentType: string,
+  ): Promise<ScenarioPage> {
+    return await this.#request(
+      new Request(new URL(path, BOOKKEEPING_ORIGIN), {
+        method: "POST",
+        headers: { cookie: this.cookie, origin: BOOKKEEPING_ORIGIN, "content-type": contentType },
+        body,
+        duplex: "half",
+      } as RequestInit),
+    );
+  }
+
+  /** What a resource route, such as a document's file, answers the browser. */
+  async download(path: string): Promise<Response> {
+    const request = new Request(new URL(path, BOOKKEEPING_ORIGIN), {
+      headers: { cookie: this.cookie },
+    });
+    try {
+      const response: unknown = await routes.queryRoute(request, {
+        requestContext: new RouterContextProvider(),
+      });
+      if (!(response instanceof Response)) {
+        throw new Error(`${path} is not a resource route.`);
+      }
+      return response;
+    } catch (thrown) {
+      if (thrown instanceof Response) {
+        return thrown;
+      }
+      throw thrown;
+    }
   }
 
   async #request(request: Request): Promise<ScenarioPage> {

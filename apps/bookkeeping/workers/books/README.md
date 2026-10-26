@@ -5,10 +5,12 @@ Isolation, backup, export and deletion are per database, so no table carries an 
 column.
 
 `Books` runs the ledger fragment (`@fragno-dev/ledger`) on the object's database and exposes its
-operations as RPC methods. The ledger's refusals return as `Outcome` values, because errors crossing
-Durable Object RPC keep only their message. Opening the books (`open`) sets the functional currency
-(`currencies.ts`) and, in the same transaction, this calendar year's monthly periods
-(`fiscal-years.ts`) and the default journals and chart of accounts (`default-books.ts`).
+operations as RPC methods. The documents fragment in `documents/` runs on the same database adapter
+and books documents through the ledger's services, in the same transaction. The ledger's refusals
+return as `Outcome` values, because errors crossing Durable Object RPC keep only their message.
+Opening the books (`open`) sets the functional currency (`currencies.ts`) and, in the same
+transaction, this calendar year's monthly periods (`fiscal-years.ts`) and the default journals and
+chart of accounts (`default-books.ts`).
 
 The SQL files below are the reference design the ledger fragment was built from, and the design of
 the areas not built yet. `schema.ts` concatenates them in dependency order for their tests; no

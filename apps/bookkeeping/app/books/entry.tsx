@@ -12,10 +12,11 @@ import {
 import { Link, redirect, useOutletContext } from "react-router";
 import { z } from "zod";
 
+import { DOCUMENT_SOURCE_KIND } from "../../workers/books/documents/documents";
 import { today } from "../../workers/books/fiscal-years";
 import { formatAmount } from "../../workers/books/money";
 import type { Route } from "./+types/entry";
-import { booksPath, entryPath, formatDate, indexBooks } from "./books";
+import { booksPath, documentPath, entryPath, formatDate, indexBooks } from "./books";
 import { formResult, parseForm, requireBooks, requireBooksSubmission } from "./books.server";
 import { LINE_COLUMNS, lineCells } from "./entry-lines";
 import { FormDialog } from "./forms";
@@ -43,9 +44,20 @@ async function requireEntry(
   return { journal, entry };
 }
 
+/** The entry, and the document it books, when its source document is one. */
 export async function loader({ request, params }: Route.LoaderArgs) {
-  const { journal, entry } = await requireEntry(await requireBooks(request, params), params);
-  return { journalId: journal.id, entry, today: today() };
+  const context = await requireBooks(request, params);
+  const { journal, entry } = await requireEntry(context, params);
+  const document =
+    entry.sourceDocument.kind === DOCUMENT_SOURCE_KIND
+      ? await context.books.getDocument(entry.sourceDocument.id)
+      : null;
+  return {
+    journalId: journal.id,
+    entry,
+    document: document && { id: document.id, filename: document.filename },
+    today: today(),
+  };
 }
 
 export function headers() {
@@ -69,6 +81,7 @@ export async function action({ request, params }: Route.ActionArgs) {
   }
   const outcome = await context.books.reverseEntry({
     entryId: entry.id,
+    sourceDocument: entry.sourceDocument,
     postingDate: parsed.data.postingDate,
     description: `Reversal of ${journal.code} ${entry.entryNumber}`,
     postedBy: context.user.name,
@@ -135,6 +148,22 @@ export default function EntryPage({ loaderData, actionData }: Route.ComponentPro
             { key: "date", label: "Date", value: formatDate(entry.postingDate) },
             { key: "reference", label: "Reference", value: entry.reference ?? "None" },
             { key: "posted", label: "Posted by", value: entry.postedBy },
+            ...(loaderData.document === null
+              ? []
+              : [
+                  {
+                    key: "document",
+                    label: "Document",
+                    value: (
+                      <Link
+                        to={documentPath(base, loaderData.document.id)}
+                        className="hover:underline"
+                      >
+                        {loaderData.document.filename}
+                      </Link>
+                    ),
+                  },
+                ]),
             {
               key: "status",
               label: "Status",

@@ -133,15 +133,16 @@ pnpm --dir apps/bookkeeping backoffice:connect
 ```
 
 The script signs in through the Backoffice CLI, creates Bookkeeping's OAuth client (or repairs the
-one in `.dev.vars`: callback URL, scopes, and client credentials), registers the app with `org.read`
-and the actions declared in `workers/backoffice/actions.ts`, and writes the client ID, secret, and
-both origins to `.dev.vars`. It then finds or creates the operator organization (slug
-`bookkeeping-operators`; pass `--operators-slug` to choose another) with the signed-in administrator
-as owner, installs Bookkeeping there, and writes its ID to `BOOKKEEPING_OPERATOR_ORGANIZATION_ID`.
-Bookkeeping is registered as a first-party app with every provisioning permission: Backoffice skips
-its consent screen and permission review, and Bookkeeping may create organizations and
-administrations in Backoffice, and create, send, and accept invitations for its users (see
-Backoffice's `app/fragno/apps/README.md`). It reads both origins from `.dev.vars` and defaults to
+one in `.dev.vars`: callback URL, scopes, and client credentials), registers the app with
+`org.read`, `upload.read` and `upload.modify` (for [documents](#documents)), and the actions
+declared in `workers/backoffice/actions.ts`, and writes the client ID, secret, and both origins to
+`.dev.vars`. It then finds or creates the operator organization (slug `bookkeeping-operators`; pass
+`--operators-slug` to choose another) with the signed-in administrator as owner, installs
+Bookkeeping there, and writes its ID to `BOOKKEEPING_OPERATOR_ORGANIZATION_ID`. Bookkeeping is
+registered as a first-party app with every provisioning permission: Backoffice skips its consent
+screen and permission review, and Bookkeeping may create organizations and administrations in
+Backoffice, and create, send, and accept invitations for its users (see Backoffice's
+`app/fragno/apps/README.md`). It reads both origins from `.dev.vars` and defaults to
 `http://127.0.0.1:5173` and `http://127.0.0.1:4173`; pass `--backoffice-url` or `--bookkeeping-url`
 to change them, which also moves the callback and the action endpoint. The app is registered as
 `app#bookkeeping`; pass `--slug` to choose another permanent name. Rerunning converges on the same
@@ -276,6 +277,7 @@ refusals as form errors:
 | the books' own path                    | A journal's entries, newest first; `?journal=` picks the journal                                 |
 | `/entries/:journal/:entryNumber`       | One entry, named by its journal's code, e.g. `/entries/SAL/3`, and reversing it                  |
 | `/entries/new`                         | Posting an entry: its lines, with a customer or supplier, currency, and dimension values         |
+| `/documents`, `/documents/:documentId` | Uploading documents and listing them; one document, booking it, or dismissing it                 |
 | `/accounts`, `/accounts/:accountId`    | The chart of accounts and adding to it; an account's lines, and renaming or deactivating it      |
 | `/trial-balance`                       | Each account's totals for the fiscal year through a period; `?period=` picks it                  |
 | `/parties`, `/parties/:partyAccountId` | Customers and suppliers; one's open items, settling them against each other, and undoing that    |
@@ -287,6 +289,29 @@ and suppliers, and settling their items. A reversal settles the open items of th
 Owners and admins also set them up: the calendar, journals, dimensions, currencies, and chart of
 accounts. Entries and settlements record the name of the person who made them. Amounts are entered
 as decimals with a dot or a comma and no thousands separators.
+
+### Documents
+
+Members upload the books' documents, such as invoices and receipts, at `/documents`, and book each
+from its page: **Book** opens the new-entry form beside the document, with the document's date to
+fill in. Booking posts the entry and records the document as its source document in the ledger, in
+one transaction (`workers/books/documents`, a Fragno fragment that uses the ledger's services). A
+document is booked once: reversing its entry makes it to book again, and booking it again keeps the
+date it was first booked with. Reversing that reversal books the document again too, so it is
+refused unless the document is to book. A document that is not to be booked, such as a duplicate, is
+dismissed; a booked one is not. An entry's page links to the document it books.
+
+Documents' files live in the administration's Backoffice project, at
+`/workspace/documents/<document ID>/<SHA-256>/<filename>`, where its agents work too. Bookkeeping
+stores and reads them as the person, with `state.writeFileBytes` and `state.readFileBytes`, and
+serves them at `/documents/:documentId/file`. It accepts PDFs and PNG, JPEG, and WebP images, by
+their first bytes rather than the type the browser sends, of at most 1.9 MB: Backoffice keeps each
+workspace file in one Durable Object SQLite row. It records each file's SHA-256 hash, and refuses to
+show a file changed or deleted in Backoffice since its upload. The upload form carries an ID chosen
+when it was shown, and the file is stored before the document is recorded, so uploading again after
+a failure records the document once. Backoffice's writes have no precondition, so the path names the
+file's hash: another file sent with the same form is stored beside the document's, never over it.
+The upload's body is read only up to the largest upload, so a larger one is refused unread.
 
 Bookkeeping is not live, so its storage keeps no compatibility: books are set up only when their
 administration is created, and administrations from before a storage change do not open. Delete
@@ -309,13 +334,14 @@ folder with its migrations.
 | `app/clients`         | a client's workspace: its administrations and its members                |
 | `app/administrations` | creating an administration                                               |
 | `app/books`           | an administration's books: journal, accounts, reports, parties, setup    |
+| `app/documents`       | an administration's documents: uploading, booking, and their files       |
 | `app/members`         | a firm's or client's team: members, invitations, and inviting            |
 | `app/invitations`     | inviting someone, and accepting an invitation                            |
 | `workers/worker.ts`   | the Worker's `fetch` entry, which exports the Durable Objects            |
 | `workers/auth`        | the `Auth` object                                                        |
 | `workers/directory`   | the `Directory` object                                                   |
 | `workers/backoffice`  | Backoffice's API client and the actions Backoffice calls, books ones too |
-| `workers/books`       | the `Books` object, the books it opens, and the reference schema         |
+| `workers/books`       | the `Books` object, the books it opens, its documents, the reference SQL |
 | `scenario/`           | the scenario test harness                                                |
 
 ## Checks
@@ -376,5 +402,5 @@ it has applied, not their names.
   their links to Backoffice, which `0004-drop-organizations.sql` drops.
 - `workers/directory/migrations/0001-directory.sql`: the `Directory` object's organizations,
   memberships, invitations, and administrations, and `0002-operators.sql` the `operator` kind.
-- `Books` holds the ledger fragment's tables, which Fragno's `migrate` creates and upgrades when the
-  object starts.
+- `Books` holds the tables of the ledger fragment and of the documents fragment, which Fragno's
+  `migrate` creates and upgrades when the object starts.
