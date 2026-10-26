@@ -19,6 +19,7 @@ import type {
   GetExternalIdentityBindingInput,
   ListExternalIdentityBindingsInput,
 } from "@/fragno/automation/external-identities";
+import type { PackageInstallationInput } from "@/fragno/automation/package-installations";
 import type { DurableHookQueueOptions } from "@/fragno/durable-hooks";
 import type { MarketplacePackagePublishRequest } from "@/fragno/marketplace/package-publishing";
 
@@ -145,6 +146,22 @@ export class Automations extends DurableObject<CloudflareEnv> implements Automat
 
   async resolveProjectForExecution(input: { projectId?: string; slug?: string }) {
     return await this.#object.resolveProjectForExecution(input);
+  }
+
+  async listPackageInstallations() {
+    return await this.#object.listPackageInstallations();
+  }
+
+  async getPackageInstallation(input: { listingId: string }) {
+    return await this.#object.getPackageInstallation(input);
+  }
+
+  async applyPackageInstallation(input: PackageInstallationInput) {
+    return await this.#object.applyPackageInstallation(input);
+  }
+
+  async uninstallPackage(input: { listingId: string }) {
+    return await this.#object.uninstallPackage(input);
   }
 
   async provisionAppProject(input: {

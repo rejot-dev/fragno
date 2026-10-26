@@ -23,6 +23,7 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
 
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
+import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 
 import { ApiObject } from "../../../workers/api-object";
@@ -54,6 +55,8 @@ const scenarioObjects = {
   MARKETPLACE: (input) => new MarketplaceObject(input),
   MCP: (input) => new McpObject(input),
   OTP: (input) => new OtpObject(input),
+  // The Telegram channel's install workflow defines its agent.
+  PI_MANAGER: allLocalObjects.PI_MANAGER,
   RESEND: (input) => new ResendObject(input),
   UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
@@ -62,7 +65,7 @@ const scenarioObjects = {
 const TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION = {
   targetScope: { kind: "org", orgId: "org-1" },
   slug: "telegram-channel",
-  version: "1.1.0",
+  version: "2.0.0",
   installationRoot: "/workspace/telegram-channel",
 } as const;
 

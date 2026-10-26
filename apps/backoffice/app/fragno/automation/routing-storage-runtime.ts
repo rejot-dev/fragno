@@ -4,6 +4,7 @@ import {
   automationRouteCreateInputSchema,
   automationRouteUpdateInputSchema,
   type AutomationRouteCreateInput,
+  type AutomationRouteSteward,
   type AutomationRouteUpdateInput,
 } from "@fragno-dev/backoffice-api/v0/automation";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
@@ -11,7 +12,7 @@ import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/share
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 
 import type { AutomationInternalHooks } from "./internal-hooks";
-import { normalizeAutomationRoute } from "./route-records";
+import { legacyMarketplaceRouteListingId, normalizeAutomationRoute } from "./route-records";
 import {
   AUTOMATION_SCHEDULE_EVENT_TYPE,
   AUTOMATION_SCHEDULE_SOURCE,
@@ -31,6 +32,53 @@ export type AuthorizeAutomationRouteAction = (input: {
   action: AutomationRouteAction;
 }) => Promise<void>;
 
+export const MEMBERS_ROUTE_STEWARD: AutomationRouteSteward = { kind: "members" };
+
+export class AutomationRouteStewardError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AutomationRouteStewardError";
+  }
+}
+
+function stewardsEqual(left: AutomationRouteSteward, right: AutomationRouteSteward) {
+  return left.kind === "members"
+    ? right.kind === "members"
+    : right.kind === "package" && left.listingId === right.listingId;
+}
+
+/**
+ * Only a route's steward changes its definition, though anyone may turn it on or off. A package
+ * adopts a route its pre-stewardship install script labelled.
+ */
+function assertRouteStewardWrite({
+  routeId,
+  steward,
+  legacyListingId,
+  writer,
+  definitionChanged,
+}: {
+  routeId: string;
+  steward: AutomationRouteSteward;
+  legacyListingId: string | null;
+  writer: AutomationRouteSteward;
+  definitionChanged: boolean;
+}) {
+  if (stewardsEqual(steward, writer) || !definitionChanged) {
+    return;
+  }
+  if (steward.kind === "package") {
+    throw new AutomationRouteStewardError(
+      `Automation route '${routeId}' is managed by package '${steward.listingId}'. Only enabling or disabling it is allowed; uninstall the package to remove it.`,
+    );
+  }
+  if (writer.kind === "package" && legacyListingId !== writer.listingId) {
+    throw new AutomationRouteStewardError(
+      `Automation route '${routeId}' already exists and is not managed by package '${writer.listingId}'.`,
+    );
+  }
+}
+
 const authoredRouteEqual = (
   left: {
     name: string;
@@ -39,7 +87,7 @@ const authoredRouteEqual = (
     trigger: unknown;
     action: unknown;
     description?: string | null;
-    managedBy: unknown;
+    steward: AutomationRouteSteward;
   },
   right: {
     name: string;
@@ -48,7 +96,7 @@ const authoredRouteEqual = (
     trigger: unknown;
     action: unknown;
     description?: string | null;
-    managedBy: unknown;
+    steward: AutomationRouteSteward;
   },
 ) =>
   left.name === right.name &&
@@ -57,7 +105,7 @@ const authoredRouteEqual = (
   JSON.stringify(left.trigger) === JSON.stringify(right.trigger) &&
   JSON.stringify(left.action) === JSON.stringify(right.action) &&
   (left.description ?? null) === (right.description ?? null) &&
-  JSON.stringify(left.managedBy) === JSON.stringify(right.managedBy);
+  stewardsEqual(left.steward, right.steward);
 
 export const createAutomationRouteServices = (
   defineService: <TService>(
@@ -103,7 +151,12 @@ export const createAutomationRouteServices = (
         .build();
     },
 
-    createRoute(input: AutomationRouteCreateInput, actors: AutomationActors) {
+    /** The writer becomes the route's steward. */
+    createRoute(
+      input: AutomationRouteCreateInput,
+      actors: AutomationActors,
+      writer: AutomationRouteSteward,
+    ) {
       const route = automationRouteCreateInputSchema.parse(input);
       if (route.trigger.kind === "schedule") {
         validateAutomationScheduleCadence(route.trigger.cadence);
@@ -129,11 +182,7 @@ export const createAutomationRouteServices = (
             trigger: route.trigger,
             action: route.action,
             description: route.description ?? null,
-            metadata: {
-              createdByActors: actors,
-              updatedByActors: actors,
-              managedBy: route.managedBy ?? null,
-            },
+            metadata: { createdByActors: actors, updatedByActors: actors, steward: writer },
             createdAt: uow.now(),
             updatedAt: uow.now(),
           });
@@ -153,15 +202,11 @@ export const createAutomationRouteServices = (
             }
           }
 
-          const { managedBy, ...authoredRoute } = route;
           return {
-            ...authoredRoute,
+            ...route,
             description: route.description ?? null,
-            metadata: {
-              createdByActors: actors,
-              updatedByActors: actors,
-              managedBy: managedBy ?? null,
-            },
+            steward: writer,
+            metadata: { createdByActors: actors, updatedByActors: actors },
             nextOccurrenceAt: null,
           };
         })
@@ -169,10 +214,12 @@ export const createAutomationRouteServices = (
         .build();
     },
 
+    /** A package writer takes over a route it adopts; members' toggles keep the route's steward. */
     updateRoute(
       input: AutomationRouteUpdateInput,
       actors: AutomationActors,
       authorizeAction: AuthorizeAutomationRouteAction,
+      writer: AutomationRouteSteward,
     ) {
       const patch = automationRouteUpdateInputSchema.parse(input);
       if (patch.trigger?.kind === "schedule") {
@@ -204,11 +251,22 @@ export const createAutomationRouteServices = (
             action: patch.action ?? current.action,
             description:
               "description" in patch ? (patch.description ?? null) : (current.description ?? null),
-            managedBy:
-              "managedBy" in patch
-                ? (patch.managedBy ?? null)
-                : (current.metadata?.managedBy ?? null),
           };
+          const definitionChanged =
+            merged.name !== current.name ||
+            merged.priority !== current.priority ||
+            JSON.stringify(merged.trigger) !== JSON.stringify(current.trigger) ||
+            JSON.stringify(merged.action) !== JSON.stringify(current.action) ||
+            merged.description !== (current.description ?? null);
+          assertRouteStewardWrite({
+            routeId: current.id,
+            steward: current.steward,
+            legacyListingId: legacyMarketplaceRouteListingId(existing),
+            writer,
+            definitionChanged,
+          });
+          // A package's write claims the route, even an adopted one whose definition already matches.
+          const steward = definitionChanged || writer.kind === "package" ? writer : current.steward;
           const configurationChanged =
             JSON.stringify(merged.action) !== JSON.stringify(current.action) ||
             JSON.stringify(merged.trigger) !== JSON.stringify(current.trigger);
@@ -225,10 +283,7 @@ export const createAutomationRouteServices = (
             action: merged.action,
           });
 
-          const unchanged = authoredRouteEqual(
-            { ...current, managedBy: current.metadata?.managedBy ?? null },
-            merged,
-          );
+          const unchanged = authoredRouteEqual(current, { ...merged, steward });
           const requiresGrantAuthorization =
             patch.action !== undefined ||
             patch.trigger !== undefined ||
@@ -256,6 +311,7 @@ export const createAutomationRouteServices = (
             scheduleState,
             current,
             merged,
+            steward,
             unchanged,
             wasScheduled,
             isScheduled,
@@ -272,6 +328,7 @@ export const createAutomationRouteServices = (
             scheduleState,
             current,
             merged,
+            steward,
             unchanged,
             wasScheduled,
             isScheduled,
@@ -293,7 +350,7 @@ export const createAutomationRouteServices = (
                 metadata: {
                   createdByActors: current.metadata?.createdByActors ?? actors,
                   updatedByActors: actors,
-                  managedBy: merged.managedBy,
+                  steward,
                 },
                 updatedAt: uow.now(),
               })
@@ -327,13 +384,12 @@ export const createAutomationRouteServices = (
             );
           }
 
-          const { managedBy, ...authoredRoute } = merged;
           return {
-            ...authoredRoute,
+            ...merged,
+            steward,
             metadata: {
               createdByActors: current.metadata?.createdByActors ?? actors,
               updatedByActors: actors,
-              managedBy,
             },
             nextOccurrenceAt:
               isScheduled && merged.enabled && !needsInitialization
@@ -345,7 +401,7 @@ export const createAutomationRouteServices = (
         .build();
     },
 
-    deleteRoute({ id }: { id: string }) {
+    deleteRoute({ id }: { id: string }, writer: AutomationRouteSteward) {
       return this.serviceTx(automationFragmentSchema)
         .retrieve((uow) =>
           uow
@@ -357,6 +413,15 @@ export const createAutomationRouteServices = (
             ),
         )
         .mutate(({ uow, retrieveResult: [route, scheduleState] }) => {
+          if (route) {
+            assertRouteStewardWrite({
+              routeId: id,
+              steward: normalizeAutomationRoute(route, scheduleState).steward,
+              legacyListingId: null,
+              writer,
+              definitionChanged: true,
+            });
+          }
           if (scheduleState) {
             uow.delete("automation_route_schedule_state", scheduleState.id, (b) => b.check());
           }

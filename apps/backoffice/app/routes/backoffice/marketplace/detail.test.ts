@@ -444,7 +444,7 @@ describe("marketplace package version navigation", () => {
     const installMarkup = renderMarketplaceDetail("2.0.0", undefined, undefined, "install");
     assert(installMarkup.includes('name="installationRoot"'));
     assert(installMarkup.includes('value="/workspace/telegram-test-command"'));
-    assert(installMarkup.includes("marketplace-lock.json"));
+    assert(installMarkup.includes("A workspace holds one"));
     assert(installMarkup.includes(">Install</button>"));
     assert(installMarkup.includes("Ada Labs"));
   });
@@ -616,6 +616,7 @@ function renderMarketplaceDetail(
       resolvedScope: { kind: "org", organization: { id: "org-1", slug: "acme" } },
       adapterIdentity: "automations-test-adapter",
     },
+    installationPermissions: { state: "ready", permissions: [] },
     packageFiles: {
       state: "ready",
       fileTree: { entries: [] },
@@ -680,6 +681,7 @@ describe("marketplace ingestion action", () => {
         targetScope: { kind: "org", orgId: "org-1" },
         installationRoot: "/workspace/telegram-test-command",
         version: "1.0.0",
+        permissions: [],
       },
       expect.objectContaining({ propagationContext: null }),
     );

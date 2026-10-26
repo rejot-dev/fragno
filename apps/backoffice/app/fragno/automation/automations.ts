@@ -46,6 +46,7 @@ import { piAgentActor } from "@/fragno/pi/agent/pi-agent-actor";
 import type { PiAgentNotification } from "@/fragno/pi/agent/pi-agent-contract";
 import { createPiManagerRuntime } from "@/fragno/pi/manager/pi-manager-runtime";
 
+import { isMarketplaceInstallationWorkflowInstanceId } from "./marketplace-package-install-identity";
 import { defineMarketplacePackageInstallWorkflow } from "./marketplace-package-install-workflow.server";
 import {
   defineMarketplacePackagePublishWorkflow,
@@ -371,7 +372,8 @@ export const createAutomationsRuntime = (
       operation:
         | typeof BACKOFFICE_PERMISSION.workflow.executeCode
         | typeof BACKOFFICE_PERMISSION.workflow.read
-        | typeof BACKOFFICE_PERMISSION.workflow.modify,
+        | typeof BACKOFFICE_PERMISSION.workflow.modify
+        | typeof BACKOFFICE_PERMISSION.packages.install,
       resource: Record<string, unknown>,
     ) => {
       try {
@@ -575,9 +577,24 @@ export const createAutomationsRuntime = (
           return internalWorkflowResponse;
         }
 
-        return await authorizeWorkflowOperation(BACKOFFICE_PERMISSION.workflow.modify, {
-          kind: "workflow",
-          workflowName: pathParams.workflowName,
+        const workflowAuthorization = await authorizeWorkflowOperation(
+          BACKOFFICE_PERMISSION.workflow.modify,
+          {
+            kind: "workflow",
+            workflowName: pathParams.workflowName,
+            instanceId: pathParams.instanceId,
+          },
+        );
+        if (
+          workflowAuthorization ||
+          pathParams.workflowName !== CODEMODE_WORKFLOW ||
+          !isMarketplaceInstallationWorkflowInstanceId(pathParams.instanceId)
+        ) {
+          return workflowAuthorization;
+        }
+        // A package's install workflow decides its settings, so steering it changes the installation.
+        return await authorizeWorkflowOperation(BACKOFFICE_PERMISSION.packages.install, {
+          kind: "package-installation-workflow",
           instanceId: pathParams.instanceId,
         });
       });

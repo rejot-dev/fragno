@@ -9,6 +9,7 @@ import {
 } from "@/routes/backoffice/automations/script-view/workflow-run-records";
 
 import { CODEMODE_WORKFLOW } from "../engine/codemode-invocation";
+import { automationRouteSteward, type StoredAutomationRouteMetadata } from "../route-records";
 import { automationFragmentSchema } from "../schema";
 
 const automationTable = (name: keyof typeof automationFragmentSchema.tables) =>
@@ -22,7 +23,7 @@ export function readAutomationRoutes(reader: LofiSqliteReader): AutomationRouteD
   const schedule = automationFragmentSchema.tables.automation_route_schedule_state.columns;
   const rows = reader.query({
     sql: `SELECT "route"."id", "route"."name", "route"."enabled", "route"."priority",
-            "route"."trigger", "route"."action", "route"."description",
+            "route"."trigger", "route"."action", "route"."description", "route"."metadata",
             "schedule"."nextOccurrenceAt"
           FROM ${automationTable("automation_route")} AS "route"
           LEFT JOIN ${automationTable("automation_route_schedule_state")} AS "schedule"
@@ -37,16 +38,22 @@ export function readAutomationRoutes(reader: LofiSqliteReader): AutomationRouteD
       trigger: route.trigger,
       action: route.action,
       description: route.description,
+      metadata: route.metadata,
       // NULL for a route without a schedule state.
       nextOccurrenceAt: schedule.nextOccurrenceAt,
     },
   });
   // Only the automations fragment writes routes, so their JSON columns hold the shapes it persists.
   return (
-    rows as (Omit<AutomationRouteDefinition, "nextOccurrenceAt"> & {
+    rows as (Omit<AutomationRouteDefinition, "nextOccurrenceAt" | "steward" | "metadata"> & {
+      metadata: StoredAutomationRouteMetadata | null;
       nextOccurrenceAt: Date | null;
     })[]
-  ).map((route) => ({ ...route, nextOccurrenceAt: route.nextOccurrenceAt?.toISOString() ?? null }));
+  ).map(({ metadata, ...route }) => ({
+    ...route,
+    steward: automationRouteSteward(metadata),
+    nextOccurrenceAt: route.nextOccurrenceAt?.toISOString() ?? null,
+  }));
 }
 
 /** Every run, with what the dashboard reports about it. */

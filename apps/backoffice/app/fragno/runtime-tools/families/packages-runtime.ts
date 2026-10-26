@@ -1,10 +1,7 @@
 import {
   packagesInstallInputSchema,
   packagesInstallResultSchema,
-} from "@fragno-dev/backoffice-api/v0/marketplace";
-import {
-  MARKETPLACE_LOCK_PATH,
-  marketplaceLockSchema,
+  type PackageInstallation,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import {
   backofficeScopeRootOwner,
@@ -16,14 +13,17 @@ import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import { marketplaceScopeForVisibility } from "@/fragno/marketplace/owner";
-import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
 
-/** Package listing is the current workspace's successful-installation lock, not a registry query. */
+/** Package listing reads the current workspace's installations, not a registry query. */
 export type PackagesRuntime = {
   install(
     input: z.output<typeof packagesInstallInputSchema>,
   ): Promise<z.output<typeof packagesInstallResultSchema>>;
-  ls(): Promise<z.output<typeof marketplaceLockSchema>>;
+  ls(): Promise<{ installations: PackageInstallation[] }>;
+  get(input: { listingId: string }): Promise<PackageInstallation | null>;
+  uninstall(input: {
+    listingId: string;
+  }): Promise<{ installation: PackageInstallation; removedRouteIds: string[] } | null>;
 };
 
 /** Preserve the UI installation flow while keeping organization coordination separate from destination scope. */
@@ -42,6 +42,8 @@ export function createPackagesRuntime({
   if (!isBackofficeRoutableScope(targetScope)) {
     throw new Error("Packages runtime requires a destination workspace.");
   }
+
+  const targetAutomations = () => kernel.scoped("AUTOMATIONS", targetScope, objects.automations);
 
   return {
     async install({ visibility, ...input }) {
@@ -79,23 +81,13 @@ export function createPackagesRuntime({
       return { ...result, installationRoot: input.installationRoot, workflowScope };
     },
     async ls() {
-      const url = new URL("https://upload.internal/api/upload/files/by-key/content");
-      url.searchParams.set("provider", UPLOAD_PROVIDER_DATABASE);
-      url.searchParams.set("key", MARKETPLACE_LOCK_PATH.slice("/workspace/".length));
-      const response = await kernel
-        .scoped("UPLOAD", targetScope, objects.upload)
-        .http.fetch(new Request(url));
-      if (response.status === 404) {
-        return { entries: [] };
-      }
-      if (!response.ok) {
-        throw new Error(`Packages lock file could not be read (${response.status}).`);
-      }
-      const lock = marketplaceLockSchema.safeParse(await response.json().catch(() => null));
-      if (!lock.success) {
-        throw new Error(`Marketplace lock file '${MARKETPLACE_LOCK_PATH}' is invalid.`);
-      }
-      return lock.data;
+      return { installations: await targetAutomations().commands.listPackageInstallations() };
+    },
+    async get(input) {
+      return await targetAutomations().commands.getPackageInstallation(input);
+    },
+    async uninstall(input) {
+      return await targetAutomations().commands.uninstallPackage(input);
     },
   };
 }

@@ -331,7 +331,7 @@ describe("Marketplace package publication scenarios", () => {
             },
           ),
           runner.drain(),
-          then.assert("installation retains the existing workspace lock semantics", async (ctx) => {
+          then.assert("installation copies the files and records the installation", async (ctx) => {
             const state = sourceState(ctx, ORG_SCOPE);
             await expect(state.readFile("/workspace/installed-report/README.md")).resolves.toBe(
               "Original README",
@@ -339,16 +339,18 @@ describe("Marketplace package publication scenarios", () => {
             expect(
               await state.readFileBytes("/workspace/installed-report/assets/payload.bin"),
             ).toEqual(BINARY);
-            expect(await state.readJson("/workspace/marketplace-lock.json")).toEqual({
-              entries: [
-                {
-                  marketplace: { kind: "system" },
-                  listingId: LISTING_ID,
-                  version: "1.0.0",
-                  installationRoot: "/workspace/installed-report",
-                },
-              ],
-            });
+            expect(
+              await ctx.runtime.objects.automations
+                .for(ORG_SCOPE)
+                .commands.listPackageInstallations(),
+            ).toMatchObject([
+              {
+                marketplace: { kind: "system" },
+                listingId: LISTING_ID,
+                version: "1.0.0",
+                installationRoot: "/workspace/installed-report",
+              },
+            ]);
             await state.writeFile(`${PACKAGE_ROOT}/README.md`, "Original README");
             const repeat = await publishFromShell(
               await publisherShell(ctx, createBackofficeSystemExecution(ORG_SCOPE)),
@@ -895,16 +897,18 @@ describe("Marketplace package publication scenarios", () => {
               await expect(state.readFile(`${INSTALLATION_ROOT}/README.md`)).resolves.toBe(
                 "Members only",
               );
-              expect(await state.readJson("/workspace/marketplace-lock.json")).toEqual({
-                entries: [
-                  {
-                    marketplace: ORG_MARKETPLACE,
-                    listingId: LISTING_ID,
-                    version: "1.0.0",
-                    installationRoot: INSTALLATION_ROOT,
-                  },
-                ],
-              });
+              expect(
+                await ctx.runtime.objects.automations
+                  .for(ORG_SCOPE)
+                  .commands.listPackageInstallations(),
+              ).toMatchObject([
+                {
+                  marketplace: ORG_MARKETPLACE,
+                  listingId: LISTING_ID,
+                  version: "1.0.0",
+                  installationRoot: INSTALLATION_ROOT,
+                },
+              ]);
               const forged = await createRouteBackedAutomationWorkflowRuntime({
                 object: ctx.runtime.objects.automations.for(OTHER_SCOPE),
                 execution: createBackofficeSystemExecution(OTHER_SCOPE),
@@ -1039,16 +1043,18 @@ describe("Marketplace package publication scenarios", () => {
               expect(await state.readFileBytes("/workspace/existing/assets/payload.bin")).toEqual(
                 BINARY,
               );
-              expect(await state.readJson("/workspace/marketplace-lock.json")).toEqual({
-                entries: [
-                  {
-                    marketplace: { kind: "system" },
-                    listingId: LISTING_ID,
-                    version: "2.0.0",
-                    installationRoot: "/workspace/existing",
-                  },
-                ],
-              });
+              expect(
+                await ctx.runtime.objects.automations
+                  .for(ORG_SCOPE)
+                  .commands.listPackageInstallations(),
+              ).toMatchObject([
+                {
+                  marketplace: { kind: "system" },
+                  listingId: LISTING_ID,
+                  version: "2.0.0",
+                  installationRoot: "/workspace/existing",
+                },
+              ]);
             },
           ),
         ],

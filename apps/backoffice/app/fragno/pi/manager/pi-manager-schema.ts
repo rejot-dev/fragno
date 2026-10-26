@@ -1,5 +1,7 @@
-import type { AutomationRouteManagedBy } from "@fragno-dev/backoffice-api/v0/automation";
-import type { PiAgentDefinition } from "@fragno-dev/backoffice-api/v0/pi";
+import type {
+  PiAgentDefinition,
+  PiAgentMarketplaceManagedBy,
+} from "@fragno-dev/backoffice-api/v0/pi";
 import { column, idColumn, schema, type Column } from "@fragno-dev/db/schema";
 
 import type {
@@ -62,7 +64,7 @@ export const piAgentDirectorySchema = schema("pi_manager", (s) =>
         .addColumn("model", column("string").nullable())
         .addColumn("permissions", jsonColumn<string[]>())
         .addColumn("instructions", column("text"))
-        .addColumn("managedBy", jsonColumn<AutomationRouteManagedBy>().nullable()),
+        .addColumn("managedBy", jsonColumn<PiAgentMarketplaceManagedBy>().nullable()),
     )
     .noOp("removed agent queueRevision column; the agent row's version replaces it")
     .addTable("agent_queue_item", (t) =>
@@ -91,7 +93,7 @@ type AgentDefinitionRow = {
   model: string | null;
   permissions: string[];
   instructions: string;
-  managedBy: AutomationRouteManagedBy | null;
+  managedBy: PiAgentMarketplaceManagedBy | null;
 };
 
 export function definitionFromRow(row: AgentDefinitionRow): PiAgentDefinition {

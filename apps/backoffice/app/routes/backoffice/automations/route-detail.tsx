@@ -55,8 +55,8 @@ export function AutomationRouteDetail({
         <AutomationDetailRows
           compact={compact}
           layout="route"
-          rows={
-            route.trigger.kind === "event"
+          rows={[
+            ...(route.trigger.kind === "event"
               ? [
                   { label: "source", value: route.trigger.source },
                   {
@@ -64,13 +64,13 @@ export function AutomationRouteDetail({
                     value: route.trigger.eventType,
                     to: eventPath(route.trigger.source, route.trigger.eventType),
                   },
-                  { label: "priority", value: String(route.priority) },
                 ]
-              : [
-                  { label: "trigger", value: "schedule" },
-                  { label: "priority", value: String(route.priority) },
-                ]
-          }
+              : [{ label: "trigger", value: "schedule" }]),
+            { label: "priority", value: String(route.priority) },
+            ...(route.steward.kind === "package"
+              ? [{ label: "managed by", value: route.steward.listingId }]
+              : []),
+          ]}
         />
       </div>
 

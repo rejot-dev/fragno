@@ -16,12 +16,12 @@ type RouterCodemodeProvider = {
    */
   create(input: RouterCreateInput): Promise<RouterCreateOutput>;
   /**
-   * Update a database-backed automation routing rule.
+   * Update a database-backed automation routing rule. A route a package manages (steward kind 'package') only accepts enabling or disabling it; change its definition through the package.
    * Requires `router.modify`.
    */
   update(input: RouterUpdateInput): Promise<RouterUpdateOutput>;
   /**
-   * Idempotently delete a database-backed automation route.
+   * Idempotently delete a database-backed automation route. Routes a package manages are removed by uninstalling the package.
    * Requires `router.modify`.
    */
   delete(input: RouterDeleteInput): Promise<RouterDeleteOutput>;
@@ -41,10 +41,10 @@ type AutomationRoute = {
   trigger: AutomationRouteTrigger;
   action: AutomationRouteAction;
   description?: string | null;
+  steward: AutomationRouteSteward;
   metadata: {
     createdByActors: AutomationActors;
     updatedByActors: AutomationActors;
-    managedBy: AutomationRouteManagedBy | null;
   } | null;
   nextOccurrenceAt: string | null;
 };
@@ -75,6 +75,14 @@ type AutomationRouteAction =
   | AutomationForwardEventAction
   | AutomationReclassifyEventAction
   | AutomationNotifyAgentAction;
+type AutomationRouteSteward =
+  | {
+      kind: "members";
+    }
+  | {
+      kind: "package";
+      listingId: string;
+    };
 type AutomationActors = {
   initiator:
     | {
@@ -120,12 +128,6 @@ type AutomationActors = {
         role: "delegate" | "assistant";
       }
   )[];
-};
-type AutomationRouteManagedBy = {
-  kind: "marketplace";
-  listingId: string;
-  resourceKey: string;
-  version: string;
 };
 type AutomationEventMatcher =
   | {
@@ -418,7 +420,6 @@ type RouterCreateInput = {
   enabled?: boolean;
   priority?: number;
   description?: string | null;
-  managedBy?: AutomationRouteManagedBy | null;
   trigger: AutomationRouteTriggerInput;
   action: AutomationRouteAction;
 };
@@ -431,7 +432,6 @@ type RouterUpdateInput = {
   trigger?: AutomationRouteTriggerInput;
   action?: AutomationRouteAction;
   description?: string | null;
-  managedBy?: AutomationRouteManagedBy | null;
 };
 type RouterUpdateOutput = AutomationRoute | null;
 type RouterDeleteInput = {

@@ -2,7 +2,6 @@ import { assert, describe, expect, test, vi } from "vitest";
 
 import { automationActorsSchema } from "@fragno-dev/backoffice-api/v0/automation";
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
-import { marketplaceLockSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import {
   backofficeScopeOrganization,
@@ -30,6 +29,7 @@ vi.mock("cloudflare:workers", () => ({
   WorkerEntrypoint,
 }));
 
+import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import {
   createBackofficeServiceExecution,
   createBackofficeSystemExecution,
@@ -64,6 +64,7 @@ import { CodemodeObject } from "../../../workers/codemode-object";
 import { FormsObject } from "../../../workers/forms-object";
 import { MarketplaceObject } from "../../../workers/marketplace-object";
 import { McpObject } from "../../../workers/mcp-object";
+import { ResendObject } from "../../../workers/resend-object";
 import { TelegramObject } from "../../../workers/telegram-object";
 import { UploadObject } from "../../../workers/upload-object";
 import {
@@ -73,6 +74,7 @@ import {
 import { MARKETPLACE_PACKAGE_PUBLISH_WORKFLOW_NAME } from "./marketplace-package-publish-workflow";
 import { createAutomationsRouteCaller, createWorkflowsRouteCaller } from "./route-callers";
 import {
+  bundledMarketplacePermissions,
   defineBackofficeScenario,
   runBackofficeScenario,
   type BackofficeScenarioContext,
@@ -89,6 +91,9 @@ const scenarioObjects = {
   FORMS: (input) => new FormsObject(input),
   MARKETPLACE: (input) => new MarketplaceObject(input),
   MCP: (input) => new McpObject(input),
+  // The Telegram channel's install workflow defines its agent.
+  PI_MANAGER: allLocalObjects.PI_MANAGER,
+  RESEND: (input) => new ResendObject(input),
   TELEGRAM: (input) => new TelegramObject(input),
   UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
@@ -121,16 +126,12 @@ const UPDATED_STATIC_MARKETPLACE_VERSION = STATIC_TELEGRAM_TEST_COMMAND.versions
   (version) => version.version === "1.1.0",
 );
 const INSTALLER_STATIC_MARKETPLACE_VERSION = STATIC_TELEGRAM_TEST_COMMAND.versions.find(
-  (version) => version.version === "1.2.1",
-);
-const CONFIGURABLE_STATIC_MARKETPLACE_VERSION = STATIC_TELEGRAM_TEST_COMMAND.versions.find(
-  (version) => version.version === "1.3.0",
+  (version) => version.version === "2.0.0",
 );
 if (
   !BASE_STATIC_MARKETPLACE_VERSION ||
   !UPDATED_STATIC_MARKETPLACE_VERSION ||
-  !INSTALLER_STATIC_MARKETPLACE_VERSION ||
-  !CONFIGURABLE_STATIC_MARKETPLACE_VERSION
+  !INSTALLER_STATIC_MARKETPLACE_VERSION
 ) {
   throw new Error("Expected all Telegram test command Marketplace versions.");
 }
@@ -138,12 +139,16 @@ const TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE =
   BASE_STATIC_MARKETPLACE_VERSION.files[MARKETPLACE_PACKAGE_FILE_KEY];
 const CURRENT_TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE = getStaticMarketplaceEntry({
   slug: "telegram-test-command",
-  version: "1.4.0",
+  version: "2.0.0",
 })?.files[MARKETPLACE_PACKAGE_FILE_KEY];
+const TELEGRAM_TEST_COMMAND_PERMISSIONS = bundledMarketplacePermissions({
+  slug: "telegram-test-command",
+  version: "2.0.0",
+});
 
 /**
- * From 1.3.0, the test command's installer waits for its reply message before creating its route.
- * Project installers run in their organization's automations object.
+ * The test command's install workflow waits for its reply message before the installation is
+ * recorded. Project installers run in their organization's automations object.
  */
 async function submitTelegramTestCommandInstaller(
   ctx: BackofficeScenarioContext,
@@ -157,7 +162,7 @@ async function submitTelegramTestCommandInstaller(
     installationRoot: "/workspace",
     targetScope,
     listingId: MARKETPLACE_LISTING_ID,
-    version: "1.4.0",
+    version: "2.0.0",
   });
   const workflows = createWorkflowsRouteCaller({
     object: ctx.runtime.objects.automations.for(coordinator),
@@ -178,29 +183,13 @@ async function submitTelegramTestCommandInstaller(
   assert(submitted.type === "json");
 }
 
-async function readMarketplaceLockEntry(
+async function readPackageInstallation(
   ctx: BackofficeScenarioContext,
-  input: {
-    targetScope: BackofficeRoutableScope;
-    listingId: string;
-  },
+  input: { targetScope: BackofficeRoutableScope; listingId: string },
 ) {
-  const url = new URL("https://upload.test/api/upload/files/by-key/content");
-  url.searchParams.set("provider", "database");
-  url.searchParams.set("key", "marketplace-lock.json");
-  const response = await ctx.runtime.objects.upload
+  return await ctx.runtime.objects.automations
     .for(input.targetScope)
-    .http.fetch(new Request(url));
-  if (response.status === 404 || response.status === 410) {
-    return null;
-  }
-  assert(response.ok);
-  const lock = marketplaceLockSchema.parse(await response.json());
-  return (
-    lock.entries.find(
-      (entry) => entry.listingId === input.listingId && entry.installationRoot === "/workspace",
-    ) ?? null
-  );
+    .commands.getPackageInstallation({ listingId: input.listingId });
 }
 
 function githubPullRequestWebhookEvent(action: "opened" | "synchronize"): AutomationEvent {
@@ -278,11 +267,17 @@ function githubPullRequestWebhookEvent(action: "opened" | "synchronize"): Automa
   };
 }
 
-const UNAUTHORIZED_MARKETPLACE_INSTALL_WORKFLOW_SOURCE = `export default defineWorkflow(
-  { name: "unauthorized-marketplace-install" },
+/** Routes come only from a package's declaration, so its install workflow can't write them. */
+const ROUTE_WRITING_MARKETPLACE_INSTALL_WORKFLOW_SOURCE = `export default defineWorkflow(
+  { name: "route-writing-marketplace-install" },
   async (_event, step) => {
-    await step.do("attempt unauthorized workflow read", async () => {
-      await workflow.listInstances({});
+    await step.do("attempt to create a route", async () => {
+      await router.create({
+        id: "undeclared-route",
+        name: "Undeclared route",
+        trigger: { kind: "event", source: "telegram", eventType: "message.received" },
+        action: { kind: "notify_agent", agentName: "telegram", authority: { kind: "linked-user", grants: "inherit" } },
+      });
     });
   },
 );
@@ -479,7 +474,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 .commands.getListingStorage({ listingId: MARKETPLACE_LISTING_ID }),
             ).resolves.toMatchObject({
               listingStatus: "published",
-              versions: ["1.4.0", "1.3.0", "1.2.1", "1.1.0", "1.0.0"],
+              versions: ["2.0.0", "1.4.0", "1.3.0", "1.2.1", "1.1.0", "1.0.0"],
             });
           }),
         ],
@@ -522,53 +517,56 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                   marketplace: { kind: "system" },
                   installationRoot: "/workspace",
                   listingId: telegramChannelListingId,
-                  version: "1.1.0",
+                  version: "2.0.0",
                   targetScope: { kind: "org", orgId: "org-1" },
+                  permissions: bundledMarketplacePermissions({
+                    slug: "telegram-channel",
+                    version: "2.0.0",
+                  }),
                 },
                 execution,
               ),
-            ).resolves.toMatchObject({ state: "requested", version: "1.1.0" });
+            ).resolves.toMatchObject({ state: "requested", version: "2.0.0" });
             await expect(
               automations.commands.requestMarketplaceIngestion(
                 {
                   marketplace: { kind: "system" },
                   installationRoot: "/workspace",
                   listingId: githubChannelListingId,
-                  version: "1.0.0",
+                  version: "1.1.0",
                   targetScope: { kind: "org", orgId: "org-1" },
+                  permissions: bundledMarketplacePermissions({
+                    slug: "github-channel",
+                    version: "1.1.0",
+                  }),
                 },
                 execution,
               ),
-            ).resolves.toMatchObject({ state: "requested", version: "1.0.0" });
+            ).resolves.toMatchObject({ state: "requested", version: "1.1.0" });
           }),
           runner.drain(),
-          then.assert("both channels own their installed routes", async (ctx) => {
+          then.assert("both channels manage their declared routes", async (ctx) => {
             const automations = ctx.runtime.objects.automations.forOrg("org-1");
             const expectedRoutes = [
-              ["telegram-start-linking", telegramChannelListingId, "1.1.0"],
-              ["telegram-identity-claim-completed", telegramChannelListingId, "1.1.0"],
-              ["telegram-pi-linking", telegramChannelListingId, "1.1.0"],
-              ["github-issues-opened-reclassify", githubChannelListingId, "1.0.0"],
-              ["github-issue-comment-created-reclassify", githubChannelListingId, "1.0.0"],
-              ["github-pull-request-opened-reclassify", githubChannelListingId, "1.0.0"],
-              ["github-pull-request-synchronize-reclassify", githubChannelListingId, "1.0.0"],
-              ["github-push-reclassify", githubChannelListingId, "1.0.0"],
+              ["telegram-start-linking", telegramChannelListingId],
+              ["telegram-identity-claim-completed", telegramChannelListingId],
+              ["telegram-pi-linking", telegramChannelListingId],
+              ["telegram-pi-turn-completed", telegramChannelListingId],
+              ["github-issues-opened-reclassify", githubChannelListingId],
+              ["github-issue-comment-created-reclassify", githubChannelListingId],
+              ["github-pull-request-opened-reclassify", githubChannelListingId],
+              ["github-pull-request-synchronize-reclassify", githubChannelListingId],
+              ["github-push-reclassify", githubChannelListingId],
             ] as const;
 
-            for (const [routeId, listingId, version] of expectedRoutes) {
+            for (const [routeId, listingId] of expectedRoutes) {
               const response = await automations.http.fetch(
                 new Request(`https://automations.test/api/automations/routes/${routeId}`),
               );
               assert(response.ok);
               await expect(response.json()).resolves.toMatchObject({
                 id: routeId,
-                metadata: {
-                  managedBy: {
-                    kind: "marketplace",
-                    listingId,
-                    version,
-                  },
-                },
+                steward: { kind: "package", listingId },
               });
             }
 
@@ -696,12 +694,16 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                     marketplace: { kind: "system" },
                     installationRoot: "/workspace",
                     listingId: telegramChannelListingId,
-                    version: "1.1.0",
+                    version: "2.0.0",
                     targetScope,
+                    permissions: bundledMarketplacePermissions({
+                      slug: "telegram-channel",
+                      version: "2.0.0",
+                    }),
                   },
                   execution,
                 ),
-              ).resolves.toMatchObject({ state: "requested", version: "1.1.0" });
+              ).resolves.toMatchObject({ state: "requested", version: "2.0.0" });
             }
           }),
           runner.drain(),
@@ -714,11 +716,11 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               { kind: "user", userId: "user-1" },
             ] as const) {
               await expect(
-                readMarketplaceLockEntry(ctx, {
+                readPackageInstallation(ctx, {
                   listingId: telegramChannelListingId,
                   targetScope,
                 }),
-              ).resolves.toMatchObject({ version: "1.1.0" });
+              ).resolves.toMatchObject({ version: "2.0.0" });
 
               const targetAutomations = ctx.runtime.objects.automations.for(targetScope);
               for (const routeId of [
@@ -732,13 +734,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 assert(response.ok);
                 await expect(response.json()).resolves.toMatchObject({
                   id: routeId,
-                  metadata: {
-                    managedBy: {
-                      kind: "marketplace",
-                      listingId: telegramChannelListingId,
-                      version: "1.1.0",
-                    },
-                  },
+                  steward: { kind: "package", listingId: telegramChannelListingId },
                 });
               }
             }
@@ -791,34 +787,36 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                   marketplace: { kind: "system" },
                   installationRoot: "/workspace",
                   listingId,
-                  version: "1.4.0",
+                  version: "2.0.0",
                   targetScope: { kind: "org", orgId: "org-1" },
+                  permissions: TELEGRAM_TEST_COMMAND_PERMISSIONS,
                 },
                 {
                   execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
                   propagationContext: null,
                 },
               ),
-            ).resolves.toMatchObject({ state: "requested", version: "1.4.0" });
+            ).resolves.toMatchObject({ state: "requested", version: "2.0.0" });
             await expect(
               automations.commands.requestMarketplaceIngestion(
                 {
                   marketplace: { kind: "system" },
                   installationRoot: "/workspace",
                   listingId,
-                  version: "1.4.0",
+                  version: "2.0.0",
                   targetScope: {
                     kind: "project",
                     owner: { kind: "org" as const, orgId: "org-1" },
                     projectId: project.id,
                   },
+                  permissions: TELEGRAM_TEST_COMMAND_PERMISSIONS,
                 },
                 {
                   execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
                   propagationContext: null,
                 },
               ),
-            ).resolves.toMatchObject({ state: "requested", version: "1.4.0" });
+            ).resolves.toMatchObject({ state: "requested", version: "2.0.0" });
 
             ctx.vars.projectId = project.id;
           }),
@@ -884,14 +882,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                   action: {
                     workflowScriptPath: "/workspace/automations/telegram-test-command.workflow.js",
                   },
-                  metadata: {
-                    managedBy: {
-                      kind: "marketplace",
-                      listingId: MARKETPLACE_LISTING_ID,
-                      resourceKey: "telegram-test-command-route",
-                      version: "1.4.0",
-                    },
-                  },
+                  steward: { kind: "package", listingId: MARKETPLACE_LISTING_ID },
                 });
               }
             },
@@ -901,149 +892,22 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     );
   });
 
-  test("configures the Telegram test message through generated installer UI", async () => {
+  test("an install workflow cannot write routes, even when its installer may", async () => {
     const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
       marketplace: { kind: "system" },
       installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
-      version: "1.4.0",
-    });
-    const installationWorkflowInstanceId = `${workflowInstanceId}:installation`;
-    const configuredMessage = "Marketplace generated UI configured this reply.";
-
-    await runBackofficeScenario(
-      defineBackofficeScenario({
-        objects: scenarioObjects,
-        name: "configure the Marketplace Telegram test command",
-        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
-        steps: ({ then, runner }) => [
-          then.assert("the Marketplace package is published", async (ctx) => {
-            await ctx.runtime.objects.automations
-              .singleton()
-              .commands.requestStaticMarketplacePublications();
-          }),
-          runner.drain(),
-          then.assert("version 1.4.0 installation is requested", async (ctx) => {
-            await expect(
-              ctx.runtime.objects.automations.forOrg("org-1").commands.requestMarketplaceIngestion(
-                {
-                  marketplace: { kind: "system" },
-                  installationRoot: "/workspace",
-                  listingId: MARKETPLACE_LISTING_ID,
-                  version: "1.4.0",
-                  targetScope: { kind: "org", orgId: "org-1" },
-                },
-                {
-                  execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
-                  propagationContext: null,
-                },
-              ),
-            ).resolves.toMatchObject({
-              state: "requested",
-              version: "1.4.0",
-              workflowInstanceId,
-            });
-          }),
-          runner.drain(),
-          then.workflow.instance({
-            workflowName: CODEMODE_WORKFLOW,
-            instanceId: installationWorkflowInstanceId,
-            status: "waiting",
-          }),
-          then.assert(
-            "the installer exposes generated UI and waits for its submission",
-            async (ctx) => {
-              const workflows = createWorkflowsRouteCaller({
-                object: ctx.runtime.objects.automations.forOrg("org-1"),
-                context: {
-                  execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
-                  propagationContext: null,
-                },
-              });
-              const history = await workflows(
-                "GET",
-                "/:workflowName/instances/:instanceId/history",
-                {
-                  pathParams: {
-                    workflowName: CODEMODE_WORKFLOW,
-                    instanceId: installationWorkflowInstanceId,
-                  },
-                },
-              );
-              assert(history.type === "json");
-              expect(history.data.steps).toEqual(
-                expect.arrayContaining([
-                  expect.objectContaining({
-                    name: "request test message",
-                    status: "completed",
-                    result: expect.objectContaining({
-                      $ui: expect.objectContaining({ version: 1 }),
-                    }),
-                  }),
-                  expect.objectContaining({
-                    name: "wait for test message",
-                    status: "waiting",
-                    waitEventType: "telegram-test-command.message-configured",
-                  }),
-                ]),
-              );
-
-              const submitted = await workflows(
-                "POST",
-                "/:workflowName/instances/:instanceId/events",
-                {
-                  pathParams: {
-                    workflowName: CODEMODE_WORKFLOW,
-                    instanceId: installationWorkflowInstanceId,
-                  },
-                  body: {
-                    id: "configure-telegram-test-command",
-                    type: "telegram-test-command.message-configured",
-                    payload: { message: configuredMessage },
-                  },
-                },
-              );
-              assert(submitted.type === "json");
-            },
-          ),
-          runner.drain(),
-          then.store.entry({
-            orgId: "org-1",
-            key: "marketplace/telegram-test-command/message",
-            value: configuredMessage,
-          }),
-          then.workflow.instance({
-            workflowName: CODEMODE_WORKFLOW,
-            instanceId: installationWorkflowInstanceId,
-            status: "complete",
-          }),
-          then.workflow.instance({
-            workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
-            instanceId: workflowInstanceId,
-            status: "complete",
-          }),
-        ],
-      }),
-    );
-  });
-
-  test("denies installer operations outside the untrusted codemode permission ceiling", async () => {
-    const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
-      marketplace: { kind: "system" },
-      installationRoot: "/workspace",
-      targetScope: { kind: "org", orgId: "org-1" },
-      listingId: MARKETPLACE_LISTING_ID,
-      version: "1.2.1",
+      version: "2.0.0",
     });
 
     await withMarketplaceInstallerSource(
-      UNAUTHORIZED_MARKETPLACE_INSTALL_WORKFLOW_SOURCE,
+      ROUTE_WRITING_MARKETPLACE_INSTALL_WORKFLOW_SOURCE,
       async () => {
         await runBackofficeScenario(
           defineBackofficeScenario({
             objects: scenarioObjects,
-            name: "deny unauthorized Marketplace installer operation",
+            name: "deny a Marketplace install workflow writing routes",
             setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
             steps: ({ then, runner }) => [
               then.assert("publish the Marketplace package", async (ctx) => {
@@ -1060,8 +924,9 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                       marketplace: { kind: "system" },
                       installationRoot: "/workspace",
                       listingId: MARKETPLACE_LISTING_ID,
-                      version: "1.2.1",
+                      version: "2.0.0",
                       targetScope: { kind: "org", orgId: "org-1" },
+                      permissions: TELEGRAM_TEST_COMMAND_PERMISSIONS,
                     },
                     {
                       execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
@@ -1098,11 +963,12 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                   });
                   assert(response.type === "json");
                   expect(response.data.details.error?.message).toContain(
-                    `Delegated capability '${CODEMODE_WORKFLOW}' is not granted`,
+                    `Delegated capability '${CODEMODE_WORKFLOW}' is not granted router.modify`,
                   );
                 },
               ),
-              then.store.missing({ orgId: "org-1", key: "marketplace/unauthorized" }),
+              then.router.missing({ orgId: "org-1", id: "undeclared-route" }),
+              then.router.missing({ orgId: "org-1", id: "telegram-test-command" }),
             ],
             options: { allowErroredWorkflows: true },
           }),
@@ -1111,19 +977,14 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     );
   });
 
-  test("reconciles a Marketplace-owned route while preserving its operational state", async () => {
+  test("records the installer as the author of the routes a package declares", async () => {
     const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
       marketplace: { kind: "system" },
       installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
-      version: "1.4.0",
+      version: "2.0.0",
     });
-    const creatorExecution = createBackofficeServiceExecution({
-      scope: { kind: "org", orgId: "org-1" },
-      service: { type: "automation", id: "route-author" },
-    });
-    const creatorActors = creatorExecution.actors;
     const installerExecution = createBackofficeUserExecution({
       scope: { kind: "org", orgId: "org-1" },
       userId: "marketplace-installer",
@@ -1132,8 +993,14 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         objects: scenarioObjects,
-        name: "reconcile a Marketplace-owned automation route",
-        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+        name: "record the installer of a package's routes",
+        setup: ({ given }) => [
+          given.organization.exists({
+            id: "org-1",
+            name: "Ada Labs",
+            ownerUserId: "marketplace-installer",
+          }),
+        ],
         steps: ({ then, runner }) => [
           then.assert("the Marketplace package is published", async (ctx) => {
             await ctx.runtime.objects.automations
@@ -1141,50 +1008,16 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               .commands.requestStaticMarketplacePublications();
           }),
           runner.drain(),
-          then.assert("an owned but drifted route exists", async (ctx) => {
-            const routes = createAutomationsRouteCaller({
-              object: ctx.runtime.objects.automations.forOrg("org-1"),
-              context: {
-                execution: creatorExecution,
-                propagationContext: null,
-              },
-            });
-            const created = await routes("POST", "/routes", {
-              body: {
-                id: "telegram-test-command",
-                name: "Customized Telegram command",
-                enabled: false,
-                priority: 999,
-                trigger: {
-                  kind: "event",
-                  source: "telegram",
-                  eventType: "message.received",
-                  matcher: { path: "$.payload.text", op: "eq", value: "!test" },
-                },
-                action: {
-                  kind: "start_workflow",
-                  authority: { kind: "organization-automation", grants: [] },
-                  workflowScriptPath: "/workspace/automations/wrong.workflow.js",
-                  instanceIdTemplate: "wrong-${event.id}",
-                },
-                managedBy: {
-                  kind: "marketplace",
-                  listingId: MARKETPLACE_LISTING_ID,
-                  resourceKey: "telegram-test-command-route",
-                  version: "1.0.0",
-                },
-              },
-            });
-            assert(created.type === "json");
-
+          then.assert("a member requests the installation twice", async (ctx) => {
             const automations = ctx.runtime.objects.automations.forOrg("org-1");
             const firstRequest = await automations.commands.requestMarketplaceIngestion(
               {
                 marketplace: { kind: "system" },
                 installationRoot: "/workspace",
                 listingId: MARKETPLACE_LISTING_ID,
-                version: "1.4.0",
+                version: "2.0.0",
                 targetScope: { kind: "org", orgId: "org-1" },
+                permissions: TELEGRAM_TEST_COMMAND_PERMISSIONS,
               },
               { execution: installerExecution, propagationContext: null },
             );
@@ -1193,8 +1026,9 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 marketplace: { kind: "system" },
                 installationRoot: "/workspace",
                 listingId: MARKETPLACE_LISTING_ID,
-                version: "1.4.0",
+                version: "2.0.0",
                 targetScope: { kind: "org", orgId: "org-1" },
+                permissions: TELEGRAM_TEST_COMMAND_PERMISSIONS,
               },
               { execution: installerExecution, propagationContext: null },
             );
@@ -1287,7 +1121,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               },
             });
           }),
-          then.assert("the managed route is reconciled without re-enabling it", async (ctx) => {
+          then.assert("the package's route records the installer as its author", async (ctx) => {
             const routes = createAutomationsRouteCaller({
               object: ctx.runtime.objects.automations.forOrg("org-1"),
               context: {
@@ -1302,174 +1136,39 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             expect(response.data).toMatchObject({
               id: "telegram-test-command",
               name: "Telegram /test command",
-              enabled: false,
+              enabled: true,
               priority: 110,
-              trigger: {
-                kind: "event",
-                matcher: { path: "$.payload.text", op: "eq", value: "/test" },
-              },
               action: {
                 kind: "start_workflow",
                 authority: {
                   kind: "organization-automation",
                   grants: [
                     BACKOFFICE_PERMISSION.integrations.execute,
-                    BACKOFFICE_PERMISSION.store.read,
+                    BACKOFFICE_PERMISSION.packages.read,
                   ],
                 },
                 workflowScriptPath: "/workspace/automations/telegram-test-command.workflow.js",
                 instanceIdTemplate: "telegram-test-${event.id}",
               },
+              steward: { kind: "package", listingId: MARKETPLACE_LISTING_ID },
               metadata: {
-                createdByActors: creatorActors,
-                updatedByActors: {
-                  initiator: {
-                    scope: "internal",
-                    type: "system",
-                    id: "backoffice",
-                    role: "initiator",
-                  },
-                  principal: {
-                    scope: "internal",
-                    type: "automation",
-                    id: `automation:${workflowInstanceId}:installation`,
-                    role: "principal",
-                  },
-                  delegation: [
-                    {
-                      scope: "internal",
-                      type: "capability",
-                      id: CODEMODE_WORKFLOW,
-                      role: "delegate",
-                    },
-                  ],
-                },
-                managedBy: {
-                  kind: "marketplace",
-                  listingId: MARKETPLACE_LISTING_ID,
-                  resourceKey: "telegram-test-command-route",
-                  version: "1.4.0",
-                },
+                createdByActors: installerExecution.actors,
+                updatedByActors: installerExecution.actors,
               },
             });
-
-            const listed = await routes("GET", "/routes");
-            assert(listed.type === "json");
-            expect(
-              listed.data.filter((route) => route.id === "telegram-test-command"),
-            ).toHaveLength(1);
           }),
         ],
       }),
     );
   });
 
-  test("rejects the unmanaged legacy Telegram route", async () => {
+  test("refuses to install a package whose route id a member already uses", async () => {
     const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
       marketplace: { kind: "system" },
       installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
-      version: "1.2.1",
-    });
-
-    await runBackofficeScenario(
-      defineBackofficeScenario({
-        objects: scenarioObjects,
-        name: "reject an unmanaged legacy Marketplace automation route",
-        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
-        steps: ({ when, then, runner }) => [
-          when.codemode.run({
-            scope: { kind: "system" },
-            label: "publish the bundled marketplace package",
-            code: "async () => await admin.marketplacePushStatic({})",
-            assertToolCalls: ["admin.marketplace.push-static"],
-          }),
-          runner.drain(),
-          when.router.createRoute({
-            orgId: "org-1",
-            id: "telegram-test-command",
-            name: "Legacy Telegram command",
-            enabled: true,
-            priority: 900,
-            trigger: {
-              kind: "event",
-              source: "telegram",
-              eventType: "message.received",
-              matcher: { path: "$.payload.text", op: "eq", value: "!test" },
-            },
-            action: {
-              kind: "start_workflow",
-              authority: { kind: "organization-automation", grants: [] },
-              workflowScriptPath: "/workspace/automations/legacy-test.workflow.js",
-              instanceIdTemplate: "legacy-${event.id}",
-            },
-          }),
-          then.assert("ingestion is requested", async (ctx) => {
-            await ctx.runtime.objects.automations
-              .forOrg("org-1")
-              .commands.requestMarketplaceIngestion(
-                {
-                  marketplace: { kind: "system" },
-                  installationRoot: "/workspace",
-                  listingId: MARKETPLACE_LISTING_ID,
-                  version: "1.2.1",
-                  targetScope: { kind: "org", orgId: "org-1" },
-                },
-                {
-                  execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
-                  propagationContext: null,
-                },
-              );
-          }),
-          runner.drain(),
-          then.workflow.instance({
-            workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
-            instanceId: workflowInstanceId,
-            status: "errored",
-          }),
-          then.assert(
-            "the legacy route remains unmanaged and ingestion is not recorded",
-            async (ctx) => {
-              const automations = ctx.runtime.objects.automations.forOrg("org-1");
-              await expect(
-                readMarketplaceLockEntry(ctx, {
-                  targetScope: { kind: "org", orgId: "org-1" },
-                  listingId: MARKETPLACE_LISTING_ID,
-                }),
-              ).resolves.toBeNull();
-
-              const response = await automations.http.fetch(
-                new Request(
-                  "https://automations.test/api/automations/routes/telegram-test-command",
-                ),
-              );
-              assert(response.ok);
-              await expect(response.json()).resolves.toMatchObject({
-                id: "telegram-test-command",
-                name: "Legacy Telegram command",
-                priority: 900,
-                trigger: { matcher: { path: "$.payload.text", op: "eq", value: "!test" } },
-                action: {
-                  workflowScriptPath: "/workspace/automations/legacy-test.workflow.js",
-                },
-                metadata: { managedBy: null },
-              });
-            },
-          ),
-        ],
-        options: { allowErroredWorkflows: true },
-      }),
-    );
-  });
-
-  test("rejects an unrelated route collision without advancing ingestion", async () => {
-    const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
-      marketplace: { kind: "system" },
-      installationRoot: "/workspace",
-      targetScope: { kind: "org", orgId: "org-1" },
-      listingId: MARKETPLACE_LISTING_ID,
-      version: "1.2.1",
+      version: "2.0.0",
     });
 
     await runBackofficeScenario(
@@ -1512,8 +1211,9 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                   marketplace: { kind: "system" },
                   installationRoot: "/workspace",
                   listingId: MARKETPLACE_LISTING_ID,
-                  version: "1.2.1",
+                  version: "2.0.0",
                   targetScope: { kind: "org", orgId: "org-1" },
+                  permissions: TELEGRAM_TEST_COMMAND_PERMISSIONS,
                 },
                 {
                   execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
@@ -1522,33 +1222,42 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               );
           }),
           runner.drain(),
+          then.assert("the install workflow receives its reply message", (ctx) =>
+            submitTelegramTestCommandInstaller(ctx, { kind: "org", orgId: "org-1" }),
+          ),
+          runner.drain(),
           then.workflow.instance({
             workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
             instanceId: workflowInstanceId,
             status: "errored",
           }),
-          then.assert("the collision is preserved and ingestion is not recorded", async (ctx) => {
-            const automations = ctx.runtime.objects.automations.forOrg("org-1");
-            await expect(
-              readMarketplaceLockEntry(ctx, {
-                targetScope: { kind: "org", orgId: "org-1" },
-                listingId: MARKETPLACE_LISTING_ID,
-              }),
-            ).resolves.toBeNull();
+          then.assert(
+            "the member's route is preserved and no installation is recorded",
+            async (ctx) => {
+              const automations = ctx.runtime.objects.automations.forOrg("org-1");
+              await expect(
+                readPackageInstallation(ctx, {
+                  targetScope: { kind: "org", orgId: "org-1" },
+                  listingId: MARKETPLACE_LISTING_ID,
+                }),
+              ).resolves.toBeNull();
 
-            const response = await automations.http.fetch(
-              new Request("https://automations.test/api/automations/routes/telegram-test-command"),
-            );
-            assert(response.ok);
-            await expect(response.json()).resolves.toMatchObject({
-              name: "Unrelated route",
-              priority: 1,
-              action: {
-                workflowScriptPath: "/workspace/automations/unrelated.workflow.js",
-              },
-              metadata: { managedBy: null },
-            });
-          }),
+              const response = await automations.http.fetch(
+                new Request(
+                  "https://automations.test/api/automations/routes/telegram-test-command",
+                ),
+              );
+              assert(response.ok);
+              await expect(response.json()).resolves.toMatchObject({
+                name: "Unrelated route",
+                priority: 1,
+                action: {
+                  workflowScriptPath: "/workspace/automations/unrelated.workflow.js",
+                },
+                steward: { kind: "members" },
+              });
+            },
+          ),
         ],
         options: { allowErroredWorkflows: true },
       }),
@@ -1982,7 +1691,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               await expect(response.text()).resolves.toBe("locally modified");
 
               await expect(
-                readMarketplaceLockEntry(ctx, {
+                readPackageInstallation(ctx, {
                   targetScope: { kind: "org", orgId: "org-1" },
                   listingId: MARKETPLACE_LISTING_ID,
                 }),
@@ -2027,7 +1736,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 content: TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE,
               });
               await expect(
-                readMarketplaceLockEntry(ctx, {
+                readPackageInstallation(ctx, {
                   targetScope: { kind: "org", orgId: "org-1" },
                   listingId: MARKETPLACE_LISTING_ID,
                 }),
@@ -2097,7 +1806,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               await expect(response.text()).resolves.toBe(TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE);
 
               await expect(
-                readMarketplaceLockEntry(ctx, {
+                readPackageInstallation(ctx, {
                   targetScope: { kind: "org", orgId: "org-1" },
                   listingId: MARKETPLACE_LISTING_ID,
                 }),
@@ -2714,7 +2423,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             async (ctx) => {
               expect(batchCommitAttempts).toBe(2);
               await expect(
-                readMarketplaceLockEntry(ctx, {
+                readPackageInstallation(ctx, {
                   targetScope: { kind: "org", orgId: "org-1" },
                   listingId: MARKETPLACE_LISTING_ID,
                 }),
@@ -2818,7 +2527,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               .http.fetch(new Request(url));
             assert(response.status === 404);
             await expect(
-              readMarketplaceLockEntry(ctx, {
+              readPackageInstallation(ctx, {
                 targetScope: { kind: "org", orgId: "org-1" },
                 listingId: MARKETPLACE_LISTING_ID,
               }),
@@ -2914,7 +2623,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               .http.fetch(new Request(contentUrl));
             assert(contentResponse.status === 404);
             await expect(
-              readMarketplaceLockEntry(ctx, {
+              readPackageInstallation(ctx, {
                 targetScope: { kind: "org", orgId: "org-1" },
                 listingId: MARKETPLACE_LISTING_ID,
               }),
@@ -3020,7 +2729,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               marketplace.commands.getListingStorage({ listingId }),
             ).resolves.toMatchObject({
               listingStatus: "archived",
-              versions: ["1.4.0", "1.3.0", "1.2.1", "1.1.0", "1.0.0"],
+              versions: ["2.0.0", "1.4.0", "1.3.0", "1.2.1", "1.1.0", "1.0.0"],
             });
           }),
         ],

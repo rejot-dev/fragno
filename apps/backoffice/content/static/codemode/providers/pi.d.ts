@@ -53,7 +53,7 @@ type PiCodemodeProvider = {
 };
 declare const pi: PiCodemodeProvider;
 
-type AutomationRouteManagedBy = {
+type PiAgentMarketplaceManagedBy = {
   kind: "marketplace";
   listingId: string;
   resourceKey: string;
@@ -71,7 +71,7 @@ type PiListAgentsOutput = {
       | {
           kind: "built-in";
         }
-      | AutomationRouteManagedBy
+      | PiAgentMarketplaceManagedBy
       | null;
   }[];
 };
@@ -88,7 +88,7 @@ type PiGetAgentOutput = {
     | {
         kind: "built-in";
       }
-    | AutomationRouteManagedBy
+    | PiAgentMarketplaceManagedBy
     | null;
 };
 type PiListMessagesInput = {
@@ -134,7 +134,7 @@ type PiCreateAgentInput = {
   model: string | null;
   permissions: string[];
   instructions: string;
-  managedBy: AutomationRouteManagedBy | null;
+  managedBy: PiAgentMarketplaceManagedBy | null;
   agentName: string;
 };
 type PiCreateAgentOutput = {
@@ -147,7 +147,7 @@ type PiCreateAgentOutput = {
     | {
         kind: "built-in";
       }
-    | AutomationRouteManagedBy
+    | PiAgentMarketplaceManagedBy
     | null;
   /** The model the agent runs, as provider/modelId: its `model`, or the preferred available model when `model` is null. Null when that model is not available. */
   resolvedModel: string | null;
@@ -157,7 +157,7 @@ type PiUpdateAgentInput = {
   model: string | null;
   permissions: string[];
   instructions: string;
-  managedBy: AutomationRouteManagedBy | null;
+  managedBy: PiAgentMarketplaceManagedBy | null;
   agentName: string;
 };
 type PiUpdateAgentOutput = {
@@ -170,7 +170,7 @@ type PiUpdateAgentOutput = {
     | {
         kind: "built-in";
       }
-    | AutomationRouteManagedBy
+    | PiAgentMarketplaceManagedBy
     | null;
 };
 type PiDeleteAgentInput = {

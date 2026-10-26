@@ -1,7 +1,6 @@
 import { z } from "zod";
 
 import type { BackofficeApiOperation } from "../api";
-import { automationRouteManagedBySchema } from "./automation";
 import {
   allBackofficePermissionRequirements,
   BACKOFFICE_PERMISSION,
@@ -70,9 +69,28 @@ const piAgentDefinitionFieldsSchema = z.lazy(() =>
   }),
 );
 
+export type PiAgentMarketplaceManagedBy = {
+  kind: "marketplace";
+  listingId: string;
+  resourceKey: string;
+  version: string;
+};
+
+/** A package's claim on an agent it created; packages still assert it themselves. */
+const piAgentMarketplaceManagedBySchema: z.ZodType<PiAgentMarketplaceManagedBy> = z
+  .lazy(() =>
+    z.strictObject({
+      kind: z.literal("marketplace"),
+      listingId: z.string().trim().min(1),
+      resourceKey: z.string().trim().min(1),
+      version: z.string().trim().min(1),
+    }),
+  )
+  .meta({ id: "PiAgentMarketplaceManagedBy" });
+
 /** Built-in agents are defined by Backoffice; others are created in a scope, by hand or a package. */
 const piAgentManagedBySchema = z.lazy(() =>
-  z.union([z.object({ kind: z.literal("built-in") }), automationRouteManagedBySchema]),
+  z.union([z.object({ kind: z.literal("built-in") }), piAgentMarketplaceManagedBySchema]),
 );
 
 export const piAgentDefinitionSchema = z.lazy(() =>
@@ -94,7 +112,7 @@ export const piAgentDefinitionUpdateSchema = z.lazy(() =>
       1,
       'Grant at least one permission; use ["*"] to let the agent do whatever its prompter may.',
     ),
-    managedBy: automationRouteManagedBySchema.nullable(),
+    managedBy: piAgentMarketplaceManagedBySchema.nullable(),
   }),
 );
 

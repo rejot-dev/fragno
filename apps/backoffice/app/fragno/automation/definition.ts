@@ -74,6 +74,7 @@ import type {
   AutomationInternalHooks,
   AutomationRouteDispatchPayload,
 } from "./internal-hooks";
+import { createPackageInstallationServices } from "./package-installations-storage-runtime";
 import { createAutomationProjectServices } from "./projects-storage-runtime";
 import {
   buildRouteFailedEvent,
@@ -637,6 +638,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
     const eventDefinitionServices = createAutomationEventDefinitionServices(defineService);
     const externalIdentityBindingServices = createExternalIdentityBindingServices(defineService);
     const routeDispatchServices = createAutomationRouteDispatchServices(defineService);
+    const packageInstallationServices = createPackageInstallationServices(defineService);
 
     return defineService({
       ...storeServices,
@@ -647,6 +649,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
       ...eventDefinitionServices,
       ...externalIdentityBindingServices,
       ...routeDispatchServices,
+      ...packageInstallationServices,
       seedStarterAutomationRoutes: function () {
         return this.serviceTx(automationFragmentSchema)
           .retrieve((uow) =>

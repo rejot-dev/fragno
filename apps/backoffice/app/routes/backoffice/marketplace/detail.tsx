@@ -1,6 +1,6 @@
 import {
-  MARKETPLACE_LOCK_PATH,
   marketplaceInstallationRootSchema,
+  type MarketplaceIngestionRequestInput,
   type MarketplaceIngestionTargetScope,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import {
@@ -31,6 +31,10 @@ import type { BackofficeMeData } from "@/fragno/auth/contracts";
 import { fetchAutomationReplicaSource } from "@/fragno/automation/lofi/replica-source.server";
 import { buildMarketplacePackageInstallWorkflowInstanceId } from "@/fragno/automation/marketplace-package-install-identity";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
+import {
+  MarketplacePackageDeclarationError,
+  readMarketplacePackageDeclaration,
+} from "@/fragno/marketplace/package-declaration";
 import {
   decodeMarketplacePublishedVersionCursor,
   MarketplaceListingCursorError,
@@ -104,6 +108,11 @@ function sortMarketplaceVersionsNewestFirst(
 }
 
 type IngestionActionData = { ok: false; message: string };
+
+/** The permissions a release declares, as `namespace.permission`; installing approves them. */
+type InstallationPermissions =
+  | { state: "ready"; permissions: string[] }
+  | { state: "invalid"; message: string };
 
 export type MarketplacePackageOutletContext = {
   packageFiles: MarketplacePackageExplorerData;
@@ -281,10 +290,34 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
       : Promise.resolve(null),
   ]);
 
+  const installationVersion =
+    packageFiles.state === "ready" ? packageFiles.selectedVersion : detail.listing.latestVersion;
+  let installationPermissions: InstallationPermissions = { state: "ready", permissions: [] };
+  if (listingStorage) {
+    try {
+      const declaration = await readMarketplacePackageDeclaration({
+        http: runtime.objects.upload.forName(listingStorage.uploadName).http,
+        version: installationVersion,
+      });
+      installationPermissions = {
+        state: "ready",
+        permissions: declaration.permissions.map(
+          ({ namespace, permission }) => `${namespace}.${permission}`,
+        ),
+      };
+    } catch (error) {
+      if (!(error instanceof MarketplacePackageDeclarationError)) {
+        throw error;
+      }
+      installationPermissions = { state: "invalid", message: error.message };
+    }
+  }
+
   return {
     ...detail,
     listingRef,
     catalog,
+    installationPermissions,
     manageOrganizationSlug: manageableOrganization?.organization.slug ?? null,
     installationCollectionSource,
     installationUnavailableMessage:
@@ -348,6 +381,10 @@ export async function action({ request, params, context, url }: Route.ActionArgs
         message: installationRootResult.error.issues[0].message,
       } satisfies IngestionActionData;
     }
+    const permissions = formData.getAll("permission").map((key) => {
+      const [namespace = "", ...permission] = String(key).split(".");
+      return { namespace, permission: permission.join(".") };
+    });
     const result = await automations.restartMarketplaceIngestion(
       {
         marketplace: marketplaceScope,
@@ -355,6 +392,8 @@ export async function action({ request, params, context, url }: Route.ActionArgs
         targetScope: installationTarget.targetScope,
         installationRoot: installationRootResult.data,
         version,
+        // The schema refuses unknown permissions; the declaration must match exactly.
+        permissions: permissions as MarketplaceIngestionRequestInput["permissions"],
       },
       { execution, propagationContext: null },
     );
@@ -407,6 +446,7 @@ function MarketplaceListingDetail({ loaderData }: Route.ComponentProps) {
     installationCollectionSource,
     installationUnavailableMessage,
     installationReference,
+    installationPermissions,
     packageFiles,
   } = loaderData;
   const installation = useFetcher<IngestionActionData>();
@@ -586,6 +626,30 @@ function MarketplaceListingDetail({ loaderData }: Route.ComponentProps) {
                     <dt className="text-xs text-[var(--bo-muted)]">Version</dt>
                     <dd className="mt-1 font-mono text-[var(--bo-fg)]">v{installationVersion}</dd>
                   </div>
+                  <div className="col-span-2 min-w-0">
+                    <dt className="text-xs text-[var(--bo-muted)]">Permissions</dt>
+                    <dd className="mt-1 text-[var(--bo-fg)]">
+                      {installationPermissions.state === "invalid" ? (
+                        <span className="text-[var(--bo-failed)]">
+                          {installationPermissions.message}
+                        </span>
+                      ) : installationPermissions.permissions.length ? (
+                        <>
+                          <ul className="flex flex-wrap gap-x-3 gap-y-1 font-mono text-xs">
+                            {installationPermissions.permissions.map((permission) => (
+                              <li key={permission}>{permission}</li>
+                            ))}
+                          </ul>
+                          <p className="mt-2 text-xs leading-5 text-pretty text-[var(--bo-muted)]">
+                            Installing grants these to the package&apos;s routes and install
+                            workflow. You must hold each of them.
+                          </p>
+                        </>
+                      ) : (
+                        <span className="text-[var(--bo-muted)]">None</span>
+                      )}
+                    </dd>
+                  </div>
                 </dl>
                 {installationCollectionSource ? (
                   <installation.Form
@@ -610,6 +674,16 @@ function MarketplaceListingDetail({ loaderData }: Route.ComponentProps) {
                     }}
                   >
                     <input type="hidden" name="version" value={installationVersion} />
+                    {installationPermissions.state === "ready"
+                      ? installationPermissions.permissions.map((permission) => (
+                          <input
+                            key={permission}
+                            type="hidden"
+                            name="permission"
+                            value={permission}
+                          />
+                        ))
+                      : null}
                     <label
                       htmlFor="marketplace-installation-root"
                       className="block text-sm font-medium text-[var(--bo-fg)]"
@@ -635,10 +709,10 @@ function MarketplaceListingDetail({ loaderData }: Route.ComponentProps) {
                       id="marketplace-installation-path-help"
                       className="mt-2 text-xs leading-5 text-pretty text-[var(--bo-muted)]"
                     >
-                      Use a folder under <code>/workspace</code>. Successful installs record this
-                      release and folder in <code>{MARKETPLACE_LOCK_PATH}</code>. Installing into a
-                      folder that holds another release upgrades it; files edited since stop the
-                      upgrade.
+                      Use a folder under <code>/workspace</code>. A workspace holds one installation
+                      of a package: installing another release upgrades it in its folder, and files
+                      edited since stop the upgrade. Installing the same release again lets you
+                      change its settings.
                     </p>
                     <p
                       id="marketplace-installation-path-error"
@@ -648,8 +722,15 @@ function MarketplaceListingDetail({ loaderData }: Route.ComponentProps) {
                       {installationPathError}
                     </p>
                     <div className="mt-5 flex items-center gap-3">
-                      <Button type="submit" variant="solid">
-                        Install
+                      <Button
+                        type="submit"
+                        variant="solid"
+                        disabled={installationPermissions.state === "invalid"}
+                      >
+                        {installationPermissions.state === "ready" &&
+                        installationPermissions.permissions.length
+                          ? "Approve and install"
+                          : "Install"}
                       </Button>
                       <ButtonLink
                         to={buildMarketplacePackageTabPath(

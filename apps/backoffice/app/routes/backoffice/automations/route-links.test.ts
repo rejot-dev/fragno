@@ -18,6 +18,7 @@ const routeWithAction = (
     matcher: null,
   },
   action,
+  steward: { kind: "members" },
   nextOccurrenceAt: null,
 });
 

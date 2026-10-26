@@ -10,10 +10,6 @@ import {
   type AutomationEvent,
   automationEventListResultSchema,
 } from "@fragno-dev/backoffice-api/v0/events";
-import {
-  MARKETPLACE_LOCK_PATH,
-  marketplaceLockSchema,
-} from "@fragno-dev/backoffice-api/v0/marketplace";
 import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
 import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import {
@@ -81,6 +77,10 @@ import {
 } from "@/fragno/lofi/scenario-replica-database";
 import type { MarketplaceStaticEntry } from "@/fragno/marketplace/contracts";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
+import {
+  MARKETPLACE_DECLARATION_PATH,
+  parseMarketplacePackageDeclaration,
+} from "@/fragno/marketplace/package-declaration";
 import { isMarketplaceInternalPackagePath } from "@/fragno/marketplace/package-files";
 import { getStaticMarketplaceEntry } from "@/fragno/marketplace/static-entries";
 import { createBackofficeAgentContext } from "@/fragno/pi/agent/backoffice-agent-context";
@@ -761,6 +761,7 @@ type MarketplaceInstallTargetScope =
   | { kind: "org"; orgId: string }
   | { kind: "project"; owner: { kind: "org"; orgId: string }; projectId: string };
 
+/** Installs approve the permissions the release declares and finish without settings input. */
 type MarketplaceInstallInput = {
   targetScope: MarketplaceInstallTargetScope;
   slug: string;
@@ -979,6 +980,22 @@ const createPreset = (
     ]),
   ),
 });
+
+/** The permissions a bundled release declares, which installing it must approve. */
+export function bundledMarketplacePermissions({
+  slug,
+  version,
+}: {
+  slug: string;
+  version: string;
+}) {
+  const entry = getStaticMarketplaceEntry({ slug, version });
+  if (!entry) {
+    throw new Error(`Scenario could not find bundled Marketplace entry '${slug}@${version}'.`);
+  }
+  const declaration = entry.files[MARKETPLACE_DECLARATION_PATH];
+  return declaration ? parseMarketplacePackageDeclaration(declaration).permissions : [];
+}
 
 export const backofficeFiles = {
   systemOnly: () =>
@@ -2851,6 +2868,7 @@ const buildStepBuilders = <
                 version: entry.version,
                 targetScope: input.targetScope,
                 installationRoot: input.installationRoot,
+                permissions: bundledMarketplacePermissions(entry),
               },
               {
                 execution: createBackofficeSystemExecution({ kind: "org", orgId: targetOrgId }),
@@ -2873,16 +2891,12 @@ const buildStepBuilders = <
                 execution,
               }),
             );
-            const lock = marketplaceLockSchema.parse(
-              JSON.parse(await installedFileSystem.readFile(MARKETPLACE_LOCK_PATH)),
-            );
+            const installation = await ctx.runtime.objects.automations
+              .for(input.targetScope)
+              .commands.getPackageInstallation({ listingId });
             if (
-              !lock.entries.some(
-                (installed) =>
-                  installed.listingId === listingId &&
-                  installed.version === entry.version &&
-                  installed.installationRoot === input.installationRoot,
-              )
+              installation?.version !== entry.version ||
+              installation.installationRoot !== input.installationRoot
             ) {
               throw new Error(
                 `Scenario Marketplace installation did not complete for '${listingId}@${entry.version}'.`,

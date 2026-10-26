@@ -30,20 +30,61 @@ organization. Publishing actor provenance is recorded separately.
     "category": "reporting",
     "tags": ["report", "workflow"]
   },
-  "files": ["README.md", "automations/", ".marketplace/install.workflow.js"]
+  "files": ["README.md", "automations/", ".marketplace/"]
 }
 ```
 
 `files` is an explicit allowlist of relative POSIX file or directory paths, not globs. Directories
-include descendants. Keep selections disjoint; `manifest.json` is included automatically. Include
-`.marketplace/install.workflow.js` only when the package has an installer. Publishing validates and
-captures bytes without executing workflows, installers, or package scripts.
+include descendants. Keep selections disjoint; `manifest.json` is included automatically. Publishing
+validates and captures bytes without executing workflows, installers, or package scripts.
 
-Known secret paths, dependency directories, Git metadata, traversal, and links cannot be published.
-The captured release is limited to 100 files including the manifest and 1 MiB of total file content.
-Binary files are supported. Remove concurrent source edits if capture reports that the package
-changed. The publisher reserves `.marketplace/publish.json` for its atomic version guard; keep that
-path out of authored packages. Publisher guard files are not installed into workspaces.
+## Declare what an installation sets up
+
+`.marketplace/installation.json` declares the permissions the package uses and the routes Backoffice
+keeps in sync for each installation:
+
+```json
+{
+  "permissions": [{ "namespace": "integrations", "permission": "execute" }],
+  "routes": [
+    {
+      "id": "daily-report",
+      "name": "Daily report",
+      "trigger": {
+        "kind": "schedule",
+        "cadence": { "kind": "cron", "expression": "0 8 * * *", "timeZone": "UTC" }
+      },
+      "action": {
+        "kind": "start_workflow",
+        "authority": {
+          "kind": "organization-automation",
+          "grants": [{ "namespace": "integrations", "permission": "execute" }]
+        },
+        "workflowScriptPath": "automations/daily-report.workflow.js",
+        "instanceIdTemplate": "daily-report-${event.id}"
+      }
+    }
+  ]
+}
+```
+
+- Routes use the `router.create` input. A `start_workflow` path names a file in the package;
+  installation points it at the installed copy.
+- A route's grants must be declared permissions. The installer approves exactly the declared
+  permissions, and must hold each of them.
+- Installing creates or updates the declared routes and deletes routes an earlier version declared.
+  Members can turn them on or off but not change them. Uninstalling deletes them.
+- A workspace holds one installation per package, so route ids stay fixed.
+
+## Ask for settings
+
+`.marketplace/install.workflow.js` is optional. It runs with the approved permissions plus
+`packages.read`, but never `router.modify`: routes come only from the declaration. Whatever it
+returns becomes the installation's settings, and the package's workflows read them with
+`packages.get({ listingId })`. The install workflow reads the current installation the same way; it
+is null on a first installation, and the record changes only after the workflow completes.
+Installing the same version again re-runs it, which is how settings change. Use generated UI and
+`step.waitForEvent` to ask the installer; only members who may install packages can answer.
 
 ## 2. Choose visibility
 

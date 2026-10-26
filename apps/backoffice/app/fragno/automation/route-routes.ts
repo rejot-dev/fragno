@@ -13,7 +13,11 @@ import { AUTOMATION_SYSTEM_INITIATOR } from "./actors";
 import { automationFragmentDefinition } from "./definition";
 import { isAutomationScheduleError } from "./route-triggers";
 import { AutomationRouteAuthorityError } from "./routing";
-import type { AuthorizeAutomationRouteAction } from "./routing-storage-runtime";
+import {
+  AutomationRouteStewardError,
+  MEMBERS_ROUTE_STEWARD,
+  type AuthorizeAutomationRouteAction,
+} from "./routing-storage-runtime";
 
 const SYSTEM_ROUTE_MUTATION_ACTORS = {
   initiator: AUTOMATION_SYSTEM_INITIATOR,
@@ -59,6 +63,9 @@ const getAutomationRouteMutationActionAuthorizer = (
   (request && mutationActionAuthorizerByRequest.get(request)) ?? (async () => undefined);
 
 function routeError(cause: unknown) {
+  if (cause instanceof AutomationRouteStewardError) {
+    return { message: cause.message, code: "ROUTE_STEWARDED" as const, status: 409 as const };
+  }
   if (cause instanceof AutomationRouteAuthorityError) {
     return {
       message: cause.message,
@@ -119,7 +126,13 @@ export const automationRouteRoutes = defineRoutes(automationFragmentDefinition).
           const route = await this.handlerTx()
             .withServiceCalls(
               () =>
-                [services.createRoute(payload, getAutomationRouteMutationActors(request))] as const,
+                [
+                  services.createRoute(
+                    payload,
+                    getAutomationRouteMutationActors(request),
+                    MEMBERS_ROUTE_STEWARD,
+                  ),
+                ] as const,
             )
             .transform(({ serviceResult: [result] }) => result)
             .execute();
@@ -159,6 +172,7 @@ export const automationRouteRoutes = defineRoutes(automationFragmentDefinition).
                     { ...payload, id: pathParams.routeId },
                     getAutomationRouteMutationActors(request),
                     getAutomationRouteMutationActionAuthorizer(request),
+                    MEMBERS_ROUTE_STEWARD,
                   ),
                 ] as const,
             )
@@ -186,10 +200,21 @@ export const automationRouteRoutes = defineRoutes(automationFragmentDefinition).
       method: "DELETE",
       path: "/routes/:routeId",
       outputSchema: z.object({ deleted: z.literal(true) }),
-      handler: async function ({ pathParams }, { json }) {
-        await this.handlerTx()
-          .withServiceCalls(() => [services.deleteRoute({ id: pathParams.routeId })] as const)
-          .execute();
+      handler: async function ({ pathParams }, { json, error }) {
+        try {
+          await this.handlerTx()
+            .withServiceCalls(
+              () =>
+                [services.deleteRoute({ id: pathParams.routeId }, MEMBERS_ROUTE_STEWARD)] as const,
+            )
+            .execute();
+        } catch (cause) {
+          const known = routeError(cause);
+          if (known) {
+            return error({ message: known.message, code: known.code }, known.status);
+          }
+          throw cause;
+        }
         return json({ deleted: true });
       },
     }),

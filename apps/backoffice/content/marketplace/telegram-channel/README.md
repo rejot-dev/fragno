@@ -26,5 +26,10 @@ Version 1.3.0 submits each message to the `telegram` agent and sleeps until its 
 that submitted the prompt. For a completed turn, the run reads the answer with `pi.listMessages` as
 the linked user, who needs `pi.read`, and sends it to the chat.
 
+Version 2.0.0 declares its routes in `.marketplace/installation.json`, so Backoffice keeps them in
+sync with the installation and removes them on uninstall. Its install workflow only sets up the
+`telegram` agent. Installing it approves `identity.resolve`, `integrations.execute`, `otp.create`,
+`pi.manage`, `pi.read`, and `store.modify`.
+
 Install this item into an organization, project, or personal automation scope. Telegram connection
 availability is configured separately.
