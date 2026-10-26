@@ -777,6 +777,27 @@ describe("Project Connector connection scenarios", () => {
     },
   );
 
+  test("actions with nested resource paths execute on their service's account", async () => {
+    const scenario = await connectorScenario();
+    await scenario.bind("alice", "gmail-account");
+    const execution = await scenario.call(
+      "alice",
+      "POST",
+      "/accounts/gmail-account/actions/gmail.users.labels.getDefault",
+      { input: { query: "is:unread" } },
+    );
+    assert(execution.status === 200, JSON.stringify(execution.data));
+    expect(execution.data).toMatchObject({ actionId: "gmail.users.labels.getDefault" });
+    assert(
+      (
+        await scenario.call("alice", "POST", "/accounts/gmail-account/actions/slack.files.list", {
+          input: {},
+        })
+      ).status === 400,
+    );
+    expect(scenario.gateway.executions).toHaveLength(1);
+  });
+
   test("profile verification rejects a mismatched product user", async () => {
     const scenario = await connectorScenario();
     await scenario.bind("alice", "gmail-account");

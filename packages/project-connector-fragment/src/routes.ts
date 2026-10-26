@@ -557,10 +557,9 @@ export const projectConnectorRoutes = defineRoutes(projectConnectorFragmentDefin
         if (!account || account.externalUserId !== externalUserId) {
           return error({ code: "ACCOUNT_NOT_FOUND", message: "Connected account not found" }, 404);
         }
-        if (
-          !pathParams.actionId.startsWith(`${account.service}.`) ||
-          !/^[a-z0-9_-]+\.[a-z0-9_-]+$/.test(pathParams.actionId)
-        ) {
+        // Pinning providerConfigId overrides Connector's actionId-prefix service check, so we keep
+        // accounts to their own service's actions here.
+        if (!pathParams.actionId.startsWith(`${account.service}.`)) {
           return error(
             {
               code: "ACTION_SERVICE_MISMATCH",
