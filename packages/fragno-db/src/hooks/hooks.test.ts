@@ -28,6 +28,7 @@ import {
   type HookHandlerTx,
   type DurableHookPropagationContext,
   type DurableHookAttempt,
+  type DurableHookAttemptOutcome,
   type DurableHooksInstrumentation,
   type HookProcessorConfig,
 } from "./hooks";
@@ -738,6 +739,46 @@ describe("Hook System", () => {
       expect(await getHook(eventId)).toMatchObject({ status: "completed" });
     });
 
+    it("should report each committed attempt outcome without letting the observer change it", async () => {
+      const namespace = "test-instrumentation-observes-outcomes";
+      const dependencyError = new Error("Dependency unavailable");
+      const completedId = await createPendingHook(namespace, "onCompleted");
+      const retriedId = await createPendingHook(namespace, "onRetried");
+      const exhaustedId = await createPendingHook(namespace, "onExhausted");
+      const outcomes: Array<[string, DurableHookAttemptOutcome]> = [];
+      const instrumentation: DurableHooksInstrumentation = {
+        captureContext: () => null,
+        runAttempt: async (_attempt, execute) => await execute(),
+        observeAttemptOutcome(attempt, outcome) {
+          outcomes.push([attempt.hookName, outcome]);
+          throw new Error("observer failed");
+        },
+      };
+
+      await processHooksToCompletion({
+        hooks: {
+          onCompleted: defineDurableHook(vi.fn()),
+          onRetried: defineDurableHook(vi.fn().mockRejectedValue(dependencyError)),
+          onExhausted: defineDurableHook(vi.fn().mockRejectedValue(dependencyError), {
+            retryPolicy: noRetries,
+          }),
+        },
+        namespace,
+        internalFragment,
+        handlerTx,
+        instrumentation,
+      });
+
+      expect(Object.fromEntries(outcomes)).toEqual({
+        onCompleted: { status: "completed" },
+        onRetried: { status: "retry-scheduled", error: dependencyError },
+        onExhausted: { status: "failed", error: dependencyError },
+      });
+      expect(await getHook(completedId)).toMatchObject({ status: "completed" });
+      expect(await getHook(retriedId)).toMatchObject({ status: "pending", attempts: 1 });
+      expect(await getHook(exhaustedId)).toMatchObject({ status: "failed", attempts: 1 });
+    });
+
     it("should surface conflicts when a hook mutates its own record", async () => {
       const namespace = "test-claim-conflict";
       let eventId!: FragnoId;
@@ -783,16 +824,25 @@ describe("Hook System", () => {
         eventId = createdId;
       });
 
+      const instrumentation: DurableHooksInstrumentation = {
+        captureContext: () => null,
+        runAttempt: async (_attempt, execute) => await execute(),
+        observeAttemptOutcome: vi.fn(),
+      };
+
       await expect(
         processHooksToCompletion({
           hooks,
           namespace,
           internalFragment,
           handlerTx,
+          instrumentation,
         }),
       ).rejects.toThrow(ConcurrencyConflictError);
 
       expect(hookFn).toHaveBeenCalledOnce();
+      // The conflicting writer's state stands, so no outcome of this attempt was committed.
+      expect(instrumentation.observeAttemptOutcome).not.toHaveBeenCalled();
       expect(hookFn).toHaveBeenCalledWith({
         externalId: eventId.externalId,
         version: eventId.version,

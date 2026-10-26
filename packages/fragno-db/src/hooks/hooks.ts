@@ -155,6 +155,13 @@ export type DurableHookAttempt = {
   propagationContext: DurableHookPropagationContext | null;
 };
 
+/** What the processor recorded for one hook attempt. */
+export type DurableHookAttemptOutcome =
+  | { status: "completed" }
+  | { status: "retry-scheduled"; error: unknown }
+  /** The hook used up its attempts or its retry policy deemed the error not retryable. */
+  | { status: "failed"; error: unknown };
+
 export type DurableHookNotification = {
   namespace: string;
   correlationId: string;
@@ -177,6 +184,11 @@ export interface DurableHooksInstrumentation {
   runAttempt<T>(attempt: DurableHookAttempt, execute: () => Promise<T>): Promise<T>;
   /** Wrap one dispatcher notification without changing whether notification succeeds. */
   runNotify?<T>(notification: DurableHookNotification, execute: () => Promise<T>): Promise<T>;
+  /**
+   * Observe an attempt's outcome once it is committed, so observers never report an outcome that
+   * a concurrent writer overruled. Errors thrown here are logged and do not change the outcome.
+   */
+  observeAttemptOutcome?(attempt: DurableHookAttempt, outcome: DurableHookAttemptOutcome): void;
 }
 
 /**
@@ -689,18 +701,18 @@ export async function processHooks<THooks extends HooksMap>(
         const missingHookError = `Hook '${event.hookName}' not found in hooks map`;
         const retryPolicy = resolveDurableHookRetryPolicy(hookFn);
         const { maxAttempts } = retryPolicy;
+        const attempt: DurableHookAttempt = {
+          namespace,
+          hookId: event.id,
+          hookName: event.hookName,
+          idempotencyKey: event.idempotencyKey,
+          attempt: event.attempts + 1,
+          maxAttempts,
+          createdAt: event.createdAt,
+          propagationContext: event.propagationContext,
+        };
 
         try {
-          const attempt: DurableHookAttempt = {
-            namespace,
-            hookId: event.id,
-            hookName: event.hookName,
-            idempotencyKey: event.idempotencyKey,
-            attempt: event.attempts + 1,
-            maxAttempts,
-            createdAt: event.createdAt,
-            propagationContext: event.propagationContext,
-          };
           const executeHook = async () => {
             if (!hookFn) {
               throw new Error(missingHookError);
@@ -762,6 +774,7 @@ export async function processHooks<THooks extends HooksMap>(
 
           return {
             eventId: event.id,
+            attempt,
             status: "completed" as const,
           };
         } catch (error) {
@@ -788,14 +801,13 @@ export async function processHooks<THooks extends HooksMap>(
               },
             });
           }
-          const attempts = event.attempts + 1;
           return {
             eventId: event.id,
+            attempt,
             status: "failed" as const,
-            error: errorMessage,
-            attempts,
-            maxAttempts,
-            retryDelayMs: durableHookRetryDelayMs(retryPolicy, attempts, error),
+            error,
+            errorMessage,
+            retryDelayMs: durableHookRetryDelayMs(retryPolicy, attempt.attempt, error),
           };
         }
       }),
@@ -831,19 +843,27 @@ export async function processHooks<THooks extends HooksMap>(
               continue;
             }
 
-            const { eventId, error, attempts, maxAttempts, retryDelayMs } = processed;
+            const { eventId, attempt, errorMessage, retryDelayMs } = processed;
+            const attempts = attempt.attempt;
+            const maxAttempts = attempt.maxAttempts;
             uow.update("fragno_hooks", eventId, (b) =>
               b
                 .set(
                   retryDelayMs === null
-                    ? { status: "failed", attempts, maxAttempts, lastAttemptAt: now, error }
+                    ? {
+                        status: "failed",
+                        attempts,
+                        maxAttempts,
+                        lastAttemptAt: now,
+                        error: errorMessage,
+                      }
                     : {
                         status: "pending",
                         attempts,
                         maxAttempts,
                         lastAttemptAt: now,
                         nextRetryAt: now.plus({ ms: retryDelayMs }),
-                        error,
+                        error: errorMessage,
                       },
                 )
                 .check(),
@@ -853,23 +873,43 @@ export async function processHooks<THooks extends HooksMap>(
         .execute();
     });
 
+    const { instrumentation } = config;
+    if (instrumentation?.observeAttemptOutcome) {
+      for (const processedEvent of processedEvents) {
+        if (processedEvent.status === "rejected") {
+          continue;
+        }
+        const processed = processedEvent.value;
+        const outcome: DurableHookAttemptOutcome =
+          processed.status === "completed"
+            ? { status: "completed" }
+            : processed.retryDelayMs === null
+              ? { status: "failed", error: processed.error }
+              : { status: "retry-scheduled", error: processed.error };
+        try {
+          instrumentation.observeAttemptOutcome(processed.attempt, outcome);
+        } catch (error) {
+          DurableHooksLogger.error("Durable hooks attempt outcome observer failed", {
+            namespace,
+            fields: {
+              hookName: processed.attempt.hookName,
+              error: DurableHooksLogger.toErrorMessage(error),
+            },
+          });
+        }
+      }
+    }
+
     const processedCount = processedEvents.reduce(
       (count, result) => count + (result.status === "fulfilled" ? 1 : 0),
       0,
     );
 
-    const failed = processedEvents
-      .filter((result) => result.status === "fulfilled" && result.value.status === "failed")
-      .map((result) => {
-        if (result.status !== "fulfilled") {
-          return null;
-        }
-        return {
-          eventId: result.value.eventId,
-          error: result.value.error ?? null,
-        };
-      })
-      .filter(Boolean);
+    const failed = processedEvents.flatMap((result) =>
+      result.status === "fulfilled" && result.value.status === "failed"
+        ? [{ eventId: result.value.eventId, error: result.value.errorMessage }]
+        : [],
+    );
 
     DurableHooksLogger.debug("Durable hooks processed", {
       namespace,
