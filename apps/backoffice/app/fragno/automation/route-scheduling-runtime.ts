@@ -1,9 +1,6 @@
 import type { AutomationRouteDefinition } from "@fragno-dev/backoffice-api/v0/automation";
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
-import {
-  type BackofficeContextScope,
-  backofficeScopeRootOwner,
-} from "@fragno-dev/backoffice-api/v0/shared/scope";
+import { type BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import type { DatabaseHandlerTx } from "@fragno-dev/db";
 
@@ -54,7 +51,6 @@ const buildScheduledRouteEvent = ({
     id: route.id,
     role: "initiator" as const,
   };
-  const owner = backofficeScopeRootOwner(scope);
   return {
     id: `schedule:${route.id}:${scheduledFor.getTime()}`,
     scopeRestriction: null,
@@ -72,10 +68,8 @@ const buildScheduledRouteEvent = ({
       principal: null,
       delegation: [],
     },
-    subject: owner && {
-      ...(owner.kind === "org" ? { orgId: owner.orgId } : { userId: owner.userId }),
-      ...(scope.kind === "project" ? { projectId: scope.projectId } : {}),
-    },
+    // A system route's schedule is about nothing in particular.
+    subject: scope.kind === "system" ? null : { scope },
     causation: { kind: "origin" },
   };
 };

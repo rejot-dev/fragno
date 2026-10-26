@@ -1,8 +1,5 @@
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
-import {
-  type BackofficeContextScope,
-  backofficeScopeOrganization,
-} from "@fragno-dev/backoffice-api/v0/shared/scope";
+import { type BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { RpcTarget } from "cloudflare:workers";
 
@@ -29,7 +26,6 @@ function buildSandboxAutomationEvent(
   scope: BackofficeContextScope,
   event: SandboxLifecycleEvent,
 ): AutomationEvent {
-  const organization = backofficeScopeOrganization(scope);
   return {
     id: event.id,
     scopeRestriction: null,
@@ -49,11 +45,7 @@ function buildSandboxAutomationEvent(
       principal: null,
       delegation: [],
     },
-    subject: {
-      ...(organization ? { orgId: organization.orgId } : {}),
-      ...(scope.kind === "project" ? { projectId: scope.projectId } : {}),
-      sandboxId: event.sandboxId,
-    },
+    subject: { scope, sandboxId: event.sandboxId },
     causation: { kind: "origin" },
   };
 }

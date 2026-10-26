@@ -189,9 +189,10 @@ export async function action({
     };
   }
 
+  const organization = backofficeOrganizationContextScope(memberEntry.organization);
   const mappingResult = await githubWebhookRouterDo.commands.setInstallationOrg(
     installationId,
-    resolved.orgId,
+    organization,
   );
   if (!mappingResult.ok) {
     return {
@@ -203,7 +204,6 @@ export async function action({
     };
   }
 
-  const organization = backofficeOrganizationContextScope(memberEntry.organization);
   const sync = await syncGitHubInstallation(request, context, organization, installationId);
   if (sync.error || !sync.result) {
     return { ok: false, message: sync.error ?? "Failed to sync installation." };

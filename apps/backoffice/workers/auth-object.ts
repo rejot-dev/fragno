@@ -494,7 +494,7 @@ const dispatchOrganizationEvent = async (
         principal: null,
         delegation: [],
       },
-      subject: { orgId: organization.id },
+      subject: { scope: backofficeOrganizationContextScope(organization) },
       causation: { kind: "origin" },
     },
     { propagationContext: context.capturePropagationContext() },

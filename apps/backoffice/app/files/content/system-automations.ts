@@ -8,11 +8,11 @@ export const SYSTEM_AUTOMATION_CONTENT: Record<string, string | Uint8Array> = {
   async (event, step) => {
     const automationEvent = event;
 
-    const orgId = automationEvent.subject?.orgId;
-    if (!orgId) {
-      throw new Error("organization.created event is missing subject.orgId.");
+    const organization = automationEvent.subject?.scope;
+    if (organization?.kind !== "org") {
+      throw new Error("organization.created event does not name its organization's scope.");
     }
-    const org = context.org(orgId);
+    const org = context.org(organization.orgId);
 
     const seeded = await step.do("seed workspace starter files", async () => {
       return await org.internal.filesSeedExecute({});

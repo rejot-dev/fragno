@@ -2,6 +2,7 @@ import {
   backofficeProvisioningOperations,
   type BackofficeProvisioningOperationId,
 } from "@fragno-dev/backoffice-api/v0/provisioning";
+import { backofficeOrganizationScopeSchema } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
 import type { BackofficeCapability } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
@@ -67,9 +68,7 @@ const authOrganizationActorSchema = z.union([
   }),
 ]);
 
-const authOrganizationSubjectSchema = z.object({
-  orgId: z.string().trim().min(1),
-});
+const authOrganizationSubjectSchema = z.object({ scope: backofficeOrganizationScopeSchema });
 
 export const authCapability: BackofficeCapability = {
   id: "auth",

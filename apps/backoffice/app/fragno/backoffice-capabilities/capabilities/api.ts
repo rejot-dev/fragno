@@ -1,13 +1,10 @@
+import { backofficeRoutableScopeSchema } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
 import type { BackofficeCapability } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import { createDurableHookRepositoryFromCommands } from "@/fragno/durable-hook-command-repository";
 
 const AUTOMATION_SOURCE = "api" as const;
-const apiScopeSubjectSchema = z.object({
-  scope: z.looseObject({ kind: z.string().min(1) }),
-  orgId: z.string().min(1).optional(),
-});
 
 const apiWebhookReceivedPayloadSchema = z.object({
   endpointId: z.string().min(1),
@@ -20,7 +17,7 @@ const apiWebhookReceivedPayloadSchema = z.object({
   contentType: z.string().nullable(),
 });
 
-const apiWebhookSubjectSchema = apiScopeSubjectSchema.extend({
+const apiWebhookSubjectSchema = z.object({ scope: backofficeRoutableScopeSchema }).extend({
   endpointId: z.string().min(1),
   deliveryId: z.string().min(1),
 });

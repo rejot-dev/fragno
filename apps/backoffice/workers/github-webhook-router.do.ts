@@ -1,3 +1,4 @@
+import type { BackofficeOrganizationContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { DurableObject } from "cloudflare:workers";
 
 import type {
@@ -98,7 +99,7 @@ export class GitHubWebhookRouter extends DurableObject<CloudflareEnv> {
 
   async setInstallationOrg(
     installationId: string,
-    orgId: string,
+    organization: BackofficeOrganizationContextScope,
   ): Promise<
     | { ok: true }
     | {
@@ -108,10 +109,12 @@ export class GitHubWebhookRouter extends DurableObject<CloudflareEnv> {
         existingOrgId?: string;
       }
   > {
-    return await this.#object.setInstallationOrg(installationId, orgId);
+    return await this.#object.setInstallationOrg(installationId, organization);
   }
 
-  async getInstallationOrg(installationId: string): Promise<string | null> {
+  async getInstallationOrg(
+    installationId: string,
+  ): Promise<BackofficeOrganizationContextScope | null> {
     return await this.#object.getInstallationOrg(installationId);
   }
 

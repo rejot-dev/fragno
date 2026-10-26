@@ -41,7 +41,7 @@ const event: AutomationEvent = {
   occurredAt: "2026-08-11T00:00:00.000Z",
   payload: { value: "ready" },
   actors,
-  subject: { orgId: "org_123" },
+  subject: { scope: { kind: "org", orgId: "org_123", jurisdiction: null } },
   causation: { kind: "origin" },
 };
 

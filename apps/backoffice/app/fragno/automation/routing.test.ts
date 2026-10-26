@@ -61,14 +61,14 @@ describe("automation event reclassification", () => {
           principal: null,
           delegation: [],
         },
-        subject: { orgId: "org-1" },
+        subject: { scope: { kind: "org", orgId: "org-1", jurisdiction: null } },
         causation: { kind: "origin" },
       },
       {
         kind: "projection",
         fields: {
           pullRequest: "$.payload.pullRequest",
-          orgId: "$.subject.orgId",
+          orgId: "$.subject.scope.orgId",
         },
       },
     );
@@ -128,7 +128,7 @@ const event = {
       },
     ],
   },
-  subject: { orgId: "org-1" },
+  subject: { scope: { kind: "org", orgId: "org-1", jurisdiction: null } },
   causation: { kind: "origin" },
 } satisfies AutomationEvent;
 

@@ -1,4 +1,9 @@
-import { lookupOrganizationContextScope } from "@/backoffice-runtime/resolved-scope";
+import {
+  type BackofficeOrganizationContextScope,
+  backofficeJurisdictionSchema,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
+import { z } from "zod";
+
 import { type BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { bytesToHex } from "@/lib/crypto";
 
@@ -128,6 +133,24 @@ const installPendingKey = (orgId: string, userId: string, owner: string) =>
 const installUrl = (appSlug: string, state: string) =>
   `https://github.com/apps/${appSlug}/installations/new?state=${encodeURIComponent(state)}`;
 const INSTALLATION_ORG_KEY_PREFIX = "github-installation-org:";
+
+/**
+ * Mappings name the organization's scope, so webhooks reach its objects without asking Auth where
+ * they are kept. Mappings stored by ID alone predate jurisdictions, as did their organizations.
+ */
+const storedInstallationOrganizationSchema = z.union([
+  z
+    .string()
+    .trim()
+    .min(1)
+    .transform((orgId) => ({ orgId, jurisdiction: null })),
+  z.object({ orgId: z.string().min(1), jurisdiction: backofficeJurisdictionSchema.nullable() }),
+]);
+
+function readInstallationOrganization(stored: unknown): BackofficeOrganizationContextScope | null {
+  const parsed = storedInstallationOrganizationSchema.safeParse(stored);
+  return parsed.success ? { kind: "org", ...parsed.data } : null;
+}
 
 type GitHubWebhookRouterInstallationMapping = {
   installationId: string;
@@ -369,8 +392,8 @@ export class GitHubWebhookRouterObject {
         );
       }
 
-      const orgId = await this.getInstallationOrg(installationId);
-      if (!orgId) {
+      const organization = await this.getInstallationOrg(installationId);
+      if (!organization) {
         console.warn("GitHub webhook rejected because installation mapping was not found", {
           ...webhookMeta,
           installationId,
@@ -388,20 +411,7 @@ export class GitHubWebhookRouterObject {
         );
       }
 
-      const organization = await lookupOrganizationContextScope(
-        this.#runtime.objects.auth.singleton().commands,
-        orgId,
-      );
-      if (!organization) {
-        return githubWebhookJsonResponse(
-          {
-            message: "The organization this installation belongs to no longer exists.",
-            code: "INSTALLATION_ORG_NOT_FOUND",
-            installationId,
-          },
-          404,
-        );
-      }
+      const { orgId } = organization;
       const githubObject = this.#runtime.objects.github.for(organization);
       await githubObject.commands.ensureAdminConfig(orgId);
 
@@ -782,7 +792,7 @@ export class GitHubWebhookRouterObject {
 
   async setInstallationOrg(
     installationId: string,
-    orgId: string,
+    organization: BackofficeOrganizationContextScope,
   ): Promise<
     | { ok: true }
     | {
@@ -793,44 +803,43 @@ export class GitHubWebhookRouterObject {
       }
   > {
     const normalizedInstallationId = installationId.trim();
-    const normalizedOrgId = orgId.trim();
     if (!normalizedInstallationId) {
       return { ok: false, message: "Missing installation id." };
     }
-    if (!normalizedOrgId) {
-      return { ok: false, message: "Missing organization id." };
-    }
 
     const mappingKey = `${INSTALLATION_ORG_KEY_PREFIX}${normalizedInstallationId}`;
-    const existingOrgId = await this.#state.storage.get<string>(mappingKey);
-    const normalizedExistingOrgId = existingOrgId?.trim() ?? "";
+    const existing = readInstallationOrganization(await this.#state.storage.get(mappingKey));
 
-    if (normalizedExistingOrgId && normalizedExistingOrgId !== normalizedOrgId) {
+    if (existing && existing.orgId !== organization.orgId) {
       return {
         ok: false,
         code: "INSTALLATION_ORG_CONFLICT",
-        existingOrgId: normalizedExistingOrgId,
+        existingOrgId: existing.orgId,
         message: "Installation is already mapped to a different organization.",
       };
     }
 
-    if (!normalizedExistingOrgId) {
-      await this.#state.storage.put(mappingKey, normalizedOrgId);
+    if (!existing) {
+      await this.#state.storage.put(mappingKey, {
+        orgId: organization.orgId,
+        jurisdiction: organization.jurisdiction,
+      });
     }
 
     return { ok: true };
   }
 
-  async getInstallationOrg(installationId: string): Promise<string | null> {
+  async getInstallationOrg(
+    installationId: string,
+  ): Promise<BackofficeOrganizationContextScope | null> {
     const normalizedInstallationId = installationId.trim();
     if (!normalizedInstallationId) {
       return null;
     }
 
-    const orgId = await this.#state.storage.get<string>(
-      `${INSTALLATION_ORG_KEY_PREFIX}${normalizedInstallationId}`,
+    return readInstallationOrganization(
+      await this.#state.storage.get(`${INSTALLATION_ORG_KEY_PREFIX}${normalizedInstallationId}`),
     );
-    return typeof orgId === "string" && orgId.trim().length > 0 ? orgId : null;
   }
 
   async clearInstallationRouting(installationId: string): Promise<{
@@ -848,31 +857,28 @@ export class GitHubWebhookRouterObject {
     }
 
     const mappingKey = `${INSTALLATION_ORG_KEY_PREFIX}${normalizedInstallationId}`;
-    const existingMapping = await this.#state.storage.get<string>(mappingKey);
+    const existingMapping = readInstallationOrganization(await this.#state.storage.get(mappingKey));
     await this.#state.storage.delete(mappingKey);
 
     return {
       ok: true,
-      removedMapping: typeof existingMapping === "string" && existingMapping.trim().length > 0,
+      removedMapping: existingMapping !== null,
       clearedPendingWebhooks: 0,
     };
   }
 
   async getWebhookRouterSnapshot(): Promise<GitHubWebhookRouterSnapshot> {
-    const installationMappingsList = await this.#state.storage.list<string>({
+    const installationMappingsList = await this.#state.storage.list({
       prefix: INSTALLATION_ORG_KEY_PREFIX,
     });
     const installationMappings: GitHubWebhookRouterInstallationMapping[] = [];
     for (const [key, value] of installationMappingsList.entries()) {
-      if (typeof value !== "string") {
-        continue;
-      }
       const installationId = key.slice(INSTALLATION_ORG_KEY_PREFIX.length).trim();
-      const orgId = value.trim();
-      if (!installationId || !orgId) {
+      const organization = readInstallationOrganization(value);
+      if (!installationId || !organization) {
         continue;
       }
-      installationMappings.push({ installationId, orgId });
+      installationMappings.push({ installationId, orgId: organization.orgId });
     }
     installationMappings.sort((a, b) => a.installationId.localeCompare(b.installationId));
     const pendingWebhooks: GitHubWebhookRouterPendingWebhook[] = [];

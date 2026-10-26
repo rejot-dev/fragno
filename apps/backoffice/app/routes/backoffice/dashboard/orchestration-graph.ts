@@ -135,6 +135,8 @@ function forwardTargetLabel(action: Extract<AutomationRouteAction, { kind: "forw
   switch (scope.kind) {
     case "system":
       return "System scope";
+    case "subject":
+      return "The event's subject";
     case "org":
       return `Organization · ${scope.orgIdTemplate}`;
     case "project":

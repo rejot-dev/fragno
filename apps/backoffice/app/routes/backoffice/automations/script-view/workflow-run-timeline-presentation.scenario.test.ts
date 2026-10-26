@@ -79,7 +79,7 @@ const orderPlaced: AutomationEvent = {
   occurredAt: "2026-01-01T00:00:00.000Z",
   payload: { total: 42 },
   actors: createBackofficeSystemExecution(scope).actors,
-  subject: { orgId: "org-1" },
+  subject: { scope: { kind: "org", orgId: "org-1", jurisdiction: null } },
   causation: { kind: "origin" },
 };
 

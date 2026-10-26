@@ -119,7 +119,10 @@ describe("automation runtime tools", () => {
         },
         subjectSchema: {
           properties: {
-            orgId: { type: "string" },
+            scope: {
+              properties: { kind: { const: "org" }, orgId: { type: "string" } },
+              required: ["kind", "orgId", "jurisdiction"],
+            },
           },
         },
       },

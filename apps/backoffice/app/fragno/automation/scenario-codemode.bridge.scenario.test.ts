@@ -169,7 +169,7 @@ test("scenario TanStack DB exposes an in-flight step.do lifecycle", async () => 
             occurredAt: "2026-01-01T00:00:00.000Z",
             payload: {},
             actors: execution.actors,
-            subject: { orgId: "org-1" },
+            subject: { scope: { kind: "org", orgId: "org-1", jurisdiction: null } },
             causation: { kind: "origin" },
           };
           const prepared = prepareCodemodeWorkflowInstance({

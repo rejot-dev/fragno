@@ -221,7 +221,7 @@ type AutomationWorkflowEventTarget =
   | AutomationWorkflowEventStoredInstanceIdTarget;
 type AutomationRouteScopeTemplate =
   | {
-      kind: "system";
+      kind: "system" | "subject";
     }
   | {
       kind: "org";

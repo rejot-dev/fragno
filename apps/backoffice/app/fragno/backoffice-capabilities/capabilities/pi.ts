@@ -1,7 +1,7 @@
 import { piAgentDefinitionSchema, type PiAgentDefinition } from "@fragno-dev/backoffice-api/v0/pi";
 import {
-  backofficeScopeOrganization,
   type BackofficeContextScope,
+  backofficeContextScopeSchema,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
@@ -127,8 +127,7 @@ const agentDefinitionPayloadSchema = z.object({
 });
 
 const agentSubjectSchema = z.object({
-  orgId: z.string().trim().min(1).optional(),
-  projectId: z.string().trim().min(1).optional(),
+  scope: backofficeContextScopeSchema,
   agentName: z.string().trim().min(1),
 });
 
@@ -145,12 +144,7 @@ export function piAgentEventSubject(
   scope: BackofficeContextScope,
   agentName: string,
 ): z.infer<typeof agentSubjectSchema> {
-  const organization = backofficeScopeOrganization(scope);
-  return {
-    ...(organization ? { orgId: organization.orgId } : {}),
-    ...(scope.kind === "project" ? { projectId: scope.projectId } : {}),
-    agentName,
-  };
+  return { scope, agentName };
 }
 
 /** What happened to an agent, by the `pi` event that records it. */

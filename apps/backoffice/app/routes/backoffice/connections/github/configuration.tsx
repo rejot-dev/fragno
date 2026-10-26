@@ -206,7 +206,7 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
         github: getGitHubDurableObject(context, organization).commands,
         callRoute: createGitHubRouteCaller(request, context, organization),
         userId: me.user.id,
-        organizationId,
+        organization,
         state: callbackState,
         installationId: callbackInstallationId,
       });

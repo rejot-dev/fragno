@@ -11,8 +11,13 @@ import { type BackofficeContextScope, backofficeContextScopeSchema } from "./sha
 
 export type AutomationEventPayload = Record<string, unknown>;
 
+/**
+ * What an event is about. `scope` is where it lives, named in full by the Backoffice code that
+ * fires the event, so routes can forward to it without asking where its objects are kept. `userId`
+ * names a person the event concerns, such as whoever completed an identity claim.
+ */
 export type AutomationEventSubject = {
-  orgId?: string;
+  scope?: BackofficeContextScope;
   userId?: string;
   [key: string]: unknown;
 };
@@ -84,7 +89,7 @@ export const idSchema = z.lazy(() =>
 const automationEventSubjectSchema: z.ZodType<AutomationEventSubject> = z.lazy(() =>
   z
     .object({
-      orgId: z.string().trim().min(1).optional(),
+      scope: backofficeContextScopeSchema.optional(),
       userId: z.string().trim().min(1).optional(),
     })
     .catchall(z.unknown()),

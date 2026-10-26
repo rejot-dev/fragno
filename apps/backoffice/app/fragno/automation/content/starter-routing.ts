@@ -28,7 +28,7 @@ const startWorkflowAction = ({
 
 const forwardToSubjectOrgAction = (): AutomationForwardEventAction => ({
   kind: "forward_event",
-  targetScope: { kind: "org", orgIdTemplate: "${event.subject.orgId}" },
+  targetScope: { kind: "subject" },
   idTemplate: "org:${event.id}",
 });
 
@@ -44,7 +44,7 @@ export const SYSTEM_STARTER_AUTOMATION_ROUTES: readonly AutomationRouteCreateInp
       matcher: {
         all: [
           { path: "$.scope.kind", op: "eq", value: "system" },
-          { path: "$.subject.orgId", op: "exists" },
+          { path: "$.subject.scope.kind", op: "eq", value: "org" },
         ],
       },
     },
@@ -66,7 +66,7 @@ export const SYSTEM_STARTER_AUTOMATION_ROUTES: readonly AutomationRouteCreateInp
       matcher: {
         all: [
           { path: "$.scope.kind", op: "eq", value: "system" },
-          { path: "$.subject.orgId", op: "exists" },
+          { path: "$.subject.scope.kind", op: "eq", value: "org" },
         ],
       },
     },
@@ -84,7 +84,7 @@ export const SYSTEM_STARTER_AUTOMATION_ROUTES: readonly AutomationRouteCreateInp
       matcher: {
         all: [
           { path: "$.scope.kind", op: "eq", value: "system" },
-          { path: "$.subject.orgId", op: "exists" },
+          { path: "$.subject.scope.kind", op: "eq", value: "org" },
         ],
       },
     },

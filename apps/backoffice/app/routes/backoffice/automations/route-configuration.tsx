@@ -13,6 +13,8 @@ const targetLabel = (target: AutomationRouteTarget) => {
   switch (target.kind) {
     case "system":
       return "System scope";
+    case "subject":
+      return "The event's subject";
     case "org":
       return "Organization scope";
     case "project":
@@ -33,6 +35,7 @@ const targetLabel = (target: AutomationRouteTarget) => {
 const targetRows = (target: AutomationRouteTarget): { label: string; value: string }[] => {
   switch (target.kind) {
     case "system":
+    case "subject":
       return [];
     case "org":
       return [{ label: "Organization ID", value: target.orgIdTemplate }];

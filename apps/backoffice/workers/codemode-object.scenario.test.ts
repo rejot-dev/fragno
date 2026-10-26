@@ -260,7 +260,10 @@ test("codemode runs are retained with their outcome until a later run expires th
                 eventType: "run.failed",
                 scope: { kind: "org", orgId: "org-1", jurisdiction: null },
                 actors: execution.actors,
-                subject: { orgId: "org-1", runId: runIds.failing },
+                subject: {
+                  scope: { kind: "org", orgId: "org-1", jurisdiction: null },
+                  runId: runIds.failing,
+                },
                 payload: expect.objectContaining({
                   activationKind: "compiled",
                   origin: { kind: "file", path: "/workspace/.build/failing.module.json" },
@@ -820,7 +823,7 @@ test("each workflow tick is a billed run that publishes no run events", async ()
     occurredAt: "2026-01-01T00:00:00.000Z",
     payload: {},
     actors: execution.actors,
-    subject: { orgId: "org-1" },
+    subject: { scope: { kind: "org", orgId: "org-1", jurisdiction: null } },
     causation: { kind: "origin" },
   };
   await runBackofficeScenario(
@@ -1094,7 +1097,7 @@ test("a workflow tick that loses the bridge runs again instead of erroring its w
     occurredAt: "2026-01-01T00:00:00.000Z",
     payload: {},
     actors: execution.actors,
-    subject: { orgId: "org-1" },
+    subject: { scope: { kind: "org", orgId: "org-1", jurisdiction: null } },
     causation: { kind: "origin" },
   };
   await runBackofficeScenario(
@@ -1150,7 +1153,7 @@ test("a guest that fakes the bridge's interruption errors its workflow instead o
     occurredAt: "2026-01-01T00:00:00.000Z",
     payload: {},
     actors: execution.actors,
-    subject: { orgId: "org-1" },
+    subject: { scope: { kind: "org", orgId: "org-1", jurisdiction: null } },
     causation: { kind: "origin" },
   };
   await runBackofficeScenario(
@@ -1201,7 +1204,7 @@ test("an errored workflow and its failed tick each report their outcome once", a
     occurredAt: "2026-01-01T00:00:00.000Z",
     payload: {},
     actors: execution.actors,
-    subject: { orgId: "org-1" },
+    subject: { scope: { kind: "org", orgId: "org-1", jurisdiction: null } },
     causation: { kind: "origin" },
   };
   await runBackofficeScenario(

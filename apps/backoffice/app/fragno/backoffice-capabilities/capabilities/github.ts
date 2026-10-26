@@ -1,3 +1,4 @@
+import { backofficeOrganizationScopeSchema } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
 import type { BackofficeCapability } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
@@ -64,7 +65,7 @@ const githubActorSchema = z.union([
 ]);
 
 const githubSubjectSchema = z.object({
-  orgId: z.string().min(1),
+  scope: backofficeOrganizationScopeSchema,
   installationId: z.string().min(1),
   accountId: z.string().optional(),
   accountLogin: z.string().optional(),

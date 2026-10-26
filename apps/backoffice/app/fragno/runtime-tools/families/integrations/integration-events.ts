@@ -4,10 +4,7 @@ import {
   type IntegrationConnection,
   type IntegrationInspection,
 } from "@fragno-dev/backoffice-api/v0/integrations";
-import {
-  type BackofficeContextScope,
-  backofficeScopeOrganization,
-} from "@fragno-dev/backoffice-api/v0/shared/scope";
+import { type BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
 import type {
@@ -198,7 +195,6 @@ export async function recordIntegrationConnectionState(
   ),
   context: BackofficeRpcContext,
 ) {
-  const organization = backofficeScopeOrganization(change.scope);
   await automations.ingestEvent(
     {
       id: `${change.id}:connection.${change.state}`,
@@ -211,7 +207,6 @@ export async function recordIntegrationConnectionState(
       actors: { initiator: AUTOMATION_SYSTEM_INITIATOR, principal: null, delegation: [] },
       subject: {
         scope: change.scope,
-        ...(organization ? { orgId: organization.orgId } : {}),
         service: change.service,
         connectionId: change.connectionId,
       },

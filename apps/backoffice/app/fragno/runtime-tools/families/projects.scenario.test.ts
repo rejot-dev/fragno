@@ -136,7 +136,13 @@ describe("project runtime scenarios", () => {
                     event: expect.objectContaining({
                       eventType: "project.created",
                       scope: organization,
-                      subject: { orgId: "acme", projectId: created.projectId },
+                      subject: {
+                        scope: {
+                          kind: "project",
+                          owner: { kind: "org", orgId: "acme", jurisdiction: null },
+                          projectId: created.projectId,
+                        },
+                      },
                     }),
                   }),
                 }),

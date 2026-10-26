@@ -278,7 +278,7 @@ async function completeInstall(ctx: BackofficeScenarioContext, state: string) {
       },
     }),
     userId: ownerUserId,
-    organizationId: scope.orgId,
+    organization: scope,
     state,
     installationId,
   });

@@ -216,7 +216,7 @@ function startRun(workflow: string, instanceId: string) {
       // Payloads are JSON, whose fields may start with $.
       payload: { $schema: "https://example.com/order.json", instanceId },
       actors: createBackofficeSystemExecution(scope).actors,
-      subject: { orgId },
+      subject: { scope: { kind: "org", orgId, jurisdiction: null } },
       causation: { kind: "origin" },
     }),
   } as const;

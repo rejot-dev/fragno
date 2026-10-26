@@ -70,7 +70,10 @@ function githubWebhookEvent(input: {
       principal: null,
       delegation: [],
     },
-    subject: { orgId: "org-1", installationId: "installation-1" },
+    subject: {
+      scope: { kind: "org", orgId: "org-1", jurisdiction: null },
+      installationId: "installation-1",
+    },
     causation: { kind: "origin" },
   };
 }

@@ -171,7 +171,7 @@ test("an owner retries a route that failed for good from the events page", async
               occurredAt: "2026-01-01T00:00:00.000Z",
               payload: {},
               actors: { initiator: AUTOMATION_SYSTEM_INITIATOR, principal: null, delegation: [] },
-              subject: { orgId: ctx.vars.orgId },
+              subject: { scope: { kind: "org", orgId: ctx.vars.orgId, jurisdiction: null } },
               causation: { kind: "origin" },
             });
           await ctx.drain();

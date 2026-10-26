@@ -1,4 +1,5 @@
 import { automationScheduleCadenceSchema } from "@fragno-dev/backoffice-api/v0/automation";
+import { backofficeProjectScopeSchema } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
 import type {
@@ -24,10 +25,7 @@ const projectPayloadSchema = z.object({
   project: projectSchema,
 });
 
-const projectSubjectSchema = z.object({
-  orgId: z.string().trim().min(1),
-  projectId: z.string().trim().min(1),
-});
+const projectSubjectSchema = z.object({ scope: backofficeProjectScopeSchema });
 
 const routeFailedPayloadSchema = z.object({
   route: z.object({ id: z.string(), name: z.string() }),

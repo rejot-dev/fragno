@@ -1,3 +1,4 @@
+import { backofficeContextScopeSchema } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
 import type { BackofficeCapability } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
@@ -20,8 +21,7 @@ const sandboxPayloadSchema = z.object({
 });
 
 const sandboxSubjectSchema = z.object({
-  orgId: z.string().trim().min(1).optional(),
-  projectId: z.string().trim().min(1).optional(),
+  scope: backofficeContextScopeSchema,
   sandboxId: z.string().trim().min(1),
 });
 

@@ -256,7 +256,7 @@ function githubPullRequestWebhookEvent(action: "opened" | "synchronize"): Automa
       delegation: [],
     },
     subject: {
-      orgId: "org-1",
+      scope: { kind: "org", orgId: "org-1", jurisdiction: null },
       installationId: "installation-1",
       accountId: String(sender.id),
       accountLogin: sender.login,

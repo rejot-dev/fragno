@@ -38,6 +38,7 @@ import type { DirectoryPageInput } from "@fragno-dev/backoffice-api/v0/shared/pa
 import {
   type BackofficeContextScope,
   type BackofficeJurisdiction,
+  type BackofficeOrganizationContextScope,
   type BackofficeRootOwner,
   type BackofficeRoutableScope,
   type BackofficeScopeIdNames,
@@ -894,9 +895,11 @@ export type GitHubWebhookRouterCommands = {
   ): Promise<AwaitedMethodReturn<GitHubWebhookRouter, "consumeInstallationClaimState">>;
   setInstallationOrg(
     installationId: string,
-    orgId: string,
+    organization: BackofficeOrganizationContextScope,
   ): Promise<AwaitedMethodReturn<GitHubWebhookRouter, "setInstallationOrg">>;
-  getInstallationOrg(installationId: string): Promise<string | null>;
+  getInstallationOrg(
+    installationId: string,
+  ): Promise<AwaitedMethodReturn<GitHubWebhookRouter, "getInstallationOrg">>;
   clearInstallationRouting(
     installationId: string,
   ): Promise<AwaitedMethodReturn<GitHubWebhookRouter, "clearInstallationRouting">>;
