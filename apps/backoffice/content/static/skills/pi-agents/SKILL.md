@@ -2,8 +2,8 @@
 name: pi-agents
 description: >
   Define, change, and prompt Pi agents: named instructions and permissions with one ongoing
-  conversation each. Load when creating, editing, or deleting an agent, packaging one, or choosing
-  which agent should do work.
+  conversation each. Load when creating, editing, or deleting an agent, or choosing which agent
+  should do work.
 ---
 
 # Pi agents
@@ -37,7 +37,8 @@ await pi.createAgent({
   one grant is required. Prompting the agent requires the prompter's own `pi.modify`.
 - `instructions` is Markdown added to the agent's system prompt, up to 32,768 characters; empty adds
   none.
-- `managedBy` is null for your own agents; Marketplace packages set it to claim theirs.
+- `managedBy` is null for your own agents; Marketplace packages set it to claim theirs, as
+  `/static/skills/marketplace-publishing/SKILL.md` shows.
 
 Defining, updating, and deleting agents requires `pi.manage`. Invalid input is refused with the
 reason, so nothing unusable is ever defined.
@@ -50,12 +51,6 @@ reason, so nothing unusable is ever defined.
 turn uses it. Read the current definition with `pi.getAgent` first so you only change what you mean
 to. `pi.deleteAgent({ agentName })` removes the definition but keeps the conversation: defining the
 name again resumes it. Built-in agents cannot be changed or deleted.
-
-## Package an agent
-
-Define the agent, instructions included, from `.marketplace/install.workflow.js`: create it when
-missing, update it when this installation's `managedBy` owns it, and fail otherwise. The package
-must declare `pi.manage` and `pi.read` in `.marketplace/installation.json`.
 
 ## How permissions work
 

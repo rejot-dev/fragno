@@ -1,8 +1,9 @@
 ---
 name: marketplace-publishing
 description: >
-  Publish workspace packages to Marketplace. Use when creating package manifests, validating a
-  release with a dry run, or requesting publication.
+  Publish workspace packages to Marketplace. Use when creating package manifests, declaring a
+  package's routes, permissions, settings, or agents, validating a release with a dry run, or
+  requesting publication.
 ---
 
 # Marketplace Publishing
@@ -85,6 +86,52 @@ returns becomes the installation's settings, and the package's workflows read th
 is null on a first installation, and the record changes only after the workflow completes.
 Installing the same version again re-runs it, which is how settings change. Use generated UI and
 `step.waitForEvent` to ask the installer; only members who may install packages can answer.
+
+## Define an agent
+
+Agents aren't declared yet, so the install workflow defines them. It runs again on every install of
+the same version, so create the agent when missing and update it when this package made it:
+
+```js
+const agent = {
+  agentName: "triage",
+  description: "Reviews workflow failures.",
+  model: null,
+  permissions: ["*"],
+  instructions: "Investigate the failure you are given before changing anything.",
+  managedBy: {
+    kind: "marketplace",
+    listingId: event.payload.listingId,
+    resourceKey: "triage-agent",
+    version: event.payload.version,
+  },
+};
+await step.do("ensure triage agent", async () => {
+  const { agents } = await pi.listAgents({});
+  const existing = agents.find((candidate) => candidate.agentName === agent.agentName);
+  if (!existing) {
+    return await pi.createAgent(agent);
+  }
+  const owner = existing.managedBy;
+  if (
+    owner?.kind !== "marketplace" ||
+    owner.listingId !== agent.managedBy.listingId ||
+    owner.resourceKey !== agent.managedBy.resourceKey
+  ) {
+    throw new Error(`Agent '${agent.agentName}' already exists and belongs to someone else.`);
+  }
+  return await pi.updateAgent(agent);
+});
+```
+
+Declare `pi.read`, to list agents, and `pi.manage`, to define them. Uninstalling leaves the agent;
+delete it with `pi.deleteAgent` if it should go.
+
+Known secret paths, dependency directories, Git metadata, traversal, and links cannot be published.
+The captured release is limited to 100 files including the manifest and 1 MiB of total file content.
+Binary files are supported. Remove concurrent source edits if capture reports that the package
+changed. The publisher reserves `.marketplace/publish.json` for its atomic version guard; keep that
+path out of authored packages. Publisher guard files are not installed into workspaces.
 
 ## 2. Choose visibility
 
