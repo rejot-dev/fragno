@@ -238,6 +238,10 @@ terminal callback, so treat callbacks within one generation as transition notifi
 instance when current state matters. Both callbacks execute through durable hooks, so run a
 dispatcher and make their effects idempotent.
 
+`onWorkflowTerminal` also receives the `HookContext` of the hook attempt delivering it. Its
+`attempts` is `0` on the first delivery, so a callback can tell a retry from the first time it sees
+a transition, for example to count each transition once even when a later effect fails and retries.
+
 ## Runtime Injection
 
 Workflows require a `FragnoRuntime` for time and randomness. Use `defaultFragnoRuntime` for

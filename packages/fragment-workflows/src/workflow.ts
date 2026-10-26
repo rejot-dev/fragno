@@ -1,7 +1,7 @@
 import type { StandardSchemaV1 } from "@fragno-dev/core/api";
 
 import type { FragnoRuntime } from "@fragno-dev/core";
-import type { HandlerTxContext, HooksMap, TxResult } from "@fragno-dev/db";
+import type { HandlerTxContext, HookContext, HooksMap, TxResult } from "@fragno-dev/db";
 
 import type { WorkflowsLoggerConfig } from "./debug-log";
 import { getRemoteWorkflowStepHost, type RemoteWorkflowStepHost } from "./remote-workflow";
@@ -723,7 +723,11 @@ export interface WorkflowsFragmentConfig<TRegistry extends WorkflowsRegistry = W
   workflows?: TRegistry;
   dispatcher?: WorkflowsDispatcher;
   onWorkflowRestarted?: (payload: WorkflowRestartedHookPayload) => void | Promise<void>;
-  onWorkflowTerminal?: (payload: WorkflowTerminalHookPayload) => void | Promise<void>;
+  /** `context` describes the durable hook attempt delivering this terminal transition. */
+  onWorkflowTerminal?: (
+    payload: WorkflowTerminalHookPayload,
+    context: HookContext,
+  ) => void | Promise<void>;
   /**
    * Disable built-in durable hook ticking (useful for tests that drive ticks manually).
    * Defaults to true.
