@@ -1,4 +1,7 @@
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import type {
+  BackofficeContextScope,
+  BackofficeOrganizationContextScope,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { RouterContextProvider } from "react-router";
 
 import type {
@@ -26,8 +29,8 @@ export const getBackofficeObjects = (context: Readonly<RouterContextProvider>) =
 
 export const getApiDurableObject = (
   context: Readonly<RouterContextProvider>,
-  orgId: string,
-): BackofficeObjectHandle<ApiCommands> => getBackofficeObjects(context).api.forOrg(orgId);
+  organization: BackofficeOrganizationContextScope,
+): BackofficeObjectHandle<ApiCommands> => getBackofficeObjects(context).api.for(organization);
 
 export const getAuthDurableObject = (
   context: Readonly<RouterContextProvider>,
@@ -35,9 +38,9 @@ export const getAuthDurableObject = (
 
 export const getAutomationsDurableObject = (
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  organization: BackofficeOrganizationContextScope,
 ): BackofficeObjectHandle<AutomationsCommands> =>
-  getBackofficeObjects(context).automations.forOrg(orgId);
+  getBackofficeObjects(context).automations.for(organization);
 
 export const getMarketplaceDurableObject = (
   context: Readonly<RouterContextProvider>,
@@ -46,13 +49,14 @@ export const getMarketplaceDurableObject = (
 
 export const getTelegramDurableObject = (
   context: Readonly<RouterContextProvider>,
-  orgId: string,
-): BackofficeObjectHandle<TelegramCommands> => getBackofficeObjects(context).telegram.forOrg(orgId);
+  organization: BackofficeOrganizationContextScope,
+): BackofficeObjectHandle<TelegramCommands> =>
+  getBackofficeObjects(context).telegram.for(organization);
 
 export const getMcpDurableObject = (
   context: Readonly<RouterContextProvider>,
-  orgId: string,
-): BackofficeObjectHandle<McpCommands> => getBackofficeObjects(context).mcp.forOrg(orgId);
+  organization: BackofficeOrganizationContextScope,
+): BackofficeObjectHandle<McpCommands> => getBackofficeObjects(context).mcp.for(organization);
 
 export const getSystemOtpDurableObject = (
   context: Readonly<RouterContextProvider>,
@@ -60,18 +64,18 @@ export const getSystemOtpDurableObject = (
 
 export const getOtpDurableObject = (
   context: Readonly<RouterContextProvider>,
-  orgId: string,
-): BackofficeObjectHandle<OtpCommands> => getBackofficeObjects(context).otp.forOrg(orgId);
+  organization: BackofficeOrganizationContextScope,
+): BackofficeObjectHandle<OtpCommands> => getBackofficeObjects(context).otp.for(organization);
 
 export const getResendDurableObject = (
   context: Readonly<RouterContextProvider>,
-  orgId: string,
-): BackofficeObjectHandle<ResendCommands> => getBackofficeObjects(context).resend.forOrg(orgId);
+  organization: BackofficeOrganizationContextScope,
+): BackofficeObjectHandle<ResendCommands> => getBackofficeObjects(context).resend.for(organization);
 
 export const getUploadDurableObject = (
   context: Readonly<RouterContextProvider>,
-  orgId: string,
-): BackofficeObjectHandle<UploadCommands> => getBackofficeObjects(context).upload.forOrg(orgId);
+  organization: BackofficeOrganizationContextScope,
+): BackofficeObjectHandle<UploadCommands> => getBackofficeObjects(context).upload.for(organization);
 
 export const getScopedAutomationsDurableObject = (
   context: Readonly<RouterContextProvider>,
@@ -85,8 +89,8 @@ export const getFormsDurableObject = (
 
 export const getGitHubDurableObject = (
   context: Readonly<RouterContextProvider>,
-  orgId: string,
-): BackofficeObjectHandle<GitHubCommands> => getBackofficeObjects(context).github.forOrg(orgId);
+  organization: BackofficeOrganizationContextScope,
+): BackofficeObjectHandle<GitHubCommands> => getBackofficeObjects(context).github.for(organization);
 
 export const getGitHubWebhookRouterDurableObject = (
   context: Readonly<RouterContextProvider>,

@@ -132,6 +132,7 @@ const CREATE_ORGANIZATION_TRIGGER_SQL = sql`
           'logoUrl', NEW.logo,
           'metadata', json(NEW.metadata),
           'createdBy', NEW.createdBy,
+          'jurisdiction', NEW.jurisdiction,
           'createdAt', NEW.createdAt,
           'updatedAt', NEW.createdAt,
           'deletedAt', NULL
@@ -165,6 +166,7 @@ const UPDATE_ORGANIZATION_TRIGGER_SQL = sql`
           'logoUrl', NEW.logo,
           'metadata', json(NEW.metadata),
           'createdBy', NEW.createdBy,
+          'jurisdiction', NEW.jurisdiction,
           'createdAt', NEW.createdAt,
           'updatedAt', unixepoch() * 1000,
           'deletedAt', NULL

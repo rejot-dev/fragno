@@ -222,14 +222,19 @@ export class CodemodeObject extends RpcTarget implements CodemodeCommands {
     const billing = usageBillingForScope(runtime, scope);
     // Cloudflare bills each Dynamic Worker a run loads; a module build only compiles.
     async function billRunStarted(run: CodemodeRunStartedHookPayload, hook: HookContext) {
-      // Old queued deliveries retain their original destination, including retries after an ack was lost.
+      // Old queued deliveries retain their original destination, including retries after an ack was
+      // lost. They predate jurisdictions, so their organization names none.
       const destination =
         "billingOrganizationId" in run
           ? usageBillingForScope(
               runtime,
               run.billingOrganizationId === null
                 ? { kind: "system" }
-                : { kind: "org", orgId: z.string().parse(run.billingOrganizationId) },
+                : {
+                    kind: "org",
+                    orgId: z.string().parse(run.billingOrganizationId),
+                    jurisdiction: null,
+                  },
             )
           : billing;
       if (run.activationKind === "module-build" || destination.kind === "system") {

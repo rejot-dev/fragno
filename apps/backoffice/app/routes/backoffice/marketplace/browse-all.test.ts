@@ -105,9 +105,10 @@ describe("Marketplace catalog listing", () => {
 
     // Personal workspaces have no organization Marketplace.
     marketplaceForMock.mockClear();
-    const rejected = await runCatalog({ kind: "user", userId: "user-1" }, "user-1").catch(
-      (error: unknown) => error,
-    );
+    const rejected = await runCatalog(
+      { kind: "user", userId: "user-1", jurisdiction: null },
+      "user-1",
+    ).catch((error: unknown) => error);
     assert(rejected instanceof Response);
     assert(rejected.status === 404);
     expect(marketplaceForMock).not.toHaveBeenCalled();

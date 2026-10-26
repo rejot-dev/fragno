@@ -15,11 +15,11 @@ const env = {
 
 const address = {
   binding: "AUTOMATIONS",
-  scope: { kind: "org", orgId: "org-1" },
+  scope: { kind: "org", orgId: "org-1", jurisdiction: null },
 } as const satisfies BackofficeObjectAddress;
 
 const execution = createBackofficeUserExecution({
-  scope: { kind: "org", orgId: "org-1" },
+  scope: { kind: "org", orgId: "org-1", jurisdiction: null },
   userId: "user-1",
 });
 
@@ -109,7 +109,7 @@ describe("Backoffice internal object requests", () => {
       address,
       context: {
         execution: createBackofficeUserExecution({
-          scope: { kind: "org", orgId: "org-2" },
+          scope: { kind: "org", orgId: "org-2", jurisdiction: null },
           userId: "user-1",
         }),
         propagationContext: null,

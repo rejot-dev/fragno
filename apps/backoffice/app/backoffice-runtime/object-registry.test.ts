@@ -23,11 +23,17 @@ describe("Backoffice object context availability", () => {
   });
 
   it("rejects object bindings that do not support the selected context", () => {
-    assert(!isBackofficeObjectAvailableInContext("RESEND", { kind: "user", userId: "user-1" }));
+    assert(
+      !isBackofficeObjectAvailableInContext("RESEND", {
+        kind: "user",
+        userId: "user-1",
+        jurisdiction: null,
+      }),
+    );
     assert(
       !isBackofficeObjectAvailableInContext("RESEND", {
         kind: "project",
-        owner: { kind: "org", orgId: "org-1" },
+        owner: { kind: "org", orgId: "org-1", jurisdiction: null },
         projectId: "project-1",
       }),
     );
@@ -37,9 +43,13 @@ describe("Backoffice object context availability", () => {
 describe("Automations object scope policy", () => {
   it.each([
     { kind: "singleton" } as const,
-    { kind: "org", orgId: "org-1" } as const,
-    { kind: "user", userId: "user-1" } as const,
-    { kind: "project", owner: { kind: "org", orgId: "org-1" }, projectId: "project-1" } as const,
+    { kind: "org", orgId: "org-1", jurisdiction: null } as const,
+    { kind: "user", userId: "user-1", jurisdiction: null } as const,
+    {
+      kind: "project",
+      owner: { kind: "org", orgId: "org-1", jurisdiction: null },
+      projectId: "project-1",
+    } as const,
   ])("allows $kind-scoped objects", (scope) => {
     expect(() =>
       assertBackofficeObjectAddressAllowed(scopedAddress("AUTOMATIONS", scope)),
@@ -59,9 +69,11 @@ describe("Automations object scope policy", () => {
     };
     const get = vi.fn(() => handle) as unknown as BackofficeObjectFactory["get"];
     const piAgent = vi.fn() as unknown as BackofficeObjectFactory["piAgent"];
-    const automations = createBackofficeObjectRegistry({ get, piAgent }).automations.forOrg(
-      "org-1",
-    );
+    const automations = createBackofficeObjectRegistry({ get, piAgent }).automations.for({
+      kind: "org",
+      orgId: "org-1",
+      jurisdiction: null,
+    });
 
     await expect(automations.commands.seedStarterAutomationRoutes()).resolves.toEqual({
       created: [],
@@ -71,7 +83,7 @@ describe("Automations object scope policy", () => {
 
     expect(get).toHaveBeenCalledWith(
       { name: "AUTOMATIONS" },
-      { binding: "AUTOMATIONS", scope: { kind: "org", orgId: "org-1" } },
+      { binding: "AUTOMATIONS", scope: { kind: "org", orgId: "org-1", jurisdiction: null } },
     );
     expect(fetch).toHaveBeenCalledOnce();
   });
@@ -81,19 +93,19 @@ describe("Connector object scope policy", () => {
   it("allows user ownership and rejects organization or project ownership", () => {
     expect(() =>
       assertBackofficeObjectAddressAllowed(
-        scopedAddress("PROJECT_CONNECTOR", { kind: "user", userId: "user-1" }),
+        scopedAddress("PROJECT_CONNECTOR", { kind: "user", userId: "user-1", jurisdiction: null }),
       ),
     ).not.toThrow();
     expect(() =>
       assertBackofficeObjectAddressAllowed(
-        scopedAddress("PROJECT_CONNECTOR", { kind: "org", orgId: "org-1" }),
+        scopedAddress("PROJECT_CONNECTOR", { kind: "org", orgId: "org-1", jurisdiction: null }),
       ),
     ).toThrow("cannot be instantiated with org scope");
     expect(() =>
       assertBackofficeObjectAddressAllowed(
         scopedAddress("PROJECT_CONNECTOR", {
           kind: "project",
-          owner: { kind: "org", orgId: "org-1" },
+          owner: { kind: "org", orgId: "org-1", jurisdiction: null },
           projectId: "project-1",
         }),
       ),
@@ -112,10 +124,10 @@ describe("Upload object scope policy", () => {
 });
 
 describe("OTP object scope policy", () => {
-  it.each([{ kind: "singleton" } as const, { kind: "org", orgId: "org-1" } as const])(
-    "allows $kind-scoped objects",
-    (scope) => {
-      expect(() => assertBackofficeObjectAddressAllowed(scopedAddress("OTP", scope))).not.toThrow();
-    },
-  );
+  it.each([
+    { kind: "singleton" } as const,
+    { kind: "org", orgId: "org-1", jurisdiction: null } as const,
+  ])("allows $kind-scoped objects", (scope) => {
+    expect(() => assertBackofficeObjectAddressAllowed(scopedAddress("OTP", scope))).not.toThrow();
+  });
 });

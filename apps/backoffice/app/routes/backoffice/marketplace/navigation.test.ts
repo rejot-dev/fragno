@@ -58,7 +58,7 @@ describe("Marketplace listing navigation scenarios", () => {
     });
     const scope = {
       kind: "org",
-      organization: { id: "reader-org", slug: "reader" },
+      organization: { id: "reader-org", slug: "reader", jurisdiction: null },
       label: "Reader",
     } as const;
 

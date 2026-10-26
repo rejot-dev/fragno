@@ -50,6 +50,7 @@ const organization: Organization = {
   createdBy: "user-1",
   createdAt: new Date("2026-09-01T00:00:00.000Z"),
   updatedAt: new Date("2026-09-01T00:00:00.000Z"),
+  jurisdiction: null,
 };
 
 describe("BackofficeShell resolved scope", () => {

@@ -323,7 +323,7 @@ export class FakeBackoffice {
     if (actor.kind === "user" && !organization.members.has(actor.userId)) {
       throw new Error(`Backoffice runs no actions for a non-member in ${organization.slug}.`);
     }
-    const orgScope = { kind: "org" as const, orgId: organization.id };
+    const orgScope = { kind: "org" as const, orgId: organization.id, jurisdiction: null };
     let scopeRestriction: AppActionTokenClaims["scopeRestriction"] = orgScope;
     if (input.project !== null) {
       const project = [...organization.projects.values()].find(
@@ -602,7 +602,7 @@ export class FakeBackoffice {
     }
     const scope: BackofficeContextScope = {
       kind: "project",
-      owner: { kind: "org", orgId: organization.id },
+      owner: { kind: "org", orgId: organization.id, jurisdiction: null },
       projectId: found.id,
     };
     return `${backofficeScopePathSegment(scope)} ${path}`;
@@ -633,6 +633,7 @@ export class FakeBackoffice {
             backofficeProvisioningOperations[operationId].output.parse({
               organizationId: existing.id,
               slug: existing.slug,
+              jurisdiction: null,
               created: false,
             }),
           );
@@ -656,6 +657,7 @@ export class FakeBackoffice {
           backofficeProvisioningOperations[operationId].output.parse({
             organizationId: organization.id,
             slug: organization.slug,
+            jurisdiction: null,
             created: true,
           }),
         );
@@ -714,6 +716,7 @@ export class FakeBackoffice {
           backofficeProvisioningOperations[operationId].output.parse({
             organizationId: organization.id,
             slug: organization.slug,
+            jurisdiction: null,
             created: existing === undefined,
             ownerInvitation: ownerInvitation && {
               invitationId: ownerInvitation.id,
@@ -871,6 +874,7 @@ export class FakeBackoffice {
         organizationId: organization.id,
         name: organization.name,
         slug: organization.slug,
+        jurisdiction: null,
         createdAt: organization.createdAt,
       },
       roles,

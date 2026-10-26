@@ -7,7 +7,9 @@ import { filesScopeBasePath } from "./scope";
 
 export async function loader({ context }: Route.LoaderArgs) {
   const { me } = getBackofficeShellRequest(context);
-  return redirect(filesScopeBasePath({ kind: "user", userId: me.user.id }));
+  return redirect(
+    filesScopeBasePath({ kind: "user", userId: me.user.id, jurisdiction: me.user.jurisdiction }),
+  );
 }
 
 export default function BackofficeFilesIndex() {

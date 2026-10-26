@@ -162,10 +162,13 @@ export class PiObject extends RpcTarget implements PiAgent {
       this.#assertObjectIdentity(config);
       // A delivery queued before this upgrade may already have reached its old organization.
       // Keep that destination across restarts so retrying cannot also charge the user's ledger.
+      // It predates jurisdictions, so its organization names none.
       if ("billingOrganizationId" in stored) {
         const organizationId = z.string().nullable().parse(stored.billingOrganizationId);
         const legacyBillingScope: BackofficeContextScope =
-          organizationId === null ? { kind: "system" } : { kind: "org", orgId: organizationId };
+          organizationId === null
+            ? { kind: "system" }
+            : { kind: "org", orgId: organizationId, jurisdiction: null };
         await state.storage.put(LEGACY_BILLING_SCOPE_KEY, legacyBillingScope);
         await state.storage.put(AGENT_CONFIG_KEY, config);
         this.#provisioned = { config, legacyBillingScope };

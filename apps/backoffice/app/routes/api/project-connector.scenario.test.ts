@@ -93,7 +93,7 @@ const workConnectionId = encodeConnectorConnectionId([
 /** Runs one integrations call for a user from an organization's codemode, as an agent would. */
 async function runUserIntegrations(ctx: BackofficeScenarioContext, userId: string, call: string) {
   const run = await ctx.runCodemode({
-    scope: { kind: "org", orgId: "org-1" },
+    scope: { kind: "org", orgId: "org-1", jurisdiction: null },
     label: `integrations for ${userId}`,
     code: `async () => await context.user(${JSON.stringify(userId)}).integrations.${call}`,
   });
@@ -166,6 +166,8 @@ test("an anonymous OAuth browser return cannot create or forge a Connector accou
     name: "Connector callback query parameters are navigation only",
     setup: ({ given }) => [
       given.organization.exists({ id: "org-1", slug: "ada-labs", name: "Ada Labs" }),
+      // Public routes reach only users Auth knows.
+      given.auth.user({ id: "callback-only-user" }),
     ],
     steps: ({ then }) => [
       then.assert(
@@ -173,7 +175,7 @@ test("an anonymous OAuth browser return cannot create or forge a Connector accou
         async (ctx) => {
           const callbackOnlyUser = {
             binding: "PROJECT_CONNECTOR" as const,
-            scope: { kind: "user" as const, userId: "callback-only-user" },
+            scope: { kind: "user" as const, userId: "callback-only-user", jurisdiction: null },
           };
           assert(!ctx.runtime.hasObjectInstance(callbackOnlyUser));
           const callbackOnlyRedirect = await callPublicProjectConnector(
@@ -338,6 +340,8 @@ test("public routes authenticate access tokens and reject foreign or non-user sc
     fakes: ({ fake }) => ({ resend: fake.resend() }),
     setup: ({ given }) => [
       given.organization.exists({ id: "org-1", slug: "ada-labs", name: "Ada Labs" }),
+      // Public routes reach only users Auth knows.
+      given.auth.user({ id: "another-user" }),
     ],
     steps: ({ when, then }) => [
       when.auth.signUp({

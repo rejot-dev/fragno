@@ -75,9 +75,9 @@ export const automationsCapability: BackofficeCapability = {
       {
         id: "automations",
         label: "Automations",
-        getRepository: ({ objects, orgId }) =>
+        getRepository: ({ objects, organization }) =>
           createAutomationsDurableHookRepository(
-            objects.automations.forOrg(orgId).commands,
+            objects.automations.for(organization).commands,
             "automation",
           ),
       },

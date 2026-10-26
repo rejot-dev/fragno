@@ -33,7 +33,7 @@ const scenarioObjects = {
   UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
 
-const scope = { kind: "org", orgId: "org-1" } as const;
+const scope = { kind: "org", orgId: "org-1", jurisdiction: null } as const;
 const action = {
   kind: "start_workflow" as const,
   authority: {
@@ -109,7 +109,11 @@ test("a route granting a since-removed permission stays readable and editable", 
             "reading and editing the route keep only the grants that still exist",
             async (ctx) => {
               const router = createRouteBackedAutomationRouterRuntime({
-                object: ctx.runtime.objects.automations.forOrg(scope.orgId),
+                object: ctx.runtime.objects.automations.for({
+                  kind: "org",
+                  orgId: scope.orgId,
+                  jurisdiction: null,
+                }),
                 execution: createBackofficeSystemExecution(scope),
               });
               const route = await router.getRoute({ id: "repository-sync" });

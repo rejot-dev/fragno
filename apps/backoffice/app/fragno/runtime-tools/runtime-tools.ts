@@ -14,6 +14,7 @@ import {
   noopBackofficeKernelObserver,
   type BackofficeForbiddenErrorDetails,
 } from "@/backoffice-runtime/kernel";
+import type { BackofficeRootOwnerResolver } from "@/backoffice-runtime/resolved-scope";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import type { BackofficeCapabilityId } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import type {
@@ -42,6 +43,8 @@ export type BackofficeToolContext<
   execution: BackofficeExecutionContext;
   kernel: BackofficeKernel;
   createScopedContext(scope: BackofficeContextScope): BackofficeToolContext<TRuntimes>;
+  /** Finds where an organization or user that a caller named by ID keeps its objects. */
+  resolveRootOwner: BackofficeRootOwnerResolver;
 };
 
 export const createTrustedSystemBackofficeToolContext = <
@@ -69,6 +72,9 @@ export const createTrustedSystemBackofficeToolContext = <
     },
     kernel,
     createScopedContext: createContext,
+    resolveRootOwner: async () => {
+      throw new Error("Trusted system tool contexts do not reach organizations or users by ID.");
+    },
   });
   return createContext({ kind: "system" });
 };

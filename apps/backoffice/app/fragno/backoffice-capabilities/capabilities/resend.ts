@@ -1,3 +1,4 @@
+import type { BackofficeOrganizationContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
@@ -40,8 +41,10 @@ const connectionStatusIdentity = {
   label: "Resend",
   kind: "connection",
 } as const;
-const getResendDo = (objects: BackofficeObjectRegistry, orgId: string) =>
-  objects.resend.forOrg(orgId);
+const getResendDo = (
+  objects: BackofficeObjectRegistry,
+  organization: BackofficeOrganizationContextScope,
+) => objects.resend.for(organization);
 
 type ResendAdminConfigResponse = {
   configured?: boolean;
@@ -70,8 +73,8 @@ export const resendCapability: BackofficeCapability = {
   objectBinding: null,
   contributions: {
     connection: {
-      getStatus: async ({ objects, orgId }) =>
-        toResendStatus(await getResendDo(objects, orgId).commands.getAdminConfig()),
+      getStatus: async ({ objects, organization }) =>
+        toResendStatus(await getResendDo(objects, organization).commands.getAdminConfig()),
     },
     eventSources: [],
     actionProviders: ["integrations"],
@@ -79,8 +82,8 @@ export const resendCapability: BackofficeCapability = {
       {
         id: "resend",
         label: "Resend",
-        getRepository: ({ objects, orgId }) =>
-          createDurableHookRepositoryFromCommands(getResendDo(objects, orgId).commands),
+        getRepository: ({ objects, organization }) =>
+          createDurableHookRepositoryFromCommands(getResendDo(objects, organization).commands),
       },
     ],
     skillPaths: [],

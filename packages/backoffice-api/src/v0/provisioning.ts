@@ -5,6 +5,7 @@ import {
   organizationMembershipRecordSchema,
   organizationRoleSchema,
 } from "./organization";
+import { backofficeJurisdictionSchema } from "./shared/scope";
 
 /**
  * Each provisioning operation is its own permission, so an administrator grants a first-party app
@@ -47,6 +48,8 @@ export const provisionOrganizationResultSchema = z
     z.strictObject({
       organizationId: z.string().min(1),
       slug: z.string().min(1),
+      // Scopes name the organization with it: `{ kind: "org", orgId, jurisdiction }`.
+      jurisdiction: backofficeJurisdictionSchema.nullable(),
       created: z.boolean(),
     }),
   )
@@ -79,6 +82,8 @@ export const provisionOrganizationForInviteeResultSchema = z
     z.strictObject({
       organizationId: z.string().min(1),
       slug: z.string().min(1),
+      // Scopes name the organization with it: `{ kind: "org", orgId, jurisdiction }`.
+      jurisdiction: backofficeJurisdictionSchema.nullable(),
       created: z.boolean(),
       ownerInvitation: z
         .strictObject({ invitationId: z.string().min(1), expiresAt: z.iso.datetime() })

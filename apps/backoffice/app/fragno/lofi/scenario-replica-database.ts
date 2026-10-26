@@ -213,7 +213,7 @@ function createScenarioReplicaScopes(
 
   return {
     forScope,
-    forOrg: (orgId) => forScope({ kind: "org", orgId }),
+    forOrg: (orgId) => forScope({ kind: "org", orgId, jurisdiction: null }),
     syncAll: async () => {
       await Promise.all([...scopes.values()].map((scopeRuntime) => scopeRuntime.sync()));
     },

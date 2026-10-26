@@ -130,7 +130,7 @@ async function issuesCredential(ctx: Ctx, cookie: string, organizationId: string
  */
 async function deferredPermissions(ctx: Ctx, userId: string, organizationId: string) {
   const execution = createBackofficeUserExecution({
-    scope: { kind: "org", orgId: organizationId },
+    scope: { kind: "org", orgId: organizationId, jurisdiction: null },
     userId,
   });
   assert(execution.actors.principal);
@@ -331,6 +331,7 @@ test("an agency's members act in the organizations it manages until management e
               }),
             ).toEqual({
               userId: ctx.vars.cleoId,
+              jurisdiction: null,
               name: expect.any(String),
               email: "cleo@client.test",
               organization: { id: ctx.vars.clientId, name: "Client", slug: "client" },

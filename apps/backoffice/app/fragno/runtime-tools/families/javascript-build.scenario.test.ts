@@ -32,7 +32,7 @@ import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context
 import { javaScriptBuildToolFamily } from "./javascript";
 
 const scenarioObjects = allLocalObjects;
-const scope = { kind: "org", orgId: "org-1" } as const;
+const scope = { kind: "org", orgId: "org-1", jurisdiction: null } as const;
 const sourcePath = "/workspace/scripts/example.js";
 const outputPath = "/workspace/.build/example.module.json";
 const simpleSource = 'export default { greeting: "hello" };';

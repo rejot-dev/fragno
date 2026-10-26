@@ -11,7 +11,7 @@ describe("Backoffice execution context", () => {
   test("represents an authenticated user as the current principal", () => {
     expect(
       createBackofficeUserExecution({
-        scope: { kind: "org", orgId: "org-1" },
+        scope: { kind: "org", orgId: "org-1", jurisdiction: null },
         userId: "user-1",
       }).actors,
     ).toEqual({
@@ -36,13 +36,14 @@ describe("Backoffice execution context", () => {
 
     expect(
       createBackofficeRequestExecution({
-        scope: { kind: "org", orgId: "org-1" },
-        userId: "user-1",
+        scope: { kind: "org", orgId: "org-1", jurisdiction: null },
         verifiedRequestAuthority: {
+          userId: "user-1",
+          personalScope: { kind: "user" as const, userId: "user-1", jurisdiction: null },
           scopeRestriction: null,
           role: "admin",
-          organizationId: "org-1",
-          administeredMemberId: null,
+          organization: { kind: "org" as const, orgId: "org-1", jurisdiction: null },
+          administeredMember: null,
           expiresAt,
         },
       }),
@@ -51,8 +52,9 @@ describe("Backoffice execution context", () => {
         scopeRestriction: null,
         kind: "verified-request-authority",
         userId: "user-1",
+        personalScope: { kind: "user", userId: "user-1", jurisdiction: null },
         role: "admin",
-        organizationId: "org-1",
+        organization: { kind: "org", orgId: "org-1", jurisdiction: null },
         expiresAtEpochMs: expiresAt.getTime(),
       },
     });
@@ -62,7 +64,7 @@ describe("Backoffice execution context", () => {
     expect(createBackofficeSystemExecution({ kind: "system" }).actors.principal).toBeNull();
     expect(
       createBackofficeServiceExecution({
-        scope: { kind: "org", orgId: "org-1" },
+        scope: { kind: "org", orgId: "org-1", jurisdiction: null },
         service: { type: "automation", id: "automation-1" },
       }).actors.principal,
     ).toEqual({

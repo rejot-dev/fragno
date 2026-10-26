@@ -1,3 +1,8 @@
+import {
+  type BackofficeJurisdiction,
+  backofficeScopeJurisdiction,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
+
 import { piAgentObjectName, type PiAgentAddress } from "@/fragno/pi/agent/pi-agent-contract";
 
 import {
@@ -21,7 +26,43 @@ import { forwardRequestOwnedResponse } from "./request-owned-response";
 type DurableObjectNamespaceLike = {
   idFromName(name: string): DurableObjectId;
   get(id: DurableObjectId): unknown;
+  jurisdiction(jurisdiction: BackofficeJurisdiction): DurableObjectNamespaceLike;
 };
+
+type JurisdictionEnv = Pick<CloudflareEnv, "DURABLE_OBJECT_JURISDICTIONS">;
+
+/**
+ * Where an owner's objects are kept: the namespace restricted to its jurisdiction, as Cloudflare
+ * recommends, or the whole namespace when it has none. The same name is another object in each.
+ * workerd does not implement jurisdictions, so local development says "local" to ignore them; any
+ * other setting enforces them, and a misconfigured deployment fails rather than keeping objects
+ * outside their jurisdiction. Names carry the jurisdiction, so objects stay apart locally too.
+ */
+export function jurisdictionNamespace<TNamespace extends DurableObjectNamespaceLike>(
+  env: JurisdictionEnv,
+  namespace: TNamespace,
+  jurisdiction: BackofficeJurisdiction | null,
+): TNamespace {
+  return jurisdiction === null || env.DURABLE_OBJECT_JURISDICTIONS === "local"
+    ? namespace
+    : (namespace.jurisdiction(jurisdiction) as TNamespace);
+}
+
+/** The ID of a Pi agent's object, kept in its scope's jurisdiction. */
+export function piAgentDurableObjectId(
+  env: JurisdictionEnv & Pick<CloudflareEnv, "PI">,
+  agent: PiAgentAddress,
+): DurableObjectId {
+  return jurisdictionNamespace(env, env.PI, backofficeScopeJurisdiction(agent.scope)).idFromName(
+    piAgentObjectName(agent),
+  );
+}
+
+function objectAddressJurisdiction({ scope }: BackofficeObjectAddress) {
+  return scope.kind === "singleton" || scope.kind === "named"
+    ? null
+    : backofficeScopeJurisdiction(scope);
+}
 
 const getNamespace = (
   env: CloudflareEnv,
@@ -50,7 +91,11 @@ export class CloudflareDurableObjectFactory implements BackofficeObjectFactory {
       );
     }
     assertBackofficeObjectAddressAllowed(address);
-    const namespace = getNamespace(this.env, binding);
+    const namespace = jurisdictionNamespace(
+      this.env,
+      getNamespace(this.env, binding),
+      objectAddressJurisdiction(address),
+    );
     const encodedName = encodeBackofficeObjectAddress(address);
     const id = namespace.idFromName(encodedName);
     const stub = namespace.get(id) as TCommands & {
@@ -83,7 +128,7 @@ export class CloudflareDurableObjectFactory implements BackofficeObjectFactory {
   }
 
   piAgent(agent: PiAgentAddress): Pick<BackofficeObjectHttp, "fetchAuthorized"> {
-    const stub = this.env.PI.get(this.env.PI.idFromName(piAgentObjectName(agent)));
+    const stub = this.env.PI.get(piAgentDurableObjectId(this.env, agent));
     return {
       fetchAuthorized: async (request, context) =>
         forwardRequestOwnedResponse(

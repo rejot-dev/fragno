@@ -6,6 +6,7 @@ import {
 import {
   backofficeScopeRootOwner,
   type BackofficeContextScope,
+  type BackofficeOrganizationContextScope,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
@@ -27,6 +28,7 @@ import {
   type ShouldRevalidateFunctionArgs,
 } from "react-router";
 
+import { backofficeOrganizationContextScope } from "@/backoffice-runtime/resolved-scope";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import type { BackofficeMeData } from "@/fragno/auth/contracts";
 import { fetchAutomationReplicaSource } from "@/fragno/automation/lofi/replica-source.server";
@@ -124,7 +126,7 @@ export type MarketplacePackageOutletContext = {
 type MarketplaceInstallationTarget =
   | {
       state: "ready";
-      organizationId: string;
+      organization: BackofficeOrganizationContextScope;
       targetScope: MarketplaceIngestionTargetScope;
     }
   | { state: "unavailable" | "forbidden"; message: string };
@@ -170,7 +172,7 @@ const resolveMarketplaceInstallationTarget = (
     return installationOrganization
       ? {
           state: "ready",
-          organizationId: installationOrganization.organization.id,
+          organization: backofficeOrganizationContextScope(installationOrganization.organization),
           targetScope,
         }
       : {
@@ -190,7 +192,7 @@ const resolveMarketplaceInstallationTarget = (
     };
   }
 
-  return { state: "ready", organizationId, targetScope };
+  return { state: "ready", organization: owner, targetScope };
 };
 
 export function shouldRevalidate({
@@ -275,7 +277,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   const installationOrganization =
     installationTarget.state === "ready"
       ? me.organizations.find(
-          ({ organization }) => organization.id === installationTarget.organizationId,
+          ({ organization }) => organization.id === installationTarget.organization.orgId,
         )?.organization
       : null;
   const [packageFiles, installationCollectionSource] = await Promise.all([
@@ -361,13 +363,14 @@ export async function action({ request, params, context, url }: Route.ActionArgs
   const formData = await request.formData();
   const automations = context
     .get(BackofficeWorkerContext)
-    .runtime.objects.automations.forOrg(installationTarget.organizationId).commands;
+    .runtime.objects.automations.for(installationTarget.organization).commands;
 
   try {
-    const execution = await requireBackofficeContext(request, context, {
-      kind: "org",
-      orgId: installationTarget.organizationId,
-    });
+    const execution = await requireBackofficeContext(
+      request,
+      context,
+      installationTarget.organization,
+    );
     const version = String(formData.get("version") ?? "").trim();
     if (!version) {
       return { ok: false, message: "A Marketplace version is required." };
@@ -406,12 +409,12 @@ export async function action({ request, params, context, url }: Route.ActionArgs
         version: result.version,
         scope_kind: installationTarget.targetScope.kind,
         marketplace_kind: marketplaceScope.kind,
-        organization_id: installationTarget.organizationId,
+        organization_id: installationTarget.organization.orgId,
       },
     });
     return redirect(
       buildMarketplaceInstallationPath(url.pathname, url.search, {
-        organizationId: installationTarget.organizationId,
+        organizationId: installationTarget.organization.orgId,
         installationRoot: installationRootResult.data,
         version: result.version,
       }),

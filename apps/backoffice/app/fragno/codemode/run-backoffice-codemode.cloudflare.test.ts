@@ -28,6 +28,7 @@ import type {
   BackofficeObjectRegistry,
   McpCommands,
 } from "@/backoffice-runtime/object-registry";
+import type { BackofficeRootOwnerReference } from "@/backoffice-runtime/resolved-scope";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import { createRouteBackedAutomationStoreRuntime } from "@/fragno/automation/bindings-route-runtime";
@@ -188,12 +189,16 @@ describe("runBackofficeCodemode", () => {
     const result = await runBackofficeCodemode({
       codemode,
       families: runtimeToolFamilies,
-      toolContext: toolContext.createScopedContext({ kind: "org", orgId: "org-1" }),
+      toolContext: toolContext.createScopedContext({
+        kind: "org",
+        orgId: "org-1",
+        jurisdiction: null,
+      }),
       code: `async () => await context.getCurrentScope()`,
     });
 
     expect(result.error).toBeUndefined();
-    expect(result.result).toEqual({ kind: "org", orgId: "org-1" });
+    expect(result.result).toEqual({ kind: "org", orgId: "org-1", jurisdiction: null });
     expect(result.toolCalls).toEqual([]);
   });
 
@@ -309,7 +314,7 @@ describe("runBackofficeCodemode", () => {
         return {
           accepted: true,
           eventId: "event-2",
-          scope: input.targetScope ?? { kind: "org", orgId: "org-1" },
+          scope: input.targetScope ?? { kind: "org", orgId: "org-1", jurisdiction: null },
           source: input.source ?? "telegram",
           eventType: input.eventType,
         };
@@ -333,7 +338,7 @@ describe("runBackofficeCodemode", () => {
     expect(result.result).toEqual({
       accepted: true,
       eventId: "event-2",
-      scope: { kind: "org", orgId: "org-1" },
+      scope: { kind: "org", orgId: "org-1", jurisdiction: null },
       source: "otp",
       eventType: "identity.bound",
     });
@@ -523,7 +528,7 @@ describe("runBackofficeCodemode", () => {
       runtime,
       kernel,
       execution: createBackofficeUserExecution({
-        scope: { kind: "org", orgId: "org-1" },
+        scope: { kind: "org", orgId: "org-1", jurisdiction: null },
         userId: "user-1",
       }),
     });
@@ -572,7 +577,7 @@ describe("runBackofficeCodemode", () => {
         runtime: runtime.services,
         kernel: new BackofficeKernel(runtime.services),
         execution: createBackofficeUserExecution({
-          scope: { kind: "org", orgId: "org-1" },
+          scope: { kind: "org", orgId: "org-1", jurisdiction: null },
           userId: "user-1",
         }),
       });
@@ -623,7 +628,11 @@ describe("runBackofficeCodemode", () => {
         emitter: { kind: "caller" },
         runtime: runtime.services,
         kernel,
-        execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+        execution: createBackofficeSystemExecution({
+          kind: "org",
+          orgId: "org-1",
+          jurisdiction: null,
+        }),
       });
 
       const result = await runBackofficeCodemode({
@@ -657,14 +666,14 @@ describe("runBackofficeCodemode", () => {
 
       const projectScope = {
         kind: "project" as const,
-        owner: { kind: "org" as const, orgId: "org-1" },
+        owner: { kind: "org" as const, orgId: "org-1", jurisdiction: null },
         projectId: "project-1",
       };
-      const orgScope = { kind: "org" as const, orgId: "org-1" };
+      const orgScope = { kind: "org" as const, orgId: "org-1", jurisdiction: null };
       const projectStore = createRouteBackedAutomationStoreRuntime({
         object: runtime.objects.automations.for({
           kind: "project",
-          owner: { kind: "org", orgId: "org-1" },
+          owner: { kind: "org", orgId: "org-1", jurisdiction: null },
           projectId: "project-1",
         }),
         execution: {
@@ -675,7 +684,11 @@ describe("runBackofficeCodemode", () => {
         },
       });
       const orgStore = createRouteBackedAutomationStoreRuntime({
-        object: runtime.objects.automations.forOrg("org-1"),
+        object: runtime.objects.automations.for({
+          kind: "org",
+          orgId: "org-1",
+          jurisdiction: null,
+        }),
         execution: {
           kind: "deferred" as const,
           scopeRestriction: null,
@@ -694,7 +707,7 @@ describe("runBackofficeCodemode", () => {
           binding: "AUTOMATIONS",
           scope: {
             kind: "project",
-            owner: { kind: "org" as const, orgId: "org-1" },
+            owner: { kind: "org" as const, orgId: "org-1", jurisdiction: null },
             projectId: "project-1",
           },
         }),
@@ -764,8 +777,19 @@ const createScopedMcpRuntimeServices = (
     for: (scope: BackofficeContextScope) =>
       createMcpObject(scope.kind === "system" ? "singleton" : backofficeScopePathSegment(scope)),
   };
+  // Every organization and user the handles name exists, in no jurisdiction.
+  const auth = {
+    singleton: () => ({
+      commands: {
+        findRootOwnerScope: async (owner: BackofficeRootOwnerReference) => ({
+          ...owner,
+          jurisdiction: null,
+        }),
+      },
+    }),
+  };
   const objects = new Proxy(
-    { mcp: scoped },
+    { mcp: scoped, auth },
     {
       get: (target, property) =>
         property in target

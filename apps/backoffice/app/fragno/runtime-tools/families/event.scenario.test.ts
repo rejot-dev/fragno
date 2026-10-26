@@ -57,7 +57,7 @@ test("stored event commands read scoped SQLite records with text, JSON, and curs
         then.assert(
           "events list and get preserve event details without exposing another scope",
           async (ctx) => {
-            const scope = { kind: "user", userId: "user-1" } as const;
+            const scope = { kind: "user", userId: "user-1", jurisdiction: null } as const;
             const actors = {
               initiator: AUTOMATION_SYSTEM_INITIATOR,
               principal: null,
@@ -85,11 +85,11 @@ test("stored event commands read scoped SQLite records with text, JSON, and curs
             await object.commands.ingestEvent(older);
             await object.commands.ingestEvent(newer);
             await ctx.runtime.objects.automations
-              .forUser({ userId: "user-2" })
+              .for({ kind: "user", userId: "user-2", jurisdiction: null })
               .commands.ingestEvent({
                 ...older,
                 id: "private-event",
-                scope: { kind: "user", userId: "user-2" },
+                scope: { kind: "user", userId: "user-2", jurisdiction: null },
               });
 
             const context = createRouteBackedRuntimeContext({
@@ -163,7 +163,11 @@ test("stored event commands read scoped SQLite records with text, JSON, and curs
               emitter: { kind: "caller" },
               runtime: ctx.runtime.services,
               kernel: new BackofficeKernel(ctx.runtime.services),
-              execution: createBackofficeSystemExecution({ kind: "user", userId: "empty-user" }),
+              execution: createBackofficeSystemExecution({
+                kind: "user",
+                userId: "empty-user",
+                jurisdiction: null,
+              }),
             });
             assert(emptyContext.stateBackend);
             const emptyBash = (
@@ -180,7 +184,7 @@ test("stored event commands read scoped SQLite records with text, JSON, and curs
             expect(JSON.parse(emptyJson.stdout)).toEqual({ events: [], hasNextPage: false });
 
             const codemode = await ctx.runCodemode({
-              scope: { kind: "org", orgId: "org-1" },
+              scope: { kind: "org", orgId: "org-1", jurisdiction: null },
               code: 'async () => ({ page: await context.user("user-1").events.list({ limit: 1 }), event: await context.user("user-1").events.get({ id: "newer-event" }) })',
             });
             expect(codemode.result).toMatchObject({
@@ -203,12 +207,13 @@ test("an agent reads where each route its event matched stands", async () => {
       options: { allowFailedDurableHooks: true },
       setup: ({ given }) => [
         given.organization.exists({ id: "org-1", slug: "event-tools", name: "Event tools" }),
+        given.organization.exists({ id: "org-2", slug: "elsewhere", name: "Elsewhere" }),
       ],
       steps: ({ then }) => [
         then.assert(
           "the event is matching until its routes are recorded, then shows each route",
           async (ctx) => {
-            const scope = { kind: "user", userId: "user-1" } as const;
+            const scope = { kind: "user", userId: "user-1", jurisdiction: null } as const;
             const context = createRouteBackedRuntimeContext({
               emitter: { kind: "caller" },
               runtime: ctx.runtime.services,

@@ -35,13 +35,13 @@ afterAll(async () => {
   await server?.close();
 });
 
-const scope = { kind: "org" as const, orgId: "org-1" };
+const scope = { kind: "org" as const, orgId: "org-1", jurisdiction: null };
 const webhookEventId = "github-delivery-1";
 const issueOpenedEventId = `reclassified:promote-issue-opened:${webhookEventId}`;
 
 function gitHubIssueEvent(hookId: string, issue: { number: number; title: string }) {
   return buildGitHubAutomationEvent({
-    orgId: scope.orgId,
+    scope,
     event: {
       name: "issues",
       payload: { action: "opened", issue: { id: issue.number * 100, ...issue, state: "open" } },

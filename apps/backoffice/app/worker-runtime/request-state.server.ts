@@ -46,7 +46,16 @@ export function principalFromBackofficeJwt(
   transport: "bearer" | "cookie",
 ): BackofficeAuthPrincipal {
   return {
-    user: { id: payload.sub, email: payload.email, role: payload.globalRole },
+    user: {
+      id: payload.sub,
+      email: payload.email,
+      role: payload.globalRole,
+      personalScope: payload.personal && {
+        kind: "user",
+        userId: payload.sub,
+        jurisdiction: payload.personal.jurisdiction,
+      },
+    },
     auth: {
       transport,
       scopeRestriction: payload.scopeRestriction,

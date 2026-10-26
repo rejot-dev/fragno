@@ -1,3 +1,4 @@
+import type { BackofficeOrganizationContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { createRouteCaller } from "@fragno-dev/core/api";
 import type { RouterContextProvider } from "react-router";
 
@@ -12,9 +13,9 @@ type UploadDeleteFileResult = {
 const createUploadRouteCaller = (
   request: Request,
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  organization: BackofficeOrganizationContextScope,
 ) => {
-  const uploadDo = getUploadDurableObject(context, orgId);
+  const uploadDo = getUploadDurableObject(context, organization);
   return createRouteCaller<UploadFragment>({
     baseUrl: request.url,
     mountRoute: "/api/upload",
@@ -47,12 +48,12 @@ const toByKeyQuery = (provider: string, fileKey: string) => ({
 export async function deleteUploadFile(
   request: Request,
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  organization: BackofficeOrganizationContextScope,
   provider: string,
   fileKey: string,
 ): Promise<UploadDeleteFileResult> {
   try {
-    const callRoute = createUploadRouteCaller(request, context, orgId);
+    const callRoute = createUploadRouteCaller(request, context, organization);
     const response = await callRoute("DELETE", "/files/by-key", {
       query: toByKeyQuery(provider, fileKey),
     });

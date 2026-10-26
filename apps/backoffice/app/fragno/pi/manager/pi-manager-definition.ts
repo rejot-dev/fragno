@@ -74,9 +74,10 @@ export const piManagerDefinition = defineFragment<PiManagerConfig>("pi-manager")
     }),
     deliverModelUsage: defineHook(async function (usage): Promise<void> {
       // Usage queued before owner attribution keeps its paying organization, even on retries.
+      // It predates jurisdictions, so its organization names none.
       const billing = config.billing(
         "organizationId" in usage
-          ? { kind: "org", orgId: z.string().parse(usage.organizationId) }
+          ? { kind: "org", orgId: z.string().parse(usage.organizationId), jurisdiction: null }
           : usage.event.scope,
       );
       if (billing.kind === "system") {

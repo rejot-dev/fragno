@@ -108,7 +108,7 @@ async function backofficeCookie(ctx: Ctx, session: string): Promise<string> {
 
 function automations(ctx: Ctx, path: string, init?: RequestInit) {
   return ctx.runtime.objects.automations
-    .forOrg(ctx.vars.orgId)
+    .for({ kind: "org", orgId: ctx.vars.orgId, jurisdiction: null })
     .http.fetch(new Request(`${ORIGIN}/api/automations${path}`, init));
 }
 
@@ -142,7 +142,11 @@ test("an owner retries a route that failed for good from the events page", async
             emitter: { kind: "caller" },
             runtime: ctx.runtime.services,
             kernel: new BackofficeKernel(ctx.runtime.services),
-            execution: createBackofficeSystemExecution({ kind: "org", orgId: ctx.vars.orgId }),
+            execution: createBackofficeSystemExecution({
+              kind: "org",
+              orgId: ctx.vars.orgId,
+              jurisdiction: null,
+            }),
           });
           assert(context.stateBackend);
           const { bash } = await createInteractiveBashHost({
@@ -156,18 +160,20 @@ test("an owner retries a route that failed for good from the events page", async
           };
           const created = await bash.exec(`router.create --json '${JSON.stringify(route)}'`);
           expect(created.exitCode, created.stderr).toBe(0);
-          await ctx.runtime.objects.automations.forOrg(ctx.vars.orgId).commands.ingestEvent({
-            id: EVENT_ID,
-            scopeRestriction: null,
-            scope: { kind: "org", orgId: ctx.vars.orgId },
-            source: "custom",
-            eventType: "check.requested",
-            occurredAt: "2026-01-01T00:00:00.000Z",
-            payload: {},
-            actors: { initiator: AUTOMATION_SYSTEM_INITIATOR, principal: null, delegation: [] },
-            subject: { orgId: ctx.vars.orgId },
-            causation: { kind: "origin" },
-          });
+          await ctx.runtime.objects.automations
+            .for({ kind: "org", orgId: ctx.vars.orgId, jurisdiction: null })
+            .commands.ingestEvent({
+              id: EVENT_ID,
+              scopeRestriction: null,
+              scope: { kind: "org", orgId: ctx.vars.orgId, jurisdiction: null },
+              source: "custom",
+              eventType: "check.requested",
+              occurredAt: "2026-01-01T00:00:00.000Z",
+              payload: {},
+              actors: { initiator: AUTOMATION_SYSTEM_INITIATOR, principal: null, delegation: [] },
+              subject: { orgId: ctx.vars.orgId },
+              causation: { kind: "origin" },
+            });
           await ctx.drain();
           expect(await forwardRoute(ctx)).toMatchObject({ status: "failed", failedAttempts: 1 });
         }),

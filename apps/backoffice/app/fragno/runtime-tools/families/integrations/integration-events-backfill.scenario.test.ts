@@ -55,7 +55,7 @@ const scenarioObjects = {
 } satisfies LocalBackofficeObjects;
 
 const orgId = "backfill-org";
-const scope = { kind: "org", orgId } as const;
+const scope = { kind: "org", orgId, jurisdiction: null } as const;
 
 /** Event IDs the backfill recorded, in the order the events list returns them. */
 async function backfilledEventIds(ctx: BackofficeScenarioContext) {

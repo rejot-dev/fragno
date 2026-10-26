@@ -112,6 +112,8 @@ async function signUpUser(): Promise<SignedUpUser> {
   );
   const sessionCookie = setCookieHeaders.map((header) => header.split(";", 1)[0]).join("; ");
   assert(sessionCookie);
+  // Their personal scope, which these tests authorize, exists once they have onboarded.
+  await auth.commands.applyScenarioFixture({ onboardedEmails: [email] });
   await runtime.drain();
   const organizationResponse = await authRequest(auth, "/organization/create", {
     cookie: sessionCookie,
@@ -258,7 +260,7 @@ describe("Backoffice OAuth device authorization", () => {
     const result = await signedUp.auth.commands.exchangeBackofficeExecutionToken({
       requestUrl: `${baseUrl}/api/backoffice/execution-token`,
       oauthAccessToken: oauthToken.access_token,
-      scope: { kind: "org", orgId: signedUp.organizationId },
+      scope: { kind: "org", orgId: signedUp.organizationId, jurisdiction: null },
     });
     const verification = await verifyBackofficeJwt(result.accessToken, baseUrl, signedUp.auth.http);
     assert(verification.ok);
@@ -282,7 +284,7 @@ describe("Backoffice OAuth device authorization", () => {
     const signedUp = await signUpUser();
     const oauthToken = await authorizeDevice(signedUp);
 
-    const userScope = { kind: "user" as const, userId: signedUp.user.id };
+    const userScope = { kind: "user" as const, userId: signedUp.user.id, jurisdiction: null };
     const userResult = await signedUp.auth.commands.exchangeBackofficeExecutionToken({
       requestUrl: `${baseUrl}/api/backoffice/execution-token`,
       oauthAccessToken: oauthToken.access_token,
@@ -299,7 +301,7 @@ describe("Backoffice OAuth device authorization", () => {
 
     const projectScope = {
       kind: "project" as const,
-      owner: { kind: "org" as const, orgId: signedUp.organizationId },
+      owner: { kind: "org" as const, orgId: signedUp.organizationId, jurisdiction: null },
       projectId: "project-1",
     };
     const projectResult = await signedUp.auth.commands.exchangeBackofficeExecutionToken({
@@ -314,7 +316,7 @@ describe("Backoffice OAuth device authorization", () => {
       users: [{ id: "member-1", email: "member@example.test", role: "user", status: "active" }],
       members: [{ organizationId: signedUp.organizationId, userId: "member-1", roles: ["member"] }],
     });
-    const memberScope = { kind: "user" as const, userId: "member-1" };
+    const memberScope = { kind: "user" as const, userId: "member-1", jurisdiction: null };
     const memberResult = await signedUp.auth.commands.exchangeBackofficeExecutionToken({
       requestUrl: `${baseUrl}/api/backoffice/execution-token`,
       oauthAccessToken: oauthToken.access_token,
@@ -348,7 +350,7 @@ describe("Backoffice OAuth device authorization", () => {
       signedUp.auth.commands.exchangeBackofficeExecutionToken({
         requestUrl: `${baseUrl}/api/backoffice/execution-token`,
         oauthAccessToken: oauthToken.access_token,
-        scope: { kind: "user", userId: "another-user" },
+        scope: { kind: "user", userId: "another-user", jurisdiction: null },
       }),
     ).rejects.toMatchObject({ name: "BackofficeExecutionTokenScopeError" });
     await expect(
@@ -386,7 +388,7 @@ describe("Backoffice OAuth device authorization", () => {
     const result = await signedUp.auth.commands.exchangeBackofficeExecutionToken({
       requestUrl: `${baseUrl}/api/backoffice/execution-token`,
       oauthAccessToken: refreshedToken.access_token,
-      scope: { kind: "org", orgId: signedUp.organizationId },
+      scope: { kind: "org", orgId: signedUp.organizationId, jurisdiction: null },
     });
     const verification = await verifyBackofficeJwt(result.accessToken, baseUrl, signedUp.auth.http);
     assert(verification.ok);
@@ -401,7 +403,7 @@ describe("Backoffice OAuth device authorization", () => {
       signedUp.auth.commands.exchangeBackofficeExecutionToken({
         requestUrl: `${baseUrl}/api/backoffice/execution-token`,
         oauthAccessToken: oauthToken.access_token,
-        scope: { kind: "org", orgId: signedUp.organizationId },
+        scope: { kind: "org", orgId: signedUp.organizationId, jurisdiction: null },
       }),
     ).rejects.toMatchObject({ name: "BackofficeExecutionTokenAuthenticationError" });
   });
@@ -446,7 +448,7 @@ describe("Backoffice OAuth device authorization", () => {
       signedUp.auth.commands.exchangeBackofficeExecutionToken({
         requestUrl: `${baseUrl}/api/backoffice/execution-token`,
         oauthAccessToken: oauthToken.access_token,
-        scope: { kind: "org", orgId: signedUp.organizationId },
+        scope: { kind: "org", orgId: signedUp.organizationId, jurisdiction: null },
       }),
     ).rejects.toMatchObject({ name: "BackofficeExecutionTokenAuthenticationError" });
   });
@@ -484,7 +486,7 @@ describe("Backoffice OAuth device authorization", () => {
       signedUp.auth.commands.exchangeBackofficeExecutionToken({
         requestUrl: `${baseUrl}/api/backoffice/execution-token`,
         oauthAccessToken: oauthToken.access_token,
-        scope: { kind: "org", orgId: signedUp.organizationId },
+        scope: { kind: "org", orgId: signedUp.organizationId, jurisdiction: null },
       }),
     ).rejects.toMatchObject({ name: "BackofficeExecutionTokenScopeError" });
   });
@@ -500,7 +502,7 @@ describe("Backoffice OAuth device authorization", () => {
       signedUp.auth.commands.exchangeBackofficeExecutionToken({
         requestUrl: `${baseUrl}/api/backoffice/execution-token`,
         oauthAccessToken: oauthToken.access_token,
-        scope: { kind: "org", orgId: signedUp.organizationId },
+        scope: { kind: "org", orgId: signedUp.organizationId, jurisdiction: null },
       }),
     ).rejects.toMatchObject({ name: "BackofficeExecutionTokenScopeError" });
   });

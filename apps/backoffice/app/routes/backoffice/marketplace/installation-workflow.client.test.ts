@@ -66,7 +66,10 @@ describe("Marketplace installation status visibility", () => {
         installedFolderHref: "/files",
         onClose: () => {},
         requested: true,
-        targetScope: { kind: "org", organization: { id: "org-1", slug: "acme" } },
+        targetScope: {
+          kind: "org",
+          organization: { id: "org-1", slug: "acme", jurisdiction: null },
+        },
       }),
     );
     assert(markup.includes("Workflow synchronization is unavailable."));
@@ -173,11 +176,17 @@ describe("Marketplace installation generated UI selection", () => {
     const markup = renderToStaticMarkup(
       createElement(MarketplaceInstallerGeneratedUi, {
         collectionSource: {
-          resolvedScope: { kind: "org", organization: { id: "org-1", slug: "acme" } },
+          resolvedScope: {
+            kind: "org",
+            organization: { id: "org-1", slug: "acme", jurisdiction: null },
+          },
           adapterIdentity: "adapter-1",
         },
         instance: workflowRun({ status: "complete", output: generatedUi("Complete") }),
-        targetScope: { kind: "org", organization: { id: "org-1", slug: "acme" } },
+        targetScope: {
+          kind: "org",
+          organization: { id: "org-1", slug: "acme", jurisdiction: null },
+        },
       }),
     );
 
@@ -189,11 +198,17 @@ describe("Marketplace installation generated UI selection", () => {
     const markup = renderToStaticMarkup(
       createElement(MarketplaceInstallerGeneratedUi, {
         collectionSource: {
-          resolvedScope: { kind: "org", organization: { id: "org-1", slug: "acme" } },
+          resolvedScope: {
+            kind: "org",
+            organization: { id: "org-1", slug: "acme", jurisdiction: null },
+          },
           adapterIdentity: "adapter-1",
         },
         instance: workflowRun({ status: "complete", output: { installed: true } }),
-        targetScope: { kind: "org", organization: { id: "org-1", slug: "acme" } },
+        targetScope: {
+          kind: "org",
+          organization: { id: "org-1", slug: "acme", jurisdiction: null },
+        },
       }),
     );
 

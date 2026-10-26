@@ -1,4 +1,7 @@
-import type { PackageInstallation } from "@fragno-dev/backoffice-api/v0/marketplace";
+import {
+  marketplaceScopeSchema,
+  type PackageInstallation,
+} from "@fragno-dev/backoffice-api/v0/marketplace";
 
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 
@@ -37,7 +40,8 @@ type PackageInstallationRow = {
 
 function packageInstallationFromRow(row: PackageInstallationRow): PackageInstallation {
   return {
-    marketplace: row.marketplace,
+    // Installations recorded before jurisdictions name none for their Marketplace's organization.
+    marketplace: marketplaceScopeSchema.parse(row.marketplace),
     listingId: row.id.externalId,
     version: row.version,
     installationRoot: row.installationRoot,

@@ -9,6 +9,7 @@ import { InMemoryAdapter } from "@fragno-dev/db";
 import { drainDurableHooks } from "@fragno-dev/test";
 
 import { BACKOFFICE_SYSTEM_ACTORS } from "@/backoffice-runtime/context";
+import type { BackofficeRootOwnerReference } from "@/backoffice-runtime/resolved-scope";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 
 import { SYSTEM_STARTER_AUTOMATION_ROUTES } from "./content/starter-routing";
@@ -39,7 +40,7 @@ const createAutomation = async (
         sendEvent: async () => ({}),
       } as unknown as AutomationWorkflowsService),
   };
-  const ownerScope = options.ownerScope ?? { kind: "org", orgId: "org_123" };
+  const ownerScope = options.ownerScope ?? { kind: "org", orgId: "org_123", jurisdiction: null };
   const sourceReader = createTestAutomationSourceReader(options.workflowFiles ?? {});
 
   return createAutomationFragment(
@@ -99,6 +100,18 @@ let fragment: Awaited<ReturnType<typeof createAutomation>>;
 beforeEach(async () => {
   fragment = await createAutomation();
 });
+
+// Every organization and user these routes forward to exists in Auth, in no jurisdiction.
+const existingRootOwners = {
+  singleton: () => ({
+    commands: {
+      findRootOwnerScope: async (owner: BackofficeRootOwnerReference) => ({
+        ...owner,
+        jurisdiction: null,
+      }),
+    },
+  }),
+};
 
 describe("automation routes /routes", () => {
   test("seeds no starter routes in organization scope", async () => {
@@ -301,12 +314,13 @@ describe("automation routes /routes", () => {
     const forwardedEvents: AutomationEvent[] = [];
     const runtime = {
       objects: {
+        auth: existingRootOwners,
         automations: {
           for: (scope: AutomationEvent["scope"]) => ({
             commands: {
               ingestEvent: async (event: AutomationEvent) => {
                 forwardedEvents.push(event);
-                expect(scope).toEqual({ kind: "org", orgId: "org_123" });
+                expect(scope).toEqual({ kind: "org", orgId: "org_123", jurisdiction: null });
                 return {
                   accepted: true,
                   eventId: event.id,
@@ -365,7 +379,7 @@ describe("automation routes /routes", () => {
     expect(forwardedEvents).toEqual([
       expect.objectContaining({
         id: "custom:ready:org_123",
-        scope: { kind: "org", orgId: "org_123" },
+        scope: { kind: "org", orgId: "org_123", jurisdiction: null },
         source: "custom",
         eventType: "ready",
       }),
@@ -376,12 +390,13 @@ describe("automation routes /routes", () => {
     const ingestEvent = async () => ({
       accepted: true,
       eventId: "unexpected",
-      scope: { kind: "org", orgId: "org_999" } as const,
+      scope: { kind: "org", orgId: "org_999", jurisdiction: null } as const,
       source: "custom",
       eventType: "ready",
     });
     const runtime = {
       objects: {
+        auth: existingRootOwners,
         automations: {
           for: () => ({ commands: { ingestEvent } }),
         },
@@ -412,7 +427,7 @@ describe("automation routes /routes", () => {
       fragment.services.ingestEvent({
         id: "custom:ready:org_123",
         scopeRestriction: null,
-        scope: { kind: "org", orgId: "org_123" },
+        scope: { kind: "org", orgId: "org_123", jurisdiction: null },
         source: "custom",
         eventType: "ready",
         occurredAt: "2026-01-01T00:00:00.000Z",
@@ -468,13 +483,14 @@ describe("automation routes /routes", () => {
   test("forward event routes fail when the target scope template is empty", async () => {
     const runtime = {
       objects: {
+        auth: existingRootOwners,
         automations: {
           for: () => ({
             commands: {
               ingestEvent: async () => ({
                 accepted: true,
                 eventId: "unexpected",
-                scope: { kind: "org", orgId: "unexpected" },
+                scope: { kind: "org", orgId: "unexpected", jurisdiction: null },
                 source: "custom",
                 eventType: "ready",
               }),
@@ -588,7 +604,7 @@ describe("automation routes /routes", () => {
     const event: AutomationEvent = {
       id: "thing-1",
       scopeRestriction: null,
-      scope: { kind: "org", orgId: "org_123" },
+      scope: { kind: "org", orgId: "org_123", jurisdiction: null },
       source: "custom",
       eventType: "thing.happened",
       occurredAt: "2026-01-01T00:00:00.000Z",
@@ -667,7 +683,7 @@ describe("automation routes /routes", () => {
     const event: AutomationEvent = {
       id: "signal-1",
       scopeRestriction: null,
-      scope: { kind: "org", orgId: "org_123" },
+      scope: { kind: "org", orgId: "org_123", jurisdiction: null },
       source: "custom",
       eventType: "signal.received",
       occurredAt: "2026-01-01T00:00:00.000Z",
@@ -702,7 +718,7 @@ describe("automation routes /events", () => {
       fragment.services.ingestEvent({
         id: "event-list-1",
         scopeRestriction: null,
-        scope: { kind: "org", orgId: "org_123" },
+        scope: { kind: "org", orgId: "org_123", jurisdiction: null },
         source: "custom",
         eventType: "ready",
         occurredAt: "2026-01-01T00:00:00.000Z",
@@ -735,7 +751,7 @@ describe("automation routes /events", () => {
               delegation: [],
             },
             scopeRestriction: null,
-            scope: { kind: "org", orgId: "org_123" },
+            scope: { kind: "org", orgId: "org_123", jurisdiction: null },
             subject: { orgId: "org_123" },
           }),
         ],
@@ -750,7 +766,7 @@ describe("automation routes /events", () => {
         fragment.services.ingestEvent({
           id,
           scopeRestriction: null,
-          scope: { kind: "org", orgId: "org_123" },
+          scope: { kind: "org", orgId: "org_123", jurisdiction: null },
           source: "custom",
           eventType: "ready",
           occurredAt: `2026-01-01T00:00:0${id.slice(-1)}.000Z`,
@@ -799,7 +815,7 @@ describe("automation routes /events", () => {
         fragment.services.ingestEvent({
           id: "event-invalid-timestamp",
           scopeRestriction: null,
-          scope: { kind: "org", orgId: "org_123" },
+          scope: { kind: "org", orgId: "org_123", jurisdiction: null },
           source: "custom",
           eventType: "ready",
           occurredAt: "not-a-timestamp",
@@ -1003,7 +1019,7 @@ describe("automation routes /projects", () => {
     const projectOwnedFragment = await createAutomation({
       ownerScope: {
         kind: "project",
-        owner: { kind: "org", orgId: "org_123" },
+        owner: { kind: "org", orgId: "org_123", jurisdiction: null },
         projectId: "project_123",
       },
     });

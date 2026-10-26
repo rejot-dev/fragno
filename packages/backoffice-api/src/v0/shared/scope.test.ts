@@ -1,6 +1,7 @@
 import { describe, expect, test, assert } from "vitest";
 
 import {
+  type BackofficeContextScope,
   backofficeContextScopeSchema,
   backofficeScopeContains,
   backofficeScopeIdCodec,
@@ -21,7 +22,7 @@ describe("Backoffice scopes", () => {
     assert(
       !backofficeRoutableScopeSchema.safeParse({
         kind: "project",
-        owner: { kind: "org", orgId: "org-1" },
+        owner: { kind: "org", orgId: "org-1", jurisdiction: null },
         projectId: "project-1",
         ignored: true,
       }).success,
@@ -30,25 +31,56 @@ describe("Backoffice scopes", () => {
     assert(!backofficeContextScopeSchema.safeParse({ kind: "user", userId: "" }).success);
   });
 
+  test("scopes stored before jurisdictions existed name none", () => {
+    const stored = { kind: "org", orgId: "org-1" };
+    expect(backofficeContextScopeSchema.parse(stored)).toEqual({
+      kind: "org",
+      orgId: "org-1",
+      jurisdiction: null,
+    });
+    // Read without parsing, such as from a queued event, it still names the objects it did.
+    assert(backofficeScopePathSegment(stored as BackofficeContextScope) === "org:org-1");
+  });
+
   test.each([
     [{ kind: "system" } as const, "system"],
-    [{ kind: "org", orgId: "user:alice" } as const, "org:user%3Aalice"],
-    [{ kind: "user", userId: "alice" } as const, "user:alice"],
+    [{ kind: "org", orgId: "user:alice", jurisdiction: null } as const, "org:user%3Aalice"],
+    [{ kind: "user", userId: "alice", jurisdiction: null } as const, "user:alice"],
     [
-      { kind: "project", owner: { kind: "org", orgId: "org:1" }, projectId: "p/2" } as const,
+      {
+        kind: "project",
+        owner: { kind: "org", orgId: "org:1", jurisdiction: null },
+        projectId: "p/2",
+      } as const,
       "project:org:org%3A1:p%2F2",
     ],
     [
-      { kind: "app", owner: { kind: "user", userId: "alice" }, appId: "app:1" } as const,
+      {
+        kind: "app",
+        owner: { kind: "user", userId: "alice", jurisdiction: null },
+        appId: "app:1",
+      } as const,
       "app:user:alice:app%3A1",
     ],
     [
       {
         kind: "project",
-        owner: { kind: "app", owner: { kind: "org", orgId: "acme" }, appId: "books" },
+        owner: {
+          kind: "app",
+          owner: { kind: "org", orgId: "acme", jurisdiction: null },
+          appId: "books",
+        },
         projectId: "ledger",
       } as const,
       "project:app:org:acme:books:ledger",
+    ],
+    [
+      {
+        kind: "project",
+        owner: { kind: "user", userId: "a@b", jurisdiction: "eu" },
+        projectId: "ledger",
+      } as const,
+      "project:user:a%40b@eu:ledger",
     ],
   ])("round-trips path segments with encoded delimiters for %#", (scope, segment) => {
     expect(backofficeScopePathSegment(scope)).toBe(segment);
@@ -57,18 +89,38 @@ describe("Backoffice scopes", () => {
 
   test.each([
     [{ kind: "system" } as const, "system/system"],
-    [{ kind: "org", orgId: "user:alice" } as const, "org/user%253Aalice"],
+    [{ kind: "org", orgId: "user:alice", jurisdiction: null } as const, "org/user%253Aalice"],
     [
-      { kind: "project", owner: { kind: "org", orgId: "org-1" }, projectId: "p-2" } as const,
+      {
+        kind: "project",
+        owner: { kind: "org", orgId: "org-1", jurisdiction: null },
+        projectId: "p-2",
+      } as const,
       "project/org:org-1:p-2",
     ],
     [
-      { kind: "project", owner: { kind: "org", orgId: "org:1" }, projectId: "p/2" } as const,
+      {
+        kind: "project",
+        owner: { kind: "org", orgId: "org:1", jurisdiction: null },
+        projectId: "p/2",
+      } as const,
       "project/org:org%253A1:p%252F2",
     ],
     [
-      { kind: "app", owner: { kind: "org", orgId: "acme" }, appId: "books" } as const,
+      {
+        kind: "app",
+        owner: { kind: "org", orgId: "acme", jurisdiction: null },
+        appId: "books",
+      } as const,
       "app/org:acme:books",
+    ],
+    [
+      {
+        kind: "app",
+        owner: { kind: "org", orgId: "a@b", jurisdiction: "us" },
+        appId: "books",
+      } as const,
+      "app/org:a%2540b@us:books",
     ],
   ])("round-trips route paths through once-decoded route params for %#", (scope, path) => {
     expect(formatBackofficeScopeRoutePath(scope, backofficeScopeIdCodec)).toBe(path);
@@ -101,6 +153,12 @@ describe("Backoffice scopes", () => {
     expect(() => parseBackofficeScopePathSegment("app:app:org:org-1:books:other")).toThrow(
       "App scope cannot own an app.",
     );
+    expect(() => parseBackofficeScopePathSegment("org:org-1@mars")).toThrow(
+      "Unknown jurisdiction 'mars'.",
+    );
+    expect(() => parseBackofficeScopePathSegment("org:org-1@eu@us")).toThrow(
+      "Invalid org id jurisdiction.",
+    );
     expect(() => parseBackofficeScopePathSegment("app")).toThrow(
       "App scope requires an owner scope.",
     );
@@ -121,17 +179,17 @@ describe("Backoffice scopes", () => {
   });
 
   test("a restriction contains its own scope and the projects it owns", () => {
-    const acme = { kind: "org", orgId: "acme" } as const;
+    const acme = { kind: "org", orgId: "acme", jurisdiction: null } as const;
     const website = { kind: "project", owner: acme, projectId: "website" } as const;
     assert(backofficeScopeContains(acme, website));
     assert(backofficeScopeContains(website, website));
     assert(!backofficeScopeContains(website, acme));
-    assert(!backofficeScopeContains({ kind: "org", orgId: "beta" }, website));
-    assert(!backofficeScopeContains({ kind: "user", userId: "acme" }, website));
+    assert(!backofficeScopeContains({ kind: "org", orgId: "beta", jurisdiction: null }, website));
+    assert(!backofficeScopeContains({ kind: "user", userId: "acme", jurisdiction: null }, website));
   });
 
   test("an organization contains neither its apps' workspaces nor their projects", () => {
-    const acme = { kind: "org", orgId: "acme" } as const;
+    const acme = { kind: "org", orgId: "acme", jurisdiction: null } as const;
     const books = { kind: "app", owner: acme, appId: "books" } as const;
     const ledger = { kind: "project", owner: books, projectId: "ledger" } as const;
     assert(!backofficeScopeContains(acme, books));
@@ -140,7 +198,7 @@ describe("Backoffice scopes", () => {
   });
 
   test("follows owner chains to the organization or user that answers for a scope", () => {
-    const alice = { kind: "user", userId: "alice" } as const;
+    const alice = { kind: "user", userId: "alice", jurisdiction: null } as const;
     const ledger = {
       kind: "project",
       owner: { kind: "app", owner: alice, appId: "books" },
@@ -154,11 +212,12 @@ describe("Backoffice scopes", () => {
   test("renames a project's owner along with the project", () => {
     const website = {
       kind: "project",
-      owner: { kind: "org", orgId: "org-1" },
+      owner: { kind: "org", orgId: "org-1", jurisdiction: null },
       projectId: "project-1",
     } as const;
     const renamed = mapBackofficeScopeNames(website, {
       organization: ({ orgId }) => ({ orgSlug: `slug-of-${orgId}` }),
+      user: ({ userId }) => ({ userId }),
       project: ({ projectId }) => ({ projectSlug: `slug-of-${projectId}` }),
     });
     expect(renamed).toEqual({

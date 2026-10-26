@@ -6,6 +6,8 @@ import {
 import {
   type BackofficeContextScope,
   backofficeContextScopeSchema,
+  type BackofficeUserContextScope,
+  backofficeJurisdictionSchema,
   backofficeAppScopeSchema,
   backofficeOrganizationScopeSchema,
   backofficeProjectScopeSchema,
@@ -15,6 +17,8 @@ import {
 import { signJWT } from "better-auth/plugins/jwt";
 import { createLocalJWKSet, errors, jwtVerify, type JSONWebKeySet } from "jose";
 import { z } from "zod";
+
+import type { BackofficeTokenOrganization } from "./contracts";
 
 export const ACCESS_TOKEN_ISSUER = BACKOFFICE_TOKEN_ISSUER;
 export const ACCESS_TOKEN_AUDIENCE = "fragno-backoffice";
@@ -28,11 +32,14 @@ export const backofficeJwtPayloadSchema = z.object({
   sub: z.string().min(1),
   email: z.email(),
   globalRole: z.enum(["user", "admin"]),
+  // Null until onboarding creates the personal workspace and fixes where it is kept.
+  personal: z.object({ jurisdiction: backofficeJurisdictionSchema.nullable() }).nullable(),
   scopeRestriction: backofficeContextScopeSchema.nullable(),
   organization: z
     .object({
       id: z.string().min(1),
       slug: z.string().min(1),
+      jurisdiction: backofficeJurisdictionSchema.nullable(),
       roles: z.array(z.string().min(1)),
     })
     .nullable(),
@@ -188,14 +195,16 @@ export const issueBackofficeJwt = async (
     userId: string;
     email: string;
     globalRole: "user" | "admin";
+    personalScope: BackofficeUserContextScope | null;
     scopeRestriction: BackofficeContextScope | null;
-    organization: { id: string; slug: string; roles: string[] } | null;
+    organization: BackofficeTokenOrganization | null;
   },
 ): Promise<{ token: string; expiresAt: Date }> =>
   await signBackofficeAccessToken(context, ACCESS_TOKEN_AUDIENCE, {
     sub: authority.userId,
     email: authority.email,
     globalRole: authority.globalRole,
+    personal: authority.personalScope && { jurisdiction: authority.personalScope.jurisdiction },
     scopeRestriction: authority.scopeRestriction,
     organization: authority.organization,
   });

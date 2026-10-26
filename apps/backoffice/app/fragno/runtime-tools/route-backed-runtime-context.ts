@@ -115,10 +115,8 @@ const unavailableRuntime = <T>(message: string): T =>
   ) as T;
 
 // Organization internals are reachable from the organization's own workspaces only.
-const ownerOrgScope = (execution: BackofficeExecutionContext): { orgId: string } | null => {
-  const organization = backofficeWorkspaceOrganization(execution.scope);
-  return organization ? { orgId: organization.orgId } : null;
-};
+const ownerOrgScope = (execution: BackofficeExecutionContext) =>
+  backofficeWorkspaceOrganization(execution.scope);
 
 const selectedOrgScope = (
   execution: BackofficeExecutionContext,
@@ -310,8 +308,8 @@ export const createRouteBackedRuntimeContext = ({
               resend: runtime.config.bindings.resend
                 ? runtime.objects.resend.singleton().commands
                 : null,
-              automationsForOrg: (organizationId) =>
-                runtime.objects.automations.forOrg(organizationId).commands,
+              automationsFor: (organization) =>
+                runtime.objects.automations.for(organization).commands,
               publicBaseUrl: runtime.config.docsPublicBaseUrl ?? null,
             }),
           }
@@ -337,6 +335,8 @@ export const createRouteBackedRuntimeContext = ({
               : null;
           })()
         : null,
+    resolveRootOwner: async (owner) =>
+      await runtime.objects.auth.singleton().commands.findRootOwnerScope(owner),
     createBackofficeScopedContext: (scope) => {
       kernel.assertScopedContextAccess(execution, scope);
       return createRouteBackedRuntimeContext({
@@ -395,8 +395,9 @@ export const createRouteBackedRuntimeContext = ({
               kernel,
               execution,
               preferredOrganizationId:
-                ("userAuthority" in execution ? execution.userAuthority?.organizationId : null) ??
-                null,
+                execution.kind === "request"
+                  ? (execution.userAuthority.organization?.orgId ?? null)
+                  : null,
               piManagerAvailable: runtime.config.bindings.piManager,
             }),
           }
@@ -500,7 +501,7 @@ export const createRouteBackedRuntimeContext = ({
           runtime: createRouteBackedDurableHooksRuntime({
             objects: runtime.objects,
             config: runtime.config,
-            orgId: org.orgId,
+            organization: org,
           }),
         }
       : null,
@@ -521,7 +522,7 @@ export const createRouteBackedRuntimeContext = ({
       ? {
           runtime: createInternalRuntime({
             objects: runtime.objects,
-            scope: { kind: "org", orgId: org.orgId },
+            scope: org,
           }),
         }
       : null,

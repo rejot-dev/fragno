@@ -94,7 +94,7 @@ describe("Marketplace discovery runtime scenarios", () => {
               let emptyCandidatePage = false;
               do {
                 const run = await ctx.runCodemode({
-                  scope: { kind: "org", orgId: "org-1" },
+                  scope: { kind: "org", orgId: "org-1", jurisdiction: null },
                   code: `async () => await marketplace.search(${JSON.stringify({ query: "ACCOUNTING daily", pageSize: 1, ...(cursor ? { cursor } : {}) })})`,
                   assertToolCalls: ["marketplace.search"],
                 });
@@ -110,7 +110,7 @@ describe("Marketplace discovery runtime scenarios", () => {
                 .singleton()
                 .commands.insertStaticEntries({ entries: [{ ...REPORT, version: "1.1.0" }] });
               const run = await ctx.runCodemode({
-                scope: { kind: "user", userId: "reader-1" },
+                scope: { kind: "user", userId: "reader-1", jurisdiction: null },
                 code: 'async () => await marketplace.view({ listingId: "system#finance-report", versionPageSize: 1 })',
                 assertToolCalls: ["marketplace.view"],
               });
@@ -122,7 +122,7 @@ describe("Marketplace discovery runtime scenarios", () => {
               });
               assert(detail.nextVersionCursor);
               const next = await ctx.runCodemode({
-                scope: { kind: "org", orgId: "org-1" },
+                scope: { kind: "org", orgId: "org-1", jurisdiction: null },
                 code: `async () => await marketplace.view(${JSON.stringify({ listingId: "system#finance-report", versionCursor: detail.nextVersionCursor })})`,
               });
               expect(next.result).toMatchObject({
@@ -131,13 +131,13 @@ describe("Marketplace discovery runtime scenarios", () => {
               });
               await expect(
                 ctx.runCodemode({
-                  scope: { kind: "org", orgId: "org-1" },
+                  scope: { kind: "org", orgId: "org-1", jurisdiction: null },
                   code: 'async () => await marketplace.view({ listingId: "system#finance-draft" })',
                 }),
               ).rejects.toThrow("was not found");
               await expect(
                 ctx.runCodemode({
-                  scope: { kind: "org", orgId: "org-1" },
+                  scope: { kind: "org", orgId: "org-1", jurisdiction: null },
                   code: 'async () => await marketplace.search({ query: "finance", cursor: "invalid" })',
                 }),
               ).rejects.toThrow("cursor is invalid");
@@ -164,7 +164,11 @@ describe("Marketplace discovery runtime scenarios", () => {
                 emitter: { kind: "caller" },
                 runtime: ctx.runtime.services,
                 kernel: new BackofficeKernel(ctx.runtime.services),
-                execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                execution: createBackofficeSystemExecution({
+                  kind: "org",
+                  orgId: "org-1",
+                  jurisdiction: null,
+                }),
               }),
             });
             const search = await bash.exec(

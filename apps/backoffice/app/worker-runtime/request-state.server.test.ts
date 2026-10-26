@@ -18,12 +18,13 @@ const authenticatedPayload: BackofficeJwtPayload = {
   sub: "user-1",
   email: "user@example.com",
   globalRole: "admin",
-  organization: { id: "org-1", slug: "acme", roles: ["owner"] },
+  organization: { id: "org-1", slug: "acme", jurisdiction: null, roles: ["owner"] },
   iss: "fragno-backoffice-auth",
   aud: "fragno-backoffice",
   iat: 1_788_192_000,
   exp: 1_788_192_900,
   jti: "request-state-test",
+  personal: { jurisdiction: null },
 };
 
 const authenticatedMe: BackofficeMeData = {
@@ -36,6 +37,8 @@ const authenticatedMe: BackofficeMeData = {
     banned: false,
     createdAt: new Date("2026-09-01T00:00:00.000Z"),
     updatedAt: new Date("2026-09-01T00:00:00.000Z"),
+    jurisdiction: null,
+    onboardedAt: new Date("2026-01-01T00:00:00.000Z"),
   },
   organizations: [],
   activeOrganizationId: null,
@@ -156,11 +159,11 @@ describe("Backoffice request state", () => {
     );
     const firstScope = {
       kind: "org" as const,
-      organization: { id: "org-1", slug: "acme" },
+      organization: { id: "org-1", slug: "acme", jurisdiction: null },
     };
     const equivalentScope = {
       kind: "org" as const,
-      organization: { id: "org-1", slug: "renamed-acme" },
+      organization: { id: "org-1", slug: "renamed-acme", jurisdiction: null },
     };
 
     const first = state.getAutomationReplicaSource(firstScope);
@@ -181,7 +184,7 @@ describe("Backoffice request state", () => {
       new Request("https://backoffice.example/backoffice/dashboard"),
       dependencies,
     );
-    const organization = { id: "org-1", slug: "acme" };
+    const organization = { id: "org-1", slug: "acme", jurisdiction: null };
 
     await Promise.all([
       state.getAutomationReplicaSource({ kind: "org", organization }),
@@ -209,6 +212,7 @@ describe("Backoffice request state", () => {
     const resolvedScope = {
       kind: "user" as const,
       userId: "user-1",
+      jurisdiction: null,
     };
 
     const first = state.getAutomationReplicaSource(resolvedScope);
@@ -230,7 +234,7 @@ describe("Backoffice request state", () => {
     const firstState = createBackofficeRequestState(request, dependencies);
     const secondState = createBackofficeRequestState(request, dependencies);
 
-    const resolvedScope = { kind: "user" as const, userId: "user-1" };
+    const resolvedScope = { kind: "user" as const, userId: "user-1", jurisdiction: null };
     await Promise.all([
       firstState.getBackofficeMe(),
       secondState.getBackofficeMe(),

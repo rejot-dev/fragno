@@ -5,6 +5,7 @@ import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import {
   backofficeScopeOrganization,
+  type BackofficeOrganizationContextScope,
   type BackofficeRoutableScope,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
@@ -153,8 +154,8 @@ const TELEGRAM_TEST_COMMAND_PERMISSIONS = bundledMarketplacePermissions({
 async function submitTelegramTestCommandInstaller(
   ctx: BackofficeScenarioContext,
   targetScope:
-    | { kind: "org"; orgId: string }
-    | { kind: "project"; owner: { kind: "org"; orgId: string }; projectId: string },
+    | BackofficeOrganizationContextScope
+    | { kind: "project"; owner: BackofficeOrganizationContextScope; projectId: string },
 ) {
   const coordinator = backofficeScopeOrganization(targetScope);
   const ingestionInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
@@ -210,7 +211,7 @@ function githubPullRequestWebhookEvent(action: "opened" | "synchronize"): Automa
   return {
     id: `github:pull-request:${action}:delivery-1`,
     scopeRestriction: null,
-    scope: { kind: "org", orgId: "org-1" },
+    scope: { kind: "org", orgId: "org-1", jurisdiction: null },
     source: "github",
     eventType: "webhook.received",
     occurredAt: "2026-08-24T12:00:00.000Z",
@@ -505,9 +506,17 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           }),
           runner.drain(),
           then.assert("request both channel installations", async (ctx) => {
-            const automations = ctx.runtime.objects.automations.forOrg("org-1");
+            const automations = ctx.runtime.objects.automations.for({
+              kind: "org",
+              orgId: "org-1",
+              jurisdiction: null,
+            });
             const execution = {
-              execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+              execution: createBackofficeSystemExecution({
+                kind: "org",
+                orgId: "org-1",
+                jurisdiction: null,
+              }),
               propagationContext: null,
             };
 
@@ -518,7 +527,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                   installationRoot: "/workspace",
                   listingId: telegramChannelListingId,
                   version: "2.1.0",
-                  targetScope: { kind: "org", orgId: "org-1" },
+                  targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
                   permissions: bundledMarketplacePermissions({
                     slug: "telegram-channel",
                     version: "2.1.0",
@@ -534,7 +543,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                   installationRoot: "/workspace",
                   listingId: githubChannelListingId,
                   version: "1.2.0",
-                  targetScope: { kind: "org", orgId: "org-1" },
+                  targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
                   permissions: bundledMarketplacePermissions({
                     slug: "github-channel",
                     version: "1.2.0",
@@ -546,7 +555,11 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           }),
           runner.drain(),
           then.assert("both channels manage their declared routes and events", async (ctx) => {
-            const automations = ctx.runtime.objects.automations.forOrg("org-1");
+            const automations = ctx.runtime.objects.automations.for({
+              kind: "org",
+              orgId: "org-1",
+              jurisdiction: null,
+            });
             const expectedRoutes = [
               ["telegram-start-linking", telegramChannelListingId],
               ["telegram-identity-claim-completed", telegramChannelListingId],
@@ -599,7 +612,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           when.automation.ingestEvent(githubPullRequestWebhookEvent("synchronize")),
           runner.drain(),
           then.automation.event({
-            scope: { kind: "org", orgId: "org-1" },
+            scope: { kind: "org", orgId: "org-1", jurisdiction: null },
             where: { source: "github", eventType: "pull_request.opened" },
             expected: {
               payload: {
@@ -619,7 +632,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             },
           }),
           then.automation.event({
-            scope: { kind: "org", orgId: "org-1" },
+            scope: { kind: "org", orgId: "org-1", jurisdiction: null },
             where: { source: "github", eventType: "pull_request.synchronize" },
             expected: {
               payload: {
@@ -663,7 +676,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
         ],
         steps: ({ when, then, runner }) => [
           when.project.create({
-            owner: { kind: "org", orgId: "org-1" },
+            owner: { kind: "org", orgId: "org-1", jurisdiction: null },
             slug: "telegram-project",
             name: "Telegram Project",
             createdByUserId: "user-1",
@@ -679,15 +692,27 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           then.assert("request project and personal installations", async (ctx) => {
             const projectId = ctx.vars.projectId;
             assert(typeof projectId === "string");
-            const automations = ctx.runtime.objects.automations.forOrg("org-1");
+            const automations = ctx.runtime.objects.automations.for({
+              kind: "org",
+              orgId: "org-1",
+              jurisdiction: null,
+            });
             const execution = {
-              execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+              execution: createBackofficeSystemExecution({
+                kind: "org",
+                orgId: "org-1",
+                jurisdiction: null,
+              }),
               propagationContext: null,
             };
 
             for (const targetScope of [
-              { kind: "project", owner: { kind: "org" as const, orgId: "org-1" }, projectId },
-              { kind: "user", userId: "user-1" },
+              {
+                kind: "project",
+                owner: { kind: "org" as const, orgId: "org-1", jurisdiction: null },
+                projectId,
+              },
+              { kind: "user", userId: "user-1", jurisdiction: null },
             ] as const) {
               await expect(
                 automations.commands.requestMarketplaceIngestion(
@@ -713,8 +738,12 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             assert(typeof projectId === "string");
 
             for (const targetScope of [
-              { kind: "project", owner: { kind: "org" as const, orgId: "org-1" }, projectId },
-              { kind: "user", userId: "user-1" },
+              {
+                kind: "project",
+                owner: { kind: "org" as const, orgId: "org-1", jurisdiction: null },
+                projectId,
+              },
+              { kind: "user", userId: "user-1", jurisdiction: null },
             ] as const) {
               await expect(
                 readPackageInstallation(ctx, {
@@ -763,7 +792,11 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           }),
 
           then.assert("organization and project ingestions are requested", async (ctx) => {
-            const automations = ctx.runtime.objects.automations.forOrg("org-1");
+            const automations = ctx.runtime.objects.automations.for({
+              kind: "org",
+              orgId: "org-1",
+              jurisdiction: null,
+            });
             const projectResponse = await automations.http.fetch(
               new Request("https://automations.test/api/automations/projects?orgId=org-1", {
                 method: "POST",
@@ -789,11 +822,15 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                   installationRoot: "/workspace",
                   listingId,
                   version: "2.0.0",
-                  targetScope: { kind: "org", orgId: "org-1" },
+                  targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
                   permissions: TELEGRAM_TEST_COMMAND_PERMISSIONS,
                 },
                 {
-                  execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                  execution: createBackofficeSystemExecution({
+                    kind: "org",
+                    orgId: "org-1",
+                    jurisdiction: null,
+                  }),
                   propagationContext: null,
                 },
               ),
@@ -807,13 +844,17 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                   version: "2.0.0",
                   targetScope: {
                     kind: "project",
-                    owner: { kind: "org" as const, orgId: "org-1" },
+                    owner: { kind: "org" as const, orgId: "org-1", jurisdiction: null },
                     projectId: project.id,
                   },
                   permissions: TELEGRAM_TEST_COMMAND_PERMISSIONS,
                 },
                 {
-                  execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                  execution: createBackofficeSystemExecution({
+                    kind: "org",
+                    orgId: "org-1",
+                    jurisdiction: null,
+                  }),
                   propagationContext: null,
                 },
               ),
@@ -824,10 +865,14 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
           runner.drain(),
           then.assert("each installer receives its reply message", async (ctx) => {
-            await submitTelegramTestCommandInstaller(ctx, { kind: "org", orgId: "org-1" });
+            await submitTelegramTestCommandInstaller(ctx, {
+              kind: "org",
+              orgId: "org-1",
+              jurisdiction: null,
+            });
             await submitTelegramTestCommandInstaller(ctx, {
               kind: "project",
-              owner: { kind: "org" as const, orgId: "org-1" },
+              owner: { kind: "org" as const, orgId: "org-1", jurisdiction: null },
               projectId: String(ctx.vars.projectId),
             });
           }),
@@ -837,10 +882,10 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             "each destination has independent successful ingestion state",
             async (ctx) => {
               for (const targetScope of [
-                { kind: "org" as const, orgId: "org-1" },
+                { kind: "org" as const, orgId: "org-1", jurisdiction: null },
                 {
                   kind: "project" as const,
-                  owner: { kind: "org" as const, orgId: "org-1" },
+                  owner: { kind: "org" as const, orgId: "org-1", jurisdiction: null },
                   projectId: String(ctx.vars.projectId),
                 },
               ]) {
@@ -897,7 +942,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
       marketplace: { kind: "system" },
       installationRoot: "/workspace",
-      targetScope: { kind: "org", orgId: "org-1" },
+      targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
       listingId: MARKETPLACE_LISTING_ID,
       version: "2.0.0",
     });
@@ -919,18 +964,22 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               runner.drain(),
               then.assert("request Marketplace ingestion", async (ctx) => {
                 await ctx.runtime.objects.automations
-                  .forOrg("org-1")
+                  .for({ kind: "org", orgId: "org-1", jurisdiction: null })
                   .commands.requestMarketplaceIngestion(
                     {
                       marketplace: { kind: "system" },
                       installationRoot: "/workspace",
                       listingId: MARKETPLACE_LISTING_ID,
                       version: "2.0.0",
-                      targetScope: { kind: "org", orgId: "org-1" },
+                      targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
                       permissions: TELEGRAM_TEST_COMMAND_PERMISSIONS,
                     },
                     {
-                      execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                      execution: createBackofficeSystemExecution({
+                        kind: "org",
+                        orgId: "org-1",
+                        jurisdiction: null,
+                      }),
                       propagationContext: null,
                     },
                   );
@@ -950,9 +999,17 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 "the installer failed at the delegated capability boundary",
                 async (ctx) => {
                   const workflows = createWorkflowsRouteCaller({
-                    object: ctx.runtime.objects.automations.forOrg("org-1"),
+                    object: ctx.runtime.objects.automations.for({
+                      kind: "org",
+                      orgId: "org-1",
+                      jurisdiction: null,
+                    }),
                     context: {
-                      execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                      execution: createBackofficeSystemExecution({
+                        kind: "org",
+                        orgId: "org-1",
+                        jurisdiction: null,
+                      }),
                       propagationContext: null,
                     },
                   });
@@ -982,12 +1039,12 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
       marketplace: { kind: "system" },
       installationRoot: "/workspace",
-      targetScope: { kind: "org", orgId: "org-1" },
+      targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
       listingId: MARKETPLACE_LISTING_ID,
       version: "2.0.0",
     });
     const installerExecution = createBackofficeUserExecution({
-      scope: { kind: "org", orgId: "org-1" },
+      scope: { kind: "org", orgId: "org-1", jurisdiction: null },
       userId: "marketplace-installer",
     });
 
@@ -1010,14 +1067,18 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           }),
           runner.drain(),
           then.assert("a member requests the installation twice", async (ctx) => {
-            const automations = ctx.runtime.objects.automations.forOrg("org-1");
+            const automations = ctx.runtime.objects.automations.for({
+              kind: "org",
+              orgId: "org-1",
+              jurisdiction: null,
+            });
             const firstRequest = await automations.commands.requestMarketplaceIngestion(
               {
                 marketplace: { kind: "system" },
                 installationRoot: "/workspace",
                 listingId: MARKETPLACE_LISTING_ID,
                 version: "2.0.0",
-                targetScope: { kind: "org", orgId: "org-1" },
+                targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
                 permissions: TELEGRAM_TEST_COMMAND_PERMISSIONS,
               },
               { execution: installerExecution, propagationContext: null },
@@ -1028,7 +1089,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 installationRoot: "/workspace",
                 listingId: MARKETPLACE_LISTING_ID,
                 version: "2.0.0",
-                targetScope: { kind: "org", orgId: "org-1" },
+                targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
                 permissions: TELEGRAM_TEST_COMMAND_PERMISSIONS,
               },
               { execution: installerExecution, propagationContext: null },
@@ -1037,7 +1098,11 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           }),
           runner.drain(),
           then.assert("the installer receives its reply message", (ctx) =>
-            submitTelegramTestCommandInstaller(ctx, { kind: "org", orgId: "org-1" }),
+            submitTelegramTestCommandInstaller(ctx, {
+              kind: "org",
+              orgId: "org-1",
+              jurisdiction: null,
+            }),
           ),
           runner.drain(),
           then.workflow.instance({
@@ -1048,9 +1113,17 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           }),
           then.assert("ingestion and installation preserve requester actors", async (ctx) => {
             const workflows = createWorkflowsRouteCaller({
-              object: ctx.runtime.objects.automations.forOrg("org-1"),
+              object: ctx.runtime.objects.automations.for({
+                kind: "org",
+                orgId: "org-1",
+                jurisdiction: null,
+              }),
               context: {
-                execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                execution: createBackofficeSystemExecution({
+                  kind: "org",
+                  orgId: "org-1",
+                  jurisdiction: null,
+                }),
                 propagationContext: null,
               },
             });
@@ -1103,7 +1176,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               installationParams.execution?.actors,
             );
             const installationBaseActors = createBackofficeServiceExecution({
-              scope: { kind: "org", orgId: "org-1" },
+              scope: { kind: "org", orgId: "org-1", jurisdiction: null },
               service: {
                 type: "automation",
                 id: `automation:${workflowInstanceId}:installation`,
@@ -1118,15 +1191,23 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               type: "manual",
               payload: {
                 listingId: MARKETPLACE_LISTING_ID,
-                targetScope: { kind: "org", orgId: "org-1" },
+                targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
               },
             });
           }),
           then.assert("the package's route records the installer as its author", async (ctx) => {
             const routes = createAutomationsRouteCaller({
-              object: ctx.runtime.objects.automations.forOrg("org-1"),
+              object: ctx.runtime.objects.automations.for({
+                kind: "org",
+                orgId: "org-1",
+                jurisdiction: null,
+              }),
               context: {
-                execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                execution: createBackofficeSystemExecution({
+                  kind: "org",
+                  orgId: "org-1",
+                  jurisdiction: null,
+                }),
                 propagationContext: null,
               },
             });
@@ -1167,7 +1248,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
       marketplace: { kind: "system" },
       installationRoot: "/workspace",
-      targetScope: { kind: "org", orgId: "org-1" },
+      targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
       listingId: MARKETPLACE_LISTING_ID,
       version: "2.0.0",
     });
@@ -1206,25 +1287,33 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           }),
           then.assert("the conflicting ingestion is requested", async (ctx) => {
             await ctx.runtime.objects.automations
-              .forOrg("org-1")
+              .for({ kind: "org", orgId: "org-1", jurisdiction: null })
               .commands.requestMarketplaceIngestion(
                 {
                   marketplace: { kind: "system" },
                   installationRoot: "/workspace",
                   listingId: MARKETPLACE_LISTING_ID,
                   version: "2.0.0",
-                  targetScope: { kind: "org", orgId: "org-1" },
+                  targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
                   permissions: TELEGRAM_TEST_COMMAND_PERMISSIONS,
                 },
                 {
-                  execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                  execution: createBackofficeSystemExecution({
+                    kind: "org",
+                    orgId: "org-1",
+                    jurisdiction: null,
+                  }),
                   propagationContext: null,
                 },
               );
           }),
           runner.drain(),
           then.assert("the install workflow receives its reply message", (ctx) =>
-            submitTelegramTestCommandInstaller(ctx, { kind: "org", orgId: "org-1" }),
+            submitTelegramTestCommandInstaller(ctx, {
+              kind: "org",
+              orgId: "org-1",
+              jurisdiction: null,
+            }),
           ),
           runner.drain(),
           then.workflow.instance({
@@ -1235,10 +1324,14 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           then.assert(
             "the member's route is preserved and no installation is recorded",
             async (ctx) => {
-              const automations = ctx.runtime.objects.automations.forOrg("org-1");
+              const automations = ctx.runtime.objects.automations.for({
+                kind: "org",
+                orgId: "org-1",
+                jurisdiction: null,
+              });
               await expect(
                 readPackageInstallation(ctx, {
-                  targetScope: { kind: "org", orgId: "org-1" },
+                  targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
                   listingId: MARKETPLACE_LISTING_ID,
                 }),
               ).resolves.toBeNull();
@@ -1269,7 +1362,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
       marketplace: { kind: "system" },
       installationRoot: "/workspace",
-      targetScope: { kind: "org", orgId: "org-1" },
+      targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
       listingId: MARKETPLACE_LISTING_ID,
       version: "1.0.0",
     });
@@ -1320,16 +1413,20 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           runner.drain(),
           then.assert("ingestion is requested", async (ctx) => {
             await ctx.runtime.objects.automations
-              .forOrg("org-1")
+              .for({ kind: "org", orgId: "org-1", jurisdiction: null })
               .commands.requestMarketplaceIngestion(
                 {
                   marketplace: { kind: "system" },
                   installationRoot: "/workspace",
                   listingId: MARKETPLACE_LISTING_ID,
-                  targetScope: { kind: "org", orgId: "org-1" },
+                  targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
                 },
                 {
-                  execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                  execution: createBackofficeSystemExecution({
+                    kind: "org",
+                    orgId: "org-1",
+                    jurisdiction: null,
+                  }),
                   propagationContext: null,
                 },
               );
@@ -1346,7 +1443,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           }),
           runner.restartObject({
             binding: "AUTOMATIONS",
-            scope: { kind: "org", orgId: "org-1" },
+            scope: { kind: "org", orgId: "org-1", jurisdiction: null },
           }),
           when.time.advance("1 s"),
           then.workflow.instance({
@@ -1362,7 +1459,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             url.searchParams.set("provider", "database");
             url.searchParams.set("key", MARKETPLACE_PACKAGE_FILE_KEY);
             const response = await ctx.runtime.objects.upload
-              .forOrg("org-1")
+              .for({ kind: "org", orgId: "org-1", jurisdiction: null })
               .http.fetch(new Request(url));
             assert(response.ok);
             await expect(response.text()).resolves.toBe(TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE);
@@ -1377,7 +1474,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
       const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
         marketplace: { kind: "system" },
         installationRoot: "/workspace",
-        targetScope: { kind: "org", orgId: "org-1" },
+        targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
         listingId: MARKETPLACE_LISTING_ID,
         version: "1.0.0",
       });
@@ -1447,16 +1544,20 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             runner.drain(),
             then.assert("the two-file ingestion is requested", async (ctx) => {
               await ctx.runtime.objects.automations
-                .forOrg("org-1")
+                .for({ kind: "org", orgId: "org-1", jurisdiction: null })
                 .commands.requestMarketplaceIngestion(
                   {
                     marketplace: { kind: "system" },
                     installationRoot: "/workspace",
                     listingId: MARKETPLACE_LISTING_ID,
-                    targetScope: { kind: "org", orgId: "org-1" },
+                    targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
                   },
                   {
-                    execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                    execution: createBackofficeSystemExecution({
+                      kind: "org",
+                      orgId: "org-1",
+                      jurisdiction: null,
+                    }),
                     propagationContext: null,
                   },
                 );
@@ -1483,7 +1584,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             }),
             runner.restartObject({
               binding: "AUTOMATIONS",
-              scope: { kind: "org", orgId: "org-1" },
+              scope: { kind: "org", orgId: "org-1", jurisdiction: null },
             }),
             when.time.advance("1 s"),
             then.workflow.instance({
@@ -1507,7 +1608,11 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                   ]),
                 );
 
-                const upload = ctx.runtime.objects.upload.forOrg("org-1");
+                const upload = ctx.runtime.objects.upload.for({
+                  kind: "org",
+                  orgId: "org-1",
+                  jurisdiction: null,
+                });
                 for (const [fileKey, expectedContent] of [
                   [MARKETPLACE_PACKAGE_FILE_KEY, TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE],
                   [MARKETPLACE_UNCHANGED_FILE_KEY, MARKETPLACE_UNCHANGED_FILE_SOURCE],
@@ -1531,7 +1636,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
       marketplace: { kind: "system" },
       installationRoot: "/workspace",
-      targetScope: { kind: "org", orgId: "org-1" },
+      targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
       listingId: MARKETPLACE_LISTING_ID,
       version: "1.0.0",
     });
@@ -1574,16 +1679,20 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           runner.drain(),
           then.assert("ingestion is requested", async (ctx) => {
             await ctx.runtime.objects.automations
-              .forOrg("org-1")
+              .for({ kind: "org", orgId: "org-1", jurisdiction: null })
               .commands.requestMarketplaceIngestion(
                 {
                   marketplace: { kind: "system" },
                   installationRoot: "/workspace",
                   listingId: MARKETPLACE_LISTING_ID,
-                  targetScope: { kind: "org", orgId: "org-1" },
+                  targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
                 },
                 {
-                  execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                  execution: createBackofficeSystemExecution({
+                    kind: "org",
+                    orgId: "org-1",
+                    jurisdiction: null,
+                  }),
                   propagationContext: null,
                 },
               );
@@ -1607,7 +1716,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
       marketplace: { kind: "system" },
       installationRoot: "/workspace",
-      targetScope: { kind: "org", orgId: "org-1" },
+      targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
       listingId: MARKETPLACE_LISTING_ID,
       version: "1.2.1",
     });
@@ -1625,7 +1734,11 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             assertToolCalls: ["admin.marketplace.push-static"],
           }),
           then.assert("a file already exists at the Marketplace target path", async (ctx) => {
-            const upload = ctx.runtime.objects.upload.forOrg("org-1");
+            const upload = ctx.runtime.objects.upload.for({
+              kind: "org",
+              orgId: "org-1",
+              jurisdiction: null,
+            });
             await writeUploadFile({
               upload,
               fileKey: MARKETPLACE_PACKAGE_FILE_KEY,
@@ -1633,19 +1746,25 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             });
 
             await expect(
-              ctx.runtime.objects.automations.forOrg("org-1").commands.requestMarketplaceIngestion(
-                {
-                  marketplace: { kind: "system" },
-                  installationRoot: "/workspace",
-                  listingId: MARKETPLACE_LISTING_ID,
-                  version: "1.2.1",
-                  targetScope: { kind: "org", orgId: "org-1" },
-                },
-                {
-                  execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
-                  propagationContext: null,
-                },
-              ),
+              ctx.runtime.objects.automations
+                .for({ kind: "org", orgId: "org-1", jurisdiction: null })
+                .commands.requestMarketplaceIngestion(
+                  {
+                    marketplace: { kind: "system" },
+                    installationRoot: "/workspace",
+                    listingId: MARKETPLACE_LISTING_ID,
+                    version: "1.2.1",
+                    targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
+                  },
+                  {
+                    execution: createBackofficeSystemExecution({
+                      kind: "org",
+                      orgId: "org-1",
+                      jurisdiction: null,
+                    }),
+                    propagationContext: null,
+                  },
+                ),
             ).resolves.toMatchObject({
               state: "requested",
               version: "1.2.1",
@@ -1655,11 +1774,16 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           runner.drain(),
           then.assert("the ingestion workflow reports the target file conflict", async (ctx) => {
             const workflows = createWorkflowsRouteCaller({
-              object: ctx.runtime.objects.automations.forOrg("org-1"),
+              object: ctx.runtime.objects.automations.for({
+                kind: "org",
+                orgId: "org-1",
+                jurisdiction: null,
+              }),
               context: {
                 execution: createBackofficeSystemExecution({
                   kind: "org",
                   orgId: "org-1",
+                  jurisdiction: null,
                 }),
                 propagationContext: null,
               },
@@ -1686,14 +1810,14 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               contentUrl.searchParams.set("provider", "database");
               contentUrl.searchParams.set("key", MARKETPLACE_PACKAGE_FILE_KEY);
               const response = await ctx.runtime.objects.upload
-                .forOrg("org-1")
+                .for({ kind: "org", orgId: "org-1", jurisdiction: null })
                 .http.fetch(new Request(contentUrl));
               assert(response.ok);
               await expect(response.text()).resolves.toBe("locally modified");
 
               await expect(
                 readPackageInstallation(ctx, {
-                  targetScope: { kind: "org", orgId: "org-1" },
+                  targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
                   listingId: MARKETPLACE_LISTING_ID,
                 }),
               ).resolves.toBeNull();
@@ -1709,7 +1833,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
       marketplace: { kind: "system" },
       installationRoot: "/workspace",
-      targetScope: { kind: "org", orgId: "org-1" },
+      targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
       listingId: MARKETPLACE_LISTING_ID,
       version: "1.2.1",
     });
@@ -1729,8 +1853,16 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           then.assert(
             "the legacy starter seeded the version 1.0.0 file without a lock entry",
             async (ctx) => {
-              const automations = ctx.runtime.objects.automations.forOrg("org-1");
-              const upload = ctx.runtime.objects.upload.forOrg("org-1");
+              const automations = ctx.runtime.objects.automations.for({
+                kind: "org",
+                orgId: "org-1",
+                jurisdiction: null,
+              });
+              const upload = ctx.runtime.objects.upload.for({
+                kind: "org",
+                orgId: "org-1",
+                jurisdiction: null,
+              });
               await writeUploadFile({
                 upload,
                 fileKey: MARKETPLACE_PACKAGE_FILE_KEY,
@@ -1738,7 +1870,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               });
               await expect(
                 readPackageInstallation(ctx, {
-                  targetScope: { kind: "org", orgId: "org-1" },
+                  targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
                   listingId: MARKETPLACE_LISTING_ID,
                 }),
               ).resolves.toBeNull();
@@ -1750,10 +1882,14 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                     installationRoot: "/workspace",
                     listingId: MARKETPLACE_LISTING_ID,
                     version: "1.2.1",
-                    targetScope: { kind: "org", orgId: "org-1" },
+                    targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
                   },
                   {
-                    execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                    execution: createBackofficeSystemExecution({
+                      kind: "org",
+                      orgId: "org-1",
+                      jurisdiction: null,
+                    }),
                     propagationContext: null,
                   },
                 ),
@@ -1769,11 +1905,16 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             "the existing legacy file conflicts with the requested package",
             async (ctx) => {
               const workflows = createWorkflowsRouteCaller({
-                object: ctx.runtime.objects.automations.forOrg("org-1"),
+                object: ctx.runtime.objects.automations.for({
+                  kind: "org",
+                  orgId: "org-1",
+                  jurisdiction: null,
+                }),
                 context: {
                   execution: createBackofficeSystemExecution({
                     kind: "org",
                     orgId: "org-1",
+                    jurisdiction: null,
                   }),
                   propagationContext: null,
                 },
@@ -1801,14 +1942,14 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               contentUrl.searchParams.set("provider", "database");
               contentUrl.searchParams.set("key", MARKETPLACE_PACKAGE_FILE_KEY);
               const response = await ctx.runtime.objects.upload
-                .forOrg("org-1")
+                .for({ kind: "org", orgId: "org-1", jurisdiction: null })
                 .http.fetch(new Request(contentUrl));
               assert(response.ok);
               await expect(response.text()).resolves.toBe(TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE);
 
               await expect(
                 readPackageInstallation(ctx, {
-                  targetScope: { kind: "org", orgId: "org-1" },
+                  targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
                   listingId: MARKETPLACE_LISTING_ID,
                 }),
               ).resolves.toBeNull();
@@ -2333,7 +2474,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
       marketplace: { kind: "system" },
       installationRoot: "/workspace",
-      targetScope: { kind: "org", orgId: "org-1" },
+      targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
       listingId: MARKETPLACE_LISTING_ID,
       version: "1.0.0",
     });
@@ -2378,19 +2519,25 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           }),
           then.assert("ingestion is requested without draining", async (ctx) => {
             await expect(
-              ctx.runtime.objects.automations.forOrg("org-1").commands.requestMarketplaceIngestion(
-                {
-                  marketplace: { kind: "system" },
-                  installationRoot: "/workspace",
-                  listingId: MARKETPLACE_LISTING_ID,
-                  version: "1.0.0",
-                  targetScope: { kind: "org", orgId: "org-1" },
-                },
-                {
-                  execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
-                  propagationContext: null,
-                },
-              ),
+              ctx.runtime.objects.automations
+                .for({ kind: "org", orgId: "org-1", jurisdiction: null })
+                .commands.requestMarketplaceIngestion(
+                  {
+                    marketplace: { kind: "system" },
+                    installationRoot: "/workspace",
+                    listingId: MARKETPLACE_LISTING_ID,
+                    version: "1.0.0",
+                    targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
+                  },
+                  {
+                    execution: createBackofficeSystemExecution({
+                      kind: "org",
+                      orgId: "org-1",
+                      jurisdiction: null,
+                    }),
+                    propagationContext: null,
+                  },
+                ),
             ).resolves.toMatchObject({ state: "requested" });
           }),
           runner.drain(),
@@ -2404,14 +2551,14 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             url.searchParams.set("provider", "database");
             url.searchParams.set("key", MARKETPLACE_PACKAGE_FILE_KEY);
             const response = await ctx.runtime.objects.upload
-              .forOrg("org-1")
+              .for({ kind: "org", orgId: "org-1", jurisdiction: null })
               .http.fetch(new Request(url));
             assert(response.ok);
             await expect(response.text()).resolves.toBe(TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE);
           }),
           runner.restartObject({
             binding: "AUTOMATIONS",
-            scope: { kind: "org", orgId: "org-1" },
+            scope: { kind: "org", orgId: "org-1", jurisdiction: null },
           }),
           when.time.advance("1 s"),
           then.workflow.instance({
@@ -2425,7 +2572,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               expect(batchCommitAttempts).toBe(2);
               await expect(
                 readPackageInstallation(ctx, {
-                  targetScope: { kind: "org", orgId: "org-1" },
+                  targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
                   listingId: MARKETPLACE_LISTING_ID,
                 }),
               ).resolves.toMatchObject({ version: "1.0.0" });
@@ -2440,7 +2587,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
       marketplace: { kind: "system" },
       installationRoot: "/workspace",
-      targetScope: { kind: "org", orgId: "org-1" },
+      targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
       listingId: MARKETPLACE_LISTING_ID,
       version: "1.0.0",
     });
@@ -2498,16 +2645,20 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           runner.drain(),
           then.assert("ingestion is requested", async (ctx) => {
             await ctx.runtime.objects.automations
-              .forOrg("org-1")
+              .for({ kind: "org", orgId: "org-1", jurisdiction: null })
               .commands.requestMarketplaceIngestion(
                 {
                   marketplace: { kind: "system" },
                   installationRoot: "/workspace",
                   listingId: MARKETPLACE_LISTING_ID,
-                  targetScope: { kind: "org", orgId: "org-1" },
+                  targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
                 },
                 {
-                  execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                  execution: createBackofficeSystemExecution({
+                    kind: "org",
+                    orgId: "org-1",
+                    jurisdiction: null,
+                  }),
                   propagationContext: null,
                 },
               );
@@ -2524,12 +2675,12 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             url.searchParams.set("provider", "database");
             url.searchParams.set("key", MARKETPLACE_PACKAGE_FILE_KEY);
             const response = await ctx.runtime.objects.upload
-              .forOrg("org-1")
+              .for({ kind: "org", orgId: "org-1", jurisdiction: null })
               .http.fetch(new Request(url));
             assert(response.status === 404);
             await expect(
               readPackageInstallation(ctx, {
-                targetScope: { kind: "org", orgId: "org-1" },
+                targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
                 listingId: MARKETPLACE_LISTING_ID,
               }),
             ).resolves.toBeNull();
@@ -2544,7 +2695,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
       marketplace: { kind: "system" },
       installationRoot: "/workspace",
-      targetScope: { kind: "org", orgId: "org-1" },
+      targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
       listingId: MARKETPLACE_LISTING_ID,
       version: "1.0.0",
     });
@@ -2594,17 +2745,21 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           }),
           then.assert("ingestion is requested", async (ctx) => {
             await ctx.runtime.objects.automations
-              .forOrg("org-1")
+              .for({ kind: "org", orgId: "org-1", jurisdiction: null })
               .commands.requestMarketplaceIngestion(
                 {
                   marketplace: { kind: "system" },
                   installationRoot: "/workspace",
                   listingId: MARKETPLACE_LISTING_ID,
                   version: "1.0.0",
-                  targetScope: { kind: "org", orgId: "org-1" },
+                  targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
                 },
                 {
-                  execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                  execution: createBackofficeSystemExecution({
+                    kind: "org",
+                    orgId: "org-1",
+                    jurisdiction: null,
+                  }),
                   propagationContext: null,
                 },
               );
@@ -2620,12 +2775,12 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             contentUrl.searchParams.set("provider", "database");
             contentUrl.searchParams.set("key", MARKETPLACE_PACKAGE_FILE_KEY);
             const contentResponse = await ctx.runtime.objects.upload
-              .forOrg("org-1")
+              .for({ kind: "org", orgId: "org-1", jurisdiction: null })
               .http.fetch(new Request(contentUrl));
             assert(contentResponse.status === 404);
             await expect(
               readPackageInstallation(ctx, {
-                targetScope: { kind: "org", orgId: "org-1" },
+                targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
                 listingId: MARKETPLACE_LISTING_ID,
               }),
             ).resolves.toBeNull();
@@ -2645,11 +2800,16 @@ describe("marketplace scenarios", { concurrent: false }, () => {
         steps: ({ then }) => [
           then.assert("invalid publication and ingestion params are rejected", async (ctx) => {
             const workflows = createWorkflowsRouteCaller({
-              object: ctx.runtime.objects.automations.forOrg("org-1"),
+              object: ctx.runtime.objects.automations.for({
+                kind: "org",
+                orgId: "org-1",
+                jurisdiction: null,
+              }),
               context: {
                 execution: createBackofficeSystemExecution({
                   kind: "org",
                   orgId: "org-1",
+                  jurisdiction: null,
                 }),
                 propagationContext: null,
               },

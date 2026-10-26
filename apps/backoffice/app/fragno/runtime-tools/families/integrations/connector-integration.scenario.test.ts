@@ -52,8 +52,8 @@ const scenarioObjects = {
   UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
 
-const owner = { kind: "user", userId: "connector-owner" } as const;
-const stranger = { kind: "user", userId: "connector-stranger" } as const;
+const owner = { kind: "user", userId: "connector-owner", jurisdiction: null } as const;
+const stranger = { kind: "user", userId: "connector-stranger", jurisdiction: null } as const;
 // Discovery preassigns the service as the name for the gateway's only Gmail provider.
 const target = encodeConnectorConnectionId(["named", "project-1", "gmail-provider", "gmail"]);
 const workTarget = encodeConnectorConnectionId(["named", "project-1", "gmail-provider", "work"]);

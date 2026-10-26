@@ -31,7 +31,7 @@ function createAdminRuntimeDependencies() {
         status: "verified" as const,
       }),
       getOrganizationBySlug: async (slug: string) =>
-        slug === "acme" ? { id: "org-1", slug } : null,
+        slug === "acme" ? { id: "org-1", slug, jurisdiction: null } : null,
       getOrganization: async () => null,
       getOrganizationRelations: async () => ({
         memberCount: 0,
@@ -70,7 +70,7 @@ function createAdminRuntimeDependencies() {
     resend: {
       queueEmail: vi.fn(async () => {}),
     },
-    automationsForOrg: () => {
+    automationsFor: () => {
       throw new Error("These tests do not reach an organization's automations.");
     },
     publicBaseUrl: "https://backoffice.example/",

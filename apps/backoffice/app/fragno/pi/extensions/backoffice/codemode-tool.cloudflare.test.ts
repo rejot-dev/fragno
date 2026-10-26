@@ -83,7 +83,7 @@ const createPiSystemFileContext = () => ({
   objects: unusedObjects,
   runtimeConfig: testRuntimeConfig,
   execution: createBackofficeUserExecution({
-    scope: { kind: "org", orgId: "org-1" },
+    scope: { kind: "org", orgId: "org-1", jurisdiction: null },
     userId: "test-user",
   }),
 });

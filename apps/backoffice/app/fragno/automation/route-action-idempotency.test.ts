@@ -10,6 +10,7 @@ import { InMemoryAdapter } from "@fragno-dev/db";
 import { drainDurableHooks } from "@fragno-dev/test";
 import { createWorkflowsFragment, workflowsSchema } from "@fragno-dev/workflows";
 
+import type { BackofficeRootOwnerReference } from "@/backoffice-runtime/resolved-scope";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 
 import type { AutomationWorkflowsService } from "./definition";
@@ -34,7 +35,7 @@ const actors = {
 const event: AutomationEvent = {
   id: "route-event-1",
   scopeRestriction: null,
-  scope: { kind: "org", orgId: "org_123" },
+  scope: { kind: "org", orgId: "org_123", jurisdiction: null },
   source: "custom",
   eventType: "ready",
   occurredAt: "2026-08-11T00:00:00.000Z",
@@ -97,7 +98,7 @@ describe("automation route action idempotency", () => {
     const automations = createAutomationFragment(
       {
         builtInEventDefinitions: [],
-        ownerScope: { kind: "org", orgId: "org_123" },
+        ownerScope: { kind: "org", orgId: "org_123", jurisdiction: null },
         readAutomationSource: createTestAutomationSourceReader({
           "/workspace/automations/idempotent.workflow.js":
             'export default defineWorkflow({ name: "idempotent" }, async () => ({ ok: true }));',
@@ -179,7 +180,7 @@ describe("automation route action idempotency", () => {
     const automations = createAutomationFragment(
       {
         builtInEventDefinitions: [],
-        ownerScope: { kind: "org", orgId: "org_123" },
+        ownerScope: { kind: "org", orgId: "org_123", jurisdiction: null },
         readAutomationSource: createTestAutomationSourceReader({}),
       },
       {
@@ -262,7 +263,7 @@ describe("automation route action idempotency", () => {
             },
           },
         ],
-        ownerScope: { kind: "org", orgId: "org_123" },
+        ownerScope: { kind: "org", orgId: "org_123", jurisdiction: null },
         readAutomationSource: createTestAutomationSourceReader({}),
       },
       {
@@ -347,7 +348,7 @@ describe("automation route action idempotency", () => {
             },
           },
         ],
-        ownerScope: { kind: "org", orgId: "org_123" },
+        ownerScope: { kind: "org", orgId: "org_123", jurisdiction: null },
         readAutomationSource: createTestAutomationSourceReader({}),
       },
       {
@@ -374,7 +375,7 @@ describe("automation route action idempotency", () => {
     const automations = createAutomationFragment(
       {
         builtInEventDefinitions: [],
-        ownerScope: { kind: "org", orgId: "org_123" },
+        ownerScope: { kind: "org", orgId: "org_123", jurisdiction: null },
         readAutomationSource: createTestAutomationSourceReader({}),
       },
       {
@@ -430,7 +431,7 @@ describe("automation route action idempotency", () => {
     const automations = createAutomationFragment(
       {
         builtInEventDefinitions: [],
-        ownerScope: { kind: "org", orgId: "org_123" },
+        ownerScope: { kind: "org", orgId: "org_123", jurisdiction: null },
         readAutomationSource: createTestAutomationSourceReader({}),
       },
       {
@@ -506,7 +507,7 @@ describe("automation route action idempotency", () => {
     const automations = createAutomationFragment(
       {
         builtInEventDefinitions: [],
-        ownerScope: { kind: "org", orgId: "org_123" },
+        ownerScope: { kind: "org", orgId: "org_123", jurisdiction: null },
         readAutomationSource: createTestAutomationSourceReader({}),
       },
       {
@@ -573,7 +574,7 @@ describe("automation route action idempotency", () => {
     const target = createAutomationFragment(
       {
         builtInEventDefinitions: [],
-        ownerScope: { kind: "org", orgId: "org_456" },
+        ownerScope: { kind: "org", orgId: "org_456", jurisdiction: null },
         readAutomationSource: createTestAutomationSourceReader({}),
       },
       {
@@ -585,6 +586,17 @@ describe("automation route action idempotency", () => {
     );
     const runtime = {
       objects: {
+        // The target organization exists in Auth, in no jurisdiction.
+        auth: {
+          singleton: () => ({
+            commands: {
+              findRootOwnerScope: async (owner: BackofficeRootOwnerReference) => ({
+                ...owner,
+                jurisdiction: null,
+              }),
+            },
+          }),
+        },
         automations: {
           for: () => ({
             commands: {
@@ -665,7 +677,7 @@ describe("automation route action idempotency", () => {
     const automations = createAutomationFragment(
       {
         builtInEventDefinitions: [],
-        ownerScope: { kind: "org", orgId: "org_123" },
+        ownerScope: { kind: "org", orgId: "org_123", jurisdiction: null },
         readAutomationSource: createTestAutomationSourceReader({}),
       },
       {

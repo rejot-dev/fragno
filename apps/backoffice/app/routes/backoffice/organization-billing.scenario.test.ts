@@ -113,7 +113,7 @@ test("personal usage survives organization changes and statements stay private",
                 kind: "project",
                 owner: {
                   kind: "app",
-                  owner: { kind: "user", userId: ctx.vars.adaId },
+                  owner: { kind: "user", userId: ctx.vars.adaId, jurisdiction: null },
                   appId: "books",
                 },
                 projectId: "personal-books",
@@ -143,7 +143,7 @@ test("personal usage survives organization changes and statements stay private",
             async (ctx) => {
               const scope = {
                 kind: "project",
-                owner: { kind: "org", orgId: ctx.vars.orgId },
+                owner: { kind: "org", orgId: ctx.vars.orgId, jurisdiction: null },
                 projectId: "company-books",
               } as const;
               const billing = usageBillingForScope(ctx.runtime.services, scope);
@@ -164,7 +164,7 @@ test("personal usage survives organization changes and statements stay private",
           then.assert("reopen the personal ledger", async (ctx) => {
             await ctx.runtime.restartObject({
               binding: "BILLING",
-              scope: { kind: "user", userId: ctx.vars.adaId },
+              scope: { kind: "user", userId: ctx.vars.adaId, jurisdiction: null },
             });
           }),
           then.assert(

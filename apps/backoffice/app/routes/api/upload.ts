@@ -1,5 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 
+import { backofficeOrganizationContextScope } from "@/backoffice-runtime/resolved-scope";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { getUploadDurableObject } from "@/worker-runtime/durable-objects";
 
@@ -12,9 +13,10 @@ const forwardToUpload = async (
 ) => {
   const organization = await requireApiOrganization(request, context, orgSlug);
   const orgId = organization.id;
-  await requireBackofficeContext(request, context, { kind: "org", orgId });
+  const scope = backofficeOrganizationContextScope(organization);
+  await requireBackofficeContext(request, context, scope);
 
-  const uploadDo = getUploadDurableObject(context, orgId);
+  const uploadDo = getUploadDurableObject(context, scope);
   const url = new URL(request.url);
   const prefix = `/api/upload/${orgSlug}`;
   if (url.pathname.startsWith(prefix)) {

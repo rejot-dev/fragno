@@ -21,6 +21,23 @@ function createMigrationDatabase(): Kysely<unknown> {
   return database;
 }
 
+// v3 is the committed schema before jurisdictions and onboarding.
+const V3_SCHEMA = betterAuthSchemaSql
+  .replace(
+    ',\n  "banExpires" date,\n  "jurisdiction" text,\n  "onboardedAt" date',
+    ',\n  "banExpires" date',
+  )
+  .replace(' ON DELETE SET NULL,\n  "jurisdiction" text', " ON DELETE SET NULL");
+
+// v2 is the committed schema before organizations could be managed.
+const V2_SCHEMA = V3_SCHEMA.replace(
+  ',\n  "managingOrganizationId" text REFERENCES "organization" ("id") ON DELETE SET NULL',
+  "",
+).replace(
+  'CREATE INDEX "organization_managingOrganizationId_idx" ON "organization" ("managingOrganizationId");\n\n',
+  "",
+);
+
 const NO_SCHEMA_CHANGES = {
   toBeCreated: [],
   toBeAdded: [],
@@ -128,28 +145,38 @@ describe("Backoffice Better Auth SQL migrations", () => {
     expect(await pendingSchemaChanges(database)).toEqual(NO_SCHEMA_CHANGES);
   });
 
-  test("upgrades a v2 database to the schema a new database gets", async () => {
+  test.each([
+    ["better-auth-v2", V2_SCHEMA],
+    ["better-auth-v3", V3_SCHEMA],
+  ])("upgrades a %s database to the schema a new database gets", async (version, schema) => {
     const database = createMigrationDatabase();
-    // v2 is the committed schema before organizations could be managed.
-    const v2Schema = betterAuthSchemaSql
-      .replace(
-        ',\n  "managingOrganizationId" text REFERENCES "organization" ("id") ON DELETE SET NULL',
-        "",
-      )
-      .replace(
-        'CREATE INDEX "organization_managingOrganizationId_idx" ON "organization" ("managingOrganizationId");\n\n',
-        "",
-      );
-    expect(v2Schema).not.toContain("managingOrganizationId");
-    for (const statement of v2Schema.trim().slice(0, -1).split(/;\n\n/u)) {
+    for (const statement of schema.trim().slice(0, -1).split(/;\n\n/u)) {
       await sql.raw(statement).execute(database);
     }
 
-    await applyBackofficeBetterAuthSchemaMigrations(database, "better-auth-v2");
+    await applyBackofficeBetterAuthSchemaMigrations(database, version);
 
     const fresh = createMigrationDatabase();
     await applyBackofficeBetterAuthSchemaMigrations(fresh, null);
     expect(await describeSchema(database)).toEqual(await describeSchema(fresh));
+  });
+
+  test("counts users who signed up before onboarding as onboarded", async () => {
+    const database = createMigrationDatabase();
+    for (const statement of V3_SCHEMA.trim().slice(0, -1).split(/;\n\n/u)) {
+      await sql.raw(statement).execute(database);
+    }
+    await sql`
+      INSERT INTO "user" ("id", "name", "email", "emailVerified", "createdAt", "updatedAt")
+      VALUES ('existing', 'Existing', 'existing@example.test', 1, '2026-01-01', '2026-01-01')
+    `.execute(database);
+
+    await applyBackofficeBetterAuthSchemaMigrations(database, "better-auth-v3");
+
+    const users = await sql<{ jurisdiction: string | null; onboardedAt: string | null }>`
+      SELECT "jurisdiction", "onboardedAt" FROM "user"
+    `.execute(database);
+    expect(users.rows).toEqual([{ jurisdiction: null, onboardedAt: "2026-01-01" }]);
   });
 
   test("rejects an installed schema version without a committed migration path", async () => {
@@ -160,6 +187,6 @@ describe("Backoffice Better Auth SQL migrations", () => {
     ).rejects.toThrow(
       "Backoffice Better Auth schema version 'better-auth-unknown' has no migration path.",
     );
-    expect(BACKOFFICE_BETTER_AUTH_SCHEMA_VERSION).toBe("better-auth-v3");
+    expect(BACKOFFICE_BETTER_AUTH_SCHEMA_VERSION).toBe("better-auth-v4");
   });
 });

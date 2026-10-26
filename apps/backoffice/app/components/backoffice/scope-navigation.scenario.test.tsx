@@ -30,6 +30,7 @@ const organization: Organization = {
   createdBy: "ada",
   createdAt: new Date("2026-10-01T00:00:00Z"),
   updatedAt: new Date("2026-10-01T00:00:00Z"),
+  jurisdiction: null,
 };
 const me: BackofficeMeData = {
   user: {
@@ -41,6 +42,8 @@ const me: BackofficeMeData = {
     banned: false,
     createdAt: new Date("2026-10-01T00:00:00Z"),
     updatedAt: new Date("2026-10-01T00:00:00Z"),
+    jurisdiction: null,
+    onboardedAt: new Date("2026-01-01T00:00:00.000Z"),
   },
   organizations: [{ organization, roles: ["owner"], through: { kind: "membership" } }],
   activeOrganizationId: null,
@@ -65,6 +68,7 @@ async function loadScope({ params }: LoaderFunctionArgs) {
   const result = await resolveBackofficePageScope<Organization, (typeof projects)[number]>({
     params,
     organizations: [organization],
+    findUser: async (userId) => ({ userId, jurisdiction: null }),
     isAppInstalled: async (_owner, appId) => appId === "bookkeeping",
     findProject: async (_owner, slug) => projects.find((project) => project.slug === slug) ?? null,
   });
@@ -131,7 +135,7 @@ async function renderNavigation(initialPath: string, navigation: "desktop" | "mo
 }
 
 function personalScopes(userId: string): BackofficeRouteScope[] {
-  const owner = { kind: "user" as const, userId };
+  const owner = { kind: "user" as const, userId, jurisdiction: null };
   const app = { kind: "app" as const, owner, appId: "bookkeeping" };
   return [
     owner,

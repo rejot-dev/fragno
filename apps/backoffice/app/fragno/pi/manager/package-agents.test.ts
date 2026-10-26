@@ -13,7 +13,11 @@ import { piManagerDefinition } from "./pi-manager-definition";
 import { piManagerDirectoryRoutes } from "./pi-manager-directory-routes";
 import { piAgentDirectorySchema } from "./pi-manager-schema";
 
-const SCOPE: BackofficeContextScope = { kind: "org", orgId: "package-agents-org" };
+const SCOPE: BackofficeContextScope = {
+  kind: "org",
+  orgId: "package-agents-org",
+  jurisdiction: null,
+};
 const LISTING_ID = "system#telegram-channel";
 const OTHER_LISTING_ID = "system#other-channel";
 

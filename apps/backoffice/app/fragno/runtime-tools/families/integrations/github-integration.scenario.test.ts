@@ -70,7 +70,7 @@ const scenarioObjects = {
   OTP: (input) => new OtpObject(input),
 } satisfies LocalBackofficeObjects;
 
-const scope = { kind: "org", orgId: "github-org" } as const;
+const scope = { kind: "org", orgId: "github-org", jurisdiction: null } as const;
 const ownerUserId = "github-owner";
 const installationId = "4242";
 const webhookSecret = "github-integration-webhook-secret";

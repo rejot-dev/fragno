@@ -10,6 +10,7 @@ import {
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { Form, useParams } from "react-router";
 
+import { backofficeOrganizationContextScope } from "@/backoffice-runtime/resolved-scope";
 import { backofficePageBodyClassName } from "@/components/backoffice/page-body";
 import { billingPeriodSchema, type BillingStatementTracker } from "@/fragno/billing";
 import { getBackofficeShellRequest } from "@/layouts/backoffice-shell-request.server";
@@ -91,7 +92,9 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   const billing = context
     .get(BackofficeWorkerContext)
     .runtime.objects.billing.for(
-      organization ? { kind: "org", orgId: organization.id } : { kind: "user", userId: me.user.id },
+      organization
+        ? backofficeOrganizationContextScope(organization)
+        : { kind: "user", userId: me.user.id, jurisdiction: me.user.jurisdiction },
     ).commands;
   const statement = await billing.getStatement({ period });
 

@@ -36,7 +36,7 @@ describe("executeWorkflowCodemodeAutomation", () => {
     const event: AutomationEvent = {
       id: "event-workflow-list-hook-scopes",
       scopeRestriction: null,
-      scope: { kind: "org", orgId: "org-1" },
+      scope: { kind: "org", orgId: "org-1", jurisdiction: null },
       source: "auth",
       eventType: "organization.created",
       occurredAt: "2026-06-12T00:00:00.000Z",
@@ -106,7 +106,11 @@ describe("executeWorkflowCodemodeAutomation", () => {
   });
 
   test("rejects persisted capability grants outside the execution actor chain", async () => {
-    const execution = createBackofficeSystemExecution({ kind: "org", orgId: "org-1" });
+    const execution = createBackofficeSystemExecution({
+      kind: "org",
+      orgId: "org-1",
+      jurisdiction: null,
+    });
     const Workflow = defineCodemodeWorkflow({
       runtime: {} as BackofficeRuntimeServices,
     });
@@ -161,7 +165,7 @@ describe("executeWorkflowCodemodeAutomation", () => {
     const event: AutomationEvent = {
       id: "event-workflow-egress",
       scopeRestriction: null,
-      scope: { kind: "org", orgId: "org-1" },
+      scope: { kind: "org", orgId: "org-1", jurisdiction: null },
       source: "test",
       eventType: "workflow.egress",
       occurredAt: "2026-08-11T00:00:00.000Z",

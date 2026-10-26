@@ -6,7 +6,10 @@ describe("Files scope paths", () => {
   test("encodes project scopes and explorer paths canonically", () => {
     const scope = {
       kind: "project" as const,
-      owner: { kind: "org" as const, organization: { id: "org-id", slug: "org/one" } },
+      owner: {
+        kind: "org" as const,
+        organization: { id: "org-id", slug: "org/one", jurisdiction: null },
+      },
       project: { id: "project:one", slug: "project:one" },
       label: "Project one",
     };
@@ -32,7 +35,7 @@ describe("Files scope paths", () => {
     assert(
       filesScopeBasePath({
         kind: "org",
-        organization: { id: "org-id", slug: "org%one" },
+        organization: { id: "org-id", slug: "org%one", jurisdiction: null },
       }) === "/backoffice/files/org/org%2525one",
     );
   });
@@ -40,7 +43,7 @@ describe("Files scope paths", () => {
   test("supports system and personal scopes", () => {
     assert(filesScopeBasePath({ kind: "system" }) === "/backoffice/files/system/system");
     assert(
-      filesScopeBasePath({ kind: "user", userId: "user/one" }) ===
+      filesScopeBasePath({ kind: "user", userId: "user/one", jurisdiction: null }) ===
         "/backoffice/files/user/user%252Fone",
     );
   });

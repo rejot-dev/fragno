@@ -18,6 +18,8 @@ import {
 } from "react-router";
 
 import { requireBackofficeBrowserSession } from "@/fragno/auth/browser-session.server";
+import type { BackofficeMeData } from "@/fragno/auth/contracts";
+import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { Route } from "./+types/app-install";
 import {
@@ -26,6 +28,7 @@ import {
   loadAppInstallChoices,
   resolveAppInstallRequest,
 } from "./app-install.server";
+import { buildBackofficeOnboardingPath } from "./onboarding-path";
 
 const noStoreHeaders = { "cache-control": "no-store", "referrer-policy": "no-referrer" };
 
@@ -40,11 +43,36 @@ async function requireInstallRequest(context: Route.LoaderArgs["context"], url: 
   }
 }
 
+/**
+ * The installing person, once onboarded: their personal scope does not exist before onboarding
+ * fixes its jurisdiction, so onboarding comes first and returns here.
+ */
+async function requireOnboardedInstaller(
+  context: Route.LoaderArgs["context"],
+  url: URL,
+  userId: string,
+): Promise<BackofficeMeData> {
+  const me = await context
+    .get(BackofficeWorkerContext)
+    .runtime.objects.auth.singleton()
+    .commands.getBackofficeMe({ userId, activeOrganizationId: null });
+  if (!me) {
+    throw new Error("The signed-in user does not exist.");
+  }
+  if (me.user.onboardedAt === null) {
+    throw redirect(buildBackofficeOnboardingPath(`${url.pathname}${url.search}`), {
+      headers: noStoreHeaders,
+    });
+  }
+  return me;
+}
+
 export async function loader({ request, context, url }: Route.LoaderArgs) {
   const user = await requireBackofficeBrowserSession({ request, context, url });
   const installRequest = await requireInstallRequest(context, url);
+  const me = await requireOnboardedInstaller(context, url, user.id);
   const choices = await loadAppInstallChoices(context, {
-    userId: user.id,
+    me,
     appId: installRequest.app.id,
     selectedOwner: url.searchParams.get("owner"),
   });
@@ -72,7 +100,7 @@ export async function action({ request, context, url }: Route.ActionArgs) {
   const user = await requireBackofficeBrowserSession({ request, context, url });
   const installRequest = await requireInstallRequest(context, url);
   const result = await decideAppInstallation(context, {
-    userId: user.id,
+    me: await requireOnboardedInstaller(context, url, user.id),
     request: installRequest,
     formData: await request.formData(),
   });

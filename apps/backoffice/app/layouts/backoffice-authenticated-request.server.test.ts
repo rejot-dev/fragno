@@ -23,6 +23,8 @@ const authenticatedMe: BackofficeMeData = {
     banned: false,
     createdAt: new Date("2026-09-01T00:00:00.000Z"),
     updatedAt: new Date("2026-09-01T00:00:00.000Z"),
+    jurisdiction: null,
+    onboardedAt: new Date("2026-01-01T00:00:00.000Z"),
   },
   organizations: [],
   activeOrganizationId: null,

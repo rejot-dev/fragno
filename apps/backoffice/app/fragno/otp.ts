@@ -1,4 +1,5 @@
 import type { AutomationExternalEntityRef } from "@fragno-dev/backoffice-api/v0/automation";
+import type { BackofficeOrganizationContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
 import {
@@ -87,7 +88,7 @@ export const buildIdentityClaimCompletionUrl = (
 type ConfirmedIdentityClaimOtp = Pick<OtpConfirmedHookPayload, "id" | "type" | "confirmedAt">;
 
 export const buildIdentityClaimCompletedAutomationEvent = (input: {
-  orgId: string;
+  organization: BackofficeOrganizationContextScope;
   userId: string;
   otp: ConfirmedIdentityClaimOtp;
   claim: IdentityClaimPayload;
@@ -95,7 +96,7 @@ export const buildIdentityClaimCompletedAutomationEvent = (input: {
 }): AutomationKnownEvent<typeof AUTOMATION_SOURCES.otp> => ({
   id: input.eventId ?? `identity-claim-completed:${input.otp.id}`,
   scopeRestriction: null,
-  scope: { kind: "org", orgId: input.orgId },
+  scope: input.organization,
   source: AUTOMATION_SOURCES.otp,
   eventType: AUTOMATION_SOURCE_EVENT_TYPES.otp.identityClaimCompleted,
   occurredAt: input.otp.confirmedAt.toISOString(),

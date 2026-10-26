@@ -26,7 +26,7 @@ import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/
 
 import { McpObject } from "../../../../../workers/mcp-object";
 
-const scope = { kind: "org", orgId: "org-1" } as const;
+const scope = { kind: "org", orgId: "org-1", jurisdiction: null } as const;
 const clientPath = "/workspace/integrations/tools.js";
 
 let codemodeServer: Awaited<ReturnType<typeof createCodemodeTestServer>>;

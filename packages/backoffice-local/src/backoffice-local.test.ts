@@ -31,11 +31,16 @@ describe("parseBackofficeScope", () => {
 describe("listBackofficeAvailableScopes", () => {
   it("presents organization scopes by slug and marks the active organization as default", () => {
     const me = {
-      user: { id: "user-1", email: "admin@example.com", role: "admin" as const },
+      user: {
+        id: "user-1",
+        email: "admin@example.com",
+        role: "admin" as const,
+        jurisdiction: null,
+      },
       activeOrganizationId: "org-1",
       organizations: [
-        { organization: { id: "org-1", name: "Acme", slug: "acme" } },
-        { organization: { id: "org-2", name: "Other", slug: "other" } },
+        { organization: { id: "org-1", name: "Acme", slug: "acme", jurisdiction: null } },
+        { organization: { id: "org-2", name: "Other", slug: "other", jurisdiction: null } },
       ],
     };
 

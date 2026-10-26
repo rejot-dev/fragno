@@ -60,7 +60,7 @@ for (const interruption of ["parent cancellation", "activation deadline"] as con
                 runtime: runtime.services,
                 kernel: new BackofficeKernel(runtime.services),
                 execution: createBackofficeServiceExecution({
-                  scope: { kind: "org", orgId: "org-1" },
+                  scope: { kind: "org", orgId: "org-1", jurisdiction: null },
                   service: { type: "automation", id: "drain-check" },
                 }),
               });
@@ -111,8 +111,13 @@ for (const interruption of ["parent cancellation", "activation deadline"] as con
                   toolCallLog: null,
                 },
                 codemode: codemodeRunnerFor(
-                  runtime.objects.codemode.forOrg("org-1").commands,
-                  createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                  runtime.objects.codemode.for({ kind: "org", orgId: "org-1", jurisdiction: null })
+                    .commands,
+                  createBackofficeSystemExecution({
+                    kind: "org",
+                    orgId: "org-1",
+                    jurisdiction: null,
+                  }),
                 ),
                 origin: { kind: "file", path: "/workspace/.build/test.module.json" },
                 signal: cancellation.signal,
@@ -231,7 +236,7 @@ test("remote compiled execution keeps its full guest timeout after a delayed Web
                 runtime: runtime.services,
                 kernel: new BackofficeKernel(runtime.services),
                 execution: createBackofficeServiceExecution({
-                  scope: { kind: "org", orgId: "org-1" },
+                  scope: { kind: "org", orgId: "org-1", jurisdiction: null },
                   service: { type: "automation", id: "connection-check" },
                 }),
               });
@@ -262,8 +267,13 @@ test("remote compiled execution keeps its full guest timeout after a delayed Web
                   toolCallLog: null,
                 },
                 codemode: codemodeRunnerFor(
-                  runtime.objects.codemode.forOrg("org-1").commands,
-                  createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                  runtime.objects.codemode.for({ kind: "org", orgId: "org-1", jurisdiction: null })
+                    .commands,
+                  createBackofficeSystemExecution({
+                    kind: "org",
+                    orgId: "org-1",
+                    jurisdiction: null,
+                  }),
                 ),
                 origin: { kind: "file", path: "/workspace/.build/test.module.json" },
                 signal: null,

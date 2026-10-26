@@ -193,7 +193,7 @@ test("each section page selects the route's own scope, or reports a 404 inside t
           },
         ),
         then.assert("every section opens Ada's scopes with their labels", async (ctx) => {
-          const acme = { id: ctx.vars.orgId, slug: "acme" };
+          const acme = { id: ctx.vars.orgId, slug: "acme", jurisdiction: null };
           const ada = (kind: string, id: string) => ({ kind, id, cookie: ctx.vars.adaCookie });
           for (const pageName of Object.keys(pages) as PageName[]) {
             expect(await openPage(ctx, pageName, ada("org", "acme")), pageName).toEqual({
@@ -217,7 +217,12 @@ test("each section page selects the route's own scope, or reports a 404 inside t
             });
             expect(await openPage(ctx, pageName, ada("user", ctx.vars.adaId)), pageName).toEqual({
               renders: "page",
-              selectedScope: { kind: "user", userId: ctx.vars.adaId, label: "ada@acme.test" },
+              selectedScope: {
+                kind: "user",
+                userId: ctx.vars.adaId,
+                jurisdiction: null,
+                label: "ada@acme.test",
+              },
               projectLookups: 0,
             });
           }

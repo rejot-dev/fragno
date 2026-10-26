@@ -6,6 +6,8 @@ import {
   type BackofficeScope,
   type BackofficeScopeCodec,
   BackofficeScopeParseError,
+  backofficeTextNameCodec,
+  backofficeUserIdCodec,
   formatBackofficeScopeRoutePath,
   formatBackofficeScopeSegment,
   parseBackofficeScopeRouteParams,
@@ -14,6 +16,7 @@ import {
 
 type BackofficeRouteScopeNames = {
   organization: { orgSlug: string };
+  user: { userId: string };
   project: { projectSlug: string };
 };
 
@@ -24,11 +27,12 @@ export type BackofficeRoutableRouteScope = BackofficeRoutable<BackofficeRouteSco
 
 const routeScopeCodec: BackofficeScopeCodec<BackofficeRouteScopeNames> = {
   organization: backofficeOrganizationSlugCodec,
-  project: {
+  user: backofficeUserIdCodec,
+  project: backofficeTextNameCodec({
     label: "project slug",
     format: (name) => name.projectSlug,
     parse: (projectSlug) => ({ projectSlug }),
-  },
+  }),
 };
 
 /** Encodes a Backoffice page URL scope, e.g. `project/org:acme:website`. */

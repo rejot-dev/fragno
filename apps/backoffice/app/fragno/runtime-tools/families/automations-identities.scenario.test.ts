@@ -40,7 +40,7 @@ const scenarioObjects = {
   RESEND: null,
 } satisfies LocalBackofficeObjects;
 
-const scope = { kind: "org" as const, orgId: "org-1" };
+const scope = { kind: "org" as const, orgId: "org-1", jurisdiction: null };
 const telegramChat = (id: string) =>
   ({ scope: "external", source: "telegram", type: "chat", id }) as const;
 

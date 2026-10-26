@@ -8,9 +8,12 @@ import {
 } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import {
   type BackofficeContextScope,
+  backofficeContextScopesEqual,
+  type BackofficeOrganizationContextScope,
   type BackofficeScope,
   type BackofficeScopeNames,
   backofficeScopeRootOwner,
+  type BackofficeUserContextScope,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import type { Role } from "@/fragno/auth/contracts";
@@ -331,22 +334,28 @@ export const BACKOFFICE_AUTHORITY_ROLE_GRANTS = {
 
 type BackofficeAuthorityRole = keyof typeof BACKOFFICE_AUTHORITY_ROLE_GRANTS;
 
-/** The verified or current facts that decide a user's role in a scope. */
+/**
+ * The verified or current facts that decide a user's role in a scope. They name root owners as
+ * scopes, jurisdiction included, so a scope naming the right ID in another jurisdiction, which
+ * would address other Durable Objects, matches none of them.
+ */
 export type BackofficeUserAuthority = Readonly<{
   userId: string;
+  /** Null until onboarding fixes where it is kept, so the user cannot open it before then. */
+  personalScope: BackofficeUserContextScope | null;
   role: Role;
-  organizationId: string | null;
+  organization: BackofficeOrganizationContextScope | null;
   /**
    * A member of an organization this user owns or administers, whose personal workspace they may
    * act in: verified once per request at its execution boundary, or read live for deferred work.
    */
-  administeredMemberId: string | null;
+  administeredMember: BackofficeUserContextScope | null;
 }>;
 
 /** The user who owns the scope, when that is someone other than `userId`. */
 export function backofficeScopeOtherUserId(
   userId: string,
-  scope: BackofficeScope<BackofficeScopeNames>,
+  scope: BackofficeScope<BackofficeScopeNames & { user: { userId: string } }>,
 ): string | null {
   const owner = backofficeScopeRootOwner(scope);
   return owner?.kind === "user" && owner.userId !== userId ? owner.userId : null;
@@ -366,12 +375,15 @@ export const resolveBackofficeUserAuthorityRole = (
     // System administration does not reach another user's private scope; administering an
     // organization the user belongs to does.
     case "user":
-      if (scope.userId === authority.userId) {
+      if (authority.personalScope && backofficeContextScopesEqual(scope, authority.personalScope)) {
         return authority.role === "admin" ? "system-administrator" : "user-owner";
       }
-      return scope.userId === authority.administeredMemberId ? "member-administrator" : null;
+      return authority.administeredMember &&
+        backofficeContextScopesEqual(scope, authority.administeredMember)
+        ? "member-administrator"
+        : null;
     case "org":
-      if (authority.organizationId !== scope.orgId) {
+      if (!authority.organization || !backofficeContextScopesEqual(scope, authority.organization)) {
         return null;
       }
       return authority.role === "admin" ? "system-administrator" : "organization-member";

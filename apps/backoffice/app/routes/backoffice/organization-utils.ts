@@ -1,3 +1,5 @@
+import { administersMembers, type OrganizationMembership } from "@/fragno/auth/contracts";
+
 export type OrganizationTab = "overview" | "members" | "invites" | "clients" | "billing";
 
 export const ROLE_OPTIONS = ["member", "admin", "owner"] as const;
@@ -51,4 +53,12 @@ export function getErrorMessage(error: unknown) {
     }
   }
   return "Something went wrong.";
+}
+
+/**
+ * Whether the person may add client organizations: as an owner or admin of the organization itself,
+ * since what it manages its clients do not reach.
+ */
+export function addsClients(membership: OrganizationMembership): boolean {
+  return membership.through.kind === "membership" && administersMembers(membership.roles);
 }

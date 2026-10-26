@@ -83,11 +83,15 @@ async function allPages<T>(
  */
 export async function loadTeam(request: Request, context: OrganizationContext): Promise<Team> {
   const { organization, user, roles } = context;
-  const backoffice = await connectAsUser(request, { kind: "org", orgId: organization.id });
+  const backoffice = await connectAsUser(request, {
+    kind: "org",
+    orgId: organization.id,
+    jurisdiction: null,
+  });
   if (!backoffice) {
     throw organizationNotFound();
   }
-  const scope = { kind: "org", orgId: organization.id } as const;
+  const scope = { kind: "org", orgId: organization.id, jurisdiction: null } as const;
   const [listed, pending] = await callBackoffice(() =>
     Promise.all([
       allPages(async (cursor) => {

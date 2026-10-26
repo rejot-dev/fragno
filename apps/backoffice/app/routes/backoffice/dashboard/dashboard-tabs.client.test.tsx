@@ -28,7 +28,7 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
-const scope = { kind: "user" as const, userId: "ada", label: "ada@acme.test" };
+const scope = { kind: "user" as const, userId: "ada", jurisdiction: null, label: "ada@acme.test" };
 
 function openDashboard(pageSources: Promise<PageSources>) {
   return (

@@ -13,7 +13,7 @@ export const gitHubConnection = defineIntegrationConnection({
   async loadConfiguration({ request, context, scope }) {
     const config = await fetchGitHubAdminConfig(context, scope.orgId, new URL(request.url).origin);
     const linkedRepositories = config.configState?.configured
-      ? await fetchGitHubLinkedRepositories(request, context, scope.orgId)
+      ? await fetchGitHubLinkedRepositories(request, context, scope)
       : null;
     return { ...config, linkedRepositories };
   },

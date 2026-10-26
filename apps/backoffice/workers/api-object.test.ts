@@ -42,12 +42,16 @@ afterEach(async () => {
 describe("API system capability", () => {
   test("initializes for its object scope without capability configuration", async () => {
     const runtime = await createRuntime();
-    const api = runtime.objects.api.forOrg("org-1");
+    const api = runtime.objects.api.for({ kind: "org", orgId: "org-1", jurisdiction: null });
 
     const response = await api.http.fetchAuthorized(
       new Request("https://api.do/api/api/connections"),
       {
-        execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+        execution: createBackofficeSystemExecution({
+          kind: "org",
+          orgId: "org-1",
+          jurisdiction: null,
+        }),
       },
     );
     assert(response.ok);

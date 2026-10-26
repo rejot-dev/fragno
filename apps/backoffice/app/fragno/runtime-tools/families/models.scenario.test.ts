@@ -31,7 +31,7 @@ import { base64ToBytes } from "@/lib/base64";
 import { BillingObject } from "../../../../workers/billing-object";
 import { modelsToolFamily } from "./models";
 
-const scope: BackofficeContextScope = { kind: "org", orgId: "org-1" };
+const scope: BackofficeContextScope = { kind: "org", orgId: "org-1", jurisdiction: null };
 const member = createBackofficeUserExecution({ scope, userId: "member-1" });
 const period = new Date().toISOString().slice(0, 7);
 
@@ -220,7 +220,7 @@ test("usage reaches billing after an outage without classifying again", async ()
 });
 
 test("a personal-scope classification is recorded on the user's ledger", async () => {
-  const personal: BackofficeContextScope = { kind: "user", userId: "user-1" };
+  const personal: BackofficeContextScope = { kind: "user", userId: "user-1", jurisdiction: null };
   await runBackofficeScenario(
     defineBackofficeScenario({
       name: "personal classification bills its user",

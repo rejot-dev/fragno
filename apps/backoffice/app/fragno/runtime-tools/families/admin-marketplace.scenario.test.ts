@@ -154,7 +154,7 @@ describe("static Marketplace publication scenarios", () => {
         ],
         steps: ({ when, then, runner }) => [
           when.project.create({
-            owner: { kind: "org", orgId: "org-1" },
+            owner: { kind: "org", orgId: "org-1", jurisdiction: null },
             name: "Delivery",
             slug: "delivery",
             createdByUserId: "owner-1",
@@ -169,13 +169,13 @@ describe("static Marketplace publication scenarios", () => {
             const files = await marketplaceReleasePackageFiles(release);
             const publisherExecution = createBackofficeSystemExecution({ kind: "system" });
             const scopes: BackofficeContextScope[] = [
-              { kind: "org", orgId: "org-1" },
+              { kind: "org", orgId: "org-1", jurisdiction: null },
               {
                 kind: "project",
-                owner: { kind: "org", orgId: "org-1" },
+                owner: { kind: "org", orgId: "org-1", jurisdiction: null },
                 projectId: ctx.vars.projectId,
               },
-              { kind: "user", userId: "owner-1" },
+              { kind: "user", userId: "owner-1", jurisdiction: null },
             ];
             for (const scope of scopes) {
               await expect(
@@ -246,13 +246,13 @@ describe("static Marketplace publication scenarios", () => {
             "directly created publication workflows fail before publishing",
             async (ctx) => {
               const scopes: BackofficeContextScope[] = [
-                { kind: "org", orgId: "org-1" },
+                { kind: "org", orgId: "org-1", jurisdiction: null },
                 {
                   kind: "project",
-                  owner: { kind: "org", orgId: "org-1" },
+                  owner: { kind: "org", orgId: "org-1", jurisdiction: null },
                   projectId: ctx.vars.projectId,
                 },
-                { kind: "user", userId: "owner-1" },
+                { kind: "user", userId: "owner-1", jurisdiction: null },
               ];
               for (const scope of scopes) {
                 const workflow = createRouteBackedAutomationWorkflowRuntime({

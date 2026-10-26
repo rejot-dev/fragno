@@ -124,8 +124,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   const origin = new URL(request.url).origin;
 
   const resendObjects = context.get(BackofficeWorkerContext).runtime.objects.resend;
-  const resendDo =
-    scope.kind === "system" ? resendObjects.singleton() : resendObjects.forOrg(scope.orgId);
+  const resendDo = resendObjects.for(scope);
 
   try {
     const configState = await resendDo.commands.setAdminConfig(validation.payload, scope, origin);

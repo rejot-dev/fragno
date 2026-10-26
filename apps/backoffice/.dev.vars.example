@@ -54,6 +54,10 @@ AUTH_EMAIL_VERIFICATION_ENABLED=false
 # Require an email-bound system administrator invitation before creating an account.
 SIGN_UP_INVITATIONS_ENABLED=false
 
+# workerd does not implement Durable Object jurisdictions, so local objects ignore them. Scopes in a
+# jurisdiction still keep objects of their own. Never set this outside local .dev.vars.
+DURABLE_OBJECT_JURISDICTIONS=local
+
 # Print outgoing email, including sign-in and reset links, to the terminal. Without a configured
 # system Resend connection, email is only printed. Never set this outside local .dev.vars.
 LOCAL_EMAIL_LOG=true

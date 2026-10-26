@@ -14,6 +14,7 @@ import {
 } from "@/backoffice-runtime/in-memory-runtime";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
+import type { BackofficeRootOwnerReference } from "@/backoffice-runtime/resolved-scope";
 import { bytesToHex } from "@/lib/crypto";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
@@ -22,6 +23,14 @@ import { action } from "./github-webhooks";
 
 const localObjects = {
   GITHUB_WEBHOOK_ROUTER: (input) => new GitHubWebhookRouterObject(input),
+  // Every installation's organization exists, in no jurisdiction.
+  AUTH: () =>
+    ({
+      findRootOwnerScope: async (owner: BackofficeRootOwnerReference) => ({
+        ...owner,
+        jurisdiction: null,
+      }),
+    }) as never,
 } satisfies LocalBackofficeObjects;
 
 const WEBHOOK_SECRET = "github-webhook-route-test-secret";
@@ -143,7 +152,7 @@ describe("GitHub webhook route", () => {
 
     const response = await callAction(request, runtime);
 
-    assert(response.status === 202);
+    assert(response.status === 202, await response.clone().text());
     expect(githubObject.configuredOrgIds).toEqual([ORG_ID]);
     expect(githubObject.requests).toHaveLength(1);
     const forwardedRequest = githubObject.requests[0];

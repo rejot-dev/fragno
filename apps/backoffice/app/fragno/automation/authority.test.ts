@@ -13,7 +13,7 @@ import { createAutomationRouteAuthorityResolver } from "./authority";
 const organizationAutomationExecution = {
   kind: "deferred" as const,
   scopeRestriction: null,
-  scope: { kind: "org", orgId: "org-1" },
+  scope: { kind: "org", orgId: "org-1", jurisdiction: null },
   actors: {
     initiator: {
       scope: "external",

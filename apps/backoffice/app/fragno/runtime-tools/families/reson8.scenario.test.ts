@@ -37,7 +37,7 @@ const scenarioObjects = {
 } satisfies LocalBackofficeObjects;
 
 const orgId = "org-1";
-const scope = { kind: "org", orgId } as const;
+const scope = { kind: "org", orgId, jurisdiction: null } as const;
 const platformApiKey = "platform-reson8-key";
 // The provider must receive the file's bytes unchanged; their content does not matter.
 const recording = "raw pcm samples";
@@ -150,7 +150,7 @@ test("an organization is billed for prerecorded transcription but not for realti
         then.assert(
           "personal transcription belongs to the user, not an organization",
           async ({ runtime }) => {
-            const owner = { kind: "user", userId: "transcriber" } as const;
+            const owner = { kind: "user", userId: "transcriber", jurisdiction: null } as const;
             const personal = createReson8Runtime({
               reson8: createReson8Server(platformApiKey, provider.fetch),
               scope: owner,
@@ -173,8 +173,11 @@ test("an organization is billed for prerecorded transcription but not for realti
               }),
             );
             expect(
-              (await runtime.objects.billing.forOrg(orgId).commands.getStatement({ period }))
-                .trackers,
+              (
+                await runtime.objects.billing
+                  .for({ kind: "org", orgId: orgId, jurisdiction: null })
+                  .commands.getStatement({ period })
+              ).trackers,
             ).toContainEqual(
               expect.objectContaining({
                 meter: "transcription.requests",

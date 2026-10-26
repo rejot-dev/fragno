@@ -1,3 +1,4 @@
+import { backofficeOrganizationContextScope } from "@/backoffice-runtime/resolved-scope";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { getGitHubDurableObject } from "@/worker-runtime/durable-objects";
 
@@ -11,8 +12,9 @@ const forwardToGitHub = async (
 ) => {
   const organization = await requireApiOrganization(request, context, orgSlug);
   const orgId = organization.id;
+  const scope = backofficeOrganizationContextScope(organization);
 
-  const githubDo = getGitHubDurableObject(context, orgId);
+  const githubDo = getGitHubDurableObject(context, scope);
   const url = new URL(request.url);
   const prefix = `/api/github/${orgSlug}`;
   if (url.pathname.startsWith(prefix)) {
@@ -23,7 +25,7 @@ const forwardToGitHub = async (
 
   const proxyRequest = new Request(url.toString(), request);
   return githubDo.http.fetchAuthorized(proxyRequest, {
-    execution: await requireBackofficeContext(request, context, { kind: "org", orgId }),
+    execution: await requireBackofficeContext(request, context, scope),
   });
 };
 

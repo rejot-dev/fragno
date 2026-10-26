@@ -71,7 +71,7 @@ afterAll(async () => {
   await server?.close();
 });
 
-const scope = { kind: "org", orgId: "org-1" } as const;
+const scope = { kind: "org", orgId: "org-1", jurisdiction: null } as const;
 const outputPath = "/workspace/.build/example.module.json";
 
 test("js.run executes bundled top-level statements and dependencies with the compiler offline, ignoring exports", async () => {
@@ -295,7 +295,7 @@ test("js.run validates built module format, entrypoint, runtime, JSON and scope 
               runtime: runtime.services,
               kernel: new BackofficeKernel(runtime.services),
               execution: createBackofficeServiceExecution({
-                scope: { kind: "org", orgId: "org-2" },
+                scope: { kind: "org", orgId: "org-2", jurisdiction: null },
                 service: { type: "automation", id: "module-runner" },
               }),
             });

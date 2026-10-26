@@ -12,6 +12,10 @@ import {
   BACKOFFICE_PERMISSION,
   type BackofficePermissionRequirement,
 } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import type {
+  BackofficeOrganizationContextScope,
+  BackofficeUserContextScope,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
 const workers = vi.hoisted(() => ({
@@ -169,8 +173,8 @@ async function authorizeBookkeeping(ctx: Ctx, cookie: string): Promise<string> {
   return z.object({ access_token: z.string() }).parse(await response.json()).access_token;
 }
 
-type OrgScope = { kind: "org"; orgId: string };
-type OwnerScope = OrgScope | { kind: "user"; userId: string };
+type OrgScope = BackofficeOrganizationContextScope;
+type OwnerScope = OrgScope | BackofficeUserContextScope;
 type WorkspaceScope = { kind: "app"; owner: OwnerScope; appId: string };
 type AppScope =
   | OwnerScope
@@ -178,7 +182,7 @@ type AppScope =
   | { kind: "project"; owner: OwnerScope; projectId: string };
 
 function orgScope(orgId: string): OrgScope {
-  return { kind: "org", orgId };
+  return { kind: "org", orgId, jurisdiction: null };
 }
 
 async function exchange(ctx: Ctx, oauthAccessToken: string, scope: AppScope) {
@@ -307,7 +311,11 @@ async function requestClientCredentialsToken(ctx: Ctx): Promise<string> {
 
 async function createProject(ctx: Ctx, name: string): Promise<string> {
   const response = await createAutomationsRouteCaller({
-    object: ctx.runtime.objects.automations.forOrg(ctx.vars.orgId),
+    object: ctx.runtime.objects.automations.for({
+      kind: "org",
+      orgId: ctx.vars.orgId,
+      jurisdiction: null,
+    }),
   })("POST", "/projects", { body: { name, createdByUserId: ctx.vars.ownerId } });
   assert(response.type === "json", `Project creation failed with ${response.status}`);
   return String(z.object({ id: z.unknown() }).parse(response.data).id);
@@ -374,7 +382,7 @@ async function getEventAsOwner(ctx: Ctx, eventId: string): Promise<unknown> {
     runtime: ctx.runtime.services,
     kernel: new BackofficeKernel(ctx.runtime.services),
     execution: createBackofficeUserExecution({
-      scope: { kind: "org", orgId: ctx.vars.orgId },
+      scope: { kind: "org", orgId: ctx.vars.orgId, jurisdiction: null },
       userId: ctx.vars.ownerId,
     }),
   });
@@ -400,7 +408,7 @@ async function expectDenied(response: Response, status: number, error: string) {
 
 async function updateGrants(ctx: Ctx, grantedPermissions: BackofficePermissionRequirement[]) {
   const updated = await ctx.runtime.objects.appInstallations
-    .forOrg(ctx.vars.orgId)
+    .for({ kind: "org", orgId: ctx.vars.orgId, jurisdiction: null })
     .commands.updateInstallationAccess({
       appId: ctx.vars.appId,
       grantedPermissions,
@@ -517,7 +525,7 @@ async function runInstalledAppScenario(
               assert(registered.ok);
               ctx.vars.appId = registered.value.appId;
               const installed = await ctx.runtime.objects.appInstallations
-                .forOrg(ctx.vars.orgId)
+                .for({ kind: "org", orgId: ctx.vars.orgId, jurisdiction: null })
                 .commands.installApp({
                   actionsRevision: 1,
                   appId: ctx.vars.appId,
@@ -561,7 +569,7 @@ describe("installed-app event delivery SQLite scenarios", () => {
         const receipt = await sendEvent(ctx, { credential: ctx.vars.credential });
         expect(receipt).toMatchObject({
           accepted: true,
-          scope: { kind: "org", orgId: ctx.vars.orgId },
+          scope: { kind: "org", orgId: ctx.vars.orgId, jurisdiction: null },
           source: `app:${ctx.vars.appId}`,
           eventType: connectionTested,
         });
@@ -570,7 +578,7 @@ describe("installed-app event delivery SQLite scenarios", () => {
       then(
         "the owner sees exactly one event with the member as principal and the app as a restricting delegate",
         async (ctx) => {
-          const scope = { kind: "org" as const, orgId: ctx.vars.orgId };
+          const scope = { kind: "org" as const, orgId: ctx.vars.orgId, jurisdiction: null };
           expect(await getEventAsOwner(ctx, ctx.vars.eventId)).toMatchObject({
             id: ctx.vars.eventId,
             scope,
@@ -595,7 +603,7 @@ describe("installed-app event delivery SQLite scenarios", () => {
         "work resumed from the stored event keeps the app restriction and loses it on uninstall",
         async (ctx) => {
           const kernel = new BackofficeKernel(ctx.runtime.services);
-          const scope = { kind: "org" as const, orgId: ctx.vars.orgId };
+          const scope = { kind: "org" as const, orgId: ctx.vars.orgId, jurisdiction: null };
           const stored = z
             .object({ actors: z.unknown() })
             .parse(await getEventAsOwner(ctx, ctx.vars.eventId));
@@ -612,7 +620,7 @@ describe("installed-app event delivery SQLite scenarios", () => {
             }),
           ).rejects.toMatchObject({ reason: "actor-capability-denied" });
           const uninstalled = await ctx.runtime.objects.appInstallations
-            .forOrg(ctx.vars.orgId)
+            .for({ kind: "org", orgId: ctx.vars.orgId, jurisdiction: null })
             .commands.uninstallApp({ appId: ctx.vars.appId });
           assert(uninstalled.ok);
           await expect(
@@ -630,7 +638,7 @@ describe("installed-app event delivery SQLite scenarios", () => {
         then("request bodies cannot choose identity, source, or target scope", async (ctx) => {
           for (const forged of [
             { actors: { principal: { scope: "internal", type: "user", id: ctx.vars.ownerId } } },
-            { scope: { kind: "org", orgId: ctx.vars.memberOrgId } },
+            { scope: { kind: "org", orgId: ctx.vars.memberOrgId, jurisdiction: null } },
             { userId: ctx.vars.ownerId },
           ]) {
             await expectApiError(
@@ -669,7 +677,7 @@ describe("installed-app event delivery SQLite scenarios", () => {
               "scope_unavailable",
             );
             const installed = await ctx.runtime.objects.appInstallations
-              .forOrg(ctx.vars.memberOrgId)
+              .for({ kind: "org", orgId: ctx.vars.memberOrgId, jurisdiction: null })
               .commands.installApp({
                 actionsRevision: 1,
                 appId: ctx.vars.appId,
@@ -769,9 +777,11 @@ describe("installed-app event delivery SQLite scenarios", () => {
       then(
         "uninstalling revokes credentials, and reinstalling does not revive them",
         async (ctx) => {
-          const installations = ctx.runtime.objects.appInstallations.forOrg(
-            ctx.vars.orgId,
-          ).commands;
+          const installations = ctx.runtime.objects.appInstallations.for({
+            kind: "org",
+            orgId: ctx.vars.orgId,
+            jurisdiction: null,
+          }).commands;
           assert((await installations.uninstallApp({ appId: ctx.vars.appId })).ok);
           await expectApiError(sendEvent(ctx, { credential: ctx.vars.credential }), "forbidden");
           await expectDenied(
@@ -832,9 +842,11 @@ describe("installed-app event delivery SQLite scenarios", () => {
           expect(await sendEvent(ctx, { credential: ctx.vars.credential })).toMatchObject({
             accepted: true,
           });
-          const installations = ctx.runtime.objects.appInstallations.forOrg(
-            ctx.vars.orgId,
-          ).commands;
+          const installations = ctx.runtime.objects.appInstallations.for({
+            kind: "org",
+            orgId: ctx.vars.orgId,
+            jurisdiction: null,
+          }).commands;
           expect(
             await installations.updateInstallationAccess({
               appId: ctx.vars.appId,
@@ -860,9 +872,11 @@ describe("installed-app event delivery SQLite scenarios", () => {
         then(
           "only organizations the user administers and their personal scope are offered, and foreign return addresses are refused",
           async (ctx) => {
-            const installations = ctx.runtime.objects.appInstallations.forOrg(
-              ctx.vars.orgId,
-            ).commands;
+            const installations = ctx.runtime.objects.appInstallations.for({
+              kind: "org",
+              orgId: ctx.vars.orgId,
+              jurisdiction: null,
+            }).commands;
             assert((await installations.uninstallApp({ appId: ctx.vars.appId })).ok);
             ctx.vars.financeProjectId = await createProject(ctx, "Finance");
             ctx.vars.payrollProjectId = await createProject(ctx, "Payroll");
@@ -952,7 +966,7 @@ describe("installed-app event delivery SQLite scenarios", () => {
             ctx.vars.installCode = location.searchParams.get("code") ?? "";
             expect(
               await ctx.runtime.objects.appInstallations
-                .forOrg(ctx.vars.orgId)
+                .for({ kind: "org", orgId: ctx.vars.orgId, jurisdiction: null })
                 .commands.getInstallation({ appId: ctx.vars.appId }),
             ).toMatchObject({
               status: "active",
@@ -1018,7 +1032,7 @@ describe("installed-app event delivery SQLite scenarios", () => {
           async (ctx) => {
             const finance = {
               kind: "project" as const,
-              owner: { kind: "org" as const, orgId: ctx.vars.orgId },
+              owner: { kind: "org" as const, orgId: ctx.vars.orgId, jurisdiction: null },
               projectId: ctx.vars.financeProjectId,
             };
             for (const outside of [
@@ -1093,7 +1107,7 @@ describe("installed-app event delivery SQLite scenarios", () => {
 
             // Narrowing access applies to credentials that were already issued.
             const narrowed = await ctx.runtime.objects.appInstallations
-              .forOrg(ctx.vars.orgId)
+              .for({ kind: "org", orgId: ctx.vars.orgId, jurisdiction: null })
               .commands.updateInstallationAccess({
                 appId: ctx.vars.appId,
                 grantedPermissions: [emit],
@@ -1109,9 +1123,11 @@ describe("installed-app event delivery SQLite scenarios", () => {
         then(
           "uninstalling clears the link and revokes the installation's credentials",
           async (ctx) => {
-            const installations = ctx.runtime.objects.appInstallations.forOrg(
-              ctx.vars.orgId,
-            ).commands;
+            const installations = ctx.runtime.objects.appInstallations.for({
+              kind: "org",
+              orgId: ctx.vars.orgId,
+              jurisdiction: null,
+            }).commands;
             assert((await installations.uninstallApp({ appId: ctx.vars.appId })).ok);
             expect(await installations.getInstallation({ appId: ctx.vars.appId })).toMatchObject({
               status: "uninstalled",
@@ -1120,7 +1136,7 @@ describe("installed-app event delivery SQLite scenarios", () => {
             await expectDenied(
               await exchange(ctx, ctx.vars.installationToken, {
                 kind: "project",
-                owner: { kind: "org" as const, orgId: ctx.vars.orgId },
+                owner: { kind: "org" as const, orgId: ctx.vars.orgId, jurisdiction: null },
                 projectId: ctx.vars.financeProjectId,
               }),
               403,
@@ -1223,9 +1239,11 @@ describe("installed-app event delivery SQLite scenarios", () => {
             hasAgents: false,
           });
 
-          const installations = ctx.runtime.objects.appInstallations.forOrg(
-            ctx.vars.orgId,
-          ).commands;
+          const installations = ctx.runtime.objects.appInstallations.for({
+            kind: "org",
+            orgId: ctx.vars.orgId,
+            jurisdiction: null,
+          }).commands;
           assert((await installations.uninstallApp({ appId: ctx.vars.appId })).ok);
           const closed = await openWorkspaceDashboard(
             ctx,
@@ -1252,7 +1270,7 @@ describe("installed-app event delivery SQLite scenarios", () => {
       then(
         "the member installs Bookkeeping in their personal scope, which nobody else can choose for them",
         async (ctx) => {
-          const personal = { kind: "user", userId: ctx.vars.memberId } as const;
+          const personal = { kind: "user", userId: ctx.vars.memberId, jurisdiction: null } as const;
           const url = installUrl(ctx);
           url.searchParams.set("owner", `user:${ctx.vars.memberId}`);
           expect(await openInstallPage(ctx, ctx.vars.memberCookie, url)).toMatchObject({
@@ -1305,7 +1323,7 @@ describe("installed-app event delivery SQLite scenarios", () => {
       then(
         "Bookkeeping acts in the personal scope and its workspace there, as itself or for the member and their organization's owner",
         async (ctx) => {
-          const personal = { kind: "user", userId: ctx.vars.memberId } as const;
+          const personal = { kind: "user", userId: ctx.vars.memberId, jurisdiction: null } as const;
           const workspace = { kind: "app", owner: personal, appId: ctx.vars.appId } as const;
           const asInstallation = await exchangeCredential(
             ctx,
@@ -1332,6 +1350,7 @@ describe("installed-app event delivery SQLite scenarios", () => {
             await exchange(ctx, ctx.vars.installationToken, {
               kind: "user",
               userId: ctx.vars.ownerId,
+              jurisdiction: null,
             }),
             403,
             "scope_unavailable",
@@ -1346,7 +1365,7 @@ describe("installed-app event delivery SQLite scenarios", () => {
       then(
         "the member and the organization's owner open the workspace, only the member manages the installation, and uninstalling closes both",
         async (ctx) => {
-          const personal = { kind: "user", userId: ctx.vars.memberId } as const;
+          const personal = { kind: "user", userId: ctx.vars.memberId, jurisdiction: null } as const;
           expect(
             await openWorkspaceDashboard(ctx, ctx.vars.memberCookie, `user:${ctx.vars.memberId}`),
           ).toMatchObject({

@@ -55,7 +55,7 @@ afterAll(async () => {
 });
 
 const orgId = "org-1";
-const scope = { kind: "org" as const, orgId };
+const scope = { kind: "org" as const, orgId, jurisdiction: null };
 const SOURCE_PATH = "/workspace/reports/operations.page.js";
 
 const operationsPage = `export default page.define({ title: "Operations" }, ({ sql, now, intervals, bucket }) => {

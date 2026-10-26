@@ -32,7 +32,7 @@ const ORG_ID = "org-files";
 function uploadObject(ctx: BackofficeScenarioContext) {
   return new BackofficeKernel(ctx.runtime.services).scoped(
     "UPLOAD",
-    { kind: "org", orgId: ORG_ID },
+    { kind: "org", orgId: ORG_ID, jurisdiction: null },
     ctx.runtime.objects.upload,
   );
 }

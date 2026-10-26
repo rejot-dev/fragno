@@ -132,14 +132,14 @@ test("members see who in their organization was recently active, and where", asy
           assert(
             !ctx.runtime.hasObjectInstance({
               binding: "PI_MANAGER",
-              scope: { kind: "org", orgId: ctx.vars.orgId },
+              scope: { kind: "org", orgId: ctx.vars.orgId, jurisdiction: null },
             }),
           );
         }),
         then.assert(
           "Ada opens Acme's dashboard, which starts Acme's objects and its assistant",
           async (ctx) => {
-            const acme = { kind: "org" as const, orgId: ctx.vars.orgId };
+            const acme = { kind: "org" as const, orgId: ctx.vars.orgId, jurisdiction: null };
             const assistant = piAgentObjectName({ scope: acme, agentName: "assistant" });
             assert(!startedPiAgents.has(assistant));
             await openPage(ctx, ctx.vars.adaCookie, "/backoffice/dashboard/org/acme", {
@@ -156,7 +156,7 @@ test("members see who in their organization was recently active, and where", asy
             // Presence outlives its object, which Cloudflare may evict between two page requests.
             await ctx.runtime.restartObject({
               binding: "PRESENCE",
-              scope: { kind: "org", orgId: ctx.vars.orgId },
+              scope: { kind: "org", orgId: ctx.vars.orgId, jurisdiction: null },
             });
             expect(await presenceSeenBy(ctx, ctx.vars.graceCookie)).toEqual([
               { email: "ada@acme.test", path: "/backoffice/dashboard/org/acme" },
@@ -177,7 +177,7 @@ test("members see who in their organization was recently active, and where", asy
             assert(
               ctx.runtime.hasObjectInstance({
                 binding: "UPLOAD",
-                scope: { kind: "user", userId: ctx.vars.adaId },
+                scope: { kind: "user", userId: ctx.vars.adaId, jurisdiction: null },
               }),
             );
           },

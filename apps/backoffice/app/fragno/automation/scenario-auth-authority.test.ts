@@ -80,7 +80,7 @@ describe("scenario auth authority fixtures", () => {
           }),
           then.auth.permissions({
             userId: "member-1",
-            scope: { kind: "org", orgId: "org-1" },
+            scope: { kind: "org", orgId: "org-1", jurisdiction: null },
             include: [BACKOFFICE_PERMISSION.otp.create, BACKOFFICE_PERMISSION.store.modify],
             exclude: [BACKOFFICE_PERMISSION.identity.bind],
           }),
@@ -135,7 +135,7 @@ describe("scenario auth authority fixtures", () => {
           }),
           then.auth.permissions({
             userId: "member-1",
-            scope: { kind: "org", orgId: "org-1" },
+            scope: { kind: "org", orgId: "org-1", jurisdiction: null },
             exclude: [
               BACKOFFICE_PERMISSION.connections.read,
               BACKOFFICE_PERMISSION.internal.manage,

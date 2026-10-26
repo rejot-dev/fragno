@@ -10,7 +10,7 @@ import {
   OrganizationTabs,
   organizationPageBodyClassName,
 } from "./organization-shared";
-import type { OrganizationTab } from "./organization-utils";
+import { addsClients, type OrganizationTab } from "./organization-utils";
 import { throwBackofficeOrganizationNotFound } from "./route-errors";
 
 export async function loader({ params, context }: Route.LoaderArgs) {
@@ -78,7 +78,7 @@ export default function BackofficeOrganizationLayout({
         orgSlug={organization.slug}
         activeTab={activeTab}
         managed={membership.through.kind === "managing-organization"}
-        managesClients={relations.managedOrganizations.length > 0}
+        showsClients={relations.managedOrganizations.length > 0 || addsClients(membership)}
       />
       <div className={organizationPageBodyClassName}>
         {membership.through.kind === "managing-organization" ? (

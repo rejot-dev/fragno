@@ -170,11 +170,14 @@ export async function findAdministeredMember(
       "organization.name as organizationName",
       "organization.slug as organizationSlug",
       "user.id",
+      "user.jurisdiction",
       "user.name",
       "user.email",
     ])
     .where("administrator.userId", "=", input.administratorId)
     .where("administered.userId", "=", input.memberId)
+    // A personal workspace exists once its onboarding fixes where it is kept.
+    .where("user.onboardedAt", "is not", null)
     .orderBy("organization.createdAt")
     .orderBy("organization.id")
     .execute();
@@ -191,6 +194,7 @@ export async function findAdministeredMember(
   return administered
     ? {
         userId: administered.id,
+        jurisdiction: administered.jurisdiction,
         name: administered.name,
         email: administered.email,
         organization: {

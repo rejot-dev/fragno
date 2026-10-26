@@ -4,7 +4,7 @@ import { generatedUiUploadScopeSchema, resolveGeneratedUiUploadScope } from "./g
 
 const currentScope = {
   kind: "project" as const,
-  owner: { kind: "org" as const, orgId: "org-1" },
+  owner: { kind: "org" as const, orgId: "org-1", jurisdiction: null },
   projectId: "project-1",
 };
 
@@ -20,7 +20,7 @@ describe("generated UI Upload scopes", () => {
   test("accepts an explicit project scope in the current organization", () => {
     const projectScope = {
       kind: "project" as const,
-      owner: { kind: "org" as const, orgId: "org-1" },
+      owner: { kind: "org" as const, orgId: "org-1", jurisdiction: null },
       projectId: "project-2",
     };
     expect(resolveGeneratedUiUploadScope(projectScope, currentScope)).toEqual(projectScope);
@@ -28,7 +28,10 @@ describe("generated UI Upload scopes", () => {
 
   test("rejects an explicit scope for another organization", () => {
     expect(() =>
-      resolveGeneratedUiUploadScope({ kind: "org", orgId: "org-2" }, currentScope),
+      resolveGeneratedUiUploadScope(
+        { kind: "org", orgId: "org-2", jurisdiction: null },
+        currentScope,
+      ),
     ).toThrow("cannot target another organization");
   });
 

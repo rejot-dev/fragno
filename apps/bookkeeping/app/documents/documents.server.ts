@@ -56,7 +56,7 @@ export async function readUploadForm(request: Request): Promise<FormData | null>
 async function connectToProject(request: Request, context: BooksContext) {
   const scope: BackofficeContextScope = {
     kind: "project",
-    owner: { kind: "org", orgId: context.organization.id },
+    owner: { kind: "org", orgId: context.organization.id, jurisdiction: null },
     projectId: context.administration.id,
   };
   const backoffice = await connectAsUser(request, scope);

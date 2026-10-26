@@ -92,7 +92,7 @@ const LISTING_SLUGS: Record<string, string> = {
 };
 const WORKFLOW_FILE = "automations/telegram-test-command.workflow.js";
 const ROUTE_ID = "telegram-test-command";
-const TARGET_SCOPE = { kind: "org", orgId: "org-1" } as const;
+const TARGET_SCOPE = { kind: "org", orgId: "org-1", jurisdiction: null } as const;
 const SYSTEM_CONTEXT = {
   execution: createBackofficeSystemExecution(TARGET_SCOPE),
   propagationContext: null,
@@ -107,18 +107,20 @@ async function installMarketplacePackage(
   ctx: BackofficeScenarioContext,
   input: { listingId: string; version: string; installationRoot: string },
 ) {
-  return await ctx.runtime.objects.automations.forOrg("org-1").commands.restartMarketplaceIngestion(
-    {
-      marketplace: { kind: "system" },
-      ...input,
-      targetScope: TARGET_SCOPE,
-      permissions: bundledMarketplacePermissions({
-        slug: LISTING_SLUGS[input.listingId],
-        version: input.version,
-      }),
-    },
-    SYSTEM_CONTEXT,
-  );
+  return await ctx.runtime.objects.automations
+    .for({ kind: "org", orgId: "org-1", jurisdiction: null })
+    .commands.restartMarketplaceIngestion(
+      {
+        marketplace: { kind: "system" },
+        ...input,
+        targetScope: TARGET_SCOPE,
+        permissions: bundledMarketplacePermissions({
+          slug: LISTING_SLUGS[input.listingId],
+          version: input.version,
+        }),
+      },
+      SYSTEM_CONTEXT,
+    );
 }
 
 /** Answers the test command's install workflow, which asks for its reply message. */
@@ -220,17 +222,19 @@ describe("package installation scenarios", () => {
           runner.drain(),
           then.assert("installing without approving its permissions is refused", async (ctx) => {
             await expect(
-              ctx.runtime.objects.automations.forOrg("org-1").commands.restartMarketplaceIngestion(
-                {
-                  marketplace: { kind: "system" },
-                  listingId: LISTING_ID,
-                  version: "2.0.0",
-                  installationRoot,
-                  targetScope: TARGET_SCOPE,
-                  permissions: [],
-                },
-                SYSTEM_CONTEXT,
-              ),
+              ctx.runtime.objects.automations
+                .for({ kind: "org", orgId: "org-1", jurisdiction: null })
+                .commands.restartMarketplaceIngestion(
+                  {
+                    marketplace: { kind: "system" },
+                    listingId: LISTING_ID,
+                    version: "2.0.0",
+                    installationRoot,
+                    targetScope: TARGET_SCOPE,
+                    permissions: [],
+                  },
+                  SYSTEM_CONTEXT,
+                ),
             ).rejects.toThrow(
               "This release declares the permissions integrations.execute, packages.read, but the installation approved none.",
             );
@@ -840,7 +844,11 @@ describe("package installation scenarios", () => {
             });
             assert.equal(agent.status, 204, await agent.clone().text());
             const retried = await createWorkflowsRouteCaller({
-              object: ctx.runtime.objects.automations.forOrg("org-1"),
+              object: ctx.runtime.objects.automations.for({
+                kind: "org",
+                orgId: "org-1",
+                jurisdiction: null,
+              }),
               context: SYSTEM_CONTEXT,
             })("POST", "/:workflowName/instances/:instanceId/retry-failed-step", {
               pathParams: {

@@ -217,7 +217,7 @@ test("a user keeps projects in their personal workspace that nobody else can ope
         then.assert("Ada opens the project by its slug", async (ctx) => {
           expect(await openPage(ctx, ctx.vars.adaCookie, ctx.vars.projectUrl)).toEqual({
             kind: "project",
-            owner: { kind: "user", userId: ctx.vars.adaId },
+            owner: { kind: "user", userId: ctx.vars.adaId, jurisdiction: null },
             project: { id: expect.any(String), slug: "ledger" },
             label: "Ledger",
           });
@@ -309,6 +309,7 @@ test("an organization's owners and admins work in its members' personal workspac
           ).toEqual({
             kind: "user",
             userId: ctx.vars.beaId,
+            jurisdiction: null,
             label: "bea@example.test",
           });
         }),
@@ -370,6 +371,7 @@ test("an organization's owners and admins work in its members' personal workspac
             await deferredPermissions(ctx, ctx.vars.adaId, {
               kind: "user",
               userId: ctx.vars.beaId,
+              jurisdiction: null,
             }),
           ).toContainEqual(BACKOFFICE_PERMISSION.projects.create);
         }),
@@ -397,9 +399,19 @@ test("an organization's owners and admins work in its members' personal workspac
             const foreign = await fire(ctx.vars.cyId);
             assert.isFalse(foreign.ok, foreign.output);
             expect(
-              await forwardedEvents(ctx, { kind: "user", userId: ctx.vars.beaId }),
+              await forwardedEvents(ctx, {
+                kind: "user",
+                userId: ctx.vars.beaId,
+                jurisdiction: null,
+              }),
             ).toHaveLength(1);
-            expect(await forwardedEvents(ctx, { kind: "user", userId: ctx.vars.cyId })).toEqual([]);
+            expect(
+              await forwardedEvents(ctx, {
+                kind: "user",
+                userId: ctx.vars.cyId,
+                jurisdiction: null,
+              }),
+            ).toEqual([]);
           },
         ),
         then.assert("Ada forwards events from Bea's workspace into Bea's project", async (ctx) => {
@@ -411,7 +423,7 @@ test("an organization's owners and admins work in its members' personal workspac
           assert(project.kind === "project");
           const projectScope = {
             kind: "project" as const,
-            owner: { kind: "user" as const, userId: ctx.vars.beaId },
+            owner: { kind: "user" as const, userId: ctx.vars.beaId, jurisdiction: null },
             projectId: project.project.id,
           };
           const result = await runTerminal(
@@ -434,6 +446,7 @@ test("an organization's owners and admins work in its members' personal workspac
               await deferredPermissions(ctx, ctx.vars.adaId, {
                 kind: "user",
                 userId: ctx.vars.beaId,
+                jurisdiction: null,
               }),
             ).toEqual([]);
             const opened = await rejection(

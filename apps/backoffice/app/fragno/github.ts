@@ -1,5 +1,6 @@
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import type { BackofficeOrganizationContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import {
   createGitHubAppFragment,
@@ -167,11 +168,11 @@ const githubSubject = (
 };
 
 export const buildGitHubAutomationEvent = ({
-  orgId,
+  scope,
   event,
   meta,
 }: {
-  orgId: string;
+  scope: BackofficeOrganizationContextScope;
   event: { name: string; payload: unknown };
   meta: GitHubAppWebhookMeta;
 }): AutomationEvent => {
@@ -182,7 +183,7 @@ export const buildGitHubAutomationEvent = ({
   return {
     id: meta.hookId,
     scopeRestriction: null,
-    scope: { kind: "org", orgId },
+    scope,
     source: "github",
     eventType: "webhook.received",
     occurredAt: meta.receivedAt,
@@ -202,7 +203,7 @@ export const buildGitHubAutomationEvent = ({
       principal: null,
       delegation: [],
     },
-    subject: githubSubject(orgId, payload, meta),
+    subject: githubSubject(scope.orgId, payload, meta),
     causation: { kind: "origin" },
   };
 };

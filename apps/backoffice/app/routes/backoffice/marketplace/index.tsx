@@ -15,7 +15,12 @@ export async function loader({ context, url }: Route.LoaderArgs) {
   const organization = me.activeOrganization?.organization;
   const scope: BackofficeRoutableScopeSelection = organization
     ? { kind: "org", organization, label: organization.name ?? organization.id }
-    : { kind: "user", userId: me.user.id, label: me.user.email ?? me.user.id };
+    : {
+        kind: "user",
+        userId: me.user.id,
+        jurisdiction: me.user.jurisdiction,
+        label: me.user.email ?? me.user.id,
+      };
 
   // Public listing pages link here so installation opens in the visitor's active workspace.
   const listingRef = url.searchParams.get("listing");

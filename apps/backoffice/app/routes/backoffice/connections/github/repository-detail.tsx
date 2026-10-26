@@ -31,7 +31,6 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     throw new Response("Not Found", { status: 404 });
   }
   const connection = gitHubConnection.require({ request, context });
-  const organizationId = connection.scope.orgId;
   const { configError, linkedRepositories: linkedResult } = await connection.configuration();
   // Behind the repositories middleware, no linked repositories means the configuration failed.
   if (linkedResult?.reposError !== null) {
@@ -55,7 +54,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     } satisfies GitHubRepositoryDetailLoaderData;
   }
 
-  const pullsResult = await fetchGitHubPulls(request, context, organizationId, {
+  const pullsResult = await fetchGitHubPulls(request, context, connection.scope, {
     owner: repo.ownerLogin,
     repo: repo.name,
     state: "open",

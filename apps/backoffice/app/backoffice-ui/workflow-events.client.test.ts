@@ -25,7 +25,7 @@ describe("sendBackofficeWorkflowEvent", () => {
         reference: {
           scope: {
             kind: "project",
-            owner: { kind: "org", orgId: "org-1" },
+            owner: { kind: "org", orgId: "org-1", jurisdiction: null },
             projectId: "project/one",
           },
           workflowName: "reson8-setup",

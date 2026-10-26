@@ -12,7 +12,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     me.activeOrganization?.organization ?? me.organizations[0]?.organization ?? null;
   const scope = organization
     ? ({ kind: "org", orgSlug: organization.slug } as const)
-    : ({ kind: "user", userId: me.user.id } as const);
+    : ({ kind: "user", userId: me.user.id, jurisdiction: me.user.jurisdiction } as const);
 
   return redirect(`/backoffice/internals/${backofficeRouteScopePath(scope)}`);
 }

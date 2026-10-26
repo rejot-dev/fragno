@@ -18,12 +18,13 @@ beforeEach(() => {
     user: {
       id: "user-1",
       role: "user",
+      personalScope: { kind: "user", userId: "user-1", jurisdiction: null },
     },
     auth: {
       scopeRestriction: null,
       transport: "cookie",
       expiresAt: new Date("2027-01-01T00:00:00.000Z"),
-      organization: { id: "org-1", slug: "acme", roles: ["member"] },
+      organization: { id: "org-1", slug: "acme", jurisdiction: null, roles: ["member"] },
     },
   });
 });
@@ -56,13 +57,13 @@ describe("Backoffice settings authority inspection", () => {
       scopes: [
         {
           key: "user:user-1",
-          scope: { kind: "user", userId: "user-1" },
+          scope: { kind: "user", userId: "user-1", jurisdiction: null },
           role: "user-owner",
           grants: [BACKOFFICE_PERMISSION.store.read, BACKOFFICE_PERMISSION.pi.read],
         },
         {
           key: "org:org-1",
-          scope: { kind: "org", orgId: "org-1" },
+          scope: { kind: "org", orgId: "org-1", jurisdiction: null },
           role: "organization-member",
           grants: [BACKOFFICE_PERMISSION.store.read, BACKOFFICE_PERMISSION.pi.read],
         },
@@ -77,14 +78,15 @@ describe("Backoffice settings authority inspection", () => {
         role: "principal",
       },
       execution: expect.objectContaining({
-        scope: { kind: "org", orgId: "org-1" },
+        scope: { kind: "org", orgId: "org-1", jurisdiction: null },
         userAuthority: {
           scopeRestriction: null,
           kind: "verified-request-authority",
           userId: "user-1",
+          personalScope: { kind: "user" as const, userId: "user-1", jurisdiction: null },
           role: "user",
-          organizationId: "org-1",
-          administeredMemberId: null,
+          organization: { kind: "org" as const, orgId: "org-1", jurisdiction: null },
+          administeredMember: null,
           expiresAtEpochMs: Date.parse("2027-01-01T00:00:00.000Z"),
         },
       }),
@@ -93,7 +95,11 @@ describe("Backoffice settings authority inspection", () => {
 
   test("includes the global system scope for administrators", async () => {
     requireBackofficePrincipalMock.mockResolvedValue({
-      user: { id: "admin-1", role: "admin" },
+      user: {
+        id: "admin-1",
+        role: "admin",
+        personalScope: { kind: "user", userId: "admin-1", jurisdiction: null },
+      },
       auth: {
         scopeRestriction: null,
         transport: "cookie",
@@ -112,7 +118,7 @@ describe("Backoffice settings authority inspection", () => {
 
     expect(result.scopes.map(({ scope }) => scope)).toEqual([
       { kind: "system" },
-      { kind: "user", userId: "admin-1" },
+      { kind: "user", userId: "admin-1", jurisdiction: null },
     ]);
   });
 });

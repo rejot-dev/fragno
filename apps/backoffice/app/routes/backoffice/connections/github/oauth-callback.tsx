@@ -2,6 +2,7 @@ import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { FormContainer } from "@fragno-private/design-system/form-container";
 import { Form, redirect, useActionData, useLoaderData, useNavigation } from "react-router";
 
+import { backofficeOrganizationContextScope } from "@/backoffice-runtime/resolved-scope";
 import { getBackofficeShellRequest } from "@/layouts/backoffice-shell-request.server";
 import {
   getGitHubDurableObject,
@@ -118,11 +119,16 @@ export async function loader({
     };
   }
 
-  const claim = await completeGitHubOAuth(request, context, resolved.orgId, {
-    subjectId: me.user.id,
-    state,
-    code,
-  });
+  const claim = await completeGitHubOAuth(
+    request,
+    context,
+    backofficeOrganizationContextScope(memberEntry.organization),
+    {
+      subjectId: me.user.id,
+      state,
+      code,
+    },
+  );
   if (claim.error || !claim.result) {
     return {
       ok: false,
@@ -197,12 +203,13 @@ export async function action({
     };
   }
 
-  const sync = await syncGitHubInstallation(request, context, resolved.orgId, installationId);
+  const organization = backofficeOrganizationContextScope(memberEntry.organization);
+  const sync = await syncGitHubInstallation(request, context, organization, installationId);
   if (sync.error || !sync.result) {
     return { ok: false, message: sync.error ?? "Failed to sync installation." };
   }
 
-  const githubDo = getGitHubDurableObject(context, resolved.orgId);
+  const githubDo = getGitHubDurableObject(context, organization);
   await githubDo.commands.redeliverFailedInstallationWebhooks(installationId);
   await githubWebhookRouterDo.commands.consumeInstallationClaimState({ state, userId: me.user.id });
 

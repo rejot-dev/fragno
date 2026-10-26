@@ -121,7 +121,7 @@ function createSourceReader(execution: BackofficeExecutionContext) {
 const scopedEvent = (orgId: string): AutomationEvent => ({
   id: `github:issue.opened:${orgId}`,
   scopeRestriction: null,
-  scope: { kind: "org", orgId },
+  scope: { kind: "org", orgId, jurisdiction: null },
   source: "github",
   eventType: "issue.opened",
   occurredAt: "2026-01-01T00:00:00.000Z",
@@ -175,7 +175,7 @@ describe("readBackofficeAutomationSource", () => {
 
   test("loads static automations for user automation scope", async () => {
     const execution = createBackofficeServiceExecution({
-      scope: { kind: "user", userId: "user-1" },
+      scope: { kind: "user", userId: "user-1", jurisdiction: null },
       service: { type: "automation", id: "automation:event-1" },
     });
     const sourceReader = createSourceReader(execution);
@@ -207,14 +207,19 @@ describe("Automations authorized HTTP context", () => {
         AUTH: () =>
           ({
             async getUserAuthorityFacts() {
-              return { active: true, role: "user", organizationMember: false };
+              return {
+                active: true,
+                role: "user",
+                personalScope: { kind: "user", userId: "user-1", jurisdiction: null },
+                organization: null,
+              };
             },
           }) as never,
       },
     });
 
     try {
-      const scope = { kind: "user" as const, userId: "user-1" };
+      const scope = { kind: "user" as const, userId: "user-1", jurisdiction: null };
       const execution = createAutomationRuntimeExecution({
         authority: {
           mode: { kind: "delegated-user", grants: [BACKOFFICE_PERMISSION.store.modify] },
@@ -233,8 +238,10 @@ describe("Automations authorized HTTP context", () => {
           causation: { kind: "origin" },
         },
       });
-      const automations = runtime.objects.automations.forUser({
+      const automations = runtime.objects.automations.for({
+        kind: "user",
         userId: scope.userId,
+        jurisdiction: null,
       });
       const systemRoutes = createAutomationsRouteCaller({
         object: automations,
@@ -375,20 +382,25 @@ describe("Automations authorized HTTP context", () => {
     });
 
     try {
-      const scope = { kind: "org" as const, orgId: "org-1" };
+      const scope = { kind: "org" as const, orgId: "org-1", jurisdiction: null };
       const execution = createBackofficeRequestExecution({
         scope,
-        userId: "user-1",
         verifiedRequestAuthority: {
+          userId: "user-1",
+          personalScope: { kind: "user" as const, userId: "user-1", jurisdiction: null },
           scopeRestriction: null,
           role: "user",
-          organizationId: scope.orgId,
-          administeredMemberId: null,
+          organization: { kind: "org" as const, orgId: scope.orgId, jurisdiction: null },
+          administeredMember: null,
           expiresAt: new Date("2099-01-01T00:00:00.000Z"),
         },
       });
       const callRoute = createAutomationsRouteCaller({
-        object: runtime.objects.automations.forOrg(scope.orgId),
+        object: runtime.objects.automations.for({
+          kind: "org",
+          orgId: scope.orgId,
+          jurisdiction: null,
+        }),
         context: { execution },
       });
 
@@ -424,13 +436,17 @@ describe("Automations authorized HTTP context", () => {
     });
 
     try {
-      const scope = { kind: "user" as const, userId: "user-1" };
+      const scope = { kind: "user" as const, userId: "user-1", jurisdiction: null };
       const execution = createBackofficeUserExecution({
         scope,
         userId: scope.userId,
       });
       const callRoute = createAutomationsRouteCaller({
-        object: runtime.objects.automations.forUser({ userId: scope.userId }),
+        object: runtime.objects.automations.for({
+          kind: "user",
+          userId: scope.userId,
+          jurisdiction: null,
+        }),
         context: { execution },
       });
 
@@ -455,13 +471,17 @@ describe("Automations authorized HTTP context", () => {
     });
 
     try {
-      const scope = { kind: "user" as const, userId: "user-1" };
+      const scope = { kind: "user" as const, userId: "user-1", jurisdiction: null };
       const execution = createBackofficeUserExecution({
         scope,
         userId: scope.userId,
       });
       const callRoute = createAutomationsRouteCaller({
-        object: runtime.objects.automations.forUser({ userId: scope.userId }),
+        object: runtime.objects.automations.for({
+          kind: "user",
+          userId: scope.userId,
+          jurisdiction: null,
+        }),
         context: { execution },
       });
 
@@ -496,7 +516,7 @@ describe("Automations authorized HTTP context", () => {
     });
 
     try {
-      const scope = { kind: "user" as const, userId: "user-1" };
+      const scope = { kind: "user" as const, userId: "user-1", jurisdiction: null };
       const userExecution = createBackofficeUserExecution({
         scope,
         userId: scope.userId,
@@ -516,7 +536,11 @@ describe("Automations authorized HTTP context", () => {
         },
       };
       const callRoute = createAutomationsRouteCaller({
-        object: runtime.objects.automations.forUser({ userId: scope.userId }),
+        object: runtime.objects.automations.for({
+          kind: "user",
+          userId: scope.userId,
+          jurisdiction: null,
+        }),
         context: { execution },
       });
 
@@ -538,9 +562,11 @@ describe("Automations authorized HTTP context", () => {
     const runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
 
     try {
-      const scope = { kind: "user" as const, userId: "user-1" };
-      const automations = runtime.objects.automations.forUser({
+      const scope = { kind: "user" as const, userId: "user-1", jurisdiction: null };
+      const automations = runtime.objects.automations.for({
+        kind: "user",
         userId: scope.userId,
+        jurisdiction: null,
       });
       const callRoute = createAutomationsRouteCaller({ object: automations });
 
@@ -595,13 +621,17 @@ describe("Automations authorized HTTP context", () => {
     });
 
     try {
-      const scope = { kind: "org" as const, orgId: "org-1" };
+      const scope = { kind: "org" as const, orgId: "org-1", jurisdiction: null };
       const execution = createBackofficeServiceExecution({
         scope,
         service: { type: "system", id: "route-manager" },
       });
       const callRoute = createAutomationsRouteCaller({
-        object: runtime.objects.automations.forOrg(scope.orgId),
+        object: runtime.objects.automations.for({
+          kind: "org",
+          orgId: scope.orgId,
+          jurisdiction: null,
+        }),
         context: { execution, propagationContext: null },
       });
       const privilegedAction = {
@@ -724,7 +754,11 @@ describe("Automations authorized HTTP context", () => {
 
     try {
       const callRoute = createAutomationsRouteCaller({
-        object: runtime.objects.automations.forOrg("org-1"),
+        object: runtime.objects.automations.for({
+          kind: "org",
+          orgId: "org-1",
+          jurisdiction: null,
+        }),
       });
 
       await expect(
@@ -773,13 +807,15 @@ describe("Automations authorized HTTP context", () => {
     });
 
     try {
-      const scope = { kind: "user" as const, userId: "user-1" };
+      const scope = { kind: "user" as const, userId: "user-1", jurisdiction: null };
       const execution = createBackofficeServiceExecution({
         scope,
         service: { type: "automation", id: "automation:event-1" },
       });
-      const automations = runtime.objects.automations.forUser({
+      const automations = runtime.objects.automations.for({
+        kind: "user",
         userId: scope.userId,
+        jurisdiction: null,
       });
 
       const malformedResponse = await automations.http.fetchAuthorized(
@@ -826,9 +862,13 @@ describe("Automations authorized HTTP context", () => {
     });
 
     try {
-      const scope = { kind: "org" as const, orgId: "org-1" };
+      const scope = { kind: "org" as const, orgId: "org-1", jurisdiction: null };
       const call = createWorkflowsRouteCaller({
-        object: runtime.objects.automations.forOrg(scope.orgId),
+        object: runtime.objects.automations.for({
+          kind: "org",
+          orgId: scope.orgId,
+          jurisdiction: null,
+        }),
         context: {
           execution: createBackofficeUserExecution({ scope, userId: "user-1" }),
         },
@@ -881,9 +921,13 @@ describe("Automations authorized HTTP context", () => {
     });
 
     try {
-      const scope = { kind: "org" as const, orgId: "org-1" };
+      const scope = { kind: "org" as const, orgId: "org-1", jurisdiction: null };
       const call = createWorkflowsRouteCaller({
-        object: runtime.objects.automations.forOrg(scope.orgId),
+        object: runtime.objects.automations.for({
+          kind: "org",
+          orgId: scope.orgId,
+          jurisdiction: null,
+        }),
         context: {
           execution: createBackofficeUserExecution({ scope, userId: "user-1" }),
         },
@@ -933,10 +977,14 @@ describe("Automations authorized HTTP context", () => {
     });
 
     try {
-      const scope = { kind: "org" as const, orgId: "org-1" };
+      const scope = { kind: "org" as const, orgId: "org-1", jurisdiction: null };
       const execution = createBackofficeUserExecution({ scope, userId: "user-1" });
       const call = createWorkflowsRouteCaller({
-        object: runtime.objects.automations.forOrg(scope.orgId),
+        object: runtime.objects.automations.for({
+          kind: "org",
+          orgId: scope.orgId,
+          jurisdiction: null,
+        }),
         context: { execution },
       });
       const prepared = prepareCodemodeWorkflowInstance({
@@ -995,9 +1043,13 @@ describe("Automations authorized HTTP context", () => {
     });
 
     try {
-      const scope = { kind: "org" as const, orgId: "org-1" };
+      const scope = { kind: "org" as const, orgId: "org-1", jurisdiction: null };
       const call = createWorkflowsRouteCaller({
-        object: runtime.objects.automations.forOrg(scope.orgId),
+        object: runtime.objects.automations.for({
+          kind: "org",
+          orgId: scope.orgId,
+          jurisdiction: null,
+        }),
         context: {
           execution: createBackofficeUserExecution({ scope, userId: "user-1" }),
         },
@@ -1056,11 +1108,13 @@ describe("Automations authorized HTTP context", () => {
     const runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
 
     try {
-      const automations = runtime.objects.automations.forUser({
+      const automations = runtime.objects.automations.for({
+        kind: "user",
         userId: "user-1",
+        jurisdiction: null,
       });
       const execution = createBackofficeServiceExecution({
-        scope: { kind: "user", userId: "user-2" },
+        scope: { kind: "user", userId: "user-2", jurisdiction: null },
         service: { type: "automation", id: "automation:event-1" },
       });
 
@@ -1105,7 +1159,11 @@ describe("Automations object scope binding", () => {
     const runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
 
     try {
-      const automations = runtime.objects.automations.forOrg("org-1");
+      const automations = runtime.objects.automations.for({
+        kind: "org",
+        orgId: "org-1",
+        jurisdiction: null,
+      });
       await automations.commands.ingestEvent(scopedEvent("org-1"));
 
       await expect(automations.commands.ingestEvent(scopedEvent("org-2"))).rejects.toThrow(
@@ -1134,7 +1192,11 @@ describe("Automations object scope binding", () => {
     });
 
     try {
-      const automations = runtime.objects.automations.forOrg("org-1");
+      const automations = runtime.objects.automations.for({
+        kind: "org",
+        orgId: "org-1",
+        jurisdiction: null,
+      });
       await runtime.objects.automations.singleton().commands.requestStaticMarketplacePublications();
       await runtime.drain();
 
@@ -1148,11 +1210,15 @@ describe("Automations object scope binding", () => {
             marketplace: { kind: "system" },
             installationRoot: "/workspace",
             listingId,
-            targetScope: { kind: "user", userId: "user-1" },
+            targetScope: { kind: "user", userId: "user-1", jurisdiction: null },
             version: USER_WORKSPACE_INGESTION_TEST_VERSION,
           },
           {
-            execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+            execution: createBackofficeSystemExecution({
+              kind: "org",
+              orgId: "org-1",
+              jurisdiction: null,
+            }),
             propagationContext: null,
           },
         ),
@@ -1164,7 +1230,7 @@ describe("Automations object scope binding", () => {
 
       await expect(
         runtime.objects.automations
-          .forUser({ userId: "user-1" })
+          .for({ kind: "user", userId: "user-1", jurisdiction: null })
           .commands.listPackageInstallations(),
       ).resolves.toEqual([
         {
@@ -1181,7 +1247,7 @@ describe("Automations object scope binding", () => {
       contentUrl.searchParams.set("provider", "database");
       contentUrl.searchParams.set("key", "automations/telegram-test-command.workflow.js");
       const content = await runtime.objects.upload
-        .forUser({ userId: "user-1" })
+        .for({ kind: "user", userId: "user-1", jurisdiction: null })
         .http.fetch(new Request(contentUrl));
       assert(content.ok);
       const marketplaceEntry = getStaticMarketplaceEntry({
@@ -1213,7 +1279,11 @@ describe("Automations object scope binding", () => {
     });
 
     try {
-      const automations = runtime.objects.automations.forOrg("org-1");
+      const automations = runtime.objects.automations.for({
+        kind: "org",
+        orgId: "org-1",
+        jurisdiction: null,
+      });
       await runtime.objects.automations.singleton().commands.requestStaticMarketplacePublications();
       await runtime.drain();
 
@@ -1224,7 +1294,7 @@ describe("Automations object scope binding", () => {
       const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
         marketplace: { kind: "system" },
         installationRoot: "/workspace",
-        targetScope: { kind: "user", userId: "user-1" },
+        targetScope: { kind: "user", userId: "user-1", jurisdiction: null },
         listingId,
         version: USER_WORKSPACE_INGESTION_TEST_VERSION,
       });
@@ -1234,11 +1304,15 @@ describe("Automations object scope binding", () => {
             marketplace: { kind: "system" },
             installationRoot: "/workspace",
             listingId,
-            targetScope: { kind: "user", userId: "user-1" },
+            targetScope: { kind: "user", userId: "user-1", jurisdiction: null },
             version: USER_WORKSPACE_INGESTION_TEST_VERSION,
           },
           {
-            execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+            execution: createBackofficeSystemExecution({
+              kind: "org",
+              orgId: "org-1",
+              jurisdiction: null,
+            }),
             propagationContext: null,
           },
         ),
@@ -1252,6 +1326,7 @@ describe("Automations object scope binding", () => {
           execution: createBackofficeSystemExecution({
             kind: "org",
             orgId: "org-1",
+            jurisdiction: null,
           }),
         },
       });
@@ -1271,7 +1346,7 @@ describe("Automations object scope binding", () => {
       });
       await expect(
         runtime.objects.automations
-          .forUser({ userId: "user-1" })
+          .for({ kind: "user", userId: "user-1", jurisdiction: null })
           .commands.listPackageInstallations(),
       ).resolves.toEqual([]);
       expect(membershipChecks).toBe(2);
@@ -1285,25 +1360,31 @@ describe("Automations object scope binding", () => {
 
     try {
       await expect(
-        runtime.objects.automations.forOrg("org-1").commands.requestMarketplaceIngestion(
-          {
-            marketplace: { kind: "system" },
-            installationRoot: "/workspace",
-            listingId: marketplaceListingId({
-              ownerScope: { kind: "system" },
-              slug: "telegram-test-command",
-            }),
-            targetScope: {
-              kind: "project",
-              owner: { kind: "org", orgId: "org-2" },
-              projectId: "project-1",
+        runtime.objects.automations
+          .for({ kind: "org", orgId: "org-1", jurisdiction: null })
+          .commands.requestMarketplaceIngestion(
+            {
+              marketplace: { kind: "system" },
+              installationRoot: "/workspace",
+              listingId: marketplaceListingId({
+                ownerScope: { kind: "system" },
+                slug: "telegram-test-command",
+              }),
+              targetScope: {
+                kind: "project",
+                owner: { kind: "org", orgId: "org-2", jurisdiction: null },
+                projectId: "project-1",
+              },
             },
-          },
-          {
-            execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
-            propagationContext: null,
-          },
-        ),
+            {
+              execution: createBackofficeSystemExecution({
+                kind: "org",
+                orgId: "org-1",
+                jurisdiction: null,
+              }),
+              propagationContext: null,
+            },
+          ),
       ).rejects.toThrow("Marketplace ingestion target belongs to another organization.");
     } finally {
       await runtime.cleanup();

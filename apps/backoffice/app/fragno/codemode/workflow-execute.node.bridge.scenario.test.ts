@@ -35,7 +35,7 @@ test("Node checkpoints and replays workflow codemode across fresh Worker WebSock
     bridgeApiKey: server.apiKey,
     env: {},
   });
-  const scope = { kind: "org" as const, orgId: "org-1" };
+  const scope = { kind: "org" as const, orgId: "org-1", jurisdiction: null };
   const execution = createBackofficeSystemExecution(scope);
   await runBackofficeScenario(
     defineBackofficeScenario({
@@ -88,7 +88,7 @@ test("Node checkpoints and replays workflow codemode across fresh Worker WebSock
           include: ["first", "second", "third"],
         }),
         when.codemode.run({
-          scope: { kind: "org", orgId: "org-1" },
+          scope: { kind: "org", orgId: "org-1", jurisdiction: null },
           code: 'async () => await context.current.store.get({ key: "checkpoint-count" })',
         }),
         then.assert("completed step did not repeat its mutation during replay", (ctx) => {
@@ -105,7 +105,7 @@ test("remote event consumption and sleep resume with Date values intact", async 
     bridgeApiKey: server.apiKey,
     env: {},
   });
-  const scope = { kind: "org" as const, orgId: "org-1" };
+  const scope = { kind: "org" as const, orgId: "org-1", jurisdiction: null };
   const execution = createBackofficeSystemExecution(scope);
   await runBackofficeScenario(
     defineBackofficeScenario({
@@ -170,7 +170,7 @@ test("remote event consumption and sleep resume with Date values intact", async 
 
 test("interruption preserves host retry scheduling without falsely committing tool effects", async () => {
   const execute = createCodemodeNodeExecutor(server);
-  const scope = { kind: "org" as const, orgId: "org-1" };
+  const scope = { kind: "org" as const, orgId: "org-1", jurisdiction: null };
   const execution = createBackofficeSystemExecution(scope);
   await runBackofficeScenario(
     defineBackofficeScenario({
@@ -232,7 +232,7 @@ test("permanent guest failures bypass the real Node runner's configured retry po
     bridgeApiKey: server.apiKey,
     env: {},
   });
-  const scope = { kind: "org" as const, orgId: "org-1" };
+  const scope = { kind: "org" as const, orgId: "org-1", jurisdiction: null };
   const execution = createBackofficeSystemExecution(scope);
   await runBackofficeScenario(
     defineBackofficeScenario({

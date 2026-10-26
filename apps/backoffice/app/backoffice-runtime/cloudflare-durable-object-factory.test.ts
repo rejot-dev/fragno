@@ -9,13 +9,13 @@ import type { BackofficeObjectAddress } from "./object-registry";
 
 const address = {
   binding: "AUTOMATIONS",
-  scope: { kind: "org", orgId: "org-1" },
+  scope: { kind: "org", orgId: "org-1", jurisdiction: null },
 } as const satisfies BackofficeObjectAddress;
 
 const execution = {
   kind: "deferred" as const,
   scopeRestriction: null,
-  scope: { kind: "org", orgId: "org-1" } as const,
+  scope: { kind: "org", orgId: "org-1", jurisdiction: null } as const,
   actors: {
     initiator: {
       scope: "internal" as const,
@@ -96,5 +96,55 @@ describe("Cloudflare Durable Object factory", () => {
 
     assert.notStrictEqual(await http.fetch(request()), responses[0]);
     assert.strictEqual(await http.fetch(request(), { passThrough: true }), responses[1]);
+  });
+
+  test("keeps a scope's objects in its root owner's jurisdiction", () => {
+    const stub = {};
+    const euNamespace = {
+      idFromName: vi.fn((name: string) => ({ name, jurisdiction: "eu" }) as DurableObjectId),
+      get: vi.fn(() => stub),
+    };
+    const namespace = {
+      idFromName: vi.fn((name: string) => ({ name }) as DurableObjectId),
+      jurisdiction: vi.fn(() => euNamespace),
+      get: vi.fn(() => stub),
+    };
+    const factory = new CloudflareDurableObjectFactory({
+      AUTOMATIONS: namespace,
+      DURABLE_OBJECT_JURISDICTIONS: "enforced",
+    } as unknown as CloudflareEnv);
+
+    factory.get(
+      { name: "AUTOMATIONS" },
+      {
+        binding: "AUTOMATIONS",
+        scope: {
+          kind: "project",
+          owner: { kind: "org", orgId: "org-1", jurisdiction: "eu" },
+          projectId: "project-1",
+        },
+      },
+    );
+    expect(namespace.jurisdiction).toHaveBeenCalledWith("eu");
+    expect(euNamespace.idFromName).toHaveBeenCalledWith("v1:project:org:org-1@eu:project-1");
+
+    // Objects made before jurisdictions keep their names in the unrestricted namespace.
+    factory.get({ name: "AUTOMATIONS" }, address);
+    expect(namespace.jurisdiction).toHaveBeenCalledOnce();
+    expect(namespace.idFromName).toHaveBeenCalledWith("v1:org:org-1");
+
+    // workerd implements no jurisdictions; the name alone keeps the scope's objects apart.
+    new CloudflareDurableObjectFactory({
+      AUTOMATIONS: namespace,
+      DURABLE_OBJECT_JURISDICTIONS: "local",
+    } as unknown as CloudflareEnv).get(
+      { name: "AUTOMATIONS" },
+      {
+        binding: "AUTOMATIONS",
+        scope: { kind: "org", orgId: "org-1", jurisdiction: "eu" },
+      },
+    );
+    expect(namespace.jurisdiction).toHaveBeenCalledOnce();
+    expect(namespace.idFromName).toHaveBeenCalledWith("v1:org:org-1@eu");
   });
 });

@@ -45,7 +45,7 @@ const scenarioObjects = {
   UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
 
-const scope = { kind: "org", orgId: "telegram-org" } as const;
+const scope = { kind: "org", orgId: "telegram-org", jurisdiction: null } as const;
 const address = { binding: "TELEGRAM", scope } as const;
 
 async function runTelegramObjectScenario(scenario: BackofficeScenarioDefinitionInput) {
@@ -82,10 +82,8 @@ async function assertTelegramStateUnchanged(ctx: BackofficeScenarioContext) {
 
 /** Sends requests to the object itself; handle HTTP strips the internal context header. */
 function nativeTelegramObject(ctx: BackofficeScenarioContext, orgId: string) {
-  return ctx.runtime.objects.telegram.forOrg(orgId).commands as unknown as Pick<
-    TelegramObject,
-    "fetch"
-  >;
+  return ctx.runtime.objects.telegram.for({ kind: "org", orgId: orgId, jurisdiction: null })
+    .commands as unknown as Pick<TelegramObject, "fetch">;
 }
 
 describe("Telegram object authorization scenarios", () => {
@@ -401,7 +399,11 @@ describe("Telegram object authorization scenarios", () => {
           const wrongExecution = await ctx.runtime.objects.telegram
             .for(scope)
             .http.fetchAuthorized(request, {
-              execution: createBackofficeSystemExecution({ kind: "org", orgId: "other-org" }),
+              execution: createBackofficeSystemExecution({
+                kind: "org",
+                orgId: "other-org",
+                jurisdiction: null,
+              }),
               propagationContext: null,
             });
           assert.equal(wrongExecution.status, 401);

@@ -67,7 +67,11 @@ describe("durable Pi billing counters", () => {
     const through = piBillingCountersFromUsage([usage]);
     const event = createPiDurableBillingEvent({
       eventId: "pi-durable:event-1",
-      scope: { kind: "project", owner: { kind: "org", orgId: "org-1" }, projectId: "project-1" },
+      scope: {
+        kind: "project",
+        owner: { kind: "org", orgId: "org-1", jurisdiction: null },
+        projectId: "project-1",
+      },
       agentName: "assistant",
       taskId: 42,
       occurredAt: "2026-10-03T12:00:00.000Z",

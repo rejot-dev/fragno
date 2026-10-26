@@ -334,7 +334,7 @@ export type MarketplaceIngestionRequestInput = z.input<
 export const packagesInstallResultSchema = z.lazy(() =>
   marketplaceIngestionRestartResultSchema._zod.innerType.extend({
     installationRoot: marketplaceInstallationRootSchema,
-    workflowScope: z.object({ kind: z.literal("org"), orgId: z.string().min(1) }),
+    workflowScope: backofficeOrganizationScopeSchema,
   }),
 );
 

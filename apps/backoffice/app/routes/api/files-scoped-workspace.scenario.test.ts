@@ -117,7 +117,11 @@ test("workspace uploads preserve streaming bytes and resolve MIME metadata for n
                 provider: "database",
                 key: path.slice("/workspace/".length),
               });
-              const upload = ctx.runtime.objects.upload.forOrg("org-1").http;
+              const upload = ctx.runtime.objects.upload.for({
+                kind: "org",
+                orgId: "org-1",
+                jurisdiction: null,
+              }).http;
               const metadata = await upload.fetch(
                 new Request(`https://upload.internal/api/upload/files/by-key?${query}`),
               );
@@ -146,7 +150,11 @@ test("workspace uploads preserve streaming bytes and resolve MIME metadata for n
             const state = createRuntimeStateBackend({
               runtime: ctx.runtime.services,
               kernel,
-              execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+              execution: createBackofficeSystemExecution({
+                kind: "org",
+                orgId: "org-1",
+                jurisdiction: null,
+              }),
             });
             await expect(state.readFileBytes("/workspace/streamed.txt")).resolves.toEqual(
               new Uint8Array([65, 0, 255, 10]),
@@ -210,14 +218,16 @@ test("workspace uploads preserve streaming bytes and resolve MIME metadata for n
             const explicitRewrite = await uploadWorkspaceFile(customPath, "4", "text/plain");
             assert.equal(explicitRewrite.status, 200);
             await assertWorkspaceFileContentType(customPath, "text/plain");
-            const deleted = await ctx.runtime.objects.upload.forOrg("org-1").http.fetch(
-              new Request(
-                "https://upload.internal/api/upload/files/by-key?provider=database&key=custom.json",
-                {
-                  method: "DELETE",
-                },
-              ),
-            );
+            const deleted = await ctx.runtime.objects.upload
+              .for({ kind: "org", orgId: "org-1", jurisdiction: null })
+              .http.fetch(
+                new Request(
+                  "https://upload.internal/api/upload/files/by-key?provider=database&key=custom.json",
+                  {
+                    method: "DELETE",
+                  },
+                ),
+              );
             assert(deleted.ok);
             const recreated = await uploadWorkspaceFile(
               customPath,
@@ -235,12 +245,14 @@ test("workspace uploads preserve streaming bytes and resolve MIME metadata for n
               "file",
               new Blob([new Uint8Array([65, 0, 255, 10])], { type: "application/octet-stream" }),
             );
-            const legacy = await ctx.runtime.objects.upload.forOrg("org-1").http.fetch(
-              new Request("https://upload.internal/api/upload/files", {
-                method: "POST",
-                body: legacyForm,
-              }),
-            );
+            const legacy = await ctx.runtime.objects.upload
+              .for({ kind: "org", orgId: "org-1", jurisdiction: null })
+              .http.fetch(
+                new Request("https://upload.internal/api/upload/files", {
+                  method: "POST",
+                  body: legacyForm,
+                }),
+              );
             assert(legacy.ok);
             const repaired = await uploadWorkspaceFile("/workspace/legacy.json", "4", null);
             assert.equal(repaired.status, 200);

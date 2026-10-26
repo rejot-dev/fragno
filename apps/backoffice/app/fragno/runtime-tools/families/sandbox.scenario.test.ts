@@ -63,7 +63,7 @@ const scenarioObjects = {
     }),
 } satisfies LocalBackofficeObjects;
 
-const PERSONAL_SCOPE = { kind: "user", userId: "user-1" } as const;
+const PERSONAL_SCOPE = { kind: "user", userId: "user-1", jurisdiction: null } as const;
 
 test("a personal codemode run starts its own sandbox and runs commands in it", async () => {
   await runBackofficeScenario(
@@ -96,7 +96,7 @@ test("a personal codemode run starts its own sandbox and runs commands in it", a
         }),
         then.assert("an organization does not see the personal sandbox", async (ctx) => {
           const listed = await ctx.runCodemode({
-            scope: { kind: "org", orgId: "org-1" },
+            scope: { kind: "org", orgId: "org-1", jurisdiction: null },
             code: "async () => await sandbox.listSandboxes()",
           });
           expect(listed.result).toEqual([]);

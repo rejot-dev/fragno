@@ -1143,7 +1143,7 @@ async function confirmPerson(env: CloudflareEnv, organizationId: string, userId:
   }
   const credential = await exchangeForScope(env, {
     oauthAccessToken: token.accessToken,
-    scope: { kind: "org", orgId: organizationId },
+    scope: { kind: "org", orgId: organizationId, jurisdiction: null },
   });
   if (credential.status === "unauthorized") {
     throw new ActionFailure(403, reauthorize);
@@ -1152,7 +1152,10 @@ async function confirmPerson(env: CloudflareEnv, organizationId: string, userId:
     await directory.removeMembership({ organizationId, userId });
     throw new ActionFailure(403, "You are no longer a member of this organization.");
   }
-  const confirmed = await credential.client.call({ kind: "org", orgId: organizationId }, "org.get");
+  const confirmed = await credential.client.call(
+    { kind: "org", orgId: organizationId, jurisdiction: null },
+    "org.get",
+  );
   const roles = organizationRoleSchema.array().min(1).parse(confirmed.roles);
   await directory.confirmMembership({
     organization: {

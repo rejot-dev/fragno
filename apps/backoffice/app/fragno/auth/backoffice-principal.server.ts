@@ -6,15 +6,19 @@ import type { RouterContextProvider } from "react-router";
 
 import {
   type BackofficeIdentityDirectory,
-  resolveAdministeredMemberId,
+  resolveAdministeredMember,
 } from "@/backoffice-runtime/authority-resolver";
-import { resolveBackofficeUserAuthorityRole } from "@/backoffice-runtime/authority-roles";
+import {
+  type BackofficeUserAuthority,
+  resolveBackofficeUserAuthorityRole,
+} from "@/backoffice-runtime/authority-roles";
 import {
   createBackofficeRequestExecution,
   type BackofficeExecutionContext,
   type BackofficeRequestExecution,
 } from "@/backoffice-runtime/context";
 import { BackofficeForbiddenError, isBackofficeForbiddenError } from "@/backoffice-runtime/kernel";
+import { backofficeOrganizationContextScope } from "@/backoffice-runtime/resolved-scope";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { BackofficeAuthPrincipal } from "./contracts";
@@ -35,11 +39,13 @@ export const createBackofficeExecutionForPrincipal = async (
   if (auth.auth.scopeRestriction && !backofficeScopeContains(auth.auth.scopeRestriction, scope)) {
     throw new BackofficeForbiddenError("Credential scope does not permit the requested scope.");
   }
-  const authority = {
+  const organization = auth.auth.organization;
+  const authority: BackofficeUserAuthority = {
     userId: auth.user.id,
+    personalScope: auth.user.personalScope,
     role: auth.user.role,
-    organizationId: auth.auth.organization?.id ?? null,
-    administeredMemberId: await resolveAdministeredMemberId(identities, auth.user.id, scope),
+    organization: organization && backofficeOrganizationContextScope(organization),
+    administeredMember: await resolveAdministeredMember(identities, auth.user.id, scope),
   };
   if (!resolveBackofficeUserAuthorityRole(authority, scope)) {
     throw new BackofficeForbiddenError(
@@ -48,11 +54,8 @@ export const createBackofficeExecutionForPrincipal = async (
   }
   return createBackofficeRequestExecution({
     scope,
-    userId: auth.user.id,
     verifiedRequestAuthority: {
-      role: authority.role,
-      organizationId: authority.organizationId,
-      administeredMemberId: authority.administeredMemberId,
+      ...authority,
       expiresAt: auth.auth.expiresAt,
       scopeRestriction: auth.auth.scopeRestriction,
     },

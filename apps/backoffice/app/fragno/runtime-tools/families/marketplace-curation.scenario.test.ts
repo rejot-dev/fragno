@@ -50,7 +50,7 @@ const scenarioObjects = {
 } satisfies LocalBackofficeObjects;
 
 const SYSTEM = { kind: "system" } as const;
-const ORG_SCOPE = { kind: "org", orgId: "org-1" } as const;
+const ORG_SCOPE = { kind: "org", orgId: "org-1", jurisdiction: null } as const;
 const HOUR_MS = 60 * 60 * 1000;
 
 function entry(slug: string, category: MarketplaceCategory = "reporting") {
@@ -112,7 +112,7 @@ async function featuredNames(ctx: BackofficeScenarioContext, marketplace: "publi
   const object =
     marketplace === "public"
       ? ctx.runtime.objects.marketplace.singleton()
-      : ctx.runtime.objects.marketplace.forOrg("org-1");
+      : ctx.runtime.objects.marketplace.for({ kind: "org", orgId: "org-1", jurisdiction: null });
   const { listings } = await object.commands.listFeaturedListings();
   return listings.map(({ listing, note }) => ({ name: listing.name, note }));
 }
@@ -143,7 +143,7 @@ describe("Marketplace curation scenarios", () => {
         steps: ({ then }) => [
           then.assert("the organization publishes a members-only package", async (ctx) => {
             const result = await ctx.runtime.objects.marketplace
-              .forOrg("org-1")
+              .for({ kind: "org", orgId: "org-1", jurisdiction: null })
               .commands.insertStaticEntries({ entries: [entry("payroll-sync")] });
             assert(result.ok);
           }),

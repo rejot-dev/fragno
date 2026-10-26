@@ -76,7 +76,7 @@ const scenarioObjects = {
   OTP: (input) => new OtpObject(input),
 } satisfies LocalBackofficeObjects;
 
-const orgScope = { kind: "org", orgId: "api-org" } as const;
+const orgScope = { kind: "org", orgId: "api-org", jurisdiction: null } as const;
 const providerOrigin = "https://billing.provider.test";
 const oauthAuth = {
   type: "oauth",
@@ -624,7 +624,7 @@ test("Codemode creates a custom API through setup and keeps one address across r
 });
 
 test("OAuth setup resumes source-owned consent across restarts, native restarts, and expiry", async () => {
-  const scope = { kind: "user", userId: "api-user" } as const;
+  const scope = { kind: "user", userId: "api-user", jurisdiction: null } as const;
   await runApiIntegrationScenario<{ authorizationUrl: string }>("sqlite", (provider) => ({
     name: "API OAuth setup through the registered facade",
     setup: ({ given }) => [given.auth.user({ id: scope.userId, email: "api@example.test" })],
@@ -914,7 +914,7 @@ test("OAuth setup resumes source-owned consent across restarts, native restarts,
 });
 
 test("an access token without a refresh token reports unavailable when it expires", async () => {
-  const scope = { kind: "user", userId: "api-user" } as const;
+  const scope = { kind: "user", userId: "api-user", jurisdiction: null } as const;
   const connectionId = "api#expiring";
   await runApiIntegrationScenario("memory", (provider) => ({
     name: "API OAuth expiry without a refresh token",
@@ -979,10 +979,10 @@ test("an access token without a refresh token reports unavailable when it expire
 test("api addresses resolve only in their own scope, page natively, and require both authority layers", async () => {
   const projectScope = {
     kind: "project",
-    owner: { kind: "org", orgId: orgScope.orgId },
+    owner: { kind: "org", orgId: orgScope.orgId, jurisdiction: null },
     projectId: "api-project",
   } as const;
-  const userScope = { kind: "user", userId: "api-member" } as const;
+  const userScope = { kind: "user", userId: "api-member", jurisdiction: null } as const;
   await runApiIntegrationScenario("sqlite", (provider) => ({
     name: "API integration scope isolation, pagination, and authorization",
     setup: ({ given }) => [

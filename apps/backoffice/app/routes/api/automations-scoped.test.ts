@@ -59,10 +59,12 @@ describe("scoped Automations outbox proxy", () => {
     expect(requireBackofficeContextMock).toHaveBeenCalledWith(request, context, {
       kind: "org",
       orgId: "org-1",
+      jurisdiction: null,
     });
     expect(automationsForScopeMock).toHaveBeenCalledWith({
       kind: "org",
       orgId: "org-1",
+      jurisdiction: null,
     });
     expect(automationsFetchMock).toHaveBeenCalledOnce();
 

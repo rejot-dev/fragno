@@ -50,7 +50,7 @@ const workflowParams = (orgId: string, instanceId: string, actors: unknown) => (
     event: {
       id: `event-${instanceId}`,
       scopeRestriction: null,
-      scope: { kind: "org", orgId },
+      scope: { kind: "org", orgId, jurisdiction: null },
       source: "test",
       eventType: "workflow.ownership",
       occurredAt: "2026-08-05T00:00:00.000Z",
@@ -61,7 +61,7 @@ const workflowParams = (orgId: string, instanceId: string, actors: unknown) => (
   },
   execution: {
     scopeRestriction: null,
-    scope: { kind: "org", orgId },
+    scope: { kind: "org", orgId, jurisdiction: null },
     actors,
     capabilityGrants: [],
   },
@@ -142,13 +142,17 @@ describe("scenario workflow ownership", () => {
         ],
         steps: ({ then }) => [
           then.assert("caller-authored event context is replaced", async (ctx) => {
-            const scope = { kind: "org" as const, orgId: "org-1" };
+            const scope = { kind: "org" as const, orgId: "org-1", jurisdiction: null };
             const ownerExecution = createBackofficeUserExecution({ scope, userId: "owner" });
             const forgedActors = createBackofficeUserExecution({
-              scope: { kind: "org", orgId: "org-2" },
+              scope: { kind: "org", orgId: "org-2", jurisdiction: null },
               userId: "attacker",
             }).actors;
-            const object = ctx.runtime.objects.automations.forOrg("org-1");
+            const object = ctx.runtime.objects.automations.for({
+              kind: "org",
+              orgId: "org-1",
+              jurisdiction: null,
+            });
             const created = await object.http.fetchAuthorized(
               workflowRequest({
                 orgId: "org-2",
@@ -205,7 +209,7 @@ describe("scenario workflow ownership", () => {
           then.assert(
             "ownership and provenance come from execution, not a billing selection",
             async ({ runtime }) => {
-              const scope = { kind: "user", userId: "member" } as const;
+              const scope = { kind: "user", userId: "member", jurisdiction: null } as const;
               const execution = createBackofficeUserExecution({ scope, userId: "member" });
               const object = runtime.objects.automations.for(scope);
               const forgedActors = createBackofficeUserExecution({ scope, userId: "owner" }).actors;
@@ -220,7 +224,7 @@ describe("scenario workflow ownership", () => {
                     ...workflowParams("forged-org", instanceId, forgedActors),
                     trigger: { type: "manual", payload: {} },
                     execution: {
-                      scope: { kind: "org", orgId: "forged-org" },
+                      scope: { kind: "org", orgId: "forged-org", jurisdiction: null },
                       actors: forgedActors,
                       capabilityGrants: [],
                       billingOrganizationId,
@@ -303,20 +307,22 @@ describe("scenario workflow ownership", () => {
         steps: ({ then }) => [
           then.assert("rejects creation without trusted execution", async (ctx) => {
             const forgedActors = createBackofficeUserExecution({
-              scope: { kind: "org", orgId: "org-1" },
+              scope: { kind: "org", orgId: "org-1", jurisdiction: null },
               userId: "attacker",
             }).actors;
-            const response = await ctx.runtime.objects.automations.forOrg("org-1").http.fetch(
-              workflowRequest({
-                orgId: "org-1",
-                instanceId: "untrusted-workflow",
-                actors: forgedActors,
-              }),
-            );
+            const response = await ctx.runtime.objects.automations
+              .for({ kind: "org", orgId: "org-1", jurisdiction: null })
+              .http.fetch(
+                workflowRequest({
+                  orgId: "org-1",
+                  instanceId: "untrusted-workflow",
+                  actors: forgedActors,
+                }),
+              );
             assert(response.status === 403);
           }),
           then.assert("overwrites caller-authored actors for every creation shape", async (ctx) => {
-            const scope = { kind: "org" as const, orgId: "org-1" };
+            const scope = { kind: "org" as const, orgId: "org-1", jurisdiction: null };
             const ownerExecution = createBackofficeUserExecution({
               scope,
               userId: "owner",
@@ -325,7 +331,11 @@ describe("scenario workflow ownership", () => {
               scope,
               userId: "attacker",
             }).actors;
-            const object = ctx.runtime.objects.automations.forOrg("org-1");
+            const object = ctx.runtime.objects.automations.for({
+              kind: "org",
+              orgId: "org-1",
+              jurisdiction: null,
+            });
 
             for (const [instanceId, batch] of [
               ["owned-single", false],

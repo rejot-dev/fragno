@@ -22,6 +22,12 @@ import type {
   BackofficeScopeIdNames,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
+import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
+import type {
+  BackofficeRootOwnerReference,
+  BackofficeRootOwnerResolver,
+} from "@/backoffice-runtime/resolved-scope";
+
 export class AutomationRouteAuthorityError extends Error {
   constructor() {
     super(
@@ -333,14 +339,16 @@ export const renderAutomationTemplateValue = (
  *
  * `start_workflow` no longer has scope overrides: workflows always run in the current event scope.
  * Scope templates remain only for `forward_event`, where preserving raw org/user/project ids is
- * required. An id that renders empty names no scope, so rendering fails.
+ * required. An id that renders empty names no scope, so rendering fails. Templates name root
+ * owners by ID alone, so `resolveRootOwner` finds the jurisdiction their objects are kept in.
  */
-export const renderAutomationScopeTemplate = (
+export const renderAutomationScopeTemplate = async (
   template: AutomationRouteScopeTemplate,
   event: AutomationEvent,
   routeId: string,
   routingKey: string,
-): BackofficeContextScope => {
+  resolveRootOwner: BackofficeRootOwnerResolver,
+): Promise<BackofficeContextScope> => {
   const renderId = (idTemplate: string, label: string) => {
     const id = renderAutomationRawTemplateValue(idTemplate, event, routeId, routingKey);
     if (!id) {
@@ -348,22 +356,33 @@ export const renderAutomationScopeTemplate = (
     }
     return id;
   };
-  const renderRootOwner = (
+  const renderRootOwner = async (
     owner: Extract<AutomationRouteScopeTemplate, { kind: "org" | "user" }>,
-  ): BackofficeRootOwner<BackofficeScopeIdNames> =>
-    owner.kind === "org"
-      ? { kind: "org", orgId: renderId(owner.orgIdTemplate, "org id") }
-      : { kind: "user", userId: renderId(owner.userIdTemplate, "user id") };
-  const renderOwner = (
+  ): Promise<BackofficeRootOwner<BackofficeScopeIdNames>> => {
+    const reference: BackofficeRootOwnerReference =
+      owner.kind === "org"
+        ? { kind: "org", orgId: renderId(owner.orgIdTemplate, "org id") }
+        : { kind: "user", userId: renderId(owner.userIdTemplate, "user id") };
+    const resolved = await resolveRootOwner(reference);
+    if (!resolved) {
+      // A missing target stays missing, so the route fails for good instead of retrying.
+      throw new BackofficeOperationError(
+        "not_found",
+        `Automation route ${routeId} targets ${reference.kind === "org" ? `organization '${reference.orgId}'` : `user '${reference.userId}'`}, which does not exist.`,
+      );
+    }
+    return resolved;
+  };
+  const renderOwner = async (
     owner: Extract<AutomationRouteScopeTemplate, { kind: "project" }>["owner"],
-  ): BackofficeProjectOwner<BackofficeScopeIdNames> =>
+  ): Promise<BackofficeProjectOwner<BackofficeScopeIdNames>> =>
     owner.kind === "app"
       ? {
           kind: "app",
-          owner: renderRootOwner(owner.owner),
+          owner: await renderRootOwner(owner.owner),
           appId: renderId(owner.appIdTemplate, "app id"),
         }
-      : renderRootOwner(owner);
+      : await renderRootOwner(owner);
 
   switch (template.kind) {
     case "system":
@@ -371,11 +390,11 @@ export const renderAutomationScopeTemplate = (
     case "org":
     case "user":
     case "app":
-      return renderOwner(template);
+      return await renderOwner(template);
     case "project":
       return {
         kind: "project",
-        owner: renderOwner(template.owner),
+        owner: await renderOwner(template.owner),
         projectId: renderId(template.projectIdTemplate, "project id"),
       };
     default:

@@ -149,10 +149,14 @@ test("scenario TanStack DB exposes an in-flight step.do lifecycle", async () => 
       setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
       steps: ({ then }) => [
         then.assert("assert live step controls synchronize", async (ctx) => {
-          const scope = { kind: "org" as const, orgId: "org-1" };
+          const scope = { kind: "org" as const, orgId: "org-1", jurisdiction: null };
           const execution = createBackofficeSystemExecution(scope);
           const workflow = createRouteBackedAutomationWorkflowRuntime({
-            object: ctx.runtime.objects.automations.forOrg(scope.orgId),
+            object: ctx.runtime.objects.automations.for({
+              kind: "org",
+              orgId: scope.orgId,
+              jurisdiction: null,
+            }),
             execution,
           });
           const workflowPath = "/workspace/automations/tanstack-live-step.workflow.js";

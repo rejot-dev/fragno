@@ -100,6 +100,7 @@ type MarketplacePublishOutput =
         | {
             kind: "org";
             orgId: string;
+            jurisdiction: "eu" | "us" | null;
           };
       files: {
         relativePath: string;
@@ -128,6 +129,7 @@ type MarketplacePublishOutput =
         | {
             kind: "org";
             orgId: string;
+            jurisdiction: "eu" | "us" | null;
           };
       files: {
         relativePath: string;

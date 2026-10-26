@@ -141,7 +141,11 @@ describe("fragment HTTP authority scenarios", () => {
   test("Forms separates public submissions from management and denies unlisted routes", async () => {
     await runHttpAuthorityScenario(async (ctx) => {
       const { accessCookie, me } = await exchangeBrowserSession(ctx);
-      const scope = { kind: "org" as const, orgId: me.organizations[0].organization.id };
+      const scope = {
+        kind: "org" as const,
+        orgId: me.organizations[0].organization.id,
+        jurisdiction: null,
+      };
       const request = new Request(origin, { headers: { cookie: accessCookie } });
       const execution = await requireBackofficeContext(request, routerContext(ctx, request), scope);
       const forms = ctx.runtime.objects.forms.singleton();
@@ -306,7 +310,7 @@ describe("fragment HTTP authority scenarios", () => {
           },
         ],
       });
-      const scope = { kind: "org" as const, orgId: "api-org" };
+      const scope = { kind: "org" as const, orgId: "api-org", jurisdiction: null };
       const scopeSegment = "org:api-org";
       const api = ctx.runtime.objects.api.for(scope);
       const connection = {
@@ -536,7 +540,11 @@ describe("fragment HTTP authority scenarios", () => {
       );
       const scope = {
         kind: "project" as const,
-        owner: { kind: "org" as const, orgId: me.organizations[0].organization.id },
+        owner: {
+          kind: "org" as const,
+          orgId: me.organizations[0].organization.id,
+          jurisdiction: null,
+        },
         projectId: "project-one",
       };
       const token = await auth.commands.exchangeBackofficeExecutionToken({
@@ -558,8 +566,8 @@ describe("fragment HTTP authority scenarios", () => {
       assert(response.ok, await response.clone().text());
       for (const target of [
         { ...scope, projectId: "project-two" },
-        { kind: "org" as const, orgId: scope.owner.orgId },
-        { kind: "user" as const, userId: me.user.id },
+        { kind: "org" as const, orgId: scope.owner.orgId, jurisdiction: null },
+        { kind: "user" as const, userId: me.user.id, jurisdiction: null },
       ]) {
         await expect(requireBackofficeContext(request, context, target)).rejects.toThrow(
           "Credential scope",
@@ -631,8 +639,8 @@ describe("fragment HTTP authority scenarios", () => {
       assert(sameProject.ok, await sameProject.clone().text());
       for (const target of [
         { ...scope, projectId: "project-two" },
-        { kind: "org" as const, orgId: scope.owner.orgId },
-        { kind: "user" as const, userId: me.user.id },
+        { kind: "org" as const, orgId: scope.owner.orgId, jurisdiction: null },
+        { kind: "user" as const, userId: me.user.id, jurisdiction: null },
       ]) {
         const denied = await ctx.runtime.objects.api
           .for(target)

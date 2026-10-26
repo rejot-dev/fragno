@@ -24,7 +24,7 @@ import {
 import { integrationConnectionStateChanges } from "@/fragno/runtime-tools/families/integrations/integration-connections";
 
 const orgId = "org-1";
-const scope = { kind: "org" as const, orgId };
+const scope = { kind: "org" as const, orgId, jurisdiction: null };
 const ENDPOINT_ID = "endpoint-1";
 
 function event(

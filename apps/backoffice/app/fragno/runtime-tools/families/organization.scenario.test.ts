@@ -42,7 +42,7 @@ const scenarioObjects = {
   UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
 
-const acme: BackofficeContextScope = { kind: "org", orgId: "org-acme" };
+const acme: BackofficeContextScope = { kind: "org", orgId: "org-acme", jurisdiction: null };
 
 async function terminal(
   ctx: BackofficeScenarioContext,
@@ -134,7 +134,11 @@ describe("account and organization runtime tool scenarios", () => {
             expect(repeated.stderr).toMatch(/already invited/iu);
           }),
           then.assert("the invitee accepts from their own account", async (ctx) => {
-            const bash = await terminal(ctx, "invitee", { kind: "user", userId: "invitee" });
+            const bash = await terminal(ctx, "invitee", {
+              kind: "user",
+              userId: "invitee",
+              jurisdiction: null,
+            });
             expect(await runJson(bash, "account.orgs.list")).toEqual({ organizations: [] });
             expect((await runJson(bash, "account.invitations.list")).invitations).toMatchObject([
               {

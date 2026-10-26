@@ -60,7 +60,7 @@ const svg =
   '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"><rect width="4" height="4"/></svg>';
 const scope: BackofficeResolvedScope = {
   kind: "org",
-  organization: { id: "org-images", slug: "image-team" },
+  organization: { id: "org-images", slug: "image-team", jurisdiction: null },
 };
 
 function generatedImage(path: string) {

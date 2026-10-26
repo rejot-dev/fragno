@@ -1,3 +1,4 @@
+import { backofficeJurisdictionSchema } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { BetterAuthPlugin } from "better-auth";
 import { admin } from "better-auth/plugins/admin";
 import { jwt } from "better-auth/plugins/jwt";
@@ -37,6 +38,14 @@ export function createBackofficeBetterAuthSchemaPlugins(input: {
             references: { model: "organization", field: "id", onDelete: "set null" },
             index: true,
           },
+          // Where the organization's Durable Objects are kept; null leaves it to Cloudflare. Chosen
+          // when it is created and never changed, because objects cannot move between them.
+          jurisdiction: {
+            type: "string",
+            required: false,
+            input: true,
+            validator: { input: backofficeJurisdictionSchema },
+          },
         },
       },
     },
@@ -49,6 +58,20 @@ export function createBackofficeBetterAuthSchemaPlugins(input: {
         ? organizationOptions
         : { ...organizationOptions, organizationHooks: input.organizationHooks },
     ),
+    {
+      id: "backoffice-user-onboarding",
+      schema: {
+        user: {
+          fields: {
+            // Where the user's personal scope keeps its Durable Objects; null leaves it to
+            // Cloudflare. Only Backoffice sets it, once, while the user is onboarded.
+            jurisdiction: { type: "string", required: false, input: false },
+            // When the user finished onboarding; null until then.
+            onboardedAt: { type: "date", required: false, input: false },
+          },
+        },
+      },
+    },
     jwt({
       disableSettingJwtHeader: true,
       jwt: {

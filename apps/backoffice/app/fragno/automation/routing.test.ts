@@ -51,7 +51,7 @@ describe("automation event reclassification", () => {
       {
         id: "event-1",
         scopeRestriction: null,
-        scope: { kind: "org", orgId: "org-1" },
+        scope: { kind: "org", orgId: "org-1", jurisdiction: null },
         source: "github",
         eventType: "webhook.received",
         occurredAt: "2026-01-01T00:00:00.000Z",
@@ -94,7 +94,7 @@ describe("automation event reclassification", () => {
 const event = {
   id: "event-1",
   scopeRestriction: null,
-  scope: { kind: "org", orgId: "org-1" },
+  scope: { kind: "org", orgId: "org-1", jurisdiction: null },
   source: "test",
   eventType: "created",
   occurredAt: "2026-01-01T00:00:00.000Z",

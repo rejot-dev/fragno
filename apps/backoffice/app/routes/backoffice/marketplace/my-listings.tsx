@@ -12,6 +12,7 @@ import {
   marketplaceListingStatusSchema,
   type MarketplaceListingStatus,
 } from "@/fragno/marketplace/contracts";
+import { marketplaceOwnerScope } from "@/fragno/marketplace/owner";
 import {
   decodeMarketplaceOwnedListingCursor,
   MarketplaceListingCursorError,
@@ -77,10 +78,11 @@ export async function loader({ context, url }: Route.LoaderArgs) {
     throw new Response("Invalid marketplace visibility.", { status: 400 });
   }
   const cursor = url.searchParams.get("cursor")?.trim() || undefined;
+  const ownerScope = marketplaceOwnerScope(routeScope);
   try {
     decodeMarketplaceOwnedListingCursor({
       encodedCursor: cursor,
-      ownerScope: routeScope,
+      ownerScope,
       status,
     });
   } catch (error) {
@@ -94,7 +96,7 @@ export async function loader({ context, url }: Route.LoaderArgs) {
     .get(BackofficeWorkerContext)
     .runtime.objects.marketplace.for(marketplaceScope).commands;
   const page = await marketplace.listOwnedListings({
-    ownerScope: routeScope,
+    ownerScope,
     status,
     cursor,
   });

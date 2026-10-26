@@ -36,8 +36,8 @@ beforeEach(() => {
   requireBackofficeContextMock.mockResolvedValue({});
   requireBackofficeMeMock.mockResolvedValue({
     organizations: [
-      { organization: { id: "org-1", slug: "acme" } },
-      { organization: { id: "org-2", slug: "other" } },
+      { organization: { id: "org-1", slug: "acme", jurisdiction: null } },
+      { organization: { id: "org-2", slug: "other", jurisdiction: null } },
     ],
   });
   uploadFetchMock.mockResolvedValue(new Response("ok"));
@@ -53,8 +53,13 @@ describe("Upload API proxy", () => {
     expect(requireBackofficeContextMock).toHaveBeenCalledWith(request, context, {
       kind: "org",
       orgId: "org-1",
+      jurisdiction: null,
     });
-    expect(getUploadDurableObjectMock).toHaveBeenCalledWith(context, "org-1");
+    expect(getUploadDurableObjectMock).toHaveBeenCalledWith(context, {
+      kind: "org",
+      orgId: "org-1",
+      jurisdiction: null,
+    });
     expect(uploadFetchMock).toHaveBeenCalledOnce();
 
     const forwardedRequest = uploadFetchMock.mock.calls[0][0] as Request;

@@ -39,7 +39,7 @@ describe("BackofficeStateBackend", () => {
     });
     const otherContext = createTrustedSystemBackofficeToolContext({
       runtimes: { state: otherState },
-    }).createScopedContext({ kind: "org", orgId: "other" });
+    }).createScopedContext({ kind: "org", orgId: "other", jurisdiction: null });
     const context = {
       ...rootContext,
       createScopedContext: (scope: Parameters<typeof rootContext.createScopedContext>[0]) =>
@@ -49,7 +49,7 @@ describe("BackofficeStateBackend", () => {
     };
 
     await context
-      .createScopedContext({ kind: "org", orgId: "other" })
+      .createScopedContext({ kind: "org", orgId: "other", jurisdiction: null })
       .runtimes.state.writeFile("/workspace/scoped.txt", "other");
 
     await expect(otherState.readFile("/workspace/scoped.txt")).resolves.toBe("other");

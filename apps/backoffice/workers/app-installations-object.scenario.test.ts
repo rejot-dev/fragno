@@ -156,8 +156,16 @@ describe("App registry and organization installation SQLite scenarios", () => {
           appsCommandStep(
             "install independently into each customer object",
             async ({ runtime }) => {
-              const first = runtime.objects.appInstallations.forOrg("customer-one").commands;
-              const second = runtime.objects.appInstallations.forOrg("customer-two").commands;
+              const first = runtime.objects.appInstallations.for({
+                kind: "org",
+                orgId: "customer-one",
+                jurisdiction: null,
+              }).commands;
+              const second = runtime.objects.appInstallations.for({
+                kind: "org",
+                orgId: "customer-two",
+                jurisdiction: null,
+              }).commands;
               const input = {
                 appId,
                 actionsRevision: 1,
@@ -210,28 +218,36 @@ describe("App registry and organization installation SQLite scenarios", () => {
           runner.restartObject({ binding: "APPS", scope: { kind: "singleton" } }),
           runner.restartObject({
             binding: "APP_INSTALLATIONS",
-            scope: { kind: "org", orgId: "customer-one" },
+            scope: { kind: "org", orgId: "customer-one", jurisdiction: null },
           }),
           runner.restartObject({
             binding: "APP_INSTALLATIONS",
-            scope: { kind: "org", orgId: "customer-two" },
+            scope: { kind: "org", orgId: "customer-two", jurisdiction: null },
           }),
           then.assert(
             "each organization retains its own grants and revocation",
             async ({ runtime }) => {
-              const first = runtime.objects.appInstallations.forOrg("customer-one").commands;
-              const second = runtime.objects.appInstallations.forOrg("customer-two").commands;
+              const first = runtime.objects.appInstallations.for({
+                kind: "org",
+                orgId: "customer-one",
+                jurisdiction: null,
+              }).commands;
+              const second = runtime.objects.appInstallations.for({
+                kind: "org",
+                orgId: "customer-two",
+                jurisdiction: null,
+              }).commands;
               expect(await first.getInstallation({ appId })).toMatchObject({
                 id: installationId,
                 appId,
-                owner: { kind: "org", orgId: "customer-one" },
+                owner: { kind: "org", orgId: "customer-one", jurisdiction: null },
                 status: "active",
                 installedByUserId: "installer",
                 resourceScope: wholeOrganization,
                 grantedPermissions: requestedPermissions,
               });
               expect(await second.getInstallation({ appId })).toMatchObject({
-                owner: { kind: "org", orgId: "customer-two" },
+                owner: { kind: "org", orgId: "customer-two", jurisdiction: null },
                 grantedPermissions: [BACKOFFICE_PERMISSION.integrations.execute],
                 status: "active",
               });
@@ -242,7 +258,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
               expect(page.installations[0].appId).toBe(appId);
               expect(
                 await runtime.objects.appInstallations
-                  .forOrg("not-installed")
+                  .for({ kind: "org", orgId: "not-installed", jurisdiction: null })
                   .commands.getInstallation({ appId }),
               ).toBeNull();
               appOperationValue(await first.uninstallApp({ appId }));
@@ -299,7 +315,11 @@ describe("App registry and organization installation SQLite scenarios", () => {
           appsCommandStep(
             "reject forged organization and undeclared grants",
             async ({ runtime }) => {
-              const installations = runtime.objects.appInstallations.forOrg("customer").commands;
+              const installations = runtime.objects.appInstallations.for({
+                kind: "org",
+                orgId: "customer",
+                jurisdiction: null,
+              }).commands;
               const input = {
                 appId,
                 actionsRevision: 1,
@@ -307,7 +327,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
                 grantedPermissions: [],
                 resourceScope: wholeOrganization,
               };
-              const forgedOwner = { kind: "org", orgId: "other-customer" };
+              const forgedOwner = { kind: "org", orgId: "other-customer", jurisdiction: null };
               const forgedOwnership = { ...input, owner: forgedOwner };
               await expect(installations.installApp(forgedOwnership)).rejects.toThrow("owner");
               const forgedLookup = { appId, owner: forgedOwner };
@@ -353,13 +373,13 @@ describe("App registry and organization installation SQLite scenarios", () => {
                 }),
               ).toMatchObject({ ok: false, error: { code: "APP_GRANTS_NOT_REQUESTED" } });
               expect(await installations.getInstallation({ appId })).toMatchObject({
-                owner: { kind: "org", orgId: "customer" },
+                owner: { kind: "org", orgId: "customer", jurisdiction: null },
                 grantedPermissions: [BACKOFFICE_PERMISSION.events.emit],
                 status: "active",
               });
               expect(
                 await runtime.objects.appInstallations
-                  .forOrg("other-customer")
+                  .for({ kind: "org", orgId: "other-customer", jurisdiction: null })
                   .commands.getInstallation({ appId }),
               ).toBeNull();
             },
@@ -367,7 +387,11 @@ describe("App registry and organization installation SQLite scenarios", () => {
           appsCommandStep(
             "uninstall and reinstall without restoring revoked grants",
             async ({ runtime }) => {
-              const installations = runtime.objects.appInstallations.forOrg("customer").commands;
+              const installations = runtime.objects.appInstallations.for({
+                kind: "org",
+                orgId: "customer",
+                jurisdiction: null,
+              }).commands;
               expect(appOperationValue(await installations.uninstallApp({ appId }))).toEqual({
                 installationId,
                 changed: true,
@@ -411,11 +435,11 @@ describe("App registry and organization installation SQLite scenarios", () => {
             async ({ runtime }) => {
               expect(
                 await runtime.objects.appInstallations
-                  .forOrg("customer")
+                  .for({ kind: "org", orgId: "customer", jurisdiction: null })
                   .commands.getInstallation({ appId }),
               ).toMatchObject({
                 id: installationId,
-                owner: { kind: "org", orgId: "customer" },
+                owner: { kind: "org", orgId: "customer", jurisdiction: null },
                 status: "active",
                 installedByUserId: "new-installer",
                 resourceScope: wholeOrganization,
@@ -439,7 +463,11 @@ describe("App registry and organization installation SQLite scenarios", () => {
         steps: ({ then, runner }) => [
           appsCommandStep("install three apps into the first organization", async ({ runtime }) => {
             const registry = runtime.objects.apps.singleton().commands;
-            const installations = runtime.objects.appInstallations.forOrg("customer-one").commands;
+            const installations = runtime.objects.appInstallations.for({
+              kind: "org",
+              orgId: "customer-one",
+              jurisdiction: null,
+            }).commands;
             for (const oauthClientId of [
               "accounting-client",
               "reporting-client",
@@ -466,13 +494,15 @@ describe("App registry and organization installation SQLite scenarios", () => {
               );
             }
             appOperationValue(
-              await runtime.objects.appInstallations.forOrg("customer-two").commands.installApp({
-                actionsRevision: 1,
-                appId: registeredAppIds[0],
-                installedByUserId: "other-installer",
-                resourceScope: wholeOrganization,
-                grantedPermissions: [BACKOFFICE_PERMISSION.integrations.execute],
-              }),
+              await runtime.objects.appInstallations
+                .for({ kind: "org", orgId: "customer-two", jurisdiction: null })
+                .commands.installApp({
+                  actionsRevision: 1,
+                  appId: registeredAppIds[0],
+                  installedByUserId: "other-installer",
+                  resourceScope: wholeOrganization,
+                  grantedPermissions: [BACKOFFICE_PERMISSION.integrations.execute],
+                }),
             );
             const page = appOperationValue(
               await installations.listInstallations({ pageSize: 2, cursor: null }),
@@ -485,13 +515,21 @@ describe("App registry and organization installation SQLite scenarios", () => {
           }),
           runner.restartObject({
             binding: "APP_INSTALLATIONS",
-            scope: { kind: "org", orgId: "customer-one" },
+            scope: { kind: "org", orgId: "customer-one", jurisdiction: null },
           }),
           then.assert(
             "cursor identity includes organization and page size",
             async ({ runtime }) => {
-              const first = runtime.objects.appInstallations.forOrg("customer-one").commands;
-              const second = runtime.objects.appInstallations.forOrg("customer-two").commands;
+              const first = runtime.objects.appInstallations.for({
+                kind: "org",
+                orgId: "customer-one",
+                jurisdiction: null,
+              }).commands;
+              const second = runtime.objects.appInstallations.for({
+                kind: "org",
+                orgId: "customer-two",
+                jurisdiction: null,
+              }).commands;
               expect(await second.listInstallations({ pageSize: 2, cursor })).toMatchObject({
                 ok: false,
                 error: { code: "APP_INSTALLATION_CURSOR_INVALID" },
@@ -520,19 +558,29 @@ describe("App registry and organization installation SQLite scenarios", () => {
                 await second.listInstallations({ pageSize: 2, cursor: null }),
               );
               expect(otherPage.installations).toMatchObject([
-                { owner: { kind: "org", orgId: "customer-two" } },
+                { owner: { kind: "org", orgId: "customer-two", jurisdiction: null } },
               ]);
             },
           ),
           then.assert(
             "object scopes are enforced and management routes remain closed",
             async ({ runtime }) => {
-              expect(() => runtime.objects.apps.forOrg("customer-one")).toThrow("singleton");
+              expect(() =>
+                runtime.objects.apps.for({
+                  kind: "org",
+                  orgId: "customer-one",
+                  jurisdiction: null,
+                }),
+              ).toThrow("singleton");
               expect(() => runtime.objects.appInstallations.singleton()).toThrow("org");
               for (const { object, route } of [
                 { object: runtime.objects.apps.singleton(), route: "/api/apps" },
                 {
-                  object: runtime.objects.appInstallations.forOrg("customer-one"),
+                  object: runtime.objects.appInstallations.for({
+                    kind: "org",
+                    orgId: "customer-one",
+                    jurisdiction: null,
+                  }),
                   route: "/api/app-installations",
                 },
               ]) {
@@ -575,7 +623,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
               for (const organizationId of ["customer-one", "customer-two"]) {
                 installationIds[organizationId] = appOperationValue(
                   await runtime.objects.appInstallations
-                    .forOrg(organizationId)
+                    .for({ kind: "org", orgId: organizationId, jurisdiction: null })
                     .commands.installApp({
                       actionsRevision: 1,
                       appId,
@@ -607,12 +655,12 @@ describe("App registry and organization installation SQLite scenarios", () => {
                 for (const organizationId of ["customer-one", "customer-two"]) {
                   expect(
                     await runtime.objects.appInstallations
-                      .forOrg(organizationId)
+                      .for({ kind: "org", orgId: organizationId, jurisdiction: null })
                       .commands.getInstallation({ appId }),
                   ).toMatchObject({
                     id: installationIds[organizationId],
                     appId,
-                    owner: { kind: "org", orgId: organizationId },
+                    owner: { kind: "org", orgId: organizationId, jurisdiction: null },
                     status: "active",
                     grantedPermissions: requestedPermissions,
                   });
@@ -665,13 +713,15 @@ describe("App registry and organization installation SQLite scenarios", () => {
               }),
             ).appId;
             installationId = appOperationValue(
-              await runtime.objects.appInstallations.forOrg("customer").commands.installApp({
-                actionsRevision: 1,
-                appId,
-                installedByUserId: "installer",
-                resourceScope: wholeOrganization,
-                grantedPermissions: requestedPermissions,
-              }),
+              await runtime.objects.appInstallations
+                .for({ kind: "org", orgId: "customer", jurisdiction: null })
+                .commands.installApp({
+                  actionsRevision: 1,
+                  appId,
+                  installedByUserId: "installer",
+                  resourceScope: wholeOrganization,
+                  grantedPermissions: requestedPermissions,
+                }),
             ).installationId;
           }),
           then.assert(
@@ -683,7 +733,11 @@ describe("App registry and organization installation SQLite scenarios", () => {
               await expect(
                 runtime.objects.apps.singleton().commands.getApp({ appId }),
               ).rejects.toThrow();
-              const installations = runtime.objects.appInstallations.forOrg("customer").commands;
+              const installations = runtime.objects.appInstallations.for({
+                kind: "org",
+                orgId: "customer",
+                jurisdiction: null,
+              }).commands;
               expect(await installations.getInstallation({ appId })).toMatchObject({
                 id: installationId,
                 status: "active",
@@ -694,7 +748,11 @@ describe("App registry and organization installation SQLite scenarios", () => {
                   await installations.listInstallations({ pageSize: 20, cursor: null }),
                 ).installations,
               ).toMatchObject([
-                { id: installationId, appId, owner: { kind: "org", orgId: "customer" } },
+                {
+                  id: installationId,
+                  appId,
+                  owner: { kind: "org", orgId: "customer", jurisdiction: null },
+                },
               ]);
               await expect(
                 installations.updateInstallationAccess({

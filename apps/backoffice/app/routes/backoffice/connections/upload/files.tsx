@@ -31,6 +31,7 @@ import {
 
 import { Collapsible, Progress } from "@base-ui/react";
 
+import { backofficeOrganizationContextScope } from "@/backoffice-runtime/resolved-scope";
 import { isUploadDirectoryMarker } from "@/file-collection/create-upload-file-tree";
 import { LofiReplicaGate, useLofiReplicaStatus } from "@/fragno/lofi/replica-gate";
 import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
@@ -546,7 +547,13 @@ export async function action({ request, context }: ActionFunctionArgs) {
   }
 
   if (intent === "delete-file") {
-    const deleted = await deleteUploadFile(request, context, organization.id, provider, fileKey);
+    const deleted = await deleteUploadFile(
+      request,
+      context,
+      backofficeOrganizationContextScope(organization),
+      provider,
+      fileKey,
+    );
     if (!deleted.ok) {
       return {
         ok: false,

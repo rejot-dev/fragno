@@ -213,7 +213,7 @@ async function callAsInstallation(ctx: Ctx) {
   const request = new Request(`${origin}/api/backoffice/execution-token`, {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${ctx.vars.token}` },
-    body: JSON.stringify({ scope: { kind: "org", orgId: ctx.vars.orgId } }),
+    body: JSON.stringify({ scope: { kind: "org", orgId: ctx.vars.orgId, jurisdiction: null } }),
   });
   const exchanged = await exchangeAction({
     request,
@@ -232,7 +232,7 @@ async function callAsInstallation(ctx: Ctx) {
         kernel: new BackofficeKernel(ctx.runtime.services),
       }),
   });
-  const scope = { kind: "org", orgId: ctx.vars.orgId } as const;
+  const scope = { kind: "org", orgId: ctx.vars.orgId, jurisdiction: null } as const;
   return {
     fire: () =>
       client.call(scope, "events.fire", {
@@ -379,6 +379,7 @@ test("Bookkeeping provisions its organization and project, and brings invited pe
         expect(organization).toEqual({
           organizationId: expect.any(String),
           slug: "acme-books",
+          jurisdiction: null,
           created: true,
         });
         ctx.vars.orgId = organization.organizationId;
@@ -394,7 +395,7 @@ test("Bookkeeping provisions its organization and project, and brings invited pe
         ).toEqual(["owner"]);
         expect(
           await ctx.runtime.objects.appInstallations
-            .forOrg(ctx.vars.orgId)
+            .for({ kind: "org", orgId: ctx.vars.orgId, jurisdiction: null })
             .commands.getInstallation({ appId: ctx.vars.appId }),
         ).toMatchObject({
           status: "active",
@@ -437,7 +438,7 @@ test("Bookkeeping provisions its organization and project, and brings invited pe
       });
       expect(
         await ctx.runtime.objects.automations
-          .forOrg(ctx.vars.orgId)
+          .for({ kind: "org", orgId: ctx.vars.orgId, jurisdiction: null })
           .commands.resolveProjectForExecution({ projectId: project.projectId }),
       ).toMatchObject({ slug: "acme-books", name: "Acme Books" });
       // Bookkeeping is not installed in the existing workspace.
@@ -760,7 +761,7 @@ test("a provisioned organization follows what Bookkeeping requests, within a min
         expect(events).toHaveLength(1);
         expect(
           await ctx.runtime.objects.appInstallations
-            .forOrg(ctx.vars.orgId)
+            .for({ kind: "org", orgId: ctx.vars.orgId, jurisdiction: null })
             .commands.getInstallation({ appId: ctx.vars.appId }),
         ).toMatchObject({ grantedPermissions: [emit, BACKOFFICE_PERMISSION.events.read] });
       },
@@ -835,7 +836,7 @@ test("an owner links an existing organization to a first-party app without revie
         assert(new URL(installed.headers.get("location") ?? "").searchParams.has("code"));
         expect(
           await ctx.runtime.objects.appInstallations
-            .forOrg(ctx.vars.existingOrgId)
+            .for({ kind: "org", orgId: ctx.vars.existingOrgId, jurisdiction: null })
             .commands.getInstallation({ appId: ctx.vars.appId }),
         ).toMatchObject({
           status: "active",
@@ -904,6 +905,7 @@ test("Bookkeeping provisions an organization for an owner who never signed in, w
         expect(provisioned).toEqual({
           organizationId: expect.any(String),
           slug: "lovelace-co",
+          jurisdiction: null,
           created: true,
           ownerInvitation: { invitationId: expect.any(String), expiresAt: expect.any(String) },
         });
@@ -929,7 +931,7 @@ test("Bookkeeping provisions an organization for an owner who never signed in, w
         ).toBeNull();
         expect(
           await ctx.runtime.objects.appInstallations
-            .forOrg(ctx.vars.orgId)
+            .for({ kind: "org", orgId: ctx.vars.orgId, jurisdiction: null })
             .commands.getInstallation({ appId: ctx.vars.appId }),
         ).toMatchObject({
           status: "active",

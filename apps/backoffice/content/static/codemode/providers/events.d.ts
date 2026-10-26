@@ -111,10 +111,12 @@ type EventsFireInput = {
     | {
         kind: "org";
         orgId: string;
+        jurisdiction?: "eu" | "us" | null;
       }
     | {
         kind: "user";
         userId: string;
+        jurisdiction?: "eu" | "us" | null;
       }
     | {
         kind: "app";
@@ -122,10 +124,12 @@ type EventsFireInput = {
           | {
               kind: "org";
               orgId: string;
+              jurisdiction?: "eu" | "us" | null;
             }
           | {
               kind: "user";
               userId: string;
+              jurisdiction?: "eu" | "us" | null;
             };
         appId: string;
       }
@@ -135,10 +139,12 @@ type EventsFireInput = {
           | {
               kind: "org";
               orgId: string;
+              jurisdiction?: "eu" | "us" | null;
             }
           | {
               kind: "user";
               userId: string;
+              jurisdiction?: "eu" | "us" | null;
             }
           | {
               kind: "app";
@@ -146,10 +152,12 @@ type EventsFireInput = {
                 | {
                     kind: "org";
                     orgId: string;
+                    jurisdiction?: "eu" | "us" | null;
                   }
                 | {
                     kind: "user";
                     userId: string;
+                    jurisdiction?: "eu" | "us" | null;
                   };
               appId: string;
             };
@@ -166,10 +174,12 @@ type EventsFireOutput = {
     | {
         kind: "org";
         orgId: string;
+        jurisdiction: "eu" | "us" | null;
       }
     | {
         kind: "user";
         userId: string;
+        jurisdiction: "eu" | "us" | null;
       }
     | {
         kind: "app";
@@ -177,10 +187,12 @@ type EventsFireOutput = {
           | {
               kind: "org";
               orgId: string;
+              jurisdiction: "eu" | "us" | null;
             }
           | {
               kind: "user";
               userId: string;
+              jurisdiction: "eu" | "us" | null;
             };
         appId: string;
       }
@@ -190,10 +202,12 @@ type EventsFireOutput = {
           | {
               kind: "org";
               orgId: string;
+              jurisdiction: "eu" | "us" | null;
             }
           | {
               kind: "user";
               userId: string;
+              jurisdiction: "eu" | "us" | null;
             }
           | {
               kind: "app";
@@ -201,10 +215,12 @@ type EventsFireOutput = {
                 | {
                     kind: "org";
                     orgId: string;
+                    jurisdiction: "eu" | "us" | null;
                   }
                 | {
                     kind: "user";
                     userId: string;
+                    jurisdiction: "eu" | "us" | null;
                   };
               appId: string;
             };
@@ -227,10 +243,12 @@ type EventsListOutput = {
       | {
           kind: "org";
           orgId: string;
+          jurisdiction: "eu" | "us" | null;
         }
       | {
           kind: "user";
           userId: string;
+          jurisdiction: "eu" | "us" | null;
         }
       | {
           kind: "app";
@@ -238,10 +256,12 @@ type EventsListOutput = {
             | {
                 kind: "org";
                 orgId: string;
+                jurisdiction: "eu" | "us" | null;
               }
             | {
                 kind: "user";
                 userId: string;
+                jurisdiction: "eu" | "us" | null;
               };
           appId: string;
         }
@@ -251,10 +271,12 @@ type EventsListOutput = {
             | {
                 kind: "org";
                 orgId: string;
+                jurisdiction: "eu" | "us" | null;
               }
             | {
                 kind: "user";
                 userId: string;
+                jurisdiction: "eu" | "us" | null;
               }
             | {
                 kind: "app";
@@ -262,10 +284,12 @@ type EventsListOutput = {
                   | {
                       kind: "org";
                       orgId: string;
+                      jurisdiction: "eu" | "us" | null;
                     }
                   | {
                       kind: "user";
                       userId: string;
+                      jurisdiction: "eu" | "us" | null;
                     };
                 appId: string;
               };
@@ -278,10 +302,12 @@ type EventsListOutput = {
       | {
           kind: "org";
           orgId: string;
+          jurisdiction: "eu" | "us" | null;
         }
       | {
           kind: "user";
           userId: string;
+          jurisdiction: "eu" | "us" | null;
         }
       | {
           kind: "app";
@@ -289,10 +315,12 @@ type EventsListOutput = {
             | {
                 kind: "org";
                 orgId: string;
+                jurisdiction: "eu" | "us" | null;
               }
             | {
                 kind: "user";
                 userId: string;
+                jurisdiction: "eu" | "us" | null;
               };
           appId: string;
         }
@@ -302,10 +330,12 @@ type EventsListOutput = {
             | {
                 kind: "org";
                 orgId: string;
+                jurisdiction: "eu" | "us" | null;
               }
             | {
                 kind: "user";
                 userId: string;
+                jurisdiction: "eu" | "us" | null;
               }
             | {
                 kind: "app";
@@ -313,10 +343,12 @@ type EventsListOutput = {
                   | {
                       kind: "org";
                       orgId: string;
+                      jurisdiction: "eu" | "us" | null;
                     }
                   | {
                       kind: "user";
                       userId: string;
+                      jurisdiction: "eu" | "us" | null;
                     };
                 appId: string;
               };
@@ -410,10 +442,12 @@ type EventsListOutput = {
                         | {
                             kind: "org";
                             orgId: string;
+                            jurisdiction: "eu" | "us" | null;
                           }
                         | {
                             kind: "user";
                             userId: string;
+                            jurisdiction: "eu" | "us" | null;
                           }
                         | {
                             kind: "app";
@@ -421,10 +455,12 @@ type EventsListOutput = {
                               | {
                                   kind: "org";
                                   orgId: string;
+                                  jurisdiction: "eu" | "us" | null;
                                 }
                               | {
                                   kind: "user";
                                   userId: string;
+                                  jurisdiction: "eu" | "us" | null;
                                 };
                             appId: string;
                           }
@@ -434,10 +470,12 @@ type EventsListOutput = {
                               | {
                                   kind: "org";
                                   orgId: string;
+                                  jurisdiction: "eu" | "us" | null;
                                 }
                               | {
                                   kind: "user";
                                   userId: string;
+                                  jurisdiction: "eu" | "us" | null;
                                 }
                               | {
                                   kind: "app";
@@ -445,10 +483,12 @@ type EventsListOutput = {
                                     | {
                                         kind: "org";
                                         orgId: string;
+                                        jurisdiction: "eu" | "us" | null;
                                       }
                                     | {
                                         kind: "user";
                                         userId: string;
+                                        jurisdiction: "eu" | "us" | null;
                                       };
                                   appId: string;
                                 };
@@ -490,10 +530,12 @@ type EventsGetOutput = {
     | {
         kind: "org";
         orgId: string;
+        jurisdiction: "eu" | "us" | null;
       }
     | {
         kind: "user";
         userId: string;
+        jurisdiction: "eu" | "us" | null;
       }
     | {
         kind: "app";
@@ -501,10 +543,12 @@ type EventsGetOutput = {
           | {
               kind: "org";
               orgId: string;
+              jurisdiction: "eu" | "us" | null;
             }
           | {
               kind: "user";
               userId: string;
+              jurisdiction: "eu" | "us" | null;
             };
         appId: string;
       }
@@ -514,10 +558,12 @@ type EventsGetOutput = {
           | {
               kind: "org";
               orgId: string;
+              jurisdiction: "eu" | "us" | null;
             }
           | {
               kind: "user";
               userId: string;
+              jurisdiction: "eu" | "us" | null;
             }
           | {
               kind: "app";
@@ -525,10 +571,12 @@ type EventsGetOutput = {
                 | {
                     kind: "org";
                     orgId: string;
+                    jurisdiction: "eu" | "us" | null;
                   }
                 | {
                     kind: "user";
                     userId: string;
+                    jurisdiction: "eu" | "us" | null;
                   };
               appId: string;
             };
@@ -541,10 +589,12 @@ type EventsGetOutput = {
     | {
         kind: "org";
         orgId: string;
+        jurisdiction: "eu" | "us" | null;
       }
     | {
         kind: "user";
         userId: string;
+        jurisdiction: "eu" | "us" | null;
       }
     | {
         kind: "app";
@@ -552,10 +602,12 @@ type EventsGetOutput = {
           | {
               kind: "org";
               orgId: string;
+              jurisdiction: "eu" | "us" | null;
             }
           | {
               kind: "user";
               userId: string;
+              jurisdiction: "eu" | "us" | null;
             };
         appId: string;
       }
@@ -565,10 +617,12 @@ type EventsGetOutput = {
           | {
               kind: "org";
               orgId: string;
+              jurisdiction: "eu" | "us" | null;
             }
           | {
               kind: "user";
               userId: string;
+              jurisdiction: "eu" | "us" | null;
             }
           | {
               kind: "app";
@@ -576,10 +630,12 @@ type EventsGetOutput = {
                 | {
                     kind: "org";
                     orgId: string;
+                    jurisdiction: "eu" | "us" | null;
                   }
                 | {
                     kind: "user";
                     userId: string;
+                    jurisdiction: "eu" | "us" | null;
                   };
               appId: string;
             };
@@ -673,10 +729,12 @@ type EventsGetOutput = {
                       | {
                           kind: "org";
                           orgId: string;
+                          jurisdiction: "eu" | "us" | null;
                         }
                       | {
                           kind: "user";
                           userId: string;
+                          jurisdiction: "eu" | "us" | null;
                         }
                       | {
                           kind: "app";
@@ -684,10 +742,12 @@ type EventsGetOutput = {
                             | {
                                 kind: "org";
                                 orgId: string;
+                                jurisdiction: "eu" | "us" | null;
                               }
                             | {
                                 kind: "user";
                                 userId: string;
+                                jurisdiction: "eu" | "us" | null;
                               };
                           appId: string;
                         }
@@ -697,10 +757,12 @@ type EventsGetOutput = {
                             | {
                                 kind: "org";
                                 orgId: string;
+                                jurisdiction: "eu" | "us" | null;
                               }
                             | {
                                 kind: "user";
                                 userId: string;
+                                jurisdiction: "eu" | "us" | null;
                               }
                             | {
                                 kind: "app";
@@ -708,10 +770,12 @@ type EventsGetOutput = {
                                   | {
                                       kind: "org";
                                       orgId: string;
+                                      jurisdiction: "eu" | "us" | null;
                                     }
                                   | {
                                       kind: "user";
                                       userId: string;
+                                      jurisdiction: "eu" | "us" | null;
                                     };
                                 appId: string;
                               };
@@ -791,10 +855,12 @@ type EventsRoutesListOutput = {
                   | {
                       kind: "org";
                       orgId: string;
+                      jurisdiction: "eu" | "us" | null;
                     }
                   | {
                       kind: "user";
                       userId: string;
+                      jurisdiction: "eu" | "us" | null;
                     }
                   | {
                       kind: "app";
@@ -802,10 +868,12 @@ type EventsRoutesListOutput = {
                         | {
                             kind: "org";
                             orgId: string;
+                            jurisdiction: "eu" | "us" | null;
                           }
                         | {
                             kind: "user";
                             userId: string;
+                            jurisdiction: "eu" | "us" | null;
                           };
                       appId: string;
                     }
@@ -815,10 +883,12 @@ type EventsRoutesListOutput = {
                         | {
                             kind: "org";
                             orgId: string;
+                            jurisdiction: "eu" | "us" | null;
                           }
                         | {
                             kind: "user";
                             userId: string;
+                            jurisdiction: "eu" | "us" | null;
                           }
                         | {
                             kind: "app";
@@ -826,10 +896,12 @@ type EventsRoutesListOutput = {
                               | {
                                   kind: "org";
                                   orgId: string;
+                                  jurisdiction: "eu" | "us" | null;
                                 }
                               | {
                                   kind: "user";
                                   userId: string;
+                                  jurisdiction: "eu" | "us" | null;
                                 };
                             appId: string;
                           };
@@ -906,10 +978,12 @@ type EventsRoutesRetryOutput =
               | {
                   kind: "org";
                   orgId: string;
+                  jurisdiction: "eu" | "us" | null;
                 }
               | {
                   kind: "user";
                   userId: string;
+                  jurisdiction: "eu" | "us" | null;
                 }
               | {
                   kind: "app";
@@ -917,10 +991,12 @@ type EventsRoutesRetryOutput =
                     | {
                         kind: "org";
                         orgId: string;
+                        jurisdiction: "eu" | "us" | null;
                       }
                     | {
                         kind: "user";
                         userId: string;
+                        jurisdiction: "eu" | "us" | null;
                       };
                   appId: string;
                 }
@@ -930,10 +1006,12 @@ type EventsRoutesRetryOutput =
                     | {
                         kind: "org";
                         orgId: string;
+                        jurisdiction: "eu" | "us" | null;
                       }
                     | {
                         kind: "user";
                         userId: string;
+                        jurisdiction: "eu" | "us" | null;
                       }
                     | {
                         kind: "app";
@@ -941,10 +1019,12 @@ type EventsRoutesRetryOutput =
                           | {
                               kind: "org";
                               orgId: string;
+                              jurisdiction: "eu" | "us" | null;
                             }
                           | {
                               kind: "user";
                               userId: string;
+                              jurisdiction: "eu" | "us" | null;
                             };
                         appId: string;
                       };

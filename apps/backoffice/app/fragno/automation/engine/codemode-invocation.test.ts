@@ -21,7 +21,7 @@ const PROGRAM = {
   workflowName: "canonical-demo",
 };
 const execution = createBackofficeUserExecution({
-  scope: { kind: "org", orgId: "org-1" },
+  scope: { kind: "org", orgId: "org-1", jurisdiction: null },
   userId: "user-1",
 });
 
@@ -95,7 +95,7 @@ describe("codemode invocation preparation", () => {
         prepared,
         trigger: {
           type: "event",
-          event: { ...event, scope: { kind: "org", orgId: "org-2" } },
+          event: { ...event, scope: { kind: "org", orgId: "org-2", jurisdiction: null } },
         },
         execution,
         replyTo: null,

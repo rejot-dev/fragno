@@ -80,7 +80,7 @@ const scenarioObjects = {
 
 const fanoutRetryProjectScope = {
   kind: "project",
-  owner: { kind: "org", orgId: "org-1" },
+  owner: { kind: "org", orgId: "org-1", jurisdiction: null },
   projectId: "fanout-retry-project",
 } as const;
 
@@ -110,7 +110,7 @@ async function routeDispatchStates(ctx: BackofficeScenarioContext, eventId: stri
 /** The events whose routes failed for good, as `events.routes.list` lists them, newest first. */
 async function eventsWithFailedRoutes(ctx: BackofficeScenarioContext) {
   const response = await ctx.runtime.objects.automations
-    .forOrg("org-1")
+    .for({ kind: "org", orgId: "org-1", jurisdiction: null })
     .http.fetch(new Request("https://automations.test/api/automations/event-routes?status=failed"));
   assert(response.ok, await response.clone().text());
   const { routes } = automationEventRoutesListResultSchema.parse(await response.json());
@@ -120,7 +120,7 @@ async function eventsWithFailedRoutes(ctx: BackofficeScenarioContext) {
 /** The `automations` `route.failed` events stored in org-1, newest first. */
 async function routeFailedEvents(ctx: BackofficeScenarioContext) {
   const response = await ctx.runtime.objects.automations
-    .forOrg("org-1")
+    .for({ kind: "org", orgId: "org-1", jurisdiction: null })
     .http.fetch(new Request("https://automations.test/api/automations/events?limit=100"));
   assert(response.ok, await response.clone().text());
   const { events } = automationEventListResultSchema.parse(await response.json());
@@ -171,7 +171,7 @@ if (!telegramTestCommandEntry) {
 }
 
 const TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION = {
-  targetScope: { kind: "org", orgId: "org-1" },
+  targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
   slug: "telegram-channel",
   version: "2.1.0",
   // The Marketplace page's suggested folder, so nothing depends on where a package lands.
@@ -219,7 +219,7 @@ const customAutomationEvent = ({
 }): AutomationEvent => ({
   id,
   scopeRestriction: null,
-  scope: { kind: "org", orgId: "org-1" },
+  scope: { kind: "org", orgId: "org-1", jurisdiction: null },
   source,
   eventType,
   occurredAt: "2026-01-01T00:00:00.000Z",
@@ -258,7 +258,7 @@ const telegramMessageEvent = ({
   return {
     id,
     scopeRestriction: null,
-    scope: { kind: "org", orgId: "org-1" },
+    scope: { kind: "org", orgId: "org-1", jurisdiction: null },
     source: "telegram",
     eventType: "message.received",
     occurredAt: "2026-01-01T00:00:00.000Z",
@@ -403,7 +403,7 @@ describe("starter automation router scenarios", () => {
             trigger: { kind: "event" },
           }),
           then.assert("the package defines the agent its routes prompt", async (ctx) => {
-            const scope = { kind: "org", orgId: "org-1" } as const;
+            const scope = { kind: "org", orgId: "org-1", jurisdiction: null } as const;
             const response = await ctx.runtime.objects.piManager
               .for(scope)
               .http.fetchAuthorized(
@@ -891,7 +891,7 @@ describe("starter automation router scenarios", () => {
               },
             });
             const queue = await ctx.runtime.objects.automations
-              .forOrg("org-1")
+              .for({ kind: "org", orgId: "org-1", jurisdiction: null })
               .commands.getDurableHookQueue("automation", { pageSize: 100 });
             const forwardHook = queue.items.find(
               (item) =>
@@ -975,7 +975,7 @@ describe("starter automation router scenarios", () => {
               },
             });
             const queue = await ctx.runtime.objects.automations
-              .forOrg("org-1")
+              .for({ kind: "org", orgId: "org-1", jurisdiction: null })
               .commands.getDurableHookQueue("automation", { pageSize: 100 });
             const routeHooks = queue.items.filter(
               (item) => item.hookName === "internalDispatchRoute",
@@ -993,7 +993,7 @@ describe("starter automation router scenarios", () => {
           }),
           then.assert("retrying the route queues it again", async (ctx) => {
             const response = await ctx.runtime.objects.automations
-              .forOrg("org-1")
+              .for({ kind: "org", orgId: "org-1", jurisdiction: null })
               .http.fetch(
                 new Request(
                   `https://automations.test/api/automations/events/${event.id}/routes/fanout-send-to-missing-workflow/retry`,
@@ -1202,7 +1202,7 @@ describe("starter automation router scenarios", () => {
           }),
           then.assert("no failed route retried", async (ctx) => {
             const queue = await ctx.runtime.objects.automations
-              .forOrg("org-1")
+              .for({ kind: "org", orgId: "org-1", jurisdiction: null })
               .commands.getDurableHookQueue("automation", { pageSize: 100 });
             expect(
               queue.items
@@ -1386,7 +1386,7 @@ describe("starter automation router scenarios", () => {
           }),
           then.auth.permissions({
             userId: "user-1",
-            scope: { kind: "org", orgId: "org-1" },
+            scope: { kind: "org", orgId: "org-1", jurisdiction: null },
             include: [
               BACKOFFICE_PERMISSION.integrations.execute,
               BACKOFFICE_PERMISSION.store.modify,
@@ -1394,7 +1394,7 @@ describe("starter automation router scenarios", () => {
             exclude: [BACKOFFICE_PERMISSION.identity.bind],
           }),
           then.identity.resolves({
-            scope: { kind: "org", orgId: "org-1" },
+            scope: { kind: "org", orgId: "org-1", jurisdiction: null },
             identity: {
               scope: "external",
               source: "telegram",
@@ -1414,7 +1414,7 @@ describe("starter automation router scenarios", () => {
           }),
 
           then.automation.event({
-            scope: { kind: "org", orgId: "org-1" },
+            scope: { kind: "org", orgId: "org-1", jurisdiction: null },
             where: {
               source: "telegram",
               eventType: "message.received",
@@ -1442,7 +1442,7 @@ describe("starter automation router scenarios", () => {
           }),
           then.kernel.action({
             operation: BACKOFFICE_PERMISSION.integrations.execute,
-            scope: { kind: "org", orgId: "org-1" },
+            scope: { kind: "org", orgId: "org-1", jurisdiction: null },
             actors: {
               initiator: {
                 scope: "external",
@@ -1573,7 +1573,7 @@ describe("starter automation router scenarios", () => {
           }),
           then.auth.permissions({
             userId: "user-1",
-            scope: { kind: "org", orgId: "org-1" },
+            scope: { kind: "org", orgId: "org-1", jurisdiction: null },
             include: [
               BACKOFFICE_PERMISSION.integrations.execute,
               BACKOFFICE_PERMISSION.store.modify,
@@ -1771,7 +1771,7 @@ describe("starter automation router scenarios", () => {
           }),
           then.auth.permissions({
             userId: "user-1",
-            scope: { kind: "org", orgId: "org-1" },
+            scope: { kind: "org", orgId: "org-1", jurisdiction: null },
             include: [
               BACKOFFICE_PERMISSION.integrations.execute,
               BACKOFFICE_PERMISSION.store.modify,
@@ -1922,7 +1922,7 @@ describe("starter automation router scenarios", () => {
           }),
           then.auth.permissions({
             userId: "user-1",
-            scope: { kind: "org", orgId: "org-1" },
+            scope: { kind: "org", orgId: "org-1", jurisdiction: null },
             include: [
               BACKOFFICE_PERMISSION.integrations.execute,
               BACKOFFICE_PERMISSION.store.modify,

@@ -1,3 +1,4 @@
+import type { BackofficeOrganizationContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { telegramAttachmentSchema } from "@fragno-dev/telegram-fragment/types";
 import { z } from "zod";
 
@@ -77,8 +78,10 @@ const connectionStatusIdentity = {
   label: "Telegram",
   kind: "connection",
 } as const;
-const getTelegramDo = (objects: BackofficeObjectRegistry, orgId: string) =>
-  objects.telegram.forOrg(orgId);
+const getTelegramDo = (
+  objects: BackofficeObjectRegistry,
+  organization: BackofficeOrganizationContextScope,
+) => objects.telegram.for(organization);
 
 const toTelegramStatus = (response: TelegramAdminConfigResponse): ConnectionStatus => {
   if (!response.configured) {
@@ -103,8 +106,8 @@ export const telegramCapability: BackofficeCapability = {
   objectBinding: null,
   contributions: {
     connection: {
-      getStatus: async ({ objects, orgId }) =>
-        toTelegramStatus(await getTelegramDo(objects, orgId).commands.getAdminConfig()),
+      getStatus: async ({ objects, organization }) =>
+        toTelegramStatus(await getTelegramDo(objects, organization).commands.getAdminConfig()),
     },
     eventSources: [
       {
@@ -118,8 +121,8 @@ export const telegramCapability: BackofficeCapability = {
       {
         id: "telegram",
         label: "Telegram",
-        getRepository: ({ objects, orgId }) =>
-          createDurableHookRepositoryFromCommands(getTelegramDo(objects, orgId).commands),
+        getRepository: ({ objects, organization }) =>
+          createDurableHookRepositoryFromCommands(getTelegramDo(objects, organization).commands),
       },
     ],
     skillPaths: [],

@@ -37,7 +37,7 @@ beforeEach(() => {
   mcpForScopeMock.mockReset();
 
   authorizeBackofficeContextMock.mockResolvedValue({ ok: true, headers: [] });
-  getOrganizationBySlugMock.mockResolvedValue({ id: "org-123", slug: "acme" });
+  getOrganizationBySlugMock.mockResolvedValue({ id: "org-123", slug: "acme", jurisdiction: null });
   mcpForScopeMock.mockReturnValue(mcpObject);
   mcpFetchMock.mockResolvedValue(Response.json({ authorizationUrl: "https://provider.example" }));
 });
@@ -60,7 +60,9 @@ describe("public MCP OAuth routes", () => {
       response.headers.get("location"),
       "https://backoffice.example/backoffice/integrations/org/acme/mcp%23github?oauth=success",
     );
-    assert.deepEqual(mcpForScopeMock.mock.calls[0], [{ kind: "org", orgId: "org-123" }]);
+    assert.deepEqual(mcpForScopeMock.mock.calls[0], [
+      { kind: "org", orgId: "org-123", jurisdiction: null },
+    ]);
     assert.equal(authorizeBackofficeContextMock.mock.calls.length, 0);
 
     const forwardedRequest = mcpFetchMock.mock.calls[0][0] as Request;
@@ -88,7 +90,9 @@ describe("public MCP OAuth routes", () => {
       params: { scopeSegment: "org:acme", serverSlug: "github" },
     } as never);
 
-    assert.deepEqual(mcpForScopeMock.mock.calls[0], [{ kind: "org", orgId: "org-123" }]);
+    assert.deepEqual(mcpForScopeMock.mock.calls[0], [
+      { kind: "org", orgId: "org-123", jurisdiction: null },
+    ]);
     const forwardedRequest = mcpFetchMock.mock.calls[0][0] as Request;
     assert.equal(
       new URL(forwardedRequest.url).searchParams.get("redirectUri"),

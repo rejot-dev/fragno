@@ -332,7 +332,7 @@ const componentDemoInputs: ComponentDemoInput[] = [
       label: "Supporting document",
       scope: {
         kind: "project",
-        owner: { kind: "org", orgId: "org-demo" },
+        owner: { kind: "org", orgId: "org-demo", jurisdiction: null },
         projectId: "project-demo",
       },
       value: null,

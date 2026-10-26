@@ -46,7 +46,7 @@ async function createScenarioShell(ctx: BackofficeScenarioContext) {
     emitter: { kind: "caller" },
     runtime: ctx.runtime.services,
     kernel: new BackofficeKernel(ctx.runtime.services),
-    execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+    execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1", jurisdiction: null }),
   });
   return { ...(await createInteractiveBashHost({ context })), state: context.stateBackend };
 }
@@ -199,7 +199,7 @@ describe("shared state shell scenarios", () => {
             await state.writeFile("/workspace/AGENTS.md", "edited guidance");
             const input = {
               objects: ctx.runtime.objects,
-              scope: { kind: "org" as const, orgId: "org-1" },
+              scope: { kind: "org" as const, orgId: "org-1", jurisdiction: null },
             };
             const skipped = await seedWorkspaceStarterFiles(input);
             expect(skipped.skipped).toContain("/workspace/AGENTS.md");
@@ -210,7 +210,7 @@ describe("shared state shell scenarios", () => {
               "Workspace guidance",
             );
             const response = await ctx.runtime.objects.upload
-              .forOrg("org-1")
+              .for({ kind: "org", orgId: "org-1", jurisdiction: null })
               .http.fetch(
                 new Request(
                   "https://upload.internal/api/upload/files/by-key?provider=database&key=AGENTS.md",

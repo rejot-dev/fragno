@@ -7,6 +7,8 @@ import {
   type BackofficeContextScope,
   backofficeContextScopeSchema,
   backofficeContextScopesEqual,
+  type BackofficeJurisdiction,
+  backofficeJurisdictionSchema,
   type BackofficePublicScope,
   backofficePublicScopeCodec,
   backofficeScopeIdCodec,
@@ -64,9 +66,19 @@ type DeviceCodeResponse = {
   interval: number;
 };
 
-export type BackofficeOrganization = { id: string; name: string; slug: string };
+export type BackofficeOrganization = {
+  id: string;
+  name: string;
+  slug: string;
+  jurisdiction: BackofficeJurisdiction | null;
+};
 export type BackofficeMe = {
-  user: { id: string; email: string; role: "user" | "admin" };
+  user: {
+    id: string;
+    email: string;
+    role: "user" | "admin";
+    jurisdiction: BackofficeJurisdiction | null;
+  };
   activeOrganizationId: string | null;
   organizations: Array<{ organization: BackofficeOrganization }>;
 };
@@ -224,7 +236,14 @@ async function readAuth(): Promise<StoredAuthState | null> {
   if (!isStoredAuthState(parsed)) {
     throw new Error(`Auth state in ${authFile} uses an unsupported format. Remove it and log in.`);
   }
-  return parsed;
+  // A scope stored before jurisdictions existed reads back as naming none.
+  return {
+    ...parsed,
+    backoffice: {
+      ...parsed.backoffice,
+      scope: backofficeContextScopeSchema.parse(parsed.backoffice.scope),
+    },
+  };
 }
 
 async function writeAuth(auth: StoredAuthState): Promise<void> {
@@ -628,6 +647,10 @@ async function ensureBackofficeJwtForScope({
   return { auth, config };
 }
 
+function isJurisdiction(value: unknown): value is BackofficeJurisdiction | null {
+  return value === null || backofficeJurisdictionSchema.safeParse(value).success;
+}
+
 function isMeBody(body: unknown): body is BackofficeMe {
   if (!body || typeof body !== "object") {
     return false;
@@ -642,6 +665,7 @@ function isMeBody(body: unknown): body is BackofficeMe {
     typeof user["id"] === "string" &&
     typeof user["email"] === "string" &&
     (user["role"] === "user" || user["role"] === "admin") &&
+    isJurisdiction(user["jurisdiction"]) &&
     (result["activeOrganizationId"] === null ||
       typeof result["activeOrganizationId"] === "string") &&
     Array.isArray(organizations) &&
@@ -657,7 +681,8 @@ function isMeBody(body: unknown): body is BackofficeMe {
       return (
         typeof record["id"] === "string" &&
         typeof record["name"] === "string" &&
-        typeof record["slug"] === "string"
+        typeof record["slug"] === "string" &&
+        isJurisdiction(record["jurisdiction"])
       );
     })
   );
@@ -742,7 +767,7 @@ function resolveBackofficeContextScope(
     if (scope.userId !== me.user.id) {
       throw new Error(`User scope ${scope.userId} is not available to the authenticated user.`);
     }
-    return scope;
+    return { kind: "user", userId: me.user.id, jurisdiction: me.user.jurisdiction };
   }
 
   return mapBackofficeScopeNames(scope, {
@@ -755,7 +780,13 @@ function resolveBackofficeContextScope(
           `Organization slug '${orgSlug}' is not available to the authenticated user. Run 'backoffice scopes' to list available organization slugs; org:* never accepts an internal organization ID.`,
         );
       }
-      return { orgId: organization.id };
+      return { orgId: organization.id, jurisdiction: organization.jurisdiction };
+    },
+    user: ({ userId }) => {
+      if (userId !== me.user.id) {
+        throw new Error(`User scope ${userId} is not available to the authenticated user.`);
+      }
+      return { userId, jurisdiction: me.user.jurisdiction };
     },
     project: ({ projectId }) => ({ projectId }),
   });

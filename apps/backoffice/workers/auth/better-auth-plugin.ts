@@ -1,3 +1,4 @@
+import type { BackofficeJurisdiction } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { type BetterAuthPlugin } from "better-auth";
 import { APIError, createAuthEndpoint, sessionMiddleware } from "better-auth/api";
 import { deleteSessionCookie } from "better-auth/cookies";
@@ -68,11 +69,27 @@ export function createBackofficeTokenPlugin(input: {
             context.body.selection === "required"
               ? context.body.organizationId
               : preferredOrganizationId;
+          // The session names its organization by ID; its scope also names where it is kept.
+          const organization = organizationId
+            ? await context.context.adapter.findOne<{
+                jurisdiction: BackofficeJurisdiction | null;
+              }>({
+                model: "organization",
+                select: ["jurisdiction"],
+                where: [{ field: "id", value: organizationId }],
+              })
+            : null;
           let authority;
           try {
             authority = await input.resolveBackofficeUserTokenGrant(context.context.adapter, {
               userId: user.id,
-              scope: organizationId ? { kind: "org", orgId: organizationId } : null,
+              scope: organizationId
+                ? {
+                    kind: "org",
+                    orgId: organizationId,
+                    jurisdiction: organization?.jurisdiction ?? null,
+                  }
+                : null,
               organizationSelection: context.body.selection,
             });
           } catch (error) {

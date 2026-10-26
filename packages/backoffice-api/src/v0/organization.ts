@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { BackofficeApiOperation } from "../api";
 import { directoryPageInputSchema } from "./shared/pagination";
 import { BACKOFFICE_PERMISSION } from "./shared/permissions";
+import { backofficeJurisdictionSchema } from "./shared/scope";
 
 export const organizationRoleSchema = z.lazy(() => z.enum(["owner", "admin", "member"]));
 export type OrganizationRole = z.output<typeof organizationRoleSchema>;
@@ -13,6 +14,8 @@ export const organizationRecordSchema = z
       organizationId: z.string().min(1),
       name: z.string().min(1),
       slug: z.string().min(1),
+      // Scopes name the organization with it: `{ kind: "org", orgId, jurisdiction }`.
+      jurisdiction: backofficeJurisdictionSchema.nullable(),
       createdAt: z.iso.datetime(),
     }),
   )

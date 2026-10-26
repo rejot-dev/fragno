@@ -123,8 +123,16 @@ describe("scheduled automation route scenario", () => {
             then.assert(
               "reject invalid creates and both partial-update directions",
               async (ctx) => {
-                const object = ctx.runtime.objects.automations.forOrg("org-1");
-                const execution = createBackofficeSystemExecution({ kind: "org", orgId: "org-1" });
+                const object = ctx.runtime.objects.automations.for({
+                  kind: "org",
+                  orgId: "org-1",
+                  jurisdiction: null,
+                });
+                const execution = createBackofficeSystemExecution({
+                  kind: "org",
+                  orgId: "org-1",
+                  jurisdiction: null,
+                });
                 const action = {
                   kind: "start_workflow",
                   authority: { kind, grants: "inherit" },
@@ -211,7 +219,7 @@ describe("scheduled automation route scenario", () => {
             }),
             then.assert("accept changing trigger and authority together", async (ctx) => {
               const response = await ctx.runtime.objects.automations
-                .forOrg("org-1")
+                .for({ kind: "org", orgId: "org-1", jurisdiction: null })
                 .http.fetchAuthorized(
                   new Request("https://automations.do/api/automations/routes/user-route", {
                     method: "PATCH",
@@ -230,7 +238,11 @@ describe("scheduled automation route scenario", () => {
                     }),
                   }),
                   {
-                    execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                    execution: createBackofficeSystemExecution({
+                      kind: "org",
+                      orgId: "org-1",
+                      jurisdiction: null,
+                    }),
                     propagationContext: null,
                   },
                 );
@@ -318,8 +330,16 @@ describe("scheduled automation route scenario", () => {
                 "read, edit, disable, reject unsafe changes, and repair the route",
                 async (ctx) => {
                   const router = createRouteBackedAutomationRouterRuntime({
-                    object: ctx.runtime.objects.automations.forOrg("org-1"),
-                    execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                    object: ctx.runtime.objects.automations.for({
+                      kind: "org",
+                      orgId: "org-1",
+                      jurisdiction: null,
+                    }),
+                    execution: createBackofficeSystemExecution({
+                      kind: "org",
+                      orgId: "org-1",
+                      jurisdiction: null,
+                    }),
                   });
                   const route = await router.getRoute({ id: "legacy-route" });
                   assert(route);
@@ -472,7 +492,7 @@ describe("scheduled automation route scenario", () => {
         ],
         steps: ({ when, then }) => [
           when.codemode.run({
-            scope: { kind: "org", orgId: "org-1" },
+            scope: { kind: "org", orgId: "org-1", jurisdiction: null },
             label: "create scheduled route",
             code: `async () => await router.create({
   id: "daily-digest",
@@ -534,7 +554,7 @@ describe("scheduled automation route scenario", () => {
   });
 
   test("a personal schedule acts for its owner only within grants its author holds", async () => {
-    const scope = { kind: "user", userId: "user-1" } as const;
+    const scope = { kind: "user", userId: "user-1", jurisdiction: null } as const;
     const owner = createBackofficeUserExecution({ scope, userId: "user-1" });
     // The owner acting through a delegate that may only change routes, like a narrowed agent.
     const routerOnly = {

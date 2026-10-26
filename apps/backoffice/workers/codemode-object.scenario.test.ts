@@ -13,6 +13,10 @@ import {
   automationEventListResultSchema,
   type AutomationEvent,
 } from "@fragno-dev/backoffice-api/v0/events";
+import type {
+  BackofficeRootOwner,
+  BackofficeScopeIdNames,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { CodemodeExecutor } from "@fragno-dev/codemode/execution/codemode-activation-contract";
 import { createCodemodeNodeExecutor } from "@fragno-dev/codemode/remote/codemode-node-executor";
 import { createCodemodeTestServer } from "@fragno-dev/codemode/testing/codemode-test-server";
@@ -81,12 +85,12 @@ afterAll(async () => {
 });
 
 const execution = createBackofficeServiceExecution({
-  scope: { kind: "org", orgId: "org-1" },
+  scope: { kind: "org", orgId: "org-1", jurisdiction: null },
   service: { type: "automation", id: "codemode-history" },
 });
 
 const otherExecution = createBackofficeServiceExecution({
-  scope: { kind: "org", orgId: "org-1" },
+  scope: { kind: "org", orgId: "org-1", jurisdiction: null },
   service: { type: "automation", id: "another-automation" },
 });
 
@@ -102,7 +106,7 @@ const delegatedExecution = {
 };
 const restrictedExecution = {
   ...execution,
-  scopeRestriction: { kind: "org", orgId: "org-1" } as const,
+  scopeRestriction: { kind: "org", orgId: "org-1", jurisdiction: null } as const,
 };
 
 async function bash(
@@ -123,7 +127,7 @@ async function bash(
 
 async function executions(
   runtime: InMemoryBackofficeRuntime,
-  owner: { kind: "org"; orgId: string } | { kind: "user"; userId: string },
+  owner: BackofficeRootOwner<BackofficeScopeIdNames>,
   scope: BackofficeExecutionContext["scope"],
 ) {
   const page = await runtime.objects.billing.for(owner).commands.getTrackers({
@@ -186,7 +190,11 @@ test("codemode runs are retained with their outcome until a later run expires th
           assert.notEqual(failing.exitCode, 0);
           runIds.failing = JSON.parse(failing.stdout).runId;
 
-          const codemode = runtime.objects.codemode.forOrg("org-1").commands;
+          const codemode = runtime.objects.codemode.for({
+            kind: "org",
+            orgId: "org-1",
+            jurisdiction: null,
+          }).commands;
           const runs = await codemode.listRuns({ page: "first", pageSize: 2 });
           expect(runs.runs).toHaveLength(2);
           expect(runs.runs).toEqual(
@@ -250,7 +258,7 @@ test("codemode runs are retained with their outcome until a later run expires th
             expect(events).toEqual([
               expect.objectContaining({
                 eventType: "run.failed",
-                scope: { kind: "org", orgId: "org-1" },
+                scope: { kind: "org", orgId: "org-1", jurisdiction: null },
                 actors: execution.actors,
                 subject: { orgId: "org-1", runId: runIds.failing },
                 payload: expect.objectContaining({
@@ -360,7 +368,11 @@ test("codemode runs are retained with their outcome until a later run expires th
               unrestrictedRestrictedRun: "allowed",
             });
 
-            const codemode = ctx.runtime.objects.codemode.forOrg("org-1").commands;
+            const codemode = ctx.runtime.objects.codemode.for({
+              kind: "org",
+              orgId: "org-1",
+              jurisdiction: null,
+            }).commands;
             expect((await codemode.getRun(restrictedRun))?.scopeRestriction).toEqual(
               restrictedExecution.scopeRestriction,
             );
@@ -376,7 +388,11 @@ test("codemode runs are retained with their outcome until a later run expires th
           });
           assert.equal(report.exitCode, 0, report.stderr);
 
-          const codemode = runtime.objects.codemode.forOrg("org-1").commands;
+          const codemode = runtime.objects.codemode.for({
+            kind: "org",
+            orgId: "org-1",
+            jurisdiction: null,
+          }).commands;
           const runs = await codemode.listRuns({ page: "first", pageSize: 20 });
           // Builds and setup writes expired; the runs from day one and the new run remain.
           expect(runs.runs.map((run) => run.activationKind)).toEqual(Array(5).fill("compiled"));
@@ -464,7 +480,8 @@ test("a run's tool calls and their I/O are readable while it runs and expire wit
               await gate.wait({});
             }`,
             codemode: codemodeRunnerFor(
-              ctx.runtime.objects.codemode.forOrg("org-1").commands,
+              ctx.runtime.objects.codemode.for({ kind: "org", orgId: "org-1", jurisdiction: null })
+                .commands,
               execution,
             ),
             families: [...runtimeToolFamilies, gate],
@@ -567,7 +584,8 @@ test("a run's tool calls and their I/O are readable while it runs and expire wit
               return [malformed, unknown].map((result) => result.status === "error" && result.error.message);
             }`,
             codemode: codemodeRunnerFor(
-              ctx.runtime.objects.codemode.forOrg("org-1").commands,
+              ctx.runtime.objects.codemode.for({ kind: "org", orgId: "org-1", jurisdiction: null })
+                .commands,
               execution,
             ),
             families: [gate],
@@ -592,7 +610,8 @@ test("a run's tool calls and their I/O are readable while it runs and expire wit
               await Promise.all(Array.from({ length: 50 }, (_, n) => gate.echo({ n })));
             }`,
             codemode: codemodeRunnerFor(
-              ctx.runtime.objects.codemode.forOrg("org-1").commands,
+              ctx.runtime.objects.codemode.for({ kind: "org", orgId: "org-1", jurisdiction: null })
+                .commands,
               execution,
             ),
             families: [gate],
@@ -613,7 +632,8 @@ test("a run's tool calls and their I/O are readable while it runs and expire wit
           const looping = await runBackofficeCodemode({
             code: "async () => { for (let i = 0; i < 201; i++) await gate.secret({}); }",
             codemode: codemodeRunnerFor(
-              ctx.runtime.objects.codemode.forOrg("org-1").commands,
+              ctx.runtime.objects.codemode.for({ kind: "org", orgId: "org-1", jurisdiction: null })
+                .commands,
               execution,
             ),
             families: [gate],
@@ -649,7 +669,7 @@ test("a run's tool calls and their I/O are readable while it runs and expire wit
 }, 30_000);
 
 test("codemode guests are attributed to their scope owner and builds remain unmetered", async () => {
-  const userScope = { kind: "user", userId: "user-1" } as const;
+  const userScope = { kind: "user", userId: "user-1", jurisdiction: null } as const;
 
   async function runInScope(
     runtime: InMemoryBackofficeRuntime,
@@ -704,13 +724,21 @@ test("codemode guests are attributed to their scope owner and builds remain unme
 
           // The setup write and both runs loaded a guest; the build only compiled.
           expect(
-            await executions(ctx.runtime, { kind: "org", orgId: "org-1" }, execution.scope),
+            await executions(
+              ctx.runtime,
+              { kind: "org", orgId: "org-1", jurisdiction: null },
+              execution.scope,
+            ),
           ).toEqual({
             quantity: "3",
             eventCount: "3",
           });
           expect(
-            await executions(ctx.runtime, { kind: "org", orgId: "org-2" }, execution.scope),
+            await executions(
+              ctx.runtime,
+              { kind: "org", orgId: "org-2", jurisdiction: null },
+              execution.scope,
+            ),
           ).toBeNull();
         }),
         then.assert("a user owns every run in their personal scope", async (ctx) => {
@@ -723,7 +751,11 @@ test("codemode guests are attributed to their scope owner and builds remain unme
             eventCount: "2",
           });
           expect(
-            await executions(ctx.runtime, { kind: "org", orgId: "org-1" }, userScope),
+            await executions(
+              ctx.runtime,
+              { kind: "org", orgId: "org-1", jurisdiction: null },
+              userScope,
+            ),
           ).toBeNull();
           const runs = await ctx.runtime.objects.codemode
             .for(userScope)
@@ -731,7 +763,10 @@ test("codemode guests are attributed to their scope owner and builds remain unme
           expect(runs.runs).toHaveLength(2);
         }),
         then.assert("app and project usage follows the root owner", async (ctx) => {
-          for (const owner of [userScope, { kind: "org", orgId: "org-1" } as const]) {
+          for (const owner of [
+            userScope,
+            { kind: "org", orgId: "org-1", jurisdiction: null } as const,
+          ]) {
             const app = { kind: "app", owner, appId: "books" } as const;
             for (const scope of [
               app,
@@ -744,7 +779,11 @@ test("codemode guests are attributed to their scope owner and builds remain unme
                 eventCount: "1",
               });
               expect(
-                await executions(ctx.runtime, { kind: "org", orgId: "org-2" }, scope),
+                await executions(
+                  ctx.runtime,
+                  { kind: "org", orgId: "org-2", jurisdiction: null },
+                  scope,
+                ),
               ).toBeNull();
             }
           }
@@ -811,7 +850,11 @@ test("each workflow tick is a billed run that publishes no run events", async ()
         when.time.advance("10 seconds"),
         then.assert("the sleep's tick is suspended and the resumed tick completes", async (ctx) => {
           await ctx.drain();
-          const codemode = ctx.runtime.objects.codemode.forOrg("org-1").commands;
+          const codemode = ctx.runtime.objects.codemode.for({
+            kind: "org",
+            orgId: "org-1",
+            jurisdiction: null,
+          }).commands;
           const { runs } = await codemode.listRuns({ page: "first", pageSize: 20 });
           expect(runs).toEqual([
             expect.objectContaining({
@@ -841,7 +884,11 @@ test("each workflow tick is a billed run that publishes no run events", async ()
           expect(JSON.parse(logs.stdout)).toMatchObject({ runId: runs[1].id, status: "suspended" });
 
           expect(
-            await executions(ctx.runtime, { kind: "org", orgId: "org-1" }, execution.scope),
+            await executions(
+              ctx.runtime,
+              { kind: "org", orgId: "org-1", jurisdiction: null },
+              execution.scope,
+            ),
           ).toEqual({
             quantity: "2",
             eventCount: "2",
@@ -902,7 +949,11 @@ test("a scope's eleventh concurrent run waits for its turn instead of failing", 
       setup: ({ given }) => [given.organization.exists({ id: "org-1" })],
       steps: ({ then }) => [
         then.assert("ten guests run while the eleventh run waits", async (ctx) => {
-          const object = ctx.runtime.objects.codemode.forOrg("org-1").commands;
+          const object = ctx.runtime.objects.codemode.for({
+            kind: "org",
+            orgId: "org-1",
+            jurisdiction: null,
+          }).commands;
           const codemode = codemodeRunnerFor(object, execution);
           const run = () =>
             runBackofficeCodemode({
@@ -990,7 +1041,8 @@ test("ten runs that each await js.run or js.build finish on their own slots", as
             }),
           );
           const codemode = codemodeRunnerFor(
-            ctx.runtime.objects.codemode.forOrg("org-1").commands,
+            ctx.runtime.objects.codemode.for({ kind: "org", orgId: "org-1", jurisdiction: null })
+              .commands,
             execution,
           );
           // Each parent takes a slot before any child starts, so the children start only on
@@ -1071,7 +1123,7 @@ test("a workflow tick that loses the bridge runs again instead of erroring its w
         then.workflow.instance({ instanceId: "resilient-1", status: "complete", output: 42 }),
         then.assert("history keeps the lost tick beside the one that ran", async (ctx) => {
           const { runs } = await ctx.runtime.objects.codemode
-            .forOrg("org-1")
+            .for({ kind: "org", orgId: "org-1", jurisdiction: null })
             .commands.listRuns({ page: "first", pageSize: 20 });
           expect(runs).toEqual([
             expect.objectContaining({ workflowInstanceId: "resilient-1", status: "completed" }),
@@ -1128,7 +1180,7 @@ test("a guest that fakes the bridge's interruption errors its workflow instead o
         when.time.advance("1 hour"),
         then.assert("the forged failure ran once", async (ctx) => {
           const { runs } = await ctx.runtime.objects.codemode
-            .forOrg("org-1")
+            .for({ kind: "org", orgId: "org-1", jurisdiction: null })
             .commands.listRuns({ page: "first", pageSize: 20 });
           expect(runs).toHaveLength(1);
         }),
@@ -1175,7 +1227,7 @@ test("an errored workflow and its failed tick each report their outcome once", a
         }),
         then.workflow.instance({ instanceId: "broken-1", status: "errored" }),
         then.assert("each object reports its outcome once, with its scope", ({ telemetry }) => {
-          const scope = { kind: "org", orgId: "org-1" };
+          const scope = { kind: "org", orgId: "org-1", jurisdiction: null };
           expect(telemetry.filter((signal) => signal.kind === "codemode-run-finished")).toEqual([
             {
               kind: "codemode-run-finished",

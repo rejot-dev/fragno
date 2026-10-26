@@ -91,10 +91,11 @@ const callScopedTool = async (
   return await executeBackofficeRuntimeTool(tool, input.args[0], scopedContext);
 };
 
-function codemodeCallScope(
+async function codemodeCallScope(
   requested: ScopedCodemodeCallInput["scope"],
-  current: BackofficeContextScope,
-): BackofficeContextScope {
+  context: BackofficeToolContext,
+): Promise<BackofficeContextScope> {
+  const current = context.execution.scope;
   switch (requested.kind) {
     case "current":
       return current;
@@ -106,9 +107,19 @@ function codemodeCallScope(
       }
       return { kind: "project", owner, projectId: requested.projectId };
     }
+    // Guests name organizations and users by ID; Auth knows where their objects are kept.
     case "org":
-    case "user":
-      return requested;
+    case "user": {
+      const owner = await context.resolveRootOwner(requested);
+      if (!owner) {
+        throw new Error(
+          requested.kind === "org"
+            ? `Organization '${requested.orgId}' does not exist.`
+            : `User '${requested.userId}' does not exist.`,
+        );
+      }
+      return owner;
+    }
     default:
       throw new Error("Unsupported codemode scope kind.", { cause: requested satisfies never });
   }
@@ -126,7 +137,7 @@ const createBackofficeScopedCodemodeProvider = ({
     getCurrentScope: async () => context.execution.scope,
     callScoped: async (rawInput: unknown) => {
       const input = codemodeScopedCallSchema.parse(rawInput);
-      const scope = codemodeCallScope(input.scope, context.execution.scope);
+      const scope = await codemodeCallScope(input.scope, context);
       return await callScopedTool(input, context.createScopedContext(scope), families);
     },
   },

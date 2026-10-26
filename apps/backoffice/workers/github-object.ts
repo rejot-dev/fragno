@@ -1,4 +1,7 @@
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import type {
+  BackofficeContextScope,
+  BackofficeOrganizationContextScope,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import {
   getGitHubAppFromFragment,
@@ -60,6 +63,7 @@ function connectionStateOfLink(status: GitHubRepositoryLinkStatus) {
 }
 
 export class GitHubObject implements GitHubCommands {
+  readonly #scope: BackofficeOrganizationContextScope;
   readonly #httpTransport: ReturnType<typeof createBackofficeFragmentHttpTransport>;
   readonly #state: BackofficeObjectState;
   readonly #runtimeServices: BackofficeRuntimeServices;
@@ -86,12 +90,15 @@ export class GitHubObject implements GitHubCommands {
     implementation: BackofficeObjectImplementation;
     fetch?: typeof fetch;
   }) {
+    const scope = requireBackofficeContextScopeFromDurableObjectId(state.id, "GITHUB");
+    if (scope.kind !== "org") {
+      throw new Error("GitHub Durable Objects belong to organizations.");
+    }
+    this.#scope = scope;
     this.#httpTransport = createBackofficeFragmentHttpTransport({
       address: {
         binding: "GITHUB",
-        scope: backofficeObjectScopeFromContextScope(
-          requireBackofficeContextScopeFromDurableObjectId(state.id, "GITHUB"),
-        ),
+        scope: backofficeObjectScopeFromContextScope(scope),
       },
       env,
       nowEpochMs,
@@ -149,9 +156,7 @@ export class GitHubObject implements GitHubCommands {
                 const { scope } = runtime.stored;
                 await this.#runtimeServices.objects.automations
                   .for(scope)
-                  .commands.ingestEvent(
-                    buildGitHubAutomationEvent({ orgId: scope.orgId, event, meta }),
-                  );
+                  .commands.ingestEvent(buildGitHubAutomationEvent({ scope, event, meta }));
               });
 
               register("installation.deleted", async ({ payload }, idempotencyKey) => {
@@ -187,7 +192,11 @@ export class GitHubObject implements GitHubCommands {
 
     const source = extractFragmentConfig(this.#configResolution.config);
     const existing = await this.#host.loadStored();
-    const scope = { kind: "org" as const, orgId: normalizedOrgId };
+    // The object's own name says where it is kept; the caller only confirms its organization.
+    const scope = this.#scope;
+    if (scope.orgId !== normalizedOrgId) {
+      throw new Error("GitHub Durable Object is bound to a different organization.");
+    }
     this.#host.assertSameScope(existing, scope);
     if (existing && configsEqual(existing.source, source)) {
       return;

@@ -1,3 +1,4 @@
+import type { BackofficeJurisdiction } from "@fragno-dev/backoffice-api/v0/shared/scope";
 /*
  * Pi terminal action handler — the server side of the terminal. Given a posted
  * form (a `run-command` or `autocomplete-path` intent) and the active org, it
@@ -8,10 +9,10 @@
  * backoffice dashboard route action, so the React Router Vite plugin strips it
  * from the client bundle.
  */
-
 import type { IFileSystem } from "just-bash";
 import type { RouterContextProvider } from "react-router";
 
+import { backofficeOrganizationContextScope } from "@/backoffice-runtime/resolved-scope";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { createRuntimeStateBackend } from "@/fragno/codemode/runtime-state-backend";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
@@ -43,7 +44,11 @@ import {
 } from "./pi-terminal-specs";
 
 /** The active organization the terminal is scoped to (or null when none is selected). */
-type ActiveOrg = { id: string; name?: string | null } | null;
+type ActiveOrg = {
+  id: string;
+  jurisdiction: BackofficeJurisdiction | null;
+  name?: string | null;
+} | null;
 
 /** The route action `context`: a router context provider we read worker runtime + auth from. */
 type TerminalActionContext = Readonly<RouterContextProvider>;
@@ -168,10 +173,11 @@ const handlePathAutocomplete = async ({
 
   try {
     const { runtime, kernel } = context.get(BackofficeWorkerContext);
-    const execution = await requireBackofficeContext(request, context, {
-      kind: "org",
-      orgId: activeOrg.id,
-    });
+    const execution = await requireBackofficeContext(
+      request,
+      context,
+      backofficeOrganizationContextScope(activeOrg),
+    );
     const fileSystem = createStateShellFileSystem(
       createRuntimeStateBackend({ runtime, kernel, execution }),
     );
@@ -227,10 +233,11 @@ const resolveHelpCommandSpecs = async ({
 
   try {
     const { runtime, kernel } = context.get(BackofficeWorkerContext);
-    const execution = await requireBackofficeContext(request, context, {
-      kind: "org",
-      orgId: activeOrg.id,
-    });
+    const execution = await requireBackofficeContext(
+      request,
+      context,
+      backofficeOrganizationContextScope(activeOrg),
+    );
     const runtimeContext = createRouteBackedRuntimeContext({
       emitter: { kind: "caller" },
       runtime,
@@ -328,10 +335,11 @@ const handleRunCommand = async ({
 
   try {
     const { runtime, kernel } = context.get(BackofficeWorkerContext);
-    const execution = await requireBackofficeContext(request, context, {
-      kind: "org",
-      orgId: activeOrg.id,
-    });
+    const execution = await requireBackofficeContext(
+      request,
+      context,
+      backofficeOrganizationContextScope(activeOrg),
+    );
     const { bash } = await createInteractiveBashHost({
       context: createCodemodeRouteBackedRuntimeContext({
         emitter: { kind: "caller" },
