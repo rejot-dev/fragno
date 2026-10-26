@@ -378,7 +378,9 @@ export class InMemoryMarketplaceObject extends RpcTarget implements MarketplaceO
     context: BackofficeActionRpcContext,
   ): Promise<void> {
     const request = marketplacePackagePublishRequestSchema.parse(rawRequest);
+    const startedAt = performance.now();
     await this.#authorizePackagePublish(request, context);
+    const authorizedAt = performance.now();
     const uploadName = marketplacePackageUploadName({
       marketplace: this.#scope,
       listingId: request.intent.release.listingId,
@@ -406,7 +408,18 @@ export class InMemoryMarketplaceObject extends RpcTarget implements MarketplaceO
       );
     }
     const fragment = this.#getFragment();
+    const inventoryVerifiedAt = performance.now();
     await fragment.callServices(() => fragment.services.completePackagePublish(request));
+    const updatedAt = performance.now();
+    console.info("backoffice.marketplace.publication.handler_returned", {
+      workflowInstanceId: request.workflowInstanceId,
+      listingId: request.intent.release.listingId,
+      version: request.intent.release.version,
+      authorizationDurationMs: authorizedAt - startedAt,
+      inventoryDurationMs: inventoryVerifiedAt - authorizedAt,
+      updateDurationMs: updatedAt - inventoryVerifiedAt,
+      durationMs: updatedAt - startedAt,
+    });
   }
 
   async listPublishedListings(
@@ -591,11 +604,31 @@ export class Marketplace extends DurableObject<CloudflareEnv> implements Marketp
     return this.#object.beginPackagePublish(request, context);
   }
 
-  completePackagePublish(
+  async completePackagePublish(
     request: MarketplacePackagePublishRequest,
     context: BackofficeActionRpcContext,
   ): Promise<void> {
-    return this.#object.completePackagePublish(request, context);
+    const startedAt = performance.now();
+    await this.#object.completePackagePublish(request, context);
+    const handlerReturnedAt = performance.now();
+    let outcome: "returned" | "threw" = "threw";
+    try {
+      // Targeted diagnostic: expose the durability wait normally hidden behind the RPC
+      // output gate. Keep this at the Cloudflare boundary, not in publication domain logic.
+      await this.ctx.storage.sync();
+      outcome = "returned";
+    } finally {
+      const finishedAt = performance.now();
+      console.info("backoffice.marketplace.publication.storage_sync_finished", {
+        workflowInstanceId: request.workflowInstanceId,
+        listingId: request.intent.release.listingId,
+        version: request.intent.release.version,
+        outcome,
+        handlerDurationMs: handlerReturnedAt - startedAt,
+        storageSyncDurationMs: finishedAt - handlerReturnedAt,
+        durationMs: finishedAt - startedAt,
+      });
+    }
   }
 
   failPackagePublish(input: {
