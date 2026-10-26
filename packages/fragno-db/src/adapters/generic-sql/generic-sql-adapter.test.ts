@@ -12,12 +12,16 @@ const retrievalSchema = schema("stream_retrieval", (s) =>
   s.addTable("records", (t) => t.addColumn("id", idColumn()).addColumn("value", column("string"))),
 );
 
-function createPostgresAdapter(rows: Record<string, unknown>[] = []) {
-  const executeQuery = vi.fn(async (_query: unknown, _values?: unknown[]) => ({
-    command: "SELECT" as const,
-    rowCount: rows.length,
-    rows,
-  }));
+function createPostgresAdapter(
+  rows: Record<string, unknown>[] = [],
+  mutationRows: Record<string, unknown>[] = [],
+) {
+  const executeQuery = vi.fn(async (query: unknown, _values?: unknown[]) => {
+    const result = String(query).includes('from "fragno_db_outbox_mutations"')
+      ? mutationRows
+      : rows;
+    return { command: "SELECT" as const, rowCount: result.length, rows: result };
+  });
   const release = vi.fn();
   const pool = {
     connect: vi.fn(async () => ({ query: executeQuery, release })),
@@ -54,15 +58,16 @@ async function collectRows(iterable: AsyncIterableIterator<unknown>): Promise<un
 
 describe("SqlAdapter bounded retrieval execution", () => {
   it("streams Postgres outbox payloads as opaque JSON text", async () => {
-    const payloadJson = '{"json":{"version":2,"operations":[]}}';
-    const { adapter, executeQuery } = createPostgresAdapter([
-      {
-        versionstamp: "000000000000000000000002",
-        uowId: "uow-2",
-        refMapJson: null,
-        mutationPayloadsJson: "[]",
-      },
-    ]);
+    const operationJson = '{"op":"delete", "externalId":"kept as stored"}';
+    const { adapter, executeQuery } = createPostgresAdapter(
+      [{ versionstamp: "000000000000000000000002", uowId: "uow-2", refMapJson: null }],
+      [
+        {
+          entryVersionstamp: "000000000000000000000002",
+          payloadJson: `{"json":${operationJson}}`,
+        },
+      ],
+    );
 
     try {
       await expect(
@@ -77,14 +82,16 @@ describe("SqlAdapter bounded retrieval execution", () => {
           versionstamp: "000000000000000000000002",
           entryJson:
             '{"versionstamp":"000000000000000000000002","uowId":"uow-2",' +
-            `"payload":${payloadJson}}`,
+            `"payload":{"json":{"version":2,"operations":[${operationJson}]}}}`,
         },
       ]);
-      const queryCall = executeQuery.mock.calls[0];
-      assert(queryCall);
-      expect(queryCall[0]).toContain('json_agg("_fragno_outbox_stream_aggregate"');
-      expect(queryCall[0]).toContain("fragno_db_outbox_mutations");
-      expect(queryCall[1]).toContain("000000000000000000000001");
+      const [entryCall, mutationCall] = executeQuery.mock.calls;
+      assert(entryCall && mutationCall);
+      expect(entryCall[1]).toContain("000000000000000000000001");
+      // Payloads come back as stored text, so the database does not rebuild them as JSON.
+      expect(mutationCall[0]).toContain('cast("_fragno_outbox_stream_mutation"."payload" as text)');
+      expect(mutationCall[0]).not.toContain("json_agg");
+      expect(mutationCall[1]).toEqual(["000000000000000000000002", "000000000000000000000002"]);
     } finally {
       await adapter.close();
     }

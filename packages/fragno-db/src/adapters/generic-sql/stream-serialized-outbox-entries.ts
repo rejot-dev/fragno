@@ -1,4 +1,4 @@
-import { sql, type RawBuilder, type SelectQueryBuilder } from "kysely";
+import { sql, type RawBuilder } from "kysely";
 
 import { internalSchema } from "../../fragments/internal-fragment.schema";
 import { createNamingResolver, type SqlNamingStrategy } from "../../naming/sql-naming";
@@ -8,17 +8,18 @@ import type { SqlDriverAdapter } from "../../sql-driver/sql-driver-adapter";
 import type { DriverConfig } from "./driver-config";
 import { createColdKysely } from "./migration/cold-kysely";
 
-const FRAGNO_SQL_STREAM_CHUNK_SIZE = 50;
 const OUTBOX_ENTRY_ALIAS = "_fragno_outbox_stream_entry";
 const OUTBOX_MUTATION_ALIAS = "_fragno_outbox_stream_mutation";
-const OUTBOX_MUTATION_ITEM_ALIAS = "_fragno_outbox_stream_item";
-const OUTBOX_MUTATION_AGGREGATE_ALIAS = "_fragno_outbox_stream_aggregate";
 
-type SerializedOutboxDatabaseRow = {
+type OutboxEntryRow = {
   versionstamp: string;
   uowId: string;
   refMapJson: string | null;
-  mutationPayloadsJson: string;
+};
+
+type OutboxMutationRow = {
+  entryVersionstamp: string;
+  payloadJson: string;
 };
 
 function projectJsonColumnAsText(
@@ -30,55 +31,13 @@ function projectJsonColumnAsText(
     : sql<string>`cast(${value} as text)`;
 }
 
-function aggregateMutationPayloadsAsJson<
-  TDatabase,
-  TTable extends keyof TDatabase & string,
-  TOutput,
->(
-  mutationQuery: SelectQueryBuilder<TDatabase, TTable, TOutput>,
-  driverConfig: DriverConfig,
-): RawBuilder<string> {
-  const item = sql.ref(`${OUTBOX_MUTATION_AGGREGATE_ALIAS}.${OUTBOX_MUTATION_ITEM_ALIAS}`);
-  let aggregate: RawBuilder<unknown>;
-  switch (driverConfig.databaseType) {
-    case "sqlite":
-      aggregate = sql`
-        coalesce(
-          (
-            select json_group_array(json(${item}))
-            from (${mutationQuery}) as ${sql.ref(OUTBOX_MUTATION_AGGREGATE_ALIAS)}
-          ),
-          json('[]')
-        )
-      `;
-      break;
-    case "postgresql":
-      aggregate = sql`
-        coalesce(
-          (
-            select json_agg(${item})
-            from (${mutationQuery}) as ${sql.ref(OUTBOX_MUTATION_AGGREGATE_ALIAS)}
-          ),
-          '[]'::json
-        )
-      `;
-      break;
-    case "mysql":
-      aggregate = sql`
-        coalesce(
-          (
-            select json_arrayagg(${item})
-            from (${mutationQuery}) as ${sql.ref(OUTBOX_MUTATION_AGGREGATE_ALIAS)}
-          ),
-          json_array()
-        )
-      `;
-      break;
-  }
-  return projectJsonColumnAsText(aggregate, driverConfig);
-}
-
-/** Streams bounded SQL outbox rows without parsing their stored mutation payload JSON. */
+/**
+ * Streams one bounded page of SQL outbox rows without parsing their stored mutation payload JSON.
+ *
+ * A page is two queries: its entries, then the mutations of the versionstamp range they span, as
+ * stored text in order. Aggregating each entry's mutations into a JSON array in SQL instead made
+ * the database parse and re-serialize every payload, and the adapter split the array again.
+ */
 export async function* streamSqlSerializedOutboxEntries(options: {
   driver: SqlDriverAdapter;
   driverConfig: DriverConfig;
@@ -108,28 +67,8 @@ export async function* streamSqlSerializedOutboxEntries(options: {
   );
   const mutationPayloadColumn = resolver.getColumnName(mutationTable.name, "payload");
   const database = createColdKysely(driverConfig.databaseType);
-  const mutationPayload = sql.ref(`${OUTBOX_MUTATION_ALIAS}.${mutationPayloadColumn}`);
-  const mutationItem =
-    driverConfig.databaseType === "mysql"
-      ? sql`json_array(
-          row_number() over (
-            order by ${sql.ref(`${OUTBOX_MUTATION_ALIAS}.${mutationVersionstampColumn}`)} asc
-          ),
-          ${mutationPayload}
-        )`
-      : mutationPayload;
-  const mutationQuery = database
-    .selectFrom(`${mutationTableName} as ${OUTBOX_MUTATION_ALIAS}`)
-    .select(mutationItem.as(OUTBOX_MUTATION_ITEM_ALIAS))
-    .whereRef(
-      `${OUTBOX_MUTATION_ALIAS}.${mutationEntryVersionstampColumn}`,
-      "=",
-      `${OUTBOX_ENTRY_ALIAS}.${versionstampColumn}`,
-    )
-    .orderBy(`${OUTBOX_MUTATION_ALIAS}.${mutationVersionstampColumn}`, "asc");
-  const mutationPayloadsJson = aggregateMutationPayloadsAsJson(mutationQuery, driverConfig);
 
-  let query = database
+  let entryQuery = database
     .selectFrom(`${outboxTableName} as ${OUTBOX_ENTRY_ALIAS}`)
     .select([
       sql.ref(`${OUTBOX_ENTRY_ALIAS}.${versionstampColumn}`).as("versionstamp"),
@@ -137,39 +76,57 @@ export async function* streamSqlSerializedOutboxEntries(options: {
       projectJsonColumnAsText(sql.ref(`${OUTBOX_ENTRY_ALIAS}.${refMapColumn}`), driverConfig).as(
         "refMapJson",
       ),
-      mutationPayloadsJson.as("mutationPayloadsJson"),
     ])
     .orderBy(`${OUTBOX_ENTRY_ALIAS}.${versionstampColumn}`, "asc")
     .limit(streamOptions.limit);
-
   if (streamOptions.afterVersionstamp !== undefined) {
-    query = query.where(
+    entryQuery = entryQuery.where(
       `${OUTBOX_ENTRY_ALIAS}.${versionstampColumn}`,
       ">",
       streamOptions.afterVersionstamp.toLowerCase(),
     );
   }
 
-  const compiledQuery = query.compile();
-  const serializeRow = (row: Record<string, unknown>): SerializedOutboxStreamEntry => {
-    const stored = row as SerializedOutboxDatabaseRow;
-    return assembleSerializedOutboxStreamEntry({
-      ...stored,
-      mysqlOrdinalWrapped: driverConfig.databaseType === "mysql",
-    });
-  };
-
-  if (driverConfig.retrievalExecution.kind === "buffered-page") {
-    const result = await driver.executeQuery(compiledQuery);
-    for (const row of result.rows) {
-      yield serializeRow(row);
-    }
+  // A page is bounded by its limit, so both queries are read whole rather than through a cursor.
+  const entries = (await driver.executeQuery(entryQuery.compile())).rows as OutboxEntryRow[];
+  const firstEntry = entries[0];
+  const lastEntry = entries.at(-1);
+  if (firstEntry === undefined || lastEntry === undefined) {
     return;
   }
 
-  for await (const chunk of driver.streamQuery(compiledQuery, FRAGNO_SQL_STREAM_CHUNK_SIZE)) {
-    for (const row of chunk.rows) {
-      yield serializeRow(row);
-    }
+  const mutationEntryVersionstamp = `${OUTBOX_MUTATION_ALIAS}.${mutationEntryVersionstampColumn}`;
+  const mutationQuery = database
+    .selectFrom(`${mutationTableName} as ${OUTBOX_MUTATION_ALIAS}`)
+    .select([
+      sql.ref(mutationEntryVersionstamp).as("entryVersionstamp"),
+      projectJsonColumnAsText(
+        sql.ref(`${OUTBOX_MUTATION_ALIAS}.${mutationPayloadColumn}`),
+        driverConfig,
+      ).as("payloadJson"),
+    ])
+    .where(mutationEntryVersionstamp, ">=", firstEntry.versionstamp)
+    .where(mutationEntryVersionstamp, "<=", lastEntry.versionstamp)
+    .orderBy(mutationEntryVersionstamp, "asc")
+    .orderBy(`${OUTBOX_MUTATION_ALIAS}.${mutationVersionstampColumn}`, "asc");
+  const mutations = (await driver.executeQuery(mutationQuery.compile()))
+    .rows as OutboxMutationRow[];
+
+  // An entry committed late can fall inside the range without being on this page; its mutations
+  // are left for the page that holds it.
+  const payloadsByEntry = new Map<string, string[]>(
+    entries.map((entry) => [entry.versionstamp, []]),
+  );
+  for (const mutation of mutations) {
+    payloadsByEntry.get(mutation.entryVersionstamp)?.push(mutation.payloadJson);
+  }
+
+  for (const entry of entries) {
+    yield assembleSerializedOutboxStreamEntry({
+      versionstamp: entry.versionstamp,
+      uowId: entry.uowId,
+      refMapJson: entry.refMapJson,
+      mutationPayloads: payloadsByEntry.get(entry.versionstamp) ?? [],
+    });
   }
 }

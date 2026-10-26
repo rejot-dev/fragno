@@ -15,8 +15,7 @@ describe("serialized outbox stream entry", () => {
       versionstamp: "000000000000000000000001",
       uowId: 'uow-"quoted"',
       refMapJson: '{"user:1":"external-1"}',
-      mutationPayloadsJson: `[${mutationPayload}]`,
-      mysqlOrdinalWrapped: false,
+      mutationPayloads: [mutationPayload],
     });
 
     expect(entry.entryJson).toContain(`"operations":[${operationJson}]`);
@@ -60,15 +59,14 @@ describe("serialized outbox stream entry", () => {
       },
       { op: "update", set: { first: shared, second: shared } },
     ];
-    const mutationPayloadsJson = JSON.stringify(
-      operations.map((operation) => superjson.serialize(operation)),
+    const mutationPayloads = operations.map((operation) =>
+      JSON.stringify(superjson.serialize(operation)),
     );
     const entry = assembleSerializedOutboxStreamEntry({
       versionstamp: "000000000000000000000001",
       uowId: "uow-1",
       refMapJson: null,
-      mutationPayloadsJson,
-      mysqlOrdinalWrapped: false,
+      mutationPayloads,
     });
     const payload = (JSON.parse(entry.entryJson) as { payload: SuperJSONResult }).payload;
     const decoded = superjson.deserialize<{ operations: typeof operations }>(payload);
@@ -78,32 +76,12 @@ describe("serialized outbox stream entry", () => {
     expect(updateSet.first).toBe(updateSet.second);
   });
 
-  it("restores MySQL mutation order without interpreting operation payloads", () => {
-    const entry = assembleSerializedOutboxStreamEntry({
-      versionstamp: "000000000000000000000001",
-      uowId: "uow-1",
-      refMapJson: null,
-      mutationPayloadsJson:
-        '[[2,{"json":{"op":"delete","externalId":"second"}}],[1,{"json":{"op":"delete","externalId":"first"}}]]',
-      mysqlOrdinalWrapped: true,
-    });
-
-    expect(JSON.parse(entry.entryJson)).toMatchObject({
-      payload: {
-        json: {
-          operations: [{ externalId: "first" }, { externalId: "second" }],
-        },
-      },
-    });
-  });
-
   it("omits a null reference map from an empty wire entry", () => {
     const entry = assembleSerializedOutboxStreamEntry({
       versionstamp: "000000000000000000000001",
       uowId: "uow-1",
       refMapJson: null,
-      mutationPayloadsJson: "[]",
-      mysqlOrdinalWrapped: false,
+      mutationPayloads: [],
     });
 
     expect(entry.entryJson).not.toContain("refMap");

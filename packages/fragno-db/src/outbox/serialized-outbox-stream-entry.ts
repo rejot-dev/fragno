@@ -91,32 +91,6 @@ function findJsonValueEnd(value: string, start: number): number {
   return index;
 }
 
-function splitJsonArrayElements(value: string): string[] {
-  let index = skipJsonWhitespace(value, 0);
-  if (value[index] !== "[") {
-    throw new Error("Serialized outbox JSON array must start with '['.");
-  }
-  index = skipJsonWhitespace(value, index + 1);
-  if (value[index] === "]") {
-    return [];
-  }
-
-  const elements: string[] = [];
-  while (index < value.length) {
-    const end = findJsonValueEnd(value, index);
-    elements.push(value.slice(index, end));
-    index = skipJsonWhitespace(value, end);
-    if (value[index] === "]") {
-      return elements;
-    }
-    if (value[index] !== ",") {
-      throw new Error("Serialized outbox JSON array elements must be comma-separated.");
-    }
-    index = skipJsonWhitespace(value, index + 1);
-  }
-  throw new Error("Serialized outbox JSON array is unterminated.");
-}
-
 function extractJsonObjectProperties(
   value: string,
   requestedProperties: ReadonlySet<string>,
@@ -190,44 +164,19 @@ function addReferentialEqualities(
   addEntries(equalities);
 }
 
-function orderMutationPayloads(
-  mutationPayloadsJson: string,
-  mysqlOrdinalWrapped: boolean,
-): string[] {
-  const payloads = splitJsonArrayElements(mutationPayloadsJson);
-  if (!mysqlOrdinalWrapped) {
-    return payloads;
-  }
-
-  return payloads
-    .map((item) => {
-      const [ordinalJson, payloadJson] = splitJsonArrayElements(item);
-      if (ordinalJson === undefined || payloadJson === undefined) {
-        throw new Error("Serialized MySQL outbox mutation is missing its order or payload.");
-      }
-      return { ordinal: JSON.parse(ordinalJson) as number, payloadJson };
-    })
-    .sort((left, right) => left.ordinal - right.ordinal)
-    .map(({ payloadJson }) => payloadJson);
-}
-
 /** Assembles trusted mutation JSON without parsing and reconstructing operation payloads. */
 export function assembleSerializedOutboxStreamEntry(input: {
   versionstamp: string;
   uowId: string;
   refMapJson: string | null;
-  mutationPayloadsJson: string;
-  mysqlOrdinalWrapped: boolean;
+  /** Each mutation's stored SuperJSON payload, in mutation order. */
+  mutationPayloads: readonly string[];
 }): SerializedOutboxStreamEntry {
-  const mutationPayloads = orderMutationPayloads(
-    input.mutationPayloadsJson,
-    input.mysqlOrdinalWrapped,
-  );
   const operationJson: string[] = [];
   const values: Record<string, unknown> = {};
   const referentialEqualities: Record<string, string[]> = {};
 
-  for (const [operationIndex, mutationPayload] of mutationPayloads.entries()) {
+  for (const [operationIndex, mutationPayload] of input.mutationPayloads.entries()) {
     const properties = extractJsonObjectProperties(
       mutationPayload,
       OUTBOX_MUTATION_PAYLOAD_PROPERTIES,
