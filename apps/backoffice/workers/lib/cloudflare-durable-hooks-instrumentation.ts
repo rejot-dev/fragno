@@ -1,6 +1,10 @@
 import type { DurableHookNotification, DurableHooksInstrumentation } from "@fragno-dev/db/hooks";
 import { tracing } from "cloudflare:workers";
 
+import {
+  backofficeScopeSpanAttributes,
+  type BackofficeScopeFields,
+} from "@/backoffice-runtime/backoffice-telemetry";
 import { executeLoggedBackofficeDurableHookAttempt } from "@/backoffice-runtime/runtime-instrumentation";
 
 let customSpanWarningEmitted = false;
@@ -29,80 +33,87 @@ const warnCustomSpanUnavailable = (reason: string, error?: unknown) => {
  * present in Fragno's ambient request context. The attempt span is still parented to the active
  * fetch, RPC, or alarm invocation.
  */
-export const cloudflareDurableHooksInstrumentation: DurableHooksInstrumentation = {
-  captureContext: () => null,
-  runNotify: async (notification: DurableHookNotification, execute) => {
-    let enteredSpan = false;
-    try {
-      const result = tracing.enterSpan("fragno.durable_hooks.notify", (span) => {
-        enteredSpan = true;
-        if (!span.isTraced) {
-          warnCustomSpanUnavailable("active invocation is not being traced");
+export function createCloudflareDurableHooksInstrumentation(
+  scope: BackofficeScopeFields,
+): DurableHooksInstrumentation {
+  const scopeAttributes = backofficeScopeSpanAttributes(scope);
+  return {
+    captureContext: () => null,
+    runNotify: async (notification: DurableHookNotification, execute) => {
+      let enteredSpan = false;
+      try {
+        const result = tracing.enterSpan("fragno.durable_hooks.notify", (span) => {
+          enteredSpan = true;
+          if (!span.isTraced) {
+            warnCustomSpanUnavailable("active invocation is not being traced");
+          }
+
+          span.setAttributes(scopeAttributes);
+          span.setAttribute("fragno.hook.namespace", notification.namespace);
+          span.setAttribute("fragno.hook.correlation_id", notification.correlationId);
+          span.setAttribute("fragno.hook.notify.source", notification.source);
+          span.setAttribute("fragno.hook.notify.cross_namespace", notification.crossNamespace);
+          span.setAttribute("fragno.hook.notify.queued", notification.queued);
+          if (notification.route) {
+            span.setAttribute("fragno.hook.notify.route", notification.route);
+          }
+
+          return execute();
+        });
+
+        if (enteredSpan) {
+          return await result;
         }
 
-        span.setAttribute("fragno.hook.namespace", notification.namespace);
-        span.setAttribute("fragno.hook.correlation_id", notification.correlationId);
-        span.setAttribute("fragno.hook.notify.source", notification.source);
-        span.setAttribute("fragno.hook.notify.cross_namespace", notification.crossNamespace);
-        span.setAttribute("fragno.hook.notify.queued", notification.queued);
-        if (notification.route) {
-          span.setAttribute("fragno.hook.notify.route", notification.route);
+        warnCustomSpanUnavailable("tracing.enterSpan() skipped its callback");
+      } catch (error) {
+        if (enteredSpan) {
+          throw error;
+        }
+        warnCustomSpanUnavailable("tracing.enterSpan() threw before entering its callback", error);
+      }
+
+      // Notification must remain available even when a runtime cannot create custom spans.
+      return await execute();
+    },
+    runAttempt: async (attempt, execute) => {
+      let enteredSpan = false;
+      try {
+        const result = tracing.enterSpan("fragno.durable_hook.attempt", (span) => {
+          enteredSpan = true;
+          if (!span.isTraced) {
+            warnCustomSpanUnavailable("active invocation is not being traced");
+          }
+
+          span.setAttributes(scopeAttributes);
+          span.setAttribute("fragno.hook.namespace", attempt.namespace);
+          span.setAttribute("fragno.hook.name", attempt.hookName);
+          span.setAttribute("fragno.hook.id", attempt.hookId.toString());
+          span.setAttribute("fragno.hook.correlation_id", attempt.idempotencyKey);
+          span.setAttribute("fragno.hook.attempt", attempt.attempt);
+          span.setAttribute("fragno.hook.max_attempts", attempt.maxAttempts);
+          span.setAttribute(
+            "fragno.hook.has_propagation_context",
+            attempt.propagationContext !== null,
+          );
+
+          return executeLoggedBackofficeDurableHookAttempt(attempt, scope, execute);
+        });
+
+        if (enteredSpan) {
+          return await result;
         }
 
-        return execute();
-      });
-
-      if (enteredSpan) {
-        return await result;
-      }
-
-      warnCustomSpanUnavailable("tracing.enterSpan() skipped its callback");
-    } catch (error) {
-      if (enteredSpan) {
-        throw error;
-      }
-      warnCustomSpanUnavailable("tracing.enterSpan() threw before entering its callback", error);
-    }
-
-    // Notification must remain available even when a runtime cannot create custom spans.
-    return await execute();
-  },
-  runAttempt: async (attempt, execute) => {
-    let enteredSpan = false;
-    try {
-      const result = tracing.enterSpan("fragno.durable_hook.attempt", (span) => {
-        enteredSpan = true;
-        if (!span.isTraced) {
-          warnCustomSpanUnavailable("active invocation is not being traced");
+        warnCustomSpanUnavailable("tracing.enterSpan() skipped its callback");
+      } catch (error) {
+        if (enteredSpan) {
+          throw error;
         }
-
-        span.setAttribute("fragno.hook.namespace", attempt.namespace);
-        span.setAttribute("fragno.hook.name", attempt.hookName);
-        span.setAttribute("fragno.hook.id", attempt.hookId.toString());
-        span.setAttribute("fragno.hook.correlation_id", attempt.idempotencyKey);
-        span.setAttribute("fragno.hook.attempt", attempt.attempt);
-        span.setAttribute("fragno.hook.max_attempts", attempt.maxAttempts);
-        span.setAttribute(
-          "fragno.hook.has_propagation_context",
-          attempt.propagationContext !== null,
-        );
-
-        return executeLoggedBackofficeDurableHookAttempt(attempt, execute);
-      });
-
-      if (enteredSpan) {
-        return await result;
+        warnCustomSpanUnavailable("tracing.enterSpan() threw before entering its callback", error);
       }
 
-      warnCustomSpanUnavailable("tracing.enterSpan() skipped its callback");
-    } catch (error) {
-      if (enteredSpan) {
-        throw error;
-      }
-      warnCustomSpanUnavailable("tracing.enterSpan() threw before entering its callback", error);
-    }
-
-    // Hook execution must remain available even when a runtime cannot create custom spans.
-    return await executeLoggedBackofficeDurableHookAttempt(attempt, execute);
-  },
-};
+      // Hook execution must remain available even when a runtime cannot create custom spans.
+      return await executeLoggedBackofficeDurableHookAttempt(attempt, scope, execute);
+    },
+  };
+}

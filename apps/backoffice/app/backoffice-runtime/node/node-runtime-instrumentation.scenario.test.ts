@@ -8,6 +8,12 @@ import { node, tracing } from "@opentelemetry/sdk-node";
 
 import { nodeBackofficeRuntimeInstrumentation } from "./node-runtime-instrumentation";
 
+const instrumentation = nodeBackofficeRuntimeInstrumentation({
+  scope: "org/org-1",
+  scopeKind: "org",
+  orgId: "org-1",
+});
+
 describe("Node Backoffice durable hook trace propagation", () => {
   let provider: InstanceType<typeof node.NodeTracerProvider> | null = null;
 
@@ -32,7 +38,7 @@ describe("Node Backoffice durable hook trace propagation", () => {
     let propagationContext: Readonly<Record<string, string>> | null = null;
 
     await tracer.startActiveSpan("backoffice.request", async (span) => {
-      propagationContext = nodeBackofficeRuntimeInstrumentation.durableHooks.captureContext({
+      propagationContext = instrumentation.durableHooks.captureContext({
         namespace: "auth",
         hookName: "onOrganizationCreated",
         idempotencyKey: "organization-created-1",
@@ -57,7 +63,7 @@ describe("Node Backoffice durable hook trace propagation", () => {
       propagationContext,
     };
 
-    await nodeBackofficeRuntimeInstrumentation.durableHooks.runAttempt(attempt, async () => {});
+    await instrumentation.durableHooks.runAttempt(attempt, async () => {});
     await provider.forceFlush();
 
     const spans = exporter.getFinishedSpans();
@@ -72,6 +78,9 @@ describe("Node Backoffice durable hook trace propagation", () => {
       "fragno.hook.namespace": "auth",
       "fragno.hook.name": "onOrganizationCreated",
       "fragno.hook.has_propagation_context": true,
+      "backoffice.scope": "org/org-1",
+      "backoffice.scope_kind": "org",
+      "backoffice.org_id": "org-1",
     });
   });
 });

@@ -4,9 +4,14 @@ import type {
 } from "@fragno-dev/db/transaction-instrumentation";
 import { tracing } from "cloudflare:workers";
 
+import {
+  backofficeScopeSpanAttributes,
+  type BackofficeScopeFields,
+} from "@/backoffice-runtime/backoffice-telemetry";
 import { backofficeDatabaseTransactionSpanName } from "@/backoffice-runtime/runtime-instrumentation";
 
 const runCloudflareTransactionSpan = <T>(
+  scope: BackofficeScopeFields,
   context: DatabaseTransactionInstrumentationContext,
   execute: () => T,
 ): T => {
@@ -19,6 +24,7 @@ const runCloudflareTransactionSpan = <T>(
   try {
     const result = tracing.enterSpan(backofficeDatabaseTransactionSpanName(context), (span) => {
       enteredSpan = true;
+      span.setAttributes(backofficeScopeSpanAttributes(scope));
       span.setAttribute("fragno.db.transaction.kind", context.transactionKind);
       span.setAttribute("fragno.db.transaction.name", transactionName);
       span.setAttribute("fragno.db.request.source", context.requestSource);
@@ -46,7 +52,9 @@ const runCloudflareTransactionSpan = <T>(
   return execute();
 };
 
-/** Creates Cloudflare custom spans for named Fragno database transactions and their callbacks. */
-export const cloudflareDatabaseTransactionInstrumentation: DatabaseTransactionInstrumentation = {
-  run: runCloudflareTransactionSpan,
-};
+/** Creates Cloudflare custom spans for one object's named transactions and their callbacks. */
+export function createCloudflareDatabaseTransactionInstrumentation(
+  scope: BackofficeScopeFields,
+): DatabaseTransactionInstrumentation {
+  return { run: (context, execute) => runCloudflareTransactionSpan(scope, context, execute) };
+}

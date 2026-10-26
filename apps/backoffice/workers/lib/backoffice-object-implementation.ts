@@ -7,9 +7,11 @@ import {
 import type { DurableHooksInstrumentation } from "@fragno-dev/db/hooks";
 import type { DatabaseTransactionInstrumentation } from "@fragno-dev/db/transaction-instrumentation";
 
-import type {
-  BackofficeHostTelemetry,
-  BackofficeTelemetry,
+import {
+  backofficeScopeFields,
+  type BackofficeHostTelemetry,
+  type BackofficeScopeFields,
+  type BackofficeTelemetry,
 } from "@/backoffice-runtime/backoffice-telemetry";
 import type { BackofficeDatabaseAdapterFactory } from "@/backoffice-runtime/database-adapters";
 import { decodeBackofficeObjectScope } from "@/backoffice-runtime/object-registry";
@@ -74,7 +76,8 @@ export type CreateBackofficeObjectImplementationOptions<TEnv> = {
   state: BackofficeObjectState;
   env: TEnv;
   adapters: BackofficeDatabaseAdapterFactory;
-  instrumentation: BackofficeRuntimeInstrumentation;
+  /** Instruments the object whose scope monitoring names with `scope`. */
+  instrumentation: (scope: BackofficeScopeFields) => BackofficeRuntimeInstrumentation;
   telemetry: BackofficeTelemetry;
   fragmentHostOperations?: FragmentDurableObjectHostOperations<TEnv>;
   configuredObjectLifecycle: BackofficeConfiguredObjectLifecycle;
@@ -84,11 +87,12 @@ export type CreateBackofficeObjectImplementationOptions<TEnv> = {
 export function createBackofficeObjectImplementation<TEnv>(
   options: CreateBackofficeObjectImplementationOptions<TEnv>,
 ): BackofficeObjectImplementation {
+  const scope = options.state.id.name ? decodeBackofficeObjectScope(options.state.id.name) : null;
+  const instrumentation = options.instrumentation(backofficeScopeFields(scope));
   const fragmentDatabase: BackofficeObjectFragmentDatabase = {
     adapters: options.adapters,
-    transactionInstrumentation: options.instrumentation.databaseTransactions,
+    transactionInstrumentation: instrumentation.databaseTransactions,
   };
-  const scope = options.state.id.name ? decodeBackofficeObjectScope(options.state.id.name) : null;
   const hostTelemetry = (host: string): BackofficeHostTelemetry => ({
     record(signal) {
       options.telemetry.record({ ...signal, object: { host, scope } });
@@ -107,10 +111,10 @@ export function createBackofficeObjectImplementation<TEnv>(
         state: options.state,
         env: options.env,
         durableHooksInstrumentation: reportDurableHookAttempts(
-          options.instrumentation.durableHooks,
+          instrumentation.durableHooks,
           telemetry,
         ),
-        initializationInstrumentation: options.instrumentation.fragmentInitialization,
+        initializationInstrumentation: instrumentation.fragmentInitialization,
         operations: options.fragmentHostOperations,
       } as never) as unknown as FragmentDurableObjectHost<TSource, TRuntime>;
     },
@@ -136,10 +140,10 @@ export function createBackofficeObjectImplementation<TEnv>(
         configuredObjectLifecycle: options.configuredObjectLifecycle,
         telemetry,
         durableHooksInstrumentation: reportDurableHookAttempts(
-          options.instrumentation.durableHooks,
+          instrumentation.durableHooks,
           telemetry,
         ),
-        initializationInstrumentation: options.instrumentation.fragmentInitialization,
+        initializationInstrumentation: instrumentation.fragmentInitialization,
         fragmentHostOperations: options.fragmentHostOperations,
       });
     },

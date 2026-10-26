@@ -1,4 +1,7 @@
-import type { BackofficeTelemetry } from "@/backoffice-runtime/backoffice-telemetry";
+import type {
+  BackofficeScopeFields,
+  BackofficeTelemetry,
+} from "@/backoffice-runtime/backoffice-telemetry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { createCloudflareDurableObjectRuntimeServices } from "@/backoffice-runtime/runtime-services";
 
@@ -7,16 +10,18 @@ import {
   type BackofficeObjectState,
 } from "./backoffice-fragment-durable-object";
 import { createBackofficeObjectImplementation } from "./backoffice-object-implementation";
-import { cloudflareDatabaseTransactionInstrumentation } from "./cloudflare-database-transaction-instrumentation";
-import { cloudflareDurableHooksInstrumentation } from "./cloudflare-durable-hooks-instrumentation";
-import { cloudflareFragmentInitializationInstrumentation } from "./cloudflare-fragment-initialization-instrumentation";
+import { createCloudflareDatabaseTransactionInstrumentation } from "./cloudflare-database-transaction-instrumentation";
+import { createCloudflareDurableHooksInstrumentation } from "./cloudflare-durable-hooks-instrumentation";
+import { createCloudflareFragmentInitializationInstrumentation } from "./cloudflare-fragment-initialization-instrumentation";
 import { createCloudflarePostHogTelemetry } from "./cloudflare-posthog-telemetry";
 
-const cloudflareBackofficeRuntimeInstrumentation = {
-  databaseTransactions: cloudflareDatabaseTransactionInstrumentation,
-  durableHooks: cloudflareDurableHooksInstrumentation,
-  fragmentInitialization: cloudflareFragmentInitializationInstrumentation,
-};
+function createCloudflareBackofficeRuntimeInstrumentation(scope: BackofficeScopeFields) {
+  return {
+    databaseTransactions: createCloudflareDatabaseTransactionInstrumentation(scope),
+    durableHooks: createCloudflareDurableHooksInstrumentation(scope),
+    fragmentInitialization: createCloudflareFragmentInitializationInstrumentation(scope),
+  };
+}
 
 export function createCloudflareBackofficeObjectImplementation(
   state: BackofficeObjectState,
@@ -28,7 +33,7 @@ export function createCloudflareBackofficeObjectImplementation(
     state,
     env,
     adapters: runtime.adapters,
-    instrumentation: cloudflareBackofficeRuntimeInstrumentation,
+    instrumentation: createCloudflareBackofficeRuntimeInstrumentation,
     telemetry,
     configuredObjectLifecycle: noOpBackofficeConfiguredObjectLifecycle,
   });
