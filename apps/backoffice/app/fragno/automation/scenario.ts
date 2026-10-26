@@ -94,6 +94,7 @@ import { renderPiNotificationRequest } from "@/fragno/pi/agent/pi-agent-notifica
 import { piAgentTurnCompletedEvent } from "@/fragno/pi/agent/pi-agent-turn-events";
 import {
   createPiClassifier,
+  createPiExtractor,
   createPiImageGenerator,
   type PiClassifier,
 } from "@/fragno/pi/agent/pi-models";
@@ -308,6 +309,7 @@ export type ScenarioFakes = {
   classifier?: FakeClassifierApi;
   openaiImages?: FakeOpenAIModelApi;
   openaiDecisions?: FakeOpenAIModelApi;
+  openaiResponses?: FakeOpenAIModelApi;
 };
 
 type ScenarioFakeFactory = {
@@ -331,6 +333,12 @@ type ScenarioFakeFactory = {
   openaiDecisions(input: {
     answers: ClassifierResult["answers"];
     inputTokens: number;
+  }): FakeOpenAIModelApi;
+  /** Answers every Responses API request with `output` as its structured answer and this usage. */
+  openaiResponses(input: {
+    output: unknown;
+    inputTokens: number;
+    outputTokens: number;
   }): FakeOpenAIModelApi;
 };
 
@@ -1562,6 +1570,39 @@ function createFakeOpenAIDecisionsApi({
   };
 }
 
+function createFakeOpenAIResponsesApi({
+  output,
+  inputTokens,
+  outputTokens,
+}: Parameters<ScenarioFakeFactory["openaiResponses"]>[0]): FakeOpenAIModelApi {
+  const requests: FakeOpenAIModelApi["requests"] = [];
+  return {
+    requests,
+    fetch: async (input, init) => {
+      const request = new Request(input, init);
+      requests.push({ url: request.url, body: await request.json() });
+      return Response.json({
+        id: `resp_${requests.length}`,
+        status: "completed",
+        output: [
+          {
+            type: "message",
+            role: "assistant",
+            content: [{ type: "output_text", text: JSON.stringify(output), annotations: [] }],
+          },
+        ],
+        usage: {
+          input_tokens: inputTokens,
+          input_tokens_details: { cached_tokens: 0 },
+          output_tokens: outputTokens,
+          output_tokens_details: { reasoning_tokens: 0 },
+          total_tokens: inputTokens + outputTokens,
+        },
+      });
+    },
+  };
+}
+
 const createScenarioFakeFactory = (): ScenarioFakeFactory => ({
   telegram: createFakeTelegramApi,
   pi: createFakePiManagerApi,
@@ -1569,6 +1610,7 @@ const createScenarioFakeFactory = (): ScenarioFakeFactory => ({
   classifier: createFakeClassifierApi,
   openaiImages: createFakeOpenAIImagesApi,
   openaiDecisions: createFakeOpenAIDecisionsApi,
+  openaiResponses: createFakeOpenAIResponsesApi,
 });
 
 const readSnapshotContent = async (fs: IFileSystem, path: string): Promise<string | null> => {
@@ -4365,7 +4407,13 @@ const createFakeObjectOverrides = async (fakes: ScenarioFakes): Promise<LocalBac
     };
   }
 
-  if (fakes.pi || fakes.classifier || fakes.openaiImages || fakes.openaiDecisions) {
+  if (
+    fakes.pi ||
+    fakes.classifier ||
+    fakes.openaiImages ||
+    fakes.openaiDecisions ||
+    fakes.openaiResponses
+  ) {
     const { PiManagerObject } = await import("../../../workers/pi-manager-object");
     overrides.PI_MANAGER = ({
       state,
@@ -4446,6 +4494,12 @@ const createFakeObjectOverrides = async (fakes: ScenarioFakes): Promise<LocalBac
           ? createPiImageGenerator(
               { OPENAI_API_KEY: "scenario-openai-api-key" },
               fakes.openaiImages.fetch,
+            )
+          : null,
+        extractor: fakes.openaiResponses
+          ? createPiExtractor(
+              { OPENAI_API_KEY: "scenario-openai-api-key" },
+              fakes.openaiResponses.fetch,
             )
           : null,
         nowEpochMs,

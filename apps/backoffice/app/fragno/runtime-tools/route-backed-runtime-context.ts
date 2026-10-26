@@ -434,6 +434,10 @@ export const createRouteBackedRuntimeContext = ({
           await kernel
             .scoped("PI_MANAGER", execution.scope, runtime.objects.piManager)
             .commands.generateImage({ request }),
+        extract: async (request) =>
+          await kernel
+            .scoped("PI_MANAGER", execution.scope, runtime.objects.piManager)
+            .commands.extract({ request }),
       },
     },
     event: {

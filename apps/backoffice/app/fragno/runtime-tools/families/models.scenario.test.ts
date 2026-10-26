@@ -677,3 +677,180 @@ test("a workflow writes a generated image to the workspace and bills its organiz
     }),
   );
 });
+
+const invoiceSchema = {
+  type: "object",
+  properties: {
+    supplier: { type: "string" },
+    invoiceNumber: { type: "string" },
+    total: { type: "number" },
+  },
+  required: ["supplier", "invoiceNumber", "total"],
+  additionalProperties: false,
+} as const;
+// ASCII, so the scenario writes it as text and the model receives the same bytes.
+const invoicePdf = "%PDF-1.7\n1 0 obj << /Type /Catalog >> endobj\n%%EOF\n";
+
+const bookInvoiceWorkflow = `export default defineWorkflow({ name: "book-invoice" }, async (event, step) => {
+  const { output } = await step.do("read invoice", async () =>
+    await models.extract({
+      files: [event.payload.path],
+      instructions: "Read the supplier, invoice number, and total of this invoice.",
+      schema: ${JSON.stringify(invoiceSchema)},
+    }),
+  );
+  return { supplier: output.supplier, total: output.total };
+});`;
+
+test("a workflow reads an invoice PDF into typed fields and bills the extraction", async () => {
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "extract an invoice with models.extract",
+      objects: allLocalObjects,
+      files: backofficeFiles.workspaceStarter({
+        "automations/book-invoice.workflow.js": bookInvoiceWorkflow,
+      }),
+      fakes: ({ fake }) => ({
+        openaiResponses: fake.openaiResponses({
+          output: { supplier: "Brass & Co", invoiceNumber: "2026-114", total: 1250.5 },
+          inputTokens: 3000,
+          outputTokens: 200,
+        }),
+      }),
+      setup: ({ given }) => [
+        given.organization.exists({ id: scope.orgId, name: "Ada Labs" }),
+        given.auth.user({ id: "member-1" }),
+        given.auth.member({ orgId: scope.orgId, userId: "member-1", roles: ["member"] }),
+        given.codemode.writeFile({
+          orgId: scope.orgId,
+          path: "/workspace/inbox/invoice-2026-114.pdf",
+          content: invoicePdf,
+        }),
+        given.codemode.writeFile({
+          orgId: scope.orgId,
+          path: "/workspace/inbox/notes.txt",
+          content: "Pay before the end of the month.",
+        }),
+      ],
+      steps: ({ when, then }) => [
+        when.workflow.createInstance({
+          orgId: scope.orgId,
+          path: "/workspace/automations/book-invoice.workflow.js",
+          remoteWorkflowName: "book-invoice",
+          instanceId: "book-invoice-1",
+          execution: member,
+          event: { ...ticketOpened, payload: { path: "/workspace/inbox/invoice-2026-114.pdf" } },
+        }),
+        then.workflow.instance({
+          remoteWorkflowName: "book-invoice",
+          status: "complete",
+          output: { supplier: "Brass & Co", total: 1250.5 },
+        }),
+        then.assert(
+          "the model reads the PDF's bytes and answers in the strict schema",
+          ({ fakes, kernelActions }) => {
+            expect(fakes.openaiResponses?.requests).toEqual([
+              {
+                url: "https://api.openai.com/v1/responses",
+                body: {
+                  model: "gpt-6-luna",
+                  store: false,
+                  reasoning: { effort: "low" },
+                  input: [
+                    {
+                      role: "user",
+                      content: [
+                        {
+                          type: "input_file",
+                          filename: "invoice-2026-114.pdf",
+                          file_data: `data:application/pdf;base64,${btoa(invoicePdf)}`,
+                        },
+                        {
+                          type: "input_text",
+                          text: "Read the supplier, invoice number, and total of this invoice.",
+                        },
+                      ],
+                    },
+                  ],
+                  text: {
+                    format: {
+                      type: "json_schema",
+                      name: "answer",
+                      schema: invoiceSchema,
+                      strict: true,
+                    },
+                  },
+                },
+              },
+            ]);
+            expect(kernelActions).toEqual(
+              expect.arrayContaining([
+                expect.objectContaining({
+                  operation: BACKOFFICE_PERMISSION.upload.read,
+                  resource: { path: "/workspace/inbox/invoice-2026-114.pdf" },
+                }),
+              ]),
+            );
+          },
+        ),
+        then.assert("a caller picks the stronger model and more thinking", async (ctx) => {
+          await ctx.runCodemode({
+            scope,
+            code: `async () => await models.extract({
+              files: ["/workspace/inbox/invoice-2026-114.pdf"],
+              instructions: "Read the supplier, invoice number, and total of this invoice.",
+              schema: ${JSON.stringify(invoiceSchema)},
+              model: "openai/gpt-6.1-sol",
+              thinkingLevel: "high",
+            })`,
+          });
+          expect(ctx.fakes.openaiResponses?.requests.at(-1)?.body).toMatchObject({
+            model: "gpt-6.1-sol",
+            reasoning: { effort: "high" },
+          });
+        }),
+        then.assert(
+          "a file that is neither a PDF nor an image never reaches the model",
+          async (ctx) => {
+            await expect(
+              ctx.runCodemode({
+                scope,
+                code: `async () => await models.extract({
+                files: ["/workspace/inbox/notes.txt"],
+                instructions: "Read the note.",
+                schema: { type: "object", properties: {}, required: [], additionalProperties: false },
+              })`,
+              }),
+            ).rejects.toThrow(
+              "MODELS_EXTRACT_INVALID_FILE: /workspace/inbox/notes.txt must contain a PDF",
+            );
+            expect(ctx.fakes.openaiResponses?.requests).toHaveLength(2);
+          },
+        ),
+        then.billing.tracker({
+          scope,
+          period,
+          meter: "models.extractions",
+          quantity: "2",
+          eventCount: "2",
+        }),
+        then.billing.tracker({
+          scope,
+          period,
+          meter: "ai.tokens.output",
+          quantity: "400",
+          eventCount: "2",
+        }),
+        // Each call reads 3,000 tokens and writes 200: gpt-6-luna charges $0.10 and $0.50 per
+        // million, gpt-6.1-sol $2 and $10, so $0.0004 and $0.008.
+        then.billing.tracker({
+          scope,
+          period,
+          meter: "ai.cost.total",
+          quantity: "8400000",
+          eventCount: "2",
+        }),
+      ],
+    }),
+  );
+});

@@ -2,6 +2,7 @@ import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/perm
 
 import type { PiManagerCommands } from "@/backoffice-runtime/object-registry";
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
+import type { PiExtractionRequest } from "@/fragno/pi/agent/openai-extraction";
 import type {
   PiClassificationRequest,
   PiImageGenerationRequest,
@@ -14,10 +15,12 @@ import {
   type BackofficeToolContext,
 } from "../runtime-tools";
 import { readClassificationImages } from "./models-classification-images";
+import { readExtractionFiles } from "./models-extraction-files";
 
 export type ModelsRuntime = {
   classify(request: PiClassificationRequest): ReturnType<PiManagerCommands["classify"]>;
   generateImage(request: PiImageGenerationRequest): ReturnType<PiManagerCommands["generateImage"]>;
+  extract(request: PiExtractionRequest): ReturnType<PiManagerCommands["extract"]>;
 };
 
 type ModelsToolContext = BackofficeToolContext<{
@@ -91,8 +94,32 @@ const generateImageTool = defineBackofficeRuntimeTool({
   },
 });
 
+const extractTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("models.extract"),
+  namespace: "models",
+  name: "extract",
+  execute: async (
+    { files: paths, instructions, schema, model, thinkingLevel },
+    context: ModelsToolContext,
+  ) => {
+    const models = requireModelsRuntime(context.runtimes.models);
+    await context.kernel.assertAuthorizedAll({
+      execution: context.execution,
+      requirements: paths.map((path) => ({
+        operation: BACKOFFICE_PERMISSION.upload.read,
+        resource: { path },
+      })),
+    });
+    if (!context.runtimes.state) {
+      throw new Error("Extracting from files requires the workspace filesystem.");
+    }
+    const files = await readExtractionFiles(context.runtimes.state, paths);
+    return await models.extract({ files, instructions, schema, model, thinkingLevel });
+  },
+});
+
 export const modelsToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "models",
-  tools: [classifyTool, generateImageTool],
+  tools: [classifyTool, generateImageTool, extractTool],
   isAvailable: (context: ModelsToolContext) => !!context.runtimes.models,
 });

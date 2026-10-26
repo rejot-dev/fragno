@@ -210,7 +210,7 @@ type BackofficePermissionRequirement =
     }
   | {
       namespace: "models";
-      permission: "classify" | "generateImage";
+      permission: "classify" | "generateImage" | "extract";
     }
   | {
       namespace: "marketplace";

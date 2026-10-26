@@ -33,6 +33,7 @@ import type {
   OrganizationMembershipRecord,
   OrganizationRecord,
 } from "@fragno-dev/backoffice-api/v0/organization";
+import type { JsonValue } from "@fragno-dev/backoffice-api/v0/shared/json";
 import type { DirectoryPageInput } from "@fragno-dev/backoffice-api/v0/shared/pagination";
 import {
   type BackofficeContextScope,
@@ -178,6 +179,7 @@ import type {
   MarketplacePublishReleaseResult,
   MarketplacePackagePublishRequest,
 } from "@/fragno/marketplace/package-publishing";
+import type { PiExtractionRequest } from "@/fragno/pi/agent/openai-extraction";
 import type {
   PiAgentAddress,
   PiAgentViewerAuthorization,
@@ -531,6 +533,8 @@ export type PiManagerCommands = WarmableCommands & {
   }): Promise<{ answers: ClassifierResult["answers"] }>;
   /** Generates one image, recorded like `classify`. */
   generateImage(input: { request: PiImageGenerationRequest }): Promise<{ bytes: Uint8Array }>;
+  /** Reads files into an answer that matches a JSON Schema, recorded like `classify`. */
+  extract(input: { request: PiExtractionRequest }): Promise<{ output: JsonValue }>;
   /** Whether `applyPackageAgents` would accept a package's agents, checked before installing. */
   checkPackageAgents(
     input: Omit<PackageAgentsInput, "actors">,

@@ -157,6 +157,9 @@ before referencing it. Percent-encode spaces, `%`, `#`, and `?` in Markdown path
 To see an image yourself, such as a screenshot from `cloudflare.browserRunCapture` saved with
 `state.writeFileBytes`, call `state.viewImage({ path })`; the image follows the program's output.
 
+To read a PDF, or to pull fields out of many images, call `models.extract` with a JSON Schema of the
+answer; the files go to a model and only its answer comes back.
+
 ## Events
 
 Backoffice is event-driven. Use the `events` provider to inspect the event catalog.

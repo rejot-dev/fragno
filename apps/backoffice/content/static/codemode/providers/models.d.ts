@@ -1,4 +1,4 @@
-// Classifiers for typed questions about data and images, and image generation. Read to classify or generate images.
+// Classifiers for typed questions about data and images, typed extraction from PDFs and images, and image generation. Read to classify, read a PDF, or generate images.
 type ModelsCodemodeProvider = {
   /**
    * Answer typed questions about JSON state and workspace images with a fast classifier model. A `choice` question picks one option with probabilities, a `score` question rates against ordered levels, and a `bool` question returns the probability that a condition holds. Use it for routing, triage, and filtering; it does not generate text. Independent questions about the same state and images belong in one call. Image paths require upload.read; text-only calls do not. Each call is billed by input tokens, including image tokens.
@@ -10,6 +10,11 @@ type ModelsCodemodeProvider = {
    * Requires `models.generateImage` and `upload.modify`.
    */
   generateImage(input: ModelsGenerateImageInput): Promise<ModelsGenerateImageOutput>;
+  /**
+   * Read PDFs and images from the workspace with a model and answer in JSON that matches a schema: invoice fields, a contract's parties, a statement's transactions, or a page as Markdown. The files go to the model, not into the conversation, so only the answer costs context. A long document can take longer than an immediate codemode run is allowed, so call it inside a workflow step. Each call is billed by input and output tokens, including every page and image.
+   * Requires `models.extract`.
+   */
+  extract(input: ModelsExtractInput): Promise<ModelsExtractOutput>;
 };
 declare const models: ModelsCodemodeProvider;
 
@@ -93,4 +98,21 @@ type ModelsGenerateImageInput = {
 type ModelsGenerateImageOutput = {
   /** Where the image was written. */
   path: string;
+};
+type ModelsExtractInput = {
+  /** Ordered workspace paths of the PDFs and PNG, JPEG, or WebP images to read; requires upload.read for each file. Up to 16 files and 20 MiB together. */
+  files: string[];
+  /** What to read from the files and how to fill in the answer. */
+  instructions: string;
+  /** JSON Schema of the answer, in OpenAI's strict structured-output subset: the root is an object, every object sets `additionalProperties: false` and lists all its properties in `required`, and a field that may be absent has a type such as `["string", "null"]`. */
+  schema: {
+    [key: string]: JsonValue;
+  };
+  /** The model that reads the files. gpt-6.1-sol is the stronger model; it costs about 20 times as much per token as gpt-6-luna and takes longer. */
+  model?: "openai/gpt-6-luna" | "openai/gpt-6.1-sol";
+  /** How much the model reasons before it answers; more costs more and takes longer. */
+  thinkingLevel?: "low" | "medium" | "high";
+};
+type ModelsExtractOutput = {
+  output: JsonValue;
 };

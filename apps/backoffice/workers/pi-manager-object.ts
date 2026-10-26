@@ -32,7 +32,11 @@ import {
   type PiAgentViewerAuthorization,
   type PiAvailableModel,
 } from "@/fragno/pi/agent/pi-agent-contract";
-import { type PiClassifier, type PiImageGenerator } from "@/fragno/pi/agent/pi-models";
+import {
+  type PiClassifier,
+  type PiExtractor,
+  type PiImageGenerator,
+} from "@/fragno/pi/agent/pi-models";
 import {
   createPiBillingMeasurements,
   hasPiBillingUsage,
@@ -64,6 +68,7 @@ type PiManagerFragment = ReturnType<typeof createPiManagerFragment>;
 const MODEL_CALL_COUNTS = {
   classify: { meter: "models.classifications", unit: "classification", quantity: 1 },
   generateImage: { meter: "models.images", unit: "image", quantity: 1 },
+  extract: { meter: "models.extractions", unit: "extraction", quantity: 1 },
 } as const satisfies Record<string, BillingMeasurementInput>;
 
 /** Shared scoped agent directory; agent execution is handed to the runtime's agent namespace. */
@@ -77,6 +82,7 @@ export class PiManagerObject extends RpcTarget implements PiManagerCommands {
   readonly #kernel: BackofficeKernel;
   readonly #classifier: PiClassifier | null;
   readonly #imageGenerator: PiImageGenerator | null;
+  readonly #extractor: PiExtractor | null;
 
   constructor({
     state,
@@ -87,6 +93,7 @@ export class PiManagerObject extends RpcTarget implements PiManagerCommands {
     supportedAvailableModels,
     classifier,
     imageGenerator,
+    extractor,
     nowEpochMs,
   }: {
     state: BackofficeObjectState;
@@ -99,6 +106,8 @@ export class PiManagerObject extends RpcTarget implements PiManagerCommands {
     classifier: PiClassifier | null;
     /** Null without image generation credentials, so `generateImage` rejects. */
     imageGenerator: PiImageGenerator | null;
+    /** Null without extraction credentials, so `extract` rejects. */
+    extractor: PiExtractor | null;
     nowEpochMs: () => number;
   }) {
     super();
@@ -107,6 +116,7 @@ export class PiManagerObject extends RpcTarget implements PiManagerCommands {
     this.#runtime = runtime;
     this.#classifier = classifier;
     this.#imageGenerator = imageGenerator;
+    this.#extractor = extractor;
     this.#config = {
       agent,
       supportedAvailableModels,
@@ -270,6 +280,27 @@ export class PiManagerObject extends RpcTarget implements PiManagerCommands {
       );
     }
     return { bytes: base64ToBytes(image.data) };
+  }
+
+  async extract({
+    request,
+  }: Parameters<PiManagerCommands["extract"]>[0]): ReturnType<PiManagerCommands["extract"]> {
+    if (!this.#extractor) {
+      throw new Error("MODELS_EXTRACT_UNAVAILABLE: no extractor is configured.");
+    }
+    const billing = usageBillingForScope(this.#runtime, this.#scoped.requireOwnerScope());
+    const result = await this.#extractor(request);
+    await this.#recordModelUsage(billing, {
+      operation: "extract",
+      succeeded: result.stopReason === "stop",
+      provider: result.provider,
+      model: result.model,
+      usage: result.usage ?? undefined,
+    });
+    if (result.stopReason !== "stop") {
+      throw new Error(`MODELS_EXTRACT_FAILED: ${result.errorMessage}`);
+    }
+    return { output: result.output };
   }
 
   async checkPackageAgents(

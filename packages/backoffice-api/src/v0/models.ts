@@ -44,7 +44,7 @@ export const MODELS_CLASSIFY_IMAGE_LIMITS = {
   totalBytes: 20 * 1024 * 1024,
 } as const;
 
-const classificationImagePathSchema = z
+const workspaceFilePathSchema = z
   .string()
   .trim()
   .refine(
@@ -56,7 +56,7 @@ const classificationImagePathSchema = z
         .slice(1)
         .split("/")
         .every((part) => part !== "" && part !== "." && part !== ".."),
-    { message: "Images use absolute file paths under /workspace without traversal segments." },
+    { message: "Files use absolute file paths under /workspace without traversal segments." },
   );
 
 const modelsClassifyInputSchema = z.lazy(() =>
@@ -65,7 +65,7 @@ const modelsClassifyInputSchema = z.lazy(() =>
       .record(z.string(), jsonValueSchema)
       .describe("The evidence every question is answered about."),
     images: z
-      .array(classificationImagePathSchema)
+      .array(workspaceFilePathSchema)
       .max(MODELS_CLASSIFY_IMAGE_LIMITS.count)
       .default([])
       .describe(
@@ -139,6 +139,66 @@ const modelsGenerateImageOutputSchema = z.lazy(() =>
   }),
 );
 
+/** Raw file budgets, before base64 expansion and provider request serialization. */
+export const MODELS_EXTRACT_FILE_LIMITS = {
+  count: 16,
+  totalBytes: 20 * 1024 * 1024,
+} as const;
+
+/** The models `models.extract` reads files with, as `provider/modelId`. */
+export const MODELS_EXTRACT_MODELS = ["openai/gpt-6-luna", "openai/gpt-6.1-sol"] as const;
+export type ModelsExtractModel = (typeof MODELS_EXTRACT_MODELS)[number];
+
+/** Every extraction model offers each of these levels. */
+export const MODELS_EXTRACT_THINKING_LEVELS = ["low", "medium", "high"] as const;
+export type ModelsExtractThinkingLevel = (typeof MODELS_EXTRACT_THINKING_LEVELS)[number];
+
+const modelsExtractInputSchema = z.lazy(() =>
+  z.strictObject({
+    files: z
+      .array(workspaceFilePathSchema)
+      .min(1)
+      .max(MODELS_EXTRACT_FILE_LIMITS.count)
+      .describe(
+        "Ordered workspace paths of the PDFs and PNG, JPEG, or WebP images to read; requires " +
+          `upload.read for each file. Up to ${MODELS_EXTRACT_FILE_LIMITS.count} files and ` +
+          `${MODELS_EXTRACT_FILE_LIMITS.totalBytes / 1024 ** 2} MiB together.`,
+      ),
+    instructions: z
+      .string()
+      .trim()
+      .min(1)
+      .max(32_000)
+      .describe("What to read from the files and how to fill in the answer."),
+    schema: z
+      .record(z.string(), jsonValueSchema)
+      .refine((schema) => schema["type"] === "object", {
+        message: "The answer's schema is an object schema.",
+      })
+      .describe(
+        "JSON Schema of the answer, in OpenAI's strict structured-output subset: the root is an " +
+          "object, every object sets `additionalProperties: false` and lists all its properties " +
+          'in `required`, and a field that may be absent has a type such as `["string", "null"]`.',
+      ),
+    model: z
+      .enum(MODELS_EXTRACT_MODELS)
+      .default("openai/gpt-6-luna")
+      .describe(
+        "The model that reads the files. gpt-6.1-sol is the stronger model; it costs about 20 " +
+          "times as much per token as gpt-6-luna and takes longer.",
+      ),
+    thinkingLevel: z
+      .enum(MODELS_EXTRACT_THINKING_LEVELS)
+      .default("low")
+      .describe("How much the model reasons before it answers; more costs more and takes longer."),
+  }),
+);
+
+const modelsExtractOutputSchema = z.lazy(() =>
+  // A description would copy the shared JsonValue schema into a second, conflicting declaration.
+  z.object({ output: jsonValueSchema }),
+);
+
 export const modelsOperations = {
   "models.classify": {
     description:
@@ -161,5 +221,17 @@ export const modelsOperations = {
     permissions: [BACKOFFICE_PERMISSION.models.generateImage, BACKOFFICE_PERMISSION.upload.modify],
     input: modelsGenerateImageInputSchema,
     output: modelsGenerateImageOutputSchema,
+  },
+  "models.extract": {
+    description:
+      "Read PDFs and images from the workspace with a model and answer in JSON that matches a " +
+      "schema: invoice fields, a contract's parties, a statement's transactions, or a page as " +
+      "Markdown. The files go to the model, not into the conversation, so only the answer costs " +
+      "context. A long document can take longer than an immediate codemode run is allowed, so " +
+      "call it inside a workflow step. Each call is billed by input and output tokens, " +
+      "including every page and image.",
+    permissions: [BACKOFFICE_PERMISSION.models.extract],
+    input: modelsExtractInputSchema,
+    output: modelsExtractOutputSchema,
   },
 } satisfies Record<string, BackofficeApiOperation>;

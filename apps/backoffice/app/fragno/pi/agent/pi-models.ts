@@ -8,16 +8,26 @@ import {
 import { anthropicProvider } from "@earendil-works/pi-ai/providers/anthropic";
 import { googleProvider } from "@earendil-works/pi-ai/providers/google";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
+import {
+  MODELS_EXTRACT_MODELS,
+  type ModelsExtractModel,
+} from "@fragno-dev/backoffice-api/v0/models";
 
 import type {
   AssistantImages,
   ClassifierContext,
   ClassifierResult,
   FetchFunction,
+  Model,
 } from "@earendil-works/pi-ai";
 
 import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
 
+import {
+  extractWithOpenAI,
+  type PiExtraction,
+  type PiExtractionRequest,
+} from "./openai-extraction";
 import { openAIImagesProvider, type OpenAIImageOptions } from "./openai-images";
 import type { PiAvailableModel } from "./pi-agent-contract";
 
@@ -99,6 +109,39 @@ export function createPiImageGenerator(
   return async ({ prompt, ...settings }) => {
     const options: ModelsImagesOptions & OpenAIImageOptions = { ...settings, fetch };
     return await models.generateImages(model, { input: [{ type: "text", text: prompt }] }, options);
+  };
+}
+
+/** Reads files into an answer that matches a JSON Schema; resolves to an error result instead of rejecting. */
+export type PiExtractor = (request: PiExtractionRequest) => Promise<PiExtraction>;
+
+/** Extracts with an OpenAI Responses model, which requires an OpenAI API key. */
+export function createPiExtractor(
+  env: Pick<BackofficeRuntimeEnv, "OPENAI_API_KEY">,
+  fetch: FetchFunction,
+): PiExtractor | null {
+  const apiKey = env.OPENAI_API_KEY;
+  if (!apiKey) {
+    return null;
+  }
+  const catalog = createOpenAIModels(apiKey);
+  catalog.setProvider(openaiProvider());
+  // Resolved up front, so a pi-ai release that drops a model fails here rather than mid-call.
+  const models = Object.fromEntries(
+    MODELS_EXTRACT_MODELS.map((name) => {
+      const [provider, modelId] = name.split("/") as [string, string];
+      const model = catalog.getModelOfType("chat", provider, modelId);
+      if (model?.api !== "openai-responses") {
+        throw new Error(`pi-ai no longer lists ${name} on OpenAI's Responses API.`);
+      }
+      return [name, model as Model<"openai-responses">];
+    }),
+  ) as Record<ModelsExtractModel, Model<"openai-responses">>;
+  return async (request) => {
+    const model = models[request.model];
+    // OpenAI may name a level differently from pi.
+    const effort = model.thinkingLevelMap?.[request.thinkingLevel] ?? request.thinkingLevel;
+    return await extractWithOpenAI({ model, effort, apiKey, fetch, request });
   };
 }
 

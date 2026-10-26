@@ -35,7 +35,7 @@
 /// <reference path="/static/codemode/providers/cloudflare.d.ts" />
 // URL and HTML extraction to content or Markdown. Read to fetch a web page.
 /// <reference path="/static/codemode/providers/web.d.ts" />
-// Classifiers for typed questions about data and images, and image generation. Read to classify or generate images.
+// Classifiers for typed questions about data and images, typed extraction from PDFs and images, and image generation. Read to classify, read a PDF, or generate images.
 /// <reference path="/static/codemode/providers/models.d.ts" />
 // Identity-claim links for external senders. Read to let an external user link their account.
 /// <reference path="/static/codemode/providers/otp.d.ts" />

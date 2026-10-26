@@ -63,7 +63,7 @@ const CODEMODE_PROVIDER_SUMMARIES: Record<string, string> = {
     "Cloudflare Browser Run: screenshots, PDFs, crawls. Read to capture or crawl a page in a real browser.",
   web: "URL and HTML extraction to content or Markdown. Read to fetch a web page.",
   models:
-    "Classifiers for typed questions about data and images, and image generation. Read to classify or generate images.",
+    "Classifiers for typed questions about data and images, typed extraction from PDFs and images, and image generation. Read to classify, read a PDF, or generate images.",
   otp: "Identity-claim links for external senders. Read to let an external user link their account.",
   pi: "Agents: define, prompt, stop, and read conversations. Read to work with an agent, including your own definition.",
   projects: "Projects in an organization or personal scope. Read to create or list projects.",

@@ -71,6 +71,7 @@ export const BACKOFFICE_PERMISSION = {
   models: {
     classify: { namespace: "models", permission: "classify" },
     generateImage: { namespace: "models", permission: "generateImage" },
+    extract: { namespace: "models", permission: "extract" },
   },
   marketplace: {
     read: { namespace: "marketplace", permission: "read" },

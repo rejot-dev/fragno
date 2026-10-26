@@ -16,8 +16,13 @@ export class PiManager extends DurableObject<CloudflareEnv> implements PiManager
     // Imported on first use so that a cold isolate only evaluates the objects it wakes.
     void state.blockConcurrencyWhile(async () => {
       const { PiManagerObject } = await import("./pi-manager-object");
-      const { createPiModels, listAvailablePiModels, createPiClassifier, createPiImageGenerator } =
-        await import("@/fragno/pi/agent/pi-models");
+      const {
+        createPiModels,
+        listAvailablePiModels,
+        createPiClassifier,
+        createPiImageGenerator,
+        createPiExtractor,
+      } = await import("@/fragno/pi/agent/pi-models");
       const { createCloudflareBackofficeObjectContext } =
         await import("./lib/cloudflare-backoffice-object-implementation");
       const { piAgentObjectName } = await import("@/fragno/pi/agent/pi-agent-contract");
@@ -29,6 +34,7 @@ export class PiManager extends DurableObject<CloudflareEnv> implements PiManager
         supportedAvailableModels: async () => await listAvailablePiModels(models),
         classifier: createPiClassifier(env, fetch),
         imageGenerator: createPiImageGenerator(env, fetch),
+        extractor: createPiExtractor(env, fetch),
         nowEpochMs: Date.now,
       });
     });
@@ -62,6 +68,12 @@ export class PiManager extends DurableObject<CloudflareEnv> implements PiManager
     input: Parameters<PiManagerCommands["generateImage"]>[0],
   ): ReturnType<PiManagerCommands["generateImage"]> {
     return await this.#object.generateImage(input);
+  }
+
+  async extract(
+    input: Parameters<PiManagerCommands["extract"]>[0],
+  ): ReturnType<PiManagerCommands["extract"]> {
+    return await this.#object.extract(input);
   }
 
   async checkPackageAgents(input: Omit<PackageAgentsInput, "actors">) {
