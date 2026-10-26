@@ -3,7 +3,7 @@ import type { FileLink, FileLinkInput } from "@fragno-dev/backoffice-api/v0/stat
 import { getStaticGlobPrefix } from "@fragno-dev/upload/text-index";
 import { z } from "zod";
 
-import type { FetchObject } from "@/backoffice-runtime/object-registry";
+import type { FetchCommands } from "@/backoffice-runtime/object-registry";
 import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
 import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
 import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
@@ -48,7 +48,7 @@ export function createFileLinkRuntime({
   scope,
   origins,
 }: {
-  uploadObject: () => FetchObject;
+  uploadObject: () => FetchCommands;
   scope: BackofficeRoutableScope;
   origins: FileLinkOrigins | null;
 }): FileLinkRuntime {

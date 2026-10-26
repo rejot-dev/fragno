@@ -23,11 +23,11 @@ import { createRuntimeStateBackend } from "@/fragno/codemode/runtime-state-backe
 import { createEventRuntime } from "@/fragno/runtime-tools/families/event-runtime";
 import { createStateShellFileSystem } from "@/fragno/runtime-tools/state-shell-file-system";
 
-import { InMemoryAutomationsObject } from "../../../workers/automations.do";
-import { InMemoryBillingObject } from "../../../workers/billing.do";
-import { InMemoryCodemodeObject } from "../../../workers/codemode.do";
-import { InMemoryMcpObject } from "../../../workers/mcp.do";
-import { InMemoryUploadObject } from "../../../workers/upload.do";
+import { AutomationsObject } from "../../../workers/automations.do";
+import { BillingObject } from "../../../workers/billing.do";
+import { CodemodeObject } from "../../../workers/codemode.do";
+import { McpObject } from "../../../workers/mcp.do";
+import { UploadObject } from "../../../workers/upload.do";
 import { AUTOMATION_SYSTEM_INITIATOR } from "./actors";
 import { createAutomationRuntimeExecution } from "./authority";
 import { createAutomationsRouteCaller } from "./route-callers";
@@ -38,11 +38,11 @@ const testCodemodeExecutor = createCodemodeServiceExecutor(
 );
 
 const localObjects = {
-  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
-  BILLING: (input) => new InMemoryBillingObject(input),
-  CODEMODE: (input) => new InMemoryCodemodeObject(input),
-  MCP: (input) => new InMemoryMcpObject(input),
-  UPLOAD: (input) => new InMemoryUploadObject(input),
+  AUTOMATIONS: (input) => new AutomationsObject(input),
+  BILLING: (input) => new BillingObject(input),
+  CODEMODE: (input) => new CodemodeObject(input),
+  MCP: (input) => new McpObject(input),
+  UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {

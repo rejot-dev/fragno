@@ -20,7 +20,7 @@ import type { CreateSandboxRuntimeProviders } from "@/sandbox/contracts";
 import { createInMemoryAuthDatabase } from "../../workers/in-memory-auth-database";
 import { noOpBackofficeConfiguredObjectLifecycle } from "../../workers/lib/backoffice-fragment-durable-object";
 import type { BackofficeObjectImplementation } from "../../workers/lib/backoffice-object-implementation";
-import type { InMemoryPiObject } from "../../workers/pi.do";
+import type { PiObject } from "../../workers/pi.do";
 import type { BackofficeRuntimeEnv } from "./backoffice-runtime-env";
 import { createDurableObjectDatabaseAdapterScope } from "./database-adapters";
 import {
@@ -241,7 +241,7 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
   piAgent(agent: PiAgentAddress): Pick<BackofficeObjectHttp, "fetchAuthorized"> {
     return {
       fetchAuthorized: async (request, context) => {
-        const agents = this.#namespaces.PI as LocalDurableObjectNamespace<InMemoryPiObject>;
+        const agents = this.#namespaces.PI as LocalDurableObjectNamespace<PiObject>;
         return await agents.get(agents.idFromName(piAgentObjectName(agent))).fetch(
           await createAuthorizedBackofficeObjectRequest({
             request,
@@ -363,7 +363,7 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
   async cleanup(): Promise<void> {
     await this.#executionCoordinator.waitForIdle();
     await this.#sqliteCoordination?.waitForIdle();
-    const agents = this.#namespaces.PI as LocalDurableObjectNamespace<InMemoryPiObject> | undefined;
+    const agents = this.#namespaces.PI as LocalDurableObjectNamespace<PiObject> | undefined;
     await Promise.all((agents?.instances() ?? []).map(({ object }) => object.close()));
     await Promise.all(
       [...this.#piSessionStores.values()].map(async (storage) =>
@@ -479,7 +479,7 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
               this.now(),
             ),
           getPiAgent: (config) => {
-            const agents = this.#namespaces.PI as LocalDurableObjectNamespace<InMemoryPiObject>;
+            const agents = this.#namespaces.PI as LocalDurableObjectNamespace<PiObject>;
             return agents.get(agents.idFromName(piAgentObjectName(config)));
           },
           piAgentIdFromConfig: (config) =>

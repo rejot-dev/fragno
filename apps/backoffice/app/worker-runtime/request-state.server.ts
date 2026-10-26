@@ -1,4 +1,4 @@
-import type { AuthObject, FetchObject } from "@/backoffice-runtime/object-registry";
+import type { AuthCommands, FetchCommands } from "@/backoffice-runtime/object-registry";
 import {
   backofficeResolvedScopeId,
   type BackofficeOrganizationIdentity,
@@ -24,8 +24,8 @@ import type {
 } from "./request-state";
 
 type BackofficeRequestAuthObject = {
-  http: FetchObject;
-  commands: Pick<AuthObject, "getBackofficeMe">;
+  http: FetchCommands;
+  commands: Pick<AuthCommands, "getBackofficeMe">;
 };
 
 /** Supplies the concrete authentication authority used by a Backoffice request state. */
@@ -34,7 +34,7 @@ export type BackofficeRequestStateDependencies = {
   verifyJwt(
     token: string | null,
     requestUrl: string,
-    authObject: FetchObject,
+    authObject: FetchCommands,
   ): Promise<BackofficeJwtVerificationResult>;
   loadAutomationReplicaSource<TOrganization extends BackofficeOrganizationIdentity>(
     resolvedScope: BackofficeResolvedScope<TOrganization>,

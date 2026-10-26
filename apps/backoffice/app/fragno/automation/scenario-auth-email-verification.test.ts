@@ -27,11 +27,11 @@ import {
 } from "@/routes/backoffice/verify-email";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
-import { InMemoryAuthObject } from "../../../workers/auth.do";
-import { InMemoryAutomationsObject } from "../../../workers/automations.do";
-import { InMemoryOtpObject } from "../../../workers/otp.do";
-import { InMemoryResendObject } from "../../../workers/resend.do";
-import { InMemoryUploadObject } from "../../../workers/upload.do";
+import { AuthObject } from "../../../workers/auth.do";
+import { AutomationsObject } from "../../../workers/automations.do";
+import { OtpObject } from "../../../workers/otp.do";
+import { ResendObject } from "../../../workers/resend.do";
+import { UploadObject } from "../../../workers/upload.do";
 import {
   defineBackofficeScenario,
   runBackofficeScenario,
@@ -40,11 +40,11 @@ import {
 } from "./scenario";
 
 const scenarioObjects = {
-  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
-  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
-  OTP: (input) => new InMemoryOtpObject(input),
-  RESEND: (input) => new InMemoryResendObject(input),
-  UPLOAD: (input) => new InMemoryUploadObject(input),
+  AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new AutomationsObject(input),
+  OTP: (input) => new OtpObject(input),
+  RESEND: (input) => new ResendObject(input),
+  UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
 
 const getEmailVerificationRequestedHook = async (ctx: BackofficeScenarioContext) => {

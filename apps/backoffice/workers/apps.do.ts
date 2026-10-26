@@ -38,7 +38,7 @@ import type { BackofficeObjectImplementation } from "./lib/backoffice-object-imp
 import { createCloudflareBackofficeObjectContext } from "./lib/cloudflare-backoffice-object-implementation";
 
 /** Singleton registry behavior shared by Cloudflare and the SQLite runtime. */
-export class InMemoryAppsObject extends RpcTarget implements BackofficeAppsCommands {
+export class AppsObject extends RpcTarget implements BackofficeAppsCommands {
   readonly #host: FragmentDurableObjectHost<void, AppsFragment>;
   #fragment: AppsFragment | null = null;
 
@@ -159,11 +159,11 @@ export class InMemoryAppsObject extends RpcTarget implements BackofficeAppsComma
 
 /** Global app declarations only; customer installation authority is not stored here. */
 export class Apps extends DurableObject<CloudflareEnv> implements BackofficeAppsCommands {
-  readonly #object: InMemoryAppsObject;
+  readonly #object: AppsObject;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
-    this.#object = new InMemoryAppsObject(createCloudflareBackofficeObjectContext(state, env));
+    this.#object = new AppsObject(createCloudflareBackofficeObjectContext(state, env));
   }
 
   registerApp(

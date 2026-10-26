@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 
-import type { AuthObject } from "@/backoffice-runtime/object-registry";
+import type { AuthCommands } from "@/backoffice-runtime/object-registry";
 import type {
   BackofficeOrganizationIdentity,
   BackofficeResolvedScope,
@@ -43,7 +43,7 @@ const authenticatedMe: BackofficeMeData = {
 };
 
 function createAuthenticatedDependencies(
-  getBackofficeMe: Pick<AuthObject, "getBackofficeMe">["getBackofficeMe"],
+  getBackofficeMe: Pick<AuthCommands, "getBackofficeMe">["getBackofficeMe"],
   automationReplicaSourceFailure: Error | null = null,
 ) {
   const verifyJwt = vi.fn(async () => ({ ok: true as const, payload: authenticatedPayload }));

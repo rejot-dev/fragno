@@ -24,24 +24,24 @@ import {
   type BackofficeScenarioStep,
 } from "@/fragno/automation/scenario";
 
-import { InMemoryApiObject } from "./api.do";
-import { InMemoryAppInstallationsObject } from "./app-installations.do";
-import { InMemoryAppsObject } from "./apps.do";
-import { InMemoryAuthObject } from "./auth.do";
-import { InMemoryAutomationsObject } from "./automations.do";
-import { InMemoryFormsObject } from "./forms.do";
-import { InMemoryTelegramObject } from "./telegram.do";
-import { InMemoryUploadObject } from "./upload.do";
+import { ApiObject } from "./api.do";
+import { AppInstallationsObject } from "./app-installations.do";
+import { AppsObject } from "./apps.do";
+import { AuthObject } from "./auth.do";
+import { AutomationsObject } from "./automations.do";
+import { FormsObject } from "./forms.do";
+import { TelegramObject } from "./telegram.do";
+import { UploadObject } from "./upload.do";
 
 const scenarioObjects = {
-  API: (input) => new InMemoryApiObject(input),
-  APPS: (input) => new InMemoryAppsObject(input),
-  APP_INSTALLATIONS: (input) => new InMemoryAppInstallationsObject(input),
-  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
-  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
-  FORMS: (input) => new InMemoryFormsObject(input),
-  TELEGRAM: (input) => new InMemoryTelegramObject(input),
-  UPLOAD: (input) => new InMemoryUploadObject(input),
+  API: (input) => new ApiObject(input),
+  APPS: (input) => new AppsObject(input),
+  APP_INSTALLATIONS: (input) => new AppInstallationsObject(input),
+  AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new AutomationsObject(input),
+  FORMS: (input) => new FormsObject(input),
+  TELEGRAM: (input) => new TelegramObject(input),
+  UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
 
 const wholeOrganization = { kind: "owner" } as const;
@@ -650,7 +650,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
           ...scenarioObjects,
           APPS: function captureRegistryDatabase(input) {
             registryAdapter = input.runtime.adapters.createAdapter({ kind: "apps" });
-            return new InMemoryAppsObject(input);
+            return new AppsObject(input);
           },
         },
         steps: ({ then }) => [

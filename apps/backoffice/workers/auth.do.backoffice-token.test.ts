@@ -33,14 +33,14 @@ import { getSetCookieHeaders } from "@/worker-runtime/http-headers";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
 import { issueTestSignUpInvitation } from "./auth-sign-up.test-support";
-import { InMemoryAuthObject } from "./auth.do";
-import { InMemoryAutomationsObject } from "./automations.do";
-import { InMemoryOtpObject } from "./otp.do";
+import { AuthObject } from "./auth.do";
+import { AutomationsObject } from "./automations.do";
+import { OtpObject } from "./otp.do";
 
 const localObjects = {
-  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
-  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
-  OTP: (input) => new InMemoryOtpObject(input),
+  AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new AutomationsObject(input),
+  OTP: (input) => new OtpObject(input),
 } satisfies LocalBackofficeObjects;
 
 const runtimes: Array<Awaited<ReturnType<typeof createInMemoryBackofficeRuntime>>> = [];

@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import type {
   AutomationsDurableHookFragment,
-  AutomationsObject,
+  AutomationsCommands,
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeCapability } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import { createDurableHookRepositoryFromCommands } from "@/fragno/durable-hook-command-repository";
@@ -43,7 +43,7 @@ const scheduleTriggeredPayloadSchema = z.object({
 });
 
 function createAutomationsDurableHookRepository(
-  commands: AutomationsObject,
+  commands: AutomationsCommands,
   fragment: AutomationsDurableHookFragment,
 ): DurableHookRepository {
   return createDurableHookRepositoryFromCommands({

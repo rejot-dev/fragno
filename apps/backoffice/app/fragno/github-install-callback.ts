@@ -1,6 +1,9 @@
 import type { createRouteCaller } from "@fragno-dev/core/api";
 
-import type { GitHubObject, GitHubWebhookRouterObject } from "@/backoffice-runtime/object-registry";
+import type {
+  GitHubCommands,
+  GitHubWebhookRouterCommands,
+} from "@/backoffice-runtime/object-registry";
 import type { GitHubFragment } from "@/fragno/github";
 import { isSuccessStatus } from "@/fragno/runtime-tools/runtime-errors";
 
@@ -29,8 +32,8 @@ export async function completeGitHubInstallCallback({
   state,
   installationId,
 }: {
-  router: Pick<GitHubWebhookRouterObject, "consumeInstallState" | "setInstallationOrg">;
-  github: Pick<GitHubObject, "redeliverFailedInstallationWebhooks">;
+  router: Pick<GitHubWebhookRouterCommands, "consumeInstallState" | "setInstallationOrg">;
+  github: Pick<GitHubCommands, "redeliverFailedInstallationWebhooks">;
   callRoute: GitHubCallRoute;
   userId: string;
   organizationId: string;

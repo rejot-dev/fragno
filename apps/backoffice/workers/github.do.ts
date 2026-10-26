@@ -11,7 +11,7 @@ import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runti
 import { createBackofficeFragmentHttpTransport } from "@/backoffice-runtime/fragment-http-transport";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import {
-  type GitHubObject,
+  type GitHubCommands,
   requireBackofficeContextScopeFromDurableObjectId,
   backofficeObjectScopeFromContextScope,
 } from "@/backoffice-runtime/object-registry";
@@ -61,7 +61,7 @@ function connectionStateOfLink(status: GitHubRepositoryLinkStatus) {
   }
 }
 
-export class InMemoryGitHubObject implements GitHubObject {
+export class GitHubObject implements GitHubCommands {
   readonly #httpTransport: ReturnType<typeof createBackofficeFragmentHttpTransport>;
   readonly #state: BackofficeObjectState;
   readonly #runtimeServices: BackofficeRuntimeServices;
@@ -334,12 +334,12 @@ export class InMemoryGitHubObject implements GitHubObject {
   }
 }
 
-export class GitHub extends DurableObject<CloudflareEnv> implements GitHubObject {
-  readonly #object: InMemoryGitHubObject;
+export class GitHub extends DurableObject<CloudflareEnv> implements GitHubCommands {
+  readonly #object: GitHubObject;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
-    this.#object = new InMemoryGitHubObject(createCloudflareBackofficeObjectContext(state, env));
+    this.#object = new GitHubObject(createCloudflareBackofficeObjectContext(state, env));
   }
 
   async ensureAdminConfig(orgId: string) {

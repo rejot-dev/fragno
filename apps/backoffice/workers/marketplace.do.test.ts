@@ -23,10 +23,10 @@ import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-f
 import type { MarketplaceCreateDraftListingInput } from "@/fragno/marketplace/contracts";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
 
-import { InMemoryMarketplaceObject } from "./marketplace.do";
+import { MarketplaceObject } from "./marketplace.do";
 
 const localObjects = {
-  MARKETPLACE: (input) => new InMemoryMarketplaceObject(input),
+  MARKETPLACE: (input) => new MarketplaceObject(input),
 } satisfies LocalBackofficeObjects;
 
 let runtime: InMemoryBackofficeRuntime | null = null;

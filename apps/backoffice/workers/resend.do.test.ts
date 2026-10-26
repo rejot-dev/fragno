@@ -16,10 +16,10 @@ import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 
-import { InMemoryResendObject } from "./resend.do";
+import { ResendObject } from "./resend.do";
 
 const localObjects = {
-  RESEND: (input) => new InMemoryResendObject(input),
+  RESEND: (input) => new ResendObject(input),
 } satisfies LocalBackofficeObjects;
 
 const runtimes: Array<Awaited<ReturnType<typeof createInMemoryBackofficeRuntime>>> = [];
@@ -38,7 +38,7 @@ describe("Resend Durable Object", () => {
       objects: {
         ...localObjects,
         RESEND: ({ state, env, runtime: runtimeServices, implementation, nowEpochMs }) =>
-          new InMemoryResendObject({
+          new ResendObject({
             nowEpochMs,
             state,
             env,

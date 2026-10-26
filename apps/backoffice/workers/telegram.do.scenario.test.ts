@@ -30,19 +30,19 @@ import {
 } from "@/fragno/automation/scenario";
 import { createTelegramRuntime } from "@/fragno/runtime-tools/families/telegram-runtime";
 
-import { InMemoryApiObject } from "./api.do";
-import { InMemoryAuthObject } from "./auth.do";
-import { InMemoryAutomationsObject } from "./automations.do";
-import { InMemoryFormsObject } from "./forms.do";
-import { InMemoryTelegramObject } from "./telegram.do";
-import { InMemoryUploadObject } from "./upload.do";
+import { ApiObject } from "./api.do";
+import { AuthObject } from "./auth.do";
+import { AutomationsObject } from "./automations.do";
+import { FormsObject } from "./forms.do";
+import { TelegramObject } from "./telegram.do";
+import { UploadObject } from "./upload.do";
 
 const scenarioObjects = {
-  API: (input) => new InMemoryApiObject(input),
-  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
-  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
-  FORMS: (input) => new InMemoryFormsObject(input),
-  UPLOAD: (input) => new InMemoryUploadObject(input),
+  API: (input) => new ApiObject(input),
+  AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new AutomationsObject(input),
+  FORMS: (input) => new FormsObject(input),
+  UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
 
 const scope = { kind: "org", orgId: "telegram-org" } as const;
@@ -83,7 +83,7 @@ async function assertTelegramStateUnchanged(ctx: BackofficeScenarioContext) {
 /** Sends requests to the object itself; handle HTTP strips the internal context header. */
 function nativeTelegramObject(ctx: BackofficeScenarioContext, orgId: string) {
   return ctx.runtime.objects.telegram.forOrg(orgId).commands as unknown as Pick<
-    InMemoryTelegramObject,
+    TelegramObject,
     "fetch"
   >;
 }

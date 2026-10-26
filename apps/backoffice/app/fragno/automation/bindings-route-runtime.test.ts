@@ -1,7 +1,7 @@
 import { assert, describe, expect, test, vi } from "vitest";
 
 import type {
-  AutomationsObject,
+  AutomationsCommands,
   BackofficeActionRpcContext,
   BackofficeObjectHandle,
 } from "@/backoffice-runtime/object-registry";
@@ -34,9 +34,9 @@ const execution = {
 function automationsHandle(
   fetchAuthorized: (request: Request, context: BackofficeActionRpcContext) => Promise<Response>,
   fetch: (request: Request) => Promise<Response>,
-): BackofficeObjectHandle<AutomationsObject> {
+): BackofficeObjectHandle<AutomationsCommands> {
   return {
-    commands: {} as AutomationsObject,
+    commands: {} as AutomationsCommands,
     http: { fetch, fetchAuthorized },
   };
 }

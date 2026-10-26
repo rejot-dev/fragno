@@ -19,8 +19,8 @@ import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import type { InMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 
-import { InMemoryAutomationsObject } from "./automations.do";
-import { InMemoryFormsObject } from "./forms.do";
+import { AutomationsObject } from "./automations.do";
+import { FormsObject } from "./forms.do";
 
 let runtime: InMemoryBackofficeRuntime | null = null;
 
@@ -52,8 +52,8 @@ describe("Forms Durable Object events", () => {
   test("preserves form creation and deletion times across delayed durable hook delivery", async () => {
     runtime = await createInMemoryBackofficeRuntime({
       objects: {
-        FORMS: (input) => new InMemoryFormsObject(input),
-        AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+        FORMS: (input) => new FormsObject(input),
+        AUTOMATIONS: (input) => new AutomationsObject(input),
       },
     });
     const forms = {

@@ -15,7 +15,7 @@ import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import {
   backofficeContextScopeFromDurableObjectId,
   backofficeObjectScopeFromContextScope,
-  type TelegramObject,
+  type TelegramCommands,
   type WebhookRegistrationCheck,
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
@@ -323,7 +323,7 @@ const createFetchTelegramAdminApi = (): TelegramAdminApi => ({
   },
 });
 
-export class InMemoryTelegramObject extends RpcTarget implements TelegramObject {
+export class TelegramObject extends RpcTarget implements TelegramCommands {
   readonly #env: TelegramObjectEnv;
   readonly #state: BackofficeObjectState;
   readonly #runtime: BackofficeRuntimeServices;
@@ -663,12 +663,12 @@ export class InMemoryTelegramObject extends RpcTarget implements TelegramObject 
   }
 }
 
-export class Telegram extends DurableObject<CloudflareEnv> implements TelegramObject {
-  readonly #object: InMemoryTelegramObject;
+export class Telegram extends DurableObject<CloudflareEnv> implements TelegramCommands {
+  readonly #object: TelegramObject;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
-    this.#object = new InMemoryTelegramObject({
+    this.#object = new TelegramObject({
       ...createCloudflareBackofficeObjectContext(state, env),
       nowEpochMs: Date.now,
     });

@@ -4,7 +4,7 @@ import { z } from "zod";
 import { defineFragment } from "@fragno-dev/core";
 import { withDatabase } from "@fragno-dev/db";
 
-import type { AutomationsObject } from "@/backoffice-runtime/object-registry";
+import type { AutomationsCommands } from "@/backoffice-runtime/object-registry";
 import type { UsageBilling } from "@/fragno/billing/usage-billing";
 import type {
   PiAgent,
@@ -25,7 +25,7 @@ export type PiManagerConfig = {
   /** Where a scope's model usage is recorded. */
   billing: (scope: BackofficeContextScope) => UsageBilling;
   /** The scope's Automations, which record agent changes; null when the runtime has none. */
-  automations: Pick<AutomationsObject, "ingestEvent"> | null;
+  automations: Pick<AutomationsCommands, "ingestEvent"> | null;
 };
 
 /** Execution scope is supplied by the object address, never by a request body. */

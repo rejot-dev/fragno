@@ -14,22 +14,22 @@ import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-f
 import { verifyBackofficeJwt } from "@/fragno/auth/token-lifecycle";
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
 
-import { InMemoryAuthObject } from "./auth.do";
-import { InMemoryAutomationsObject } from "./automations.do";
-import { InMemoryOtpObject } from "./otp.do";
-import { InMemoryUploadObject } from "./upload.do";
+import { AuthObject } from "./auth.do";
+import { AutomationsObject } from "./automations.do";
+import { OtpObject } from "./otp.do";
+import { UploadObject } from "./upload.do";
 
 const scenarioObjects = {
-  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
-  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
-  OTP: (input) => new InMemoryOtpObject(input),
-  UPLOAD: (input) => new InMemoryUploadObject(input),
+  AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new AutomationsObject(input),
+  OTP: (input) => new OtpObject(input),
+  UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
 
-type AuthObject = ReturnType<InMemoryBackofficeRuntime["objects"]["auth"]["singleton"]>;
+type AuthHandle = ReturnType<InMemoryBackofficeRuntime["objects"]["auth"]["singleton"]>;
 
 function requestOAuth(
-  auth: AuthObject,
+  auth: AuthHandle,
   url: string,
   body: URLSearchParams | { userCode: string } | null,
   cookie: string | null,

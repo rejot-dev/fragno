@@ -6,28 +6,28 @@ import {
   listAvailablePiModels,
 } from "@/fragno/pi/agent/pi-models";
 
-import { InMemoryApiObject } from "../../workers/api.do";
-import { InMemoryAppInstallationsObject } from "../../workers/app-installations.do";
-import { InMemoryAppsObject } from "../../workers/apps.do";
-import { InMemoryAuthObject } from "../../workers/auth.do";
-import { InMemoryAutomationsObject } from "../../workers/automations.do";
-import { InMemoryBillingObject } from "../../workers/billing.do";
-import { InMemoryCloudflareObject } from "../../workers/cloudflare.do";
-import { InMemoryCodemodeObject } from "../../workers/codemode.do";
-import { InMemoryFormsObject } from "../../workers/forms.do";
-import { InMemoryGitHubWebhookRouterObject } from "../../workers/github-webhook-router.do";
-import { InMemoryGitHubObject } from "../../workers/github.do";
-import { InMemoryMarketplaceObject } from "../../workers/marketplace.do";
-import { InMemoryMcpObject } from "../../workers/mcp.do";
-import { InMemoryOtpObject } from "../../workers/otp.do";
-import { InMemoryPiManagerObject } from "../../workers/pi-manager.do";
-import { InMemoryPiObject } from "../../workers/pi.do";
-import { InMemoryPresenceObject } from "../../workers/presence.do";
-import { InMemoryProjectConnectorObject } from "../../workers/project-connector.do";
-import { InMemoryResendObject } from "../../workers/resend.do";
-import { InMemorySandboxManagerObject } from "../../workers/sandbox-manager.do";
-import { InMemoryTelegramObject } from "../../workers/telegram.do";
-import { InMemoryUploadObject } from "../../workers/upload.do";
+import { ApiObject } from "../../workers/api.do";
+import { AppInstallationsObject } from "../../workers/app-installations.do";
+import { AppsObject } from "../../workers/apps.do";
+import { AuthObject } from "../../workers/auth.do";
+import { AutomationsObject } from "../../workers/automations.do";
+import { BillingObject } from "../../workers/billing.do";
+import { CloudflareObject } from "../../workers/cloudflare.do";
+import { CodemodeObject } from "../../workers/codemode.do";
+import { FormsObject } from "../../workers/forms.do";
+import { GitHubWebhookRouterObject } from "../../workers/github-webhook-router.do";
+import { GitHubObject } from "../../workers/github.do";
+import { MarketplaceObject } from "../../workers/marketplace.do";
+import { McpObject } from "../../workers/mcp.do";
+import { OtpObject } from "../../workers/otp.do";
+import { PiManagerObject } from "../../workers/pi-manager.do";
+import { PiObject } from "../../workers/pi.do";
+import { PresenceObject } from "../../workers/presence.do";
+import { ProjectConnectorObject } from "../../workers/project-connector.do";
+import { ResendObject } from "../../workers/resend.do";
+import { SandboxManagerObject } from "../../workers/sandbox-manager.do";
+import { TelegramObject } from "../../workers/telegram.do";
+import { UploadObject } from "../../workers/upload.do";
 import type { LocalBackofficeObjectFactory, LocalObjectBindingName } from "./local-object-factory";
 
 class UnavailableLocalDurableObject {
@@ -160,28 +160,28 @@ class UnavailableLocalDurableObject {
  * SDKs; tests that use a few objects should construct only those.
  */
 export const allLocalObjects = {
-  API: (input) => new InMemoryApiObject(input),
-  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
-  TELEGRAM: (input) => new InMemoryTelegramObject(input),
-  RESEND: (input) => new InMemoryResendObject(input),
-  MCP: (input) => new InMemoryMcpObject(input),
-  PROJECT_CONNECTOR: (input) => new InMemoryProjectConnectorObject(input),
-  OTP: (input) => new InMemoryOtpObject(input),
-  UPLOAD: (input) => new InMemoryUploadObject(input),
+  API: (input) => new ApiObject(input),
+  AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
+  TELEGRAM: (input) => new TelegramObject(input),
+  RESEND: (input) => new ResendObject(input),
+  MCP: (input) => new McpObject(input),
+  PROJECT_CONNECTOR: (input) => new ProjectConnectorObject(input),
+  OTP: (input) => new OtpObject(input),
+  UPLOAD: (input) => new UploadObject(input),
   SANDBOX: () => new UnavailableLocalDurableObject(),
   SANDBOX_MANAGER: (input) =>
-    new InMemorySandboxManagerObject({
+    new SandboxManagerObject({
       ...input,
       sandboxProviders: input.createSandboxProviders(input.state.id.toString()),
     }),
-  GITHUB: (input) => new InMemoryGitHubObject(input),
-  GITHUB_WEBHOOK_ROUTER: (input) => new InMemoryGitHubWebhookRouterObject(input),
-  CLOUDFLARE: (input) => new InMemoryCloudflareObject(input),
-  FORMS: (input) => new InMemoryFormsObject(input),
-  PRESENCE: (input) => new InMemoryPresenceObject(input),
-  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  GITHUB: (input) => new GitHubObject(input),
+  GITHUB_WEBHOOK_ROUTER: (input) => new GitHubWebhookRouterObject(input),
+  CLOUDFLARE: (input) => new CloudflareObject(input),
+  FORMS: (input) => new FormsObject(input),
+  PRESENCE: (input) => new PresenceObject(input),
+  AUTOMATIONS: (input) => new AutomationsObject(input),
   PI: (input) =>
-    new InMemoryPiObject({
+    new PiObject({
       ...input,
       dependencies: createPiAgentDependencies(input.env),
       openStorage: input.openPiSessionStore,
@@ -195,7 +195,7 @@ export const allLocalObjects = {
           const models = createPiModels(input.env);
           return async () => await listAvailablePiModels(models);
         })();
-    return new InMemoryPiManagerObject({
+    return new PiManagerObject({
       ...input,
       agent: input.getPiAgent,
       supportedAvailableModels,
@@ -203,9 +203,9 @@ export const allLocalObjects = {
       imageGenerator: createPiImageGenerator(input.env, fetch),
     });
   },
-  BILLING: (input) => new InMemoryBillingObject(input),
-  CODEMODE: (input) => new InMemoryCodemodeObject(input),
-  APPS: (input) => new InMemoryAppsObject(input),
-  APP_INSTALLATIONS: (input) => new InMemoryAppInstallationsObject(input),
-  MARKETPLACE: (input) => new InMemoryMarketplaceObject(input),
+  BILLING: (input) => new BillingObject(input),
+  CODEMODE: (input) => new CodemodeObject(input),
+  APPS: (input) => new AppsObject(input),
+  APP_INSTALLATIONS: (input) => new AppInstallationsObject(input),
+  MARKETPLACE: (input) => new MarketplaceObject(input),
 } satisfies Record<LocalObjectBindingName, LocalBackofficeObjectFactory<unknown>>;

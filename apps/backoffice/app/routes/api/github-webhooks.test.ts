@@ -17,11 +17,11 @@ import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-f
 import { bytesToHex } from "@/lib/crypto";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
-import { InMemoryGitHubWebhookRouterObject } from "../../../workers/github-webhook-router.do";
+import { GitHubWebhookRouterObject } from "../../../workers/github-webhook-router.do";
 import { action } from "./github-webhooks";
 
 const localObjects = {
-  GITHUB_WEBHOOK_ROUTER: (input) => new InMemoryGitHubWebhookRouterObject(input),
+  GITHUB_WEBHOOK_ROUTER: (input) => new GitHubWebhookRouterObject(input),
 } satisfies LocalBackofficeObjects;
 
 const WEBHOOK_SECRET = "github-webhook-route-test-secret";

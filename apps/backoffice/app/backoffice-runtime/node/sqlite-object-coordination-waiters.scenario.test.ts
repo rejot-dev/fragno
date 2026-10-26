@@ -15,17 +15,17 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
 
-import { InMemoryAuthObject } from "../../../workers/auth.do";
-import { InMemoryAutomationsObject } from "../../../workers/automations.do";
-import { InMemoryUploadObject } from "../../../workers/upload.do";
+import { AuthObject } from "../../../workers/auth.do";
+import { AutomationsObject } from "../../../workers/automations.do";
+import { UploadObject } from "../../../workers/upload.do";
 import type { LocalBackofficeObjects } from "../local-object-factory";
 import { SqliteObjectCoordination } from "./sqlite-object-coordination";
 import { SqliteBackofficeObjectStorage } from "./sqlite-object-storage";
 
 const scenarioObjects = {
-  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
-  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
-  UPLOAD: (input) => new InMemoryUploadObject(input),
+  AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new AutomationsObject(input),
+  UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
 
 class ObservedInitializationStorage extends SqliteBackofficeObjectStorage {

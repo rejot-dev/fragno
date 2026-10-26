@@ -4,7 +4,7 @@ import {
   assertBackofficeObjectAddressAllowed,
   createBackofficeObjectRegistry,
   isBackofficeObjectAvailableInContext,
-  type AutomationsObject,
+  type AutomationsCommands,
   type BackofficeObjectFactory,
   type BackofficeObjectScope,
 } from "./object-registry";
@@ -48,7 +48,7 @@ describe("Automations object scope policy", () => {
 
   it("returns separate command and HTTP capabilities for the addressed object", async () => {
     const seedStarterAutomationRoutes = vi.fn(async () => ({ created: [], existing: [] }));
-    const commands = { seedStarterAutomationRoutes } as unknown as AutomationsObject;
+    const commands = { seedStarterAutomationRoutes } as unknown as AutomationsCommands;
     const fetch = vi.fn(async () => new Response());
     const handle = {
       commands,

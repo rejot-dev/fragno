@@ -1,4 +1,4 @@
-import type { ApiObject } from "@/backoffice-runtime/object-registry";
+import type { ApiCommands } from "@/backoffice-runtime/object-registry";
 import type { PublicFragmentRoute } from "@/fragno/public-fragment-route.server";
 import { encodeApiConnectionId } from "@/fragno/runtime-tools/families/integrations/api-integration";
 import {
@@ -46,4 +46,4 @@ export const apiPublicRoute = {
       });
     },
   },
-} satisfies PublicFragmentRoute<ApiObject>;
+} satisfies PublicFragmentRoute<ApiCommands>;

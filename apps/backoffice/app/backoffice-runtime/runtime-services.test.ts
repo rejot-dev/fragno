@@ -10,7 +10,7 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 
-import { InMemoryAuthObject } from "../../workers/auth.do";
+import { AuthObject } from "../../workers/auth.do";
 import { createInMemoryBackofficeRuntime } from "./in-memory-runtime";
 import {
   BackofficeKernel,
@@ -24,7 +24,7 @@ import {
 } from "./runtime-services";
 
 const localObjects = {
-  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
 } satisfies LocalBackofficeObjects;
 
 describe("Backoffice authority runtime wiring", () => {

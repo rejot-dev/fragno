@@ -18,12 +18,12 @@ import {
   type BackofficeScenarioContext,
 } from "@/fragno/automation/scenario";
 
-import { InMemoryApiObject } from "../../../../../workers/api.do";
-import { InMemoryAuthObject } from "../../../../../workers/auth.do";
-import { InMemoryAutomationsObject } from "../../../../../workers/automations.do";
-import { InMemoryBillingObject } from "../../../../../workers/billing.do";
-import { InMemoryCodemodeObject } from "../../../../../workers/codemode.do";
-import { InMemoryFormsObject } from "../../../../../workers/forms.do";
+import { ApiObject } from "../../../../../workers/api.do";
+import { AuthObject } from "../../../../../workers/auth.do";
+import { AutomationsObject } from "../../../../../workers/automations.do";
+import { BillingObject } from "../../../../../workers/billing.do";
+import { CodemodeObject } from "../../../../../workers/codemode.do";
+import { FormsObject } from "../../../../../workers/forms.do";
 import { projectWorkflowRunTimeline } from "./workflow-run-timeline-presentation";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
@@ -42,12 +42,12 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
 const scenarioObjects = {
-  API: (input) => new InMemoryApiObject(input),
-  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
-  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
-  BILLING: (input) => new InMemoryBillingObject(input),
-  CODEMODE: (input) => new InMemoryCodemodeObject(input),
-  FORMS: (input) => new InMemoryFormsObject(input),
+  API: (input) => new ApiObject(input),
+  AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new AutomationsObject(input),
+  BILLING: (input) => new BillingObject(input),
+  CODEMODE: (input) => new CodemodeObject(input),
+  FORMS: (input) => new FormsObject(input),
   MCP: null,
   TELEGRAM: null,
   UPLOAD: null,

@@ -11,7 +11,7 @@ import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runti
 import { createBackofficeFragmentHttpTransport } from "@/backoffice-runtime/fragment-http-transport";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import {
-  type ResendObject,
+  type ResendCommands,
   type WebhookRegistrationCheck,
   requireBackofficeContextScopeFromDurableObjectId,
   backofficeObjectScopeFromContextScope,
@@ -318,7 +318,7 @@ const updateWebhook = async (
   }
 };
 
-export class InMemoryResendObject implements ResendObject {
+export class ResendObject implements ResendCommands {
   readonly #httpTransport: ReturnType<typeof createBackofficeFragmentHttpTransport>;
   readonly #state: BackofficeObjectState;
   readonly #runtimeServices: BackofficeRuntimeServices;
@@ -589,12 +589,12 @@ export class InMemoryResendObject implements ResendObject {
   }
 }
 
-export class Resend extends DurableObject<CloudflareEnv> implements ResendObject {
-  readonly #object: InMemoryResendObject;
+export class Resend extends DurableObject<CloudflareEnv> implements ResendCommands {
+  readonly #object: ResendObject;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
-    this.#object = new InMemoryResendObject(createCloudflareBackofficeObjectContext(state, env));
+    this.#object = new ResendObject(createCloudflareBackofficeObjectContext(state, env));
   }
 
   async alarm() {

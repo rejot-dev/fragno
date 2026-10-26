@@ -14,26 +14,26 @@ import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automa
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
 import routes from "@/routes";
 
-import { InMemoryApiObject } from "../../../../workers/api.do";
-import { InMemoryAuthObject } from "../../../../workers/auth.do";
-import { InMemoryAutomationsObject } from "../../../../workers/automations.do";
-import { InMemoryFormsObject } from "../../../../workers/forms.do";
-import { InMemoryMarketplaceObject } from "../../../../workers/marketplace.do";
-import { InMemoryOtpObject } from "../../../../workers/otp.do";
-import { InMemoryTelegramObject } from "../../../../workers/telegram.do";
-import { InMemoryUploadObject } from "../../../../workers/upload.do";
+import { ApiObject } from "../../../../workers/api.do";
+import { AuthObject } from "../../../../workers/auth.do";
+import { AutomationsObject } from "../../../../workers/automations.do";
+import { FormsObject } from "../../../../workers/forms.do";
+import { MarketplaceObject } from "../../../../workers/marketplace.do";
+import { OtpObject } from "../../../../workers/otp.do";
+import { TelegramObject } from "../../../../workers/telegram.do";
+import { UploadObject } from "../../../../workers/upload.do";
 import { loadMarketplaceListingRefs, resolveMarketplaceListingRoute } from "./listing-route.server";
 import { marketplaceListingManagePath, marketplaceListingPath } from "./navigation";
 
 const objects = {
-  API: (input) => new InMemoryApiObject(input),
-  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
-  UPLOAD: (input) => new InMemoryUploadObject(input),
-  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
-  MARKETPLACE: (input) => new InMemoryMarketplaceObject(input),
-  FORMS: (input) => new InMemoryFormsObject(input),
-  TELEGRAM: (input) => new InMemoryTelegramObject(input),
-  OTP: (input) => new InMemoryOtpObject(input),
+  API: (input) => new ApiObject(input),
+  AUTOMATIONS: (input) => new AutomationsObject(input),
+  UPLOAD: (input) => new UploadObject(input),
+  AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
+  MARKETPLACE: (input) => new MarketplaceObject(input),
+  FORMS: (input) => new FormsObject(input),
+  TELEGRAM: (input) => new TelegramObject(input),
+  OTP: (input) => new OtpObject(input),
 } satisfies LocalBackofficeObjects;
 
 function routeParams(path: string) {

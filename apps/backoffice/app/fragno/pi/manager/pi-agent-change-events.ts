@@ -4,7 +4,10 @@ import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import type { PiAgentDefinition } from "@fragno-dev/backoffice-api/v0/pi";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
-import type { AutomationsObject, BackofficeRpcContext } from "@/backoffice-runtime/object-registry";
+import type {
+  AutomationsCommands,
+  BackofficeRpcContext,
+} from "@/backoffice-runtime/object-registry";
 import {
   PI_AGENT_AUTOMATION_EVENTS,
   PI_AUTOMATION_SOURCE,
@@ -94,7 +97,7 @@ type RecordedDefinition = {
 
 /** Each agent's latest recorded definition change, by agent name. */
 async function readRecordedDefinitions(
-  automations: Pick<AutomationsObject, "listEventsOfType">,
+  automations: Pick<AutomationsCommands, "listEventsOfType">,
 ): Promise<Map<string, RecordedDefinition>> {
   const latest = new Map<string, RecordedDefinition & { at: [number, number] }>();
   for (const kind of ["created", "updated", "deleted"] as const) {
@@ -146,7 +149,7 @@ export async function backfillPiAgentEvents({
   provenance,
   context,
 }: {
-  automations: Pick<AutomationsObject, "ingestEvent" | "listEventsOfType">;
+  automations: Pick<AutomationsCommands, "ingestEvent" | "listEventsOfType">;
   scope: BackofficeContextScope;
   /** The scope's own definitions; built-in agents are Backoffice's, not the scope's. */
   definitions: readonly PiAgentDefinition[];

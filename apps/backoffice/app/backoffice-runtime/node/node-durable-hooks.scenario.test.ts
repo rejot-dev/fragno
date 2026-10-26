@@ -19,25 +19,25 @@ import {
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
 
-import { InMemoryAuthObject } from "../../../workers/auth.do";
-import { InMemoryAutomationsObject } from "../../../workers/automations.do";
-import { InMemoryFormsObject } from "../../../workers/forms.do";
-import { InMemoryUploadObject } from "../../../workers/upload.do";
+import { AuthObject } from "../../../workers/auth.do";
+import { AutomationsObject } from "../../../workers/automations.do";
+import { FormsObject } from "../../../workers/forms.do";
+import { UploadObject } from "../../../workers/upload.do";
 import {
   createExternallyProcessedNodeBackofficeDurableHooks,
   createNodeBackofficeDurableHooks,
 } from "./node-durable-hooks";
 
 const scenarioObjects = {
-  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
-  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
-  FORMS: (input) => new InMemoryFormsObject(input),
-  UPLOAD: (input) => new InMemoryUploadObject(input),
+  AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new AutomationsObject(input),
+  FORMS: (input) => new FormsObject(input),
+  UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
 
 const localObjects = {
-  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
-  FORMS: (input) => new InMemoryFormsObject(input),
+  AUTOMATIONS: (input) => new AutomationsObject(input),
+  FORMS: (input) => new FormsObject(input),
 } satisfies LocalBackofficeObjects;
 
 async function getFormsHookQueue(runtime: InMemoryBackofficeRuntime) {

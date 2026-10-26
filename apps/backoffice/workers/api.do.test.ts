@@ -19,12 +19,12 @@ import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { createBackofficeCapabilitiesRuntime } from "@/fragno/runtime-tools/families/backoffice-capabilities";
 
-import { InMemoryApiObject } from "./api.do";
-import { InMemoryAutomationsObject } from "./automations.do";
+import { ApiObject } from "./api.do";
+import { AutomationsObject } from "./automations.do";
 
 const localObjects = {
-  API: (input) => new InMemoryApiObject(input),
-  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  API: (input) => new ApiObject(input),
+  AUTOMATIONS: (input) => new AutomationsObject(input),
 } satisfies LocalBackofficeObjects;
 
 const runtimes: Array<Awaited<ReturnType<typeof createInMemoryBackofficeRuntime>>> = [];

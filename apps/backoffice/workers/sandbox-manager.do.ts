@@ -9,7 +9,7 @@ import { DurableObject, RpcTarget } from "cloudflare:workers";
 
 import {
   requireBackofficeContextScopeFromDurableObjectId,
-  type SandboxManagerObject,
+  type SandboxManagerCommands,
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
@@ -62,7 +62,7 @@ function buildSandboxAutomationEvent(
   };
 }
 
-export class InMemorySandboxManagerObject extends RpcTarget implements SandboxManagerObject {
+export class SandboxManagerObject extends RpcTarget implements SandboxManagerCommands {
   readonly #host: FragmentDurableObjectHost<void, ReturnType<typeof createSandboxManagerRuntime>>;
   readonly #sandboxProviders: SandboxRuntimeProviders;
   #runtime: ReturnType<typeof createSandboxManagerRuntime> | null = null;
@@ -199,14 +199,14 @@ export class InMemorySandboxManagerObject extends RpcTarget implements SandboxMa
   }
 }
 
-export class SandboxManager extends DurableObject<CloudflareEnv> implements SandboxManagerObject {
-  readonly #object: InMemorySandboxManagerObject;
+export class SandboxManager extends DurableObject<CloudflareEnv> implements SandboxManagerCommands {
+  readonly #object: SandboxManagerObject;
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
     const managerId = state.id.toString();
     // Wrangler cannot type a binding to another Worker's class.
     const sandboxes = env.SANDBOX as DurableObjectNamespace<Sandbox>;
-    this.#object = new InMemorySandboxManagerObject({
+    this.#object = new SandboxManagerObject({
       ...createCloudflareBackofficeObjectContext(state, env),
       sandboxProviders: {
         [CLOUDFLARE_SANDBOX_PROVIDER]: {

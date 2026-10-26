@@ -13,16 +13,16 @@ import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-f
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
 import { CLOUDFLARE_SANDBOX_PROVIDER, type SandboxRuntimeProviders } from "@/sandbox/contracts";
 
-import { InMemoryApiObject } from "../../../../workers/api.do";
-import { InMemoryAuthObject } from "../../../../workers/auth.do";
-import { InMemoryAutomationsObject } from "../../../../workers/automations.do";
-import { InMemoryBillingObject } from "../../../../workers/billing.do";
-import { InMemoryCodemodeObject } from "../../../../workers/codemode.do";
-import { InMemoryFormsObject } from "../../../../workers/forms.do";
-import { InMemoryOtpObject } from "../../../../workers/otp.do";
-import { InMemorySandboxManagerObject } from "../../../../workers/sandbox-manager.do";
-import { InMemoryTelegramObject } from "../../../../workers/telegram.do";
-import { InMemoryUploadObject } from "../../../../workers/upload.do";
+import { ApiObject } from "../../../../workers/api.do";
+import { AuthObject } from "../../../../workers/auth.do";
+import { AutomationsObject } from "../../../../workers/automations.do";
+import { BillingObject } from "../../../../workers/billing.do";
+import { CodemodeObject } from "../../../../workers/codemode.do";
+import { FormsObject } from "../../../../workers/forms.do";
+import { OtpObject } from "../../../../workers/otp.do";
+import { SandboxManagerObject } from "../../../../workers/sandbox-manager.do";
+import { TelegramObject } from "../../../../workers/telegram.do";
+import { UploadObject } from "../../../../workers/upload.do";
 
 /** Containers that echo `printf` arguments, so command output is observable. */
 function scenarioSandboxProviders(): SandboxRuntimeProviders {
@@ -47,17 +47,17 @@ function scenarioSandboxProviders(): SandboxRuntimeProviders {
 }
 
 const scenarioObjects = {
-  BILLING: (input) => new InMemoryBillingObject(input),
-  API: (input) => new InMemoryApiObject(input),
-  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
-  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
-  CODEMODE: (input) => new InMemoryCodemodeObject(input),
-  FORMS: (input) => new InMemoryFormsObject(input),
-  OTP: (input) => new InMemoryOtpObject(input),
-  TELEGRAM: (input) => new InMemoryTelegramObject(input),
-  UPLOAD: (input) => new InMemoryUploadObject(input),
+  BILLING: (input) => new BillingObject(input),
+  API: (input) => new ApiObject(input),
+  AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new AutomationsObject(input),
+  CODEMODE: (input) => new CodemodeObject(input),
+  FORMS: (input) => new FormsObject(input),
+  OTP: (input) => new OtpObject(input),
+  TELEGRAM: (input) => new TelegramObject(input),
+  UPLOAD: (input) => new UploadObject(input),
   SANDBOX_MANAGER: (input) =>
-    new InMemorySandboxManagerObject({
+    new SandboxManagerObject({
       ...input,
       sandboxProviders: input.createSandboxProviders(input.state.id.toString()),
     }),

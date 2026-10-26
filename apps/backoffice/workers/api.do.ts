@@ -14,7 +14,7 @@ import {
   backofficeContextScopeFromDurableObjectId,
   requireBackofficeContextScopeFromDurableObjectId,
   backofficeObjectScopeFromContextScope,
-  type ApiObject,
+  type ApiCommands,
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { createApiServer, type ApiConfig, type ApiFragment } from "@/fragno/api";
@@ -82,7 +82,7 @@ function webhookEndpointStateChange(payload: WebhookEndpointChangedPayload) {
   }
 }
 
-export class InMemoryApiObject extends RpcTarget implements ApiObject {
+export class ApiObject extends RpcTarget implements ApiCommands {
   readonly #runtimeServices: BackofficeRuntimeServices;
   readonly #forwardHttpRequest: ReturnType<typeof createBackofficeFragmentHttpTransport>;
   readonly #host: FragmentDurableObjectHost<ApiConfig, ApiFragment>;
@@ -263,12 +263,12 @@ export class InMemoryApiObject extends RpcTarget implements ApiObject {
   }
 }
 
-export class Api extends DurableObject<CloudflareEnv> implements ApiObject {
-  readonly #object: InMemoryApiObject;
+export class Api extends DurableObject<CloudflareEnv> implements ApiCommands {
+  readonly #object: ApiObject;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
-    this.#object = new InMemoryApiObject(createCloudflareBackofficeObjectContext(state, env));
+    this.#object = new ApiObject(createCloudflareBackofficeObjectContext(state, env));
   }
 
   async alarm(): Promise<void> {

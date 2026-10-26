@@ -3,7 +3,7 @@ import type {
   MarketplaceListing,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 
-import type { MarketplaceObject } from "@/backoffice-runtime/object-registry";
+import type { MarketplaceCommands } from "@/backoffice-runtime/object-registry";
 
 import type { MarketplaceListingPage } from "./contracts";
 
@@ -27,7 +27,7 @@ function marketplaceListingMatches(listing: MarketplaceListing, terms: readonly 
  * matches while older candidates remain, so callers follow nextCursor while hasNextPage is true.
  */
 export async function searchPublishedListings(
-  marketplace: Pick<MarketplaceObject, "listPublishedListings">,
+  marketplace: Pick<MarketplaceCommands, "listPublishedListings">,
   input: {
     query: string;
     category: MarketplaceCategory | undefined;

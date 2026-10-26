@@ -33,30 +33,30 @@ import { executeBackofficeRuntimeTool } from "@/fragno/runtime-tools/runtime-too
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
-import { InMemoryApiObject } from "../../../../workers/api.do";
-import { InMemoryAppInstallationsObject } from "../../../../workers/app-installations.do";
-import { InMemoryAppsObject } from "../../../../workers/apps.do";
-import { InMemoryAuthObject } from "../../../../workers/auth.do";
-import { InMemoryAutomationsObject } from "../../../../workers/automations.do";
-import { InMemoryCodemodeObject } from "../../../../workers/codemode.do";
-import { InMemoryFormsObject } from "../../../../workers/forms.do";
-import { InMemoryMcpObject } from "../../../../workers/mcp.do";
-import { InMemoryTelegramObject } from "../../../../workers/telegram.do";
-import { InMemoryUploadObject } from "../../../../workers/upload.do";
+import { ApiObject } from "../../../../workers/api.do";
+import { AppInstallationsObject } from "../../../../workers/app-installations.do";
+import { AppsObject } from "../../../../workers/apps.do";
+import { AuthObject } from "../../../../workers/auth.do";
+import { AutomationsObject } from "../../../../workers/automations.do";
+import { CodemodeObject } from "../../../../workers/codemode.do";
+import { FormsObject } from "../../../../workers/forms.do";
+import { McpObject } from "../../../../workers/mcp.do";
+import { TelegramObject } from "../../../../workers/telegram.do";
+import { UploadObject } from "../../../../workers/upload.do";
 import { projectsToolFamily } from "./projects";
 
 const scenarioObjects = {
-  API: (input) => new InMemoryApiObject(input),
-  APPS: (input) => new InMemoryAppsObject(input),
-  APP_INSTALLATIONS: (input) => new InMemoryAppInstallationsObject(input),
-  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
-  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
-  CODEMODE: (input) => new InMemoryCodemodeObject(input),
-  FORMS: (input) => new InMemoryFormsObject(input),
-  MCP: (input) => new InMemoryMcpObject(input),
+  API: (input) => new ApiObject(input),
+  APPS: (input) => new AppsObject(input),
+  APP_INSTALLATIONS: (input) => new AppInstallationsObject(input),
+  AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new AutomationsObject(input),
+  CODEMODE: (input) => new CodemodeObject(input),
+  FORMS: (input) => new FormsObject(input),
+  MCP: (input) => new McpObject(input),
   RESEND: null,
-  TELEGRAM: (input) => new InMemoryTelegramObject(input),
-  UPLOAD: (input) => new InMemoryUploadObject(input),
+  TELEGRAM: (input) => new TelegramObject(input),
+  UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
 
 const organization: BackofficeContextScope = { kind: "org", orgId: "acme" };

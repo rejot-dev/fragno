@@ -24,17 +24,17 @@ import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-f
 import { verifyBackofficeJwt } from "@/fragno/auth/token-lifecycle";
 import { getSetCookieHeaders } from "@/worker-runtime/http-headers";
 
-import { InMemoryAppsObject } from "./apps.do";
+import { AppsObject } from "./apps.do";
 import { issueTestSignUpInvitation } from "./auth-sign-up.test-support";
-import { InMemoryAuthObject } from "./auth.do";
-import { InMemoryAutomationsObject } from "./automations.do";
-import { InMemoryOtpObject } from "./otp.do";
+import { AuthObject } from "./auth.do";
+import { AutomationsObject } from "./automations.do";
+import { OtpObject } from "./otp.do";
 
 const localObjects = {
-  APPS: (input) => new InMemoryAppsObject(input),
-  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
-  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
-  OTP: (input) => new InMemoryOtpObject(input),
+  APPS: (input) => new AppsObject(input),
+  AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new AutomationsObject(input),
+  OTP: (input) => new OtpObject(input),
 } satisfies LocalBackofficeObjects;
 
 const baseUrl = "https://backoffice.example";

@@ -6,7 +6,7 @@ import { resolveBackofficeInternalRequestSecret } from "@/backoffice-runtime/int
 import {
   assertBackofficeObjectAddressAllowed,
   decodeBackofficeObjectScope,
-  type UploadObject,
+  type UploadCommands,
 } from "@/backoffice-runtime/object-registry";
 import {
   loadDurableHook,
@@ -21,7 +21,7 @@ import type { BackofficeObjectImplementation } from "./lib/backoffice-object-imp
 import { createCloudflareBackofficeObjectContext } from "./lib/cloudflare-backoffice-object-implementation";
 
 /** Stores one scope's files, the workspace, in the object's own database. */
-export class InMemoryUploadObject implements UploadObject {
+export class UploadObject implements UploadCommands {
   readonly #host: FragmentDurableObjectHost<void, UploadFragment>;
   readonly #initialization: Promise<void>;
   #fragment: UploadFragment | null = null;
@@ -99,12 +99,12 @@ export class InMemoryUploadObject implements UploadObject {
   }
 }
 
-export class Upload extends DurableObject<CloudflareEnv> implements UploadObject {
-  readonly #object: InMemoryUploadObject;
+export class Upload extends DurableObject<CloudflareEnv> implements UploadCommands {
+  readonly #object: UploadObject;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
-    this.#object = new InMemoryUploadObject(createCloudflareBackofficeObjectContext(state, env));
+    this.#object = new UploadObject(createCloudflareBackofficeObjectContext(state, env));
   }
 
   async warm(): Promise<void> {

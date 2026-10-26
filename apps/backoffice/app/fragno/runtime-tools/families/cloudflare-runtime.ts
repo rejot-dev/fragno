@@ -7,7 +7,7 @@ import { createRouteCaller } from "@fragno-dev/core/api";
 
 import type {
   BackofficeObjectHandle,
-  CloudflareObject,
+  CloudflareCommands,
 } from "@/backoffice-runtime/object-registry";
 import type { CloudflareFragment } from "@/fragno/cloudflare";
 
@@ -24,7 +24,7 @@ export type CloudflareRuntime = {
 
 const BROWSER_RUN_CAPTURE_TIMEOUT_MS = 60_000;
 
-type CloudflareHttpTransport = Pick<BackofficeObjectHandle<CloudflareObject>["http"], "fetch">;
+type CloudflareHttpTransport = Pick<BackofficeObjectHandle<CloudflareCommands>["http"], "fetch">;
 
 export const createCloudflareRuntime = ({
   http,

@@ -22,7 +22,7 @@ import { decodeCursor, type HookContext } from "@fragno-dev/db";
 
 import {
   requireBackofficeContextScopeFromDurableObjectId,
-  type CodemodeObject,
+  type CodemodeCommands,
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import {
@@ -195,7 +195,7 @@ function codemodeRunFailedEvent(
 }
 
 /** Scope-owned codemode boundary shared by Cloudflare and the SQLite runtime. */
-export class InMemoryCodemodeObject extends RpcTarget implements CodemodeObject {
+export class CodemodeObject extends RpcTarget implements CodemodeCommands {
   readonly #host: FragmentDurableObjectHost<void, CodemodeFragment>;
   readonly #executor: CodemodeExecutor | null;
   readonly #nowEpochMs: () => number;
@@ -388,12 +388,12 @@ export class InMemoryCodemodeObject extends RpcTarget implements CodemodeObject 
   }
 }
 
-export class Codemode extends DurableObject<CloudflareEnv> implements CodemodeObject {
-  readonly #object: InMemoryCodemodeObject;
+export class Codemode extends DurableObject<CloudflareEnv> implements CodemodeCommands {
+  readonly #object: CodemodeObject;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
-    this.#object = new InMemoryCodemodeObject(createCloudflareBackofficeObjectContext(state, env));
+    this.#object = new CodemodeObject(createCloudflareBackofficeObjectContext(state, env));
   }
 
   execute<TActivation extends CodemodeRunActivation>(

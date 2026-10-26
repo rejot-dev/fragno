@@ -4,7 +4,7 @@ import { DurableObject, RpcTarget } from "cloudflare:workers";
 import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
 import { createBackofficeFragmentHttpTransport } from "@/backoffice-runtime/fragment-http-transport";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import type { FormsObject } from "@/backoffice-runtime/object-registry";
+import type { FormsCommands } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import {
@@ -20,7 +20,7 @@ import { createCloudflareBackofficeObjectContext } from "./lib/cloudflare-backof
 
 const SYSTEM_SCOPE = { kind: "system" } as const;
 
-export class InMemoryFormsObject extends RpcTarget implements FormsObject {
+export class FormsObject extends RpcTarget implements FormsCommands {
   readonly #host: FragmentDurableObjectHost<void, FormsFragment>;
   #fragment: FormsFragment | null = null;
 
@@ -178,12 +178,12 @@ export class InMemoryFormsObject extends RpcTarget implements FormsObject {
   }
 }
 
-export class Forms extends DurableObject<CloudflareEnv> implements FormsObject {
-  readonly #object: InMemoryFormsObject;
+export class Forms extends DurableObject<CloudflareEnv> implements FormsCommands {
+  readonly #object: FormsObject;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
-    this.#object = new InMemoryFormsObject(createCloudflareBackofficeObjectContext(state, env));
+    this.#object = new FormsObject(createCloudflareBackofficeObjectContext(state, env));
   }
 
   async getDurableHookQueue(options?: DurableHookQueueOptions) {

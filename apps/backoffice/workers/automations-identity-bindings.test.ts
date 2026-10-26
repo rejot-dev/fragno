@@ -11,10 +11,10 @@ import type { BackofficeKernelAction, BackofficeKernelObserver } from "@/backoff
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { buildExternalIdentityBindingId } from "@/fragno/automation/external-identities";
 
-import { InMemoryAutomationsObject } from "./automations.do";
+import { AutomationsObject } from "./automations.do";
 
 const localObjects = {
-  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  AUTOMATIONS: (input) => new AutomationsObject(input),
 } satisfies LocalBackofficeObjects;
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {

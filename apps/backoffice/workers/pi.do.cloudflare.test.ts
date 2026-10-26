@@ -44,7 +44,7 @@ import {
 import { recordPiAgentTurn } from "@/fragno/pi/agent/pi-agent-turns";
 
 import { createScriptedPiAgentDependencies } from "./pi-durable-scenario.test-support";
-import { InMemoryPiObject, openPiAgentStorage, type Pi } from "./pi.do";
+import { PiObject, openPiAgentStorage, type Pi } from "./pi.do";
 
 function manager(organizationId: string) {
   return (env as CloudflareEnv).PI_MANAGER.getByName(
@@ -450,7 +450,7 @@ describe("Pi durable agent scenarios", () => {
         faux.setResponses([fauxAssistantMessage("Recovered after startup.")]);
         const models = createModels();
         models.setProvider(faux.provider);
-        const object = new InMemoryPiObject({
+        const object = new PiObject({
           state,
           runtime: createCloudflareDurableObjectRuntimeServices(testEnv, state),
           dependencies: {
@@ -571,7 +571,7 @@ describe("Pi durable agent scenarios", () => {
 
       const storageError = new Error("PI_SCENARIO_STORAGE_UNAVAILABLE");
       let storageFails = false;
-      const object = new InMemoryPiObject({
+      const object = new PiObject({
         state,
         runtime: createCloudflareDurableObjectRuntimeServices(testEnv, state),
         dependencies: {

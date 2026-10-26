@@ -37,18 +37,18 @@ import { AUTH_AUTOMATION_EVENT_ORGANIZATION_CREATED } from "@/fragno/backoffice-
 import { EMAIL_VERIFICATION_TYPE } from "@/fragno/otp";
 
 import { issueTestSignUpInvitation } from "./auth-sign-up.test-support";
-import { createOrganizationAutomationHooks, InMemoryAuthObject } from "./auth.do";
-import { InMemoryAutomationsObject } from "./automations.do";
+import { createOrganizationAutomationHooks, AuthObject } from "./auth.do";
+import { AutomationsObject } from "./automations.do";
 import {
-  InMemoryOtpObject,
+  OtpObject,
   type IssueEmailVerificationInput,
   type IssueEmailVerificationResult,
 } from "./otp.do";
 
 const localObjects = {
-  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
-  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
-  OTP: (input) => new InMemoryOtpObject(input),
+  AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new AutomationsObject(input),
+  OTP: (input) => new OtpObject(input),
 } satisfies LocalBackofficeObjects;
 
 const runtimes: Array<Awaited<ReturnType<typeof createInMemoryBackofficeRuntime>>> = [];
@@ -603,7 +603,7 @@ describe("Auth Durable Object email verification delivery", () => {
       objects: {
         ...localObjects,
         OTP: ({ state, env, runtime: runtimeServices, implementation }) =>
-          new (class extends InMemoryOtpObject {
+          new (class extends OtpObject {
             override async issueEmailVerification(
               input: IssueEmailVerificationInput,
             ): Promise<IssueEmailVerificationResult> {

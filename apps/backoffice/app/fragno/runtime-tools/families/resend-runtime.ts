@@ -6,7 +6,7 @@ import type {
   ResendThreadSummary,
 } from "@fragno-dev/resend-fragment";
 
-import type { FetchObject } from "@/backoffice-runtime/object-registry";
+import type { FetchCommands } from "@/backoffice-runtime/object-registry";
 import type { ResendFragment } from "@/fragno/resend";
 
 import {
@@ -38,7 +38,7 @@ function routeError(label: string) {
 }
 
 /** Calls the Resend object's thread routes; the receiving object enforces integrations.execute. */
-export function createResendRuntime({ object }: { object: FetchObject }) {
+export function createResendRuntime({ object }: { object: FetchCommands }) {
   const callRoute = createRouteCaller<ResendFragment>({
     baseUrl: "https://resend.do",
     mountRoute: "/api/resend",

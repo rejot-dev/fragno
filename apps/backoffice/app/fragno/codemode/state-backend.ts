@@ -13,7 +13,7 @@ import {
 
 import type { AppliedFileEdit, FileEditOperation, FileEditSearchOptions } from "@fragno-dev/upload";
 
-import type { FetchObject } from "@/backoffice-runtime/object-registry";
+import type { FetchCommands } from "@/backoffice-runtime/object-registry";
 import {
   BackofficeOperationError,
   type BackofficeOperationErrorKind,
@@ -164,7 +164,7 @@ export interface BackofficeStateBackend {
 }
 
 export const createBackofficeStateBackend = (input: {
-  uploadObject: FetchObject;
+  uploadObject: FetchCommands;
   staticFileCollection: FileCollection;
 }): BackofficeStateBackend => {
   const routes = createUploadRouteCaller(input.uploadObject);

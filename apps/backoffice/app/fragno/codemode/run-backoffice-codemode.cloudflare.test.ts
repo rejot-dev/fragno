@@ -26,7 +26,7 @@ import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-f
 import type {
   BackofficeObjectHandle,
   BackofficeObjectRegistry,
-  McpObject,
+  McpCommands,
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
@@ -48,9 +48,9 @@ import { createTrustedSystemBackofficeToolContext } from "@/fragno/runtime-tools
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
-import { InMemoryAutomationsObject } from "../../../workers/automations.do";
-import { InMemoryCodemodeObject } from "../../../workers/codemode.do";
-import { InMemoryMcpObject } from "../../../workers/mcp.do";
+import { AutomationsObject } from "../../../workers/automations.do";
+import { CodemodeObject } from "../../../workers/codemode.do";
+import { McpObject } from "../../../workers/mcp.do";
 
 // The test setup serves the bridge's executor in-process behind this binding.
 const testCodemodeExecutor = createCodemodeServiceExecutor(
@@ -58,9 +58,9 @@ const testCodemodeExecutor = createCodemodeServiceExecutor(
 );
 
 const localObjects = {
-  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
-  CODEMODE: (input) => new InMemoryCodemodeObject(input),
-  MCP: (input) => new InMemoryMcpObject(input),
+  AUTOMATIONS: (input) => new AutomationsObject(input),
+  CODEMODE: (input) => new CodemodeObject(input),
+  MCP: (input) => new McpObject(input),
 } satisfies LocalBackofficeObjects;
 
 const codemode = codemodeRunnerFor(
@@ -724,7 +724,7 @@ describe("runBackofficeCodemode", () => {
 const createScopedMcpRuntimeServices = (
   calls: Array<{ scope: string; method: string; pathname: string }>,
 ): BackofficeRuntimeServices => {
-  const createMcpObject = (scope: string): BackofficeObjectHandle<McpObject> => {
+  const createMcpObject = (scope: string): BackofficeObjectHandle<McpCommands> => {
     const fetch = async (request: Request) => {
       const url = new URL(request.url);
       calls.push({ scope, method: request.method, pathname: url.pathname });

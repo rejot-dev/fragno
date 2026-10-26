@@ -14,7 +14,7 @@ import {
   backofficeExecutionScopeRestriction,
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
-import type { CodemodeObject } from "@/backoffice-runtime/object-registry";
+import type { CodemodeCommands } from "@/backoffice-runtime/object-registry";
 
 import type {
   CodemodeExecution,
@@ -94,7 +94,7 @@ export type CodemodeRunner = {
  * records usage against its scope's root owner; callers cannot choose another payer.
  */
 export function codemodeRunnerFor(
-  codemode: CodemodeObject,
+  codemode: CodemodeCommands,
   execution: BackofficeExecutionContext,
 ): CodemodeRunner {
   const context = {

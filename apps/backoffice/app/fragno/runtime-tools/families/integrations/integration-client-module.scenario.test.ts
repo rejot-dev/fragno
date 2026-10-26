@@ -24,7 +24,7 @@ import {
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
-import { InMemoryMcpObject } from "../../../../../workers/mcp.do";
+import { McpObject } from "../../../../../workers/mcp.do";
 
 const scope = { kind: "org", orgId: "org-1" } as const;
 const clientPath = "/workspace/integrations/tools.js";
@@ -96,7 +96,7 @@ test("a generated MCP client is imported by inline codemode, saved modules, and 
         objects: {
           ...allLocalObjects,
           MCP: (options) =>
-            new InMemoryMcpObject({
+            new McpObject({
               ...options,
               fetch: async (input, init) => await mcpServer.fetch(new Request(input, init)),
             }),

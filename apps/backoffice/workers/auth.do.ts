@@ -41,7 +41,7 @@ import type {
   AdminOrganizationRecord,
   AccountInvitationListing,
   AdminUserEmailVerificationRecord,
-  AuthObject,
+  AuthCommands,
   GrantBackofficeAdminResult,
   OrganizationManagerRecord,
   OrganizationRelations,
@@ -781,7 +781,7 @@ const buildBackofficeMe = async (
   };
 };
 
-type InMemoryAuthObjectEnv = Pick<
+type AuthObjectEnv = Pick<
   BackofficeRuntimeEnv,
   | "AUTH_ACCESS_TOKEN_SECRET"
   | "AUTH_ADMIN_GRANT_TOKEN"
@@ -789,8 +789,8 @@ type InMemoryAuthObjectEnv = Pick<
   | "GITHUB_CLIENT_SECRET"
 >;
 
-export class InMemoryAuthObject implements AuthObject {
-  readonly #env: InMemoryAuthObjectEnv;
+export class AuthObject implements AuthCommands {
+  readonly #env: AuthObjectEnv;
   readonly #state: BackofficeObjectState;
   readonly #runtime: BackofficeRuntimeServices;
   readonly #passwordResetPublicBaseUrl: string | null;
@@ -811,7 +811,7 @@ export class InMemoryAuthObject implements AuthObject {
     database,
   }: {
     state: BackofficeObjectState;
-    env: InMemoryAuthObjectEnv;
+    env: AuthObjectEnv;
     runtime: BackofficeRuntimeServices;
     database?: Kysely<AuthDatabase>;
   }) {
@@ -2692,12 +2692,12 @@ export class InMemoryAuthObject implements AuthObject {
   }
 }
 
-export class Auth extends DurableObject<CloudflareEnv> implements AuthObject {
-  readonly #object: InMemoryAuthObject;
+export class Auth extends DurableObject<CloudflareEnv> implements AuthCommands {
+  readonly #object: AuthObject;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
-    this.#object = new InMemoryAuthObject({
+    this.#object = new AuthObject({
       state,
       env,
       runtime: createCloudflareDurableObjectRuntimeServices(env, state),

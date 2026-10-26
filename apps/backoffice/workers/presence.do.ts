@@ -1,7 +1,7 @@
 import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { DurableObject } from "cloudflare:workers";
 
-import type { PresenceObject } from "@/backoffice-runtime/object-registry";
+import type { PresenceCommands } from "@/backoffice-runtime/object-registry";
 import type {
   PresenceActivity,
   PresenceActivityResult,
@@ -26,7 +26,7 @@ function isActive(entry: PresenceEntry, nowEpochMs: number) {
 
 // Entries live in storage rather than memory: requests are sparse enough that Cloudflare may
 // evict the object between two activities of a member who is still present.
-export class InMemoryPresenceObject implements PresenceObject {
+export class PresenceObject implements PresenceCommands {
   readonly #storage: DurableObjectStorage;
   readonly #nowEpochMs: () => number;
 
@@ -76,12 +76,12 @@ export class InMemoryPresenceObject implements PresenceObject {
   }
 }
 
-export class Presence extends DurableObject<CloudflareEnv> implements PresenceObject {
-  readonly #object: InMemoryPresenceObject;
+export class Presence extends DurableObject<CloudflareEnv> implements PresenceCommands {
+  readonly #object: PresenceObject;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
-    this.#object = new InMemoryPresenceObject({ state, nowEpochMs: Date.now });
+    this.#object = new PresenceObject({ state, nowEpochMs: Date.now });
   }
 
   async recordActivity(activity: PresenceActivity): Promise<PresenceActivityResult> {

@@ -25,7 +25,7 @@ import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import {
   requireBackofficeContextScopeFromDurableObjectId,
   type BackofficeActionRpcContext,
-  type MarketplaceObject,
+  type MarketplaceCommands,
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { listUploadFiles } from "@/file-collection/create-upload-file-collection";
@@ -95,7 +95,7 @@ import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-ob
 import type { BackofficeObjectImplementation } from "./lib/backoffice-object-implementation";
 import { createCloudflareBackofficeObjectContext } from "./lib/cloudflare-backoffice-object-implementation";
 
-export class InMemoryMarketplaceObject extends RpcTarget implements MarketplaceObject {
+export class MarketplaceObject extends RpcTarget implements MarketplaceCommands {
   readonly #host: FragmentDurableObjectHost<void, MarketplaceFragment>;
   #fragment: MarketplaceFragment | null = null;
   readonly #runtime: BackofficeRuntimeServices;
@@ -573,14 +573,12 @@ export class InMemoryMarketplaceObject extends RpcTarget implements MarketplaceO
   }
 }
 
-export class Marketplace extends DurableObject<CloudflareEnv> implements MarketplaceObject {
-  readonly #object: InMemoryMarketplaceObject;
+export class Marketplace extends DurableObject<CloudflareEnv> implements MarketplaceCommands {
+  readonly #object: MarketplaceObject;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
-    this.#object = new InMemoryMarketplaceObject(
-      createCloudflareBackofficeObjectContext(state, env),
-    );
+    this.#object = new MarketplaceObject(createCloudflareBackofficeObjectContext(state, env));
   }
 
   publishPackage(

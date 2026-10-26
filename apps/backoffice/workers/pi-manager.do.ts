@@ -19,7 +19,7 @@ import { BackofficeForbiddenError, BackofficeKernel } from "@/backoffice-runtime
 import {
   backofficeContextScopeFromDurableObjectId,
   backofficeObjectScopeFromContextScope,
-  type PiManagerObject,
+  type PiManagerCommands,
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { BillingMeasurementInput } from "@/fragno/billing/contracts";
@@ -68,7 +68,7 @@ const MODEL_CALL_COUNTS = {
 } as const satisfies Record<string, BillingMeasurementInput>;
 
 /** Shared scoped agent directory; agent execution is handed to the runtime's agent namespace. */
-export class InMemoryPiManagerObject extends RpcTarget implements PiManagerObject {
+export class PiManagerObject extends RpcTarget implements PiManagerCommands {
   readonly #host: FragmentDurableObjectHost<BackofficeContextScope, PiManagerFragment>;
   readonly #scoped: ScopedFragmentDurableObjectRuntime<PiManagerFragment>;
   readonly #env: Pick<BackofficeRuntimeEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">;
@@ -234,7 +234,7 @@ export class InMemoryPiManagerObject extends RpcTarget implements PiManagerObjec
 
   async classify({
     request,
-  }: Parameters<PiManagerObject["classify"]>[0]): ReturnType<PiManagerObject["classify"]> {
+  }: Parameters<PiManagerCommands["classify"]>[0]): ReturnType<PiManagerCommands["classify"]> {
     if (!this.#classifier) {
       throw new Error("MODELS_CLASSIFY_UNAVAILABLE: no classifier is configured.");
     }
@@ -254,8 +254,8 @@ export class InMemoryPiManagerObject extends RpcTarget implements PiManagerObjec
 
   async generateImage({
     request,
-  }: Parameters<PiManagerObject["generateImage"]>[0]): ReturnType<
-    PiManagerObject["generateImage"]
+  }: Parameters<PiManagerCommands["generateImage"]>[0]): ReturnType<
+    PiManagerCommands["generateImage"]
   > {
     if (!this.#imageGenerator) {
       throw new Error("MODELS_GENERATE_IMAGE_UNAVAILABLE: no image generator is configured.");
@@ -313,13 +313,13 @@ export class InMemoryPiManagerObject extends RpcTarget implements PiManagerObjec
 }
 
 /** Singleton, organization, user, and project agent directories match Automations scopes. */
-export class PiManager extends DurableObject<CloudflareEnv> implements PiManagerObject {
-  readonly #object: InMemoryPiManagerObject;
+export class PiManager extends DurableObject<CloudflareEnv> implements PiManagerCommands {
+  readonly #object: PiManagerObject;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
     const models = createPiModels(env);
-    this.#object = new InMemoryPiManagerObject({
+    this.#object = new PiManagerObject({
       ...createCloudflareBackofficeObjectContext(state, env),
       agent: (config): PiAgent =>
         env.PI.get(env.PI.idFromName(piAgentObjectName(config))) as unknown as PiAgent,
@@ -343,20 +343,20 @@ export class PiManager extends DurableObject<CloudflareEnv> implements PiManager
   }
 
   async authorizeViewer(
-    input: Parameters<PiManagerObject["authorizeViewer"]>[0],
-  ): ReturnType<PiManagerObject["authorizeViewer"]> {
+    input: Parameters<PiManagerCommands["authorizeViewer"]>[0],
+  ): ReturnType<PiManagerCommands["authorizeViewer"]> {
     return await this.#object.authorizeViewer(input);
   }
 
   async classify(
-    input: Parameters<PiManagerObject["classify"]>[0],
-  ): ReturnType<PiManagerObject["classify"]> {
+    input: Parameters<PiManagerCommands["classify"]>[0],
+  ): ReturnType<PiManagerCommands["classify"]> {
     return await this.#object.classify(input);
   }
 
   async generateImage(
-    input: Parameters<PiManagerObject["generateImage"]>[0],
-  ): ReturnType<PiManagerObject["generateImage"]> {
+    input: Parameters<PiManagerCommands["generateImage"]>[0],
+  ): ReturnType<PiManagerCommands["generateImage"]> {
     return await this.#object.generateImage(input);
   }
 
