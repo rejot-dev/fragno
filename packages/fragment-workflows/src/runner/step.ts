@@ -629,20 +629,36 @@ export class RunnerStep implements WorkflowStep {
       callbackThrew = true;
       callbackError = error;
     } finally {
-      schedulerAbortController.abort();
-      await schedulerLease;
-      await emissionScope.flushAndClose(this.#handlerTx);
-      await livePumpHandle.close();
-      console.info("fragno.workflow_step_emissions.completed", {
-        workflowName: this.#workflowName,
-        instanceId: this.#instanceId,
-        stepKey,
-        emissionsEnqueued,
-        flushCount: emissionScope.meta.flushCount,
-        eventPollCount: emissionScope.meta.eventPollCount,
-        applicationEmissionsFlushed: emissionScope.meta.applicationEmissionsFlushed,
-        durationMs: performance.now() - stepStartedAt,
-      });
+      const callbackFinishedAt = performance.now();
+      let finalizationOutcome: "returned" | "threw" = "threw";
+      try {
+        try {
+          schedulerAbortController.abort();
+          await schedulerLease;
+          await emissionScope.flushAndClose(this.#handlerTx);
+        } finally {
+          await livePumpHandle.close();
+        }
+        finalizationOutcome = "returned";
+      } finally {
+        const finalizedAt = performance.now();
+        // A callback returning is not a committed step; the runner persists its outcome later.
+        console.info("fragno.workflow_step_attempt.finished", {
+          workflowName: this.#workflowName,
+          instanceId: this.#instanceId,
+          stepKey,
+          attempt,
+          callbackOutcome: callbackThrew ? "threw" : "returned",
+          finalizationOutcome,
+          callbackDurationMs: callbackFinishedAt - stepStartedAt,
+          finalizationDurationMs: finalizedAt - callbackFinishedAt,
+          durationMs: finalizedAt - stepStartedAt,
+          emissionsEnqueued,
+          flushCount: emissionScope.meta.flushCount,
+          eventPollCount: emissionScope.meta.eventPollCount,
+          applicationEmissionsFlushed: emissionScope.meta.applicationEmissionsFlushed,
+        });
+      }
       this.#queueStepEmissionCleanup({
         workflowName: this.#workflowName,
         instanceId: this.#instanceId,
