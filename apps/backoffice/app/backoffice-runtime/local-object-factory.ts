@@ -22,6 +22,7 @@ import { noOpBackofficeConfiguredObjectLifecycle } from "../../workers/lib/backo
 import type { BackofficeObjectImplementation } from "../../workers/lib/backoffice-object-implementation";
 import type { PiObject } from "../../workers/pi-object";
 import type { BackofficeRuntimeEnv } from "./backoffice-runtime-env";
+import type { BackofficeTelemetry } from "./backoffice-telemetry";
 import { createDurableObjectDatabaseAdapterScope } from "./database-adapters";
 import {
   createAuthorizedBackofficeObjectRequest,
@@ -97,6 +98,7 @@ export type LocalBackofficeObjects = Partial<
 
 export type LocalObjectFactoryOptions = {
   runtimeEnv: BackofficeRuntimeEnv;
+  telemetry: BackofficeTelemetry;
   getRuntimeServices: () => BackofficeRuntimeServices;
   createFragmentHostOperations?: (
     objectId: string,
@@ -141,6 +143,7 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
 
   #namespaces: NamespaceMap = {};
   readonly #getRuntimeServices: () => BackofficeRuntimeServices;
+  readonly #telemetry: BackofficeTelemetry;
   readonly #createFragmentHostOperations: NonNullable<
     LocalObjectFactoryOptions["createFragmentHostOperations"]
   >;
@@ -168,6 +171,7 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
   constructor(options: LocalObjectFactoryOptions) {
     this.env = options.runtimeEnv;
     this.#getRuntimeServices = options.getRuntimeServices;
+    this.#telemetry = options.telemetry;
     this.#createFragmentHostOperations = options.createFragmentHostOperations ?? (() => null);
     this.#readAutomationSource = options.readAutomationSource;
     this.#objects = options.objects;
@@ -461,6 +465,7 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
           state,
           env: this.env,
           runtime,
+          telemetry: this.#telemetry,
           fragmentHostOperations: this.#createFragmentHostOperations(String(input.id)) ?? undefined,
           configuredObjectLifecycle,
         });

@@ -1,3 +1,4 @@
+import type { BackofficeTelemetry } from "@/backoffice-runtime/backoffice-telemetry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { createCloudflareDurableObjectRuntimeServices } from "@/backoffice-runtime/runtime-services";
 
@@ -9,6 +10,7 @@ import { createBackofficeObjectImplementation } from "./backoffice-object-implem
 import { cloudflareDatabaseTransactionInstrumentation } from "./cloudflare-database-transaction-instrumentation";
 import { cloudflareDurableHooksInstrumentation } from "./cloudflare-durable-hooks-instrumentation";
 import { cloudflareFragmentInitializationInstrumentation } from "./cloudflare-fragment-initialization-instrumentation";
+import { createCloudflarePostHogTelemetry } from "./cloudflare-posthog-telemetry";
 
 const cloudflareBackofficeRuntimeInstrumentation = {
   databaseTransactions: cloudflareDatabaseTransactionInstrumentation,
@@ -20,12 +22,14 @@ export function createCloudflareBackofficeObjectImplementation(
   state: BackofficeObjectState,
   env: CloudflareEnv,
   runtime: BackofficeRuntimeServices,
+  telemetry: BackofficeTelemetry,
 ) {
   return createBackofficeObjectImplementation({
     state,
     env,
     adapters: runtime.adapters,
     instrumentation: cloudflareBackofficeRuntimeInstrumentation,
+    telemetry,
     configuredObjectLifecycle: noOpBackofficeConfiguredObjectLifecycle,
   });
 }
@@ -41,6 +45,11 @@ export function createCloudflareBackofficeObjectContext(
     env,
     runtime,
     nowEpochMs: Date.now,
-    implementation: createCloudflareBackofficeObjectImplementation(state, env, runtime),
+    implementation: createCloudflareBackofficeObjectImplementation(
+      state,
+      env,
+      runtime,
+      createCloudflarePostHogTelemetry(env, state),
+    ),
   };
 }

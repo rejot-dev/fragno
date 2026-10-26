@@ -8,7 +8,7 @@ const posthogConfigSchema = z.object({
 
 /** Runtime credentials are deployment-only; frontend build variables never enable server capture. */
 export async function createCloudflarePostHog(
-  env: Pick<CloudflareEnv, "POSTHOG_PROJECT_TOKEN" | "POSTHOG_HOST">,
+  env: Pick<CloudflareEnv, "POSTHOG_PROJECT_TOKEN" | "POSTHOG_HOST" | "CF_VERSION_METADATA">,
 ): Promise<PostHog | null> {
   if (
     import.meta.env.BACKOFFICE_TARGET !== "cloudflare" ||
@@ -37,6 +37,11 @@ export async function createCloudflarePostHog(
       fetchRetryCount: 0,
       disableGeoip: true,
       enableExceptionAutocapture: false,
+      metrics: {
+        serviceName: "backoffice",
+        environment: "production",
+        serviceVersion: env.CF_VERSION_METADATA.id,
+      },
     });
   } catch {
     console.warn("PostHog backend capture could not initialize.");
