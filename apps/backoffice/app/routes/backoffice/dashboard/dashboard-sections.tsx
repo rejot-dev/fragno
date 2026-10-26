@@ -1,6 +1,7 @@
 import type { AutomationRouteDefinition } from "@fragno-dev/backoffice-api/v0/automation";
 import type { LofiSqliteClient } from "@fragno-dev/lofi/sqlite";
 import { RunStatusLight } from "@fragno-private/backoffice-ui/run-status-light";
+import { ButtonLink } from "@fragno-private/design-system/button";
 import { Icon } from "@fragno-private/design-system/icon";
 import { ListRow, ListRowIcon, RowList } from "@fragno-private/design-system/list-row";
 import {
@@ -11,6 +12,7 @@ import {
   panelRowTitleClassName,
 } from "@fragno-private/design-system/panel";
 import { formatRelativeTime } from "@fragno-private/design-system/relative-time";
+import { RunStopControl } from "@fragno-private/design-system/run-stop-control";
 import { SparkBars } from "@fragno-private/design-system/spark-bars";
 import { StackedBarChart } from "@fragno-private/design-system/stacked-bar-chart";
 import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
@@ -19,8 +21,10 @@ import { Link, useSearchParams } from "react-router";
 
 import {
   backofficeRouteScopeFromResolvedScope,
+  backofficeRuntimeScopeFromResolvedScope,
   type BackofficeScopeSelection,
 } from "@/backoffice-runtime/resolved-scope";
+import { terminateBackofficeWorkflowRun } from "@/backoffice-ui/workflow-events.client";
 import { WorkflowRunGeneratedInterface } from "@/components/backoffice/workflow-run-generated-interface";
 
 import {
@@ -29,6 +33,7 @@ import {
   type PiAgentListing,
 } from "../agents/agent-activity";
 import { piAgentsPath } from "../agents/path";
+import type { AutomationWorkflowRun } from "../automations/script-view/workflow-run-presentation";
 import { IntegrationConnectionStateLight } from "../integrations/connection-display";
 import {
   integrationConnectionPath,
@@ -200,7 +205,12 @@ function AttentionRow({
           leading={<ListRowIcon name="edit-3" tone="info" />}
           title={item.workflow}
           detail="Waiting for your input"
-          trailing={<RowTime time={formatRelativeTime(item.run.updatedAt, now)} />}
+          trailing={
+            <>
+              <AwaitingInputActions run={item.run} selectedScope={selectedScope} />
+              <RowTime time={formatRelativeTime(item.run.updatedAt, now)} />
+            </>
+          }
           expansion={{
             label: "Respond",
             content: (
@@ -245,6 +255,43 @@ function AttentionRow({
       );
   }
   throw new Error("Unsupported dashboard attention item.");
+}
+
+/**
+ * What a person can do about a run waiting for them besides answering it: open the conversation
+ * whose agent started it, or stop it, as its card in that conversation does.
+ */
+function AwaitingInputActions({
+  run,
+  selectedScope,
+}: {
+  run: AutomationWorkflowRun;
+  selectedScope: BackofficeScopeSelection;
+}) {
+  const agentName = run.codemode?.agentName ?? null;
+  return (
+    <>
+      {agentName === null ? null : (
+        <ButtonLink
+          variant="ghost"
+          to={`${piAgentsPath(backofficeRouteScopeFromResolvedScope(selectedScope))}/${encodeURIComponent(agentName)}`}
+          className="min-h-8 px-2 text-xs text-[var(--bo-muted)]"
+        >
+          <Icon name="message-square" className="size-3.5" />
+          Conversation
+        </ButtonLink>
+      )}
+      <RunStopControl
+        onStop={() =>
+          terminateBackofficeWorkflowRun({
+            scope: backofficeRuntimeScopeFromResolvedScope(selectedScope),
+            workflowName: run.workflowName,
+            instanceId: run.instanceId,
+          })
+        }
+      />
+    </>
+  );
 }
 
 function WorkflowHealthPanel({

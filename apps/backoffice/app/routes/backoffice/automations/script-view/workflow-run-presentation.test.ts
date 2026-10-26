@@ -191,6 +191,7 @@ describe("automation script workflow run presentation", () => {
         filename: "/workspace/automations/other.workflow.js",
         code: "",
         trigger: { type: "manual" },
+        agentName: null,
       },
     });
     const wrongWorkflow = workflowRun({
@@ -1374,7 +1375,7 @@ function workflowRun(overrides: Partial<AutomationWorkflowRun> = {}): Automation
     workflowName: "codemode-script",
     remoteWorkflowName: "demo",
     status: "active",
-    codemode: { filename: absolutePath, code: "", trigger: { type: "manual" } },
+    codemode: { filename: absolutePath, code: "", trigger: { type: "manual" }, agentName: null },
     output: null,
     errorName: null,
     errorMessage: null,

@@ -134,6 +134,7 @@ import {
   type ScenarioAuthUserRoleInput as AuthUserRoleInput,
   type ScenarioAuthUserStatusInput as AuthUserStatusInput,
 } from "./scenario-auth";
+import type { WorkflowReplyTo } from "./workflow-reply";
 import { createRouteBackedAutomationWorkflowRuntime } from "./workflow-route-runtime";
 
 type ScenarioVars = Record<string, unknown>;
@@ -667,11 +668,14 @@ type WorkflowCreateInstanceInput<TVars extends ScenarioVars = ScenarioVars> = {
   | {
       path: string;
       event: ScenarioValue<TVars, AutomationEvent>;
+      /** Where the run reports when it ends, such as the agent that started it; null by default. */
+      replyTo?: WorkflowReplyTo;
       params?: never;
     }
   | {
       path?: never;
       event?: never;
+      replyTo?: never;
       params: ScenarioValue<TVars, Record<string, unknown>>;
     }
 );
@@ -3101,7 +3105,7 @@ const buildStepBuilders = <
                   scope: event.scope,
                   actors: event.actors,
                 },
-                replyTo: null,
+                replyTo: input.replyTo ?? null,
               });
               await getWorkflow(ctx, input.orgId, execution).createInternalInstance(workflowInput);
               return;

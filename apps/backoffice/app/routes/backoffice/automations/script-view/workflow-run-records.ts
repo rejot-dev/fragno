@@ -20,6 +20,13 @@ const codemodeWorkflowRunParamsSchema = z.object({
     }),
     z.object({ type: z.literal("manual") }),
   ]),
+  // Runs from before runs reported where they end carry no `replyTo`.
+  replyTo: z
+    .discriminatedUnion("kind", [
+      z.object({ kind: z.literal("agent"), agentName: z.string() }),
+      z.object({ kind: z.literal("workflow") }),
+    ])
+    .nullish(),
 });
 
 export type WorkflowRunRecordSelector =
@@ -56,6 +63,10 @@ export function automationWorkflowRunsFromRecords(
                       eventType: codemodeParams.data.trigger.event.eventType,
                     }
                   : { type: "manual" },
+              agentName:
+                codemodeParams.data.replyTo?.kind === "agent"
+                  ? codemodeParams.data.replyTo.agentName
+                  : null,
             }
           : null,
     };

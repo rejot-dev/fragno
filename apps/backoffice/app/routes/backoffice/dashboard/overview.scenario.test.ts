@@ -18,7 +18,10 @@ import { createStateStore } from "@json-render/react";
 
 import { loadPage } from "@/artifacts/pages/build.server";
 import { checkPageSource } from "@/artifacts/pages/page-source.test-support";
-import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
+import {
+  createBackofficeSystemExecution,
+  type BackofficeExecutionContext,
+} from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { GENERAL_SKILL_CONTENT } from "@/files/content/skills";
@@ -35,6 +38,7 @@ import {
   type BackofficeScenarioContext,
 } from "@/fragno/automation/scenario";
 import { currentWorkflowWaits } from "@/fragno/automation/workflow-waits";
+import { piAgentActor } from "@/fragno/pi/agent/pi-agent-actor";
 
 import { ApiObject } from "../../../../workers/api-object";
 import { AppInstallationsObject } from "../../../../workers/app-installations-object";
@@ -162,6 +166,16 @@ function event(
     actors: createBackofficeSystemExecution(scope).actors,
     subject,
     causation: { kind: "origin" },
+  };
+}
+
+/** Acting as an agent's turn does, which lets the runs it starts reply to the agent. */
+function agentExecution(agentName: string): BackofficeExecutionContext {
+  const execution = createBackofficeSystemExecution(scope);
+  const { actors } = execution;
+  return {
+    ...execution,
+    actors: { ...actors, delegation: [...actors.delegation, piAgentActor(scope, agentName)] },
   };
 }
 
@@ -422,7 +436,11 @@ async function readHomePage(ctx: BackofficeScenarioContext, definition: PageDefi
  */
 async function assertHomePageMatchesDashboard(ctx: BackofficeScenarioContext) {
   const definition = await buildHomePage(ctx);
-  const { orchestration: _graph, ...dashboard } = await readDashboard(ctx);
+  const {
+    orchestration: _graph,
+    conversations: _conversations,
+    ...dashboard
+  } = await readDashboard(ctx);
   const { showsOrchestration, ...page } = await readHomePage(ctx, definition);
   assert.isTrue(showsOrchestration, "The home page shows the orchestration graph.");
   assert.deepEqual(page, dashboard);
@@ -462,6 +480,12 @@ async function readDashboard(ctx: BackofficeScenarioContext) {
       }
       throw new Error("Unsupported dashboard attention item.");
     }),
+    // The conversation each run waiting for input leads to.
+    conversations: dashboard.attention.flatMap((item) =>
+      item.kind === "awaiting-input"
+        ? [`${item.workflow}: ${item.run.codemode?.agentName ?? "no conversation"}`]
+        : [],
+    ),
     // Runs created within one millisecond tie on recency, so workflows are compared by name.
     workflows: dashboard.workflows
       .map(
@@ -688,6 +712,7 @@ describe("dashboard", () => {
                   "failing: charge-card ×1 (Error: card declined)",
                   "unavailable: mcp#agensi",
                 ],
+                conversations: ["approve-refund: no conversation"],
                 workflows: [
                   "approve-refund: 1 started, 0 complete, 0 errored, last waiting",
                   "await-shipment: 1 started, 0 complete, 0 errored, last waiting",
@@ -766,34 +791,57 @@ describe("dashboard", () => {
           subject: { orgId },
         }),
       }) as const;
+    const attentionOf = async (ctx: BackofficeScenarioContext) => {
+      const { attention, conversations } = await readDashboard(ctx);
+      return { attention, conversations };
+    };
 
     await runBackofficeScenario(
       defineBackofficeScenario({
         objects: scenarioObjects,
         env: { codemode: createCodemodeNodeExecutor(codemodeServer) },
-        name: "a ledger sync fails, recovers, and fails again",
+        name: "a ledger sync fails, recovers, and fails again while an agent's form waits",
         files: backofficeFiles.custom({ workspace: workflows }),
         options: { allowErroredWorkflows: true },
         setup: ({ given }) => [given.organization.exists({ id: orgId, name: "Ada Labs" })],
         steps: ({ when, then }) => [
           when.workflow.createInstance(syncRun("sync-1", true, start)),
           then.assert("the failed sync needs attention", async (ctx) => {
-            assert.deepEqual((await readDashboard(ctx)).attention, [
-              "failing: sync-ledger ×1 (Error: ledger offline)",
-            ]);
+            assert.deepEqual(await attentionOf(ctx), {
+              attention: ["failing: sync-ledger ×1 (Error: ledger offline)"],
+              conversations: [],
+            });
           }),
           when.time.advance("1 minute"),
           when.workflow.createInstance(syncRun("sync-2", false, start + 60_000)),
-          then.assert("the sync that completed clears the failure", async (ctx) => {
-            assert.deepEqual((await readDashboard(ctx)).attention, []);
-            await assertHomePageMatchesDashboard(ctx);
+          when.workflow.createInstance({
+            orgId,
+            instanceId: "refund-1",
+            path: "/workspace/automations/approve-refund.workflow.js",
+            event: event("trigger-refund-1", "shop", "refund.requested", start + 60_000),
+            execution: agentExecution("assistant"),
+            replyTo: { kind: "agent", agentName: "assistant" },
           }),
+          then.assert(
+            "the sync that completed clears the failure, and the form leads to the agent that started it",
+            async (ctx) => {
+              assert.deepEqual(await attentionOf(ctx), {
+                attention: ["input: approve-refund (ask for approval)"],
+                conversations: ["approve-refund: assistant"],
+              });
+              await assertHomePageMatchesDashboard(ctx);
+            },
+          ),
           when.time.advance("1 minute"),
           when.workflow.createInstance(syncRun("sync-3", true, start + 120_000)),
           then.assert("a failure after the recovery counts alone", async (ctx) => {
-            assert.deepEqual((await readDashboard(ctx)).attention, [
-              "failing: sync-ledger ×1 (Error: ledger offline)",
-            ]);
+            assert.deepEqual(await attentionOf(ctx), {
+              attention: [
+                "input: approve-refund (ask for approval)",
+                "failing: sync-ledger ×1 (Error: ledger offline)",
+              ],
+              conversations: ["approve-refund: assistant"],
+            });
             await assertHomePageMatchesDashboard(ctx);
           }),
         ],

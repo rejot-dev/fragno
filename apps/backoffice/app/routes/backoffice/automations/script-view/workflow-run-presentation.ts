@@ -71,6 +71,8 @@ export type CodemodeWorkflowRunProgram = {
   filename: string;
   code: string;
   trigger: CodemodeWorkflowRunTrigger;
+  /** The agent whose conversation started the run; null for runs no agent started. */
+  agentName: string | null;
 };
 
 export type AutomationWorkflowRun = {

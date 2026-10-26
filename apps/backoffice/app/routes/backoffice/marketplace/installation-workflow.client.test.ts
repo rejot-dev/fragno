@@ -37,7 +37,12 @@ const workflowRun = (input: Partial<AutomationWorkflowRun> = {}): AutomationWork
   workflowName: "codemode-script",
   remoteWorkflowName: "install-example",
   status: "waiting",
-  codemode: { filename: ".marketplace/install.workflow.js", code: "", trigger: { type: "manual" } },
+  codemode: {
+    filename: ".marketplace/install.workflow.js",
+    code: "",
+    trigger: { type: "manual" },
+    agentName: null,
+  },
   output: null,
   errorName: null,
   errorMessage: null,

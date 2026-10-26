@@ -34,7 +34,8 @@ export type ListRowExpansion = { label: string; content: ReactNode };
  * status. With `to`, the whole row leads there, so its trailing content holds no links; while that
  * page is open, as when the row's record shows beside its list, the row reads as selected. With an
  * expansion, the row opens to show its content below, such as a form to answer; then only the
- * title leads to `to`, so the rest of the row toggles.
+ * title leads to `to`, so the rest of the row toggles, and its trailing content can hold controls,
+ * such as links or buttons, which act without toggling.
  */
 export function ListRow({
   leading,
