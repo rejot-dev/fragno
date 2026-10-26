@@ -83,7 +83,7 @@ async function allPages<T>(
  */
 export async function loadTeam(request: Request, context: OrganizationContext): Promise<Team> {
   const { organization, user, roles } = context;
-  const backoffice = await connectAsUser(request, organization.id);
+  const backoffice = await connectAsUser(request, { kind: "org", orgId: organization.id });
   if (!backoffice) {
     throw organizationNotFound();
   }
