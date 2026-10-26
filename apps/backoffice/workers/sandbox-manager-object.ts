@@ -81,14 +81,18 @@ export class SandboxManagerObject extends RpcTarget implements SandboxManagerCom
     this.#host = implementation.createFragmentHost({
       name: "SandboxManager",
       createRuntime: () => {
-        const runtime = createSandboxManagerRuntime(implementation.fragmentDatabase, {
-          sandboxProviders: this.#sandboxProviders,
-          deliverLifecycleEvent: async (event) => {
-            await runtimeServices.objects.automations
-              .for(scope)
-              .commands.triggerIngestEvent(buildSandboxAutomationEvent(scope, event));
+        const runtime = createSandboxManagerRuntime(
+          implementation.fragmentDatabase,
+          {
+            sandboxProviders: this.#sandboxProviders,
+            deliverLifecycleEvent: async (event) => {
+              await runtimeServices.objects.automations
+                .for(scope)
+                .commands.triggerIngestEvent(buildSandboxAutomationEvent(scope, event));
+            },
           },
-        });
+          implementation.hostTelemetry("SandboxManager"),
+        );
         return runtime;
       },
       getMigrationFragments: (runtime) => [

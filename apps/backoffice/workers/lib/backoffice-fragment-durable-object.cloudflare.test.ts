@@ -56,6 +56,7 @@ const runOutboxHarness = async <TResult>(
     >({
       name: "OutboxHarness",
       configuredObjectLifecycle: noOpBackofficeConfiguredObjectLifecycle,
+      telemetry: { record() {} },
       state,
       env: env as unknown as CloudflareEnv,
       configKey: "outbox-harness-config",

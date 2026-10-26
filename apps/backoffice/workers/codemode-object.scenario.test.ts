@@ -1137,3 +1137,76 @@ test("a guest that fakes the bridge's interruption errors its workflow instead o
     }),
   );
 });
+
+test("an errored workflow and its failed tick each report their outcome once", async () => {
+  const path = "/workspace/automations/broken.workflow.js";
+  const started: AutomationEvent = {
+    id: "broken-started",
+    scopeRestriction: null,
+    scope: execution.scope,
+    source: "custom",
+    eventType: "broken.requested",
+    occurredAt: "2026-01-01T00:00:00.000Z",
+    payload: {},
+    actors: execution.actors,
+    subject: { orgId: "org-1" },
+    causation: { kind: "origin" },
+  };
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "errored workflow telemetry",
+      objects: scenarioObjects,
+      env: { codemode: createCodemodeNodeExecutor(server) },
+      files: backofficeFiles.custom({
+        workspace: {
+          "automations/broken.workflow.js": `export default defineWorkflow({ name: "broken" }, async () => {
+  throw new RangeError("the workflow broke");
+});`,
+        },
+      }),
+      setup: ({ given }) => [given.organization.exists({ id: "org-1" })],
+      steps: ({ when, then }) => [
+        when.workflow.createInstance({
+          orgId: "org-1",
+          instanceId: "broken-1",
+          execution,
+          path,
+          event: started,
+        }),
+        then.workflow.instance({ instanceId: "broken-1", status: "errored" }),
+        then.assert("each object reports its outcome once, with its scope", ({ telemetry }) => {
+          const scope = { kind: "org", orgId: "org-1" };
+          expect(telemetry.filter((signal) => signal.kind === "codemode-run-finished")).toEqual([
+            {
+              kind: "codemode-run-finished",
+              object: { host: "Codemode", scope },
+              runId: expect.any(String),
+              origin: { kind: "file", path },
+              activationKind: "workflow",
+              durationMs: expect.any(Number),
+              outcome: {
+                status: "failed",
+                error: expect.objectContaining({ name: "RangeError" }),
+              },
+            },
+          ]);
+          expect(telemetry.filter((signal) => signal.kind === "workflow-finished")).toEqual([
+            {
+              kind: "workflow-finished",
+              object: { host: "Automations", scope },
+              workflowName: "codemode-script",
+              program: "broken",
+              instanceId: "broken-1",
+              runGeneration: 1,
+              outcome: {
+                status: "errored",
+                error: expect.objectContaining({ message: "the workflow broke" }),
+              },
+            },
+          ]);
+        }),
+      ],
+      options: { allowErroredWorkflows: true },
+    }),
+  );
+});
