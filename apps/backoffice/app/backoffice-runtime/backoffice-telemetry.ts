@@ -1,3 +1,8 @@
+import {
+  backofficeScopeOrganization,
+  backofficeScopePathSegment,
+  type BackofficeContextScope,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { CodemodeWireError } from "@fragno-dev/codemode/execution/codemode-error-contract";
 import type { DurableHookAttempt, DurableHookAttemptOutcome } from "@fragno-dev/db/hooks";
 import type { WorkflowTerminalHookPayload } from "@fragno-dev/workflows/workflow";
@@ -18,6 +23,51 @@ export type BackofficeTelemetryObject = {
   /** Null for objects that no registry address names, such as Pi agents. */
   scope: BackofficeObjectScope | null;
 };
+
+/** How monitoring names a scope, in Cloudflare logs and spans as in PostHog. */
+export type BackofficeScopeFields = {
+  /** The scope's path, such as `org/org-1`; null for objects no registry address names. */
+  scope: string | null;
+  scopeKind: string;
+  orgId: string | null;
+};
+
+export function backofficeScopeFields(
+  scope: BackofficeObjectScope | BackofficeContextScope | null,
+): BackofficeScopeFields {
+  if (scope === null) {
+    return { scope: null, scopeKind: "unaddressed", orgId: null };
+  }
+  switch (scope.kind) {
+    case "singleton":
+    case "system":
+      return { scope: "system", scopeKind: "system", orgId: null };
+    case "named":
+      return { scope: `named:${scope.name}`, scopeKind: "named", orgId: null };
+    case "org":
+    case "user":
+    case "app":
+    case "project":
+      return {
+        scope: backofficeScopePathSegment(scope),
+        scopeKind: scope.kind,
+        orgId: backofficeScopeOrganization(scope)?.orgId ?? null,
+      };
+    default:
+      throw new Error("Unsupported Backoffice object scope kind.", {
+        cause: scope satisfies never,
+      });
+  }
+}
+
+/** The span attributes for a scope; absent values are left off the span. */
+export function backofficeScopeSpanAttributes(fields: BackofficeScopeFields) {
+  return {
+    "backoffice.scope": fields.scope ?? undefined,
+    "backoffice.scope_kind": fields.scopeKind,
+    "backoffice.org_id": fields.orgId ?? undefined,
+  };
+}
 
 /** An operational fact a host reports for monitoring, alongside its traces and logs. */
 export type BackofficeHostSignal =

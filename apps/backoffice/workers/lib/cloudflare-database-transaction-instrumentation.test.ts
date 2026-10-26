@@ -1,7 +1,8 @@
 import { assert, beforeEach, describe, expect, test, vi } from "vitest";
 
-const { enterSpan, setAttribute } = vi.hoisted(() => ({
+const { enterSpan, setAttribute, setAttributes } = vi.hoisted(() => ({
   setAttribute: vi.fn(),
+  setAttributes: vi.fn(),
   enterSpan: vi.fn((_name: string, callback: (span: unknown) => unknown) =>
     callback({ setAttribute: vi.fn() }),
   ),
@@ -9,14 +10,19 @@ const { enterSpan, setAttribute } = vi.hoisted(() => ({
 
 vi.mock("cloudflare:workers", () => ({ tracing: { enterSpan } }));
 
-import { cloudflareDatabaseTransactionInstrumentation } from "./cloudflare-database-transaction-instrumentation";
+import { createCloudflareDatabaseTransactionInstrumentation } from "./cloudflare-database-transaction-instrumentation";
+
+const orgScope = { scope: "org/org-1", scopeKind: "org", orgId: "org-1" };
+const cloudflareDatabaseTransactionInstrumentation =
+  createCloudflareDatabaseTransactionInstrumentation(orgScope);
 
 describe("cloudflareDatabaseTransactionInstrumentation", () => {
   beforeEach(() => {
     enterSpan.mockReset();
     setAttribute.mockReset();
+    setAttributes.mockReset();
     enterSpan.mockImplementation((_name: string, callback: (span: unknown) => unknown) =>
-      callback({ setAttribute }),
+      callback({ setAttribute, setAttributes }),
     );
   });
 
@@ -41,6 +47,11 @@ describe("cloudflareDatabaseTransactionInstrumentation", () => {
       "fragno.db.service.billing.recordEvent.mutate",
       expect.any(Function),
     );
+    expect(setAttributes).toHaveBeenCalledWith({
+      "backoffice.scope": "org/org-1",
+      "backoffice.scope_kind": "org",
+      "backoffice.org_id": "org-1",
+    });
     expect(setAttribute.mock.calls).toEqual([
       ["fragno.db.transaction.kind", "service"],
       ["fragno.db.transaction.name", "billing.recordEvent"],

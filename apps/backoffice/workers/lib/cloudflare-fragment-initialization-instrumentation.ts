@@ -4,9 +4,14 @@ import type {
 } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { tracing } from "cloudflare:workers";
 
+import {
+  backofficeScopeSpanAttributes,
+  type BackofficeScopeFields,
+} from "@/backoffice-runtime/backoffice-telemetry";
 import { backofficeFragmentInitializationSpanName } from "@/backoffice-runtime/runtime-instrumentation";
 
 function runCloudflareFragmentInitializationSpan<T>(
+  scope: BackofficeScopeFields,
   context: FragmentDurableObjectInitializationContext,
   execute: () => T,
 ): T {
@@ -14,6 +19,7 @@ function runCloudflareFragmentInitializationSpan<T>(
   try {
     const result = tracing.enterSpan(backofficeFragmentInitializationSpanName(context), (span) => {
       enteredSpan = true;
+      span.setAttributes(backofficeScopeSpanAttributes(scope));
       span.setAttribute("fragno.runtime.host.name", context.hostName);
       span.setAttribute("fragno.runtime.initialization.phase", context.phase);
       if (context.phase === "migrate") {
@@ -34,8 +40,11 @@ function runCloudflareFragmentInitializationSpan<T>(
   return execute();
 }
 
-/** Creates stable Cloudflare spans at the Fragno runtime creation and migration boundaries. */
-export const cloudflareFragmentInitializationInstrumentation: FragmentDurableObjectInitializationInstrumentation =
-  {
-    run: runCloudflareFragmentInitializationSpan,
+/** Creates stable Cloudflare spans at one object's runtime creation and migration boundaries. */
+export function createCloudflareFragmentInitializationInstrumentation(
+  scope: BackofficeScopeFields,
+): FragmentDurableObjectInitializationInstrumentation {
+  return {
+    run: (context, execute) => runCloudflareFragmentInitializationSpan(scope, context, execute),
   };
+}

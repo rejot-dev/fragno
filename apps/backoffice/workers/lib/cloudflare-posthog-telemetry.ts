@@ -1,13 +1,10 @@
-import {
-  backofficeScopeOrganization,
-  backofficeScopePathSegment,
-} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { PostHog } from "posthog-node";
 
-import type {
-  BackofficeTelemetry,
-  BackofficeTelemetryObject,
-  BackofficeTelemetrySignal,
+import {
+  backofficeScopeFields,
+  type BackofficeTelemetry,
+  type BackofficeTelemetryObject,
+  type BackofficeTelemetrySignal,
 } from "@/backoffice-runtime/backoffice-telemetry";
 
 import { createCloudflarePostHog, shutdownCloudflarePostHog } from "./cloudflare-posthog";
@@ -215,32 +212,11 @@ function captureRecordedException(
 }
 
 function objectProperties({ host, scope }: BackofficeTelemetryObject) {
-  if (scope === null) {
-    return { object: host, scope: null, scope_kind: "unaddressed", organization_id: null };
-  }
-  switch (scope.kind) {
-    case "singleton":
-      return { object: host, scope: "system", scope_kind: "system", organization_id: null };
-    case "named":
-      return {
-        object: host,
-        scope: `named:${scope.name}`,
-        scope_kind: "named",
-        organization_id: null,
-      };
-    case "org":
-    case "user":
-    case "app":
-    case "project":
-      return {
-        object: host,
-        scope: backofficeScopePathSegment(scope),
-        scope_kind: scope.kind,
-        organization_id: backofficeScopeOrganization(scope)?.orgId ?? null,
-      };
-    default:
-      throw new Error("Unsupported Backoffice object scope kind.", {
-        cause: scope satisfies never,
-      });
-  }
+  const fields = backofficeScopeFields(scope);
+  return {
+    object: host,
+    scope: fields.scope,
+    scope_kind: fields.scopeKind,
+    organization_id: fields.orgId,
+  };
 }

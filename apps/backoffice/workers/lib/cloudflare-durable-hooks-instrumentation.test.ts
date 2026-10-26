@@ -3,19 +3,27 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { DurableHookAttempt } from "@fragno-dev/db/hooks";
 import { FragnoId } from "@fragno-dev/db/schema";
 
-const { enterSpan, setAttribute } = vi.hoisted(() => {
+const { enterSpan, setAttribute, setAttributes } = vi.hoisted(() => {
   const setAttribute = vi.fn();
+  const setAttributes = vi.fn();
   return {
     setAttribute,
+    setAttributes,
     enterSpan: vi.fn((_name: string, callback: (span: unknown) => unknown) =>
-      callback({ isTraced: true, setAttribute }),
+      callback({ isTraced: true, setAttribute, setAttributes }),
     ),
   };
 });
 
 vi.mock("cloudflare:workers", () => ({ tracing: { enterSpan } }));
 
-import { cloudflareDurableHooksInstrumentation } from "./cloudflare-durable-hooks-instrumentation";
+import { createCloudflareDurableHooksInstrumentation } from "./cloudflare-durable-hooks-instrumentation";
+
+const cloudflareDurableHooksInstrumentation = createCloudflareDurableHooksInstrumentation({
+  scope: "org/org-1",
+  scopeKind: "org",
+  orgId: "org-1",
+});
 
 const attempt: DurableHookAttempt = {
   namespace: "auth",
@@ -34,6 +42,7 @@ describe("Cloudflare durable hooks instrumentation", () => {
   beforeEach(() => {
     enterSpan.mockClear();
     setAttribute.mockClear();
+    setAttributes.mockClear();
     vi.spyOn(console, "info").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -62,6 +71,11 @@ describe("Cloudflare durable hooks instrumentation", () => {
 
     expect(enterSpan).toHaveBeenCalledWith("fragno.durable_hooks.notify", expect.any(Function));
     expect(execute).toHaveBeenCalledOnce();
+    expect(setAttributes).toHaveBeenCalledWith({
+      "backoffice.scope": "org/org-1",
+      "backoffice.scope_kind": "org",
+      "backoffice.org_id": "org-1",
+    });
     expect(setAttribute.mock.calls).toEqual([
       ["fragno.hook.namespace", "automations"],
       ["fragno.hook.correlation_id", "producer-uow-1"],
@@ -81,6 +95,11 @@ describe("Cloudflare durable hooks instrumentation", () => {
 
     expect(enterSpan).toHaveBeenCalledWith("fragno.durable_hook.attempt", expect.any(Function));
     expect(execute).toHaveBeenCalledOnce();
+    expect(setAttributes).toHaveBeenCalledWith({
+      "backoffice.scope": "org/org-1",
+      "backoffice.scope_kind": "org",
+      "backoffice.org_id": "org-1",
+    });
     expect(setAttribute.mock.calls).toEqual([
       ["fragno.hook.namespace", "auth"],
       ["fragno.hook.name", "onOrganizationCreated"],
@@ -93,7 +112,13 @@ describe("Cloudflare durable hooks instrumentation", () => {
     expect(console.info).toHaveBeenNthCalledWith(
       1,
       "fragno.durable_hook.attempt.started",
-      expect.objectContaining({ hookName: "onOrganizationCreated", hookId: "hook-1" }),
+      expect.objectContaining({
+        hookName: "onOrganizationCreated",
+        hookId: "hook-1",
+        scope: "org/org-1",
+        scopeKind: "org",
+        orgId: "org-1",
+      }),
     );
     expect(console.info).toHaveBeenNthCalledWith(
       2,

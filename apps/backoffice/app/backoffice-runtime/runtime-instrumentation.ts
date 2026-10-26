@@ -8,7 +8,9 @@ import type {
   DatabaseTransactionInstrumentationContext,
 } from "@fragno-dev/db/transaction-instrumentation";
 
-/** Supplies runtime-specific tracing for Backoffice Fragment and durable-hook operations. */
+import type { BackofficeScopeFields } from "./backoffice-telemetry";
+
+/** Supplies runtime-specific tracing for one object's Fragment and durable-hook operations. */
 export type BackofficeRuntimeInstrumentation = {
   databaseTransactions: DatabaseTransactionInstrumentation;
   durableHooks: DurableHooksInstrumentation;
@@ -56,21 +58,23 @@ function backofficeInstrumentationErrorFields(error: unknown) {
 /** Executes one durable hook attempt with the canonical Backoffice lifecycle logs. */
 export async function executeLoggedBackofficeDurableHookAttempt<T>(
   attempt: DurableHookAttempt,
+  scope: BackofficeScopeFields,
   execute: () => Promise<T>,
 ): Promise<T> {
   const startedAt = Date.now();
-  console.info("fragno.durable_hook.attempt.started", backofficeDurableHookAttemptFields(attempt));
+  const fields = { ...backofficeDurableHookAttemptFields(attempt), ...scope };
+  console.info("fragno.durable_hook.attempt.started", fields);
 
   try {
     const result = await execute();
     console.info("fragno.durable_hook.attempt.completed", {
-      ...backofficeDurableHookAttemptFields(attempt),
+      ...fields,
       durationMs: Date.now() - startedAt,
     });
     return result;
   } catch (error) {
     console.error("fragno.durable_hook.attempt.failed", {
-      ...backofficeDurableHookAttemptFields(attempt),
+      ...fields,
       durationMs: Date.now() - startedAt,
       ...backofficeInstrumentationErrorFields(error),
     });

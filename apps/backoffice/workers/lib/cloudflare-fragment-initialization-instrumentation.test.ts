@@ -1,7 +1,8 @@
 import { assert, beforeEach, describe, expect, test, vi } from "vitest";
 
-const { enterSpan, setAttribute } = vi.hoisted(() => ({
+const { enterSpan, setAttribute, setAttributes } = vi.hoisted(() => ({
   setAttribute: vi.fn(),
+  setAttributes: vi.fn(),
   enterSpan: vi.fn((_name: string, callback: (span: unknown) => unknown) =>
     callback({ setAttribute: vi.fn() }),
   ),
@@ -9,14 +10,19 @@ const { enterSpan, setAttribute } = vi.hoisted(() => ({
 
 vi.mock("cloudflare:workers", () => ({ tracing: { enterSpan } }));
 
-import { cloudflareFragmentInitializationInstrumentation } from "./cloudflare-fragment-initialization-instrumentation";
+import { createCloudflareFragmentInitializationInstrumentation } from "./cloudflare-fragment-initialization-instrumentation";
+
+const orgScope = { scope: "org/org-1", scopeKind: "org", orgId: "org-1" };
+const cloudflareFragmentInitializationInstrumentation =
+  createCloudflareFragmentInitializationInstrumentation(orgScope);
 
 describe("cloudflareFragmentInitializationInstrumentation", () => {
   beforeEach(() => {
     enterSpan.mockReset();
     setAttribute.mockReset();
+    setAttributes.mockReset();
     enterSpan.mockImplementation((_name: string, callback: (span: unknown) => unknown) =>
-      callback({ setAttribute }),
+      callback({ setAttribute, setAttributes }),
     );
   });
 
@@ -42,6 +48,11 @@ describe("cloudflareFragmentInitializationInstrumentation", () => {
       "fragno.fragment_runtime.create",
       "fragno.fragment.migrate",
     ]);
+    expect(setAttributes).toHaveBeenCalledWith({
+      "backoffice.scope": "org/org-1",
+      "backoffice.scope_kind": "org",
+      "backoffice.org_id": "org-1",
+    });
     expect(setAttribute.mock.calls).toEqual([
       ["fragno.runtime.host.name", "Automations"],
       ["fragno.runtime.initialization.phase", "createRuntime"],
