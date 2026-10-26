@@ -166,6 +166,11 @@ existing Node-owned step policy and checkpoints. SQLite data defaults to `.backo
 `BACKOFFICE_SQLITE_DIR` in `.dev.vars` to use another path. The file and default data directory are
 ignored by git.
 
+`web.download` is not available on Node and fails as not configured. Node's `fetch` connects to
+whatever a hostname resolves to, so a URL could reach the server's private network, such as cloud
+metadata or internal services. Deployed Workers cannot connect to private addresses. Supporting Node
+needs a transport that checks every address its DNS lookup returns before connecting.
+
 ```bash
 pnpm --dir apps/backoffice start:node
 ```

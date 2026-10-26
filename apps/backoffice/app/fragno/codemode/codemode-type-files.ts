@@ -61,7 +61,7 @@ const CODEMODE_PROVIDER_SUMMARIES: Record<string, string> = {
   forms: "Schema-backed forms and their submissions. Read to create a form or read responses.",
   cloudflare:
     "Cloudflare Browser Run: screenshots, PDFs, crawls. Read to capture or crawl a page in a real browser.",
-  web: "URL and HTML extraction to content or Markdown. Read to fetch a web page.",
+  web: "Web pages as content or Markdown, and files downloaded from URLs into the workspace. Read to fetch a web page or download a file.",
   models:
     "Classifiers for typed questions about data and images, typed extraction from PDFs and images, and image generation. Read to classify, read a PDF, or generate images.",
   otp: "Identity-claim links for external senders. Read to let an external user link their account.",

@@ -68,6 +68,11 @@ export type CreateLocalBackofficeRuntimeOptions = {
   durableHooks?: LocalBackofficeDurableHooks;
   /** Enables file-backed SQLite object storage, auth and Fragment databases for a Node process. */
   sqliteDataDirectory?: string;
+  /**
+   * Reaches the public internet for `web.download`. Node's fetch connects to whatever a hostname
+   * resolves to, including private addresses, so by default Node does not download.
+   */
+  webFetch?: typeof fetch;
 };
 
 /** Creates the local object runtime used by Node production and in-process tests. */
@@ -144,6 +149,7 @@ export async function createLocalBackofficeRuntime(
     reson8: options.runtimeEnv.RESON8_API_KEY
       ? createReson8Server(options.runtimeEnv.RESON8_API_KEY)
       : null,
+    webFetch: options.webFetch ?? null,
     fragnoRuntime: {
       ...defaultFragnoRuntime,
       time: {

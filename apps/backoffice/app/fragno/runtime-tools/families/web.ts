@@ -1,6 +1,7 @@
 import { webExtractInputSchema } from "@fragno-dev/backoffice-api/v0/web";
 import type { z } from "zod";
 
+import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 import {
   parseCliTokens,
   readOutputOptions,
@@ -17,7 +18,10 @@ import type { WebExtractInput, WebRuntime } from "./web-runtime";
 
 export type { WebRuntime } from "./web-runtime";
 
-type WebToolContext = BackofficeToolContext<{ web?: WebRuntime }>;
+type WebToolContext = BackofficeToolContext<{
+  web?: WebRuntime;
+  state: BackofficeStateBackend | undefined;
+}>;
 
 const getWebRuntime = (runtime: WebToolContext["runtimes"]["web"]): WebRuntime => {
   if (!runtime) {
@@ -79,7 +83,23 @@ const webExtractTool = defineBackofficeRuntimeTool({
   },
 });
 
-export const webRuntimeTools = [webExtractTool] as const;
+const webDownloadTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("web.download"),
+  namespace: "web",
+  name: "download",
+  getResource: ({ path }) => ({ path }),
+  execute: async ({ url, path }, context: WebToolContext) => {
+    const state = context.runtimes.state;
+    if (!state) {
+      throw new Error("Downloading a file requires the workspace filesystem.");
+    }
+    const bytes = await getWebRuntime(context.runtimes.web).download(url);
+    await state.writeFileBytes(path, bytes);
+    return { path, sizeBytes: bytes.byteLength };
+  },
+});
+
+export const webRuntimeTools = [webExtractTool, webDownloadTool] as const;
 
 export const webToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "web",

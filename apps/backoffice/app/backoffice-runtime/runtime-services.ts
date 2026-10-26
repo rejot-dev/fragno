@@ -76,6 +76,11 @@ export type BackofficeRuntimeServices = {
   workerTypeChecker: WorkerTypeChecker | null;
   /** Speech-to-text under the platform key; null when the deployment has none. */
   reson8: Reson8Fragment | null;
+  /**
+   * Reaches the public internet for `web.download`, or null where connections cannot be kept to
+   * public addresses. Scenarios serve fake sites through it.
+   */
+  webFetch: typeof fetch | null;
   fragnoRuntime?: FragnoRuntime;
 };
 
@@ -221,6 +226,8 @@ export const createCloudflareBackofficeRuntimeServices = (
       ? createWorkerTypeCheckerServiceClient(env.CODEMODE_COMPILER)
       : null,
     reson8: env.RESON8_API_KEY ? createReson8Server(env.RESON8_API_KEY) : null,
+    // Deployed Workers cannot connect to private addresses, so their fetch stays public.
+    webFetch: async (input, init) => await fetch(input, init),
   };
 };
 

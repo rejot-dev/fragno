@@ -129,6 +129,10 @@ type BackofficePermissionRequirement =
       permission: "modify" | "read";
     }
   | {
+      namespace: "web";
+      permission: "download";
+    }
+  | {
       namespace: "workflow";
       permission: "executeCode" | "modify" | "read";
     };

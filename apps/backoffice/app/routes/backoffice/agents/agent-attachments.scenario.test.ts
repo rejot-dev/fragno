@@ -41,7 +41,7 @@ import {
 } from "./session-detail/assistant-runtime";
 
 const ORG_ID = "org-books";
-const SCOPE: BackofficeContextScope = { kind: "org", orgId: ORG_ID };
+const SCOPE: BackofficeContextScope = { kind: "org", orgId: ORG_ID, jurisdiction: null };
 const RECEIPT = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3, 4]);
 
 const runAgentAction = behindBackofficeLayout(agentAction);
