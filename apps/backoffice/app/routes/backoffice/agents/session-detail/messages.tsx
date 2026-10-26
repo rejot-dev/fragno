@@ -52,7 +52,7 @@ export function UserMessage() {
 
   return (
     <MessagePrimitive.Root asChild>
-      <ChatUserMessage time={createdAt ?? null}>
+      <ChatUserMessage time={createdAt ?? null} attachments={null}>
         <MessagePrimitive.Parts components={{ Text: MarkdownText, Image: MessageImage }} />
       </ChatUserMessage>
     </MessagePrimitive.Root>

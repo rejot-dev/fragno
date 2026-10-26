@@ -247,7 +247,7 @@ export function InConversation() {
       <ChatThread>
         <ChatViewport>
           <ChatColumn>
-            <ChatUserMessage time={SAMPLE_TIME}>
+            <ChatUserMessage time={SAMPLE_TIME} attachments={null}>
               <p>Chase the unpaid invoices. Let me check the Acme one before it goes out.</p>
             </ChatUserMessage>
             <ChatAssistantMessage author={{ name: "Pi", time: SAMPLE_TIME }} footer={null}>
@@ -304,7 +304,7 @@ export function InConversation() {
               <p>I started a workflow that sends a reminder for each unpaid invoice.</p>
             </ChatAssistantMessage>
 
-            <ChatUserMessage time={minutesAfterStart(2)}>
+            <ChatUserMessage time={minutesAfterStart(2)} attachments={null}>
               <p>While that runs: how much is outstanding in total?</p>
             </ChatUserMessage>
             <ChatAssistantMessage author={{ name: "Pi", time: minutesAfterStart(2) }} footer={null}>
