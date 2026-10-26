@@ -427,7 +427,7 @@ describe("admin app runtime tool SQLite scenarios", () => {
         ],
         steps: ({ when, then }) => [
           when.project.create({
-            owner: { kind: "org", orgId: "org-1" },
+            owner: { kind: "org", orgId: "org-1", jurisdiction: null },
             name: "Accounting",
             slug: "accounting",
             createdByUserId: "admin-1",
@@ -435,13 +435,13 @@ describe("admin app runtime tool SQLite scenarios", () => {
           }),
           then.assert("scope selection cannot expose global app management", async (ctx) => {
             for (const scope of [
-              { kind: "org", orgId: "org-1" },
+              { kind: "org", orgId: "org-1", jurisdiction: null },
               {
                 kind: "project",
-                owner: { kind: "org", orgId: "org-1" },
+                owner: { kind: "org", orgId: "org-1", jurisdiction: null },
                 projectId: ctx.vars.projectId,
               },
-              { kind: "user", userId: "admin-1" },
+              { kind: "user", userId: "admin-1", jurisdiction: null },
             ] satisfies BackofficeContextScope[]) {
               const context = appAdminContext(ctx, "admin-1", scope);
               assert(context.stateBackend);
@@ -646,7 +646,11 @@ describe("admin app runtime tool SQLite scenarios", () => {
                 executeBackofficeRuntimeTool(adminAppsRuntimeTools[1], input, tools),
               ).rejects.toThrow("registry cursor is invalid");
             }
-            const installations = ctx.runtime.objects.appInstallations.forOrg("org-1").commands;
+            const installations = ctx.runtime.objects.appInstallations.for({
+              kind: "org",
+              orgId: "org-1",
+              jurisdiction: null,
+            }).commands;
             for (const appId of registeredIds) {
               const installed = await installations.installApp({
                 actionsRevision: 1,

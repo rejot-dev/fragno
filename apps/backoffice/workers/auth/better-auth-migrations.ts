@@ -3,7 +3,7 @@ import { sql, type Kysely } from "kysely";
 import betterAuthSchemaSql from "./migrations/better-auth.sql?raw";
 
 /** Current application-owned Better Auth schema version stored by the Auth Durable Object. */
-export const BACKOFFICE_BETTER_AUTH_SCHEMA_VERSION = "better-auth-v3";
+export const BACKOFFICE_BETTER_AUTH_SCHEMA_VERSION = "better-auth-v4";
 
 function readBetterAuthGeneratedMigrationStatements(migrationSql: string): string[] {
   const trimmedMigration = migrationSql.trim();
@@ -30,6 +30,18 @@ async function addManagingOrganization<Database>(database: Kysely<Database>): Pr
   `.execute(database);
 }
 
+/**
+ * v4 records where users' and organizations' Durable Objects are kept, and when users finished
+ * onboarding. Those that existed before keep no jurisdiction, which is where their objects already
+ * are, and count as onboarded, so onboarding asks only people who sign up after it.
+ */
+async function addJurisdictionsAndOnboarding<Database>(database: Kysely<Database>): Promise<void> {
+  await sql`ALTER TABLE "user" ADD COLUMN "jurisdiction" text`.execute(database);
+  await sql`ALTER TABLE "user" ADD COLUMN "onboardedAt" date`.execute(database);
+  await sql`UPDATE "user" SET "onboardedAt" = "createdAt"`.execute(database);
+  await sql`ALTER TABLE "organization" ADD COLUMN "jurisdiction" text`.execute(database);
+}
+
 /** Applies the committed Better Auth SQL schema to a fresh database, or upgrades an older one. */
 export async function applyBackofficeBetterAuthSchemaMigrations<Database>(
   database: Kysely<Database>,
@@ -43,6 +55,10 @@ export async function applyBackofficeBetterAuthSchemaMigrations<Database>(
     case "better-auth-v1":
     case "better-auth-v2":
       await addManagingOrganization(database);
+      await addJurisdictionsAndOnboarding(database);
+      return;
+    case "better-auth-v3":
+      await addJurisdictionsAndOnboarding(database);
       return;
     case null:
       for (const statement of readBetterAuthGeneratedMigrationStatements(betterAuthSchemaSql)) {

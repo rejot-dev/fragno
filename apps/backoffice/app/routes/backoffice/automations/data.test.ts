@@ -14,20 +14,24 @@ import { loadAutomationScriptSource } from "./data.server";
 
 const mockContext = { get: () => ({ runtime: { objects: {} }, env: {} }) } as never;
 const verifiedRequestAuthority = {
+  userId: "user-1",
+  personalScope: { kind: "user" as const, userId: "user-1", jurisdiction: null },
   scopeRestriction: null,
   role: "user" as const,
-  organizationId: "acme-org",
-  administeredMemberId: null,
+  organization: { kind: "org" as const, orgId: "acme-org", jurisdiction: null },
+  administeredMember: null,
   expiresAt: new Date("2099-01-01T00:00:00.000Z"),
 };
 const orgExecution = createBackofficeRequestExecution({
-  scope: { kind: "org", orgId: "acme-org" },
-  userId: "user-1",
+  scope: { kind: "org", orgId: "acme-org", jurisdiction: null },
   verifiedRequestAuthority,
 });
 const projectExecution = createBackofficeRequestExecution({
-  scope: { kind: "project", owner: { kind: "org", orgId: "acme-org" }, projectId: "project-1" },
-  userId: "user-1",
+  scope: {
+    kind: "project",
+    owner: { kind: "org", orgId: "acme-org", jurisdiction: null },
+    projectId: "project-1",
+  },
   verifiedRequestAuthority,
 });
 

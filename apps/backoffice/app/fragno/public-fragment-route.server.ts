@@ -2,7 +2,8 @@ import {
   type BackofficePublicScope,
   type BackofficeRoutable,
   type BackofficeRoutableScope,
-  backofficeScopeOrganization,
+  type BackofficeScopeIdNames,
+  backofficeScopeRootOwner,
   mapBackofficeScopeNames,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { RouterContextProvider } from "react-router";
@@ -115,19 +116,28 @@ async function resolvePublicRouteScope(
   context: Readonly<RouterContextProvider>,
   routeScope: BackofficeRoutable<BackofficePublicScope>,
 ): Promise<BackofficeRoutableScope | null> {
-  const reference = backofficeScopeOrganization(routeScope);
-  const organization = reference
-    ? await context
-        .get(BackofficeWorkerContext)
-        .runtime.objects.auth.singleton()
-        .commands.getOrganizationBySlug(reference.orgSlug)
-    : null;
-  if (reference && !organization) {
+  const auth = context.get(BackofficeWorkerContext).runtime.objects.auth.singleton().commands;
+  const reference = backofficeScopeRootOwner(routeScope);
+  // Public URLs name root owners without jurisdictions; Auth knows where their objects are kept.
+  const rootOwner =
+    reference.kind === "org"
+      ? await auth.getOrganizationBySlug(reference.orgSlug).then(
+          (organization) =>
+            organization && {
+              kind: "org" as const,
+              orgId: organization.id,
+              jurisdiction: organization.jurisdiction,
+            },
+        )
+      : await auth.findRootOwnerScope({ kind: "user", userId: reference.userId });
+  if (!rootOwner) {
     return null;
   }
+  const { kind: _kind, ...rootOwnerNames } = rootOwner;
+  // The map visits only the kind of root owner found above.
   return mapBackofficeScopeNames(routeScope, {
-    // Only scopes with an organization reference visit this, and it was found above.
-    organization: () => ({ orgId: organization!.id }),
+    organization: () => rootOwnerNames as BackofficeScopeIdNames["organization"],
+    user: () => rootOwnerNames as BackofficeScopeIdNames["user"],
     project: ({ projectId }) => ({ projectId }),
   });
 }

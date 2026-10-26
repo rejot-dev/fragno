@@ -40,8 +40,8 @@ export const otpCapability: BackofficeCapability = {
       {
         id: "otp",
         label: "OTP",
-        getRepository: ({ objects, orgId }) =>
-          createDurableHookRepositoryFromCommands(objects.otp.forOrg(orgId).commands),
+        getRepository: ({ objects, organization }) =>
+          createDurableHookRepositoryFromCommands(objects.otp.for(organization).commands),
       },
     ],
     skillPaths: ["skills/otp-system/SKILL.md"],

@@ -90,7 +90,7 @@ const createTelegramObject = async ({
 
 const createState = (
   initialEntries?: Array<[string, unknown]>,
-  scope: BackofficeContextScope = { kind: "org", orgId: "acme" },
+  scope: BackofficeContextScope = { kind: "org", orgId: "acme", jurisdiction: null },
 ) => {
   const store = new Map<string, unknown>(initialEntries);
   let alarm: number | null = null;
@@ -263,7 +263,7 @@ describe("Telegram Durable Object", () => {
   });
 
   test("can be configured for a user scope", async () => {
-    const created = createState(undefined, { kind: "user", userId: "user-1" });
+    const created = createState(undefined, { kind: "user", userId: "user-1", jurisdiction: null });
     const { store } = created;
     const telegram = await createTelegramObject(created);
 
@@ -287,9 +287,13 @@ describe("Telegram Durable Object", () => {
     const response = await telegram.fetch(
       await createAuthorizedBackofficeObjectRequest({
         request: new Request("https://example.com/api/telegram/chats?scope=org:other-org"),
-        address: { binding: "TELEGRAM", scope: { kind: "org", orgId: "acme" } },
+        address: { binding: "TELEGRAM", scope: { kind: "org", orgId: "acme", jurisdiction: null } },
         context: {
-          execution: createBackofficeSystemExecution({ kind: "org", orgId: "acme" }),
+          execution: createBackofficeSystemExecution({
+            kind: "org",
+            orgId: "acme",
+            jurisdiction: null,
+          }),
           propagationContext: null,
         },
         env: {},
@@ -298,8 +302,8 @@ describe("Telegram Durable Object", () => {
 
     await expect(response.json()).resolves.toMatchObject({
       code: "SCOPE_MISMATCH",
-      expectedScope: { kind: "org", orgId: "acme" },
-      scope: { kind: "org", orgId: "other-org" },
+      expectedScope: { kind: "org", orgId: "acme", jurisdiction: null },
+      scope: { kind: "org", orgId: "other-org", jurisdiction: null },
     });
     assert(response.status === 409);
   });
@@ -350,9 +354,13 @@ describe("Telegram Durable Object", () => {
         request: new Request(
           `https://telegram.test${telegramAutomationFileDownloadPath("telegram-file-1")}`,
         ),
-        address: { binding: "TELEGRAM", scope: { kind: "org", orgId: "acme" } },
+        address: { binding: "TELEGRAM", scope: { kind: "org", orgId: "acme", jurisdiction: null } },
         context: {
-          execution: createBackofficeSystemExecution({ kind: "org", orgId: "acme" }),
+          execution: createBackofficeSystemExecution({
+            kind: "org",
+            orgId: "acme",
+            jurisdiction: null,
+          }),
           propagationContext: null,
         },
         env: {},

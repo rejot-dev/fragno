@@ -109,7 +109,7 @@ test("a shared Telegram conversation cannot inherit its legacy linked user's aut
             "provider provenance remains a shared conversation, not a human identity",
             async (ctx) => {
               const events = await ctx.runtime.objects.automations
-                .forOrg("org-1")
+                .for({ kind: "org", orgId: "org-1", jurisdiction: null })
                 .http.fetch(
                   new Request("https://automations.test/api/automations/events?limit=50"),
                 );
@@ -135,15 +135,21 @@ test("a shared Telegram conversation cannot inherit its legacy linked user's aut
               assert(event);
               expect(event.actors.initiator).toMatchObject({ type: "shared-chat", id: "-1001234" });
               await expect(
-                ctx.runtime.objects.otp.forOrg("org-1").commands.issueIdentityClaim(
-                  { expiresInMinutes: null },
-                  {
-                    kind: "deferred",
-                    scopeRestriction: null,
-                    scope: { kind: "org", orgId: "org-1" },
-                    actors: { initiator: event.actors.initiator, principal: null, delegation: [] },
-                  },
-                ),
+                ctx.runtime.objects.otp
+                  .for({ kind: "org", orgId: "org-1", jurisdiction: null })
+                  .commands.issueIdentityClaim(
+                    { expiresInMinutes: null },
+                    {
+                      kind: "deferred",
+                      scopeRestriction: null,
+                      scope: { kind: "org", orgId: "org-1", jurisdiction: null },
+                      actors: {
+                        initiator: event.actors.initiator,
+                        principal: null,
+                        delegation: [],
+                      },
+                    },
+                  ),
               ).rejects.toThrow("cannot be linked to a user");
               assert(ctx.fakes.telegram);
               expect(ctx.fakes.telegram.sendMessageCalls).toEqual([]);

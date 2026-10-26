@@ -28,7 +28,7 @@ describe("marketplace ingestion request rules", () => {
         organizationId: "org-1",
         targetScope: {
           kind: "project",
-          owner: { kind: "org", orgId: "org-2" },
+          owner: { kind: "org", orgId: "org-2", jurisdiction: null },
           projectId: "project-1",
         },
       }),
@@ -43,7 +43,7 @@ describe("marketplace ingestion request rules", () => {
         organizationId: "org-1",
         targetScope: {
           kind: "project",
-          owner: { kind: "org", orgId: "org-2" },
+          owner: { kind: "org", orgId: "org-2", jurisdiction: null },
           projectId: "project-1",
         },
         projectExists,
@@ -60,7 +60,7 @@ describe("marketplace ingestion request rules", () => {
         organizationId: "org-1",
         targetScope: {
           kind: "project",
-          owner: { kind: "org", orgId: "org-1" },
+          owner: { kind: "org", orgId: "org-1", jurisdiction: null },
           projectId: "missing-project",
         },
         projectExists: async () => false,
@@ -71,7 +71,7 @@ describe("marketplace ingestion request rules", () => {
     await expect(
       assertMarketplaceIngestionTargetAccessible({
         organizationId: "org-1",
-        targetScope: { kind: "user", userId: "former-member" },
+        targetScope: { kind: "user", userId: "former-member", jurisdiction: null },
         projectExists: async () => true,
         organizationHasMember: async () => false,
       }),

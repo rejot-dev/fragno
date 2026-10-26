@@ -89,7 +89,11 @@ test("ordinary SQL requests and alarm delivery do not acquire object-wide owners
           then.assert(
             "writes and alarms progress while another request is suspended",
             async ({ runtime }) => {
-              const object = runtime.objects.upload.forOrg("org-1");
+              const object = runtime.objects.upload.for({
+                kind: "org",
+                orgId: "org-1",
+                jurisdiction: null,
+              });
               await object.http.fetch(objectRequest("schedule"));
               await processor.discoverPersistedObjects();
               const request = object.http.fetch(objectRequest("wait"));
@@ -166,12 +170,12 @@ test("blockConcurrencyWhile serializes initialization but releases before the re
             "new events wait for initialization, not the whole request",
             async ({ runtime }) => {
               const initializing = runtime.objects.upload
-                .forOrg("org-1")
+                .for({ kind: "org", orgId: "org-1", jurisdiction: null })
                 .http.fetch(objectRequest("initialize"));
               await initializationStarted.promise;
               let readFinished = false;
               const reading = other.objects.upload
-                .forOrg("org-1")
+                .for({ kind: "org", orgId: "org-1", jurisdiction: null })
                 .http.fetch(objectRequest("state"))
                 .then(async (response) => {
                   readFinished = true;
@@ -233,7 +237,11 @@ test("callbacks scheduled during initialization do not retain its released claim
           then.assert(
             "later work uses ordinary SQL and a fresh initialization claim",
             async ({ runtime }) => {
-              const object = runtime.objects.upload.forOrg("org-1");
+              const object = runtime.objects.upload.for({
+                kind: "org",
+                orgId: "org-1",
+                jurisdiction: null,
+              });
               await object.http.fetch(objectRequest("initialize"));
               assert(detached);
               releaseWork.resolve();
@@ -322,13 +330,15 @@ test.each(["initialization", "alarm"] as const)(
             then.assert(
               "expired claims cannot affect the replacement owner",
               async ({ runtime }) => {
-                await runtime.objects.upload.forOrg("org-1").http.fetch(objectRequest("seed"));
+                await runtime.objects.upload
+                  .for({ kind: "org", orgId: "org-1", jurisdiction: null })
+                  .http.fetch(objectRequest("seed"));
                 await other.discoverPersistedObjects();
                 const stale =
                   kind === "alarm"
                     ? runtime.drainAlarms()
                     : runtime.objects.upload
-                        .forOrg("org-1")
+                        .for({ kind: "org", orgId: "org-1", jurisdiction: null })
                         .http.fetch(objectRequest("initialize"));
                 const staleResult = stale.then(
                   () => null,
@@ -349,7 +359,9 @@ test.each(["initialization", "alarm"] as const)(
                 const replacement =
                   kind === "alarm"
                     ? other.drainAlarms()
-                    : other.objects.upload.forOrg("org-1").http.fetch(objectRequest("initialize"));
+                    : other.objects.upload
+                        .for({ kind: "org", orgId: "org-1", jurisdiction: null })
+                        .http.fetch(objectRequest("initialize"));
                 await replacementStarted.promise;
                 try {
                   resumeStale.resolve();
@@ -378,7 +390,7 @@ test.each(["initialization", "alarm"] as const)(
                   await Promise.all([staleResult, replacement]);
                 }
                 const response = await other.objects.upload
-                  .forOrg("org-1")
+                  .for({ kind: "org", orgId: "org-1", jurisdiction: null })
                   .http.fetch(objectRequest("state"));
                 expect(await response.json()).toEqual({
                   value: "replacement",
@@ -444,7 +456,11 @@ test.each(["acknowledge", "delete", "postpone"] as const)(
             then.assert(
               "the newer generation survives and is delivered separately",
               async ({ runtime }) => {
-                const object = runtime.objects.upload.forOrg("org-1");
+                const object = runtime.objects.upload.for({
+                  kind: "org",
+                  orgId: "org-1",
+                  jurisdiction: null,
+                });
                 await object.http.fetch(objectRequest("schedule"));
                 await processor.discoverPersistedObjects();
                 const delivering = processor.drainAlarms();
@@ -495,9 +511,17 @@ test("a warm Node object reloads configured and cleared Fragment runtimes from s
           then.assert(
             "configuration changes are visible without reconstructing the object",
             async ({ runtime }) => {
-              const reader = other.objects.telegram.forOrg("org-1");
+              const reader = other.objects.telegram.for({
+                kind: "org",
+                orgId: "org-1",
+                jurisdiction: null,
+              });
               assert.equal((await reader.http.fetch(objectRequest("unknown-route"))).status, 400);
-              const writer = runtime.objects.telegram.forOrg("org-1");
+              const writer = runtime.objects.telegram.for({
+                kind: "org",
+                orgId: "org-1",
+                jurisdiction: null,
+              });
               await writer.commands.setAdminConfig({
                 botToken: "123456:scenario-telegram-token",
                 webhookSecretToken: "scenario-telegram-webhook-secret",

@@ -135,8 +135,8 @@ export const githubCapability: BackofficeCapability = {
       {
         id: "github",
         label: "GitHub",
-        getRepository: ({ objects, orgId }) =>
-          createDurableHookRepositoryFromCommands(objects.github.forOrg(orgId).commands),
+        getRepository: ({ objects, organization }) =>
+          createDurableHookRepositoryFromCommands(objects.github.for(organization).commands),
       },
     ],
     skillPaths: [],

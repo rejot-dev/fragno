@@ -28,6 +28,7 @@ function createOrganization(id: string, slug: string, name: string): Organizatio
     createdBy: "user-1",
     createdAt: new Date("2026-09-01T00:00:00.000Z"),
     updatedAt: new Date("2026-09-01T00:00:00.000Z"),
+    jurisdiction: null,
   };
 }
 
@@ -48,6 +49,8 @@ const authenticatedMe: BackofficeMeData = {
     banned: false,
     createdAt: new Date("2026-09-01T00:00:00.000Z"),
     updatedAt: new Date("2026-09-01T00:00:00.000Z"),
+    jurisdiction: null,
+    onboardedAt: new Date("2026-01-01T00:00:00.000Z"),
   },
   organizations: [activeOrganization, otherOrganization],
   activeOrganizationId: activeOrganization.organization.id,
@@ -55,12 +58,17 @@ const authenticatedMe: BackofficeMeData = {
 };
 
 const authenticatedPrincipal: BackofficeAuthPrincipal = {
-  user: { id: "user-1", email: "user@example.com", role: "user" },
+  user: {
+    id: "user-1",
+    email: "user@example.com",
+    role: "user",
+    personalScope: { kind: "user", userId: "user-1", jurisdiction: null },
+  },
   auth: {
     scopeRestriction: null,
     transport: "cookie",
     expiresAt,
-    organization: { id: "org-1", slug: "acme", roles: ["member"] },
+    organization: { id: "org-1", slug: "acme", jurisdiction: null, roles: ["member"] },
   },
 };
 
@@ -145,14 +153,15 @@ describe("Backoffice shell request middleware", () => {
           execution: {
             scope: {
               kind: "project",
-              owner: { kind: "org", orgId: "org-1" },
+              owner: { kind: "org", orgId: "org-1", jurisdiction: null },
               projectId: "project-1",
             },
             userAuthority: {
               scopeRestriction: null,
               kind: "verified-request-authority",
               userId: "user-1",
-              organizationId: "org-1",
+              personalScope: { kind: "user", userId: "user-1", jurisdiction: null },
+              organization: { kind: "org", orgId: "org-1", jurisdiction: null },
               expiresAtEpochMs: expiresAt.getTime(),
             },
           },
@@ -187,7 +196,7 @@ describe("Backoffice shell request middleware", () => {
     const next = vi.fn(async () => {
       expect(getBackofficeShellRequest(context)).toMatchObject({
         route: { status: "not-found" },
-        resolvedScope: { kind: "user", userId: "user-1" },
+        resolvedScope: { kind: "user", userId: "user-1", jurisdiction: null },
       });
       return new Response("descendant response");
     });
@@ -204,7 +213,7 @@ describe("Backoffice shell request middleware", () => {
     const { context } = createShellContext({ request });
     const next = vi.fn(async () => {
       expect(getBackofficeShellRequest(context)).toMatchObject({
-        resolvedScope: { kind: "user", userId: "user-1" },
+        resolvedScope: { kind: "user", userId: "user-1", jurisdiction: null },
         route: { status: "not-found" },
       });
       return new Response("descendant response");

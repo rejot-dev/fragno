@@ -26,7 +26,7 @@ import { piManagerDirectoryRoutes } from "./pi-manager-directory-routes";
 import { reportPiAgentTurnSettled } from "./pi-manager-fragment";
 import { piManagerTurnRoutes } from "./pi-manager-turn-routes";
 
-const ORG_SCOPE: BackofficeContextScope = { kind: "org", orgId: "queue-org" };
+const ORG_SCOPE: BackofficeContextScope = { kind: "org", orgId: "queue-org", jurisdiction: null };
 const AVAILABLE_MODELS = [
   {
     provider: "faux",

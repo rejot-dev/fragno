@@ -130,12 +130,12 @@ export const createBackofficeCapabilitiesRuntime = ({
   config: BackofficeRuntimeConfig;
   scope: BackofficeContextScope;
 }): BackofficeCapabilitiesRuntime => {
-  const ownerOrgId = backofficeWorkspaceOrganization(scope)?.orgId;
+  const organization = backofficeWorkspaceOrganization(scope);
   const capabilityContext = {
     objects,
     config,
     scope,
-    ...(ownerOrgId ? { orgId: ownerOrgId } : {}),
+    ...(organization ? { organization } : {}),
   } as BackofficeCapabilityContext;
   const contextScopeKind = scope.kind === "system" ? "singleton" : scope.kind;
   const scopeSupported = (capability: BackofficeCapability) => {

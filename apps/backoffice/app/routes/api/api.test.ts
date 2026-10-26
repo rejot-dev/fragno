@@ -46,7 +46,11 @@ beforeEach(() => {
 
 describe("public API fragment route", () => {
   test("resolves an organization slug before selecting the ID-backed API object", async () => {
-    getOrganizationBySlugMock.mockResolvedValue({ id: "org-123", slug: "acme" });
+    getOrganizationBySlugMock.mockResolvedValue({
+      id: "org-123",
+      slug: "acme",
+      jurisdiction: null,
+    });
     const request = new Request(
       "https://backoffice.example/api/http/org%3Aacme/webhooks/endpoints/slack/events",
       { method: "POST" },
@@ -60,7 +64,11 @@ describe("public API fragment route", () => {
 
     assert.equal(response.status, 200);
     expect(getOrganizationBySlugMock).toHaveBeenCalledWith("acme");
-    expect(apiForScopeMock).toHaveBeenCalledWith({ kind: "org", orgId: "org-123" });
+    expect(apiForScopeMock).toHaveBeenCalledWith({
+      kind: "org",
+      orgId: "org-123",
+      jurisdiction: null,
+    });
     expect(authorizeBackofficeContextMock).not.toHaveBeenCalled();
 
     const forwardedRequest = apiFetchMock.mock.calls[0][0] as Request;
@@ -70,7 +78,11 @@ describe("public API fragment route", () => {
   });
 
   test("supplies the canonical slug-backed redirect URI when OAuth starts", async () => {
-    getOrganizationBySlugMock.mockResolvedValue({ id: "org-123", slug: "acme" });
+    getOrganizationBySlugMock.mockResolvedValue({
+      id: "org-123",
+      slug: "acme",
+      jurisdiction: null,
+    });
     const oauthOptionsBody = `{ "scopes": ["repo"] }`;
     const request = new Request(
       "https://backoffice.example/api/http/org%3Aacme/connections/github/auth/oauth/start?redirectUri=https%3A%2F%2Fattacker.example%2Fcallback",

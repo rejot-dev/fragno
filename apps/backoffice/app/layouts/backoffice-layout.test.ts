@@ -2,10 +2,12 @@ import { describe, expect, test } from "vitest";
 
 import { resolveBackofficePageScope } from "./backoffice-layout-scope";
 
-const organization = { id: "org-route", slug: "route-org" };
+const organization = { id: "org-route", slug: "route-org", jurisdiction: null };
 const project = { id: "project-1", slug: "website" };
 const lookups = {
   organizations: [organization],
+  // Page URLs name users by ID alone; resolving one finds where their objects are kept.
+  findUser: async (userId: string) => ({ userId, jurisdiction: "eu" as const }),
   isAppInstalled: async () => true,
   findProject: async (_owner: unknown, slug: string) => (slug === project.slug ? project : null),
 };
@@ -18,7 +20,7 @@ describe("resolveBackofficePageScope", () => {
     ],
     [
       { scopeKind: "user", scopeId: "user-route" },
-      { kind: "user", userId: "user-route" },
+      { kind: "user", userId: "user-route", jurisdiction: "eu" },
     ],
     [
       { scopeKind: "project", scopeId: "org:route-org:website" },

@@ -42,6 +42,7 @@ import {
 } from "@/fragno/automation/engine/codemode-invocation";
 import { defineCodemodeWorkflow } from "@/fragno/automation/engine/codemode-workflow";
 import { listAutomationEventDescriptors } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
+import { defineOnboardingWorkflow } from "@/fragno/onboarding/onboarding-workflow";
 import { piAgentActor } from "@/fragno/pi/agent/pi-agent-actor";
 import type { PiAgentNotification } from "@/fragno/pi/agent/pi-agent-contract";
 import { createPiManagerRuntime } from "@/fragno/pi/manager/pi-manager-runtime";
@@ -190,6 +191,10 @@ export const createAutomationsRuntime = (
       workflows: {
         CODEMODE_SCRIPT: defineCodemodeWorkflow(config),
         MARKETPLACE_PACKAGE_PUBLISH: defineMarketplacePackagePublishWorkflow({
+          ownerScope: config.ownerScope,
+          runtime: config.runtime,
+        }),
+        ONBOARDING: defineOnboardingWorkflow({
           ownerScope: config.ownerScope,
           runtime: config.runtime,
         }),

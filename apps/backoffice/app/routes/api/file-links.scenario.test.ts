@@ -43,7 +43,7 @@ const scenarioObjects = {
   UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
 
-const ORG_SCOPE = { kind: "org", orgId: "org-1" } as const;
+const ORG_SCOPE = { kind: "org", orgId: "org-1", jurisdiction: null } as const;
 
 async function createLink(
   ctx: BackofficeScenarioContext,
@@ -132,7 +132,7 @@ test("a sandbox pulls a workspace folder and pushes its results back through fil
           await expect(state.readFile("/workspace/results/summary.md")).resolves.toBe("# Done\n");
           await expect(state.readFile("/workspace/results/charts/sales.json")).resolves.toBe("[]");
           const listed = await ctx.runtime.objects.upload
-            .forOrg("org-1")
+            .for({ kind: "org", orgId: "org-1", jurisdiction: null })
             .http.fetch(
               new Request(
                 "https://upload.internal/api/upload/files/by-key?provider=database&key=results/summary.md",
@@ -183,7 +183,7 @@ test("an organization's sandbox reads personal workspace files through their fil
       setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
       steps: ({ then }) => [
         then.assert("a personal file links from an organization run", async (ctx) => {
-          const personalScope = { kind: "user", userId: "user-1" } as const;
+          const personalScope = { kind: "user", userId: "user-1", jurisdiction: null } as const;
           const personalState = createRuntimeStateBackend({
             runtime: ctx.runtime.services,
             kernel: new BackofficeKernel(ctx.runtime.services),

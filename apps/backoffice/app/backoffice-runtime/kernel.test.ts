@@ -25,7 +25,7 @@ const scopeKernel = new BackofficeKernel({
 const linkedExecution = {
   kind: "deferred" as const,
   scopeRestriction: null,
-  scope: { kind: "org", orgId: "org-1" } as const,
+  scope: { kind: "org", orgId: "org-1", jurisdiction: null } as const,
   actors: {
     initiator: {
       scope: "external" as const,
@@ -279,9 +279,10 @@ describe("BackofficeKernel.invoke", () => {
             scopeRestriction: null,
             kind: "verified-request-authority",
             userId: "user-2",
+            personalScope: { kind: "user" as const, userId: "user-2", jurisdiction: null },
             role: "user",
-            organizationId: "org-1",
-            administeredMemberId: null,
+            organization: { kind: "org" as const, orgId: "org-1", jurisdiction: null },
+            administeredMember: null,
             expiresAtEpochMs: Date.now() + 60_000,
           },
         },
@@ -521,7 +522,7 @@ describe("BackofficeKernel.invoke", () => {
     const execution = {
       kind: "deferred" as const,
       scopeRestriction: null,
-      scope: { kind: "org", orgId: "org-1" } as const,
+      scope: { kind: "org", orgId: "org-1", jurisdiction: null } as const,
       actors: {
         initiator: {
           scope: "external" as const,
@@ -570,7 +571,7 @@ describe("BackofficeKernel.assertScopedContextAccess", () => {
     expect(() =>
       scopeKernel.assertScopedContextAccess(linkedExecution, {
         kind: "project",
-        owner: { kind: "org" as const, orgId: "org-1" },
+        owner: { kind: "org" as const, orgId: "org-1", jurisdiction: null },
         projectId: "project-1",
       }),
     ).not.toThrow();
@@ -578,6 +579,7 @@ describe("BackofficeKernel.assertScopedContextAccess", () => {
       scopeKernel.assertScopedContextAccess(linkedExecution, {
         kind: "user",
         userId: "user-1",
+        jurisdiction: null,
       }),
     ).not.toThrow();
 
@@ -585,6 +587,7 @@ describe("BackofficeKernel.assertScopedContextAccess", () => {
       scopeKernel.assertScopedContextAccess(linkedExecution, {
         kind: "user",
         userId: "user-2",
+        jurisdiction: null,
       }),
     ).toThrow(BackofficeForbiddenError);
     // Membership in org-2 is decided when an action there resolves the user's permissions.
@@ -592,6 +595,7 @@ describe("BackofficeKernel.assertScopedContextAccess", () => {
       scopeKernel.assertScopedContextAccess(linkedExecution, {
         kind: "org",
         orgId: "org-2",
+        jurisdiction: null,
       }),
     ).not.toThrow();
     expect(() =>
@@ -603,7 +607,7 @@ describe("BackofficeKernel.assertScopedContextAccess", () => {
     const serviceExecution = {
       kind: "deferred" as const,
       scopeRestriction: null,
-      scope: { kind: "org", orgId: "org-1" } as const,
+      scope: { kind: "org", orgId: "org-1", jurisdiction: null } as const,
       actors: {
         initiator: {
           scope: "internal" as const,
@@ -625,6 +629,7 @@ describe("BackofficeKernel.assertScopedContextAccess", () => {
       scopeKernel.assertScopedContextAccess(serviceExecution, {
         kind: "org",
         orgId: "org-2",
+        jurisdiction: null,
       }),
     ).toThrow(BackofficeForbiddenError);
   });
@@ -655,7 +660,7 @@ describe("BackofficeKernel.assertScopedContextAccess", () => {
             ],
           },
         },
-        { kind: "org", orgId: "org-1" },
+        { kind: "org", orgId: "org-1", jurisdiction: null },
       ),
     ).toThrow(BackofficeForbiddenError);
   });
@@ -683,7 +688,7 @@ describe("BackofficeKernel.assertScopedContextAccess", () => {
             delegation: [],
           },
         },
-        { kind: "org", orgId: "org-1" },
+        { kind: "org", orgId: "org-1", jurisdiction: null },
       ),
     ).not.toThrow();
   });
@@ -706,7 +711,7 @@ describe("BackofficeKernel.assertScopedContextAccess", () => {
             delegation: [],
           },
         },
-        { kind: "org", orgId: "org-1" },
+        { kind: "org", orgId: "org-1", jurisdiction: null },
       ),
     ).not.toThrow();
   });
@@ -716,17 +721,17 @@ describe("BackofficeKernel.assertScopeAllowedByOwner", () => {
   test("allows organization and project scopes owned by the organization", async () => {
     await expect(
       scopeKernel.assertScopeAllowedByOwner({
-        ownerScope: { kind: "org", orgId: "org-1" },
-        targetScope: { kind: "org", orgId: "org-1" },
+        ownerScope: { kind: "org", orgId: "org-1", jurisdiction: null },
+        targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
         operation: "automation.forward-event",
       }),
     ).resolves.toBeUndefined();
     await expect(
       scopeKernel.assertScopeAllowedByOwner({
-        ownerScope: { kind: "org", orgId: "org-1" },
+        ownerScope: { kind: "org", orgId: "org-1", jurisdiction: null },
         targetScope: {
           kind: "project",
-          owner: { kind: "org" as const, orgId: "org-1" },
+          owner: { kind: "org" as const, orgId: "org-1", jurisdiction: null },
           projectId: "project-1",
         },
         operation: "automation.forward-event",
@@ -737,8 +742,8 @@ describe("BackofficeKernel.assertScopeAllowedByOwner", () => {
   test("allows user scopes pending organization membership enforcement", async () => {
     await expect(
       scopeKernel.assertScopeAllowedByOwner({
-        ownerScope: { kind: "org", orgId: "org-1" },
-        targetScope: { kind: "user", userId: "user-1" },
+        ownerScope: { kind: "org", orgId: "org-1", jurisdiction: null },
+        targetScope: { kind: "user", userId: "user-1", jurisdiction: null },
         operation: "automation.forward-event",
       }),
     ).resolves.toBeUndefined();
@@ -746,16 +751,16 @@ describe("BackofficeKernel.assertScopeAllowedByOwner", () => {
 
   test.each([
     { kind: "system" as const },
-    { kind: "org" as const, orgId: "org-2" },
+    { kind: "org" as const, orgId: "org-2", jurisdiction: null },
     {
       kind: "project" as const,
-      owner: { kind: "org" as const, orgId: "org-2" },
+      owner: { kind: "org" as const, orgId: "org-2", jurisdiction: null },
       projectId: "project-1",
     },
   ])("rejects $kind scopes outside the owning organization", async (targetScope) => {
     await expect(
       scopeKernel.assertScopeAllowedByOwner({
-        ownerScope: { kind: "org", orgId: "org-1" },
+        ownerScope: { kind: "org", orgId: "org-1", jurisdiction: null },
         targetScope,
         operation: "automation.forward-event",
       }),

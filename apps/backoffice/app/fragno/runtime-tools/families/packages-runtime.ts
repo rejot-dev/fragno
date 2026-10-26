@@ -7,6 +7,7 @@ import {
   type PackageUninstallation,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import {
+  type BackofficeOrganizationContextScope,
   backofficeScopeRootOwner,
   isBackofficeRoutableScope,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
@@ -16,6 +17,7 @@ import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
+import { backofficeOrganizationContextScope } from "@/backoffice-runtime/resolved-scope";
 import { marketplaceScopeForVisibility } from "@/fragno/marketplace/owner";
 
 /** Package listing reads the current workspace's installations, not a registry query. */
@@ -56,7 +58,7 @@ export function createPackagesRuntime({
         throw new Error("Packages cannot be installed into an app's workspace.");
       }
       const owner = backofficeScopeRootOwner(targetScope);
-      let organizationId: string;
+      let workflowScope: BackofficeOrganizationContextScope;
       // A user's workspace installs through one of the user's organizations.
       if (owner.kind === "user") {
         const me = await objects.auth.singleton().commands.getBackofficeMe({
@@ -70,11 +72,10 @@ export function createPackagesRuntime({
         if (!organization) {
           throw new Error("Join an organization to install this automation.");
         }
-        organizationId = organization.organization.id;
+        workflowScope = backofficeOrganizationContextScope(organization.organization);
       } else {
-        organizationId = owner.orgId;
+        workflowScope = owner;
       }
-      const workflowScope = { kind: "org" as const, orgId: organizationId };
       // Organization visibility installs from the coordinating organization's own Marketplace.
       const marketplace = marketplaceScopeForVisibility(visibility, workflowScope);
       const result = await kernel

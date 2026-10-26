@@ -9,7 +9,11 @@ import {
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { useOutletContext } from "react-router";
 
-import { resolveBackofficeUserAuthorityRole } from "@/backoffice-runtime/authority-roles";
+import {
+  type BackofficeUserAuthority,
+  resolveBackofficeUserAuthorityRole,
+} from "@/backoffice-runtime/authority-roles";
+import { backofficeOrganizationContextScope } from "@/backoffice-runtime/resolved-scope";
 import { backofficePageBodyClassName } from "@/components/backoffice/page-body";
 import {
   createBackofficeExecutionForPrincipal,
@@ -34,56 +38,53 @@ type PermissionScopeDefinition = Readonly<{
   scope: BackofficeContextScope;
 }>;
 
-const permissionScopeDefinitions = (
-  userId: string,
-  role: "user" | "admin",
-  organizationId: string | null,
-): PermissionScopeDefinition[] => [
+const permissionScopeDefinitions = ({
+  personalScope,
+  role,
+  organization,
+}: BackofficeUserAuthority): PermissionScopeDefinition[] => [
   ...(role === "admin" ? [{ key: "system", scope: { kind: "system" as const } }] : []),
-  { key: `user:${userId}`, scope: { kind: "user", userId } },
-  ...(organizationId
-    ? [{ key: `org:${organizationId}`, scope: { kind: "org" as const, orgId: organizationId } }]
-    : []),
+  ...(personalScope ? [{ key: `user:${personalScope.userId}`, scope: personalScope }] : []),
+  ...(organization ? [{ key: `org:${organization.orgId}`, scope: organization }] : []),
 ];
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const auth = await requireBackofficePrincipal(request, context);
-  const organizationId = auth.auth.organization?.id ?? null;
-  const authority = {
+  const organization = auth.auth.organization;
+  const authority: BackofficeUserAuthority = {
     userId: auth.user.id,
+    personalScope: auth.user.personalScope,
     role: auth.user.role,
-    organizationId,
+    organization: organization && backofficeOrganizationContextScope(organization),
     // These are the user's own scopes, which no organization administration reaches into.
-    administeredMemberId: null,
+    administeredMember: null,
   };
   const { runtime } = context.get(BackofficeWorkerContext);
 
   const scopes = await Promise.all(
-    permissionScopeDefinitions(auth.user.id, auth.user.role, organizationId).map(
-      async ({ key, scope }) => {
-        const execution = await createBackofficeExecutionForPrincipal(
-          auth,
-          scope,
-          routerContextIdentities(context),
-        );
-        const principal = execution.actors.principal;
-        if (!principal) {
-          throw new Error("User authority inspection requires a principal.");
-        }
+    permissionScopeDefinitions(authority).map(async ({ key, scope }) => {
+      const execution = await createBackofficeExecutionForPrincipal(
+        auth,
+        scope,
+        routerContextIdentities(context),
+      );
+      const principal = execution.actors.principal;
+      if (!principal) {
+        throw new Error("User authority inspection requires a principal.");
+      }
 
-        const grants = await runtime.authorityResolver.resolvePrincipalPermissions({
-          principal,
-          execution,
-        });
+      const grants = await runtime.authorityResolver.resolvePrincipalPermissions({
+        principal,
+        execution,
+      });
 
-        return {
-          key,
-          scope,
-          role: resolveBackofficeUserAuthorityRole(authority, scope),
-          grants,
-        };
-      },
-    ),
+      return {
+        key,
+        scope,
+        role: resolveBackofficeUserAuthorityRole(authority, scope),
+        grants,
+      };
+    }),
   );
 
   return {

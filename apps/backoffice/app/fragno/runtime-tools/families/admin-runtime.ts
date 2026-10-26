@@ -1,4 +1,5 @@
 import type { AppActionsDeclaration } from "@fragno-dev/backoffice-api/v0/apps";
+import type { BackofficeOrganizationContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import type {
   AuthCommands,
@@ -6,6 +7,7 @@ import type {
   OtpCommands,
   ResendCommands,
 } from "@/backoffice-runtime/object-registry";
+import { backofficeOrganizationContextScope } from "@/backoffice-runtime/resolved-scope";
 import type { BackofficeAppsCommands } from "@/fragno/apps/contracts";
 import { requireBackofficeAppOperationValue } from "@/fragno/apps/errors";
 import { buildSignUpInvitationEmail } from "@/transactional-emails/sign-up-invitation";
@@ -66,18 +68,24 @@ type AdminRuntimeDependencies = {
   apps: BackofficeAppsCommands | null;
   otp: AdminOtpCommands | null;
   resend: AdminResendCommands | null;
-  automationsForOrg: (organizationId: string) => Pick<AutomationsCommands, "deleteEventsOfType">;
+  automationsFor: (
+    organization: BackofficeOrganizationContextScope,
+  ) => Pick<AutomationsCommands, "deleteEventsOfType">;
   publicBaseUrl: string | null;
 };
 
-async function requireAdminOrganizationId(auth: AdminAuthCommands, organizationSlug: string) {
+async function requireAdminOrganization(auth: AdminAuthCommands, organizationSlug: string) {
   const organization = await auth.getOrganizationBySlug(organizationSlug);
   if (!organization) {
     throw new Error(
       `Admin organization command could not find organization slug '${organizationSlug}'.`,
     );
   }
-  return organization.id;
+  return organization;
+}
+
+async function requireAdminOrganizationId(auth: AdminAuthCommands, organizationSlug: string) {
+  return (await requireAdminOrganization(auth, organizationSlug)).id;
 }
 
 /** Creates the system administration runtime backed by singleton Backoffice objects. */
@@ -86,7 +94,7 @@ export function createAdminRuntime({
   apps,
   otp,
   resend,
-  automationsForOrg,
+  automationsFor,
   publicBaseUrl,
 }: AdminRuntimeDependencies): AdminRuntime {
   return {
@@ -185,10 +193,12 @@ export function createAdminRuntime({
     verifyUserEmail: async (input) => await auth.verifyAdminUserEmail(input),
     createOrganization: async (input) => await auth.createAdminOrganization(input),
     listOrganizations: async (input) => await auth.listOrganizations(input),
-    deleteOrganizationEventsOfType: async ({ organizationSlug, ...pass }) =>
-      await automationsForOrg(
-        await requireAdminOrganizationId(auth, organizationSlug),
-      ).deleteEventsOfType(pass),
+    deleteOrganizationEventsOfType: async ({ organizationSlug, ...pass }) => {
+      const organization = await requireAdminOrganization(auth, organizationSlug);
+      return await automationsFor(
+        backofficeOrganizationContextScope(organization),
+      ).deleteEventsOfType(pass);
+    },
     getOrganization: async ({ organizationSlug }) => {
       const organizationId = await requireAdminOrganizationId(auth, organizationSlug);
       const [organization, relations] = await Promise.all([

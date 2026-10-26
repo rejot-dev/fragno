@@ -83,7 +83,7 @@ const createAutomationContext = () => ({
   event: {
     id: "event-1",
     scopeRestriction: null,
-    scope: { kind: "org" as const, orgId: "org-1" },
+    scope: { kind: "org" as const, orgId: "org-1", jurisdiction: null },
     source: "telegram",
     eventType: "message.received",
     occurredAt: "2026-01-01T00:00:00.000Z",
@@ -113,7 +113,7 @@ const createAutomationContext = () => ({
     emitEvent: async ({ eventType, source }: { eventType: string; source?: string }) => ({
       accepted: true,
       eventId: "emitted-1",
-      scope: { kind: "org" as const, orgId: "org-1" },
+      scope: { kind: "org" as const, orgId: "org-1", jurisdiction: null },
       source: source ?? "telegram",
       eventType,
     }),
@@ -128,7 +128,7 @@ describe("interactive bash host", () => {
         stateBackend: createTestStateBackend(),
         execution: {
           ...EMPTY_BASH_HOST_CONTEXT.execution,
-          scope: { kind: "org", orgId: "org-1" },
+          scope: { kind: "org", orgId: "org-1", jurisdiction: null },
         },
       },
     });

@@ -3,8 +3,6 @@ import "@fragno-private/design-system/components.css";
 import { Button } from "@fragno-private/design-system/button";
 import { Field } from "@fragno-private/design-system/field";
 import { FormContainer } from "@fragno-private/design-system/form-container";
-import { BackofficeFragmentMark } from "@fragno-private/design-system/fragment-mark";
-import { Icon } from "@fragno-private/design-system/icon";
 import { Input } from "@fragno-private/design-system/input";
 import { useState } from "react";
 import {
@@ -24,6 +22,7 @@ import {
   getBackofficeMe,
 } from "@/fragno/auth/auth-server";
 import { requestEmailVerificationResend } from "@/fragno/auth/email-verification.server";
+import { BackofficeStandaloneLayout, BackToHomeLink } from "@/layouts/backoffice-standalone-layout";
 
 import type { Route } from "./+types/login";
 import { AppSignIn } from "./app-sign-in";
@@ -358,30 +357,8 @@ function BackofficeLogin({
   };
 
   return (
-    <div
-      data-backoffice-root
-      className="relative isolate min-h-screen bg-[var(--bo-bg)] text-[var(--bo-fg)]"
-    >
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(0deg,rgba(var(--bo-overlay),0.96),rgba(var(--bo-overlay),0.96)),linear-gradient(90deg,rgba(var(--bo-grid),0.45)_1px,transparent_1px),linear-gradient(0deg,rgba(var(--bo-grid),0.45)_1px,transparent_1px)] bg-[size:100%_100%,28px_28px,28px_28px]" />
-      <header className="relative mx-auto flex min-h-16 w-full max-w-[1180px] items-center justify-between px-5 sm:px-8 lg:px-12">
-        <Link
-          to="/"
-          className="flex min-h-11 items-center gap-3 text-[10px] font-bold tracking-[0.16em] text-[var(--bo-fg)] uppercase no-underline"
-          aria-label="ReJot Backoffice home"
-        >
-          <BackofficeFragmentMark size="md" />
-          ReJot Backoffice
-        </Link>
-        <Link
-          to="/"
-          className="inline-flex min-h-11 items-center gap-2 text-[10px] font-bold tracking-[0.14em] text-[var(--bo-muted)] uppercase no-underline transition-colors duration-150 hover:text-[var(--bo-fg)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--bo-accent)]"
-        >
-          <Icon name="arrow-left" className="size-3.5" />
-          Back to home
-        </Link>
-      </header>
-
-      <div className="relative mx-auto grid w-full max-w-[1180px] items-start gap-8 px-5 py-6 sm:px-8 sm:py-8 lg:min-h-[calc(100svh-4rem)] lg:grid-cols-[minmax(0,1fr)_28rem] lg:items-center lg:gap-12 lg:px-12 lg:py-12">
+    <BackofficeStandaloneLayout headerEnd={<BackToHomeLink />}>
+      <div className="mx-auto grid w-full max-w-[1180px] flex-1 items-start gap-8 px-5 py-6 sm:px-8 sm:py-8 lg:grid-cols-[minmax(0,1fr)_28rem] lg:items-center lg:gap-12 lg:px-12 lg:py-12">
         <section className="hidden lg:order-1 lg:block">
           <h1 className="max-w-2xl text-[clamp(3rem,6vw,6rem)] leading-[0.92] font-[560] tracking-[-0.065em] text-balance">
             AI is a tool,
@@ -510,6 +487,6 @@ function BackofficeLogin({
           </FormContainer>
         </div>
       </div>
-    </div>
+    </BackofficeStandaloneLayout>
   );
 }

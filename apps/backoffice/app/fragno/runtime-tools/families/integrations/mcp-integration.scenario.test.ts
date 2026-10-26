@@ -74,7 +74,7 @@ const scenarioObjects = {
   OTP: (input) => new OtpObject(input),
 } satisfies LocalBackofficeObjects;
 
-const orgScope = { kind: "org", orgId: "mcp-org" } as const;
+const orgScope = { kind: "org", orgId: "mcp-org", jurisdiction: null } as const;
 const toolsOrigin = "https://tools.provider.test";
 const oauthOrigin = "https://oauth.provider.test";
 const staticOrigin = "https://static.provider.test";
@@ -654,7 +654,7 @@ test("Codemode registers an MCP server through setup, publishes its tools as act
 });
 
 test("OAuth setup resumes source-owned consent, reauthorizes, and recovers from failed client registration", async () => {
-  const scope = { kind: "user", userId: "mcp-user" } as const;
+  const scope = { kind: "user", userId: "mcp-user", jurisdiction: null } as const;
   await runMcpIntegrationScenario<{ authorizationUrl: string }>("sqlite", (providers) => ({
     name: "MCP OAuth setup through the registered facade",
     setup: ({ given }) => [given.auth.user({ id: scope.userId, email: "mcp@example.test" })],
@@ -811,7 +811,7 @@ test("OAuth setup resumes source-owned consent, reauthorizes, and recovers from 
 });
 
 test("an access token without a refresh token reports unavailable when it expires", async () => {
-  const scope = { kind: "user", userId: "mcp-user" } as const;
+  const scope = { kind: "user", userId: "mcp-user", jurisdiction: null } as const;
   const connectionId = "mcp#expiring";
   await runMcpIntegrationScenario("memory", (providers) => ({
     name: "MCP OAuth expiry without a refresh token",
@@ -875,10 +875,10 @@ test("an access token without a refresh token reports unavailable when it expire
 test("mcp addresses resolve only in their own scope and require both authority layers", async () => {
   const projectScope = {
     kind: "project",
-    owner: { kind: "org", orgId: orgScope.orgId },
+    owner: { kind: "org", orgId: orgScope.orgId, jurisdiction: null },
     projectId: "mcp-project",
   } as const;
-  const userScope = { kind: "user", userId: "mcp-member" } as const;
+  const userScope = { kind: "user", userId: "mcp-member", jurisdiction: null } as const;
   await runMcpIntegrationScenario("sqlite", (providers) => ({
     name: "MCP integration scope isolation and authorization",
     setup: ({ given }) => [

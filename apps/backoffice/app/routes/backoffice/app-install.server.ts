@@ -16,8 +16,13 @@ import { z } from "zod";
 
 import { createBackofficeUserExecution } from "@/backoffice-runtime/context";
 import { isBackofficeForbiddenError } from "@/backoffice-runtime/kernel";
+import {
+  backofficeOrganizationContextScope,
+  backofficePersonalScope,
+} from "@/backoffice-runtime/resolved-scope";
 import type { AppInstallationOwner } from "@/fragno/app-installations/contracts";
 import { BackofficeAppDomainError, requireBackofficeAppOperationValue } from "@/fragno/apps/errors";
+import type { BackofficeMeData } from "@/fragno/auth/contracts";
 import { createAutomationsRouteCaller } from "@/fragno/automation/route-callers";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
@@ -128,35 +133,34 @@ export function describeAppPermissions(
 /** Where an installation may go, named in the form by the owner's scope segment. */
 type AppInstallOwnerChoice = { value: string; label: string; owner: AppInstallationOwner };
 
-/** Where this user may approve installations: organizations they own or administer, and themselves. */
-async function listAppInstallOwners(
-  context: Readonly<RouterContextProvider>,
-  userId: string,
-): Promise<AppInstallOwnerChoice[]> {
-  const { runtime } = context.get(BackofficeWorkerContext);
-  const me = await runtime.objects.auth
-    .singleton()
-    .commands.getBackofficeMe({ userId, activeOrganizationId: null });
-  const organizations = (me?.organizations ?? [])
+/**
+ * Where this user may approve installations: organizations they own or administer, and themselves
+ * once onboarding has created their personal scope.
+ */
+function listAppInstallOwners(me: BackofficeMeData): AppInstallOwnerChoice[] {
+  const organizations = me.organizations
     .filter(({ roles }) => roles.some((role) => role === "owner" || role === "admin"))
     .map(({ organization }) => ({
       label: organization.name,
-      owner: { kind: "org", orgId: organization.id } as const,
+      owner: backofficeOrganizationContextScope(organization),
     }));
+  const personalScope = backofficePersonalScope(me.user);
   // Listed first, an organization is the default: most apps are installed for one.
-  return [...organizations, { label: "Personal", owner: { kind: "user", userId } } as const].map(
-    (choice) => ({ ...choice, value: backofficeScopePathSegment(choice.owner) }),
-  );
+  const personal = personalScope ? [{ label: "Personal", owner: personalScope }] : [];
+  return [...organizations, ...personal].map((choice) => ({
+    ...choice,
+    value: backofficeScopePathSegment(choice.owner),
+  }));
 }
 
 /** The install page's choices of owner, with the selected owner's projects and installation. */
 export async function loadAppInstallChoices(
   context: Readonly<RouterContextProvider>,
-  input: { userId: string; appId: string; selectedOwner: string | null },
+  input: { me: BackofficeMeData; appId: string; selectedOwner: string | null },
 ) {
   const { runtime } = context.get(BackofficeWorkerContext);
-  const owners = await listAppInstallOwners(context, input.userId);
-  // The personal scope is always offered, so there is always a selection.
+  const owners = listAppInstallOwners(input.me);
+  // The page opens only once onboarding has created the personal scope, so there is a selection.
   const selected = owners.find(({ value }) => value === input.selectedOwner) ?? owners[0];
 
   const callProjectsRoute = createAutomationsRouteCaller({
@@ -220,7 +224,7 @@ function readGrantedPermissions(
  */
 export async function decideAppInstallation(
   context: Readonly<RouterContextProvider>,
-  input: { userId: string; request: AppInstallRequest; formData: FormData },
+  input: { me: BackofficeMeData; request: AppInstallRequest; formData: FormData },
 ): Promise<AppInstallDecisionResult> {
   const decision = installDecisionSchema.safeParse({
     intent: input.formData.get("intent"),
@@ -241,9 +245,7 @@ export async function decideAppInstallation(
   }
   // Only an offered owner may be chosen; the kernel still checks live authority below.
   const chosenOwner = decision.data.owner;
-  const owner = (await listAppInstallOwners(context, input.userId)).find(
-    ({ value }) => value === chosenOwner,
-  )?.owner;
+  const owner = listAppInstallOwners(input.me).find(({ value }) => value === chosenOwner)?.owner;
   if (!owner) {
     return { status: "invalid", message: "Choose where to install and the access to approve." };
   }
@@ -278,7 +280,7 @@ export async function decideAppInstallation(
   let installation: BackofficeAppInstallation | null;
   try {
     installation = await kernel.invoke({
-      execution: createBackofficeUserExecution({ scope: owner, userId: input.userId }),
+      execution: createBackofficeUserExecution({ scope: owner, userId: input.me.user.id }),
       operation: BACKOFFICE_PERMISSION.apps.manage,
       resource: { kind: "app-installation", appId: access.appId },
       execute: async () => {
@@ -292,7 +294,7 @@ export async function decideAppInstallation(
           requireBackofficeAppOperationValue(
             await installations.installApp({
               ...access,
-              installedByUserId: input.userId,
+              installedByUserId: input.me.user.id,
               actionsRevision,
             }),
           );

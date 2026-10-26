@@ -1,3 +1,4 @@
+import { backofficeOrganizationContextScope } from "@/backoffice-runtime/resolved-scope";
 import { getOtpDurableObject } from "@/worker-runtime/durable-objects";
 
 import type { Route } from "./+types/otp";
@@ -10,8 +11,9 @@ const forwardToOtp = async (
 ) => {
   const organization = await requireApiOrganization(request, context, orgSlug);
   const orgId = organization.id;
+  const scope = backofficeOrganizationContextScope(organization);
 
-  const otpDo = getOtpDurableObject(context, orgId);
+  const otpDo = getOtpDurableObject(context, scope);
   const url = new URL(request.url);
   const prefix = `/api/otp/${orgSlug}`;
   if (url.pathname.startsWith(prefix)) {

@@ -84,7 +84,7 @@ function externalClaimExecution(orgId: string) {
   return {
     kind: "deferred" as const,
     scopeRestriction: null,
-    scope: { kind: "org" as const, orgId },
+    scope: { kind: "org" as const, orgId, jurisdiction: null },
     actors: {
       initiator: { ...identity, role: "initiator" as const },
       principal: null,
@@ -173,7 +173,9 @@ async function callOtpEndpoint(
     body: JSON.stringify(input.body),
   });
   if (input.entryPoint === "object") {
-    return await ctx.runtime.objects.otp.forOrg(input.organization.id).http.fetch(request);
+    return await ctx.runtime.objects.otp
+      .for({ kind: "org", orgId: input.organization.id, jurisdiction: null })
+      .http.fetch(request);
   }
   return await action({
     request,
@@ -190,7 +192,7 @@ async function assertNoIdentityClaimEffects(
   actor: AutomationExternalEntityRef,
 ) {
   for (const orgId of orgIds) {
-    const scope = { kind: "org" as const, orgId };
+    const scope = { kind: "org" as const, orgId, jurisdiction: null };
     const automations = ctx.runtime.objects.automations.for(scope);
     expect(
       await automations.commands.resolveExternalIdentity(
@@ -247,7 +249,7 @@ describe("OTP public boundary security scenarios", () => {
           }
           await ctx.runtime.drain();
           const queue = await ctx.runtime.objects.otp
-            .forOrg(member.organization.id)
+            .for({ kind: "org", orgId: member.organization.id, jurisdiction: null })
             .commands.getDurableHookQueue();
           expect(queue.items).toEqual([]);
           await assertNoIdentityClaimEffects(ctx, [member.organization.id, "victim-org"], identity);
@@ -269,7 +271,11 @@ describe("OTP public boundary security scenarios", () => {
         when.auth.createOrganization({ cookie: sessionCookie, name: "Acme", slug: "acme" }),
         then.assert("only the trusted completion flow consumes the claim", async (ctx) => {
           const member = await authenticateOtpMember(ctx);
-          const otp = ctx.runtime.objects.otp.forOrg(member.organization.id);
+          const otp = ctx.runtime.objects.otp.for({
+            kind: "org",
+            orgId: member.organization.id,
+            jurisdiction: null,
+          });
           const claim = await otp.commands.issueIdentityClaim(
             { expiresInMinutes: null },
             externalClaimExecution(member.organization.id),
@@ -358,7 +364,7 @@ describe("OTP public boundary security scenarios", () => {
           });
           assert(result.ok);
           await ctx.runtime.drain();
-          const scope = { kind: "org" as const, orgId: member.organization.id };
+          const scope = { kind: "org" as const, orgId: member.organization.id, jurisdiction: null };
           const automations = ctx.runtime.objects.automations.for(scope);
           expect(
             await automations.commands.resolveExternalIdentity(
@@ -470,12 +476,13 @@ describe("OTP public boundary security scenarios", () => {
                 code: "CODE",
               },
               createBackofficeRequestExecution({
-                scope: { kind: "org", orgId: "victim-org" },
-                userId: "victim",
+                scope: { kind: "org", orgId: "victim-org", jurisdiction: null },
                 verifiedRequestAuthority: {
+                  userId: "victim",
+                  personalScope: { kind: "user" as const, userId: "victim", jurisdiction: null },
                   role: "user",
-                  organizationId: "victim-org",
-                  administeredMemberId: null,
+                  organization: { kind: "org" as const, orgId: "victim-org", jurisdiction: null },
+                  administeredMember: null,
                   expiresAt: new Date(Date.now() + 60_000),
                   scopeRestriction: null,
                 },
@@ -487,11 +494,15 @@ describe("OTP public boundary security scenarios", () => {
         then.assert(
           "organization ownership cannot be supplied to trusted issuance",
           async (ctx) => {
-            const otp = ctx.runtime.objects.otp.forOrg("owner-org");
+            const otp = ctx.runtime.objects.otp.for({
+              kind: "org",
+              orgId: "owner-org",
+              jurisdiction: null,
+            });
             const forgedInput = {
               expiresInMinutes: null,
               actor: identity,
-              scope: { kind: "org", orgId: "victim-org" },
+              scope: { kind: "org", orgId: "victim-org", jurisdiction: null },
             };
             await expect(
               otp.commands.issueIdentityClaim(forgedInput, externalClaimExecution("owner-org")),
@@ -517,7 +528,11 @@ describe("OTP public boundary security scenarios", () => {
         then.assert(
           "durable confirmation ignores a legacy cross-organization claim",
           async (ctx) => {
-            const otp = ctx.runtime.objects.otp.forOrg("owner-org");
+            const otp = ctx.runtime.objects.otp.for({
+              kind: "org",
+              orgId: "owner-org",
+              jurisdiction: null,
+            });
             const claim = await otp.commands.issueIdentityClaim(
               { expiresInMinutes: null },
               externalClaimExecution("owner-org"),
@@ -543,12 +558,13 @@ describe("OTP public boundary security scenarios", () => {
                   code: claim.code,
                 },
                 createBackofficeRequestExecution({
-                  scope: { kind: "org", orgId: "owner-org" },
-                  userId: "owner",
+                  scope: { kind: "org", orgId: "owner-org", jurisdiction: null },
                   verifiedRequestAuthority: {
+                    userId: "owner",
+                    personalScope: { kind: "user" as const, userId: "owner", jurisdiction: null },
                     role: "user",
-                    organizationId: "owner-org",
-                    administeredMemberId: null,
+                    organization: { kind: "org" as const, orgId: "owner-org", jurisdiction: null },
+                    administeredMember: null,
                     expiresAt: new Date(Date.now() + 60_000),
                     scopeRestriction: null,
                   },

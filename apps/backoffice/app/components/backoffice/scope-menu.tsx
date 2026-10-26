@@ -10,7 +10,6 @@ import {
   SelectorMenuPopup,
   SelectorMenuTrigger,
 } from "@fragno-private/design-system/selector-menu";
-import { usePostHog } from "@posthog/react/slim";
 import { useLocation } from "react-router";
 
 import {
@@ -18,13 +17,13 @@ import {
   backofficeRouteScopeFromResolvedScope,
   type BackofficeResolvedScope,
 } from "@/backoffice-runtime/resolved-scope";
-import { authClient } from "@/fragno/auth/auth-client";
 import {
   type AdministeredMember,
   administersMembers,
   type BackofficeMeData,
   type Organization,
 } from "@/fragno/auth/contracts";
+import { useBackofficeSignOut } from "@/fragno/auth/use-backoffice-sign-out";
 
 import { administeredMemberName } from "./administered-member-name";
 import { scopeSwitchPath } from "./scope-switch-path";
@@ -171,8 +170,7 @@ export function BackofficeScopeMenu({
   sidebarCollapsed: boolean;
 }) {
   const location = useLocation();
-  const posthog = usePostHog();
-  const { mutate: signOut, loading: signingOut, error: signOutError } = authClient.useSignOut();
+  const { signOut, signingOut, error: signOutError } = useBackofficeSignOut();
   if (!me?.user || !currentScope) {
     return null;
   }
@@ -231,20 +229,7 @@ export function BackofficeScopeMenu({
         ))}
         {/* Signing out leaves every scope, so it closes the list of them. */}
         <SelectorMenuGroup label={null}>
-          <SelectorMenuButton
-            icon="log-out"
-            disabled={signingOut}
-            onClick={() => {
-              void signOut({ body: {} })
-                .then(() => {
-                  if (posthog) {
-                    posthog.reset();
-                  }
-                  window.location.replace("/backoffice/login");
-                })
-                .catch(() => undefined);
-            }}
-          >
+          <SelectorMenuButton icon="log-out" disabled={signingOut} onClick={signOut}>
             {signingOut ? "Signing out…" : "Sign out"}
           </SelectorMenuButton>
           {signOutError ? (
@@ -333,7 +318,11 @@ function scopeMenuGroups(
           : null,
     });
   }
-  const personalScope = { kind: "user" as const, userId: me.user.id };
+  const personalScope = {
+    kind: "user" as const,
+    userId: me.user.id,
+    jurisdiction: me.user.jurisdiction,
+  };
   groups.push({
     key: "personal",
     label: "Personal",
@@ -349,7 +338,11 @@ function scopeMenuGroups(
     more: null,
   });
   const memberScope = administeredMember
-    ? { kind: "user" as const, userId: administeredMember.userId }
+    ? {
+        kind: "user" as const,
+        userId: administeredMember.userId,
+        jurisdiction: administeredMember.jurisdiction,
+      }
     : null;
   const administeredOrganizations = me.organizations
     .filter(({ roles }) => administersMembers(roles))

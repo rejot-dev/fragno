@@ -32,7 +32,7 @@ import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-ba
 
 import { AppInstallationsObject } from "../../../../../workers/app-installations-object";
 
-const org = { kind: "org", orgId: "org-1" } as const;
+const org = { kind: "org", orgId: "org-1", jurisdiction: null } as const;
 const endpointUrl = "https://ledger.example/backoffice/actions";
 const clientPath = "/workspace/integrations/app/ledger.js";
 
@@ -270,7 +270,7 @@ test("an installed app's declared actions run on its server, signed per call and
               ],
             });
             const claimed = await ctx.runtime.objects.appInstallations
-              .forOrg(org.orgId)
+              .for({ kind: "org", orgId: org.orgId, jurisdiction: null })
               .commands.claimInstallation({
                 appId,
                 activation: 1,

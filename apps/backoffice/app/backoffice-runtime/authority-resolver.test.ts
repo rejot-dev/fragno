@@ -46,9 +46,11 @@ class MemoryIdentityDirectory implements BackofficeIdentityDirectory {
     return {
       active: this.#activeUsers.has(input.userId),
       role: this.#systemAdministrators.has(input.userId) ? ("admin" as const) : ("user" as const),
-      organizationMember: input.organizationId
-        ? this.#memberships.has(`${input.organizationId}:${input.userId}`)
-        : false,
+      personalScope: { kind: "user" as const, userId: input.userId, jurisdiction: null },
+      organization:
+        input.organizationId && this.#memberships.has(`${input.organizationId}:${input.userId}`)
+          ? { kind: "org" as const, orgId: input.organizationId, jurisdiction: null }
+          : null,
     };
   }
 
@@ -67,7 +69,7 @@ const principal = {
 const organizationExecution: BackofficeExecutionContext = {
   kind: "deferred" as const,
   scopeRestriction: null,
-  scope: { kind: "org", orgId: "org-1" },
+  scope: { kind: "org", orgId: "org-1", jurisdiction: null },
   actors: {
     initiator: {
       scope: "external",
@@ -89,9 +91,10 @@ describe("createBackofficeAuthorityResolver", () => {
       scopeRestriction: null,
       kind: "verified-request-authority" as const,
       userId: principal.id,
+      personalScope: { kind: "user" as const, userId: principal.id, jurisdiction: null },
       role: "admin" as const,
-      organizationId: "org-1",
-      administeredMemberId: null,
+      organization: { kind: "org" as const, orgId: "org-1", jurisdiction: null },
+      administeredMember: null,
       expiresAtEpochMs: 2_000,
     };
 
@@ -121,7 +124,7 @@ describe("createBackofficeAuthorityResolver", () => {
             principal: { ...principal, type: "user" },
             delegation: [],
           },
-          scope: { kind: "user", userId: principal.id },
+          scope: { kind: "user", userId: principal.id, jurisdiction: null },
           userAuthority: accessTokenAuthority,
         },
       }),
@@ -167,9 +170,10 @@ describe("createBackofficeAuthorityResolver", () => {
             scopeRestriction: null,
             kind: "verified-request-authority",
             userId: principal.id,
+            personalScope: { kind: "user" as const, userId: principal.id, jurisdiction: null },
             role: "user",
-            organizationId: "org-1",
-            administeredMemberId: null,
+            organization: { kind: "org" as const, orgId: "org-1", jurisdiction: null },
+            administeredMember: null,
             expiresAtEpochMs: 2_000,
           },
         },
@@ -212,7 +216,7 @@ describe("createBackofficeAuthorityResolver", () => {
         execution: {
           kind: "deferred" as const,
           scopeRestriction: null,
-          scope: { kind: "user", userId: "user-1" },
+          scope: { kind: "user", userId: "user-1", jurisdiction: null },
           actors: organizationExecution.actors,
         },
       }),
@@ -224,7 +228,7 @@ describe("createBackofficeAuthorityResolver", () => {
         execution: {
           kind: "deferred" as const,
           scopeRestriction: null,
-          scope: { kind: "user", userId: "user-2" },
+          scope: { kind: "user", userId: "user-2", jurisdiction: null },
           actors: organizationExecution.actors,
         },
       }),
@@ -282,7 +286,7 @@ describe("createBackofficeAuthorityResolver", () => {
         execution: {
           kind: "deferred" as const,
           scopeRestriction: null,
-          scope: { kind: "user", userId: principal.id },
+          scope: { kind: "user", userId: principal.id, jurisdiction: null },
           actors: organizationExecution.actors,
         },
       }),

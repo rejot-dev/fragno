@@ -38,18 +38,22 @@ test("Node production codemode uses the bridge WebSocket and compiler HTTP APIs"
       setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
       steps: ({ when, then }) => [
         when.codemode.run({
-          scope: { kind: "org", orgId: "org-1" },
+          scope: { kind: "org", orgId: "org-1", jurisdiction: null },
           code: `async () => {
         await context.current.store.set({ key: "remote-state", value: "saved" });
         return await context.getCurrentScope();
       }`,
         }),
         when.codemode.run({
-          scope: { kind: "org", orgId: "org-1" },
+          scope: { kind: "org", orgId: "org-1", jurisdiction: null },
           code: `async () => await context.current.store.get({ key: "remote-state" })`,
         }),
         then.assert("SQLite-backed state survives executor replacement", (ctx) => {
-          expect(ctx.codemodeRuns[0].result.result).toEqual({ kind: "org", orgId: "org-1" });
+          expect(ctx.codemodeRuns[0].result.result).toEqual({
+            kind: "org",
+            orgId: "org-1",
+            jurisdiction: null,
+          });
           expect(ctx.codemodeRuns[1].result).toMatchObject({
             result: { value: "saved" },
             logs: [],

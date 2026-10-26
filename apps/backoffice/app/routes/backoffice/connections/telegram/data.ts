@@ -13,14 +13,10 @@ import type { TelegramConfigState } from "./shared";
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 200;
 
-type TelegramTarget = string | BackofficeContextScope;
+type TelegramTarget = BackofficeContextScope;
 
-const getTelegramObject = (context: Readonly<RouterContextProvider>, target: TelegramTarget) => {
-  const objects = context.get(BackofficeWorkerContext).runtime.objects;
-  return typeof target === "string"
-    ? objects.telegram.forOrg(target)
-    : objects.telegram.for(target);
-};
+const getTelegramObject = (context: Readonly<RouterContextProvider>, target: TelegramTarget) =>
+  context.get(BackofficeWorkerContext).runtime.objects.telegram.for(target);
 
 function createTelegramRouteCaller(
   request: Request,
@@ -34,11 +30,7 @@ function createTelegramRouteCaller(
     baseHeaders: request.headers,
     fetch: async (outboundRequest) =>
       await telegramDo.http.fetchAuthorized(outboundRequest, {
-        execution: await requireBackofficeContext(
-          request,
-          context,
-          typeof target === "string" ? { kind: "org", orgId: target } : target,
-        ),
+        execution: await requireBackofficeContext(request, context, target),
         propagationContext: null,
       }),
   });

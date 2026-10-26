@@ -105,7 +105,7 @@ afterAll(async () => {
 });
 
 const orgId = "org-1";
-const scope = { kind: "org" as const, orgId };
+const scope = { kind: "org" as const, orgId, jurisdiction: null };
 const DAY_MS = 24 * 60 * 60 * 1000;
 const SCHEDULED_AT = "2030-01-01T00:00:00.000Z";
 

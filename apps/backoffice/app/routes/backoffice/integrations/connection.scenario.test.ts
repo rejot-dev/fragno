@@ -275,13 +275,15 @@ test("connection pages share one configuration load and open only once configure
           },
         ),
         then.assert("Ada connects Telegram for Acme", async (ctx) => {
-          await ctx.runtime.objects.telegram.forOrg(ctx.vars.orgId).commands.setAdminConfig({
-            orgId: ctx.vars.orgId,
-            botToken: "123456:telegram-bot-token",
-            webhookSecretToken: "telegram-webhook-secret",
-            botUsername: "acme_bot",
-            apiBaseUrl: "https://telegram.test",
-          });
+          await ctx.runtime.objects.telegram
+            .for({ kind: "org", orgId: ctx.vars.orgId, jurisdiction: null })
+            .commands.setAdminConfig({
+              orgId: ctx.vars.orgId,
+              botToken: "123456:telegram-bot-token",
+              webhookSecretToken: "telegram-webhook-secret",
+              botUsername: "acme_bot",
+              apiBaseUrl: "https://telegram.test",
+            });
         }),
         then.assert(
           "a configured connection opens, its layout and pages sharing one configuration load",

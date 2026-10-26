@@ -981,9 +981,13 @@ describe("admin OAuth client SQLite scenarios", () => {
         steps: ({ then }) => [
           then.assert("scope and strict inputs prevent authority substitution", async (ctx) => {
             for (const scope of [
-              { kind: "user", userId: "admin-1" },
-              { kind: "org", orgId: "org-1" },
-              { kind: "project", owner: { kind: "org", orgId: "org-1" }, projectId: "project-1" },
+              { kind: "user", userId: "admin-1", jurisdiction: null },
+              { kind: "org", orgId: "org-1", jurisdiction: null },
+              {
+                kind: "project",
+                owner: { kind: "org", orgId: "org-1", jurisdiction: null },
+                projectId: "project-1",
+              },
             ] satisfies BackofficeContextScope[]) {
               const context = oauthAdminContext(ctx, "admin-1", scope);
               expect(context.admin).toBeNull();

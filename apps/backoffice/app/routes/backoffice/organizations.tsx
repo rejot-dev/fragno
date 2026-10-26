@@ -58,9 +58,11 @@ export async function action({ request, context, url }: Route.ActionArgs) {
     return data({ error: "Enter a name of at most 100 characters." }, { status: 400 });
   }
   const { runtime } = context.get(BackofficeWorkerContext);
-  const organization = await runtime.objects.auth
-    .singleton()
-    .commands.createUserOrganization({ userId: user.id, name: input.data.name });
+  const organization = await runtime.objects.auth.singleton().commands.createUserOrganization({
+    id: crypto.randomUUID(),
+    userId: user.id,
+    name: input.data.name,
+  });
   return redirect(dashboardPath({ kind: "org", orgSlug: organization.slug }));
 }
 

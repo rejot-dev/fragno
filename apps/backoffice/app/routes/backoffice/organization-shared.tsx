@@ -35,12 +35,13 @@ export function OrganizationTabs({
   orgSlug,
   activeTab,
   managed,
-  managesClients,
+  showsClients,
 }: {
   orgSlug: string;
   activeTab: OrganizationTab | null;
   managed: boolean;
-  managesClients: boolean;
+  /** Whether the organization manages clients, or the person may add its first. */
+  showsClients: boolean;
 }) {
   const basePath = `/backoffice/organizations/${encodeURIComponent(orgSlug)}`;
   const tabs = [
@@ -55,7 +56,7 @@ export function OrganizationTabs({
     <BackofficeTabHeader
       items={tabs
         .filter((tab) => !managed || tab.id !== "invites")
-        .filter((tab) => managesClients || activeTab === "clients" || tab.id !== "clients")
+        .filter((tab) => showsClients || activeTab === "clients" || tab.id !== "clients")
         .map((tab) => ({ ...tab, active: tab.id === activeTab }))}
       ariaLabel="Organization management tabs"
       trailing={null}
@@ -93,7 +94,7 @@ export function OrganizationErrorBoundary({
           orgSlug={params.orgSlug}
           activeTab={null}
           managed={false}
-          managesClients={false}
+          showsClients={false}
         />
       ) : null}
       <div className={organizationPageBodyClassName}>

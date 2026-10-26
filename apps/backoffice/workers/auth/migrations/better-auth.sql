@@ -9,7 +9,9 @@ CREATE TABLE "user" (
   "role" text,
   "banned" integer,
   "banReason" text,
-  "banExpires" date
+  "banExpires" date,
+  "jurisdiction" text,
+  "onboardedAt" date
 );
 
 CREATE TABLE "session" (
@@ -59,7 +61,8 @@ CREATE TABLE "organization" (
   "createdAt" date NOT NULL,
   "metadata" text,
   "createdBy" text NOT NULL,
-  "managingOrganizationId" text REFERENCES "organization" ("id") ON DELETE SET NULL
+  "managingOrganizationId" text REFERENCES "organization" ("id") ON DELETE SET NULL,
+  "jurisdiction" text
 );
 
 CREATE TABLE "member" (

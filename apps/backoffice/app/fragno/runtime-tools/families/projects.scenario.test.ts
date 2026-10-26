@@ -59,8 +59,8 @@ const scenarioObjects = {
   UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
 
-const organization: BackofficeContextScope = { kind: "org", orgId: "acme" };
-const personal: BackofficeContextScope = { kind: "user", userId: "member" };
+const organization: BackofficeContextScope = { kind: "org", orgId: "acme", jurisdiction: null };
+const personal: BackofficeContextScope = { kind: "user", userId: "member", jurisdiction: null };
 
 function projectContext(ctx: BackofficeScenarioContext, execution: BackofficeExecutionContext) {
   return createRouteBackedRuntimeContext({
@@ -424,7 +424,10 @@ describe("project runtime scenarios", () => {
           then.assert(
             "nonmembers cannot create in the organization or another user's scope",
             async (ctx) => {
-              for (const scope of [organization, { kind: "user", userId: "owner" } as const]) {
+              for (const scope of [
+                organization,
+                { kind: "user", userId: "owner", jurisdiction: null } as const,
+              ]) {
                 const bash = await terminal(
                   projectContext(ctx, createBackofficeUserExecution({ scope, userId: "outsider" })),
                 );
@@ -485,7 +488,9 @@ describe("project runtime scenarios", () => {
             expect((await projects(ctx, organization)).map(({ projectId }) => projectId)).toEqual([
               ctx.vars.projectId,
             ]);
-            expect(await projects(ctx, { kind: "user", userId: "owner" })).toEqual([]);
+            expect(
+              await projects(ctx, { kind: "user", userId: "owner", jurisdiction: null }),
+            ).toEqual([]);
           }),
         ],
       }),

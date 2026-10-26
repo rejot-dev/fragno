@@ -14,6 +14,7 @@ import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
 import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import {
   type BackofficeContextScope,
+  type BackofficeOrganizationContextScope,
   type BackofficeProjectOwner,
   type BackofficeScopeIdNames,
   backofficeScopeOrganization,
@@ -424,7 +425,8 @@ export type BackofficeScenarioDefinition<TVars extends ScenarioVars = ScenarioVa
 type AuthAuthorityAssertionInput = {
   userId: string;
   orgId?: string;
-  expected: UserAuthorityFacts;
+  /** Whether the user is active, their role, and whether they act in the organization asked about. */
+  expected: Pick<UserAuthorityFacts, "active" | "role"> & { organizationMember: boolean };
 };
 
 type AuthMemberAssertionInput = {
@@ -635,6 +637,8 @@ type ScenarioValue<TVars extends ScenarioVars, TValue> =
 type AuthSignUpInput = {
   email: string;
   password?: string;
+  /** Leaves the user to onboard, which the scenario then does; others start onboarded. */
+  onboarding?: "pending";
   captureSessionCookieAs?: string;
   // Session cookies are origin-bound: plain-HTTP origins get insecure cookie names.
   origin?: string;
@@ -766,8 +770,8 @@ type RouterSeedStarterInput = { orgId: string };
 
 /** Scenario installs coordinate in the organization that owns the target. */
 type MarketplaceInstallTargetScope =
-  | { kind: "org"; orgId: string }
-  | { kind: "project"; owner: { kind: "org"; orgId: string }; projectId: string };
+  | BackofficeOrganizationContextScope
+  | { kind: "project"; owner: BackofficeOrganizationContextScope; projectId: string };
 
 /** Installs approve the permissions the release declares and finish without settings input. */
 type MarketplaceInstallInput = {
@@ -1769,9 +1773,9 @@ const createStep = (
 });
 
 const getStore = (ctx: BackofficeScenarioContext, orgId: string) => {
-  const scope = { kind: "org" as const, orgId };
+  const scope = { kind: "org" as const, orgId, jurisdiction: null };
   return createRouteBackedAutomationStoreRuntime({
-    object: ctx.runtime.objects.automations.forOrg(orgId),
+    object: ctx.runtime.objects.automations.for({ kind: "org", orgId: orgId, jurisdiction: null }),
     execution: {
       kind: "deferred",
       scopeRestriction: null,
@@ -1791,12 +1795,16 @@ const getWorkflow = (
   const scope =
     orgId === SYSTEM_WORKFLOW_TARGET_ID
       ? ({ kind: "system" } as const)
-      : ({ kind: "org", orgId } as const);
+      : ({ kind: "org", orgId, jurisdiction: null } as const);
   return createRouteBackedAutomationWorkflowRuntime({
     object:
       scope.kind === "system"
         ? ctx.runtime.objects.automations.singleton()
-        : ctx.runtime.objects.automations.forOrg(scope.orgId),
+        : ctx.runtime.objects.automations.for({
+            kind: "org",
+            orgId: scope.orgId,
+            jurisdiction: null,
+          }),
     execution:
       execution ??
       (scope.kind === "system"
@@ -1809,9 +1817,9 @@ const getWorkflow = (
 };
 
 const getRouter = (ctx: BackofficeScenarioContext, orgId: string) => {
-  const scope = { kind: "org" as const, orgId };
+  const scope = { kind: "org" as const, orgId, jurisdiction: null };
   return createRouteBackedAutomationRouterRuntime({
-    object: ctx.runtime.objects.automations.forOrg(orgId),
+    object: ctx.runtime.objects.automations.for({ kind: "org", orgId: orgId, jurisdiction: null }),
     execution: createBackofficeSystemExecution(scope),
   });
 };
@@ -1820,7 +1828,7 @@ const getHooks = (ctx: BackofficeScenarioContext, orgId: string) =>
   createRouteBackedDurableHooksRuntime({
     objects: ctx.runtime.objects,
     config: ctx.runtime.config,
-    orgId,
+    organization: { kind: "org", orgId, jurisdiction: null },
   });
 
 const automationScopedBaseUrl = (scope: BackofficeContextScope) =>
@@ -1932,7 +1940,7 @@ const hookFragmentObjectAddress = (
     return { binding, scope: { kind: "singleton" } };
   }
 
-  return { binding, scope: { kind: "org", orgId } };
+  return { binding, scope: { kind: "org", orgId, jurisdiction: null } };
 };
 
 const listInstantiatedHookFragments = (ctx: BackofficeScenarioContext, orgIds: string[]) =>
@@ -1963,7 +1971,7 @@ const getReadableScenarioFileSystem = async (
     return scenarioFs;
   }
 
-  const execution = createBackofficeSystemExecution({ kind: "org", orgId });
+  const execution = createBackofficeSystemExecution({ kind: "org", orgId, jurisdiction: null });
   const orgFs = createStateShellFileSystem(
     createRuntimeStateBackend({
       runtime: ctx.runtime.services,
@@ -2149,7 +2157,9 @@ const ingestAutomationEvent = async (ctx: BackofficeScenarioContext, event: Auto
     await systemAutomations.commands.seedStarterAutomationRoutes();
     await systemAutomations.commands.ingestEvent({ ...event, id: `system:${event.id}` });
   }
-  await ctx.runtime.objects.automations.forOrg(event.scope.orgId).commands.ingestEvent(event);
+  await ctx.runtime.objects.automations
+    .for({ kind: "org", orgId: event.scope.orgId, jurisdiction: null })
+    .commands.ingestEvent(event);
 };
 
 const buildOrganizationCreatedEvent = (input: OrganizationCreatedInput): AutomationEvent => {
@@ -2159,7 +2169,7 @@ const buildOrganizationCreatedEvent = (input: OrganizationCreatedInput): Automat
   return {
     id: input.eventId ?? `auth:organization.created:${input.id}`,
     scopeRestriction: null,
-    scope: { kind: "org", orgId: input.id },
+    scope: { kind: "org", orgId: input.id, jurisdiction: null },
     source: "auth",
     eventType: "organization.created",
     occurredAt: now,
@@ -2194,7 +2204,7 @@ const buildOrganizationCreatedEvent = (input: OrganizationCreatedInput): Automat
 const buildCapabilityConfiguredEvent = (input: CapabilityConfiguredInput): AutomationEvent => ({
   id: input.eventId ?? `${input.source ?? input.capabilityId}:capability.configured:${input.orgId}`,
   scopeRestriction: null,
-  scope: { kind: "org", orgId: input.orgId },
+  scope: { kind: "org", orgId: input.orgId, jurisdiction: null },
   source: input.source ?? input.capabilityId,
   eventType: "capability.configured",
   occurredAt: "2026-01-01T00:00:00.000Z",
@@ -2224,7 +2234,7 @@ const buildIdentityClaimCompletedEvent = (input: ConfirmClaimInput): AutomationE
   return {
     id: input.eventId ?? `identity-claim-completed:${input.otpId}`,
     scopeRestriction: null,
-    scope: { kind: "org", orgId: input.orgId },
+    scope: { kind: "org", orgId: input.orgId, jurisdiction: null },
     source: "otp",
     eventType: "identity.claim.completed",
     occurredAt: "2026-01-01T00:00:00.000Z",
@@ -2296,16 +2306,18 @@ const postTelegramWebhook = async (
   const secret = String(
     ctx.vars[`telegram:${orgId}:webhookSecretToken`] ?? "telegram-webhook-secret",
   );
-  const response = await ctx.runtime.objects.telegram.forOrg(orgId).http.fetch(
-    new Request("https://telegram.do/api/telegram/telegram/webhook", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-telegram-bot-api-secret-token": secret,
-      },
-      body: JSON.stringify(update),
-    }),
-  );
+  const response = await ctx.runtime.objects.telegram
+    .for({ kind: "org", orgId: orgId, jurisdiction: null })
+    .http.fetch(
+      new Request("https://telegram.do/api/telegram/telegram/webhook", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-telegram-bot-api-secret-token": secret,
+        },
+        body: JSON.stringify(update),
+      }),
+    );
   const body = await response.json();
   if (!response.ok) {
     throw new Error(`Telegram webhook returned ${response.status}: ${JSON.stringify(body)}`);
@@ -2517,7 +2529,7 @@ const buildStepBuilders = <
               ownerUserId,
             };
             await ctx.runtime.objects.automations
-              .forOrg(input.id)
+              .for({ kind: "org", orgId: input.id, jurisdiction: null })
               .commands.seedStarterAutomationRoutes();
           },
           { drain: false },
@@ -2556,13 +2568,15 @@ const buildStepBuilders = <
           async (ctx) => {
             ctx.rememberOrg(input.orgId);
             const webhookSecretToken = input.webhookSecretToken ?? "telegram-webhook-secret";
-            await ctx.runtime.objects.telegram.forOrg(input.orgId).commands.setAdminConfig({
-              orgId: input.orgId,
-              botToken: input.botToken ?? "123456:telegram-bot-token",
-              webhookSecretToken,
-              botUsername: input.botUsername,
-              apiBaseUrl: input.apiBaseUrl ?? "https://telegram.test",
-            });
+            await ctx.runtime.objects.telegram
+              .for({ kind: "org", orgId: input.orgId, jurisdiction: null })
+              .commands.setAdminConfig({
+                orgId: input.orgId,
+                botToken: input.botToken ?? "123456:telegram-bot-token",
+                webhookSecretToken,
+                botUsername: input.botUsername,
+                apiBaseUrl: input.apiBaseUrl ?? "https://telegram.test",
+              });
             ctx.vars[`telegram:${input.orgId}:webhookSecretToken`] = webhookSecretToken;
           },
         ),
@@ -2590,7 +2604,7 @@ const buildStepBuilders = <
           `bind ${input.source ?? "telegram"}:${input.externalId} to ${input.userId}`,
           async (ctx) => {
             ctx.rememberOrg(input.orgId);
-            const scope = { kind: "org" as const, orgId: input.orgId };
+            const scope = { kind: "org" as const, orgId: input.orgId, jurisdiction: null };
             await ctx.runtime.objects.automations.for(scope).commands.bindExternalIdentity(
               {
                 identity: {
@@ -2653,7 +2667,7 @@ const buildStepBuilders = <
           `setup store ${input.orgId}:${input.key} through codemode`,
           async (ctx) => {
             await ctx.runCodemode({
-              scope: { kind: "org", orgId: input.orgId },
+              scope: { kind: "org", orgId: input.orgId, jurisdiction: null },
               label: `set store ${input.key}`,
               code: `async () => {
   await store.set(${JSON.stringify({
@@ -2672,7 +2686,7 @@ const buildStepBuilders = <
           `write file ${input.orgId}:${input.path} through codemode`,
           async (ctx) => {
             await ctx.runCodemode({
-              scope: { kind: "org", orgId: input.orgId },
+              scope: { kind: "org", orgId: input.orgId, jurisdiction: null },
               label: `write file ${input.path}`,
               code:
                 input.content instanceof Uint8Array
@@ -2745,6 +2759,11 @@ const buildStepBuilders = <
           );
           if (!response.ok) {
             throw new Error(`Auth sign-up failed (${response.status}): ${await response.text()}`);
+          }
+          if (input.onboarding !== "pending") {
+            await ctx.runtime.objects.auth
+              .singleton()
+              .commands.applyScenarioFixture({ onboardedEmails: [input.email] });
           }
           if (input.captureSessionCookieAs) {
             const cookie = scenarioAuthCookie(response);
@@ -2896,7 +2915,11 @@ const buildStepBuilders = <
               ownerScope: entry.owner.scope,
               slug: entry.slug,
             });
-            const automations = ctx.runtime.objects.automations.forOrg(targetOrgId);
+            const automations = ctx.runtime.objects.automations.for({
+              kind: "org",
+              orgId: targetOrgId,
+              jurisdiction: null,
+            });
 
             await ctx.runtime.objects.automations
               .singleton()
@@ -2913,7 +2936,11 @@ const buildStepBuilders = <
                 permissions: bundledMarketplacePermissions(entry),
               },
               {
-                execution: createBackofficeSystemExecution({ kind: "org", orgId: targetOrgId }),
+                execution: createBackofficeSystemExecution({
+                  kind: "org",
+                  orgId: targetOrgId,
+                  jurisdiction: null,
+                }),
                 propagationContext: null,
               },
             );
@@ -2991,7 +3018,7 @@ const buildStepBuilders = <
           `revoke ${input.source ?? "telegram"}:${input.externalId}`,
           async (ctx) => {
             ctx.rememberOrg(input.orgId);
-            const scope = { kind: "org" as const, orgId: input.orgId };
+            const scope = { kind: "org" as const, orgId: input.orgId, jurisdiction: null };
             await ctx.runtime.objects.automations.for(scope).commands.revokeExternalIdentity(
               {
                 identity: {
@@ -3017,7 +3044,7 @@ const buildStepBuilders = <
           async (ctx) => {
             ctx.rememberOrg(input.orgId);
             await ctx.runtime.objects.automations
-              .forOrg(input.orgId)
+              .for({ kind: "org", orgId: input.orgId, jurisdiction: null })
               .commands.seedStarterAutomationRoutes();
           },
         ),
@@ -3227,19 +3254,24 @@ const buildStepBuilders = <
 
             ctx.rememberOrg(orgId);
             const result = await ctx.runtime.objects.otp
-              .forOrg(orgId)
+              .for({ kind: "org", orgId: orgId, jurisdiction: null })
               .commands.confirmIdentityClaim(
                 {
                   externalId,
                   code,
                 },
                 createBackofficeRequestExecution({
-                  scope: { kind: "org", orgId },
-                  userId: input.subjectUserId,
+                  scope: { kind: "org", orgId, jurisdiction: null },
                   verifiedRequestAuthority: {
+                    userId: input.subjectUserId,
+                    personalScope: {
+                      kind: "user",
+                      userId: input.subjectUserId,
+                      jurisdiction: null,
+                    },
                     role: "user",
-                    organizationId: orgId,
-                    administeredMemberId: null,
+                    organization: { kind: "org", orgId, jurisdiction: null },
+                    administeredMember: null,
                     expiresAt: new Date(Date.now() + 60_000),
                     scopeRestriction: null,
                   },
@@ -3276,7 +3308,7 @@ const buildStepBuilders = <
             if (
               actual.active !== input.expected.active ||
               actual.role !== input.expected.role ||
-              actual.organizationMember !== input.expected.organizationMember
+              (actual.organization !== null) !== input.expected.organizationMember
             ) {
               throw new Error(
                 `Expected auth authority ${JSON.stringify(input.expected)}, got ${JSON.stringify(actual)}.`,
@@ -4591,7 +4623,7 @@ const collectDiagnostics = async (ctx: BackofficeScenarioContext): Promise<unkno
 
     try {
       const scenarioFs = ctx.files.forOrg(orgId);
-      const execution = createBackofficeSystemExecution({ kind: "org", orgId });
+      const execution = createBackofficeSystemExecution({ kind: "org", orgId, jurisdiction: null });
       const state = createRuntimeStateBackend({
         runtime: ctx.runtime.services,
         kernel: new BackofficeKernel(ctx.runtime.services),

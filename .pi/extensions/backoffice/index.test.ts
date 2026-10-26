@@ -96,7 +96,12 @@ async function startBackofficeScenarioServer() {
         } else if (request.url === "/api/backoffice/me") {
           response.end(
             JSON.stringify({
-              user: { id: "scenario-user", email: "scenario@example.com", role: "user" },
+              user: {
+                id: "scenario-user",
+                email: "scenario@example.com",
+                role: "user",
+                jurisdiction: null,
+              },
               activeOrganizationId: null,
               organizations: [],
             }),

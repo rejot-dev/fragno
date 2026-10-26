@@ -22,7 +22,11 @@ export async function resolveRuntimeOrganization(
       `Organization '${organizationId}' could not be found.`,
     );
   }
-  return { id: organization.id, slug: organization.slug };
+  return {
+    id: organization.id,
+    slug: organization.slug,
+    jurisdiction: organization.jurisdiction,
+  };
 }
 
 /** Public fragment routes address organizations by slug, while execution scopes carry only IDs. */

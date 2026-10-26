@@ -48,7 +48,7 @@ describe("scoped fragment Durable Object runtime", () => {
     const warmRuntime = createScopedFragmentDurableObjectRuntime({
       name: "Example",
       state: warmState,
-      ownerScope: { kind: "org", orgId: "org-1" },
+      ownerScope: { kind: "org", orgId: "org-1", jurisdiction: null },
       host: warmHost.host,
       scopeSchema: backofficeRoutableScopeSchema,
       createSource: (scope) => ({

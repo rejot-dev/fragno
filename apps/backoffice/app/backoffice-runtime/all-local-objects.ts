@@ -73,11 +73,16 @@ class UnavailableLocalDurableObject {
     return {
       active: false,
       role: null,
-      organizationMember: false,
+      jurisdiction: null,
+      organization: null,
     } as const;
   }
 
   async findAdministeredMember() {
+    return null;
+  }
+
+  async findRootOwnerScope() {
     return null;
   }
 

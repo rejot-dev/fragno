@@ -1,7 +1,10 @@
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import type {
+  BackofficeContextScope,
+  BackofficeUserContextScope,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { betterAuth } from "better-auth";
 
-import type { Role } from "@/fragno/auth/contracts";
+import type { BackofficeTokenOrganization, Role } from "@/fragno/auth/contracts";
 
 type BetterAuthAdapter = Awaited<ReturnType<typeof betterAuth>["$context"]>["adapter"];
 
@@ -10,8 +13,10 @@ export type BackofficeUserTokenAuthority = {
   userId: string;
   email: string;
   globalRole: Role;
-  scope: BackofficeContextScope;
-  organization: { id: string; slug: string; roles: string[] } | null;
+  personalScope: BackofficeUserContextScope | null;
+  /** Null for someone with no organization who has not finished onboarding: there is nowhere yet. */
+  scope: BackofficeContextScope | null;
+  organization: BackofficeTokenOrganization | null;
 };
 
 /** Reports live user or membership state that forbids a requested token grant. */

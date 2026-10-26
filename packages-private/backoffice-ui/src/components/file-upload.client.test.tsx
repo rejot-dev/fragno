@@ -11,7 +11,7 @@ import type { WorkflowUiInteractionHost } from "../workflow-interaction";
 
 const scope = {
   kind: "project" as const,
-  owner: { kind: "org" as const, orgId: "org-1" },
+  owner: { kind: "org" as const, orgId: "org-1", jurisdiction: null },
   projectId: "project-1",
 };
 

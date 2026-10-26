@@ -102,7 +102,11 @@ test("request bursts share initialization polling and shutdown waits for the sha
           then.assert(
             "a burst shares polling without blocking other objects",
             async ({ runtime }) => {
-              const object = runtime.objects.upload.forOrg("org-1");
+              const object = runtime.objects.upload.for({
+                kind: "org",
+                orgId: "org-1",
+                jurisdiction: null,
+              });
               const requests = Array.from({ length: 64 }, async () => {
                 const response = await object.http.fetch(
                   new Request("https://backoffice.example/state"),
@@ -117,7 +121,7 @@ test("request bursts share initialization polling and shutdown waits for the sha
               });
               try {
                 const unrelated = await runtime.objects.upload
-                  .forOrg("org-2")
+                  .for({ kind: "org", orgId: "org-2", jurisdiction: null })
                   .http.fetch(new Request("https://backoffice.example/state"));
                 expect(await unrelated.json()).toEqual({ initialized: false });
                 await new Promise<void>((resolve) => setImmediate(resolve));
@@ -179,7 +183,11 @@ test("a failed shared initialization waiter is removed so subsequent requests ca
         objects: { ...scenarioObjects, ...fixture.objectOverrides },
         steps: ({ then }) => [
           then.assert("requests share the failure and later recover", async ({ runtime }) => {
-            const object = runtime.objects.upload.forOrg("org-1");
+            const object = runtime.objects.upload.for({
+              kind: "org",
+              orgId: "org-1",
+              jurisdiction: null,
+            });
             const results = Promise.allSettled(
               Array.from({ length: 16 }, () =>
                 object.http.fetch(new Request("https://backoffice.example/state")),
@@ -245,7 +253,7 @@ test("an initialization owner bypasses the shared waiter for its own object", as
               );
             });
             const response = runtime.objects.upload
-              .forOrg("org-1")
+              .for({ kind: "org", orgId: "org-1", jurisdiction: null })
               .http.fetch(new Request("https://backoffice.example/state"));
             await initializing;
             expect(await (await response).json()).toEqual({ initialized: true });

@@ -43,7 +43,7 @@ class RecordingKernelObserver implements BackofficeKernelObserver {
   }
 }
 
-const scope = { kind: "org" as const, orgId: "org-1" };
+const scope = { kind: "org" as const, orgId: "org-1", jurisdiction: null };
 const identity = {
   scope: "external" as const,
   source: "telegram",
@@ -215,7 +215,7 @@ describe("Automations identity binding RPCs", () => {
       const automations = runtime.objects.automations.for(scope);
       const mismatchedContext = actionContext(
         createBackofficeServiceExecution({
-          scope: { kind: "org", orgId: "org-2" },
+          scope: { kind: "org", orgId: "org-2", jurisdiction: null },
           service: { type: "object", id: "otp" },
         }),
       );

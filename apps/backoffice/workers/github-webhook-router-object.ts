@@ -1,3 +1,4 @@
+import { lookupOrganizationContextScope } from "@/backoffice-runtime/resolved-scope";
 import { type BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { bytesToHex } from "@/lib/crypto";
 
@@ -387,7 +388,21 @@ export class GitHubWebhookRouterObject {
         );
       }
 
-      const githubObject = this.#runtime.objects.github.forOrg(orgId);
+      const organization = await lookupOrganizationContextScope(
+        this.#runtime.objects.auth.singleton().commands,
+        orgId,
+      );
+      if (!organization) {
+        return githubWebhookJsonResponse(
+          {
+            message: "The organization this installation belongs to no longer exists.",
+            code: "INSTALLATION_ORG_NOT_FOUND",
+            installationId,
+          },
+          404,
+        );
+      }
+      const githubObject = this.#runtime.objects.github.for(organization);
       await githubObject.commands.ensureAdminConfig(orgId);
 
       const url = new URL(request.url);

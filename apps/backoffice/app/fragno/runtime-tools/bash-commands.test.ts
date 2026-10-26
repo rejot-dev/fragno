@@ -163,7 +163,7 @@ describe("createBackofficeBashCommands", () => {
         return {
           accepted: true,
           eventId: "event-2",
-          scope: input.targetScope ?? { kind: "org", orgId: "org-1" },
+          scope: input.targetScope ?? { kind: "org", orgId: "org-1", jurisdiction: null },
           source: input.source ?? "telegram",
           eventType: input.eventType,
         };
@@ -192,7 +192,7 @@ describe("createBackofficeBashCommands", () => {
           eventType: "identity.bound",
           source: "otp",
           payload: { plan: "basic" },
-          targetScope: { kind: "org", orgId: "org-2" },
+          targetScope: { kind: "org", orgId: "org-2", jurisdiction: null },
         },
       ],
     ]);
@@ -210,7 +210,7 @@ describe("createBackofficeBashCommands", () => {
         return {
           accepted: true,
           eventId: "event-2",
-          scope: { kind: "org", orgId: "org-1" },
+          scope: { kind: "org", orgId: "org-1", jurisdiction: null },
           source: input.source ?? "telegram",
           eventType: input.eventType,
         };

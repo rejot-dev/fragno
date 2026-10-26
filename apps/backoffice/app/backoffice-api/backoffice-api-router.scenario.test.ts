@@ -209,7 +209,7 @@ async function installedAppCredential(ctx: Ctx, oauthAccessToken: string): Promi
   const request = new Request(`${origin}/api/backoffice/execution-token`, {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${oauthAccessToken}` },
-    body: JSON.stringify({ scope: { kind: "org", orgId: ctx.vars.orgId } }),
+    body: JSON.stringify({ scope: { kind: "org", orgId: ctx.vars.orgId, jurisdiction: null } }),
   });
   const response = await exchangeAction({
     request,
@@ -409,7 +409,7 @@ describe("Backoffice API v0 SQLite scenarios", () => {
       await runApiScenario("MCP metadata through the public API and generated clients", (then) => [
         then("connect and verify a real MCP server through the public client", async (ctx) => {
           const client = clientFor(ctx);
-          const scope = { kind: "org" as const, orgId: ctx.vars.orgId };
+          const scope = { kind: "org" as const, orgId: ctx.vars.orgId, jurisdiction: null };
           const target = { connectionId: "mcp#metadata" };
           const setup = await client.call(scope, "integrations.setup", {
             ...target,
@@ -423,7 +423,11 @@ describe("Backoffice API v0 SQLite scenarios", () => {
           expect(actions.map(({ id }) => id)).toEqual(tools.map(({ name }) => name));
         }),
         then("cached metadata survives, and calls return every structured content", async (ctx) => {
-          const execution = createBackofficeSystemExecution({ kind: "org", orgId: ctx.vars.orgId });
+          const execution = createBackofficeSystemExecution({
+            kind: "org",
+            orgId: ctx.vars.orgId,
+            jurisdiction: null,
+          });
           const listed = await ctx.runtime.objects.mcp
             .for(execution.scope)
             .http.fetchAuthorized(new Request("https://mcp.do/api/mcp/servers"), { execution });
@@ -435,7 +439,7 @@ describe("Backoffice API v0 SQLite scenarios", () => {
           assert(cached);
           expect(cached).toHaveLength(tools.length);
           const client = clientFor(ctx);
-          const scope = { kind: "org" as const, orgId: ctx.vars.orgId };
+          const scope = { kind: "org" as const, orgId: ctx.vars.orgId, jurisdiction: null };
           for (const tool of tools) {
             const advertised = cached.find(({ name }) => name === tool.name);
             expect(advertised).toMatchObject({
@@ -460,7 +464,7 @@ describe("Backoffice API v0 SQLite scenarios", () => {
           "a generated client types each tool's structured content and isolates schema references",
           async (ctx) => {
             const client = clientFor(ctx);
-            const scope = { kind: "org" as const, orgId: ctx.vars.orgId };
+            const scope = { kind: "org" as const, orgId: ctx.vars.orgId, jurisdiction: null };
             const generated = await client.call(scope, "integrations.generateClient", {
               connectionId: "mcp#metadata",
               out: "/workspace/integrations/metadata.js",
@@ -876,7 +880,7 @@ describe("Backoffice API v0 SQLite scenarios", () => {
           assert(registered.ok);
           ctx.vars.appId = registered.value.appId;
           const installed = await ctx.runtime.objects.appInstallations
-            .forOrg(ctx.vars.orgId)
+            .for({ kind: "org", orgId: ctx.vars.orgId, jurisdiction: null })
             .commands.installApp({
               actionsRevision: 1,
               appId: ctx.vars.appId,
@@ -958,7 +962,7 @@ describe("Backoffice API v0 SQLite scenarios", () => {
       ),
       then("uninstalling revokes the delegated credential immediately", async (ctx) => {
         const uninstalled = await ctx.runtime.objects.appInstallations
-          .forOrg(ctx.vars.orgId)
+          .for({ kind: "org", orgId: ctx.vars.orgId, jurisdiction: null })
           .commands.uninstallApp({ appId: ctx.vars.appId });
         assert(uninstalled.ok);
         await expectError(

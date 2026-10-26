@@ -149,7 +149,11 @@ test("public API webhook scope aliases deliver to the same SQLite-backed endpoin
         then.assert(
           "both URL spellings persist deliveries without exposing endpoint management",
           async (ctx) => {
-            const api = ctx.runtime.objects.api.forOrg(orgId);
+            const api = ctx.runtime.objects.api.for({
+              kind: "org",
+              orgId: orgId,
+              jurisdiction: null,
+            });
             const configured = await api.http.fetchAuthorized(
               new Request(`${origin}/api/api/webhooks/endpoints/encoding-check`, {
                 method: "PUT",
@@ -162,7 +166,13 @@ test("public API webhook scope aliases deliver to the same SQLite-backed endpoin
                   deliveryIdentity: { type: "jsonBodyPath", path: ["id"] },
                 }),
               }),
-              { execution: createBackofficeSystemExecution({ kind: "org", orgId }) },
+              {
+                execution: createBackofficeSystemExecution({
+                  kind: "org",
+                  orgId,
+                  jurisdiction: null,
+                }),
+              },
             );
             assert.equal(configured.status, 201, await configured.clone().text());
 

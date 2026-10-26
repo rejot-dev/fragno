@@ -132,6 +132,15 @@ import {
   type MarketplacePackagePublishRequest,
 } from "@/fragno/marketplace/package-publishing";
 import { listStaticMarketplaceEntries } from "@/fragno/marketplace/static-entries";
+import {
+  ONBOARDING_QUESTIONS,
+  ONBOARDING_WORKFLOW_NAME,
+  type OnboardingAnswer,
+  type OnboardingPrompt,
+  type OnboardingQuestion,
+  type UserOnboardingState,
+} from "@/fragno/onboarding/contracts";
+import type { OnboardingWorkflowParams } from "@/fragno/onboarding/onboarding-workflow";
 import { createUploadRouteCaller } from "@/fragno/upload-server";
 
 import type {
@@ -200,6 +209,15 @@ function decodeExternalIdentityBindingCursor(encoded: string): Cursor {
   }
   return cursor;
 }
+
+/**
+ * Where a person's onboarding stands, with the round of the question it asks, which numbers that
+ * round's answer; or outdated, waiting for an answer no page asks any longer.
+ */
+type OnboardingReading =
+  | Exclude<UserOnboardingState, { status: "asking" }>
+  | { status: "asking"; prompt: OnboardingPrompt; round: number }
+  | { status: "outdated" };
 
 type MarketplaceWorkflowOperation = {
   label: "publication" | "ingestion";
@@ -448,6 +466,141 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
       runtime.automationFragment.services.getRoute(input),
     );
     return route ? { enabled: route.enabled, action: route.action } : null;
+  }
+
+  /**
+   * System's Automations onboard everyone, so a person's scope holds nothing before they choose its
+   * jurisdiction.
+   */
+  async #onboardingRuntime() {
+    const scope = this.#requireScope();
+    if (scope.kind !== "system") {
+      throw new Error("Onboarding runs only in System's Automations.");
+    }
+    await this.#ensureConfigured({ scope });
+    return this.#host.requireConfigured("Automations runtime is not ready.").runtime;
+  }
+
+  /**
+   * Where a person's onboarding stands: its instance, named by their user ID, records it, with the
+   * round of the question it asks, counted from the answers to it the workflow already took. An
+   * instance an earlier version of onboarding started may wait for an answer no page asks any
+   * longer; it is outdated.
+   */
+  async #readUserOnboarding(
+    runtime: AutomationsRuntime,
+    userId: string,
+  ): Promise<OnboardingReading> {
+    const [status, currentStep, history] = await runtime.workflowsFragment.callServices(() => [
+      runtime.workflowsFragment.services.getInstanceStatus(ONBOARDING_WORKFLOW_NAME, userId),
+      runtime.workflowsFragment.services.getInstanceCurrentStep(ONBOARDING_WORKFLOW_NAME, userId),
+      runtime.workflowsFragment.services.listHistory({
+        workflowName: ONBOARDING_WORKFLOW_NAME,
+        instanceId: userId,
+      }),
+    ]);
+    switch (status.status) {
+      case "complete":
+        return { status: "complete" };
+      case "errored":
+      case "terminated":
+        return { status: "failed", message: status.error?.message ?? "Onboarding stopped." };
+      case "waiting": {
+        const waitEventType = currentStep?.waitEventType ?? null;
+        if (waitEventType === null) {
+          return { status: "setting-up" };
+        }
+        const question = (Object.keys(ONBOARDING_QUESTIONS) as OnboardingQuestion[]).find(
+          (candidate) => ONBOARDING_QUESTIONS[candidate].event === waitEventType,
+        );
+        if (!question) {
+          return { status: "outdated" };
+        }
+        const taken = (eventType: string) =>
+          history.events.filter(
+            ({ type, consumedByStepKey }) => type === eventType && consumedByStepKey !== null,
+          );
+        // An answer is stored before the workflow takes it, and the instance keeps waiting until
+        // then: the question is answered, so setup is under way.
+        if (
+          history.events.some(
+            ({ type, consumedByStepKey }) => type === waitEventType && consumedByStepKey === null,
+          )
+        ) {
+          return { status: "setting-up" };
+        }
+        const round = taken(waitEventType).length + 1;
+        const clients = () =>
+          taken(ONBOARDING_QUESTIONS["client-name"].event).map(
+            ({ payload }) => ONBOARDING_QUESTIONS["client-name"].schema.parse(payload).name,
+          );
+        const prompt: OnboardingPrompt =
+          question === "client-name"
+            ? { question, client: round }
+            : question === "more-clients"
+              ? { question, clients: clients() }
+              : { question };
+        return { status: "asking", prompt, round };
+      }
+      case "active":
+      case "paused":
+        return { status: "setting-up" };
+      default:
+        throw new Error("Unsupported onboarding workflow status.", {
+          cause: status.status satisfies never,
+        });
+    }
+  }
+
+  /** Starts a person's onboarding, or finds the one they started, and says where it stands. */
+  async startUserOnboarding(input: { userId: string }): Promise<UserOnboardingState> {
+    const runtime = await this.#onboardingRuntime();
+    await runtime.workflowsFragment.callServices(() =>
+      runtime.workflowsFragment.services.createBatch(ONBOARDING_WORKFLOW_NAME, [
+        { id: input.userId, params: { userId: input.userId } satisfies OnboardingWorkflowParams },
+      ]),
+    );
+    const state = await this.#readUserOnboarding(runtime, input.userId);
+    switch (state.status) {
+      case "asking":
+        return { status: "asking", prompt: state.prompt };
+      case "outdated":
+        // Starting over loses nothing: the person has not finished, and every step can run again.
+        await runtime.workflowsFragment.callServices(() =>
+          runtime.workflowsFragment.services.restartInstance(
+            ONBOARDING_WORKFLOW_NAME,
+            input.userId,
+          ),
+        );
+        return { status: "setting-up" };
+      case "setting-up":
+      case "complete":
+      case "failed":
+        return state;
+      default:
+        throw new Error("Unsupported onboarding state.", { cause: state satisfies never });
+    }
+  }
+
+  /**
+   * Answers the question onboarding asks now, once per round: answering again, or answering a
+   * question it no longer asks, as a stale page does, changes nothing. Otherwise a later round of
+   * a repeated question would take the stale answer.
+   */
+  async answerUserOnboarding(input: { userId: string; answer: OnboardingAnswer }): Promise<void> {
+    const runtime = await this.#onboardingRuntime();
+    const state = await this.#readUserOnboarding(runtime, input.userId);
+    if (state.status !== "asking" || state.prompt.question !== input.answer.question) {
+      return;
+    }
+    await runtime.workflowsFragment.callServices(() =>
+      runtime.workflowsFragment.services.sendEvent(ONBOARDING_WORKFLOW_NAME, input.userId, {
+        // Event IDs are unique across every workflow in System, not per instance.
+        id: `${ONBOARDING_WORKFLOW_NAME}:${input.userId}:${input.answer.question}:${state.round}`,
+        type: ONBOARDING_QUESTIONS[input.answer.question].event,
+        payload: input.answer.answer,
+      }),
+    );
   }
 
   async seedStarterAutomationRoutes(): Promise<StarterAutomationRoutesSeedResult> {

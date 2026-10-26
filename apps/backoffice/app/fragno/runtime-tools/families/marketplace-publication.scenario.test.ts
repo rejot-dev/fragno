@@ -80,7 +80,9 @@ const scenarioObjects = {
   UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
 
-const ORG_SCOPE = { kind: "org", orgId: "org-1" } as const;
+const ORG_SCOPE = { kind: "org", orgId: "org-1", jurisdiction: null } as const;
+// A listing names its owner by ID alone, wherever the owner's objects are kept.
+const ORG_OWNER = { kind: "org", orgId: "org-1" } as const;
 const PACKAGE_ROOT = "/workspace/packages/report";
 const LISTING_ID = "org:org-1#durable-package";
 const BINARY = new Uint8Array([0, 255, 128, 13, 10, 0]);
@@ -259,7 +261,7 @@ describe("Marketplace package publication scenarios", () => {
               name: "@ada-labs/durable-package",
               listingId: LISTING_ID,
               version: "1.0.0",
-              owner: { scope: ORG_SCOPE, publisherName: "Ada Labs" },
+              owner: { scope: ORG_OWNER, publisherName: "Ada Labs" },
               workflowScope: { kind: "system" },
             });
             expect(publication.files.map((file) => file.relativePath)).toEqual([
@@ -371,7 +373,7 @@ describe("Marketplace package publication scenarios", () => {
   test.each(["deferred", "request"] as const)(
     "ordinary members publish from personal workspaces with truthful %s provenance and write-free dry runs",
     async (executionKind) => {
-      const USER_SCOPE = { kind: "user", userId: "member-1" } as const;
+      const USER_SCOPE = { kind: "user", userId: "member-1", jurisdiction: null } as const;
       await runBackofficeScenario(
         defineBackofficeScenario<{ publication: MarketplacePublishResult | null }>({
           objects: scenarioObjects,
@@ -399,11 +401,16 @@ describe("Marketplace package publication scenarios", () => {
                 executionKind === "request"
                   ? createBackofficeRequestExecution({
                       scope: USER_SCOPE,
-                      userId: "member-1",
                       verifiedRequestAuthority: {
+                        userId: "member-1",
+                        personalScope: {
+                          kind: "user" as const,
+                          userId: "member-1",
+                          jurisdiction: null,
+                        },
                         role: "user",
-                        organizationId: null,
-                        administeredMemberId: null,
+                        organization: null,
+                        administeredMember: null,
                         expiresAt: new Date(Date.now() + 60_000),
                         scopeRestriction: USER_SCOPE,
                       },
@@ -433,7 +440,7 @@ describe("Marketplace package publication scenarios", () => {
                 actors: execution.actors,
               });
               expect(stored?.intent.release.owner).toEqual({
-                scope: ORG_SCOPE,
+                scope: ORG_OWNER,
                 publisherName: "Ada Labs",
               });
               assert(stored);
@@ -536,7 +543,7 @@ describe("Marketplace package publication scenarios", () => {
   });
 
   test("organization visibility publishes into the owning organization's members-only Marketplace", async () => {
-    const ORG_MARKETPLACE = { kind: "org", orgId: "org-1" } as const;
+    const ORG_MARKETPLACE = { kind: "org", orgId: "org-1", jurisdiction: null } as const;
     await runBackofficeScenario(
       defineBackofficeScenario<{
         organizationPublication: MarketplacePublishResult | null;
@@ -608,7 +615,7 @@ describe("Marketplace package publication scenarios", () => {
             ).resolves.toBeNull();
             await expect(
               ctx.runtime.objects.marketplace
-                .forOrg("org-2")
+                .for({ kind: "org", orgId: "org-2", jurisdiction: null })
                 .commands.getListingStorage({ listingId: LISTING_ID }),
             ).resolves.toBeNull();
             const publicListings = await publicMarketplace.http.fetch(
@@ -616,7 +623,7 @@ describe("Marketplace package publication scenarios", () => {
             );
             expect(await publicListings.json()).toMatchObject({ listings: [] });
             const organizationListings = await ctx.runtime.objects.marketplace
-              .forOrg("org-1")
+              .for({ kind: "org", orgId: "org-1", jurisdiction: null })
               .http.fetch(new Request("https://backoffice.test/api/marketplace/listings"));
             assert(organizationListings.status === 404);
             const discovery = await ctx.runCodemode({
@@ -668,7 +675,7 @@ describe("Marketplace package publication scenarios", () => {
   });
 
   test("organization Marketplaces accept only their own organization's members and listings", async () => {
-    const ORG_MARKETPLACE = { kind: "org", orgId: "org-1" } as const;
+    const ORG_MARKETPLACE = { kind: "org", orgId: "org-1", jurisdiction: null } as const;
     const systemContext = {
       execution: createBackofficeSystemExecution({ kind: "system" }),
       propagationContext: null,
@@ -696,7 +703,7 @@ describe("Marketplace package publication scenarios", () => {
           then.assert(
             "non-members cannot upload into another organization's Marketplace",
             async (ctx) => {
-              const OTHER_SCOPE = { kind: "org", orgId: "org-2" } as const;
+              const OTHER_SCOPE = { kind: "org", orgId: "org-2", jurisdiction: null } as const;
               await seedPackage(sourceState(ctx, OTHER_SCOPE), {
                 name: "@ada-labs/durable-package",
                 version: "1.0.0",
@@ -722,7 +729,7 @@ describe("Marketplace package publication scenarios", () => {
               assert(missingVisibility.exitCode !== 0);
               await expect(
                 ctx.runtime.objects.marketplace
-                  .forOrg("org-1")
+                  .for({ kind: "org", orgId: "org-1", jurisdiction: null })
                   .commands.getListingStorage({ listingId: LISTING_ID }),
               ).resolves.toBeNull();
             },
@@ -730,9 +737,13 @@ describe("Marketplace package publication scenarios", () => {
           then.assert(
             "an organization Marketplace rejects listings it does not own",
             async (ctx) => {
-              const otherMarketplace = ctx.runtime.objects.marketplace.forOrg("org-2").commands;
+              const otherMarketplace = ctx.runtime.objects.marketplace.for({
+                kind: "org",
+                orgId: "org-2",
+                jurisdiction: null,
+              }).commands;
               const foreignDraft = await otherMarketplace.createDraftListing({
-                owner: { scope: ORG_MARKETPLACE, publisherName: "Ada Labs" },
+                owner: { scope: ORG_OWNER, publisherName: "Ada Labs" },
                 slug: "durable-package",
                 version: "1.0.0",
                 metadata: METADATA,
@@ -778,7 +789,11 @@ describe("Marketplace package publication scenarios", () => {
               expect(request.intent.marketplace).toEqual(ORG_MARKETPLACE);
               for (const marketplace of [
                 ctx.runtime.objects.marketplace.singleton(),
-                ctx.runtime.objects.marketplace.forOrg("org-2"),
+                ctx.runtime.objects.marketplace.for({
+                  kind: "org",
+                  orgId: "org-2",
+                  jurisdiction: null,
+                }),
               ]) {
                 await expect(
                   marketplace.commands.beginPackagePublish(request, systemContext),
@@ -792,8 +807,8 @@ describe("Marketplace package publication scenarios", () => {
   });
 
   test("members browse and install from their organization's Marketplace; other organizations cannot", async () => {
-    const ORG_MARKETPLACE = { kind: "org", orgId: "org-1" } as const;
-    const OTHER_SCOPE = { kind: "org", orgId: "org-2" } as const;
+    const ORG_MARKETPLACE = { kind: "org", orgId: "org-1", jurisdiction: null } as const;
+    const OTHER_SCOPE = { kind: "org", orgId: "org-2", jurisdiction: null } as const;
     const INSTALLATION_ROOT = "/workspace/members-only";
     await runBackofficeScenario(
       defineBackofficeScenario({
@@ -1773,7 +1788,7 @@ describe("Marketplace package publication scenarios", () => {
   ])(
     "retries a temporary Auth outage during $phase and completes publication",
     async ({ phase, lookup, stepName }) => {
-      const userScope = { kind: "user", userId: "member-1" } as const;
+      const userScope = { kind: "user", userId: "member-1", jurisdiction: null } as const;
       let publicationAccepted = false;
       let authorityLookups = 0;
       await runBackofficeScenario(
@@ -1893,7 +1908,7 @@ describe("Marketplace package publication scenarios", () => {
   );
 
   test("membership revocation before execution fails permanently instead of inheriting coordinator authority", async () => {
-    const USER_SCOPE = { kind: "user", userId: "member-1" } as const;
+    const USER_SCOPE = { kind: "user", userId: "member-1", jurisdiction: null } as const;
     await runBackofficeScenario(
       defineBackofficeScenario<{ publication: MarketplacePublishResult | null }>({
         objects: scenarioObjects,

@@ -8,7 +8,7 @@ import {
   resolveDurableHooksScopeSelection,
 } from "./durable-hooks-scope";
 
-const organization = { id: "org_123", slug: "acme" };
+const organization = { id: "org_123", slug: "acme", jurisdiction: null };
 const scopes = {
   org: { kind: "org", organization, label: "Acme" },
   project: {
@@ -17,7 +17,7 @@ const scopes = {
     project: { id: "project_1", slug: "launch-plan" },
     label: "Launch Plan",
   },
-  user: { kind: "user", userId: "user_1", label: "operator@example.com" },
+  user: { kind: "user", userId: "user_1", label: "operator@example.com", jurisdiction: null },
   system: { kind: "system", label: "System" },
 } satisfies Record<string, BackofficeScopeSelection>;
 
@@ -39,7 +39,7 @@ describe("resolveDurableHooksScopeSelection", () => {
       kind: "org",
       resolvedScope: {
         kind: "org",
-        organization: { id: "org_123", slug: "acme" },
+        organization: { id: "org_123", slug: "acme", jurisdiction: null },
       },
       objectId: "api",
     });
@@ -52,7 +52,7 @@ describe("resolveDurableHooksScopeSelection", () => {
       kind: "project",
       resolvedScope: {
         kind: "project",
-        owner: { kind: "org", organization: { id: "org_123", slug: "acme" } },
+        owner: { kind: "org", organization: { id: "org_123", slug: "acme", jurisdiction: null } },
         project: { id: "project_1", slug: "launch-plan" },
       },
       label: "Launch Plan",
@@ -60,7 +60,7 @@ describe("resolveDurableHooksScopeSelection", () => {
     });
     expect(resolveSelection({ scope: scopes.user, objectId: "mcp" })).toMatchObject({
       kind: "user",
-      resolvedScope: { kind: "user", userId: "user_1" },
+      resolvedScope: { kind: "user", userId: "user_1", jurisdiction: null },
       label: "operator@example.com",
       objectId: "mcp",
     });
@@ -137,7 +137,7 @@ describe("getDurableHooksLoaderErrorMessage", () => {
 
     expect(message).toBe("Upload service unavailable");
     expect(logError).toHaveBeenCalledWith("Failed to load Upload durable hooks", {
-      scope: { kind: "user", userId: "user_1" },
+      scope: { kind: "user", userId: "user_1", jurisdiction: null },
       objectId: "upload",
       error,
     });

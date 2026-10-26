@@ -55,10 +55,10 @@ test("failed alarms remain deliverable while later alarms are acknowledged", asy
       steps: ({ then }) => [
         then.assert("schedule alarms for two objects", async ({ runtime }) => {
           await runtime.objects.upload
-            .forOrg("org-1")
+            .for({ kind: "org", orgId: "org-1", jurisdiction: null })
             .http.fetch(new Request("https://backoffice.example/schedule"));
           await runtime.objects.upload
-            .forOrg("org-2")
+            .for({ kind: "org", orgId: "org-2", jurisdiction: null })
             .http.fetch(new Request("https://backoffice.example/schedule"));
         }),
         then.assert(
@@ -109,7 +109,7 @@ test("an alarm rescheduled by its handler remains deliverable", async () => {
       steps: ({ then }) => [
         then.assert("schedule the first alarm", async ({ runtime }) => {
           await runtime.objects.upload
-            .forOrg("org-1")
+            .for({ kind: "org", orgId: "org-1", jurisdiction: null })
             .http.fetch(new Request("https://backoffice.example/schedule"));
         }),
         then.assert("deliver the original and rescheduled alarm once each", async ({ runtime }) => {
@@ -157,10 +157,10 @@ test("a suspended alarm does not block another object's alarm", async () => {
       steps: ({ then }) => [
         then.assert("schedule alarms for both objects", async ({ runtime }) => {
           await runtime.objects.upload
-            .forOrg("org-1")
+            .for({ kind: "org", orgId: "org-1", jurisdiction: null })
             .http.fetch(new Request("https://backoffice.example/schedule"));
           await runtime.objects.upload
-            .forOrg("org-2")
+            .for({ kind: "org", orgId: "org-2", jurisdiction: null })
             .http.fetch(new Request("https://backoffice.example/schedule"));
         }),
         then.assert(
@@ -179,7 +179,7 @@ test("a suspended alarm does not block another object's alarm", async () => {
                 }),
               ]);
               const response = await runtime.objects.upload
-                .forOrg("org-2")
+                .for({ kind: "org", orgId: "org-2", jurisdiction: null })
                 .http.fetch(new Request("https://backoffice.example/state"));
               expect(await response.json()).toEqual({ alarmFinished: true });
             } finally {
@@ -218,7 +218,7 @@ test("detached alarm work observes live logical time after the drain ends", asyn
       steps: ({ then }) => [
         then.assert("schedule and deliver the alarm", async ({ runtime }) => {
           await runtime.objects.upload
-            .forOrg("org-1")
+            .for({ kind: "org", orgId: "org-1", jurisdiction: null })
             .http.fetch(new Request("https://backoffice.example/schedule"));
           await runtime.drainAlarms();
         }),

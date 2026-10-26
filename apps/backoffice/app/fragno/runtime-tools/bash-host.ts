@@ -3,6 +3,7 @@ import type { Bash, BashOptions, Command } from "just-bash";
 
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import type { BackofficeRootOwnerResolver } from "@/backoffice-runtime/resolved-scope";
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 import {
   createBackofficeBashCommands,
@@ -59,6 +60,7 @@ export type BashHostContext = {
   stateBackend?: BackofficeStateBackend;
   fileLinks?: { runtime: FileLinkRuntime } | null;
   createBackofficeScopedContext(scope: BackofficeContextScope): BashHostContext;
+  resolveRootOwner: BackofficeRootOwnerResolver;
   account?: { runtime: AccountRuntime } | null;
   admin?: { runtime: AdminRuntime } | null;
   org?: { runtime: OrganizationRuntime } | null;

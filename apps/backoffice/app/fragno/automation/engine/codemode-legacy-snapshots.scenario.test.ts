@@ -33,7 +33,7 @@ const scenarioObjects = {
   UPLOAD: null,
 } satisfies LocalBackofficeObjects;
 
-const scope = { kind: "org", orgId: "org-1" } as const;
+const scope = { kind: "org", orgId: "org-1", jurisdiction: null } as const;
 const run = `async (_event, step) => {
   await step.sleep("cool down", "1 minute");
   return await step.do("finish", async () => "done");

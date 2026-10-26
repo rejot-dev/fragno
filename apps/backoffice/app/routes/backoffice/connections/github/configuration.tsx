@@ -166,7 +166,8 @@ const readInstallNotice = (requestUrl: URL): InstallFlowNotice => {
 
 export async function loader({ request, context, url }: Route.LoaderArgs) {
   const connection = gitHubConnection.require({ request, context });
-  const organizationId = connection.scope.orgId;
+  const organization = connection.scope;
+  const organizationId = organization.orgId;
 
   const requestUrl = url;
   const callbackState = requestUrl.searchParams.get("state")?.trim() ?? "";
@@ -202,8 +203,8 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
     try {
       const outcome = await completeGitHubInstallCallback({
         router: getGitHubWebhookRouterDurableObject(context).commands,
-        github: getGitHubDurableObject(context, organizationId).commands,
-        callRoute: createGitHubRouteCaller(request, context, organizationId),
+        github: getGitHubDurableObject(context, organization).commands,
+        callRoute: createGitHubRouteCaller(request, context, organization),
         userId: me.user.id,
         organizationId,
         state: callbackState,
@@ -246,7 +247,7 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
   const { installations, installationsError } = await fetchGitHubInstallations(
     request,
     context,
-    organizationId,
+    organization,
     "active",
   );
   if (installationsError) {
@@ -264,7 +265,7 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
       const reposResult = await fetchGitHubInstallationRepos(
         request,
         context,
-        organizationId,
+        organization,
         installation.id,
       );
 
@@ -292,7 +293,8 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
 }
 
 export async function action({ request, context, url }: Route.ActionArgs) {
-  const organizationId = gitHubConnection.require({ request, context }).scope.orgId;
+  const organization = gitHubConnection.require({ request, context }).scope;
+  const organizationId = organization.orgId;
   const { me } = getBackofficeShellRequest(context);
 
   const formData = await request.formData();
@@ -325,7 +327,7 @@ export async function action({ request, context, url }: Route.ActionArgs) {
 
   if (intent === "connect-existing-installation") {
     const returnTo = `${url.pathname}${url.search}`;
-    const claim = await startGitHubOAuth(request, context, organizationId, {
+    const claim = await startGitHubOAuth(request, context, organization, {
       subjectId: me.user.id,
       returnTo,
     });
@@ -371,7 +373,7 @@ export async function action({ request, context, url }: Route.ActionArgs) {
       } satisfies GitHubConfigurationActionData;
     }
 
-    const result = await linkGitHubRepository(request, context, organizationId, {
+    const result = await linkGitHubRepository(request, context, organization, {
       installationId,
       repoId,
     });
@@ -403,7 +405,7 @@ export async function action({ request, context, url }: Route.ActionArgs) {
       } satisfies GitHubConfigurationActionData;
     }
 
-    const result = await unlinkGitHubRepository(request, context, organizationId, {
+    const result = await unlinkGitHubRepository(request, context, organization, {
       repoId,
     });
     if (result.error || !result.ok) {

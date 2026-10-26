@@ -66,10 +66,13 @@ async function managerRequest(
   });
   const authorized = await createAuthorizedBackofficeObjectRequest({
     request,
-    address: { binding: "PI_MANAGER", scope: { kind: "org", orgId: organizationId } },
+    address: {
+      binding: "PI_MANAGER",
+      scope: { kind: "org", orgId: organizationId, jurisdiction: null },
+    },
     context: {
       execution: createBackofficeServiceExecution({
-        scope: { kind: "org", orgId: organizationId },
+        scope: { kind: "org", orgId: organizationId, jurisdiction: null },
         service: { type: service, id: "pi-durable-scenario" },
       }),
       propagationContext: null,
@@ -85,7 +88,10 @@ async function openViewSocket(
   agentName = "assistant",
   delegation: AutomationActors["delegation"] = [],
 ) {
-  const agent = { scope: { kind: "org", orgId: organizationId } as const, agentName };
+  const agent = {
+    scope: { kind: "org", orgId: organizationId, jurisdiction: null } as const,
+    agentName,
+  };
   const execution = createBackofficeServiceExecution({
     scope: agent.scope,
     service: { type: "automation", id: "pi-durable-scenario" },
@@ -121,7 +127,7 @@ async function expectAlarmCleared(agent: DurableObjectStub<Pi>) {
 
 function orgAgent(organizationId: string): PiAgentConfig {
   return {
-    scope: { kind: "org", orgId: organizationId },
+    scope: { kind: "org", orgId: organizationId, jurisdiction: null },
     agentName: "assistant",
   };
 }
@@ -228,7 +234,7 @@ describe("Pi durable agent scenarios", () => {
   test("serves the conversation and its queue over the agent's view socket", async () => {
     const organizationId = `pi-socket-${crypto.randomUUID()}`;
     const agent = {
-      scope: { kind: "org", orgId: organizationId } as const,
+      scope: { kind: "org", orgId: organizationId, jurisdiction: null } as const,
       agentName: "assistant",
     };
     const unsigned = await (env as CloudflareEnv).PI.getByName(piAgentObjectName(agent)).fetch(
@@ -316,11 +322,15 @@ describe("Pi durable agent scenarios", () => {
     const suffix = crypto.randomUUID();
     const scopes: BackofficeContextScope[] = [
       { kind: "system" },
-      { kind: "user", userId: suffix },
-      { kind: "project", owner: { kind: "org", orgId: suffix }, projectId: "shared-project" },
+      { kind: "user", userId: suffix, jurisdiction: null },
       {
         kind: "project",
-        owner: { kind: "org", orgId: `other-${suffix}` },
+        owner: { kind: "org", orgId: suffix, jurisdiction: null },
+        projectId: "shared-project",
+      },
+      {
+        kind: "project",
+        owner: { kind: "org", orgId: `other-${suffix}`, jurisdiction: null },
         projectId: "shared-project",
       },
     ];
@@ -482,6 +492,7 @@ describe("Pi durable agent scenarios", () => {
           await expect(state.storage.get("pi-legacy-billing-scope")).resolves.toEqual({
             kind: "org",
             orgId: "previous-billing-org",
+            jurisdiction: null,
           });
 
           await object.dispatch(config, seededTurn(config), {
@@ -632,10 +643,13 @@ describe("Pi durable agent scenarios", () => {
     );
     const foreign = await createAuthorizedBackofficeObjectRequest({
       request: new Request("https://backoffice.example/api/pi-manager/agents"),
-      address: { binding: "PI_MANAGER", scope: { kind: "org", orgId: strangerId } },
+      address: {
+        binding: "PI_MANAGER",
+        scope: { kind: "org", orgId: strangerId, jurisdiction: null },
+      },
       context: {
         execution: createBackofficeServiceExecution({
-          scope: { kind: "org", orgId: strangerId },
+          scope: { kind: "org", orgId: strangerId, jurisdiction: null },
           service: { type: "automation", id: "stranger" },
         }),
         propagationContext: null,
@@ -647,7 +661,7 @@ describe("Pi durable agent scenarios", () => {
     await runInDurableObject(agent, async (instance) => {
       const pi = instance as Pi;
       await expect(
-        pi.initialize({ ...config, scope: { kind: "org", orgId: strangerId } }),
+        pi.initialize({ ...config, scope: { kind: "org", orgId: strangerId, jurisdiction: null } }),
       ).rejects.toThrow("object address");
     });
   });

@@ -3,11 +3,29 @@ import type {
   MarketplaceScope,
   MarketplaceVisibility,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
-import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  type BackofficeContextScope,
+  type BackofficeOrganizationContextScope,
+  backofficeScopeReferenceCodec,
+  formatBackofficeScopeSegment,
+  mapBackofficeScopeNames,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 
-/** Owner scopes are Backoffice scopes, so their key is the canonical scope path segment. */
+/** A workspace as listings name their owner: by ID alone, not where its objects are kept. */
+export function marketplaceOwnerScope(scope: BackofficeContextScope): MarketplaceOwnerScope {
+  return mapBackofficeScopeNames(scope, {
+    organization: ({ orgId }) => ({ orgId }),
+    user: ({ userId }) => ({ userId }),
+    project: ({ projectId }) => ({ projectId }),
+  });
+}
+
+/**
+ * Owner scopes are Backoffice scopes named by ID, so their key is their scope path segment. It
+ * names no jurisdiction, so a listing keeps its ID wherever its owner's objects are kept.
+ */
 export const marketplaceOwnerKey = (scope: MarketplaceOwnerScope): string =>
-  backofficeScopePathSegment(scope);
+  formatBackofficeScopeSegment(scope, backofficeScopeReferenceCodec);
 
 export const marketplaceListingId = ({
   ownerScope,
@@ -36,9 +54,9 @@ export const marketplaceVersionId = ({
 /** Packages are owned by an organization, so organization visibility names that organization's Marketplace. */
 export function marketplaceScopeForVisibility(
   visibility: MarketplaceVisibility,
-  owner: { kind: "org"; orgId: string },
+  organization: BackofficeOrganizationContextScope,
 ): MarketplaceScope {
-  return visibility === "public" ? { kind: "system" } : { kind: "org", orgId: owner.orgId };
+  return visibility === "public" ? { kind: "system" } : organization;
 }
 
 /** An organization Marketplace holds only its own organization's listings; System accepts every owner. */

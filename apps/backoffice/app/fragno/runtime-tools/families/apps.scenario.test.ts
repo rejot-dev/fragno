@@ -77,19 +77,20 @@ const requestedPermissions = [BACKOFFICE_PERMISSION.events.emit, BACKOFFICE_PERM
 function appContext(
   ctx: BackofficeScenarioContext,
   userId: string,
-  scope: BackofficeContextScope = { kind: "org", orgId: "org-1" },
+  scope: BackofficeContextScope = { kind: "org", orgId: "org-1", jurisdiction: null },
   requestAuthority = false,
 ) {
   const execution = requestAuthority
     ? createBackofficeRequestExecution({
         scope,
-        userId,
         verifiedRequestAuthority: {
+          userId: userId,
+          personalScope: { kind: "user" as const, userId: userId, jurisdiction: null },
           role: "admin",
-          organizationId: "org-1",
-          administeredMemberId: null,
+          organization: { kind: "org" as const, orgId: "org-1", jurisdiction: null },
+          administeredMember: null,
           expiresAt: new Date(ctx.runtime.now() + 60_000),
-          scopeRestriction: { kind: "org", orgId: "org-1" },
+          scopeRestriction: { kind: "org", orgId: "org-1", jurisdiction: null },
         },
       })
     : createBackofficeUserExecution({ scope, userId });
@@ -397,7 +398,7 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
               ).toEqual({ installationId: data.installation.id, changed: true });
               expect(
                 await ctx.runtime.objects.appInstallations
-                  .forOrg("org-1")
+                  .for({ kind: "org", orgId: "org-1", jurisdiction: null })
                   .commands.getInstallation({ appId }),
               ).toMatchObject({
                 id: data.installation.id,
@@ -435,9 +436,9 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
             const ownerContext = appContext(ctx, "owner");
             const ownerTools = createBackofficeToolContext(ownerContext);
             for (const execution of [
-              createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+              createBackofficeSystemExecution({ kind: "org", orgId: "org-1", jurisdiction: null }),
               createBackofficeServiceExecution({
-                scope: { kind: "org", orgId: "org-1" },
+                scope: { kind: "org", orgId: "org-1", jurisdiction: null },
                 service: { type: "automation", id: "automation-1" },
               }),
             ]) {
@@ -516,7 +517,7 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
                 appId,
                 grantedPermissions: [],
                 actionsRevision: 1,
-                owner: { kind: "org", orgId: "other-org" },
+                owner: { kind: "org", orgId: "other-org", jurisdiction: null },
               },
             ]) {
               await expect(
@@ -572,7 +573,7 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
             }
             expect(
               await ctx.runtime.objects.appInstallations
-                .forOrg("org-1")
+                .for({ kind: "org", orgId: "org-1", jurisdiction: null })
                 .commands.getInstallation({ appId }),
             ).toBeNull();
             await executeBackofficeRuntimeTool(
@@ -593,7 +594,7 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
             ).rejects.toThrow("grants exceed the app's requested permissions");
             expect(
               await ctx.runtime.objects.appInstallations
-                .forOrg("org-1")
+                .for({ kind: "org", orgId: "org-1", jurisdiction: null })
                 .commands.getInstallation({ appId }),
             ).toMatchObject({
               owner: { kind: "org", orgId: "org-1" },
@@ -626,7 +627,12 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
             "an organization owner approves through verified request authority",
             async (ctx) => {
               appId = await registerApp(ctx);
-              const ownerContext = appContext(ctx, "owner", { kind: "org", orgId: "org-1" }, true);
+              const ownerContext = appContext(
+                ctx,
+                "owner",
+                { kind: "org", orgId: "org-1", jurisdiction: null },
+                true,
+              );
               context = ownerContext;
               await executeBackofficeRuntimeTool(
                 appTool("install"),
@@ -634,12 +640,16 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
                 createBackofficeToolContext(ownerContext),
               );
               expect(() =>
-                ownerContext.createBackofficeScopedContext({ kind: "org", orgId: "org-2" }),
+                ownerContext.createBackofficeScopedContext({
+                  kind: "org",
+                  orgId: "org-2",
+                  jurisdiction: null,
+                }),
               ).toThrow("Credential scope does not permit");
               administratorContext = appContext(
                 ctx,
                 "global-admin",
-                { kind: "org", orgId: "org-1" },
+                { kind: "org", orgId: "org-1", jurisdiction: null },
                 true,
               );
               expect(
@@ -714,7 +724,7 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
               ).rejects.toThrow("Required permission: apps.read.");
               expect(
                 await ctx.runtime.objects.appInstallations
-                  .forOrg("org-1")
+                  .for({ kind: "org", orgId: "org-1", jurisdiction: null })
                   .commands.getInstallation({ appId }),
               ).toMatchObject({
                 status: "active",
@@ -792,7 +802,7 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
               assert.equal(uninstalled.exitCode, 0, uninstalled.stderr);
               expect(
                 await ctx.runtime.objects.appInstallations
-                  .forOrg("org-1")
+                  .for({ kind: "org", orgId: "org-1", jurisdiction: null })
                   .commands.getInstallation({ appId }),
               ).toMatchObject({ status: "uninstalled", grantedPermissions: [] });
             },
@@ -818,7 +828,7 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
         ],
         steps: ({ when, then, runner }) => [
           when.project.create({
-            owner: { kind: "org", orgId: "org-1" },
+            owner: { kind: "org", orgId: "org-1", jurisdiction: null },
             name: "Accounting",
             slug: "accounting",
             createdByUserId: "global-admin",
@@ -836,7 +846,7 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
               );
             }
             const other = createBackofficeToolContext(
-              appContext(ctx, "global-admin", { kind: "org", orgId: "org-2" }),
+              appContext(ctx, "global-admin", { kind: "org", orgId: "org-2", jurisdiction: null }),
             );
             expect(
               await executeBackofficeRuntimeTool(
@@ -872,10 +882,14 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
             // Installations are managed in their owner's scope, not in its projects or workspaces.
             for (const scope of [
               { kind: "system" },
-              { kind: "app", owner: { kind: "org", orgId: "org-1" }, appId: "any-app" },
+              {
+                kind: "app",
+                owner: { kind: "org", orgId: "org-1", jurisdiction: null },
+                appId: "any-app",
+              },
               {
                 kind: "project",
-                owner: { kind: "org", orgId: "org-1" },
+                owner: { kind: "org", orgId: "org-1", jurisdiction: null },
                 projectId: ctx.vars.projectId,
               },
             ] satisfies BackofficeContextScope[]) {
@@ -898,7 +912,7 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
           }),
           runner.restartObject({
             binding: "APP_INSTALLATIONS",
-            scope: { kind: "org", orgId: "org-1" },
+            scope: { kind: "org", orgId: "org-1", jurisdiction: null },
           }),
           then.assert(
             "cursor resumes after restart and revocation is local to one organization",
@@ -925,8 +939,8 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
                 3,
               );
               expect([second.installations[0].owner, third.installations[0].owner]).toEqual([
-                { kind: "org", orgId: "org-1" },
-                { kind: "org", orgId: "org-1" },
+                { kind: "org", orgId: "org-1", jurisdiction: null },
+                { kind: "org", orgId: "org-1", jurisdiction: null },
               ]);
               for (const input of [
                 { pageSize: 2, cursor },
@@ -940,12 +954,12 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
               await executeBackofficeRuntimeTool(appTool("uninstall"), { appId: ids[0] }, tools);
               expect(
                 await ctx.runtime.objects.appInstallations
-                  .forOrg("org-1")
+                  .for({ kind: "org", orgId: "org-1", jurisdiction: null })
                   .commands.getInstallation({ appId: ids[0] }),
               ).toMatchObject({ status: "uninstalled", grantedPermissions: [] });
               expect(
                 await ctx.runtime.objects.appInstallations
-                  .forOrg("org-2")
+                  .for({ kind: "org", orgId: "org-2", jurisdiction: null })
                   .commands.getInstallation({ appId: ids[0] }),
               ).toMatchObject({ status: "active", grantedPermissions: [] });
             },

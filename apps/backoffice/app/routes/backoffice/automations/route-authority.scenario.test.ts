@@ -127,9 +127,17 @@ describe("route authority inspector scenario", () => {
             "render authority details from routes read back through the API",
             async (ctx) => {
               const call = createAutomationsRouteCaller({
-                object: ctx.runtime.objects.automations.forOrg("org-1"),
+                object: ctx.runtime.objects.automations.for({
+                  kind: "org",
+                  orgId: "org-1",
+                  jurisdiction: null,
+                }),
                 context: {
-                  execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                  execution: createBackofficeSystemExecution({
+                    kind: "org",
+                    orgId: "org-1",
+                    jurisdiction: null,
+                  }),
                   propagationContext: null,
                 },
               });

@@ -68,7 +68,11 @@ test("event catalog commands combine built-in descriptors with scoped dynamic de
               emitter: { kind: "caller" },
               runtime: ctx.runtime.services,
               kernel,
-              execution: createBackofficeSystemExecution({ kind: "user", userId: "user-1" }),
+              execution: createBackofficeSystemExecution({
+                kind: "user",
+                userId: "user-1",
+                jurisdiction: null,
+              }),
             });
             assert(context.stateBackend);
             const { bash } = await createInteractiveBashHost({
@@ -81,7 +85,7 @@ test("event catalog commands combine built-in descriptors with scoped dynamic de
             expect(JSON.parse(created.stdout)).toMatchObject(definition);
             expect(
               await ctx.runtime.objects.automations
-                .forUser({ userId: "user-1" })
+                .for({ kind: "user", userId: "user-1", jurisdiction: null })
                 .commands.getEventDefinition({ source: "custom", eventType: "thing.created" }),
             ).toMatchObject(definition);
             const list = await bash.exec("events.catalog.list --format json");
@@ -127,7 +131,11 @@ test("event catalog commands combine built-in descriptors with scoped dynamic de
               emitter: { kind: "caller" },
               runtime: ctx.runtime.services,
               kernel,
-              execution: createBackofficeSystemExecution({ kind: "user", userId: "user-2" }),
+              execution: createBackofficeSystemExecution({
+                kind: "user",
+                userId: "user-2",
+                jurisdiction: null,
+              }),
             });
             assert(otherContext.stateBackend);
             const otherBash = (
@@ -145,7 +153,7 @@ test("event catalog commands combine built-in descriptors with scoped dynamic de
               expect.objectContaining({ source: "custom" }),
             );
             const codemode = await ctx.runCodemode({
-              scope: { kind: "org", orgId: "org-1" },
+              scope: { kind: "org", orgId: "org-1", jurisdiction: null },
               code: 'async () => await context.user("user-1").events.catalogGet({ source: "custom", eventType: "thing.created" })',
             });
             expect(codemode.result).toMatchObject(definition);

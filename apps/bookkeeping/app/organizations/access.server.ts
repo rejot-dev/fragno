@@ -99,12 +99,16 @@ export async function connectAsUser(
  * it; null when Backoffice refuses them, because they were removed or Bookkeeping was uninstalled.
  */
 async function confirmWithBackoffice(request: Request, organizationId: string) {
-  const backoffice = await connectAsUser(request, { kind: "org", orgId: organizationId });
+  const backoffice = await connectAsUser(request, {
+    kind: "org",
+    orgId: organizationId,
+    jurisdiction: null,
+  });
   if (!backoffice) {
     return null;
   }
   const confirmed = await callBackoffice(() =>
-    backoffice.call({ kind: "org", orgId: organizationId }, "org.get"),
+    backoffice.call({ kind: "org", orgId: organizationId, jurisdiction: null }, "org.get"),
   );
   return {
     organization: {

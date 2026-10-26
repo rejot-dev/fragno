@@ -44,7 +44,7 @@ const scenarioObjects = {
   UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
 
-const scope = { kind: "org", orgId: "telegram-org" } as const;
+const scope = { kind: "org", orgId: "telegram-org", jurisdiction: null } as const;
 const connectionId = "backoffice#telegram";
 const botToken = "123456:integration-bot-token";
 
@@ -237,7 +237,7 @@ test("Telegram connects, acts, checks its webhook, and disconnects through integ
 });
 
 test("a personal bot removed before its setup report dispatches still reports both changes", async () => {
-  const userScope = { kind: "user", userId: "user-1" } as const;
+  const userScope = { kind: "user", userId: "user-1", jurisdiction: null } as const;
   await runBackofficeScenario(
     defineBackofficeScenario({
       objects: scenarioObjects,

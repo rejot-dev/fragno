@@ -34,7 +34,7 @@ let runtime: InMemoryBackofficeRuntime | null = null;
 
 const event = (overrides: Partial<BillingEventInput> = {}): BillingEventInput => ({
   id: "pi:org-1:hook-1",
-  scope: { kind: "org", orgId: "org-1" },
+  scope: { kind: "org", orgId: "org-1", jurisdiction: null },
   source: "pi",
   eventType: "operation.completed",
   occurredAt: "2026-07-16T12:00:00.000Z",
@@ -76,8 +76,16 @@ describe("Billing Durable Object", () => {
   test("stores events in the owning organization object", async () => {
     runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
 
-    const orgOneBilling = runtime.objects.billing.forOrg("org-1");
-    const orgTwoBilling = runtime.objects.billing.forOrg("org-2");
+    const orgOneBilling = runtime.objects.billing.for({
+      kind: "org",
+      orgId: "org-1",
+      jurisdiction: null,
+    });
+    const orgTwoBilling = runtime.objects.billing.for({
+      kind: "org",
+      orgId: "org-2",
+      jurisdiction: null,
+    });
     await runtime.drain();
 
     await expect(orgOneBilling.commands.recordEvent(event())).resolves.toEqual({
@@ -86,7 +94,7 @@ describe("Billing Durable Object", () => {
     });
     await expect(
       orgOneBilling.commands.getTrackers({
-        scope: { kind: "org", orgId: "org-1" },
+        scope: { kind: "org", orgId: "org-1", jurisdiction: null },
         period: "2026-07",
       }),
     ).resolves.toMatchObject({
@@ -95,7 +103,7 @@ describe("Billing Durable Object", () => {
     });
     await expect(
       orgTwoBilling.commands.getTrackers({
-        scope: { kind: "org", orgId: "org-2" },
+        scope: { kind: "org", orgId: "org-2", jurisdiction: null },
         period: "2026-07",
       }),
     ).resolves.toMatchObject({ trackers: [], hasNextPage: false });
@@ -103,9 +111,13 @@ describe("Billing Durable Object", () => {
 
   test("allows user-scoped usage inside an organization billing object", async () => {
     runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
-    const billing = runtime.objects.billing.forOrg("org-1");
+    const billing = runtime.objects.billing.for({
+      kind: "org",
+      orgId: "org-1",
+      jurisdiction: null,
+    });
     await runtime.drain();
-    const userScope = { kind: "user" as const, userId: "user-1" };
+    const userScope = { kind: "user" as const, userId: "user-1", jurisdiction: null };
 
     await billing.commands.recordEvent(
       event({
@@ -116,7 +128,11 @@ describe("Billing Durable Object", () => {
     await billing.commands.recordEvent(
       event({
         id: "pi:org-1:project-1:hook-1",
-        scope: { kind: "project", owner: { kind: "org", orgId: "org-1" }, projectId: "project-1" },
+        scope: {
+          kind: "project",
+          owner: { kind: "org", orgId: "org-1", jurisdiction: null },
+          projectId: "project-1",
+        },
         measurements: [{ meter: "ai.tokens.total", unit: "token", quantity: 40 }],
       }),
     );
@@ -147,7 +163,11 @@ describe("Billing Durable Object", () => {
 
   test("records usage attribution independently from the ledger owner", async () => {
     runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
-    const billing = runtime.objects.billing.forOrg("org-1");
+    const billing = runtime.objects.billing.for({
+      kind: "org",
+      orgId: "org-1",
+      jurisdiction: null,
+    });
     await runtime.drain();
 
     await expect(

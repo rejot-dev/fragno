@@ -61,7 +61,7 @@ const scenarioObjects = {
 } satisfies LocalBackofficeObjects;
 
 const LISTING_ID = "system#telegram-test-command";
-const ORG_SCOPE = { kind: "org", orgId: "org-1" } as const;
+const ORG_SCOPE = { kind: "org", orgId: "org-1", jurisdiction: null } as const;
 const INSTALLATION_ROOT = "/workspace/packages/telegram";
 const WORKFLOW_FILE = "automations/telegram-test-command.workflow.js";
 
@@ -257,7 +257,7 @@ describe("Workspace package runtime scenarios", () => {
         ],
         steps: ({ when, then, runner }) => [
           when.project.create({
-            owner: { kind: "org", orgId: "org-1" },
+            owner: { kind: "org", orgId: "org-1", jurisdiction: null },
             name: "Delivery",
             slug: "delivery",
             createdByUserId: "owner-1",
@@ -274,15 +274,25 @@ describe("Workspace package runtime scenarios", () => {
                 kernel: new BackofficeKernel(ctx.runtime.services),
                 execution: await createBackofficeExecutionForPrincipal(
                   {
-                    user: { id: "owner-1", email: "owner@example.test", role: "user" },
+                    user: {
+                      id: "owner-1",
+                      email: "owner@example.test",
+                      role: "user",
+                      personalScope: { kind: "user", userId: "owner-1", jurisdiction: null },
+                    },
                     auth: {
                       transport: "bearer",
                       expiresAt: new Date(Date.now() + 60_000),
-                      organization: { id: "org-2", slug: "second-org", roles: ["owner"] },
+                      organization: {
+                        id: "org-2",
+                        slug: "second-org",
+                        jurisdiction: null,
+                        roles: ["owner"],
+                      },
                       scopeRestriction: null,
                     },
                   },
-                  { kind: "user", userId: "owner-1" },
+                  { kind: "user", userId: "owner-1", jurisdiction: null },
                   ctx.runtime.objects.auth.singleton().commands,
                 ),
               });
@@ -292,7 +302,7 @@ describe("Workspace package runtime scenarios", () => {
               );
               assert(personal.exitCode === 0, personal.stderr);
               expect(JSON.parse(personal.stdout)).toMatchObject({
-                workflowScope: { kind: "org", orgId: "org-2" },
+                workflowScope: { kind: "org", orgId: "org-2", jurisdiction: null },
               });
               const project = await ctx.runCodemode({
                 scope: ORG_SCOPE,
@@ -307,7 +317,7 @@ describe("Workspace package runtime scenarios", () => {
             async (ctx) => {
               const scope = {
                 kind: "project",
-                owner: { kind: "org", orgId: "org-1" },
+                owner: { kind: "org", orgId: "org-1", jurisdiction: null },
                 projectId: ctx.vars.projectId,
               } as const;
               const expected = {
@@ -322,7 +332,10 @@ describe("Workspace package runtime scenarios", () => {
                   },
                 ],
               };
-              for (const target of [{ kind: "user", userId: "owner-1" } as const, scope]) {
+              for (const target of [
+                { kind: "user", userId: "owner-1", jurisdiction: null } as const,
+                scope,
+              ]) {
                 const list = await ctx.runCodemode({
                   scope: target,
                   code: "async () => await packages.ls({})",
@@ -355,11 +368,21 @@ describe("Workspace package runtime scenarios", () => {
           runner.drain(),
           then.assert("the authenticated organization coordinates installation", async (ctx) => {
             const principal = {
-              user: { id: "owner-1", email: "owner@example.test", role: "user" as const },
+              user: {
+                id: "owner-1",
+                email: "owner@example.test",
+                role: "user" as const,
+                personalScope: { kind: "user" as const, userId: "owner-1", jurisdiction: null },
+              },
               auth: {
                 transport: "bearer" as const,
                 expiresAt: new Date(Date.now() + 60_000),
-                organization: { id: "org-1", slug: "ada-labs", roles: ["owner"] },
+                organization: {
+                  id: "org-1",
+                  slug: "ada-labs",
+                  jurisdiction: null,
+                  roles: ["owner"],
+                },
                 scopeRestriction: null,
               },
             };
@@ -369,7 +392,7 @@ describe("Workspace package runtime scenarios", () => {
               kernel: new BackofficeKernel(ctx.runtime.services),
               execution: await createBackofficeExecutionForPrincipal(
                 principal,
-                { kind: "user", userId: "owner-1" },
+                { kind: "user", userId: "owner-1", jurisdiction: null },
                 ctx.runtime.objects.auth.singleton().commands,
               ),
             });
@@ -384,7 +407,7 @@ describe("Workspace package runtime scenarios", () => {
           runner.drain(),
           then.assert("the deferred workflow installs into the personal workspace", async (ctx) => {
             const result = await ctx.runCodemode({
-              scope: { kind: "user", userId: "owner-1" },
+              scope: { kind: "user", userId: "owner-1", jurisdiction: null },
               code: "async () => await packages.ls({})",
             });
             expect(result.result).toMatchObject({
@@ -422,7 +445,7 @@ describe("Workspace package runtime scenarios", () => {
             await expect(
               ctx.runCodemode({
                 scope: ORG_SCOPE,
-                code: `async () => await packages.install(${JSON.stringify({ listingId: LISTING_ID, installationRoot: INSTALLATION_ROOT, targetScope: { kind: "org", orgId: "org-2" } })})`,
+                code: `async () => await packages.install(${JSON.stringify({ listingId: LISTING_ID, installationRoot: INSTALLATION_ROOT, targetScope: { kind: "org", orgId: "org-2", jurisdiction: null } })})`,
               }),
             ).rejects.toThrow("targetScope");
             const missing = await ctx.runCodemode({
@@ -528,7 +551,7 @@ describe("Workspace package runtime scenarios", () => {
                 runtime: ctx.runtime.services,
                 kernel: new BackofficeKernel(ctx.runtime.services),
                 execution: createBackofficeUserExecution({
-                  scope: { kind: "user", userId: "outsider-1" },
+                  scope: { kind: "user", userId: "outsider-1", jurisdiction: null },
                   userId: "outsider-1",
                 }),
               });

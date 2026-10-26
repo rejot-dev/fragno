@@ -11,9 +11,12 @@ import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-f
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
 
+import { AuthObject } from "../auth-object";
 import { AutomationsObject } from "../automations-object";
 
 const scenarioObjects = {
+  // Forwarding reads the target organization's scope from Auth.
+  AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
   AUTOMATIONS: (input) => new AutomationsObject(input),
 } satisfies LocalBackofficeObjects;
 
@@ -24,6 +27,7 @@ test("a hook that fails for good reports one failed attempt for its object's sco
       name: "Durable hook failure telemetry",
       // The route forwards outside its organization, which no retry can fix.
       options: { allowFailedDurableHooks: true },
+      setup: ({ given }) => [given.organization.exists({ id: "org-2" })],
       steps: ({ given, when, then }) => [
         given.router.route({
           orgId: "org-1",
@@ -42,7 +46,7 @@ test("a hook that fails for good reports one failed attempt for its object's sco
         when.automation.ingestEvent({
           id: "check-1",
           scopeRestriction: null,
-          scope: { kind: "org", orgId: "org-1" },
+          scope: { kind: "org", orgId: "org-1", jurisdiction: null },
           source: "custom",
           eventType: "check.requested",
           occurredAt: "2026-01-01T00:00:00.000Z",
@@ -63,7 +67,7 @@ test("a hook that fails for good reports one failed attempt for its object's sco
           assert(dispatch.outcome.status === "failed");
           expect(dispatch.object).toEqual({
             host: "Automations",
-            scope: { kind: "org", orgId: "org-1" },
+            scope: { kind: "org", orgId: "org-1", jurisdiction: null },
           });
           expect(dispatch.attempt).toMatchObject({ attempt: 1 });
           expect(dispatch.outcome.error).toBeInstanceOf(Error);

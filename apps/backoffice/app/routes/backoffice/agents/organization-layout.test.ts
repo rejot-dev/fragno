@@ -42,7 +42,7 @@ function layoutContext(
   const context = new RouterContextProvider();
   context.set(BackofficeWorkerContext, { runtime: { reson8: null } } as never);
   provideBackofficeShellRequest(context, {
-    me: { user: { id: "user-1" }, ...me } as BackofficeMeData,
+    me: { user: { id: "user-1", jurisdiction: null }, ...me } as BackofficeMeData,
     routeScope: routeScope as never,
   });
   return context;

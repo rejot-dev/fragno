@@ -103,11 +103,15 @@ describe("project automation event routing", () => {
       env: { codemode: testCodemodeExecutor },
     });
 
-    const orgAutomations = runtime.objects.automations.forOrg(orgId);
+    const orgAutomations = runtime.objects.automations.for({
+      kind: "org",
+      orgId: orgId,
+      jurisdiction: null,
+    });
     const orgRoutes = createAutomationsRouteCaller({
       object: orgAutomations,
       context: {
-        execution: createBackofficeSystemExecution({ kind: "org", orgId }),
+        execution: createBackofficeSystemExecution({ kind: "org", orgId, jurisdiction: null }),
         propagationContext: null,
       },
     });
@@ -127,7 +131,7 @@ describe("project automation event routing", () => {
     const projectFileSystem = createScopedTestFileSystem(
       runtime,
       createBackofficeUserExecution({
-        scope: { kind: "project", owner: { kind: "org", orgId }, projectId },
+        scope: { kind: "project", owner: { kind: "org", orgId, jurisdiction: null }, projectId },
         userId: "user-1",
       }),
     );
@@ -139,7 +143,7 @@ describe("project automation event routing", () => {
 
     const projectAutomations = runtime.objects.automations.for({
       kind: "project",
-      owner: { kind: "org", orgId: orgId },
+      owner: { kind: "org", orgId: orgId, jurisdiction: null },
       projectId,
     });
     const projectRoutesUrl =
@@ -177,7 +181,7 @@ describe("project automation event routing", () => {
       {
         execution: createBackofficeSystemExecution({
           kind: "project",
-          owner: { kind: "org", orgId },
+          owner: { kind: "org", orgId, jurisdiction: null },
           projectId,
         }),
         propagationContext: null,
@@ -187,7 +191,7 @@ describe("project automation event routing", () => {
     const event: AutomationEvent = {
       id: "org-event-1",
       scopeRestriction: null,
-      scope: { kind: "org", orgId },
+      scope: { kind: "org", orgId, jurisdiction: null },
       source: "test",
       eventType: "org.event",
       occurredAt: "2026-06-22T00:00:00.000Z",
@@ -226,11 +230,15 @@ describe("project automation event routing", () => {
     await expect(
       events.emitEvent({
         eventType: "project.event",
-        targetScope: { kind: "project", owner: { kind: "org", orgId }, projectId },
+        targetScope: {
+          kind: "project",
+          owner: { kind: "org", orgId, jurisdiction: null },
+          projectId,
+        },
       }),
     ).resolves.toMatchObject({
       accepted: true,
-      scope: { kind: "project", owner: { kind: "org", orgId }, projectId },
+      scope: { kind: "project", owner: { kind: "org", orgId, jurisdiction: null }, projectId },
     });
 
     await runtime.drain();
@@ -240,7 +248,7 @@ describe("project automation event routing", () => {
       {
         execution: createBackofficeSystemExecution({
           kind: "project",
-          owner: { kind: "org", orgId },
+          owner: { kind: "org", orgId, jurisdiction: null },
           projectId,
         }),
         propagationContext: null,
@@ -266,7 +274,11 @@ describe("project automation event routing", () => {
       env: { codemode: testCodemodeExecutor },
     });
 
-    const orgAutomations = runtime.objects.automations.forOrg(orgId);
+    const orgAutomations = runtime.objects.automations.for({
+      kind: "org",
+      orgId: orgId,
+      jurisdiction: null,
+    });
     const orgRoutes = createAutomationsRouteCaller({ object: orgAutomations });
     const createProjectResponse = await orgRoutes("POST", "/projects", {
       body: {
@@ -290,7 +302,7 @@ describe("project automation event routing", () => {
             event: expect.objectContaining({
               source: "automations",
               eventType: "project.created",
-              scope: { kind: "org", orgId },
+              scope: { kind: "org", orgId, jurisdiction: null },
               subject: { orgId, projectId },
             }),
           }),
@@ -301,7 +313,7 @@ describe("project automation event routing", () => {
     const fs = createScopedTestFileSystem(
       runtime,
       createBackofficeUserExecution({
-        scope: { kind: "org", orgId },
+        scope: { kind: "org", orgId, jurisdiction: null },
         userId: "user-1",
       }),
     );
@@ -311,7 +323,7 @@ describe("project automation event routing", () => {
     const projectFs = createScopedTestFileSystem(
       runtime,
       createBackofficeUserExecution({
-        scope: { kind: "project", owner: { kind: "org", orgId }, projectId },
+        scope: { kind: "project", owner: { kind: "org", orgId, jurisdiction: null }, projectId },
         userId: "user-1",
       }),
     );
@@ -329,7 +341,11 @@ describe("project automation event routing", () => {
       env: { codemode: testCodemodeExecutor },
     });
 
-    const orgAutomations = runtime.objects.automations.forOrg(orgId);
+    const orgAutomations = runtime.objects.automations.for({
+      kind: "org",
+      orgId: orgId,
+      jurisdiction: null,
+    });
     const orgRoutes = createAutomationsRouteCaller({ object: orgAutomations });
     const createProjectResponse = await orgRoutes("POST", "/projects", {
       body: {
@@ -348,7 +364,7 @@ describe("project automation event routing", () => {
     const event: AutomationEvent = {
       id: "org-event-archived",
       scopeRestriction: null,
-      scope: { kind: "org", orgId },
+      scope: { kind: "org", orgId, jurisdiction: null },
       source: "test",
       eventType: "org.event",
       occurredAt: "2026-06-22T00:00:00.000Z",
@@ -386,14 +402,18 @@ describe("project automation event routing", () => {
     await expect(
       events.emitEvent({
         eventType: "project.event",
-        targetScope: { kind: "project", owner: { kind: "org", orgId }, projectId },
+        targetScope: {
+          kind: "project",
+          owner: { kind: "org", orgId, jurisdiction: null },
+          projectId,
+        },
       }),
     ).rejects.toThrow(`Project '${projectId}' is not available.`);
 
     assert(
       !runtime.hasObjectInstance({
         binding: "AUTOMATIONS",
-        scope: { kind: "project", owner: { kind: "org", orgId }, projectId },
+        scope: { kind: "project", owner: { kind: "org", orgId, jurisdiction: null }, projectId },
       }),
     );
   });

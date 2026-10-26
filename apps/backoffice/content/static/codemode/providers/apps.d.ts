@@ -228,10 +228,12 @@ type BackofficeAppInstallation = {
     | {
         kind: "org";
         orgId: string;
+        jurisdiction: "eu" | "us" | null;
       }
     | {
         kind: "user";
         userId: string;
+        jurisdiction: "eu" | "us" | null;
       };
   grantedPermissions: BackofficePermissionRequirement[];
   resourceScope: AppInstallationResourceScope;

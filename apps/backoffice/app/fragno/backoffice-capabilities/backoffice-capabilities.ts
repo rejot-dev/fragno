@@ -1,4 +1,7 @@
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import type {
+  BackofficeContextScope,
+  BackofficeOrganizationContextScope,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { z } from "zod";
 
 import type {
@@ -77,7 +80,7 @@ export type BackofficeCapabilityContext = {
   objects: BackofficeObjectRegistry;
   config: BackofficeRuntimeConfig;
   scope: BackofficeContextScope;
-  orgId: string;
+  organization: BackofficeOrganizationContextScope;
 };
 
 type BackofficeHookScope = {

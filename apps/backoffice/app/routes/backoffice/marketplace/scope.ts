@@ -46,7 +46,7 @@ export function marketplaceForCatalog(
   // Only workspaces that belong to an organization have an organization Marketplace.
   const organization = backofficeScopeOrganization(scope);
   if (catalog === "organization" && organization) {
-    return { catalog, marketplace: { kind: "org", orgId: organization.orgId } };
+    return { catalog, marketplace: organization };
   }
   throw new Response("Not Found", { status: 404 });
 }

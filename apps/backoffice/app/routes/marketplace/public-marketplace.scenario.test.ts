@@ -498,7 +498,7 @@ describe("Marketplace browsing scenarios", () => {
         steps: ({ when, then }) => [
           then.assert("the organization publishes a members-only package", async (ctx) => {
             const result = await ctx.runtime.objects.marketplace
-              .forOrg(ORG_ID)
+              .for({ kind: "org", orgId: ORG_ID, jurisdiction: null })
               .commands.insertStaticEntries({ entries: [PAYROLL_SYNC] });
             assert(result.ok);
           }),
@@ -512,7 +512,7 @@ describe("Marketplace browsing scenarios", () => {
               });
             assert(publicFeature.ok);
             const organizationFeature = await ctx.runtime.objects.marketplace
-              .forOrg(ORG_ID)
+              .for({ kind: "org", orgId: ORG_ID, jurisdiction: null })
               .commands.featureListing({
                 ...CURATION,
                 listingId: listingIdOf(PAYROLL_SYNC),

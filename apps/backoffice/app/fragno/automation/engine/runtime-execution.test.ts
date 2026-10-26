@@ -12,7 +12,7 @@ import {
 const event = {
   id: "event-1",
   scopeRestriction: null,
-  scope: { kind: "org", orgId: "org-1" },
+  scope: { kind: "org", orgId: "org-1", jurisdiction: null },
   source: "telegram",
   eventType: "telegram.message.received",
   occurredAt: "2026-07-27T00:00:00.000Z",

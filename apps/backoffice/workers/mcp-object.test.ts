@@ -39,10 +39,14 @@ afterEach(async () => {
 describe("MCP system capability", () => {
   test("initializes for its object scope without capability configuration", async () => {
     const runtime = await createRuntime();
-    const mcp = runtime.objects.mcp.forOrg("org-1");
+    const mcp = runtime.objects.mcp.for({ kind: "org", orgId: "org-1", jurisdiction: null });
 
     const response = await mcp.http.fetchAuthorized(new Request("https://mcp.do/api/mcp/servers"), {
-      execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+      execution: createBackofficeSystemExecution({
+        kind: "org",
+        orgId: "org-1",
+        jurisdiction: null,
+      }),
     });
     assert(response.ok);
     await expect(response.json()).resolves.toEqual({ servers: [] });

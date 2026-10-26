@@ -17,9 +17,11 @@ import {
   type SendInvitationInput,
   type SendInvitationResult,
 } from "@fragno-dev/backoffice-api/v0/provisioning";
+import type { BackofficeOrganizationContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { Hono } from "hono";
 import { z } from "zod";
 
+import { lookupOrganizationContextScope } from "@/backoffice-runtime/resolved-scope";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { requireBackofficeAppOperationValue } from "@/fragno/apps/errors";
 import type { AppProvisioningResult } from "@/fragno/auth/app-provisioning";
@@ -48,16 +50,13 @@ async function installProvisioned(
   runtime: BackofficeRuntimeServices,
   app: ProvisioningApp,
   input: {
-    organizationId: string;
+    organization: BackofficeOrganizationContextScope;
     externalOrganizationId: string;
     name: string;
     installedByUserId: string;
   },
 ): Promise<AppProvisioningResult<null>> {
-  const installations = runtime.objects.appInstallations.for({
-    kind: "org",
-    orgId: input.organizationId,
-  }).commands;
+  const installations = runtime.objects.appInstallations.for(input.organization).commands;
   let installation = await installations.getInstallation({ appId: app.id });
   if (installation?.status === "uninstalled") {
     return {
@@ -110,7 +109,11 @@ async function provisionOrganization(
     return provisioned;
   }
   const installed = await installProvisioned(runtime, app, {
-    organizationId: provisioned.value.organizationId,
+    organization: {
+      kind: "org",
+      orgId: provisioned.value.organizationId,
+      jurisdiction: provisioned.value.jurisdiction,
+    },
     externalOrganizationId: input.externalOrganizationId,
     name: input.name,
     installedByUserId: input.ownerUserId,
@@ -138,7 +141,11 @@ async function provisionOrganizationForInvitee(
     return provisioned;
   }
   const installed = await installProvisioned(runtime, app, {
-    organizationId: provisioned.value.organizationId,
+    organization: {
+      kind: "org",
+      orgId: provisioned.value.organizationId,
+      jurisdiction: provisioned.value.jurisdiction,
+    },
     externalOrganizationId: input.externalOrganizationId,
     name: input.name,
     installedByUserId: input.invitedByUserId,
@@ -146,16 +153,23 @@ async function provisionOrganizationForInvitee(
   return installed.ok ? provisioned : installed;
 }
 
-/** Apps reach only organizations where they are installed. */
-async function isInstalledIn(
+/** The organization, when the app is installed there: apps reach no other. */
+async function installedOrganization(
   runtime: BackofficeRuntimeServices,
   app: ProvisioningApp,
   organizationId: string,
-): Promise<boolean> {
+): Promise<BackofficeOrganizationContextScope | null> {
+  const organization = await lookupOrganizationContextScope(
+    runtime.objects.auth.singleton().commands,
+    organizationId,
+  );
+  if (!organization) {
+    return null;
+  }
   const installation = await runtime.objects.appInstallations
-    .for({ kind: "org", orgId: organizationId })
+    .for(organization)
     .commands.getInstallation({ appId: app.id });
-  return installation?.status === "active";
+  return installation?.status === "active" ? organization : null;
 }
 
 async function provisionProject(
@@ -163,7 +177,8 @@ async function provisionProject(
   app: ProvisioningApp,
   input: ProvisionProjectInput,
 ): Promise<AppProvisioningResult<ProvisionProjectResult>> {
-  if (!(await isInstalledIn(runtime, app, input.organizationId))) {
+  const organization = await installedOrganization(runtime, app, input.organizationId);
+  if (!organization) {
     return {
       ok: false,
       error: {
@@ -180,14 +195,12 @@ async function provisionProject(
   if (!creator.ok) {
     return creator;
   }
-  const project = await runtime.objects.automations
-    .for({ kind: "org", orgId: input.organizationId })
-    .commands.provisionAppProject({
-      appId: app.id,
-      externalProjectId: input.externalProjectId,
-      name: input.name,
-      createdByUserId: input.createdByUserId,
-    });
+  const project = await runtime.objects.automations.for(organization).commands.provisionAppProject({
+    appId: app.id,
+    externalProjectId: input.externalProjectId,
+    name: input.name,
+    createdByUserId: input.createdByUserId,
+  });
   return { ok: true, value: { organizationId: input.organizationId, ...project } };
 }
 
@@ -196,7 +209,7 @@ async function createInvitation(
   app: ProvisioningApp,
   input: CreateInvitationInput,
 ): Promise<AppProvisioningResult<OrganizationInvitationRecord>> {
-  if (!(await isInstalledIn(runtime, app, input.organizationId))) {
+  if (!(await installedOrganization(runtime, app, input.organizationId))) {
     return {
       ok: false,
       error: {
@@ -229,7 +242,10 @@ async function sendInvitation(
   const invitation = await runtime.objects.auth.singleton().commands.findInvitation({
     invitationId: input.invitationId,
   });
-  if (invitation === null || !(await isInstalledIn(runtime, app, invitation.organizationId))) {
+  if (
+    invitation === null ||
+    !(await installedOrganization(runtime, app, invitation.organizationId))
+  ) {
     return invitationNotFound(input.invitationId);
   }
   const appOrigin = new URL(app.branding.homeUrl).origin;
@@ -276,7 +292,10 @@ async function acceptInvitation(
 ): Promise<AppProvisioningResult<OrganizationMembershipRecord>> {
   const auth = runtime.objects.auth.singleton().commands;
   const invitation = await auth.findInvitation({ invitationId: input.invitationId });
-  if (invitation === null || !(await isInstalledIn(runtime, app, invitation.organizationId))) {
+  if (
+    invitation === null ||
+    !(await installedOrganization(runtime, app, invitation.organizationId))
+  ) {
     return invitationNotFound(input.invitationId);
   }
   return await auth.acceptAppInvitation({ oauthClientId: app.oauthClientId, ...input });

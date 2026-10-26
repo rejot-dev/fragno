@@ -18,7 +18,10 @@ import {
 } from "@fragno-dev/backoffice-api/v0/events";
 import {
   type BackofficeContextScope,
+  type BackofficeRootOwner,
+  type BackofficeScopeIdNames,
   backofficeScopeContains,
+  backofficeScopeRootOwner,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { InstanceStatus } from "@fragno-dev/workflows/workflow";
 
@@ -38,6 +41,7 @@ import {
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel, BackofficeForbiddenError } from "@/backoffice-runtime/kernel";
 import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
+import type { BackofficeRootOwnerReference } from "@/backoffice-runtime/resolved-scope";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { readSavedWorkflowProgram } from "@/fragno/codemode/workflow-program";
 import { piAgentActor } from "@/fragno/pi/agent/pi-agent-actor";
@@ -371,6 +375,15 @@ const handleStartWorkflowRouteAction = async ({
   );
 };
 
+function namesRootOwner(
+  reference: BackofficeRootOwnerReference,
+  owner: BackofficeRootOwner<BackofficeScopeIdNames>,
+): boolean {
+  return reference.kind === "org"
+    ? owner.kind === "org" && owner.orgId === reference.orgId
+    : owner.kind === "user" && owner.userId === reference.userId;
+}
+
 const handleForwardEventRouteAction = async ({
   action,
   event,
@@ -388,7 +401,18 @@ const handleForwardEventRouteAction = async ({
     throw new Error("Forwarding automation events requires Backoffice runtime services.");
   }
 
-  const scope = renderAutomationScopeTemplate(action.targetScope, event, route.id, routingKey);
+  // A route reaches its own owner's scopes by ID; only other owners need Auth to find them.
+  const routeOwner = backofficeScopeRootOwner(ownerScope);
+  const scope = await renderAutomationScopeTemplate(
+    action.targetScope,
+    event,
+    route.id,
+    routingKey,
+    async (owner) =>
+      routeOwner && namesRootOwner(owner, routeOwner)
+        ? routeOwner
+        : await runtime.objects.auth.singleton().commands.findRootOwnerScope(owner),
+  );
 
   const kernel = new BackofficeKernel(runtime);
   if (event.scopeRestriction && !backofficeScopeContains(event.scopeRestriction, scope)) {

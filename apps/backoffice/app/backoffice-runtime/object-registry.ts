@@ -37,7 +37,10 @@ import type { JsonValue } from "@fragno-dev/backoffice-api/v0/shared/json";
 import type { DirectoryPageInput } from "@fragno-dev/backoffice-api/v0/shared/pagination";
 import {
   type BackofficeContextScope,
+  type BackofficeJurisdiction,
+  type BackofficeRootOwner,
   type BackofficeRoutableScope,
+  type BackofficeScopeIdNames,
   backofficeScopePathSegment,
   parseBackofficeScopePathSegment,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
@@ -54,6 +57,7 @@ import type { ResendSendEmailInput } from "@fragno-dev/resend-fragment";
 
 import type { ClassifierResult } from "@earendil-works/pi-ai";
 
+import type { BackofficeRootOwnerReference } from "@/backoffice-runtime/resolved-scope";
 import type { TelegramAutomationFileMetadata } from "@/backoffice-runtime/telegram-file-response";
 import type {
   AppInstallationOwner,
@@ -179,6 +183,7 @@ import type {
   MarketplacePublishReleaseResult,
   MarketplacePackagePublishRequest,
 } from "@/fragno/marketplace/package-publishing";
+import type { OnboardingAnswer, UserOnboardingState } from "@/fragno/onboarding/contracts";
 import type { PiExtractionRequest } from "@/fragno/pi/agent/openai-extraction";
 import type {
   PiAgentAddress,
@@ -254,9 +259,7 @@ export type AutomationsDurableHookFragment = "automation" | "workflows";
 type ScopedObjects<TObject> = {
   singleton(): TObject;
   "for"(scope: BackofficeContextScope): TObject;
-  forOrg(orgId: string): TObject;
   forName(name: string): TObject;
-  forUser(input: { userId: string }): TObject;
 };
 
 /** Live provider evidence that inbound deliveries reach this deployment's webhook URL. */
@@ -288,6 +291,8 @@ export type ScenarioAuthFixture = {
     roles: readonly string[];
   }>;
   removedMembers?: ReadonlyArray<{ organizationId: string; userId: string }>;
+  /** Users who signed up, by email, who start onboarded, as scenarios rarely onboard them. */
+  onboardedEmails?: readonly string[];
 };
 
 export type GrantBackofficeAdminResult =
@@ -404,6 +409,10 @@ export type AuthCommands = DurableHookCommands &
       administratorId: string;
       memberId: string;
     }): Promise<AdministeredMember | null>;
+    /** Where a root owner named by ID keeps its objects; null when it does not exist. */
+    findRootOwnerScope(
+      owner: BackofficeRootOwnerReference,
+    ): Promise<BackofficeRootOwner<BackofficeScopeIdNames> | null>;
     /** Resolves live user status and roles for exactly one organization, without session metadata. */
     getUserOrganizationAuthorityFacts(
       input: UserOrganizationAuthorityInput,
@@ -415,11 +424,32 @@ export type AuthCommands = DurableHookCommands &
       slug: string;
       ownerEmail: string;
     }): Promise<AdminOrganizationRecord>;
-    /** Creates an organization owned by the user, with the first free slug its name suggests. */
+    /**
+     * Creates an organization owned by the user, with the first free slug its name suggests. The
+     * same ID again returns the organization it created.
+     */
     createUserOrganization(input: {
+      id: string;
       userId: string;
       name: string;
     }): Promise<{ id: string; slug: string }>;
+    /**
+     * Creates a client organization that one the user owns or administers manages. The same ID
+     * again returns the organization it created.
+     */
+    createManagedOrganization(input: {
+      id: string;
+      userId: string;
+      managingOrganizationId: string;
+      name: string;
+    }): Promise<{ id: string; slug: string }>;
+    /** Fixes the jurisdiction of a user's personal scope, before onboarding creates it. */
+    chooseUserJurisdiction(input: {
+      userId: string;
+      jurisdiction: BackofficeJurisdiction | null;
+    }): Promise<void>;
+    /** Ends a user's onboarding, which creates their personal scope; again, it changes nothing. */
+    finishUserOnboarding(input: { userId: string }): Promise<void>;
     /** Marks an email address verified without the owner proving it, as an administrator. */
     verifyAdminUserEmail(input: { email: string }): Promise<AdminUserEmailVerificationRecord>;
     addAdminOrganizationMember(input: {
@@ -485,7 +515,9 @@ export type AuthCommands = DurableHookCommands &
       roles: readonly OrganizationRole[];
     }): Promise<OrganizationInvitationRecord>;
     getAllOrganizations(): Promise<Organization[]>;
-    getOrganizationBySlug(slug: string): Promise<Pick<Organization, "id" | "slug"> | null>;
+    getOrganizationBySlug(
+      slug: string,
+    ): Promise<Pick<Organization, "id" | "slug" | "jurisdiction"> | null>;
     hasOrganizationMember(input: { organizationId: string; userId: string }): Promise<boolean>;
     getDevOrganizations(): Promise<
       Array<
@@ -654,6 +686,9 @@ export type AutomationsCommands = {
   /** Trusted authority lookup; it must not require the permission it is being used to resolve. */
   getRouteForAuthority(input: { id: string }): ReturnType<AutomationRouteAuthorityLookup>;
   seedStarterAutomationRoutes(): Promise<StarterAutomationRoutesSeedResult>;
+  /** Only System's Automations onboard people; starting again finds the onboarding started. */
+  startUserOnboarding(input: { userId: string }): Promise<UserOnboardingState>;
+  answerUserOnboarding(input: { userId: string; answer: OnboardingAnswer }): Promise<void>;
   /** Only singleton Automations may run bundled marketplace publication workflows. */
   requestStaticMarketplacePublications(input?: {
     force?: boolean;
@@ -992,19 +1027,9 @@ const singleton = (): BackofficeObjectScope => ({
   kind: "singleton",
 });
 
-const org = (orgId: string): BackofficeObjectScope => ({
-  kind: "org",
-  orgId: validateScopeValue("org id", orgId),
-});
-
 const named = (name: string): BackofficeObjectScope => ({
   kind: "named",
   name: validateScopeValue("name", name),
-});
-
-const user = (input: { userId: string }): BackofficeObjectScope => ({
-  kind: "user",
-  userId: validateScopeValue("user id", input.userId),
 });
 
 // Operator note: this v1 encoder is a full Durable Object identity reset. Existing
@@ -1123,14 +1148,8 @@ const scoped = <TCommands>(
       objectAddress(objectBinding, backofficeObjectScopeFromContextScope(scope)),
     );
   },
-  forOrg(orgId: string) {
-    return scopedObject(factory, objectBinding, objectAddress(objectBinding, org(orgId)));
-  },
   forName(name: string) {
     return scopedObject(factory, objectBinding, objectAddress(objectBinding, named(name)));
-  },
-  forUser(input: { userId: string }) {
-    return scopedObject(factory, objectBinding, objectAddress(objectBinding, user(input)));
   },
 });
 

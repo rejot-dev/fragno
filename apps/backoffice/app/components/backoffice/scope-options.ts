@@ -17,7 +17,7 @@ export function backofficeScopeOptions(me: BackofficeMeData): BackofficeScopeOpt
     })),
     {
       label: me.user.email ?? me.user.id,
-      scope: { kind: "user" as const, userId: me.user.id },
+      scope: { kind: "user" as const, userId: me.user.id, jurisdiction: me.user.jurisdiction },
     },
   ];
 }

@@ -45,7 +45,7 @@ const scenarioObjects = {
   UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
 
-const scope = { kind: "org", orgId: "resend-org" } as const;
+const scope = { kind: "org", orgId: "resend-org", jurisdiction: null } as const;
 const connectionId = "backoffice#resend";
 const apiKey = "re_integration_key";
 const webhookUrl = "https://example.com/api/resend/org:resend-org/webhook";
@@ -142,7 +142,9 @@ test("Resend connects, checks its webhook, rejects bad values, and disconnects t
               instructions: expect.stringContaining("API key is invalid"),
             });
             expect(
-              await ctx.runtime.objects.resend.forOrg(scope.orgId).commands.getAdminConfig(),
+              await ctx.runtime.objects.resend
+                .for({ kind: "org", orgId: scope.orgId, jurisdiction: null })
+                .commands.getAdminConfig(),
             ).toMatchObject({ configured: true, config: { apiKeyPreview: "re_i…_key" } });
             provider.endpoint = null;
             const verified = await ctx.runCodemode({
@@ -199,7 +201,9 @@ test("Resend connects, checks its webhook, rejects bad values, and disconnects t
               endpoint: "https://example.com/api/resend/system/webhook",
             });
             expect(
-              await ctx.runtime.objects.resend.forOrg(scope.orgId).commands.getAdminConfig(),
+              await ctx.runtime.objects.resend
+                .for({ kind: "org", orgId: scope.orgId, jurisdiction: null })
+                .commands.getAdminConfig(),
             ).toEqual({ configured: false });
           },
         ),

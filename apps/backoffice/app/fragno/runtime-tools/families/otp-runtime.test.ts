@@ -9,7 +9,7 @@ import { createOtpRuntime } from "./otp-runtime";
 const externalExecution = {
   kind: "deferred" as const,
   scopeRestriction: null,
-  scope: { kind: "org", orgId: "org-1" } as const,
+  scope: { kind: "org", orgId: "org-1", jurisdiction: null } as const,
   actors: {
     initiator: {
       scope: "external" as const,
@@ -64,7 +64,7 @@ describe("createOtpRuntime", () => {
           sandbox: false,
         },
       },
-      scope: { kind: "org", organization: { id: "org-1", slug: "acme" } },
+      scope: { kind: "org", organization: { id: "org-1", slug: "acme", jurisdiction: null } },
       kernel,
       execution: externalExecution,
     });
@@ -106,12 +106,12 @@ describe("createOtpRuntime", () => {
           sandbox: false,
         },
       },
-      scope: { kind: "org", organization: { id: "org-1", slug: "acme" } },
+      scope: { kind: "org", organization: { id: "org-1", slug: "acme", jurisdiction: null } },
       kernel,
       execution: {
         kind: "deferred" as const,
         scopeRestriction: null,
-        scope: { kind: "org", orgId: "org-1" },
+        scope: { kind: "org", orgId: "org-1", jurisdiction: null },
         actors: {
           initiator: { scope: "internal", type: "user", id: "user-1", role: "initiator" },
           principal: null,

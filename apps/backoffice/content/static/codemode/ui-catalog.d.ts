@@ -510,11 +510,13 @@ type BackofficeUiComponents = {
             kind: "org";
             /** at least 1 characters */
             orgId: string;
+            jurisdiction?: "eu" | "us" | null;
           }
         | {
             kind: "user";
             /** at least 1 characters */
             userId: string;
+            jurisdiction?: "eu" | "us" | null;
           }
         | {
             kind: "app";
@@ -523,11 +525,13 @@ type BackofficeUiComponents = {
                   kind: "org";
                   /** at least 1 characters */
                   orgId: string;
+                  jurisdiction?: "eu" | "us" | null;
                 }
               | {
                   kind: "user";
                   /** at least 1 characters */
                   userId: string;
+                  jurisdiction?: "eu" | "us" | null;
                 };
             /** at least 1 characters */
             appId: string;
@@ -539,11 +543,13 @@ type BackofficeUiComponents = {
                   kind: "org";
                   /** at least 1 characters */
                   orgId: string;
+                  jurisdiction?: "eu" | "us" | null;
                 }
               | {
                   kind: "user";
                   /** at least 1 characters */
                   userId: string;
+                  jurisdiction?: "eu" | "us" | null;
                 }
               | {
                   kind: "app";
@@ -552,11 +558,13 @@ type BackofficeUiComponents = {
                         kind: "org";
                         /** at least 1 characters */
                         orgId: string;
+                        jurisdiction?: "eu" | "us" | null;
                       }
                     | {
                         kind: "user";
                         /** at least 1 characters */
                         userId: string;
+                        jurisdiction?: "eu" | "us" | null;
                       };
                   /** at least 1 characters */
                   appId: string;
@@ -570,11 +578,13 @@ type BackofficeUiComponents = {
               kind: "org";
               /** at least 1 characters */
               orgId: string;
+              jurisdiction?: "eu" | "us" | null;
             }
           | {
               kind: "user";
               /** at least 1 characters */
               userId: string;
+              jurisdiction?: "eu" | "us" | null;
             }
           | {
               kind: "app";
@@ -583,11 +593,13 @@ type BackofficeUiComponents = {
                     kind: "org";
                     /** at least 1 characters */
                     orgId: string;
+                    jurisdiction?: "eu" | "us" | null;
                   }
                 | {
                     kind: "user";
                     /** at least 1 characters */
                     userId: string;
+                    jurisdiction?: "eu" | "us" | null;
                   };
               /** at least 1 characters */
               appId: string;
@@ -599,11 +611,13 @@ type BackofficeUiComponents = {
                     kind: "org";
                     /** at least 1 characters */
                     orgId: string;
+                    jurisdiction?: "eu" | "us" | null;
                   }
                 | {
                     kind: "user";
                     /** at least 1 characters */
                     userId: string;
+                    jurisdiction?: "eu" | "us" | null;
                   }
                 | {
                     kind: "app";
@@ -612,11 +626,13 @@ type BackofficeUiComponents = {
                           kind: "org";
                           /** at least 1 characters */
                           orgId: string;
+                          jurisdiction?: "eu" | "us" | null;
                         }
                       | {
                           kind: "user";
                           /** at least 1 characters */
                           userId: string;
+                          jurisdiction?: "eu" | "us" | null;
                         };
                     /** at least 1 characters */
                     appId: string;

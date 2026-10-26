@@ -4,6 +4,7 @@ import {
   type MarketplaceOwner,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import type { BackofficeOrganizationContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { backofficeWorkspaceOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
@@ -13,6 +14,7 @@ import {
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
+import { backofficeOrganizationContextScope } from "@/backoffice-runtime/resolved-scope";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { sha256Hex } from "@/lib/crypto";
 
@@ -122,11 +124,17 @@ export class MarketplacePublicationAccessError extends Error {
   }
 }
 
-/** The manifest's organization slug resolves to the organization that owns the package. */
+/**
+ * The manifest's organization slug resolves to the organization that owns the package, and the
+ * scope of that organization, whose Marketplace organization visibility publishes into.
+ */
 export async function resolveMarketplacePackageOwner(
   objects: BackofficeObjectRegistry,
   packageName: string,
-): Promise<MarketplaceOwner & { scope: { kind: "org"; orgId: string } }> {
+): Promise<{
+  owner: MarketplaceOwner & { scope: { kind: "org"; orgId: string } };
+  organization: BackofficeOrganizationContextScope;
+}> {
   const { organizationSlug } = marketplacePackageIdentity(packageName);
   const organization = (await objects.auth.singleton().commands.getAllOrganizations()).find(
     (candidate) => candidate.slug === organizationSlug,
@@ -135,8 +143,8 @@ export async function resolveMarketplacePackageOwner(
     throw new Error(`Marketplace publisher organization '${organizationSlug}' was not found.`);
   }
   return {
-    scope: { kind: "org", orgId: organization.id },
-    publisherName: organization.name,
+    owner: { scope: { kind: "org", orgId: organization.id }, publisherName: organization.name },
+    organization: backofficeOrganizationContextScope(organization),
   };
 }
 

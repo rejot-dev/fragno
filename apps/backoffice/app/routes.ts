@@ -16,6 +16,9 @@ export default [
   route("backoffice/apps/install", "routes/backoffice/app-install.tsx"),
   route("backoffice/sign-up", "routes/backoffice/sign-up.tsx"),
   route("backoffice/verify-email", "routes/backoffice/verify-email.tsx"),
+  // Outside the Backoffice shell, which opens the person's own scope before they choose where it is
+  // kept.
+  route("backoffice/onboarding", "routes/backoffice/onboarding.tsx"),
   route("backoffice/presence", "routes/backoffice/presence.ts"),
   layout("layouts/backoffice-layout.tsx", { id: BACKOFFICE_LAYOUT_ROUTE_ID }, [
     ...prefix("backoffice", [

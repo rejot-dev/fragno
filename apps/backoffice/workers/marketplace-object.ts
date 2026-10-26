@@ -171,11 +171,11 @@ export class MarketplaceObject extends RpcTarget implements MarketplaceCommands 
       ],
     });
     const { slug } = marketplacePackageIdentity(input.snapshot.manifest.name);
-    const owner = await resolveMarketplacePackageOwner(
+    const { owner, organization } = await resolveMarketplacePackageOwner(
       this.#runtime.objects,
       input.snapshot.manifest.name,
     );
-    this.#assertMarketplace(marketplaceScopeForVisibility(input.visibility, owner.scope));
+    this.#assertMarketplace(marketplaceScopeForVisibility(input.visibility, organization));
     await verifyMarketplacePackageSnapshot(input.snapshot);
     const release = await captureMarketplaceReleaseSnapshot({
       owner,

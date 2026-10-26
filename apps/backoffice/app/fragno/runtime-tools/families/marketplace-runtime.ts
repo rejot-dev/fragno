@@ -92,8 +92,7 @@ export function createMarketplaceRuntime({
         "Organization Marketplace reads require an organization or project workspace.",
       );
     }
-    const marketplace: MarketplaceScope = { kind: "org", orgId: organization.orgId };
-    return objects.marketplace.for(marketplace).commands;
+    return objects.marketplace.for(organization).commands;
   }
 
   /**
@@ -109,7 +108,7 @@ export function createMarketplaceRuntime({
       });
     }
     if (execution.scope.kind === "org") {
-      const marketplace: MarketplaceScope = { kind: "org", orgId: execution.scope.orgId };
+      const marketplace: MarketplaceScope = execution.scope;
       return await kernel.invoke({
         execution,
         operation: BACKOFFICE_PERMISSION.org.manage,
@@ -146,8 +145,11 @@ export function createMarketplaceRuntime({
         publication.state,
         input.packageRoot,
       );
-      const owner = await resolveMarketplacePackageOwner(objects, snapshot.manifest.name);
-      const marketplace = marketplaceScopeForVisibility(input.visibility, owner.scope);
+      const { organization } = await resolveMarketplacePackageOwner(
+        objects,
+        snapshot.manifest.name,
+      );
+      const marketplace = marketplaceScopeForVisibility(input.visibility, organization);
       return await objects.marketplace.for(marketplace).commands.publishPackage(
         {
           snapshot,

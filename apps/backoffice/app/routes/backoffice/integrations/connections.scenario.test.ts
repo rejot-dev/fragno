@@ -55,7 +55,7 @@ const scenarioObjects = {
 } satisfies LocalBackofficeObjects;
 
 const orgId = "integrations-org";
-const scope = { kind: "org", orgId } as const;
+const scope = { kind: "org", orgId, jurisdiction: null } as const;
 const secrets = {
   token: "scenario-billing-token",
   signing: "scenario-signing-secret",

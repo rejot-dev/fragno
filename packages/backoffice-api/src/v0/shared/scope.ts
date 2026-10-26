@@ -1,20 +1,32 @@
 import { z } from "zod";
 
-/** How a scope names the organization and project it belongs to. */
-export type BackofficeScopeNames = { organization: object; project: object };
+/**
+ * The Cloudflare jurisdictions a root owner's Durable Objects can be kept in. Objects never move,
+ * so a root owner's jurisdiction is fixed once chosen.
+ */
+export const BACKOFFICE_JURISDICTIONS = ["eu", "us"] as const;
+
+export type BackofficeJurisdiction = (typeof BACKOFFICE_JURISDICTIONS)[number];
+
+export const backofficeJurisdictionSchema = z.enum(BACKOFFICE_JURISDICTIONS);
+
+/** How a scope names the organization, user, and project it belongs to. */
+export type BackofficeScopeNames = { organization: object; user: object; project: object };
 
 /** An organization scope, generic over how it names the organization. */
 export type BackofficeOrganizationScope<TNames extends BackofficeScopeNames> = {
   kind: "org";
 } & TNames["organization"];
 
-/** A user's personal scope. */
-export type BackofficeUserScope = { kind: "user"; userId: string };
+/** A user's personal scope, generic over how it names the user. */
+export type BackofficeUserScope<TNames extends BackofficeScopeNames> = {
+  kind: "user";
+} & TNames["user"];
 
 /** The scopes that own everything else: every scope chain ends in an organization or a user. */
 export type BackofficeRootOwner<TNames extends BackofficeScopeNames> =
   | BackofficeOrganizationScope<TNames>
-  | BackofficeUserScope;
+  | BackofficeUserScope<TNames>;
 
 /**
  * An installed app's own workspace, one per installation. The installation's owner owns it, and
@@ -48,8 +60,13 @@ export type BackofficeRoutable<TScope extends { kind: string }> = Exclude<
   { kind: "system" }
 >;
 
+/**
+ * Runtime IDs address Durable Objects, so a root owner's ID travels with its jurisdiction: `null`
+ * leaves placement to Cloudflare, as it was for every object made before jurisdictions existed.
+ */
 export type BackofficeScopeIdNames = {
-  organization: { orgId: string };
+  organization: { orgId: string; jurisdiction: BackofficeJurisdiction | null };
+  user: { userId: string; jurisdiction: BackofficeJurisdiction | null };
   project: { projectId: string };
 };
 
@@ -58,28 +75,49 @@ export type BackofficeContextScope = BackofficeScope<BackofficeScopeIdNames>;
 
 export type BackofficeRoutableScope = BackofficeRoutable<BackofficeContextScope>;
 
+export type BackofficeOrganizationContextScope =
+  BackofficeOrganizationScope<BackofficeScopeIdNames>;
+
+/**
+ * Names root owners by ID alone, for identities that must not depend on where objects are kept,
+ * such as the owner a listing records.
+ */
+export type BackofficeScopeReferenceNames = {
+  organization: { orgId: string };
+  user: { userId: string };
+  project: { projectId: string };
+};
+
+export type BackofficeUserContextScope = BackofficeUserScope<BackofficeScopeIdNames>;
+
 /**
  * Public routes and CLI arguments name organizations by slug, never by internal ID. Projects keep
  * their ID, because public URLs are registered with external services and must survive renames.
  */
 export type BackofficeScopePublicNames = {
   organization: { orgSlug: string };
+  user: { userId: string };
   project: { projectId: string };
 };
 
 export type BackofficePublicScope = BackofficeScope<BackofficeScopePublicNames>;
+
+// Scopes stored before jurisdictions existed name none, which is what they meant.
+const rootOwnerJurisdictionSchema = backofficeJurisdictionSchema.nullable().default(null);
 
 const backofficeSystemScopeSchema = z.lazy(() => z.strictObject({ kind: z.literal("system") }));
 export const backofficeOrganizationScopeSchema = z.lazy(() =>
   z.strictObject({
     kind: z.literal("org"),
     orgId: z.string().trim().min(1),
+    jurisdiction: rootOwnerJurisdictionSchema,
   }),
 );
 export const backofficeUserScopeSchema = z.lazy(() =>
   z.strictObject({
     kind: z.literal("user"),
     userId: z.string().trim().min(1),
+    jurisdiction: rootOwnerJurisdictionSchema,
   }),
 );
 export const backofficeRootOwnerSchema = z.lazy(() =>
@@ -146,6 +184,8 @@ export type BackofficeOrganizationScopeOf<TScope> = Extract<
 
 type OrganizationNamesOf<TScope> = Omit<BackofficeOrganizationScopeOf<TScope>, "kind">;
 
+type UserNamesOf<TScope> = Omit<Extract<BackofficeRootOwnerOf<TScope>, { kind: "user" }>, "kind">;
+
 /** `null` when a scope type includes the system scope, which no root owner owns. */
 type NullIfSystem<TScope> = [Extract<TScope, { kind: "system" }>] extends [never] ? never : null;
 
@@ -191,6 +231,13 @@ export function backofficeScopeOrganization<TScope extends BackofficeScope<Backo
     | NullUnlessOrganizationOwned<TScope>;
 }
 
+/** Where a scope's Durable Objects are kept: its root owner's jurisdiction. */
+export function backofficeScopeJurisdiction(
+  scope: BackofficeContextScope,
+): BackofficeJurisdiction | null {
+  return backofficeScopeRootOwner(scope)?.jurisdiction ?? null;
+}
+
 /**
  * The scope whose projects sit beside a workspace: the workspace itself, or a project's owner.
  * The system scope owns no projects.
@@ -227,51 +274,45 @@ export function backofficeWorkspaceOrganization<TNames extends BackofficeScopeNa
 export function mapBackofficeScopeNames<
   TScope extends BackofficeScope<BackofficeScopeNames>,
   TOrganization extends object,
+  TUser extends object,
   TProject extends object,
 >(
   scope: TScope,
   map: {
     organization(names: OrganizationNamesOf<TScope>): TOrganization;
+    user(names: UserNamesOf<TScope>): TUser;
     project(names: ProjectNamesOf<TScope>): TProject;
   },
 ): Extract<
-  BackofficeScope<{ organization: TOrganization; project: TProject }>,
+  BackofficeScope<{ organization: TOrganization; user: TUser; project: TProject }>,
   { kind: TScope["kind"] }
 > {
-  return renameScope(scope) as Extract<
-    BackofficeScope<{ organization: TOrganization; project: TProject }>,
-    { kind: TScope["kind"] }
-  >;
+  type RenamedNames = { organization: TOrganization; user: TUser; project: TProject };
+  return renameScope(scope) as Extract<BackofficeScope<RenamedNames>, { kind: TScope["kind"] }>;
 
   // Narrowing a generic scope by kind does not narrow `TScope`, so each kind's names are cast to
   // the callback types. A project's owner is renamed as a scope of its own.
   function renameScope(
     named: BackofficeScope<BackofficeScopeNames>,
-  ): BackofficeScope<{ organization: TOrganization; project: TProject }> {
+  ): BackofficeScope<RenamedNames> {
     switch (named.kind) {
       case "system":
         return { kind: "system" };
       case "org":
         return { kind: "org", ...map.organization(named as OrganizationNamesOf<TScope>) };
       case "user":
-        return { kind: "user", userId: named.userId };
+        return { kind: "user", ...map.user(named as UserNamesOf<TScope>) };
       case "app":
         return {
           kind: "app",
-          owner: renameScope(named.owner) as BackofficeRootOwner<{
-            organization: TOrganization;
-            project: TProject;
-          }>,
+          owner: renameScope(named.owner) as BackofficeRootOwner<RenamedNames>,
           appId: named.appId,
         };
       case "project":
         return {
           kind: "project",
           ...map.project(named as unknown as ProjectNamesOf<TScope>),
-          owner: renameScope(named.owner) as BackofficeProjectOwner<{
-            organization: TOrganization;
-            project: TProject;
-          }>,
+          owner: renameScope(named.owner) as BackofficeProjectOwner<RenamedNames>,
         };
       default:
         throw new Error("Unsupported Backoffice scope kind.", { cause: named satisfies never });
@@ -324,43 +365,107 @@ export function isBackofficeScopeParseError(error: unknown): error is Backoffice
   );
 }
 
-/** How one of a scope's names is written in text, and what a parse error calls it. */
+/**
+ * How one of a scope's names is written as one segment component, and what a parse error calls it.
+ * Components are URI-encoded, so `:` only ever separates them.
+ */
 export type BackofficeNameCodec<TName extends object> = {
   label: string;
   format(name: TName): string;
-  parse(value: string): TName;
+  parse(component: string): TName;
 };
 
 export type BackofficeScopeCodec<TNames extends BackofficeScopeNames> = {
   organization: BackofficeNameCodec<TNames["organization"]>;
+  user: BackofficeNameCodec<TNames["user"]>;
   project: BackofficeNameCodec<TNames["project"]>;
 };
 
-const organizationIdCodec: BackofficeNameCodec<{ orgId: string }> = {
-  label: "org id",
-  format: (name) => name.orgId,
-  parse: (orgId) => ({ orgId }),
-};
+/** Writes a name as one URI-encoded text component. */
+export function backofficeTextNameCodec<TName extends object>(text: {
+  label: string;
+  format(name: TName): string;
+  parse(text: string): TName;
+}): BackofficeNameCodec<TName> {
+  return {
+    label: text.label,
+    format: (name) => encodeURIComponent(text.format(name)),
+    parse: (component) => text.parse(decodeSegmentComponent(component, text.label)),
+  };
+}
 
-const projectIdCodec: BackofficeNameCodec<{ projectId: string }> = {
+/**
+ * Writes a root owner's runtime ID with its jurisdiction, e.g. `<id>@eu`. Text components escape
+ * `@`, so it only separates the jurisdiction. A root owner without one is written as it was before
+ * jurisdictions existed, which keeps the names of existing Durable Objects.
+ */
+function jurisdictionNameCodec<TName extends object>(
+  codec: BackofficeNameCodec<TName>,
+): BackofficeNameCodec<TName & { jurisdiction: BackofficeJurisdiction | null }> {
+  return {
+    label: codec.label,
+    // Scopes stored before jurisdictions existed, such as queued events, have no jurisdiction, and
+    // name none, so they keep naming the objects they always did.
+    format: (name) =>
+      (name.jurisdiction ?? null) === null
+        ? codec.format(name)
+        : `${codec.format(name)}@${name.jurisdiction}`,
+    parse: (component) => {
+      const [named, jurisdiction, ...rest] = component.split("@");
+      if (rest.length > 0) {
+        throw new BackofficeScopeParseError(`Invalid ${codec.label} jurisdiction.`);
+      }
+      if (jurisdiction === undefined) {
+        return { ...codec.parse(named), jurisdiction: null };
+      }
+      const parsed = backofficeJurisdictionSchema.safeParse(jurisdiction);
+      if (!parsed.success) {
+        throw new BackofficeScopeParseError(`Unknown jurisdiction '${jurisdiction}'.`);
+      }
+      return { ...codec.parse(named), jurisdiction: parsed.data };
+    },
+  };
+}
+
+export const backofficeUserIdCodec = backofficeTextNameCodec<{ userId: string }>({
+  label: "user id",
+  format: (name) => name.userId,
+  parse: (userId) => ({ userId }),
+});
+
+const projectIdCodec = backofficeTextNameCodec<{ projectId: string }>({
   label: "project id",
   format: (name) => name.projectId,
   parse: (projectId) => ({ projectId }),
-};
+});
 
-export const backofficeOrganizationSlugCodec: BackofficeNameCodec<{ orgSlug: string }> = {
+export const backofficeOrganizationSlugCodec = backofficeTextNameCodec<{ orgSlug: string }>({
   label: "organization slug",
   format: (name) => name.orgSlug,
   parse: (orgSlug) => ({ orgSlug }),
-};
+});
+
+const organizationIdCodec = backofficeTextNameCodec<{ orgId: string }>({
+  label: "org id",
+  format: (name) => name.orgId,
+  parse: (orgId) => ({ orgId }),
+});
 
 export const backofficeScopeIdCodec: BackofficeScopeCodec<BackofficeScopeIdNames> = {
+  organization: jurisdictionNameCodec(organizationIdCodec),
+  user: jurisdictionNameCodec(backofficeUserIdCodec),
+  project: projectIdCodec,
+};
+
+export const backofficeScopeReferenceCodec: BackofficeScopeCodec<BackofficeScopeReferenceNames> = {
   organization: organizationIdCodec,
+  user: backofficeUserIdCodec,
   project: projectIdCodec,
 };
 
 export const backofficePublicScopeCodec: BackofficeScopeCodec<BackofficeScopePublicNames> = {
   organization: backofficeOrganizationSlugCodec,
+  user: backofficeUserIdCodec,
   project: projectIdCodec,
 };
 
@@ -376,13 +481,13 @@ export function formatBackofficeScopeSegment<TNames extends BackofficeScopeNames
     case "system":
       return "system";
     case "org":
-      return `org:${encodeURIComponent(codec.organization.format(scope))}`;
+      return `org:${codec.organization.format(scope)}`;
     case "user":
-      return `user:${encodeURIComponent(scope.userId)}`;
+      return `user:${codec.user.format(scope)}`;
     case "app":
       return `app:${formatBackofficeScopeSegment<TNames>(scope.owner, codec)}:${encodeURIComponent(scope.appId)}`;
     case "project":
-      return `project:${formatBackofficeScopeSegment<TNames>(scope.owner, codec)}:${encodeURIComponent(codec.project.format(scope))}`;
+      return `project:${formatBackofficeScopeSegment<TNames>(scope.owner, codec)}:${codec.project.format(scope)}`;
     default:
       throw new Error("Unsupported Backoffice scope kind.", { cause: scope satisfies never });
   }
@@ -415,13 +520,20 @@ export function parseBackofficeScopeSegment<TNames extends BackofficeScopeNames>
           ...codec.organization.parse(readComponent(codec.organization.label)),
         } as BackofficeOrganizationScope<TNames>;
       case "user":
-        return { kind: "user", userId: readComponent("user id") };
+        return {
+          kind: "user",
+          ...codec.user.parse(readComponent(codec.user.label)),
+        } as BackofficeUserScope<TNames>;
       case "app": {
         const owner = readOwner("App");
         if (owner.kind !== "org" && owner.kind !== "user") {
           throw new BackofficeScopeParseError(`${scopeLabel(owner.kind)} scope cannot own an app.`);
         }
-        return { kind: "app", owner, appId: readComponent("app id") };
+        return {
+          kind: "app",
+          owner,
+          appId: decodeSegmentComponent(readComponent("app id"), "app id"),
+        };
       }
       case "project": {
         const owner = readOwner("Project");
@@ -453,7 +565,7 @@ export function parseBackofficeScopeSegment<TNames extends BackofficeScopeNames>
     if (value === undefined) {
       throw new BackofficeScopeParseError(`Missing ${label}.`);
     }
-    return decodeSegmentComponent(value, label);
+    return value;
   }
 }
 
@@ -489,11 +601,11 @@ function scopeLabel(kind: BackofficeContextScope["kind"]): string {
 
 /**
  * Escapes scope text for a URL path segment that a router decodes once before it is parsed. Paths
- * allow a literal `:`, so the separator stays readable; a `:` inside a component was already
+ * allow a literal `:` and `@`, so the separators stay readable; one inside a component was already
  * escaped when the segment was formatted.
  */
 export function encodeBackofficeScopeForPath(text: string): string {
-  return encodeURIComponent(text).replaceAll("%3A", ":");
+  return encodeURIComponent(text).replaceAll("%3A", ":").replaceAll("%40", "@");
 }
 
 /** Names a scope in two URL path segments, `<kind>/<id>`, e.g. `project/org:acme:website`. */

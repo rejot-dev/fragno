@@ -59,7 +59,7 @@ const scenarioObjects = {
 } satisfies LocalBackofficeObjects;
 
 const TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION = {
-  targetScope: { kind: "org", orgId: "org-1" },
+  targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
   slug: "telegram-channel",
   version: "2.1.0",
   installationRoot: "/workspace",
@@ -85,7 +85,7 @@ const telegramMessageEvent = ({
   return {
     id,
     scopeRestriction: null,
-    scope: { kind: "org", orgId: "org-1" },
+    scope: { kind: "org", orgId: "org-1", jurisdiction: null },
     source: "telegram",
     eventType: "message.received",
     occurredAt: "2026-01-01T00:00:00.000Z",

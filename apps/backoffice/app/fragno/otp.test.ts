@@ -131,7 +131,7 @@ describe("otp identity claim helpers", () => {
   it("projects confirmed otp payloads into canonical automation events", () => {
     expect(
       buildIdentityClaimCompletedAutomationEvent({
-        orgId: "org_123",
+        organization: { kind: "org", orgId: "org_123", jurisdiction: null },
         userId: "user_123",
         claim: {
           actor: telegramChatActor,
@@ -145,7 +145,7 @@ describe("otp identity claim helpers", () => {
     ).toEqual({
       id: "identity-claim-completed:otp_123",
       scopeRestriction: null,
-      scope: { kind: "org", orgId: "org_123" },
+      scope: { kind: "org", orgId: "org_123", jurisdiction: null },
       source: "otp",
       eventType: "identity.claim.completed",
       occurredAt: "2026-03-17T12:05:00.000Z",

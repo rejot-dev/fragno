@@ -1,5 +1,6 @@
 import {
   type BackofficeContextScope,
+  backofficeContextScopeSchema,
   backofficeContextScopesEqual,
   parseBackofficeScopePathSegment,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
@@ -435,7 +436,15 @@ export function createBackofficeFragmentDurableObject<
       return null;
     }
 
-    return options.parseStored ? options.parseStored(raw) : (raw as TStored);
+    if (options.parseStored) {
+      return options.parseStored(raw);
+    }
+    // A config stored before jurisdictions existed holds a scope without one, which named none.
+    return (
+      readDefaultScope(raw)
+        ? { ...raw, scope: backofficeContextScopeSchema.parse((raw as { scope: unknown }).scope) }
+        : raw
+    ) as TStored;
   };
 
   const initializeFromStored = async (stored: TStored | null) => {

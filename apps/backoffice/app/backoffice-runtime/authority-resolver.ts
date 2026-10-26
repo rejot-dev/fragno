@@ -10,6 +10,7 @@ import {
   type BackofficeContextScope,
   backofficeScopeContains,
   backofficeScopeOrganization,
+  type BackofficeUserContextScope,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import {
@@ -99,11 +100,11 @@ export type BackofficeIdentityDirectory = {
  * Live: the other user owning the scope, when this user owns or administers an organization that
  * user belongs to. No Auth read happens in scopes this user owns or that no user owns.
  */
-export async function resolveAdministeredMemberId(
+export async function resolveAdministeredMember(
   identities: Pick<BackofficeIdentityDirectory, "findAdministeredMember">,
   userId: string,
   scope: BackofficeContextScope,
-): Promise<string | null> {
+): Promise<BackofficeUserContextScope | null> {
   const otherUserId = backofficeScopeOtherUserId(userId, scope);
   if (otherUserId === null) {
     return null;
@@ -112,7 +113,7 @@ export async function resolveAdministeredMemberId(
     administratorId: userId,
     memberId: otherUserId,
   });
-  return member?.userId ?? null;
+  return member && { kind: "user", userId: member.userId, jurisdiction: member.jurisdiction };
 }
 
 const noPermissions = [] as const satisfies readonly BackofficePermissionRequirement[];
@@ -191,12 +192,12 @@ export const createBackofficeAuthorityResolver = (
       }
 
       const organizationId = backofficeScopeOrganization(execution.scope)?.orgId;
-      const [currentUser, administeredMemberId] = await Promise.all([
+      const [currentUser, administeredMember] = await Promise.all([
         identities.getUserAuthorityFacts({
           userId: principal.id,
           ...(organizationId ? { organizationId } : {}),
         }),
-        resolveAdministeredMemberId(identities, principal.id, execution.scope),
+        resolveAdministeredMember(identities, principal.id, execution.scope),
       ]);
       if (!currentUser.active || !currentUser.role) {
         return noPermissions;
@@ -205,9 +206,10 @@ export const createBackofficeAuthorityResolver = (
       return resolveUserAuthorityPermissions(
         {
           userId: principal.id,
+          personalScope: currentUser.personalScope,
           role: currentUser.role,
-          organizationId: organizationId && currentUser.organizationMember ? organizationId : null,
-          administeredMemberId,
+          organization: currentUser.organization,
+          administeredMember,
         },
         execution,
       );

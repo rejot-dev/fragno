@@ -59,7 +59,7 @@ const scenarioObjects = {
 
 const orgId = "webhook-org";
 const orgSlug = "ada-labs";
-const scope = { kind: "org", orgId } as const;
+const scope = { kind: "org", orgId, jurisdiction: null } as const;
 const signingSecret = "scenario-slack-signing-secret";
 const publicUrl = (endpointId: string) =>
   `https://example.com/api/http/org%3A${orgSlug}/webhooks/endpoints/${endpointId}/events`;

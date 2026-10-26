@@ -5,13 +5,17 @@ import {
 import {
   type BackofficeContextScope,
   backofficeContextScopeSchema,
+  backofficeOrganizationScopeSchema,
+  backofficeUserScopeSchema,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
-import type { Role } from "@/fragno/auth/contracts";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 
-import type { BackofficeInternalServiceAuthorityRole } from "./authority-roles";
+import type {
+  BackofficeInternalServiceAuthorityRole,
+  BackofficeUserAuthority,
+} from "./authority-roles";
 
 export const backofficeContextScopeLabel = (scope: BackofficeContextScope): string => {
   switch (scope.kind) {
@@ -32,28 +36,26 @@ export const backofficeContextScopeLabel = (scope: BackofficeContextScope): stri
   }
 };
 
-/** Short-lived user authority established by authenticating a Backoffice JWT request. */
-export type BackofficeVerifiedRequestAuthority = Readonly<{
-  kind: "verified-request-authority";
-  userId: string;
-  role: Role;
-  organizationId: string | null;
-  /**
-   * The other user whose personal scope the request names, verified by the request's execution
-   * boundary to belong to an organization this user owns or administers.
-   */
-  administeredMemberId: string | null;
-  expiresAtEpochMs: number;
-  scopeRestriction: BackofficeContextScope | null;
-}>;
+/**
+ * Short-lived user authority established by authenticating a Backoffice JWT request. Its
+ * administered member is the other user whose personal scope the request names, verified by the
+ * request's execution boundary to belong to an organization this user owns or administers.
+ */
+export type BackofficeVerifiedRequestAuthority = BackofficeUserAuthority &
+  Readonly<{
+    kind: "verified-request-authority";
+    expiresAtEpochMs: number;
+    scopeRestriction: BackofficeContextScope | null;
+  }>;
 
 export const backofficeVerifiedRequestAuthoritySchema: z.ZodType<BackofficeVerifiedRequestAuthority> =
   z.strictObject({
     kind: z.literal("verified-request-authority"),
-    userId: z.string().trim().min(1),
+    userId: z.string().min(1),
+    personalScope: backofficeUserScopeSchema.nullable(),
     role: z.enum(["user", "admin"]),
-    organizationId: z.string().trim().min(1).nullable(),
-    administeredMemberId: z.string().trim().min(1).nullable(),
+    organization: backofficeOrganizationScopeSchema.nullable(),
+    administeredMember: backofficeUserScopeSchema.nullable(),
     expiresAtEpochMs: z.number().int().positive(),
     scopeRestriction: backofficeContextScopeSchema.nullable(),
   });
@@ -166,35 +168,33 @@ export function createBackofficeUserExecution({
 /** Only authentication boundaries may construct a verified request execution. */
 export function createBackofficeRequestExecution({
   scope,
-  userId,
   verifiedRequestAuthority,
 }: {
   scope: BackofficeContextScope;
-  userId: string;
-  verifiedRequestAuthority: Readonly<{
-    role: Role;
-    organizationId: string | null;
-    administeredMemberId: string | null;
-    expiresAt: Date;
-    scopeRestriction: BackofficeContextScope | null;
-  }>;
+  verifiedRequestAuthority: BackofficeUserAuthority &
+    Readonly<{
+      expiresAt: Date;
+      scopeRestriction: BackofficeContextScope | null;
+    }>;
 }): BackofficeRequestExecution {
+  const { expiresAt, ...authority } = verifiedRequestAuthority;
   return {
     kind: "request",
     scope,
     actors: {
       initiator: BACKOFFICE_INTERACTIVE_INITIATOR,
-      principal: { scope: "internal", type: "user", id: userId, role: "principal" },
+      principal: {
+        scope: "internal",
+        type: "user",
+        id: authority.userId,
+        role: "principal",
+      },
       delegation: [],
     },
     userAuthority: {
       kind: "verified-request-authority",
-      userId,
-      role: verifiedRequestAuthority.role,
-      organizationId: verifiedRequestAuthority.organizationId,
-      administeredMemberId: verifiedRequestAuthority.administeredMemberId,
-      expiresAtEpochMs: verifiedRequestAuthority.expiresAt.getTime(),
-      scopeRestriction: verifiedRequestAuthority.scopeRestriction,
+      ...authority,
+      expiresAtEpochMs: expiresAt.getTime(),
     },
   };
 }

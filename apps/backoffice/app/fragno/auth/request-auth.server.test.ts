@@ -20,7 +20,8 @@ const issueJwt = async (expirationTime: string | number = "15m") => {
     scopeRestriction: null,
     email: "user@example.com",
     globalRole: "admin",
-    organization: { id: "org-1", slug: "acme", roles: ["owner"] },
+    personal: { jurisdiction: null },
+    organization: { id: "org-1", slug: "acme", jurisdiction: null, roles: ["owner"] },
     jti: crypto.randomUUID(),
   })
     .setProtectedHeader({ alg: "ES256", kid: crypto.randomUUID() })

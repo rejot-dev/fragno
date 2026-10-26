@@ -41,6 +41,7 @@ export const createBackofficeToolContext = (
     kernel,
     createScopedContext: (scope) =>
       createBackofficeToolContext(context.createBackofficeScopedContext(scope)),
+    resolveRootOwner: context.resolveRootOwner,
     runtimes,
   };
 };

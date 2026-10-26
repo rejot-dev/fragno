@@ -20,9 +20,22 @@ export class SandboxManager extends DurableObject<CloudflareEnv> implements Sand
         await import("./lib/cloudflare-backoffice-object-implementation");
       const { CLOUDFLARE_SANDBOX_PROVIDER } = await import("@/sandbox/contracts");
       const { createCloudflareSandboxPhysicalId } = await import("@/sandbox/cloudflare-sandbox-id");
+      const { jurisdictionNamespace } =
+        await import("@/backoffice-runtime/cloudflare-durable-object-factory");
+      const { requireBackofficeContextScopeFromDurableObjectId } =
+        await import("@/backoffice-runtime/object-registry");
+      const { backofficeScopeJurisdiction } =
+        await import("@fragno-dev/backoffice-api/v0/shared/scope");
       const managerId = state.id.toString();
-      // Wrangler cannot type a binding to another Worker's class.
-      const sandboxes = env.SANDBOX as DurableObjectNamespace<Sandbox>;
+      // Wrangler cannot type a binding to another Worker's class. Sandboxes are kept where their
+      // manager's scope keeps its objects.
+      const sandboxes = jurisdictionNamespace(
+        env,
+        env.SANDBOX as DurableObjectNamespace<Sandbox>,
+        backofficeScopeJurisdiction(
+          requireBackofficeContextScopeFromDurableObjectId(state.id, "SANDBOX_MANAGER"),
+        ),
+      );
       this.#object = new SandboxManagerObject({
         ...createCloudflareBackofficeObjectContext(state, env),
         sandboxProviders: {

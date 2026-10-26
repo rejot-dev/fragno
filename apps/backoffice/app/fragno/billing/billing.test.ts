@@ -6,7 +6,7 @@ import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import { billingPeriodSchema, type BillingEventInput } from "./contracts";
 import { billingFragmentDefinition } from "./definition";
 
-const scope = { kind: "org" as const, orgId: "org-1" };
+const scope = { kind: "org" as const, orgId: "org-1", jurisdiction: null };
 
 const usageEvent = (overrides: Partial<BillingEventInput> = {}): BillingEventInput => ({
   id: "pi:org-1:hook-1",
@@ -103,7 +103,7 @@ describe("billing fragment", async () => {
       billing.services.recordEvent(
         usageEvent({
           id: "pi:org-2:hook-1",
-          scope: { kind: "org", orgId: "org-2" },
+          scope: { kind: "org", orgId: "org-2", jurisdiction: null },
           occurredAt: "2026-08-01T00:00:00.000Z",
         }),
       ),
@@ -112,7 +112,7 @@ describe("billing fragment", async () => {
     expect(
       await callServices(() =>
         billing.services.getTrackers({
-          scope: { kind: "org", orgId: "org-2" },
+          scope: { kind: "org", orgId: "org-2", jurisdiction: null },
           period: "2026-07",
         }),
       ),
@@ -120,7 +120,7 @@ describe("billing fragment", async () => {
 
     const august = await callServices(() =>
       billing.services.getTrackers({
-        scope: { kind: "org", orgId: "org-2" },
+        scope: { kind: "org", orgId: "org-2", jurisdiction: null },
         period: "2026-08",
       }),
     );
@@ -128,7 +128,7 @@ describe("billing fragment", async () => {
   });
 
   test("builds an organization statement across scoped trackers without writing rollups", async () => {
-    const statementOrgScope = { kind: "org" as const, orgId: "org-statement" };
+    const statementOrgScope = { kind: "org" as const, orgId: "org-statement", jurisdiction: null };
     const statementEvents: BillingEventInput[] = [
       usageEvent({
         id: "statement-org-event",
@@ -143,7 +143,7 @@ describe("billing fragment", async () => {
         id: "statement-project-event",
         scope: {
           kind: "project",
-          owner: { kind: "org", orgId: "org-statement" },
+          owner: { kind: "org", orgId: "org-statement", jurisdiction: null },
           projectId: "project-1",
         },
         occurredAt: "2026-09-01T11:00:00.000Z",
@@ -154,7 +154,7 @@ describe("billing fragment", async () => {
       }),
       usageEvent({
         id: "statement-user-event",
-        scope: { kind: "user", userId: "user-1" },
+        scope: { kind: "user", userId: "user-1", jurisdiction: null },
         occurredAt: "2026-09-01T12:00:00.000Z",
         measurements: [
           { meter: "ai.tokens.total", unit: "token", quantity: 30 },
@@ -206,7 +206,7 @@ describe("billing fragment", async () => {
   });
 
   test("paginates trackers in ascending meter order", async () => {
-    const paginationScope = { kind: "org" as const, orgId: "org-pagination" };
+    const paginationScope = { kind: "org" as const, orgId: "org-pagination", jurisdiction: null };
     await callServices(() =>
       billing.services.recordEvent(
         usageEvent({
@@ -261,7 +261,7 @@ describe("billing fragment", async () => {
     await expect(
       callServices(() =>
         billing.services.getTrackers({
-          scope: { kind: "org", orgId: "another-org" },
+          scope: { kind: "org", orgId: "another-org", jurisdiction: null },
           period: "2026-07",
           cursor: first.nextCursor,
         }),

@@ -71,6 +71,7 @@ export function provideBackofficeShellRequest(
   const defaultScope: BackofficeResolvedScope<Organization, BackofficeNamedProject> = {
     kind: "user",
     userId: me.user.id,
+    jurisdiction: me.user.jurisdiction,
   };
   const accessTokenExpiresAt = new Date(Date.now() + 60_000);
   context.set(BackofficeShellRequestContext, {
@@ -104,6 +105,7 @@ function selectionOf(
       organization: ({ organization }) => ({
         organization: backofficeOrganizationIdentity(organization),
       }),
+      user: ({ userId, jurisdiction }) => ({ userId, jurisdiction }),
       project: ({ project }) => ({ project: backofficeProjectIdentity(project) }),
     }),
     label: labelOf(scope, me),
@@ -185,13 +187,15 @@ export async function createAutomationProject(
   ctx: BackofficeScenarioContext,
   input: { orgId: string; name: string; createdByUserId: string },
 ) {
-  const response = await ctx.runtime.objects.automations.forOrg(input.orgId).http.fetch(
-    new Request(`${scenarioOrigin}/api/automations/projects`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: input.name, createdByUserId: input.createdByUserId }),
-    }),
-  );
+  const response = await ctx.runtime.objects.automations
+    .for({ kind: "org", orgId: input.orgId, jurisdiction: null })
+    .http.fetch(
+      new Request(`${scenarioOrigin}/api/automations/projects`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: input.name, createdByUserId: input.createdByUserId }),
+      }),
+    );
   assert(response.ok, await response.clone().text());
   return z.object({ id: z.string(), slug: z.string() }).parse(await response.json());
 }
@@ -201,10 +205,12 @@ export async function archiveAutomationProject(
   ctx: BackofficeScenarioContext,
   input: { orgId: string; projectId: string },
 ) {
-  const response = await ctx.runtime.objects.automations.forOrg(input.orgId).http.fetch(
-    new Request(`${scenarioOrigin}/api/automations/projects/${input.projectId}`, {
-      method: "DELETE",
-    }),
-  );
+  const response = await ctx.runtime.objects.automations
+    .for({ kind: "org", orgId: input.orgId, jurisdiction: null })
+    .http.fetch(
+      new Request(`${scenarioOrigin}/api/automations/projects/${input.projectId}`, {
+        method: "DELETE",
+      }),
+    );
   assert(response.ok, await response.clone().text());
 }

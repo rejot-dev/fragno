@@ -64,7 +64,11 @@ test("Node Backoffice manages Cloudflare sandboxes through the authenticated bri
       steps: ({ then }) => [
         then.assert("sandbox start, command execution, and stop use the bridge", async (ctx) => {
           const sandbox = createSandboxRuntime({
-            lifecycle: ctx.runtime.objects.sandboxManager.forOrg("org-1").commands,
+            lifecycle: ctx.runtime.objects.sandboxManager.for({
+              kind: "org",
+              orgId: "org-1",
+              jurisdiction: null,
+            }).commands,
           });
 
           await expect(

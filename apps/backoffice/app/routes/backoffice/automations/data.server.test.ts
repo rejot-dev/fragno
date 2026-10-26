@@ -10,7 +10,7 @@ const { fetchAuthorizedMock, fetchMock } = vi.hoisted(() => ({
 
 import { lookupAutomationProject } from "./data.server";
 
-const scope = { kind: "org" as const, orgId: "org-1" };
+const scope = { kind: "org" as const, orgId: "org-1", jurisdiction: null };
 
 const automationsObject = {
   commands: {},

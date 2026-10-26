@@ -87,7 +87,7 @@ const authenticatedUser = {
 const automations = {
   restartMarketplaceIngestion: restartMarketplaceIngestionMock,
 };
-const forOrgMock = vi.fn(() => ({ commands: automations }));
+const automationsForMock = vi.fn(() => ({ commands: automations }));
 const marketplace = {
   getPublishedListing: getPublishedListingMock,
   getListingStorage: getListingStorageMock,
@@ -95,15 +95,15 @@ const marketplace = {
 const workerContext = {
   runtime: {
     objects: {
-      automations: { forOrg: forOrgMock },
+      automations: { for: automationsForMock },
       marketplace: { for: () => ({ commands: marketplace }) },
     },
   },
 };
 
 const knownOrganizations = [
-  { id: "org-1", slug: "ada-labs" },
-  { id: "org-2", slug: "second-labs" },
+  { id: "org-1", slug: "ada-labs", jurisdiction: null },
+  { id: "org-2", slug: "second-labs", jurisdiction: null },
 ];
 
 function slugOf(orgId: string): string {
@@ -113,6 +113,7 @@ function slugOf(orgId: string): string {
 function routeScopeForTest(scope: BackofficeRoutableScope): BackofficeRoutableRouteScope {
   return mapBackofficeScopeNames(scope, {
     organization: ({ orgId }) => ({ orgSlug: slugOf(orgId) }),
+    user: ({ userId }) => ({ userId }),
     project: ({ projectId }) => ({ projectSlug: projectId }),
   });
 }
@@ -129,6 +130,7 @@ async function routeContext(scope: BackofficeRoutableScope) {
       ? null
       : mapBackofficeScopeNames(scope, {
           organization: () => ({ organization }),
+          user: ({ userId, jurisdiction }) => ({ userId, jurisdiction }),
           project: ({ projectId }) => ({
             project: { id: projectId, slug: projectId, name: projectId },
           }),
@@ -141,7 +143,7 @@ async function routeContext(scope: BackofficeRoutableScope) {
 }
 
 const runLoader = async (
-  scope: BackofficeRoutableScope = { kind: "org", orgId: "org-1" },
+  scope: BackofficeRoutableScope = { kind: "org", orgId: "org-1", jurisdiction: null },
   packageVersion?: string,
   installation?: MarketplaceInstallationReference,
 ) => {
@@ -175,7 +177,7 @@ const runAction = async (input: {
   version?: string;
   extraFormEntries?: Record<string, string>;
 }) => {
-  const scope = input.scope ?? { kind: "org", orgId: "org-1" };
+  const scope = input.scope ?? { kind: "org", orgId: "org-1", jurisdiction: null };
   const routeScope = routeScopeForTest(scope);
   const routePath = backofficeRouteScopePath(routeScope);
   const url = new URL(
@@ -214,16 +216,21 @@ beforeEach(() => {
   restartMarketplaceIngestionMock.mockReset();
   fetchAutomationReplicaSourceMock.mockReset();
   loadPublishedMarketplacePackageExplorerMock.mockReset();
-  forOrgMock.mockClear();
+  automationsForMock.mockClear();
   shellMeMock.mockResolvedValue(authenticatedUser);
   requireBackofficeContextMock.mockImplementation(async (_request, _context, scope) =>
     createBackofficeRequestExecution({
       scope,
-      userId: authenticatedUser.user.id,
       verifiedRequestAuthority: {
+        userId: authenticatedUser.user.id,
+        personalScope: {
+          kind: "user" as const,
+          userId: authenticatedUser.user.id,
+          jurisdiction: null,
+        },
         role: "user",
-        organizationId: "org-1",
-        administeredMemberId: null,
+        organization: { kind: "org" as const, orgId: "org-1", jurisdiction: null },
+        administeredMember: null,
         expiresAt: new Date("2030-01-01T00:00:00.000Z"),
         scopeRestriction: null,
       },
@@ -268,7 +275,7 @@ describe("marketplace detail loader", () => {
         { organization: { id: "org-2", slug: "second-labs", name: "Second Labs" } },
       ],
     });
-    const result = await runLoader({ kind: "org", orgId: "org-2" });
+    const result = await runLoader({ kind: "org", orgId: "org-2", jurisdiction: null });
 
     assert(!(result instanceof Response));
     assert(result.installationCollectionSource?.resolvedScope.kind === "org");
@@ -278,7 +285,7 @@ describe("marketplace detail loader", () => {
   test("uses the selected project's organization as the workflow coordinator", async () => {
     const result = await runLoader({
       kind: "project",
-      owner: { kind: "org", orgId: "org-1" },
+      owner: { kind: "org", orgId: "org-1", jurisdiction: null },
       projectId: "project-1",
     });
 
@@ -288,7 +295,7 @@ describe("marketplace detail loader", () => {
   });
 
   test("uses the active organization to coordinate a personal-scope installation", async () => {
-    const result = await runLoader({ kind: "user", userId: "user-1" });
+    const result = await runLoader({ kind: "user", userId: "user-1", jurisdiction: null });
 
     assert(!(result instanceof Response));
     assert(result.installationCollectionSource?.resolvedScope.kind === "org");
@@ -302,11 +309,11 @@ describe("marketplace detail loader", () => {
       activeOrganization: null,
     });
 
-    const result = await runLoader({ kind: "user", userId: "user-1" });
+    const result = await runLoader({ kind: "user", userId: "user-1", jurisdiction: null });
 
     assert(!(result instanceof Response));
     assert(result.installationCollectionSource === null);
-    expect(forOrgMock).not.toHaveBeenCalled();
+    expect(automationsForMock).not.toHaveBeenCalled();
   });
 
   test("loads a validated package version outside the current page", async () => {
@@ -316,7 +323,7 @@ describe("marketplace detail loader", () => {
       selectedVersion: "1.0.0",
     });
 
-    const result = await runLoader({ kind: "org", orgId: "org-1" }, "1.0.0");
+    const result = await runLoader({ kind: "org", orgId: "org-1", jurisdiction: null }, "1.0.0");
 
     assert(!(result instanceof Response));
     assert(result.packageFiles.state === "ready");
@@ -324,9 +331,13 @@ describe("marketplace detail loader", () => {
   });
 
   test.each([
-    { kind: "org", orgId: "org-1" },
-    { kind: "project", owner: { kind: "org", orgId: "org-1" }, projectId: "project-1" },
-    { kind: "user", userId: "user-1" },
+    { kind: "org", orgId: "org-1", jurisdiction: null },
+    {
+      kind: "project",
+      owner: { kind: "org", orgId: "org-1", jurisdiction: null },
+      projectId: "project-1",
+    },
+    { kind: "user", userId: "user-1", jurisdiction: null },
   ] as const)("recovers an interactive installation on reload in $kind scope", async (scope) => {
     const result = await runLoader(scope, installationReference.version, installationReference);
     assert(!(result instanceof Response));
@@ -355,7 +366,7 @@ describe("marketplace detail loader", () => {
       },
     });
     const result = await runLoader(
-      { kind: "user", userId: "user-1" },
+      { kind: "user", userId: "user-1", jurisdiction: null },
       undefined,
       installationReference,
     );
@@ -365,30 +376,42 @@ describe("marketplace detail loader", () => {
   });
 
   test("rejects a persisted coordinator outside the destination organization", async () => {
-    const response = await runLoader({ kind: "org", orgId: "org-1" }, undefined, {
-      ...installationReference,
-      organizationId: "org-other",
-    }).catch((error: unknown) => error);
+    const response = await runLoader(
+      { kind: "org", orgId: "org-1", jurisdiction: null },
+      undefined,
+      {
+        ...installationReference,
+        organizationId: "org-other",
+      },
+    ).catch((error: unknown) => error);
     assert(response instanceof Response);
     assert(response.status === 404);
     expect(fetchAutomationReplicaSourceMock).not.toHaveBeenCalled();
   });
 
   test("rejects a persisted personal coordinator after membership is removed", async () => {
-    const response = await runLoader({ kind: "user", userId: "user-1" }, undefined, {
-      ...installationReference,
-      organizationId: "org-other",
-    }).catch((error: unknown) => error);
+    const response = await runLoader(
+      { kind: "user", userId: "user-1", jurisdiction: null },
+      undefined,
+      {
+        ...installationReference,
+        organizationId: "org-other",
+      },
+    ).catch((error: unknown) => error);
     assert(response instanceof Response);
     assert(response.status === 404);
     expect(fetchAutomationReplicaSourceMock).not.toHaveBeenCalled();
   });
 
   test("rejects invalid persisted installation paths before loading workflow data", async () => {
-    const response = await runLoader({ kind: "org", orgId: "org-1" }, undefined, {
-      ...installationReference,
-      installationRoot: "/workspace/../private",
-    }).catch((error: unknown) => error);
+    const response = await runLoader(
+      { kind: "org", orgId: "org-1", jurisdiction: null },
+      undefined,
+      {
+        ...installationReference,
+        installationRoot: "/workspace/../private",
+      },
+    ).catch((error: unknown) => error);
     assert(response instanceof Response);
     assert(response.status === 400);
     expect(fetchAutomationReplicaSourceMock).not.toHaveBeenCalled();
@@ -613,7 +636,10 @@ function renderMarketplaceDetail(
     hasNextVersionPage: false,
     manageOrganizationId: null,
     installationCollectionSource: {
-      resolvedScope: { kind: "org", organization: { id: "org-1", slug: "acme" } },
+      resolvedScope: {
+        kind: "org",
+        organization: { id: "org-1", slug: "acme", jurisdiction: null },
+      },
       adapterIdentity: "automations-test-adapter",
     },
     installationSetup: {
@@ -633,7 +659,7 @@ function renderMarketplaceDetail(
           context: {
             selectedScope: {
               kind: "org",
-              organization: { id: "org-1", slug: "ada-labs" },
+              organization: { id: "org-1", slug: "ada-labs", jurisdiction: null },
               label: "Ada Labs",
             },
           },
@@ -676,12 +702,16 @@ describe("marketplace ingestion action", () => {
       installationRoot: "/workspace/telegram-test-command",
     });
     assert(destination.searchParams.get("packageTab") === "install");
-    expect(forOrgMock).toHaveBeenCalledWith("org-1");
+    expect(automationsForMock).toHaveBeenCalledWith({
+      kind: "org",
+      orgId: "org-1",
+      jurisdiction: null,
+    });
     expect(restartMarketplaceIngestionMock).toHaveBeenCalledWith(
       {
         marketplace: { kind: "system" },
         listingId,
-        targetScope: { kind: "org", orgId: "org-1" },
+        targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
         installationRoot: "/workspace/telegram-test-command",
         version: "1.0.0",
         permissions: [],
@@ -699,7 +729,7 @@ describe("marketplace ingestion action", () => {
       workflowStatus: "active",
     });
     const result = await runAction({
-      scope: { kind: "user", userId: "user-1" },
+      scope: { kind: "user", userId: "user-1", jurisdiction: null },
       version: "1.3.0",
       extraFormEntries: { installationRoot: " /workspace/custom-telegram/ " },
     });
@@ -710,7 +740,7 @@ describe("marketplace ingestion action", () => {
     assert(destination.searchParams.get("packageVersion") === "1.3.0");
     assert(reference);
     const reloaded = await runLoader(
-      { kind: "user", userId: "user-1" },
+      { kind: "user", userId: "user-1", jurisdiction: null },
       reference.version,
       reference,
     );
@@ -723,13 +753,17 @@ describe("marketplace ingestion action", () => {
       version: "1.0.0",
       extraFormEntries: {
         organizationId: "org-other",
-        targetScope: backofficeScopePathSegment({ kind: "user", userId: "user-2" }),
+        targetScope: backofficeScopePathSegment({
+          kind: "user",
+          userId: "user-2",
+          jurisdiction: null,
+        }),
       },
     });
 
     expect(restartMarketplaceIngestionMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        targetScope: { kind: "org", orgId: "org-1" },
+        targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
       }),
       expect.anything(),
     );
@@ -738,13 +772,17 @@ describe("marketplace ingestion action", () => {
   test("starts ingestion into the project selected in the route", async () => {
     const targetScope = {
       kind: "project",
-      owner: { kind: "org", orgId: "org-1" },
+      owner: { kind: "org", orgId: "org-1", jurisdiction: null },
       projectId: "project-1",
     } as const;
 
     await runAction({ scope: targetScope, version: "1.0.0" });
 
-    expect(forOrgMock).toHaveBeenCalledWith("org-1");
+    expect(automationsForMock).toHaveBeenCalledWith({
+      kind: "org",
+      orgId: "org-1",
+      jurisdiction: null,
+    });
     expect(restartMarketplaceIngestionMock).toHaveBeenCalledWith(
       expect.objectContaining({ targetScope }),
       expect.anything(),
@@ -783,7 +821,9 @@ describe("marketplace ingestion action", () => {
   });
 
   test("rejects another user's personal scope", async () => {
-    const result = await runAction({ scope: { kind: "user", userId: "user-2" } });
+    const result = await runAction({
+      scope: { kind: "user", userId: "user-2", jurisdiction: null },
+    });
 
     expect(result).toEqual({
       ok: false,

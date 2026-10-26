@@ -17,6 +17,7 @@ import {
   BACKOFFICE_PASSWORD_MIN_LENGTH,
   BACKOFFICE_PASSWORD_MAX_LENGTH,
 } from "@/fragno/auth/password-policy";
+import { BackofficeStandaloneLayout, BackToHomeLink } from "@/layouts/backoffice-standalone-layout";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { Route } from "./+types/sign-up";
@@ -214,16 +215,9 @@ export default function BackofficeSignUp() {
     : buildBackofficeSignUpPath(returnTo);
 
   return (
-    <div
-      data-backoffice-root
-      className="relative isolate min-h-screen bg-[var(--bo-bg)] text-[var(--bo-fg)]"
-    >
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(0deg,rgba(var(--bo-overlay),0.96),rgba(var(--bo-overlay),0.96)),linear-gradient(90deg,rgba(var(--bo-grid),0.45)_1px,transparent_1px),linear-gradient(0deg,rgba(var(--bo-grid),0.45)_1px,transparent_1px)] bg-[size:100%_100%,28px_28px,28px_28px]" />
-      <div className="relative mx-auto flex min-h-screen max-w-5xl flex-col items-center justify-center gap-6 px-4 py-8 lg:flex-row lg:items-center lg:justify-between">
-        <div className="w-full max-w-xl space-y-4">
-          <p className="text-[11px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-            Backoffice
-          </p>
+    <BackofficeStandaloneLayout headerEnd={<BackToHomeLink />}>
+      <div className="mx-auto grid w-full max-w-[1180px] flex-1 items-start gap-8 px-5 py-6 sm:px-8 sm:py-8 lg:grid-cols-[minmax(0,1fr)_28rem] lg:items-center lg:gap-12 lg:px-12 lg:py-12">
+        <section className="space-y-4">
           <h1 className="text-3xl leading-tight font-semibold text-[var(--bo-fg)] md:text-4xl">
             Create your Backoffice account.
           </h1>
@@ -235,9 +229,9 @@ export default function BackofficeSignUp() {
               Back to sign in
             </ButtonLink>
           </div>
-        </div>
+        </section>
 
-        <div className="w-full max-w-md">
+        <div className="w-full">
           <FormContainer
             title={
               verificationRequired
@@ -376,6 +370,6 @@ export default function BackofficeSignUp() {
           </FormContainer>
         </div>
       </div>
-    </div>
+    </BackofficeStandaloneLayout>
   );
 }

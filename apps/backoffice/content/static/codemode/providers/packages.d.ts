@@ -149,6 +149,7 @@ type PackagesInstallOutput = {
   workflowScope: {
     kind: "org";
     orgId: string;
+    jurisdiction: "eu" | "us" | null;
   };
 };
 type PackagesLsInput = Record<string, unknown>;
@@ -161,6 +162,7 @@ type PackagesLsOutput = {
       | {
           kind: "org";
           orgId: string;
+          jurisdiction: "eu" | "us" | null;
         };
     listingId: string;
     version: string;
@@ -182,6 +184,7 @@ type PackagesGetOutput = {
     | {
         kind: "org";
         orgId: string;
+        jurisdiction: "eu" | "us" | null;
       };
   listingId: string;
   version: string;
@@ -203,6 +206,7 @@ type PackagesUninstallOutput = {
       | {
           kind: "org";
           orgId: string;
+          jurisdiction: "eu" | "us" | null;
         };
     listingId: string;
     version: string;
@@ -234,6 +238,7 @@ type PackagesImportLegacyOutput = {
       | {
           kind: "org";
           orgId: string;
+          jurisdiction: "eu" | "us" | null;
         };
     listingId: string;
     version: string;

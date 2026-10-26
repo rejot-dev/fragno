@@ -12,10 +12,12 @@ import {
   backofficeRouteScopePath,
 } from "./route-scope";
 
-const organization = { id: "org_123", slug: "acme" };
+// Page and public URLs never name the jurisdiction; runtime scopes always do.
+const organization = { id: "org_123", slug: "acme", jurisdiction: "eu" as const };
 const project = { id: "project_1", slug: "website" };
 const lookups = {
   organizations: [organization],
+  findUser: async () => null,
   isAppInstalled: async () => true,
   findProject: async (_owner: unknown, slug: string) => (slug === project.slug ? project : null),
 };
@@ -40,7 +42,7 @@ describe("Backoffice route scope", () => {
     );
     expect(backofficeRuntimeScopeFromResolvedScope(resolution.scope)).toEqual({
       kind: "project",
-      owner: { kind: "org", orgId: "org_123" },
+      owner: { kind: "org", orgId: "org_123", jurisdiction: "eu" },
       projectId: "project_1",
     });
   });
@@ -49,7 +51,11 @@ describe("Backoffice route scope", () => {
     assert(
       backofficePublicScopePathSegment(
         backofficePublicScopeFromRuntimeScope(
-          { kind: "project", owner: { kind: "org", orgId: "org_123" }, projectId: "project_1" },
+          {
+            kind: "project",
+            owner: { kind: "org", orgId: "org_123", jurisdiction: "eu" },
+            projectId: "project_1",
+          },
           organization,
         ),
       ) === "project:org:acme:project_1",

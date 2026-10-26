@@ -48,7 +48,7 @@ const scenarioObjects = {
 
 const orgId = "org-1";
 const userId = "user-1";
-const scope = { kind: "org" as const, orgId };
+const scope = { kind: "org" as const, orgId, jurisdiction: null };
 const identity = {
   scope: "external" as const,
   source: "telegram",

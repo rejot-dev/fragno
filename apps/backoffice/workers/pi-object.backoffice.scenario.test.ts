@@ -186,7 +186,7 @@ function toolResults(context: Context) {
 
 test("durable Pi runs a workspace agent with its instructions, scoped skills, Backoffice tools, and other agents", async () => {
   const execution = createBackofficeServiceExecution({
-    scope: { kind: "org", orgId: "org-1" },
+    scope: { kind: "org", orgId: "org-1", jurisdiction: null },
     service: { type: "automation", id: "durable-tool-scenario" },
   });
   // One dispatcher serves the researcher's turn and the assistant agent prompted from codemode.
@@ -299,7 +299,7 @@ test("durable Pi runs a workspace agent with its instructions, scoped skills, Ba
 
 test("agents and users read another agent's messages and export its whole conversation", async () => {
   const execution = createBackofficeServiceExecution({
-    scope: { kind: "org", orgId: "org-1" },
+    scope: { kind: "org", orgId: "org-1", jurisdiction: null },
     service: { type: "automation", id: "agent-messages-scenario" },
   });
   let research: unknown = null;
@@ -436,7 +436,7 @@ test("agents and users read another agent's messages and export its whole conver
 });
 
 test("an agent's backfill records agent events as the agent's turn, keeping its delegation", async () => {
-  const scope: BackofficeContextScope = { kind: "org", orgId: "org-1" };
+  const scope: BackofficeContextScope = { kind: "org", orgId: "org-1", jurisdiction: null };
   const execution = createBackofficeServiceExecution({
     scope,
     service: { type: "automation", id: "backfill-scenario" },
@@ -508,7 +508,7 @@ test("an agent's backfill records agent events as the agent's turn, keeping its 
 
 test("durable Pi lists Marketplace-installed skills and finds them by any keyword", async () => {
   const execution = createBackofficeServiceExecution({
-    scope: { kind: "org", orgId: "org-1" },
+    scope: { kind: "org", orgId: "org-1", jurisdiction: null },
     service: { type: "automation", id: "durable-search-scenario" },
   });
   const skillPath = "/workspace/slack-setup/skills/slack-setup/SKILL.md";
@@ -596,7 +596,7 @@ test("durable Pi lists Marketplace-installed skills and finds them by any keywor
 
 test("codemode output past the harness limits keeps its beginning and end and saves the rest for the agent", async () => {
   const execution = createBackofficeServiceExecution({
-    scope: { kind: "org", orgId: "org-1" },
+    scope: { kind: "org", orgId: "org-1", jurisdiction: null },
     service: { type: "automation", id: "codemode-output-scenario" },
   });
   let fullOutputPath = "";
@@ -668,7 +668,7 @@ test("codemode output past the harness limits keeps its beginning and end and sa
 
 test("an agent's definition narrows every turn and an edited definition applies from the next turn", async () => {
   const execution = createBackofficeServiceExecution({
-    scope: { kind: "org", orgId: "org-1" },
+    scope: { kind: "org", orgId: "org-1", jurisdiction: null },
     service: { type: "automation", id: "narrowing-scenario" },
   });
   const reader = {
@@ -751,7 +751,7 @@ test("an agent's definition narrows every turn and an edited definition applies 
 
 for (const revocation of ["restricted", "disabled", "deleted"] as const) {
   test(`durable Pi runs each turn as its own prompter after a linked-user route is ${revocation}`, async () => {
-    const scope = { kind: "org", orgId: "org-1" } as const;
+    const scope = { kind: "org", orgId: "org-1", jurisdiction: null } as const;
     const execution = createBackofficeUserExecution({ scope, userId: "member" });
     const workflowPath = "/workspace/automations/delegated-pi.workflow.js";
     let modelCalls = 0;
@@ -954,7 +954,7 @@ for (const revocation of ["restricted", "disabled", "deleted"] as const) {
 
 test("durable Pi delivers committed model usage to its owning organization", async () => {
   const execution = createBackofficeServiceExecution({
-    scope: { kind: "org", orgId: "org-1" },
+    scope: { kind: "org", orgId: "org-1", jurisdiction: null },
     service: { type: "automation", id: "durable-billing-scenario" },
   });
   await runBackofficeScenario(
@@ -979,11 +979,13 @@ test("durable Pi delivers committed model usage to its owning organization", asy
           await runtime.drain();
 
           const period = new Date(runtime.now()).toISOString().slice(0, 7);
-          const trackers = await runtime.objects.billing.forOrg("org-1").commands.getTrackers({
-            scope: execution.scope,
-            period,
-            pageSize: 100,
-          });
+          const trackers = await runtime.objects.billing
+            .for({ kind: "org", orgId: "org-1", jurisdiction: null })
+            .commands.getTrackers({
+              scope: execution.scope,
+              period,
+              pageSize: 100,
+            });
           const totalTokens = trackers.trackers.find(
             (tracker) => tracker.meter === "ai.tokens.total",
           );
@@ -996,7 +998,7 @@ test("durable Pi delivers committed model usage to its owning organization", asy
           assert.equal(compacted.status, 202, await compacted.clone().text());
           await runtime.drain();
           const afterCompaction = await runtime.objects.billing
-            .forOrg("org-1")
+            .for({ kind: "org", orgId: "org-1", jurisdiction: null })
             .commands.getTrackers({ scope: execution.scope, period, pageSize: 100 });
           const compactedTotalTokens = afterCompaction.trackers.find(
             (tracker) => tracker.meter === "ai.tokens.total",
@@ -1008,7 +1010,7 @@ test("durable Pi delivers committed model usage to its owning organization", asy
 
           await runtime.drain();
           const afterDuplicateDrain = await runtime.objects.billing
-            .forOrg("org-1")
+            .for({ kind: "org", orgId: "org-1", jurisdiction: null })
             .commands.getTrackers({ scope: execution.scope, period, pageSize: 100 });
           expect(
             afterDuplicateDrain.trackers.find((tracker) => tracker.meter === "ai.tokens.total"),
@@ -1020,7 +1022,7 @@ test("durable Pi delivers committed model usage to its owning organization", asy
 });
 
 test("personal agents run without an organization and keep their usage after leaving one", async () => {
-  const scope = { kind: "user", userId: "member" } as const;
+  const scope = { kind: "user", userId: "member", jurisdiction: null } as const;
   const execution = createBackofficeUserExecution({ scope, userId: "member" });
   let modelCalls = 0;
   await runBackofficeScenario(
@@ -1082,8 +1084,11 @@ test("personal agents run without an organization and keep their usage after lea
               expect.objectContaining({ meter: "ai.tokens.total", eventCount: "3" }),
             );
             expect(
-              (await runtime.objects.billing.forOrg("org-1").commands.getStatement({ period }))
-                .trackers,
+              (
+                await runtime.objects.billing
+                  .for({ kind: "org", orgId: "org-1", jurisdiction: null })
+                  .commands.getStatement({ period })
+              ).trackers,
             ).toEqual([]);
             await runtime.drain();
             expect(
@@ -1098,7 +1103,7 @@ test("personal agents run without an organization and keep their usage after lea
 
 for (const leaveOrganization of [false, true]) {
   test(`durable Pi workflows retain personal usage attribution across nested workflows and restart${leaveOrganization ? " after leaving an organization" : ""}`, async () => {
-    const scope = { kind: "user", userId: "member" } as const;
+    const scope = { kind: "user", userId: "member", jurisdiction: null } as const;
     const execution = createBackofficeUserExecution({ scope, userId: "member" });
     const promptOperation = "pi.submitPrompt";
     const savedWorkflowCode = `export default defineWorkflow({ name: "saved-sentence-checker" }, async (event, step) => {
@@ -1274,7 +1279,7 @@ function heardEvents(context: Context) {
 
 test("an agent hears back from the workflow it starts when it ends", async () => {
   const execution = createBackofficeServiceExecution({
-    scope: { kind: "org", orgId: "org-1" },
+    scope: { kind: "org", orgId: "org-1", jurisdiction: null },
     service: { type: "automation", id: "workflow-reply-scenario" },
   });
   const workflowCode = `defineWorkflow({ name: "approval-checker" }, async (event, step) => {
@@ -1309,7 +1314,11 @@ test("an agent hears back from the workflow it starts when it ends", async () =>
           await prompt(runtime, execution, { content: "Check the approval." });
           await runtime.drain();
           const workflow = createRouteBackedAutomationWorkflowRuntime({
-            object: runtime.objects.automations.forOrg("org-1"),
+            object: runtime.objects.automations.for({
+              kind: "org",
+              orgId: "org-1",
+              jurisdiction: null,
+            }),
             execution,
           });
           const [instance] = (await workflow.listInstances({ pageSize: 10 })).instances;
@@ -1320,7 +1329,11 @@ test("an agent hears back from the workflow it starts when it ends", async () =>
         }),
         then.assert("the agent reads the result once it is approved", async ({ runtime }) => {
           const workflow = createRouteBackedAutomationWorkflowRuntime({
-            object: runtime.objects.automations.forOrg("org-1"),
+            object: runtime.objects.automations.for({
+              kind: "org",
+              orgId: "org-1",
+              jurisdiction: null,
+            }),
             execution,
           });
           await workflow.sendEvent({ instanceId, type: "approval", payload: { approved: true } });
@@ -1351,7 +1364,7 @@ test("durable Pi restores scoped tools and reports interrupted codemode without 
   const directory = await mkdtemp(path.join(os.tmpdir(), "pi-codemode-recovery-"));
   const snapshot = path.join(directory, "interrupted.sqlite");
   const execution = createBackofficeServiceExecution({
-    scope: { kind: "org", orgId: "org-1" },
+    scope: { kind: "org", orgId: "org-1", jurisdiction: null },
     service: { type: "automation", id: "codemode-recovery" },
   });
   const config: PiAgentConfig = {
@@ -1497,14 +1510,16 @@ test("durable Pi restores scoped tools and reports interrupted codemode without 
 
 test("durable Pi scoped codemode handles prompt the selected scope's agent", async () => {
   const execution = createBackofficeServiceExecution({
-    scope: { kind: "org", orgId: "org-1" },
+    scope: { kind: "org", orgId: "org-1", jurisdiction: null },
     service: { type: "automation", id: "scope-scenario" },
   });
-  const userScope: BackofficeContextScope = { kind: "user", userId: "org-1" };
+  const userScope: BackofficeContextScope = { kind: "user", userId: "org-1", jurisdiction: null };
   await runBackofficeScenario(
     defineBackofficeScenario({
       name: "durable Pi scoped agent",
       options: { drain: false },
+      // Codemode reaches a user by ID only when Auth knows them.
+      setup: ({ given }) => [given.auth.user({ id: "org-1" })],
       objects: {
         ...scenarioObjects,
         ...scriptedAgents([
@@ -1666,7 +1681,7 @@ test("Cloudflare backend analytics delivers verified outcomes and Pi usage witho
                 await exchange.json(),
               );
               assert(organization);
-              const scope = { kind: "org" as const, orgId: organization.id };
+              const scope = { kind: "org" as const, orgId: organization.id, jurisdiction: null };
               const cookie = exchange.headers
                 .getSetCookie()
                 .map((value) => value.split(";", 1)[0])

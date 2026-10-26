@@ -46,7 +46,8 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
         await import("@/fragno/pi/extensions/posthog/posthog-extension");
       const { createCloudflareDurableObjectRuntimeServices } =
         await import("@/backoffice-runtime/runtime-services");
-      const { piAgentObjectName } = await import("@/fragno/pi/agent/pi-agent-contract");
+      const { piAgentDurableObjectId } =
+        await import("@/backoffice-runtime/cloudflare-durable-object-factory");
       const dependencies = await loadDependencies();
       const analyticsEnabled =
         import.meta.env.BACKOFFICE_TARGET === "cloudflare" &&
@@ -76,7 +77,7 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
           : dependencies,
         runtime: createCloudflareDurableObjectRuntimeServices(env, state),
         openStorage: () => openPiAgentStorage(state.storage),
-        idFromConfig: (config) => env.PI.idFromName(piAgentObjectName(config)),
+        idFromConfig: (config) => piAgentDurableObjectId(env, config),
         nowEpochMs: Date.now,
       });
       // An object woken from hibernation still has the view sockets it accepted; each had its view.

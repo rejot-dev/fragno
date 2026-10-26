@@ -46,10 +46,11 @@ describe("scoped Upload proxy", () => {
     expect(requireBackofficeContextMock).toHaveBeenCalledWith(request, context, {
       kind: "org",
       orgId: "org-123",
+      jurisdiction: null,
     });
     expect(scopedUploadMock).toHaveBeenCalledWith(
       "UPLOAD",
-      { kind: "org", orgId: "org-123" },
+      { kind: "org", orgId: "org-123", jurisdiction: null },
       uploadFamily,
     );
 

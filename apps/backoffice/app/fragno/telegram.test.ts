@@ -5,7 +5,7 @@ import { buildTelegramAutomationEvent } from "./telegram";
 describe("buildTelegramAutomationEvent", () => {
   test("accepts serialized hook payload dates", () => {
     const event = buildTelegramAutomationEvent(
-      { kind: "org", orgId: "org-1" },
+      { kind: "org", orgId: "org-1", jurisdiction: null },
       {
         updateId: 42,
         updateType: "message",
@@ -23,7 +23,7 @@ describe("buildTelegramAutomationEvent", () => {
     expect(event).toEqual({
       id: "telegram:org:org-1:42:chat-1:10",
       scopeRestriction: null,
-      scope: { kind: "org", orgId: "org-1" },
+      scope: { kind: "org", orgId: "org-1", jurisdiction: null },
       source: "telegram",
       eventType: "message.received",
       occurredAt: "2026-03-17T14:30:29.074Z",
@@ -50,7 +50,7 @@ describe("buildTelegramAutomationEvent", () => {
 
   test("includes attachments when present", () => {
     const event = buildTelegramAutomationEvent(
-      { kind: "org", orgId: "org-1" },
+      { kind: "org", orgId: "org-1", jurisdiction: null },
       {
         updateId: 43,
         updateType: "message",

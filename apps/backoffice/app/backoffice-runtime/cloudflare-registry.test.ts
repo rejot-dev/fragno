@@ -31,7 +31,7 @@ describe("createCloudflareBackofficeObjectRegistry", () => {
     } as unknown as CloudflareEnv;
 
     const objects = createCloudflareBackofficeObjectRegistry(env);
-    void objects.automations.forOrg("org-1");
+    void objects.automations.for({ kind: "org", orgId: "org-1", jurisdiction: null });
 
     expect(automations.idFromName).toHaveBeenCalledWith("v1:org:org-1");
     expect(automations.get).toHaveBeenCalledWith("id:v1:org:org-1");
@@ -54,10 +54,10 @@ describe("createCloudflareBackofficeObjectRegistry", () => {
     } as unknown as CloudflareEnv;
 
     const objects = createCloudflareBackofficeObjectRegistry(env);
-    objects.upload.forUser({ userId: "user-1" });
+    objects.upload.for({ kind: "user", userId: "user-1", jurisdiction: null });
     objects.upload.for({
       kind: "project",
-      owner: { kind: "org", orgId: "org-1" },
+      owner: { kind: "org", orgId: "org-1", jurisdiction: null },
       projectId: "project-1",
     });
 

@@ -8,17 +8,16 @@ describe("Files overview roots", () => {
   });
 
   test("shows static and workspace files in organization scope", () => {
-    expect(filesOverviewRootPathsForScope({ kind: "org", orgId: "org-1" })).toEqual([
-      "/static",
-      "/workspace",
-    ]);
+    expect(
+      filesOverviewRootPathsForScope({ kind: "org", orgId: "org-1", jurisdiction: null }),
+    ).toEqual(["/static", "/workspace"]);
   });
 
   test.each([
-    { kind: "user" as const, userId: "user-1" },
+    { kind: "user" as const, userId: "user-1", jurisdiction: null },
     {
       kind: "project" as const,
-      owner: { kind: "org" as const, orgId: "org-1" },
+      owner: { kind: "org" as const, orgId: "org-1", jurisdiction: null },
       projectId: "project-1",
     },
   ])("shows static and workspace files in $kind scope", (scope) => {

@@ -12,9 +12,11 @@ import type {
   CreateInvitationInput,
 } from "@fragno-dev/backoffice-api/v0/provisioning";
 import type { DirectoryPageInput } from "@fragno-dev/backoffice-api/v0/shared/pagination";
+import type { BackofficeJurisdiction } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { DurableObject } from "cloudflare:workers";
 
 import type { AuthCommands, ScenarioAuthFixture } from "@/backoffice-runtime/object-registry";
+import type { BackofficeRootOwnerReference } from "@/backoffice-runtime/resolved-scope";
 import type { AppInstallationOwner } from "@/fragno/app-installations/contracts";
 import type {
   ProvisioningApp,
@@ -166,6 +168,10 @@ export class Auth extends DurableObject<CloudflareEnv> implements AuthCommands {
     return await this.#object.findAdministeredMember(input);
   }
 
+  async findRootOwnerScope(owner: BackofficeRootOwnerReference) {
+    return await this.#object.findRootOwnerScope(owner);
+  }
+
   async getUserOrganizationAuthorityFacts(input: UserOrganizationAuthorityInput) {
     return await this.#object.getUserOrganizationAuthorityFacts(input);
   }
@@ -178,8 +184,28 @@ export class Auth extends DurableObject<CloudflareEnv> implements AuthCommands {
     return await this.#object.createAdminOrganization(input);
   }
 
-  async createUserOrganization(input: { userId: string; name: string }) {
+  async createUserOrganization(input: { id: string; userId: string; name: string }) {
     return await this.#object.createUserOrganization(input);
+  }
+
+  async createManagedOrganization(input: {
+    id: string;
+    userId: string;
+    managingOrganizationId: string;
+    name: string;
+  }) {
+    return await this.#object.createManagedOrganization(input);
+  }
+
+  async chooseUserJurisdiction(input: {
+    userId: string;
+    jurisdiction: BackofficeJurisdiction | null;
+  }) {
+    await this.#object.chooseUserJurisdiction(input);
+  }
+
+  async finishUserOnboarding(input: { userId: string }) {
+    await this.#object.finishUserOnboarding(input);
   }
 
   async provisionAppOrganization(

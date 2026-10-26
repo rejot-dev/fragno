@@ -1,4 +1,7 @@
-import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  backofficeJurisdictionSchema,
+  backofficeScopePathSegment,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { Resend as ResendClient } from "resend";
 import { z } from "zod";
@@ -150,6 +153,8 @@ const resendConfigScopeSchema: z.ZodType<ResendConfigScope> = z.union([
   z.object({
     kind: z.literal("org"),
     orgId: z.string().trim().min(1, "Stored Resend config is missing an organization id."),
+    // A config stored before jurisdictions existed names none, which is what it meant.
+    jurisdiction: backofficeJurisdictionSchema.nullable().default(null),
   }),
 ]);
 

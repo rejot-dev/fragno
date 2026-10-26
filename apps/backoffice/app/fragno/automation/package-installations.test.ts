@@ -82,7 +82,7 @@ function createFragment(seed: string) {
   return createAutomationFragment(
     {
       builtInEventDefinitions: [],
-      ownerScope: { kind: "org", orgId: "org_123" },
+      ownerScope: { kind: "org", orgId: "org_123", jurisdiction: null },
       readAutomationSource: createTestAutomationSourceReader({}),
     },
     { databaseAdapter: new InMemoryAdapter({ idSeed: seed }), outbox: { enabled: true } },

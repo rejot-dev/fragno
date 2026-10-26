@@ -180,14 +180,20 @@ async function exchangeFirstPartyUserToken(
     },
     dependencies,
   );
+  const scope = authority.scope;
+  if (!scope) {
+    throw new BackofficeExecutionTokenScopeError(
+      "Finish setting up Backoffice in the browser before using it here.",
+    );
+  }
   const issued = await issueBackofficeJwt(
     { context: authContext } as Parameters<typeof issueBackofficeJwt>[0],
-    { ...authority, scopeRestriction: authority.scope },
+    { ...authority, scopeRestriction: scope },
   );
   return {
     accessToken: issued.token,
     expiresAt: issued.expiresAt.toISOString(),
-    scope: authority.scope,
+    scope,
   };
 }
 

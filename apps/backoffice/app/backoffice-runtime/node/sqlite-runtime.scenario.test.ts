@@ -128,7 +128,7 @@ describe("file-backed SQLite Backoffice scenario", () => {
 
     try {
       const scheduled = await foreground.objects.upload
-        .forOrg("org-1")
+        .for({ kind: "org", orgId: "org-1", jurisdiction: null })
         .http.fetch(new Request(`${objectUrl}/schedule`));
       assert.equal(scheduled.status, 204);
 
@@ -137,7 +137,7 @@ describe("file-backed SQLite Backoffice scenario", () => {
       await background.drainAlarms();
 
       const response = await foreground.objects.upload
-        .forOrg("org-1")
+        .for({ kind: "org", orgId: "org-1", jurisdiction: null })
         .http.fetch(new Request(`${objectUrl}/state`));
       assert.deepEqual(await response.json(), {
         config: { value: "shared" },
@@ -175,7 +175,7 @@ describe("file-backed SQLite Backoffice scenario", () => {
 
     try {
       await firstRuntime.objects.upload
-        .forOrg("org-1")
+        .for({ kind: "org", orgId: "org-1", jurisdiction: null })
         .http.fetch(new Request("https://backoffice.example/schedule"));
       await secondRuntime.discoverPersistedObjects();
 
@@ -231,7 +231,11 @@ describe("file-backed SQLite Backoffice scenario", () => {
       });
 
       try {
-        const object = runtime.objects.upload.forOrg("org-1");
+        const object = runtime.objects.upload.for({
+          kind: "org",
+          orgId: "org-1",
+          jurisdiction: null,
+        });
         await object.http.fetch(new Request("https://backoffice.example/schedule"));
         const firstDrainOutcome = runtime.drainAlarms().then(
           () => null,
@@ -303,7 +307,7 @@ describe("file-backed SQLite Backoffice scenario", () => {
 
     try {
       const scheduled = await firstRuntime.objects.upload
-        .forOrg("org-1")
+        .for({ kind: "org", orgId: "org-1", jurisdiction: null })
         .http.fetch(new Request("https://backoffice.example/schedule"));
       assert.equal(scheduled.status, 204);
       await expect(firstRuntime.drainAlarms()).rejects.toThrow(
@@ -318,7 +322,7 @@ describe("file-backed SQLite Backoffice scenario", () => {
     try {
       await restartedRuntime.drainAlarms();
       const response = await restartedRuntime.objects.upload
-        .forOrg("org-1")
+        .for({ kind: "org", orgId: "org-1", jurisdiction: null })
         .http.fetch(new Request("https://backoffice.example/state"));
       assert.deepEqual(await response.json(), { fired: true });
     } finally {
@@ -353,7 +357,7 @@ describe("file-backed SQLite Backoffice scenario", () => {
 
     try {
       await runtime.objects.upload
-        .forOrg("org-1")
+        .for({ kind: "org", orgId: "org-1", jurisdiction: null })
         .http.fetch(new Request("https://backoffice.example/schedule"));
       await runtime.drainAlarms();
       await runtime.drainAlarms();
@@ -393,7 +397,7 @@ describe("file-backed SQLite Backoffice scenario", () => {
 
     try {
       await runtime.objects.upload
-        .forOrg("org-1")
+        .for({ kind: "org", orgId: "org-1", jurisdiction: null })
         .http.fetch(new Request("https://backoffice.example/schedule"));
       await alarmStarted.promise;
 
@@ -409,7 +413,7 @@ describe("file-backed SQLite Backoffice scenario", () => {
       assert.equal(schedulerStopped, true);
 
       const response = await runtime.objects.upload
-        .forOrg("org-1")
+        .for({ kind: "org", orgId: "org-1", jurisdiction: null })
         .http.fetch(new Request("https://backoffice.example/state"));
       assert.deepEqual(await response.json(), { alarmFinished: true });
     } finally {
@@ -474,10 +478,10 @@ describe("file-backed SQLite Backoffice scenario", () => {
               "schedule alarms for the broken and healthy objects",
               async ({ runtime }) => {
                 await runtime.objects.upload
-                  .forOrg("org-1")
+                  .for({ kind: "org", orgId: "org-1", jurisdiction: null })
                   .http.fetch(new Request("https://backoffice.example/schedule"));
                 await runtime.objects.upload
-                  .forOrg("org-2")
+                  .for({ kind: "org", orgId: "org-2", jurisdiction: null })
                   .http.fetch(new Request("https://backoffice.example/schedule"));
               },
             ),
@@ -493,7 +497,7 @@ describe("file-backed SQLite Backoffice scenario", () => {
               ]);
 
               const response = await runtime.objects.upload
-                .forOrg("org-2")
+                .for({ kind: "org", orgId: "org-2", jurisdiction: null })
                 .http.fetch(new Request("https://backoffice.example/state"));
               assert.deepEqual(await response.json(), { alarmFinished: true });
               expect(schedulerErrors[0]).toBeInstanceOf(AggregateError);
@@ -523,7 +527,7 @@ describe("file-backed SQLite Backoffice scenario", () => {
           steps: ({ then }) => [
             then.assert("known objects remain available", async ({ runtime }) => {
               const response = await runtime.objects.upload
-                .forOrg("org-1")
+                .for({ kind: "org", orgId: "org-1", jurisdiction: null })
                 .http.fetch(new Request("https://backoffice.example/state"));
               assert.equal(response.status, 404);
             }),
@@ -566,7 +570,7 @@ describe("file-backed SQLite Backoffice scenario", () => {
             steps: ({ then }) => [
               then.assert("create file-backed object storage", async ({ runtime }) => {
                 await runtime.objects.upload
-                  .forOrg("org-1")
+                  .for({ kind: "org", orgId: "org-1", jurisdiction: null })
                   .http.fetch(new Request("https://backoffice.example/create"));
               }),
             ],
@@ -617,7 +621,7 @@ describe("file-backed SQLite Backoffice scenario", () => {
               label: "persist an object configuration and future alarm",
               async run({ runtime }) {
                 const response = await runtime.objects.upload
-                  .forOrg("org-1")
+                  .for({ kind: "org", orgId: "org-1", jurisdiction: null })
                   .http.fetch(new Request(url));
                 assert.equal(response.status, 204);
               },
@@ -638,7 +642,7 @@ describe("file-backed SQLite Backoffice scenario", () => {
                 runtime.advanceTime(61_000);
                 await runtime.drainAlarms();
                 const response = await runtime.objects.upload
-                  .forOrg("org-1")
+                  .for({ kind: "org", orgId: "org-1", jurisdiction: null })
                   .http.fetch(new Request(url.replace("/schedule", "/state")));
                 assert.deepEqual(await response.json(), {
                   config: { value: "persisted" },

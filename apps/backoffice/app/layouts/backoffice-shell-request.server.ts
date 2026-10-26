@@ -1,9 +1,14 @@
 import {
+  backofficeContextScopesEqual,
   backofficeScopeOrganization,
-  backofficeScopeRootOwner,
   mapBackofficeScopeNames,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import { createContext, type RouterContext, type RouterContextProvider } from "react-router";
+import {
+  createContext,
+  redirect,
+  type RouterContext,
+  type RouterContextProvider,
+} from "react-router";
 
 import type { BackofficeIdentityDirectory } from "@/backoffice-runtime/authority-resolver";
 import { backofficeScopeOtherUserId } from "@/backoffice-runtime/authority-roles";
@@ -11,6 +16,7 @@ import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import { isBackofficeForbiddenError } from "@/backoffice-runtime/kernel";
 import {
   backofficeOrganizationIdentity,
+  backofficePersonalScope,
   backofficeProjectIdentity,
   type BackofficeNamedProject,
   backofficeRuntimeScopeFromResolvedScope,
@@ -32,6 +38,10 @@ import type {
 import { requireBackofficePrincipal } from "@/fragno/auth/request-auth.server";
 import { recordBackofficeRequestScope } from "@/posthog.server";
 import { lookupAutomationProject, toExternalId } from "@/routes/backoffice/automations/data.server";
+import {
+  BACKOFFICE_ONBOARDING_PATH,
+  opensBeforeOnboarding,
+} from "@/routes/backoffice/onboarding-path";
 import {
   isBackofficeSystemAdministrator,
   projectScopeLabel,
@@ -94,9 +104,24 @@ export async function establishBackofficeShellRequest(
   args: BackofficeShellMiddlewareArgs,
   next: () => Promise<Response>,
 ): Promise<Response> {
-  const { request, context, params } = args;
+  const { request, context, params, url } = args;
   const authenticatedRequest = getBackofficeAuthenticatedRequest(context);
   const { me } = authenticatedRequest;
+  const personalScope = backofficePersonalScope(me.user);
+  // Backoffice opens nothing in the person's own scope before onboarding chooses its jurisdiction.
+  if (personalScope === null && !opensBeforeOnboarding(url.pathname)) {
+    throw redirect(BACKOFFICE_ONBOARDING_PATH);
+  }
+  const principal = await requireBackofficePrincipal(request, context);
+  const issuedPersonalScope = principal.user.personalScope;
+  // The token names the personal scope as it was when issued, before onboarding created it.
+  if (
+    issuedPersonalScope === null || personalScope === null
+      ? issuedPersonalScope !== personalScope
+      : !backofficeContextScopesEqual(issuedPersonalScope, personalScope)
+  ) {
+    throw await reopenWithBackofficeCredential(args, { selection: "preferred" });
+  }
   const activeOrganization = me.activeOrganization?.organization ?? null;
   // The token names an organization the user has since left.
   if (
@@ -107,7 +132,11 @@ export async function establishBackofficeShellRequest(
   }
 
   // Every user has a personal scope, so it is the default even while an organization is active.
-  const defaultScope: BackofficePageResolvedScope = { kind: "user", userId: me.user.id };
+  const defaultScope: BackofficePageResolvedScope = {
+    kind: "user",
+    userId: me.user.id,
+    jurisdiction: me.user.jurisdiction,
+  };
   const administeredMembers = administeredMemberLookup(context);
   // A user enters their own personal scope and those of the members they administer.
   const findAdministeredMember = async (userId: string) =>
@@ -115,18 +144,19 @@ export async function establishBackofficeShellRequest(
       administratorId: me.user.id,
       memberId: userId,
     });
-  const canEnterPersonalScope = async (userId: string) =>
-    userId === me.user.id || (await findAdministeredMember(userId)) !== null;
   // Throwing here would replace the whole layout; sections report the 502 from their loaders.
   let projectLookupFailure = null as string | null;
   const pageScope = await resolveBackofficePageScope({
     params,
     organizations: me.organizations.map(({ organization }) => organization),
-    isAppInstalled: async (owner, appId) => {
-      // Other users' installations are not looked up, so their apps cannot be probed.
-      if (owner.kind === "user" && !(await canEnterPersonalScope(owner.userId))) {
-        return false;
+    findUser: async (userId) => {
+      if (userId === me.user.id) {
+        return { userId, jurisdiction: me.user.jurisdiction };
       }
+      const member = await findAdministeredMember(userId);
+      return member && { userId, jurisdiction: member.jurisdiction };
+    },
+    isAppInstalled: async (owner, appId) => {
       const installation = await context
         .get(BackofficeWorkerContext)
         .runtime.objects.appInstallations.for(backofficeRuntimeScopeFromResolvedScope(owner))
@@ -134,11 +164,6 @@ export async function establishBackofficeShellRequest(
       return installation?.status === "active";
     },
     findProject: async (owner, slug): Promise<BackofficeNamedProject | null> => {
-      // Other users' projects are not looked up, so their slugs cannot be probed.
-      const rootOwner = backofficeScopeRootOwner(owner);
-      if (rootOwner.kind === "user" && !(await canEnterPersonalScope(rootOwner.userId))) {
-        return null;
-      }
       const lookup = await lookupAutomationProject(
         context,
         backofficeRuntimeScopeFromResolvedScope(owner),
@@ -165,6 +190,7 @@ export async function establishBackofficeShellRequest(
       break;
     case "invalid":
     case "organization-not-found":
+    case "user-not-found":
     case "app-not-found":
     case "project-not-found":
       routeScope = null;
@@ -174,13 +200,8 @@ export async function establishBackofficeShellRequest(
         cause: pageScope satisfies never,
       });
   }
-  // Sections hide the personal scopes the user cannot enter and, from everyone but system
-  // administrators, System scope, rather than refusing them.
-  const routeOwner = routeScope && backofficeScopeRootOwner(routeScope);
-  if (
-    (routeOwner?.kind === "user" && !(await canEnterPersonalScope(routeOwner.userId))) ||
-    (routeScope?.kind === "system" && !isBackofficeSystemAdministrator(me.user))
-  ) {
+  // Sections hide System scope from everyone but system administrators, rather than refusing it.
+  if (routeScope?.kind === "system" && !isBackofficeSystemAdministrator(me.user)) {
     routeScope = null;
   }
   const resolvedScope = routeScope ?? defaultScope;
@@ -202,7 +223,6 @@ export async function establishBackofficeShellRequest(
     });
   }
 
-  const principal = await requireBackofficePrincipal(request, context);
   let route: BackofficeRouteScope = projectLookupFailure
     ? { status: "unavailable", message: projectLookupFailure }
     : { status: "not-found" };
@@ -269,6 +289,7 @@ function scopeSelectionOf(
       organization: ({ organization }) => ({
         organization: backofficeOrganizationIdentity(organization),
       }),
+      user: ({ userId, jurisdiction }) => ({ userId, jurisdiction }),
       project: ({ project }) => ({ project: backofficeProjectIdentity(project) }),
     }),
     label: scopeSelectionLabel(scope, personalScopeLabel),

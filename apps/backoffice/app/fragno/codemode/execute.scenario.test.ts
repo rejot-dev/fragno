@@ -39,7 +39,7 @@ afterAll(async () => {
   await server?.close();
 });
 
-const owner = { kind: "org", orgId: "acme" } as const;
+const owner = { kind: "org", orgId: "acme", jurisdiction: null } as const;
 
 /** The tool API a call gets in tests: its task, and somewhere for its live details to go. */
 function toolApi(taskId: string) {

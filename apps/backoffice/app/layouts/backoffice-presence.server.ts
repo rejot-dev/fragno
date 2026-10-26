@@ -11,7 +11,10 @@ import {
   isBackofficeObjectAvailableInContext,
   type WarmableCommands,
 } from "@/backoffice-runtime/object-registry";
-import { backofficeRuntimeScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
+import {
+  backofficeOrganizationContextScope,
+  backofficeRuntimeScopeFromResolvedScope,
+} from "@/backoffice-runtime/resolved-scope";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import { getBackofficeShellRequest } from "./backoffice-shell-request.server";
@@ -27,9 +30,11 @@ export async function recordBackofficePresence(
   const { me, resolvedScope } = getBackofficeShellRequest(context);
   const { runtime, ctx } = context.get(BackofficeWorkerContext);
   const organization = me.activeOrganization?.organization ?? null;
-  const room = organization
-    ? runtime.objects.presence.forOrg(organization.id)
-    : runtime.objects.presence.forUser({ userId: me.user.id });
+  const room = runtime.objects.presence.for(
+    organization
+      ? backofficeOrganizationContextScope(organization)
+      : { kind: "user", userId: me.user.id, jurisdiction: me.user.jurisdiction },
+  );
   const pageOrganizationId = backofficeScopeOrganization(resolvedScope)?.organization.id ?? null;
   const scope = backofficeRuntimeScopeFromResolvedScope(resolvedScope);
 

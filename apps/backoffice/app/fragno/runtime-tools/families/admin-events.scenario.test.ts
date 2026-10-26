@@ -38,7 +38,7 @@ const scenarioObjects = {
   UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
 
-const orgScope = { kind: "org", orgId: "org-1" } as const;
+const orgScope = { kind: "org", orgId: "org-1", jurisdiction: null } as const;
 
 function githubWebhookEvent(input: {
   deliveryId: string;
@@ -109,11 +109,12 @@ async function terminal(ctx: BackofficeScenarioContext, execution: BackofficeExe
 function administratorRequest() {
   return createBackofficeRequestExecution({
     scope: { kind: "system" },
-    userId: "admin-1",
     verifiedRequestAuthority: {
+      userId: "admin-1",
+      personalScope: { kind: "user" as const, userId: "admin-1", jurisdiction: null },
       role: "admin",
-      organizationId: null,
-      administeredMemberId: null,
+      organization: null,
+      administeredMember: null,
       expiresAt: new Date(Date.now() + 60_000),
       scopeRestriction: null,
     },

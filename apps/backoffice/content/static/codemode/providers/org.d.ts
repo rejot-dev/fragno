@@ -36,6 +36,7 @@ type OrganizationRecord = {
   organizationId: string;
   name: string;
   slug: string;
+  jurisdiction: "eu" | "us" | null;
   /** ISO 8601 datetime string. */
   createdAt: string;
 };

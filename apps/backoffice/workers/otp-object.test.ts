@@ -204,7 +204,7 @@ describe("OTP identity claim completion", () => {
       capturePropagationContext: () => ({ traceId: "trace-1" }),
     } as unknown as HookContext;
 
-    const ownerScope = { kind: "org" as const, orgId: "org-1" };
+    const ownerScope = { kind: "org" as const, orgId: "org-1", jurisdiction: null };
     await expect(
       handleIdentityClaimConfirmed(runtime, ownerScope, payload, context),
     ).rejects.toThrow("notification unavailable");
@@ -221,7 +221,9 @@ describe("OTP identity claim completion", () => {
         verifiedByClaimId: "otp-1",
       },
       expect.objectContaining({
-        execution: expect.objectContaining({ scope: { kind: "org", orgId: "org-1" } }),
+        execution: expect.objectContaining({
+          scope: { kind: "org", orgId: "org-1", jurisdiction: null },
+        }),
       }),
     );
     expect(bindExternalIdentity).toHaveBeenNthCalledWith(
@@ -275,7 +277,12 @@ describe("OTP identity claim completion", () => {
     } as unknown as HookContext;
 
     await expect(
-      handleIdentityClaimConfirmed(runtime, { kind: "org", orgId: "org-1" }, payload, context),
+      handleIdentityClaimConfirmed(
+        runtime,
+        { kind: "org", orgId: "org-1", jurisdiction: null },
+        payload,
+        context,
+      ),
     ).resolves.toBeUndefined();
 
     expect(bindExternalIdentity).toHaveBeenCalledOnce();

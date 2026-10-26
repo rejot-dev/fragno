@@ -205,7 +205,7 @@ describe("Backoffice execution token SQLite scenarios", () => {
   test("first-party exchange preserves scope ceilings and leaves Codemode restrictions at its entry point", async () => {
     await runExecutionTokenScenario(async (ctx) => {
       const { token, user, organization } = await authorizeFirstPartyClient(ctx);
-      const scope = { kind: "org" as const, orgId: organization.id };
+      const scope = { kind: "org" as const, orgId: organization.id, jurisdiction: null };
       const response = await requestExecutionToken(ctx, exchangeRequest(token, scope));
       assert.equal(response.status, 200, await response.clone().text());
       assert.equal(response.headers.get("cache-control"), "no-store");
@@ -232,7 +232,11 @@ describe("Backoffice execution token SQLite scenarios", () => {
       const execution = await requireBackofficeContext(request, context, scope);
       assert.equal(execution.actors.principal?.id, user.id);
       await expect(
-        requireBackofficeContext(request, context, { kind: "org", orgId: "another-org" }),
+        requireBackofficeContext(request, context, {
+          kind: "org",
+          orgId: "another-org",
+          jurisdiction: null,
+        }),
       ).rejects.toThrow("Credential scope");
       const defaults = await requestExecutionToken(ctx, exchangeRequest(token, null));
       assert.equal(defaults.status, 200);
@@ -336,7 +340,7 @@ describe("Backoffice execution token SQLite scenarios", () => {
         clientId: client.client_id,
         scopes: "openid offline_access backoffice",
       });
-      const scope = { kind: "org" as const, orgId: organization.id };
+      const scope = { kind: "org" as const, orgId: organization.id, jurisdiction: null };
       const unregistered = await requestExecutionToken(ctx, exchangeRequest(token, scope));
       assert.equal(unregistered.status, 401);
       expect(await unregistered.json()).toMatchObject({ error: "authentication_failed" });
@@ -354,7 +358,7 @@ describe("Backoffice execution token SQLite scenarios", () => {
       assert.equal(notInstalled.status, 403);
       expect(await notInstalled.json()).toMatchObject({ error: "scope_unavailable" });
       const installed = await ctx.runtime.objects.appInstallations
-        .forOrg(organization.id)
+        .for({ kind: "org", orgId: organization.id, jurisdiction: null })
         .commands.installApp({
           actionsRevision: 1,
           appId: registered.value.appId,
@@ -366,7 +370,7 @@ describe("Backoffice execution token SQLite scenarios", () => {
       for (const unavailableScope of [
         null,
         { kind: "system" },
-        { kind: "user", userId: user.id },
+        { kind: "user", userId: user.id, jurisdiction: null },
       ]) {
         const response = await requestExecutionToken(ctx, exchangeRequest(token, unavailableScope));
         assert.equal(response.status, 403);
@@ -449,7 +453,7 @@ describe("Backoffice execution token SQLite scenarios", () => {
       });
       const removed = await requestExecutionToken(
         ctx,
-        exchangeRequest(token, { kind: "org", orgId: organization.id }),
+        exchangeRequest(token, { kind: "org", orgId: organization.id, jurisdiction: null }),
       );
       assert.equal(removed.status, 403);
       expect(await removed.json()).toMatchObject({ error: "scope_unavailable" });
@@ -457,7 +461,7 @@ describe("Backoffice execution token SQLite scenarios", () => {
       assert.equal(withoutOrganization.status, 200);
       expect(
         backofficeExecutionTokenResultSchema.parse(await withoutOrganization.json()).scope,
-      ).toEqual({ kind: "user", userId: user.id });
+      ).toEqual({ kind: "user", userId: user.id, jurisdiction: null });
       await auth.applyScenarioFixture({
         users: [{ id: user.id, email: user.email, role: "user", status: "banned" }],
       });

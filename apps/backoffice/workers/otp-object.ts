@@ -301,7 +301,7 @@ export async function handleIdentityClaimConfirmed(
 
   await automations.commands.triggerIngestEvent(
     buildIdentityClaimCompletedAutomationEvent({
-      orgId: ownerScope.orgId,
+      organization: ownerScope,
       userId: confirmation.subjectUserId,
       otp: payload,
       claim,

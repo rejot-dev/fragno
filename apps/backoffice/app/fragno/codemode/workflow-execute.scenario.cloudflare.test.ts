@@ -211,7 +211,7 @@ test.each(["throw", "return"] as const)(
 );
 
 test("suspension history uses ISO timestamps while the live runner sleeps and resumes", async () => {
-  const scope = { kind: "user", userId: "suspension-history" } as const;
+  const scope = { kind: "user", userId: "suspension-history", jurisdiction: null } as const;
   const object = createCloudflareBackofficeObjectRegistry(env as CloudflareEnv).codemode.for(
     scope,
   ).commands;

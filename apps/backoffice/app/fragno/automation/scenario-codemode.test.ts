@@ -68,7 +68,7 @@ describe("Backoffice codemode scenarios", () => {
 
         steps: ({ when, then }) => [
           when.codemode.run({
-            scope: { kind: "org", orgId: "org-1" },
+            scope: { kind: "org", orgId: "org-1", jurisdiction: null },
             label: "write store and workspace state from codemode",
             code: `async () => {
   await store.set({
@@ -120,7 +120,7 @@ describe("Backoffice codemode scenarios", () => {
           then.assert("Telegram setup fails through the integration", async (ctx) => {
             await expect(
               ctx.runCodemode({
-                scope: { kind: "org", orgId: "org-1" },
+                scope: { kind: "org", orgId: "org-1", jurisdiction: null },
                 label: "configure Telegram without a public origin",
                 code: `async () => {
   return await integrations.setup({
@@ -134,7 +134,7 @@ describe("Backoffice codemode scenarios", () => {
           }),
           then.assert("Telegram stays unconfigured", async (ctx) => {
             const run = await ctx.runCodemode({
-              scope: { kind: "org", orgId: "org-1" },
+              scope: { kind: "org", orgId: "org-1", jurisdiction: null },
               code: `async () => await integrations.get({ connectionId: "backoffice#telegram" })`,
             });
             expect(run.result).toMatchObject({ configuration: { status: "missing" } });
@@ -164,7 +164,7 @@ describe("Backoffice codemode scenarios", () => {
             then.assert("Telegram configuration rejects the invalid origin", async (ctx) => {
               await expect(
                 ctx.runCodemode({
-                  scope: { kind: "org", orgId: "org-1" },
+                  scope: { kind: "org", orgId: "org-1", jurisdiction: null },
                   label: `configure Telegram with public origin ${publicOrigin}`,
                   code: `async () => {
   return await integrations.setup({
@@ -178,7 +178,7 @@ describe("Backoffice codemode scenarios", () => {
             }),
             then.assert("Telegram stays unconfigured", async (ctx) => {
               const run = await ctx.runCodemode({
-                scope: { kind: "org", orgId: "org-1" },
+                scope: { kind: "org", orgId: "org-1", jurisdiction: null },
                 code: `async () => await integrations.get({ connectionId: "backoffice#telegram" })`,
               });
               expect(run.result).toMatchObject({ configuration: { status: "missing" } });
@@ -201,7 +201,7 @@ describe("Backoffice codemode scenarios", () => {
 
         steps: ({ when, then }) => [
           when.codemode.run({
-            scope: { kind: "org", orgId: "org-1" },
+            scope: { kind: "org", orgId: "org-1", jurisdiction: null },
             label: "write store entries from scoped codemode context",
             code: `async () => {
   await context.current.store.set({
@@ -235,11 +235,15 @@ describe("Backoffice codemode scenarios", () => {
 
         files: backofficeFiles.workspaceStarter(),
 
-        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+        setup: ({ given }) => [
+          given.organization.exists({ id: "org-1", name: "Ada Labs" }),
+          // Codemode reaches a user by ID only when Auth knows them.
+          given.auth.user({ id: "scenario-user" }),
+        ],
 
         steps: ({ when, then }) => [
           when.codemode.run({
-            scope: { kind: "org", orgId: "org-1" },
+            scope: { kind: "org", orgId: "org-1", jurisdiction: null },
             label: "use user-scoped integrations from codemode",
             code: `async () => await context.user("scenario-user").integrations.list({ cursor: null })`,
             assertToolCalls: ["user:integrations.list"],
@@ -269,7 +273,7 @@ describe("Backoffice codemode scenarios", () => {
 
         steps: ({ when, then }) => [
           when.codemode.run({
-            scope: { kind: "org", orgId: "org-1" },
+            scope: { kind: "org", orgId: "org-1", jurisdiction: null },
             label: "write store entry into org-2 from trusted scenario codemode",
             code: `async () => {
   await context.org("org-2").store.set({

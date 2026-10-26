@@ -3,6 +3,7 @@ import { FormContainer } from "@fragno-private/design-system/form-container";
 import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
 import { Form, useNavigation } from "react-router";
 
+import { backofficeOrganizationContextScope } from "@/backoffice-runtime/resolved-scope";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { getBackofficeShellRequest } from "@/layouts/backoffice-shell-request.server";
 import { getOtpDurableObject } from "@/worker-runtime/durable-objects";
@@ -20,10 +21,10 @@ export async function loader({ context, params, url }: Route.LoaderArgs) {
   }
   const externalId = url.searchParams.get("externalId")?.trim() ?? "";
   const code = url.searchParams.get("code")?.trim() ?? "";
-  const claim = await getOtpDurableObject(context, organization.id).commands.getIdentityClaim({
-    externalId,
-    code,
-  });
+  const claim = await getOtpDurableObject(
+    context,
+    backofficeOrganizationContextScope(organization),
+  ).commands.getIdentityClaim({ externalId, code });
   return {
     organization: { id: organization.id, slug: organization.slug, name: organization.name },
     claim,
@@ -47,10 +48,8 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   if (!organization) {
     throw new Response("Not Found", { status: 404 });
   }
-  const execution = await requireBackofficeContext(request, context, {
-    kind: "org",
-    orgId: organization.id,
-  });
+  const scope = backofficeOrganizationContextScope(organization);
+  const execution = await requireBackofficeContext(request, context, scope);
   const form = await request.formData();
   if (form.get("confirm") !== "link") {
     throw new Response("Explicit identity confirmation required", { status: 400 });
@@ -60,7 +59,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   if (typeof externalId !== "string" || typeof code !== "string") {
     throw new Response("Invalid claim details", { status: 400 });
   }
-  const result = await getOtpDurableObject(context, organization.id).commands.confirmIdentityClaim(
+  const result = await getOtpDurableObject(context, scope).commands.confirmIdentityClaim(
     { externalId, code },
     execution,
   );

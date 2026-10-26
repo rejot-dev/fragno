@@ -25,6 +25,7 @@ import type {
 import type { PackageInstallationInput } from "@/fragno/automation/package-installations";
 import type { DurableHookQueueOptions } from "@/fragno/durable-hooks";
 import type { MarketplacePackagePublishRequest } from "@/fragno/marketplace/package-publishing";
+import type { OnboardingAnswer } from "@/fragno/onboarding/contracts";
 
 import type { AutomationsObject } from "./automations-object";
 import { acceptsBrotli, compressStreamingResponse } from "./lib/flushing-brotli-response";
@@ -61,6 +62,14 @@ export class Automations extends DurableObject<CloudflareEnv> implements Automat
 
   async seedStarterAutomationRoutes() {
     return await this.#object.seedStarterAutomationRoutes();
+  }
+
+  async startUserOnboarding(input: { userId: string }) {
+    return await this.#object.startUserOnboarding(input);
+  }
+
+  async answerUserOnboarding(input: { userId: string; answer: OnboardingAnswer }) {
+    await this.#object.answerUserOnboarding(input);
   }
 
   async requestMarketplacePackagePublish(

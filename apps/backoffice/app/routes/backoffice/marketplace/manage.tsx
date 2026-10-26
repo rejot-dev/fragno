@@ -13,6 +13,10 @@ import { TextArea } from "@fragno-private/design-system/text-area";
 import { Form, redirect, useActionData, useLocation, useNavigation } from "react-router";
 
 import {
+  backofficeOrganizationContextScope,
+  backofficeOrganizationIdentity,
+} from "@/backoffice-runtime/resolved-scope";
+import {
   marketplaceAddDraftVersionInputSchema,
   marketplacePublishVersionInputSchema,
 } from "@/fragno/marketplace/contracts";
@@ -79,7 +83,7 @@ export async function loader({ params, context, url }: Route.LoaderArgs) {
 
   const marketplace = marketplaceForPublisher(
     context.get(BackofficeWorkerContext).runtime.objects,
-    owner,
+    backofficeOrganizationContextScope(organization),
     visibility.data,
   );
   const detail = await marketplace.getOwnedListing({
@@ -92,7 +96,7 @@ export async function loader({ params, context, url }: Route.LoaderArgs) {
   }
 
   return {
-    organization: { id: organization.id, slug: organization.slug },
+    organization: backofficeOrganizationIdentity(organization),
     visibility: visibility.data,
     ...detail,
   };
@@ -112,7 +116,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     ({ organization: candidate }) => candidate.slug === organizationSlug,
   )?.organization;
   const owner = organization ? marketplaceOwnerForOrganization(me, organization.id) : null;
-  if (!owner) {
+  if (!organization || !owner) {
     return {
       ok: false,
       message: "Select an organization you can publish for.",
@@ -127,7 +131,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
   const marketplace = marketplaceForPublisher(
     context.get(BackofficeWorkerContext).runtime.objects,
-    owner,
+    backofficeOrganizationContextScope(organization),
     visibility,
   );
   const intent = String(formData.get("intent") ?? "");

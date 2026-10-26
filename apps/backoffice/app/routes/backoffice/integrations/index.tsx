@@ -7,7 +7,13 @@ import { integrationsScopeBasePath } from "./connection-paths";
 
 export async function loader({ context }: Route.LoaderArgs) {
   const { me } = getBackofficeShellRequest(context);
-  return redirect(integrationsScopeBasePath({ kind: "user", userId: me.user.id }));
+  return redirect(
+    integrationsScopeBasePath({
+      kind: "user",
+      userId: me.user.id,
+      jurisdiction: me.user.jurisdiction,
+    }),
+  );
 }
 
 export default function BackofficeIntegrationsIndex() {

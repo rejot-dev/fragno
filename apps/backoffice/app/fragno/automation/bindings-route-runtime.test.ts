@@ -12,7 +12,7 @@ import { createAutomationsRouteCaller } from "./route-callers";
 const execution = {
   kind: "deferred" as const,
   scopeRestriction: null,
-  scope: { kind: "org", orgId: "org-1" } as const,
+  scope: { kind: "org", orgId: "org-1", jurisdiction: null } as const,
   actors: {
     initiator: {
       scope: "external" as const,

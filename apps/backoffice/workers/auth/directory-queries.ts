@@ -8,6 +8,7 @@ import type {
   OrganizationRecord,
 } from "@fragno-dev/backoffice-api/v0/organization";
 import type { DirectoryPageInput } from "@fragno-dev/backoffice-api/v0/shared/pagination";
+import type { BackofficeJurisdiction } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { AuthContext } from "better-auth";
 
 import { Cursor, decodeCursor } from "@fragno-dev/db";
@@ -24,7 +25,13 @@ type AuthWhere = NonNullable<Parameters<AuthAdapter["findMany"]>[0]["where"]>;
 
 // Better Auth's adapter output converts stored dates and booleans to their model types.
 type UserRow = { id: string; name: string; email: string; emailVerified: boolean; role: string };
-type OrganizationRow = { id: string; name: string; slug: string; createdAt: Date };
+type OrganizationRow = {
+  id: string;
+  name: string;
+  slug: string;
+  jurisdiction: BackofficeJurisdiction | null;
+  createdAt: Date;
+};
 type MemberRow = {
   id: string;
   organizationId: string;
@@ -104,6 +111,7 @@ function toOrganizationRecord(organization: OrganizationRow): OrganizationRecord
     organizationId: organization.id,
     name: organization.name,
     slug: organization.slug,
+    jurisdiction: organization.jurisdiction,
     createdAt: organization.createdAt.toISOString(),
   };
 }

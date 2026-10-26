@@ -1,4 +1,10 @@
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  type BackofficeContextScope,
+  type BackofficeJurisdiction,
+  backofficeJurisdictionSchema,
+  type BackofficeOrganizationContextScope,
+  type BackofficeUserContextScope,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
 import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
@@ -21,6 +27,10 @@ export type AuthUser = {
   emailVerified: boolean;
   role: Role;
   banned: boolean;
+  /** Where the user's personal scope keeps its objects. */
+  jurisdiction: BackofficeJurisdiction | null;
+  /** When the user finished onboarding; Backoffice opens only onboarding until then. */
+  onboardedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -36,6 +46,8 @@ export type Organization = {
   logoUrl?: string | null;
   metadata?: Record<string, unknown> | null;
   createdBy: string;
+  /** Where the organization's scope keeps its objects; fixed when it is created. */
+  jurisdiction: BackofficeJurisdiction | null;
   createdAt: Date;
   updatedAt: Date;
   deletedAt?: Date | null;
@@ -109,6 +121,8 @@ const authUserSchema = z.object({
   emailVerified: z.boolean(),
   role: z.enum(["user", "admin"]),
   banned: z.boolean(),
+  jurisdiction: backofficeJurisdictionSchema.nullable(),
+  onboardedAt: z.coerce.date().nullable(),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
 }) satisfies z.ZodType<AuthUser>;
@@ -120,6 +134,7 @@ const organizationSchema = z.object({
   logoUrl: z.string().nullable().optional(),
   metadata: z.record(z.string(), z.unknown()).nullable().optional(),
   createdBy: z.string(),
+  jurisdiction: backofficeJurisdictionSchema.nullable(),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
   deletedAt: z.coerce.date().nullable().optional(),
@@ -180,7 +195,10 @@ export const backofficeSignOutResultSchema = z.object({
 export type UserAuthorityFacts = Readonly<{
   active: boolean;
   role: Role | null;
-  organizationMember: boolean;
+  /** Null until onboarding fixes where the user's personal scope is kept. */
+  personalScope: BackofficeUserContextScope | null;
+  /** The organization asked about, when the user acts in it. */
+  organization: BackofficeOrganizationContextScope | null;
 }>;
 
 /** Live user and membership facts for organization management, without session or directory data. */
@@ -197,11 +215,13 @@ export type UserOrganizationAuthorityFacts = Readonly<{
 
 /**
  * A user whose personal workspace another user may act in, because that user is an owner or admin
- * of an organization the member belongs to, or of the organization managing it. `organization` is
- * the member's organization that grants it, one the administrator belongs to when there is one.
+ * of an organization the member belongs to, or of the organization managing it, and whose
+ * onboarding has created that workspace. `organization` is the member's organization that grants
+ * it, one the administrator belongs to when there is one.
  */
 export type AdministeredMember = Readonly<{
   userId: string;
+  jurisdiction: BackofficeJurisdiction | null;
   name: string;
   email: string;
   organization: Readonly<{ id: string; name: string; slug: string }>;
@@ -239,13 +259,24 @@ export type OrganizationHooks = {
 
 const DEV_ACCESS_TOKEN_SECRET = "fragno-backoffice-development-access-token-secret";
 
+/** The organization an access token acts in, with the user's roles there when it was issued. */
+export type BackofficeTokenOrganization = {
+  id: string;
+  slug: string;
+  jurisdiction: BackofficeJurisdiction | null;
+  roles: string[];
+};
+
 export type BackofficeAuthPrincipal = {
-  user: Pick<AuthUser, "id" | "email" | "role">;
+  user: Pick<AuthUser, "id" | "email" | "role"> & {
+    /** Null until onboarding fixes where it is kept, so nothing opens it before then. */
+    personalScope: BackofficeUserContextScope | null;
+  };
   auth: {
     transport: "cookie" | "bearer";
     expiresAt: Date;
     scopeRestriction: BackofficeContextScope | null;
-    organization: { id: string; slug: string; roles: string[] } | null;
+    organization: BackofficeTokenOrganization | null;
   };
 };
 

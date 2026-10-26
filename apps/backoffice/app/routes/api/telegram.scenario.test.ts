@@ -158,9 +158,9 @@ function webhookUpdate(updateId: number, text: string) {
 
 async function readPersistedTelegramMessages(ctx: BackofficeScenarioContext) {
   return await ctx.runtime.objects.telegram
-    .forOrg(orgId)
+    .for({ kind: "org", orgId: orgId, jurisdiction: null })
     .http.fetchAuthorized(new Request("https://telegram.do/api/telegram/chats/1234/messages"), {
-      execution: createBackofficeSystemExecution({ kind: "org", orgId }),
+      execution: createBackofficeSystemExecution({ kind: "org", orgId, jurisdiction: null }),
       propagationContext: null,
     });
 }
@@ -171,7 +171,9 @@ async function assertNoTelegramDeliveries(ctx: BackofficeScenarioContext) {
   expect(ctx.fakes.telegram.sendMessageCalls).toEqual([]);
   expect(ctx.fakes.telegram.editMessageTextCalls).toEqual([]);
   expect(ctx.fakes.telegram.sendChatActionCalls).toEqual([]);
-  const queue = await ctx.runtime.objects.telegram.forOrg(orgId).commands.getDurableHookQueue();
+  const queue = await ctx.runtime.objects.telegram
+    .for({ kind: "org", orgId: orgId, jurisdiction: null })
+    .commands.getDurableHookQueue();
   expect(queue.items.filter((hook) => hook.hookName === "internalOutgoingMessage")).toEqual([]);
 }
 
@@ -296,7 +298,7 @@ describe("Telegram public authorization scenarios", () => {
             assert(
               !ctx.runtime.hasObjectInstance({
                 binding: "TELEGRAM",
-                scope: { kind: "org", orgId: "attacker-org" },
+                scope: { kind: "org", orgId: "attacker-org", jurisdiction: null },
               }),
             );
           },
@@ -341,7 +343,7 @@ describe("Telegram public authorization scenarios", () => {
             assert.equal(response.status, 200, await response.clone().text());
           }
           await ctx.runtime.objects.telegram
-            .forUser({ userId: member.userId })
+            .for({ kind: "user", userId: member.userId, jurisdiction: null })
             .commands.setAdminConfig({
               botToken: "123456:telegram-bot-token",
               webhookSecretToken: webhookSecret,
@@ -358,9 +360,13 @@ describe("Telegram public authorization scenarios", () => {
           assert.equal(privateManagement.status, 404);
           expect(await privateManagement.json()).toMatchObject({ code: "command_not_found" });
           const privateCommands = await ctx.runtime.objects.telegram
-            .forUser({ userId: member.userId })
+            .for({ kind: "user", userId: member.userId, jurisdiction: null })
             .http.fetchAuthorized(new Request("https://telegram.do/api/telegram/commands"), {
-              execution: createBackofficeSystemExecution({ kind: "user", userId: member.userId }),
+              execution: createBackofficeSystemExecution({
+                kind: "user",
+                userId: member.userId,
+                jurisdiction: null,
+              }),
               propagationContext: null,
             });
           assert(privateCommands.ok);
@@ -417,7 +423,7 @@ describe("Telegram public authorization scenarios", () => {
           assert(
             !ctx.runtime.hasObjectInstance({
               binding: "TELEGRAM",
-              scope: { kind: "org", orgId: "other-org" },
+              scope: { kind: "org", orgId: "other-org", jurisdiction: null },
             }),
           );
         }),
@@ -512,13 +518,17 @@ describe("Telegram public authorization scenarios", () => {
             expect(ctx.fakes.telegram.getFileCalls).toEqual([]);
             expect(ctx.fakes.telegram.downloadFileCalls).toEqual([]);
             const internal = await ctx.runtime.objects.telegram
-              .forOrg(orgId)
+              .for({ kind: "org", orgId: orgId, jurisdiction: null })
               .http.fetchAuthorized(
                 new Request(
                   `https://telegram.do${telegramAutomationFileDownloadPath("private-file")}`,
                 ),
                 {
-                  execution: createBackofficeSystemExecution({ kind: "org", orgId }),
+                  execution: createBackofficeSystemExecution({
+                    kind: "org",
+                    orgId,
+                    jurisdiction: null,
+                  }),
                   propagationContext: null,
                 },
               );

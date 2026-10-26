@@ -68,7 +68,7 @@ const SHIP_ORDER_WORKFLOW = `export default defineWorkflow({ name: "ship-order" 
   return "shipped";
 });`;
 
-const scope = { kind: "org" as const, orgId: "org-1" };
+const scope = { kind: "org" as const, orgId: "org-1", jurisdiction: null };
 
 const orderPlaced: AutomationEvent = {
   id: "order-placed-1",

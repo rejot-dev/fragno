@@ -1,3 +1,4 @@
+import { backofficeOrganizationContextScope } from "@/backoffice-runtime/resolved-scope";
 import { requireBackofficePrincipal } from "@/fragno/auth/request-auth.server";
 import type { PresenceMember } from "@/presence/contracts";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
@@ -15,7 +16,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   }
   const members = await context
     .get(BackofficeWorkerContext)
-    .runtime.objects.presence.forOrg(organization.id)
+    .runtime.objects.presence.for(backofficeOrganizationContextScope(organization))
     .commands.listActiveMembers();
   return { members: members.filter((member) => member.userId !== principal.user.id) };
 }

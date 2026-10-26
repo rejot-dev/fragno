@@ -35,7 +35,7 @@ const createAutomation = async ({
   return createAutomationFragment(
     {
       builtInEventDefinitions: [],
-      ownerScope: { kind: "org", orgId: "org_123" },
+      ownerScope: { kind: "org", orgId: "org_123", jurisdiction: null },
       readAutomationSource: sourceReader,
     },
     {

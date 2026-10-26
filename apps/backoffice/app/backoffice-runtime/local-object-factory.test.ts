@@ -88,9 +88,9 @@ describe("LocalObjectFactory", () => {
     const factory = createFactory();
     const objects = createBackofficeObjectRegistry(factory);
 
-    const first = objects.upload.forUser({ userId: "user-1" });
-    const second = objects.upload.forUser({ userId: "user-1" });
-    const otherUser = objects.upload.forUser({ userId: "user-2" });
+    const first = objects.upload.for({ kind: "user", userId: "user-1", jurisdiction: null });
+    const second = objects.upload.for({ kind: "user", userId: "user-1", jurisdiction: null });
+    const otherUser = objects.upload.for({ kind: "user", userId: "user-2", jurisdiction: null });
     const firstCommands = first.commands as unknown as NamedObjectStub;
     const secondCommands = second.commands as unknown as NamedObjectStub;
 
@@ -105,12 +105,12 @@ describe("LocalObjectFactory", () => {
 
     const projectOne = objects.upload.for({
       kind: "project",
-      owner: { kind: "org", orgId: "org-1" },
+      owner: { kind: "org", orgId: "org-1", jurisdiction: null },
       projectId: "project-1",
     }).commands as unknown as NamedObjectStub;
     const projectTwo = objects.upload.for({
       kind: "project",
-      owner: { kind: "org", orgId: "org-1" },
+      owner: { kind: "org", orgId: "org-1", jurisdiction: null },
       projectId: "project-2",
     }).commands as unknown as NamedObjectStub;
 
@@ -167,7 +167,7 @@ describe("LocalObjectFactory", () => {
     });
     const object = factory.get<{ scheduleAlarm(): Promise<void> }>(
       { name: "UPLOAD" },
-      { binding: "UPLOAD", scope: { kind: "org", orgId: "org-1" } },
+      { binding: "UPLOAD", scope: { kind: "org", orgId: "org-1", jurisdiction: null } },
     );
     const advancedTime = factory.advanceTime(2 * 60 * 60 * 1_000);
 
@@ -203,7 +203,10 @@ describe("LocalObjectFactory", () => {
       await releaseSecondDrain.promise;
       secondObservedTimes.push([Date.now(), nowEpochMs()]);
     });
-    const address = { binding: "UPLOAD" as const, scope: { kind: "org" as const, orgId: "org-1" } };
+    const address = {
+      binding: "UPLOAD" as const,
+      scope: { kind: "org" as const, orgId: "org-1", jurisdiction: null },
+    };
     firstFactory.get({ name: "UPLOAD" }, address);
     secondFactory.get({ name: "UPLOAD" }, address);
     firstFactory.advanceTime(60_000);

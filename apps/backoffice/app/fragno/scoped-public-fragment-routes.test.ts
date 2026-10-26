@@ -15,12 +15,18 @@ import {
 describe("scoped public fragment routes", () => {
   test.each([
     [{ kind: "system" as const }, "/api/workflows/system"],
-    [{ kind: "org" as const, orgId: "org:one" }, "/api/workflows/org%3Aorg%253Aone"],
-    [{ kind: "user" as const, userId: "user/one" }, "/api/workflows/user%3Auser%252Fone"],
+    [
+      { kind: "org" as const, orgId: "org:one", jurisdiction: null },
+      "/api/workflows/org%3Aorg%253Aone",
+    ],
+    [
+      { kind: "user" as const, userId: "user/one", jurisdiction: null },
+      "/api/workflows/user%3Auser%252Fone",
+    ],
     [
       {
         kind: "project" as const,
-        owner: { kind: "org" as const, orgId: "org:one" },
+        owner: { kind: "org" as const, orgId: "org:one", jurisdiction: null },
         projectId: "project/two",
       },
       "/api/workflows/project%3Aorg%3Aorg%253Aone%3Aproject%252Ftwo",

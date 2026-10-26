@@ -95,7 +95,7 @@ const localObjects = {
 const systemUnrelatedEvent = {
   id: "github:issue.opened:1",
   scopeRestriction: null,
-  scope: { kind: "org", orgId: "org-1" },
+  scope: { kind: "org", orgId: "org-1", jurisdiction: null },
   source: "github",
   eventType: "issue.opened",
   occurredAt: "2026-01-01T00:00:00.000Z",
@@ -297,7 +297,7 @@ describe("system automation scenarios", () => {
         kind: "deferred" as const,
         actors: BACKOFFICE_SYSTEM_ACTORS,
         scopeRestriction: null,
-        scope: { kind: "org" as const, orgId },
+        scope: { kind: "org" as const, orgId, jurisdiction: null },
       };
       const fs = createScopedTestFileSystem(runtime, systemExecution);
       await expect(fs.readFile("/workspace/AGENTS.md")).resolves.toContain("Workspace guidance");
@@ -307,7 +307,7 @@ describe("system automation scenarios", () => {
 
       // Seeded files are ordinary scope-owned state, editable by authorized org members.
       const memberExecution = createBackofficeUserExecution({
-        scope: { kind: "org", orgId },
+        scope: { kind: "org", orgId, jurisdiction: null },
         userId: "user-1",
       });
       const memberPrincipal = memberExecution.actors.principal;
@@ -368,7 +368,7 @@ describe("system automation scenarios", () => {
 
         steps: ({ when, then }) => [
           when.project.create({
-            owner: { kind: "org", orgId: "org-1" },
+            owner: { kind: "org", orgId: "org-1", jurisdiction: null },
             slug: "alpha-project",
             name: "Alpha Project",
             createdByUserId: "user-1",
@@ -380,7 +380,7 @@ describe("system automation scenarios", () => {
               ctx.runtime,
               createBackofficeSystemExecution({
                 kind: "project",
-                owner: { kind: "org", orgId: "org-1" },
+                owner: { kind: "org", orgId: "org-1", jurisdiction: null },
                 projectId: ctx.vars.projectId,
               }),
             );
@@ -523,7 +523,7 @@ describe("system automation scenarios", () => {
           }),
           then.auth.permissions({
             userId: "scenario-user",
-            scope: { kind: "org", orgId: "org-1" },
+            scope: { kind: "org", orgId: "org-1", jurisdiction: null },
             include: [BACKOFFICE_PERMISSION.store.modify],
             exclude: [BACKOFFICE_PERMISSION.identity.bind],
           }),
@@ -536,7 +536,7 @@ describe("system automation scenarios", () => {
                 kernelObserver: noopBackofficeKernelObserver,
               });
               const execution = createBackofficeUserExecution({
-                scope: { kind: "org", orgId },
+                scope: { kind: "org", orgId, jurisdiction: null },
                 userId: "scenario-user",
               });
               const fs = createScopedTestFileSystem(ctx.runtime, execution);
@@ -699,7 +699,7 @@ describe("system automation scenarios", () => {
             "the organization automations object receives the forwarded update event",
             async (ctx) => {
               const queue = await ctx.runtime.objects.automations
-                .forOrg("org-1")
+                .for({ kind: "org", orgId: "org-1", jurisdiction: null })
                 .commands.getDurableHookQueue("automation", { pageSize: 20 });
 
               expect(queue.items).toEqual(

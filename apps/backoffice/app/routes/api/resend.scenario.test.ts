@@ -39,9 +39,18 @@ const webhookSecret = `whsec_${signingKey.toString("base64")}`;
 const webhookCases = [
   { scope: { kind: "system" }, scopePathSegment: "system" },
   { scope: { kind: "system" }, scopePathSegment: "%73ystem" },
-  { scope: { kind: "org", orgId: "resend-org" }, scopePathSegment: "org:resend-org" },
-  { scope: { kind: "org", orgId: "resend-org" }, scopePathSegment: "org%3Aresend-org" },
-  { scope: { kind: "org", orgId: "resend-org" }, scopePathSegment: "org%3aresend-org" },
+  {
+    scope: { kind: "org", orgId: "resend-org", jurisdiction: null },
+    scopePathSegment: "org:resend-org",
+  },
+  {
+    scope: { kind: "org", orgId: "resend-org", jurisdiction: null },
+    scopePathSegment: "org%3Aresend-org",
+  },
+  {
+    scope: { kind: "org", orgId: "resend-org", jurisdiction: null },
+    scopePathSegment: "org%3aresend-org",
+  },
 ] as const;
 
 async function callPublicResend(

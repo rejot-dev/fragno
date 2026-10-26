@@ -46,7 +46,7 @@ const createToolContext = ({
       } satisfies BackofficeKernelObserver),
   });
   const execution = createBackofficeUserExecution({
-    scope: { kind: "org", orgId: "org-1" },
+    scope: { kind: "org", orgId: "org-1", jurisdiction: null },
     userId: "user-1",
   });
   let context: BackofficeToolContext;
@@ -55,6 +55,7 @@ const createToolContext = ({
     execution,
     kernel,
     createScopedContext: () => context,
+    resolveRootOwner: async () => null,
   };
   return context;
 };

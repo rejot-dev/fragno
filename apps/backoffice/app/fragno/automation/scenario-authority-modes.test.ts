@@ -69,7 +69,7 @@ const authorityEvent = ({
 }): AutomationEvent => ({
   id,
   scopeRestriction: null,
-  scope: { kind: "org", orgId: "org-1" },
+  scope: { kind: "org", orgId: "org-1", jurisdiction: null },
   source: "authority-test",
   eventType: "authority.requested",
   occurredAt: "2026-08-07T00:00:00.000Z",
@@ -152,9 +152,13 @@ describe("automation route authority modes", () => {
         ],
         steps: ({ when, then }) => [
           then.assert("the member creates an organization-owned route", async (ctx) => {
-            const scope = { kind: "org" as const, orgId: "org-1" };
+            const scope = { kind: "org" as const, orgId: "org-1", jurisdiction: null };
             const routes = createAutomationsRouteCaller({
-              object: ctx.runtime.objects.automations.forOrg("org-1"),
+              object: ctx.runtime.objects.automations.for({
+                kind: "org",
+                orgId: "org-1",
+                jurisdiction: null,
+              }),
               context: {
                 execution: createBackofficeUserExecution({ scope, userId: "creator-1" }),
                 propagationContext: null,
@@ -195,7 +199,7 @@ describe("automation route authority modes", () => {
                 role: "principal",
               },
             }),
-            scopeRestriction: { kind: "org", orgId: "org-1" },
+            scopeRestriction: { kind: "org", orgId: "org-1", jurisdiction: null },
           }),
           then.workflow.instance({
             remoteWorkflowName: "authority-mode",
@@ -216,12 +220,18 @@ describe("automation route authority modes", () => {
             "organization authority persists an explicit transition from the caller ceiling",
             async (ctx) => {
               const response = await ctx.runtime.objects.automations
-                .forOrg("org-1")
+                .for({ kind: "org", orgId: "org-1", jurisdiction: null })
                 .http.fetchAuthorized(
                   new Request(
                     `https://automations.test/api/workflows/${CODEMODE_WORKFLOW}/instances/organization-event-1`,
                   ),
-                  { execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }) },
+                  {
+                    execution: createBackofficeSystemExecution({
+                      kind: "org",
+                      orgId: "org-1",
+                      jurisdiction: null,
+                    }),
+                  },
                 );
               assert(response.ok, await response.clone().text());
               const record = (await response.json()) as { meta: { params: unknown } };
@@ -636,9 +646,13 @@ describe("automation route authority modes", () => {
           then.assert(
             "the automation delegate restricts otherwise valid user authority",
             async (ctx) => {
-              const scope = { kind: "org" as const, orgId: "org-1" };
+              const scope = { kind: "org" as const, orgId: "org-1", jurisdiction: null };
               const workflows = createWorkflowsRouteCaller({
-                object: ctx.runtime.objects.automations.forOrg("org-1"),
+                object: ctx.runtime.objects.automations.for({
+                  kind: "org",
+                  orgId: "org-1",
+                  jurisdiction: null,
+                }),
                 context: {
                   execution: createBackofficeSystemExecution(scope),
                   propagationContext: null,

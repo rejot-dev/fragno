@@ -142,22 +142,24 @@ const issuePublicEmailVerificationOtp = (): BackofficeScenarioStep => ({
   type: "otp.issuePublicEmailVerificationOtp",
   label: "issue an email verification OTP through the public organization route",
   async run(ctx) {
-    const response = await ctx.runtime.objects.otp.forOrg("attacker-org").http.fetch(
-      new Request("https://backoffice.example/api/otp/otp/issue", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          externalId: "target-user",
-          type: EMAIL_VERIFICATION_TYPE,
-          durationMinutes: 60,
-          payload: {
-            email: "target@example.com",
-            publicBaseUrl: "https://attacker.example",
-            expiresInHours: 1,
-          },
+    const response = await ctx.runtime.objects.otp
+      .for({ kind: "org", orgId: "attacker-org", jurisdiction: null })
+      .http.fetch(
+        new Request("https://backoffice.example/api/otp/otp/issue", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            externalId: "target-user",
+            type: EMAIL_VERIFICATION_TYPE,
+            durationMinutes: 60,
+            payload: {
+              email: "target@example.com",
+              publicBaseUrl: "https://attacker.example",
+              expiresInHours: 1,
+            },
+          }),
         }),
-      }),
-    );
+      );
     assert.equal(response.status, 403);
   },
 });
@@ -332,7 +334,7 @@ describe("Auth email verification scenarios", () => {
           then.resend.noQueuedEmails(),
           then.assert("public OTP issuance creates no durable email challenge", async (ctx) => {
             const queue = await ctx.runtime.objects.otp
-              .forOrg("attacker-org")
+              .for({ kind: "org", orgId: "attacker-org", jurisdiction: null })
               .commands.getDurableHookQueue({ pageSize: 100 });
             assert(!queue.items.some((hook) => hook.hookName === "onOtpIssued"));
           }),

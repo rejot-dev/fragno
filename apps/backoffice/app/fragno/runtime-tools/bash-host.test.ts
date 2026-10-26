@@ -13,7 +13,7 @@ describe("createBashHost", () => {
         ...EMPTY_BASH_HOST_CONTEXT,
         execution: {
           ...EMPTY_BASH_HOST_CONTEXT.execution,
-          scope: { kind: "org", orgId: "org-1" },
+          scope: { kind: "org", orgId: "org-1", jurisdiction: null },
         },
       },
     });
@@ -24,7 +24,7 @@ describe("createBashHost", () => {
       exitCode: 0,
     });
     await expect(bash.exec("context.current --format json")).resolves.toMatchObject({
-      stdout: '{"kind":"org","orgId":"org-1"}\n',
+      stdout: '{"kind":"org","orgId":"org-1","jurisdiction":null}\n',
       stderr: "",
       exitCode: 0,
     });

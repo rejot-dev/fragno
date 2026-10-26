@@ -22,7 +22,11 @@ import {
 import type { DirectoryPageInput } from "@fragno-dev/backoffice-api/v0/shared/pagination";
 import {
   type BackofficeContextScope,
+  backofficeContextScopesEqual,
+  type BackofficeJurisdiction,
+  type BackofficeRootOwner,
   backofficeRootOwnerSchema,
+  type BackofficeScopeIdNames,
   backofficeScopeOrganization,
   backofficeScopeRootOwner,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
@@ -46,6 +50,11 @@ import type {
   OrganizationRelations,
   ScenarioAuthFixture,
 } from "@/backoffice-runtime/object-registry";
+import {
+  backofficeOrganizationContextScope,
+  backofficePersonalScope,
+  type BackofficeRootOwnerReference,
+} from "@/backoffice-runtime/resolved-scope";
 import { type BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { AppInstallationOwner } from "@/fragno/app-installations/contracts";
 import { provisionedResourceId } from "@/fragno/apps/provisioned-id";
@@ -56,6 +65,7 @@ import type {
 } from "@/fragno/auth/app-provisioning";
 import {
   type AdministeredMember,
+  administersMembers,
   type AuthHookContext,
   type AuthUser,
   type BackofficeCliOAuthConfig,
@@ -217,6 +227,8 @@ export type AuthDatabase = BetterAuthDurableHooksDatabase & {
     banned: number | boolean | null;
     banReason: string | null;
     banExpires: StoredDate | null;
+    jurisdiction: BackofficeJurisdiction | null;
+    onboardedAt: StoredDate | null;
   };
   session: {
     id: string;
@@ -241,6 +253,7 @@ export type AuthDatabase = BetterAuthDurableHooksDatabase & {
     metadata: string | Record<string, unknown> | null;
     createdBy: string;
     managingOrganizationId: string | null;
+    jurisdiction: BackofficeJurisdiction | null;
     createdAt: StoredDate;
     updatedAt: StoredDate | null;
   };
@@ -351,6 +364,8 @@ const toAuthUser = (user: StoreUser): AuthUser => ({
   emailVerified: normalizeBoolean(user.emailVerified),
   role: normalizeRole(user.role),
   banned: normalizeBoolean(user.banned),
+  jurisdiction: user.jurisdiction,
+  onboardedAt: user.onboardedAt === null ? null : toDate(user.onboardedAt),
   createdAt: toDate(user.createdAt),
   updatedAt: toDate(user.updatedAt),
 });
@@ -362,6 +377,7 @@ const toOrganization = (organization: StoreOrganization): Organization => ({
   logoUrl: organization.logo,
   metadata: parseOrganizationMetadata(organization.id, organization.metadata),
   createdBy: organization.createdBy,
+  jurisdiction: organization.jurisdiction,
   createdAt: toDate(organization.createdAt),
   updatedAt: toDate(organization.updatedAt ?? organization.createdAt),
   deletedAt: null,
@@ -646,6 +662,7 @@ async function resolveBackofficeUserTokenGrant(
   }
 
   const globalRole = normalizeRole(storedUser.role);
+  const personalScope = backofficePersonalScope(storedUser);
   if (input.scope?.kind === "system") {
     if (globalRole !== "admin") {
       throw new BackofficeUserTokenGrantForbiddenError(
@@ -656,6 +673,7 @@ async function resolveBackofficeUserTokenGrant(
       userId: storedUser.id,
       email: storedUser.email,
       globalRole,
+      personalScope,
       scope: input.scope,
       organization: null,
     };
@@ -664,13 +682,23 @@ async function resolveBackofficeUserTokenGrant(
   // What a user owns is available to that user and to administrators of their organizations.
   const requestedOwner = input.scope && backofficeScopeRootOwner(input.scope);
   if (input.scope && requestedOwner?.kind === "user") {
-    if (
-      requestedOwner.userId !== storedUser.id &&
-      !(await findAdministeredMember(database, {
-        administratorId: storedUser.id,
-        memberId: requestedOwner.userId,
-      }))
-    ) {
+    const ownerScope =
+      requestedOwner.userId === storedUser.id
+        ? personalScope
+        : await findAdministeredMember(database, {
+            administratorId: storedUser.id,
+            memberId: requestedOwner.userId,
+          }).then(
+            (member) =>
+              member &&
+              ({
+                kind: "user",
+                userId: member.userId,
+                jurisdiction: member.jurisdiction,
+              } as const),
+          );
+    // A scope naming the user in another jurisdiction names objects that are not theirs.
+    if (!ownerScope || !backofficeContextScopesEqual(ownerScope, requestedOwner)) {
       throw new BackofficeUserTokenGrantForbiddenError(
         "The requested user scope is not available to this user.",
       );
@@ -679,6 +707,7 @@ async function resolveBackofficeUserTokenGrant(
       userId: storedUser.id,
       email: storedUser.email,
       globalRole,
+      personalScope,
       scope: input.scope,
       organization: null,
     };
@@ -687,9 +716,8 @@ async function resolveBackofficeUserTokenGrant(
   // An organization's own members list theirs first, so a user's default is one they belong to.
   const memberships = await listAccessibleOrganizations(database, storedUser.id);
 
-  const requestedOrganizationId = input.scope
-    ? (backofficeScopeOrganization(input.scope)?.orgId ?? null)
-    : null;
+  const requestedOrganization = input.scope ? backofficeScopeOrganization(input.scope) : null;
+  const requestedOrganizationId = requestedOrganization?.orgId ?? null;
   const defaultMembership = memberships[0];
   if (!defaultMembership) {
     if (requestedOrganizationId && input.organizationSelection === "required") {
@@ -702,13 +730,18 @@ async function resolveBackofficeUserTokenGrant(
       userId: storedUser.id,
       email: storedUser.email,
       globalRole,
-      scope: { kind: "user", userId: storedUser.id },
+      personalScope,
+      scope: personalScope,
       organization: null,
     };
   }
 
-  const requestedMembership = requestedOrganizationId
-    ? memberships.find(({ organization }) => organization.id === requestedOrganizationId)
+  const requestedMembership = requestedOrganization
+    ? memberships.find(
+        ({ organization }) =>
+          organization.id === requestedOrganization.orgId &&
+          organization.jurisdiction === requestedOrganization.jurisdiction,
+      )
     : null;
   if (
     requestedOrganizationId &&
@@ -724,16 +757,18 @@ async function resolveBackofficeUserTokenGrant(
   const selectedScope: BackofficeContextScope =
     requestedMembership && input.scope
       ? input.scope
-      : { kind: "org", orgId: selectedMembership.organization.id };
+      : backofficeOrganizationContextScope(selectedMembership.organization);
 
   return {
     userId: storedUser.id,
     email: storedUser.email,
     globalRole,
+    personalScope,
     scope: selectedScope,
     organization: {
       id: selectedMembership.organization.id,
       slug: selectedMembership.organization.slug,
+      jurisdiction: selectedMembership.organization.jurisdiction,
       roles: selectedMembership.roles,
     },
   };
@@ -921,6 +956,12 @@ export class AuthObject implements AuthCommands {
           if (patch.slug !== undefined) {
             throw new APIError("BAD_REQUEST", {
               message: "An organization's slug cannot be changed.",
+            });
+          }
+          // Its Durable Objects stay where they were made, so moving it would lose them.
+          if ("jurisdiction" in patch) {
+            throw new APIError("BAD_REQUEST", {
+              message: "An organization's jurisdiction cannot be changed.",
             });
           }
           return { data: { ...patch, updatedAt: new Date() } };
@@ -1684,22 +1725,179 @@ export class AuthObject implements AuthCommands {
     );
   }
 
-  /** Creates an organization owned by the user, numbering its slug after those its name shares. */
+  /**
+   * Creates an organization the user owns, numbering its slug after those its name shares. It keeps
+   * its objects where the user's own are kept. Creating it again with the same ID, as a retried
+   * workflow step does, returns the organization the first attempt created.
+   */
   async createUserOrganization(input: {
+    id: string;
     userId: string;
     name: string;
   }): Promise<{ id: string; slug: string }> {
-    const createOrganization = getOrganizationAdminEndpoints(
-      this.#getAuth("http://localhost"),
-    ).createOrganization;
-    const organization = await createOrganization({
-      body: {
-        name: input.name,
-        slug: await this.#nextOrganizationSlug(input.name),
-        userId: input.userId,
-      },
+    const { adapter } = await this.#authContext();
+    const user = await findStoreUser(adapter, input.userId);
+    if (!user) {
+      throw new Error(`Organization creation could not find user '${input.userId}'.`);
+    }
+    return await this.#createOwnedOrganization({
+      ...input,
+      jurisdiction: user.jurisdiction,
+      managingOrganizationId: null,
     });
-    return { id: organization.id, slug: organization.slug };
+  }
+
+  /**
+   * Creates a client organization of an organization the user owns or administers, which manages
+   * it. The client keeps its objects where the managing organization's are, and its creator owns
+   * it, as every organization has an owner. Creating it again with the same ID returns it.
+   */
+  async createManagedOrganization(input: {
+    id: string;
+    userId: string;
+    managingOrganizationId: string;
+    name: string;
+  }): Promise<{ id: string; slug: string }> {
+    const { adapter } = await this.#authContext();
+    const [managing, membership] = await Promise.all([
+      adapter.findOne<StoreOrganization>({
+        model: "organization",
+        where: [{ field: "id", value: input.managingOrganizationId }],
+      }),
+      adapter.findOne<StoreMember>({
+        model: "member",
+        where: [
+          { field: "organizationId", value: input.managingOrganizationId },
+          { field: "userId", value: input.userId },
+        ],
+      }),
+    ]);
+    if (!managing || !membership || !administersMembers(splitOrganizationRoles(membership.role))) {
+      throw new Error(
+        `User '${input.userId}' does not own or administer organization '${input.managingOrganizationId}'.`,
+      );
+    }
+    return await this.#createOwnedOrganization({
+      id: input.id,
+      userId: input.userId,
+      name: input.name,
+      jurisdiction: managing.jurisdiction,
+      managingOrganizationId: managing.id,
+    });
+  }
+
+  /**
+   * Creates an organization with its creator as owner, or returns the one this ID already names.
+   * Its database triggers queue the same hooks Better Auth's creation does.
+   */
+  async #createOwnedOrganization(input: {
+    id: string;
+    userId: string;
+    name: string;
+    jurisdiction: BackofficeJurisdiction | null;
+    managingOrganizationId: string | null;
+  }): Promise<{ id: string; slug: string }> {
+    const { adapter } = await this.#authContext();
+    const slug = await this.#nextOrganizationSlug(input.name);
+    return await adapter.transaction(async (transaction) => {
+      const existing = await transaction.findOne<StoreOrganization>({
+        model: "organization",
+        where: [{ field: "id", value: input.id }],
+      });
+      if (existing) {
+        if (existing.createdBy !== input.userId) {
+          throw new Error(`Organization '${input.id}' was created by another user.`);
+        }
+        return { id: existing.id, slug: existing.slug };
+      }
+      const now = new Date();
+      await transaction.create({
+        model: "organization",
+        data: {
+          id: input.id,
+          name: input.name,
+          slug,
+          logo: null,
+          metadata: null,
+          createdBy: input.userId,
+          createdAt: now,
+          updatedAt: now,
+          managingOrganizationId: input.managingOrganizationId,
+          jurisdiction: input.jurisdiction,
+        },
+        forceAllowId: true,
+      });
+      await transaction.create({
+        model: "member",
+        data: {
+          organizationId: input.id,
+          userId: input.userId,
+          role: BACKOFFICE_ORGANIZATION_OWNER_ROLE,
+          createdAt: now,
+        },
+      });
+      return { id: input.id, slug };
+    });
+  }
+
+  /**
+   * Fixes where the user's personal scope will keep its objects, and the organizations they create
+   * theirs. Onboarding chooses it before creating anything; once onboarding has finished and the
+   * personal scope exists, it cannot change.
+   */
+  async chooseUserJurisdiction(input: {
+    userId: string;
+    jurisdiction: BackofficeJurisdiction | null;
+  }): Promise<void> {
+    const { adapter } = await this.#authContext();
+    await adapter.transaction(async (transaction) => {
+      const user = await transaction.findOne<StoreUser>({
+        model: "user",
+        where: [{ field: "id", value: input.userId }],
+      });
+      if (!user) {
+        throw new Error(`Onboarding could not find user '${input.userId}'.`);
+      }
+      if (user.jurisdiction === input.jurisdiction) {
+        return;
+      }
+      if (user.onboardedAt !== null) {
+        throw new Error(
+          `User '${input.userId}' has finished onboarding, fixing their jurisdiction.`,
+        );
+      }
+      await transaction.update<StoreUser>({
+        model: "user",
+        where: [{ field: "id", value: input.userId }],
+        update: { jurisdiction: input.jurisdiction, updatedAt: new Date() },
+      });
+    });
+  }
+
+  /**
+   * Ends the user's onboarding, which creates their personal scope in the jurisdiction they chose.
+   * Finishing it again changes nothing.
+   */
+  async finishUserOnboarding(input: { userId: string }): Promise<void> {
+    const { adapter } = await this.#authContext();
+    await adapter.transaction(async (transaction) => {
+      const user = await transaction.findOne<StoreUser>({
+        model: "user",
+        where: [{ field: "id", value: input.userId }],
+      });
+      if (!user) {
+        throw new Error(`Onboarding could not find user '${input.userId}'.`);
+      }
+      if (user.onboardedAt !== null) {
+        return;
+      }
+      const now = new Date();
+      await transaction.update<StoreUser>({
+        model: "user",
+        where: [{ field: "id", value: input.userId }],
+        update: { onboardedAt: now, updatedAt: now },
+      });
+    });
   }
 
   /**
@@ -1782,7 +1980,12 @@ export class AuthObject implements AuthCommands {
     if (existing) {
       return {
         ok: true,
-        value: { organizationId: existing.id, slug: existing.slug, created: false },
+        value: {
+          organizationId: existing.id,
+          slug: existing.slug,
+          jurisdiction: existing.jurisdiction,
+          created: false,
+        },
       };
     }
     if (!(await this.#hasAuthorizedApp(oauthClientId, parsed.ownerUserId))) {
@@ -1824,7 +2027,8 @@ export class AuthObject implements AuthCommands {
         },
       });
     });
-    return { ok: true, value: { organizationId, slug, created: true } };
+    // Apps provision organizations without choosing where their objects are kept.
+    return { ok: true, value: { organizationId, slug, jurisdiction: null, created: true } };
   }
 
   /**
@@ -1923,6 +2127,7 @@ export class AuthObject implements AuthCommands {
       value: {
         organizationId,
         slug,
+        jurisdiction: existing?.jurisdiction ?? null,
         created: !existing,
         ownerInvitation: ownerInvitation && {
           invitationId: ownerInvitation.id,
@@ -2256,6 +2461,7 @@ export class AuthObject implements AuthCommands {
           organizationId: organization.id,
           name: organization.name,
           slug: organization.slug,
+          jurisdiction: organization.jurisdiction,
           createdAt: toDate(organization.createdAt).toISOString(),
         },
         roles,
@@ -2432,18 +2638,29 @@ export class AuthObject implements AuthCommands {
     const { adapter } = await this.#authContext();
     const user = await findStoreUser(adapter, input.userId);
     if (!user) {
-      return { active: false, role: null, organizationMember: false };
+      return { active: false, role: null, personalScope: null, organization: null };
     }
-    const organizationMember = input.organizationId
-      ? (await findOrganizationAccess(this.#database, {
-          userId: input.userId,
-          organizationId: input.organizationId,
-        })) !== null
-      : false;
+    const [access, organization] = input.organizationId
+      ? await Promise.all([
+          findOrganizationAccess(this.#database, {
+            userId: input.userId,
+            organizationId: input.organizationId,
+          }),
+          readOrganization(adapter, input.organizationId),
+        ])
+      : [null, null];
     return {
       active: !normalizeBoolean(user.banned),
       role: normalizeRole(user.role),
-      organizationMember,
+      personalScope: backofficePersonalScope(user),
+      organization:
+        access && organization
+          ? {
+              kind: "org",
+              orgId: organization.organizationId,
+              jurisdiction: organization.jurisdiction,
+            }
+          : null,
     };
   }
 
@@ -2453,6 +2670,27 @@ export class AuthObject implements AuthCommands {
   }): Promise<AdministeredMember | null> {
     await this.#ready;
     return await findAdministeredMember(this.#database, input);
+  }
+
+  async findRootOwnerScope(
+    owner: BackofficeRootOwnerReference,
+  ): Promise<BackofficeRootOwner<BackofficeScopeIdNames> | null> {
+    const { adapter } = await this.#authContext();
+    if (owner.kind === "org") {
+      const organization = await adapter.findOne<StoreOrganization>({
+        model: "organization",
+        where: [{ field: "id", value: owner.orgId }],
+      });
+      return (
+        organization && {
+          kind: "org",
+          orgId: organization.id,
+          jurisdiction: organization.jurisdiction,
+        }
+      );
+    }
+    const user = await findStoreUser(adapter, owner.userId);
+    return user && backofficePersonalScope(user);
   }
 
   async getUserOrganizationAuthorityFacts(
@@ -2481,13 +2719,17 @@ export class AuthObject implements AuthCommands {
     ).map(toOrganization);
   }
 
-  async getOrganizationBySlug(slug: string): Promise<Pick<Organization, "id" | "slug"> | null> {
+  async getOrganizationBySlug(
+    slug: string,
+  ): Promise<Pick<Organization, "id" | "slug" | "jurisdiction"> | null> {
     const { adapter } = await this.#authContext();
     const organization = await adapter.findOne<StoreOrganization>({
       model: "organization",
       where: [{ field: "slug", value: slug }],
     });
-    return organization ? { id: organization.id, slug: organization.slug } : null;
+    return organization
+      ? { id: organization.id, slug: organization.slug, jurisdiction: organization.jurisdiction }
+      : null;
   }
 
   async hasOrganizationMember(input: { organizationId: string; userId: string }): Promise<boolean> {
@@ -2528,6 +2770,9 @@ export class AuthObject implements AuthCommands {
     await Promise.all(
       (fixture.removedMembers ?? []).map((member) => this.#removeScenarioMember(member)),
     );
+    await Promise.all(
+      (fixture.onboardedEmails ?? []).map((email) => this.#onboardScenarioUser(email)),
+    );
     // Scenario fixtures establish starting state; lifecycle behavior is exercised by scenario steps.
     await deleteBetterAuthDurableHooksForFixture(this.#database, {
       userIds: (fixture.users ?? []).map((user) => user.id),
@@ -2562,12 +2807,23 @@ export class AuthObject implements AuthCommands {
         update: values,
       });
     } else {
+      // Fixture users are established users, who finished onboarding.
       await adapter.create({
         model: "user",
-        data: { id: input.id, ...values, createdAt: now },
+        data: { id: input.id, ...values, onboardedAt: now, createdAt: now },
         forceAllowId: true,
       });
     }
+  }
+
+  async #onboardScenarioUser(email: string) {
+    const { adapter } = await this.#authContext();
+    const now = new Date();
+    await adapter.update<StoreUser>({
+      model: "user",
+      where: [{ field: "email", value: email.toLowerCase() }],
+      update: { onboardedAt: now, updatedAt: now },
+    });
   }
 
   async #setUpScenarioOrganization(input: {

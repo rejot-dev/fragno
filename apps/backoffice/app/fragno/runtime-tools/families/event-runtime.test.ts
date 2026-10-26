@@ -57,7 +57,7 @@ function withScopedFor(family: {
 const createEvent = (overrides: Partial<AutomationEvent> = {}): AutomationEvent => ({
   id: "event-1",
   scopeRestriction: null,
-  scope: { kind: "org", orgId: "org-1" },
+  scope: { kind: "org", orgId: "org-1", jurisdiction: null },
   source: "telegram",
   eventType: "message.received",
   occurredAt: "2026-01-01T00:00:00.000Z",
@@ -90,7 +90,7 @@ const createAutomationFragmentForEventRuntimeTest = (idSeed: string) =>
   createAutomationFragment(
     {
       builtInEventDefinitions: [],
-      ownerScope: { kind: "org", orgId: "org-1" },
+      ownerScope: { kind: "org", orgId: "org-1", jurisdiction: null },
     },
     {
       databaseAdapter: new InMemoryAdapter({ idSeed }),
@@ -120,7 +120,7 @@ describe("createEventRuntime.emitEvent", () => {
       objects,
       kernel: new BackofficeKernel(TEST_KERNEL_RUNTIME),
       execution: createBackofficeUserExecution({
-        scope: { kind: "org", orgId: "org-1" },
+        scope: { kind: "org", orgId: "org-1", jurisdiction: null },
         userId: "user-1",
       }),
     });
@@ -129,7 +129,7 @@ describe("createEventRuntime.emitEvent", () => {
       runtime.emitEvent({ eventType: "custom.event", source: "backoffice", payload: { ok: true } }),
     ).resolves.toMatchObject({
       accepted: true,
-      scope: { kind: "org", orgId: "org-1" },
+      scope: { kind: "org", orgId: "org-1", jurisdiction: null },
       source: "backoffice",
       eventType: "custom.event",
     });
@@ -167,14 +167,18 @@ describe("createEventRuntime.emitEvent", () => {
       }),
     } as unknown as BackofficeObjectRegistry;
     const attributedActors = createBackofficeUserExecution({
-      scope: { kind: "org", orgId: "org-1" },
+      scope: { kind: "org", orgId: "org-1", jurisdiction: null },
       userId: "marketplace-installer",
     }).actors;
     const runtime = createEventRuntime({
       emitter: { kind: "caller" },
       objects,
       kernel: new BackofficeKernel(TEST_KERNEL_RUNTIME),
-      execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+      execution: createBackofficeSystemExecution({
+        kind: "org",
+        orgId: "org-1",
+        jurisdiction: null,
+      }),
       emittedEventActors: attributedActors,
     });
 
@@ -195,7 +199,7 @@ describe("createEventRuntime.emitEvent", () => {
       emitter: { kind: "caller" },
       objects,
       kernel: new BackofficeKernel(TEST_KERNEL_RUNTIME),
-      execution: userExecution({ kind: "org", orgId: "org-1" }),
+      execution: userExecution({ kind: "org", orgId: "org-1", jurisdiction: null }),
     });
 
     await expect(runtime.emitEvent({ eventType: "custom.event" })).rejects.toThrow(
@@ -225,7 +229,7 @@ describe("createEventRuntime.emitEvent", () => {
       accepted: true,
       eventId: expect.any(String),
       eventType: "custom.event",
-      scope: { kind: "org", orgId: "org-1" },
+      scope: { kind: "org", orgId: "org-1", jurisdiction: null },
       source: "telegram",
     });
 
@@ -306,24 +310,26 @@ describe("createEventRuntime.emitEvent", () => {
     const runtime = createEventRuntime({
       objects,
       kernel,
-      execution: automationExecution({ kind: "org", orgId: "org-1" }),
-      emitter: workflowEmitter(createEvent({ scope: { kind: "org", orgId: "org-1" } })),
+      execution: automationExecution({ kind: "org", orgId: "org-1", jurisdiction: null }),
+      emitter: workflowEmitter(
+        createEvent({ scope: { kind: "org", orgId: "org-1", jurisdiction: null } }),
+      ),
     });
 
     await expect(
       runtime.emitEvent({
         eventType: "custom.event",
-        targetScope: { kind: "user", userId: "user-1" },
+        targetScope: { kind: "user", userId: "user-1", jurisdiction: null },
       }),
     ).resolves.toMatchObject({
       accepted: true,
-      scope: { kind: "user", userId: "user-1" },
+      scope: { kind: "user", userId: "user-1", jurisdiction: null },
     });
 
     expect(triggerOrgIngestEvent).not.toHaveBeenCalled();
     expect(triggerUserIngestEvent).toHaveBeenCalledWith(
       expect.objectContaining({
-        scope: { kind: "user", userId: "user-1" },
+        scope: { kind: "user", userId: "user-1", jurisdiction: null },
       }),
     );
   });
@@ -344,8 +350,10 @@ describe("createEventRuntime.emitEvent", () => {
     const runtime = createEventRuntime({
       objects,
       kernel: new BackofficeKernel(TEST_KERNEL_RUNTIME),
-      execution: automationExecution({ kind: "org", orgId: "org-1" }),
-      emitter: workflowEmitter(createEvent({ scope: { kind: "org", orgId: "org-1" } })),
+      execution: automationExecution({ kind: "org", orgId: "org-1", jurisdiction: null }),
+      emitter: workflowEmitter(
+        createEvent({ scope: { kind: "org", orgId: "org-1", jurisdiction: null } }),
+      ),
     });
 
     await expect(
@@ -353,19 +361,27 @@ describe("createEventRuntime.emitEvent", () => {
         eventType: "project.event",
         targetScope: {
           kind: "project",
-          owner: { kind: "org", orgId: "org-1" },
+          owner: { kind: "org", orgId: "org-1", jurisdiction: null },
           projectId: "project-1",
         },
       }),
     ).resolves.toMatchObject({
       accepted: true,
-      scope: { kind: "project", owner: { kind: "org", orgId: "org-1" }, projectId: "project-1" },
+      scope: {
+        kind: "project",
+        owner: { kind: "org", orgId: "org-1", jurisdiction: null },
+        projectId: "project-1",
+      },
     });
 
     expect(resolveProjectForExecution).toHaveBeenCalledWith({ projectId: "project-1" });
     expect(triggerProjectIngestEvent).toHaveBeenCalledWith(
       expect.objectContaining({
-        scope: { kind: "project", owner: { kind: "org", orgId: "org-1" }, projectId: "project-1" },
+        scope: {
+          kind: "project",
+          owner: { kind: "org", orgId: "org-1", jurisdiction: null },
+          projectId: "project-1",
+        },
         subject: expect.objectContaining({ orgId: "org-1", projectId: "project-1" }),
       }),
     );
@@ -384,8 +400,10 @@ describe("createEventRuntime.emitEvent", () => {
     const runtime = createEventRuntime({
       objects,
       kernel: new BackofficeKernel(TEST_KERNEL_RUNTIME),
-      execution: automationExecution({ kind: "org", orgId: "org-1" }),
-      emitter: workflowEmitter(createEvent({ scope: { kind: "org", orgId: "org-1" } })),
+      execution: automationExecution({ kind: "org", orgId: "org-1", jurisdiction: null }),
+      emitter: workflowEmitter(
+        createEvent({ scope: { kind: "org", orgId: "org-1", jurisdiction: null } }),
+      ),
     });
 
     await expect(
@@ -393,7 +411,7 @@ describe("createEventRuntime.emitEvent", () => {
         eventType: "project.event",
         targetScope: {
           kind: "project",
-          owner: { kind: "org", orgId: "org-1" },
+          owner: { kind: "org", orgId: "org-1", jurisdiction: null },
           projectId: "missing",
         },
       }),
@@ -412,14 +430,16 @@ describe("createEventRuntime.emitEvent", () => {
     const runtime = createEventRuntime({
       objects,
       kernel: new BackofficeKernel(TEST_KERNEL_RUNTIME),
-      execution: automationExecution({ kind: "org", orgId: "org-1" }),
-      emitter: workflowEmitter(createEvent({ scope: { kind: "org", orgId: "org-1" } })),
+      execution: automationExecution({ kind: "org", orgId: "org-1", jurisdiction: null }),
+      emitter: workflowEmitter(
+        createEvent({ scope: { kind: "org", orgId: "org-1", jurisdiction: null } }),
+      ),
     });
 
     await expect(
       runtime.emitEvent({
         eventType: "custom.event",
-        targetScope: { kind: "org", orgId: "org-2" },
+        targetScope: { kind: "org", orgId: "org-2", jurisdiction: null },
       }),
     ).rejects.toBeInstanceOf(BackofficeForbiddenError);
 
@@ -461,7 +481,7 @@ describe("createEventRuntime.emitEvent", () => {
       emitter: { kind: "caller" },
       objects,
       kernel: new BackofficeKernel(TEST_KERNEL_RUNTIME),
-      execution: userExecution({ kind: "org", orgId: "org-1" }),
+      execution: userExecution({ kind: "org", orgId: "org-1", jurisdiction: null }),
     });
 
     await expect(
