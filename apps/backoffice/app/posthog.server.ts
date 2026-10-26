@@ -1,10 +1,25 @@
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { PostHog } from "posthog-node";
-import { createContext, type RouterContext, type RouterContextProvider } from "react-router";
+import {
+  createContext,
+  type RouterContext,
+  type RouterContextProvider,
+  type ServerInstrumentation,
+} from "react-router";
+
+import {
+  backofficeScopeFields,
+  type BackofficeScopeFields,
+} from "./backoffice-runtime/backoffice-telemetry";
 
 type BackofficePostHogRequest = {
   client: PostHog;
   requestId: string;
   userId: string | null;
+  /** The matched route pattern, such as `/backoffice/dashboard/:scopeKind/:scopeId`. */
+  route: string | null;
+  /** The authenticated scope the request's URL names. */
+  scope: BackofficeScopeFields | null;
   capturedErrors: WeakSet<Error>;
   waitUntil(promise: Promise<unknown>): void;
 };
@@ -16,6 +31,32 @@ export const BackofficePostHogContext = ((globalThis as Record<symbol, unknown>)
   createContext<BackofficePostHogRequest | null>(
     null,
   )) as RouterContext<BackofficePostHogRequest | null>;
+
+/** Call once the scope a request's URL names is authenticated. */
+export function recordBackofficeRequestScope(
+  context: Readonly<RouterContextProvider>,
+  scope: BackofficeContextScope,
+): void {
+  const analytics = context.get(BackofficePostHogContext);
+  if (analytics) {
+    analytics.scope = backofficeScopeFields(scope);
+  }
+}
+
+/** Records the route React Router matched, so request events group by page, not by URL. */
+export const backofficePostHogServerInstrumentation: ServerInstrumentation = {
+  handler(handler) {
+    handler.instrument({
+      async request(execute, { context }) {
+        const result = await execute();
+        const analytics = context?.get(BackofficePostHogContext);
+        if (analytics && result.meta) {
+          analytics.route = result.meta.pattern;
+        }
+      },
+    });
+  },
+};
 
 /** Call after successful server operations, with identity from established request authority. */
 export function captureBackofficeServerEvent(

@@ -3,11 +3,17 @@ import { renderToReadableStream } from "react-dom/server";
 import type { EntryContext, HandleErrorFunction, RouterContextProvider } from "react-router";
 import { ServerRouter } from "react-router";
 
-import { captureBackofficeServerException } from "./posthog.server";
+import {
+  backofficePostHogServerInstrumentation,
+  captureBackofficeServerException,
+} from "./posthog.server";
 import { cloudflareReactRouterServerInstrumentation } from "./worker-runtime/cloudflare-react-router-instrumentation";
 
 /** Observes React Router request and route-handler boundaries without changing route behavior. */
-export const instrumentations = [cloudflareReactRouterServerInstrumentation];
+export const instrumentations = [
+  cloudflareReactRouterServerInstrumentation,
+  backofficePostHogServerInstrumentation,
+];
 
 export default async function handleRequest(
   request: Request,
