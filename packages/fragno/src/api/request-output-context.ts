@@ -142,9 +142,16 @@ export abstract class OutputContext<const TOutput, const TErrorCode extends stri
     {
       onError,
       headers,
+      highWaterMark,
     }: {
       onError?: (error: Error, stream: ResponseStream<TOutput>) => void | Promise<void>;
       headers?: HeadersInit;
+      /**
+       * Bytes the response holds before writes wait for the client to read. Without it, each write
+       * waits until the previous chunk was read, so producing the next chunk never overlaps sending
+       * this one.
+       */
+      highWaterMark?: number;
     } = {},
   ): Response => {
     // Note: this is intentionally an arrow function (=>) to keep `this` context.
@@ -154,7 +161,14 @@ export abstract class OutputContext<const TOutput, const TErrorCode extends stri
       "cache-control": "no-cache",
     };
 
-    const { readable, writable } = new TransformStream();
+    const { readable, writable } =
+      highWaterMark === undefined
+        ? new TransformStream()
+        : new TransformStream<Uint8Array, Uint8Array>(
+            undefined,
+            undefined,
+            new ByteLengthQueuingStrategy({ highWaterMark }),
+          );
     const stream = new ResponseStream(writable, readable);
 
     const runStreamCallback = async () => {
