@@ -36,10 +36,17 @@ export type PostEntryInput = {
   reference: string | null;
   /** Opaque actor identifier from the application. */
   postedBy: string;
-  /** The document the entry records; posting creates it. */
-  source: { kind: string; documentDate: CalendarDate; description: string };
+  source: EntrySource;
   lines: PostingLine[];
 };
+
+/**
+ * The source document an entry records: a new one, which posting creates under the caller's ID,
+ * or one an earlier entry recorded, e.g. an invoice booked again after its entry was reversed.
+ */
+export type EntrySource =
+  | { type: "new"; id: string; kind: string; documentDate: CalendarDate; description: string }
+  | { type: "existing"; id: string };
 
 export type ReverseEntryInput = {
   entryId: string;
@@ -78,8 +85,8 @@ type PostingPeriod = {
 
 export const postingServices = {
   /**
-   * Posts an entry and the source document it records. Entries are validated before they are
-   * written and are never changed afterwards: correct one by reversing it.
+   * Posts an entry recording its source document, which it creates when new. Entries are validated
+   * before they are written and are never changed afterwards: correct one by reversing it.
    */
   postEntry: function (this: LedgerServiceContext, input: PostEntryInput) {
     const accountIds = distinct(input.lines.map((line) => line.accountId));
@@ -94,6 +101,9 @@ export const postingServices = {
           .findFirst("ledger", (b) => b.whereIndex("primary", (eb) => eb("id", "=", LEDGER_ID)))
           .findFirst("journal", (b) =>
             b.whereIndex("primary", (eb) => eb("id", "=", input.journalId)),
+          )
+          .findFirst("sourceDocument", (b) =>
+            b.whereIndex("primary", (eb) => eb("id", "=", input.source.id)).select(["id"]),
           )
           .findFirst("entry", (b) =>
             b
@@ -128,6 +138,7 @@ export const postingServices = {
             period,
             ledger,
             journal,
+            sourceDocument,
             referenced,
             accounts,
             currencies,
@@ -220,15 +231,10 @@ export const postingServices = {
           for (const account of accounts) {
             uow.check("account", account.id);
           }
-          const sourceDocumentId = uow.create("sourceDocument", {
-            kind: input.source.kind,
-            documentDate: input.source.documentDate,
-            description: input.source.description,
-          });
           return recordEntry(uow, {
             journal,
             period: postingPeriod,
-            sourceDocumentId,
+            sourceDocumentId: recordSource(uow, input.source, sourceDocument),
             postingDate: input.postingDate,
             description: input.description,
             reference: input.reference,
@@ -322,10 +328,6 @@ export const postingServices = {
 };
 
 /**
- * The dimension values a line carries, which must satisfy its account's rules: one value at most
- * per dimension, required dimensions present, forbidden ones absent.
- */
-/**
  * The largest amount of a line or allocation, in minor units: fifteen digits, which keeps
  * balances, the sums of many amounts, far within the database's 64-bit integers.
  */
@@ -340,6 +342,10 @@ export function assertAmountInRange(amountMinor: bigint): void {
   }
 }
 
+/**
+ * The dimension values a line carries, which must satisfy its account's rules: one value at most
+ * per dimension, required dimensions present, forbidden ones absent.
+ */
 function resolveDimensions(
   account: { code: string; dimensionRules: DimensionRules },
   valueIds: string[],
@@ -409,6 +415,38 @@ function resolveOpenItem(
     );
   }
   return { partyAccountId: partyAccount.id, dueDate: openItem.dueDate, settles: null };
+}
+
+/** The entry's source document: created when new, which its ID must not be yet; else the one read. */
+function recordSource(
+  uow: Pick<LedgerUnitOfWork, "create">,
+  source: EntrySource,
+  existing: { id: FragnoId } | null,
+): Reference {
+  if (source.type === "existing") {
+    if (!existing) {
+      throw new LedgerError(
+        "SOURCE_DOCUMENT_NOT_FOUND",
+        `Source document ${source.id} does not exist.`,
+      );
+    }
+    return existing.id;
+  }
+  if (existing) {
+    throw new LedgerError("SOURCE_DOCUMENT_TAKEN", `Source document ${source.id} already exists.`);
+  }
+  return uow.create(
+    "sourceDocument",
+    {
+      id: source.id,
+      kind: source.kind,
+      documentDate: source.documentDate,
+      description: source.description,
+    },
+    // A concurrent posting created it: retrying reads it and refuses. Its ID is the table's only
+    // unique key.
+    { retryOnUniqueConflict: () => true },
+  );
 }
 
 /**

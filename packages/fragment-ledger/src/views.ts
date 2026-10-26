@@ -74,6 +74,24 @@ export const partyView = z.object({
   ),
 });
 
+/** A source document and every entry recording it, reversals included, oldest first. */
+export const sourceDocumentView = z.object({
+  id: z.string(),
+  kind: z.string(),
+  documentDate: calendarDate,
+  description: z.string(),
+  entries: z.array(
+    z.object({
+      id: z.string(),
+      journalId: z.string(),
+      entryNumber: z.number(),
+      postingDate: calendarDate,
+      reversesEntryId: z.string().nullable(),
+      reversedByEntryId: z.string().nullable(),
+    }),
+  ),
+});
+
 /**
  * The views that show amounts, with `amount` as their minor units: bigints from the services,
  * exact at any size, and strings of digits over HTTP, as JSON numbers are exact only to 2^53.
@@ -213,6 +231,7 @@ export type AccountView = z.infer<typeof accountView>;
 export type JournalView = z.infer<typeof journalView>;
 export type DimensionView = z.infer<typeof dimensionView>;
 export type PartyView = z.infer<typeof partyView>;
+export type SourceDocumentView = z.infer<typeof sourceDocumentView>;
 export type EntryView = z.infer<typeof serviceViews.entryView>;
 export type AccountLineView = z.infer<typeof serviceViews.accountLineView>;
 export type OpenItemView = z.infer<typeof serviceViews.openItemView>;

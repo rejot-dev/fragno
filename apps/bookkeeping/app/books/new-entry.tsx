@@ -144,7 +144,13 @@ export async function action({ request, params }: Route.ActionArgs): Promise<For
     description,
     reference,
     postedBy: user.name,
-    source: { kind: "manual", documentDate: postingDate, description },
+    source: {
+      type: "new",
+      id: crypto.randomUUID(),
+      kind: "manual",
+      documentDate: postingDate,
+      description,
+    },
     lines,
   });
   if (!outcome.ok) {

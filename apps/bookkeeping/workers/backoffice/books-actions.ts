@@ -685,6 +685,8 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
           reference: input.reference,
           postedBy: person.name,
           source: {
+            type: "new",
+            id: crypto.randomUUID(),
             kind: "backoffice",
             documentDate: input.postingDate,
             description: input.description,
