@@ -117,10 +117,10 @@ function AgentCard({ agent, now, to }: { agent: PiAgentListing; now: number; to:
         ) : null}
       </div>
       <p className="mt-6 border-t border-[color:var(--bo-border)] pt-4 text-xs text-[var(--bo-muted-2)]">
-        {definition.managedBy?.kind === "built-in"
+        {definition.steward.kind === "backoffice"
           ? "Built in"
-          : definition.managedBy?.kind === "marketplace"
-            ? "Installed by a Marketplace package"
+          : definition.steward.kind === "package"
+            ? `Installed by package ${definition.steward.listingId}`
             : "Defined in this workspace"}
       </p>
     </Link>

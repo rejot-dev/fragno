@@ -129,7 +129,7 @@ function AgentDrawerScope({
           <AgentStartComposer
             action={agentPath}
             agentName={agent.agentName}
-            builtIn={agent.managedBy?.kind === "built-in"}
+            builtIn={agent.steward.kind === "backoffice"}
             availableModelOptions={data.availableModelOptions}
             description={agent.description}
             permissions={agent.permissions}

@@ -33,11 +33,12 @@ A scope's agents are rows in the manager's `agent_definition` table, keyed by ag
 built-in `assistant` defined in `agent/agent-definitions.ts`, whose name a scope cannot take. A
 definition holds a `description`, a `provider/modelId` `model` or null for the first available
 model, at least one permission grant (`*`, which narrows nothing, `namespace.*`, or catalog
-entries), Markdown `instructions`, and the `managedBy` marker packages use to claim their agents, as
-they do routes. `pi.agent.create`, `pi.agent.update`, and `pi.agent.delete` change definitions and
-require `pi.manage`, so only they can change what an agent is told; input is validated on write, so
-the directory holds no unusable definitions. Deleting a definition keeps the `agent` provisioning
-row and its conversation.
+entries), Markdown `instructions`, and its `steward`: members, or the Marketplace package that
+declares it, which installing and uninstalling keep in sync, as they do routes. Built-in agents are
+Backoffice's. `pi.agent.create`, `pi.agent.update`, and `pi.agent.delete` change members'
+definitions and require `pi.manage`, so only they and package installations can change what an agent
+is told; input is validated on write, so the directory holds no unusable definitions. Deleting a
+definition keeps the `agent` provisioning row and its conversation.
 
 A turn names the model it runs with and its reasoning effort, or none, which keeps the
 conversation's; the agent object configures a named one on the conversation when it admits the turn,

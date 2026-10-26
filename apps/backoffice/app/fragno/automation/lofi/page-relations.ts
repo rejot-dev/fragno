@@ -276,7 +276,7 @@ const DERIVED_RELATIONS: DerivedRelation[] = [
   {
     name: "agents",
     description:
-      "Pi agents, built-in ones included, as their events record them now; latestKind and latestAt are null for an agent with no recorded activity. displayName is the name people read and activity what the agent does or did last, such as Answered. definition is JSON holding description, permissions, and managedBy.",
+      "Pi agents, built-in ones included, as their events record them now; latestKind and latestAt are null for an agent with no recorded activity. displayName is the name people read and activity what the agent does or did last, such as Answered. definition is JSON holding description, permissions, and steward.",
     columns: [
       { name: "agentName", type: "text", nullable: false },
       { name: "definition", type: "json", nullable: false },

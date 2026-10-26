@@ -16,12 +16,12 @@ type PackagesCodemodeProvider = {
    */
   get(input: PackagesGetInput): Promise<PackagesGetOutput>;
   /**
-   * Uninstall a package from the current workspace: delete the routes and event definitions it manages and its installation record. Its files stay in its installation folder. Uninstalling a listing that is not installed changes nothing and returns null.
+   * Uninstall a package from the current workspace: delete the agents, routes, and event definitions it manages and its installation record. Its files stay in its installation folder. Uninstalling a listing that is not installed changes nothing and returns null.
    * Requires `packages.install`.
    */
   uninstall(input: PackagesUninstallInput): Promise<PackagesUninstallOutput>;
   /**
-   * Import the installations recorded in the legacy workspace file /workspace/marketplace-lock.json, from before Backoffice kept installation records, then delete the file. Installing into a workspace that still has it is refused. Imported installations approve no permissions and have no settings until the package is installed again, and routes their old install scripts wrote stay members' until then. A listing that already has an installation keeps it. A listing the file records in several folders is a conflict: it is not imported, and the file stays, until keep names the one folder to import; the other folders' files stay where they are.
+   * Import the installations recorded in the legacy workspace file /workspace/marketplace-lock.json, from before Backoffice kept installation records, then delete the file. Installing into a workspace that still has it is refused. Imported installations approve no permissions and have no settings until the package is installed again, and routes and agents their old install scripts wrote stay members' until then. A listing that already has an installation keeps it. A listing the file records in several folders is a conflict: it is not imported, and the file stays, until keep names the one folder to import; the other folders' files stay where they are.
    * Requires `packages.install`.
    */
   importLegacy(input: PackagesImportLegacyInput): Promise<PackagesImportLegacyOutput>;
@@ -217,6 +217,7 @@ type PackagesUninstallOutput = {
     source: string;
     eventType: string;
   }[];
+  removedAgents: string[];
 } | null;
 type PackagesImportLegacyInput = {
   keep?: {

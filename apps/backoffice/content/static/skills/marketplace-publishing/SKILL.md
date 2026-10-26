@@ -41,8 +41,8 @@ validates and captures bytes without executing workflows, installers, or package
 
 ## Declare what an installation sets up
 
-`.marketplace/installation.json` declares the permissions the package uses, and the routes and event
-definitions Backoffice keeps in sync for each installation:
+`.marketplace/installation.json` declares the permissions the package uses, and the routes, event
+definitions, and agents Backoffice keeps in sync for each installation:
 
 ```json
 {
@@ -77,6 +77,15 @@ definitions Backoffice keeps in sync for each installation:
         "required": ["reportId"]
       }
     }
+  ],
+  "agents": [
+    {
+      "agentName": "reporter",
+      "description": "Writes the daily operations report.",
+      "model": null,
+      "permissions": ["*"],
+      "instructions": "Summarize yesterday's failures first."
+    }
   ]
 }
 ```
@@ -86,63 +95,27 @@ definitions Backoffice keeps in sync for each installation:
 - A route's grants must be declared permissions. The installer approves exactly the declared
   permissions, and must hold each of them.
 - Event definitions use the `events.catalog.create` input, and can't redefine built-in events.
-- Installing creates or updates the declared routes and event definitions, and deletes those an
-  earlier version declared. Members can turn them on or off but not change them. Uninstalling
-  deletes them.
-- Installing takes over an existing route or event definition only when the declaration leaves it
-  unchanged, such as one an earlier version's install workflow created; any other is refused.
+- Agents use the `pi.createAgent` input. An agent's turns run with the prompter's permissions,
+  narrowed by its own, so `["*"]` needs no declared permission. A routine that prompts the agent
+  still needs grants for what the agent should do.
+- Installing creates or updates the declared routes, event definitions, and agents, and deletes
+  those an earlier version declared. Members can turn routes and event definitions on or off but not
+  change them, and can't change the agents. Uninstalling deletes them all.
+- Installing takes over an existing route, event definition, or agent only when the declaration
+  leaves it unchanged, or when an earlier version's install workflow labelled it as this package's;
+  any other is refused.
 - A workspace holds one installation per package, so route ids stay fixed.
 
 ## Ask for settings
 
 `.marketplace/install.workflow.js` is optional. It runs with the approved permissions plus
 `packages.read`, but never `router.modify`: routes come only from the declaration. Declare event
-definitions too, rather than creating them here, so installations keep them in sync. Whatever it
-returns becomes the installation's settings, and the package's workflows read them with
+definitions and agents too, rather than creating them here, so installations keep them in sync.
+Whatever it returns becomes the installation's settings, and the package's workflows read them with
 `packages.get({ listingId })`. The install workflow reads the current installation the same way; it
 is null on a first installation, and the record changes only after the workflow completes.
 Installing the same version again re-runs it, which is how settings change. Use generated UI and
 `step.waitForEvent` to ask the installer; only members who may install packages can answer.
-
-## Define an agent
-
-Agents aren't declared yet, so the install workflow defines them. It runs again on every install of
-the same version, so create the agent when missing and update it when this package made it:
-
-```js
-const agent = {
-  agentName: "triage",
-  description: "Reviews workflow failures.",
-  model: null,
-  permissions: ["*"],
-  instructions: "Investigate the failure you are given before changing anything.",
-  managedBy: {
-    kind: "marketplace",
-    listingId: event.payload.listingId,
-    resourceKey: "triage-agent",
-    version: event.payload.version,
-  },
-};
-await step.do("ensure triage agent", async () => {
-  const { agents } = await pi.listAgents({});
-  const existing = agents.find((candidate) => candidate.agentName === agent.agentName);
-  if (!existing) {
-    return await pi.createAgent(agent);
-  }
-  const owner = existing.managedBy;
-  if (
-    owner?.kind !== "marketplace" ||
-    owner.listingId !== agent.managedBy.listingId ||
-    owner.resourceKey !== agent.managedBy.resourceKey
-  ) {
-    throw new Error(`Agent '${agent.agentName}' already exists and belongs to someone else.`);
-  }
-  return await pi.updateAgent(agent);
-});
-```
-
-Declare `pi.read`, to list agents, and `pi.manage`, to define them. Uninstalling leaves the agent;
-delete it with `pi.deleteAgent` if it should go.
 
 Known secret paths, dependency directories, Git metadata, traversal, and links cannot be published.
 The captured release is limited to 100 files including the manifest and 1 MiB of total file content.

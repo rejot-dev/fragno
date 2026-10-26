@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { BackofficeApiOperation } from "../api";
+import { automationStewardSchema, type AutomationSteward } from "./automation";
 import {
   allBackofficePermissionRequirements,
   BACKOFFICE_PERMISSION,
@@ -69,42 +70,28 @@ const piAgentDefinitionFieldsSchema = z.lazy(() =>
   }),
 );
 
-export type PiAgentMarketplaceManagedBy = {
-  kind: "marketplace";
-  listingId: string;
-  resourceKey: string;
-  version: string;
-};
+export type PiAgentSteward = AutomationSteward | { kind: "backoffice" };
 
-/** A package's claim on an agent it created; packages still assert it themselves. */
-const piAgentMarketplaceManagedBySchema: z.ZodType<PiAgentMarketplaceManagedBy> = z
-  .lazy(() =>
-    z.strictObject({
-      kind: z.literal("marketplace"),
-      listingId: z.string().trim().min(1),
-      resourceKey: z.string().trim().min(1),
-      version: z.string().trim().min(1),
-    }),
-  )
-  .meta({ id: "PiAgentMarketplaceManagedBy" });
-
-/** Built-in agents are defined by Backoffice; others are created in a scope, by hand or a package. */
-const piAgentManagedBySchema = z.lazy(() =>
-  z.union([z.object({ kind: z.literal("built-in") }), piAgentMarketplaceManagedBySchema]),
-);
+/**
+ * Who may change an agent: members of its scope, the package that declares it, or Backoffice, which
+ * defines the built-in agents.
+ */
+export const piAgentStewardSchema: z.ZodType<PiAgentSteward> = z
+  .lazy(() => z.union([automationStewardSchema, z.strictObject({ kind: z.literal("backoffice") })]))
+  .meta({ id: "PiAgentSteward" });
 
 export const piAgentDefinitionSchema = z.lazy(() =>
   piAgentDefinitionFieldsSchema._zod.innerType.extend({
     agentName: piAgentNameSchema,
-    managedBy: piAgentManagedBySchema.nullable(),
+    steward: piAgentStewardSchema,
   }),
 );
 
 export type PiAgentDefinition = z.infer<typeof piAgentDefinitionSchema>;
 
 /**
- * The definition fields an update replaces; packages set `managedBy` to claim their agents. An
- * agent granted nothing could only chat, so a definition grants at least one permission.
+ * The definition fields an update replaces. An agent granted nothing could only chat, so a
+ * definition grants at least one permission.
  */
 export const piAgentDefinitionUpdateSchema = z.lazy(() =>
   piAgentDefinitionFieldsSchema._zod.innerType.extend({
@@ -112,7 +99,6 @@ export const piAgentDefinitionUpdateSchema = z.lazy(() =>
       1,
       'Grant at least one permission; use ["*"] to let the agent do whatever its prompter may.',
     ),
-    managedBy: piAgentMarketplaceManagedBySchema.nullable(),
   }),
 );
 
@@ -309,14 +295,14 @@ export const piOperations = {
   },
   "pi.agent.update": {
     description:
-      'Replace an agent\'s whole definition, including its permissions (["*"] narrows nothing). The agent keeps its conversation; the new definition applies from its next turn.',
+      "Replace an agent's whole definition, including its permissions ([\"*\"] narrows nothing). The agent keeps its conversation; the new definition applies from its next turn. Only agents whose `steward` is members change this way: a package's agents change when it is installed again, and built-in agents never.",
     permissions: [BACKOFFICE_PERMISSION.pi.manage],
     input: z.lazy(() => piAgentDefinitionCreateSchema._zod.innerType.strict()),
     output: piAgentDefinitionSchema,
   },
   "pi.agent.delete": {
     description:
-      "Idempotently delete an agent's definition. Its stored conversation is kept and resumes if the name is defined again.",
+      "Idempotently delete an agent's definition, if members are its steward; uninstalling a package deletes its agents. Its stored conversation is kept and resumes if the name is defined again.",
     permissions: [BACKOFFICE_PERMISSION.pi.manage],
     input: agentInputSchema,
     output: z.lazy(() => z.object({ deleted: z.literal(true) })),

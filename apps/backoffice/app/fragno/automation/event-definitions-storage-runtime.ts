@@ -191,6 +191,7 @@ export const createAutomationEventDefinitionServices = (
             legacyListingId: null,
             writer,
             definitionChanged: contentChanged,
+            toggleable: true,
           });
           if (contentChanged) {
             assertAutomationEventDefinitionSchemas(next);
@@ -245,6 +246,7 @@ export const createAutomationEventDefinitionServices = (
             legacyListingId: null,
             writer,
             definitionChanged: true,
+            toggleable: true,
           });
           uow.delete("automation_event_definition", existing.id, (b) => b.check());
           return true;

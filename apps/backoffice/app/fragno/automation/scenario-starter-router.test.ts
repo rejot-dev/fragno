@@ -9,6 +9,7 @@ import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/perm
 import type { CausalFlameNode } from "@fragno-private/design-system/causal-flame-graph-model";
 
 import { queryAutomationReplica, readAutomationReplica } from "@/fragno/automation/lofi/testing";
+import { marketplaceListingId } from "@/fragno/marketplace/owner";
 import { getStaticMarketplaceEntry } from "@/fragno/marketplace/static-entries";
 import { projectEventTrace } from "@/routes/backoffice/dashboard/event-traces";
 
@@ -172,7 +173,7 @@ if (!telegramTestCommandEntry) {
 const TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION = {
   targetScope: { kind: "org", orgId: "org-1" },
   slug: "telegram-channel",
-  version: "2.0.0",
+  version: "2.1.0",
   // The Marketplace page's suggested folder, so nothing depends on where a package lands.
   installationRoot: "/workspace/telegram-channel",
 } as const;
@@ -418,7 +419,13 @@ describe("starter automation router scenarios", () => {
             expect(await response.json()).toMatchObject({
               agentName: "telegram",
               instructions: expect.stringContaining("Messages arrive from Telegram chats"),
-              managedBy: { kind: "marketplace", resourceKey: "telegram-agent", version: "2.0.0" },
+              steward: {
+                kind: "package",
+                listingId: marketplaceListingId({
+                  ownerScope: { kind: "system" },
+                  slug: "telegram-channel",
+                }),
+              },
             });
           }),
           then.assert("assert channel routes are visible through the replica", async (ctx) => {

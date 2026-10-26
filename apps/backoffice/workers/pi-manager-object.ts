@@ -1,3 +1,4 @@
+import type { AutomationActors } from "@fragno-dev/backoffice-api/v0/automation";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import {
   type BackofficeContextScope,
@@ -22,6 +23,7 @@ import {
   type PiManagerCommands,
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
+import type { PackageInstallationOutcome } from "@/fragno/automation/package-installations";
 import type { BillingMeasurementInput } from "@/fragno/billing/contracts";
 import { usageBillingForScope, type UsageBilling } from "@/fragno/billing/usage-billing";
 import {
@@ -36,6 +38,11 @@ import {
   hasPiBillingUsage,
   piBillingCountersFromUsage,
 } from "@/fragno/pi/extensions/billing/usage-counters";
+import {
+  applyPackageAgents,
+  removePackageAgents,
+  type PackageAgentsInput,
+} from "@/fragno/pi/manager/package-agents";
 import type { PiManagerConfig } from "@/fragno/pi/manager/pi-manager-definition";
 import {
   createPiManagerFragment,
@@ -262,6 +269,14 @@ export class PiManagerObject extends RpcTarget implements PiManagerCommands {
       );
     }
     return { bytes: base64ToBytes(image.data) };
+  }
+
+  async applyPackageAgents(input: PackageAgentsInput): Promise<PackageInstallationOutcome> {
+    return await applyPackageAgents(await this.#scoped.getRuntime(), input);
+  }
+
+  async removePackageAgents(input: { listingId: string; actors: AutomationActors }) {
+    return await removePackageAgents(await this.#scoped.getRuntime(), input);
   }
 
   /** Commits the usage for durable delivery; a failed call can still report tokens it was charged. */

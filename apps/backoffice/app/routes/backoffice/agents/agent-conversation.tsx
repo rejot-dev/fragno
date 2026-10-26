@@ -375,7 +375,7 @@ function useConversationModel({
         )
       : null;
   const shown =
-    agent.managedBy?.kind === "built-in"
+    agent.steward.kind === "backoffice"
       ? (pickedModel ?? conversationChoice ?? defaultAgentModelChoice(availableModelOptions))
       : null;
   return {

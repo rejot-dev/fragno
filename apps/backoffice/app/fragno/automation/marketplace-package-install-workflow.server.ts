@@ -212,7 +212,7 @@ type MarketplaceInstallationWorkflowInput = {
 
 /**
  * Install published package files, run the package's install workflow, then record the installation
- * and sync its declared routes and event definitions in the destination workspace.
+ * and sync its declared agents, routes, and event definitions in the destination workspace.
  */
 export function defineMarketplacePackageInstallWorkflow(
   config: MarketplacePackageInstallWorkflowConfig,
@@ -499,6 +499,7 @@ export function defineMarketplacePackageInstallWorkflow(
                 installedPaths: new Set(sourceFiles.map((file) => file.relativePath)),
               }),
               eventDefinitions: declaration.eventDefinitions,
+              agents: declaration.agents,
             };
           } catch (error) {
             if (error instanceof MarketplacePackageDeclarationError) {
@@ -899,6 +900,31 @@ export function defineMarketplacePackageInstallWorkflow(
         }
       }
 
+      const actors = input.metadata[BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY];
+      // Agents live in the Pi manager, so they can't change in the installation's transaction. They
+      // sync first, so routes never prompt an agent the installation hasn't defined.
+      const piManager = () => runtime.objects.piManager.for(input.targetScope).commands;
+      await step.do(
+        "apply package agents",
+        MARKETPLACE_EXTERNAL_STEP_RETRIES,
+        async function applyAgents() {
+          if (!runtime.config.bindings.piManager) {
+            if (declared.agents.length > 0) {
+              throw new NonRetryableError("This package defines agents, but Pi is not available.");
+            }
+            return;
+          }
+          const outcome = await piManager().applyPackageAgents({
+            listingId: release.listingId,
+            agents: declared.agents,
+            actors,
+          });
+          if (!outcome.ok) {
+            throw new NonRetryableError(outcome.message);
+          }
+        },
+      );
+
       await step.do(
         "apply package installation",
         MARKETPLACE_EXTERNAL_STEP_RETRIES,
@@ -914,7 +940,7 @@ export function defineMarketplacePackageInstallWorkflow(
             },
             routes: declared.routes,
             eventDefinitions: declared.eventDefinitions,
-            actors: input.metadata[BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY],
+            actors,
           };
           const outcome = targetIsCoordinator
             ? await applyPackageInstallation(targetAutomations(), installationInput)
@@ -922,6 +948,11 @@ export function defineMarketplacePackageInstallWorkflow(
                 .for(input.targetScope)
                 .commands.applyPackageInstallation(installationInput);
           if (!outcome.ok) {
+            // A first installation that is refused leaves no agents behind. An upgrade keeps the
+            // new version's, which installing either version again brings in line.
+            if (installedVersion === null && runtime.config.bindings.piManager) {
+              await piManager().removePackageAgents({ listingId: release.listingId, actors });
+            }
             throw new NonRetryableError(outcome.message);
           }
         },

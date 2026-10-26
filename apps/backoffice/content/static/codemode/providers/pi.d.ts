@@ -26,12 +26,12 @@ type PiCodemodeProvider = {
    */
   createAgent(input: PiCreateAgentInput): Promise<PiCreateAgentOutput>;
   /**
-   * Replace an agent's whole definition, including its permissions (["*"] narrows nothing). The agent keeps its conversation; the new definition applies from its next turn.
+   * Replace an agent's whole definition, including its permissions (["*"] narrows nothing). The agent keeps its conversation; the new definition applies from its next turn. Only agents whose `steward` is members change this way: a package's agents change when it is installed again, and built-in agents never.
    * Requires `pi.manage`.
    */
   updateAgent(input: PiUpdateAgentInput): Promise<PiUpdateAgentOutput>;
   /**
-   * Idempotently delete an agent's definition. Its stored conversation is kept and resumes if the name is defined again.
+   * Idempotently delete an agent's definition, if members are its steward; uninstalling a package deletes its agents. Its stored conversation is kept and resumes if the name is defined again.
    * Requires `pi.manage`.
    */
   deleteAgent(input: PiDeleteAgentInput): Promise<PiDeleteAgentOutput>;
@@ -53,12 +53,19 @@ type PiCodemodeProvider = {
 };
 declare const pi: PiCodemodeProvider;
 
-type PiAgentMarketplaceManagedBy = {
-  kind: "marketplace";
-  listingId: string;
-  resourceKey: string;
-  version: string;
-};
+type PiAgentSteward =
+  | AutomationSteward
+  | {
+      kind: "backoffice";
+    };
+type AutomationSteward =
+  | {
+      kind: "members";
+    }
+  | {
+      kind: "package";
+      listingId: string;
+    };
 type PiListAgentsInput = Record<string, unknown>;
 type PiListAgentsOutput = {
   agents: {
@@ -67,12 +74,7 @@ type PiListAgentsOutput = {
     permissions: string[];
     instructions: string;
     agentName: string;
-    managedBy:
-      | {
-          kind: "built-in";
-        }
-      | PiAgentMarketplaceManagedBy
-      | null;
+    steward: PiAgentSteward;
   }[];
 };
 type PiGetAgentInput = {
@@ -84,12 +86,7 @@ type PiGetAgentOutput = {
   permissions: string[];
   instructions: string;
   agentName: string;
-  managedBy:
-    | {
-        kind: "built-in";
-      }
-    | PiAgentMarketplaceManagedBy
-    | null;
+  steward: PiAgentSteward;
 };
 type PiListMessagesInput = {
   /** The agent whose conversation to read, by its name from `pi.listAgents`; it is yours only when you pass your own name. */
@@ -134,7 +131,6 @@ type PiCreateAgentInput = {
   model: string | null;
   permissions: string[];
   instructions: string;
-  managedBy: PiAgentMarketplaceManagedBy | null;
   agentName: string;
 };
 type PiCreateAgentOutput = {
@@ -143,12 +139,7 @@ type PiCreateAgentOutput = {
   permissions: string[];
   instructions: string;
   agentName: string;
-  managedBy:
-    | {
-        kind: "built-in";
-      }
-    | PiAgentMarketplaceManagedBy
-    | null;
+  steward: PiAgentSteward;
   /** The model the agent runs, as provider/modelId: its `model`, or the preferred available model when `model` is null. Null when that model is not available. */
   resolvedModel: string | null;
 };
@@ -157,7 +148,6 @@ type PiUpdateAgentInput = {
   model: string | null;
   permissions: string[];
   instructions: string;
-  managedBy: PiAgentMarketplaceManagedBy | null;
   agentName: string;
 };
 type PiUpdateAgentOutput = {
@@ -166,12 +156,7 @@ type PiUpdateAgentOutput = {
   permissions: string[];
   instructions: string;
   agentName: string;
-  managedBy:
-    | {
-        kind: "built-in";
-      }
-    | PiAgentMarketplaceManagedBy
-    | null;
+  steward: PiAgentSteward;
 };
 type PiDeleteAgentInput = {
   agentName: string;

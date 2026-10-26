@@ -568,6 +568,7 @@ export const packageUninstallationSchema = z.lazy(() =>
     installation: packageInstallationSchema,
     removedRouteIds: z.array(z.string()),
     removedEventDefinitions: z.array(z.strictObject({ source: z.string(), eventType: z.string() })),
+    removedAgents: z.array(z.string()),
   }),
 );
 
@@ -633,13 +634,13 @@ export const packagesOperations = {
   },
   "packages.uninstall": {
     description:
-      "Uninstall a package from the current workspace: delete the routes and event definitions it manages and its installation record. Its files stay in its installation folder. Uninstalling a listing that is not installed changes nothing and returns null.",
+      "Uninstall a package from the current workspace: delete the agents, routes, and event definitions it manages and its installation record. Its files stay in its installation folder. Uninstalling a listing that is not installed changes nothing and returns null.",
     permissions: [BACKOFFICE_PERMISSION.packages.install],
     input: packageListingInputSchema,
     output: z.lazy(() => packageUninstallationSchema.nullable()),
   },
   "packages.importLegacy": {
-    description: `Import the installations recorded in the legacy workspace file ${MARKETPLACE_LOCK_PATH}, from before Backoffice kept installation records, then delete the file. Installing into a workspace that still has it is refused. Imported installations approve no permissions and have no settings until the package is installed again, and routes their old install scripts wrote stay members' until then. A listing that already has an installation keeps it. A listing the file records in several folders is a conflict: it is not imported, and the file stays, until keep names the one folder to import; the other folders' files stay where they are.`,
+    description: `Import the installations recorded in the legacy workspace file ${MARKETPLACE_LOCK_PATH}, from before Backoffice kept installation records, then delete the file. Installing into a workspace that still has it is refused. Imported installations approve no permissions and have no settings until the package is installed again, and routes and agents their old install scripts wrote stay members' until then. A listing that already has an installation keeps it. A listing the file records in several folders is a conflict: it is not imported, and the file stays, until keep names the one folder to import; the other folders' files stay where they are.`,
     permissions: [BACKOFFICE_PERMISSION.packages.install],
     input: packagesImportLegacyInputSchema,
     output: packagesImportLegacyResultSchema,

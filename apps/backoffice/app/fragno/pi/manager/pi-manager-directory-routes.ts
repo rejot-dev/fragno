@@ -10,6 +10,7 @@ import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
 
+import { AutomationStewardError, MEMBERS_STEWARD } from "@/fragno/automation/stewards";
 import {
   builtInPiAgentDefinition,
   piAgentModelRef,
@@ -20,14 +21,11 @@ import { piAvailableModelSchema } from "@/fragno/pi/agent/pi-agent-contract";
 import { piManagerDefinition } from "./pi-manager-definition";
 import { turnProvenanceSchema } from "./pi-manager-turn-routes";
 
-function builtInResponse<T>(
-  agentName: string,
-  error: (body: { code: "AGENT_BUILT_IN"; message: string }, status: 409) => T,
+function stewardedResponse<T>(
+  cause: AutomationStewardError,
+  error: (body: { code: "AGENT_STEWARDED"; message: string }, status: 409) => T,
 ): T {
-  return error(
-    { code: "AGENT_BUILT_IN", message: `Pi agent '${agentName}' is built in and cannot change.` },
-    409,
-  );
+  return error({ code: "AGENT_STEWARDED", message: cause.message }, 409);
 }
 
 /** The models agents may use, and the scope's agent definitions. */
@@ -107,18 +105,24 @@ export const piManagerDirectoryRoutes = defineRoutes(piManagerDefinition).create
         provenance: turnProvenanceSchema,
       }),
       outputSchema: piAgentDefinitionSchema,
-      errorCodes: ["AGENT_NOT_FOUND", "AGENT_BUILT_IN"],
+      errorCodes: ["AGENT_NOT_FOUND", "AGENT_STEWARDED"],
       handler: async function ({ pathParams, input }, { json, error }) {
-        const { agentName } = pathParams;
-        if (builtInPiAgentDefinition(agentName)) {
-          return builtInResponse(agentName, error);
-        }
         const { provenance, ...fields } = await input.valid();
-        const definition = { agentName, ...fields };
-        const replaced = await this.handlerTx()
-          .withServiceCalls(() => [services.replaceAgentDefinition(definition, provenance)])
-          .transform(({ serviceResult: [replaced] }) => replaced)
-          .execute();
+        const definition = { agentName: pathParams.agentName, ...fields };
+        let replaced;
+        try {
+          replaced = await this.handlerTx()
+            .withServiceCalls(() => [
+              services.replaceAgentDefinition(definition, MEMBERS_STEWARD, provenance),
+            ])
+            .transform(({ serviceResult: [replaced] }) => replaced)
+            .execute();
+        } catch (cause) {
+          if (cause instanceof AutomationStewardError) {
+            return stewardedResponse(cause, error);
+          }
+          throw cause;
+        }
         return replaced
           ? json(replaced)
           : error({ code: "AGENT_NOT_FOUND", message: "Pi agent is not defined." }, 404);
@@ -128,17 +132,21 @@ export const piManagerDirectoryRoutes = defineRoutes(piManagerDefinition).create
       method: "DELETE",
       path: "/agents/:agentName",
       inputSchema: z.object({ provenance: turnProvenanceSchema }),
-      errorCodes: ["AGENT_BUILT_IN"],
+      errorCodes: ["AGENT_STEWARDED"],
       handler: async function ({ pathParams, input }, { empty, error }) {
-        if (builtInPiAgentDefinition(pathParams.agentName)) {
-          return builtInResponse(pathParams.agentName, error);
-        }
         const { provenance } = await input.valid();
-        await this.handlerTx()
-          .withServiceCalls(() => [
-            services.deleteAgentDefinition(pathParams.agentName, provenance),
-          ])
-          .execute();
+        try {
+          await this.handlerTx()
+            .withServiceCalls(() => [
+              services.deleteAgentDefinition(pathParams.agentName, MEMBERS_STEWARD, provenance),
+            ])
+            .execute();
+        } catch (cause) {
+          if (cause instanceof AutomationStewardError) {
+            return stewardedResponse(cause, error);
+          }
+          throw cause;
+        }
         return empty(204);
       },
     }),

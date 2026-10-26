@@ -63,7 +63,6 @@ function definitionArgsParser(command: string) {
     // Turns already run with the prompter's permissions, so the default narrows nothing.
     permissions: { option: "permission", kind: "stringArray", defaultValue: ["*"] },
     model: { defaultValue: null },
-    managedBy: { kind: "json", defaultValue: null },
   });
 }
 const parseAgentDelete = defineCliArgsParser<PiManagerAgentInput>("pi.agent.delete", {

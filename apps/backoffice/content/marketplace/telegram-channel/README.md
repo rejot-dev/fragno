@@ -31,5 +31,10 @@ sync with the installation and removes them on uninstall. Its install workflow o
 `telegram` agent. Installing it approves `identity.resolve`, `integrations.execute`, `otp.create`,
 `pi.manage`, `pi.read`, and `store.modify`.
 
+Version 2.1.0 declares the `telegram` agent too, and has no install workflow. Installing it approves
+`identity.resolve`, `integrations.execute`, `otp.create`, and `store.modify`; the agent answers with
+each linked user's own permissions. Upgrading from 2.0.0 takes over the agent 2.0.0 defined, and
+uninstalling deletes it.
+
 Install this item into an organization, project, or personal automation scope. Telegram connection
 availability is configured separately.

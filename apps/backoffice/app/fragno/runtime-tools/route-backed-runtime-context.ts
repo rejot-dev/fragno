@@ -397,6 +397,7 @@ export const createRouteBackedRuntimeContext = ({
               preferredOrganizationId:
                 ("userAuthority" in execution ? execution.userAuthority?.organizationId : null) ??
                 null,
+              piManagerAvailable: runtime.config.bindings.piManager,
             }),
           }
         : null,

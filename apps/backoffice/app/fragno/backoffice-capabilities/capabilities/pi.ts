@@ -119,7 +119,12 @@ const queueDroppedPayloadSchema = z.object({
   reason: z.string().describe("Why the queued work can no longer run."),
 });
 
-const agentDefinitionPayloadSchema = z.object({ definition: piAgentDefinitionSchema });
+const agentDefinitionPayloadSchema = z.object({
+  definition: piAgentDefinitionSchema._zod.innerType.extend({
+    // Events recorded before agents had stewards lack one; their agents were members'.
+    steward: piAgentDefinitionSchema._zod.innerType.shape.steward.optional(),
+  }),
+});
 
 const agentSubjectSchema = z.object({
   orgId: z.string().trim().min(1).optional(),
@@ -195,9 +200,11 @@ export function readPiAgentEvent(event: {
   if (kind === "created" || kind === "updated" || kind === "deleted") {
     const subject = agentSubjectSchema.safeParse(event.subject);
     const payload = agentDefinitionPayloadSchema.safeParse(event.payload);
-    return subject.success && payload.success
-      ? { agentName: subject.data.agentName, kind, definition: payload.data.definition }
-      : null;
+    if (!subject.success || !payload.success) {
+      return null;
+    }
+    const { steward = { kind: "members" }, ...definition } = payload.data.definition;
+    return { agentName: subject.data.agentName, kind, definition: { ...definition, steward } };
   }
   if (kind === "stopped" || kind === "resumed") {
     const subject = agentSubjectSchema.safeParse(event.subject);
@@ -223,7 +230,7 @@ const exampleDefinition = {
   model: null,
   permissions: ["*"],
   instructions: "Report problems before suggesting fixes.",
-  managedBy: null,
+  steward: { kind: "members" },
 };
 
 /** Durable Pi contributes scoped agent actions; usage delivery is owned by each agent object. */

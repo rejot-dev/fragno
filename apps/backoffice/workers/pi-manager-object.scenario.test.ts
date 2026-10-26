@@ -186,7 +186,6 @@ test("agents are defined through the manager, checked on write, and keep their c
     model: null,
     permissions: ["upload.read"],
     instructions: "Review carefully.",
-    managedBy: null,
   };
   await runBackofficeScenario(
     defineBackofficeScenario({
@@ -218,7 +217,10 @@ test("agents are defined through the manager, checked on write, and keep their c
               method,
             );
             assert.equal(builtIn.status, 409, method);
-            expect(await builtIn.json()).toMatchObject({ code: "AGENT_BUILT_IN" });
+            expect(await builtIn.json()).toMatchObject({
+              code: "AGENT_STEWARDED",
+              message: "Pi agent 'assistant' is built into Backoffice and cannot change.",
+            });
           }
         }),
         then.assert("define agents and list them with the built-in ones", async ({ runtime }) => {
@@ -237,12 +239,10 @@ test("agents are defined through the manager, checked on write, and keep their c
           const directory = await (
             await managerRequest(runtime, scope, "/agents")
           ).json<PiManagerAgentDirectory>();
-          expect(
-            directory.agents.map(({ agentName, managedBy }) => [agentName, managedBy]),
-          ).toEqual([
-            ["assistant", { kind: "built-in" }],
-            ["offline", null],
-            ["reviewer", null],
+          expect(directory.agents.map(({ agentName, steward }) => [agentName, steward])).toEqual([
+            ["assistant", { kind: "backoffice" }],
+            ["offline", { kind: "members" }],
+            ["reviewer", { kind: "members" }],
           ]);
           assert(directory.agents.every((agent) => !agent.provisioned));
         }),
@@ -572,7 +572,6 @@ test("queued prompts each run a turn of their own, in arrival order, under the d
     description: "Answers in turn.",
     model: null,
     permissions: ["*"],
-    managedBy: null,
   };
   await runBackofficeScenario(
     defineBackofficeScenario({
@@ -698,7 +697,6 @@ test("a prompt whose agent is deleted while it waits is dropped, and its submiss
             model: null,
             permissions: ["*"],
             instructions: "",
-            managedBy: null,
           });
           assert.equal(defined.status, 201, await defined.clone().text());
           for (const [requestId, content] of [
@@ -887,7 +885,6 @@ test("agent changes and the turns a stop cuts off are recorded as pi events of w
     model: null,
     permissions: ["*"],
     instructions: "Review carefully.",
-    managedBy: null,
   };
   const { agentName: _agentName, ...fields } = reviewer;
   const revised = { ...reviewer, description: "Reviews and approves changes." };
@@ -950,7 +947,7 @@ test("agent changes and the turns a stop cuts off are recorded as pi events of w
             "agent.updated: Reviews changes.",
           ]);
           expect(events.find((event) => event.eventType === "agent.deleted")?.payload).toEqual({
-            definition: revised,
+            definition: { ...revised, steward: { kind: "members" } },
           });
           for (const event of events) {
             expect(event).toMatchObject({
@@ -1244,7 +1241,6 @@ test("a backfill records what the agent events lack, once, so they list the defi
     model: null,
     permissions: ["*"],
     instructions: "Work carefully.",
-    managedBy: null,
   });
 
   /** An event that disagrees with the directory, as one recorded before the agent changed. */
@@ -2202,7 +2198,6 @@ test("the assistant runs each message with the model it chose, and later ones ke
             model: null,
             permissions: ["upload.read"],
             instructions: "",
-            managedBy: null,
           });
           assert.equal(created.status, 201, await created.clone().text());
           const refusals = [
