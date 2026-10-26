@@ -562,6 +562,17 @@ const packageListingInputSchema = z.lazy(() =>
   z.strictObject({ listingId: marketplaceListingIdSchema }),
 );
 
+/** What uninstalling deleted besides the installation record. */
+export const packageUninstallationSchema = z.lazy(() =>
+  z.strictObject({
+    installation: packageInstallationSchema,
+    removedRouteIds: z.array(z.string()),
+    removedEventDefinitions: z.array(z.strictObject({ source: z.string(), eventType: z.string() })),
+  }),
+);
+
+export type PackageUninstallation = z.infer<typeof packageUninstallationSchema>;
+
 export const packagesOperations = {
   "packages.install": {
     description:
@@ -585,13 +596,9 @@ export const packagesOperations = {
   },
   "packages.uninstall": {
     description:
-      "Uninstall a package from the current workspace: delete the routes it manages and its installation record. Its files stay in its installation folder. Uninstalling a listing that is not installed changes nothing and returns null.",
+      "Uninstall a package from the current workspace: delete the routes and event definitions it manages and its installation record. Its files stay in its installation folder. Uninstalling a listing that is not installed changes nothing and returns null.",
     permissions: [BACKOFFICE_PERMISSION.packages.install],
     input: packageListingInputSchema,
-    output: z.lazy(() =>
-      z
-        .object({ installation: packageInstallationSchema, removedRouteIds: z.array(z.string()) })
-        .nullable(),
-    ),
+    output: z.lazy(() => packageUninstallationSchema.nullable()),
   },
 } satisfies Record<string, BackofficeApiOperation>;

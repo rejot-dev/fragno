@@ -17,6 +17,7 @@ import type {
 import type {
   MarketplacePublishResult,
   PackageInstallation,
+  PackageUninstallation,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import type {
   MarketplaceFeatureEntry,
@@ -692,11 +693,9 @@ export type AutomationsCommands = {
   }): Promise<AutomationProjectExecutionTarget | null>;
   listPackageInstallations(): Promise<PackageInstallation[]>;
   getPackageInstallation(input: { listingId: string }): Promise<PackageInstallation | null>;
-  /** Records a package installation and syncs the routes it declares in this scope. */
+  /** Records a package installation and syncs the routes and event definitions it declares here. */
   applyPackageInstallation(input: PackageInstallationInput): Promise<PackageInstallationOutcome>;
-  uninstallPackage(input: {
-    listingId: string;
-  }): Promise<{ installation: PackageInstallation; removedRouteIds: string[] } | null>;
+  uninstallPackage(input: { listingId: string }): Promise<PackageUninstallation | null>;
   /** Idempotent on the app and its identifier for the project. */
   provisionAppProject(input: {
     appId: string;

@@ -2,6 +2,7 @@ import {
   packagesInstallInputSchema,
   packagesInstallResultSchema,
   type PackageInstallation,
+  type PackageUninstallation,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import {
   backofficeScopeRootOwner,
@@ -21,9 +22,7 @@ export type PackagesRuntime = {
   ): Promise<z.output<typeof packagesInstallResultSchema>>;
   ls(): Promise<{ installations: PackageInstallation[] }>;
   get(input: { listingId: string }): Promise<PackageInstallation | null>;
-  uninstall(input: {
-    listingId: string;
-  }): Promise<{ installation: PackageInstallation; removedRouteIds: string[] } | null>;
+  uninstall(input: { listingId: string }): Promise<PackageUninstallation | null>;
 };
 
 /** Preserve the UI installation flow while keeping organization coordination separate from destination scope. */

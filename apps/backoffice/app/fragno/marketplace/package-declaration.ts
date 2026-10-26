@@ -2,6 +2,7 @@ import {
   automationRouteCreateInputSchema,
   type AutomationRouteCreateInput,
 } from "@fragno-dev/backoffice-api/v0/automation";
+import { automationEventDefinitionCreateInputSchema } from "@fragno-dev/backoffice-api/v0/events";
 import { packagePermissionsSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
 import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { z } from "zod";
@@ -14,9 +15,9 @@ import { normalizeMarketplacePackagePath } from "./package-files";
 export const MARKETPLACE_DECLARATION_PATH = ".marketplace/installation.json";
 
 /**
- * A release declares the permissions its routes and install workflow use, and the routes Backoffice
- * keeps in sync for each installation. A route's `start_workflow` names a file in the package; the
- * installation resolves it to the installed copy.
+ * A release declares the permissions its routes and install workflow use, and the routes and event
+ * definitions Backoffice keeps in sync for each installation. A route's `start_workflow` names a
+ * file in the package; the installation resolves it to the installed copy.
  */
 export const marketplacePackageDeclarationSchema = z.strictObject({
   permissions: packagePermissionsSchema.default([]),
@@ -27,6 +28,15 @@ export const marketplacePackageDeclarationSchema = z.strictObject({
       (routes) => new Set(routes.map((route) => route.id)).size === routes.length,
       "Declared route ids must be unique.",
     ),
+  eventDefinitions: z
+    .array(automationEventDefinitionCreateInputSchema)
+    .default([])
+    .refine(
+      (definitions) =>
+        new Set(definitions.map(({ source, eventType }) => JSON.stringify([source, eventType])))
+          .size === definitions.length,
+      "Declared event definitions must each have their own source and event type.",
+    ),
 });
 
 export type MarketplacePackageDeclaration = z.infer<typeof marketplacePackageDeclarationSchema>;
@@ -34,6 +44,7 @@ export type MarketplacePackageDeclaration = z.infer<typeof marketplacePackageDec
 export const EMPTY_MARKETPLACE_PACKAGE_DECLARATION: MarketplacePackageDeclaration = {
   permissions: [],
   routes: [],
+  eventDefinitions: [],
 };
 
 export class MarketplacePackageDeclarationError extends Error {

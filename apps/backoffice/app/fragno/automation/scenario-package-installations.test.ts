@@ -567,7 +567,7 @@ describe("package installation scenarios", () => {
           then.assert("install the GitHub channel and the Telegram test command", async (ctx) => {
             await installMarketplacePackage(ctx, {
               listingId: GITHUB_CHANNEL_ID,
-              version: "1.1.0",
+              version: "1.2.0",
               installationRoot,
             });
             await installMarketplacePackage(ctx, {
@@ -595,7 +595,7 @@ describe("package installation scenarios", () => {
                 .map(({ listingId, version }) => ({ listingId, version }))
                 .sort((left, right) => left.listingId.localeCompare(right.listingId)),
             ).toEqual([
-              { listingId: GITHUB_CHANNEL_ID, version: "1.1.0" },
+              { listingId: GITHUB_CHANNEL_ID, version: "1.2.0" },
               { listingId: LISTING_ID, version: "2.0.0" },
             ]);
           }),
@@ -608,6 +608,94 @@ describe("package installation scenarios", () => {
             orgId: "org-1",
             id: ROUTE_ID,
             steward: { kind: "package", listingId: LISTING_ID },
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("upgrading GitHub Channel to 1.2.0 takes over the event definitions 1.1.0 created", async () => {
+    const installationRoot = "/workspace/github";
+    const eventTypes = [
+      "issues.opened",
+      "issue_comment.created",
+      "pull_request.opened",
+      "pull_request.synchronize",
+      "push",
+    ];
+    const install = async (ctx: BackofficeScenarioContext, version: string) => {
+      await installMarketplacePackage(ctx, {
+        listingId: GITHUB_CHANNEL_ID,
+        version,
+        installationRoot,
+      });
+    };
+    const definition = (ctx: BackofficeScenarioContext, eventType: string) =>
+      ctx.runtime.objects.automations
+        .for(TARGET_SCOPE)
+        .commands.getEventDefinition({ source: "github", eventType });
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        objects: scenarioObjects,
+        name: "upgrade GitHub Channel to declared event definitions",
+        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+        steps: ({ then, runner }) => [
+          then.assert("publish packages", publishMarketplacePackages),
+          runner.drain(),
+          then.assert("install 1.1.0, whose install workflow defines the events", (ctx) =>
+            install(ctx, "1.1.0"),
+          ),
+          runner.drain(),
+          then.assert("1.1.0's definitions belong to members", async (ctx) => {
+            for (const eventType of eventTypes) {
+              await expect(definition(ctx, eventType)).resolves.toMatchObject({
+                steward: { kind: "members" },
+              });
+            }
+          }),
+          then.assert("upgrade to 1.2.0", (ctx) => install(ctx, "1.2.0")),
+          runner.drain(),
+          then.assert(
+            "1.2.0 manages the definitions, which members may only toggle",
+            async (ctx) => {
+              for (const eventType of eventTypes) {
+                await expect(definition(ctx, eventType)).resolves.toMatchObject({
+                  steward: { kind: "package", listingId: GITHUB_CHANNEL_ID },
+                });
+              }
+              const patch = (body: Record<string, unknown>) =>
+                routes(ctx)("PATCH", "/event-definitions/:source/:eventType", {
+                  pathParams: { source: "github", eventType: "push" },
+                  body,
+                });
+              await expect(patch({ label: "Pushed" })).resolves.toMatchObject({
+                type: "error",
+                status: 409,
+                error: { code: "EVENT_DEFINITION_STEWARDED" },
+              });
+              await expect(patch({ enabled: false })).resolves.toMatchObject({
+                type: "json",
+                data: {
+                  enabled: false,
+                  steward: { kind: "package", listingId: GITHUB_CHANNEL_ID },
+                },
+              });
+            },
+          ),
+          then.assert("uninstalling removes the definitions with the routes", async (ctx) => {
+            await expect(
+              ctx.runtime.objects.automations
+                .for(TARGET_SCOPE)
+                .commands.uninstallPackage({ listingId: GITHUB_CHANNEL_ID }),
+            ).resolves.toMatchObject({
+              removedRouteIds: expect.arrayContaining(["github-push-reclassify"]),
+              removedEventDefinitions: expect.arrayContaining(
+                eventTypes.map((eventType) => ({ source: "github", eventType })),
+              ),
+            });
+            for (const eventType of eventTypes) {
+              await expect(definition(ctx, eventType)).resolves.toBeNull();
+            }
           }),
         ],
       }),

@@ -251,6 +251,7 @@ describe("createBackofficeBashCommands", () => {
           example: input.example ?? null,
           enabled: input.enabled ?? true,
           capabilityId: "dynamic",
+          steward: { kind: "members" },
         };
       },
     });
@@ -389,6 +390,7 @@ const createBackofficeRuntime = (
     example: input.example ?? null,
     enabled: input.enabled ?? true,
     capabilityId: "dynamic",
+    steward: { kind: "members" },
   }),
   ...overrides,
 });

@@ -170,7 +170,7 @@ const packagesUninstallTool = defineBackofficeRuntimeTool({
       command: "packages.uninstall",
       help: {
         summary:
-          "Uninstall a package from the selected workspace, deleting the routes it manages. Its files stay.",
+          "Uninstall a package from the selected workspace, deleting the routes and event definitions it manages. Its files stay.",
         options: [
           {
             name: "listing-id",
@@ -189,7 +189,7 @@ const packagesUninstallTool = defineBackofficeRuntimeTool({
           ? { data: result }
           : {
               stdout: result
-                ? `uninstalled\t${result.installation.listingId}\t${result.installation.installationRoot}\troutes:${result.removedRouteIds.join(",")}\n`
+                ? `uninstalled\t${result.installation.listingId}\t${result.installation.installationRoot}\troutes:${result.removedRouteIds.join(",")}\tevents:${result.removedEventDefinitions.map(({ source, eventType }) => `${source}/${eventType}`).join(",")}\n`
                 : "not installed\n",
             },
     },

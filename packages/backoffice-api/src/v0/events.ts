@@ -1,7 +1,11 @@
 import { z } from "zod";
 
 import type { BackofficeApiOperation } from "../api";
-import { type AutomationActors, automationActorsSchema } from "./automation";
+import {
+  type AutomationActors,
+  automationActorsSchema,
+  automationStewardSchema,
+} from "./automation";
 import { BACKOFFICE_PERMISSION } from "./shared/permissions";
 import { type BackofficeContextScope, backofficeContextScopeSchema } from "./shared/scope";
 
@@ -302,6 +306,10 @@ export type AutomationEventRoutesListResult = z.infer<typeof automationEventRout
 
 const jsonSchemaDocumentSchema = z.lazy(() => z.record(z.string(), z.unknown()));
 
+/**
+ * An event definition a workspace adds to the catalog. Members define their own; a package's are
+ * declared by the package and only change when it is installed again or uninstalled.
+ */
 export const automationEventDefinitionSchema = z.lazy(() =>
   z.object({
     id: z.string().trim().min(1),
@@ -315,6 +323,7 @@ export const automationEventDefinitionSchema = z.lazy(() =>
     example: z.unknown().nullable().optional(),
     enabled: z.boolean(),
     capabilityId: z.string(),
+    steward: automationStewardSchema,
     createdAt: z.iso.datetime().optional(),
     updatedAt: z.iso.datetime().optional(),
   }),

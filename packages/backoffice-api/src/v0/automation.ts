@@ -328,10 +328,11 @@ export type AutomationRouteScheduleTrigger = {
 export type AutomationRouteTrigger = AutomationRouteEventTrigger | AutomationRouteScheduleTrigger;
 
 /**
- * Who maintains a route's definition. Backoffice stamps it from the writer, never from input; only
- * the steward changes the definition, while members may still turn a stewarded route on or off.
+ * Who maintains a resource's definition, such as a route or an event definition. Backoffice stamps
+ * it from the writer, never from input; only the steward changes the definition, while members may
+ * still turn a stewarded resource on or off.
  */
-export type AutomationRouteSteward = { kind: "members" } | { kind: "package"; listingId: string };
+export type AutomationSteward = { kind: "members" } | { kind: "package"; listingId: string };
 
 export type AutomationRouteMetadata = {
   createdByActors: AutomationActors;
@@ -347,7 +348,7 @@ export type AutomationRouteDefinition = {
   enabled: boolean;
   priority: number;
   description?: string | null;
-  steward: AutomationRouteSteward;
+  steward: AutomationSteward;
   metadata?: AutomationRouteMetadata | null;
   nextOccurrenceAt: string | null;
 };
@@ -632,14 +633,14 @@ export const automationRouteActionSchema = z
   )
   .meta({ id: "AutomationRouteAction" }) satisfies z.ZodType<AutomationRouteAction>;
 
-export const automationRouteStewardSchema: z.ZodType<AutomationRouteSteward> = z
+export const automationStewardSchema: z.ZodType<AutomationSteward> = z
   .lazy(() =>
     z.discriminatedUnion("kind", [
       z.strictObject({ kind: z.literal("members") }),
       z.strictObject({ kind: z.literal("package"), listingId: z.string().trim().min(1) }),
     ]),
   )
-  .meta({ id: "AutomationRouteSteward" });
+  .meta({ id: "AutomationSteward" });
 
 const automationRouteMetadataSchema = z.lazy(() =>
   z.strictObject({
@@ -683,7 +684,7 @@ export const automationRouteSchema: z.ZodType<AutomationRouteDefinition> = z
       trigger: automationRouteTriggerSchema,
       action: automationRouteActionSchema,
       description: z.string().nullable().optional(),
-      steward: automationRouteStewardSchema,
+      steward: automationStewardSchema,
       metadata: automationRouteMetadataSchema.nullable(),
       nextOccurrenceAt: z.iso.datetime().nullable(),
     }),

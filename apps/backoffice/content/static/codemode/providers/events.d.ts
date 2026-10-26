@@ -89,6 +89,14 @@ type AutomationActors = {
       }
   )[];
 };
+type AutomationSteward =
+  | {
+      kind: "members";
+    }
+  | {
+      kind: "package";
+      listingId: string;
+    };
 type EventsFireInput = {
   eventType: string;
   source?: string;
@@ -1025,6 +1033,7 @@ type EventsCatalogCreateOutput = {
   example?: unknown | null;
   enabled: boolean;
   capabilityId: string;
+  steward: AutomationSteward;
   /** ISO 8601 datetime string. */
   createdAt?: string;
   /** ISO 8601 datetime string. */

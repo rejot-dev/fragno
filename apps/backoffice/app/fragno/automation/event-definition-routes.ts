@@ -10,6 +10,7 @@ import { isUniqueConstraintError } from "@fragno-dev/db";
 
 import { automationFragmentDefinition } from "./definition";
 import { AutomationEventDefinitionValidationError } from "./event-definitions";
+import { AutomationStewardError, MEMBERS_STEWARD } from "./stewards";
 
 export const automationEventDefinitionRoutes = defineRoutes(automationFragmentDefinition).create(
   ({ defineRoute, services }) => [
@@ -20,23 +21,7 @@ export const automationEventDefinitionRoutes = defineRoutes(automationFragmentDe
       handler: async function (_request, { json }) {
         const definitions = await this.handlerTx()
           .withServiceCalls(() => [services.listEventDefinitions()] as const)
-          .transform(({ serviceResult: [definitions] }) =>
-            definitions.map((definition) => ({
-              id: definition.id.valueOf(),
-              source: definition.source,
-              eventType: definition.eventType,
-              label: definition.label,
-              description: definition.description,
-              payloadSchema: definition.payloadSchema,
-              actorSchema: definition.actorSchema,
-              subjectSchema: definition.subjectSchema,
-              example: definition.example,
-              enabled: definition.enabled,
-              capabilityId: "dynamic",
-              createdAt: definition.createdAt.toISOString(),
-              updatedAt: definition.updatedAt.toISOString(),
-            })),
-          )
+          .transform(({ serviceResult: [definitions] }) => definitions)
           .execute();
 
         return json(definitions);
@@ -57,25 +42,7 @@ export const automationEventDefinitionRoutes = defineRoutes(automationFragmentDe
                 }),
               ] as const,
           )
-          .transform(({ serviceResult: [definition] }) =>
-            definition
-              ? {
-                  id: definition.id.valueOf(),
-                  source: definition.source,
-                  eventType: definition.eventType,
-                  label: definition.label,
-                  description: definition.description,
-                  payloadSchema: definition.payloadSchema,
-                  actorSchema: definition.actorSchema,
-                  subjectSchema: definition.subjectSchema,
-                  example: definition.example,
-                  enabled: definition.enabled,
-                  capabilityId: "dynamic",
-                  createdAt: definition.createdAt.toISOString(),
-                  updatedAt: definition.updatedAt.toISOString(),
-                }
-              : null,
-          )
+          .transform(({ serviceResult: [definition] }) => definition)
           .execute();
 
         if (!definition) {
@@ -100,7 +67,9 @@ export const automationEventDefinitionRoutes = defineRoutes(automationFragmentDe
         const payload = await input.valid();
         try {
           const definition = await this.handlerTx()
-            .withServiceCalls(() => [services.createEventDefinition(payload)] as const)
+            .withServiceCalls(
+              () => [services.createEventDefinition(payload, MEMBERS_STEWARD)] as const,
+            )
             .transform(({ serviceResult: [result] }) => result)
             .execute();
 
@@ -141,11 +110,14 @@ export const automationEventDefinitionRoutes = defineRoutes(automationFragmentDe
             .withServiceCalls(
               () =>
                 [
-                  services.updateEventDefinition({
-                    source: pathParams.source,
-                    eventType: pathParams.eventType,
-                    patch,
-                  }),
+                  services.updateEventDefinition(
+                    {
+                      source: pathParams.source,
+                      eventType: pathParams.eventType,
+                      patch,
+                    },
+                    MEMBERS_STEWARD,
+                  ),
                 ] as const,
             )
             .transform(({ serviceResult: [result] }) => result)
@@ -159,6 +131,9 @@ export const automationEventDefinitionRoutes = defineRoutes(automationFragmentDe
               },
               400,
             );
+          }
+          if (cause instanceof AutomationStewardError) {
+            return error({ message: cause.message, code: "EVENT_DEFINITION_STEWARDED" }, 409);
           }
           throw cause;
         }

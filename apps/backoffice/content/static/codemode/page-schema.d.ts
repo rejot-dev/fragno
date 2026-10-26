@@ -135,6 +135,7 @@ type PageRelations = {
     enabled: PageSqlBoolean;
     createdAt: PageSqlTime;
     updatedAt: PageSqlTime;
+    steward: PageSqlJson | null;
   };
   /** Automation routes. trigger and action are JSON, such as trigger ->> '$.kind'; route_schedules holds a scheduled route's next occurrence by the same id. */
   routes: {

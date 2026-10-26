@@ -16,7 +16,7 @@ type PackagesCodemodeProvider = {
    */
   get(input: PackagesGetInput): Promise<PackagesGetOutput>;
   /**
-   * Uninstall a package from the current workspace: delete the routes it manages and its installation record. Its files stay in its installation folder. Uninstalling a listing that is not installed changes nothing and returns null.
+   * Uninstall a package from the current workspace: delete the routes and event definitions it manages and its installation record. Its files stay in its installation folder. Uninstalling a listing that is not installed changes nothing and returns null.
    * Requires `packages.install`.
    */
   uninstall(input: PackagesUninstallInput): Promise<PackagesUninstallOutput>;
@@ -208,4 +208,8 @@ type PackagesUninstallOutput = {
     };
   };
   removedRouteIds: string[];
+  removedEventDefinitions: {
+    source: string;
+    eventType: string;
+  }[];
 } | null;
