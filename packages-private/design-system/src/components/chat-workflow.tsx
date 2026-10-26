@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
+import { useEffect, useRef, type ComponentProps, type ReactNode } from "react";
 
 import { cn } from "../cn";
 import { Button } from "./button";
 import { ActivityMarkerDot } from "./chat-activity";
 import { Icon } from "./icon";
+import { RunStopControl } from "./run-stop-control";
 import { BackofficeStatusLight } from "./status-light";
 import type { BackofficeStatusTone } from "./status-tone";
 import { UnderlineToggleButton } from "./underline-tabs";
@@ -102,12 +103,6 @@ function statusError(status: ChatWorkflowStatus) {
   throw new Error("Unsupported workflow status.", { cause: status satisfies never });
 }
 
-type StopState =
-  | { kind: "idle" }
-  | { kind: "confirming" }
-  | { kind: "stopping" }
-  | { kind: "failed"; error: string };
-
 /**
  * A workflow run in the conversation: its name and status over one element at a time. It shows
  * the newest element, or what the run is working on after it, and a strip jumps between them all.
@@ -168,7 +163,7 @@ export function ChatWorkflow({
         <BackofficeStatusLight tone={tone} role="status">
           {label}
         </BackofficeStatusLight>
-        {onStop === null ? null : <StopControl onStop={onStop} />}
+        {onStop === null ? null : <RunStopControl onStop={onStop} />}
       </header>
       {entryCount > 1 ? (
         <nav
@@ -316,76 +311,6 @@ function StepButton({
       <Icon name={icon} className="size-3.5" />
     </Button>
   );
-}
-
-/** Stopping ends the run for good, so it asks once more in place. */
-function StopControl({ onStop }: { onStop: () => Promise<void> }) {
-  const [state, setState] = useState<StopState>({ kind: "idle" });
-  const stop = () => {
-    setState({ kind: "stopping" });
-    onStop().then(
-      () => {
-        setState({ kind: "idle" });
-      },
-      (cause: unknown) => {
-        setState({
-          kind: "failed",
-          error: cause instanceof Error ? cause.message : "Could not stop the run.",
-        });
-      },
-    );
-  };
-
-  switch (state.kind) {
-    case "idle":
-      return (
-        <Button
-          variant="ghost"
-          onClick={() => {
-            setState({ kind: "confirming" });
-          }}
-          className="min-h-8 px-2 text-xs text-[var(--bo-muted)]"
-        >
-          Stop
-        </Button>
-      );
-    case "confirming":
-    case "stopping":
-      return (
-        <span className="flex items-center gap-1">
-          <Button
-            variant="danger"
-            disabled={state.kind === "stopping"}
-            onClick={stop}
-            className="min-h-8 px-2 text-xs"
-          >
-            {state.kind === "stopping" ? "Stopping…" : "Stop the run"}
-          </Button>
-          <Button
-            variant="ghost"
-            disabled={state.kind === "stopping"}
-            onClick={() => {
-              setState({ kind: "idle" });
-            }}
-            className="min-h-8 px-2 text-xs"
-          >
-            Keep
-          </Button>
-        </span>
-      );
-    case "failed":
-      return (
-        <span className="flex min-w-0 items-center gap-1">
-          <span role="alert" className="truncate text-[10px] text-[var(--bo-failed)]">
-            {state.error}
-          </span>
-          <Button variant="ghost" onClick={stop} className="min-h-8 px-2 text-xs">
-            Retry
-          </Button>
-        </span>
-      );
-  }
-  throw new Error("Unsupported stop state.", { cause: state satisfies never });
 }
 
 export type ChatWorkflowInputRequestEntry = {
