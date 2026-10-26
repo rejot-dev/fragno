@@ -1,15 +1,16 @@
 ---
 name: classification
 description:
-  "Classify, route, triage, or score data and workspace images with models.classify, which returns
-  probabilities for choice, score, and yes/no questions. Use when code must decide something about
-  content, such as picking a category, rating severity, or checking a condition."
+  "Grade data and workspace images against a rubric with models.classify: pick one option, score on
+  ordered levels, or check a condition, each with probabilities. Use when code must decide on
+  content by criteria it defines, such as routing, triage, or rating severity."
 ---
 
 # Classification
 
-`models.classify` answers typed questions about JSON state and workspace images in one call and
-returns probabilities, not prose. Use a Pi agent when the result must be generated text.
+`models.classify` grades JSON state and workspace images against the rubric each question defines,
+in one call, and returns probabilities, not prose. Use a Pi agent when the result must be generated
+text.
 
 1. Read "/static/codemode/providers/models.d.ts" and
    "/static/skills/classification/reference/classification.md". When the request names a goal rather
