@@ -125,9 +125,24 @@ describe("compileOutboxVersionReservationPlan", () => {
       "insert into `fragno_db_settings` (`id`, `key`, `value`)",
     );
     expect(plan.reservationQuery.sql).toContain(
-      "on duplicate key update `value` = LAST_INSERT_ID(cast(`value` as unsigned) + 1)",
+      "on duplicate key update `value` = cast(`value` as unsigned) + 1",
     );
-    expect(plan.resultQuery?.sql).toContain("select LAST_INSERT_ID() as `value`,");
+    expect(plan.resultQuery?.sql).toContain("from `fragno_db_settings`");
+    expect(plan.resultQuery?.sql).toContain("where `key` = ?");
+    expect(plan.resultQuery?.parameters).toEqual(["fragno-db-settings.outbox_version"]);
+  });
+
+  it("reads the MySQL version back instead of trusting LAST_INSERT_ID()", () => {
+    // Creating the counter row sets LAST_INSERT_ID() to the row's auto-increment ID, so
+    // the first outbox entry got that ID as its version and sorted after later entries.
+    const dialect = new MysqlDialect({ pool: {} as never });
+    const plan = compileOutboxVersionReservationPlan(new MySQL2DriverConfig(), dialect, {
+      id: "settings-id",
+      key: "fragno-db-settings.outbox_version",
+    });
+
+    expect(plan.reservationQuery.sql).not.toContain("LAST_INSERT_ID");
+    expect(plan.resultQuery?.sql).not.toContain("LAST_INSERT_ID");
   });
 });
 

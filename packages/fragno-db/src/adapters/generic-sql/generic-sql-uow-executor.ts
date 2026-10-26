@@ -352,14 +352,20 @@ export function compileOutboxVersionReservationPlan(
       return { reservationQuery: reservationQuery.compile(dialect) };
     }
     case "insert-on-duplicate-last-insert-id": {
+      // MySQL has no RETURNING, so the reserved version is read back from the counter row,
+      // which the upsert keeps locked until the transaction ends. LAST_INSERT_ID() can't
+      // carry it: when the upsert creates the row, MySQL overwrites it with the row's
+      // auto-increment ID. The strategy keeps its name because driver configs declare it.
       const reservationQuery = sql`
         insert into ${settingsTable} (${idColumn}, ${keyColumn}, ${valueColumn})
-        values (${values.id}, ${values.key}, LAST_INSERT_ID(0))
-        on duplicate key update ${valueColumn} = LAST_INSERT_ID(cast(${valueColumn} as unsigned) + 1);
+        values (${values.id}, ${values.key}, '0')
+        on duplicate key update ${valueColumn} = cast(${valueColumn} as unsigned) + 1;
       `;
       const resultQuery = sql`
-        select LAST_INSERT_ID() as ${valueColumn},
-          cast(unix_timestamp(current_timestamp(3)) * 1000 as unsigned) as ${nowMsColumn};
+        select ${valueColumn},
+          cast(unix_timestamp(current_timestamp(3)) * 1000 as unsigned) as ${nowMsColumn}
+        from ${settingsTable}
+        where ${keyColumn} = ${values.key};
       `;
 
       return {
