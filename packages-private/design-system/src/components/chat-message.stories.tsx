@@ -22,7 +22,7 @@ function Column({ children }: { children: ReactNode }) {
 export function UserAndAnswer() {
   return (
     <Column>
-      <ChatUserMessage time={SAMPLE_TIME}>
+      <ChatUserMessage time={SAMPLE_TIME} attachments={null}>
         <p>How much revenue did we book last week?</p>
       </ChatUserMessage>
       <ChatAssistantMessage

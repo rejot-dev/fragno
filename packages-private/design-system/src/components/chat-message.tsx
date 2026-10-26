@@ -17,26 +17,43 @@ function MessageTime({ time, className }: { time: Date; className: string }) {
   );
 }
 
-/** What the reader wrote, right-aligned in a bubble. */
+/**
+ * What the reader wrote, right-aligned in a bubble, below the files it carried, such as
+ * ChatMessageAttachments. A message of only files has no bubble; its time follows the files.
+ */
 export function ChatUserMessage({
   time,
+  attachments,
   children,
   ...props
-}: ElementProps & { time: Date | null; children: ReactNode }) {
+}: ElementProps & {
+  time: Date | null;
+  attachments: ReactNode | null;
+  children: ReactNode | null;
+}) {
+  const timeLabel =
+    time === null ? null : (
+      <MessageTime
+        time={time}
+        className="mt-1 block text-right text-[10px] text-[var(--bo-muted-2)]"
+      />
+    );
   return (
     <div
       {...props}
       data-chat-turn-start
       className="bo-chat-enter group relative mb-7 flex justify-end pl-6 sm:pl-24"
     >
-      {/* The selected navigation item's surface, so what the reader wrote reads as theirs. */}
-      <div className="max-w-[92%] rounded-[4px] border border-[color:var(--bo-selected-border)] bg-[var(--bo-selected-bg)] px-4 py-3 text-sm leading-6 text-[var(--bo-fg)] shadow-[var(--bo-selected-shadow)] sm:max-w-[88%]">
-        {children}
-        {time === null ? null : (
-          <MessageTime
-            time={time}
-            className="mt-1 block text-right text-[10px] text-[var(--bo-muted-2)]"
-          />
+      <div className="flex max-w-[92%] min-w-0 flex-col items-end sm:max-w-[88%]">
+        {attachments}
+        {children === null ? (
+          timeLabel
+        ) : (
+          // The selected navigation item's surface, so what the reader wrote reads as theirs.
+          <div className="max-w-full rounded-[4px] border border-[color:var(--bo-selected-border)] bg-[var(--bo-selected-bg)] px-4 py-3 text-sm leading-6 text-[var(--bo-fg)] shadow-[var(--bo-selected-shadow)]">
+            {children}
+            {timeLabel}
+          </div>
         )}
       </div>
     </div>

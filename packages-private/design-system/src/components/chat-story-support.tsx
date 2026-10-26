@@ -112,7 +112,7 @@ export function SampleConversation({
       <ChatEventDivider marker="notification" time={SAMPLE_TIME}>
         Asked to handle 1 notification
       </ChatEventDivider>
-      <ChatUserMessage time={SAMPLE_TIME}>
+      <ChatUserMessage time={SAMPLE_TIME} attachments={null}>
         <p>Which invoices are still unpaid? Draft reminders for them.</p>
       </ChatUserMessage>
       <ChatAssistantMessage
