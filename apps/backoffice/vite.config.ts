@@ -4,7 +4,7 @@ import path from "node:path";
 import { reactRouter } from "@react-router/dev/vite";
 import { backofficeDevServerPort } from "@rejot-dev/backoffice-local/dev-server-port";
 import { defineConfig } from "vite";
-import type { Plugin } from "vite";
+import type { EnvironmentOptions, Plugin } from "vite";
 import devtoolsJson from "vite-plugin-devtools-json";
 
 import { cloudflare } from "@cloudflare/vite-plugin";
@@ -72,6 +72,15 @@ export default defineConfig(({ command }) => {
   const isDevServer = command === "serve";
   // Only serving needs a port; builds must not depend on running inside a git checkout.
   const port = isDevServer ? backofficeDevServerPort(__dirname) : undefined;
+  const environments: Record<string, EnvironmentOptions> = isDevServer
+    ? { ssr: { dev: { preTransformRequests: true } } }
+    : {
+        // Worker builds emit source maps, which the Cloudflare plugin uploads with each Worker so
+        // its logs and exceptions show source stacks. The client build keeps none: its maps would
+        // be served as public assets.
+        ssr: { build: { sourcemap: true } },
+        rejot_backoffice: { build: { sourcemap: true } },
+      };
 
   return {
     define: {
@@ -116,15 +125,7 @@ export default defineConfig(({ command }) => {
     ssr: {
       noExternal: ["@earendil-works/pi-ai"],
     },
-    environments: isDevServer
-      ? {
-          ssr: {
-            dev: {
-              preTransformRequests: true,
-            },
-          },
-        }
-      : undefined,
+    environments,
     preview: {
       host: localViteHost,
       port,
