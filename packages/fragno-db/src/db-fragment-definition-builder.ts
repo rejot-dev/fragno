@@ -374,6 +374,8 @@ function createDurableHooksRequestContextInstrumentation(config: {
           config.instrumentation ? config.instrumentation.runAttempt(attempt, execute) : execute(),
         { propagationContext: attempt.propagationContext },
       ),
+    observeAttemptOutcome: (attempt, outcome) =>
+      config.instrumentation?.observeAttemptOutcome?.(attempt, outcome),
   };
 }
 

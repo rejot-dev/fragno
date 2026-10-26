@@ -276,6 +276,23 @@ this contract: skipping or repeatedly calling `execute()` fails the attempt thro
 policy. A typical OpenTelemetry adapter extracts `attempt.propagationContext`, starts a consumer
 span, makes that span active while `execute()` runs, records failures, and ends the span.
 
+To count or alert on hook outcomes, implement `observeAttemptOutcome()`. Fragno calls it once per
+attempt after the attempt's outcome is committed, with `completed`, `retry-scheduled`, or `failed`
+(the hook used up its attempts, or its retry policy deemed the error not retryable). The two failure
+outcomes carry the error the hook threw. Errors thrown by the observer are logged and never change
+the outcome.
+
+```ts
+const instrumentation: DurableHooksInstrumentation = {
+  // ...
+  observeAttemptOutcome(attempt, outcome) {
+    if (outcome.status === "failed") {
+      reportExhaustedHook(attempt.namespace, attempt.hookName, outcome.error);
+    }
+  },
+};
+```
+
 <Callout type="info">
   Propagation context is telemetry metadata, not an idempotency or authorization mechanism. Continue
   using `this.idempotencyKey` for idempotency and validate any application-specific values received
