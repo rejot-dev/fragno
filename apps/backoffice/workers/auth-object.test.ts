@@ -36,14 +36,14 @@ import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-ser
 import { AUTH_AUTOMATION_EVENT_ORGANIZATION_CREATED } from "@/fragno/backoffice-capabilities/capabilities/auth";
 import { EMAIL_VERIFICATION_TYPE } from "@/fragno/otp";
 
+import { createOrganizationAutomationHooks, AuthObject } from "./auth-object";
 import { issueTestSignUpInvitation } from "./auth-sign-up.test-support";
-import { createOrganizationAutomationHooks, AuthObject } from "./auth.do";
-import { AutomationsObject } from "./automations.do";
+import { AutomationsObject } from "./automations-object";
 import {
   OtpObject,
   type IssueEmailVerificationInput,
   type IssueEmailVerificationResult,
-} from "./otp.do";
+} from "./otp-object";
 
 const localObjects = {
   AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),

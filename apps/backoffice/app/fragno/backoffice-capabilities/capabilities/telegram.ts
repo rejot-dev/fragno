@@ -9,7 +9,7 @@ import type {
 } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import { createDurableHookRepositoryFromCommands } from "@/fragno/durable-hook-command-repository";
 
-import type { TelegramAdminConfigResponse } from "../../../../workers/telegram.do";
+import type { TelegramAdminConfigResponse } from "../../../../workers/telegram-object";
 
 const AUTOMATION_SOURCE = "telegram" as const;
 const AUTOMATION_EVENT_MESSAGE_RECEIVED = "message.received" as const;

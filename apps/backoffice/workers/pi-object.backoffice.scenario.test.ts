@@ -70,7 +70,7 @@ import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-c
 
 import { shutdownCloudflarePostHog } from "./lib/cloudflare-posthog";
 import { createScriptedPiAgentDependencies } from "./pi-durable-scenario.test-support";
-import { PiObject } from "./pi.do";
+import { PiObject } from "./pi-object";
 
 const scenarioObjects = allLocalObjects;
 

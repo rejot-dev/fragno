@@ -23,7 +23,7 @@ import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-f
 import type { MarketplaceCreateDraftListingInput } from "@/fragno/marketplace/contracts";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
 
-import { MarketplaceObject } from "./marketplace.do";
+import { MarketplaceObject } from "./marketplace-object";
 
 const localObjects = {
   MARKETPLACE: (input) => new MarketplaceObject(input),

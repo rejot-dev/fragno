@@ -35,18 +35,18 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 
-import { ApiObject } from "../../../workers/api.do";
-import { AppInstallationsObject } from "../../../workers/app-installations.do";
-import { AppsObject } from "../../../workers/apps.do";
-import { AuthObject } from "../../../workers/auth.do";
-import { AutomationsObject } from "../../../workers/automations.do";
-import { BillingObject } from "../../../workers/billing.do";
-import { CodemodeObject } from "../../../workers/codemode.do";
-import { FormsObject } from "../../../workers/forms.do";
-import { McpObject } from "../../../workers/mcp.do";
-import { ResendObject } from "../../../workers/resend.do";
-import { TelegramObject } from "../../../workers/telegram.do";
-import { UploadObject } from "../../../workers/upload.do";
+import { ApiObject } from "../../../workers/api-object";
+import { AppInstallationsObject } from "../../../workers/app-installations-object";
+import { AppsObject } from "../../../workers/apps-object";
+import { AuthObject } from "../../../workers/auth-object";
+import { AutomationsObject } from "../../../workers/automations-object";
+import { BillingObject } from "../../../workers/billing-object";
+import { CodemodeObject } from "../../../workers/codemode-object";
+import { FormsObject } from "../../../workers/forms-object";
+import { McpObject } from "../../../workers/mcp-object";
+import { ResendObject } from "../../../workers/resend-object";
+import { TelegramObject } from "../../../workers/telegram-object";
+import { UploadObject } from "../../../workers/upload-object";
 import { createAutomationsRouteCaller } from "./route-callers";
 import { createRouteBackedAutomationRouterRuntime } from "./routing-route-runtime";
 import {

@@ -44,7 +44,8 @@ import {
 import { recordPiAgentTurn } from "@/fragno/pi/agent/pi-agent-turns";
 
 import { createScriptedPiAgentDependencies } from "./pi-durable-scenario.test-support";
-import { PiObject, openPiAgentStorage, type Pi } from "./pi.do";
+import { PiObject, openPiAgentStorage } from "./pi-object";
+import { type Pi } from "./pi.do";
 
 function manager(organizationId: string) {
   return (env as CloudflareEnv).PI_MANAGER.getByName(

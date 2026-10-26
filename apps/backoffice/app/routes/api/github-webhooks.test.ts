@@ -17,7 +17,7 @@ import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-f
 import { bytesToHex } from "@/lib/crypto";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
-import { GitHubWebhookRouterObject } from "../../../workers/github-webhook-router.do";
+import { GitHubWebhookRouterObject } from "../../../workers/github-webhook-router-object";
 import { action } from "./github-webhooks";
 
 const localObjects = {

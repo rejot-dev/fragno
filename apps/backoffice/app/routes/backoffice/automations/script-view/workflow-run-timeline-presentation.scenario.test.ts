@@ -18,12 +18,12 @@ import {
   type BackofficeScenarioContext,
 } from "@/fragno/automation/scenario";
 
-import { ApiObject } from "../../../../../workers/api.do";
-import { AuthObject } from "../../../../../workers/auth.do";
-import { AutomationsObject } from "../../../../../workers/automations.do";
-import { BillingObject } from "../../../../../workers/billing.do";
-import { CodemodeObject } from "../../../../../workers/codemode.do";
-import { FormsObject } from "../../../../../workers/forms.do";
+import { ApiObject } from "../../../../../workers/api-object";
+import { AuthObject } from "../../../../../workers/auth-object";
+import { AutomationsObject } from "../../../../../workers/automations-object";
+import { BillingObject } from "../../../../../workers/billing-object";
+import { CodemodeObject } from "../../../../../workers/codemode-object";
+import { FormsObject } from "../../../../../workers/forms-object";
 import { projectWorkflowRunTimeline } from "./workflow-run-timeline-presentation";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {

@@ -37,21 +37,21 @@ import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-hos
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import { bytesToHex } from "@/lib/crypto";
 
-import { ApiObject } from "../../../../../workers/api.do";
-import { AppInstallationsObject } from "../../../../../workers/app-installations.do";
-import { AppsObject } from "../../../../../workers/apps.do";
-import { AuthObject } from "../../../../../workers/auth.do";
-import { AutomationsObject } from "../../../../../workers/automations.do";
-import { CodemodeObject } from "../../../../../workers/codemode.do";
-import { FormsObject } from "../../../../../workers/forms.do";
-import { GitHubWebhookRouterObject } from "../../../../../workers/github-webhook-router.do";
-import { GitHubObject } from "../../../../../workers/github.do";
-import { McpObject } from "../../../../../workers/mcp.do";
-import { OtpObject } from "../../../../../workers/otp.do";
-import { ProjectConnectorObject } from "../../../../../workers/project-connector.do";
-import { ResendObject } from "../../../../../workers/resend.do";
-import { TelegramObject } from "../../../../../workers/telegram.do";
-import { UploadObject } from "../../../../../workers/upload.do";
+import { ApiObject } from "../../../../../workers/api-object";
+import { AppInstallationsObject } from "../../../../../workers/app-installations-object";
+import { AppsObject } from "../../../../../workers/apps-object";
+import { AuthObject } from "../../../../../workers/auth-object";
+import { AutomationsObject } from "../../../../../workers/automations-object";
+import { CodemodeObject } from "../../../../../workers/codemode-object";
+import { FormsObject } from "../../../../../workers/forms-object";
+import { GitHubObject } from "../../../../../workers/github-object";
+import { GitHubWebhookRouterObject } from "../../../../../workers/github-webhook-router-object";
+import { McpObject } from "../../../../../workers/mcp-object";
+import { OtpObject } from "../../../../../workers/otp-object";
+import { ProjectConnectorObject } from "../../../../../workers/project-connector-object";
+import { ResendObject } from "../../../../../workers/resend-object";
+import { TelegramObject } from "../../../../../workers/telegram-object";
+import { UploadObject } from "../../../../../workers/upload-object";
 const scenarioObjects = {
   API: (input) => new ApiObject(input),
   APPS: (input) => new AppsObject(input),

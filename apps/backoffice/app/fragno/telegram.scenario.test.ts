@@ -15,13 +15,13 @@ vi.mock("cloudflare:workers", () => workers);
 
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 
-import { ApiObject } from "../../workers/api.do";
-import { AuthObject } from "../../workers/auth.do";
-import { AutomationsObject } from "../../workers/automations.do";
-import { FormsObject } from "../../workers/forms.do";
-import { McpObject } from "../../workers/mcp.do";
-import { OtpObject } from "../../workers/otp.do";
-import { UploadObject } from "../../workers/upload.do";
+import { ApiObject } from "../../workers/api-object";
+import { AuthObject } from "../../workers/auth-object";
+import { AutomationsObject } from "../../workers/automations-object";
+import { FormsObject } from "../../workers/forms-object";
+import { McpObject } from "../../workers/mcp-object";
+import { OtpObject } from "../../workers/otp-object";
+import { UploadObject } from "../../workers/upload-object";
 import {
   backofficeFiles,
   defineBackofficeScenario,

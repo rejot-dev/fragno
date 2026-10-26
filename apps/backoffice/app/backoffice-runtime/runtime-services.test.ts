@@ -10,7 +10,7 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 
-import { AuthObject } from "../../workers/auth.do";
+import { AuthObject } from "../../workers/auth-object";
 import { createInMemoryBackofficeRuntime } from "./in-memory-runtime";
 import {
   BackofficeKernel,

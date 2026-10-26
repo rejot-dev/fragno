@@ -43,17 +43,17 @@ import {
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
-import { ApiObject } from "./api.do";
-import { AuthObject } from "./auth.do";
-import { AutomationsObject } from "./automations.do";
-import { BillingObject } from "./billing.do";
-import { CodemodeObject } from "./codemode.do";
-import { FormsObject } from "./forms.do";
-import { McpObject } from "./mcp.do";
-import { OtpObject } from "./otp.do";
-import { ResendObject } from "./resend.do";
-import { TelegramObject } from "./telegram.do";
-import { UploadObject } from "./upload.do";
+import { ApiObject } from "./api-object";
+import { AuthObject } from "./auth-object";
+import { AutomationsObject } from "./automations-object";
+import { BillingObject } from "./billing-object";
+import { CodemodeObject } from "./codemode-object";
+import { FormsObject } from "./forms-object";
+import { McpObject } from "./mcp-object";
+import { OtpObject } from "./otp-object";
+import { ResendObject } from "./resend-object";
+import { TelegramObject } from "./telegram-object";
+import { UploadObject } from "./upload-object";
 
 const scenarioObjects = {
   API: (input) => new ApiObject(input),

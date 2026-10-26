@@ -23,11 +23,11 @@ import { createRuntimeStateBackend } from "@/fragno/codemode/runtime-state-backe
 import { createEventRuntime } from "@/fragno/runtime-tools/families/event-runtime";
 import { createStateShellFileSystem } from "@/fragno/runtime-tools/state-shell-file-system";
 
-import { AutomationsObject } from "../../../workers/automations.do";
-import { BillingObject } from "../../../workers/billing.do";
-import { CodemodeObject } from "../../../workers/codemode.do";
-import { McpObject } from "../../../workers/mcp.do";
-import { UploadObject } from "../../../workers/upload.do";
+import { AutomationsObject } from "../../../workers/automations-object";
+import { BillingObject } from "../../../workers/billing-object";
+import { CodemodeObject } from "../../../workers/codemode-object";
+import { McpObject } from "../../../workers/mcp-object";
+import { UploadObject } from "../../../workers/upload-object";
 import { AUTOMATION_SYSTEM_INITIATOR } from "./actors";
 import { createAutomationRuntimeExecution } from "./authority";
 import { createAutomationsRouteCaller } from "./route-callers";

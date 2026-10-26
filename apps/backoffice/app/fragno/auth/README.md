@@ -284,12 +284,12 @@ tokens.
 - `app/backoffice-api/provisioning-router.ts`: the
   [provisioning API](../apps/README.md#provisioning-api) for first-party apps; Auth's side is
   `provisionAppOrganization`, `confirmAppOrganizationMember`, `findInvitation`, and
-  `acceptAppInvitation` in `workers/auth.do.ts`.
+  `acceptAppInvitation` in `workers/auth-object.ts`.
 - `workers/auth/better-auth-oauth-consent.ts`: provider-owned consent review, listing, device
   tracking, revocation, same-origin decisions, and live consent enforcement.
 - `oauth-consent.ts`: credential-free review/list contracts and revocation inputs.
 - `workers/auth/backoffice-user-token-grant.ts`: the shared browser/first-party user-grant contract;
-  `workers/auth.do.ts` supplies the live Auth-backed resolver.
+  `workers/auth-object.ts` supplies the live Auth-backed resolver.
 - `token-lifecycle.ts`: user and installed-app JWT signers, verifiers, and cookie primitives.
 
 `app/routes/api/backoffice-execution-token.scenario.test.ts` exercises real SQLite-backed OAuth,

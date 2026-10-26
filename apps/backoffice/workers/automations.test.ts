@@ -61,10 +61,10 @@ vi.mock("cloudflare:workers", () => ({
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { readBackofficeAutomationSource } from "@/fragno/automation/read-backoffice-automation-source";
 
-import { AutomationsObject } from "./automations.do";
-import { MarketplaceObject } from "./marketplace.do";
-import { McpObject } from "./mcp.do";
-import { UploadObject } from "./upload.do";
+import { AutomationsObject } from "./automations-object";
+import { MarketplaceObject } from "./marketplace-object";
+import { McpObject } from "./mcp-object";
+import { UploadObject } from "./upload-object";
 
 const localObjects = {
   AUTOMATIONS: (input) => new AutomationsObject(input),

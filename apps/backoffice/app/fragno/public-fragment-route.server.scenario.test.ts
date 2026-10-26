@@ -19,13 +19,13 @@ import { apiPublicRoute } from "@/routes/api/api-route.server";
 import { mcpPublicRoute } from "@/routes/api/mcp-route.server";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
-import { ApiObject } from "../../workers/api.do";
-import { AuthObject } from "../../workers/auth.do";
-import { AutomationsObject } from "../../workers/automations.do";
-import { FormsObject } from "../../workers/forms.do";
-import { McpObject } from "../../workers/mcp.do";
-import { TelegramObject } from "../../workers/telegram.do";
-import { UploadObject } from "../../workers/upload.do";
+import { ApiObject } from "../../workers/api-object";
+import { AuthObject } from "../../workers/auth-object";
+import { AutomationsObject } from "../../workers/automations-object";
+import { FormsObject } from "../../workers/forms-object";
+import { McpObject } from "../../workers/mcp-object";
+import { TelegramObject } from "../../workers/telegram-object";
+import { UploadObject } from "../../workers/upload-object";
 import { forwardPublicFragmentRequest } from "./public-fragment-route.server";
 
 const scenarioObjects = {

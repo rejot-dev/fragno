@@ -19,8 +19,8 @@ import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import type { InMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 
-import { AutomationsObject } from "./automations.do";
-import { FormsObject } from "./forms.do";
+import { AutomationsObject } from "./automations-object";
+import { FormsObject } from "./forms-object";
 
 let runtime: InMemoryBackofficeRuntime | null = null;
 

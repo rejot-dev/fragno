@@ -681,8 +681,8 @@ not changed by this split.
 Domain failures return `{ ok: false, error: { code, message } }`. Invalid RPC input fails before
 orchestration or domain services; unexpected infrastructure failures propagate.
 
-`workers/app-installations.do.scenario.test.ts` exercises both production object behaviors through
-real SQLite, including owner isolation, object and full-runtime restart, and local reads and
+`workers/app-installations-object.scenario.test.ts` exercises both production object behaviors
+through real SQLite, including owner isolation, object and full-runtime restart, and local reads and
 revocation after the real registry connection fails. New installation approvals and grant changes
 fail closed during that outage.
 

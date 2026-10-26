@@ -14,11 +14,11 @@ import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-f
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
-import { AppsObject } from "../../../workers/apps.do";
-import { AuthObject } from "../../../workers/auth.do";
-import { AutomationsObject } from "../../../workers/automations.do";
-import { FormsObject } from "../../../workers/forms.do";
-import { UploadObject } from "../../../workers/upload.do";
+import { AppsObject } from "../../../workers/apps-object";
+import { AuthObject } from "../../../workers/auth-object";
+import { AutomationsObject } from "../../../workers/automations-object";
+import { FormsObject } from "../../../workers/forms-object";
+import { UploadObject } from "../../../workers/upload-object";
 import {
   defineBackofficeScenario,
   runBackofficeScenario,

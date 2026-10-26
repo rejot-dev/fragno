@@ -17,8 +17,8 @@ import {
 } from "@/fragno/automation/scenario";
 import { readScenarioReplicaView } from "@/fragno/lofi/scenario-replica-database";
 
-import { AutomationsObject } from "../../../../workers/automations.do";
-import { UploadObject } from "../../../../workers/upload.do";
+import { AutomationsObject } from "../../../../workers/automations-object";
+import { UploadObject } from "../../../../workers/upload-object";
 import { UPLOAD_PROVIDER_DATABASE } from "../../upload";
 import { readyUploadFilesView, toUploadFileRecord } from "./replica";
 

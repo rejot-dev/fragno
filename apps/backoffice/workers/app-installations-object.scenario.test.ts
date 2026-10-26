@@ -24,14 +24,14 @@ import {
   type BackofficeScenarioStep,
 } from "@/fragno/automation/scenario";
 
-import { ApiObject } from "./api.do";
-import { AppInstallationsObject } from "./app-installations.do";
-import { AppsObject } from "./apps.do";
-import { AuthObject } from "./auth.do";
-import { AutomationsObject } from "./automations.do";
-import { FormsObject } from "./forms.do";
-import { TelegramObject } from "./telegram.do";
-import { UploadObject } from "./upload.do";
+import { ApiObject } from "./api-object";
+import { AppInstallationsObject } from "./app-installations-object";
+import { AppsObject } from "./apps-object";
+import { AuthObject } from "./auth-object";
+import { AutomationsObject } from "./automations-object";
+import { FormsObject } from "./forms-object";
+import { TelegramObject } from "./telegram-object";
+import { UploadObject } from "./upload-object";
 
 const scenarioObjects = {
   API: (input) => new ApiObject(input),

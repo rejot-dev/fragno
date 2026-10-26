@@ -74,8 +74,19 @@ const VALID_PAYLOAD = {
   botUsername: "fragno_bot",
 };
 
-const createTelegramObject = (state: DurableObjectState) =>
-  new Telegram(state, { DOCS_PUBLIC_BASE_URL: "https://example.com" } as CloudflareEnv);
+const createTelegramObject = async ({
+  state,
+  waitForBlockConcurrency,
+}: {
+  state: DurableObjectState;
+  waitForBlockConcurrency: () => Promise<void>;
+}) => {
+  const telegram = new Telegram(state, {
+    DOCS_PUBLIC_BASE_URL: "https://example.com",
+  } as CloudflareEnv);
+  await waitForBlockConcurrency();
+  return telegram;
+};
 
 const createState = (
   initialEntries?: Array<[string, unknown]>,
@@ -93,10 +104,11 @@ const createState = (
       alarm = scheduledTime;
     }),
   };
-  let blockConcurrencyPromise: Promise<unknown> | undefined;
+  const blockedCallbacks: Promise<unknown>[] = [];
   const blockConcurrencyWhile = vi.fn(<T>(callback: () => Promise<T>) => {
-    blockConcurrencyPromise = Promise.resolve().then(callback);
-    return blockConcurrencyPromise as Promise<T>;
+    const blocked = Promise.resolve().then(callback);
+    blockedCallbacks.push(blocked);
+    return blocked;
   });
 
   return {
@@ -112,7 +124,13 @@ const createState = (
       storage,
       blockConcurrencyWhile,
     } as unknown as DurableObjectState,
-    waitForBlockConcurrency: async () => await blockConcurrencyPromise,
+    // The object loads its implementation in one callback, and the implementation's constructor
+    // starts another; workerd holds events until both settle, which a test has to wait for.
+    waitForBlockConcurrency: async () => {
+      for (let settled = 0; settled < blockedCallbacks.length; settled += 1) {
+        await blockedCallbacks[settled];
+      }
+    },
   };
 };
 
@@ -186,8 +204,9 @@ describe("Telegram Durable Object", () => {
   });
 
   test("binds the fragment to the durable object's organization", async () => {
-    const { state, store } = createState();
-    const telegram = createTelegramObject(state);
+    const created = createState();
+    const { store } = created;
+    const telegram = await createTelegramObject(created);
 
     await telegram.setAdminConfig(VALID_PAYLOAD);
 
@@ -213,8 +232,8 @@ describe("Telegram Durable Object", () => {
   });
 
   test("uses the configured Telegram API base URL when registering the webhook", async () => {
-    const { state } = createState();
-    const telegram = createTelegramObject(state);
+    const created = createState();
+    const telegram = await createTelegramObject(created);
 
     await telegram.setAdminConfig({
       ...VALID_PAYLOAD,
@@ -228,8 +247,9 @@ describe("Telegram Durable Object", () => {
   });
 
   test("can be configured for the system scope", async () => {
-    const { state, store } = createState(undefined, { kind: "system" });
-    const telegram = createTelegramObject(state);
+    const created = createState(undefined, { kind: "system" });
+    const { store } = created;
+    const telegram = await createTelegramObject(created);
 
     await telegram.setAdminConfig(VALID_PAYLOAD);
 
@@ -243,8 +263,9 @@ describe("Telegram Durable Object", () => {
   });
 
   test("can be configured for a user scope", async () => {
-    const { state, store } = createState(undefined, { kind: "user", userId: "user-1" });
-    const telegram = createTelegramObject(state);
+    const created = createState(undefined, { kind: "user", userId: "user-1" });
+    const { store } = created;
+    const telegram = await createTelegramObject(created);
 
     await telegram.setAdminConfig(VALID_PAYLOAD);
 
@@ -258,8 +279,8 @@ describe("Telegram Durable Object", () => {
   });
 
   test("rejects requests whose scope guard does not match the bound durable object", async () => {
-    const { state } = createState();
-    const telegram = createTelegramObject(state);
+    const created = createState();
+    const telegram = await createTelegramObject(created);
 
     await telegram.setAdminConfig(VALID_PAYLOAD);
 
@@ -305,8 +326,8 @@ describe("Telegram Durable Object", () => {
   });
 
   test("resolves normalized automation file metadata through Telegram getFile", async () => {
-    const { state } = createState();
-    const telegram = createTelegramObject(state);
+    const created = createState();
+    const telegram = await createTelegramObject(created);
 
     await telegram.setAdminConfig(VALID_PAYLOAD);
 
@@ -319,8 +340,8 @@ describe("Telegram Durable Object", () => {
   });
 
   test("downloads raw automation file bytes through Telegram file endpoint", async () => {
-    const { state } = createState();
-    const telegram = createTelegramObject(state);
+    const created = createState();
+    const telegram = await createTelegramObject(created);
 
     await telegram.setAdminConfig(VALID_PAYLOAD);
 

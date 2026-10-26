@@ -25,6 +25,10 @@ import { Upload } from "./upload.do";
 
 System.Settings.Set({ useAcceleration: false });
 
+// Startup evaluates this module and every `*.do.ts` it imports, whichever object woke the isolate.
+// Each object class imports its implementation (`*-object.ts`) on first use, so keep `*.do.ts`
+// free of value imports.
+
 // Keep the object host in module-worker format even though public HTTP is disabled.
 export default {
   fetch() {

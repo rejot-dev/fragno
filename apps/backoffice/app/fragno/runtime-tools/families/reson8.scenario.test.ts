@@ -17,13 +17,13 @@ import { createReson8Server } from "@/fragno/reson8";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
-import { ApiObject } from "../../../../workers/api.do";
-import { AuthObject } from "../../../../workers/auth.do";
-import { AutomationsObject } from "../../../../workers/automations.do";
-import { BillingObject } from "../../../../workers/billing.do";
-import { CodemodeObject } from "../../../../workers/codemode.do";
-import { FormsObject } from "../../../../workers/forms.do";
-import { UploadObject } from "../../../../workers/upload.do";
+import { ApiObject } from "../../../../workers/api-object";
+import { AuthObject } from "../../../../workers/auth-object";
+import { AutomationsObject } from "../../../../workers/automations-object";
+import { BillingObject } from "../../../../workers/billing-object";
+import { CodemodeObject } from "../../../../workers/codemode-object";
+import { FormsObject } from "../../../../workers/forms-object";
+import { UploadObject } from "../../../../workers/upload-object";
 import { createReson8Runtime } from "./reson8-runtime";
 
 const scenarioObjects = {

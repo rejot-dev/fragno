@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import { Kysely, SqliteDialect } from "kysely";
 
-import type { AuthDatabase } from "./auth.do";
+import type { AuthDatabase } from "./auth-object";
 
 /** Creates the transient auth database using the owning local runtime's logical clock. */
 export function createInMemoryAuthDatabase(nowEpochMs: () => number): Kysely<AuthDatabase> {

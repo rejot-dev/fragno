@@ -15,9 +15,9 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
 
-import { AuthObject } from "../../../workers/auth.do";
-import { AutomationsObject } from "../../../workers/automations.do";
-import { UploadObject } from "../../../workers/upload.do";
+import { AuthObject } from "../../../workers/auth-object";
+import { AutomationsObject } from "../../../workers/automations-object";
+import { UploadObject } from "../../../workers/upload-object";
 import type { LocalBackofficeObjects } from "../local-object-factory";
 import { SqliteObjectCoordination } from "./sqlite-object-coordination";
 import { SqliteBackofficeObjectStorage } from "./sqlite-object-storage";

@@ -2,7 +2,7 @@ import { type BetterAuthPlugin } from "better-auth";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { z } from "zod";
 
-import type { ConfirmSignUpInvitationResult } from "../otp.do";
+import type { ConfirmSignUpInvitationResult } from "../otp-object";
 
 const signUpInvitationRequestSchema = z.object({
   email: z.string().trim().toLowerCase().pipe(z.email()),

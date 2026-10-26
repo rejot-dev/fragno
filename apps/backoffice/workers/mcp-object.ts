@@ -1,0 +1,197 @@
+import {
+  type BackofficeRoutableScope,
+  backofficeRoutableScopeSchema,
+  backofficeScopeOrganization,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
+import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
+import { RpcTarget } from "cloudflare:workers";
+
+import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
+import { createBackofficeFragmentHttpTransport } from "@/backoffice-runtime/fragment-http-transport";
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import {
+  backofficeContextScopeFromDurableObjectId,
+  requireBackofficeContextScopeFromDurableObjectId,
+  backofficeObjectScopeFromContextScope,
+  type McpCommands,
+} from "@/backoffice-runtime/object-registry";
+import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
+import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
+import {
+  loadDurableHook,
+  loadDurableHookQueue,
+  type DurableHookQueueOptions,
+} from "@/fragno/durable-hooks";
+import { createMcpServer, type McpConfig, type McpFragment } from "@/fragno/mcp";
+import { recordIntegrationConnectionState } from "@/fragno/runtime-tools/families/integrations/integration-events";
+import { authMethodOfFragmentAuthMode } from "@/fragno/runtime-tools/families/integrations/integration-implementation";
+import { encodeMcpConnectionId } from "@/fragno/runtime-tools/families/integrations/mcp-integration";
+import {
+  isScopedPublicOAuthRedirectUriAllowed,
+  MCP_PUBLIC_PREFIX,
+} from "@/fragno/scoped-public-fragment-routes";
+
+import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
+import type { BackofficeObjectImplementation } from "./lib/backoffice-object-implementation";
+import {
+  createScopedFragmentDurableObjectRuntime,
+  type ScopedFragmentDurableObjectRuntime,
+} from "./lib/scoped-fragment-durable-object";
+
+type McpObjectEnv = Pick<BackofficeRuntimeEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">;
+
+function serverSubject(scope: BackofficeRoutableScope, serverId: string) {
+  const organization = backofficeScopeOrganization(scope);
+  return {
+    scope,
+    ...(organization ? { orgId: organization.orgId } : {}),
+    serverId,
+    connectionId: encodeMcpConnectionId(serverId),
+  };
+}
+
+export class McpObject extends RpcTarget implements McpCommands {
+  readonly #runtimeServices: BackofficeRuntimeServices;
+  readonly #forwardHttpRequest: ReturnType<typeof createBackofficeFragmentHttpTransport>;
+  readonly #host: FragmentDurableObjectHost<McpConfig, McpFragment>;
+  readonly #scopedRuntime: ScopedFragmentDurableObjectRuntime<McpFragment, BackofficeRoutableScope>;
+  readonly #fetch: typeof fetch;
+
+  constructor({
+    state,
+    env = {},
+    nowEpochMs,
+    runtime,
+    implementation,
+    fetch: fetchImpl = fetch,
+  }: {
+    state: BackofficeObjectState;
+    env?: McpObjectEnv;
+    nowEpochMs: () => number;
+    runtime: BackofficeRuntimeServices;
+    implementation: BackofficeObjectImplementation;
+    fetch?: typeof fetch;
+  }) {
+    super();
+    this.#runtimeServices = runtime;
+    this.#fetch = fetchImpl;
+    this.#forwardHttpRequest = createBackofficeFragmentHttpTransport({
+      address: {
+        binding: "MCP",
+        scope: backofficeObjectScopeFromContextScope(
+          requireBackofficeContextScopeFromDurableObjectId(state.id, "MCP"),
+        ),
+      },
+      env,
+      nowEpochMs,
+    });
+    this.#host = implementation.createFragmentHost({
+      name: "MCP",
+      createRuntime: (config) =>
+        createMcpServer(config, implementation.fragmentDatabase, new BackofficeKernel(runtime)),
+      onProcessError: (error) => {
+        console.error("MCP hook processor error", error);
+      },
+      onDispatcherError: (error) => {
+        console.warn("MCP hook dispatcher initialization failed", error);
+      },
+    });
+    this.#scopedRuntime = createScopedFragmentDurableObjectRuntime({
+      name: "MCP",
+      state,
+      ownerScope: backofficeContextScopeFromDurableObjectId(state.id, "MCP"),
+      host: this.#host,
+      scopeSchema: backofficeRoutableScopeSchema,
+      createSource: (scope) => this.#createConfig(scope),
+    });
+
+    void state.blockConcurrencyWhile(async () => {
+      // Restore inside the constructor boundary so alarms cannot run before the dispatcher exists.
+      await this.#scopedRuntime.initializeFromOwnerScope();
+    });
+  }
+
+  #createConfig(ownerScope: BackofficeRoutableScope): McpConfig {
+    return {
+      fetch: this.#fetch,
+      allowedOAuthRedirectUris: (redirectUri) =>
+        isScopedPublicOAuthRedirectUriAllowed({
+          publicOrigin: this.#runtimeServices.config.docsPublicBaseUrl,
+          publicPrefix: MCP_PUBLIC_PREFIX,
+          redirectUri,
+        }),
+      onServerConfigurationChanged: async (payload, context) => {
+        const scope = ownerScope;
+        await this.#runtimeServices.objects.automations.for(scope).commands.ingestEvent(
+          {
+            id: context.hookId.toString(),
+            scopeRestriction: null,
+            scope,
+            source: "mcp",
+            eventType: "server.configuration.changed",
+            occurredAt: new Date().toISOString(),
+            payload: { ...payload },
+            actors: {
+              initiator: AUTOMATION_SYSTEM_INITIATOR,
+              principal: null,
+              delegation: [],
+            },
+            subject: serverSubject(scope, payload.serverId),
+            causation: { kind: "origin" },
+          },
+          { propagationContext: context.capturePropagationContext() },
+        );
+      },
+      onServerConfigurationDeleted: async (payload, context) => {
+        await recordIntegrationConnectionState(
+          this.#runtimeServices.objects.automations.for(ownerScope).commands,
+          {
+            id: context.hookId.toString(),
+            scope: ownerScope,
+            service: "mcp",
+            connectionId: encodeMcpConnectionId(payload.serverId),
+            state: "disconnected",
+            occurredAt: context.createdAt,
+          },
+          { propagationContext: context.capturePropagationContext() },
+        );
+      },
+      onServerReadinessChanged: async (payload, context) => {
+        await recordIntegrationConnectionState(
+          this.#runtimeServices.objects.automations.for(ownerScope).commands,
+          {
+            id: context.hookId.toString(),
+            scope: ownerScope,
+            service: "mcp",
+            connectionId: encodeMcpConnectionId(payload.serverId),
+            state: payload.ready ? "ready" : "unavailable",
+            label: {
+              name: payload.server?.name ?? payload.serverId,
+              authMethod: payload.server && authMethodOfFragmentAuthMode(payload.server.authMode),
+            },
+            occurredAt: context.createdAt,
+          },
+          { propagationContext: context.capturePropagationContext() },
+        );
+      },
+    };
+  }
+
+  async getDurableHookQueue(options?: DurableHookQueueOptions) {
+    return await loadDurableHookQueue(await this.#scopedRuntime.getRuntime(), options);
+  }
+
+  async getDurableHook(hookId: string) {
+    return await loadDurableHook(await this.#scopedRuntime.getRuntime(), hookId);
+  }
+
+  async alarm(): Promise<void> {
+    await this.#scopedRuntime.alarm();
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    return await this.#forwardHttpRequest(request, async (verifiedRequest, options) =>
+      this.#host.fetch(await this.#scopedRuntime.getRuntime(), verifiedRequest, options),
+    );
+  }
+}
