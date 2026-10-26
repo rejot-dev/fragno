@@ -20,7 +20,7 @@ import type { CreateSandboxRuntimeProviders } from "@/sandbox/contracts";
 import { createInMemoryAuthDatabase } from "../../workers/in-memory-auth-database";
 import { noOpBackofficeConfiguredObjectLifecycle } from "../../workers/lib/backoffice-fragment-durable-object";
 import type { BackofficeObjectImplementation } from "../../workers/lib/backoffice-object-implementation";
-import type { PiObject } from "../../workers/pi.do";
+import type { PiObject } from "../../workers/pi-object";
 import type { BackofficeRuntimeEnv } from "./backoffice-runtime-env";
 import { createDurableObjectDatabaseAdapterScope } from "./database-adapters";
 import {

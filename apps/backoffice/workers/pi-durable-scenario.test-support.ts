@@ -54,6 +54,6 @@ export function createPiScenarioDependencies(): PiAgentDependencies {
 /** Runs the production Cloudflare agent with the shared scripted provider. */
 export class PiScenarioAgent extends Pi {
   constructor(state: DurableObjectState, env: CloudflareEnv) {
-    super(state, env, createPiScenarioDependencies());
+    super(state, env, async () => createPiScenarioDependencies());
   }
 }

@@ -19,18 +19,18 @@ import { encodeConnectorConnectionId } from "@/fragno/runtime-tools/families/int
 import { runProjectConnectorScenario } from "@/fragno/runtime-tools/families/project-connector-scenario.test-utils";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
-import { ApiObject } from "../../../workers/api.do";
-import { AppInstallationsObject } from "../../../workers/app-installations.do";
-import { AppsObject } from "../../../workers/apps.do";
-import { AuthObject } from "../../../workers/auth.do";
-import { AutomationsObject } from "../../../workers/automations.do";
-import { CodemodeObject } from "../../../workers/codemode.do";
-import { FormsObject } from "../../../workers/forms.do";
-import { McpObject } from "../../../workers/mcp.do";
-import { OtpObject } from "../../../workers/otp.do";
-import { ProjectConnectorObject } from "../../../workers/project-connector.do";
-import { TelegramObject } from "../../../workers/telegram.do";
-import { UploadObject } from "../../../workers/upload.do";
+import { ApiObject } from "../../../workers/api-object";
+import { AppInstallationsObject } from "../../../workers/app-installations-object";
+import { AppsObject } from "../../../workers/apps-object";
+import { AuthObject } from "../../../workers/auth-object";
+import { AutomationsObject } from "../../../workers/automations-object";
+import { CodemodeObject } from "../../../workers/codemode-object";
+import { FormsObject } from "../../../workers/forms-object";
+import { McpObject } from "../../../workers/mcp-object";
+import { OtpObject } from "../../../workers/otp-object";
+import { ProjectConnectorObject } from "../../../workers/project-connector-object";
+import { TelegramObject } from "../../../workers/telegram-object";
+import { UploadObject } from "../../../workers/upload-object";
 import { action, loader } from "./project-connector";
 
 const scenarioObjects = {

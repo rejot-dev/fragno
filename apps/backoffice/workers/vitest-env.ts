@@ -4,14 +4,15 @@ import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-ser
 import type { BackofficeMeData } from "@/fragno/auth/contracts";
 import { piAgentObjectName, type PiAgent } from "@/fragno/pi/agent/pi-agent-contract";
 
-import { Auth, AuthObject } from "./auth.do";
+import { AuthObject } from "./auth-object";
+import { Auth } from "./auth.do";
 import { Automations } from "./automations.do";
 import { Billing } from "./billing.do";
 import { Codemode } from "./codemode.do";
 import { createCloudflareBackofficeObjectContext } from "./lib/cloudflare-backoffice-object-implementation";
 import { Mcp } from "./mcp.do";
 import { PiScenarioAgent } from "./pi-durable-scenario.test-support";
-import { PiManagerObject } from "./pi-manager.do";
+import { PiManagerObject } from "./pi-manager-object";
 import { Upload } from "./upload.do";
 
 export { PiScenarioAgent, Auth, Automations, Billing, Codemode, Mcp, Upload };

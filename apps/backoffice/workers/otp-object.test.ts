@@ -31,13 +31,13 @@ import {
   SIGN_UP_INVITATION_TYPE,
 } from "@/fragno/otp";
 
+import { AuthObject } from "./auth-object";
 import { issueTestSignUpInvitation } from "./auth-sign-up.test-support";
-import { AuthObject } from "./auth.do";
 import {
   handleEmailVerificationConfirmed,
   handleIdentityClaimConfirmed,
   OtpObject,
-} from "./otp.do";
+} from "./otp-object";
 
 const localObjects = {
   AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),

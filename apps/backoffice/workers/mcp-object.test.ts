@@ -18,7 +18,7 @@ import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 
-import { McpObject } from "./mcp.do";
+import { McpObject } from "./mcp-object";
 
 const localObjects = {
   MCP: (input) => new McpObject(input),

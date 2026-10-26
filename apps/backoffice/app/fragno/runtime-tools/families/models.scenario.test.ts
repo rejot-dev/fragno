@@ -28,7 +28,7 @@ import { executeBackofficeRuntimeTool } from "@/fragno/runtime-tools/runtime-too
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import { base64ToBytes } from "@/lib/base64";
 
-import { BillingObject } from "../../../../workers/billing.do";
+import { BillingObject } from "../../../../workers/billing-object";
 import { modelsToolFamily } from "./models";
 
 const scope: BackofficeContextScope = { kind: "org", orgId: "org-1" };

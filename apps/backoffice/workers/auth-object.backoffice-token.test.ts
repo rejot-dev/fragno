@@ -32,10 +32,10 @@ import { loader as loadBackofficeMe } from "@/routes/api/backoffice-me";
 import { getSetCookieHeaders } from "@/worker-runtime/http-headers";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
+import { AuthObject } from "./auth-object";
 import { issueTestSignUpInvitation } from "./auth-sign-up.test-support";
-import { AuthObject } from "./auth.do";
-import { AutomationsObject } from "./automations.do";
-import { OtpObject } from "./otp.do";
+import { AutomationsObject } from "./automations-object";
+import { OtpObject } from "./otp-object";
 
 const localObjects = {
   AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),

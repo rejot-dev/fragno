@@ -10,7 +10,7 @@ import {
   splitOrganizationRoles,
 } from "@/fragno/auth/contracts";
 
-import type { AuthDatabase } from "../auth.do";
+import type { AuthDatabase } from "../auth-object";
 import { toDate } from "./stored-date";
 
 /**

@@ -13,16 +13,16 @@ import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-f
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
 import { CLOUDFLARE_SANDBOX_PROVIDER, type SandboxRuntimeProviders } from "@/sandbox/contracts";
 
-import { ApiObject } from "../../../../workers/api.do";
-import { AuthObject } from "../../../../workers/auth.do";
-import { AutomationsObject } from "../../../../workers/automations.do";
-import { BillingObject } from "../../../../workers/billing.do";
-import { CodemodeObject } from "../../../../workers/codemode.do";
-import { FormsObject } from "../../../../workers/forms.do";
-import { OtpObject } from "../../../../workers/otp.do";
-import { SandboxManagerObject } from "../../../../workers/sandbox-manager.do";
-import { TelegramObject } from "../../../../workers/telegram.do";
-import { UploadObject } from "../../../../workers/upload.do";
+import { ApiObject } from "../../../../workers/api-object";
+import { AuthObject } from "../../../../workers/auth-object";
+import { AutomationsObject } from "../../../../workers/automations-object";
+import { BillingObject } from "../../../../workers/billing-object";
+import { CodemodeObject } from "../../../../workers/codemode-object";
+import { FormsObject } from "../../../../workers/forms-object";
+import { OtpObject } from "../../../../workers/otp-object";
+import { SandboxManagerObject } from "../../../../workers/sandbox-manager-object";
+import { TelegramObject } from "../../../../workers/telegram-object";
+import { UploadObject } from "../../../../workers/upload-object";
 
 /** Containers that echo `printf` arguments, so command output is observable. */
 function scenarioSandboxProviders(): SandboxRuntimeProviders {

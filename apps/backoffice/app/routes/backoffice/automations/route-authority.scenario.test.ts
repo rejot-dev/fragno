@@ -13,11 +13,11 @@ import {
   runBackofficeScenario,
 } from "@/fragno/automation/scenario";
 
-import { ApiObject } from "../../../../workers/api.do";
-import { AuthObject } from "../../../../workers/auth.do";
-import { AutomationsObject } from "../../../../workers/automations.do";
-import { FormsObject } from "../../../../workers/forms.do";
-import { UploadObject } from "../../../../workers/upload.do";
+import { ApiObject } from "../../../../workers/api-object";
+import { AuthObject } from "../../../../workers/auth-object";
+import { AutomationsObject } from "../../../../workers/automations-object";
+import { FormsObject } from "../../../../workers/forms-object";
+import { UploadObject } from "../../../../workers/upload-object";
 import { AutomationDetailRows } from "./detail-rows";
 import { automationRouteActionDetailRows } from "./route-action";
 

@@ -39,15 +39,15 @@ import { executeBackofficeRuntimeTool } from "@/fragno/runtime-tools/runtime-too
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
-import { ApiObject } from "../../../../workers/api.do";
-import { AppInstallationsObject } from "../../../../workers/app-installations.do";
-import { AppsObject } from "../../../../workers/apps.do";
-import { AuthObject } from "../../../../workers/auth.do";
-import { AutomationsObject } from "../../../../workers/automations.do";
-import { CodemodeObject } from "../../../../workers/codemode.do";
-import { FormsObject } from "../../../../workers/forms.do";
-import { OtpObject } from "../../../../workers/otp.do";
-import { UploadObject } from "../../../../workers/upload.do";
+import { ApiObject } from "../../../../workers/api-object";
+import { AppInstallationsObject } from "../../../../workers/app-installations-object";
+import { AppsObject } from "../../../../workers/apps-object";
+import { AuthObject } from "../../../../workers/auth-object";
+import { AutomationsObject } from "../../../../workers/automations-object";
+import { CodemodeObject } from "../../../../workers/codemode-object";
+import { FormsObject } from "../../../../workers/forms-object";
+import { OtpObject } from "../../../../workers/otp-object";
+import { UploadObject } from "../../../../workers/upload-object";
 import { adminAppsRuntimeTools } from "./admin-apps";
 import { adminOAuthClientsRuntimeTools } from "./admin-oauth-clients";
 

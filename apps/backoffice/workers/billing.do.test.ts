@@ -23,7 +23,8 @@ import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-f
 import type { BackofficeRpcContext } from "@/backoffice-runtime/object-registry";
 import type { BillingEventInput } from "@/fragno/billing";
 
-import { Billing, BillingObject } from "./billing.do";
+import { BillingObject } from "./billing-object";
+import { Billing } from "./billing.do";
 
 const localObjects = {
   BILLING: (input) => new BillingObject(input),
@@ -50,14 +51,19 @@ describe("Billing Durable Object", () => {
   test("forwards RPC propagation context through the production wrapper", async () => {
     const result = { accepted: true, eventId: "pi:org-1:hook-1" } as const;
     const recordEvent = vi.spyOn(BillingObject.prototype, "recordEvent").mockResolvedValue(result);
+    const loads: Promise<unknown>[] = [];
     const state = {
       id: { name: "v1:org:org-1" },
-      blockConcurrencyWhile: vi.fn(async () => undefined),
+      // Runs only the object's load: the implementation's own initialization needs storage, which
+      // this test of the forwarding wrapper does not provide.
+      blockConcurrencyWhile: (callback: () => Promise<unknown>) => (loads[0] ??= callback()),
     } as unknown as DurableObjectState;
     const context: BackofficeRpcContext = {
       propagationContext: { traceId: "billing-trace" },
     };
     const billing = new Billing(state, {} as CloudflareEnv);
+    // Workerd holds the call until the object has loaded its implementation; the fake cannot.
+    await loads[0];
 
     try {
       await expect(billing.recordEvent(event(), context)).resolves.toEqual(result);

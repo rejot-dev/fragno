@@ -19,8 +19,8 @@ import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { createBackofficeCapabilitiesRuntime } from "@/fragno/runtime-tools/families/backoffice-capabilities";
 
-import { ApiObject } from "./api.do";
-import { AutomationsObject } from "./automations.do";
+import { ApiObject } from "./api-object";
+import { AutomationsObject } from "./automations-object";
 
 const localObjects = {
   API: (input) => new ApiObject(input),

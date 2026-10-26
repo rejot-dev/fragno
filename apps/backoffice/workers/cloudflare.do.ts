@@ -1,61 +1,24 @@
 import { DurableObject } from "cloudflare:workers";
 
 import type { CloudflareCommands } from "@/backoffice-runtime/object-registry";
-import {
-  createCloudflareDurableObjectRuntimeServices,
-  type BackofficeRuntimeServices,
-} from "@/backoffice-runtime/runtime-services";
-import { createCloudflareServer, type CloudflareFragment } from "@/fragno/cloudflare";
 
-import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
-
-type CloudflareObjectEnv = Partial<
-  Pick<CloudflareEnv, "CLOUDFLARE_WORKERS_ACCOUNT_ID" | "CLOUDFLARE_WORKERS_API_TOKEN">
->;
-
-export class CloudflareObject implements CloudflareCommands {
-  readonly #fragment: CloudflareFragment | null;
-
-  constructor({
-    env,
-    runtime,
-  }: {
-    state: BackofficeObjectState;
-    env?: CloudflareObjectEnv;
-    runtime: BackofficeRuntimeServices;
-  }) {
-    const accountId = env?.CLOUDFLARE_WORKERS_ACCOUNT_ID?.trim();
-    const apiToken = env?.CLOUDFLARE_WORKERS_API_TOKEN?.trim();
-
-    this.#fragment =
-      accountId && apiToken ? createCloudflareServer({ accountId, apiToken }, runtime) : null;
-  }
-
-  async fetch(request: Request): Promise<Response> {
-    if (!this.#fragment) {
-      return Response.json(
-        {
-          code: "NOT_CONFIGURED",
-          message:
-            "Cloudflare is not configured. Set CLOUDFLARE_WORKERS_ACCOUNT_ID and CLOUDFLARE_WORKERS_API_TOKEN.",
-        },
-        { status: 400 },
-      );
-    }
-
-    return await this.#fragment.handler(request);
-  }
-}
+import type { CloudflareObject } from "./cloudflare-object";
 
 export class Cloudflare extends DurableObject<CloudflareEnv> implements CloudflareCommands {
-  readonly #object: CloudflareObject;
+  #object!: CloudflareObject;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
-    this.#object = new CloudflareObject({
-      state,
-      env,
-      runtime: createCloudflareDurableObjectRuntimeServices(env, state),
+    // Imported on first use so that a cold isolate only evaluates the objects it wakes.
+    void state.blockConcurrencyWhile(async () => {
+      const { CloudflareObject } = await import("./cloudflare-object");
+      const { createCloudflareDurableObjectRuntimeServices } =
+        await import("@/backoffice-runtime/runtime-services");
+      this.#object = new CloudflareObject({
+        state,
+        env,
+        runtime: createCloudflareDurableObjectRuntimeServices(env, state),
+      });
     });
   }
 

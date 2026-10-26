@@ -27,12 +27,12 @@ import {
 import { setScenarioAuthUserRole } from "@/fragno/automation/scenario-auth";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
-import { ApiObject } from "../../../workers/api.do";
-import { AuthObject } from "../../../workers/auth.do";
-import { AutomationsObject } from "../../../workers/automations.do";
-import { FormsObject } from "../../../workers/forms.do";
-import { OtpObject } from "../../../workers/otp.do";
-import { UploadObject } from "../../../workers/upload.do";
+import { ApiObject } from "../../../workers/api-object";
+import { AuthObject } from "../../../workers/auth-object";
+import { AutomationsObject } from "../../../workers/automations-object";
+import { FormsObject } from "../../../workers/forms-object";
+import { OtpObject } from "../../../workers/otp-object";
+import { UploadObject } from "../../../workers/upload-object";
 import { action, loader } from "./telegram";
 
 const scenarioObjects = {

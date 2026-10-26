@@ -17,11 +17,11 @@ vi.mock("cloudflare:workers", () => workers);
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 
-import { ApiObject } from "../../../workers/api.do";
-import { AuthObject } from "../../../workers/auth.do";
-import { AutomationsObject } from "../../../workers/automations.do";
-import { FormsObject } from "../../../workers/forms.do";
-import { UploadObject } from "../../../workers/upload.do";
+import { ApiObject } from "../../../workers/api-object";
+import { AuthObject } from "../../../workers/auth-object";
+import { AutomationsObject } from "../../../workers/automations-object";
+import { FormsObject } from "../../../workers/forms-object";
+import { UploadObject } from "../../../workers/upload-object";
 import { createRouteBackedAutomationRouterRuntime } from "./routing-route-runtime";
 import { defineBackofficeScenario, runBackofficeScenario } from "./scenario";
 

@@ -39,9 +39,10 @@ import {
 import type { CodemodeHost } from "@fragno-dev/codemode/execution/codemode-activation-contract";
 import type { GitHubWebhookRouter } from "workers/github-webhook-router.do";
 import type { GitHub } from "workers/github.do";
-import type { IssueIdentityClaimInput, IssueIdentityClaimResult, Otp } from "workers/otp.do";
+import type { IssueIdentityClaimInput, IssueIdentityClaimResult } from "workers/otp-object";
+import type { Otp } from "workers/otp.do";
 import type { Resend } from "workers/resend.do";
-import type { TelegramAdminConfigResponse } from "workers/telegram.do";
+import type { TelegramAdminConfigResponse } from "workers/telegram-object";
 
 import type { FragnoExecutionContext } from "@fragno-dev/core";
 import type { ResendSendEmailInput } from "@fragno-dev/resend-fragment";

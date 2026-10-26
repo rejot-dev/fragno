@@ -104,7 +104,7 @@ import { UPLOAD_REPLICA_SCHEMAS } from "@/fragno/upload/lofi/replica-schemas";
 import { bytesToBase64 } from "@/lib/base64";
 import type { CreateSandboxRuntimeProviders } from "@/sandbox/contracts";
 
-import type { TelegramObject } from "../../../workers/telegram.do";
+import type { TelegramObject } from "../../../workers/telegram-object";
 import { listHookScopes } from "../backoffice-capabilities/backoffice-capabilities";
 import { AUTOMATION_SYSTEM_INITIATOR, BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "./actors";
 import { createRouteBackedAutomationStoreRuntime } from "./bindings-route-runtime";
@@ -4301,7 +4301,7 @@ const createFakeObjectOverrides = async (fakes: ScenarioFakes): Promise<LocalBac
   const overrides: LocalBackofficeObjects = {};
 
   if (fakes.telegram) {
-    const { TelegramObject } = await import("../../../workers/telegram.do");
+    const { TelegramObject } = await import("../../../workers/telegram-object");
     overrides.TELEGRAM = ({ state, env, runtime, implementation, nowEpochMs }) => {
       const fakeTelegram = fakes.telegram!;
       return new (class extends TelegramObject {
@@ -4345,7 +4345,7 @@ const createFakeObjectOverrides = async (fakes: ScenarioFakes): Promise<LocalBac
   }
 
   if (fakes.pi || fakes.classifier || fakes.openaiImages || fakes.openaiDecisions) {
-    const { PiManagerObject } = await import("../../../workers/pi-manager.do");
+    const { PiManagerObject } = await import("../../../workers/pi-manager-object");
     overrides.PI_MANAGER = ({
       state,
       env,

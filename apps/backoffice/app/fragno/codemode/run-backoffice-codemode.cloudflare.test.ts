@@ -48,9 +48,9 @@ import { createTrustedSystemBackofficeToolContext } from "@/fragno/runtime-tools
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
-import { AutomationsObject } from "../../../workers/automations.do";
-import { CodemodeObject } from "../../../workers/codemode.do";
-import { McpObject } from "../../../workers/mcp.do";
+import { AutomationsObject } from "../../../workers/automations-object";
+import { CodemodeObject } from "../../../workers/codemode-object";
+import { McpObject } from "../../../workers/mcp-object";
 
 // The test setup serves the bridge's executor in-process behind this binding.
 const testCodemodeExecutor = createCodemodeServiceExecutor(

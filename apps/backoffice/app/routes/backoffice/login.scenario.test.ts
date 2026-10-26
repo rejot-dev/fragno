@@ -22,10 +22,10 @@ import {
 } from "@/layouts/backoffice-shell-request.server";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
-import { AuthObject } from "../../../workers/auth.do";
-import { AutomationsObject } from "../../../workers/automations.do";
-import { OtpObject } from "../../../workers/otp.do";
-import { UploadObject } from "../../../workers/upload.do";
+import { AuthObject } from "../../../workers/auth-object";
+import { AutomationsObject } from "../../../workers/automations-object";
+import { OtpObject } from "../../../workers/otp-object";
+import { UploadObject } from "../../../workers/upload-object";
 import { buildBackofficeLoginPath } from "./auth-navigation";
 import { action, loader } from "./login";
 

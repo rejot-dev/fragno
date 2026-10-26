@@ -24,11 +24,11 @@ import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-f
 import { verifyBackofficeJwt } from "@/fragno/auth/token-lifecycle";
 import { getSetCookieHeaders } from "@/worker-runtime/http-headers";
 
-import { AppsObject } from "./apps.do";
+import { AppsObject } from "./apps-object";
+import { AuthObject } from "./auth-object";
 import { issueTestSignUpInvitation } from "./auth-sign-up.test-support";
-import { AuthObject } from "./auth.do";
-import { AutomationsObject } from "./automations.do";
-import { OtpObject } from "./otp.do";
+import { AutomationsObject } from "./automations-object";
+import { OtpObject } from "./otp-object";
 
 const localObjects = {
   APPS: (input) => new AppsObject(input),

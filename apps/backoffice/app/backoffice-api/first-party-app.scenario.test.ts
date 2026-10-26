@@ -39,14 +39,14 @@ import { action as installAction, loader as installLoader } from "@/routes/backo
 import { loader as consentLoader } from "@/routes/backoffice/oauth-consent";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
-import { ApiObject } from "../../workers/api.do";
-import { AppInstallationsObject } from "../../workers/app-installations.do";
-import { AppsObject } from "../../workers/apps.do";
-import { AuthObject } from "../../workers/auth.do";
-import { AutomationsObject } from "../../workers/automations.do";
-import { FormsObject } from "../../workers/forms.do";
-import { OtpObject } from "../../workers/otp.do";
-import { UploadObject } from "../../workers/upload.do";
+import { ApiObject } from "../../workers/api-object";
+import { AppInstallationsObject } from "../../workers/app-installations-object";
+import { AppsObject } from "../../workers/apps-object";
+import { AuthObject } from "../../workers/auth-object";
+import { AutomationsObject } from "../../workers/automations-object";
+import { FormsObject } from "../../workers/forms-object";
+import { OtpObject } from "../../workers/otp-object";
+import { UploadObject } from "../../workers/upload-object";
 import { backofficeApiRouter } from "./backoffice-api-router";
 
 const scenarioObjects = {

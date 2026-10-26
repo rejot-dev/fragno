@@ -4,7 +4,7 @@ import path from "node:path";
 import Database from "better-sqlite3";
 import { Kysely, SqliteDialect } from "kysely";
 
-import type { AuthDatabase } from "../../../workers/auth.do";
+import type { AuthDatabase } from "../../../workers/auth-object";
 import { configureBackofficeSqliteConnection } from "./sqlite-connection-config";
 
 /** Creates the file-backed auth database using the owning local runtime's logical clock. */

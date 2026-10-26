@@ -11,7 +11,7 @@ import type { BackofficeKernelAction, BackofficeKernelObserver } from "@/backoff
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { buildExternalIdentityBindingId } from "@/fragno/automation/external-identities";
 
-import { AutomationsObject } from "./automations.do";
+import { AutomationsObject } from "./automations-object";
 
 const localObjects = {
   AUTOMATIONS: (input) => new AutomationsObject(input),

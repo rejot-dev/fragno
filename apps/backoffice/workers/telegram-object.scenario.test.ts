@@ -30,12 +30,12 @@ import {
 } from "@/fragno/automation/scenario";
 import { createTelegramRuntime } from "@/fragno/runtime-tools/families/telegram-runtime";
 
-import { ApiObject } from "./api.do";
-import { AuthObject } from "./auth.do";
-import { AutomationsObject } from "./automations.do";
-import { FormsObject } from "./forms.do";
-import { TelegramObject } from "./telegram.do";
-import { UploadObject } from "./upload.do";
+import { ApiObject } from "./api-object";
+import { AuthObject } from "./auth-object";
+import { AutomationsObject } from "./automations-object";
+import { FormsObject } from "./forms-object";
+import { TelegramObject } from "./telegram-object";
+import { UploadObject } from "./upload-object";
 
 const scenarioObjects = {
   API: (input) => new ApiObject(input),

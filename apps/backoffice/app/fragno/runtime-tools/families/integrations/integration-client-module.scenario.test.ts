@@ -24,7 +24,7 @@ import {
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
-import { McpObject } from "../../../../../workers/mcp.do";
+import { McpObject } from "../../../../../workers/mcp-object";
 
 const scope = { kind: "org", orgId: "org-1" } as const;
 const clientPath = "/workspace/integrations/tools.js";

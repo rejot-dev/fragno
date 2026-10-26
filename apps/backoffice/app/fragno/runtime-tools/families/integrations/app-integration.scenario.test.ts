@@ -30,7 +30,7 @@ import {
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
-import { AppInstallationsObject } from "../../../../../workers/app-installations.do";
+import { AppInstallationsObject } from "../../../../../workers/app-installations-object";
 
 const org = { kind: "org", orgId: "org-1" } as const;
 const endpointUrl = "https://ledger.example/backoffice/actions";

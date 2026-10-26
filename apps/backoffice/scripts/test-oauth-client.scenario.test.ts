@@ -39,12 +39,12 @@ import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-ba
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
-import { AppsObject } from "../workers/apps.do";
-import { AuthObject } from "../workers/auth.do";
-import { AutomationsObject } from "../workers/automations.do";
-import { CodemodeObject } from "../workers/codemode.do";
-import { FormsObject } from "../workers/forms.do";
-import { UploadObject } from "../workers/upload.do";
+import { AppsObject } from "../workers/apps-object";
+import { AuthObject } from "../workers/auth-object";
+import { AutomationsObject } from "../workers/automations-object";
+import { CodemodeObject } from "../workers/codemode-object";
+import { FormsObject } from "../workers/forms-object";
+import { UploadObject } from "../workers/upload-object";
 
 const scenarioObjects = {
   APPS: (input) => new AppsObject(input),

@@ -21,12 +21,12 @@ import {
 } from "@/fragno/automation/scenario";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
-import { AppsObject } from "../../../workers/apps.do";
-import { AuthObject } from "../../../workers/auth.do";
-import { AutomationsObject } from "../../../workers/automations.do";
-import { OtpObject } from "../../../workers/otp.do";
-import { ResendObject } from "../../../workers/resend.do";
-import { UploadObject } from "../../../workers/upload.do";
+import { AppsObject } from "../../../workers/apps-object";
+import { AuthObject } from "../../../workers/auth-object";
+import { AutomationsObject } from "../../../workers/automations-object";
+import { OtpObject } from "../../../workers/otp-object";
+import { ResendObject } from "../../../workers/resend-object";
+import { UploadObject } from "../../../workers/upload-object";
 import { action as loginAction, loader as loginLoader } from "./login";
 import { loader as consentLoader } from "./oauth-consent";
 

@@ -14,10 +14,10 @@ import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-f
 import { verifyBackofficeJwt } from "@/fragno/auth/token-lifecycle";
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
 
-import { AuthObject } from "./auth.do";
-import { AutomationsObject } from "./automations.do";
-import { OtpObject } from "./otp.do";
-import { UploadObject } from "./upload.do";
+import { AuthObject } from "./auth-object";
+import { AutomationsObject } from "./automations-object";
+import { OtpObject } from "./otp-object";
+import { UploadObject } from "./upload-object";
 
 const scenarioObjects = {
   AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),

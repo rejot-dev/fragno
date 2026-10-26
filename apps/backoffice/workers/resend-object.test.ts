@@ -16,7 +16,7 @@ import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 
-import { ResendObject } from "./resend.do";
+import { ResendObject } from "./resend-object";
 
 const localObjects = {
   RESEND: (input) => new ResendObject(input),

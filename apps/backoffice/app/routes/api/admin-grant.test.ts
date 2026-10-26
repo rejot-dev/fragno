@@ -16,7 +16,7 @@ import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
-import { AuthObject } from "../../../workers/auth.do";
+import { AuthObject } from "../../../workers/auth-object";
 import { action } from "./admin-grant";
 
 const localObjects = {
