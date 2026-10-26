@@ -616,7 +616,10 @@ function renderMarketplaceDetail(
       resolvedScope: { kind: "org", organization: { id: "org-1", slug: "acme" } },
       adapterIdentity: "automations-test-adapter",
     },
-    installationPermissions: { state: "ready", permissions: [] },
+    installationSetup: {
+      state: "ready",
+      setup: { permissions: [], agents: [], routes: [], eventTypes: [] },
+    },
     packageFiles: {
       state: "ready",
       fileTree: { entries: [] },

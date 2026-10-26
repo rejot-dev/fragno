@@ -98,7 +98,7 @@ export function AutomationRouteTargetDetail({ target }: { target: AutomationRout
 
 type AutomationEventMatcherOperator = Extract<AutomationEventMatcher, { path: string }>["op"];
 
-const matcherOperatorLabel = (operator: AutomationEventMatcherOperator) => {
+export const matcherOperatorLabel = (operator: AutomationEventMatcherOperator) => {
   switch (operator) {
     case "eq":
       return "equals";
@@ -115,7 +115,7 @@ const matcherOperatorLabel = (operator: AutomationEventMatcherOperator) => {
   throw new Error("Unsupported automation event matcher operator.");
 };
 
-const matcherValueLabel = (value: unknown) => {
+export const matcherValueLabel = (value: unknown) => {
   const serialized = JSON.stringify(value);
   return serialized ?? String(value);
 };

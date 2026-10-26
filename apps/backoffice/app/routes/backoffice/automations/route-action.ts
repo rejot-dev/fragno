@@ -38,15 +38,20 @@ const actionDetailLabels = (labelSet: AutomationRouteDetailLabelSet) =>
         agent: "agent",
       };
 
+/** Whom a route acts as under its authority mode. */
+export function automationAuthorityActorLabel(kind: AutomationAuthorityMode["kind"]) {
+  return {
+    "organization-automation": "Organization-owned automation",
+    "linked-user": "Backoffice user linked to the incoming sender",
+    "delegated-user": "Backoffice user carried by the incoming event",
+  }[kind];
+}
+
 function authorityDetailRows(
   authority: AutomationAuthorityMode,
   labels: ReturnType<typeof actionDetailLabels>,
 ): AutomationRouteDetailRow[] {
-  const runsAs = {
-    "organization-automation": "Organization-owned automation",
-    "linked-user": "Backoffice user linked to the incoming sender",
-    "delegated-user": "Backoffice user carried by the incoming event",
-  }[authority.kind];
+  const runsAs = automationAuthorityActorLabel(authority.kind);
   const permissions =
     authority.grants === "inherit"
       ? "User's current permissions — no additional route restriction"
