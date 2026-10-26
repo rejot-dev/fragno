@@ -70,6 +70,43 @@ function fileInput(file: PiExtractionFile) {
 }
 
 /**
+ * Strict structured output rejects an object schema that leaves out `additionalProperties: false`
+ * or a property from `required`. The contract makes every field required, with absence as a
+ * nullable type, so callers leave both out and the call fills them in.
+ */
+function closeObjectSchemas(schema: JsonValue): JsonValue {
+  if (Array.isArray(schema)) {
+    return schema.map(closeObjectSchemas);
+  }
+  if (schema === null || typeof schema !== "object") {
+    return schema;
+  }
+  const closed: Record<string, JsonValue> = { ...schema };
+  for (const key of ["items", "anyOf"]) {
+    if (key in schema) {
+      closed[key] = closeObjectSchemas(schema[key]);
+    }
+  }
+  for (const key of ["properties", "$defs", "definitions"]) {
+    const subschemas = schema[key];
+    if (subschemas && typeof subschemas === "object" && !Array.isArray(subschemas)) {
+      closed[key] = Object.fromEntries(
+        Object.entries(subschemas).map(([name, subschema]) => [
+          name,
+          closeObjectSchemas(subschema),
+        ]),
+      );
+    }
+  }
+  const properties = schema.properties;
+  if (properties && typeof properties === "object" && !Array.isArray(properties)) {
+    closed.required = Object.keys(properties);
+    closed.additionalProperties = false;
+  }
+  return closed;
+}
+
+/**
  * One Responses API call with the files inline and a strict JSON Schema answer. pi-ai's chat
  * content has no files, so the call is made here, priced with the model's catalog rates.
  */
@@ -111,7 +148,12 @@ export async function extractWithOpenAI({
           },
         ],
         text: {
-          format: { type: "json_schema", name: "answer", schema: request.schema, strict: true },
+          format: {
+            type: "json_schema",
+            name: "answer",
+            schema: closeObjectSchemas(request.schema),
+            strict: true,
+          },
         },
       }),
     });

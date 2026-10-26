@@ -684,9 +684,11 @@ const invoiceSchema = {
     supplier: { type: "string" },
     invoiceNumber: { type: "string" },
     total: { type: "number" },
+    lines: {
+      type: "array",
+      items: { type: "object", properties: { amount: { type: ["number", "null"] } } },
+    },
   },
-  required: ["supplier", "invoiceNumber", "total"],
-  additionalProperties: false,
 } as const;
 // ASCII, so the scenario writes it as text and the model receives the same bytes.
 const invoicePdf = "%PDF-1.7\n1 0 obj << /Type /Catalog >> endobj\n%%EOF\n";
@@ -747,7 +749,7 @@ test("a workflow reads an invoice PDF into typed fields and bills the extraction
           output: { supplier: "Brass & Co", total: 1250.5 },
         }),
         then.assert(
-          "the model reads the PDF's bytes and answers in the strict schema",
+          "the model reads the PDF's bytes and answers in the schema, closed for strict output",
           ({ fakes, kernelActions }) => {
             expect(fakes.openaiResponses?.requests).toEqual([
               {
@@ -776,7 +778,25 @@ test("a workflow reads an invoice PDF into typed fields and bills the extraction
                     format: {
                       type: "json_schema",
                       name: "answer",
-                      schema: invoiceSchema,
+                      schema: {
+                        type: "object",
+                        properties: {
+                          supplier: { type: "string" },
+                          invoiceNumber: { type: "string" },
+                          total: { type: "number" },
+                          lines: {
+                            type: "array",
+                            items: {
+                              type: "object",
+                              properties: { amount: { type: ["number", "null"] } },
+                              required: ["amount"],
+                              additionalProperties: false,
+                            },
+                          },
+                        },
+                        required: ["supplier", "invoiceNumber", "total", "lines"],
+                        additionalProperties: false,
+                      },
                       strict: true,
                     },
                   },

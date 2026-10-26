@@ -177,8 +177,8 @@ const modelsExtractInputSchema = z.lazy(() =>
       })
       .describe(
         "JSON Schema of the answer, in OpenAI's strict structured-output subset: the root is an " +
-          "object, every object sets `additionalProperties: false` and lists all its properties " +
-          'in `required`, and a field that may be absent has a type such as `["string", "null"]`.',
+          "object, every object is closed and requires all its properties, which the call sets " +
+          'itself, and a field that may be absent has a type such as `["string", "null"]`.',
       ),
     model: z
       .enum(MODELS_EXTRACT_MODELS)
