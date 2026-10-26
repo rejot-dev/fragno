@@ -187,11 +187,13 @@ export const createAutomationEventDefinitionServices = (
           assertStewardWrite({
             resource: describeEventDefinition(current),
             steward: current.steward,
-            // Install scripts never labelled the definitions they created.
+            // Install scripts never labelled the definitions they created, so a package takes over
+            // an identical one instead.
             legacyListingId: null,
             writer,
             definitionChanged: contentChanged,
             toggleable: true,
+            adoptsIdentical: true,
           });
           if (contentChanged) {
             assertAutomationEventDefinitionSchemas(next);
@@ -247,6 +249,7 @@ export const createAutomationEventDefinitionServices = (
             writer,
             definitionChanged: true,
             toggleable: true,
+            adoptsIdentical: true,
           });
           uow.delete("automation_event_definition", existing.id, (b) => b.check());
           return true;

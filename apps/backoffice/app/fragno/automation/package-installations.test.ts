@@ -188,6 +188,68 @@ describe("package installations", () => {
     ).resolves.toBeNull();
   });
 
+  test("refuses a route identical to one members or another package own, removing neither", async () => {
+    const membersOwn = createFragment("identical-members-route");
+    await membersOwn.callServices(() =>
+      membersOwn.services.createRoute(pushRoute(), actors, MEMBERS_STEWARD),
+    );
+    await expect(
+      applyPackageInstallation(membersOwn, {
+        installation,
+        ...FIRST_RUN,
+        routes: [pushRoute()],
+        eventDefinitions: [],
+        actors,
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      message: `Automation route 'github-push-reclassify' already exists and is not managed by package '${LISTING_ID}'.`,
+    });
+    await expect(readRoute(membersOwn, "github-push-reclassify")).resolves.toMatchObject({
+      steward: MEMBERS_STEWARD,
+    });
+    await expect(uninstallPackage(membersOwn, { listingId: LISTING_ID })).resolves.toBeNull();
+
+    const packageOwns = createFragment("identical-package-route");
+    await applyPackageInstallation(packageOwns, {
+      installation: { ...installation, listingId: OTHER_LISTING_ID },
+      ...FIRST_RUN,
+      routes: [pushRoute()],
+      eventDefinitions: [pushDefinition],
+      actors,
+    });
+    await expect(
+      applyPackageInstallation(packageOwns, {
+        installation,
+        ...FIRST_RUN,
+        routes: [pushRoute()],
+        eventDefinitions: [],
+        actors,
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      message: `Automation route 'github-push-reclassify' is managed by package '${OTHER_LISTING_ID}'. Only enabling or disabling it is allowed; uninstall the package to remove it.`,
+    });
+    await expect(
+      applyPackageInstallation(packageOwns, {
+        installation,
+        ...FIRST_RUN,
+        routes: [],
+        eventDefinitions: [pushDefinition],
+        actors,
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      message: `Event definition 'github/push' is managed by package '${OTHER_LISTING_ID}'. Only enabling or disabling it is allowed; uninstall the package to remove it.`,
+    });
+    await expect(readRoute(packageOwns, "github-push-reclassify")).resolves.toMatchObject({
+      steward: { kind: "package", listingId: OTHER_LISTING_ID },
+    });
+    await expect(readDefinition(packageOwns)).resolves.toMatchObject({
+      steward: { kind: "package", listingId: OTHER_LISTING_ID },
+    });
+  });
+
   test("defines its declared events, which only toggles change, and deletes them when no longer declared", async () => {
     const fragment = createFragment("declared-event-definitions");
     await expect(

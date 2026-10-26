@@ -25,11 +25,14 @@ export function isStewardedByPackage(steward: Steward, listingId: string) {
 
 /**
  * Only a resource's steward changes its definition, though anyone may turn it on or off. A package
- * adopts a members' resource whose definition its write leaves unchanged, and one its
- * pre-stewardship install script labelled for it. Nothing changes what Backoffice defines.
+ * takes over a members' resource its pre-stewardship install script labelled for it, and, where
+ * `adoptsIdentical`, an unlabelled one its write leaves unchanged. It never takes over another
+ * package's, and nothing changes what Backoffice defines.
  *
  * @param resource Names the resource in refusals, such as `Automation route 'triage'`.
  * @param toggleable Whether the resource can be turned on or off, which agents can't.
+ * @param adoptsIdentical Whether a package takes over an identical members' resource, for kinds
+ *   that install scripts created without a label.
  */
 export function assertStewardWrite({
   resource,
@@ -38,6 +41,7 @@ export function assertStewardWrite({
   writer,
   definitionChanged,
   toggleable,
+  adoptsIdentical,
 }: {
   resource: string;
   steward: Steward;
@@ -45,19 +49,29 @@ export function assertStewardWrite({
   writer: AutomationSteward;
   definitionChanged: boolean;
   toggleable: boolean;
+  adoptsIdentical: boolean;
 }) {
   if (steward.kind === "backoffice") {
     throw new AutomationStewardError(`${resource} is built into Backoffice and cannot change.`);
   }
-  if (stewardsEqual(steward, writer) || !definitionChanged) {
+  if (stewardsEqual(steward, writer)) {
     return;
   }
   if (steward.kind === "package") {
+    // Members may still turn it on or off; another package may not touch it at all.
+    if (writer.kind === "members" && !definitionChanged) {
+      return;
+    }
     throw new AutomationStewardError(
       `${resource} is managed by package '${steward.listingId}'. ${toggleable ? "Only enabling or disabling it is allowed; uninstall" : "Install the package again to change it, or uninstall"} the package to remove it.`,
     );
   }
-  if (writer.kind === "package" && legacyListingId !== writer.listingId) {
+  // The resource is the members', so the writer is a package.
+  if (
+    writer.kind === "package" &&
+    legacyListingId !== writer.listingId &&
+    !(adoptsIdentical && !definitionChanged)
+  ) {
     throw new AutomationStewardError(
       `${resource} already exists and is not managed by package '${writer.listingId}'.`,
     );
