@@ -7,46 +7,64 @@ type ReferentialEqualities = NonNullable<OutboxOperationMetadata["referentialEqu
 
 const OUTBOX_MUTATION_PAYLOAD_PROPERTIES = new Set(["json", "meta"]);
 
+const QUOTE = 0x22;
+const BACKSLASH = 0x5c;
+const OPEN_BRACE = 0x7b;
+const CLOSE_BRACE = 0x7d;
+const OPEN_BRACKET = 0x5b;
+const CLOSE_BRACKET = 0x5d;
+const COMMA = 0x2c;
+
+/** JSON allows only space, tab, line feed, and carriage return between tokens. */
+function isJsonWhitespace(code: number): boolean {
+  return code === 0x20 || code === 0x09 || code === 0x0a || code === 0x0d;
+}
+
 function skipJsonWhitespace(value: string, start: number): number {
   let index = start;
-  while (/\s/u.test(value[index] ?? "")) {
+  while (index < value.length && isJsonWhitespace(value.charCodeAt(index))) {
     index += 1;
   }
   return index;
 }
 
+// Payloads are mostly string contents, so strings are skipped from quote to quote instead of
+// character by character: a quote ends the string unless an odd run of backslashes escapes it.
 function findJsonStringEnd(value: string, start: number): number {
-  for (let index = start + 1; index < value.length; index += 1) {
-    if (value[index] === "\\") {
-      index += 1;
-      continue;
+  let searchFrom = start + 1;
+  for (;;) {
+    const quote = value.indexOf('"', searchFrom);
+    if (quote < 0) {
+      throw new Error("Serialized outbox JSON contains an unterminated string.");
     }
-    if (value[index] === '"') {
-      return index + 1;
+    let backslashes = 0;
+    while (value.charCodeAt(quote - 1 - backslashes) === BACKSLASH) {
+      backslashes += 1;
     }
+    if (backslashes % 2 === 0) {
+      return quote + 1;
+    }
+    searchFrom = quote + 1;
   }
-  throw new Error("Serialized outbox JSON contains an unterminated string.");
 }
 
 function findJsonValueEnd(value: string, start: number): number {
-  const first = value[start];
-  if (first === '"') {
+  const first = value.charCodeAt(start);
+  if (first === QUOTE) {
     return findJsonStringEnd(value, start);
   }
-  if (first === "{" || first === "[") {
-    const expectedClosings = [first === "{" ? "}" : "]"];
+  if (first === OPEN_BRACE || first === OPEN_BRACKET) {
+    const expectedClosings = [first === OPEN_BRACE ? CLOSE_BRACE : CLOSE_BRACKET];
     for (let index = start + 1; index < value.length; index += 1) {
-      const character = value[index];
-      if (character === '"') {
+      const code = value.charCodeAt(index);
+      if (code === QUOTE) {
         index = findJsonStringEnd(value, index) - 1;
-        continue;
-      }
-      if (character === "{") {
-        expectedClosings.push("}");
-      } else if (character === "[") {
-        expectedClosings.push("]");
-      } else if (character === "}" || character === "]") {
-        if (expectedClosings.pop() !== character) {
+      } else if (code === OPEN_BRACE) {
+        expectedClosings.push(CLOSE_BRACE);
+      } else if (code === OPEN_BRACKET) {
+        expectedClosings.push(CLOSE_BRACKET);
+      } else if (code === CLOSE_BRACE || code === CLOSE_BRACKET) {
+        if (expectedClosings.pop() !== code) {
           throw new Error("Serialized outbox JSON contains a mismatched container.");
         }
         if (expectedClosings.length === 0) {
@@ -58,7 +76,16 @@ function findJsonValueEnd(value: string, start: number): number {
   }
 
   let index = start;
-  while (index < value.length && !/[\s,\]}]/u.test(value[index] ?? "")) {
+  while (index < value.length) {
+    const code = value.charCodeAt(index);
+    if (
+      isJsonWhitespace(code) ||
+      code === COMMA ||
+      code === CLOSE_BRACKET ||
+      code === CLOSE_BRACE
+    ) {
+      break;
+    }
     index += 1;
   }
   return index;
