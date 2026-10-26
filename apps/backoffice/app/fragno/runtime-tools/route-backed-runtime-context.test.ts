@@ -43,6 +43,7 @@ const createRuntime = (): BackofficeRuntimeServices => {
     codemodeExecutor: null,
     workerTypeChecker: null,
     reson8: null,
+    webFetch: fetch,
     adapters: {} as BackofficeRuntimeServices["adapters"],
     config: {
       authEmailVerification: { enabled: false },

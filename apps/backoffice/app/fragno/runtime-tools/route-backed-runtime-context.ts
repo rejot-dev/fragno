@@ -408,12 +408,14 @@ export const createRouteBackedRuntimeContext = ({
           return object ? { runtime: createCloudflareRuntime({ http: object.http }) } : null;
         })()
       : null,
-    web: runtime.config.bindings.cloudflare
-      ? (() => {
-          const object = unavailableObject(() => runtime.objects.cloudflare.singleton());
-          return object ? { runtime: createWebRuntime({ object: object.http }) } : null;
-        })()
-      : null,
+    web: {
+      runtime: createWebRuntime({
+        cloudflare: runtime.config.bindings.cloudflare
+          ? (unavailableObject(() => runtime.objects.cloudflare.singleton())?.http ?? null)
+          : null,
+        fetch: runtime.webFetch,
+      }),
+    },
     // Building a page runs codemode, and the build loads this module, so it is imported per use.
     artifacts: codemodeExecutor
       ? {

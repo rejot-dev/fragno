@@ -11,6 +11,7 @@ const createRuntime = (): WebRuntime => ({
     action: input.action,
     result: "Example",
   })) as WebRuntime["extract"],
+  download: vi.fn(),
 });
 
 describe("web runtime tools", () => {
@@ -38,8 +39,8 @@ describe("web runtime tools", () => {
 
   test("delegates extraction to the web runtime", async () => {
     const runtime = createRuntime();
-    const context: BackofficeToolContext<{ web: WebRuntime }> =
-      createTrustedSystemBackofficeToolContext({ runtimes: { web: runtime } });
+    const context: BackofficeToolContext<{ web: WebRuntime; state: undefined }> =
+      createTrustedSystemBackofficeToolContext({ runtimes: { web: runtime, state: undefined } });
     const input = {
       action: "markdown" as const,
       input: { url: "https://example.com" },

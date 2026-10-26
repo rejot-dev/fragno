@@ -813,6 +813,7 @@ const createScopedMcpRuntimeServices = (
     codemodeExecutor: null,
     workerTypeChecker: null,
     reson8: null,
+    webFetch: fetch,
     config: {
       authEmailVerification: { enabled: false },
       sandboxBackofficeBaseUrl: null,

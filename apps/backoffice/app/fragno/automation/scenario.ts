@@ -303,7 +303,15 @@ export type FakeOpenAIModelApi = {
   fetch: FetchFunction;
 };
 
+/** Websites the runtime downloads from, keyed by URL. */
+type FakeWebApi = {
+  /** Every request, in order, with the headers it carried. */
+  requests: { url: string; headers: Record<string, string> }[];
+  fetch: typeof fetch;
+};
+
 export type ScenarioFakes = {
+  web?: FakeWebApi;
   telegram?: FakeTelegramApi;
   pi?: FakePiManagerApi;
   resend?: FakeResendApi;
@@ -314,6 +322,8 @@ export type ScenarioFakes = {
 };
 
 type ScenarioFakeFactory = {
+  /** Answers each URL with a fresh response from `responses`; any other URL answers 404. */
+  web(input: { responses: Record<string, () => Response> }): FakeWebApi;
   telegram(input?: { files?: FakeTelegramFile[] }): FakeTelegramApi;
   pi(input?: {
     assistantText?: (input: { agentName: string; content: string }) => string;
@@ -1607,6 +1617,18 @@ function createFakeOpenAIResponsesApi({
   };
 }
 
+function createFakeWebApi({ responses }: Parameters<ScenarioFakeFactory["web"]>[0]): FakeWebApi {
+  const requests: FakeWebApi["requests"] = [];
+  return {
+    requests,
+    fetch: async (input, init) => {
+      const request = new Request(input, init);
+      requests.push({ url: request.url, headers: Object.fromEntries(request.headers) });
+      return responses[request.url]?.() ?? new Response("Not Found", { status: 404 });
+    },
+  };
+}
+
 const createScenarioFakeFactory = (): ScenarioFakeFactory => ({
   telegram: createFakeTelegramApi,
   pi: createFakePiManagerApi,
@@ -1615,6 +1637,7 @@ const createScenarioFakeFactory = (): ScenarioFakeFactory => ({
   openaiImages: createFakeOpenAIImagesApi,
   openaiDecisions: createFakeOpenAIDecisionsApi,
   openaiResponses: createFakeOpenAIResponsesApi,
+  web: createFakeWebApi,
 });
 
 const readSnapshotContent = async (fs: IFileSystem, path: string): Promise<string | null> => {
@@ -4755,6 +4778,7 @@ export const runBackofficeScenario = async <TVars extends ScenarioVars = Scenari
       ).readFile(path, "utf-8"),
     objects: { ...scenario.objects, ...(await createFakeObjectOverrides(fakes)) },
     piAvailableModels: scenario.piAvailableModels,
+    ...(fakes.web ? { webFetch: fakes.web.fetch } : {}),
     ...(scenario.durableHooks ? { durableHooks: scenario.durableHooks } : {}),
   });
   const journal: ScenarioJournal = { entries: [] };
