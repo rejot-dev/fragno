@@ -161,15 +161,23 @@ export abstract class OutputContext<const TOutput, const TErrorCode extends stri
       "cache-control": "no-cache",
     };
 
-    const { readable, writable } =
-      highWaterMark === undefined
-        ? new TransformStream()
-        : new TransformStream<Uint8Array, Uint8Array>(
-            undefined,
-            undefined,
-            new ByteLengthQueuingStrategy({ highWaterMark }),
-          );
-    const stream = new ResponseStream(writable, readable);
+    // The buffer is the readable side's queue: a write resolves once its chunk is queued there, so
+    // its controller, not the writer, knows how much room is left.
+    let bufferController: TransformStreamDefaultController<Uint8Array> | undefined;
+    const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>(
+      {
+        start(controller) {
+          bufferController = controller;
+        },
+      },
+      undefined,
+      highWaterMark === undefined ? undefined : new ByteLengthQueuingStrategy({ highWaterMark }),
+    );
+    const stream = new ResponseStream(
+      writable,
+      readable,
+      () => bufferController?.desiredSize ?? null,
+    );
 
     const runStreamCallback = async () => {
       try {

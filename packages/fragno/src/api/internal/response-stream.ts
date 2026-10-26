@@ -36,14 +36,34 @@ export class ResponseStream<TArray> {
   }
 
   /**
+   * Bytes the response can still hold before writes wait for the client to read: zero or less when
+   * its buffer is full, and `null` once the stream errored. A full buffer means the client, or the
+   * network on its way, is slower than the writer.
+   */
+  get desiredSize(): number | null {
+    return this.#bufferDesiredSize();
+  }
+
+  /**
    * The readable stream that the response is piped to.
    */
   get responseReadable(): ReadableStream {
     return this.#responseReadable;
   }
 
-  constructor(writable: WritableStream, readable: ReadableStream) {
+  readonly #bufferDesiredSize: () => number | null;
+
+  /**
+   * @param bufferDesiredSize Reports the room left in the buffer between `writable` and
+   *   `readable`; without it, the writer's own `desiredSize` stands in.
+   */
+  constructor(
+    writable: WritableStream,
+    readable: ReadableStream,
+    bufferDesiredSize?: () => number | null,
+  ) {
     this.#writer = writable.getWriter();
+    this.#bufferDesiredSize = bufferDesiredSize ?? (() => this.#writer.desiredSize);
     this.#encoder = new TextEncoder();
     const reader = readable.getReader();
 

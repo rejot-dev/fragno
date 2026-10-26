@@ -506,6 +506,29 @@ describe("RequestOutputContext", () => {
       reader.releaseLock();
     });
 
+    test("Should report how much more the response buffer holds", async () => {
+      const ctx = new RequestOutputContext();
+      const sizes: Array<number | null> = [];
+      const written = Promise.withResolvers<void>();
+      const response = ctx.jsonStream(
+        async (stream) => {
+          sizes.push(stream.desiredSize);
+          // Nothing reads the response yet, so the bytes stay buffered.
+          await stream.writeRaw(new Uint8Array(400));
+          sizes.push(stream.desiredSize);
+          await stream.writeRaw(new Uint8Array(800));
+          sizes.push(stream.desiredSize);
+          written.resolve();
+        },
+        { highWaterMark: 1000 },
+      );
+
+      await written.promise;
+      // The response pulls one chunk ahead of its reader, so the first write leaves the buffer.
+      expect(sizes).toEqual([1000, 1000, 200]);
+      await response.body?.cancel();
+    });
+
     test("Should report writes rejected after response cancellation", async () => {
       const { readable, writable } = new TransformStream();
       const stream = new ResponseStream(writable, readable);
