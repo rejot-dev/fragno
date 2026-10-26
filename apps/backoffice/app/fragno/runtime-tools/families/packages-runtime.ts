@@ -2,6 +2,8 @@ import {
   packagesInstallInputSchema,
   packagesInstallResultSchema,
   type PackageInstallation,
+  type PackagesImportLegacyInput,
+  type PackagesImportLegacyResult,
   type PackageUninstallation,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import {
@@ -13,6 +15,7 @@ import { z } from "zod";
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
+import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
 import { marketplaceScopeForVisibility } from "@/fragno/marketplace/owner";
 
 /** Package listing reads the current workspace's installations, not a registry query. */
@@ -23,6 +26,7 @@ export type PackagesRuntime = {
   ls(): Promise<{ installations: PackageInstallation[] }>;
   get(input: { listingId: string }): Promise<PackageInstallation | null>;
   uninstall(input: { listingId: string }): Promise<PackageUninstallation | null>;
+  importLegacy(input: PackagesImportLegacyInput): Promise<PackagesImportLegacyResult>;
 };
 
 /** Preserve the UI installation flow while keeping organization coordination separate from destination scope. */
@@ -87,6 +91,13 @@ export function createPackagesRuntime({
     },
     async uninstall(input) {
       return await targetAutomations().commands.uninstallPackage(input);
+    },
+    async importLegacy(input) {
+      const outcome = await targetAutomations().commands.importLegacyPackageInstallations(input);
+      if (!outcome.ok) {
+        throw new BackofficeOperationError("invalid_request", outcome.message);
+      }
+      return outcome.result;
     },
   };
 }

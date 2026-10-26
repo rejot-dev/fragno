@@ -2,7 +2,10 @@ import type {
   AutomationEvent,
   AutomationEventDefinitionUpdateInput,
 } from "@fragno-dev/backoffice-api/v0/events";
-import type { MarketplaceIngestionRequestInput } from "@fragno-dev/backoffice-api/v0/marketplace";
+import type {
+  MarketplaceIngestionRequestInput,
+  PackagesImportLegacyInput,
+} from "@fragno-dev/backoffice-api/v0/marketplace";
 import { DurableObject } from "cloudflare:workers";
 
 import type {
@@ -162,6 +165,10 @@ export class Automations extends DurableObject<CloudflareEnv> implements Automat
 
   async uninstallPackage(input: { listingId: string }) {
     return await this.#object.uninstallPackage(input);
+  }
+
+  async importLegacyPackageInstallations(input: PackagesImportLegacyInput) {
+    return await this.#object.importLegacyPackageInstallations(input);
   }
 
   async provisionAppProject(input: {

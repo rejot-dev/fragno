@@ -1,4 +1,8 @@
-import { packagesInstallInputSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
+import {
+  MARKETPLACE_LOCK_PATH,
+  packagesImportLegacyInputSchema,
+  packagesInstallInputSchema,
+} from "@fragno-dev/backoffice-api/v0/marketplace";
 import { z } from "zod";
 
 import { defineCliArgsParser } from "@/fragno/runtime-tools/bash-cli";
@@ -196,9 +200,82 @@ const packagesUninstallTool = defineBackofficeRuntimeTool({
   },
 });
 
+const packagesImportLegacyTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("packages.importLegacy"),
+  namespace: "packages",
+  name: "importLegacy",
+  execute: async (input, context: PackagesToolContext) =>
+    await getPackagesRuntime(context).importLegacy(input),
+  adapters: {
+    bash: {
+      command: "packages.importLegacy",
+      help: {
+        summary: `Import the installations recorded in ${MARKETPLACE_LOCK_PATH} into the selected workspace, then delete the file.`,
+        options: [
+          {
+            name: "keep",
+            valueRequired: true,
+            description:
+              "For a listing recorded in several folders, the folder to import, as <listing-id>=<folder>. Repeat it for each such listing.",
+          },
+        ],
+        examples: [
+          "packages.importLegacy --format json",
+          "packages.importLegacy --keep 'system#jira-setup=/workspace/jira-setup'",
+        ],
+      },
+      parse: defineCliArgsParser<z.input<typeof packagesImportLegacyInputSchema>>(
+        "packages.importLegacy",
+        {
+          keep: {
+            kind: "stringArray",
+            option: "keep",
+            // Listing ids never contain `=`, so the first one ends the id.
+            transform: (values) =>
+              (values as unknown as string[]).map((value) => {
+                const separator = value.indexOf("=");
+                return separator === -1
+                  ? { listingId: value, installationRoot: "" }
+                  : {
+                      listingId: value.slice(0, separator),
+                      installationRoot: value.slice(separator + 1),
+                    };
+              }) as z.input<typeof packagesImportLegacyInputSchema>["keep"],
+          },
+        },
+      ),
+      format: (result, options) =>
+        options.format === "json" || options.print
+          ? { data: result }
+          : {
+              stdout: [
+                ...result.imported.map(
+                  (installation) =>
+                    `imported\t${installation.listingId}@${installation.version}\t${installation.installationRoot}\n`,
+                ),
+                ...result.alreadyInstalled.map(
+                  (entry) => `already installed\t${entry.listingId}\t${entry.installationRoot}\n`,
+                ),
+                ...result.conflicts.map(
+                  (conflict) =>
+                    `conflict\t${conflict.listingId}\t${conflict.installationRoots.join(",")}\n`,
+                ),
+                `lock\t${result.lock}\n`,
+              ].join(""),
+            },
+    },
+  },
+});
+
 /** Install, inspect, and uninstall packages in the selected workspace. */
 export const packagesToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "packages",
-  tools: [packagesInstallTool, packagesListTool, packagesGetTool, packagesUninstallTool],
+  tools: [
+    packagesInstallTool,
+    packagesListTool,
+    packagesGetTool,
+    packagesUninstallTool,
+    packagesImportLegacyTool,
+  ],
   isAvailable: (context: PackagesToolContext) => !!context.runtimes.packages,
 });

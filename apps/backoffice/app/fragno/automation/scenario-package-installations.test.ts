@@ -348,7 +348,7 @@ describe("package installation scenarios", () => {
     );
   });
 
-  test("upgrades an installation from a legacy lock, keeping edits to files the new version dropped", async () => {
+  test("upgrades an installation imported from a legacy lock, keeping edits to files the new version dropped", async () => {
     const installationRoot = "/workspace/first";
     const upgradeWorkflowId = await buildMarketplacePackageInstallWorkflowInstanceId({
       marketplace: { kind: "system" },
@@ -409,6 +409,36 @@ describe("package installation scenarios", () => {
                 }),
                 fetch: (request) => upload.http.fetch(request),
               });
+            },
+          ),
+          then.assert("importing the lock records version 1.0.0 and deletes it", async (ctx) => {
+            await expect(
+              ctx.runtime.objects.automations
+                .for(TARGET_SCOPE)
+                .commands.importLegacyPackageInstallations({}),
+            ).resolves.toEqual({
+              ok: true,
+              result: {
+                imported: [
+                  {
+                    marketplace: { kind: "system" },
+                    listingId: LISTING_ID,
+                    version: "1.0.0",
+                    installationRoot,
+                    permissions: [],
+                    settings: {},
+                  },
+                ],
+                alreadyInstalled: [],
+                conflicts: [],
+                lock: "deleted",
+              },
+            });
+            assert((await readWorkspaceFile(ctx, MARKETPLACE_LOCK_PATH)).status === 410);
+          }),
+          then.assert(
+            "installing 2.0.0 upgrades the imported installation in place",
+            async (ctx) => {
               await expect(
                 installMarketplacePackage(ctx, {
                   listingId: LISTING_ID,
@@ -702,21 +732,18 @@ describe("package installation scenarios", () => {
     );
   });
 
-  test.each([
-    "not JSON",
-    JSON.stringify({ entries: [{ listingId: LISTING_ID }] }),
-    JSON.stringify({ entries: [{ listingId: LISTING_ID, version: "1.0.0" }] }),
-    JSON.stringify({
-      entries: [{ listingId: LISTING_ID, version: "1.0.0", installationRoot: "/tmp/outside" }],
-    }),
-    JSON.stringify({
-      entries: [
-        { listingId: LISTING_ID, version: "1.0.0", installationRoot: "/workspace/locked" },
-        { listingId: LISTING_ID, version: "1.0.0", installationRoot: " /workspace/locked/ " },
-      ],
-    }),
-  ])("refuses to upgrade from an invalid legacy lock before writing files: %s", async (content) => {
+  test("refuses to install into a workspace that still has a legacy lock, before writing files", async () => {
     const installationRoot = "/workspace/locked";
+    const lock = JSON.stringify({
+      entries: [
+        {
+          marketplace: { kind: "system" },
+          listingId: GITHUB_CHANNEL_ID,
+          version: "1.0.0",
+          installationRoot: "/workspace/github",
+        },
+      ],
+    });
     const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
       marketplace: { kind: "system" },
       targetScope: TARGET_SCOPE,
@@ -727,16 +754,16 @@ describe("package installation scenarios", () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         objects: scenarioObjects,
-        name: "preserve an invalid legacy Marketplace lock",
+        name: "refuse installing next to a legacy Marketplace lock",
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then, runner }) => [
           then.assert("publish packages", publishMarketplacePackages),
           runner.drain(),
-          then.assert("write an invalid lock and request installation", async (ctx) => {
+          then.assert("write a lock and request installation", async (ctx) => {
             const upload = ctx.runtime.objects.upload.for(TARGET_SCOPE);
             await writeUploadFile({
               fileKey: "marketplace-lock.json",
-              content,
+              content: lock,
               fetch: (request) => upload.http.fetch(request),
             });
             await installMarketplacePackage(ctx, {
@@ -751,15 +778,154 @@ describe("package installation scenarios", () => {
             instanceId: workflowInstanceId,
             status: "errored",
           }),
-          then.assert("no files were installed and the invalid lock is preserved", async (ctx) => {
-            const lock = await readWorkspaceFile(ctx, MARKETPLACE_LOCK_PATH);
-            await expect(lock.text()).resolves.toBe(content);
+          then.assert("no files were installed and the lock is preserved", async (ctx) => {
+            await expect(
+              (await readWorkspaceFile(ctx, MARKETPLACE_LOCK_PATH)).text(),
+            ).resolves.toBe(lock);
             assert(
               (await readWorkspaceFile(ctx, `${installationRoot}/${WORKFLOW_FILE}`)).status === 404,
             );
+            await expect(readInstallation(ctx, LISTING_ID)).resolves.toBeNull();
           }),
         ],
         options: { allowErroredWorkflows: true },
+      }),
+    );
+  });
+
+  test.each([
+    "not JSON",
+    JSON.stringify({ entries: [{ listingId: LISTING_ID }] }),
+    JSON.stringify({ entries: [{ listingId: LISTING_ID, version: "1.0.0" }] }),
+    JSON.stringify({
+      entries: [{ listingId: LISTING_ID, version: "1.0.0", installationRoot: "/tmp/outside" }],
+    }),
+    JSON.stringify({
+      entries: [
+        { listingId: LISTING_ID, version: "1.0.0", installationRoot: "/workspace/locked" },
+        { listingId: LISTING_ID, version: "1.0.0", installationRoot: " /workspace/locked/ " },
+      ],
+    }),
+  ])("refuses to import an invalid legacy lock, leaving it: %s", async (content) => {
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        objects: scenarioObjects,
+        name: "preserve an invalid legacy Marketplace lock",
+        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+        steps: ({ then }) => [
+          then.assert("importing the invalid lock is refused", async (ctx) => {
+            const upload = ctx.runtime.objects.upload.for(TARGET_SCOPE);
+            await writeUploadFile({
+              fileKey: "marketplace-lock.json",
+              content,
+              fetch: (request) => upload.http.fetch(request),
+            });
+            const outcome = await ctx.runtime.objects.automations
+              .for(TARGET_SCOPE)
+              .commands.importLegacyPackageInstallations({});
+            assert(!outcome.ok);
+            expect(outcome.message).toContain(`${MARKETPLACE_LOCK_PATH} is invalid`);
+            await expect(
+              (await readWorkspaceFile(ctx, MARKETPLACE_LOCK_PATH)).text(),
+            ).resolves.toBe(content);
+            await expect(
+              ctx.runtime.objects.automations.for(TARGET_SCOPE).commands.listPackageInstallations(),
+            ).resolves.toEqual([]);
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("imports a listing the legacy lock records in two folders only once one is chosen", async () => {
+    const entry = (listingId: string, installationRoot: string) => ({
+      marketplace: { kind: "system" },
+      listingId,
+      version: "1.0.0",
+      installationRoot,
+    });
+    const importLegacy = (
+      ctx: BackofficeScenarioContext,
+      keep: { listingId: string; installationRoot: string }[],
+    ) =>
+      ctx.runtime.objects.automations
+        .for(TARGET_SCOPE)
+        .commands.importLegacyPackageInstallations({ keep });
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        objects: scenarioObjects,
+        name: "import a legacy Marketplace lock with a duplicate listing",
+        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+        steps: ({ then }) => [
+          then.assert(
+            "the duplicate is a conflict; the rest is imported and the lock kept",
+            async (ctx) => {
+              const upload = ctx.runtime.objects.upload.for(TARGET_SCOPE);
+              await writeUploadFile({
+                fileKey: "marketplace-lock.json",
+                content: JSON.stringify({
+                  entries: [
+                    entry(LISTING_ID, "/workspace/first"),
+                    entry(LISTING_ID, "/workspace/second"),
+                    entry(GITHUB_CHANNEL_ID, "/workspace/github"),
+                  ],
+                }),
+                fetch: (request) => upload.http.fetch(request),
+              });
+              await expect(importLegacy(ctx, [])).resolves.toEqual({
+                ok: true,
+                result: {
+                  imported: [
+                    {
+                      ...entry(GITHUB_CHANNEL_ID, "/workspace/github"),
+                      permissions: [],
+                      settings: {},
+                    },
+                  ],
+                  alreadyInstalled: [],
+                  conflicts: [
+                    {
+                      listingId: LISTING_ID,
+                      installationRoots: ["/workspace/first", "/workspace/second"],
+                    },
+                  ],
+                  lock: "kept",
+                },
+              });
+              assert((await readWorkspaceFile(ctx, MARKETPLACE_LOCK_PATH)).ok);
+            },
+          ),
+          then.assert("keeping a folder the lock does not record is refused", async (ctx) => {
+            await expect(
+              importLegacy(ctx, [{ listingId: LISTING_ID, installationRoot: "/workspace/third" }]),
+            ).resolves.toEqual({
+              ok: false,
+              message: `${MARKETPLACE_LOCK_PATH} has no installation of '${LISTING_ID}' at '/workspace/third' to keep.`,
+            });
+          }),
+          then.assert("choosing the folder imports it and deletes the lock", async (ctx) => {
+            await expect(
+              importLegacy(ctx, [{ listingId: LISTING_ID, installationRoot: "/workspace/second" }]),
+            ).resolves.toEqual({
+              ok: true,
+              result: {
+                imported: [
+                  { ...entry(LISTING_ID, "/workspace/second"), permissions: [], settings: {} },
+                ],
+                alreadyInstalled: [
+                  { listingId: GITHUB_CHANNEL_ID, installationRoot: "/workspace/github" },
+                ],
+                conflicts: [],
+                lock: "deleted",
+              },
+            });
+            assert((await readWorkspaceFile(ctx, MARKETPLACE_LOCK_PATH)).status === 410);
+            await expect(importLegacy(ctx, [])).resolves.toEqual({
+              ok: true,
+              result: { imported: [], alreadyInstalled: [], conflicts: [], lock: "absent" },
+            });
+          }),
+        ],
       }),
     );
   });
