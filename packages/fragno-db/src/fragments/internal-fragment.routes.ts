@@ -330,7 +330,6 @@ export const createInternalFragmentOutboxRoutes = () =>
             let heartbeatFrames = 0;
             let errorCount = 0;
             let longestWriteMs = 0;
-            let writeWaitMs = 0;
             let blockedWrites = 0;
             // Whether the response's buffer was full when each frame was written: mostly full means
             // the client or the network is the bottleneck, mostly empty means producing frames is.
@@ -374,9 +373,7 @@ export const createInternalFragmentOutboxRoutes = () =>
                 throw error;
               } finally {
                 clearTimeout(timeout);
-                const writeMs = Date.now() - writeStartedAt;
-                longestWriteMs = Math.max(longestWriteMs, writeMs);
-                writeWaitMs += writeMs;
+                longestWriteMs = Math.max(longestWriteMs, Date.now() - writeStartedAt);
               }
               if (!writeCompleted) {
                 await stream.abort();
@@ -503,7 +500,6 @@ export const createInternalFragmentOutboxRoutes = () =>
                 heartbeatFrames,
                 errorCount,
                 longestWriteMs,
-                writeWaitMs,
                 blockedWrites,
                 fullBufferWrites,
                 averageBufferedBytes:

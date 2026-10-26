@@ -990,7 +990,6 @@ describe("internal fragment describe routes", () => {
           completionReason: "aborted",
           blockedWrites: 1,
           longestWriteMs: 10_000,
-          writeWaitMs: 10_000,
           fullBufferWrites: 1,
         }),
       );
