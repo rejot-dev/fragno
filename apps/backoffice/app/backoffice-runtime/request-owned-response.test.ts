@@ -59,6 +59,37 @@ describe("request-owned response forwarding", () => {
     assert.equal(response.headers.get("x-stream-owner"), "request");
   });
 
+  test("reads ahead of the client up to its buffer", async () => {
+    let pulls = 0;
+    const upstreamResponse = new Response(
+      new ReadableStream<Uint8Array>({
+        pull(controller) {
+          pulls += 1;
+          controller.enqueue(new Uint8Array(100_000));
+        },
+      }),
+    );
+    const request = new Request("https://backoffice.example/api/stream");
+
+    const response = forwardRequestOwnedResponse(request, upstreamResponse);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    // About one mebibyte of 100 kB chunks, with nothing read yet.
+    expect(pulls).toBeGreaterThanOrEqual(10);
+    expect(pulls).toBeLessThanOrEqual(13);
+    await response.body?.cancel();
+  });
+
+  test("returns a response it already forwarded unchanged", () => {
+    const request = new Request("https://backoffice.example/api/stream");
+    const forwarded = forwardRequestOwnedResponse(
+      request,
+      new Response(new ReadableStream<Uint8Array>()),
+    );
+
+    assert.strictEqual(forwardRequestOwnedResponse(request, forwarded), forwarded);
+  });
+
   test("returns responses without bodies unchanged", () => {
     const request = new Request("https://backoffice.example/api/empty");
     const response = new Response(null, { status: 204 });
