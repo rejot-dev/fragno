@@ -159,6 +159,10 @@ export class Automations extends DurableObject<CloudflareEnv> implements Automat
     return await this.#object.getPackageInstallation(input);
   }
 
+  async getPackageInstallationRecord(input: { listingId: string }) {
+    return await this.#object.getPackageInstallationRecord(input);
+  }
+
   async applyPackageInstallation(input: PackageInstallationInput) {
     return await this.#object.applyPackageInstallation(input);
   }

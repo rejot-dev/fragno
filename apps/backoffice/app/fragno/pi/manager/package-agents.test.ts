@@ -8,7 +8,7 @@ import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
 import { createBackofficeServiceExecution } from "@/backoffice-runtime/context";
 
-import { applyPackageAgents, removePackageAgents } from "./package-agents";
+import { applyPackageAgents, checkPackageAgents, removePackageAgents } from "./package-agents";
 import { piManagerDefinition } from "./pi-manager-definition";
 import { piManagerDirectoryRoutes } from "./pi-manager-directory-routes";
 import { piAgentDirectorySchema } from "./pi-manager-schema";
@@ -174,10 +174,20 @@ describe("package agents", () => {
       body: { ...telegram, provenance },
     });
     expect(created).toMatchObject({ status: 201 });
-    await expect(apply(fragment, [{ ...telegram, instructions: "Changed." }])).resolves.toEqual({
+    const notManaged = {
       ok: false,
       message: `Pi agent 'telegram' already exists and is not managed by package '${LISTING_ID}'.`,
-    });
+    };
+    const changed = [{ ...telegram, instructions: "Changed." }];
+    await expect(
+      checkPackageAgents(fragment, { listingId: LISTING_ID, agents: changed }),
+    ).resolves.toEqual(notManaged);
+    await expect(apply(fragment, changed)).resolves.toEqual(notManaged);
+    // Checking first writes nothing, so the agent is still the members'.
+    await expect(
+      checkPackageAgents(fragment, { listingId: LISTING_ID, agents: [telegram] }),
+    ).resolves.toEqual({ ok: true });
+    expect((await readAgents(fragment)).at(-1)?.steward).toEqual({ kind: "members" });
     await expect(apply(fragment, [telegram])).resolves.toEqual({ ok: true });
     expect((await readAgents(fragment)).at(-1)?.steward).toEqual({
       kind: "package",

@@ -17,6 +17,7 @@ import { z, ZodError } from "zod";
 
 import { AutomationEventDefinitionValidationError } from "./event-definitions";
 import type { createAutomationFragment } from "./index";
+import { PackageInstallationChangedError } from "./package-installations-storage-runtime";
 import { isAutomationScheduleError } from "./route-triggers";
 import { AutomationRouteAuthorityError } from "./routing";
 import { AutomationStewardError, isStewardedByPackage } from "./stewards";
@@ -83,6 +84,13 @@ function assertRoutesWithinApprovedPermissions(
 
 export type PackageInstallationInput = {
   installation: PackageInstallation;
+  /** The install run writing the installation; running it again writes again. */
+  operation: string;
+  /**
+   * The operation that wrote the installation when this one read it, or null when there was none.
+   * Anything else wrote it since, so this run is refused rather than undo that.
+   */
+  expectedOperation: string | null;
   routes: readonly AutomationRouteCreateInput[];
   eventDefinitions: readonly AutomationEventDefinitionCreateInput[];
   actors: AutomationActors;
@@ -109,6 +117,7 @@ export async function applyPackageInstallation(
     }
     if (
       error instanceof PackageInstallationError ||
+      error instanceof PackageInstallationChangedError ||
       error instanceof AutomationStewardError ||
       error instanceof AutomationRouteAuthorityError ||
       error instanceof AutomationEventDefinitionValidationError ||
@@ -122,7 +131,14 @@ export async function applyPackageInstallation(
 
 async function syncPackageInstallation(
   fragment: AutomationFragment,
-  { installation, routes, eventDefinitions, actors }: PackageInstallationInput,
+  {
+    installation,
+    operation,
+    expectedOperation,
+    routes,
+    eventDefinitions,
+    actors,
+  }: PackageInstallationInput,
 ) {
   assertRoutesWithinApprovedPermissions(installation, routes);
   const [existingRoutes, existingDefinitions, existing] = await fragment.callServices(() => [
@@ -185,7 +201,8 @@ async function syncPackageInstallation(
       .filter((definition) => isStewardedByPackage(definition.steward, installation.listingId))
       .filter((definition) => !declaredDefinitionKeys.has(definitionKey(definition)))
       .map((definition) => fragment.services.deleteEventDefinition(definition, writer)),
-    fragment.services.putPackageInstallation(installation),
+    // Refuses the whole transaction if the installation changed since this run read it.
+    fragment.services.putPackageInstallation({ installation, operation, expectedOperation }),
   ]);
   if (results.some((result) => result === null || result === false)) {
     // Something was deleted between reading and writing; the caller retries against the new state.
@@ -196,17 +213,20 @@ async function syncPackageInstallation(
 /** What uninstalling removes from the Automations object; the Pi manager removes the agents. */
 export type PackageAutomationsUninstallation = Omit<PackageUninstallation, "removedAgents">;
 
-/** Deletes an installation and the routes and event definitions it manages, leaving its files. */
+/**
+ * Deletes an installation and the routes and event definitions it manages, leaving its files.
+ * Throws `PackageInstallationChangedError` if an install run changes it meanwhile.
+ */
 export async function uninstallPackage(
   fragment: AutomationFragment,
   { listingId }: { listingId: string },
 ): Promise<PackageAutomationsUninstallation | null> {
-  const [routes, definitions, installation] = await fragment.callServices(() => [
+  const [routes, definitions, record] = await fragment.callServices(() => [
     fragment.services.listRoutes(),
     fragment.services.listEventDefinitions(),
-    fragment.services.getPackageInstallation({ listingId }),
+    fragment.services.getPackageInstallationRecord({ listingId }),
   ]);
-  if (!installation) {
+  if (!record) {
     return null;
   }
   const writer: AutomationSteward = { kind: "package", listingId };
@@ -221,7 +241,10 @@ export async function uninstallPackage(
     ...removedEventDefinitions.map((definition) =>
       fragment.services.deleteEventDefinition(definition, writer),
     ),
-    fragment.services.deletePackageInstallation({ listingId }),
+    fragment.services.deletePackageInstallation({
+      listingId,
+      expectedOperation: record.operation,
+    }),
   ]);
-  return { installation, removedRouteIds, removedEventDefinitions };
+  return { installation: record.installation, removedRouteIds, removedEventDefinitions };
 }

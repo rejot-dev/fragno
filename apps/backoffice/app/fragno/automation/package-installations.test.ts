@@ -33,6 +33,9 @@ const noOpWorkflows = {
   sendEvent: async () => ({}),
 } as unknown as AutomationWorkflowsService;
 
+/** One install run, which may write its installation again; nothing was installed before it. */
+const FIRST_RUN = { operation: "run-1", expectedOperation: null };
+
 const installation: PackageInstallation = {
   marketplace: { kind: "system" },
   listingId: LISTING_ID,
@@ -138,6 +141,7 @@ describe("package installations", () => {
     await expect(
       applyPackageInstallation(fragment, {
         installation,
+        ...FIRST_RUN,
         routes: [pushRoute()],
         eventDefinitions: [],
         actors,
@@ -164,6 +168,7 @@ describe("package installations", () => {
     await expect(
       applyPackageInstallation(fragment, {
         installation,
+        ...FIRST_RUN,
         routes: [pushRoute()],
         eventDefinitions: [],
         actors,
@@ -188,6 +193,7 @@ describe("package installations", () => {
     await expect(
       applyPackageInstallation(fragment, {
         installation,
+        ...FIRST_RUN,
         routes: [],
         eventDefinitions: [pushDefinition],
         actors,
@@ -217,6 +223,7 @@ describe("package installations", () => {
 
     await applyPackageInstallation(fragment, {
       installation,
+      ...FIRST_RUN,
       routes: [],
       eventDefinitions: [{ ...pushDefinition, label: "GitHub push received" }],
       actors,
@@ -229,6 +236,7 @@ describe("package installations", () => {
 
     await applyPackageInstallation(fragment, {
       installation,
+      ...FIRST_RUN,
       routes: [],
       eventDefinitions: [],
       actors,
@@ -244,6 +252,7 @@ describe("package installations", () => {
     await expect(
       applyPackageInstallation(adopting, {
         installation,
+        ...FIRST_RUN,
         routes: [],
         eventDefinitions: [pushDefinition],
         actors,
@@ -267,6 +276,7 @@ describe("package installations", () => {
     await expect(
       applyPackageInstallation(refusing, {
         installation,
+        ...FIRST_RUN,
         routes: [],
         eventDefinitions: [pushDefinition],
         actors,
@@ -281,11 +291,54 @@ describe("package installations", () => {
     });
   });
 
+  test("commits only one of two runs that read the same installation, and none after an uninstall", async () => {
+    const fragment = createFragment("overlapping-runs");
+    await applyPackageInstallation(fragment, {
+      installation: { ...installation, version: "1.0.0" },
+      ...FIRST_RUN,
+      routes: [],
+      eventDefinitions: [],
+      actors,
+    });
+    const upgrade = (version: string, routeId: string) =>
+      applyPackageInstallation(fragment, {
+        installation: { ...installation, version },
+        operation: `run-${version}`,
+        expectedOperation: FIRST_RUN.operation,
+        routes: [pushRoute({ id: routeId })],
+        eventDefinitions: [],
+        actors,
+      });
+
+    const outcomes = await Promise.all([
+      upgrade("2.0.0", "route-from-2"),
+      upgrade("3.0.0", "route-from-3"),
+    ]);
+    const changed = {
+      ok: false,
+      message: `Package '${LISTING_ID}' was installed or uninstalled elsewhere while this ran. Try again.`,
+    };
+    expect(outcomes).toContainEqual({ ok: true });
+    expect(outcomes).toContainEqual(changed);
+    const record = await fragment.callServices(() =>
+      fragment.services.getPackageInstallationRecord({ listingId: LISTING_ID }),
+    );
+    const routes = await fragment.callServices(() => fragment.services.listRoutes());
+    expect(routes.map((route) => route.id)).toEqual([
+      record?.installation.version === "2.0.0" ? "route-from-2" : "route-from-3",
+    ]);
+
+    await uninstallPackage(fragment, { listingId: LISTING_ID });
+    await expect(upgrade("4.0.0", "route-from-4")).resolves.toEqual(changed);
+    await expect(fragment.callServices(() => fragment.services.listRoutes())).resolves.toEqual([]);
+  });
+
   test("refuses a declared event that a built-in catalog event already defines", async () => {
     const fragment = createFragment("reserved-event-definition");
     await expect(
       applyPackageInstallation(fragment, {
         installation,
+        ...FIRST_RUN,
         routes: [],
         eventDefinitions: [{ ...pushDefinition, eventType: "webhook.received" }],
         actors,

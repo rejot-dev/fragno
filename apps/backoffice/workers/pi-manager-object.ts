@@ -40,6 +40,7 @@ import {
 } from "@/fragno/pi/extensions/billing/usage-counters";
 import {
   applyPackageAgents,
+  checkPackageAgents,
   removePackageAgents,
   type PackageAgentsInput,
 } from "@/fragno/pi/manager/package-agents";
@@ -269,6 +270,12 @@ export class PiManagerObject extends RpcTarget implements PiManagerCommands {
       );
     }
     return { bytes: base64ToBytes(image.data) };
+  }
+
+  async checkPackageAgents(
+    input: Omit<PackageAgentsInput, "actors">,
+  ): Promise<PackageInstallationOutcome> {
+    return await checkPackageAgents(await this.#scoped.getRuntime(), input);
   }
 
   async applyPackageAgents(input: PackageAgentsInput): Promise<PackageInstallationOutcome> {

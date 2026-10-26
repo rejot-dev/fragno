@@ -106,6 +106,7 @@ import {
   type PackageInstallationInput,
   type PackageInstallationOutcome,
 } from "@/fragno/automation/package-installations";
+import type { PackageInstallationRecord } from "@/fragno/automation/package-installations-storage-runtime";
 import { readBackofficeAutomationSource } from "@/fragno/automation/read-backoffice-automation-source";
 import { MEMBERS_STEWARD } from "@/fragno/automation/stewards";
 import type { DurableHookQueueOptions } from "@/fragno/durable-hooks";
@@ -1095,6 +1096,17 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
 
     return await runtime.automationFragment.callServices(() =>
       runtime.automationFragment.services.getPackageInstallation(input),
+    );
+  }
+
+  async getPackageInstallationRecord(input: {
+    listingId: string;
+  }): Promise<PackageInstallationRecord | null> {
+    await this.#ensureConfigured({ scope: this.#requireScope() });
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+
+    return await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.getPackageInstallationRecord(input),
     );
   }
 

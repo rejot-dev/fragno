@@ -73,6 +73,21 @@ function stewardAfterWrite(
 }
 
 /**
+ * Throws `AutomationStewardError` when the package may not define the agent: a built-in name, or
+ * an existing agent it may not take over.
+ */
+function assertPackageMayDefine(
+  existing: AgentDefinitionRow | undefined,
+  agent: PiAgentDefinitionCreate,
+  writer: AutomationSteward,
+) {
+  assertNotBuiltIn(agent.agentName);
+  if (existing) {
+    stewardAfterWrite(existing, agent, writer);
+  }
+}
+
+/**
  * A scope's agent definitions and the agents provisioned in it; a first prompt provisions one. Each
  * change to a definition records who made it.
  */
@@ -225,6 +240,22 @@ export function piAgentDirectoryServices(
         .build();
     },
     /**
+     * Checks, without writing, that `applyPackageAgents` would accept the declared agents. Throws
+     * `AutomationStewardError` for one the package may not define.
+     */
+    checkPackageAgents: function (listingId: string, agents: readonly PiAgentDefinitionCreate[]) {
+      const writer: AutomationSteward = { kind: "package", listingId };
+      return this.serviceTx(piAgentDirectorySchema)
+        .retrieve((uow) => uow.find("agent_definition", (b) => b.whereIndex("primary")))
+        .transformRetrieve(([rows]) => {
+          const rowsByName = new Map(rows.map((row) => [row.id.valueOf(), row]));
+          for (const agent of agents) {
+            assertPackageMayDefine(rowsByName.get(agent.agentName), agent, writer);
+          }
+        })
+        .build();
+    },
+    /**
      * Makes a package's agents match its declaration: declared agents are created or updated, and
      * those the package no longer declares are deleted. Throws `AutomationStewardError` for a
      * declared agent the package may not take over.
@@ -240,10 +271,10 @@ export function piAgentDirectoryServices(
         .mutate(({ uow, retrieveResult: [rows] }) => {
           const rowsByName = new Map(rows.map((row) => [row.id.valueOf(), row]));
           for (const agent of agents) {
-            assertNotBuiltIn(agent.agentName);
             const declared = { ...agent, steward: writer };
             const { agentName, ...fields } = declared;
             const existing = rowsByName.get(agentName);
+            assertPackageMayDefine(existing, agent, writer);
             if (!existing) {
               uow.create("agent_definition", { id: agentName, ...fields, managedBy: null });
               uow.triggerHook("recordAgentChange", {
@@ -254,10 +285,10 @@ export function piAgentDirectoryServices(
               });
               continue;
             }
-            const current = definitionFromRow(existing);
-            // Refuses an agent the package may not take over; the package becomes its steward.
-            stewardAfterWrite(existing, agent, writer);
-            if (isDeepStrictEqual(current, declared) && existing.managedBy === null) {
+            if (
+              isDeepStrictEqual(definitionFromRow(existing), declared) &&
+              existing.managedBy === null
+            ) {
               continue;
             }
             uow.update("agent_definition", existing.id, (b) =>
