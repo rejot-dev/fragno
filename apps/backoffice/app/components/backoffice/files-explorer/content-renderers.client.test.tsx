@@ -67,6 +67,7 @@ describe("workflow file preview", () => {
               workflowScriptPath: "/workspace/automations/telegram-user-linking.workflow.js",
               instanceIdTemplate: "telegram-link-${event.id}",
             },
+            steward: { kind: "members" },
             nextOccurrenceAt: null,
           },
         ],

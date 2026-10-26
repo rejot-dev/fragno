@@ -1,6 +1,8 @@
 import type {
+  AutomationActors,
   AutomationRouteAction,
   AutomationRouteDefinition,
+  AutomationRouteSteward,
   AutomationRouteTrigger,
   AutomationStartWorkflowAction,
 } from "@fragno-dev/backoffice-api/v0/automation";
@@ -14,6 +16,23 @@ type LegacyAutomationStartWorkflowAction = Omit<AutomationStartWorkflowAction, "
 
 type StoredAutomationRouteAction = AutomationRouteAction | LegacyAutomationStartWorkflowAction;
 
+/**
+ * Routes store their steward with their provenance. Before stewardship, Marketplace install scripts
+ * labelled the routes they wrote with `managedBy`; those rows read as members' routes until their
+ * package's next installation adopts them.
+ */
+export type StoredAutomationRouteMetadata =
+  | {
+      createdByActors: AutomationActors;
+      updatedByActors: AutomationActors;
+      steward: AutomationRouteSteward;
+    }
+  | {
+      createdByActors: AutomationActors;
+      updatedByActors: AutomationActors;
+      managedBy: { kind: "marketplace"; listingId: string } | null;
+    };
+
 type AutomationRouteRow = {
   id: { externalId: string };
   name: string;
@@ -22,7 +41,7 @@ type AutomationRouteRow = {
   trigger: AutomationRouteTrigger;
   action: StoredAutomationRouteAction;
   description: string | null;
-  metadata: AutomationRouteDefinition["metadata"];
+  metadata: StoredAutomationRouteMetadata | null;
 };
 
 type AutomationRouteScheduleStateRow = {
@@ -58,6 +77,13 @@ function normalizeStoredAutomationRouteAction(
   };
 }
 
+/** Routes without a recorded steward belong to members. */
+export function automationRouteSteward(
+  metadata: StoredAutomationRouteMetadata | null,
+): AutomationRouteSteward {
+  return metadata && "steward" in metadata ? metadata.steward : { kind: "members" };
+}
+
 export const normalizeAutomationRoute = (
   row: AutomationRouteRow,
   scheduleState?: AutomationRouteScheduleStateRow | null,
@@ -77,7 +103,18 @@ export const normalizeAutomationRoute = (
     trigger: row.trigger,
     action: normalizeStoredAutomationRouteAction(row.action),
     description: row.description,
-    metadata: row.metadata,
+    steward: automationRouteSteward(row.metadata),
+    metadata: row.metadata && {
+      createdByActors: row.metadata.createdByActors,
+      updatedByActors: row.metadata.updatedByActors,
+    },
     nextOccurrenceAt: scheduleState?.nextOccurrenceAt?.toISOString() ?? null,
   } as AutomationRouteDefinition;
 };
+
+/** The listing whose pre-stewardship install script labelled this route, if one did. */
+export function legacyMarketplaceRouteListingId(row: AutomationRouteRow): string | null {
+  return row.metadata && "managedBy" in row.metadata
+    ? (row.metadata.managedBy?.listingId ?? null)
+    : null;
+}

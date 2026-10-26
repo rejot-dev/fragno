@@ -14,7 +14,10 @@ import type {
   MarketplaceIngestionRequestInput,
   MarketplaceIngestionRestartResult,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
-import type { MarketplacePublishResult } from "@fragno-dev/backoffice-api/v0/marketplace";
+import type {
+  MarketplacePublishResult,
+  PackageInstallation,
+} from "@fragno-dev/backoffice-api/v0/marketplace";
 import type {
   MarketplaceFeatureEntry,
   MarketplaceFeaturedResult,
@@ -111,6 +114,10 @@ import type {
   RevokeExternalIdentityInput,
   RevokeExternalIdentityResult,
 } from "@/fragno/automation/external-identities";
+import type {
+  PackageInstallationInput,
+  PackageInstallationOutcome,
+} from "@/fragno/automation/package-installations";
 import type {
   BillingEventInput,
   BillingRecordEventResult,
@@ -683,6 +690,13 @@ export type AutomationsCommands = {
     projectId?: string;
     slug?: string;
   }): Promise<AutomationProjectExecutionTarget | null>;
+  listPackageInstallations(): Promise<PackageInstallation[]>;
+  getPackageInstallation(input: { listingId: string }): Promise<PackageInstallation | null>;
+  /** Records a package installation and syncs the routes it declares in this scope. */
+  applyPackageInstallation(input: PackageInstallationInput): Promise<PackageInstallationOutcome>;
+  uninstallPackage(input: {
+    listingId: string;
+  }): Promise<{ installation: PackageInstallation; removedRouteIds: string[] } | null>;
   /** Idempotent on the app and its identifier for the project. */
   provisionAppProject(input: {
     appId: string;

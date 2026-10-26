@@ -1,0 +1,31 @@
+{
+  "permissions": [
+    { "namespace": "integrations", "permission": "execute" },
+    { "namespace": "packages", "permission": "read" }
+  ],
+  "routes": [
+    {
+      "id": "telegram-test-command",
+      "name": "Telegram /test command",
+      "priority": 110,
+      "trigger": {
+        "kind": "event",
+        "source": "telegram",
+        "eventType": "message.received",
+        "matcher": { "path": "$.payload.text", "op": "eq", "value": "/test" }
+      },
+      "action": {
+        "kind": "start_workflow",
+        "authority": {
+          "kind": "organization-automation",
+          "grants": [
+            { "namespace": "integrations", "permission": "execute" },
+            { "namespace": "packages", "permission": "read" }
+          ]
+        },
+        "workflowScriptPath": "automations/telegram-test-command.workflow.js",
+        "instanceIdTemplate": "telegram-test-${event.id}"
+      }
+    }
+  ]
+}

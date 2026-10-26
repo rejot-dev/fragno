@@ -60,7 +60,9 @@ describe("runtime tool reference generation", () => {
   });
   test("generated package installation paths can be passed to filesystem tools", () => {
     expectTypeOf<PackagesInstallOutput["installationRoot"]>().toEqualTypeOf<string>();
-    expectTypeOf<PackagesLsOutput["entries"][number]["installationRoot"]>().toEqualTypeOf<string>();
+    expectTypeOf<
+      PackagesLsOutput["installations"][number]["installationRoot"]
+    >().toEqualTypeOf<string>();
     const reference = createRuntimeToolFamilyReference({ family: findBashFamily("packages") });
     for (const tool of reference.tools) {
       assert(tool.codemode.outputType.includes("installationRoot: string;"));

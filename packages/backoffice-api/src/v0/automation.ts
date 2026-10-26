@@ -327,17 +327,15 @@ export type AutomationRouteScheduleTrigger = {
 
 export type AutomationRouteTrigger = AutomationRouteEventTrigger | AutomationRouteScheduleTrigger;
 
-export type AutomationRouteManagedBy = {
-  kind: "marketplace";
-  listingId: string;
-  resourceKey: string;
-  version: string;
-};
+/**
+ * Who maintains a route's definition. Backoffice stamps it from the writer, never from input; only
+ * the steward changes the definition, while members may still turn a stewarded route on or off.
+ */
+export type AutomationRouteSteward = { kind: "members" } | { kind: "package"; listingId: string };
 
 export type AutomationRouteMetadata = {
   createdByActors: AutomationActors;
   updatedByActors: AutomationActors;
-  managedBy: AutomationRouteManagedBy | null;
 };
 
 /** Persisted routes may predate the authority rules enforced on create and activation. */
@@ -349,6 +347,7 @@ export type AutomationRouteDefinition = {
   enabled: boolean;
   priority: number;
   description?: string | null;
+  steward: AutomationRouteSteward;
   metadata?: AutomationRouteMetadata | null;
   nextOccurrenceAt: string | null;
 };
@@ -633,22 +632,19 @@ export const automationRouteActionSchema = z
   )
   .meta({ id: "AutomationRouteAction" }) satisfies z.ZodType<AutomationRouteAction>;
 
-export const automationRouteManagedBySchema: z.ZodType<AutomationRouteManagedBy> = z
+export const automationRouteStewardSchema: z.ZodType<AutomationRouteSteward> = z
   .lazy(() =>
-    z.strictObject({
-      kind: z.literal("marketplace"),
-      listingId: z.string().trim().min(1),
-      resourceKey: z.string().trim().min(1),
-      version: z.string().trim().min(1),
-    }),
+    z.discriminatedUnion("kind", [
+      z.strictObject({ kind: z.literal("members") }),
+      z.strictObject({ kind: z.literal("package"), listingId: z.string().trim().min(1) }),
+    ]),
   )
-  .meta({ id: "AutomationRouteManagedBy" });
+  .meta({ id: "AutomationRouteSteward" });
 
 const automationRouteMetadataSchema = z.lazy(() =>
   z.strictObject({
     createdByActors: automationActorsSchema,
     updatedByActors: automationActorsSchema,
-    managedBy: automationRouteManagedBySchema.nullable(),
   }),
 );
 
@@ -687,6 +683,7 @@ export const automationRouteSchema: z.ZodType<AutomationRouteDefinition> = z
       trigger: automationRouteTriggerSchema,
       action: automationRouteActionSchema,
       description: z.string().nullable().optional(),
+      steward: automationRouteStewardSchema,
       metadata: automationRouteMetadataSchema.nullable(),
       nextOccurrenceAt: z.iso.datetime().nullable(),
     }),
@@ -700,7 +697,6 @@ export const automationRouteCreateInputSchema = z.lazy(() =>
     enabled: z.boolean().default(true),
     priority: z.number().int().default(1000),
     description: z.string().nullable().optional(),
-    managedBy: automationRouteManagedBySchema.nullable().optional(),
     trigger: automationRouteTriggerSchema,
     action: automationRouteActionSchema,
   }),
@@ -715,7 +711,6 @@ const automationRouteUpdateObjectSchema = z.lazy(() =>
     trigger: automationRouteTriggerSchema.optional(),
     action: automationRouteActionSchema.optional(),
     description: z.string().nullable().optional(),
-    managedBy: automationRouteManagedBySchema.nullable().optional(),
   }),
 );
 
@@ -758,13 +753,15 @@ export const automationRouterOperations = {
     output: automationRouteSchema,
   },
   "router.update": {
-    description: "Update a database-backed automation routing rule.",
+    description:
+      "Update a database-backed automation routing rule. A route a package manages (steward kind 'package') only accepts enabling or disabling it; change its definition through the package.",
     permissions: [BACKOFFICE_PERMISSION.router.modify],
     input: automationRouteUpdateInputSchema,
     output: z.lazy(() => automationRouteSchema.nullable()),
   },
   "router.delete": {
-    description: "Idempotently delete a database-backed automation route.",
+    description:
+      "Idempotently delete a database-backed automation route. Routes a package manages are removed by uninstalling the package.",
     permissions: [BACKOFFICE_PERMISSION.router.modify],
     input: z.lazy(() => z.object({ id: z.string().trim().min(1) })),
     output: z.lazy(() => z.object({ deleted: z.literal(true) })),

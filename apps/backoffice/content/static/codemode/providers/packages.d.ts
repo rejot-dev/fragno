@@ -1,22 +1,137 @@
 // Package installs into the workspace. Read to install a Marketplace package or list installed ones.
 type PackagesCodemodeProvider = {
   /**
-   * Start the existing Marketplace installation workflow in the current workspace at a required folder under /workspace. Installs from the public Marketplace, or from the installing organization's Marketplace with organization visibility. Installation is asynchronous. Installing another version at a folder that already holds the item upgrades it in place, replacing and removing files that still match the installed version; it fails without changes if a file it would replace was edited. Omit version to use the existing latest-release resolution.
+   * Start the Marketplace installation workflow in the current workspace at a required folder under /workspace. Installs from the public Marketplace, or from the installing organization's Marketplace with organization visibility. Installation is asynchronous. Pass the release's declared permissions to approve them; the install is refused unless they match exactly, and you must hold each one. A refusal names the permissions the release declares. A workspace holds one installation per listing: installing another version upgrades it in place, replacing and removing files that still match the installed version, and fails without changes if a file it would replace was edited. Installing the installed version again re-runs its install workflow, which is how its settings are changed. Omit version to use the latest release.
    * Requires `packages.install`.
    */
   install(input: PackagesInstallInput): Promise<PackagesInstallOutput>;
   /**
-   * List successful package installations recorded in /workspace/marketplace-lock.json for the current workspace. A missing lock is empty; malformed locks fail without being modified.
+   * List the package installations in the current workspace.
    * Requires `packages.read`.
    */
   ls(input: PackagesLsInput): Promise<PackagesLsOutput>;
+  /**
+   * Get one package installation in the current workspace, including its settings, or null when the listing is not installed. Package workflows read their settings this way.
+   * Requires `packages.read`.
+   */
+  get(input: PackagesGetInput): Promise<PackagesGetOutput>;
+  /**
+   * Uninstall a package from the current workspace: delete the routes it manages and its installation record. Its files stay in its installation folder. Uninstalling a listing that is not installed changes nothing and returns null.
+   * Requires `packages.install`.
+   */
+  uninstall(input: PackagesUninstallInput): Promise<PackagesUninstallOutput>;
 };
 declare const packages: PackagesCodemodeProvider;
 
+type BackofficePermissionRequirement =
+  | {
+      namespace: "account";
+      permission: "read" | "manage";
+    }
+  | {
+      namespace: "admin";
+      permission:
+        | "apps.manage"
+        | "apps.read"
+        | "oauth-clients.manage"
+        | "oauth-clients.read"
+        | "sign-up-invitations.manage"
+        | "organizations.manage"
+        | "users.manage";
+    }
+  | {
+      namespace: "apps";
+      permission: "read" | "manage";
+    }
+  | {
+      namespace: "cloudflare";
+      permission: "browserRun";
+    }
+  | {
+      namespace: "connections";
+      permission: "manage" | "read";
+    }
+  | {
+      namespace: "events";
+      permission: "emit" | "manage" | "read" | "route";
+    }
+  | {
+      namespace: "forms";
+      permission: "create" | "read" | "update";
+    }
+  | {
+      namespace: "hooks";
+      permission: "read";
+    }
+  | {
+      namespace: "identity";
+      permission: "link" | "bind" | "read" | "resolve" | "revoke";
+    }
+  | {
+      namespace: "integrations";
+      permission: "read" | "manage" | "execute";
+    }
+  | {
+      namespace: "internal";
+      permission: "manage";
+    }
+  | {
+      namespace: "org";
+      permission: "read" | "manage";
+    }
+  | {
+      namespace: "models";
+      permission: "classify" | "generateImage";
+    }
+  | {
+      namespace: "marketplace";
+      permission: "read" | "publish" | "feature";
+    }
+  | {
+      namespace: "packages";
+      permission: "read" | "install";
+    }
+  | {
+      namespace: "otp";
+      permission: "create";
+    }
+  | {
+      namespace: "pi";
+      permission: "manage" | "modify" | "read";
+    }
+  | {
+      namespace: "projects";
+      permission: "create" | "read";
+    }
+  | {
+      namespace: "reson8";
+      permission: "transcribe";
+    }
+  | {
+      namespace: "router";
+      permission: "modify" | "read";
+    }
+  | {
+      namespace: "sandbox";
+      permission: "modify" | "read";
+    }
+  | {
+      namespace: "store";
+      permission: "modify" | "read";
+    }
+  | {
+      namespace: "upload";
+      permission: "modify" | "read";
+    }
+  | {
+      namespace: "workflow";
+      permission: "executeCode" | "modify" | "read";
+    };
 type PackagesInstallInput = {
   installationRoot: string;
   listingId: string;
   version?: string;
+  permissions?: BackofficePermissionRequirement[];
   visibility?: "public" | "organization";
 };
 type PackagesInstallOutput = {
@@ -33,7 +148,7 @@ type PackagesInstallOutput = {
 };
 type PackagesLsInput = Record<string, unknown>;
 type PackagesLsOutput = {
-  entries: {
+  installations: {
     marketplace:
       | {
           kind: "system";
@@ -45,5 +160,52 @@ type PackagesLsOutput = {
     listingId: string;
     version: string;
     installationRoot: string;
+    permissions: BackofficePermissionRequirement[];
+    settings: {
+      [key: string]: unknown;
+    };
   }[];
 };
+type PackagesGetInput = {
+  listingId: string;
+};
+type PackagesGetOutput = {
+  marketplace:
+    | {
+        kind: "system";
+      }
+    | {
+        kind: "org";
+        orgId: string;
+      };
+  listingId: string;
+  version: string;
+  installationRoot: string;
+  permissions: BackofficePermissionRequirement[];
+  settings: {
+    [key: string]: unknown;
+  };
+} | null;
+type PackagesUninstallInput = {
+  listingId: string;
+};
+type PackagesUninstallOutput = {
+  installation: {
+    marketplace:
+      | {
+          kind: "system";
+        }
+      | {
+          kind: "org";
+          orgId: string;
+        };
+    listingId: string;
+    version: string;
+    installationRoot: string;
+    permissions: BackofficePermissionRequirement[];
+    settings: {
+      [key: string]: unknown;
+    };
+  };
+  removedRouteIds: string[];
+} | null;

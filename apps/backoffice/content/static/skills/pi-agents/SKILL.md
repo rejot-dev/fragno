@@ -53,9 +53,9 @@ name again resumes it. Built-in agents cannot be changed or deleted.
 
 ## Package an agent
 
-Define the agent, instructions included, from `.marketplace/install.workflow.js`, the same way
-packages register routes: create it when missing, update it when this installation's `managedBy`
-owns it, and fail otherwise.
+Define the agent, instructions included, from `.marketplace/install.workflow.js`: create it when
+missing, update it when this installation's `managedBy` owns it, and fail otherwise. The package
+must declare `pi.manage` and `pi.read` in `.marketplace/installation.json`.
 
 ## How permissions work
 

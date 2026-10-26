@@ -69,6 +69,7 @@ function reclassificationRoute({
       eventType: targetEventType,
       payload: { kind: "projection", fields: { value: "$.payload.value" } },
     },
+    steward: { kind: "members" },
     nextOccurrenceAt: null,
   };
 }
@@ -121,6 +122,7 @@ describe("automation route action idempotency", () => {
         workflowScriptPath: "/workspace/automations/idempotent.workflow.js",
         instanceIdTemplate: "instance-${event.id}",
       },
+      steward: { kind: "members" },
       nextOccurrenceAt: null,
     };
 
@@ -199,6 +201,7 @@ describe("automation route action idempotency", () => {
         eventType: "ready",
         payload: "$event",
       },
+      steward: { kind: "members" },
       nextOccurrenceAt: null,
     };
 
@@ -281,6 +284,7 @@ describe("automation route action idempotency", () => {
         eventType: "issues.opened",
         payload: { kind: "projection", fields: { value: "$.payload.value" } },
       },
+      steward: { kind: "members" },
       nextOccurrenceAt: null,
     };
 
@@ -617,6 +621,7 @@ describe("automation route action idempotency", () => {
         targetScope: { kind: "org", orgIdTemplate: "org_456" },
         idTemplate: "forwarded-${event.id}",
       },
+      steward: { kind: "members" },
       nextOccurrenceAt: null,
     };
 

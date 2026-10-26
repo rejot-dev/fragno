@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import type { BackofficeApiOperation } from "../api";
-import { BACKOFFICE_PERMISSION } from "./shared/permissions";
+import { BACKOFFICE_PERMISSION, backofficePermissionRequirementSchema } from "./shared/permissions";
 import {
   backofficeOrganizationScopeSchema,
   backofficeProjectScopeSchema,
@@ -103,7 +103,10 @@ export const MARKETPLACE_RELEASE_IDENTIFIER = String.raw`(?:0|[1-9]\d*)`;
 
 export const MARKETPLACE_PRERELEASE_IDENTIFIER = String.raw`(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)`;
 
-/** Each destination workspace has one root lock file, independent of installation folders. */
+/**
+ * Installations used to be recorded in this workspace file. Backoffice now keeps installation records
+ * itself and only reads the file to upgrade installations made before.
+ */
 export const MARKETPLACE_LOCK_PATH = "/workspace/marketplace-lock.json";
 
 export const MARKETPLACE_CATEGORIES = [
@@ -298,6 +301,18 @@ export type MarketplaceIngestionRestartResult = z.infer<
   typeof marketplaceIngestionRestartResultSchema
 >;
 
+/** The permissions a package's routes and install workflow may use, approved by its installer. */
+export const packagePermissionsSchema = z.lazy(() =>
+  z
+    .array(backofficePermissionRequirementSchema)
+    .refine(
+      (permissions) =>
+        new Set(permissions.map(({ namespace, permission }) => `${namespace}.${permission}`))
+          .size === permissions.length,
+      "Package permissions must be unique.",
+    ),
+);
+
 /** Installation names the Marketplace holding the listing; listing ids repeat across Marketplaces. */
 export const marketplaceIngestionRequestInputSchema = z.lazy(() =>
   z.object({
@@ -306,10 +321,12 @@ export const marketplaceIngestionRequestInputSchema = z.lazy(() =>
     installationRoot: marketplaceInstallationRootSchema,
     listingId: marketplaceListingIdSchema,
     version: marketplaceVersionSchema.optional(),
+    /** Must equal the release's declared permissions; the installer must hold each of them. */
+    permissions: packagePermissionsSchema.default([]),
   }),
 );
 
-export type MarketplaceIngestionRequestInput = z.infer<
+export type MarketplaceIngestionRequestInput = z.input<
   typeof marketplaceIngestionRequestInputSchema
 >;
 
@@ -420,7 +437,7 @@ export const marketplacePublishInputSchema = z.lazy(() =>
   }),
 );
 
-/** The workspace lock records one successful release per listing and installation folder. */
+/** The legacy workspace lock recorded one successful release per listing and installation folder. */
 export const marketplaceLockSchema = z.lazy(() =>
   z
     .strictObject({
@@ -523,19 +540,58 @@ export const marketplaceOperations = {
   },
 } satisfies Record<string, BackofficeApiOperation>;
 
+/**
+ * One installed package in a workspace. A workspace holds at most one installation of a listing,
+ * because the routes a package declares have fixed ids. `settings` is what the package's install
+ * workflow returned; packages without one have empty settings.
+ */
+export const packageInstallationSchema = z.lazy(() =>
+  z.strictObject({
+    marketplace: marketplaceScopeSchema,
+    listingId: marketplaceListingIdSchema,
+    version: marketplaceVersionSchema,
+    installationRoot: marketplaceInstallationRootSchema,
+    permissions: packagePermissionsSchema,
+    settings: z.record(z.string(), z.unknown()),
+  }),
+);
+
+export type PackageInstallation = z.infer<typeof packageInstallationSchema>;
+
+const packageListingInputSchema = z.lazy(() =>
+  z.strictObject({ listingId: marketplaceListingIdSchema }),
+);
+
 export const packagesOperations = {
   "packages.install": {
     description:
-      "Start the existing Marketplace installation workflow in the current workspace at a required folder under /workspace. Installs from the public Marketplace, or from the installing organization's Marketplace with organization visibility. Installation is asynchronous. Installing another version at a folder that already holds the item upgrades it in place, replacing and removing files that still match the installed version; it fails without changes if a file it would replace was edited. Omit version to use the existing latest-release resolution.",
+      "Start the Marketplace installation workflow in the current workspace at a required folder under /workspace. Installs from the public Marketplace, or from the installing organization's Marketplace with organization visibility. Installation is asynchronous. Pass the release's declared permissions to approve them; the install is refused unless they match exactly, and you must hold each one. A refusal names the permissions the release declares. A workspace holds one installation per listing: installing another version upgrades it in place, replacing and removing files that still match the installed version, and fails without changes if a file it would replace was edited. Installing the installed version again re-runs its install workflow, which is how its settings are changed. Omit version to use the latest release.",
     permissions: [BACKOFFICE_PERMISSION.packages.install],
     input: packagesInstallInputSchema,
     output: packagesInstallResultSchema,
   },
   "packages.ls": {
-    description:
-      "List successful package installations recorded in /workspace/marketplace-lock.json for the current workspace. A missing lock is empty; malformed locks fail without being modified.",
+    description: "List the package installations in the current workspace.",
     permissions: [BACKOFFICE_PERMISSION.packages.read],
     input: z.lazy(() => z.strictObject({})),
-    output: marketplaceLockSchema,
+    output: z.lazy(() => z.object({ installations: z.array(packageInstallationSchema) })),
+  },
+  "packages.get": {
+    description:
+      "Get one package installation in the current workspace, including its settings, or null when the listing is not installed. Package workflows read their settings this way.",
+    permissions: [BACKOFFICE_PERMISSION.packages.read],
+    input: packageListingInputSchema,
+    output: z.lazy(() => packageInstallationSchema.nullable()),
+  },
+  "packages.uninstall": {
+    description:
+      "Uninstall a package from the current workspace: delete the routes it manages and its installation record. Its files stay in its installation folder. Uninstalling a listing that is not installed changes nothing and returns null.",
+    permissions: [BACKOFFICE_PERMISSION.packages.install],
+    input: packageListingInputSchema,
+    output: z.lazy(() =>
+      z
+        .object({ installation: packageInstallationSchema, removedRouteIds: z.array(z.string()) })
+        .nullable(),
+    ),
   },
 } satisfies Record<string, BackofficeApiOperation>;

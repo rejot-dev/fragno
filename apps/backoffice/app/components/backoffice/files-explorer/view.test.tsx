@@ -118,7 +118,7 @@ describe("FilesExplorerView", () => {
           workflowRouting={{
             status: "ready",
             routes: [
-              { ...route, nextOccurrenceAt: null },
+              { ...route, steward: { kind: "members" }, nextOccurrenceAt: null },
               {
                 ...route,
                 id: "other-workflow",
@@ -127,6 +127,7 @@ describe("FilesExplorerView", () => {
                   ...route.action,
                   workflowScriptPath: "/workspace/automations/other.workflow.js",
                 },
+                steward: { kind: "members" },
                 nextOccurrenceAt: null,
               },
             ],

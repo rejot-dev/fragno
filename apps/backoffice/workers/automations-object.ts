@@ -7,6 +7,7 @@ import type {
 import type {
   MarketplaceIngestionRequestInput,
   MarketplaceIngestionRestartResult,
+  PackageInstallation,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import { marketplaceIngestionRequestInputSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
 import {
@@ -92,6 +93,13 @@ import {
   MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
 } from "@/fragno/automation/marketplace-package-install-identity";
 import { MARKETPLACE_PACKAGE_PUBLISH_WORKFLOW_NAME } from "@/fragno/automation/marketplace-package-publish-workflow";
+import {
+  applyPackageInstallation,
+  assertPackageInstallationReplaceable,
+  uninstallPackage,
+  type PackageInstallationInput,
+  type PackageInstallationOutcome,
+} from "@/fragno/automation/package-installations";
 import { readBackofficeAutomationSource } from "@/fragno/automation/read-backoffice-automation-source";
 import type { DurableHookQueueOptions } from "@/fragno/durable-hooks";
 import {
@@ -104,6 +112,10 @@ import type {
 } from "@/fragno/marketplace/contracts";
 import { MarketplaceListingArchivedError } from "@/fragno/marketplace/definition";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
+import {
+  assertPackagePermissionsApproved,
+  readMarketplacePackageDeclaration,
+} from "@/fragno/marketplace/package-declaration";
 import { marketplacePackageUploadName } from "@/fragno/marketplace/package-files";
 import {
   assertMarketplacePublicationAuthority,
@@ -700,6 +712,32 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
       input.version,
     );
     const version = resolvedPackage.version;
+    const declaration = await readMarketplacePackageDeclaration({
+      http: this.#runtimeServices.objects.upload.forName(resolvedPackage.manifest.uploadName).http,
+      version,
+    });
+    assertPackagePermissionsApproved({
+      declared: declaration.permissions,
+      approved: input.permissions,
+    });
+    // An installer can't approve more for a package than they may do themselves.
+    await this.#kernel.assertAuthorizedAll({
+      execution: context.execution,
+      requirements: input.permissions.map((operation) => ({
+        operation,
+        resource: { kind: "package-installation", listingId: input.listingId },
+      })),
+    });
+    const installed = backofficeContextScopesEqual(input.targetScope, scope)
+      ? await runtime.automationFragment.callServices(() =>
+          runtime.automationFragment.services.getPackageInstallation({
+            listingId: input.listingId,
+          }),
+        )
+      : await this.#runtimeServices.objects.automations
+          .for(input.targetScope)
+          .commands.getPackageInstallation({ listingId: input.listingId });
+    assertPackageInstallationReplaceable(installed, input);
     const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
       marketplace: input.marketplace,
       targetScope: input.targetScope,
@@ -1067,6 +1105,42 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
     return await runtime.automationFragment.callServices(() =>
       runtime.automationFragment.services.resolveProjectForExecution(input),
     );
+  }
+
+  async listPackageInstallations(): Promise<PackageInstallation[]> {
+    await this.#ensureConfigured({ scope: this.#requireScope() });
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+
+    return await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.listPackageInstallations(),
+    );
+  }
+
+  async getPackageInstallation(input: { listingId: string }): Promise<PackageInstallation | null> {
+    await this.#ensureConfigured({ scope: this.#requireScope() });
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+
+    return await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.getPackageInstallation(input),
+    );
+  }
+
+  async applyPackageInstallation(
+    input: PackageInstallationInput,
+  ): Promise<PackageInstallationOutcome> {
+    await this.#ensureConfigured({ scope: this.#requireScope() });
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+
+    return await applyPackageInstallation(runtime.automationFragment, input);
+  }
+
+  async uninstallPackage(input: {
+    listingId: string;
+  }): Promise<{ installation: PackageInstallation; removedRouteIds: string[] } | null> {
+    await this.#ensureConfigured({ scope: this.#requireScope() });
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+
+    return await uninstallPackage(runtime.automationFragment, input);
   }
 
   async provisionAppProject(input: {

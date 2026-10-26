@@ -1,6 +1,5 @@
 import type {
   AutomationRouteAction,
-  AutomationRouteMetadata,
   AutomationRouteTrigger,
 } from "@fragno-dev/backoffice-api/v0/automation";
 import type {
@@ -8,9 +7,12 @@ import type {
   AutomationEventDefinition,
   AutomationRouteDispatchOutcome,
 } from "@fragno-dev/backoffice-api/v0/events";
+import type { MarketplaceScope } from "@fragno-dev/backoffice-api/v0/marketplace";
+import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { column, idColumn, schema, type Column } from "@fragno-dev/db/schema";
 
 import type { AutomationEventSource } from "./event-sources";
+import type { StoredAutomationRouteMetadata } from "./route-records";
 
 const jsonColumn = <T>() => column("json") as Column<"json", T, T>;
 
@@ -161,7 +163,7 @@ export const automationFragmentSchema = schema("automations", (s) => {
           .createIndex("idx_external_identity_claim_consumption_binding", ["bindingId"]);
       })
       .alterTable("automation_route", (t) => {
-        return t.addColumn("metadata", jsonColumn<AutomationRouteMetadata>().nullable());
+        return t.addColumn("metadata", jsonColumn<StoredAutomationRouteMetadata>().nullable());
       })
       .addTable("automation_event_source", (t) => {
         return t
@@ -237,6 +239,25 @@ export const automationFragmentSchema = schema("automations", (s) => {
           "dispatchedAt",
           "id",
         ]),
+      )
+      // A workspace installs a listing at most once, so the listing id identifies the installation.
+      // Written and read only through `package-installations-storage-runtime`.
+      .addTable("package_installation", (t) =>
+        t
+          .addColumn("id", idColumn())
+          .addColumn("marketplace", jsonColumn<MarketplaceScope>())
+          .addColumn("version", column("string"))
+          .addColumn("installationRoot", column("string"))
+          .addColumn("permissions", jsonColumn<BackofficePermissionRequirement[]>())
+          .addColumn("settings", jsonColumn<Record<string, unknown>>())
+          .addColumn(
+            "createdAt",
+            column("timestamp").defaultTo((b) => b.now()),
+          )
+          .addColumn(
+            "updatedAt",
+            column("timestamp").defaultTo((b) => b.now()),
+          ),
       )
   );
 });

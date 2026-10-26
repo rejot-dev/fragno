@@ -172,7 +172,7 @@ if (!telegramTestCommandEntry) {
 const TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION = {
   targetScope: { kind: "org", orgId: "org-1" },
   slug: "telegram-channel",
-  version: "1.3.0",
+  version: "2.0.0",
   // The Marketplace page's suggested folder, so nothing depends on where a package lands.
   installationRoot: "/workspace/telegram-channel",
 } as const;
@@ -418,7 +418,7 @@ describe("starter automation router scenarios", () => {
             expect(await response.json()).toMatchObject({
               agentName: "telegram",
               instructions: expect.stringContaining("Messages arrive from Telegram chats"),
-              managedBy: { kind: "marketplace", resourceKey: "telegram-agent", version: "1.3.0" },
+              managedBy: { kind: "marketplace", resourceKey: "telegram-agent", version: "2.0.0" },
             });
           }),
           then.assert("assert channel routes are visible through the replica", async (ctx) => {

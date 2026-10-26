@@ -2,11 +2,10 @@ import {
   isMarketplaceLockPath,
   MARKETPLACE_LOCK_PATH,
   marketplaceLockSchema,
-} from "@fragno-dev/backoffice-api/v0/marketplace";
-import {
   marketplaceListingIdSchema,
   marketplaceVersionSchema,
   type MarketplaceScope,
+  type PackageInstallation,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import {
@@ -33,6 +32,14 @@ import type { BackofficeObjectHandle, UploadCommands } from "@/backoffice-runtim
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { readSavedWorkflowProgram } from "@/fragno/codemode/workflow-program";
 import {
+  assertPackagePermissionsApproved,
+  EMPTY_MARKETPLACE_PACKAGE_DECLARATION,
+  MARKETPLACE_DECLARATION_PATH,
+  MarketplacePackageDeclarationError,
+  parseMarketplacePackageDeclaration,
+  resolveDeclaredPackageRoutes,
+} from "@/fragno/marketplace/package-declaration";
+import {
   isMarketplaceInternalPackagePath,
   MARKETPLACE_INSTALL_WORKFLOW_PATH,
   normalizeMarketplacePackagePath,
@@ -41,6 +48,7 @@ import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
 import type { UploadFragment } from "@/fragno/upload-server";
 import { sha256Hex } from "@/lib/crypto";
 
+import { BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "./actors";
 import { appendAutomationDelegate } from "./authority";
 import {
   CODEMODE_CAPABILITY_ACTOR,
@@ -75,6 +83,12 @@ import {
   throwMarketplaceUploadRouteError,
   throwUnexpectedMarketplaceUploadResponse,
 } from "./marketplace-upload-errors";
+import {
+  applyPackageInstallation,
+  assertPackageInstallationReplaceable,
+  PackageInstallationError,
+  type PackageInstallationInput,
+} from "./package-installations";
 import { workflowCompletedEventType, type WorkflowCompletedEventPayload } from "./workflow-reply";
 
 type PreparedWorkspaceWrite = PreparedFileWrite & { precondition: UploadFileWritePrecondition };
@@ -186,6 +200,10 @@ type MarketplacePackageInstallWorkflowConfig = {
   getWorkflowsFragment: () => MarketplaceWorkflowsFragment | undefined;
 };
 
+/**
+ * What a package's install workflow receives. Installing again restarts the workflow with its
+ * original input, so it reads the current installation and settings with `packages.get` instead.
+ */
 type MarketplaceInstallationWorkflowInput = {
   listingId: string;
   version: string;
@@ -194,7 +212,8 @@ type MarketplaceInstallationWorkflowInput = {
   installedFiles: Record<string, string>;
 };
 
-async function readMarketplaceLockFile(input: {
+/** The version an installation made before Backoffice kept installation records left in the lock. */
+async function readLegacyMarketplaceLockVersion(input: {
   routes: UploadRouteCaller;
   http: UploadHttpTransport;
   marketplace: MarketplaceScope;
@@ -202,29 +221,33 @@ async function readMarketplaceLockFile(input: {
   installationRoot: string;
 }) {
   const fileKey = MARKETPLACE_LOCK_PATH.slice("/workspace/".length);
-  const file = await requestUploadFile(input.routes, fileKey);
-  let lock: z.infer<typeof marketplaceLockSchema> = { entries: [] };
-  if (file) {
-    const bytes = await requestMarketplacePackageBytes(input.http, fileKey);
-    try {
-      lock = marketplaceLockSchema.parse(JSON.parse(TEXT_DECODER.decode(bytes)));
-    } catch {
-      throw new NonRetryableError(`Marketplace lock file '${MARKETPLACE_LOCK_PATH}' is invalid.`);
-    }
+  if (!(await requestUploadFile(input.routes, fileKey))) {
+    return null;
   }
-  const existing = lock.entries.find(
+  const bytes = await requestMarketplacePackageBytes(input.http, fileKey);
+  let json: unknown = null;
+  try {
+    json = JSON.parse(TEXT_DECODER.decode(bytes));
+  } catch {
+    // Invalid JSON fails the schema below, like any other invalid lock.
+  }
+  const lock = marketplaceLockSchema.safeParse(json);
+  if (!lock.success) {
+    throw new NonRetryableError(`Marketplace lock file '${MARKETPLACE_LOCK_PATH}' is invalid.`);
+  }
+  const existing = lock.data.entries.find(
     (entry) =>
-      entry.listingId === input.listingId && entry.installationRoot === input.installationRoot,
+      entry.listingId === input.listingId &&
+      entry.installationRoot === input.installationRoot &&
+      backofficeContextScopesEqual(entry.marketplace, input.marketplace),
   );
-  if (existing && !backofficeContextScopesEqual(existing.marketplace, input.marketplace)) {
-    throw new NonRetryableError(
-      `Marketplace item '${input.listingId}' from another Marketplace is already installed at '${input.installationRoot}'. Choose another install path.`,
-    );
-  }
-  return { lock, revision: file?.revision ?? null, existing: existing ?? null };
+  return existing?.version ?? null;
 }
 
-/** Install published package files, run optional setup, and record success in the workspace lock. */
+/**
+ * Install published package files, run the package's install workflow, then record the installation
+ * and sync its declared routes in the destination workspace.
+ */
 export function defineMarketplacePackageInstallWorkflow(
   config: MarketplacePackageInstallWorkflowConfig,
 ) {
@@ -428,17 +451,88 @@ export function defineMarketplacePackageInstallWorkflow(
 
       const destinationObject = runtime.objects.upload.for(input.targetScope);
       const destinationUploadRoutes = createUploadRouteCaller(destinationObject.http);
-      const lockReadInput = {
-        routes: destinationUploadRoutes,
-        http: destinationObject.http,
-        marketplace: input.marketplace,
-        listingId: release.listingId,
-        installationRoot: input.installationRoot,
+      // This organization's workspace stores its installations here; any other target stores its own.
+      const targetIsCoordinator = backofficeContextScopesEqual(input.targetScope, ownerScope);
+      const targetAutomations = () => {
+        const automationFragment = config.getAutomationFragment();
+        if (!automationFragment) {
+          throw new Error("Marketplace ingestion requires the local Automations fragment.");
+        }
+        return automationFragment;
       };
+
       const installedVersion = await step.do(
-        "validate marketplace lock file",
+        "read package installation",
         MARKETPLACE_EXTERNAL_STEP_RETRIES,
-        async () => (await readMarketplaceLockFile(lockReadInput)).existing?.version ?? null,
+        async function readPackageInstallation() {
+          const listingId = release.listingId;
+          const existing = targetIsCoordinator
+            ? await targetAutomations().callServices(() =>
+                targetAutomations().services.getPackageInstallation({ listingId }),
+              )
+            : await runtime.objects.automations
+                .for(input.targetScope)
+                .commands.getPackageInstallation({ listingId });
+          try {
+            assertPackageInstallationReplaceable(existing, {
+              listingId,
+              marketplace: input.marketplace,
+              installationRoot: input.installationRoot,
+            });
+          } catch (error) {
+            if (error instanceof PackageInstallationError) {
+              throw new NonRetryableError(error.message);
+            }
+            throw error;
+          }
+          if (existing) {
+            return existing.version;
+          }
+          const legacyVersion = await readLegacyMarketplaceLockVersion({
+            routes: destinationUploadRoutes,
+            http: destinationObject.http,
+            marketplace: input.marketplace,
+            listingId,
+            installationRoot: input.installationRoot,
+          });
+          return legacyVersion;
+        },
+      );
+
+      const declarationFile = requestedPackageFiles.find(
+        (file) => file.relativePath === MARKETPLACE_DECLARATION_PATH,
+      );
+      const declaredRoutes = await step.do(
+        "read marketplace package declaration",
+        MARKETPLACE_EXTERNAL_STEP_RETRIES,
+        async function readMarketplacePackageDeclaration() {
+          try {
+            const declaration = declarationFile
+              ? parseMarketplacePackageDeclaration(
+                  TEXT_DECODER.decode(
+                    await requestMarketplacePackageBytes(
+                      sourceObject.http,
+                      declarationFile.fileKey,
+                    ),
+                  ),
+                )
+              : EMPTY_MARKETPLACE_PACKAGE_DECLARATION;
+            assertPackagePermissionsApproved({
+              declared: declaration.permissions,
+              approved: input.permissions,
+            });
+            return resolveDeclaredPackageRoutes({
+              declaration,
+              installationRoot: input.installationRoot,
+              installedPaths: new Set(sourceFiles.map((file) => file.relativePath)),
+            });
+          } catch (error) {
+            if (error instanceof MarketplacePackageDeclarationError) {
+              throw new NonRetryableError(error.message);
+            }
+            throw error;
+          }
+        },
       );
       // Installing another version at an occupied root upgrades (or downgrades) it in place.
       const previousFiles =
@@ -666,6 +760,7 @@ export function defineMarketplacePackageInstallWorkflow(
         },
       );
 
+      let settings: PackageInstallation["settings"] = {};
       if (installationWorkflowFile) {
         const installationInput: MarketplaceInstallationWorkflowInput = {
           listingId: release.listingId,
@@ -761,18 +856,15 @@ export function defineMarketplacePackageInstallWorkflow(
               capabilityGrants: [
                 {
                   actor: CODEMODE_CAPABILITY_ACTOR,
+                  // Routes come only from declarations, so the package's code can't write them.
+                  // Reading installations lets it see its current settings.
                   permissions: [
-                    BACKOFFICE_PERMISSION.events.manage,
-                    BACKOFFICE_PERMISSION.events.read,
-                    BACKOFFICE_PERMISSION.identity.resolve,
-                    BACKOFFICE_PERMISSION.otp.create,
-                    BACKOFFICE_PERMISSION.pi.manage,
-                    BACKOFFICE_PERMISSION.pi.modify,
-                    BACKOFFICE_PERMISSION.pi.read,
-                    BACKOFFICE_PERMISSION.router.modify,
-                    BACKOFFICE_PERMISSION.router.read,
-                    BACKOFFICE_PERMISSION.store.modify,
-                    BACKOFFICE_PERMISSION.store.read,
+                    ...input.permissions.filter(
+                      ({ namespace, permission }) =>
+                        !(namespace === "router" && permission === "modify") &&
+                        !(namespace === "packages" && permission === "read"),
+                    ),
+                    BACKOFFICE_PERMISSION.packages.read,
                   ],
                 },
               ],
@@ -822,59 +914,43 @@ export function defineMarketplacePackageInstallWorkflow(
               `Marketplace installation workflow ended with status '${completion.payload.status}'.`,
           );
         }
+        const output = completion.payload.output;
+        if (output !== undefined && output !== null) {
+          if (typeof output !== "object" || Array.isArray(output)) {
+            throw new NonRetryableError(
+              "A Marketplace install workflow returns its settings as an object, or nothing.",
+            );
+          }
+          settings = output as PackageInstallation["settings"];
+        }
       }
 
-      await step.do("record marketplace lock file", MARKETPLACE_EXTERNAL_STEP_RETRIES, async () => {
-        const { lock, revision, existing } = await readMarketplaceLockFile(lockReadInput);
-        if (existing?.version === release.version) {
-          return;
-        }
-        const entry = {
-          marketplace: input.marketplace,
-          listingId: release.listingId,
-          version: release.version,
-          installationRoot: input.installationRoot,
-        };
-        const entries = existing
-          ? lock.entries.map((candidate) => (candidate === existing ? entry : candidate))
-          : [...lock.entries, entry];
-        const content = `${JSON.stringify({ entries }, null, 2)}\n`;
-        const form = new FormData();
-        form.set("provider", UPLOAD_PROVIDER_DATABASE);
-        form.set("fileKey", MARKETPLACE_LOCK_PATH.slice("/workspace/".length));
-        form.set("filename", "marketplace-lock.json");
-        form.set("contentType", "application/json");
-        form.set(
-          "checksum",
-          JSON.stringify({ algo: "sha256", value: await sha256Hex(TEXT_ENCODER.encode(content)) }),
-        );
-        form.set(
-          "precondition",
-          JSON.stringify(revision === null ? { kind: "absent" } : { kind: "revision", revision }),
-        );
-        form.set(
-          "file",
-          new File([content], "marketplace-lock.json", { type: "application/json" }),
-        );
-        const response = await destinationUploadRoutes("POST", "/files", { body: form });
-        if (response.type === "error") {
-          // Reload and merge on a retry so simultaneous installations cannot lose lock entries.
-          if (response.error.code === "FILE_PRECONDITION_FAILED") {
-            throw new Error("Marketplace lock file changed concurrently.");
+      await step.do(
+        "apply package installation",
+        MARKETPLACE_EXTERNAL_STEP_RETRIES,
+        async function applyInstallation() {
+          const installationInput: PackageInstallationInput = {
+            installation: {
+              marketplace: input.marketplace,
+              listingId: release.listingId,
+              version: release.version,
+              installationRoot: input.installationRoot,
+              permissions: input.permissions,
+              settings,
+            },
+            routes: declaredRoutes,
+            actors: input.metadata[BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY],
+          };
+          const outcome = targetIsCoordinator
+            ? await applyPackageInstallation(targetAutomations(), installationInput)
+            : await runtime.objects.automations
+                .for(input.targetScope)
+                .commands.applyPackageInstallation(installationInput);
+          if (!outcome.ok) {
+            throw new NonRetryableError(outcome.message);
           }
-          throwMarketplaceUploadRouteError({
-            operation: "Marketplace lock file write",
-            status: response.status,
-            error: response.error,
-          });
-        }
-        if (response.type !== "json" || response.status < 200 || response.status >= 300) {
-          throwUnexpectedMarketplaceUploadResponse({
-            operation: "Marketplace lock file write",
-            status: response.status,
-          });
-        }
-      });
+        },
+      );
 
       return {
         listingId: release.listingId,

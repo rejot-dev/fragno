@@ -1,7 +1,6 @@
 import { assert, describe, expect, test, vi } from "vitest";
 
 import { packagesInstallResultSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
-import { MARKETPLACE_LOCK_PATH } from "@fragno-dev/backoffice-api/v0/marketplace";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 const workers = vi.hoisted(() => ({
@@ -27,7 +26,6 @@ import {
   type BackofficeScenarioContext,
 } from "@/fragno/automation/scenario";
 import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
-import { getStaticMarketplaceEntry } from "@/fragno/marketplace/static-entries";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
@@ -77,7 +75,7 @@ async function submitInstallerConfiguration(ctx: BackofficeScenarioContext, inst
     workflowName: CODEMODE_WORKFLOW,
     instanceId: `${instanceId}:installation`,
     type: "telegram-test-command.message-configured",
-    payload: { message: "Configured through the existing installer event." },
+    payload: { message: "Configured through the installer event." },
   });
 }
 
@@ -95,135 +93,106 @@ async function createScenarioShell(ctx: BackofficeScenarioContext, scope: Backof
 }
 
 describe("Workspace package runtime scenarios", () => {
-  test("codemode installs through the existing restart flow and terminal lists the successful root lock", async () => {
+  test("an agent installs a package with approved permissions, reads its settings, and uninstalls it", async () => {
     await runBackofficeScenario(
-      defineBackofficeScenario<{ instanceId: string; version: string }>({
+      defineBackofficeScenario<{ instanceId: string }>({
         objects: scenarioObjects,
-        name: "Package runtime installation preserves the UI workflow semantics",
-        vars: () => ({ instanceId: "", version: "" }),
+        name: "Package tools install, inspect, and uninstall a package",
+        vars: () => ({ instanceId: "" }),
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then, runner }) => [
           then.assert("publish packages", publishPackages),
           runner.drain(),
           then.assert(
-            "new installation is an asynchronous workflow, not a successful lock entry",
-            async (ctx) => {
-              const run = await ctx.runCodemode({
-                scope: ORG_SCOPE,
-                code: `async () => await packages.install(${JSON.stringify({ listingId: LISTING_ID, installationRoot: `${INSTALLATION_ROOT}/` })})`,
-                assertToolCalls: ["packages.install"],
-              });
-              const result = packagesInstallResultSchema.parse(run.result);
-              const manifest = await ctx.runtime.objects.marketplace
-                .singleton()
-                .commands.getListingStorage({ listingId: LISTING_ID });
-              assert(manifest);
-              expect(result).toMatchObject({
-                action: "created",
-                version: manifest.versions[0],
-                installationRoot: INSTALLATION_ROOT,
-                workflowScope: ORG_SCOPE,
-                workflowStatus: "active",
-              });
-              ctx.vars.instanceId = result.workflowInstanceId;
-              ctx.vars.version = result.version;
-              const before = await ctx.runCodemode({
-                scope: ORG_SCOPE,
-                code: "async () => await packages.ls({})",
-                assertToolCalls: ["packages.ls"],
-              });
-              expect(before.result).toEqual({ entries: [] });
-            },
-          ),
-          runner.drain(),
-          then.assert("complete the existing interactive installer", async (ctx) => {
-            const list = await ctx.runCodemode({
-              scope: ORG_SCOPE,
-              code: "async () => await packages.ls({})",
-            });
-            expect(list.result).toEqual({ entries: [] });
-            await submitInstallerConfiguration(ctx, ctx.vars.instanceId);
-          }),
-          runner.drain(),
-          then.assert(
-            "success records the selected folder and publishes the real files and route",
+            "installation from the terminal approves the declared permissions",
             async (ctx) => {
               const bash = await createScenarioShell(ctx, ORG_SCOPE);
-              const list = await bash.exec("packages.ls --format json");
-              assert(list.exitCode === 0, list.stderr);
-              expect(JSON.parse(list.stdout)).toEqual({
-                entries: [
-                  {
-                    marketplace: { kind: "system" },
-                    listingId: LISTING_ID,
-                    version: ctx.vars.version,
-                    installationRoot: INSTALLATION_ROOT,
-                  },
-                ],
-              });
-              const text = await bash.exec("packages.ls");
-              assert(
-                text.stdout === `${LISTING_ID}@${ctx.vars.version}\t${INSTALLATION_ROOT}\tpublic\n`,
-                text.stdout,
+              const unapproved = await bash.exec(
+                `packages.install --listing-id '${LISTING_ID}' --version 2.0.0 --installation-root ${INSTALLATION_ROOT}`,
               );
-              const read = await ctx.runCodemode({
-                scope: ORG_SCOPE,
-                code: `async () => await state.readFile({ path: ${JSON.stringify(`${INSTALLATION_ROOT}/${WORKFLOW_FILE}`)} })`,
-              });
-              const entry = getStaticMarketplaceEntry({
-                slug: "telegram-test-command",
-                version: ctx.vars.version,
-              });
-              assert(entry);
-              assert(read.result === entry.files[WORKFLOW_FILE]);
-              const route = await ctx.runtime.objects.automations
-                .for(ORG_SCOPE)
-                .http.fetch(
-                  new Request(
-                    "https://automations.test/api/automations/routes/telegram-test-command",
-                  ),
-                );
-              assert(route.ok);
-              expect(await route.json()).toMatchObject({
-                action: { workflowScriptPath: `${INSTALLATION_ROOT}/${WORKFLOW_FILE}` },
-              });
-              const repeated = await bash.exec(
-                `packages.install --listing-id '${LISTING_ID}' --version ${ctx.vars.version} --installation-root ${INSTALLATION_ROOT} --format json`,
+              expect(unapproved.exitCode).not.toBe(0);
+              expect(unapproved.stderr).toContain(
+                "This release declares the permissions integrations.execute, packages.read",
               );
-              assert(repeated.exitCode === 0, repeated.stderr);
-              expect(JSON.parse(repeated.stdout)).toMatchObject({
-                action: "restarted",
-                workflowInstanceId: ctx.vars.instanceId,
+              const installed = await bash.exec(
+                `packages.install --listing-id '${LISTING_ID}' --version 2.0.0 --installation-root ${INSTALLATION_ROOT}/ --permission integrations.execute --permission packages.read --format json`,
+              );
+              assert(installed.exitCode === 0, installed.stderr);
+              const result = packagesInstallResultSchema.parse(JSON.parse(installed.stdout));
+              expect(result).toMatchObject({
+                action: "created",
+                version: "2.0.0",
+                installationRoot: INSTALLATION_ROOT,
+                workflowScope: ORG_SCOPE,
               });
+              ctx.vars.instanceId = result.workflowInstanceId;
             },
           ),
           runner.drain(),
-          then.assert("complete the restarted installer", async (ctx) => {
+          then.assert("answer the install workflow", async (ctx) => {
+            await expect(
+              ctx.runCodemode({ scope: ORG_SCOPE, code: "async () => await packages.ls({})" }),
+            ).resolves.toMatchObject({ result: { installations: [] } });
             await submitInstallerConfiguration(ctx, ctx.vars.instanceId);
           }),
           runner.drain(),
-          then.assert("repeated installation does not duplicate the lock entry", async (ctx) => {
+          then.assert("the installation lists, with its settings", async (ctx) => {
+            const bash = await createScenarioShell(ctx, ORG_SCOPE);
+            const text = await bash.exec("packages.ls");
+            assert(
+              text.stdout === `${LISTING_ID}@2.0.0\t${INSTALLATION_ROOT}\tpublic\n`,
+              text.stdout,
+            );
             const run = await ctx.runCodemode({
               scope: ORG_SCOPE,
-              code: "async () => await packages.ls({})",
+              code: `async () => await packages.get({ listingId: ${JSON.stringify(LISTING_ID)} })`,
+              assertToolCalls: ["packages.get"],
             });
             expect(run.result).toEqual({
-              entries: [
-                {
-                  marketplace: { kind: "system" },
-                  listingId: LISTING_ID,
-                  version: ctx.vars.version,
-                  installationRoot: INSTALLATION_ROOT,
-                },
+              marketplace: { kind: "system" },
+              listingId: LISTING_ID,
+              version: "2.0.0",
+              installationRoot: INSTALLATION_ROOT,
+              permissions: [
+                { namespace: "integrations", permission: "execute" },
+                { namespace: "packages", permission: "read" },
               ],
+              settings: { message: "Configured through the installer event." },
             });
           }),
+          then.router.route({
+            orgId: "org-1",
+            id: "telegram-test-command",
+            steward: { kind: "package", listingId: LISTING_ID },
+            action: { workflowScriptPath: `${INSTALLATION_ROOT}/${WORKFLOW_FILE}` },
+          }),
+          then.assert("uninstalling removes the route and record but keeps files", async (ctx) => {
+            const run = await ctx.runCodemode({
+              scope: ORG_SCOPE,
+              code: `async () => await packages.uninstall({ listingId: ${JSON.stringify(LISTING_ID)} })`,
+              assertToolCalls: ["packages.uninstall"],
+            });
+            expect(run.result).toMatchObject({
+              installation: { listingId: LISTING_ID, version: "2.0.0" },
+              removedRouteIds: ["telegram-test-command"],
+            });
+            const after = await ctx.runCodemode({
+              scope: ORG_SCOPE,
+              code: `async () => ({ installed: await packages.ls({}), again: await packages.uninstall({ listingId: ${JSON.stringify(LISTING_ID)} }), file: await state.exists({ path: ${JSON.stringify(`${INSTALLATION_ROOT}/${WORKFLOW_FILE}`)} }) })`,
+            });
+            expect(after.result).toEqual({
+              installed: { installations: [] },
+              again: null,
+              file: true,
+            });
+          }),
+          then.router.missing({ orgId: "org-1", id: "telegram-test-command" }),
         ],
       }),
     );
   });
 
-  test("personal and project installations use organization coordination but isolated destination locks", async () => {
+  test("personal and project installations use organization coordination but record installations in their own workspace", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario<{ projectId: string }>({
         objects: scenarioObjects,
@@ -281,7 +250,7 @@ describe("Workspace package runtime scenarios", () => {
           ),
           runner.drain(),
           then.assert(
-            "the organization lock is empty while user and project locks record installations",
+            "the organization has no installation while the user and project workspaces do",
             async (ctx) => {
               const scope = {
                 kind: "project",
@@ -289,12 +258,14 @@ describe("Workspace package runtime scenarios", () => {
                 projectId: ctx.vars.projectId,
               } as const;
               const expected = {
-                entries: [
+                installations: [
                   {
                     marketplace: { kind: "system" },
                     listingId: LISTING_ID,
                     version: "1.0.0",
                     installationRoot: INSTALLATION_ROOT,
+                    permissions: [],
+                    settings: {},
                   },
                 ],
               };
@@ -309,7 +280,7 @@ describe("Workspace package runtime scenarios", () => {
                 scope: ORG_SCOPE,
                 code: "async () => await packages.ls({})",
               });
-              expect(organization.result).toEqual({ entries: [] });
+              expect(organization.result).toEqual({ installations: [] });
             },
           ),
         ],
@@ -363,15 +334,8 @@ describe("Workspace package runtime scenarios", () => {
               scope: { kind: "user", userId: "owner-1" },
               code: "async () => await packages.ls({})",
             });
-            expect(result.result).toEqual({
-              entries: [
-                {
-                  marketplace: { kind: "system" },
-                  listingId: LISTING_ID,
-                  version: "1.0.0",
-                  installationRoot: INSTALLATION_ROOT,
-                },
-              ],
+            expect(result.result).toMatchObject({
+              installations: [{ listingId: LISTING_ID, version: "1.0.0" }],
             });
           }),
         ],
@@ -379,62 +343,41 @@ describe("Workspace package runtime scenarios", () => {
     );
   });
 
-  test("missing locks are empty, malformed locks fail without writes, and invalid install inputs are rejected", async () => {
+  test("invalid install inputs are rejected without scheduling installation", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         objects: scenarioObjects,
-        name: "Package tool boundaries preserve workspace data",
+        name: "Package tool boundaries reject invalid input",
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then }) => [
-          then.assert(
-            "validation does not schedule workflows or rewrite malformed locks",
-            async (ctx) => {
-              const bash = await createScenarioShell(ctx, ORG_SCOPE);
-              for (const args of [
-                "",
-                "--installation-root /static/telegram",
-                "--installation-root /workspace/../telegram",
-                "--installation-root /workspace/marketplace-lock.json",
-                "--installation-root /workspace/telegram --force",
-                "--installation-root /workspace/telegram --version latest",
-              ]) {
-                const result = await bash.exec(
-                  `packages.install --listing-id '${LISTING_ID}' ${args}`,
-                );
-                expect(result.exitCode).not.toBe(0);
-              }
-              await expect(
-                ctx.runCodemode({
-                  scope: ORG_SCOPE,
-                  code: `async () => await packages.install(${JSON.stringify({ listingId: LISTING_ID, installationRoot: INSTALLATION_ROOT, targetScope: { kind: "org", orgId: "org-2" } })})`,
-                }),
-              ).rejects.toThrow("targetScope");
-              const missing = await ctx.runCodemode({
-                scope: ORG_SCOPE,
-                code: "async () => await packages.ls({})",
-              });
-              expect(missing.result).toEqual({ entries: [] });
-              const absent = await ctx.runCodemode({
-                scope: ORG_SCOPE,
-                code: `async () => await state.exists({ path: ${JSON.stringify(MARKETPLACE_LOCK_PATH)} })`,
-              });
-              assert(absent.result === false);
-              await ctx.runCodemode({
-                scope: ORG_SCOPE,
-                code: `async () => await state.writeFile({ path: ${JSON.stringify(MARKETPLACE_LOCK_PATH)}, content: "not JSON" })`,
-              });
-              const malformed = await bash.exec("packages.ls --format json");
-              expect(malformed.exitCode).not.toBe(0);
-              expect(malformed.stderr).toContain(
-                `Marketplace lock file '${MARKETPLACE_LOCK_PATH}' is invalid.`,
+          then.assert("validation does not schedule workflows", async (ctx) => {
+            const bash = await createScenarioShell(ctx, ORG_SCOPE);
+            for (const args of [
+              "",
+              "--installation-root /static/telegram",
+              "--installation-root /workspace/../telegram",
+              "--installation-root /workspace/marketplace-lock.json",
+              "--installation-root /workspace/telegram --force",
+              "--installation-root /workspace/telegram --version latest",
+              "--installation-root /workspace/telegram --permission telegram.send",
+            ]) {
+              const result = await bash.exec(
+                `packages.install --listing-id '${LISTING_ID}' ${args}`,
               );
-              const content = await ctx.runCodemode({
+              expect(result.exitCode).not.toBe(0);
+            }
+            await expect(
+              ctx.runCodemode({
                 scope: ORG_SCOPE,
-                code: `async () => await state.readFile({ path: ${JSON.stringify(MARKETPLACE_LOCK_PATH)} })`,
-              });
-              assert(content.result === "not JSON");
-            },
-          ),
+                code: `async () => await packages.install(${JSON.stringify({ listingId: LISTING_ID, installationRoot: INSTALLATION_ROOT, targetScope: { kind: "org", orgId: "org-2" } })})`,
+              }),
+            ).rejects.toThrow("targetScope");
+            const missing = await ctx.runCodemode({
+              scope: ORG_SCOPE,
+              code: "async () => await packages.ls({})",
+            });
+            expect(missing.result).toEqual({ installations: [] });
+          }),
         ],
       }),
     );
@@ -458,12 +401,12 @@ describe("Workspace package runtime scenarios", () => {
             });
             const run = await ctx.runCodemode({
               scope: ORG_SCOPE,
-              code: `async () => await packages.install(${JSON.stringify({ listingId: LISTING_ID, version: "1.2.1", installationRoot: INSTALLATION_ROOT })})`,
+              code: `async () => await packages.install(${JSON.stringify({ listingId: LISTING_ID, version: "1.0.0", installationRoot: INSTALLATION_ROOT })})`,
             });
             ctx.vars.instanceId = packagesInstallResultSchema.parse(run.result).workflowInstanceId;
           }),
           runner.drain(),
-          then.assert("failure preserves the file and keeps the root lock absent", async (ctx) => {
+          then.assert("failure preserves the file and records no installation", async (ctx) => {
             const workflow = createRouteBackedAutomationWorkflowRuntime({
               object: ctx.runtime.objects.automations.for(ORG_SCOPE),
               execution: createBackofficeSystemExecution(ORG_SCOPE),
@@ -477,7 +420,10 @@ describe("Workspace package runtime scenarios", () => {
               scope: ORG_SCOPE,
               code: `async () => ({ content: await state.readFile({ path: ${JSON.stringify(`${INSTALLATION_ROOT}/${WORKFLOW_FILE}`)} }), installed: await packages.ls({}) })`,
             });
-            expect(state.result).toEqual({ content: "local changes", installed: { entries: [] } });
+            expect(state.result).toEqual({
+              content: "local changes",
+              installed: { installations: [] },
+            });
           }),
         ],
       }),
@@ -514,6 +460,7 @@ describe("Workspace package runtime scenarios", () => {
                   `packages.install --listing-id '${LISTING_ID}' --installation-root ${INSTALLATION_ROOT}`,
                   "packages.install",
                 ],
+                [`packages.uninstall --listing-id '${LISTING_ID}'`, "packages.install"],
               ]) {
                 const result = await bash.exec(command);
                 expect(result.exitCode).not.toBe(0);

@@ -55,6 +55,7 @@ describe("files content rendering", () => {
               cadence: { kind: "cron", expression: "0 9 * * 1-5", timeZone: "America/New_York" },
             },
             action: workflowAction,
+            steward: { kind: "members" },
             nextOccurrenceAt: "2026-08-24T13:00:00.000Z",
           },
           {
@@ -67,6 +68,7 @@ describe("files content rendering", () => {
               cadence: { kind: "once", at: "2026-08-25T12:00:00.000Z" },
             },
             action: workflowAction,
+            steward: { kind: "members" },
             nextOccurrenceAt: "2026-08-25T12:00:00.000Z",
           },
         ],

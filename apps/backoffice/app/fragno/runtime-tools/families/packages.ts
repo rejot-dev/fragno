@@ -61,9 +61,15 @@ const packagesInstallTool = defineBackofficeRuntimeTool({
             description:
               "public (default) installs from the public Marketplace; organization installs from the installing organization's Marketplace.",
           },
+          {
+            name: "permission",
+            valueRequired: true,
+            description:
+              "Approve one permission the release declares, as namespace.permission. Repeat it for each declared permission.",
+          },
         ],
         examples: [
-          "packages.install --listing-id 'system#telegram-test-command' --version 1.4.0 --installation-root /workspace/telegram --format json",
+          "packages.install --listing-id 'system#telegram-test-command' --version 2.0.0 --installation-root /workspace/telegram --permission integrations.execute --permission packages.read --format json",
         ],
       },
       parse: defineCliArgsParser<z.input<typeof packagesInstallInputSchema>>("packages.install", {
@@ -71,6 +77,18 @@ const packagesInstallTool = defineBackofficeRuntimeTool({
         version: {},
         installationRoot: { required: true },
         visibility: {},
+        permissions: {
+          kind: "stringArray",
+          option: "permission",
+          // `admin.apps.manage` names namespace `admin` and permission `apps.manage`.
+          transform: (keys) =>
+            (keys as unknown as string[]).map((key) => {
+              const separator = key.indexOf(".");
+              return separator === -1
+                ? { namespace: key, permission: "" }
+                : { namespace: key.slice(0, separator), permission: key.slice(separator + 1) };
+            }) as z.input<typeof packagesInstallInputSchema>["permissions"],
+        },
       }),
       format: (result, options) =>
         options.format === "json" || options.print
@@ -100,10 +118,10 @@ const packagesListTool = defineBackofficeRuntimeTool({
         options.format === "json" || options.print
           ? { data: result }
           : {
-              stdout: result.entries
+              stdout: result.installations
                 .map(
-                  (entry) =>
-                    `${entry.listingId}@${entry.version}\t${entry.installationRoot}\t${entry.marketplace.kind === "org" ? "organization" : "public"}\n`,
+                  (installation) =>
+                    `${installation.listingId}@${installation.version}\t${installation.installationRoot}\t${installation.marketplace.kind === "org" ? "organization" : "public"}\n`,
                 )
                 .join(""),
             },
@@ -111,9 +129,76 @@ const packagesListTool = defineBackofficeRuntimeTool({
   },
 });
 
-/** Workspace package tools do not introduce upgrade or reinstall policy. */
+const packagesGetTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("packages.get"),
+  namespace: "packages",
+  name: "get",
+  execute: async (input, context: PackagesToolContext) =>
+    await getPackagesRuntime(context).get(input),
+  adapters: {
+    bash: {
+      command: "packages.get",
+      help: {
+        summary: "Show one package installation in the selected workspace, with its settings.",
+        options: [
+          {
+            name: "listing-id",
+            required: true,
+            valueRequired: true,
+            description: "Owner-qualified Marketplace listing ID.",
+          },
+        ],
+        examples: ["packages.get --listing-id 'system#telegram-test-command' --format json"],
+      },
+      parse: defineCliArgsParser<{ listingId: string }>("packages.get", {
+        listingId: { required: true },
+      }),
+      format: (result) => ({ data: result }),
+    },
+  },
+});
+
+const packagesUninstallTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("packages.uninstall"),
+  namespace: "packages",
+  name: "uninstall",
+  getResource: (input) => ({ listingId: input.listingId }),
+  execute: async (input, context: PackagesToolContext) =>
+    await getPackagesRuntime(context).uninstall(input),
+  adapters: {
+    bash: {
+      command: "packages.uninstall",
+      help: {
+        summary:
+          "Uninstall a package from the selected workspace, deleting the routes it manages. Its files stay.",
+        options: [
+          {
+            name: "listing-id",
+            required: true,
+            valueRequired: true,
+            description: "Owner-qualified Marketplace listing ID.",
+          },
+        ],
+        examples: ["packages.uninstall --listing-id 'system#telegram-test-command' --format json"],
+      },
+      parse: defineCliArgsParser<{ listingId: string }>("packages.uninstall", {
+        listingId: { required: true },
+      }),
+      format: (result, options) =>
+        options.format === "json" || options.print
+          ? { data: result }
+          : {
+              stdout: result
+                ? `uninstalled\t${result.installation.listingId}\t${result.installation.installationRoot}\troutes:${result.removedRouteIds.join(",")}\n`
+                : "not installed\n",
+            },
+    },
+  },
+});
+
+/** Install, inspect, and uninstall packages in the selected workspace. */
 export const packagesToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "packages",
-  tools: [packagesInstallTool, packagesListTool],
+  tools: [packagesInstallTool, packagesListTool, packagesGetTool, packagesUninstallTool],
   isAvailable: (context: PackagesToolContext) => !!context.runtimes.packages,
 });

@@ -4577,6 +4577,11 @@
         "description": "public (default) installs from the public Marketplace; organization installs from the installing organization's Marketplace."
       },
       {
+        "name": "permission",
+        "valueRequired": true,
+        "description": "Approve one permission the release declares, as namespace.permission. Repeat it for each declared permission."
+      },
+      {
         "name": "help",
         "description": "Show this help text",
         "valueRequired": false,
@@ -4601,6 +4606,68 @@
     "command": "packages.ls",
     "summary": "List the selected workspace's recorded package installations.",
     "options": [
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "packages.get",
+    "summary": "Show one package installation in the selected workspace, with its settings.",
+    "options": [
+      {
+        "name": "listing-id",
+        "required": true,
+        "valueRequired": true,
+        "description": "Owner-qualified Marketplace listing ID."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "packages.uninstall",
+    "summary": "Uninstall a package from the selected workspace, deleting the routes it manages. Its files stay.",
+    "options": [
+      {
+        "name": "listing-id",
+        "required": true,
+        "valueRequired": true,
+        "description": "Owner-qualified Marketplace listing ID."
+      },
       {
         "name": "help",
         "description": "Show this help text",

@@ -178,12 +178,6 @@ describe("automation routes /routes", () => {
           workflowScriptPath: "/workspace/automations/telegram-hello.workflow.js",
           instanceIdTemplate: "telegram-hello-${event}",
         },
-        managedBy: {
-          kind: "marketplace",
-          listingId: "system#telegram-hello",
-          resourceKey: "telegram-hello-route",
-          version: "1.0.0",
-        },
       },
     });
 
@@ -197,15 +191,10 @@ describe("automation routes /routes", () => {
       priority: 1000,
     });
     expect(createResponse.data.action).not.toHaveProperty("workflowName");
-    expect(createResponse.data.metadata).toMatchObject({
+    expect(createResponse.data.steward).toEqual({ kind: "members" });
+    expect(createResponse.data.metadata).toEqual({
       createdByActors: BACKOFFICE_SYSTEM_ACTORS,
       updatedByActors: BACKOFFICE_SYSTEM_ACTORS,
-      managedBy: {
-        kind: "marketplace",
-        listingId: "system#telegram-hello",
-        resourceKey: "telegram-hello-route",
-        version: "1.0.0",
-      },
     });
 
     const updateResponse = await fragment.callRoute("PATCH", "/routes/:routeId", {

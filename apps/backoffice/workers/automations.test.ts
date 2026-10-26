@@ -1158,23 +1158,20 @@ describe("Automations object scope binding", () => {
       });
       await runtime.drain();
 
-      const lockUrl = new URL("https://upload.test/api/upload/files/by-key/content");
-      lockUrl.searchParams.set("provider", "database");
-      lockUrl.searchParams.set("key", "marketplace-lock.json");
-      const lock = await runtime.objects.upload
-        .forUser({ userId: "user-1" })
-        .http.fetch(new Request(lockUrl));
-      assert(lock.ok);
-      await expect(lock.json()).resolves.toEqual({
-        entries: [
-          {
-            marketplace: { kind: "system" },
-            listingId,
-            version: USER_WORKSPACE_INGESTION_TEST_VERSION,
-            installationRoot: "/workspace",
-          },
-        ],
-      });
+      await expect(
+        runtime.objects.automations
+          .forUser({ userId: "user-1" })
+          .commands.listPackageInstallations(),
+      ).resolves.toEqual([
+        {
+          marketplace: { kind: "system" },
+          listingId,
+          version: USER_WORKSPACE_INGESTION_TEST_VERSION,
+          installationRoot: "/workspace",
+          permissions: [],
+          settings: {},
+        },
+      ]);
 
       const contentUrl = new URL("https://upload.test/api/upload/files/by-key/content");
       contentUrl.searchParams.set("provider", "database");
@@ -1268,13 +1265,11 @@ describe("Automations object scope binding", () => {
           message: "Marketplace ingestion user target is not a member of the organization.",
         },
       });
-      const lockUrl = new URL("https://upload.test/api/upload/files/by-key/content");
-      lockUrl.searchParams.set("provider", "database");
-      lockUrl.searchParams.set("key", "marketplace-lock.json");
-      const lock = await runtime.objects.upload
-        .forUser({ userId: "user-1" })
-        .http.fetch(new Request(lockUrl));
-      assert(lock.status === 404);
+      await expect(
+        runtime.objects.automations
+          .forUser({ userId: "user-1" })
+          .commands.listPackageInstallations(),
+      ).resolves.toEqual([]);
       expect(membershipChecks).toBe(2);
     } finally {
       await runtime.cleanup();
