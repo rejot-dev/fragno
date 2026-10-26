@@ -19,6 +19,7 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 
 import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 
+import { discardBackofficeTelemetry } from "./backoffice-telemetry";
 import type { BackofficeDatabaseAdapterFactory } from "./database-adapters";
 import { defaultInMemoryBackofficeRuntimeEnv } from "./in-memory-runtime-env";
 import { LocalObjectFactory } from "./local-object-factory";
@@ -39,6 +40,7 @@ const createFactory = () => {
 
   return new LocalObjectFactory({
     runtimeEnv: defaultInMemoryBackofficeRuntimeEnv(),
+    telemetry: discardBackofficeTelemetry,
     clearDurableHooks: async () => {},
     getRuntimeServices: () => ({ adapters }) as BackofficeRuntimeServices,
     objects: {
@@ -66,6 +68,7 @@ function createClockDrainFactory(runDrain: (nowEpochMs: () => number) => Promise
 
   return new LocalObjectFactory({
     runtimeEnv: defaultInMemoryBackofficeRuntimeEnv(),
+    telemetry: discardBackofficeTelemetry,
     clearDurableHooks: async () => {},
     getRuntimeServices: () => ({ adapters }) as BackofficeRuntimeServices,
     objects: {
@@ -142,6 +145,7 @@ describe("LocalObjectFactory", () => {
     };
     const factory = new LocalObjectFactory({
       runtimeEnv: defaultInMemoryBackofficeRuntimeEnv(),
+      telemetry: discardBackofficeTelemetry,
       clearDurableHooks: async () => {},
       getRuntimeServices: () => ({ adapters }) as BackofficeRuntimeServices,
       objects: {

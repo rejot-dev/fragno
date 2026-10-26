@@ -35,6 +35,7 @@ import type { ClassifierContext, ClassifierResult, FetchFunction } from "@earend
 import type { SubmissionRecord } from "@earendil-works/pi-durable";
 
 import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
+import type { BackofficeTelemetrySignal } from "@/backoffice-runtime/backoffice-telemetry";
 import {
   createBackofficeServiceExecution,
   createBackofficeSystemExecution,
@@ -375,6 +376,8 @@ export type BackofficeScenarioContext<TVars extends ScenarioVars = ScenarioVars>
   lofi: BackofficeScenarioLofi;
   codemodeRuns: ScenarioCodemodeRun[];
   kernelActions: readonly BackofficeKernelAction[];
+  /** Every signal the scenario's objects reported, in order. */
+  telemetry: readonly BackofficeTelemetrySignal[];
   journal: ScenarioJournal;
   drain(): Promise<void>;
   runCodemode(input: BackofficeScenarioCodemodeInput): Promise<BackofficeCodemodeExecuteResult>;
@@ -4624,11 +4627,17 @@ export const runBackofficeScenario = async <TVars extends ScenarioVars = Scenari
       await execute();
     },
   };
+  const telemetry: BackofficeTelemetrySignal[] = [];
   const runtime = await createInMemoryBackofficeRuntime({
     env: scenario.env,
     sqliteDataDirectory: scenario.options?.sqliteDataDirectory,
     createSandboxProviders: scenario.createSandboxProviders,
     kernelObserver,
+    telemetry: {
+      record(signal) {
+        telemetry.push(signal);
+      },
+    },
     readAutomationSource: async ({ execution, path }) =>
       await (
         execution.scope.kind === "project"
@@ -4655,6 +4664,7 @@ export const runBackofficeScenario = async <TVars extends ScenarioVars = Scenari
     lofi,
     codemodeRuns: [],
     kernelActions,
+    telemetry,
     journal,
     drain: async () => {
       await runtime.drain();

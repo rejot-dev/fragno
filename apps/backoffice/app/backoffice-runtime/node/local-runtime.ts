@@ -15,6 +15,7 @@ import {
   type BackofficeAuthorityResolver,
 } from "../authority-resolver";
 import type { BackofficeRuntimeEnv } from "../backoffice-runtime-env";
+import { discardBackofficeTelemetry, type BackofficeTelemetry } from "../backoffice-telemetry";
 import type { BackofficeDatabaseAdapterFactory } from "../database-adapters";
 import { createInMemoryBackofficeDatabaseAdapters } from "../in-memory-database-adapters";
 import { noopBackofficeKernelObserver, type BackofficeKernelObserver } from "../kernel";
@@ -60,6 +61,8 @@ export type CreateLocalBackofficeRuntimeOptions = {
   createSandboxProviders?: CreateSandboxRuntimeProviders;
   authorityResolver?: BackofficeAuthorityResolver;
   kernelObserver?: BackofficeKernelObserver;
+  /** Where objects report operational signals. Node deployments report nowhere. */
+  telemetry?: BackofficeTelemetry;
   workerTypeChecker?: WorkerTypeChecker;
   maxDrainIterations?: number;
   durableHooks?: LocalBackofficeDurableHooks;
@@ -82,6 +85,7 @@ export async function createLocalBackofficeRuntime(
         ? { directory: options.sqliteDataDirectory, storage: sqliteStorage }
         : undefined,
     runtimeEnv: options.runtimeEnv,
+    telemetry: options.telemetry ?? discardBackofficeTelemetry,
     getRuntimeServices,
     createFragmentHostOperations: (objectId) =>
       options.durableHooks?.createFragmentHostOperations(objectId) ?? null,

@@ -4,9 +4,15 @@ import {
   type FragmentDurableObjectHostDefinition,
   type FragmentDurableObjectHostOperations,
 } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
+import type { DurableHooksInstrumentation } from "@fragno-dev/db/hooks";
 import type { DatabaseTransactionInstrumentation } from "@fragno-dev/db/transaction-instrumentation";
 
+import type {
+  BackofficeTelemetry,
+  BackofficeTelemetryObject,
+} from "@/backoffice-runtime/backoffice-telemetry";
 import type { BackofficeDatabaseAdapterFactory } from "@/backoffice-runtime/database-adapters";
+import { decodeBackofficeObjectScope } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeInstrumentation } from "@/backoffice-runtime/runtime-instrumentation";
 
 import {
@@ -33,7 +39,7 @@ export type BackofficeObjectFragmentDatabase = {
 export type BackofficeObjectImplementation = {
   fragmentDatabase: BackofficeObjectFragmentDatabase;
   createFragmentHost<TSource, TRuntime>(
-    definition: FragmentDurableObjectHostDefinition<unknown, TSource, TRuntime>,
+    definition: NamedFragmentHostDefinition<TSource, TRuntime>,
   ): FragmentDurableObjectHost<TSource, TRuntime>;
   createConfiguredFragmentHost<
     TStored,
@@ -52,11 +58,19 @@ export type BackofficeObjectImplementation = {
   registerRuntimeRefresh(refresh: () => Promise<void>): void;
 };
 
+/** Telemetry names the host that reported a signal. */
+type NamedFragmentHostDefinition<TSource, TRuntime> = FragmentDurableObjectHostDefinition<
+  unknown,
+  TSource,
+  TRuntime
+> & { name: string };
+
 export type CreateBackofficeObjectImplementationOptions<TEnv> = {
   state: BackofficeObjectState;
   env: TEnv;
   adapters: BackofficeDatabaseAdapterFactory;
   instrumentation: BackofficeRuntimeInstrumentation;
+  telemetry: BackofficeTelemetry;
   fragmentHostOperations?: FragmentDurableObjectHostOperations<TEnv>;
   configuredObjectLifecycle: BackofficeConfiguredObjectLifecycle;
 };
@@ -69,17 +83,22 @@ export function createBackofficeObjectImplementation<TEnv>(
     adapters: options.adapters,
     transactionInstrumentation: options.instrumentation.databaseTransactions,
   };
+  const durableHooksInstrumentation = (host: string) =>
+    reportDurableHookAttempts(options.instrumentation.durableHooks, options.telemetry, {
+      host,
+      scope: options.state.id.name ? decodeBackofficeObjectScope(options.state.id.name) : null,
+    });
 
   return {
     fragmentDatabase,
     createFragmentHost<TSource, TRuntime>(
-      definition: FragmentDurableObjectHostDefinition<unknown, TSource, TRuntime>,
+      definition: NamedFragmentHostDefinition<TSource, TRuntime>,
     ) {
       return createFragmentDurableObjectHost({
         ...definition,
         state: options.state,
         env: options.env,
-        durableHooksInstrumentation: options.instrumentation.durableHooks,
+        durableHooksInstrumentation: durableHooksInstrumentation(definition.name),
         initializationInstrumentation: options.instrumentation.fragmentInitialization,
         operations: options.fragmentHostOperations,
       } as never) as unknown as FragmentDurableObjectHost<TSource, TRuntime>;
@@ -103,13 +122,28 @@ export function createBackofficeObjectImplementation<TEnv>(
         state: options.state,
         env: options.env,
         configuredObjectLifecycle: options.configuredObjectLifecycle,
-        durableHooksInstrumentation: options.instrumentation.durableHooks,
+        durableHooksInstrumentation: durableHooksInstrumentation(definition.name),
         initializationInstrumentation: options.instrumentation.fragmentInitialization,
         fragmentHostOperations: options.fragmentHostOperations,
       });
     },
     registerRuntimeRefresh(refresh) {
       options.configuredObjectLifecycle.registerRefresh(refresh);
+    },
+  };
+}
+
+/** Records every committed hook attempt outcome on top of the runtime's own instrumentation. */
+function reportDurableHookAttempts(
+  instrumentation: DurableHooksInstrumentation,
+  telemetry: BackofficeTelemetry,
+  object: BackofficeTelemetryObject,
+): DurableHooksInstrumentation {
+  return {
+    ...instrumentation,
+    observeAttemptOutcome(attempt, outcome) {
+      instrumentation.observeAttemptOutcome?.(attempt, outcome);
+      telemetry.record({ kind: "durable-hook-attempt", object, attempt, outcome });
     },
   };
 }

@@ -9,6 +9,7 @@ import {
   type BackofficeObjectImplementation,
 } from "../../../workers/lib/backoffice-object-implementation";
 import type { BackofficeRuntimeEnv } from "../backoffice-runtime-env";
+import type { BackofficeTelemetry } from "../backoffice-telemetry";
 import type { BackofficeRuntimeServices } from "../runtime-services";
 import { nodeBackofficeRuntimeInstrumentation } from "./node-runtime-instrumentation";
 
@@ -16,6 +17,7 @@ export function createNodeBackofficeObjectImplementation(options: {
   state: BackofficeObjectState;
   env: BackofficeRuntimeEnv;
   runtime: BackofficeRuntimeServices;
+  telemetry: BackofficeTelemetry;
   fragmentHostOperations?: FragmentDurableObjectHostOperations<BackofficeRuntimeEnv>;
   configuredObjectLifecycle: BackofficeConfiguredObjectLifecycle;
 }): BackofficeObjectImplementation {
@@ -24,6 +26,7 @@ export function createNodeBackofficeObjectImplementation(options: {
     env: options.env,
     adapters: options.runtime.adapters,
     instrumentation: nodeBackofficeRuntimeInstrumentation,
+    telemetry: options.telemetry,
     fragmentHostOperations: options.fragmentHostOperations,
     configuredObjectLifecycle: options.configuredObjectLifecycle,
   });
