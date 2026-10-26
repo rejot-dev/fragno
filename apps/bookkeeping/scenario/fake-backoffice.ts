@@ -15,7 +15,9 @@ import type { OrganizationMembershipRecord } from "@fragno-dev/backoffice-api/v0
 import { backofficeProvisioningOperations } from "@fragno-dev/backoffice-api/v0/provisioning";
 import {
   backofficeContextScopeSchema,
+  backofficeScopePathSegment,
   parseBackofficeScopePathSegment,
+  type BackofficeContextScope,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { z } from "zod";
@@ -79,6 +81,9 @@ function slugify(name: string): string {
 
 const MANAGING_ROLES = new Set<Role>(["owner", "admin"]);
 
+/** Backoffice's workspace keeps each file in one Durable Object SQLite row. */
+const WORKSPACE_FILE_MAX_BYTES = 1_900_000;
+
 /**
  * Backoffice as Bookkeeping sees it over HTTP: OAuth sign-in, the credential exchange, the v0
  * operations Bookkeeping calls, and provisioning. Inputs and outputs go through
@@ -101,7 +106,12 @@ export class FakeBackoffice {
   readonly #codes = new Map<string, { userId: string; challenge: string }>();
   readonly #accessTokens = new Map<string, Principal>();
   readonly #refreshTokens = new Map<string, string>();
-  readonly #executionTokens = new Map<string, { principal: Principal; organizationId: string }>();
+  readonly #executionTokens = new Map<
+    string,
+    { principal: Principal; scope: BackofficeContextScope; organizationId: string }
+  >();
+  /** Workspace files by scope and path, e.g. those Bookkeeping stores in a project. */
+  readonly #files = new Map<string, Uint8Array>();
   #reachable = true;
   /** Provisioning operations whose next response is lost after Backoffice did the work. */
   readonly #failNextResponse = new Set<string>();
@@ -212,8 +222,35 @@ export class FakeBackoffice {
     }));
   }
 
+  /** The file at `path` in the workspace of one of the organization's projects, if any. */
+  workspaceFile(slug: string, project: string, path: string): Uint8Array | undefined {
+    return this.#files.get(this.#projectFileKey(slug, project, path));
+  }
+
+  /** The paths of every file in the workspace of one of the organization's projects. */
+  workspacePaths(slug: string, project: string): string[] {
+    const prefix = this.#projectFileKey(slug, project, "");
+    return [...this.#files.keys()].flatMap((key) =>
+      key.startsWith(prefix) ? [key.slice(prefix.length)] : [],
+    );
+  }
+
   /** An owner changes things in Backoffice's own UI. */
   readonly admin = {
+    /** Someone replaces a file in a project's workspace, or deletes it with null. */
+    replaceWorkspaceFile: (
+      slug: string,
+      project: string,
+      path: string,
+      bytes: Uint8Array | null,
+    ) => {
+      const key = this.#projectFileKey(slug, project, path);
+      if (bytes === null) {
+        this.#files.delete(key);
+      } else {
+        this.#files.set(key, bytes);
+      }
+    },
     /**
      * A global administrator creates an organization owned by these people and installs Bookkeeping
      * there, as `backoffice:connect` does for the operators. Returns its ID.
@@ -447,18 +484,30 @@ export class FakeBackoffice {
       throw new ApiError("authentication_failed", "A valid OAuth bearer token is required.");
     }
     const { scope } = z.object({ scope: backofficeContextScopeSchema }).parse(await request.json());
-    if (scope.kind !== "org") {
-      return scopeUnavailable("Bookkeeping only works in organizations.");
+    const organizationId =
+      scope.kind === "org"
+        ? scope.orgId
+        : scope.kind === "project" && scope.owner.kind === "org"
+          ? scope.owner.orgId
+          : null;
+    if (organizationId === null) {
+      return scopeUnavailable("Bookkeeping only works in organizations and their projects.");
     }
-    const organization = this.#organizations.get(scope.orgId);
+    const organization = this.#organizations.get(organizationId);
     if (organization?.installation !== "active") {
       return scopeUnavailable("This app is not installed by the requested scope's owner.");
+    }
+    if (
+      scope.kind === "project" &&
+      ![...organization.projects.values()].some(({ id }) => id === scope.projectId)
+    ) {
+      return scopeUnavailable("The organization has no such project.");
     }
     if (principal.kind === "user" && !organization.members.has(principal.userId)) {
       return scopeUnavailable("You are not a member of this organization.");
     }
     const accessToken = randomToken();
-    this.#executionTokens.set(accessToken, { principal, organizationId: organization.id });
+    this.#executionTokens.set(accessToken, { principal, scope, organizationId: organization.id });
     return Response.json({
       accessToken,
       expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
@@ -472,7 +521,7 @@ export class FakeBackoffice {
       throw new ApiError("authentication_failed", "The execution credential is invalid.");
     }
     const scope = parseBackofficeScopePathSegment(scopeSegment);
-    if (scope.kind !== "org" || scope.orgId !== credential.organizationId) {
+    if (backofficeScopePathSegment(scope) !== backofficeScopePathSegment(credential.scope)) {
       throw new ApiError("forbidden", "The credential is bound to another scope.");
     }
     const organization = this.#organizations.get(credential.organizationId)!;
@@ -486,6 +535,9 @@ export class FakeBackoffice {
       throw new ApiError("not_found", `Operation '${operationId}' is not available here.`);
     }
     const body = request.headers.get("content-type") ? await request.json() : undefined;
+    if (scope.kind === "project") {
+      return this.#operateInWorkspace(scope, operationId, body);
+    }
     switch (operationId) {
       case "org.get":
         return respond("org.get", undefined, () => this.#membership(organization, member.roles));
@@ -515,6 +567,45 @@ export class FakeBackoffice {
       default:
         throw new ApiError("not_found", `Operation '${operationId}' is not available here.`);
     }
+  }
+
+  /** The workspace operations Bookkeeping calls in a project, as the person. */
+  #operateInWorkspace(scope: BackofficeContextScope, operationId: string, body: unknown): Response {
+    const key = (path: string) => `${backofficeScopePathSegment(scope)} ${path}`;
+    switch (operationId) {
+      case "state.writeFileBytes":
+        return respond("state.writeFileBytes", body, ({ path, content }) => {
+          const bytes = new Uint8Array(Buffer.from(content, "base64"));
+          if (bytes.byteLength > WORKSPACE_FILE_MAX_BYTES) {
+            throw new ApiError("invalid_request", "The file is too large to store.");
+          }
+          this.#files.set(key(path), bytes);
+        });
+      case "state.readFileBytes":
+        return respond("state.readFileBytes", body, ({ path }) => {
+          const bytes = this.#files.get(key(path));
+          if (!bytes) {
+            throw new ApiError("not_found", `ENOENT: read '${path}'`);
+          }
+          return Buffer.from(bytes).toString("base64");
+        });
+      default:
+        throw new ApiError("not_found", `Operation '${operationId}' is not available here.`);
+    }
+  }
+
+  #projectFileKey(slug: string, project: string, path: string): string {
+    const organization = this.#organizationBySlug(slug);
+    const found = [...organization.projects.values()].find(({ name }) => name === project);
+    if (!found) {
+      throw new Error(`${slug} has no project ${project}.`);
+    }
+    const scope: BackofficeContextScope = {
+      kind: "project",
+      owner: { kind: "org", orgId: organization.id },
+      projectId: found.id,
+    };
+    return `${backofficeScopePathSegment(scope)} ${path}`;
   }
 
   async #provision(request: Request, operationId: string): Promise<Response> {
@@ -838,7 +929,8 @@ function respond<TId extends keyof Operations>(
   if (!input.success) {
     throw new ApiError("invalid_request", z.prettifyError(input.error));
   }
-  return Response.json(operation.output.parse(run(input.data as never)));
+  const output: unknown = operation.output.parse(run(input.data as never));
+  return output === undefined ? new Response(null, { status: 204 }) : Response.json(output);
 }
 
 function bearer(request: Request): string {

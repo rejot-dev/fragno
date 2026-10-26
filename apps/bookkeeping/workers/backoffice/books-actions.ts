@@ -721,6 +721,7 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
       const reversal = settled(
         await books.reverseEntry({
           entryId: entry.id,
+          sourceDocument: entry.sourceDocument,
           postingDate: input.postingDate,
           description: input.description,
           postedBy: person.name,

@@ -36,7 +36,12 @@ const cliEntry = resolve(repositoryRoot, "apps/backoffice-cli/bin/run.js");
 const OAUTH_SCOPES = ["openid", "profile", "email", "offline_access", "backoffice"];
 // Firms and clients are Backoffice organizations: Bookkeeping reads them and their members as the
 // person signed in. Owners and admins invite through provisioning, since apps never hold org.manage.
-const REQUESTED_PERMISSIONS = [{ namespace: "org", permission: "read" }];
+// Documents' files live in their administration's project workspace, stored and read as the person.
+const REQUESTED_PERMISSIONS = [
+  { namespace: "org", permission: "read" },
+  { namespace: "upload", permission: "read" },
+  { namespace: "upload", permission: "modify" },
+];
 
 function readDevVars(): Map<string, string> {
   const values = new Map<string, string>();

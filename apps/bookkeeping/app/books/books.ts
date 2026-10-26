@@ -59,6 +59,11 @@ export function entryPath(base: string, journalCode: string, entryNumber: number
   return `${base}/entries/${encodeURIComponent(journalCode)}/${entryNumber}`;
 }
 
+/** A document's page. */
+export function documentPath(base: string, documentId: string): string {
+  return `${base}/documents/${documentId}`;
+}
+
 /** `Code Name`, as accounts are named in lists and choices. */
 export function accountLabel(account: { code: string; name: string }): string {
   return `${account.code} ${account.name}`;
