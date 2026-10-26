@@ -128,9 +128,10 @@ describe("WorkflowStepLivePump", () => {
           .sort(),
       ).toEqual(["system", "user"]);
       const scope = emissionBus.getScopeMeta("do:interactive");
-      expect(scope?.successfulFlushCount).toBeGreaterThanOrEqual(1);
+      expect(scope?.flushCount).toBeGreaterThanOrEqual(1);
       await flushBus(harness, emissionBus);
-      expect(scope?.emptyFlushCount).toBeGreaterThanOrEqual(1);
+      assert(scope?.applicationEmissionsFlushed === 1);
+      assert(scope?.eventPollCount === 0);
     } finally {
       releaseStep.resolve();
       await tick;

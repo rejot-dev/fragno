@@ -342,6 +342,7 @@ export function createOutboxObservationHub(
   }
 
   const pump = new BufferedDatabasePump<never, never, OutboxObservationDelivery>({
+    polling: "interval",
     intervalMs: OUTBOX_OBSERVATION_POLL_INTERVAL_MS,
     onError: (error) => {
       for (const observer of observers.values()) {
