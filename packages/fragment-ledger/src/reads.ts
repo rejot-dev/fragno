@@ -14,6 +14,7 @@ import type {
   OpenItemView,
   Page,
   PartyView,
+  SourceDocumentView,
   TrialBalanceRowView,
 } from "./views";
 
@@ -444,6 +445,59 @@ export const readServices = {
             : [];
         });
       })
+      .build();
+  },
+
+  /** The source documents with these IDs that exist, with the entries recording each. */
+  getSourceDocuments: function (this: LedgerServiceContext, input: { ids: string[] }) {
+    return this.serviceTx(ledgerSchema)
+      .retrieve((uow) =>
+        uow.find("sourceDocument", (b) =>
+          b
+            .whereIndex("primary", (eb) => eb("id", "in", input.ids))
+            .joinMany("entries", "entry", (entry) =>
+              entry
+                .onIndex("idx_entry_source", (eb) => eb("sourceDocumentId", "=", eb.parent("id")))
+                .select(["id", "entryNumber", "postingDate", "postedAt"])
+                .joinOne("journal", "journal", (journal) =>
+                  journal
+                    .onIndex("primary", (eb) => eb("id", "=", eb.parent("journalId")))
+                    .select(["id"]),
+                )
+                .joinOne("reverses", "entry", (reversed) =>
+                  reversed
+                    .onIndex("primary", (eb) => eb("id", "=", eb.parent("reversesEntryId")))
+                    .select(["id"]),
+                )
+                .joinOne("reversedBy", "entry", (reversal) =>
+                  reversal
+                    .onIndex("idx_entry_reverses", (eb) =>
+                      eb("reversesEntryId", "=", eb.parent("id")),
+                    )
+                    .select(["id"]),
+                ),
+            ),
+        ),
+      )
+      .transformRetrieve(([documents]): SourceDocumentView[] =>
+        documents.map((document) => ({
+          id: document.id.valueOf(),
+          kind: document.kind,
+          documentDate: document.documentDate,
+          description: document.description,
+          entries: document.entries
+            .toSorted((a, b) => a.postedAt.getTime() - b.postedAt.getTime())
+            .map((entry) => ({
+              id: entry.id.valueOf(),
+              // References always resolve: every joined row is referenced by a foreign key.
+              journalId: entry.journal!.id.valueOf(),
+              entryNumber: entry.entryNumber,
+              postingDate: entry.postingDate,
+              reversesEntryId: entry.reverses?.id.valueOf() ?? null,
+              reversedByEntryId: entry.reversedBy?.id.valueOf() ?? null,
+            })),
+        })),
+      )
       .build();
   },
 };

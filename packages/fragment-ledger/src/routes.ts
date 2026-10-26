@@ -462,7 +462,16 @@ export const ledgerRoutesFactory = defineRoutes(ledgerFragmentDefinition).create
         description: z.string(),
         reference: z.string().min(1).nullable(),
         postedBy: actor,
-        source: z.object({ kind: code, documentDate: calendarDate, description: z.string() }),
+        source: z.discriminatedUnion("type", [
+          z.object({
+            type: z.literal("new"),
+            id: z.string().min(1),
+            kind: code,
+            documentDate: calendarDate,
+            description: z.string(),
+          }),
+          z.object({ type: z.literal("existing"), id: z.string().min(1) }),
+        ]),
         lines: z.array(postingLine).min(2),
       }),
       outputSchema: postedEntry,

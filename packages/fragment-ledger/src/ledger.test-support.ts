@@ -28,6 +28,8 @@ type Posting = {
   lines: Line[];
   date?: string;
   reference?: string;
+  /** The source document by ID: an existing one, or a new one; by default a new one. */
+  source?: { type: "new" | "existing"; id: string };
 };
 
 type LedgerRoutes = ReturnType<typeof createLedgerFragment>["callRoute"];
@@ -271,7 +273,16 @@ class LedgerScenario {
           description: posting.name,
           reference: posting.reference ?? null,
           postedBy: "scenario-user",
-          source: { kind: "manual_journal", documentDate: date, description: posting.name },
+          source:
+            posting.source?.type === "existing"
+              ? { type: "existing", id: posting.source.id }
+              : {
+                  type: "new",
+                  id: posting.source?.id ?? crypto.randomUUID(),
+                  kind: "manual_journal",
+                  documentDate: date,
+                  description: posting.name,
+                },
           lines: posting.lines.map((line) => ({
             accountId: this.id(line.account),
             side: line.side,

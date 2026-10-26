@@ -249,6 +249,59 @@ describe("posting", () => {
       ]);
     }));
 
+  test("entries record a new source document under the caller's ID, or one an earlier entry recorded", () =>
+    ledgerScenario(async (ledger) => {
+      const invoice = { type: "new", id: "invoice-1" } as const;
+      await ledger.post({ name: "e1", journal: "sales", lines: sale(), source: invoice });
+      await ledger.refuses(
+        () => ledger.post({ name: "x", journal: "sales", lines: sale(), source: invoice }),
+        "SOURCE_DOCUMENT_TAKEN",
+      );
+      await ledger.refuses(
+        () =>
+          ledger.post({
+            name: "x",
+            journal: "sales",
+            lines: sale(),
+            source: { type: "existing", id: "invoice-2" },
+          }),
+        "SOURCE_DOCUMENT_NOT_FOUND",
+      );
+      // Booked again after its reversal, in another journal.
+      await ledger.reverse("r1", "e1");
+      await ledger.post({
+        name: "e2",
+        journal: "memo",
+        lines: [debit("costs", 500n, { dimensions: ["cc-sales"] }), credit("bank", 500n)],
+        source: { type: "existing", id: "invoice-1" },
+      });
+      const source = {
+        id: "invoice-1",
+        kind: "manual_journal",
+        documentDate: "2026-01-10",
+        description: "e1",
+      };
+      expect((await ledger.entry("sales", 1)).sourceDocument).toEqual(source);
+      expect((await ledger.entry("sales", 2)).sourceDocument).toEqual(source);
+      expect((await ledger.entry("memo", 1)).sourceDocument).toEqual(source);
+
+      // Creating the same source document twice at once creates it once.
+      const twice = await Promise.allSettled(
+        ["e3", "e3-again"].map((name) =>
+          ledger.post({
+            name,
+            journal: "sales",
+            lines: sale(),
+            source: { type: "new", id: "invoice-3" },
+          }),
+        ),
+      );
+      expect(twice.map((result) => result.status).sort()).toEqual(["fulfilled", "rejected"]);
+      expect(twice.find((result) => result.status === "rejected")).toMatchObject({
+        reason: { code: "SOURCE_DOCUMENT_TAKEN" },
+      });
+    }));
+
   test("a reversal settles only what is still outstanding, leaving payments open on its mirror", () =>
     ledgerScenario(async (ledger) => {
       await ledger.post({ name: "e1", journal: "sales", lines: sale() });

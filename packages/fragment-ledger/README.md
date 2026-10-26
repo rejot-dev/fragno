@@ -22,6 +22,10 @@ before they write, and nothing else writes:
   mirror.
 - **References are unique per journal.** An entry's optional reference, such as an invoice number,
   is refused when the journal already has it, so posting the same entry again cannot post it twice.
+- **Source documents** are what entries record, such as an invoice. Posting names one by ID: a new
+  one, created with the entry under the caller's ID, which must not exist yet; or one an earlier
+  entry recorded, e.g. to book an invoice again after reversing its entry. The ledger keeps a source
+  document's kind opaque, and lists the entries recording it.
 - **Entries balance** in the functional currency and have at least two lines. A line in the
   functional currency has one amount; a foreign line carries both its amount and its functional
   amount.
