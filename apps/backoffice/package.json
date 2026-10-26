@@ -33,6 +33,8 @@
     "email:dev": "email dev --dir app/transactional-emails --port 3030",
     "preheap:profile": "turbo run build --filter=@fragno-apps/backoffice-rr --output-logs=errors-only",
     "heap:profile": "node scripts/profile-worker-heap.mjs",
+    "prestartup:profile": "turbo run build --filter=@fragno-apps/backoffice-rr --output-logs=errors-only",
+    "startup:profile": "node scripts/profile-worker-startup.mjs",
     "preview": "node scripts/run-vite-preview.mjs",
     "preview:containers": "node scripts/run-vite-preview.mjs --containers",
     "types:check": "tsc -b --noEmit",
