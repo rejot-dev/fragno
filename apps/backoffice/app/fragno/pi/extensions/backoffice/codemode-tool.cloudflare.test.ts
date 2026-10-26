@@ -1,7 +1,7 @@
 // The Workers test pool loads the main module on first Durable Object access; load it untimed.
 import "../../../../../workers/vitest-env";
 
-import { afterAll, describe, expect, test, assert } from "vitest";
+import { afterAll, describe, expect, test, assert, vi } from "vitest";
 
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
@@ -174,20 +174,21 @@ describe("Pi codemode tool", () => {
   });
 
   test("shows the model the workspace images its program views", async () => {
-    const screenshot = pngHeader(1280, 800);
-    // Each fits on its own, but not beside the other in one tool result.
-    const largeScreenshot = pngHeader(1920, 1080, 600_000);
-    const tool = await createCodemodeTool({
-      stateBackend: createTestStateBackend({
-        upload: new MemoryUploadObject({
-          "shots/page.png": screenshot,
-          "shots/dashboard.png": largeScreenshot,
-          "shots/settings.png": pngHeader(1920, 1080, 600_000),
-          "shots/full-page.png": pngHeader(1280, 9000),
-          "notes.txt": "not an image",
-        }),
+    const screenshot = await encodePng(1280, 800);
+    // Noise does not compress: each fits on its own, but not beside the other in one tool result.
+    const largeScreenshot = await encodePng(448, 448, "noise");
+    const stateBackend = createTestStateBackend({
+      upload: new MemoryUploadObject({
+        "shots/page.png": screenshot,
+        "shots/dashboard.png": largeScreenshot,
+        "shots/settings.png": await encodePng(448, 449, "noise"),
+        "shots/full-page.png": await encodePng(1000, 2400),
+        // An upload that stopped early: the header is intact, the pixels are missing.
+        "shots/cut-off.png": screenshot.subarray(0, 40),
+        "notes.txt": "not an image",
       }),
     });
+    const tool = await createCodemodeTool({ stateBackend });
 
     const result = await tool.execute(
       {
@@ -205,6 +206,7 @@ describe("Pi codemode tool", () => {
             dashboard: await state.viewImage({ path: "/workspace/shots/dashboard.png" }),
             settings: await refused("/workspace/shots/settings.png"),
             fullPage: await refused("/workspace/shots/full-page.png"),
+            cutOff: await refused("/workspace/shots/cut-off.png"),
             notes: await refused("/workspace/notes.txt"),
           };
         }`,
@@ -217,11 +219,12 @@ describe("Pi codemode tool", () => {
     expect(result.details).toMatchObject({
       result: {
         page: { mimeType: "image/png", width: 1280, height: 800 },
-        dashboard: { mimeType: "image/png", width: 1920, height: 1080 },
+        dashboard: { mimeType: "image/png", width: 448, height: 448 },
         settings: expect.stringContaining("view the rest in another program"),
         fullPage: expect.stringContaining(
-          "is 1280×9000 pixels; the most you can view is 2000×2000",
+          "is 1000×2400 pixels; the most you can view is 2000×2000",
         ),
+        cutOff: expect.stringContaining("is not a complete image/png image"),
         notes: expect.stringContaining("must contain a PNG, JPEG, or WebP image"),
       },
     });
@@ -230,6 +233,38 @@ describe("Pi codemode tool", () => {
       { type: "image", mimeType: "image/png", data: bytesToBase64(screenshot) },
       { type: "image", mimeType: "image/png", data: bytesToBase64(largeScreenshot) },
     ]);
+
+    // A program viewing a dozen screenshots at once reads only the eight it can show. A real read
+    // waits on the upload object, so the program's calls overlap; the in-memory one would not.
+    const readFileBytes = stateBackend.readFileBytes.bind(stateBackend);
+    const reads = vi
+      .spyOn(stateBackend, "readFileBytes")
+      .mockImplementation(async (path, maxBytes) => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        return await readFileBytes(path, maxBytes);
+      });
+    const parallel = await tool.execute(
+      {
+        code: `async () => {
+          const views = await Promise.allSettled(
+            Array.from({ length: 12 }, () => state.viewImage({ path: "/workspace/shots/page.png" })),
+          );
+          return views.map((view) => view.status === "fulfilled" ? "viewed" : view.reason.message);
+        }`,
+      },
+      toolApi("tool-call-view-images-in-parallel"),
+      BACKGROUND_CONTEXT,
+    );
+
+    const outcomes = (parallel.details as { result: string[] }).result;
+    expect(outcomes.filter((outcome) => outcome === "viewed")).toHaveLength(8);
+    expect(outcomes.filter((outcome) => outcome !== "viewed")).toEqual(
+      Array.from({ length: 4 }, () =>
+        expect.stringContaining("A program can view at most 8 images"),
+      ),
+    );
+    expect(parallel.output).toHaveLength(9);
+    expect(reads).toHaveBeenCalledTimes(8);
   });
 
   test("preserves an immediate generated UI result in details.result", async () => {
@@ -809,14 +844,57 @@ describe("Pi codemode tool", () => {
   });
 });
 
-/** A PNG signature and IHDR chunk, padded to `byteLength`: enough to read its type and size, though not to decode it. */
-function pngHeader(width: number, height: number, byteLength = 33): Uint8Array {
-  const bytes = new Uint8Array(byteLength);
-  bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
-  const view = new DataView(bytes.buffer);
-  view.setUint32(16, width);
-  view.setUint32(20, height);
-  return bytes;
+/** A decodable PNG of `width`×`height` RGB pixels: flat gray, or noise that does not compress. */
+async function encodePng(width: number, height: number, fill: "gray" | "noise" = "gray") {
+  const rowLength = 1 + width * 3;
+  const scanlines = new Uint8Array(rowLength * height).fill(0x80);
+  if (fill === "noise") {
+    let seed = 1;
+    for (let index = 0; index < scanlines.length; index++) {
+      seed = (Math.imul(seed, 1103515245) + 12345) >>> 0;
+      scanlines[index] = seed >>> 24;
+    }
+  }
+  for (let row = 0; row < height; row++) {
+    // Filter type none.
+    scanlines[row * rowLength] = 0;
+  }
+  const pixels = new Uint8Array(
+    await new Response(
+      new Blob([scanlines]).stream().pipeThrough(new CompressionStream("deflate")),
+    ).arrayBuffer(),
+  );
+  const header = new Uint8Array(13);
+  new DataView(header.buffer).setUint32(0, width);
+  new DataView(header.buffer).setUint32(4, height);
+  // 8-bit truecolor, default compression and filtering, no interlacing.
+  header.set([8, 2, 0, 0, 0], 8);
+  const chunks = [
+    new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunk("IHDR", header),
+    pngChunk("IDAT", pixels),
+    pngChunk("IEND", new Uint8Array()),
+  ];
+  const png = new Uint8Array(chunks.reduce((length, chunk) => length + chunk.length, 0));
+  chunks.reduce((offset, chunk) => (png.set(chunk, offset), offset + chunk.length), 0);
+  return png;
+}
+
+function pngChunk(type: string, data: Uint8Array) {
+  const chunk = new Uint8Array(12 + data.length);
+  const view = new DataView(chunk.buffer);
+  view.setUint32(0, data.length);
+  chunk.set(new TextEncoder().encode(type), 4);
+  chunk.set(data, 8);
+  let crc = ~0;
+  for (const byte of chunk.subarray(4, 8 + data.length)) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit++) {
+      crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+    }
+  }
+  view.setUint32(8 + data.length, ~crc >>> 0);
+  return chunk;
 }
 
 const createCodemodeTool = async ({
