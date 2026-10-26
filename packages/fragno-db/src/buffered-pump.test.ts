@@ -98,8 +98,8 @@ const resetAfterOpenScopeFlush = async (
 describe("BufferedPumpRegistry", () => {
   test("creates one pump per string key and one handle per caller", async () => {
     const registry = new BufferedPumpRegistry<BufferedDatabasePump>();
-    const firstPump = new BufferedDatabasePump({ flush: async () => ({}) });
-    const secondPump = new BufferedDatabasePump({ flush: async () => ({}) });
+    const firstPump = new BufferedDatabasePump({ polling: "interval", flush: async () => ({}) });
+    const secondPump = new BufferedDatabasePump({ polling: "interval", flush: async () => ({}) });
     let createCount = 0;
 
     const first = registry.getOrCreate("a", () => {
@@ -128,7 +128,7 @@ describe("BufferedPumpRegistry", () => {
     const recorded = recordedFlush(async () => ({}));
     const handle = registry.getOrCreate(
       "a",
-      () => new BufferedDatabasePump({ flush: recorded.flush }),
+      () => new BufferedDatabasePump({ polling: "interval", flush: recorded.flush }),
     );
 
     await handle.flushAndClose(handlerTx);
@@ -142,7 +142,7 @@ describe("BufferedPumpRegistry", () => {
     const recorded = recordedFlush(async () => ({}));
     const handle = registry.getOrCreate(
       "a",
-      () => new BufferedDatabasePump({ flush: recorded.flush }),
+      () => new BufferedDatabasePump({ polling: "interval", flush: recorded.flush }),
     );
 
     await handle.close();
@@ -155,7 +155,8 @@ describe("BufferedPumpRegistry", () => {
     const registry = new BufferedPumpRegistry<BufferedDatabasePump>();
     const handle = registry.getOrCreate(
       "a",
-      () => new BufferedDatabasePump({ intervalMs: 1, flush: async () => ({}) }),
+      () =>
+        new BufferedDatabasePump({ polling: "interval", intervalMs: 1, flush: async () => ({}) }),
     );
     const schedulerAbortController = new AbortController();
     const schedulerLease = handle.runWhile({
@@ -187,6 +188,7 @@ describe("BufferedPumpRegistry", () => {
       "a",
       () =>
         new BufferedDatabasePump({
+          polling: "interval",
           flush: async () => {
             await flushReleased;
             return {};
@@ -219,6 +221,7 @@ describe("BufferedDatabasePump", () => {
       never,
       { input: string }
     >({
+      polling: "interval",
       flush: async () => ({}),
       resolveScopeMeta: ({ key, meta }) => ({ value: `${key}:${meta?.input}` }),
     });
@@ -230,6 +233,7 @@ describe("BufferedDatabasePump", () => {
 
   test("uses configured debug labels", () => {
     const pump = new BufferedDatabasePump({
+      polling: "interval",
       flush: async () => ({}),
       debugLabel: () => "custom-label",
     });
@@ -241,7 +245,7 @@ describe("BufferedDatabasePump", () => {
     const recorded = recordedFlush(async ({ batch }) => ({
       observedItems: [...(batch.outgoingByScope.get("step") ?? [])],
     }));
-    const pump = new BufferedDatabasePump({ flush: recorded.flush });
+    const pump = new BufferedDatabasePump({ polling: "interval", flush: recorded.flush });
     const scope = pump.openScope("step", { epoch: "e1" });
     const observed: unknown[] = [];
     pump.observe((message) => {
@@ -263,7 +267,7 @@ describe("BufferedDatabasePump", () => {
     const recorded = recordedFlush(async ({ batch }) => ({
       observedItems: [...(batch.outgoingByScope.get("step") ?? [])],
     }));
-    const pump = new BufferedDatabasePump({ flush: recorded.flush });
+    const pump = new BufferedDatabasePump({ polling: "interval", flush: recorded.flush });
     const scope = pump.openScope("step", { epoch: "e1" });
     scope.enqueueOutgoing({ out: 1 });
 
@@ -284,7 +288,7 @@ describe("BufferedDatabasePump", () => {
 
   test("materializes outgoing factories immediately before flush with current buffer view", async () => {
     const recorded = recordedFlush(async () => ({}));
-    const pump = new BufferedDatabasePump({ flush: recorded.flush });
+    const pump = new BufferedDatabasePump({ polling: "interval", flush: recorded.flush });
     const scope = pump.openScope("s", { tag: "scope-meta" });
     await resetAfterOpenScopeFlush(pump, recorded);
 
@@ -326,6 +330,7 @@ describe("BufferedDatabasePump", () => {
     });
     const errors: unknown[] = [];
     const pump = new BufferedDatabasePump({
+      polling: "interval",
       flush: recorded.flush,
       onError: (error) => {
         errors.push(error);
@@ -352,7 +357,7 @@ describe("BufferedDatabasePump", () => {
       ],
       observedItems: ["observed-1", "observed-2"],
     }));
-    const pump = new BufferedDatabasePump({ flush: recorded.flush });
+    const pump = new BufferedDatabasePump({ polling: "interval", flush: recorded.flush });
     const a = pump.openScope("a");
     const deliveries: unknown[] = [];
     const observed: unknown[] = [];
@@ -379,7 +384,7 @@ describe("BufferedDatabasePump", () => {
         ? [{ scopeKey: "scope", message: "delivered", cursor: "row-1" }]
         : [],
     }));
-    const pump = new BufferedDatabasePump({ flush: recorded.flush });
+    const pump = new BufferedDatabasePump({ polling: "interval", flush: recorded.flush });
     const scope = pump.openScope("scope");
     const delivered: unknown[] = [];
     scope.onDelivery((message) => {
@@ -399,7 +404,7 @@ describe("BufferedDatabasePump", () => {
     const recorded = recordedFlush(async () => ({
       scopeDeliveries: [{ scopeKey: "scope", message: "delivered" }],
     }));
-    const pump = new BufferedDatabasePump({ flush: recorded.flush });
+    const pump = new BufferedDatabasePump({ polling: "interval", flush: recorded.flush });
     const scope = pump.openScope("scope");
     const delivered: unknown[] = [];
     scope.onDelivery((message) => {
@@ -421,6 +426,7 @@ describe("BufferedDatabasePump", () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
     let reads = 0;
     const pump = new BufferedDatabasePump({
+      polling: "interval",
       intervalMs: 300,
       async flush() {
         reads += 1;
@@ -468,6 +474,7 @@ describe("BufferedDatabasePump", () => {
   test("an actor-owned scheduler lease stops polling after its signal aborts", async () => {
     let flushCount = 0;
     const pump = new BufferedDatabasePump({
+      polling: "interval",
       intervalMs: 1,
       flush: async () => {
         flushCount += 1;
@@ -506,6 +513,7 @@ describe("BufferedDatabasePump", () => {
     const secondHandlerTx = (() => undefined) as unknown as DatabaseHandlerTx;
     const flushCountByHandlerTx = new Map<DatabaseHandlerTx, number>();
     const pump = new BufferedDatabasePump({
+      polling: "interval",
       intervalMs: 1,
       flush: async ({ handlerTx: currentHandlerTx }) => {
         flushCountByHandlerTx.set(
@@ -556,6 +564,7 @@ describe("BufferedDatabasePump", () => {
     const writerHandlerTx = (() => undefined) as unknown as DatabaseHandlerTx;
     const flushCountByHandlerTx = new Map<DatabaseHandlerTx, number>();
     const pump = new BufferedDatabasePump({
+      polling: "interval",
       intervalMs: 1,
       flush: async ({ handlerTx: currentHandlerTx }) => {
         flushCountByHandlerTx.set(
@@ -608,6 +617,7 @@ describe("BufferedDatabasePump", () => {
     const releaseFlush = Promise.withResolvers<void>();
     let flushCount = 0;
     const pump = new BufferedDatabasePump({
+      polling: "interval",
       intervalMs: 1,
       flush: async () => {
         flushCount += 1;
@@ -652,6 +662,7 @@ describe("BufferedDatabasePump", () => {
       releaseFlush = resolve;
     });
     const pump = new BufferedDatabasePump({
+      polling: "interval",
       flush: async () => {
         resolveFlushStarted();
         await flushReleased;
@@ -681,6 +692,7 @@ describe("BufferedDatabasePump", () => {
     const releaseFirstFlush = Promise.withResolvers<void>();
     const outgoingBatches: string[][] = [];
     const pump = new BufferedDatabasePump<string, unknown, string>({
+      polling: "interval",
       flush: async ({ batch }) => {
         outgoingBatches.push([...(batch.outgoingByScope.get("step") ?? [])]);
         if (outgoingBatches.length === 1) {
@@ -716,6 +728,7 @@ describe("BufferedDatabasePump", () => {
   test("passive observers do not start scheduler loops or database flushes", async () => {
     let flushCount = 0;
     const pump = new BufferedDatabasePump<string, unknown, string>({
+      polling: "interval",
       intervalMs: 1,
       flush: async () => {
         flushCount += 1;
@@ -736,6 +749,7 @@ describe("BufferedDatabasePump", () => {
     const errors: unknown[] = [];
     let shouldFail = true;
     const pump = new BufferedDatabasePump({
+      polling: "interval",
       flush: async ({ batch }) => {
         if (shouldFail && (batch.outgoingByScope.get("s")?.length ?? 0) > 0) {
           throw new Error("flush failed");
@@ -768,6 +782,7 @@ describe("BufferedDatabasePump", () => {
   test("normalizes non-Error flush failures at the pump boundary", async () => {
     const errors: Error[] = [];
     const pump = new BufferedDatabasePump({
+      polling: "interval",
       flush: async () => {
         // oxlint-disable-next-line typescript/only-throw-error -- This regression test verifies normalization at the pump boundary.
         throw "primitive failure";
@@ -783,88 +798,89 @@ describe("BufferedDatabasePump", () => {
     expect(pump.getFailure()).toEqual(expect.any(Error));
   });
 
-  test("integration: flush uses a real sqlite handlerTx to read and write scoped outgoing items", async () => {
-    const { fragment, cleanup } = await buildSqlitePumpIntegration();
-    let pump: { drain(): Promise<void> } | undefined;
+  test.each(["interval", "on-demand"] as const)(
+    "integration: %s polling reads and writes scoped outgoing items in sqlite",
+    async (polling) => {
+      const { fragment, cleanup } = await buildSqlitePumpIntegration();
+      let pump: { drain(): Promise<void> } | undefined;
 
-    try {
-      await fragment.inContext(async function (this: DatabaseHandlerContext) {
-        await this.handlerTx()
-          .mutate(({ forSchema }) => {
-            forSchema(pumpIntegrationSchema).create("pump_events", {
-              kind: "preexisting",
-              scopeKey: "remote-scope",
-              payload: { message: "already-written-by-another-server" },
-            });
-          })
-          .execute();
+      try {
+        await fragment.inContext(async function (this: DatabaseHandlerContext) {
+          await this.handlerTx()
+            .mutate(({ forSchema }) => {
+              forSchema(pumpIntegrationSchema).create("pump_events", {
+                kind: "preexisting",
+                scopeKey: "remote-scope",
+                payload: { message: "already-written-by-another-server" },
+              });
+            })
+            .execute();
 
-        const createdPump = new BufferedDatabasePump({
-          flush: async ({ handlerTx, batch }) => {
-            return await handlerTx()
-              .retrieve(({ forSchema }) =>
-                forSchema(pumpIntegrationSchema).find("pump_events", (b) =>
-                  b.whereIndex("primary"),
-                ),
-              )
-              .mutate(({ forSchema, retrieveResult: [persistedRows] }) => {
-                const uow = forSchema(pumpIntegrationSchema);
-                const materializedRows = persistedRows.map((row) => ({
-                  kind: row.kind,
-                  scopeKey: row.scopeKey,
-                  payload: row.payload,
-                }));
-                for (const event of batch.outgoingByScope.get("scope-a") ?? []) {
-                  const row = event as { kind: string; scopeKey: string; payload: unknown };
-                  uow.create("pump_events", row);
-                  materializedRows.push(row);
-                }
-                return materializedRows;
-              })
-              .transform(({ mutateResult }) => ({ observedItems: mutateResult }))
-              .execute();
-          },
-        });
-        pump = createdPump;
-        const scope = createdPump.openScope("scope-a");
-        const observed: unknown[] = [];
-        createdPump.observe((message) => {
-          observed.push(message);
-        });
-        await createdPump.flushNow(this.handlerTx);
-        observed.length = 0;
+          const createdPump = new BufferedDatabasePump({
+            polling,
+            flush: async ({ handlerTx, batch }) => {
+              return await handlerTx()
+                .retrieve(({ forSchema }) =>
+                  forSchema(pumpIntegrationSchema).find("pump_events", (b) =>
+                    b.whereIndex("primary"),
+                  ),
+                )
+                .mutate(({ forSchema, retrieveResult: [persistedRows] }) => {
+                  const uow = forSchema(pumpIntegrationSchema);
+                  const materializedRows = persistedRows.map((row) => ({
+                    kind: row.kind,
+                    scopeKey: row.scopeKey,
+                    payload: row.payload,
+                  }));
+                  for (const event of batch.outgoingByScope.get("scope-a") ?? []) {
+                    const row = event as { kind: string; scopeKey: string; payload: unknown };
+                    uow.create("pump_events", row);
+                    materializedRows.push(row);
+                  }
+                  return materializedRows;
+                })
+                .transform(({ mutateResult }) => ({ observedItems: mutateResult }))
+                .execute();
+            },
+          });
+          pump = createdPump;
+          if (polling === "on-demand") {
+            // Invalid leases must be rejected before registration, even when already cancelled.
+            await expect(
+              createdPump.runWhile({
+                kind: "observer",
+                signal: AbortSignal.abort(),
+                handlerTx: this.handlerTx,
+              }),
+            ).rejects.toThrow("On-demand pumps require writer scheduler leases");
+            assert(createdPump.activeSchedulerLeaseCount() === 0);
+          }
+          const scope = createdPump.openScope("scope-a");
+          const observed: unknown[] = [];
+          createdPump.observe((message) => {
+            observed.push(message);
+          });
+          await createdPump.flushNow(this.handlerTx);
+          observed.length = 0;
 
-        scope.enqueueOutgoing((view: BufferedItemContext) => ({
-          kind: "outgoing",
-          scopeKey: "scope-a",
-          payload: { message: "from-scope", previousForScope: view.outgoingFor("scope-a").length },
-        }));
-        await createdPump.flushNow(this.handlerTx);
-
-        const rows = await this.handlerTx()
-          .retrieve(({ forSchema }) =>
-            forSchema(pumpIntegrationSchema).find("pump_events", (b) => b.whereIndex("primary")),
-          )
-          .transformRetrieve(([result], _serviceResult) => result)
-          .execute();
-
-        expect(observed).toEqual([
-          {
-            kind: "preexisting",
-            scopeKey: "remote-scope",
-            payload: { message: "already-written-by-another-server" },
-          },
-          {
+          scope.enqueueOutgoing((view: BufferedItemContext) => ({
             kind: "outgoing",
             scopeKey: "scope-a",
-            payload: { message: "from-scope", previousForScope: 0 },
-          },
-        ]);
-        expect(rows).toHaveLength(2);
-        expect(
-          rows.map((row) => ({ kind: row.kind, scopeKey: row.scopeKey, payload: row.payload })),
-        ).toEqual(
-          expect.arrayContaining([
+            payload: {
+              message: "from-scope",
+              previousForScope: view.outgoingFor("scope-a").length,
+            },
+          }));
+          await createdPump.flushNow(this.handlerTx);
+
+          const rows = await this.handlerTx()
+            .retrieve(({ forSchema }) =>
+              forSchema(pumpIntegrationSchema).find("pump_events", (b) => b.whereIndex("primary")),
+            )
+            .transformRetrieve(([result], _serviceResult) => result)
+            .execute();
+
+          expect(observed).toEqual([
             {
               kind: "preexisting",
               scopeKey: "remote-scope",
@@ -875,12 +891,29 @@ describe("BufferedDatabasePump", () => {
               scopeKey: "scope-a",
               payload: { message: "from-scope", previousForScope: 0 },
             },
-          ]),
-        );
-      });
-    } finally {
-      await pump?.drain();
-      await cleanup();
-    }
-  });
+          ]);
+          expect(rows).toHaveLength(2);
+          expect(
+            rows.map((row) => ({ kind: row.kind, scopeKey: row.scopeKey, payload: row.payload })),
+          ).toEqual(
+            expect.arrayContaining([
+              {
+                kind: "preexisting",
+                scopeKey: "remote-scope",
+                payload: { message: "already-written-by-another-server" },
+              },
+              {
+                kind: "outgoing",
+                scopeKey: "scope-a",
+                payload: { message: "from-scope", previousForScope: 0 },
+              },
+            ]),
+          );
+        });
+      } finally {
+        await pump?.drain();
+        await cleanup();
+      }
+    },
+  );
 });

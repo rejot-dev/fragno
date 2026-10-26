@@ -44,8 +44,9 @@ type StepEmissionScopeOptions = StepEmissionOpenScopeMeta & {
 };
 
 type StepEmissionScopeMeta = StepEmissionScopeOptions & {
-  successfulFlushCount: number;
-  emptyFlushCount: number;
+  flushCount: number;
+  eventPollCount: number;
+  applicationEmissionsFlushed: number;
 };
 
 export type WorkflowStepEmissionScope<
@@ -117,6 +118,7 @@ export function createWorkflowStepLivePump<TOutEmission = unknown, TInEvent = un
     WorkflowStepEvent<TInEvent>,
     StepEmissionOpenScopeMeta
   >({
+    polling: "on-demand",
     intervalMs: WORKFLOW_STEP_EMISSION_PUMP_INTERVAL_MS,
     onError: (error) => {
       console.error(
@@ -140,9 +142,11 @@ export function createWorkflowStepLivePump<TOutEmission = unknown, TInEvent = un
           batch: context.batch,
         });
         for (const [scopeKey, scope] of context.scopes) {
-          scope.meta.successfulFlushCount += 1;
-          if ((context.batch.outgoingByScope.get(scopeKey)?.length ?? 0) === 0) {
-            scope.meta.emptyFlushCount += 1;
+          scope.meta.flushCount += 1;
+          scope.meta.applicationEmissionsFlushed +=
+            context.batch.outgoingByScope.get(scopeKey)?.length ?? 0;
+          if (scope.meta.eventTypeCounts.size > 0) {
+            scope.meta.eventPollCount += 1;
           }
         }
         return result;
@@ -167,8 +171,9 @@ export function createWorkflowStepLivePump<TOutEmission = unknown, TInEvent = un
         queueEventConsumption: meta.queueEventConsumption,
         isEventConsumptionQueued: meta.isEventConsumptionQueued,
         eventTypeCounts: new Map<string, number>(),
-        successfulFlushCount: 0,
-        emptyFlushCount: 0,
+        flushCount: 0,
+        eventPollCount: 0,
+        applicationEmissionsFlushed: 0,
       };
     },
     debugLabel: () => `${options.workflowName}:${options.instanceId}`,

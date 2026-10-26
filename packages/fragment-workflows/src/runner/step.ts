@@ -547,6 +547,8 @@ export class RunnerStep implements WorkflowStep {
         return;
       }
       pendingEventConsumptions.set(event.id.toString(), event);
+      // Consumption can outlive its listener; persist the marker even after polling stops.
+      livePumpHandle.pump.requestSchedulerRefresh();
     };
     const isEventConsumptionQueued = (event: WorkflowEventRecord) =>
       pendingEventConsumptions.has(event.id.toString()) ||
@@ -636,8 +638,9 @@ export class RunnerStep implements WorkflowStep {
         instanceId: this.#instanceId,
         stepKey,
         emissionsEnqueued,
-        successfulFlushCount: emissionScope.meta.successfulFlushCount,
-        emptyFlushCount: emissionScope.meta.emptyFlushCount,
+        flushCount: emissionScope.meta.flushCount,
+        eventPollCount: emissionScope.meta.eventPollCount,
+        applicationEmissionsFlushed: emissionScope.meta.applicationEmissionsFlushed,
         durationMs: performance.now() - stepStartedAt,
       });
       this.#queueStepEmissionCleanup({

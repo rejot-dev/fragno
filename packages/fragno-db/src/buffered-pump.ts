@@ -28,7 +28,10 @@ import type { DatabaseHandlerTx } from "./db-fragment-definition-builder";
  * Polling never starts from buffered state or observer registration. Actors
  * register explicit writer or observer scheduler leases through `runWhile()`.
  * The pump elects one lease at a time, prioritizes writers, and restricts
- * observer-owned passes to read-only refreshes.
+ * observer-owned passes to read-only refreshes. On-demand pumps accept only writer
+ * leases and sleep without a timer when no buffered work, delivery listeners, or
+ * failed flush needs servicing. Observer leases require interval polling because
+ * remote writes cannot wake this process.
  */
 
 export class BufferedPumpScopeAlreadyOpenError extends Error {
@@ -254,12 +257,15 @@ export class BufferedDatabasePump<
   }> = [];
   #writableFlushStartedSequence = 0;
   readonly #intervalMs: number;
+  readonly #polling: "interval" | "on-demand";
+  #bufferedFlushRequested = false;
   readonly #schedulerLeases: BufferedPumpSchedulerLease[] = [];
   #schedulerLeader: BufferedPumpSchedulerLease | undefined;
   #schedulerRefreshRequested = false;
   #wakeScheduler: (() => void) | undefined;
 
   constructor(options: {
+    polling: "interval" | "on-demand";
     flush: (
       context: BufferedFlushContext<TOutgoing, TScopeMeta>,
     ) => Promise<BufferedFlushResult<TObserved, TScopeDelivery>>;
@@ -269,6 +275,7 @@ export class BufferedDatabasePump<
     debugLabel?: () => string;
   }) {
     this.#flush = options.flush;
+    this.#polling = options.polling;
     this.#resolveScopeMeta = options.resolveScopeMeta;
     this.#debugLabel = options.debugLabel;
     this.#onError =
@@ -298,6 +305,9 @@ export class BufferedDatabasePump<
       : (meta as unknown as TScopeMeta);
     const state = new BufferedScopeState<TOutgoing, TScopeDelivery, TScopeMeta>(key, scopeMeta);
     this.#scopes.set(key, state);
+    // Opening a scope can require a durable control record even before its first emission.
+    this.#bufferedFlushRequested = true;
+    this.#wakeScheduler?.();
 
     return {
       get key() {
@@ -311,14 +321,18 @@ export class BufferedDatabasePump<
           return;
         }
         state.queue.push(this.#queuedItem(item));
+        this.#bufferedFlushRequested = true;
+        this.#wakeScheduler?.();
       },
       onDelivery: (handler) => {
         if (state.closed) {
           return () => {};
         }
         state.handlers.add(handler);
+        this.#wakeScheduler?.();
         return () => {
           state.handlers.delete(handler);
+          this.#wakeScheduler?.();
         };
       },
       flushAndClose: async (handlerTx) => {
@@ -327,6 +341,7 @@ export class BufferedDatabasePump<
         state.closed = true;
         this.#scopes.delete(state.key);
         this.#scopeDeliveryCursors.delete(state.key);
+        this.#wakeScheduler?.();
       },
     };
   }
@@ -367,6 +382,7 @@ export class BufferedDatabasePump<
     const minimumSequence = this.#writableFlushStartedSequence + 1;
     await new Promise<void>((resolve, reject) => {
       this.#writableFlushWaiters.push({ minimumSequence, resolve, reject });
+      this.requestSchedulerRefresh();
     });
   }
 
@@ -375,6 +391,11 @@ export class BufferedDatabasePump<
     signal: AbortSignal;
     handlerTx: DatabaseHandlerTx;
   }): Promise<void> {
+    if (this.#polling === "on-demand" && options.kind === "observer") {
+      throw new TypeError(
+        "On-demand pumps require writer scheduler leases; use interval polling for observer leases.",
+      );
+    }
     const lease: BufferedPumpSchedulerLease = {
       kind: options.kind,
       signal: options.signal,
@@ -383,6 +404,7 @@ export class BufferedDatabasePump<
     };
     this.#schedulerLeases.push(lease);
     this.#electSchedulerLeader();
+    this.#wakeScheduler?.();
 
     try {
       while (!lease.signal.aborted) {
@@ -477,6 +499,9 @@ export class BufferedDatabasePump<
       Array<QueuedBufferedItem<TOutgoing, TOutgoing, TScopeMeta>>
     >();
     if (includeWritableScopes) {
+      // A manual/final flush also services refresh demand queued before it started.
+      this.#schedulerRefreshRequested = false;
+      this.#bufferedFlushRequested = false;
       for (const [scopeKey, scope] of this.#scopes) {
         const drained = scope.queue.splice(0);
         if (drained.length > 0) {
@@ -502,6 +527,8 @@ export class BufferedDatabasePump<
       const normalizedError = normalizeError(error);
       this.#lastError = normalizedError;
       this.#restoreDrained(drainedOutgoingByScope);
+      // A manual or sibling final flush can fail while the scheduler has no timer.
+      this.#wakeScheduler?.();
       this.#onError(normalizedError);
       throw normalizedError;
     }
@@ -688,8 +715,12 @@ export class BufferedDatabasePump<
     }
 
     return await new Promise<boolean>((resolve) => {
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      let immediate = false;
       const finish = (shouldFlush: boolean) => {
-        clearTimeout(timer);
+        if (timer !== null) {
+          clearTimeout(timer);
+        }
         signal.removeEventListener("abort", abort);
         this.#wakeScheduler = undefined;
         resolve(shouldFlush);
@@ -697,23 +728,40 @@ export class BufferedDatabasePump<
       const abort = () => {
         finish(false);
       };
-      let timer = setTimeout(
-        () => {
-          finish(!signal.aborted);
-        },
-        this.#schedulerRefreshRequested ? 0 : this.#intervalMs,
-      );
-      timer.unref?.();
       this.#wakeScheduler = () => {
-        clearTimeout(timer);
-        // Even backlog drains yield between bounded passes so I/O, cancellation, and lease
-        // handoff can run; a chain of already-resolved promises would starve these events.
-        timer = setTimeout(() => {
-          finish(!signal.aborted);
-        }, 0);
+        const handoff = this.#preferredSchedulerLeader() !== this.#schedulerLeader;
+        const needsPass =
+          handoff ||
+          this.#schedulerRefreshRequested ||
+          this.#polling === "interval" ||
+          this.#lastError !== undefined ||
+          (this.#schedulerLeader?.kind === "writer" &&
+            (this.#bufferedFlushRequested ||
+              [...this.#scopes.values()].some((scope) => scope.handlers.size > 0)));
+        const nextImmediate = handoff || this.#schedulerRefreshRequested;
+        if (timer !== null) {
+          if (needsPass && (!nextImmediate || immediate)) {
+            return;
+          }
+          clearTimeout(timer);
+          timer = null;
+        }
+        if (!needsPass) {
+          return;
+        }
+        immediate = nextImmediate;
+        // Keep batching emissions at the normal interval. Explicit refreshes and lease
+        // handoffs still yield so backlog drains cannot starve I/O or cancellation.
+        timer = setTimeout(
+          () => {
+            finish(!signal.aborted);
+          },
+          immediate ? 0 : this.#intervalMs,
+        );
         timer.unref?.();
       };
       signal.addEventListener("abort", abort, { once: true });
+      this.#wakeScheduler();
     });
   }
 
