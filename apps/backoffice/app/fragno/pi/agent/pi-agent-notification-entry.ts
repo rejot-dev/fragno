@@ -1,4 +1,5 @@
 import type { PiAgentNotification } from "./pi-agent-contract";
+import { escapeAttribute, unescapeAttribute } from "./xml-attribute";
 
 /**
  * The transcript entry an event notification writes. The chat renders it as an event card; users
@@ -16,22 +17,6 @@ export type PiNotificationReference = { routeId: string | null; eventId: string 
  */
 export function piNotificationRequestId({ routeId, event }: PiAgentNotification) {
   return routeId === null ? `reply:${event.id}` : `route:${routeId}:${event.id}`;
-}
-
-function escapeAttribute(value: string) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
-}
-
-function unescapeAttribute(value: string) {
-  return value
-    .replaceAll("&quot;", '"')
-    .replaceAll("&gt;", ">")
-    .replaceAll("&lt;", "<")
-    .replaceAll("&amp;", "&");
 }
 
 const REQUEST_PATTERN =

@@ -5,13 +5,7 @@ import type { UploadProgress } from "@fragno-dev/upload";
 
 import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
 import { createScopedUploadHelpers } from "@/fragno/upload-client";
-
-// Browsers name files without directories, but a key segment must still be a usable file name.
-function workspaceFileName(filename: string): string {
-  // oxlint-disable-next-line no-control-regex -- control characters are what file keys reject.
-  const name = filename.replace(/[\u0000-\u001f\u007f/\\]/g, "_").trim();
-  return name === "" || name === "." || name === ".." ? "upload" : name;
-}
+import { workspaceFileName } from "@/lib/workspace-file-name";
 
 // Every file a run's forms upload sits below this folder, so it alone identifies their uploads.
 function runUploadsFolder(instanceId: string): string {
