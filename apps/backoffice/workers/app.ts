@@ -39,6 +39,8 @@ export default {
               client,
               requestId,
               userId: null,
+              route: null,
+              scope: null,
               capturedErrors: new WeakSet<Error>(),
               waitUntil: (promise) => {
                 ctx.waitUntil(promise);
@@ -81,6 +83,14 @@ export default {
               properties: {
                 request_id: requestId,
                 source: "cloudflare-worker",
+                release: env.CF_VERSION_METADATA.id,
+                route: analytics.route,
+                scope: analytics.scope?.scope ?? null,
+                scope_kind: analytics.scope?.scopeKind ?? null,
+                organization_id: analytics.scope?.orgId ?? null,
+                ...(analytics.scope?.orgId
+                  ? { $groups: { organization: analytics.scope.orgId } }
+                  : {}),
                 http_method: request.method,
                 status_code: statusCode,
                 handler_duration_ms: performance.now() - startedAt,

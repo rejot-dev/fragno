@@ -30,6 +30,7 @@ import type {
   Organization,
 } from "@/fragno/auth/contracts";
 import { requireBackofficePrincipal } from "@/fragno/auth/request-auth.server";
+import { recordBackofficeRequestScope } from "@/posthog.server";
 import { lookupAutomationProject, toExternalId } from "@/routes/backoffice/automations/data.server";
 import {
   isBackofficeSystemAdministrator,
@@ -219,6 +220,7 @@ export async function establishBackofficeShellRequest(
       }
       throw error;
     }
+    recordBackofficeRequestScope(context, backofficeRuntimeScopeFromResolvedScope(routeScope));
     route = {
       status: "resolved",
       resolvedScope: routeScope,

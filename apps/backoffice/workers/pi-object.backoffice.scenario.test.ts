@@ -1689,6 +1689,8 @@ test("Cloudflare backend analytics delivers verified outcomes and Pi usage witho
                 client,
                 requestId: "request-scenario",
                 userId: null,
+                route: null,
+                scope: null,
                 capturedErrors: new WeakSet<Error>(),
                 waitUntil: (promise) => {
                   deliveries.push(promise);
