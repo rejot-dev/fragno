@@ -128,6 +128,13 @@ const workflows = {
   }));
   await step.waitForEvent("approval", { type: "refund-approved", timeout: "7 days" });
 });`,
+  "automations/sync-ledger.workflow.js": `export default defineWorkflow({ name: "sync-ledger" }, async (event, step) => {
+  await step.do("sync", { retries: { limit: 0, delay: 0 } }, async () => {
+    if (event.payload.offline) {
+      throw new Error("ledger offline");
+    }
+  });
+});`,
   "automations/await-shipment.workflow.js": `export default defineWorkflow({ name: "await-shipment" }, async (event, step) => {
   await step.waitForEvent("shipment", { type: "shipped", timeout: "7 days" });
 });`,
@@ -742,6 +749,53 @@ describe("dashboard", () => {
               });
             },
           ),
+        ],
+      }),
+    );
+  });
+
+  test("a workflow needs attention for the failures since it last completed", async () => {
+    const start = Date.now();
+    const syncRun = (instanceId: string, offline: boolean, at: number) =>
+      ({
+        orgId,
+        instanceId,
+        path: "/workspace/automations/sync-ledger.workflow.js",
+        event: event(`trigger-${instanceId}`, "ledger", "sync.requested", at, {
+          payload: { offline },
+          subject: { orgId },
+        }),
+      }) as const;
+
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        objects: scenarioObjects,
+        env: { codemode: createCodemodeNodeExecutor(codemodeServer) },
+        name: "a ledger sync fails, recovers, and fails again",
+        files: backofficeFiles.custom({ workspace: workflows }),
+        options: { allowErroredWorkflows: true },
+        setup: ({ given }) => [given.organization.exists({ id: orgId, name: "Ada Labs" })],
+        steps: ({ when, then }) => [
+          when.workflow.createInstance(syncRun("sync-1", true, start)),
+          then.assert("the failed sync needs attention", async (ctx) => {
+            assert.deepEqual((await readDashboard(ctx)).attention, [
+              "failing: sync-ledger ×1 (Error: ledger offline)",
+            ]);
+          }),
+          when.time.advance("1 minute"),
+          when.workflow.createInstance(syncRun("sync-2", false, start + 60_000)),
+          then.assert("the sync that completed clears the failure", async (ctx) => {
+            assert.deepEqual((await readDashboard(ctx)).attention, []);
+            await assertHomePageMatchesDashboard(ctx);
+          }),
+          when.time.advance("1 minute"),
+          when.workflow.createInstance(syncRun("sync-3", true, start + 120_000)),
+          then.assert("a failure after the recovery counts alone", async (ctx) => {
+            assert.deepEqual((await readDashboard(ctx)).attention, [
+              "failing: sync-ledger ×1 (Error: ledger offline)",
+            ]);
+            await assertHomePageMatchesDashboard(ctx);
+          }),
         ],
       }),
     );

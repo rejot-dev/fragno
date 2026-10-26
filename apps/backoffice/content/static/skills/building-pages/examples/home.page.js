@@ -22,19 +22,27 @@ export default page.define({ title: "Home" }, ({ sql, now, intervals, bucket }) 
     updatedAt: "time",
   });
 
-  // Each workflow whose runs failed today, with its latest failure.
+  // Each workflow whose runs failed today since one last completed, with its latest failure. A
+  // failure that ends in the same instant as a completion still counts.
   const failing = sql`
-    WITH failure AS (
-      SELECT coalesce(remoteWorkflowName, workflowName) AS workflow, workflowName, instanceId,
-        updatedAt,
-        CASE WHEN errorName IS NOT NULL AND errorMessage IS NOT NULL
-          THEN errorName || ': ' || errorMessage
-          ELSE coalesce(errorName, errorMessage, 'Errored') END AS error,
-        count(*) OVER (PARTITION BY coalesce(remoteWorkflowName, workflowName)) AS errored,
-        row_number() OVER (PARTITION BY coalesce(remoteWorkflowName, workflowName)
-                           ORDER BY updatedAt DESC, id DESC) AS recency
-      FROM runs
-      WHERE status = 'errored' AND completedAt >= ${day}
+    WITH run AS (
+      SELECT *, coalesce(remoteWorkflowName, workflowName) AS workflow FROM runs
+    ),
+    recovered AS (
+      SELECT workflow, max(completedAt) AS at FROM run WHERE status = 'complete' GROUP BY workflow
+    ),
+    failure AS (
+      SELECT run.workflow, run.workflowName, run.instanceId, run.updatedAt,
+        CASE WHEN run.errorName IS NOT NULL AND run.errorMessage IS NOT NULL
+          THEN run.errorName || ': ' || run.errorMessage
+          ELSE coalesce(run.errorName, run.errorMessage, 'Errored') END AS error,
+        count(*) OVER (PARTITION BY run.workflow) AS errored,
+        row_number() OVER (PARTITION BY run.workflow
+                           ORDER BY run.updatedAt DESC, run.id DESC) AS recency
+      FROM run
+      LEFT JOIN recovered ON recovered.workflow = run.workflow
+      WHERE run.status = 'errored' AND run.completedAt >= ${day}
+        AND (recovered.at IS NULL OR run.completedAt >= recovered.at)
     )
     SELECT workflow, workflowName, instanceId, error, updatedAt, errored,
       CASE WHEN errored = 1 THEN '1 errored run' ELSE errored || ' errored runs' END AS erroredLabel

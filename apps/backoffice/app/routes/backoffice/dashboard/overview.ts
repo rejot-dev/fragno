@@ -186,7 +186,9 @@ export function projectBackofficeDashboard({
   const failingWorkflows: DashboardAttention[] = [];
   for (const [workflow, workflowRuns] of groupBy(runs, workflowDisplayName)) {
     const started = workflowRuns.filter((run) => inWindow(run.createdAt));
-    const finished = workflowRuns.filter((run) => inWindow(run.completedAt));
+    const finished = workflowRuns.filter((run): run is DashboardRunRecord & { completedAt: Date } =>
+      inWindow(run.completedAt),
+    );
     const errored = finished.filter((run) => run.status === "errored");
     const startsPerBucket = bucketStarts.map(() => 0);
     for (const run of started) {
@@ -200,12 +202,22 @@ export function projectBackofficeDashboard({
       startsPerBucket,
       latestRun: runReference(latestByUpdate(workflowRuns)),
     });
-    if (errored.length > 0) {
-      const latestErrored = latestByUpdate(errored);
+    // A workflow whose run completed after its failures has recovered from them. Runs that end
+    // in the same instant have no order, so a failure tied with a completion still counts.
+    const recoveredAt = workflowRuns.reduce(
+      (latest, run) =>
+        run.status === "complete" && run.completedAt
+          ? Math.max(latest, run.completedAt.getTime())
+          : latest,
+      -Infinity,
+    );
+    const unrecovered = errored.filter((run) => run.completedAt.getTime() >= recoveredAt);
+    if (unrecovered.length > 0) {
+      const latestErrored = latestByUpdate(unrecovered);
       failingWorkflows.push({
         kind: "failing-workflow",
         workflow,
-        erroredRuns: errored.length,
+        erroredRuns: unrecovered.length,
         latestRun: runReference(latestErrored),
         error: runErrorText(latestErrored),
       });
