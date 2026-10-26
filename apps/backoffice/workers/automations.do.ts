@@ -27,6 +27,7 @@ import type { DurableHookQueueOptions } from "@/fragno/durable-hooks";
 import type { MarketplacePackagePublishRequest } from "@/fragno/marketplace/package-publishing";
 
 import type { AutomationsObject } from "./automations-object";
+import { acceptsBrotli, compressStreamingResponse } from "./lib/flushing-brotli-response";
 
 export class Automations extends DurableObject<CloudflareEnv> implements AutomationsCommands {
   #object!: AutomationsObject;
@@ -196,6 +197,23 @@ export class Automations extends DurableObject<CloudflareEnv> implements Automat
   }
 
   async fetch(request: Request): Promise<Response> {
-    return await this.#object.fetch(request);
+    const response = await this.#object.fetch(request);
+    // A first catch-up streams hundreds of megabytes, nearly all repeated GitHub payloads, from
+    // this object through the web Worker to the edge. Compressing it here shrinks every hop.
+    if (
+      response.status !== 200 ||
+      !new URL(request.url).pathname.endsWith("/_internal/outbox/stream") ||
+      response.headers.has("content-encoding")
+    ) {
+      return response;
+    }
+    if (!acceptsBrotli(request)) {
+      console.info("backoffice.outbox_stream.compression", {
+        outcome: "uncompressed",
+        acceptEncoding: request.headers.get("accept-encoding"),
+      });
+      return response;
+    }
+    return compressStreamingResponse(response, "backoffice.outbox_stream.compression");
   }
 }
