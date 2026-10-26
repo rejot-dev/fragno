@@ -21,7 +21,7 @@ type PackagesCodemodeProvider = {
    */
   uninstall(input: PackagesUninstallInput): Promise<PackagesUninstallOutput>;
   /**
-   * Import the installations recorded in the legacy workspace file /workspace/marketplace-lock.json, from before Backoffice kept installation records, then delete the file. Installing into a workspace that still has it is refused. Imported installations approve no permissions and have no settings until the package is installed again, and routes and agents their old install scripts wrote stay members' until then. A listing that already has an installation keeps it. A listing the file records in several folders is a conflict: it is not imported, and the file stays, until keep names the one folder to import; the other folders' files stay where they are.
+   * Import the installations recorded in the legacy workspace file /workspace/marketplace-lock.json, from before Backoffice kept installation records, then delete the file. Installing into a workspace that still has it is refused. Imported installations approve no permissions and have no settings until the package is installed again, and routes and agents their old install scripts wrote stay members' until then. A listing that already has an installation keeps it. A listing the file records in several folders is a conflict: it is not imported, and the file stays, until keep names the one folder to import; the other folders' files stay where they are. If the file changes while importing, it stays and lock is changed; import again to pick up the changes.
    * Requires `packages.install`.
    */
   importLegacy(input: PackagesImportLegacyInput): Promise<PackagesImportLegacyOutput>;
@@ -251,5 +251,5 @@ type PackagesImportLegacyOutput = {
     listingId: string;
     installationRoots: string[];
   }[];
-  lock: "absent" | "deleted" | "kept";
+  lock: "absent" | "deleted" | "kept" | "changed";
 };
