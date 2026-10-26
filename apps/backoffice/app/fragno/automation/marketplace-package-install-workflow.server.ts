@@ -1,10 +1,8 @@
 import {
   isMarketplaceLockPath,
   MARKETPLACE_LOCK_PATH,
-  marketplaceLockSchema,
   marketplaceListingIdSchema,
   marketplaceVersionSchema,
-  type MarketplaceScope,
   type PackageInstallation,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
@@ -211,38 +209,6 @@ type MarketplaceInstallationWorkflowInput = {
   installationRoot: string;
   installedFiles: Record<string, string>;
 };
-
-/** The version an installation made before Backoffice kept installation records left in the lock. */
-async function readLegacyMarketplaceLockVersion(input: {
-  routes: UploadRouteCaller;
-  http: UploadHttpTransport;
-  marketplace: MarketplaceScope;
-  listingId: string;
-  installationRoot: string;
-}) {
-  const fileKey = MARKETPLACE_LOCK_PATH.slice("/workspace/".length);
-  if (!(await requestUploadFile(input.routes, fileKey))) {
-    return null;
-  }
-  const bytes = await requestMarketplacePackageBytes(input.http, fileKey);
-  let json: unknown = null;
-  try {
-    json = JSON.parse(TEXT_DECODER.decode(bytes));
-  } catch {
-    // Invalid JSON fails the schema below, like any other invalid lock.
-  }
-  const lock = marketplaceLockSchema.safeParse(json);
-  if (!lock.success) {
-    throw new NonRetryableError(`Marketplace lock file '${MARKETPLACE_LOCK_PATH}' is invalid.`);
-  }
-  const existing = lock.data.entries.find(
-    (entry) =>
-      entry.listingId === input.listingId &&
-      entry.installationRoot === input.installationRoot &&
-      backofficeContextScopesEqual(entry.marketplace, input.marketplace),
-  );
-  return existing?.version ?? null;
-}
 
 /**
  * Install published package files, run the package's install workflow, then record the installation
@@ -488,14 +454,19 @@ export function defineMarketplacePackageInstallWorkflow(
           if (existing) {
             return existing.version;
           }
-          const legacyVersion = await readLegacyMarketplaceLockVersion({
-            routes: destinationUploadRoutes,
-            http: destinationObject.http,
-            marketplace: input.marketplace,
-            listingId,
-            installationRoot: input.installationRoot,
-          });
-          return legacyVersion;
+          // Without its records, an upgrade would see its own installed files as someone else's, and
+          // a listing could be installed a second time elsewhere.
+          if (
+            await requestUploadFile(
+              destinationUploadRoutes,
+              MARKETPLACE_LOCK_PATH.slice("/workspace/".length),
+            )
+          ) {
+            throw new NonRetryableError(
+              `This workspace still records installations in ${MARKETPLACE_LOCK_PATH}. Import them with packages.importLegacy, then install again.`,
+            );
+          }
+          return null;
         },
       );
 

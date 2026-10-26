@@ -105,7 +105,7 @@ export const MARKETPLACE_PRERELEASE_IDENTIFIER = String.raw`(?:0|[1-9]\d*|[0-9A-
 
 /**
  * Installations used to be recorded in this workspace file. Backoffice now keeps installation records
- * itself and only reads the file to upgrade installations made before.
+ * itself and only reads the file to import them with `packages.importLegacy`, which deletes it.
  */
 export const MARKETPLACE_LOCK_PATH = "/workspace/marketplace-lock.json";
 
@@ -573,6 +573,43 @@ export const packageUninstallationSchema = z.lazy(() =>
 
 export type PackageUninstallation = z.infer<typeof packageUninstallationSchema>;
 
+const packageLocationSchema = z.lazy(() =>
+  z.strictObject({
+    listingId: marketplaceListingIdSchema,
+    installationRoot: marketplaceInstallationRootSchema,
+  }),
+);
+
+export const packagesImportLegacyInputSchema = z.lazy(() =>
+  z.strictObject({
+    /** For a listing the lock records in several folders, the one folder to import. */
+    keep: z.array(packageLocationSchema).default([]),
+  }),
+);
+
+export type PackagesImportLegacyInput = z.input<typeof packagesImportLegacyInputSchema>;
+
+/**
+ * `alreadyInstalled` lists lock entries of listings that already have an installation, which
+ * stays. `lock` is `absent` when there was nothing to import, `deleted` once every entry is
+ * imported or already installed, and `kept` while conflicts remain.
+ */
+export const packagesImportLegacyResultSchema = z.lazy(() =>
+  z.strictObject({
+    imported: z.array(packageInstallationSchema),
+    alreadyInstalled: z.array(packageLocationSchema),
+    conflicts: z.array(
+      z.strictObject({
+        listingId: marketplaceListingIdSchema,
+        installationRoots: z.array(marketplaceInstallationRootSchema),
+      }),
+    ),
+    lock: z.enum(["absent", "deleted", "kept"]),
+  }),
+);
+
+export type PackagesImportLegacyResult = z.infer<typeof packagesImportLegacyResultSchema>;
+
 export const packagesOperations = {
   "packages.install": {
     description:
@@ -600,5 +637,11 @@ export const packagesOperations = {
     permissions: [BACKOFFICE_PERMISSION.packages.install],
     input: packageListingInputSchema,
     output: z.lazy(() => packageUninstallationSchema.nullable()),
+  },
+  "packages.importLegacy": {
+    description: `Import the installations recorded in the legacy workspace file ${MARKETPLACE_LOCK_PATH}, from before Backoffice kept installation records, then delete the file. Installing into a workspace that still has it is refused. Imported installations approve no permissions and have no settings until the package is installed again, and routes their old install scripts wrote stay members' until then. A listing that already has an installation keeps it. A listing the file records in several folders is a conflict: it is not imported, and the file stays, until keep names the one folder to import; the other folders' files stay where they are.`,
+    permissions: [BACKOFFICE_PERMISSION.packages.install],
+    input: packagesImportLegacyInputSchema,
+    output: packagesImportLegacyResultSchema,
   },
 } satisfies Record<string, BackofficeApiOperation>;

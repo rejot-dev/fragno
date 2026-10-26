@@ -17,6 +17,7 @@ import type {
 import type {
   MarketplacePublishResult,
   PackageInstallation,
+  PackagesImportLegacyInput,
   PackageUninstallation,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import type {
@@ -115,6 +116,7 @@ import type {
   RevokeExternalIdentityInput,
   RevokeExternalIdentityResult,
 } from "@/fragno/automation/external-identities";
+import type { LegacyPackageImportOutcome } from "@/fragno/automation/legacy-package-installations";
 import type {
   PackageInstallationInput,
   PackageInstallationOutcome,
@@ -696,6 +698,10 @@ export type AutomationsCommands = {
   /** Records a package installation and syncs the routes and event definitions it declares here. */
   applyPackageInstallation(input: PackageInstallationInput): Promise<PackageInstallationOutcome>;
   uninstallPackage(input: { listingId: string }): Promise<PackageUninstallation | null>;
+  /** Imports the workspace's legacy Marketplace lock into installation records. */
+  importLegacyPackageInstallations(
+    input: PackagesImportLegacyInput,
+  ): Promise<LegacyPackageImportOutcome>;
   /** Idempotent on the app and its identifier for the project. */
   provisionAppProject(input: {
     appId: string;

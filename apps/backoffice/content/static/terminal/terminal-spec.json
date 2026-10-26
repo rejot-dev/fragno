@@ -4690,6 +4690,36 @@
     ]
   },
   {
+    "command": "packages.importLegacy",
+    "summary": "Import the installations recorded in /workspace/marketplace-lock.json into the selected workspace, then delete the file.",
+    "options": [
+      {
+        "name": "keep",
+        "valueRequired": true,
+        "description": "For a listing recorded in several folders, the folder to import, as <listing-id>=<folder>. Repeat it for each such listing."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "internal.files.seed.execute",
     "summary": "internal.files.seed.execute seeds missing workspace starter files.",
     "options": [

@@ -192,6 +192,56 @@ describe("Workspace package runtime scenarios", () => {
     );
   });
 
+  test("an agent imports a legacy lock from the terminal, choosing between duplicate folders", async () => {
+    const entry = (installationRoot: string) => ({
+      marketplace: { kind: "system" },
+      listingId: LISTING_ID,
+      version: "1.0.0",
+      installationRoot,
+    });
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        objects: scenarioObjects,
+        name: "Package tools import a legacy Marketplace lock",
+        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+        steps: ({ then }) => [
+          then.assert("the duplicate stays until a folder is kept", async (ctx) => {
+            await ctx.runCodemode({
+              scope: ORG_SCOPE,
+              code: `async () => await state.writeFile({ path: "/workspace/marketplace-lock.json", content: ${JSON.stringify(JSON.stringify({ entries: [entry("/workspace/a"), entry("/workspace/b")] }))} })`,
+            });
+            const bash = await createScenarioShell(ctx, ORG_SCOPE);
+            const conflicted = await bash.exec("packages.importLegacy");
+            assert(conflicted.exitCode === 0, conflicted.stderr);
+            expect(conflicted.stdout).toBe(
+              `conflict\t${LISTING_ID}\t/workspace/a,/workspace/b\nlock\tkept\n`,
+            );
+            const kept = await bash.exec(
+              `packages.importLegacy --keep '${LISTING_ID}=/workspace/b'`,
+            );
+            assert(kept.exitCode === 0, kept.stderr);
+            expect(kept.stdout).toBe(
+              `imported\t${LISTING_ID}@1.0.0\t/workspace/b\nlock\tdeleted\n`,
+            );
+            await expect(
+              ctx.runCodemode({
+                scope: ORG_SCOPE,
+                code: `async () => ({ installed: await packages.ls({}), lock: await state.exists({ path: "/workspace/marketplace-lock.json" }) })`,
+              }),
+            ).resolves.toMatchObject({
+              result: {
+                installed: {
+                  installations: [{ ...entry("/workspace/b"), permissions: [], settings: {} }],
+                },
+                lock: false,
+              },
+            });
+          }),
+        ],
+      }),
+    );
+  });
+
   test("personal and project installations use organization coordination but record installations in their own workspace", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario<{ projectId: string }>({

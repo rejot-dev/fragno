@@ -79,6 +79,33 @@ export const createPackageInstallationServices = (
         .build();
     },
 
+    /** Records an installation unless the listing already has one; returns whether it did. */
+    createPackageInstallationIfAbsent(installation: PackageInstallation) {
+      return this.serviceTx(automationFragmentSchema)
+        .retrieve((uow) =>
+          uow.findFirst("package_installation", (b) =>
+            b.whereIndex("primary", (eb) => eb("id", "=", installation.listingId)),
+          ),
+        )
+        .mutate(({ uow, retrieveResult: [existing] }) => {
+          if (existing) {
+            return false;
+          }
+          uow.create("package_installation", {
+            id: installation.listingId,
+            marketplace: installation.marketplace,
+            version: installation.version,
+            installationRoot: installation.installationRoot,
+            permissions: installation.permissions,
+            settings: installation.settings,
+            createdAt: uow.now(),
+            updatedAt: uow.now(),
+          });
+          return true;
+        })
+        .build();
+    },
+
     deletePackageInstallation({ listingId }: { listingId: string }) {
       return this.serviceTx(automationFragmentSchema)
         .retrieve((uow) =>

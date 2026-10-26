@@ -8,6 +8,7 @@ import type {
   MarketplaceIngestionRequestInput,
   MarketplaceIngestionRestartResult,
   PackageInstallation,
+  PackagesImportLegacyInput,
   PackageUninstallation,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import { marketplaceIngestionRequestInputSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
@@ -83,6 +84,10 @@ import {
   type RevokeExternalIdentityInput,
   type RevokeExternalIdentityResult,
 } from "@/fragno/automation/external-identities";
+import {
+  importLegacyPackageInstallations,
+  type LegacyPackageImportOutcome,
+} from "@/fragno/automation/legacy-package-installations";
 import {
   assertMarketplaceIngestionTargetAccessible,
   assertMarketplaceIngestionSourceAccessible,
@@ -1107,6 +1112,20 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
     const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
 
     return await uninstallPackage(runtime.automationFragment, input);
+  }
+
+  /** Imports this workspace's legacy Marketplace lock into installation records. */
+  async importLegacyPackageInstallations(
+    input: PackagesImportLegacyInput,
+  ): Promise<LegacyPackageImportOutcome> {
+    const scope = this.#requireScope();
+    await this.#ensureConfigured({ scope });
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+
+    return await importLegacyPackageInstallations(runtime.automationFragment, {
+      upload: this.#runtimeServices.objects.upload.for(scope).http,
+      input,
+    });
   }
 
   async provisionAppProject(input: {
