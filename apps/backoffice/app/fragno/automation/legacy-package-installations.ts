@@ -33,29 +33,67 @@ function lockFileUrl(path: string) {
   return url;
 }
 
-async function readLegacyLock(upload: UploadHttp) {
-  const response = await upload.fetch(new Request(lockFileUrl("/files/by-key/content")));
-  if (response.status === 404 || response.status === 410) {
-    return null;
-  }
-  if (!response.ok) {
-    throw new Error(`${MARKETPLACE_LOCK_PATH} could not be read (${response.status}).`);
-  }
-  return await response.text();
+function isMissing(response: Response) {
+  return response.status === 404 || response.status === 410;
 }
 
-async function deleteLegacyLock(upload: UploadHttp) {
-  const response = await upload.fetch(
-    new Request(lockFileUrl("/files/by-key"), { method: "DELETE" }),
-  );
-  if (!response.ok && response.status !== 404 && response.status !== 410) {
-    throw new Error(`${MARKETPLACE_LOCK_PATH} could not be deleted (${response.status}).`);
+/**
+ * The lock's content and a revision it has, or not yet had, when read. The revision is read first,
+ * so a change in between moves it past what the content shows and the delete below refuses.
+ */
+async function readLegacyLock(upload: UploadHttp) {
+  const metadata = await upload.fetch(new Request(lockFileUrl("/files/by-key")));
+  if (isMissing(metadata)) {
+    return null;
   }
+  if (!metadata.ok) {
+    throw new Error(`${MARKETPLACE_LOCK_PATH} could not be read (${metadata.status}).`);
+  }
+  const file = (await metadata.json()) as { status: string; revision: number };
+  if (file.status === "deleted") {
+    return null;
+  }
+  const content = await upload.fetch(new Request(lockFileUrl("/files/by-key/content")));
+  if (isMissing(content)) {
+    return null;
+  }
+  if (!content.ok) {
+    throw new Error(`${MARKETPLACE_LOCK_PATH} could not be read (${content.status}).`);
+  }
+  return { source: await content.text(), revision: file.revision };
+}
+
+/** Deletes the lock only at the revision that was imported; a newer one is kept to import. */
+async function deleteLegacyLock(upload: UploadHttp, revision: number) {
+  const response = await upload.fetch(
+    new Request("https://upload.internal/api/upload/files/commit-prepared", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        entries: [
+          {
+            kind: "delete",
+            provider: UPLOAD_PROVIDER_DATABASE,
+            fileKey: LOCK_FILE_KEY,
+            precondition: { kind: "revision", revision },
+          },
+        ],
+      }),
+    }),
+  );
+  if (response.ok) {
+    return "deleted" as const;
+  }
+  const error = (await response.json().catch(() => null)) as { code?: unknown } | null;
+  if (error?.code === "FILE_PRECONDITION_FAILED") {
+    return "changed" as const;
+  }
+  throw new Error(`${MARKETPLACE_LOCK_PATH} could not be deleted (${response.status}).`);
 }
 
 /**
  * Turns the entries of the workspace's legacy Marketplace lock into installation records, then
- * deletes the lock once nothing in it is left to decide. Importing again is safe: listings that
+ * deletes the lock once nothing in it is left to decide, unless it changed while importing. Importing again is safe: listings that
  * already have an installation keep it.
  */
 export async function importLegacyPackageInstallations(
@@ -63,8 +101,8 @@ export async function importLegacyPackageInstallations(
   { upload, input }: { upload: UploadHttp; input: PackagesImportLegacyInput },
 ): Promise<LegacyPackageImportOutcome> {
   const { keep } = packagesImportLegacyInputSchema.parse(input);
-  const source = await readLegacyLock(upload);
-  if (source === null) {
+  const lockFile = await readLegacyLock(upload);
+  if (lockFile === null) {
     return {
       ok: true,
       result: { imported: [], alreadyInstalled: [], conflicts: [], lock: "absent" },
@@ -72,7 +110,7 @@ export async function importLegacyPackageInstallations(
   }
   let json: unknown = null;
   try {
-    json = JSON.parse(source);
+    json = JSON.parse(lockFile.source);
   } catch {
     // Invalid JSON fails the schema below, like any other invalid lock.
   }
@@ -166,8 +204,7 @@ export async function importLegacyPackageInstallations(
   });
 
   if (result.conflicts.length === 0) {
-    await deleteLegacyLock(upload);
-    result.lock = "deleted";
+    result.lock = await deleteLegacyLock(upload, lockFile.revision);
   }
   return { ok: true, result };
 }

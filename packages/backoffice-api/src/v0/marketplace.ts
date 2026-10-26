@@ -605,7 +605,8 @@ export const packagesImportLegacyResultSchema = z.lazy(() =>
         installationRoots: z.array(marketplaceInstallationRootSchema),
       }),
     ),
-    lock: z.enum(["absent", "deleted", "kept"]),
+    /** `changed`: the file changed while importing, so it stays for importing again. */
+    lock: z.enum(["absent", "deleted", "kept", "changed"]),
   }),
 );
 
@@ -640,7 +641,7 @@ export const packagesOperations = {
     output: z.lazy(() => packageUninstallationSchema.nullable()),
   },
   "packages.importLegacy": {
-    description: `Import the installations recorded in the legacy workspace file ${MARKETPLACE_LOCK_PATH}, from before Backoffice kept installation records, then delete the file. Installing into a workspace that still has it is refused. Imported installations approve no permissions and have no settings until the package is installed again, and routes and agents their old install scripts wrote stay members' until then. A listing that already has an installation keeps it. A listing the file records in several folders is a conflict: it is not imported, and the file stays, until keep names the one folder to import; the other folders' files stay where they are.`,
+    description: `Import the installations recorded in the legacy workspace file ${MARKETPLACE_LOCK_PATH}, from before Backoffice kept installation records, then delete the file. Installing into a workspace that still has it is refused. Imported installations approve no permissions and have no settings until the package is installed again, and routes and agents their old install scripts wrote stay members' until then. A listing that already has an installation keeps it. A listing the file records in several folders is a conflict: it is not imported, and the file stays, until keep names the one folder to import; the other folders' files stay where they are. If the file changes while importing, it stays and lock is changed; import again to pick up the changes.`,
     permissions: [BACKOFFICE_PERMISSION.packages.install],
     input: packagesImportLegacyInputSchema,
     output: packagesImportLegacyResultSchema,

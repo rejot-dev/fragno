@@ -994,6 +994,80 @@ describe("package installation scenarios", () => {
     );
   });
 
+  test("keeps a legacy lock that changes while importing, and imports the change next time", async () => {
+    const entry = (listingId: string) => ({
+      marketplace: { kind: "system" },
+      listingId,
+      version: "1.0.0",
+      installationRoot: `/workspace/${LISTING_SLUGS[listingId]}`,
+    });
+    const lock = (...listingIds: string[]) =>
+      JSON.stringify({ entries: listingIds.map((listingId) => entry(listingId)) });
+    // Someone records another installation in the lock right after the import read it.
+    let changeAfterRead: string | null = lock(LISTING_ID, GITHUB_CHANNEL_ID);
+    class LockChangingUploadObject extends UploadObject {
+      override async fetch(request: Request) {
+        const response = await super.fetch(request);
+        const url = new URL(request.url);
+        if (
+          changeAfterRead !== null &&
+          url.pathname.endsWith("/files/by-key/content") &&
+          url.searchParams.get("key") === "marketplace-lock.json"
+        ) {
+          const content = changeAfterRead;
+          changeAfterRead = null;
+          await writeUploadFile({
+            fileKey: "marketplace-lock.json",
+            content,
+            fetch: (write) => super.fetch(write),
+          });
+        }
+        return response;
+      }
+    }
+    const importLegacy = (ctx: BackofficeScenarioContext) =>
+      ctx.runtime.objects.automations
+        .for(TARGET_SCOPE)
+        .commands.importLegacyPackageInstallations({});
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        objects: { ...scenarioObjects, UPLOAD: (input) => new LockChangingUploadObject(input) },
+        name: "keep a legacy Marketplace lock that changed while importing",
+        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+        steps: ({ then }) => [
+          then.assert("the first import keeps the changed lock", async (ctx) => {
+            const upload = ctx.runtime.objects.upload.for(TARGET_SCOPE);
+            await writeUploadFile({
+              fileKey: "marketplace-lock.json",
+              content: lock(LISTING_ID),
+              fetch: (request) => upload.http.fetch(request),
+            });
+            await expect(importLegacy(ctx)).resolves.toMatchObject({
+              ok: true,
+              result: { imported: [entry(LISTING_ID)], lock: "changed" },
+            });
+            await expect(
+              (await readWorkspaceFile(ctx, MARKETPLACE_LOCK_PATH)).text(),
+            ).resolves.toBe(lock(LISTING_ID, GITHUB_CHANNEL_ID));
+          }),
+          then.assert("importing again imports the change and deletes the lock", async (ctx) => {
+            await expect(importLegacy(ctx)).resolves.toMatchObject({
+              ok: true,
+              result: {
+                imported: [entry(GITHUB_CHANNEL_ID)],
+                alreadyInstalled: [
+                  { listingId: LISTING_ID, installationRoot: entry(LISTING_ID).installationRoot },
+                ],
+                lock: "deleted",
+              },
+            });
+            assert.equal((await readWorkspaceFile(ctx, MARKETPLACE_LOCK_PATH)).status, 410);
+          }),
+        ],
+      }),
+    );
+  });
+
   test("imports a listing the legacy lock records in two folders only once one is chosen", async () => {
     const entry = (listingId: string, installationRoot: string) => ({
       marketplace: { kind: "system" },
