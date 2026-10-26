@@ -1,3 +1,4 @@
+import { STATE_FILE_MAX_BYTES } from "@fragno-dev/backoffice-api/v0/state";
 import { createRouteCaller, type RouteCallerForFragment } from "@fragno-dev/core/api";
 import { createDatabaseStorageAdapter } from "@fragno-dev/upload/storage/db";
 
@@ -7,7 +8,7 @@ import type { BackofficeFragmentRuntimeOptions } from "@/backoffice-runtime/frag
 import type { FetchCommands } from "@/backoffice-runtime/object-registry";
 import { inferFileContentType } from "@/file-collection/file-content-type";
 
-import { UPLOAD_DATABASE_MAX_SINGLE_UPLOAD_BYTES, UPLOAD_PROVIDER_DATABASE } from "./upload";
+import { UPLOAD_PROVIDER_DATABASE } from "./upload";
 
 // Sandbox pushes write into the shared workspace without preconditions, so one archive stays sized
 // for task outputs rather than whole projects.
@@ -31,7 +32,7 @@ export function createUploadServer({
         databaseAdapter,
         providerName: UPLOAD_PROVIDER_DATABASE,
         storageKeyPrefix,
-        maxObjectBytes: UPLOAD_DATABASE_MAX_SINGLE_UPLOAD_BYTES,
+        maxObjectBytes: STATE_FILE_MAX_BYTES,
       }),
       fileLinks: {
         ...fileLinkSigning,
@@ -40,7 +41,7 @@ export function createUploadServer({
         maxArchiveWriteBytes: FILE_LINK_MAX_ARCHIVE_WRITE_BYTES,
       },
       textIndex: { enabled: true },
-      maxSingleUploadBytes: UPLOAD_DATABASE_MAX_SINGLE_UPLOAD_BYTES,
+      maxSingleUploadBytes: STATE_FILE_MAX_BYTES,
     },
     {
       databaseAdapter,

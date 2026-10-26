@@ -1,9 +1,6 @@
 import type { BackofficeObjectScope } from "@/backoffice-runtime/object-registry";
 
 export const UPLOAD_PROVIDER_DATABASE = "database" as const;
-// The database provider stores each file as one Durable Object SQLite row, and Durable Object SQLite
-// rejects values and rows over 2 MB; the margin covers the row's other columns.
-export const UPLOAD_DATABASE_MAX_SINGLE_UPLOAD_BYTES = 1_900_000;
 
 function storagePrefixSegment(value: string): string {
   const segment = value

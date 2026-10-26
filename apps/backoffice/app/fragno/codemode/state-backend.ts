@@ -34,6 +34,7 @@ import { inferFileContentType } from "@/file-collection/file-content-type";
 import { createBackofficeSystemFileCollection } from "@/files/content/system";
 import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
 import { createUploadRouteCaller, type UploadRouteCaller } from "@/fragno/upload-server";
+import { readBoundedBytes } from "@/lib/bounded-bytes";
 
 const UPLOAD_MOUNT_POINT = "/workspace";
 const STATIC_MOUNT_POINT = "/static";
@@ -217,37 +218,9 @@ export class StateFileReadLimitError extends Error {
 }
 
 async function readStateFileBytes(content: FileContent, maxBytes: number): Promise<Uint8Array> {
-  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) {
-    throw new Error("State file byte limit must be a nonnegative safe integer.");
-  }
-  if (content.sizeBytes !== null && content.sizeBytes > maxBytes) {
-    await content.body.cancel();
+  const bytes = await readBoundedBytes(content.body, content.sizeBytes, maxBytes);
+  if (bytes === null) {
     throw new StateFileReadLimitError(maxBytes);
-  }
-  const reader = content.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  try {
-    while (true) {
-      const chunk = await reader.read();
-      if (chunk.done) {
-        break;
-      }
-      size += chunk.value.length;
-      if (size > maxBytes) {
-        await reader.cancel();
-        throw new StateFileReadLimitError(maxBytes);
-      }
-      chunks.push(chunk.value);
-    }
-  } finally {
-    reader.releaseLock();
-  }
-  const bytes = new Uint8Array(size);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.length;
   }
   return bytes;
 }
