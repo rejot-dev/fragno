@@ -11,6 +11,7 @@ import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
 import { Icon } from "@fragno-private/design-system/icon";
 import { Input } from "@fragno-private/design-system/input";
+import { PackageSetup } from "@fragno-private/design-system/package-setup";
 import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
 import { usePostHog } from "@posthog/react/slim";
 import { Suspense, useState } from "react";
@@ -32,6 +33,7 @@ import { fetchAutomationReplicaSource } from "@/fragno/automation/lofi/replica-s
 import { buildMarketplacePackageInstallWorkflowInstanceId } from "@/fragno/automation/marketplace-package-install-identity";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
 import {
+  EMPTY_MARKETPLACE_PACKAGE_DECLARATION,
   MarketplacePackageDeclarationError,
   readMarketplacePackageDeclaration,
 } from "@/fragno/marketplace/package-declaration";
@@ -63,6 +65,7 @@ import {
 } from "./navigation";
 import type { MarketplacePackageExplorerData } from "./package-files-model";
 import { loadPublishedMarketplacePackageExplorer } from "./package-files.server";
+import { describeMarketplacePackageSetup, type MarketplacePackageSetup } from "./package-setup";
 import {
   buildMarketplacePackageTabPath,
   marketplacePackageTabFromSearch,
@@ -109,9 +112,9 @@ function sortMarketplaceVersionsNewestFirst(
 
 type IngestionActionData = { ok: false; message: string };
 
-/** The permissions a release declares, as `namespace.permission`; installing approves them. */
-type InstallationPermissions =
-  | { state: "ready"; permissions: string[] }
+/** What a release sets up; installing approves its permissions, as `namespace.permission`. */
+type InstallationSetup =
+  | { state: "ready"; setup: MarketplacePackageSetup }
   | { state: "invalid"; message: string };
 
 export type MarketplacePackageOutletContext = {
@@ -292,24 +295,22 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
 
   const installationVersion =
     packageFiles.state === "ready" ? packageFiles.selectedVersion : detail.listing.latestVersion;
-  let installationPermissions: InstallationPermissions = { state: "ready", permissions: [] };
+  let installationSetup: InstallationSetup = {
+    state: "ready",
+    setup: describeMarketplacePackageSetup(EMPTY_MARKETPLACE_PACKAGE_DECLARATION),
+  };
   if (listingStorage) {
     try {
       const declaration = await readMarketplacePackageDeclaration({
         http: runtime.objects.upload.forName(listingStorage.uploadName).http,
         version: installationVersion,
       });
-      installationPermissions = {
-        state: "ready",
-        permissions: declaration.permissions.map(
-          ({ namespace, permission }) => `${namespace}.${permission}`,
-        ),
-      };
+      installationSetup = { state: "ready", setup: describeMarketplacePackageSetup(declaration) };
     } catch (error) {
       if (!(error instanceof MarketplacePackageDeclarationError)) {
         throw error;
       }
-      installationPermissions = { state: "invalid", message: error.message };
+      installationSetup = { state: "invalid", message: error.message };
     }
   }
 
@@ -317,7 +318,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     ...detail,
     listingRef,
     catalog,
-    installationPermissions,
+    installationSetup,
     manageOrganizationSlug: manageableOrganization?.organization.slug ?? null,
     installationCollectionSource,
     installationUnavailableMessage:
@@ -446,7 +447,7 @@ function MarketplaceListingDetail({ loaderData }: Route.ComponentProps) {
     installationCollectionSource,
     installationUnavailableMessage,
     installationReference,
-    installationPermissions,
+    installationSetup,
     packageFiles,
   } = loaderData;
   const installation = useFetcher<IngestionActionData>();
@@ -608,152 +609,149 @@ function MarketplaceListingDetail({ loaderData }: Route.ComponentProps) {
                 )}
               </ClientOnly>
             ) : (
-              <div className="max-w-2xl">
-                <h3 className="text-lg font-semibold tracking-tight text-[var(--bo-fg)]">
-                  Install package
-                </h3>
-                <p className="mt-1 text-sm leading-6 text-pretty text-[var(--bo-muted)]">
-                  Choose where to install this release in your workspace.
-                </p>
-                <dl className="mt-5 grid grid-cols-2 gap-4 border-y border-[color:var(--bo-border)] py-4 text-sm">
-                  <div className="min-w-0">
-                    <dt className="text-xs text-[var(--bo-muted)]">Workspace</dt>
-                    <dd className="mt-1 font-medium break-words text-[var(--bo-fg)]">
-                      {selectedScope.label}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-[var(--bo-muted)]">Version</dt>
-                    <dd className="mt-1 font-mono text-[var(--bo-fg)]">v{installationVersion}</dd>
-                  </div>
-                  <div className="col-span-2 min-w-0">
-                    <dt className="text-xs text-[var(--bo-muted)]">Permissions</dt>
-                    <dd className="mt-1 text-[var(--bo-fg)]">
-                      {installationPermissions.state === "invalid" ? (
-                        <span className="text-[var(--bo-failed)]">
-                          {installationPermissions.message}
-                        </span>
-                      ) : installationPermissions.permissions.length ? (
-                        <>
-                          <ul className="flex flex-wrap gap-x-3 gap-y-1 font-mono text-xs">
-                            {installationPermissions.permissions.map((permission) => (
-                              <li key={permission}>{permission}</li>
-                            ))}
-                          </ul>
-                          <p className="mt-2 text-xs leading-5 text-pretty text-[var(--bo-muted)]">
-                            Installing grants these to the package&apos;s routes and install
-                            workflow. You must hold each of them.
-                          </p>
-                        </>
-                      ) : (
-                        <span className="text-[var(--bo-muted)]">None</span>
-                      )}
-                    </dd>
-                  </div>
-                </dl>
-                {installationCollectionSource ? (
-                  <installation.Form
-                    method="post"
-                    action={installationTabPath}
-                    className="mt-5"
-                    onSubmit={(event) => {
-                      const path = marketplaceInstallationRootSchema.safeParse(installationRoot);
-                      if (!path.success) {
-                        event.preventDefault();
-                        setInstallationPathError(path.error.issues[0].message);
-                        return;
-                      }
-                      setInstallationPathError(null);
-                      if (posthog) {
-                        posthog.capture("marketplace_installation_started", {
-                          listing_id: listing.listingId,
-                          version: installationVersion,
-                          scope_kind: selectedScope.kind,
-                        });
-                      }
-                    }}
-                  >
-                    <input type="hidden" name="version" value={installationVersion} />
-                    {installationPermissions.state === "ready"
-                      ? installationPermissions.permissions.map((permission) => (
-                          <input
-                            key={permission}
-                            type="hidden"
-                            name="permission"
-                            value={permission}
-                          />
-                        ))
-                      : null}
-                    <label
-                      htmlFor="marketplace-installation-root"
-                      className="block text-sm font-medium text-[var(--bo-fg)]"
-                    >
-                      Install folder
-                    </label>
-                    <Input
-                      id="marketplace-installation-root"
-                      name="installationRoot"
-                      value={installationRoot}
-                      onChange={(event) => {
-                        setInstallationRoot(event.currentTarget.value);
-                        setInstallationPathError(null);
-                      }}
-                      autoComplete="off"
-                      spellCheck={false}
-                      required
-                      aria-invalid={installationPathError !== null}
-                      aria-describedby="marketplace-installation-path-help marketplace-installation-path-error"
-                      className="mt-2 w-full font-mono text-sm"
-                    />
-                    <p
-                      id="marketplace-installation-path-help"
-                      className="mt-2 text-xs leading-5 text-pretty text-[var(--bo-muted)]"
-                    >
-                      Use a folder under <code>/workspace</code>. A workspace holds one installation
-                      of a package: installing another release upgrades it in its folder, and files
-                      edited since stop the upgrade. Installing the same release again lets you
-                      change its settings.
-                    </p>
-                    <p
-                      id="marketplace-installation-path-error"
-                      role={installationPathError ? "alert" : undefined}
-                      className="mt-2 text-xs text-[var(--bo-failed)]"
-                    >
-                      {installationPathError}
-                    </p>
-                    <div className="mt-5 flex items-center gap-3">
-                      <Button
-                        type="submit"
-                        variant="solid"
-                        disabled={installationPermissions.state === "invalid"}
-                      >
-                        {installationPermissions.state === "ready" &&
-                        installationPermissions.permissions.length
-                          ? "Approve and install"
-                          : "Install"}
-                      </Button>
-                      <ButtonLink
-                        to={buildMarketplacePackageTabPath(
-                          location.pathname,
-                          location.search,
-                          "overview",
-                        )}
-                        variant="ghost"
-                        preventScrollReset
-                      >
-                        Cancel
-                      </ButtonLink>
-                    </div>
-                    {actionData?.ok === false ? (
-                      <InstallationFailureSurface message={actionData.message} />
-                    ) : null}
-                  </installation.Form>
-                ) : (
-                  <p className="mt-5 text-sm text-[var(--bo-muted)]">
-                    {installationUnavailableMessage ??
-                      `Join an organization to install into ${selectedScope.label}.`}
+              <div className="grid gap-x-10 gap-y-8 xl:grid-cols-[minmax(0,28rem)_minmax(0,1fr)]">
+                {/* The setup list can run long; the form stays in view beside it. */}
+                <div className="min-w-0 xl:sticky xl:top-6 xl:self-start">
+                  <h3 className="text-lg font-semibold tracking-tight text-[var(--bo-fg)]">
+                    Install package
+                  </h3>
+                  <p className="mt-1 text-sm leading-6 text-pretty text-[var(--bo-muted)]">
+                    Choose where to install this release in your workspace.
                   </p>
-                )}
+                  <dl className="mt-5 grid grid-cols-2 gap-4 border-y border-[color:var(--bo-border)] py-4 text-sm">
+                    <div className="min-w-0">
+                      <dt className="text-xs text-[var(--bo-muted)]">Workspace</dt>
+                      <dd className="mt-1 font-medium break-words text-[var(--bo-fg)]">
+                        {selectedScope.label}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-[var(--bo-muted)]">Version</dt>
+                      <dd className="mt-1 font-mono text-[var(--bo-fg)]">v{installationVersion}</dd>
+                    </div>
+                  </dl>
+                  {installationCollectionSource ? (
+                    <installation.Form
+                      method="post"
+                      action={installationTabPath}
+                      className="mt-5"
+                      onSubmit={(event) => {
+                        const path = marketplaceInstallationRootSchema.safeParse(installationRoot);
+                        if (!path.success) {
+                          event.preventDefault();
+                          setInstallationPathError(path.error.issues[0].message);
+                          return;
+                        }
+                        setInstallationPathError(null);
+                        if (posthog) {
+                          posthog.capture("marketplace_installation_started", {
+                            listing_id: listing.listingId,
+                            version: installationVersion,
+                            scope_kind: selectedScope.kind,
+                          });
+                        }
+                      }}
+                    >
+                      <input type="hidden" name="version" value={installationVersion} />
+                      {installationSetup.state === "ready"
+                        ? installationSetup.setup.permissions.map((permission) => (
+                            <input
+                              key={permission}
+                              type="hidden"
+                              name="permission"
+                              value={permission}
+                            />
+                          ))
+                        : null}
+                      <label
+                        htmlFor="marketplace-installation-root"
+                        className="block text-sm font-medium text-[var(--bo-fg)]"
+                      >
+                        Install folder
+                      </label>
+                      <Input
+                        id="marketplace-installation-root"
+                        name="installationRoot"
+                        value={installationRoot}
+                        onChange={(event) => {
+                          setInstallationRoot(event.currentTarget.value);
+                          setInstallationPathError(null);
+                        }}
+                        autoComplete="off"
+                        spellCheck={false}
+                        required
+                        aria-invalid={installationPathError !== null}
+                        aria-describedby="marketplace-installation-path-help marketplace-installation-path-error"
+                        className="mt-2 w-full font-mono text-sm"
+                      />
+                      <p
+                        id="marketplace-installation-path-help"
+                        className="mt-2 text-xs leading-5 text-pretty text-[var(--bo-muted)]"
+                      >
+                        Use a folder under <code>/workspace</code>. A workspace holds one
+                        installation of a package: installing another release upgrades it in its
+                        folder, and files edited since stop the upgrade. Installing the same release
+                        again lets you change its settings.
+                      </p>
+                      <p
+                        id="marketplace-installation-path-error"
+                        role={installationPathError ? "alert" : undefined}
+                        className="mt-2 text-xs text-[var(--bo-failed)]"
+                      >
+                        {installationPathError}
+                      </p>
+                      <div className="mt-5 flex items-center gap-3">
+                        <Button
+                          type="submit"
+                          variant="solid"
+                          disabled={installationSetup.state === "invalid"}
+                        >
+                          {installationSetup.state === "ready" &&
+                          installationSetup.setup.permissions.length
+                            ? "Approve and install"
+                            : "Install"}
+                        </Button>
+                        <ButtonLink
+                          to={buildMarketplacePackageTabPath(
+                            location.pathname,
+                            location.search,
+                            "overview",
+                          )}
+                          variant="ghost"
+                          preventScrollReset
+                        >
+                          Cancel
+                        </ButtonLink>
+                      </div>
+                      {actionData?.ok === false ? (
+                        <InstallationFailureSurface message={actionData.message} />
+                      ) : null}
+                    </installation.Form>
+                  ) : (
+                    <p className="mt-5 text-sm text-[var(--bo-muted)]">
+                      {installationUnavailableMessage ??
+                        `Join an organization to install into ${selectedScope.label}.`}
+                    </p>
+                  )}
+                </div>
+                <section aria-labelledby="marketplace-package-setup-heading" className="min-w-0">
+                  <h3
+                    id="marketplace-package-setup-heading"
+                    className="text-lg font-semibold tracking-tight text-[var(--bo-fg)]"
+                  >
+                    What installing sets up
+                  </h3>
+                  <p className="mt-1 mb-5 text-sm leading-6 text-pretty text-[var(--bo-muted)]">
+                    Declared by this release in <code>.marketplace/installation.json</code>.
+                  </p>
+                  {installationSetup.state === "invalid" ? (
+                    <p role="alert" className="text-sm leading-6 text-[var(--bo-failed)]">
+                      {installationSetup.message}
+                    </p>
+                  ) : (
+                    <PackageSetup {...installationSetup.setup} />
+                  )}
+                </section>
               </div>
             )}
           </div>
