@@ -364,7 +364,65 @@ type EventsListOutput = {
     };
     actors: AutomationActors;
     subject: {
-      orgId?: string;
+      scope?:
+        | {
+            kind: "system";
+          }
+        | {
+            kind: "org";
+            orgId: string;
+            jurisdiction: "eu" | "us" | null;
+          }
+        | {
+            kind: "user";
+            userId: string;
+            jurisdiction: "eu" | "us" | null;
+          }
+        | {
+            kind: "app";
+            owner:
+              | {
+                  kind: "org";
+                  orgId: string;
+                  jurisdiction: "eu" | "us" | null;
+                }
+              | {
+                  kind: "user";
+                  userId: string;
+                  jurisdiction: "eu" | "us" | null;
+                };
+            appId: string;
+          }
+        | {
+            kind: "project";
+            owner:
+              | {
+                  kind: "org";
+                  orgId: string;
+                  jurisdiction: "eu" | "us" | null;
+                }
+              | {
+                  kind: "user";
+                  userId: string;
+                  jurisdiction: "eu" | "us" | null;
+                }
+              | {
+                  kind: "app";
+                  owner:
+                    | {
+                        kind: "org";
+                        orgId: string;
+                        jurisdiction: "eu" | "us" | null;
+                      }
+                    | {
+                        kind: "user";
+                        userId: string;
+                        jurisdiction: "eu" | "us" | null;
+                      };
+                  appId: string;
+                };
+            projectId: string;
+          };
       userId?: string;
       [key: string]: unknown;
     } | null;
@@ -651,7 +709,65 @@ type EventsGetOutput = {
   };
   actors: AutomationActors;
   subject: {
-    orgId?: string;
+    scope?:
+      | {
+          kind: "system";
+        }
+      | {
+          kind: "org";
+          orgId: string;
+          jurisdiction: "eu" | "us" | null;
+        }
+      | {
+          kind: "user";
+          userId: string;
+          jurisdiction: "eu" | "us" | null;
+        }
+      | {
+          kind: "app";
+          owner:
+            | {
+                kind: "org";
+                orgId: string;
+                jurisdiction: "eu" | "us" | null;
+              }
+            | {
+                kind: "user";
+                userId: string;
+                jurisdiction: "eu" | "us" | null;
+              };
+          appId: string;
+        }
+      | {
+          kind: "project";
+          owner:
+            | {
+                kind: "org";
+                orgId: string;
+                jurisdiction: "eu" | "us" | null;
+              }
+            | {
+                kind: "user";
+                userId: string;
+                jurisdiction: "eu" | "us" | null;
+              }
+            | {
+                kind: "app";
+                owner:
+                  | {
+                      kind: "org";
+                      orgId: string;
+                      jurisdiction: "eu" | "us" | null;
+                    }
+                  | {
+                      kind: "user";
+                      userId: string;
+                      jurisdiction: "eu" | "us" | null;
+                    };
+                appId: string;
+              };
+          projectId: string;
+        };
     userId?: string;
     [key: string]: unknown;
   } | null;

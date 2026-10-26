@@ -382,7 +382,13 @@ describe("createEventRuntime.emitEvent", () => {
           owner: { kind: "org", orgId: "org-1", jurisdiction: null },
           projectId: "project-1",
         },
-        subject: expect.objectContaining({ orgId: "org-1", projectId: "project-1" }),
+        subject: expect.objectContaining({
+          scope: {
+            kind: "project",
+            owner: { kind: "org", orgId: "org-1", jurisdiction: null },
+            projectId: "project-1",
+          },
+        }),
       }),
     );
   });

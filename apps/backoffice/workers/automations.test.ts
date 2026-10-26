@@ -137,7 +137,7 @@ const scopedEvent = (orgId: string): AutomationEvent => ({
     principal: null,
     delegation: [],
   },
-  subject: { orgId },
+  subject: { scope: { kind: "org", orgId, jurisdiction: null } },
   causation: { kind: "origin" },
 });
 

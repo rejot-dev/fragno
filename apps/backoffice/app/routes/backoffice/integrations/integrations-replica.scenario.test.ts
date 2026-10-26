@@ -57,7 +57,7 @@ function connectionEvent(
   return event(id, "integrations", `connection.${state}`, at, {
     // Disconnections carry no label.
     payload: state === "disconnected" ? {} : { name: connectionId, authMethod: null },
-    subject: { scope, orgId, service: connectionId.split("#", 1)[0], connectionId },
+    subject: { scope, service: connectionId.split("#", 1)[0], connectionId },
   });
 }
 
@@ -73,7 +73,7 @@ function delivery(id: string, endpointId: string, at: number) {
       body: {},
       contentType: null,
     },
-    subject: { scope, orgId, endpointId, deliveryId: id },
+    subject: { scope, endpointId, deliveryId: id },
   });
 }
 
@@ -185,7 +185,7 @@ describe("integrations replica", () => {
           when.automation.ingestEvent(
             event("routed-1", ENDPOINT_ID, "order.placed", at(8), {
               payload: { id: "routed-1" },
-              subject: { orgId },
+              subject: { scope: { kind: "org", orgId, jurisdiction: null } },
             }),
           ),
           when.automation.ingestEvent(delivery("raw-2", ENDPOINT_ID, at(9))),

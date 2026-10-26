@@ -34,7 +34,7 @@ const event: AutomationEvent = {
   occurredAt: "2026-08-10T12:00:00.000Z",
   payload: { requestId: "request-1" },
   actors: execution.actors,
-  subject: { orgId: "org-1" },
+  subject: { scope: { kind: "org", orgId: "org-1", jurisdiction: null } },
   causation: { kind: "origin" },
 };
 

@@ -1,8 +1,5 @@
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
-import {
-  backofficeScopeOrganization,
-  type BackofficeContextScope,
-} from "@fragno-dev/backoffice-api/v0/shared/scope";
+import { type BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type {
   CodemodeCompletion,
   CodemodeExecutor,
@@ -174,7 +171,6 @@ function codemodeRunFailedEvent(
   } = run as typeof run & {
     billingOrganizationId?: string | null;
   };
-  const organization = backofficeScopeOrganization(scope);
   return {
     id: hook.hookId.toString(),
     // Automations started by this event inherit the run's ceiling, never a wider one.
@@ -185,11 +181,7 @@ function codemodeRunFailedEvent(
     occurredAt: run.finishedAt,
     payload,
     actors,
-    subject: {
-      ...(organization ? { orgId: organization.orgId } : {}),
-      ...(scope.kind === "project" ? { projectId: scope.projectId } : {}),
-      runId: run.runId,
-    },
+    subject: { scope, runId: run.runId },
     causation: { kind: "origin" },
   };
 }

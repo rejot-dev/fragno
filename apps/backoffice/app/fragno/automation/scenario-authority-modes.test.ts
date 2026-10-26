@@ -85,7 +85,7 @@ const authorityEvent = ({
     principal,
     delegation: [],
   },
-  subject: { orgId: "org-1" },
+  subject: { scope: { kind: "org", orgId: "org-1", jurisdiction: null } },
   causation: { kind: "origin" },
 });
 

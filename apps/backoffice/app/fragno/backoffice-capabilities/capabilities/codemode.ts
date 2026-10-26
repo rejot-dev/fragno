@@ -1,3 +1,4 @@
+import { backofficeContextScopeSchema } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { codemodeWireErrorSchema } from "@fragno-dev/codemode/execution/codemode-error-contract";
 import { z } from "zod";
 
@@ -21,8 +22,7 @@ const runFailedPayloadSchema = z.object({
 });
 
 const runSubjectSchema = z.object({
-  orgId: z.string().trim().min(1).optional(),
-  projectId: z.string().trim().min(1).optional(),
+  scope: backofficeContextScopeSchema,
   runId: z.string().trim().min(1),
 });
 

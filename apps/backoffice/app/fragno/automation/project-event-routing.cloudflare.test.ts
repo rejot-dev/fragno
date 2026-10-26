@@ -201,7 +201,7 @@ describe("project automation event routing", () => {
         principal: null,
         delegation: [],
       },
-      subject: { orgId },
+      subject: { scope: { kind: "org", orgId, jurisdiction: null } },
       causation: { kind: "origin" },
     };
 
@@ -303,7 +303,13 @@ describe("project automation event routing", () => {
               source: "automations",
               eventType: "project.created",
               scope: { kind: "org", orgId, jurisdiction: null },
-              subject: { orgId, projectId },
+              subject: {
+                scope: {
+                  kind: "project",
+                  owner: { kind: "org", orgId, jurisdiction: null },
+                  projectId,
+                },
+              },
             }),
           }),
         }),
@@ -374,7 +380,7 @@ describe("project automation event routing", () => {
         principal: null,
         delegation: [],
       },
-      subject: { orgId },
+      subject: { scope: { kind: "org", orgId, jurisdiction: null } },
       causation: { kind: "origin" },
     };
     const events = createEventRuntime({

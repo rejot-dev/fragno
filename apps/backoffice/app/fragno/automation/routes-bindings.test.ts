@@ -310,17 +310,16 @@ describe("automation routes /routes", () => {
     });
   });
 
-  test("system routes can forward events to an organization scope", async () => {
+  test("system routes forward events to the scope their subject names, as it names it", async () => {
     const forwardedEvents: AutomationEvent[] = [];
     const runtime = {
       objects: {
-        auth: existingRootOwners,
         automations: {
           for: (scope: AutomationEvent["scope"]) => ({
             commands: {
               ingestEvent: async (event: AutomationEvent) => {
                 forwardedEvents.push(event);
-                expect(scope).toEqual({ kind: "org", orgId: "org_123", jurisdiction: null });
+                expect(scope).toEqual({ kind: "org", orgId: "org_123", jurisdiction: "eu" });
                 return {
                   accepted: true,
                   eventId: event.id,
@@ -345,12 +344,12 @@ describe("automation routes /routes", () => {
           kind: "event",
           source: "custom",
           eventType: "ready",
-          matcher: { path: "$.subject.orgId", op: "exists" },
+          matcher: { path: "$.subject.scope.kind", op: "eq", value: "org" },
         },
         priority: 20,
         action: {
           kind: "forward_event",
-          targetScope: { kind: "org", orgIdTemplate: "${event.subject.orgId}" },
+          targetScope: { kind: "subject" },
           idTemplate: "${event.id}",
         },
       },
@@ -369,7 +368,7 @@ describe("automation routes /routes", () => {
         principal: null,
         delegation: [],
       },
-      subject: { orgId: "org_123" },
+      subject: { scope: { kind: "org", orgId: "org_123", jurisdiction: "eu" } },
       causation: { kind: "origin" },
     };
 
@@ -379,7 +378,7 @@ describe("automation routes /routes", () => {
     expect(forwardedEvents).toEqual([
       expect.objectContaining({
         id: "custom:ready:org_123",
-        scope: { kind: "org", orgId: "org_123", jurisdiction: null },
+        scope: { kind: "org", orgId: "org_123", jurisdiction: "eu" },
         source: "custom",
         eventType: "ready",
       }),
@@ -437,7 +436,7 @@ describe("automation routes /routes", () => {
           principal: null,
           delegation: [],
         },
-        subject: { orgId: "org_123" },
+        subject: { scope: { kind: "org", orgId: "org_123", jurisdiction: null } },
         causation: { kind: "origin" },
       }),
     );
@@ -614,7 +613,7 @@ describe("automation routes /routes", () => {
         principal: null,
         delegation: [],
       },
-      subject: { orgId: "org_123" },
+      subject: { scope: { kind: "org", orgId: "org_123", jurisdiction: null } },
       causation: { kind: "origin" },
     };
 
@@ -693,7 +692,7 @@ describe("automation routes /routes", () => {
         principal: null,
         delegation: [],
       },
-      subject: { orgId: "org_123" },
+      subject: { scope: { kind: "org", orgId: "org_123", jurisdiction: null } },
       causation: { kind: "origin" },
     };
 
@@ -728,7 +727,7 @@ describe("automation routes /events", () => {
           principal: null,
           delegation: [],
         },
-        subject: { orgId: "org_123" },
+        subject: { scope: { kind: "org", orgId: "org_123", jurisdiction: null } },
         causation: { kind: "origin" },
       }),
     );
@@ -752,7 +751,7 @@ describe("automation routes /events", () => {
             },
             scopeRestriction: null,
             scope: { kind: "org", orgId: "org_123", jurisdiction: null },
-            subject: { orgId: "org_123" },
+            subject: { scope: { kind: "org", orgId: "org_123", jurisdiction: null } },
           }),
         ],
         hasNextPage: false,
@@ -776,7 +775,7 @@ describe("automation routes /events", () => {
             principal: null,
             delegation: [],
           },
-          subject: { orgId: "org_123" },
+          subject: { scope: { kind: "org", orgId: "org_123", jurisdiction: null } },
           causation: { kind: "origin" },
         }),
       );
@@ -825,7 +824,7 @@ describe("automation routes /events", () => {
             principal: null,
             delegation: [],
           },
-          subject: { orgId: "org_123" },
+          subject: { scope: { kind: "org", orgId: "org_123", jurisdiction: null } },
           causation: { kind: "origin" },
         }),
       ),

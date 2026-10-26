@@ -2,7 +2,6 @@ import type { WebhookEndpointChangedPayload } from "@fragno-dev/api-fragment/def
 import {
   type BackofficeRoutableScope,
   backofficeRoutableScopeSchema,
-  backofficeScopeOrganization,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { RpcTarget } from "cloudflare:workers";
@@ -47,12 +46,7 @@ import {
 const API_WEBHOOK_DELIVERY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 function scopeSubject(scope: BackofficeRoutableScope, subject?: Record<string, unknown>) {
-  const organization = backofficeScopeOrganization(scope);
-  return {
-    scope,
-    ...(organization ? { orgId: organization.orgId } : {}),
-    ...subject,
-  };
+  return { scope, ...subject };
 }
 
 /** An endpoint is ready while it accepts deliveries; writes that keep that unchanged report nothing. */

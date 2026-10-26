@@ -136,7 +136,7 @@ const githubActor = (payload: Record<string, unknown>, installationId: string) =
 };
 
 const githubSubject = (
-  orgId: string,
+  scope: BackofficeOrganizationContextScope,
   payload: Record<string, unknown>,
   meta: GitHubAppWebhookMeta,
 ) => {
@@ -147,7 +147,7 @@ const githubSubject = (
   const pullRequest = pickRecord(payload.pull_request);
 
   return {
-    orgId,
+    scope,
     installationId: meta.installationId,
     ...(account
       ? {
@@ -203,7 +203,7 @@ export const buildGitHubAutomationEvent = ({
       principal: null,
       delegation: [],
     },
-    subject: githubSubject(scope.orgId, payload, meta),
+    subject: githubSubject(scope, payload, meta),
     causation: { kind: "origin" },
   };
 };

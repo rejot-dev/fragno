@@ -104,6 +104,8 @@ function describeScopeTemplate(scope: AutomationRouteScopeTemplate): string {
   switch (scope.kind) {
     case "system":
       return "system";
+    case "subject":
+      return "the event's subject";
     case "org":
       return `org ${scope.orgIdTemplate}`;
     case "user":

@@ -1,3 +1,4 @@
+import { backofficeRoutableScopeSchema } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
 import type { BackofficeCapability } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
@@ -12,15 +13,12 @@ const mcpServerConfigurationChangedPayloadSchema = z.object({
   }),
 });
 
-const mcpScopeSubjectSchema = z.object({
-  orgId: z.string().min(1).optional(),
-  scope: z.unknown().optional(),
-});
-
-const mcpServerConfigurationSubjectSchema = mcpScopeSubjectSchema.extend({
-  serverId: z.string().min(1),
-  connectionId: z.string().min(1).describe("Integration address mcp#<slug>."),
-});
+const mcpServerConfigurationSubjectSchema = z
+  .object({ scope: backofficeRoutableScopeSchema })
+  .extend({
+    serverId: z.string().min(1),
+    connectionId: z.string().min(1).describe("Integration address mcp#<slug>."),
+  });
 
 export const mcpCapability: BackofficeCapability = {
   id: "mcp",

@@ -14,7 +14,6 @@ import {
 } from "@/backoffice-runtime/in-memory-runtime";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
-import type { BackofficeRootOwnerReference } from "@/backoffice-runtime/resolved-scope";
 import { bytesToHex } from "@/lib/crypto";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
@@ -23,14 +22,6 @@ import { action } from "./github-webhooks";
 
 const localObjects = {
   GITHUB_WEBHOOK_ROUTER: (input) => new GitHubWebhookRouterObject(input),
-  // Every installation's organization exists, in no jurisdiction.
-  AUTH: () =>
-    ({
-      findRootOwnerScope: async (owner: BackofficeRootOwnerReference) => ({
-        ...owner,
-        jurisdiction: null,
-      }),
-    }) as never,
 } satisfies LocalBackofficeObjects;
 
 const WEBHOOK_SECRET = "github-webhook-route-test-secret";
@@ -39,6 +30,7 @@ const ORG_ID = "org-1";
 const runtimes: InMemoryBackofficeRuntime[] = [];
 
 class RecordingGitHubObject {
+  readonly objectNames: string[] = [];
   readonly configuredOrgIds: string[] = [];
   readonly requests: Request[] = [];
 
@@ -108,7 +100,10 @@ async function createRuntime(githubObject: RecordingGitHubObject) {
     env: { GITHUB_APP_WEBHOOK_SECRET: WEBHOOK_SECRET },
     objects: {
       ...localObjects,
-      GITHUB: () => githubObject,
+      GITHUB: ({ name }) => {
+        githubObject.objectNames.push(name);
+        return githubObject;
+      },
     },
   });
   runtimes.push(runtime);
@@ -147,12 +142,17 @@ describe("GitHub webhook route", () => {
     const runtime = await createRuntime(githubObject);
     await runtime.objects.githubWebhookRouter
       .singleton()
-      .commands.setInstallationOrg(INSTALLATION_ID, ORG_ID);
+      .commands.setInstallationOrg(INSTALLATION_ID, {
+        kind: "org",
+        orgId: ORG_ID,
+        jurisdiction: "eu",
+      });
     const { body, request } = await createWebhookRequest();
 
     const response = await callAction(request, runtime);
 
-    assert(response.status === 202, await response.clone().text());
+    assert(response.status === 202);
+    expect(githubObject.objectNames).toEqual(["GITHUB:v1:org:org-1@eu"]);
     expect(githubObject.configuredOrgIds).toEqual([ORG_ID]);
     expect(githubObject.requests).toHaveLength(1);
     const forwardedRequest = githubObject.requests[0];
@@ -161,5 +161,33 @@ describe("GitHub webhook route", () => {
     assert(forwardedUrl.searchParams.get("orgId") === ORG_ID);
     assert(forwardedRequest.headers.get("x-github-delivery") === "delivery-1");
     assert((await forwardedRequest.text()) === body);
+  });
+
+  it("routes installations mapped by organization ID before jurisdictions existed", async () => {
+    const githubObject = new RecordingGitHubObject();
+    let routerState: { storage: Pick<DurableObjectStorage, "put"> } | null = null;
+    const runtime = await createInMemoryBackofficeRuntime({
+      env: { GITHUB_APP_WEBHOOK_SECRET: WEBHOOK_SECRET },
+      objects: {
+        GITHUB_WEBHOOK_ROUTER: (input) => {
+          routerState = input.state;
+          return new GitHubWebhookRouterObject(input);
+        },
+        GITHUB: ({ name }) => {
+          githubObject.objectNames.push(name);
+          return githubObject;
+        },
+      },
+    });
+    runtimes.push(runtime);
+    // Touching the router creates it, and the mapping is stored the way it was before.
+    await runtime.objects.githubWebhookRouter.singleton().commands.getInstallationOrg("0");
+    await routerState!.storage.put(`github-installation-org:${INSTALLATION_ID}`, ORG_ID);
+    const { request } = await createWebhookRequest();
+
+    const response = await callAction(request, runtime);
+
+    assert(response.status === 202);
+    expect(githubObject.objectNames).toEqual(["GITHUB:v1:org:org-1"]);
   });
 });

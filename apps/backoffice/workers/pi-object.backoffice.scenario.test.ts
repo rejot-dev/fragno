@@ -478,7 +478,10 @@ test("an agent's backfill records agent events as the agent's turn, keeping its 
                 },
               },
               actors: execution.actors,
-              subject: { orgId: "org-1", agentName: "ghost" },
+              subject: {
+                scope: { kind: "org", orgId: "org-1", jurisdiction: null },
+                agentName: "ghost",
+              },
               causation: { kind: "origin" },
             });
             await prompt(runtime, execution, {});
@@ -774,7 +777,7 @@ for (const revocation of ["restricted", "disabled", "deleted"] as const) {
         principal: null,
         delegation: [],
       },
-      subject: { orgId: "org-1" },
+      subject: { scope: { kind: "org" as const, orgId: "org-1", jurisdiction: null } },
       causation: { kind: "origin" as const },
     });
     await runBackofficeScenario(

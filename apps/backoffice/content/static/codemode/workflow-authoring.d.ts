@@ -2,7 +2,12 @@
 /** Relative duration. Numbers are milliseconds; strings use duration syntax such as "5 minutes", "30s", or "1 day". */
 type WorkflowDuration = string | number;
 
-type WorkflowRootOwnerScope = { kind: "org"; orgId: string } | { kind: "user"; userId: string };
+/** Where an owner's objects are kept; null when they were kept anywhere before jurisdictions. */
+type WorkflowJurisdiction = "eu" | "us" | null;
+
+type WorkflowRootOwnerScope =
+  | { kind: "org"; orgId: string; jurisdiction: WorkflowJurisdiction }
+  | { kind: "user"; userId: string; jurisdiction: WorkflowJurisdiction };
 
 type WorkflowAppScope = { kind: "app"; owner: WorkflowRootOwnerScope; appId: string };
 
@@ -34,7 +39,8 @@ type WorkflowEvent<TPayload = Record<string, unknown>> = {
   occurredAt: string;
   payload: Readonly<TPayload>;
   actors: WorkflowActors;
-  subject?: ({ orgId?: string; userId?: string } & Record<string, unknown>) | null;
+  /** What the event is about: the scope it lives in, and a person it concerns. */
+  subject?: ({ scope?: WorkflowContextScope; userId?: string } & Record<string, unknown>) | null;
   /** Stable workflow instance creation time across retries and restarts. */
   timestamp: Date;
   instanceId: string;

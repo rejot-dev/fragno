@@ -298,6 +298,24 @@ test("someone using Backoffice on their own chooses where their workspace is kep
             ).toEqual([{ slug: "turing-labs", jurisdiction: "us", roles: ["owner"] }]);
           },
         ),
+        then.assert(
+          "the organization's own automations, kept in the US, hear that it was created",
+          async (ctx) => {
+            const cookie = await backofficeCookie(ctx, ctx.vars.otherSession);
+            const [{ organization }] = (await authUser(ctx, cookie)).organizations;
+            await ctx.drain();
+            const created = await ctx.runtime.objects.automations
+              .for({ kind: "org", orgId: organization.id, jurisdiction: "us" })
+              .commands.listEventsOfType({
+                source: "auth",
+                eventType: "organization.created",
+                cursor: null,
+              });
+            expect(created.events.map(({ subject }) => subject)).toEqual([
+              { scope: { kind: "org", orgId: organization.id, jurisdiction: "us" } },
+            ]);
+          },
+        ),
       ],
     }),
   );

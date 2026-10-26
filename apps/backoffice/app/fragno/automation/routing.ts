@@ -387,6 +387,17 @@ export const renderAutomationScopeTemplate = async (
   switch (template.kind) {
     case "system":
       return { kind: "system" };
+    case "subject": {
+      const scope = event.subject?.scope;
+      if (!scope) {
+        // The event names nothing to forward to, and replaying it will not change that.
+        throw new BackofficeOperationError(
+          "invalid_request",
+          `Automation route ${routeId} forwards to its event's subject, which names no scope.`,
+        );
+      }
+      return scope;
+    }
     case "org":
     case "user":
     case "app":

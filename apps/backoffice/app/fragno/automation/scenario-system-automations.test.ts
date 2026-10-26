@@ -113,7 +113,7 @@ const systemUnrelatedEvent = {
     principal: null,
     delegation: [],
   },
-  subject: { orgId: "org-1" },
+  subject: { scope: { kind: "org", orgId: "org-1", jurisdiction: null } },
   causation: { kind: "origin" },
 } satisfies AutomationEvent;
 
@@ -185,14 +185,14 @@ describe("system automation scenarios", () => {
               .http.fetch(new Request("https://automations.test/api/automations/events?limit=500"));
             assert(response.ok);
             const result = (await response.json()) as {
-              events: Array<{ id: string; eventType: string; subject: { orgId?: string } }>;
+              events: Array<{ id: string; eventType: string; subject: unknown }>;
             };
             expect(result.events).toEqual(
               expect.arrayContaining([
                 expect.objectContaining({
                   id: `organization.created:${organizationId}`,
                   eventType: "organization.created",
-                  subject: { orgId: organizationId },
+                  subject: { scope: { kind: "org", orgId: organizationId, jurisdiction: null } },
                 }),
               ]),
             );
@@ -269,7 +269,7 @@ describe("system automation scenarios", () => {
           principal: null,
           delegation: [],
         },
-        subject: { orgId },
+        subject: { scope: { kind: "org", orgId, jurisdiction: null } },
         causation: { kind: "origin" },
       } satisfies AutomationEvent);
 
@@ -455,7 +455,7 @@ describe("system automation scenarios", () => {
                 principal: null,
                 delegation: [],
               },
-              subject: { orgId: "org-1" },
+              subject: { scope: { kind: "org", orgId: "org-1", jurisdiction: null } },
             },
           }),
           then.workflow.instance({
@@ -649,7 +649,7 @@ describe("system automation scenarios", () => {
                   principal: null,
                   delegation: [],
                 },
-                subject: { orgId: "org-1" },
+                subject: { scope: { kind: "org", orgId: "org-1", jurisdiction: null } },
                 causation: { kind: "origin" },
               });
             },
@@ -688,7 +688,7 @@ describe("system automation scenarios", () => {
                 principal: null,
                 delegation: [],
               },
-              subject: { orgId: "org-1" },
+              subject: { scope: { kind: "org", orgId: "org-1", jurisdiction: null } },
               causation: { kind: "origin" },
             });
           }),

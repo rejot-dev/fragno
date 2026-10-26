@@ -1,3 +1,4 @@
+import type { BackofficeOrganizationContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { createRouteCaller } from "@fragno-dev/core/api";
 
 import type {
@@ -28,7 +29,7 @@ export async function completeGitHubInstallCallback({
   github,
   callRoute,
   userId,
-  organizationId,
+  organization,
   state,
   installationId,
 }: {
@@ -36,10 +37,11 @@ export async function completeGitHubInstallCallback({
   github: Pick<GitHubCommands, "redeliverFailedInstallationWebhooks">;
   callRoute: GitHubCallRoute;
   userId: string;
-  organizationId: string;
+  organization: BackofficeOrganizationContextScope;
   state: string;
   installationId: string;
 }): Promise<GitHubInstallCallbackOutcome> {
+  const organizationId = organization.orgId;
   const consumed = await router.consumeInstallState({ state, userId, installationId });
   if (!consumed.ok) {
     console.warn("GitHub install callback state validation failed", {
@@ -72,7 +74,7 @@ export async function completeGitHubInstallCallback({
     return "callback_error";
   }
 
-  const mapping = await router.setInstallationOrg(installationId, organizationId);
+  const mapping = await router.setInstallationOrg(installationId, organization);
   if (!mapping.ok) {
     console.error("GitHub install callback failed to map installation to organization", {
       organizationId,

@@ -2123,8 +2123,8 @@ const isSystemRoutedAutomationEvent = (event: AutomationEvent) =>
 const orgIdForAutomationEvent = (event: AutomationEvent) =>
   event.scope.kind === "org"
     ? event.scope.orgId
-    : typeof event.subject?.orgId === "string"
-      ? event.subject.orgId
+    : event.subject?.scope?.kind === "org"
+      ? event.subject.scope.orgId
       : undefined;
 
 const ingestSystemAutomationEvent = async (
@@ -2196,7 +2196,7 @@ const buildOrganizationCreatedEvent = (input: OrganizationCreatedInput): Automat
       principal: null,
       delegation: [],
     },
-    subject: { orgId: input.id },
+    subject: { scope: { kind: "org", orgId: input.id, jurisdiction: null } },
     causation: { kind: "origin" },
   };
 };
@@ -2218,7 +2218,10 @@ const buildCapabilityConfiguredEvent = (input: CapabilityConfiguredInput): Autom
     principal: null,
     delegation: [],
   },
-  subject: { orgId: input.orgId, capabilityId: input.capabilityId },
+  subject: {
+    scope: { kind: "org", orgId: input.orgId, jurisdiction: null },
+    capabilityId: input.capabilityId,
+  },
   causation: { kind: "origin" },
 });
 

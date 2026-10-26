@@ -152,7 +152,7 @@ function event(
   occurredAt: number,
   { payload, subject }: Pick<AutomationEvent, "payload" | "subject"> = {
     payload: { id },
-    subject: { orgId },
+    subject: { scope: { kind: "org", orgId, jurisdiction: null } },
   },
 ): AutomationEvent {
   return {
@@ -187,7 +187,7 @@ function connectionEvent(
 ) {
   return event(id, "integrations", `connection.${state}`, at, {
     payload: { name: connectionId, authMethod: null },
-    subject: { scope, orgId, service: connectionId.split("#", 1)[0], connectionId },
+    subject: { scope, service: connectionId.split("#", 1)[0], connectionId },
   });
 }
 
@@ -225,7 +225,11 @@ function piEvent(
   const isTurn = eventType.startsWith("turn.");
   return event(id, "pi", eventType, at, {
     payload: payloads[eventType],
-    subject: { orgId, agentName, ...(isTurn ? { requestId: id } : {}) },
+    subject: {
+      scope: { kind: "org", orgId, jurisdiction: null },
+      agentName,
+      ...(isTurn ? { requestId: id } : {}),
+    },
   });
 }
 
@@ -239,7 +243,11 @@ function requestEvent(
 ) {
   return event(id, "pi", eventType, at, {
     payload,
-    subject: { orgId, agentName: "assistant", requestId },
+    subject: {
+      scope: { kind: "org", orgId, jurisdiction: null },
+      agentName: "assistant",
+      requestId,
+    },
   });
 }
 
@@ -787,7 +795,7 @@ describe("dashboard", () => {
         path: "/workspace/automations/sync-ledger.workflow.js",
         event: event(`trigger-${instanceId}`, "ledger", "sync.requested", at, {
           payload: { offline },
-          subject: { orgId },
+          subject: { scope: { kind: "org", orgId, jurisdiction: null } },
         }),
       }) as const;
     const attentionOf = async (ctx: BackofficeScenarioContext) => {

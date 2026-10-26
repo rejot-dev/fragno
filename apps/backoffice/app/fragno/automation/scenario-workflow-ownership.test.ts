@@ -56,7 +56,7 @@ const workflowParams = (orgId: string, instanceId: string, actors: unknown) => (
       occurredAt: "2026-08-05T00:00:00.000Z",
       payload: {},
       actors,
-      subject: { orgId },
+      subject: { scope: { kind: "org", orgId, jurisdiction: null } },
     },
   },
   execution: {

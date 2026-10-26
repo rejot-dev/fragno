@@ -69,23 +69,24 @@ Use `forward_event` to deliver the same domain event to another scope. Create th
 source scope and choose a target allowed by that route owner's scope policy. Scope templates resolve
 identifiers; they do not grant access.
 
-For a system-owned route whose input has a known subject organization ID, set this action:
+To deliver an event to the scope it is about, target its subject. Backoffice names that scope in
+full in `subject.scope`, so match on it:
 
 ```js
-const action = {
-  kind: "forward_event",
-  targetScope: {
-    kind: "org",
-    orgIdTemplate: "${event.subject.orgId}",
-  },
+const trigger = {
+  kind: "event",
+  source: "auth",
+  eventType: "organization.created",
+  matcher: { path: "$.subject.scope.kind", op: "eq", value: "org" },
 };
+const action = { kind: "forward_event", targetScope: { kind: "subject" } };
 ```
 
-Use authoritative IDs in scope templates, and match on any event fields needed to resolve them.
-Forwarding preserves source, event type, occurrence time, payload, actors, and subject while
-changing scope. The default preserves the event ID; use a deterministic `idTemplate` only when the
-target needs a distinct delivery identity. Keep scope flows one-way so target routes do not forward
-back into the source flow.
+Other scope templates name organizations, users, apps, and projects by ID. Use authoritative IDs in
+them, and match on any event fields needed to resolve them. Forwarding preserves source, event type,
+occurrence time, payload, actors, and subject while changing scope. The default preserves the event
+ID; use a deterministic `idTemplate` only when the target needs a distinct delivery identity. Keep
+scope flows one-way so target routes do not forward back into the source flow.
 
 Inspect the target's destination event definition: its schema validates the unchanged payload.
 Verify both the source record and target record, using the rendered ID when `idTemplate` is set, and

@@ -9,6 +9,7 @@ import { withBackofficeUiBuilder } from "@fragno-private/backoffice-ui/builder";
 import type { z } from "zod";
 
 import type { NpmDependencyMap } from "@/backoffice-runtime/dynamic-workers/npm-dependencies";
+import type { BackofficeRootOwnerResolver } from "@/backoffice-runtime/resolved-scope";
 import { BackofficeToolUnavailableError } from "@/fragno/runtime-tools/runtime-errors";
 import {
   createBackofficeCodemodeProviders,
@@ -93,9 +94,9 @@ const callScopedTool = async (
 
 async function codemodeCallScope(
   requested: ScopedCodemodeCallInput["scope"],
-  context: BackofficeToolContext,
+  current: BackofficeContextScope,
+  resolveRootOwner: BackofficeRootOwnerResolver,
 ): Promise<BackofficeContextScope> {
-  const current = context.execution.scope;
   switch (requested.kind) {
     case "current":
       return current;
@@ -110,7 +111,7 @@ async function codemodeCallScope(
     // Guests name organizations and users by ID; Auth knows where their objects are kept.
     case "org":
     case "user": {
-      const owner = await context.resolveRootOwner(requested);
+      const owner = await resolveRootOwner(requested);
       if (!owner) {
         throw new Error(
           requested.kind === "org"
@@ -125,23 +126,48 @@ async function codemodeCallScope(
   }
 }
 
+/**
+ * A run calls through the same handles again and again, and where an owner's objects are kept never
+ * changes, so each owner is resolved once per run.
+ */
+function resolveRootOwnersOnce(resolve: BackofficeRootOwnerResolver): BackofficeRootOwnerResolver {
+  const owners = new Map<string, ReturnType<BackofficeRootOwnerResolver>>();
+  return (owner) => {
+    const key = owner.kind === "org" ? `org:${owner.orgId}` : `user:${owner.userId}`;
+    const known = owners.get(key);
+    if (known) {
+      return known;
+    }
+    const resolved = resolve(owner);
+    owners.set(key, resolved);
+    return resolved;
+  };
+}
+
 const createBackofficeScopedCodemodeProvider = ({
   families,
   context,
 }: {
   families: readonly BackofficeRuntimeToolFamily[];
   context: BackofficeToolContext;
-}) => ({
-  name: "__context",
-  fns: {
-    getCurrentScope: async () => context.execution.scope,
-    callScoped: async (rawInput: unknown) => {
-      const input = codemodeScopedCallSchema.parse(rawInput);
-      const scope = await codemodeCallScope(input.scope, context);
-      return await callScopedTool(input, context.createScopedContext(scope), families);
+}) => {
+  const resolveRootOwner = resolveRootOwnersOnce(context.resolveRootOwner);
+  return {
+    name: "__context",
+    fns: {
+      getCurrentScope: async () => context.execution.scope,
+      callScoped: async (rawInput: unknown) => {
+        const input = codemodeScopedCallSchema.parse(rawInput);
+        const scope = await codemodeCallScope(
+          input.scope,
+          context.execution.scope,
+          resolveRootOwner,
+        );
+        return await callScopedTool(input, context.createScopedContext(scope), families);
+      },
     },
-  },
-});
+  };
+};
 
 export function createBackofficeCodemodeRunTools({
   families,

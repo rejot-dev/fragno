@@ -4,7 +4,6 @@ import {
   type BackofficeContextScope,
   type BackofficeProjectOwner,
   type BackofficeScopeIdNames,
-  backofficeScopeRootOwner,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import type { Cursor, DatabaseServiceContext } from "@fragno-dev/db";
@@ -88,7 +87,6 @@ const triggerProjectEvent = ({
   timestamps: ProjectTimestampFields;
 }) => {
   const projectId = project.id.valueOf();
-  const rootOwner = backofficeScopeRootOwner(ownerScope);
   const event: AutomationEvent = {
     id: crypto.randomUUID(),
     scopeRestriction: null,
@@ -102,10 +100,7 @@ const triggerProjectEvent = ({
       principal: null,
       delegation: [],
     },
-    subject: {
-      ...(rootOwner.kind === "org" ? { orgId: rootOwner.orgId } : { userId: rootOwner.userId }),
-      projectId,
-    },
+    subject: { scope: { kind: "project", owner: ownerScope, projectId } },
     causation: { kind: "origin" },
   };
 

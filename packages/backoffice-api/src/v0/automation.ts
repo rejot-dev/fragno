@@ -243,9 +243,13 @@ type AutomationRouteAppScopeTemplate = {
   appIdTemplate: string;
 };
 
-/** Renders to a target scope; app and project scopes name their owner as a scope template too. */
+/**
+ * Renders to a target scope; app and project scopes name their owner as a scope template too.
+ * `subject` is the scope the event is about, as its subject names it.
+ */
 export type AutomationRouteScopeTemplate =
   | { kind: "system" }
+  | { kind: "subject" }
   | AutomationRouteRootOwnerTemplate
   | AutomationRouteAppScopeTemplate
   | {
@@ -474,6 +478,7 @@ const automationRouteScopeTemplateSchema: z.ZodType<AutomationRouteScopeTemplate
   .lazy(() =>
     z.discriminatedUnion("kind", [
       z.object({ kind: z.literal("system") }),
+      z.object({ kind: z.literal("subject") }),
       automationRouteOrganizationScopeTemplateSchema,
       automationRouteUserScopeTemplateSchema,
       automationRouteAppScopeTemplateSchema,
