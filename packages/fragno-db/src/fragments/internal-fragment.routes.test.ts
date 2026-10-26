@@ -540,6 +540,8 @@ describe("internal fragment describe routes", () => {
           largestFrameCharacters: expect.any(Number),
           heartbeatFrames: expect.any(Number),
           errorCount: 0,
+          // The test reads each frame as it comes, so no write finds the buffer full.
+          fullBufferWrites: 0,
           completionReason: "aborted",
         }),
       );
@@ -988,6 +990,8 @@ describe("internal fragment describe routes", () => {
           completionReason: "aborted",
           blockedWrites: 1,
           longestWriteMs: 10_000,
+          writeWaitMs: 10_000,
+          fullBufferWrites: 1,
         }),
       );
 

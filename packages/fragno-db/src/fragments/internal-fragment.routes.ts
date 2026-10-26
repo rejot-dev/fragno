@@ -330,7 +330,15 @@ export const createInternalFragmentOutboxRoutes = () =>
             let heartbeatFrames = 0;
             let errorCount = 0;
             let longestWriteMs = 0;
+            let writeWaitMs = 0;
             let blockedWrites = 0;
+            // Whether the response's buffer was full when each frame was written: mostly full means
+            // the client or the network is the bottleneck, mostly empty means producing frames is.
+            // Unlike write durations, this does not depend on clocks, which in Workers stand still
+            // while code runs, so a write's measured wait can include the work done before it.
+            let fullBufferWrites = 0;
+            let bufferedBytesAtWrites = 0;
+            let bufferSamples = 0;
             let completionReason: "aborted" | "expired" | "failed" = "failed";
             console.info("fragno.outbox_stream.started", { streamId });
 
@@ -341,6 +349,15 @@ export const createInternalFragmentOutboxRoutes = () =>
             ): Promise<boolean> => {
               let timeout: ReturnType<typeof setTimeout> | undefined;
               let writeCompleted: boolean;
+              const desiredSize = stream.desiredSize;
+              // A cancelled response reports no room at all, but nothing waits on it.
+              if (desiredSize !== null && !stream.aborted) {
+                bufferSamples += 1;
+                bufferedBytesAtWrites += OUTBOX_STREAM_BUFFER_BYTES - desiredSize;
+                if (desiredSize <= 0) {
+                  fullBufferWrites += 1;
+                }
+              }
               const writeStartedAt = Date.now();
               try {
                 writeCompleted = await Promise.race([
@@ -357,7 +374,9 @@ export const createInternalFragmentOutboxRoutes = () =>
                 throw error;
               } finally {
                 clearTimeout(timeout);
-                longestWriteMs = Math.max(longestWriteMs, Date.now() - writeStartedAt);
+                const writeMs = Date.now() - writeStartedAt;
+                longestWriteMs = Math.max(longestWriteMs, writeMs);
+                writeWaitMs += writeMs;
               }
               if (!writeCompleted) {
                 await stream.abort();
@@ -484,7 +503,11 @@ export const createInternalFragmentOutboxRoutes = () =>
                 heartbeatFrames,
                 errorCount,
                 longestWriteMs,
+                writeWaitMs,
                 blockedWrites,
+                fullBufferWrites,
+                averageBufferedBytes:
+                  bufferSamples === 0 ? 0 : Math.round(bufferedBytesAtWrites / bufferSamples),
                 completionReason,
               });
             }
