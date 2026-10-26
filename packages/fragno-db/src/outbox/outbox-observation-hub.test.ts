@@ -23,6 +23,9 @@ function createEntry(version: number): OutboxStreamEntry {
     payload: { json: { version: 2, operations: [] } },
   };
 }
+function entryVersionstamps(frames: OutboxStreamFrame[]): string[] {
+  return frames.flatMap((frame) => (frame.type === "entry" ? [frame.entry.versionstamp] : []));
+}
 function createScenario(entries: OutboxStreamEntry[]) {
   const reads: Array<{ afterVersionstamp: string | undefined; limit: number }> = [];
   const events: string[] = [];
@@ -79,6 +82,9 @@ function createScenario(entries: OutboxStreamEntry[]) {
       recordPoll() {},
       recordEntryRead() {},
       recordError() {},
+      recordBlockedWrite() {
+        events.push(`blocked:${id}`);
+      },
     });
     return { observer, frames, frameWrites };
   }
@@ -337,6 +343,105 @@ describe("outbox observation hub", () => {
     assert(scenario.events.at(-1) === "released");
     expect(scenario.events).toContain(`read:${stamp(1)}`);
     expect(scenario.events).not.toContain(`write:client:${stamp(1)}`);
+  });
+
+  it("serves other observers while one client stops reading, then resumes it in order", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const scenario = createScenario(Array.from({ length: 120 }, (_, index) => createEntry(index)));
+    const drained = Promise.withResolvers<boolean>();
+    const slow = scenario.observe("slow", stamp(119), undefined, 50, async (frame) => {
+      if (frame.type === "entry" && frame.entry.versionstamp === stamp(10)) {
+        return drained.promise;
+      }
+      return true;
+    });
+    const fast = scenario.observe("fast", stamp(119), undefined, 50);
+    const abort = new AbortController();
+    let lease: Promise<void> | undefined;
+    try {
+      const pass = fast.observer.refreshNow(handlerTx);
+      await vi.advanceTimersByTimeAsync(250);
+      await pass;
+      lease = fast.observer.runWhile({ signal: abort.signal, handlerTx });
+      await vi.advanceTimersByTimeAsync(20);
+      expect(fast.frames.filter((frame) => frame.type === "entry")).toHaveLength(120);
+      expect(fast.frames.at(-1)).toEqual({ type: "caught-up", throughVersionstamp: stamp(119) });
+      expect(scenario.events.filter((event) => event.startsWith("blocked:"))).toEqual([
+        "blocked:slow",
+      ]);
+      // The blocked frame is still queued, and nothing is written behind it until it drains.
+      expect(scenario.events.filter((event) => event.startsWith("write:slow:"))).toHaveLength(11);
+
+      drained.resolve(true);
+      await vi.advanceTimersByTimeAsync(20);
+      const slowEntries = slow.frames
+        .filter((frame) => frame.type === "entry")
+        .map((frame) => frame.entry.versionstamp);
+      expect(slowEntries).toEqual(Array.from({ length: 120 }, (_, index) => stamp(index)));
+      expect(slow.frames.filter((frame) => frame.type === "caught-up")).toHaveLength(1);
+      assert(scenario.hub.activeObserverCount() === 2);
+    } finally {
+      slow.observer.close();
+      fast.observer.close();
+      abort.abort();
+      await lease;
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps an observer that drains mid-page out of the rest of that page", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const scenario = createScenario(Array.from({ length: 4 }, (_, index) => createEntry(index)));
+    const drained = Promise.withResolvers<boolean>();
+    const slow = scenario.observe("slow", stamp(3), undefined, 50, async (frame) =>
+      frame.type === "entry" && frame.entry.versionstamp === stamp(0) ? drained.promise : true,
+    );
+    // The slow client catches up while the page is still at entry 1, which it was skipped for.
+    const fast = scenario.observe("fast", stamp(3), undefined, 50, async (frame) => {
+      if (frame.type === "entry" && frame.entry.versionstamp === stamp(1)) {
+        drained.resolve(true);
+        for (let tick = 0; tick < 5; tick++) {
+          await Promise.resolve();
+        }
+      }
+      return true;
+    });
+    try {
+      const pass = fast.observer.refreshNow(handlerTx);
+      await vi.advanceTimersByTimeAsync(250);
+      await pass;
+      expect(entryVersionstamps(slow.frames)).toEqual([stamp(0)]);
+
+      await slow.observer.refreshNow(handlerTx);
+      expect(entryVersionstamps(slow.frames)).toEqual([0, 1, 2, 3].map(stamp));
+      expect(entryVersionstamps(fast.frames)).toEqual([0, 1, 2, 3].map(stamp));
+    } finally {
+      slow.observer.close();
+      fast.observer.close();
+      vi.useRealTimers();
+    }
+  });
+
+  it("drops an observer whose blocked write fails", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const scenario = createScenario([createEntry(0), createEntry(1)]);
+    const failed = Promise.withResolvers<boolean>();
+    const client = scenario.observe("client", stamp(1), undefined, 50, async (frame) =>
+      frame.type === "entry" ? failed.promise : true,
+    );
+    try {
+      const pass = client.observer.refreshNow(handlerTx);
+      await vi.advanceTimersByTimeAsync(250);
+      await pass;
+      assert(scenario.hub.activeObserverCount() === 1);
+      failed.resolve(false);
+      await vi.advanceTimersByTimeAsync(0);
+      assert(scenario.hub.activeObserverCount() === 0);
+      assert(vi.getTimerCount() === 0);
+    } finally {
+      client.observer.close();
+      vi.useRealTimers();
+    }
   });
 
   it("emits per-observer heartbeats and isolates a failed control-frame write", async () => {

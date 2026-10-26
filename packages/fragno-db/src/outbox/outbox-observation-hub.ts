@@ -9,6 +9,8 @@ import type {
 const OUTBOX_OBSERVATION_POLL_INTERVAL_MS = 300;
 const OUTBOX_LIVE_PAGE_SIZE = 50;
 const OUTBOX_CATCH_UP_PAGE_BUDGET = 4;
+// How long a pass waits on one observer's write before it stops waiting and serves the others.
+const OUTBOX_OBSERVER_WRITE_PATIENCE_MS = 250;
 
 type OutboxEntryStream = (
   options: OutboxStreamOptions,
@@ -27,6 +29,13 @@ type OutboxObserverState = {
   phase: "catching-up" | "live";
   catchUpBoundary: OutboxCatchUpBoundary;
   rotating: boolean;
+  /** A write is still waiting for the client to read; passes skip the observer until it drains. */
+  blocked: boolean;
+  /**
+   * The blocked write has drained. The observer stays blocked until the next pass starts: a page in
+   * progress may already have skipped entries past its cursor.
+   */
+  drained: boolean;
   refreshPending: boolean;
   nextHeartbeatAt: number;
   afterVersionstamp: string | undefined;
@@ -35,6 +44,7 @@ type OutboxObserverState = {
   recordPoll: () => void;
   recordEntryRead: () => void;
   recordError: () => void;
+  recordBlockedWrite: () => void;
 };
 
 type OutboxCatchUpGroup = {
@@ -67,6 +77,7 @@ type OutboxObserverRegistration = {
   recordPoll: () => void;
   recordEntryRead: () => void;
   recordError: () => void;
+  recordBlockedWrite: () => void;
 };
 
 type OutboxObserverHandle = {
@@ -100,7 +111,7 @@ function oldestObserverVersionstamp(observers: readonly OutboxObserverState[]): 
 function groupCatchUpObservers(observers: readonly OutboxObserverState[]): OutboxCatchUpGroup[] {
   const groups = new Map<string, OutboxCatchUpGroup>();
   for (const observer of observers) {
-    if (observer.phase !== "catching-up" || observer.rotating) {
+    if (observer.phase !== "catching-up" || observer.rotating || observer.blocked) {
       continue;
     }
     const key = `${observer.limit}:${observer.afterVersionstamp ?? ""}`;
@@ -173,18 +184,52 @@ export function createOutboxObservationHub(
     if (!observer) {
       return false;
     }
-    try {
-      if (await observer.writeFrame(frame)) {
-        return true;
+    const removeObserver = () => {
+      if (observers.get(observerId) === observer) {
+        observers.delete(observerId);
       }
-    } catch (error) {
-      observer.recordError();
-      console.error("[outbox-observation] observer write failed", error);
+    };
+    const write = (async () => {
+      try {
+        return await observer.writeFrame(frame);
+      } catch (error) {
+        observer.recordError();
+        console.error("[outbox-observation] observer write failed", error);
+        return false;
+      }
+    })();
+    let patienceTimeout: ReturnType<typeof setTimeout> | undefined;
+    const written = await Promise.race([
+      write,
+      new Promise<"blocked">((resolve) => {
+        patienceTimeout = setTimeout(() => {
+          resolve("blocked");
+        }, OUTBOX_OBSERVER_WRITE_PATIENCE_MS);
+        patienceTimeout.unref?.();
+      }),
+    ]);
+    clearTimeout(patienceTimeout);
+    if (written === "blocked") {
+      // The frame is queued in order behind what the client has not read yet, so the observer's
+      // cursor can move past it. One client that stops reading must not hold up the shared pass,
+      // so it is skipped from here until a pass that starts after the frame drained, and the
+      // response gives up on a client that never reads again.
+      observer.blocked = true;
+      observer.recordBlockedWrite();
+      void write.then((drained) => {
+        if (drained) {
+          observer.drained = true;
+          pump.requestSchedulerRefresh();
+        } else {
+          removeObserver();
+        }
+      });
+      return true;
     }
-    if (observers.get(observerId) === observer) {
-      observers.delete(observerId);
+    if (!written) {
+      removeObserver();
     }
-    return false;
+    return written;
   }
 
   function selectCatchUpGroups(observerSnapshot: readonly OutboxObserverState[]) {
@@ -237,6 +282,7 @@ export function createOutboxObservationHub(
           if (
             observers.get(observer.observerId) !== observer ||
             observer.rotating ||
+            observer.blocked ||
             (observer.afterVersionstamp !== undefined &&
               observer.afterVersionstamp >= entry.versionstamp)
           ) {
@@ -273,6 +319,7 @@ export function createOutboxObservationHub(
       (observer) =>
         observers.get(observer.observerId) === observer &&
         !observer.rotating &&
+        !observer.blocked &&
         observer.phase === "live",
     );
     if (liveObservers.length > 0) {
@@ -294,6 +341,7 @@ export function createOutboxObservationHub(
         (observer) =>
           observers.get(observer.observerId) === observer &&
           !observer.rotating &&
+          !observer.blocked &&
           observer.phase === "catching-up",
       );
       if (activeGroupObservers.length === 0) {
@@ -322,6 +370,7 @@ export function createOutboxObservationHub(
       if (
         observers.get(observer.observerId) !== observer ||
         observer.rotating ||
+        observer.blocked ||
         receivedEntryObserverIds.has(observer.observerId) ||
         Date.now() < observer.nextHeartbeatAt
       ) {
@@ -332,9 +381,10 @@ export function createOutboxObservationHub(
     if (heartbeatObserverIds.length > 0) {
       yield { kind: "heartbeat", observerIds: heartbeatObserverIds };
     }
-    // Full pages and groups not yet serviced need another fair pass, not an idle poll delay.
+    // Full pages and groups not yet serviced need another fair pass, not an idle poll delay. A
+    // blocked observer asks for its pass once its write drains.
     for (const observer of observers.values()) {
-      if (observer.refreshPending && !observer.rotating) {
+      if (observer.refreshPending && !observer.rotating && !observer.blocked) {
         pump.requestSchedulerRefresh();
         break;
       }
@@ -351,6 +401,13 @@ export function createOutboxObservationHub(
       console.error("[outbox-observation] shared flush failed", error);
     },
     flush: async () => {
+      // Passes run one at a time, so no page is in progress here.
+      for (const observer of observers.values()) {
+        if (observer.drained) {
+          observer.blocked = false;
+          observer.drained = false;
+        }
+      }
       const observerSnapshot = [...observers.values()];
       if (observerSnapshot.length === 0) {
         return {};
@@ -360,7 +417,7 @@ export function createOutboxObservationHub(
   });
 
   async function writeCaughtUpFrame(observer: OutboxObserverState): Promise<void> {
-    if (observer.catchUpBoundary.type !== "pending" || observer.rotating) {
+    if (observer.catchUpBoundary.type !== "pending" || observer.rotating || observer.blocked) {
       return;
     }
     const target = observer.catchUpBoundary.targetVersionstamp;
@@ -419,7 +476,7 @@ export function createOutboxObservationHub(
     await Promise.all(
       delivery.observerIds.map(async (observerId) => {
         const observer = observers.get(observerId);
-        if (!observer) {
+        if (!observer || observer.blocked) {
           return;
         }
 
@@ -444,6 +501,8 @@ export function createOutboxObservationHub(
           targetVersionstamp: registration.catchUpTargetVersionstamp,
         },
         rotating: false,
+        blocked: false,
+        drained: false,
         refreshPending: true,
         nextHeartbeatAt: 0,
         afterVersionstamp: registration.afterVersionstamp?.toLowerCase(),

@@ -514,17 +514,21 @@ async function runReplicaScenario(scenario: {
       case "closeTabAfterEntries": {
         const tab = ctx.tabs.get(step.tab)!;
         ctx.tabs.delete(step.tab);
-        // Counts from the tab's opening, through the listener the scenario registered first.
+        // Counts applied rows, not notifications: a buffered stream delivers whole pages, so a
+        // catch-up can commit in a few batches.
+        const countUsers = async () =>
+          (await tab.execute(`SELECT count(*) AS "count" FROM "users_app"`))[0]!["count"] as number;
         await new Promise<void>((resolve) => {
           const unsubscribe = tab.subscribe(() => {
-            if (ctx.notifications.get(step.tab)! >= step.entries) {
-              unsubscribe();
-              resolve();
-            }
+            void countUsers().then((users) => {
+              if (users >= step.entries) {
+                unsubscribe();
+                resolve();
+              }
+            });
           });
         });
-        const [row] = await tab.execute(`SELECT count(*) AS "count" FROM "users_app"`);
-        ctx.usersAtClose.set(step.tab, row!["count"] as number);
+        ctx.usersAtClose.set(step.tab, await countUsers());
         await tab.close();
         break;
       }

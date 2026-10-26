@@ -24,7 +24,12 @@ type InternalDescribeError = {
 };
 
 const ADAPTER_IDENTITY_KEY = "adapter_identity" as const;
-const OUTBOX_STREAM_WRITE_TIMEOUT_MS = 1_000;
+// A response holds this much before its writes wait for the client, so reading the next entries
+// overlaps sending the earlier ones.
+const OUTBOX_STREAM_BUFFER_BYTES = 1024 * 1024;
+// A client that reads nothing for this long is gone or stuck. The shared poll skips a slow client
+// much sooner (see the observation hub), so this only bounds what a stuck response holds on to.
+const OUTBOX_STREAM_STALL_TIMEOUT_MS = 10_000;
 const OUTBOX_STREAM_MAX_LIFETIME_MS = 30_000;
 
 type QueryLimitResult =
@@ -313,167 +318,179 @@ export const createInternalFragmentOutboxRoutes = () =>
           );
         }
 
-        return jsonStream(async (stream) => {
-          const streamId = crypto.randomUUID();
-          const startedAt = Date.now();
-          let pollCount = 0;
-          let entriesRead = 0;
-          let framesWritten = 0;
-          let frameCharacters = 0;
-          let largestFrameCharacters = 0;
-          let heartbeatFrames = 0;
-          let errorCount = 0;
-          let completionReason: "aborted" | "expired" | "failed" = "failed";
-          console.info("fragno.outbox_stream.started", { streamId });
+        return jsonStream(
+          async (stream) => {
+            const streamId = crypto.randomUUID();
+            const startedAt = Date.now();
+            let pollCount = 0;
+            let entriesRead = 0;
+            let framesWritten = 0;
+            let frameCharacters = 0;
+            let largestFrameCharacters = 0;
+            let heartbeatFrames = 0;
+            let errorCount = 0;
+            let longestWriteMs = 0;
+            let blockedWrites = 0;
+            let completionReason: "aborted" | "expired" | "failed" = "failed";
+            console.info("fragno.outbox_stream.started", { streamId });
 
-          const writeOutboxStreamFrame = async (
-            frame: string | Uint8Array,
-            characterCount: number,
-            frameType: OutboxStreamFrame["type"],
-          ): Promise<boolean> => {
-            let timeout: ReturnType<typeof setTimeout> | undefined;
-            let writeCompleted: boolean;
+            const writeOutboxStreamFrame = async (
+              frame: string | Uint8Array,
+              characterCount: number,
+              frameType: OutboxStreamFrame["type"],
+            ): Promise<boolean> => {
+              let timeout: ReturnType<typeof setTimeout> | undefined;
+              let writeCompleted: boolean;
+              const writeStartedAt = Date.now();
+              try {
+                writeCompleted = await Promise.race([
+                  stream.writeRaw(frame),
+                  new Promise<false>((resolve) => {
+                    timeout = setTimeout(() => {
+                      resolve(false);
+                    }, OUTBOX_STREAM_STALL_TIMEOUT_MS);
+                    timeout.unref?.();
+                  }),
+                ]);
+              } catch (error) {
+                await stream.abort();
+                throw error;
+              } finally {
+                clearTimeout(timeout);
+                longestWriteMs = Math.max(longestWriteMs, Date.now() - writeStartedAt);
+              }
+              if (!writeCompleted) {
+                await stream.abort();
+              } else {
+                framesWritten += 1;
+                // Decoding shared bytes just for metrics would recreate the payload string.
+                frameCharacters += characterCount;
+                largestFrameCharacters = Math.max(largestFrameCharacters, characterCount);
+                if (frameType === "heartbeat") {
+                  heartbeatFrames += 1;
+                }
+              }
+              return writeCompleted;
+            };
+
+            const handlerTx: DatabaseHandlerTx = (options) => this.handlerTx(options);
+            let schedulerLease: Promise<void> | undefined;
+            const schedulerAbortController = new AbortController();
+            const waitForAbort = new Promise<void>((resolve) => {
+              stream.onAbort(() => {
+                if (completionReason !== "expired") {
+                  completionReason = "aborted";
+                }
+                schedulerAbortController.abort();
+                resolve();
+              });
+            });
+
+            const startedFrame: OutboxStreamFrame = {
+              type: "started",
+              protocolVersion: 1,
+              adapterIdentity,
+              catchUpTargetVersionstamp,
+              catchUpPageSize: limitResult.limit,
+            };
+            let observer:
+              | ReturnType<typeof registry.outboxObservationHub.registerOutboxObserver>
+              | undefined;
+            let streamLeaseTimeout: ReturnType<typeof setTimeout> | undefined;
             try {
-              writeCompleted = await Promise.race([
-                stream.writeRaw(frame),
-                new Promise<false>((resolve) => {
-                  timeout = setTimeout(() => {
-                    resolve(false);
-                  }, OUTBOX_STREAM_WRITE_TIMEOUT_MS);
-                  timeout.unref?.();
+              const serializedStartedFrame = `${JSON.stringify(startedFrame)}\n`;
+              if (
+                !(await writeOutboxStreamFrame(
+                  serializedStartedFrame,
+                  serializedStartedFrame.length,
+                  startedFrame.type,
+                ))
+              ) {
+                return;
+              }
+
+              observer = registry.outboxObservationHub.registerOutboxObserver({
+                observerId: streamId,
+                catchUpTargetVersionstamp,
+                afterVersionstamp,
+                limit: limitResult.limit,
+                writeFrame: ({ encodedBytes, characterCount, frameType }) =>
+                  writeOutboxStreamFrame(encodedBytes, characterCount, frameType),
+                recordPoll: () => {
+                  pollCount += 1;
+                },
+                recordEntryRead: () => {
+                  entriesRead += 1;
+                },
+                recordError: () => {
+                  errorCount += 1;
+                },
+                recordBlockedWrite: () => {
+                  blockedWrites += 1;
+                },
+              });
+
+              const activeObserver = observer;
+              const waitForStreamLeaseExpiry = new Promise<true>((resolve, reject) => {
+                streamLeaseTimeout = setTimeout(
+                  () => {
+                    completionReason = "expired";
+                    void activeObserver.rotate(handlerTx).then(() => {
+                      resolve(true);
+                    }, reject);
+                  },
+                  Math.max(0, OUTBOX_STREAM_MAX_LIFETIME_MS - (Date.now() - startedAt)),
+                );
+                streamLeaseTimeout.unref?.();
+              });
+              void waitForStreamLeaseExpiry.catch(() => {});
+              await observer.refreshNow(handlerTx);
+              schedulerLease = observer.runWhile({
+                signal: schedulerAbortController.signal,
+                handlerTx,
+              });
+              // Some HTTP proxies continue draining a response after their client disconnects, so
+              // cancellation alone cannot prove ownership. A finite lease bounds each observer's
+              // scheduler ownership without stopping other connected observers.
+              const streamExpired = await Promise.race([
+                waitForAbort.then(() => {
+                  return false;
                 }),
+                waitForStreamLeaseExpiry,
               ]);
+              clearTimeout(streamLeaseTimeout);
+              if (streamExpired) {
+                completionReason = "expired";
+              }
             } catch (error) {
-              await stream.abort();
+              // Shared pump failures are counted before refreshNow rethrows them.
+              if (observer?.getFailure() !== error) {
+                errorCount += 1;
+              }
               throw error;
             } finally {
-              clearTimeout(timeout);
-            }
-            if (!writeCompleted) {
-              await stream.abort();
-            } else {
-              framesWritten += 1;
-              // Decoding shared bytes just for metrics would recreate the payload string.
-              frameCharacters += characterCount;
-              largestFrameCharacters = Math.max(largestFrameCharacters, characterCount);
-              if (frameType === "heartbeat") {
-                heartbeatFrames += 1;
-              }
-            }
-            return writeCompleted;
-          };
-
-          const handlerTx: DatabaseHandlerTx = (options) => this.handlerTx(options);
-          let schedulerLease: Promise<void> | undefined;
-          const schedulerAbortController = new AbortController();
-          const waitForAbort = new Promise<void>((resolve) => {
-            stream.onAbort(() => {
-              if (completionReason !== "expired") {
-                completionReason = "aborted";
-              }
+              clearTimeout(streamLeaseTimeout);
+              observer?.close();
               schedulerAbortController.abort();
-              resolve();
-            });
-          });
-
-          const startedFrame: OutboxStreamFrame = {
-            type: "started",
-            protocolVersion: 1,
-            adapterIdentity,
-            catchUpTargetVersionstamp,
-            catchUpPageSize: limitResult.limit,
-          };
-          let observer:
-            | ReturnType<typeof registry.outboxObservationHub.registerOutboxObserver>
-            | undefined;
-          let streamLeaseTimeout: ReturnType<typeof setTimeout> | undefined;
-          try {
-            const serializedStartedFrame = `${JSON.stringify(startedFrame)}\n`;
-            if (
-              !(await writeOutboxStreamFrame(
-                serializedStartedFrame,
-                serializedStartedFrame.length,
-                startedFrame.type,
-              ))
-            ) {
-              return;
+              await schedulerLease;
+              console.info("fragno.outbox_stream.completed", {
+                streamId,
+                durationMs: Date.now() - startedAt,
+                pollCount,
+                entriesRead,
+                framesWritten,
+                frameCharacters,
+                largestFrameCharacters,
+                heartbeatFrames,
+                errorCount,
+                longestWriteMs,
+                blockedWrites,
+                completionReason,
+              });
             }
-
-            observer = registry.outboxObservationHub.registerOutboxObserver({
-              observerId: streamId,
-              catchUpTargetVersionstamp,
-              afterVersionstamp,
-              limit: limitResult.limit,
-              writeFrame: ({ encodedBytes, characterCount, frameType }) =>
-                writeOutboxStreamFrame(encodedBytes, characterCount, frameType),
-              recordPoll: () => {
-                pollCount += 1;
-              },
-              recordEntryRead: () => {
-                entriesRead += 1;
-              },
-              recordError: () => {
-                errorCount += 1;
-              },
-            });
-
-            const activeObserver = observer;
-            const waitForStreamLeaseExpiry = new Promise<true>((resolve, reject) => {
-              streamLeaseTimeout = setTimeout(
-                () => {
-                  completionReason = "expired";
-                  void activeObserver.rotate(handlerTx).then(() => {
-                    resolve(true);
-                  }, reject);
-                },
-                Math.max(0, OUTBOX_STREAM_MAX_LIFETIME_MS - (Date.now() - startedAt)),
-              );
-              streamLeaseTimeout.unref?.();
-            });
-            void waitForStreamLeaseExpiry.catch(() => {});
-            await observer.refreshNow(handlerTx);
-            schedulerLease = observer.runWhile({
-              signal: schedulerAbortController.signal,
-              handlerTx,
-            });
-            // Some HTTP proxies continue draining a response after their client disconnects, so
-            // cancellation alone cannot prove ownership. A finite lease bounds each observer's
-            // scheduler ownership without stopping other connected observers.
-            const streamExpired = await Promise.race([
-              waitForAbort.then(() => {
-                return false;
-              }),
-              waitForStreamLeaseExpiry,
-            ]);
-            clearTimeout(streamLeaseTimeout);
-            if (streamExpired) {
-              completionReason = "expired";
-            }
-          } catch (error) {
-            // Shared pump failures are counted before refreshNow rethrows them.
-            if (observer?.getFailure() !== error) {
-              errorCount += 1;
-            }
-            throw error;
-          } finally {
-            clearTimeout(streamLeaseTimeout);
-            observer?.close();
-            schedulerAbortController.abort();
-            await schedulerLease;
-            console.info("fragno.outbox_stream.completed", {
-              streamId,
-              durationMs: Date.now() - startedAt,
-              pollCount,
-              entriesRead,
-              framesWritten,
-              frameCharacters,
-              largestFrameCharacters,
-              heartbeatFrames,
-              errorCount,
-              completionReason,
-            });
-          }
-        });
+          },
+          { highWaterMark: OUTBOX_STREAM_BUFFER_BYTES },
+        );
       },
     }),
   ]);

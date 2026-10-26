@@ -894,6 +894,59 @@ describe("internal fragment describe routes", () => {
     }
   });
 
+  it("keeps a stream whose client pauses reading for several seconds", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const { adapter, close } = await setupAdapter();
+    const fragment = instantiate(
+      defineFragment("alpha-fragment").extend(withDatabase(alphaSchema)).build(),
+    )
+      .withOptions({ databaseAdapter: adapter, mountRoute: "/alpha", outbox: { enabled: true } })
+      .build();
+    const namespace = (fragment.$internal.deps as { namespace: string | null }).namespace;
+    await adapter.prepareMigrations(alphaSchema, namespace).executeWithDriver(adapter.driver, 0);
+    for (const name of ["first", "second", "third"]) {
+      await fragment.inContext(async function (this: DatabaseRequestContext) {
+        await this.handlerTx()
+          .mutate(({ forSchema }) => forSchema(alphaSchema).create("alpha_items", { name }))
+          .execute();
+      });
+    }
+
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    try {
+      const response = await fragment.callRoute(
+        "GET",
+        "/_internal/outbox/stream" as never,
+        { query: { protocol: "1" } } as never,
+      );
+      assert(response.type === "jsonStream");
+      try {
+        expect((await response.stream.next()).value).toMatchObject({ type: "started" });
+        // Nothing reads the response meanwhile, which used to abort it after one second.
+        await vi.advanceTimersByTimeAsync(5_000);
+        const frames: Array<{ type: string }> = [];
+        while (frames.at(-1)?.type !== "caught-up") {
+          const next = await response.stream.next();
+          assert(!next.done);
+          frames.push(next.value as { type: string });
+        }
+        expect(frames.map((frame) => frame.type)).toEqual(["entry", "entry", "entry", "caught-up"]);
+      } finally {
+        await response.stream.return(undefined);
+      }
+      await vi.waitFor(() => {
+        expect(info).toHaveBeenCalledWith(
+          "fragno.outbox_stream.completed",
+          expect.objectContaining({ completionReason: "aborted", blockedWrites: 0 }),
+        );
+      });
+    } finally {
+      vi.useRealTimers();
+      info.mockRestore();
+      await close();
+    }
+  });
+
   it("stops polling when the outbox response is no longer consumed", async () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const { adapter, close } = await setupAdapter();
@@ -906,38 +959,55 @@ describe("internal fragment describe routes", () => {
       })
       .build();
 
+    const namespace = (alphaFragment.$internal.deps as { namespace: string | null }).namespace;
+    await adapter.prepareMigrations(alphaSchema, namespace).executeWithDriver(adapter.driver, 0);
+    // More than the response buffers, so its writes start waiting on a client that never reads.
+    for (let index = 0; index < 24; index += 1) {
+      await alphaFragment.inContext(async function (this: DatabaseRequestContext) {
+        await this.handlerTx()
+          .mutate(({ forSchema }) =>
+            forSchema(alphaSchema).create("alpha_items", { name: `${index}`.repeat(100_000) }),
+          )
+          .execute();
+      });
+    }
+
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
     try {
       const response = await alphaFragment.handler(
         new Request("http://localhost/alpha/_internal/outbox/stream?protocol=1"),
       );
       assert(response.status === 200);
 
-      await vi.waitFor(
-        () => {
-          expect(info).toHaveBeenCalledWith(
-            "fragno.outbox_stream.completed",
-            expect.objectContaining({
-              pollCount: expect.any(Number),
-              completionReason: "aborted",
-            }),
-          );
-        },
-        { timeout: 2_500 },
+      await vi.advanceTimersByTimeAsync(9_000);
+      expect(info).not.toHaveBeenCalledWith("fragno.outbox_stream.completed", expect.anything());
+      await vi.advanceTimersByTimeAsync(1_500);
+      expect(info).toHaveBeenCalledWith(
+        "fragno.outbox_stream.completed",
+        expect.objectContaining({
+          completionReason: "aborted",
+          blockedWrites: 1,
+          longestWriteMs: 10_000,
+        }),
       );
 
       const completedCall = info.mock.calls.find(
         ([event]) => event === "fragno.outbox_stream.completed",
       );
       assert(completedCall);
-      const completed = completedCall[1] as { pollCount: number };
-      await new Promise((resolve) => setTimeout(resolve, 250));
+      const completed = completedCall[1] as { pollCount: number; entriesRead: number };
+      expect(completed.entriesRead).toBeLessThan(24);
+      await vi.advanceTimersByTimeAsync(1_000);
       expect(
         info.mock.calls.filter(([event]) => event === "fragno.outbox_stream.completed"),
       ).toHaveLength(1);
-      expect(completed.pollCount).toBeLessThan(10);
+      const hub = getRegistryForAdapterSync(adapter).outboxObservationHub;
+      assert(hub.activeObserverCount() === 0);
+      assert(hub.activeSchedulerLoopCount() === 0);
 
       await response.body?.cancel();
     } finally {
+      vi.useRealTimers();
       info.mockRestore();
       await close();
     }
