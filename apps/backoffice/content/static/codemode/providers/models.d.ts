@@ -104,7 +104,7 @@ type ModelsExtractInput = {
   files: string[];
   /** What to read from the files and how to fill in the answer. */
   instructions: string;
-  /** JSON Schema of the answer, in OpenAI's strict structured-output subset: the root is an object, every object sets `additionalProperties: false` and lists all its properties in `required`, and a field that may be absent has a type such as `["string", "null"]`. */
+  /** JSON Schema of the answer, in OpenAI's strict structured-output subset: the root is an object, every object is closed and requires all its properties, which the call sets itself, and a field that may be absent has a type such as `["string", "null"]`. */
   schema: {
     [key: string]: JsonValue;
   };

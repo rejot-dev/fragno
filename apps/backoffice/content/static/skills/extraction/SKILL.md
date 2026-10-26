@@ -27,9 +27,9 @@ types.
 
 2. **Schema.** Write it in OpenAI's strict subset, or the call fails:
    - The root is `type: "object"`.
-   - Every object sets `additionalProperties: false` and lists every property in `required`.
-   - A value that may be absent is nullable, such as `type: ["string", "null"]`; omitting it from
-     `required` is not allowed.
+   - Every property is required and every object is closed; the call sets `required` and
+     `additionalProperties` itself.
+   - A value that may be absent is nullable, such as `type: ["string", "null"]`.
    - `enum`, `anyOf`, `$defs` with `$ref`, and `description` work; `allOf`, `not`,
      `if`/`then`/`else`, and `patternProperties` do not.
 
@@ -69,7 +69,6 @@ types.
              "Read this supplier invoice for bookkeeping. Use null for anything not printed.",
            schema: {
              type: "object",
-             additionalProperties: false,
              properties: {
                transcription: {
                  type: "string",
@@ -90,16 +89,13 @@ types.
                  description: "The billed items in document order.",
                  items: {
                    type: "object",
-                   additionalProperties: false,
                    properties: {
                      description: { type: "string" },
                      amount: { type: ["number", "null"] },
                    },
-                   required: ["description", "amount"],
                  },
                },
              },
-             required: ["transcription", "supplier", "invoiceDate", "total", "lines"],
            },
          }),
      );
