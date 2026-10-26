@@ -182,7 +182,7 @@ export function createPiManagerRuntime(input: {
           automations: input.runtime.objects.automations.for(input.execution.scope).commands,
           scope: input.execution.scope,
           definitions: agents
-            .filter((agent) => agent.managedBy?.kind !== "built-in")
+            .filter((agent) => agent.steward.kind !== "backoffice")
             .map(({ provisioned: _provisioned, ...definition }) => definition),
           occurredAt: new Date(),
           provenance: {

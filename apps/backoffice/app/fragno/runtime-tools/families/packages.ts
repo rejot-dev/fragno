@@ -193,7 +193,7 @@ const packagesUninstallTool = defineBackofficeRuntimeTool({
           ? { data: result }
           : {
               stdout: result
-                ? `uninstalled\t${result.installation.listingId}\t${result.installation.installationRoot}\troutes:${result.removedRouteIds.join(",")}\tevents:${result.removedEventDefinitions.map(({ source, eventType }) => `${source}/${eventType}`).join(",")}\n`
+                ? `uninstalled\t${result.installation.listingId}\t${result.installation.installationRoot}\troutes:${result.removedRouteIds.join(",")}\tevents:${result.removedEventDefinitions.map(({ source, eventType }) => `${source}/${eventType}`).join(",")}\tagents:${result.removedAgents.join(",")}\n`
                 : "not installed\n",
             },
     },

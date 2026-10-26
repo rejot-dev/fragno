@@ -366,7 +366,6 @@ test("waiting prompts run under the definition as it is when their turn starts, 
     description: "Answers in turn.",
     model: null,
     permissions: ["*"],
-    managedBy: null,
   };
   const created = await queue.fragment.callRoute("POST", "/agents", {
     body: {

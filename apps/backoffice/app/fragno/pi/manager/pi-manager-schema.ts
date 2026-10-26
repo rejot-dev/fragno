@@ -1,7 +1,5 @@
-import type {
-  PiAgentDefinition,
-  PiAgentMarketplaceManagedBy,
-} from "@fragno-dev/backoffice-api/v0/pi";
+import type { AutomationSteward } from "@fragno-dev/backoffice-api/v0/automation";
+import type { PiAgentDefinition } from "@fragno-dev/backoffice-api/v0/pi";
 import { column, idColumn, schema, type Column } from "@fragno-dev/db/schema";
 
 import type {
@@ -11,6 +9,14 @@ import type {
 } from "@/fragno/pi/agent/pi-agent-contract";
 
 const jsonColumn = <T>() => column("json") as Column<"json", T, T>;
+
+/** How install scripts labelled the agents they defined, before agents had stewards. */
+type LegacyMarketplaceManagedBy = {
+  kind: "marketplace";
+  listingId: string;
+  resourceKey: string;
+  version: string;
+};
 
 /** Who asked for a queued item; the queue admits its turn when the item runs. */
 export type PiAgentTurnProvenance = Pick<PiAgentTurn, "actors" | "scopeRestriction">;
@@ -64,7 +70,7 @@ export const piAgentDirectorySchema = schema("pi_manager", (s) =>
         .addColumn("model", column("string").nullable())
         .addColumn("permissions", jsonColumn<string[]>())
         .addColumn("instructions", column("text"))
-        .addColumn("managedBy", jsonColumn<PiAgentMarketplaceManagedBy>().nullable()),
+        .addColumn("managedBy", jsonColumn<LegacyMarketplaceManagedBy>().nullable()),
     )
     .noOp("removed agent queueRevision column; the agent row's version replaces it")
     .addTable("agent_queue_item", (t) =>
@@ -84,16 +90,21 @@ export const piAgentDirectorySchema = schema("pi_manager", (s) =>
     )
     // Stopping an agent pauses its queue: nothing waiting is dispatched until it is resumed.
     .alterTable("agent", (t) => t.addColumn("paused", column("bool").defaultTo(false)))
-    .alterTable("agent", (t) => t.dropColumn("billingOrganizationId")),
+    .alterTable("agent", (t) => t.dropColumn("billingOrganizationId"))
+    // Null for definitions written before stewardship, which belong to members; writes set it.
+    .alterTable("agent_definition", (t) =>
+      t.addColumn("steward", jsonColumn<AutomationSteward>().nullable()),
+    ),
 );
 
-type AgentDefinitionRow = {
+export type AgentDefinitionRow = {
   id: { valueOf(): string };
   description: string;
   model: string | null;
   permissions: string[];
   instructions: string;
-  managedBy: PiAgentMarketplaceManagedBy | null;
+  managedBy: LegacyMarketplaceManagedBy | null;
+  steward: AutomationSteward | null;
 };
 
 export function definitionFromRow(row: AgentDefinitionRow): PiAgentDefinition {
@@ -103,6 +114,11 @@ export function definitionFromRow(row: AgentDefinitionRow): PiAgentDefinition {
     model: row.model,
     permissions: row.permissions,
     instructions: row.instructions,
-    managedBy: row.managedBy,
+    steward: row.steward ?? { kind: "members" },
   };
+}
+
+/** The listing whose pre-stewardship install script labelled this agent, if one did. */
+export function legacyMarketplaceAgentListingId(row: AgentDefinitionRow): string | null {
+  return row.steward === null ? (row.managedBy?.listingId ?? null) : null;
 }

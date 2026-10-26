@@ -3,7 +3,7 @@ import type {
   AccountProfile,
   OAuthConsentPage,
 } from "@fragno-dev/backoffice-api/v0/account";
-import type { AutomationActor } from "@fragno-dev/backoffice-api/v0/automation";
+import type { AutomationActor, AutomationActors } from "@fragno-dev/backoffice-api/v0/automation";
 import type {
   AutomationEvent,
   AutomationEventDefinition,
@@ -18,7 +18,6 @@ import type {
   MarketplacePublishResult,
   PackageInstallation,
   PackagesImportLegacyInput,
-  PackageUninstallation,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import type {
   MarketplaceFeatureEntry,
@@ -118,6 +117,7 @@ import type {
 } from "@/fragno/automation/external-identities";
 import type { LegacyPackageImportOutcome } from "@/fragno/automation/legacy-package-installations";
 import type {
+  PackageAutomationsUninstallation,
   PackageInstallationInput,
   PackageInstallationOutcome,
 } from "@/fragno/automation/package-installations";
@@ -185,6 +185,7 @@ import type {
   PiClassificationRequest,
   PiImageGenerationRequest,
 } from "@/fragno/pi/agent/pi-models";
+import type { PackageAgentsInput } from "@/fragno/pi/manager/package-agents";
 import type {
   SandboxInstanceRecord,
   SandboxInstanceRequestInput,
@@ -529,6 +530,10 @@ export type PiManagerCommands = WarmableCommands & {
   }): Promise<{ answers: ClassifierResult["answers"] }>;
   /** Generates one image, recorded like `classify`. */
   generateImage(input: { request: PiImageGenerationRequest }): Promise<{ bytes: Uint8Array }>;
+  /** Makes a package's agents in this scope match its declaration; installing calls it. */
+  applyPackageAgents(input: PackageAgentsInput): Promise<PackageInstallationOutcome>;
+  /** Deletes a package's agents in this scope and returns their names; uninstalling calls it. */
+  removePackageAgents(input: { listingId: string; actors: AutomationActors }): Promise<string[]>;
 };
 
 export type BillingCommands = {
@@ -697,7 +702,7 @@ export type AutomationsCommands = {
   getPackageInstallation(input: { listingId: string }): Promise<PackageInstallation | null>;
   /** Records a package installation and syncs the routes and event definitions it declares here. */
   applyPackageInstallation(input: PackageInstallationInput): Promise<PackageInstallationOutcome>;
-  uninstallPackage(input: { listingId: string }): Promise<PackageUninstallation | null>;
+  uninstallPackage(input: { listingId: string }): Promise<PackageAutomationsUninstallation | null>;
   /** Imports the workspace's legacy Marketplace lock into installation records. */
   importLegacyPackageInstallations(
     input: PackagesImportLegacyInput,

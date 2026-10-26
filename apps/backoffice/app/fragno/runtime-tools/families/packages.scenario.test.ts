@@ -10,6 +10,7 @@ const workers = vi.hoisted(() => ({
 }));
 vi.mock("cloudflare:workers", () => workers);
 
+import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import {
   createBackofficeServiceExecution,
   createBackofficeSystemExecution,
@@ -53,6 +54,8 @@ const scenarioObjects = {
   FORMS: (input) => new FormsObject(input),
   MARKETPLACE: (input) => new MarketplaceObject(input),
   MCP: (input) => new McpObject(input),
+  // Installing syncs each package's agents.
+  PI_MANAGER: allLocalObjects.PI_MANAGER,
   TELEGRAM: (input) => new TelegramObject(input),
   UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;

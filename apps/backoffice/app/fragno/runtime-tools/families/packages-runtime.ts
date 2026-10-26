@@ -35,11 +35,13 @@ export function createPackagesRuntime({
   kernel,
   execution,
   preferredOrganizationId,
+  piManagerAvailable,
 }: {
   objects: BackofficeObjectRegistry;
   kernel: BackofficeKernel;
   execution: BackofficeExecutionContext;
   preferredOrganizationId: string | null;
+  piManagerAvailable: boolean;
 }): PackagesRuntime {
   const targetScope = execution.scope;
   if (!isBackofficeRoutableScope(targetScope)) {
@@ -90,7 +92,17 @@ export function createPackagesRuntime({
       return await targetAutomations().commands.getPackageInstallation(input);
     },
     async uninstall(input) {
-      return await targetAutomations().commands.uninstallPackage(input);
+      if (!(await targetAutomations().commands.getPackageInstallation(input))) {
+        return null;
+      }
+      // Agents go first: should the rest fail, the installation is still recorded to uninstall again.
+      const removedAgents = piManagerAvailable
+        ? await kernel
+            .scoped("PI_MANAGER", targetScope, objects.piManager)
+            .commands.removePackageAgents({ ...input, actors: execution.actors })
+        : [];
+      const uninstalled = await targetAutomations().commands.uninstallPackage(input);
+      return uninstalled && { ...uninstalled, removedAgents };
     },
     async importLegacy(input) {
       const outcome = await targetAutomations().commands.importLegacyPackageInstallations(input);

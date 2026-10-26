@@ -517,16 +517,16 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                   marketplace: { kind: "system" },
                   installationRoot: "/workspace",
                   listingId: telegramChannelListingId,
-                  version: "2.0.0",
+                  version: "2.1.0",
                   targetScope: { kind: "org", orgId: "org-1" },
                   permissions: bundledMarketplacePermissions({
                     slug: "telegram-channel",
-                    version: "2.0.0",
+                    version: "2.1.0",
                   }),
                 },
                 execution,
               ),
-            ).resolves.toMatchObject({ state: "requested", version: "2.0.0" });
+            ).resolves.toMatchObject({ state: "requested", version: "2.1.0" });
             await expect(
               automations.commands.requestMarketplaceIngestion(
                 {
@@ -695,16 +695,16 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                     marketplace: { kind: "system" },
                     installationRoot: "/workspace",
                     listingId: telegramChannelListingId,
-                    version: "2.0.0",
+                    version: "2.1.0",
                     targetScope,
                     permissions: bundledMarketplacePermissions({
                       slug: "telegram-channel",
-                      version: "2.0.0",
+                      version: "2.1.0",
                     }),
                   },
                   execution,
                 ),
-              ).resolves.toMatchObject({ state: "requested", version: "2.0.0" });
+              ).resolves.toMatchObject({ state: "requested", version: "2.1.0" });
             }
           }),
           runner.drain(),
@@ -721,7 +721,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                   listingId: telegramChannelListingId,
                   targetScope,
                 }),
-              ).resolves.toMatchObject({ version: "2.0.0" });
+              ).resolves.toMatchObject({ version: "2.1.0" });
 
               const targetAutomations = ctx.runtime.objects.automations.for(targetScope);
               for (const routeId of [

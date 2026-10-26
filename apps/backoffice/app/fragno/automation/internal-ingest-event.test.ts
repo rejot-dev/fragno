@@ -61,7 +61,7 @@ const scenarioObjects = {
 const TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION = {
   targetScope: { kind: "org", orgId: "org-1" },
   slug: "telegram-channel",
-  version: "2.0.0",
+  version: "2.1.0",
   installationRoot: "/workspace",
 } as const;
 

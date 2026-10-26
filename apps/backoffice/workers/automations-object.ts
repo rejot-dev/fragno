@@ -9,7 +9,6 @@ import type {
   MarketplaceIngestionRestartResult,
   PackageInstallation,
   PackagesImportLegacyInput,
-  PackageUninstallation,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import { marketplaceIngestionRequestInputSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
 import {
@@ -103,6 +102,7 @@ import {
   applyPackageInstallation,
   assertPackageInstallationReplaceable,
   uninstallPackage,
+  type PackageAutomationsUninstallation,
   type PackageInstallationInput,
   type PackageInstallationOutcome,
 } from "@/fragno/automation/package-installations";
@@ -1107,7 +1107,9 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
     return await applyPackageInstallation(runtime.automationFragment, input);
   }
 
-  async uninstallPackage(input: { listingId: string }): Promise<PackageUninstallation | null> {
+  async uninstallPackage(input: {
+    listingId: string;
+  }): Promise<PackageAutomationsUninstallation | null> {
     await this.#ensureConfigured({ scope: this.#requireScope() });
     const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
 

@@ -22,7 +22,6 @@ await pi.createAgent({
   permissions: ["*"],
   instructions:
     "Investigate the failure you are given before changing anything. Report the cause and the fix.",
-  managedBy: null,
 });
 ```
 
@@ -37,8 +36,9 @@ await pi.createAgent({
   one grant is required. Prompting the agent requires the prompter's own `pi.modify`.
 - `instructions` is Markdown added to the agent's system prompt, up to 32,768 characters; empty adds
   none.
-- `managedBy` is null for your own agents; Marketplace packages set it to claim theirs, as
-  `/static/skills/marketplace-publishing/SKILL.md` shows.
+- An agent's `steward` says who may change it: `members` for agents defined this way, a `package`
+  for agents a Marketplace package declares, as `/static/skills/marketplace-publishing/SKILL.md`
+  shows, and `backoffice` for built-in agents.
 
 Defining, updating, and deleting agents requires `pi.manage`. Invalid input is refused with the
 reason, so nothing unusable is ever defined.
@@ -50,7 +50,8 @@ reason, so nothing unusable is ever defined.
 `pi.updateAgent` takes the whole definition again, instructions included, and replaces it; the next
 turn uses it. Read the current definition with `pi.getAgent` first so you only change what you mean
 to. `pi.deleteAgent({ agentName })` removes the definition but keeps the conversation: defining the
-name again resumes it. Built-in agents cannot be changed or deleted.
+name again resumes it. Only members' agents change this way: a package's agents change when the
+package is installed again and go when it is uninstalled, and built-in agents never change.
 
 ## How permissions work
 

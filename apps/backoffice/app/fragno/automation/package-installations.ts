@@ -193,11 +193,14 @@ async function syncPackageInstallation(
   }
 }
 
+/** What uninstalling removes from the Automations object; the Pi manager removes the agents. */
+export type PackageAutomationsUninstallation = Omit<PackageUninstallation, "removedAgents">;
+
 /** Deletes an installation and the routes and event definitions it manages, leaving its files. */
 export async function uninstallPackage(
   fragment: AutomationFragment,
   { listingId }: { listingId: string },
-): Promise<PackageUninstallation | null> {
+): Promise<PackageAutomationsUninstallation | null> {
   const [routes, definitions, installation] = await fragment.callServices(() => [
     fragment.services.listRoutes(),
     fragment.services.listEventDefinitions(),

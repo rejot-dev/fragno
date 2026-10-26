@@ -218,6 +218,7 @@ export const createAutomationRouteServices = (
             legacyListingId: legacyMarketplaceRouteListingId(existing),
             writer,
             definitionChanged,
+            toggleable: true,
           });
           // A package's write claims the route, even an adopted one whose definition already matches.
           const steward = definitionChanged || writer.kind === "package" ? writer : current.steward;
@@ -374,6 +375,7 @@ export const createAutomationRouteServices = (
               legacyListingId: null,
               writer,
               definitionChanged: true,
+              toggleable: true,
             });
           }
           if (scheduleState) {

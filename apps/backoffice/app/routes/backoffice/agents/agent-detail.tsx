@@ -117,7 +117,7 @@ export default function BackofficeOrganizationPiAgentDetail({
         <AgentStartComposer
           action={agentPath}
           agentName={agent.agentName}
-          builtIn={agent.managedBy?.kind === "built-in"}
+          builtIn={agent.steward.kind === "backoffice"}
           availableModelOptions={availableModelOptions}
           description={agent.description}
           permissions={agent.permissions}

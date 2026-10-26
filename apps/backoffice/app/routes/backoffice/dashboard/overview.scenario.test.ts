@@ -213,7 +213,6 @@ function piEvent(
     model: null,
     permissions: [],
     instructions: "Review carefully.",
-    managedBy: null,
   };
   const payloads: Record<PiEventType, Record<string, unknown>> = {
     "turn.completed": { answerEntryId: 1 },

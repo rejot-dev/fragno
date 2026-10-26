@@ -16,7 +16,7 @@ export const BUILT_IN_PI_AGENT_DEFINITIONS: readonly PiAgentDefinition[] = [
     model: null,
     permissions: ["*"],
     instructions: "",
-    managedBy: { kind: "built-in" },
+    steward: { kind: "backoffice" },
   },
 ];
 
@@ -75,7 +75,7 @@ export function piPromptModel(
       code: "MODEL_NOT_CHOOSABLE" | "MODEL_UNAVAILABLE";
       message: string;
     } {
-  const builtIn = definition.managedBy?.kind === "built-in";
+  const builtIn = definition.steward.kind === "backoffice";
   if (!chosen) {
     return {
       type: "model",
@@ -134,7 +134,7 @@ function resolvePiAgentModel(
   chosen: PiAgentModelChoice | null,
   availableModels: readonly PiAvailableModel[],
 ): { type: "model"; model: PiAgentModelChoice | null } | { type: "unavailable" } {
-  if (definition.managedBy?.kind === "built-in") {
+  if (definition.steward.kind === "backoffice") {
     if (availableModels.length === 0 || (chosen && !findAvailableModel(chosen, availableModels))) {
       return { type: "unavailable" };
     }

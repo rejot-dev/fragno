@@ -63,6 +63,7 @@ const createRuntime = (): BackofficeRuntimeServices => {
         upload: false,
         github: false,
         githubWebhookRouter: false,
+        piManager: false,
         cloudflare: true,
         sandbox: false,
       },

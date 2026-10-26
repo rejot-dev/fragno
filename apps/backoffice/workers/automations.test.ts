@@ -58,6 +58,7 @@ vi.mock("cloudflare:workers", () => ({
   WorkerEntrypoint,
 }));
 
+import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { readBackofficeAutomationSource } from "@/fragno/automation/read-backoffice-automation-source";
 
@@ -70,6 +71,8 @@ const localObjects = {
   AUTOMATIONS: (input) => new AutomationsObject(input),
   MARKETPLACE: (input) => new MarketplaceObject(input),
   MCP: (input) => new McpObject(input),
+  // Installing syncs each package's agents.
+  PI_MANAGER: allLocalObjects.PI_MANAGER,
   UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
 
@@ -95,6 +98,7 @@ const config: BackofficeRuntimeConfig = {
     upload: false,
     github: false,
     githubWebhookRouter: false,
+    piManager: false,
     cloudflare: false,
     sandbox: false,
   },

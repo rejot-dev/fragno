@@ -210,7 +210,7 @@ type PageRelations = {
     outcome: "answered" | "cut-off" | "failed";
     endedAt: PageSqlTime;
   };
-  /** Pi agents, built-in ones included, as their events record them now; latestKind and latestAt are null for an agent with no recorded activity. displayName is the name people read and activity what the agent does or did last, such as Answered. definition is JSON holding description, permissions, and managedBy. */
+  /** Pi agents, built-in ones included, as their events record them now; latestKind and latestAt are null for an agent with no recorded activity. displayName is the name people read and activity what the agent does or did last, such as Answered. definition is JSON holding description, permissions, and steward. */
   agents: {
     agentName: string;
     definition: PageSqlJson;

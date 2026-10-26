@@ -269,7 +269,6 @@ test("durable Pi runs a workspace agent with its instructions, scoped skills, Ba
             model: null,
             permissions: ["*"],
             instructions: "Keep the researcher instruction.",
-            managedBy: null,
           });
           assert.equal(defined.status, 201, await defined.clone().text());
           await prompt(runtime, execution, { agentName: "researcher" });
@@ -362,7 +361,6 @@ test("agents and users read another agent's messages and export its whole conver
             model: null,
             permissions: ["pi.read", "upload.modify"],
             instructions: "",
-            managedBy: null,
           });
           assert.equal(defined.status, 201, await defined.clone().text());
           await prompt(runtime, execution, {
@@ -477,7 +475,6 @@ test("an agent's backfill records agent events as the agent's turn, keeping its 
                   model: null,
                   permissions: ["*"],
                   instructions: "",
-                  managedBy: null,
                 },
               },
               actors: execution.actors,
@@ -679,7 +676,6 @@ test("an agent's definition narrows every turn and an edited definition applies 
     model: null,
     permissions: ["upload.read"],
     instructions: "",
-    managedBy: null,
   };
   const storeWrite = fauxAssistantMessage(
     [

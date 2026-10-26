@@ -1,5 +1,6 @@
 import { assert, describe, expect, test, vi } from "vitest";
 
+import type { AutomationRouteCreateInput } from "@fragno-dev/backoffice-api/v0/automation";
 import { MARKETPLACE_LOCK_PATH } from "@fragno-dev/backoffice-api/v0/marketplace";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
@@ -14,7 +15,10 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
 import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
-import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
+import {
+  createBackofficeServiceExecution,
+  createBackofficeSystemExecution,
+} from "@/backoffice-runtime/context";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
@@ -58,6 +62,8 @@ const scenarioObjects = {
   FORMS: (input) => new FormsObject(input),
   MARKETPLACE: (input) => new MarketplaceObject(input),
   MCP: (input) => new McpObject(input),
+  // Installing syncs each package's agents.
+  PI_MANAGER: allLocalObjects.PI_MANAGER,
   RESEND: (input) => new ResendObject(input),
   TELEGRAM: (input) => new TelegramObject(input),
   UPLOAD: (input) => new UploadObject(input),
@@ -726,6 +732,117 @@ describe("package installation scenarios", () => {
             for (const eventType of eventTypes) {
               await expect(definition(ctx, eventType)).resolves.toBeNull();
             }
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("Telegram Channel 2.1.0 manages its agent, and a refused first install leaves none behind", async () => {
+    const installationRoot = "/workspace/telegram";
+    const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
+      marketplace: { kind: "system" },
+      targetScope: TARGET_SCOPE,
+      installationRoot,
+      listingId: TELEGRAM_CHANNEL_ID,
+      version: "2.1.0",
+    });
+    const install = async (ctx: BackofficeScenarioContext) => {
+      await installMarketplacePackage(ctx, {
+        listingId: TELEGRAM_CHANNEL_ID,
+        version: "2.1.0",
+        installationRoot,
+      });
+    };
+    const agent = async (ctx: BackofficeScenarioContext, init?: RequestInit) =>
+      await ctx.runtime.objects.piManager
+        .for(TARGET_SCOPE)
+        .http.fetchAuthorized(
+          new Request("https://pi-manager.test/api/pi-manager/agents/telegram", init),
+          {
+            execution: createBackofficeServiceExecution({
+              scope: TARGET_SCOPE,
+              service: { type: "automation", id: "telegram-agent-check" },
+            }),
+          },
+        );
+    // A members' route with an id the package declares, which the package may not take over.
+    const blockingRoute: AutomationRouteCreateInput = {
+      id: "telegram-identity-claim-completed",
+      name: "Our own claim forwarding",
+      enabled: true,
+      trigger: {
+        kind: "event",
+        source: "otp",
+        eventType: "identity.claim.completed",
+        matcher: null,
+      },
+      priority: 90,
+      action: {
+        kind: "send_workflow_event",
+        target: { kind: "instance_id", template: "${event.payload.otpId}" },
+        eventType: "identity-claim-completed",
+      },
+    };
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        objects: scenarioObjects,
+        name: "Telegram Channel declares its agent",
+        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+        steps: ({ then, runner }) => [
+          then.assert("publish packages", publishMarketplacePackages),
+          runner.drain(),
+          then.assert("a members' route blocks the first install", async (ctx) => {
+            const created = await routes(ctx)("POST", "/routes", { body: blockingRoute });
+            assert(created.type === "json", JSON.stringify(created));
+            await install(ctx);
+          }),
+          runner.drain(),
+          then.workflow.instance({
+            workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
+            instanceId: workflowInstanceId,
+            status: "errored",
+          }),
+          then.assert("the refused install removed the agent it had defined", async (ctx) => {
+            assert.equal((await agent(ctx)).status, 404);
+            await expect(readInstallation(ctx, TELEGRAM_CHANNEL_ID)).resolves.toBeNull();
+          }),
+          then.assert("install again once the route is gone", async (ctx) => {
+            const deleted = await routes(ctx)("DELETE", "/routes/:routeId", {
+              pathParams: { routeId: blockingRoute.id },
+            });
+            assert(deleted.type !== "error", JSON.stringify(deleted));
+            await install(ctx);
+          }),
+          runner.drain(),
+          then.assert("the package manages the agent, which members can't change", async (ctx) => {
+            const defined = await agent(ctx);
+            assert.equal(defined.status, 200, await defined.clone().text());
+            expect(await defined.json()).toMatchObject({
+              permissions: ["*"],
+              steward: { kind: "package", listingId: TELEGRAM_CHANNEL_ID },
+            });
+            const deleted = await agent(ctx, {
+              method: "DELETE",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                provenance: { actors: SYSTEM_CONTEXT.execution.actors, scopeRestriction: null },
+              }),
+            });
+            assert.equal(deleted.status, 409, await deleted.clone().text());
+            expect(await deleted.json()).toMatchObject({ code: "AGENT_STEWARDED" });
+          }),
+          then.assert("uninstalling deletes the agent with the routes", async (ctx) => {
+            const run = await ctx.runCodemode({
+              scope: TARGET_SCOPE,
+              code: `async () => await packages.uninstall({ listingId: ${JSON.stringify(TELEGRAM_CHANNEL_ID)} })`,
+              assertToolCalls: ["packages.uninstall"],
+            });
+            expect(run.result).toMatchObject({
+              removedRouteIds: expect.arrayContaining([blockingRoute.id]),
+              removedAgents: ["telegram"],
+            });
+            assert.equal((await agent(ctx)).status, 404);
           }),
         ],
       }),

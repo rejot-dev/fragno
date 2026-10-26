@@ -1,7 +1,9 @@
+import type { AutomationActors } from "@fragno-dev/backoffice-api/v0/automation";
 import { DurableObject } from "cloudflare:workers";
 
 import type { PiManagerCommands } from "@/backoffice-runtime/object-registry";
 import type { PiAgent } from "@/fragno/pi/agent/pi-agent-contract";
+import type { PackageAgentsInput } from "@/fragno/pi/manager/package-agents";
 
 import type { PiManagerObject } from "./pi-manager-object";
 
@@ -60,6 +62,14 @@ export class PiManager extends DurableObject<CloudflareEnv> implements PiManager
     input: Parameters<PiManagerCommands["generateImage"]>[0],
   ): ReturnType<PiManagerCommands["generateImage"]> {
     return await this.#object.generateImage(input);
+  }
+
+  async applyPackageAgents(input: PackageAgentsInput) {
+    return await this.#object.applyPackageAgents(input);
+  }
+
+  async removePackageAgents(input: { listingId: string; actors: AutomationActors }) {
+    return await this.#object.removePackageAgents(input);
   }
 
   async alarm(): Promise<void> {
