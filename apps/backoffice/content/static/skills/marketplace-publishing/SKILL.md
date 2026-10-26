@@ -101,9 +101,10 @@ definitions, and agents Backoffice keeps in sync for each installation:
 - Installing creates or updates the declared routes, event definitions, and agents, and deletes
   those an earlier version declared. Members can turn routes and event definitions on or off but not
   change them, and can't change the agents. Uninstalling deletes them all.
-- Installing takes over an existing route, event definition, or agent only when the declaration
-  leaves it unchanged, or when an earlier version's install workflow labelled it as this package's;
-  any other is refused.
+- Installing takes over an existing route or agent only when an earlier version's install workflow
+  labelled it as this package's, and an event definition only when the declaration leaves it
+  unchanged. It never takes over another package's. Any other existing one is refused: members
+  delete or rename theirs to install.
 - A workspace holds one installation per package, so route ids stay fixed.
 
 ## Ask for settings

@@ -44,6 +44,7 @@ function assertNotBuiltIn(agentName: string) {
       writer: MEMBERS_STEWARD,
       definitionChanged: true,
       toggleable: false,
+      adoptsIdentical: false,
     });
   }
 }
@@ -68,6 +69,7 @@ function stewardAfterWrite(
     writer,
     definitionChanged: !isDeepStrictEqual(current, fields),
     toggleable: false,
+    adoptsIdentical: false,
   });
   return writer.kind === "package" ? writer : steward;
 }
@@ -227,6 +229,7 @@ export function piAgentDirectoryServices(
               writer,
               definitionChanged: true,
               toggleable: false,
+              adoptsIdentical: false,
             });
             uow.delete("agent_definition", existing.id, (b) => b.check());
             uow.triggerHook("recordAgentChange", {

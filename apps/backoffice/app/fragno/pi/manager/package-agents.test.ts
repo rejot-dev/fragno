@@ -161,7 +161,7 @@ describe("package agents", () => {
     });
   });
 
-  test("a package refuses agents it doesn't steward, unless it leaves a members' agent unchanged", async () => {
+  test("a package refuses agents it doesn't steward, even identical ones", async () => {
     const labelled = await piManager();
     await seedLegacyLabelledAgent(labelled, OTHER_LISTING_ID);
     await expect(apply(labelled, [telegram])).resolves.toEqual({
@@ -178,23 +178,21 @@ describe("package agents", () => {
       ok: false,
       message: `Pi agent 'telegram' already exists and is not managed by package '${LISTING_ID}'.`,
     };
-    const changed = [{ ...telegram, instructions: "Changed." }];
-    await expect(
-      checkPackageAgents(fragment, { listingId: LISTING_ID, agents: changed }),
-    ).resolves.toEqual(notManaged);
-    await expect(apply(fragment, changed)).resolves.toEqual(notManaged);
-    // Checking first writes nothing, so the agent is still the members'.
     await expect(
       checkPackageAgents(fragment, { listingId: LISTING_ID, agents: [telegram] }),
-    ).resolves.toEqual({ ok: true });
+    ).resolves.toEqual(notManaged);
+    await expect(apply(fragment, [telegram])).resolves.toEqual(notManaged);
     expect((await readAgents(fragment)).at(-1)?.steward).toEqual({ kind: "members" });
-    await expect(apply(fragment, [telegram])).resolves.toEqual({ ok: true });
-    expect((await readAgents(fragment)).at(-1)?.steward).toEqual({
-      kind: "package",
-      listingId: LISTING_ID,
+
+    // Nor does a package take over another package's agent.
+    const owned = await piManager();
+    await apply(owned, [telegram], OTHER_LISTING_ID);
+    await expect(apply(owned, [telegram])).resolves.toEqual({
+      ok: false,
+      message: `Pi agent 'telegram' is managed by package '${OTHER_LISTING_ID}'. Install the package again to change it, or uninstall the package to remove it.`,
     });
 
-    await expect(apply(fragment, [{ ...telegram, agentName: "assistant" }])).resolves.toEqual({
+    await expect(apply(owned, [{ ...telegram, agentName: "assistant" }])).resolves.toEqual({
       ok: false,
       message: "Pi agent 'assistant' is built into Backoffice and cannot change.",
     });

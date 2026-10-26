@@ -219,6 +219,7 @@ export const createAutomationRouteServices = (
             writer,
             definitionChanged,
             toggleable: true,
+            adoptsIdentical: false,
           });
           // A package's write claims the route, even an adopted one whose definition already matches.
           const steward = definitionChanged || writer.kind === "package" ? writer : current.steward;
@@ -376,6 +377,7 @@ export const createAutomationRouteServices = (
               writer,
               definitionChanged: true,
               toggleable: true,
+              adoptsIdentical: false,
             });
           }
           if (scheduleState) {
