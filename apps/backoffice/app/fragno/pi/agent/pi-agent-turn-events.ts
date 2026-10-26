@@ -11,7 +11,7 @@ import {
   type Storage,
 } from "@earendil-works/pi-durable";
 
-import type { AutomationsObject, PiManagerObject } from "@/backoffice-runtime/object-registry";
+import type { AutomationsCommands, PiManagerCommands } from "@/backoffice-runtime/object-registry";
 import {
   PI_AUTOMATION_SOURCE,
   PI_TURN_AUTOMATION_EVENTS,
@@ -131,8 +131,8 @@ export function startReportingPiAgentTurns(input: {
   harness: Harness;
   storage: Storage;
   /** Null when the runtime has no Automations, which leaves nowhere to record turn history. */
-  automations: Pick<AutomationsObject, "ingestEvent"> | null;
-  manager: PiManagerObject;
+  automations: Pick<AutomationsCommands, "ingestEvent"> | null;
+  manager: PiManagerCommands;
   nowEpochMs: () => number;
   report: (error: unknown) => void;
 }): (context: Context) => Promise<void> {

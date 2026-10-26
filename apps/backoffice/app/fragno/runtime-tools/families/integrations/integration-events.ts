@@ -10,7 +10,10 @@ import {
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
-import type { AutomationsObject, BackofficeRpcContext } from "@/backoffice-runtime/object-registry";
+import type {
+  AutomationsCommands,
+  BackofficeRpcContext,
+} from "@/backoffice-runtime/object-registry";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 
 export const INTEGRATIONS_EVENT_SOURCE = "integrations";
@@ -102,7 +105,7 @@ type RecordedConnectionState = {
 
 /** Each connection's latest state in one scope's recorded connection events. */
 export async function readRecordedConnectionStates(
-  automations: Pick<AutomationsObject, "listEventsOfType">,
+  automations: Pick<AutomationsCommands, "listEventsOfType">,
 ): Promise<Map<string, RecordedConnectionState>> {
   const latest = new Map<string, RecordedConnectionState & { at: [number, number] }>();
   for (const eventType of Object.keys(connectionEventStates)) {
@@ -181,7 +184,7 @@ export const integrationConnectionEvents = [
  * connections without passing through integrations.*.
  */
 export async function recordIntegrationConnectionState(
-  automations: Pick<AutomationsObject, "ingestEvent">,
+  automations: Pick<AutomationsCommands, "ingestEvent">,
   change: {
     /** Unique per source change, such as the durable hook ID, so redelivery records one event. */
     id: string;
@@ -231,7 +234,7 @@ export type IntegrationSlotOutboxItem = {
 
 /** Records a slot outbox item as the connection state it reports. */
 export async function recordIntegrationSlotChange(
-  automationsFor: (scope: BackofficeContextScope) => Pick<AutomationsObject, "ingestEvent">,
+  automationsFor: (scope: BackofficeContextScope) => Pick<AutomationsCommands, "ingestEvent">,
   item: IntegrationSlotOutboxItem,
   slot: Pick<IntegrationConnection, "connectionId" | "integrationId" | "name" | "authMethod">,
 ) {

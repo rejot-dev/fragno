@@ -23,10 +23,10 @@ import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-f
 import type { BackofficeRpcContext } from "@/backoffice-runtime/object-registry";
 import type { BillingEventInput } from "@/fragno/billing";
 
-import { Billing, InMemoryBillingObject } from "./billing.do";
+import { Billing, BillingObject } from "./billing.do";
 
 const localObjects = {
-  BILLING: (input) => new InMemoryBillingObject(input),
+  BILLING: (input) => new BillingObject(input),
 } satisfies LocalBackofficeObjects;
 
 let runtime: InMemoryBackofficeRuntime | null = null;
@@ -49,9 +49,7 @@ afterEach(async () => {
 describe("Billing Durable Object", () => {
   test("forwards RPC propagation context through the production wrapper", async () => {
     const result = { accepted: true, eventId: "pi:org-1:hook-1" } as const;
-    const recordEvent = vi
-      .spyOn(InMemoryBillingObject.prototype, "recordEvent")
-      .mockResolvedValue(result);
+    const recordEvent = vi.spyOn(BillingObject.prototype, "recordEvent").mockResolvedValue(result);
     const state = {
       id: { name: "v1:org:org-1" },
       blockConcurrencyWhile: vi.fn(async () => undefined),

@@ -2,7 +2,7 @@ import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/perm
 
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import type { OtpObject } from "@/backoffice-runtime/object-registry";
+import type { OtpCommands } from "@/backoffice-runtime/object-registry";
 import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
 import { buildIdentityClaimCompletionUrl } from "@/fragno/otp";
@@ -28,7 +28,7 @@ export const createOtpRuntime = ({
   kernel,
   execution,
 }: {
-  object: OtpObject;
+  object: OtpCommands;
   config: BackofficeRuntimeConfig;
   scope: Extract<BackofficeResolvedScope, { kind: "org" }>;
   kernel: BackofficeKernel;

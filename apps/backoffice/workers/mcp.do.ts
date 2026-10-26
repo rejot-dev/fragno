@@ -13,7 +13,7 @@ import {
   backofficeContextScopeFromDurableObjectId,
   requireBackofficeContextScopeFromDurableObjectId,
   backofficeObjectScopeFromContextScope,
-  type McpObject,
+  type McpCommands,
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
@@ -51,7 +51,7 @@ function serverSubject(scope: BackofficeRoutableScope, serverId: string) {
   };
 }
 
-export class InMemoryMcpObject extends RpcTarget implements McpObject {
+export class McpObject extends RpcTarget implements McpCommands {
   readonly #runtimeServices: BackofficeRuntimeServices;
   readonly #forwardHttpRequest: ReturnType<typeof createBackofficeFragmentHttpTransport>;
   readonly #host: FragmentDurableObjectHost<McpConfig, McpFragment>;
@@ -197,12 +197,12 @@ export class InMemoryMcpObject extends RpcTarget implements McpObject {
   }
 }
 
-export class Mcp extends DurableObject<CloudflareEnv> implements McpObject {
-  readonly #object: InMemoryMcpObject;
+export class Mcp extends DurableObject<CloudflareEnv> implements McpCommands {
+  readonly #object: McpObject;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
-    this.#object = new InMemoryMcpObject(createCloudflareBackofficeObjectContext(state, env));
+    this.#object = new McpObject(createCloudflareBackofficeObjectContext(state, env));
   }
 
   async alarm(): Promise<void> {

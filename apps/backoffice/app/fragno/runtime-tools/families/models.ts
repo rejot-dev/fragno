@@ -1,6 +1,6 @@
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 
-import type { PiManagerObject } from "@/backoffice-runtime/object-registry";
+import type { PiManagerCommands } from "@/backoffice-runtime/object-registry";
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 import type {
   PiClassificationRequest,
@@ -16,8 +16,8 @@ import {
 import { readClassificationImages } from "./models-classification-images";
 
 export type ModelsRuntime = {
-  classify(request: PiClassificationRequest): ReturnType<PiManagerObject["classify"]>;
-  generateImage(request: PiImageGenerationRequest): ReturnType<PiManagerObject["generateImage"]>;
+  classify(request: PiClassificationRequest): ReturnType<PiManagerCommands["classify"]>;
+  generateImage(request: PiImageGenerationRequest): ReturnType<PiManagerCommands["generateImage"]>;
 };
 
 type ModelsToolContext = BackofficeToolContext<{

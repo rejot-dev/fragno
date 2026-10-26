@@ -3,7 +3,10 @@ import { createRouteCaller } from "@fragno-dev/core/api";
 
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import type { BackofficeObjectHandle, TelegramObject } from "@/backoffice-runtime/object-registry";
+import type {
+  BackofficeObjectHandle,
+  TelegramCommands,
+} from "@/backoffice-runtime/object-registry";
 import {
   telegramAutomationFileDownloadPath,
   type TelegramAutomationFileMetadata,
@@ -30,7 +33,7 @@ export function createTelegramRuntime({
   execution,
   kernel,
 }: {
-  object: BackofficeObjectHandle<TelegramObject>;
+  object: BackofficeObjectHandle<TelegramCommands>;
   execution: BackofficeExecutionContext;
   kernel: BackofficeKernel;
 }) {

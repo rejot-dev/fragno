@@ -13,7 +13,7 @@ import {
   backofficeContextScopeFromDurableObjectId,
   requireBackofficeContextScopeFromDurableObjectId,
   backofficeObjectScopeFromContextScope,
-  type ProjectConnectorObject,
+  type ProjectConnectorCommands,
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import {
@@ -48,7 +48,7 @@ type ConfiguredProjectConnectorObject = {
 };
 
 /** Isolates provider bindings by the authoritative user, organization, or project object identity. */
-export class InMemoryProjectConnectorObject extends RpcTarget implements ProjectConnectorObject {
+export class ProjectConnectorObject extends RpcTarget implements ProjectConnectorCommands {
   readonly #configured: ConfiguredProjectConnectorObject | null;
   readonly #forwardHttpRequest: ReturnType<typeof createBackofficeFragmentHttpTransport>;
 
@@ -176,14 +176,12 @@ export class InMemoryProjectConnectorObject extends RpcTarget implements Project
 /** Cloudflare and Node use the same user-owned Connector host and migrations. */
 export class ProjectConnectorDurableObject
   extends DurableObject<CloudflareEnv>
-  implements ProjectConnectorObject
+  implements ProjectConnectorCommands
 {
-  readonly #object: InMemoryProjectConnectorObject;
+  readonly #object: ProjectConnectorObject;
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
-    this.#object = new InMemoryProjectConnectorObject(
-      createCloudflareBackofficeObjectContext(state, env),
-    );
+    this.#object = new ProjectConnectorObject(createCloudflareBackofficeObjectContext(state, env));
   }
   async alarm(): Promise<void> {
     await this.#object.alarm();

@@ -3,7 +3,7 @@ import { marketplaceVersionSchema } from "@fragno-dev/backoffice-api/v0/marketpl
 import type {
   BackofficeObjectHandle,
   BackofficeObjectRegistry,
-  UploadObject,
+  UploadCommands,
 } from "@/backoffice-runtime/object-registry";
 import { createFileTree } from "@/file-collection/create-file-tree";
 import { createUploadFileCollection } from "@/file-collection/create-upload-file-collection";
@@ -110,7 +110,7 @@ function createPublishedMarketplacePackageCollection(input: {
 }
 
 function fetchUploadFile(
-  object: BackofficeObjectHandle<UploadObject>,
+  object: BackofficeObjectHandle<UploadCommands>,
   request: Request,
   provider: string,
   fileKey: string,

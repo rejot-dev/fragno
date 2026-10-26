@@ -1,4 +1,4 @@
-import type { ProjectConnectorObject } from "@/backoffice-runtime/object-registry";
+import type { ProjectConnectorCommands } from "@/backoffice-runtime/object-registry";
 import type { PublicFragmentRoute } from "@/fragno/public-fragment-route.server";
 import {
   PROJECT_CONNECTOR_INTERNAL_PREFIX,
@@ -28,4 +28,4 @@ export const projectConnectorPublicRoute = {
         outcome: { status: "returned" },
       }),
   },
-} satisfies PublicFragmentRoute<ProjectConnectorObject>;
+} satisfies PublicFragmentRoute<ProjectConnectorCommands>;

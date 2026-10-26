@@ -4,7 +4,7 @@ import { createDatabaseStorageAdapter } from "@fragno-dev/upload/storage/db";
 import { createUploadFragment } from "@fragno-dev/upload";
 
 import type { BackofficeFragmentRuntimeOptions } from "@/backoffice-runtime/fragment-runtime";
-import type { FetchObject } from "@/backoffice-runtime/object-registry";
+import type { FetchCommands } from "@/backoffice-runtime/object-registry";
 import { inferFileContentType } from "@/file-collection/file-content-type";
 
 import { UPLOAD_DATABASE_MAX_SINGLE_UPLOAD_BYTES, UPLOAD_PROVIDER_DATABASE } from "./upload";
@@ -55,7 +55,7 @@ export type UploadFragment = ReturnType<typeof createUploadServer>;
 export type UploadRouteCaller = RouteCallerForFragment<UploadFragment>;
 
 export const createUploadRouteCaller = (
-  object: FetchObject,
+  object: FetchCommands,
   request?: Request,
 ): UploadRouteCaller =>
   createRouteCaller<UploadFragment>({

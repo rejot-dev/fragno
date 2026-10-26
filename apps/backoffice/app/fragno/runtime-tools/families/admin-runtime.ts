@@ -1,10 +1,10 @@
 import type { AppActionsDeclaration } from "@fragno-dev/backoffice-api/v0/apps";
 
 import type {
-  AuthObject,
-  AutomationsObject,
-  OtpObject,
-  ResendObject,
+  AuthCommands,
+  AutomationsCommands,
+  OtpCommands,
+  ResendCommands,
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeAppsCommands } from "@/fragno/apps/contracts";
 import { requireBackofficeAppOperationValue } from "@/fragno/apps/errors";
@@ -39,7 +39,7 @@ function assertAppActionContractsEnforceable(actions: AppActionsDeclaration) {
 }
 
 type AdminAuthCommands = Pick<
-  AuthObject,
+  AuthCommands,
   | "getOAuthClientFacts"
   | "createAdminOAuthClient"
   | "listAdminOAuthClients"
@@ -57,16 +57,16 @@ type AdminAuthCommands = Pick<
   | "setOrganizationManager"
 >;
 
-type AdminOtpCommands = Pick<OtpObject, "issueSignUpInvitation">;
+type AdminOtpCommands = Pick<OtpCommands, "issueSignUpInvitation">;
 
-type AdminResendCommands = Pick<ResendObject, "queueEmail">;
+type AdminResendCommands = Pick<ResendCommands, "queueEmail">;
 
 type AdminRuntimeDependencies = {
   auth: AdminAuthCommands;
   apps: BackofficeAppsCommands | null;
   otp: AdminOtpCommands | null;
   resend: AdminResendCommands | null;
-  automationsForOrg: (organizationId: string) => Pick<AutomationsObject, "deleteEventsOfType">;
+  automationsForOrg: (organizationId: string) => Pick<AutomationsCommands, "deleteEventsOfType">;
   publicBaseUrl: string | null;
 };
 

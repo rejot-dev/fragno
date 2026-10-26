@@ -1,4 +1,4 @@
-import type { McpObject } from "@/backoffice-runtime/object-registry";
+import type { McpCommands } from "@/backoffice-runtime/object-registry";
 import type { PublicFragmentRoute } from "@/fragno/public-fragment-route.server";
 import { encodeMcpConnectionId } from "@/fragno/runtime-tools/families/integrations/mcp-integration";
 import {
@@ -29,4 +29,4 @@ export const mcpPublicRoute = {
       });
     },
   },
-} satisfies PublicFragmentRoute<McpObject>;
+} satisfies PublicFragmentRoute<McpCommands>;

@@ -1,7 +1,7 @@
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { RouterContextProvider } from "react-router";
 
-import type { BackofficeObjectHandle, UploadObject } from "@/backoffice-runtime/object-registry";
+import type { BackofficeObjectHandle, UploadCommands } from "@/backoffice-runtime/object-registry";
 import type { FilesExplorerSource } from "@/components/backoffice/files-explorer";
 import { createUploadFileCollection } from "@/file-collection/create-upload-file-collection";
 import type { FileCollection } from "@/file-collection/file-collection";
@@ -96,7 +96,7 @@ export async function createFilesOverviewCollections({
 }
 
 function createWorkspaceFileCollection(
-  uploadObject: BackofficeObjectHandle<UploadObject>,
+  uploadObject: BackofficeObjectHandle<UploadCommands>,
   request: Request,
 ): FileCollection {
   return createUploadFileCollection({
@@ -108,7 +108,7 @@ function createWorkspaceFileCollection(
 }
 
 function fetchUploadFile(
-  uploadObject: BackofficeObjectHandle<UploadObject>,
+  uploadObject: BackofficeObjectHandle<UploadCommands>,
   request: Request,
   provider: string,
   fileKey: string,

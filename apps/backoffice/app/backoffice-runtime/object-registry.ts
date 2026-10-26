@@ -198,11 +198,11 @@ export type BackofficeActionRpcContext = BackofficeRpcContext & {
   execution: BackofficeExecutionContext;
 };
 
-export type FetchObject = {
+export type FetchCommands = {
   fetch(request: Request): Promise<Response>;
 };
 
-export type BackofficeObjectHttp = FetchObject & {
+export type BackofficeObjectHttp = FetchCommands & {
   fetchAuthorized(request: Request, context: BackofficeActionRpcContext): Promise<Response>;
 };
 
@@ -237,7 +237,7 @@ type ScopedObjects<TObject> = {
 /** Live provider evidence that inbound deliveries reach this deployment's webhook URL. */
 export type WebhookRegistrationCheck = { registered: boolean; message: string };
 
-export type AdminConfigurableObject<TConfig = unknown> = {
+export type AdminConfigurableCommands<TConfig = unknown> = {
   getAdminConfig(): Promise<TConfig>;
   resetAdminConfig(): Promise<TConfig>;
   setAdminConfig(...args: unknown[]): Promise<TConfig>;
@@ -318,7 +318,7 @@ export type OrganizationRelations = {
   managedOrganizations: ManagedOrganizationRecord[];
 };
 
-export type AuthObject = DurableHookCommands &
+export type AuthCommands = DurableHookCommands &
   AuthAppProvisioningCommands & {
     enqueueEmailVerificationHook(
       input: { userId: string; email: string },
@@ -485,13 +485,13 @@ export type AuthObject = DurableHookCommands &
  * Starts an object ahead of the pages that use it. Resolves once its constructor's
  * initialization has finished, so a page request after it finds the object ready.
  */
-export type WarmableObject = {
+export type WarmableCommands = {
   warm(): Promise<void>;
 };
 
-export type ApiObject = WarmableObject & DurableHookCommands;
+export type ApiCommands = WarmableCommands & DurableHookCommands;
 
-export type PiManagerObject = WarmableObject & {
+export type PiManagerCommands = WarmableCommands & {
   /** An agent reports each settled turn, so its queue can hand the agent its next item. */
   reportSettledTurn(input: { agentName: string; requestId: string }): Promise<void>;
   /**
@@ -510,7 +510,7 @@ export type PiManagerObject = WarmableObject & {
   generateImage(input: { request: PiImageGenerationRequest }): Promise<{ bytes: Uint8Array }>;
 };
 
-export type BillingObject = {
+export type BillingCommands = {
   recordEvent(
     input: BillingEventInput,
     context?: BackofficeRpcContext,
@@ -524,7 +524,7 @@ export type BillingObject = {
  * calls its guest makes; a workflow activation is one runner tick. Failures of runs other than
  * ticks become `codemode` events in the same scope's Automations object.
  */
-export type CodemodeObject = WarmableObject &
+export type CodemodeCommands = WarmableCommands &
   DurableHookCommands & {
     execute<TActivation extends CodemodeRunActivation>(
       activation: TActivation,
@@ -538,7 +538,7 @@ export type CodemodeObject = WarmableObject &
     listRuns(input: CodemodeRunPageInput): Promise<CodemodeRunPage>;
   };
 
-export type MarketplaceObject = {
+export type MarketplaceCommands = {
   publishRelease(
     input: MarketplacePublishReleaseInput,
     context: BackofficeActionRpcContext,
@@ -602,7 +602,7 @@ export type MarketplaceObject = {
   ): Promise<MarketplaceOperationResult<MarketplaceArchiveResult>>;
 };
 
-export type AutomationsObject = {
+export type AutomationsCommands = {
   /** Captured bytes become immutable workflow input; returns whether this call created the instance. */
   requestMarketplacePackagePublish(
     request: MarketplacePackagePublishRequest,
@@ -689,14 +689,14 @@ export type AutomationsObject = {
   ): Promise<DurableHookQueueEntry | null>;
 };
 
-export type TelegramObject = DurableHookCommands &
-  AdminConfigurableObject<TelegramAdminConfigResponse> & {
+export type TelegramCommands = DurableHookCommands &
+  AdminConfigurableCommands<TelegramAdminConfigResponse> & {
     getAutomationFile(input: { fileId: string }): Promise<TelegramAutomationFileMetadata>;
     /** Throws when Telegram is not configured. */
     checkWebhook(): Promise<WebhookRegistrationCheck>;
   };
 
-export type OtpObject = DurableHookCommands & {
+export type OtpCommands = DurableHookCommands & {
   issueEmailVerification(
     input: Parameters<Otp["issueEmailVerification"]>[0],
   ): Promise<AwaitedMethodReturn<Otp, "issueEmailVerification">>;
@@ -723,8 +723,8 @@ export type OtpObject = DurableHookCommands & {
   ): Promise<AwaitedMethodReturn<Otp, "confirmIdentityClaim">>;
 };
 
-export type ResendObject = DurableHookCommands &
-  AdminConfigurableObject<AwaitedMethodReturn<Resend, "getAdminConfig">> & {
+export type ResendCommands = DurableHookCommands &
+  AdminConfigurableCommands<AwaitedMethodReturn<Resend, "getAdminConfig">> & {
     queueEmail(
       input: ResendSendEmailInput,
       options: { idempotencyKey: string; senderName: string | null },
@@ -732,18 +732,18 @@ export type ResendObject = DurableHookCommands &
     /** Throws when Resend is not configured. */
     checkWebhook(): Promise<WebhookRegistrationCheck>;
   };
-export type McpObject = DurableHookCommands;
+export type McpCommands = DurableHookCommands;
 /** Connector has HTTP operations only; provider tokens stay upstream. */
-export type ProjectConnectorObject = Record<never, never>;
-export type UploadObject = WarmableObject & DurableHookCommands;
-export type CloudflareObject = Record<never, never>;
-export type FormsObject = DurableHookCommands;
-export type GitHubObject = DurableHookCommands & {
+export type ProjectConnectorCommands = Record<never, never>;
+export type UploadCommands = WarmableCommands & DurableHookCommands;
+export type CloudflareCommands = Record<never, never>;
+export type FormsCommands = DurableHookCommands;
+export type GitHubCommands = DurableHookCommands & {
   ensureAdminConfig(orgId: string): Promise<AwaitedMethodReturn<GitHub, "ensureAdminConfig">>;
   redeliverFailedInstallationWebhooks(installationId: string): Promise<void>;
 };
 
-export type SandboxManagerObject = WarmableObject & {
+export type SandboxManagerCommands = WarmableCommands & {
   listSandboxInstances(input?: {
     provider?: SandboxProvider;
     limit?: number;
@@ -762,16 +762,16 @@ export type SandboxManagerObject = WarmableObject & {
  * Remembers who in an organization was recently active in Backoffice, and where. A user without
  * an active organization has a room of their own, which only decides warming.
  */
-export type PresenceObject = {
+export type PresenceCommands = {
   recordActivity(activity: PresenceActivity): Promise<PresenceActivityResult>;
   listActiveMembers(): Promise<PresenceMember[]>;
 };
 
-type SandboxObject = {
+type SandboxCommands = {
   getRuntimeStatus(): Promise<{ status: SandboxInstanceStatus }>;
 };
 
-export type GitHubWebhookRouterObject = {
+export type GitHubWebhookRouterCommands = {
   getAdminConfig(
     orgId: string,
     origin: string,
@@ -1087,35 +1087,38 @@ const scoped = <TCommands>(
 });
 
 export const createBackofficeObjectRegistry = (factory: BackofficeObjectFactory) => ({
-  api: scoped(factory, binding<ApiObject>("API")),
-  auth: scoped(factory, binding<AuthObject>("AUTH")),
+  api: scoped(factory, binding<ApiCommands>("API")),
+  auth: scoped(factory, binding<AuthCommands>("AUTH")),
   apps: scoped(factory, binding<BackofficeAppsCommands>("APPS")),
   appInstallations: scoped(
     factory,
     binding<BackofficeAppInstallationsCommands>("APP_INSTALLATIONS"),
   ),
 
-  automations: scoped(factory, binding<AutomationsObject>("AUTOMATIONS")),
-  piManager: scoped(factory, binding<PiManagerObject>("PI_MANAGER")),
+  automations: scoped(factory, binding<AutomationsCommands>("AUTOMATIONS")),
+  piManager: scoped(factory, binding<PiManagerCommands>("PI_MANAGER")),
   piAgent: (agent: PiAgentAddress) => factory.piAgent(agent),
-  billing: scoped(factory, binding<BillingObject>("BILLING")),
-  codemode: scoped(factory, binding<CodemodeObject>("CODEMODE")),
-  marketplace: scoped(factory, binding<MarketplaceObject>("MARKETPLACE")),
-  telegram: scoped(factory, binding<TelegramObject>("TELEGRAM")),
-  otp: scoped(factory, binding<OtpObject>("OTP")),
-  resend: scoped(factory, binding<ResendObject>("RESEND")),
-  mcp: scoped(factory, binding<McpObject>("MCP")),
-  projectConnector: scoped(factory, binding<ProjectConnectorObject>("PROJECT_CONNECTOR")),
-  upload: scoped(factory, binding<UploadObject>("UPLOAD")),
-  github: scoped(factory, binding<GitHubObject>("GITHUB")),
+  billing: scoped(factory, binding<BillingCommands>("BILLING")),
+  codemode: scoped(factory, binding<CodemodeCommands>("CODEMODE")),
+  marketplace: scoped(factory, binding<MarketplaceCommands>("MARKETPLACE")),
+  telegram: scoped(factory, binding<TelegramCommands>("TELEGRAM")),
+  otp: scoped(factory, binding<OtpCommands>("OTP")),
+  resend: scoped(factory, binding<ResendCommands>("RESEND")),
+  mcp: scoped(factory, binding<McpCommands>("MCP")),
+  projectConnector: scoped(factory, binding<ProjectConnectorCommands>("PROJECT_CONNECTOR")),
+  upload: scoped(factory, binding<UploadCommands>("UPLOAD")),
+  github: scoped(factory, binding<GitHubCommands>("GITHUB")),
 
-  githubWebhookRouter: scoped(factory, binding<GitHubWebhookRouterObject>("GITHUB_WEBHOOK_ROUTER")),
-  cloudflare: scoped(factory, binding<CloudflareObject>("CLOUDFLARE")),
-  forms: scoped(factory, binding<FormsObject>("FORMS")),
-  presence: scoped(factory, binding<PresenceObject>("PRESENCE")),
+  githubWebhookRouter: scoped(
+    factory,
+    binding<GitHubWebhookRouterCommands>("GITHUB_WEBHOOK_ROUTER"),
+  ),
+  cloudflare: scoped(factory, binding<CloudflareCommands>("CLOUDFLARE")),
+  forms: scoped(factory, binding<FormsCommands>("FORMS")),
+  presence: scoped(factory, binding<PresenceCommands>("PRESENCE")),
 
-  sandbox: scoped(factory, binding<SandboxObject>("SANDBOX")),
-  sandboxManager: scoped(factory, binding<SandboxManagerObject>("SANDBOX_MANAGER")),
+  sandbox: scoped(factory, binding<SandboxCommands>("SANDBOX")),
+  sandboxManager: scoped(factory, binding<SandboxManagerCommands>("SANDBOX_MANAGER")),
 });
 
 export type BackofficeObjectRegistry = ReturnType<typeof createBackofficeObjectRegistry>;

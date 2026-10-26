@@ -54,18 +54,18 @@ import {
   getStaticMarketplaceEntry,
 } from "@/fragno/marketplace/static-entries";
 
-import { InMemoryApiObject } from "../../../workers/api.do";
-import { InMemoryAppInstallationsObject } from "../../../workers/app-installations.do";
-import { InMemoryAppsObject } from "../../../workers/apps.do";
-import { InMemoryAuthObject } from "../../../workers/auth.do";
-import { InMemoryAutomationsObject } from "../../../workers/automations.do";
-import { InMemoryBillingObject } from "../../../workers/billing.do";
-import { InMemoryCodemodeObject } from "../../../workers/codemode.do";
-import { InMemoryFormsObject } from "../../../workers/forms.do";
-import { InMemoryMarketplaceObject } from "../../../workers/marketplace.do";
-import { InMemoryMcpObject } from "../../../workers/mcp.do";
-import { InMemoryTelegramObject } from "../../../workers/telegram.do";
-import { InMemoryUploadObject } from "../../../workers/upload.do";
+import { ApiObject } from "../../../workers/api.do";
+import { AppInstallationsObject } from "../../../workers/app-installations.do";
+import { AppsObject } from "../../../workers/apps.do";
+import { AuthObject } from "../../../workers/auth.do";
+import { AutomationsObject } from "../../../workers/automations.do";
+import { BillingObject } from "../../../workers/billing.do";
+import { CodemodeObject } from "../../../workers/codemode.do";
+import { FormsObject } from "../../../workers/forms.do";
+import { MarketplaceObject } from "../../../workers/marketplace.do";
+import { McpObject } from "../../../workers/mcp.do";
+import { TelegramObject } from "../../../workers/telegram.do";
+import { UploadObject } from "../../../workers/upload.do";
 import {
   buildMarketplacePackageInstallWorkflowInstanceId,
   MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
@@ -79,18 +79,18 @@ import {
 } from "./scenario";
 
 const scenarioObjects = {
-  API: (input) => new InMemoryApiObject(input),
-  APPS: (input) => new InMemoryAppsObject(input),
-  APP_INSTALLATIONS: (input) => new InMemoryAppInstallationsObject(input),
-  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
-  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
-  BILLING: (input) => new InMemoryBillingObject(input),
-  CODEMODE: (input) => new InMemoryCodemodeObject(input),
-  FORMS: (input) => new InMemoryFormsObject(input),
-  MARKETPLACE: (input) => new InMemoryMarketplaceObject(input),
-  MCP: (input) => new InMemoryMcpObject(input),
-  TELEGRAM: (input) => new InMemoryTelegramObject(input),
-  UPLOAD: (input) => new InMemoryUploadObject(input),
+  API: (input) => new ApiObject(input),
+  APPS: (input) => new AppsObject(input),
+  APP_INSTALLATIONS: (input) => new AppInstallationsObject(input),
+  AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new AutomationsObject(input),
+  BILLING: (input) => new BillingObject(input),
+  CODEMODE: (input) => new CodemodeObject(input),
+  FORMS: (input) => new FormsObject(input),
+  MARKETPLACE: (input) => new MarketplaceObject(input),
+  MCP: (input) => new McpObject(input),
+  TELEGRAM: (input) => new TelegramObject(input),
+  UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
 
 const MARKETPLACE_LISTING_ID = marketplaceListingId({
@@ -1574,7 +1574,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           ...scenarioObjects,
           UPLOAD: ({ name, state, env, implementation }) => {
             const destinationObject = name.endsWith("v1:org:org-1");
-            return new (class extends InMemoryUploadObject {
+            return new (class extends UploadObject {
               async fetch(request: Request): Promise<Response> {
                 const url = new URL(request.url);
                 if (
@@ -1683,7 +1683,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             ...scenarioObjects,
             UPLOAD: ({ name, state, env, implementation }) => {
               const destinationObject = name.endsWith("v1:org:org-1");
-              return new (class extends InMemoryUploadObject {
+              return new (class extends UploadObject {
                 async fetch(request: Request): Promise<Response> {
                   const url = new URL(request.url);
                   if (
@@ -1834,7 +1834,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           ...scenarioObjects,
           UPLOAD: ({ name, state, env, implementation }) => {
             const destinationObject = name.endsWith("v1:org:org-1");
-            return new (class extends InMemoryUploadObject {
+            return new (class extends UploadObject {
               async fetch(request: Request): Promise<Response> {
                 const url = new URL(request.url);
                 if (
@@ -2122,7 +2122,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           objects: {
             ...scenarioObjects,
             MARKETPLACE: ({ state, env, runtime, implementation }) =>
-              new (class extends InMemoryMarketplaceObject {
+              new (class extends MarketplaceObject {
                 async beginPackagePublish(
                   input: MarketplacePackagePublishRequest,
                   context: BackofficeActionRpcContext,
@@ -2194,7 +2194,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           ...scenarioObjects,
           UPLOAD: ({ name, state, env, implementation }) => {
             const packageUploadObject = name.endsWith(MARKETPLACE_PACKAGE_UPLOAD_OBJECT_NAME);
-            return new (class extends InMemoryUploadObject {
+            return new (class extends UploadObject {
               async fetch(request: Request): Promise<Response> {
                 const url = new URL(request.url);
                 if (
@@ -2275,7 +2275,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           ...scenarioObjects,
           UPLOAD: ({ name, state, env, implementation }) => {
             const packageUploadObject = name.endsWith(MARKETPLACE_PACKAGE_UPLOAD_OBJECT_NAME);
-            return new (class extends InMemoryUploadObject {
+            return new (class extends UploadObject {
               async fetch(request: Request): Promise<Response> {
                 const url = new URL(request.url);
                 if (
@@ -2358,7 +2358,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           ...scenarioObjects,
           UPLOAD: ({ name, state, env, implementation }) => {
             const packageUploadObject = name.endsWith(MARKETPLACE_PACKAGE_UPLOAD_OBJECT_NAME);
-            return new (class extends InMemoryUploadObject {
+            return new (class extends UploadObject {
               async fetch(request: Request): Promise<Response> {
                 const url = new URL(request.url);
                 if (
@@ -2410,7 +2410,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           ...scenarioObjects,
           UPLOAD: ({ name, state, env, implementation }) => {
             const packageUploadObject = name.endsWith(MARKETPLACE_PACKAGE_UPLOAD_OBJECT_NAME);
-            return new (class extends InMemoryUploadObject {
+            return new (class extends UploadObject {
               async fetch(request: Request): Promise<Response> {
                 const url = new URL(request.url);
                 if (
@@ -2473,7 +2473,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           ...scenarioObjects,
           UPLOAD: ({ name, state, env, implementation }) => {
             const packageUploadObject = name.endsWith(MARKETPLACE_PACKAGE_UPLOAD_OBJECT_NAME);
-            return new (class extends InMemoryUploadObject {
+            return new (class extends UploadObject {
               async fetch(request: Request): Promise<Response> {
                 const url = new URL(request.url);
                 if (
@@ -2554,7 +2554,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           ...scenarioObjects,
           UPLOAD: ({ name, state, env, implementation }) => {
             const packageUploadObject = name.endsWith(MARKETPLACE_PACKAGE_UPLOAD_OBJECT_NAME);
-            return new (class extends InMemoryUploadObject {
+            return new (class extends UploadObject {
               async fetch(request: Request): Promise<Response> {
                 const url = new URL(request.url);
                 if (
@@ -2637,7 +2637,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           ...scenarioObjects,
           UPLOAD: ({ name, state, env, implementation }) => {
             const destinationObject = name.endsWith("v1:org:org-1");
-            return new (class extends InMemoryUploadObject {
+            return new (class extends UploadObject {
               async fetch(request: Request): Promise<Response> {
                 const url = new URL(request.url);
                 if (
@@ -2744,7 +2744,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           ...scenarioObjects,
           UPLOAD: ({ name, state, env, runtime, implementation }) => {
             const destinationObject = name.endsWith("v1:org:org-1");
-            return new (class extends InMemoryUploadObject {
+            return new (class extends UploadObject {
               async fetch(request: Request): Promise<Response> {
                 const url = new URL(request.url);
                 if (
@@ -2847,7 +2847,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           ...scenarioObjects,
           UPLOAD: ({ name, state, env, runtime, implementation }) => {
             const destinationObject = name.endsWith("v1:org:org-1");
-            return new (class extends InMemoryUploadObject {
+            return new (class extends UploadObject {
               async fetch(request: Request): Promise<Response> {
                 const url = new URL(request.url);
                 if (

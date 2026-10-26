@@ -48,33 +48,33 @@ import {
   loadPublishedMarketplacePackageExplorer,
 } from "@/routes/backoffice/marketplace/package-files.server";
 
-import { InMemoryApiObject } from "../../../../workers/api.do";
-import { InMemoryAppInstallationsObject } from "../../../../workers/app-installations.do";
-import { InMemoryAppsObject } from "../../../../workers/apps.do";
-import { InMemoryAuthObject } from "../../../../workers/auth.do";
-import { InMemoryAutomationsObject } from "../../../../workers/automations.do";
-import { InMemoryBillingObject } from "../../../../workers/billing.do";
-import { InMemoryCodemodeObject } from "../../../../workers/codemode.do";
-import { InMemoryFormsObject } from "../../../../workers/forms.do";
-import { InMemoryMarketplaceObject } from "../../../../workers/marketplace.do";
-import { InMemoryMcpObject } from "../../../../workers/mcp.do";
-import { InMemoryTelegramObject } from "../../../../workers/telegram.do";
-import { InMemoryUploadObject } from "../../../../workers/upload.do";
+import { ApiObject } from "../../../../workers/api.do";
+import { AppInstallationsObject } from "../../../../workers/app-installations.do";
+import { AppsObject } from "../../../../workers/apps.do";
+import { AuthObject } from "../../../../workers/auth.do";
+import { AutomationsObject } from "../../../../workers/automations.do";
+import { BillingObject } from "../../../../workers/billing.do";
+import { CodemodeObject } from "../../../../workers/codemode.do";
+import { FormsObject } from "../../../../workers/forms.do";
+import { MarketplaceObject } from "../../../../workers/marketplace.do";
+import { McpObject } from "../../../../workers/mcp.do";
+import { TelegramObject } from "../../../../workers/telegram.do";
+import { UploadObject } from "../../../../workers/upload.do";
 import { createMarketplaceRuntime } from "./marketplace-runtime";
 
 const scenarioObjects = {
-  API: (input) => new InMemoryApiObject(input),
-  APPS: (input) => new InMemoryAppsObject(input),
-  APP_INSTALLATIONS: (input) => new InMemoryAppInstallationsObject(input),
-  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
-  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
-  BILLING: (input) => new InMemoryBillingObject(input),
-  CODEMODE: (input) => new InMemoryCodemodeObject(input),
-  FORMS: (input) => new InMemoryFormsObject(input),
-  MARKETPLACE: (input) => new InMemoryMarketplaceObject(input),
-  MCP: (input) => new InMemoryMcpObject(input),
-  TELEGRAM: (input) => new InMemoryTelegramObject(input),
-  UPLOAD: (input) => new InMemoryUploadObject(input),
+  API: (input) => new ApiObject(input),
+  APPS: (input) => new AppsObject(input),
+  APP_INSTALLATIONS: (input) => new AppInstallationsObject(input),
+  AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new AutomationsObject(input),
+  BILLING: (input) => new BillingObject(input),
+  CODEMODE: (input) => new CodemodeObject(input),
+  FORMS: (input) => new FormsObject(input),
+  MARKETPLACE: (input) => new MarketplaceObject(input),
+  MCP: (input) => new McpObject(input),
+  TELEGRAM: (input) => new TelegramObject(input),
+  UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
 
 const ORG_SCOPE = { kind: "org", orgId: "org-1" } as const;
@@ -1069,9 +1069,9 @@ describe("Marketplace package publication scenarios", () => {
         objects: {
           ...scenarioObjects,
           MARKETPLACE: ({ state, env, runtime, implementation }) =>
-            new (class extends InMemoryMarketplaceObject {
+            new (class extends MarketplaceObject {
               override async completePackagePublish(
-                ...args: Parameters<InMemoryMarketplaceObject["completePackagePublish"]>
+                ...args: Parameters<MarketplaceObject["completePackagePublish"]>
               ) {
                 const result = await super.completePackagePublish(...args);
                 if (loseResponse) {
@@ -1244,7 +1244,7 @@ describe("Marketplace package publication scenarios", () => {
           objects: {
             ...scenarioObjects,
             UPLOAD: ({ state, env, implementation }) =>
-              new (class extends InMemoryUploadObject {
+              new (class extends UploadObject {
                 override async fetch(request: Request): Promise<Response> {
                   const response = await super.fetch(request);
                   const url = new URL(request.url);
@@ -1285,7 +1285,7 @@ describe("Marketplace package publication scenarios", () => {
                 }
               })({
                 state,
-                env: env as unknown as ConstructorParameters<typeof InMemoryUploadObject>[0]["env"],
+                env: env as unknown as ConstructorParameters<typeof UploadObject>[0]["env"],
                 implementation,
               }),
           },
@@ -1334,7 +1334,7 @@ describe("Marketplace package publication scenarios", () => {
         objects: {
           ...scenarioObjects,
           UPLOAD: ({ state, env, implementation }) =>
-            new (class extends InMemoryUploadObject {
+            new (class extends UploadObject {
               override async fetch(request: Request): Promise<Response> {
                 const path = new URL(request.url).pathname;
                 const stage =
@@ -1358,7 +1358,7 @@ describe("Marketplace package publication scenarios", () => {
               }
             })({
               state,
-              env: env as unknown as ConstructorParameters<typeof InMemoryUploadObject>[0]["env"],
+              env: env as unknown as ConstructorParameters<typeof UploadObject>[0]["env"],
               implementation,
             }),
         },
@@ -1618,7 +1618,7 @@ describe("Marketplace package publication scenarios", () => {
         objects: {
           ...scenarioObjects,
           UPLOAD: ({ state, env, implementation }) =>
-            new (class extends InMemoryUploadObject {
+            new (class extends UploadObject {
               override async fetch(request: Request): Promise<Response> {
                 const response = await super.fetch(request);
                 if (
@@ -1633,7 +1633,7 @@ describe("Marketplace package publication scenarios", () => {
               }
             })({
               state,
-              env: env as unknown as ConstructorParameters<typeof InMemoryUploadObject>[0]["env"],
+              env: env as unknown as ConstructorParameters<typeof UploadObject>[0]["env"],
               implementation,
             }),
         },
@@ -1774,9 +1774,9 @@ describe("Marketplace package publication scenarios", () => {
           objects: {
             ...scenarioObjects,
             AUTH: ({ state, env, runtime, getAuthDatabase }) =>
-              new (class extends InMemoryAuthObject {
+              new (class extends AuthObject {
                 override async getUserAuthorityFacts(
-                  input: Parameters<InMemoryAuthObject["getUserAuthorityFacts"]>[0],
+                  input: Parameters<AuthObject["getUserAuthorityFacts"]>[0],
                 ) {
                   if (publicationAccepted && ++authorityLookups === lookup) {
                     throw new Error("Temporary Auth authority lookup failure.");

@@ -71,7 +71,7 @@ import { createCloudflareBackofficeObjectContext } from "./lib/cloudflare-backof
 const REGISTERED_APP_REUSE_MS = 60_000;
 
 /** Owner-scoped behavior shared by Cloudflare and file-backed SQLite. */
-export class InMemoryAppInstallationsObject
+export class AppInstallationsObject
   extends RpcTarget
   implements BackofficeAppInstallationsCommands
 {
@@ -433,13 +433,11 @@ export class AppInstallations
   extends DurableObject<CloudflareEnv>
   implements BackofficeAppInstallationsCommands
 {
-  readonly #object: InMemoryAppInstallationsObject;
+  readonly #object: AppInstallationsObject;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
-    this.#object = new InMemoryAppInstallationsObject(
-      createCloudflareBackofficeObjectContext(state, env),
-    );
+    this.#object = new AppInstallationsObject(createCloudflareBackofficeObjectContext(state, env));
   }
 
   installApp(

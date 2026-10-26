@@ -2,7 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 
 import { unavailableBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
 import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-runtime/kernel";
-import type { OtpObject } from "@/backoffice-runtime/object-registry";
+import type { OtpCommands } from "@/backoffice-runtime/object-registry";
 
 import { createOtpRuntime } from "./otp-runtime";
 
@@ -38,7 +38,7 @@ describe("createOtpRuntime", () => {
       type: "identity",
     }));
     const runtime = createOtpRuntime({
-      object: { issueIdentityClaim } as unknown as OtpObject,
+      object: { issueIdentityClaim } as unknown as OtpCommands,
       config: {
         docsPublicBaseUrl: "https://backoffice.example",
         authEmailVerification: { enabled: false },
@@ -79,7 +79,7 @@ describe("createOtpRuntime", () => {
   test("rejects claims without a trusted external initiator", async () => {
     const issueIdentityClaim = vi.fn();
     const runtime = createOtpRuntime({
-      object: { issueIdentityClaim } as unknown as OtpObject,
+      object: { issueIdentityClaim } as unknown as OtpCommands,
       config: {
         docsPublicBaseUrl: "https://backoffice.example",
         authEmailVerification: { enabled: false },

@@ -17,7 +17,7 @@ import {
 import { isBackofficeUnavailableError, type BackofficeKernel } from "@/backoffice-runtime/kernel";
 import {
   isBackofficeObjectAvailableInContext,
-  type CodemodeObject,
+  type CodemodeCommands,
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { createStaticFileCollection } from "@/file-collection/create-static-file-collection";
@@ -153,7 +153,7 @@ function coversCodemodeRun(reader: BackofficeExecutionContext, run: CodemodeRunC
 
 function createCodemodeRunHistory(
   reader: BackofficeExecutionContext,
-  codemode: () => CodemodeObject,
+  codemode: () => CodemodeCommands,
 ): JavaScriptRunHistory {
   function summarizeRun(run: CodemodeRun) {
     return {

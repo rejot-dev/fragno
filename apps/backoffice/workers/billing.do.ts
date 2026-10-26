@@ -5,7 +5,7 @@ import { DurableObject, RpcTarget } from "cloudflare:workers";
 import {
   requireBackofficeContextScopeFromDurableObjectId,
   type BackofficeRpcContext,
-  type BillingObject,
+  type BillingCommands,
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type {
@@ -25,7 +25,7 @@ import { createCloudflareBackofficeObjectContext } from "./lib/cloudflare-backof
 
 type BillingOwnerScope = Extract<BackofficeContextScope, { kind: "org" | "user" }>;
 
-export class InMemoryBillingObject extends RpcTarget implements BillingObject {
+export class BillingObject extends RpcTarget implements BillingCommands {
   readonly #host: FragmentDurableObjectHost<void, BillingFragment>;
   readonly #ownerScope: BillingOwnerScope;
   #fragment: BillingFragment | null = null;
@@ -100,12 +100,12 @@ export class InMemoryBillingObject extends RpcTarget implements BillingObject {
   }
 }
 
-export class Billing extends DurableObject<CloudflareEnv> implements BillingObject {
-  readonly #object: InMemoryBillingObject;
+export class Billing extends DurableObject<CloudflareEnv> implements BillingCommands {
+  readonly #object: BillingObject;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
-    this.#object = new InMemoryBillingObject(createCloudflareBackofficeObjectContext(state, env));
+    this.#object = new BillingObject(createCloudflareBackofficeObjectContext(state, env));
   }
 
   async recordEvent(

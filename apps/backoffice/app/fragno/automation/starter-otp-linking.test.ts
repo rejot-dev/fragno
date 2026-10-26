@@ -25,37 +25,37 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 
-import { InMemoryApiObject } from "../../../workers/api.do";
-import { InMemoryAppInstallationsObject } from "../../../workers/app-installations.do";
-import { InMemoryAppsObject } from "../../../workers/apps.do";
-import { InMemoryAuthObject } from "../../../workers/auth.do";
-import { InMemoryAutomationsObject } from "../../../workers/automations.do";
-import { InMemoryBillingObject } from "../../../workers/billing.do";
-import { InMemoryCodemodeObject } from "../../../workers/codemode.do";
-import { InMemoryFormsObject } from "../../../workers/forms.do";
-import { InMemoryGitHubObject } from "../../../workers/github.do";
-import { InMemoryMarketplaceObject } from "../../../workers/marketplace.do";
-import { InMemoryMcpObject } from "../../../workers/mcp.do";
-import { InMemoryOtpObject } from "../../../workers/otp.do";
-import { InMemoryResendObject } from "../../../workers/resend.do";
-import { InMemoryUploadObject } from "../../../workers/upload.do";
+import { ApiObject } from "../../../workers/api.do";
+import { AppInstallationsObject } from "../../../workers/app-installations.do";
+import { AppsObject } from "../../../workers/apps.do";
+import { AuthObject } from "../../../workers/auth.do";
+import { AutomationsObject } from "../../../workers/automations.do";
+import { BillingObject } from "../../../workers/billing.do";
+import { CodemodeObject } from "../../../workers/codemode.do";
+import { FormsObject } from "../../../workers/forms.do";
+import { GitHubObject } from "../../../workers/github.do";
+import { MarketplaceObject } from "../../../workers/marketplace.do";
+import { McpObject } from "../../../workers/mcp.do";
+import { OtpObject } from "../../../workers/otp.do";
+import { ResendObject } from "../../../workers/resend.do";
+import { UploadObject } from "../../../workers/upload.do";
 import { defineBackofficeScenario, runBackofficeScenario } from "./scenario";
 
 const scenarioObjects = {
-  API: (input) => new InMemoryApiObject(input),
-  APPS: (input) => new InMemoryAppsObject(input),
-  APP_INSTALLATIONS: (input) => new InMemoryAppInstallationsObject(input),
-  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
-  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
-  BILLING: (input) => new InMemoryBillingObject(input),
-  CODEMODE: (input) => new InMemoryCodemodeObject(input),
-  FORMS: (input) => new InMemoryFormsObject(input),
-  GITHUB: (input) => new InMemoryGitHubObject(input),
-  MARKETPLACE: (input) => new InMemoryMarketplaceObject(input),
-  MCP: (input) => new InMemoryMcpObject(input),
-  OTP: (input) => new InMemoryOtpObject(input),
-  RESEND: (input) => new InMemoryResendObject(input),
-  UPLOAD: (input) => new InMemoryUploadObject(input),
+  API: (input) => new ApiObject(input),
+  APPS: (input) => new AppsObject(input),
+  APP_INSTALLATIONS: (input) => new AppInstallationsObject(input),
+  AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new AutomationsObject(input),
+  BILLING: (input) => new BillingObject(input),
+  CODEMODE: (input) => new CodemodeObject(input),
+  FORMS: (input) => new FormsObject(input),
+  GITHUB: (input) => new GitHubObject(input),
+  MARKETPLACE: (input) => new MarketplaceObject(input),
+  MCP: (input) => new McpObject(input),
+  OTP: (input) => new OtpObject(input),
+  RESEND: (input) => new ResendObject(input),
+  UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
 
 // A chosen folder outside `/workspace/automations`, as the Marketplace install form allows.

@@ -25,10 +25,10 @@ import {
 import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
 import { createUploadRouteCaller } from "@/fragno/upload-server";
 
-import { InMemoryAuthObject } from "../../../workers/auth.do";
-import { InMemoryAutomationsObject } from "../../../workers/automations.do";
-import { InMemoryMarketplaceObject } from "../../../workers/marketplace.do";
-import { InMemoryUploadObject } from "../../../workers/upload.do";
+import { AuthObject } from "../../../workers/auth.do";
+import { AutomationsObject } from "../../../workers/automations.do";
+import { MarketplaceObject } from "../../../workers/marketplace.do";
+import { UploadObject } from "../../../workers/upload.do";
 import {
   captureBundledMarketplaceRelease,
   initializeMarketplaceListingRootFiles,
@@ -42,10 +42,10 @@ import {
 import { MARKETPLACE_RELEASE_GUARD_PATH, marketplaceReleasePackageFiles } from "./release-snapshot";
 
 const scenarioObjects = {
-  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
-  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
-  MARKETPLACE: (input) => new InMemoryMarketplaceObject(input),
-  UPLOAD: (input) => new InMemoryUploadObject(input),
+  AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new AutomationsObject(input),
+  MARKETPLACE: (input) => new MarketplaceObject(input),
+  UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
 
 const LISTING_ID = "system#unified-release-probe";
@@ -116,7 +116,7 @@ test("a maximum-size release captures destination revisions in one batch without
       objects: {
         ...scenarioObjects,
         UPLOAD: ({ state, env, implementation }) =>
-          new (class extends InMemoryUploadObject {
+          new (class extends UploadObject {
             override async fetch(request: Request): Promise<Response> {
               const url = new URL(request.url);
               if (request.method === "POST" && url.pathname.endsWith("/uploads")) {
@@ -132,7 +132,7 @@ test("a maximum-size release captures destination revisions in one batch without
             }
           })({
             state,
-            env: env as unknown as ConstructorParameters<typeof InMemoryUploadObject>[0]["env"],
+            env: env as unknown as ConstructorParameters<typeof UploadObject>[0]["env"],
             implementation,
           }),
       },
@@ -232,7 +232,7 @@ test("reused files are revision-asserted atomically with the metadata guard", as
       objects: {
         ...scenarioObjects,
         UPLOAD: ({ state, env, implementation }) =>
-          new (class extends InMemoryUploadObject {
+          new (class extends UploadObject {
             override async fetch(request: Request): Promise<Response> {
               const response = await super.fetch(request);
               if (
@@ -260,7 +260,7 @@ test("reused files are revision-asserted atomically with the metadata guard", as
             }
           })({
             state,
-            env: env as unknown as ConstructorParameters<typeof InMemoryUploadObject>[0]["env"],
+            env: env as unknown as ConstructorParameters<typeof UploadObject>[0]["env"],
             implementation,
           }),
       },

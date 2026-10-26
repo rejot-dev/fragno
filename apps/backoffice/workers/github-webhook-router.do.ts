@@ -305,7 +305,7 @@ const toStateTokenPreview = (value: string) => {
   return `${value.slice(0, 8)}…`;
 };
 
-export class InMemoryGitHubWebhookRouterObject {
+export class GitHubWebhookRouterObject {
   readonly #env: Parameters<typeof resolveGitHubConfig>[0];
   readonly #state: GitHubWebhookRouterObjectState;
   readonly #runtime: BackofficeRuntimeServices;
@@ -897,11 +897,11 @@ export class InMemoryGitHubWebhookRouterObject {
 }
 
 export class GitHubWebhookRouter extends DurableObject<CloudflareEnv> {
-  readonly #object: InMemoryGitHubWebhookRouterObject;
+  readonly #object: GitHubWebhookRouterObject;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
-    this.#object = new InMemoryGitHubWebhookRouterObject({
+    this.#object = new GitHubWebhookRouterObject({
       state,
       env,
       runtime: createCloudflareDurableObjectRuntimeServices(env, state),

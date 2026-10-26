@@ -41,7 +41,7 @@ import {
   backofficeContextScopeFromDurableObjectId,
   backofficeObjectScopeFromContextScope,
   type AutomationsDurableHookFragment,
-  type AutomationsObject,
+  type AutomationsCommands,
   type BackofficeActionRpcContext,
   type BackofficeRpcContext,
 } from "@/backoffice-runtime/object-registry";
@@ -233,7 +233,7 @@ const describeExistingMarketplaceWorkflow = (input: {
   throw new Error("Unsupported marketplace workflow status.");
 };
 
-export class InMemoryAutomationsObject extends RpcTarget implements AutomationsObject {
+export class AutomationsObject extends RpcTarget implements AutomationsCommands {
   readonly #env: AutomationFragmentConfig["env"] | undefined;
   readonly #state: BackofficeObjectState;
   readonly #runtimeServices: BackofficeRuntimeServices;
@@ -1153,14 +1153,12 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
   }
 }
 
-export class Automations extends DurableObject<CloudflareEnv> implements AutomationsObject {
-  readonly #object: InMemoryAutomationsObject;
+export class Automations extends DurableObject<CloudflareEnv> implements AutomationsCommands {
+  readonly #object: AutomationsObject;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
-    this.#object = new InMemoryAutomationsObject(
-      createCloudflareBackofficeObjectContext(state, env),
-    );
+    this.#object = new AutomationsObject(createCloudflareBackofficeObjectContext(state, env));
   }
 
   async alarm() {

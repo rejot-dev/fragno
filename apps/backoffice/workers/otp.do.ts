@@ -18,7 +18,7 @@ import {
 import { BackofficeKernel, BackofficeForbiddenError } from "@/backoffice-runtime/kernel";
 import {
   requireBackofficeContextScopeFromDurableObjectId,
-  type OtpObject,
+  type OtpCommands,
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { canLinkExternalIdentity } from "@/fragno/automation/external-identities";
@@ -313,7 +313,7 @@ export async function handleIdentityClaimConfirmed(
   );
 }
 
-export class InMemoryOtpObject implements OtpObject {
+export class OtpObject implements OtpCommands {
   readonly #runtime: BackofficeRuntimeServices;
   readonly #ownerScope: BackofficeContextScope;
   readonly #host: FragmentDurableObjectHost<void, OtpFragment>;
@@ -695,12 +695,12 @@ export class InMemoryOtpObject implements OtpObject {
   }
 }
 
-export class Otp extends DurableObject<CloudflareEnv> implements OtpObject {
-  readonly #object: InMemoryOtpObject;
+export class Otp extends DurableObject<CloudflareEnv> implements OtpCommands {
+  readonly #object: OtpObject;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
-    this.#object = new InMemoryOtpObject(createCloudflareBackofficeObjectContext(state, env));
+    this.#object = new OtpObject(createCloudflareBackofficeObjectContext(state, env));
   }
 
   async issueEmailVerification(

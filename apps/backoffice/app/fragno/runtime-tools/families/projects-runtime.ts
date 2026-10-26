@@ -7,7 +7,7 @@ import type { DirectoryPageInput } from "@fragno-dev/backoffice-api/v0/shared/pa
 
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type {
-  AutomationsObject,
+  AutomationsCommands,
   BackofficeObjectHandle,
 } from "@/backoffice-runtime/object-registry";
 import { createAutomationsRouteCaller } from "@/fragno/automation/route-callers";
@@ -24,7 +24,7 @@ export function createProjectsRuntime({
   execution,
   userId,
 }: {
-  object: BackofficeObjectHandle<AutomationsObject>;
+  object: BackofficeObjectHandle<AutomationsCommands>;
   execution: BackofficeExecutionContext;
   userId: string;
 }): ProjectsRuntime {

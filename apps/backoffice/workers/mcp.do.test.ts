@@ -18,10 +18,10 @@ import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 
-import { InMemoryMcpObject } from "./mcp.do";
+import { McpObject } from "./mcp.do";
 
 const localObjects = {
-  MCP: (input) => new InMemoryMcpObject(input),
+  MCP: (input) => new McpObject(input),
 } satisfies LocalBackofficeObjects;
 
 const runtimes: Array<Awaited<ReturnType<typeof createInMemoryBackofficeRuntime>>> = [];

@@ -4,25 +4,25 @@ import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-ser
 import type { BackofficeMeData } from "@/fragno/auth/contracts";
 import { piAgentObjectName, type PiAgent } from "@/fragno/pi/agent/pi-agent-contract";
 
-import { Auth, InMemoryAuthObject } from "./auth.do";
+import { Auth, AuthObject } from "./auth.do";
 import { Automations } from "./automations.do";
 import { Billing } from "./billing.do";
 import { Codemode } from "./codemode.do";
 import { createCloudflareBackofficeObjectContext } from "./lib/cloudflare-backoffice-object-implementation";
 import { Mcp } from "./mcp.do";
 import { PiScenarioAgent } from "./pi-durable-scenario.test-support";
-import { InMemoryPiManagerObject } from "./pi-manager.do";
+import { PiManagerObject } from "./pi-manager.do";
 import { Upload } from "./upload.do";
 
 export { PiScenarioAgent, Auth, Automations, Billing, Codemode, Mcp, Upload };
 
 /** Cloudflare test manager exposes the faux catalog used by PiScenarioAgent. */
 export class PiScenarioManager extends DurableObject<CloudflareEnv> {
-  readonly #object: InMemoryPiManagerObject;
+  readonly #object: PiManagerObject;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
-    this.#object = new InMemoryPiManagerObject({
+    this.#object = new PiManagerObject({
       ...createCloudflareBackofficeObjectContext(state, env),
       agent: (config): PiAgent =>
         env.PI.get(env.PI.idFromName(piAgentObjectName(config))) as unknown as PiAgent,
@@ -50,8 +50,8 @@ export class PiScenarioManager extends DurableObject<CloudflareEnv> {
   }
 
   async authorizeViewer(
-    input: Parameters<InMemoryPiManagerObject["authorizeViewer"]>[0],
-  ): ReturnType<InMemoryPiManagerObject["authorizeViewer"]> {
+    input: Parameters<PiManagerObject["authorizeViewer"]>[0],
+  ): ReturnType<PiManagerObject["authorizeViewer"]> {
     return await this.#object.authorizeViewer(input);
   }
 
@@ -75,7 +75,7 @@ export class WorkflowsHarnessDurableObject extends DurableObject {
 }
 
 export class AuthSqlHarnessDurableObject extends DurableObject<CloudflareEnv> {
-  readonly #auth: InMemoryAuthObject;
+  readonly #auth: AuthObject;
   readonly #runtime: BackofficeRuntimeServices;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
@@ -116,7 +116,7 @@ export class AuthSqlHarnessDurableObject extends DurableObject<CloudflareEnv> {
       },
     } as unknown as BackofficeRuntimeServices;
     this.#runtime = runtime;
-    this.#auth = new InMemoryAuthObject({ state, env, runtime });
+    this.#auth = new AuthObject({ state, env, runtime });
   }
 
   fetch(request: Request) {
@@ -135,7 +135,7 @@ export class AuthSqlHarnessDurableObject extends DurableObject<CloudflareEnv> {
   }
 
   async reinitializeAuth(): Promise<Array<{ id: string }>> {
-    const auth = new InMemoryAuthObject({
+    const auth = new AuthObject({
       state: this.ctx,
       env: this.env,
       runtime: this.#runtime,

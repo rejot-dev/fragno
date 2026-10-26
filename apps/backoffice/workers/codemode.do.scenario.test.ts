@@ -43,30 +43,30 @@ import {
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
-import { InMemoryApiObject } from "./api.do";
-import { InMemoryAuthObject } from "./auth.do";
-import { InMemoryAutomationsObject } from "./automations.do";
-import { InMemoryBillingObject } from "./billing.do";
-import { InMemoryCodemodeObject } from "./codemode.do";
-import { InMemoryFormsObject } from "./forms.do";
-import { InMemoryMcpObject } from "./mcp.do";
-import { InMemoryOtpObject } from "./otp.do";
-import { InMemoryResendObject } from "./resend.do";
-import { InMemoryTelegramObject } from "./telegram.do";
-import { InMemoryUploadObject } from "./upload.do";
+import { ApiObject } from "./api.do";
+import { AuthObject } from "./auth.do";
+import { AutomationsObject } from "./automations.do";
+import { BillingObject } from "./billing.do";
+import { CodemodeObject } from "./codemode.do";
+import { FormsObject } from "./forms.do";
+import { McpObject } from "./mcp.do";
+import { OtpObject } from "./otp.do";
+import { ResendObject } from "./resend.do";
+import { TelegramObject } from "./telegram.do";
+import { UploadObject } from "./upload.do";
 
 const scenarioObjects = {
-  API: (input) => new InMemoryApiObject(input),
-  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
-  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
-  BILLING: (input) => new InMemoryBillingObject(input),
-  CODEMODE: (input) => new InMemoryCodemodeObject(input),
-  FORMS: (input) => new InMemoryFormsObject(input),
-  OTP: (input) => new InMemoryOtpObject(input),
-  MCP: (input) => new InMemoryMcpObject(input),
-  RESEND: (input) => new InMemoryResendObject(input),
-  TELEGRAM: (input) => new InMemoryTelegramObject(input),
-  UPLOAD: (input) => new InMemoryUploadObject(input),
+  API: (input) => new ApiObject(input),
+  AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new AutomationsObject(input),
+  BILLING: (input) => new BillingObject(input),
+  CODEMODE: (input) => new CodemodeObject(input),
+  FORMS: (input) => new FormsObject(input),
+  OTP: (input) => new OtpObject(input),
+  MCP: (input) => new McpObject(input),
+  RESEND: (input) => new ResendObject(input),
+  TELEGRAM: (input) => new TelegramObject(input),
+  UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
 
 let server: Awaited<ReturnType<typeof createCodemodeTestServer>>;

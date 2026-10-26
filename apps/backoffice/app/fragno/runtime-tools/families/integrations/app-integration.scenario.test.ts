@@ -30,7 +30,7 @@ import {
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
-import { InMemoryAppInstallationsObject } from "../../../../../workers/app-installations.do";
+import { AppInstallationsObject } from "../../../../../workers/app-installations.do";
 
 const org = { kind: "org", orgId: "org-1" } as const;
 const endpointUrl = "https://ledger.example/backoffice/actions";
@@ -205,7 +205,7 @@ test("an installed app's declared actions run on its server, signed per call and
       objects: {
         ...allLocalObjects,
         APP_INSTALLATIONS: (options) =>
-          new InMemoryAppInstallationsObject({
+          new AppInstallationsObject({
             ...options,
             fetch: async (input, init) =>
               await ledger.handle(options.runtime, new Request(input, init)),

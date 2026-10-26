@@ -3,7 +3,7 @@ import { createRouteCaller } from "@fragno-dev/core/api";
 import type { WorkflowsFragment } from "@fragno-dev/workflows";
 
 import type {
-  AutomationsObject,
+  AutomationsCommands,
   BackofficeActionRpcContext,
   BackofficeObjectHandle,
 } from "@/backoffice-runtime/object-registry";
@@ -13,7 +13,7 @@ import type { createAutomationFragment } from "./index";
 type AutomationFragment = ReturnType<typeof createAutomationFragment>;
 
 type CreateAutomationsRouteCallerOptions = {
-  object: BackofficeObjectHandle<AutomationsObject>;
+  object: BackofficeObjectHandle<AutomationsCommands>;
   context?: BackofficeActionRpcContext;
 };
 

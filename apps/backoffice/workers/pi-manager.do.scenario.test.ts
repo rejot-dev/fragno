@@ -64,7 +64,7 @@ import {
   createPiScenarioDependencies,
   createScriptedPiAgentDependencies,
 } from "./pi-durable-scenario.test-support";
-import { InMemoryPiObject } from "./pi.do";
+import { PiObject } from "./pi.do";
 
 const scenarioObjects = allLocalObjects;
 
@@ -88,7 +88,7 @@ const scopes = [
 
 const objectOverrides = {
   PI: ({ state, runtime, openPiSessionStore, piAgentIdFromConfig, nowEpochMs }) =>
-    new InMemoryPiObject({
+    new PiObject({
       state,
       dependencies: createPiScenarioDependencies(),
       runtime,
@@ -465,7 +465,7 @@ test("a busy agent queues other principals' prompts, lets its own turn be steere
               }),
             ],
           });
-          return new InMemoryPiObject({
+          return new PiObject({
             state,
             dependencies: {
               ...createScriptedPiAgentDependencies(models),
@@ -591,7 +591,7 @@ test("queued prompts each run a turn of their own, in arrival order, under the d
           ]);
           const models = createModels();
           models.setProvider(faux.provider);
-          return new InMemoryPiObject({
+          return new PiObject({
             state,
             dependencies: createScriptedPiAgentDependencies(models),
             runtime,
@@ -680,7 +680,7 @@ test("a prompt whose agent is deleted while it waits is dropped, and its submiss
           ]);
           const models = createModels();
           models.setProvider(faux.provider);
-          return new InMemoryPiObject({
+          return new PiObject({
             state,
             dependencies: createScriptedPiAgentDependencies(models),
             runtime,
@@ -756,8 +756,8 @@ test("a prompt whose agent is deleted while it waits is dropped, and its submiss
 test("a prompt whose handover to the agent fails is handed over again by the queue's hook", async () => {
   const scope: BackofficeContextScope = { kind: "org", orgId: "redrain-org" };
   let unavailable = true;
-  class InterruptedPiObject extends InMemoryPiObject {
-    override async dispatch(...args: Parameters<InMemoryPiObject["dispatch"]>) {
+  class InterruptedPiObject extends PiObject {
+    override async dispatch(...args: Parameters<PiObject["dispatch"]>) {
       if (unavailable) {
         unavailable = false;
         throw new Error("The agent is unavailable.");
@@ -919,7 +919,7 @@ test("agent changes and the turns a stop cuts off are recorded as pi events of w
           faux.setResponses([fauxAssistantMessage([fauxText("A long answer. ".repeat(100))])]);
           const models = createModels();
           models.setProvider(faux.provider);
-          return new InMemoryPiObject({
+          return new PiObject({
             state,
             dependencies: createScriptedPiAgentDependencies(models),
             runtime,
@@ -1105,7 +1105,7 @@ test("an agent's turns and queue are recorded as they move, so its events say wh
           ]);
           const models = createModels();
           models.setProvider(faux.provider);
-          return new InMemoryPiObject({
+          return new PiObject({
             state,
             dependencies: createScriptedPiAgentDependencies(models),
             runtime,
@@ -1359,7 +1359,7 @@ test("a turn whose event cannot be recorded stays pending without holding back l
           const models = createModels();
           models.setProvider(faux.provider);
           const { automations } = runtime.objects;
-          return new InMemoryPiObject({
+          return new PiObject({
             state,
             dependencies: createScriptedPiAgentDependencies(models),
             // Automations refuses the events in `unrecordable`, as an unavailable object would.
@@ -1473,7 +1473,7 @@ test("a notify_agent route delivers events as turns but never the agent's own wo
           ]);
           const models = createModels();
           models.setProvider(faux.provider);
-          return new InMemoryPiObject({
+          return new PiObject({
             state,
             dependencies: createScriptedPiAgentDependencies(models),
             runtime,
@@ -1688,7 +1688,7 @@ test("a forwarded turn event reaches a same-named agent of another scope", async
           ]);
           const models = createModels();
           models.setProvider(faux.provider);
-          return new InMemoryPiObject({
+          return new PiObject({
             state,
             dependencies: createScriptedPiAgentDependencies(models),
             runtime,
@@ -1784,7 +1784,7 @@ test("a busy agent sees events as they arrive and handles each sender's in a tur
           ]);
           const models = createModels();
           models.setProvider(faux.provider);
-          return new InMemoryPiObject({
+          return new PiObject({
             state,
             dependencies: createScriptedPiAgentDependencies(models),
             runtime,
@@ -1869,7 +1869,7 @@ test("a busy agent sees events as they arrive and handles each sender's in a tur
 test("the Pi agent shows its viewers durable generation partials before completion", async () => {
   const scope: BackofficeContextScope = { kind: "org", orgId: "streaming-org" };
   // Node serves no view sockets, so the scenario connects to the agent object as Cloudflare does.
-  let agent: InMemoryPiObject | null = null;
+  let agent: PiObject | null = null;
   await runBackofficeScenario(
     defineBackofficeScenario({
       name: "stream durable Pi generation partials",
@@ -1886,7 +1886,7 @@ test("the Pi agent shows its viewers durable generation partials before completi
           ]);
           const models = createModels();
           models.setProvider(faux.provider);
-          agent = new InMemoryPiObject({
+          agent = new PiObject({
             state,
             dependencies: createScriptedPiAgentDependencies(models),
             runtime,
@@ -1972,7 +1972,7 @@ test("durable Pi paginates history, streams exports, and compacts without deleti
           ]);
           const models = createModels();
           models.setProvider(faux.provider);
-          return new InMemoryPiObject({
+          return new PiObject({
             state,
             dependencies: {
               ...createScriptedPiAgentDependencies(models),
@@ -2082,7 +2082,7 @@ test("clearing an agent's context starts its next turn fresh and keeps earlier e
           faux.setResponses([answer("First answer."), answer("Fresh answer.")]);
           const models = createModels();
           models.setProvider(faux.provider);
-          return new InMemoryPiObject({
+          return new PiObject({
             state,
             dependencies: createScriptedPiAgentDependencies(models),
             runtime,
@@ -2174,7 +2174,7 @@ test("the assistant runs each message with the model it chose, and later ones ke
           faux.setResponses([answer, answer, answer]);
           const models = createModels();
           models.setProvider(faux.provider);
-          return new InMemoryPiObject({
+          return new PiObject({
             state,
             dependencies: createScriptedPiAgentDependencies(models),
             runtime,
@@ -2333,7 +2333,7 @@ test("a cold local agent alarm resumes unfinished SQLite work without duplicatin
             ]);
             const models = createModels();
             models.setProvider(slow.provider);
-            return new InMemoryPiObject({
+            return new PiObject({
               state,
               dependencies: { ...createPiScenarioDependencies(), models },
               runtime,

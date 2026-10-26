@@ -39,13 +39,13 @@ import { mcpPublicRoute } from "@/routes/api/mcp-route.server";
 import { loader as loadInvitationPreview } from "@/routes/backoffice/invitation-accept";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
-import { InMemoryApiObject } from "../../workers/api.do";
-import { InMemoryAuthObject } from "../../workers/auth.do";
-import { InMemoryAutomationsObject } from "../../workers/automations.do";
-import { InMemoryFormsObject } from "../../workers/forms.do";
-import { InMemoryMcpObject } from "../../workers/mcp.do";
-import { InMemoryOtpObject } from "../../workers/otp.do";
-import { InMemoryUploadObject } from "../../workers/upload.do";
+import { ApiObject } from "../../workers/api.do";
+import { AuthObject } from "../../workers/auth.do";
+import { AutomationsObject } from "../../workers/automations.do";
+import { FormsObject } from "../../workers/forms.do";
+import { McpObject } from "../../workers/mcp.do";
+import { OtpObject } from "../../workers/otp.do";
+import { UploadObject } from "../../workers/upload.do";
 import { authorizedBackofficeObjectHttp } from "./authorized-object-http";
 import { createBackofficeSystemExecution, createBackofficeUserExecution } from "./context";
 import { deferBackofficeExecution } from "./context";
@@ -53,13 +53,13 @@ import { BackofficeKernel } from "./kernel";
 import { backofficeObjectScopeFromContextScope } from "./object-registry";
 
 const scenarioObjects = {
-  API: (input) => new InMemoryApiObject(input),
-  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
-  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
-  FORMS: (input) => new InMemoryFormsObject(input),
-  MCP: (input) => new InMemoryMcpObject(input),
-  OTP: (input) => new InMemoryOtpObject(input),
-  UPLOAD: (input) => new InMemoryUploadObject(input),
+  API: (input) => new ApiObject(input),
+  AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new AutomationsObject(input),
+  FORMS: (input) => new FormsObject(input),
+  MCP: (input) => new McpObject(input),
+  OTP: (input) => new OtpObject(input),
+  UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
 
 const origin = "https://backoffice.example";

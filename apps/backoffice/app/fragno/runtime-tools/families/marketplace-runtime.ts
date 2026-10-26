@@ -24,7 +24,7 @@ import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type {
   BackofficeObjectRegistry,
-  MarketplaceObject,
+  MarketplaceCommands,
 } from "@/backoffice-runtime/object-registry";
 import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
@@ -100,7 +100,7 @@ export function createMarketplaceRuntime({
    * System administrators curate the public Marketplace from System scope; organization owners and
    * admins curate their organization's Marketplace from its scope.
    */
-  async function curate<T>(execute: (marketplace: MarketplaceObject) => Promise<T>): Promise<T> {
+  async function curate<T>(execute: (marketplace: MarketplaceCommands) => Promise<T>): Promise<T> {
     if (execution.scope.kind === "system") {
       return await kernel.invoke({
         execution,

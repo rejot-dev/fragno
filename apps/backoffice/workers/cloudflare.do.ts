@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 
-import type { CloudflareObject } from "@/backoffice-runtime/object-registry";
+import type { CloudflareCommands } from "@/backoffice-runtime/object-registry";
 import {
   createCloudflareDurableObjectRuntimeServices,
   type BackofficeRuntimeServices,
@@ -13,7 +13,7 @@ type CloudflareObjectEnv = Partial<
   Pick<CloudflareEnv, "CLOUDFLARE_WORKERS_ACCOUNT_ID" | "CLOUDFLARE_WORKERS_API_TOKEN">
 >;
 
-export class InMemoryCloudflareObject implements CloudflareObject {
+export class CloudflareObject implements CloudflareCommands {
   readonly #fragment: CloudflareFragment | null;
 
   constructor({
@@ -47,12 +47,12 @@ export class InMemoryCloudflareObject implements CloudflareObject {
   }
 }
 
-export class Cloudflare extends DurableObject<CloudflareEnv> implements CloudflareObject {
-  readonly #object: InMemoryCloudflareObject;
+export class Cloudflare extends DurableObject<CloudflareEnv> implements CloudflareCommands {
+  readonly #object: CloudflareObject;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
-    this.#object = new InMemoryCloudflareObject({
+    this.#object = new CloudflareObject({
       state,
       env,
       runtime: createCloudflareDurableObjectRuntimeServices(env, state),

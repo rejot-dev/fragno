@@ -2,7 +2,7 @@ import { globToRegExp, searchTextContent } from "@fragno-dev/upload/text-index";
 
 import { applyFileEditOperation, diffContent, type FileEditOperation } from "@fragno-dev/upload";
 
-import type { FetchObject } from "@/backoffice-runtime/object-registry";
+import type { FetchCommands } from "@/backoffice-runtime/object-registry";
 import { createStaticFileCollection } from "@/file-collection/create-static-file-collection";
 import type { FileCollection } from "@/file-collection/file-collection";
 import { STATIC_FILE_CONTENT } from "@/files/content/static";
@@ -84,7 +84,7 @@ type MemoryPreparedBatchEntry =
       precondition: Extract<MemoryWritePrecondition, { kind: "revision" }>;
     };
 
-export class MemoryUploadObject implements FetchObject {
+export class MemoryUploadObject implements FetchCommands {
   readonly requests: string[] = [];
   readonly listPrefixes: string[] = [];
   readonly listGlobs: string[] = [];

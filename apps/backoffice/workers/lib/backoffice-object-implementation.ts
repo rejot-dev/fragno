@@ -25,7 +25,7 @@ export type BackofficeObjectFragmentDatabase = {
 };
 
 /**
- * Runtime-specific implementation used by an in-memory Backoffice object.
+ * Runtime-specific implementation used by a Backoffice object.
  *
  * Object behavior supplies fragment definitions while this implementation owns tracing, storage
  * lifecycle integration, and low-level Fragment host operations.
@@ -61,7 +61,7 @@ export type CreateBackofficeObjectImplementationOptions<TEnv> = {
   configuredObjectLifecycle: BackofficeConfiguredObjectLifecycle;
 };
 
-/** Binds one runtime's infrastructure to the primitives consumed by an in-memory object. */
+/** Binds one runtime's infrastructure to the primitives consumed by a Backoffice object. */
 export function createBackofficeObjectImplementation<TEnv>(
   options: CreateBackofficeObjectImplementationOptions<TEnv>,
 ): BackofficeObjectImplementation {

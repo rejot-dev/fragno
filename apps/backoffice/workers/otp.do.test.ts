@@ -32,16 +32,16 @@ import {
 } from "@/fragno/otp";
 
 import { issueTestSignUpInvitation } from "./auth-sign-up.test-support";
-import { InMemoryAuthObject } from "./auth.do";
+import { AuthObject } from "./auth.do";
 import {
   handleEmailVerificationConfirmed,
   handleIdentityClaimConfirmed,
-  InMemoryOtpObject,
+  OtpObject,
 } from "./otp.do";
 
 const localObjects = {
-  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
-  OTP: (input) => new InMemoryOtpObject(input),
+  AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
+  OTP: (input) => new OtpObject(input),
 } satisfies LocalBackofficeObjects;
 
 const runtimes: Array<Awaited<ReturnType<typeof createInMemoryBackofficeRuntime>>> = [];

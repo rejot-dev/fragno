@@ -16,12 +16,12 @@ import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-hos
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import { sha256Hex } from "@/lib/crypto";
 
-import { InMemoryAppsObject } from "../../../workers/apps.do";
-import { InMemoryAuthObject } from "../../../workers/auth.do";
-import { InMemoryAutomationsObject } from "../../../workers/automations.do";
-import { InMemoryFormsObject } from "../../../workers/forms.do";
-import { InMemoryOtpObject } from "../../../workers/otp.do";
-import { InMemoryUploadObject } from "../../../workers/upload.do";
+import { AppsObject } from "../../../workers/apps.do";
+import { AuthObject } from "../../../workers/auth.do";
+import { AutomationsObject } from "../../../workers/automations.do";
+import { FormsObject } from "../../../workers/forms.do";
+import { OtpObject } from "../../../workers/otp.do";
+import { UploadObject } from "../../../workers/upload.do";
 import {
   defineBackofficeScenario,
   runBackofficeScenario,
@@ -30,12 +30,12 @@ import {
 } from "./scenario";
 
 const scenarioObjects = {
-  APPS: (input) => new InMemoryAppsObject(input),
-  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
-  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
-  FORMS: (input) => new InMemoryFormsObject(input),
-  OTP: (input) => new InMemoryOtpObject(input),
-  UPLOAD: (input) => new InMemoryUploadObject(input),
+  APPS: (input) => new AppsObject(input),
+  AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new AutomationsObject(input),
+  FORMS: (input) => new FormsObject(input),
+  OTP: (input) => new OtpObject(input),
+  UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
 
 type SignUpInvitationScenarioVars = {

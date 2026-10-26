@@ -9,7 +9,7 @@ import {
   ORGANIZATION_ROLE_PERMISSION_NAMESPACES,
   PERSONAL_SCOPE_GRANTS,
 } from "./authority-roles";
-import type { AuthObject } from "./object-registry";
+import type { AuthCommands } from "./object-registry";
 
 /**
  * Resolves organization administration from live Auth membership instead of a JWT role snapshot.
@@ -23,7 +23,7 @@ export function createControlPlaneAuthorityResolver({
   auth,
 }: {
   resolver: BackofficeAuthorityResolver;
-  auth: Pick<AuthObject, "getUserOrganizationAuthorityFacts">;
+  auth: Pick<AuthCommands, "getUserOrganizationAuthorityFacts">;
 }): BackofficeAuthorityResolver {
   return {
     async resolvePrincipalPermissions(input, operations = allBackofficePermissionRequirements) {

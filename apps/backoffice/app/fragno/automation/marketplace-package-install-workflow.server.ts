@@ -29,7 +29,7 @@ import {
   createBackofficeServiceExecution,
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
-import type { BackofficeObjectHandle, UploadObject } from "@/backoffice-runtime/object-registry";
+import type { BackofficeObjectHandle, UploadCommands } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { readSavedWorkflowProgram } from "@/fragno/codemode/workflow-program";
 import {
@@ -95,7 +95,7 @@ const marketplacePackageInstallWorkflowOutputSchema = z.object({
 
 const UPLOAD_INTERNAL_ORIGIN = "https://upload.internal";
 
-type UploadHttpTransport = Pick<BackofficeObjectHandle<UploadObject>["http"], "fetch">;
+type UploadHttpTransport = Pick<BackofficeObjectHandle<UploadCommands>["http"], "fetch">;
 
 const createUploadRouteCaller = (http: UploadHttpTransport) =>
   createRouteCaller<UploadFragment>({

@@ -70,7 +70,7 @@ import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-c
 
 import { shutdownCloudflarePostHog } from "./lib/cloudflare-posthog";
 import { createScriptedPiAgentDependencies } from "./pi-durable-scenario.test-support";
-import { InMemoryPiObject } from "./pi.do";
+import { PiObject } from "./pi.do";
 
 const scenarioObjects = allLocalObjects;
 
@@ -95,7 +95,7 @@ function scriptedAgents(
       faux.setResponses(responses);
       const models = createModels();
       models.setProvider(faux.provider);
-      return new InMemoryPiObject({
+      return new PiObject({
         state,
         runtime,
         dependencies: {
@@ -1363,8 +1363,8 @@ test("durable Pi restores scoped tools and reports interrupted codemode without 
     agentName: "assistant",
   };
   let source: {
-    agent: InMemoryPiObject;
-    options: ConstructorParameters<typeof InMemoryPiObject>[0];
+    agent: PiObject;
+    options: ConstructorParameters<typeof PiObject>[0];
   } | null = null;
   const objectOverrides: LocalBackofficeObjects = {
     PI: ({ state, runtime, piAgentIdFromConfig, nowEpochMs }) => {
@@ -1411,7 +1411,7 @@ test("durable Pi restores scoped tools and reports interrupted codemode without 
         idFromConfig: piAgentIdFromConfig,
         nowEpochMs,
       };
-      const agent = new InMemoryPiObject(options);
+      const agent = new PiObject(options);
       source = { agent, options };
       return agent;
     },
@@ -1471,7 +1471,7 @@ test("durable Pi restores scoped tools and reports interrupted codemode without 
               ]);
               const models = createModels();
               models.setProvider(faux.provider);
-              const restored = new InMemoryPiObject({
+              const restored = new PiObject({
                 ...captured.options,
                 dependencies: { ...captured.options.dependencies, models },
                 openStorage: async () => await openNodeSqliteStorage(snapshot),
@@ -1616,7 +1616,7 @@ test("Cloudflare backend analytics delivers verified outcomes and Pi usage witho
       ]);
       const models = createModels();
       models.setProvider(faux.provider);
-      return new InMemoryPiObject({
+      return new PiObject({
         state,
         runtime,
         dependencies: {

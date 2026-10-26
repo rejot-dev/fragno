@@ -104,7 +104,7 @@ import { UPLOAD_REPLICA_SCHEMAS } from "@/fragno/upload/lofi/replica-schemas";
 import { bytesToBase64 } from "@/lib/base64";
 import type { CreateSandboxRuntimeProviders } from "@/sandbox/contracts";
 
-import type { InMemoryTelegramObject } from "../../../workers/telegram.do";
+import type { TelegramObject } from "../../../workers/telegram.do";
 import { listHookScopes } from "../backoffice-capabilities/backoffice-capabilities";
 import { AUTOMATION_SYSTEM_INITIATOR, BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "./actors";
 import { createRouteBackedAutomationStoreRuntime } from "./bindings-route-runtime";
@@ -253,9 +253,7 @@ type FakeResendQueueEmailCall = {
   options: { idempotencyKey: string; senderName: string | null };
 };
 
-type TelegramAdminApi = NonNullable<
-  ConstructorParameters<typeof InMemoryTelegramObject>[0]["adminApi"]
->;
+type TelegramAdminApi = NonNullable<ConstructorParameters<typeof TelegramObject>[0]["adminApi"]>;
 
 export type FakeTelegramApi = {
   api: TelegramApi;
@@ -4303,10 +4301,10 @@ const createFakeObjectOverrides = async (fakes: ScenarioFakes): Promise<LocalBac
   const overrides: LocalBackofficeObjects = {};
 
   if (fakes.telegram) {
-    const { InMemoryTelegramObject } = await import("../../../workers/telegram.do");
+    const { TelegramObject } = await import("../../../workers/telegram.do");
     overrides.TELEGRAM = ({ state, env, runtime, implementation, nowEpochMs }) => {
       const fakeTelegram = fakes.telegram!;
-      return new (class extends InMemoryTelegramObject {
+      return new (class extends TelegramObject {
         async getAutomationFile(input: {
           fileId: string;
         }): Promise<TelegramAutomationFileMetadata> {
@@ -4347,7 +4345,7 @@ const createFakeObjectOverrides = async (fakes: ScenarioFakes): Promise<LocalBac
   }
 
   if (fakes.pi || fakes.classifier || fakes.openaiImages || fakes.openaiDecisions) {
-    const { InMemoryPiManagerObject } = await import("../../../workers/pi-manager.do");
+    const { PiManagerObject } = await import("../../../workers/pi-manager.do");
     overrides.PI_MANAGER = ({
       state,
       env,
@@ -4358,7 +4356,7 @@ const createFakeObjectOverrides = async (fakes: ScenarioFakes): Promise<LocalBac
       piAvailableModels,
     }) => {
       const fakePi = fakes.pi;
-      return new InMemoryPiManagerObject({
+      return new PiManagerObject({
         state,
         env,
         runtime,

@@ -9,7 +9,7 @@ import {
   type BackofficeObjectHandle,
   type BackofficeObjectRegistry,
   isBackofficeObjectAvailableInContext,
-  type WarmableObject,
+  type WarmableCommands,
 } from "@/backoffice-runtime/object-registry";
 import { backofficeRuntimeScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
@@ -58,7 +58,7 @@ async function warmScopeObjects(objects: BackofficeObjectRegistry, scope: Backof
   const warmable: Array<
     [
       BackofficeObjectBindingName,
-      { for(scope: BackofficeContextScope): BackofficeObjectHandle<WarmableObject> },
+      { for(scope: BackofficeContextScope): BackofficeObjectHandle<WarmableCommands> },
     ]
   > = [
     ["API", objects.api],

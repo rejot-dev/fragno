@@ -39,20 +39,20 @@ import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-ba
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
-import { InMemoryAppsObject } from "../workers/apps.do";
-import { InMemoryAuthObject } from "../workers/auth.do";
-import { InMemoryAutomationsObject } from "../workers/automations.do";
-import { InMemoryCodemodeObject } from "../workers/codemode.do";
-import { InMemoryFormsObject } from "../workers/forms.do";
-import { InMemoryUploadObject } from "../workers/upload.do";
+import { AppsObject } from "../workers/apps.do";
+import { AuthObject } from "../workers/auth.do";
+import { AutomationsObject } from "../workers/automations.do";
+import { CodemodeObject } from "../workers/codemode.do";
+import { FormsObject } from "../workers/forms.do";
+import { UploadObject } from "../workers/upload.do";
 
 const scenarioObjects = {
-  APPS: (input) => new InMemoryAppsObject(input),
-  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
-  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
-  CODEMODE: (input) => new InMemoryCodemodeObject(input),
-  FORMS: (input) => new InMemoryFormsObject(input),
-  UPLOAD: (input) => new InMemoryUploadObject(input),
+  APPS: (input) => new AppsObject(input),
+  AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new AutomationsObject(input),
+  CODEMODE: (input) => new CodemodeObject(input),
+  FORMS: (input) => new FormsObject(input),
+  UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
 
 const scriptPath = fileURLToPath(new URL("./test-oauth-client.mjs", import.meta.url));

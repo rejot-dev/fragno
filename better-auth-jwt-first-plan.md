@@ -444,7 +444,7 @@ Remove the final compatibility surface:
 - Keep `/jwks` enabled and remove `jwtClient()` from the browser.
 - Remove session handling from application request authorization and remove the `"session"`
   credential kind.
-- Remove `AuthObject.authenticateRequest()` or reduce it to a private authentication-internal
+- Remove `AuthCommands.authenticateRequest()` or reduce it to a private authentication-internal
   operation.
 - Remove unused `authMeDataSchema`, custom-session contracts, active-session organization code, and
   compatibility tests.

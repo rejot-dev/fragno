@@ -117,7 +117,7 @@ type ProvisionedPiAgent = {
 };
 
 /** Shared durable agent lifecycle; both runtimes persist an alarm before admitting work. */
-export class InMemoryPiObject extends RpcTarget implements PiAgent {
+export class PiObject extends RpcTarget implements PiAgent {
   readonly #state: BackofficeObjectState;
   readonly #ready: Promise<void>;
   readonly #startup: Promise<void>;
@@ -827,7 +827,7 @@ function closeReason(reason: string) {
 
 /** One durable agent per object; scoped managers own agent discovery. */
 export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
-  readonly #object: InMemoryPiObject;
+  readonly #object: PiObject;
   // View sockets hibernate with the object, so they outlive this map, which `ctx` restores.
   readonly #disconnects = new Map<WebSocket, Promise<() => void>>();
 
@@ -852,7 +852,7 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
         state.waitUntil(shutdownCloudflarePostHog(client));
       }
     }
-    this.#object = new InMemoryPiObject({
+    this.#object = new PiObject({
       state,
       dependencies: analyticsEnabled
         ? {

@@ -61,16 +61,16 @@ vi.mock("cloudflare:workers", () => ({
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { readBackofficeAutomationSource } from "@/fragno/automation/read-backoffice-automation-source";
 
-import { InMemoryAutomationsObject } from "./automations.do";
-import { InMemoryMarketplaceObject } from "./marketplace.do";
-import { InMemoryMcpObject } from "./mcp.do";
-import { InMemoryUploadObject } from "./upload.do";
+import { AutomationsObject } from "./automations.do";
+import { MarketplaceObject } from "./marketplace.do";
+import { McpObject } from "./mcp.do";
+import { UploadObject } from "./upload.do";
 
 const localObjects = {
-  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
-  MARKETPLACE: (input) => new InMemoryMarketplaceObject(input),
-  MCP: (input) => new InMemoryMcpObject(input),
-  UPLOAD: (input) => new InMemoryUploadObject(input),
+  AUTOMATIONS: (input) => new AutomationsObject(input),
+  MARKETPLACE: (input) => new MarketplaceObject(input),
+  MCP: (input) => new McpObject(input),
+  UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
 
 const objects = {} as BackofficeObjectRegistry;

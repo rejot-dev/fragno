@@ -3,7 +3,7 @@ import { describe, expect, test } from "vitest";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 
 import type {
-  AutomationsObject,
+  AutomationsCommands,
   BackofficeObjectHandle,
 } from "@/backoffice-runtime/object-registry";
 import { BACKOFFICE_REQUIRED_PERMISSION_HEADER } from "@/backoffice-runtime/required-permission-header";
@@ -22,8 +22,8 @@ const jsonResponse = (body: unknown) =>
 
 const createObject = (
   fetch: (request: Request) => Response | Promise<Response>,
-): BackofficeObjectHandle<AutomationsObject> => ({
-  commands: {} as AutomationsObject,
+): BackofficeObjectHandle<AutomationsCommands> => ({
+  commands: {} as AutomationsCommands,
   http: {
     fetch: async (request) => await fetch(request),
     fetchAuthorized: async (request) => await fetch(request),

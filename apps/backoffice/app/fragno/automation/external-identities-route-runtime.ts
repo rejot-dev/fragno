@@ -1,6 +1,6 @@
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type {
-  AutomationsObject,
+  AutomationsCommands,
   BackofficeObjectHandle,
 } from "@/backoffice-runtime/object-registry";
 import type { AutomationIdentityRuntime } from "@/fragno/runtime-tools/families/automations-identities";
@@ -11,7 +11,7 @@ export const createRouteBackedAutomationIdentityRuntime = ({
   object,
   execution,
 }: {
-  object: BackofficeObjectHandle<AutomationsObject>;
+  object: BackofficeObjectHandle<AutomationsCommands>;
   execution: BackofficeExecutionContext;
 }): AutomationIdentityRuntime => ({
   resolveExternal: async (identity) =>

@@ -29,24 +29,24 @@ import { marketplaceListingId } from "@/fragno/marketplace/owner";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
-import { InMemoryApiObject } from "../../../../workers/api.do";
-import { InMemoryAuthObject } from "../../../../workers/auth.do";
-import { InMemoryAutomationsObject } from "../../../../workers/automations.do";
-import { InMemoryFormsObject } from "../../../../workers/forms.do";
-import { InMemoryMarketplaceObject } from "../../../../workers/marketplace.do";
-import { InMemoryMcpObject } from "../../../../workers/mcp.do";
-import { InMemoryTelegramObject } from "../../../../workers/telegram.do";
-import { InMemoryUploadObject } from "../../../../workers/upload.do";
+import { ApiObject } from "../../../../workers/api.do";
+import { AuthObject } from "../../../../workers/auth.do";
+import { AutomationsObject } from "../../../../workers/automations.do";
+import { FormsObject } from "../../../../workers/forms.do";
+import { MarketplaceObject } from "../../../../workers/marketplace.do";
+import { McpObject } from "../../../../workers/mcp.do";
+import { TelegramObject } from "../../../../workers/telegram.do";
+import { UploadObject } from "../../../../workers/upload.do";
 
 const scenarioObjects = {
-  API: (input) => new InMemoryApiObject(input),
-  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
-  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
-  FORMS: (input) => new InMemoryFormsObject(input),
-  MARKETPLACE: (input) => new InMemoryMarketplaceObject(input),
-  MCP: (input) => new InMemoryMcpObject(input),
-  TELEGRAM: (input) => new InMemoryTelegramObject(input),
-  UPLOAD: (input) => new InMemoryUploadObject(input),
+  API: (input) => new ApiObject(input),
+  AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new AutomationsObject(input),
+  FORMS: (input) => new FormsObject(input),
+  MARKETPLACE: (input) => new MarketplaceObject(input),
+  MCP: (input) => new McpObject(input),
+  TELEGRAM: (input) => new TelegramObject(input),
+  UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
 
 const SYSTEM = { kind: "system" } as const;

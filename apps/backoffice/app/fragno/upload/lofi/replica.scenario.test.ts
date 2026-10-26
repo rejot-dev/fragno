@@ -17,14 +17,14 @@ import {
 } from "@/fragno/automation/scenario";
 import { readScenarioReplicaView } from "@/fragno/lofi/scenario-replica-database";
 
-import { InMemoryAutomationsObject } from "../../../../workers/automations.do";
-import { InMemoryUploadObject } from "../../../../workers/upload.do";
+import { AutomationsObject } from "../../../../workers/automations.do";
+import { UploadObject } from "../../../../workers/upload.do";
 import { UPLOAD_PROVIDER_DATABASE } from "../../upload";
 import { readyUploadFilesView, toUploadFileRecord } from "./replica";
 
 const scenarioObjects = {
-  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
-  UPLOAD: (input) => new InMemoryUploadObject(input),
+  AUTOMATIONS: (input) => new AutomationsObject(input),
+  UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
 
 const ORG_ID = "org-files";

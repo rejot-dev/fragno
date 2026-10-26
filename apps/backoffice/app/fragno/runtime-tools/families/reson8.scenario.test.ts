@@ -17,23 +17,23 @@ import { createReson8Server } from "@/fragno/reson8";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
-import { InMemoryApiObject } from "../../../../workers/api.do";
-import { InMemoryAuthObject } from "../../../../workers/auth.do";
-import { InMemoryAutomationsObject } from "../../../../workers/automations.do";
-import { InMemoryBillingObject } from "../../../../workers/billing.do";
-import { InMemoryCodemodeObject } from "../../../../workers/codemode.do";
-import { InMemoryFormsObject } from "../../../../workers/forms.do";
-import { InMemoryUploadObject } from "../../../../workers/upload.do";
+import { ApiObject } from "../../../../workers/api.do";
+import { AuthObject } from "../../../../workers/auth.do";
+import { AutomationsObject } from "../../../../workers/automations.do";
+import { BillingObject } from "../../../../workers/billing.do";
+import { CodemodeObject } from "../../../../workers/codemode.do";
+import { FormsObject } from "../../../../workers/forms.do";
+import { UploadObject } from "../../../../workers/upload.do";
 import { createReson8Runtime } from "./reson8-runtime";
 
 const scenarioObjects = {
-  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
-  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
-  BILLING: (input) => new InMemoryBillingObject(input),
-  UPLOAD: (input) => new InMemoryUploadObject(input),
-  CODEMODE: (input) => new InMemoryCodemodeObject(input),
-  API: (input) => new InMemoryApiObject(input),
-  FORMS: (input) => new InMemoryFormsObject(input),
+  AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new AutomationsObject(input),
+  BILLING: (input) => new BillingObject(input),
+  UPLOAD: (input) => new UploadObject(input),
+  CODEMODE: (input) => new CodemodeObject(input),
+  API: (input) => new ApiObject(input),
+  FORMS: (input) => new FormsObject(input),
 } satisfies LocalBackofficeObjects;
 
 const orgId = "org-1";

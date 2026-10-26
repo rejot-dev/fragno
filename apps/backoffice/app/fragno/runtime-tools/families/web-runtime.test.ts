@@ -1,6 +1,6 @@
 import { describe, expect, test, assert } from "vitest";
 
-import type { FetchObject } from "@/backoffice-runtime/object-registry";
+import type { FetchCommands } from "@/backoffice-runtime/object-registry";
 
 import { NotConfiguredError } from "../runtime-errors";
 import { createWebRuntime } from "./web-runtime";
@@ -8,7 +8,7 @@ import { createWebRuntime } from "./web-runtime";
 describe("createWebRuntime", () => {
   test("calls the Browser Run extract route", async () => {
     let request: Request | undefined;
-    const object: FetchObject = {
+    const object: FetchCommands = {
       fetch: async (nextRequest) => {
         request = nextRequest;
         return Response.json({ action: "markdown", result: "Example" });
@@ -26,7 +26,7 @@ describe("createWebRuntime", () => {
   });
 
   test("classifies missing configuration as NotConfiguredError", async () => {
-    const object: FetchObject = {
+    const object: FetchCommands = {
       fetch: async () =>
         Response.json(
           {

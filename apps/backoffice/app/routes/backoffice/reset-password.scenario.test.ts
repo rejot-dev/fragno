@@ -17,10 +17,10 @@ import {
 } from "@/fragno/automation/scenario";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
-import { InMemoryAuthObject } from "../../../workers/auth.do";
-import { InMemoryAutomationsObject } from "../../../workers/automations.do";
-import { InMemoryOtpObject } from "../../../workers/otp.do";
-import { InMemoryUploadObject } from "../../../workers/upload.do";
+import { AuthObject } from "../../../workers/auth.do";
+import { AutomationsObject } from "../../../workers/automations.do";
+import { OtpObject } from "../../../workers/otp.do";
+import { UploadObject } from "../../../workers/upload.do";
 import { action as requestPasswordReset } from "./forgot-password";
 import { action as resetPassword, loader as loadResetPassword } from "./reset-password";
 
@@ -30,10 +30,10 @@ const email = "password-recovery@example.test";
 const newPassword = "my-new-backoffice-password";
 
 const scenarioObjects = {
-  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
-  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
-  OTP: (input) => new InMemoryOtpObject(input),
-  UPLOAD: (input) => new InMemoryUploadObject(input),
+  AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new AutomationsObject(input),
+  OTP: (input) => new OtpObject(input),
+  UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
 
 function routerContext(ctx: BackofficeScenarioContext, request: Request) {

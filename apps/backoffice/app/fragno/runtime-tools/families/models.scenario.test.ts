@@ -28,7 +28,7 @@ import { executeBackofficeRuntimeTool } from "@/fragno/runtime-tools/runtime-too
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import { base64ToBytes } from "@/lib/base64";
 
-import { InMemoryBillingObject } from "../../../../workers/billing.do";
+import { BillingObject } from "../../../../workers/billing.do";
 import { modelsToolFamily } from "./models";
 
 const scope: BackofficeContextScope = { kind: "org", orgId: "org-1" };
@@ -172,8 +172,8 @@ test("usage reaches billing after an outage without classifying again", async ()
       objects: {
         ...allLocalObjects,
         BILLING: (input) =>
-          new (class extends InMemoryBillingObject {
-            override async recordEvent(...args: Parameters<InMemoryBillingObject["recordEvent"]>) {
+          new (class extends BillingObject {
+            override async recordEvent(...args: Parameters<BillingObject["recordEvent"]>) {
               if (unavailableDeliveries > 0) {
                 unavailableDeliveries -= 1;
                 throw new Error("Billing is unavailable.");
