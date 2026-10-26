@@ -2,7 +2,7 @@ import type {
   AutomationActors,
   AutomationRouteAction,
   AutomationRouteDefinition,
-  AutomationRouteSteward,
+  AutomationSteward,
   AutomationRouteTrigger,
   AutomationStartWorkflowAction,
 } from "@fragno-dev/backoffice-api/v0/automation";
@@ -25,7 +25,7 @@ export type StoredAutomationRouteMetadata =
   | {
       createdByActors: AutomationActors;
       updatedByActors: AutomationActors;
-      steward: AutomationRouteSteward;
+      steward: AutomationSteward;
     }
   | {
       createdByActors: AutomationActors;
@@ -80,7 +80,7 @@ function normalizeStoredAutomationRouteAction(
 /** Routes without a recorded steward belong to members. */
 export function automationRouteSteward(
   metadata: StoredAutomationRouteMetadata | null,
-): AutomationRouteSteward {
+): AutomationSteward {
   return metadata && "steward" in metadata ? metadata.steward : { kind: "members" };
 }
 

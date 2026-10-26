@@ -4,7 +4,7 @@ import {
   automationRouteCreateInputSchema,
   automationRouteUpdateInputSchema,
   type AutomationRouteCreateInput,
-  type AutomationRouteSteward,
+  type AutomationSteward,
   type AutomationRouteUpdateInput,
 } from "@fragno-dev/backoffice-api/v0/automation";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
@@ -24,6 +24,7 @@ import {
   assertAutomationRouteDoesNotReclassifyItself,
 } from "./routing";
 import { automationFragmentSchema } from "./schema";
+import { assertStewardWrite, stewardsEqual } from "./stewards";
 
 type AutomationRouteServiceContext = DatabaseServiceContext<AutomationInternalHooks>;
 
@@ -31,53 +32,6 @@ export type AuthorizeAutomationRouteAction = (input: {
   routeId: string;
   action: AutomationRouteAction;
 }) => Promise<void>;
-
-export const MEMBERS_ROUTE_STEWARD: AutomationRouteSteward = { kind: "members" };
-
-export class AutomationRouteStewardError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "AutomationRouteStewardError";
-  }
-}
-
-function stewardsEqual(left: AutomationRouteSteward, right: AutomationRouteSteward) {
-  return left.kind === "members"
-    ? right.kind === "members"
-    : right.kind === "package" && left.listingId === right.listingId;
-}
-
-/**
- * Only a route's steward changes its definition, though anyone may turn it on or off. A package
- * adopts a route its pre-stewardship install script labelled.
- */
-function assertRouteStewardWrite({
-  routeId,
-  steward,
-  legacyListingId,
-  writer,
-  definitionChanged,
-}: {
-  routeId: string;
-  steward: AutomationRouteSteward;
-  legacyListingId: string | null;
-  writer: AutomationRouteSteward;
-  definitionChanged: boolean;
-}) {
-  if (stewardsEqual(steward, writer) || !definitionChanged) {
-    return;
-  }
-  if (steward.kind === "package") {
-    throw new AutomationRouteStewardError(
-      `Automation route '${routeId}' is managed by package '${steward.listingId}'. Only enabling or disabling it is allowed; uninstall the package to remove it.`,
-    );
-  }
-  if (writer.kind === "package" && legacyListingId !== writer.listingId) {
-    throw new AutomationRouteStewardError(
-      `Automation route '${routeId}' already exists and is not managed by package '${writer.listingId}'.`,
-    );
-  }
-}
 
 const authoredRouteEqual = (
   left: {
@@ -87,7 +41,7 @@ const authoredRouteEqual = (
     trigger: unknown;
     action: unknown;
     description?: string | null;
-    steward: AutomationRouteSteward;
+    steward: AutomationSteward;
   },
   right: {
     name: string;
@@ -96,7 +50,7 @@ const authoredRouteEqual = (
     trigger: unknown;
     action: unknown;
     description?: string | null;
-    steward: AutomationRouteSteward;
+    steward: AutomationSteward;
   },
 ) =>
   left.name === right.name &&
@@ -155,7 +109,7 @@ export const createAutomationRouteServices = (
     createRoute(
       input: AutomationRouteCreateInput,
       actors: AutomationActors,
-      writer: AutomationRouteSteward,
+      writer: AutomationSteward,
     ) {
       const route = automationRouteCreateInputSchema.parse(input);
       if (route.trigger.kind === "schedule") {
@@ -219,7 +173,7 @@ export const createAutomationRouteServices = (
       input: AutomationRouteUpdateInput,
       actors: AutomationActors,
       authorizeAction: AuthorizeAutomationRouteAction,
-      writer: AutomationRouteSteward,
+      writer: AutomationSteward,
     ) {
       const patch = automationRouteUpdateInputSchema.parse(input);
       if (patch.trigger?.kind === "schedule") {
@@ -258,8 +212,8 @@ export const createAutomationRouteServices = (
             JSON.stringify(merged.trigger) !== JSON.stringify(current.trigger) ||
             JSON.stringify(merged.action) !== JSON.stringify(current.action) ||
             merged.description !== (current.description ?? null);
-          assertRouteStewardWrite({
-            routeId: current.id,
+          assertStewardWrite({
+            resource: `Automation route '${current.id}'`,
             steward: current.steward,
             legacyListingId: legacyMarketplaceRouteListingId(existing),
             writer,
@@ -401,7 +355,7 @@ export const createAutomationRouteServices = (
         .build();
     },
 
-    deleteRoute({ id }: { id: string }, writer: AutomationRouteSteward) {
+    deleteRoute({ id }: { id: string }, writer: AutomationSteward) {
       return this.serviceTx(automationFragmentSchema)
         .retrieve((uow) =>
           uow
@@ -414,8 +368,8 @@ export const createAutomationRouteServices = (
         )
         .mutate(({ uow, retrieveResult: [route, scheduleState] }) => {
           if (route) {
-            assertRouteStewardWrite({
-              routeId: id,
+            assertStewardWrite({
+              resource: `Automation route '${id}'`,
               steward: normalizeAutomationRoute(route, scheduleState).steward,
               legacyListingId: null,
               writer,

@@ -2,19 +2,24 @@ import {
   automationRouteActionAuthority,
   type AutomationActors,
   type AutomationRouteCreateInput,
-  type AutomationRouteSteward,
+  type AutomationSteward,
 } from "@fragno-dev/backoffice-api/v0/automation";
-import type { PackageInstallation } from "@fragno-dev/backoffice-api/v0/marketplace";
+import type { AutomationEventDefinitionCreateInput } from "@fragno-dev/backoffice-api/v0/events";
+import type {
+  PackageInstallation,
+  PackageUninstallation,
+} from "@fragno-dev/backoffice-api/v0/marketplace";
 import {
   backofficeContextScopesEqual,
   type BackofficeContextScope,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z, ZodError } from "zod";
 
+import { AutomationEventDefinitionValidationError } from "./event-definitions";
 import type { createAutomationFragment } from "./index";
 import { isAutomationScheduleError } from "./route-triggers";
 import { AutomationRouteAuthorityError } from "./routing";
-import { AutomationRouteStewardError } from "./routing-storage-runtime";
+import { AutomationStewardError, isStewardedByPackage } from "./stewards";
 
 type AutomationFragment = Pick<
   ReturnType<typeof createAutomationFragment>,
@@ -76,13 +81,10 @@ function assertRoutesWithinApprovedPermissions(
   }
 }
 
-function isStewardedBy(steward: AutomationRouteSteward, listingId: string) {
-  return steward.kind === "package" && steward.listingId === listingId;
-}
-
 export type PackageInstallationInput = {
   installation: PackageInstallation;
   routes: readonly AutomationRouteCreateInput[];
+  eventDefinitions: readonly AutomationEventDefinitionCreateInput[];
   actors: AutomationActors;
 };
 
@@ -90,9 +92,9 @@ export type PackageInstallationInput = {
 export type PackageInstallationOutcome = { ok: true } | { ok: false; message: string };
 
 /**
- * Records an installation and makes its routes match the release's declarations, in one
- * transaction: declared routes are created or updated, keeping whether each is enabled, and routes
- * the package no longer declares are deleted.
+ * Records an installation and makes its routes and event definitions match the release's
+ * declarations, in one transaction: declared ones are created or updated, keeping whether each is
+ * enabled, and those the package no longer declares are deleted.
  */
 export async function applyPackageInstallation(
   fragment: AutomationFragment,
@@ -107,8 +109,9 @@ export async function applyPackageInstallation(
     }
     if (
       error instanceof PackageInstallationError ||
-      error instanceof AutomationRouteStewardError ||
+      error instanceof AutomationStewardError ||
       error instanceof AutomationRouteAuthorityError ||
+      error instanceof AutomationEventDefinitionValidationError ||
       isAutomationScheduleError(error)
     ) {
       return { ok: false, message: error.message };
@@ -119,18 +122,23 @@ export async function applyPackageInstallation(
 
 async function syncPackageInstallation(
   fragment: AutomationFragment,
-  { installation, routes, actors }: PackageInstallationInput,
+  { installation, routes, eventDefinitions, actors }: PackageInstallationInput,
 ) {
   assertRoutesWithinApprovedPermissions(installation, routes);
-  const [existingRoutes, existing] = await fragment.callServices(() => [
+  const [existingRoutes, existingDefinitions, existing] = await fragment.callServices(() => [
     fragment.services.listRoutes(),
+    fragment.services.listEventDefinitions(),
     fragment.services.getPackageInstallation({ listingId: installation.listingId }),
   ]);
   assertPackageInstallationReplaceable(existing, installation);
 
-  const writer: AutomationRouteSteward = { kind: "package", listingId: installation.listingId };
+  const writer: AutomationSteward = { kind: "package", listingId: installation.listingId };
   const existingIds = new Set(existingRoutes.map((route) => route.id));
   const declaredIds = new Set(routes.map((route) => route.id));
+  const definitionKey = ({ source, eventType }: { source: string; eventType: string }) =>
+    JSON.stringify([source, eventType]);
+  const existingDefinitionKeys = new Set(existingDefinitions.map(definitionKey));
+  const declaredDefinitionKeys = new Set(eventDefinitions.map(definitionKey));
   const results = await fragment.callServices(() => [
     ...routes.map((route) =>
       existingIds.has(route.id)
@@ -151,36 +159,66 @@ async function syncPackageInstallation(
         : fragment.services.createRoute(route, actors, writer),
     ),
     ...existingRoutes
-      .filter((route) => isStewardedBy(route.steward, installation.listingId))
+      .filter((route) => isStewardedByPackage(route.steward, installation.listingId))
       .filter((route) => !declaredIds.has(route.id))
       .map((route) => fragment.services.deleteRoute({ id: route.id }, writer)),
+    ...eventDefinitions.map((definition) =>
+      existingDefinitionKeys.has(definitionKey(definition))
+        ? fragment.services.updateEventDefinition(
+            {
+              source: definition.source,
+              eventType: definition.eventType,
+              patch: {
+                label: definition.label,
+                description: definition.description ?? null,
+                payloadSchema: definition.payloadSchema ?? null,
+                actorSchema: definition.actorSchema ?? null,
+                subjectSchema: definition.subjectSchema ?? null,
+                example: definition.example ?? null,
+              },
+            },
+            writer,
+          )
+        : fragment.services.createEventDefinition(definition, writer),
+    ),
+    ...existingDefinitions
+      .filter((definition) => isStewardedByPackage(definition.steward, installation.listingId))
+      .filter((definition) => !declaredDefinitionKeys.has(definitionKey(definition)))
+      .map((definition) => fragment.services.deleteEventDefinition(definition, writer)),
     fragment.services.putPackageInstallation(installation),
   ]);
-  if (results.some((result) => result === null)) {
-    // A route was deleted between reading and writing; the caller retries against the new state.
-    throw new Error(`Routes of package '${installation.listingId}' changed during installation.`);
+  if (results.some((result) => result === null || result === false)) {
+    // Something was deleted between reading and writing; the caller retries against the new state.
+    throw new Error(`Package '${installation.listingId}' changed during installation.`);
   }
 }
 
-/** Deletes an installation and the routes it manages, leaving its files. */
+/** Deletes an installation and the routes and event definitions it manages, leaving its files. */
 export async function uninstallPackage(
   fragment: AutomationFragment,
   { listingId }: { listingId: string },
-): Promise<{ installation: PackageInstallation; removedRouteIds: string[] } | null> {
-  const [routes, installation] = await fragment.callServices(() => [
+): Promise<PackageUninstallation | null> {
+  const [routes, definitions, installation] = await fragment.callServices(() => [
     fragment.services.listRoutes(),
+    fragment.services.listEventDefinitions(),
     fragment.services.getPackageInstallation({ listingId }),
   ]);
   if (!installation) {
     return null;
   }
-  const writer: AutomationRouteSteward = { kind: "package", listingId };
+  const writer: AutomationSteward = { kind: "package", listingId };
   const removedRouteIds = routes
-    .filter((route) => isStewardedBy(route.steward, listingId))
+    .filter((route) => isStewardedByPackage(route.steward, listingId))
     .map((route) => route.id);
+  const removedEventDefinitions = definitions
+    .filter((definition) => isStewardedByPackage(definition.steward, listingId))
+    .map(({ source, eventType }) => ({ source, eventType }));
   await fragment.callServices(() => [
     ...removedRouteIds.map((id) => fragment.services.deleteRoute({ id }, writer)),
+    ...removedEventDefinitions.map((definition) =>
+      fragment.services.deleteEventDefinition(definition, writer),
+    ),
     fragment.services.deletePackageInstallation({ listingId }),
   ]);
-  return { installation, removedRouteIds };
+  return { installation, removedRouteIds, removedEventDefinitions };
 }

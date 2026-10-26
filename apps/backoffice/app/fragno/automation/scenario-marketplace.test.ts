@@ -533,19 +533,19 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                   marketplace: { kind: "system" },
                   installationRoot: "/workspace",
                   listingId: githubChannelListingId,
-                  version: "1.1.0",
+                  version: "1.2.0",
                   targetScope: { kind: "org", orgId: "org-1" },
                   permissions: bundledMarketplacePermissions({
                     slug: "github-channel",
-                    version: "1.1.0",
+                    version: "1.2.0",
                   }),
                 },
                 execution,
               ),
-            ).resolves.toMatchObject({ state: "requested", version: "1.1.0" });
+            ).resolves.toMatchObject({ state: "requested", version: "1.2.0" });
           }),
           runner.drain(),
-          then.assert("both channels manage their declared routes", async (ctx) => {
+          then.assert("both channels manage their declared routes and events", async (ctx) => {
             const automations = ctx.runtime.objects.automations.forOrg("org-1");
             const expectedRoutes = [
               ["telegram-start-linking", telegramChannelListingId],
@@ -583,6 +583,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 source: "github",
                 eventType,
                 enabled: true,
+                steward: { kind: "package", listingId: githubChannelListingId },
               });
             }
           }),

@@ -1,6 +1,7 @@
 import type {
   AutomationRouteAction,
   AutomationRouteTrigger,
+  AutomationSteward,
 } from "@fragno-dev/backoffice-api/v0/automation";
 import type {
   AutomationEvent,
@@ -258,6 +259,11 @@ export const automationFragmentSchema = schema("automations", (s) => {
             "updatedAt",
             column("timestamp").defaultTo((b) => b.now()),
           ),
+      )
+      // Null for definitions created before stewardship, which belong to members. Written and read
+      // only through `event-definitions-storage-runtime`.
+      .alterTable("automation_event_definition", (t) =>
+        t.addColumn("steward", jsonColumn<AutomationSteward>().nullable()),
       )
   );
 });

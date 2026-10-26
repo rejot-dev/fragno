@@ -4660,7 +4660,7 @@
   },
   {
     "command": "packages.uninstall",
-    "summary": "Uninstall a package from the selected workspace, deleting the routes it manages. Its files stay.",
+    "summary": "Uninstall a package from the selected workspace, deleting the routes and event definitions it manages. Its files stay.",
     "options": [
       {
         "name": "listing-id",

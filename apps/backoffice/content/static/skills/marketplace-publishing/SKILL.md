@@ -41,8 +41,8 @@ validates and captures bytes without executing workflows, installers, or package
 
 ## Declare what an installation sets up
 
-`.marketplace/installation.json` declares the permissions the package uses and the routes Backoffice
-keeps in sync for each installation:
+`.marketplace/installation.json` declares the permissions the package uses, and the routes and event
+definitions Backoffice keeps in sync for each installation:
 
 ```json
 {
@@ -65,6 +65,18 @@ keeps in sync for each installation:
         "instanceIdTemplate": "daily-report-${event.id}"
       }
     }
+  ],
+  "eventDefinitions": [
+    {
+      "source": "reports",
+      "eventType": "report.sent",
+      "label": "Report sent",
+      "payloadSchema": {
+        "type": "object",
+        "properties": { "reportId": { "type": "string" } },
+        "required": ["reportId"]
+      }
+    }
   ]
 }
 ```
@@ -73,14 +85,19 @@ keeps in sync for each installation:
   installation points it at the installed copy.
 - A route's grants must be declared permissions. The installer approves exactly the declared
   permissions, and must hold each of them.
-- Installing creates or updates the declared routes and deletes routes an earlier version declared.
-  Members can turn them on or off but not change them. Uninstalling deletes them.
+- Event definitions use the `events.catalog.create` input, and can't redefine built-in events.
+- Installing creates or updates the declared routes and event definitions, and deletes those an
+  earlier version declared. Members can turn them on or off but not change them. Uninstalling
+  deletes them.
+- Installing takes over an existing route or event definition only when the declaration leaves it
+  unchanged, such as one an earlier version's install workflow created; any other is refused.
 - A workspace holds one installation per package, so route ids stay fixed.
 
 ## Ask for settings
 
 `.marketplace/install.workflow.js` is optional. It runs with the approved permissions plus
-`packages.read`, but never `router.modify`: routes come only from the declaration. Whatever it
+`packages.read`, but never `router.modify`: routes come only from the declaration. Declare event
+definitions too, rather than creating them here, so installations keep them in sync. Whatever it
 returns becomes the installation's settings, and the package's workflows read them with
 `packages.get({ listingId })`. The install workflow reads the current installation the same way; it
 is null on a first installation, and the record changes only after the workflow completes.

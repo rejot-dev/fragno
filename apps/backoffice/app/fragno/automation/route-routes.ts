@@ -13,11 +13,8 @@ import { AUTOMATION_SYSTEM_INITIATOR } from "./actors";
 import { automationFragmentDefinition } from "./definition";
 import { isAutomationScheduleError } from "./route-triggers";
 import { AutomationRouteAuthorityError } from "./routing";
-import {
-  AutomationRouteStewardError,
-  MEMBERS_ROUTE_STEWARD,
-  type AuthorizeAutomationRouteAction,
-} from "./routing-storage-runtime";
+import { type AuthorizeAutomationRouteAction } from "./routing-storage-runtime";
+import { AutomationStewardError, MEMBERS_STEWARD } from "./stewards";
 
 const SYSTEM_ROUTE_MUTATION_ACTORS = {
   initiator: AUTOMATION_SYSTEM_INITIATOR,
@@ -63,7 +60,7 @@ const getAutomationRouteMutationActionAuthorizer = (
   (request && mutationActionAuthorizerByRequest.get(request)) ?? (async () => undefined);
 
 function routeError(cause: unknown) {
-  if (cause instanceof AutomationRouteStewardError) {
+  if (cause instanceof AutomationStewardError) {
     return { message: cause.message, code: "ROUTE_STEWARDED" as const, status: 409 as const };
   }
   if (cause instanceof AutomationRouteAuthorityError) {
@@ -130,7 +127,7 @@ export const automationRouteRoutes = defineRoutes(automationFragmentDefinition).
                   services.createRoute(
                     payload,
                     getAutomationRouteMutationActors(request),
-                    MEMBERS_ROUTE_STEWARD,
+                    MEMBERS_STEWARD,
                   ),
                 ] as const,
             )
@@ -172,7 +169,7 @@ export const automationRouteRoutes = defineRoutes(automationFragmentDefinition).
                     { ...payload, id: pathParams.routeId },
                     getAutomationRouteMutationActors(request),
                     getAutomationRouteMutationActionAuthorizer(request),
-                    MEMBERS_ROUTE_STEWARD,
+                    MEMBERS_STEWARD,
                   ),
                 ] as const,
             )
@@ -204,8 +201,7 @@ export const automationRouteRoutes = defineRoutes(automationFragmentDefinition).
         try {
           await this.handlerTx()
             .withServiceCalls(
-              () =>
-                [services.deleteRoute({ id: pathParams.routeId }, MEMBERS_ROUTE_STEWARD)] as const,
+              () => [services.deleteRoute({ id: pathParams.routeId }, MEMBERS_STEWARD)] as const,
             )
             .execute();
         } catch (cause) {

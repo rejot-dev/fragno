@@ -41,7 +41,7 @@ type AutomationRoute = {
   trigger: AutomationRouteTrigger;
   action: AutomationRouteAction;
   description?: string | null;
-  steward: AutomationRouteSteward;
+  steward: AutomationSteward;
   metadata: {
     createdByActors: AutomationActors;
     updatedByActors: AutomationActors;
@@ -75,7 +75,7 @@ type AutomationRouteAction =
   | AutomationForwardEventAction
   | AutomationReclassifyEventAction
   | AutomationNotifyAgentAction;
-type AutomationRouteSteward =
+type AutomationSteward =
   | {
       kind: "members";
     }

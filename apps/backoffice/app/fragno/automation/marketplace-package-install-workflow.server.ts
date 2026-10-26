@@ -246,7 +246,7 @@ async function readLegacyMarketplaceLockVersion(input: {
 
 /**
  * Install published package files, run the package's install workflow, then record the installation
- * and sync its declared routes in the destination workspace.
+ * and sync its declared routes and event definitions in the destination workspace.
  */
 export function defineMarketplacePackageInstallWorkflow(
   config: MarketplacePackageInstallWorkflowConfig,
@@ -502,10 +502,10 @@ export function defineMarketplacePackageInstallWorkflow(
       const declarationFile = requestedPackageFiles.find(
         (file) => file.relativePath === MARKETPLACE_DECLARATION_PATH,
       );
-      const declaredRoutes = await step.do(
-        "read marketplace package declaration",
+      const declared = await step.do(
+        "resolve marketplace package declaration",
         MARKETPLACE_EXTERNAL_STEP_RETRIES,
-        async function readMarketplacePackageDeclaration() {
+        async function resolveMarketplacePackageDeclaration() {
           try {
             const declaration = declarationFile
               ? parseMarketplacePackageDeclaration(
@@ -521,11 +521,14 @@ export function defineMarketplacePackageInstallWorkflow(
               declared: declaration.permissions,
               approved: input.permissions,
             });
-            return resolveDeclaredPackageRoutes({
-              declaration,
-              installationRoot: input.installationRoot,
-              installedPaths: new Set(sourceFiles.map((file) => file.relativePath)),
-            });
+            return {
+              routes: resolveDeclaredPackageRoutes({
+                declaration,
+                installationRoot: input.installationRoot,
+                installedPaths: new Set(sourceFiles.map((file) => file.relativePath)),
+              }),
+              eventDefinitions: declaration.eventDefinitions,
+            };
           } catch (error) {
             if (error instanceof MarketplacePackageDeclarationError) {
               throw new NonRetryableError(error.message);
@@ -938,7 +941,8 @@ export function defineMarketplacePackageInstallWorkflow(
               permissions: input.permissions,
               settings,
             },
-            routes: declaredRoutes,
+            routes: declared.routes,
+            eventDefinitions: declared.eventDefinitions,
             actors: input.metadata[BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY],
           };
           const outcome = targetIsCoordinator

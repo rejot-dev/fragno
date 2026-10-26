@@ -17,6 +17,7 @@ import {
 } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import { createAutomationFragment, type AutomationWorkflowsService } from "@/fragno/automation";
+import { MEMBERS_STEWARD } from "@/fragno/automation/stewards";
 
 import { createEventRuntime, type EventEmitter } from "./event-runtime";
 
@@ -430,19 +431,22 @@ describe("createEventRuntime.emitEvent", () => {
       "event-runtime-dynamic-definition-test",
     );
     await fragment.callServices(() =>
-      fragment.services.createEventDefinition({
-        source: "custom",
-        eventType: "thing.created",
-        label: "Thing created",
-        payloadSchema: {
-          type: "object",
-          required: ["thingId"],
-          properties: {
-            thingId: { type: "string" },
+      fragment.services.createEventDefinition(
+        {
+          source: "custom",
+          eventType: "thing.created",
+          label: "Thing created",
+          payloadSchema: {
+            type: "object",
+            required: ["thingId"],
+            properties: {
+              thingId: { type: "string" },
+            },
+            additionalProperties: false,
           },
-          additionalProperties: false,
         },
-      }),
+        MEMBERS_STEWARD,
+      ),
     );
 
     const triggerIngestEvent = vi.fn(async (event: AutomationEvent) =>
