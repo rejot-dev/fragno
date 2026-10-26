@@ -46,10 +46,11 @@ export function AgentDrawer({
       open={open}
       storageKey="backoffice:agent-drawer-width"
     >
-      {agentsPath ? (
+      {resolvedScope && agentsPath ? (
         <AgentDrawerScope
           key={`${agentsPath}/${agentName}`}
           open={open}
+          resolvedScope={resolvedScope}
           agentsPath={agentsPath}
           agentName={agentName}
           onAgentChange={(nextAgentName) => {
@@ -69,12 +70,14 @@ export function AgentDrawer({
 
 function AgentDrawerScope({
   open,
+  resolvedScope,
   agentsPath,
   agentName,
   onAgentChange,
   onClose,
 }: {
   open: boolean;
+  resolvedScope: BackofficeResolvedScope;
   agentsPath: string;
   agentName: string;
   onAgentChange: (agentName: string) => void;
@@ -134,6 +137,7 @@ function AgentDrawerScope({
             description={agent.description}
             permissions={agent.permissions}
             usageLabel={data.usageLabel}
+            resolvedScope={resolvedScope}
             onStarted={reload}
           />
         </div>
@@ -149,6 +153,7 @@ function AgentDrawerScope({
       header={header}
       // The drawer is too narrow to open what the conversation produced beside it.
       workspace={null}
+      resolvedScope={resolvedScope}
     />
   );
 }

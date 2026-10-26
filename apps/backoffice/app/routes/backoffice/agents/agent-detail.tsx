@@ -3,9 +3,11 @@ import { PaneMessage } from "@fragno-private/design-system/pane-message";
 import { useCallback, type ReactNode } from "react";
 import { useOutletContext, type ShouldRevalidateFunctionArgs } from "react-router";
 
+import { renderPiAgentPrompt } from "@/fragno/pi/agent/pi-agent-attachments";
 import { requireRouteScope } from "@/layouts/backoffice-shell-request.server";
 
 import type { Route } from "./+types/agent-detail";
+import { readPiAgentAttachments } from "./agent-attachments.server";
 import { AgentConversation, type PiAgentActionData } from "./agent-conversation";
 import { isPiConversationSubmission } from "./agent-conversation-submission";
 import { agentModelChoiceFromFormData } from "./agent-model-menu";
@@ -50,7 +52,18 @@ export async function action(args: Route.ActionArgs): Promise<PiAgentActionData>
   }
 
   const content = formData.get("content");
-  if (typeof content !== "string" || !content.trim()) {
+  const text = typeof content === "string" ? content.trim() : "";
+  const read = await readPiAgentAttachments({
+    request,
+    context,
+    scope,
+    agentName,
+    field: formData.get("attachments"),
+  });
+  if ("error" in read) {
+    return { ok: false, intent, error: read.error };
+  }
+  if (!text && read.attachments.length === 0) {
     return { ok: false, intent, error: "Write a message before sending." };
   }
 
@@ -58,7 +71,7 @@ export async function action(args: Route.ActionArgs): Promise<PiAgentActionData>
   // agent's queue for a turn of its own. Sending to a stopped agent resumes its queue.
   const result = await submitPiManagerPrompt(request, context, scope, agentName, {
     requestId: crypto.randomUUID(),
-    content: content.trim(),
+    content: renderPiAgentPrompt(text, read.attachments),
     whenBusy: "steer",
     whenPaused: "resume",
     model: agentModelChoiceFromFormData(formData),
@@ -88,7 +101,7 @@ export default function BackofficeOrganizationPiAgentDetail({
   loaderData,
   params,
 }: Route.ComponentProps) {
-  const { directory, basePath, usageLabel, availableModelOptions } =
+  const { resolvedScope, directory, basePath, usageLabel, availableModelOptions } =
     useOutletContext<PiAgentsOutletContext>();
   if (!loaderData.found) {
     return (
@@ -122,6 +135,7 @@ export default function BackofficeOrganizationPiAgentDetail({
           description={agent.description}
           permissions={agent.permissions}
           usageLabel={usageLabel}
+          resolvedScope={resolvedScope}
           // Starting revalidates this route, which then shows the conversation.
           onStarted={() => undefined}
         />
@@ -140,6 +154,7 @@ function PiAgentDetailConversation({
   agentPath: string;
 }) {
   const {
+    resolvedScope,
     directory,
     availableModelOptions,
     basePath,
@@ -179,6 +194,7 @@ function PiAgentDetailConversation({
       availableModelOptions={availableModelOptions}
       dictationMountRoute={dictationMountRoute}
       header={header}
+      resolvedScope={resolvedScope}
       workspace={{
         storageKey: `backoffice:pi-agent-workspace:${basePath}`,
         state: workspaceStates[agent.agentName] ?? createSessionWorkspaceState(),

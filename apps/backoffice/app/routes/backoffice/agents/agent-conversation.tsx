@@ -15,6 +15,8 @@ import {
 } from "@assistant-ui/react";
 import type { ConversationView, EntryRecord } from "@earendil-works/pi-durable";
 
+import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scope";
+import { FileImageScopeProvider } from "@/components/backoffice/file-image";
 import type {
   PiAgentCompactionStatus,
   PiAvailableModel,
@@ -22,6 +24,7 @@ import type {
 } from "@/fragno/pi/agent/pi-agent-contract";
 import { formatPiAgentName } from "@/fragno/pi/agent/pi-agent-name";
 
+import { agentAttachmentTarget, useAgentAttachments } from "./agent-attachments";
 import type { action as compactionsAction } from "./agent-compactions";
 import {
   AgentModelMenu,
@@ -87,6 +90,8 @@ type AgentConversationProps = {
   header: (options: ReactNode | null) => ReactNode;
   /** Null where there is no room beside the conversation. */
   workspace: AgentConversationWorkspace | null;
+  /** Where the conversation's workspace files, such as the files its messages carry, live. */
+  resolvedScope: BackofficeResolvedScope;
 };
 
 function isPiConversationRunning(view: ConversationView) {
@@ -401,6 +406,7 @@ function AgentConversationThread({
   dictationMountRoute,
   header,
   workspace,
+  resolvedScope,
   view,
   queue: agentQueue,
 }: AgentConversationProps & { view: ConversationView; queue: PiAgentQueueState }) {
@@ -450,6 +456,14 @@ function AgentConversationThread({
       }),
     [activeContextStartIndex, draftAgentMessage, messages, running, statusText],
   );
+  const attachments = useAgentAttachments(
+    useMemo(
+      () => agentAttachmentTarget(resolvedScope, agent.agentName, agent.permissions),
+      [resolvedScope, agent.agentName, agent.permissions],
+    ),
+  );
+  const takeAttachments = attachments?.take ?? null;
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const sendError = fetcher.data && !fetcher.data.ok ? fetcher.data.error : null;
   const submitting = fetcher.state !== "idle";
   const model = useConversationModel({ agent, view, availableModelOptions });
@@ -461,10 +475,16 @@ function AgentConversationThread({
     [fetcher, agentPath],
   );
 
-  const handleSend = useCallback(
-    async (message: AppendMessage) => {
-      const text = getAppendMessageText(message);
-      if (!text) {
+  // A message waits for the files it carries to upload, then goes with those that did.
+  const send = useCallback(
+    async (text: string) => {
+      setAttachmentError(null);
+      const files = takeAttachments === null ? null : await takeAttachments();
+      if (files !== null && files.failed.length > 0) {
+        setAttachmentError(`Not attached, because the upload failed: ${files.failed.join(", ")}.`);
+      }
+      const paths = files?.paths ?? [];
+      if (!text && paths.length === 0) {
         return;
       }
       if (posthog) {
@@ -476,10 +496,17 @@ function AgentConversationThread({
       submitAction({
         intent: "send",
         content: text,
+        ...(paths.length === 0 ? {} : { attachments: JSON.stringify(paths) }),
         ...(model.sent ? agentModelChoiceFormFields(model.sent) : {}),
       });
     },
-    [posthog, submitAction, running, agent.agentName, model.sent],
+    [takeAttachments, posthog, submitAction, running, agent.agentName, model.sent],
+  );
+  const handleSend = useCallback(
+    async (message: AppendMessage) => {
+      await send(getAppendMessageText(message));
+    },
+    [send],
   );
 
   // The agent's queue and Pi's `pi.inbox` own what waits; this adapter keeps the composer usable
@@ -556,8 +583,18 @@ function AgentConversationThread({
   const conversation = (
     <SessionThread
       dictation={dictation !== undefined}
+      attachments={
+        attachments === null
+          ? null
+          : {
+              items: attachments.items,
+              add: attachments.add,
+              sendFiles: () => void send(""),
+              sending: attachments.sending,
+            }
+      }
       disabledReason={null}
-      error={sendError}
+      error={attachmentError ?? sendError}
       queueLabels={conversationQueue.labels}
       paused={agentQueue.paused && agentQueue.items.length > 0}
       onResume={handleResume}
@@ -594,33 +631,35 @@ function AgentConversationThread({
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <SessionWorkflowsProvider>
-        <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-          <h2 className="sr-only">{formatPiAgentName(agent.agentName)}</h2>
-          {header(
-            <SessionDisplayOptions
-              exportHref={`${agentPath}.jsonl`}
-              exportFilename={`pi-agent-${agent.agentName}.jsonl`}
-              showToolCalls={displayOptions.showToolCalls}
-              showThinking={displayOptions.showThinking}
-              showUsage={displayOptions.showUsage}
-              onShowToolCallsChange={updateDisplayOption("showToolCalls")}
-              onShowThinkingChange={updateDisplayOption("showThinking")}
-              onShowUsageChange={updateDisplayOption("showUsage")}
-            />,
-          )}
-          {workspace ? (
-            <AgentConversationWithWorkspace
-              workspace={workspace}
-              messages={messages}
-              draftAgentMessage={draftAgentMessage}
-              conversation={conversation}
-            />
-          ) : (
-            conversation
-          )}
-        </div>
-      </SessionWorkflowsProvider>
+      <FileImageScopeProvider scope={resolvedScope}>
+        <SessionWorkflowsProvider>
+          <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+            <h2 className="sr-only">{formatPiAgentName(agent.agentName)}</h2>
+            {header(
+              <SessionDisplayOptions
+                exportHref={`${agentPath}.jsonl`}
+                exportFilename={`pi-agent-${agent.agentName}.jsonl`}
+                showToolCalls={displayOptions.showToolCalls}
+                showThinking={displayOptions.showThinking}
+                showUsage={displayOptions.showUsage}
+                onShowToolCallsChange={updateDisplayOption("showToolCalls")}
+                onShowThinkingChange={updateDisplayOption("showThinking")}
+                onShowUsageChange={updateDisplayOption("showUsage")}
+              />,
+            )}
+            {workspace ? (
+              <AgentConversationWithWorkspace
+                workspace={workspace}
+                messages={messages}
+                draftAgentMessage={draftAgentMessage}
+                conversation={conversation}
+              />
+            ) : (
+              conversation
+            )}
+          </div>
+        </SessionWorkflowsProvider>
+      </FileImageScopeProvider>
     </AssistantRuntimeProvider>
   );
 }

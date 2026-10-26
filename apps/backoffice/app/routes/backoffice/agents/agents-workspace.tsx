@@ -53,6 +53,7 @@ export function PiAgentsWorkspace({ layoutContext }: { layoutContext: PiLayoutCo
       <Outlet
         context={
           {
+            resolvedScope,
             directory,
             availableModelOptions,
             usageLabel,

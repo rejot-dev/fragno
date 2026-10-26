@@ -10,6 +10,7 @@ import type {
   LiveState,
 } from "@earendil-works/pi-durable";
 
+import { parsePiAgentPrompt, type PiAgentAttachment } from "@/fragno/pi/agent/pi-agent-attachments";
 import type { PiAgentNotification } from "@/fragno/pi/agent/pi-agent-contract";
 import {
   parsePiNotificationRequest,
@@ -98,6 +99,12 @@ export type PiResetMessageMetadata = {
 export type PiNotificationMessageMetadata = {
   kind: "notification";
   notification: PiAgentNotification;
+};
+
+/** What the reader wrote; the files it carried show beside its text. */
+export type PiUserMessageMetadata = {
+  kind: "user";
+  attachments: PiAgentAttachment[];
 };
 
 export type PiNotificationRequestMessageMetadata = {
@@ -571,12 +578,21 @@ export function createAssistantUiMessages({
       .filter((block): block is AssistantContentBlock => block !== null);
 
     if (message.role === "user") {
+      const attachments: PiAgentAttachment[] = [];
+      const text = content.flatMap((block): AssistantContentBlock[] => {
+        if (block.type !== "text") {
+          return [block];
+        }
+        const prompt = parsePiAgentPrompt(block.text);
+        attachments.push(...prompt.attachments);
+        return prompt.text === "" ? [] : [{ ...block, text: prompt.text }];
+      });
       converted.push({
         id: `pi-user-${message.timestamp ?? index}-${index}`,
         role: "user",
-        content,
+        content: text,
         createdAt: messageDate(message.timestamp, index),
-        metadata: { custom: {} },
+        metadata: { custom: { kind: "user", attachments } satisfies PiUserMessageMetadata },
       });
       return;
     }
@@ -828,14 +844,16 @@ export function piConversationQueue(
         ? item.content
         : item.content.map((part) => (part.type === "text" ? part.text : "[image]")).join("\n");
     const notifications = parsePiNotificationRequest(text);
-    const prompt = notifications ? notificationRequestLabel(notifications, "asked") : text;
+    const prompt = notifications
+      ? notificationRequestLabel(notifications, "asked")
+      : promptLabel(text);
     items.push({ id, prompt });
     labels.set(id, item.mode === "steer" ? "Steering" : "Up next");
   }
   for (const entry of waiting) {
     const id = `queue:${entry.requestId}`;
     if (entry.type === "prompt") {
-      items.push({ id, prompt: entry.content });
+      items.push({ id, prompt: promptLabel(entry.content) });
       labels.set(id, "Queued");
     } else {
       items.push({ id, prompt: `${entry.source} · ${entry.eventType}` });
@@ -843,6 +861,16 @@ export function piConversationQueue(
     }
   }
   return { items, labels };
+}
+
+/** A waiting message's text, with the files it carries counted rather than listed. */
+function promptLabel(prompt: string) {
+  const { text, attachments } = parsePiAgentPrompt(prompt);
+  if (attachments.length === 0) {
+    return text;
+  }
+  const files = attachments.length === 1 ? "1 file" : `${attachments.length} files`;
+  return text === "" ? files : `${text} · ${files}`;
 }
 
 /** How the chat names a request to handle notifications, while the agent handles them or after. */
