@@ -199,8 +199,18 @@ export type BackofficeActionRpcContext = BackofficeRpcContext & {
   execution: BackofficeExecutionContext;
 };
 
+export type FetchCommandsOptions = {
+  /**
+   * Returns the object's response as is, so workerd moves its body without copying each chunk
+   * through JavaScript, and cancels it when the client goes away. Otherwise the body is forwarded
+   * through a stream that also cancels it when the request aborts, which a body that can idle
+   * indefinitely needs. Only for bodies that keep writing or end on their own.
+   */
+  passThrough?: boolean;
+};
+
 export type FetchCommands = {
-  fetch(request: Request): Promise<Response>;
+  fetch(request: Request, options?: FetchCommandsOptions): Promise<Response>;
 };
 
 export type BackofficeObjectHttp = FetchCommands & {

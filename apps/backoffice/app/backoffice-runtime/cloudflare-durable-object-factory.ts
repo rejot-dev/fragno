@@ -59,11 +59,10 @@ export class CloudflareDurableObjectFactory implements BackofficeObjectFactory {
     const http: BackofficeObjectHttp & { readonly id: DurableObjectId } = {
       // Preserve the target identity so isolate-local caches survive newly assembled object handles.
       id,
-      fetch: async (request) =>
-        forwardRequestOwnedResponse(
-          request,
-          await stub.fetch(removeBackofficeInternalContextHeader(request)),
-        ),
+      fetch: async (request, options) => {
+        const response = await stub.fetch(removeBackofficeInternalContextHeader(request));
+        return options?.passThrough ? response : forwardRequestOwnedResponse(request, response);
+      },
       fetchAuthorized: async (request, context) =>
         forwardRequestOwnedResponse(
           request,
