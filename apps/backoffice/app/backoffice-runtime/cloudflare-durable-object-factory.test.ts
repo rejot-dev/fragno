@@ -75,4 +75,26 @@ describe("Cloudflare Durable Object factory", () => {
       }),
     ).resolves.toMatchObject({ context: { execution, propagationContext: null } });
   });
+
+  test("forwards response bodies unless the caller passes them through", async () => {
+    const responses: Response[] = [];
+    const stub = {
+      fetch: vi.fn(async () => {
+        const response = new Response(new ReadableStream());
+        responses.push(response);
+        return response;
+      }),
+    };
+    const env = {
+      AUTOMATIONS: {
+        idFromName: () => ({ name: "v1:org:org-1" }) as DurableObjectId,
+        get: () => stub,
+      },
+    } as unknown as CloudflareEnv;
+    const { http } = new CloudflareDurableObjectFactory(env).get({ name: "AUTOMATIONS" }, address);
+    const request = () => new Request("https://automations.test/api/automations/_internal/outbox");
+
+    assert.notStrictEqual(await http.fetch(request()), responses[0]);
+    assert.strictEqual(await http.fetch(request(), { passThrough: true }), responses[1]);
+  });
 });

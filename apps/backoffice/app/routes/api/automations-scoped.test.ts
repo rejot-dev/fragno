@@ -73,38 +73,20 @@ describe("scoped Automations outbox proxy", () => {
     assert(!forwardedRequest.headers.has(BACKOFFICE_INTERNAL_CONTEXT_HEADER));
   });
 
-  test("cancels the Durable Object response when the browser request disconnects", async () => {
-    const requestController = new AbortController();
-    let resolveCancellation!: () => void;
-    const cancellation = new Promise<void>((resolve) => {
-      resolveCancellation = resolve;
-    });
-    automationsFetchMock.mockResolvedValueOnce(
-      new Response(
-        new ReadableStream({
-          cancel() {
-            resolveCancellation();
-          },
-        }),
-      ),
-    );
-    const request = new Request(
-      "https://backoffice.example/api/automations-scoped/org/org-1/_internal/outbox/stream",
-      { signal: requestController.signal },
-    );
+  test("passes the Durable Object's outbox stream through untouched", async () => {
+    const upstream = new Response(new ReadableStream());
+    automationsFetchMock.mockResolvedValueOnce(upstream);
 
     const response = await loader({
-      request,
+      request: new Request(
+        "https://backoffice.example/api/automations-scoped/org/org-1/_internal/outbox/stream",
+      ),
       context,
       params: { scopeKind: "org", scopeId: "org-1", "*": "_internal/outbox/stream" },
     });
-    requestController.abort();
 
-    await cancellation;
-    const reader = response.body?.getReader();
-    assert(reader);
-    await expect(reader.read()).resolves.toEqual({ done: true, value: undefined });
-    reader.releaseLock();
+    assert.strictEqual(response, upstream);
+    expect(automationsFetchMock).toHaveBeenCalledWith(expect.any(Request), { passThrough: true });
   });
 
   test("does not expose fragment mutation routes through the catch-all", async () => {

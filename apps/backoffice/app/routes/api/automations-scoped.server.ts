@@ -1,7 +1,6 @@
 import type { RouterContextProvider } from "react-router";
 
 import { removeBackofficeInternalContextHeader } from "@/backoffice-runtime/internal-object-request";
-import { forwardRequestOwnedResponse } from "@/backoffice-runtime/request-owned-response";
 import { requireBackofficeContextScopeFromRouteParams } from "@/backoffice-runtime/scope-codec";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { isAutomationOutboxPath } from "@/fragno/automation/route-callers";
@@ -41,10 +40,11 @@ export const forwardToScopedAutomationsFragment = async ({
   // A streaming Response returned through an RpcTarget keeps the JSRPC invocation alive for the
   // body lifetime. Forward outbox streams through the Durable Object fetch boundary so their
   // automatic storage spans remain owned by the stream request's trace.
-  return forwardRequestOwnedResponse(
-    request,
-    await automationsDo.http.fetch(
-      removeBackofficeInternalContextHeader(new Request(url.toString(), request)),
-    ),
+  // The response passes through untouched: an outbox stream is hundreds of megabytes on a first
+  // catch-up, and copying it through JavaScript here cost as much CPU as producing it. The stream
+  // writes a heartbeat every few hundred milliseconds, so it notices a client that went away.
+  return await automationsDo.http.fetch(
+    removeBackofficeInternalContextHeader(new Request(url.toString(), request)),
+    { passThrough: true },
   );
 };
