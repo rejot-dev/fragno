@@ -5,6 +5,7 @@ import {
   ChatActivityStep,
   type ChatActivityStatus,
 } from "@fragno-private/design-system/chat-activity";
+import { ChatMessageAttachments } from "@fragno-private/design-system/chat-attachment";
 import {
   ChatEventDisclosure,
   ChatEventDivider,
@@ -23,8 +24,10 @@ import { WorkingIndicator } from "@fragno-private/design-system/working-indicato
 
 import { MessagePrimitive, useAuiState } from "@assistant-ui/react";
 
+import { useFileScope } from "@/components/backoffice/file-image";
 import { workflowCompletionFromNotification } from "@/fragno/automation/workflow-reply";
 
+import { sentAttachmentItems } from "../agent-attachments";
 import { agentTurn, liveHeadline, type AgentTurnStep, type ToolCallPart } from "./agent-turn";
 import {
   notificationRequestLabel,
@@ -32,6 +35,7 @@ import {
   type PiCompactionMessageMetadata,
   type PiNotificationMessageMetadata,
   type PiNotificationRequestMessageMetadata,
+  type PiUserMessageMetadata,
 } from "./assistant-runtime";
 import { MarkdownText, MessageImage } from "./message-content";
 import { ResultContent } from "./result-content";
@@ -49,11 +53,26 @@ import { useSessionWorkspaceNavigation } from "./workspace-context";
 
 export function UserMessage() {
   const createdAt = useAuiState((state) => state.message.createdAt);
+  const { attachments } = useAuiState(
+    (state) => state.message.metadata.custom as PiUserMessageMetadata,
+  );
+  // A message of only files has no text to show.
+  const written = useAuiState((state) => state.message.parts.length > 0);
+  const scope = useFileScope();
 
   return (
     <MessagePrimitive.Root asChild>
-      <ChatUserMessage time={createdAt ?? null} attachments={null}>
-        <MessagePrimitive.Parts components={{ Text: MarkdownText, Image: MessageImage }} />
+      <ChatUserMessage
+        time={createdAt ?? null}
+        attachments={
+          scope === null || attachments.length === 0 ? null : (
+            <ChatMessageAttachments attachments={sentAttachmentItems(scope, attachments)} />
+          )
+        }
+      >
+        {written ? (
+          <MessagePrimitive.Parts components={{ Text: MarkdownText, Image: MessageImage }} />
+        ) : null}
       </ChatUserMessage>
     </MessagePrimitive.Root>
   );

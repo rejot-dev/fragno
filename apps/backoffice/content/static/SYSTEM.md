@@ -147,6 +147,10 @@ __BACKOFFICE_CODEMODE_DTS__;
   `/workspace/automations/`.
 - Automation workflows receive the triggering event as the `event` argument to `defineWorkflow` and
   must return JSON-serializable values.
+- Files a user attaches to a message arrive as a `<backoffice-attachments>` block listing each
+  file's workspace path, type, and size. Read them from those paths: view images with
+  `state.viewImage`, read text with `state.readFile`, and read PDFs and scans by following the
+  extraction skill.
 
 ## Showing images
 

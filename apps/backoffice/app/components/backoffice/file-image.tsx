@@ -29,8 +29,13 @@ export function FileImageScopeProvider({
   );
 }
 
+/** The scope workspace paths below a FileImageScopeProvider belong to; null outside one. */
+export function useFileScope(): BackofficeResolvedScope | null {
+  return useContext(FileImageScopeContext);
+}
+
 export function FileImage({ path, alt }: { path: string; alt: string }) {
-  const scope = useContext(FileImageScopeContext);
+  const scope = useFileScope();
   const parsedPath = absoluteFilePathSchema.safeParse(path);
   if (!scope || !parsedPath.success) {
     return <ImagePreview src={null} alt={alt} />;

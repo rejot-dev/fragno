@@ -1,5 +1,11 @@
 import { Button } from "@fragno-private/design-system/button";
 import {
+  ChatAttachmentDropZone,
+  ChatComposerAttachButton,
+  ChatComposerAttachments,
+  type ChatComposerAttachmentItem,
+} from "@fragno-private/design-system/chat-attachment";
+import {
   ChatComposer,
   ChatComposerButton,
   ChatComposerDictationButton,
@@ -60,6 +66,16 @@ const CLEARED_HISTORY =
 
 export type ComposerAction = "message" | "compact" | "clear";
 
+/** Files waiting to go with the next message; they upload as soon as they are added. */
+export type ComposerAttachments = {
+  items: readonly ChatComposerAttachmentItem[];
+  add: (files: File[]) => void;
+  /** Sends the files without text, which the composer's own send refuses. */
+  sendFiles: () => void;
+  /** A sent message is waiting for its files to finish uploading. */
+  sending: boolean;
+};
+
 function composerActionOptions(readyForInput: boolean): RadioMenuOption<ComposerAction>[] {
   return [
     {
@@ -103,31 +119,57 @@ function ScrollToLatest() {
   );
 }
 
+/** Sends what the composer holds, including files without text. */
+function SendButton({
+  label,
+  joined,
+  disabled,
+  sendFiles,
+}: {
+  label: string;
+  joined: boolean;
+  disabled: boolean;
+  /** Null while no files wait in the composer. */
+  sendFiles: (() => void) | null;
+}) {
+  const empty = useAuiState((state) => state.composer.isEmpty);
+  if (empty && sendFiles !== null) {
+    return (
+      <ChatComposerButton tone="accent" joined={joined} disabled={disabled} onClick={sendFiles}>
+        {label}
+      </ChatComposerButton>
+    );
+  }
+  return (
+    <ComposerPrimitive.Send disabled={disabled} asChild>
+      <ChatComposerButton tone="accent" joined={joined}>
+        {label}
+      </ChatComposerButton>
+    </ComposerPrimitive.Send>
+  );
+}
+
 /** A paused queue resumes with an empty composer; a message resumes it too, at the queue's end. */
 function SendOrResume({
   disabled,
   paused,
   onResume,
+  sendFiles,
 }: {
   disabled: boolean;
   paused: boolean;
   onResume: () => unknown;
+  sendFiles: (() => void) | null;
 }) {
   const empty = useAuiState((state) => state.composer.isEmpty);
-  if (paused && empty) {
+  if (paused && empty && sendFiles === null) {
     return (
       <ChatComposerButton tone="accent" joined disabled={disabled} onClick={() => void onResume()}>
         Resume
       </ChatComposerButton>
     );
   }
-  return (
-    <ComposerPrimitive.Send disabled={disabled} asChild>
-      <ChatComposerButton tone="accent" joined>
-        Send
-      </ChatComposerButton>
-    </ComposerPrimitive.Send>
-  );
+  return <SendButton label="Send" joined disabled={disabled} sendFiles={sendFiles} />;
 }
 
 /** Speech lands in the composer as the user talks; nothing is sent until they send it. */
@@ -181,6 +223,7 @@ export function SessionThread({
   onComposerActionChange,
   onLoadMoreHistory,
   dictation,
+  attachments,
 }: {
   disabledReason: string | null;
   error: string | null;
@@ -218,10 +261,16 @@ export function SessionThread({
   onLoadMoreHistory: () => Promise<void>;
   /** Whether the runtime has a dictation adapter to drive the microphone button. */
   dictation: boolean;
+  /** Null where the agent cannot read uploaded files. */
+  attachments: ComposerAttachments | null;
 }) {
   const disabled = disabledReason !== null;
   // Clearing takes no text, so nothing can be written for it.
   const writingDisabled = disabled || composerAction === "clear";
+  // Compaction instructions and clearing say nothing to the agent, so carry no files.
+  const attachingDisabled = disabled || composerAction !== "message" || attachments === null;
+  const sendFiles =
+    attachments !== null && attachments.items.length > 0 ? attachments.sendFiles : null;
   const viewportRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   // While older history loads, the reader's distance from the bottom stays fixed, so content
@@ -261,224 +310,248 @@ export function SessionThread({
     }
   };
   return (
-    <ThreadPrimitive.Root asChild>
-      <ChatThread>
-        <ThreadPrimitive.Viewport ref={viewportRef} autoScroll asChild>
-          <ChatViewport>
-            <ChatColumn ref={contentRef}>
-              {hasMoreHistory || historyError ? (
-                <ChatHistoryControls
-                  // Once history shows, the divider below it carries this explanation.
-                  explanation={activeContextStartMessageId === null ? OUT_OF_CONTEXT_HISTORY : null}
-                  hasMore={hasMoreHistory}
-                  loading={historyLoading}
-                  error={historyError}
-                  onLoadMore={() => void loadOlderHistory()}
-                />
-              ) : null}
-
-              <ThreadPrimitive.Messages>
-                {({ message }) => {
-                  const systemKind =
-                    message.role === "system"
-                      ? (
-                          message.metadata.custom as
-                            | PiCompactionMessageMetadata
-                            | PiNotificationMessageMetadata
-                            | PiNotificationRequestMessageMetadata
-                            | PiResetMessageMetadata
-                        ).kind
-                      : null;
-                  // A context that starts at a reset needs one boundary, not the reset's marker too.
-                  if (message.id === activeContextStartMessageId && systemKind === "reset") {
-                    return <ChatBoundaryDivider>{CLEARED_HISTORY}</ChatBoundaryDivider>;
-                  }
-                  return (
-                    <>
-                      {message.id === activeContextStartMessageId ? (
-                        <ChatBoundaryDivider>{COMPACTED_HISTORY}</ChatBoundaryDivider>
-                      ) : null}
-                      {systemKind !== null ? (
-                        <SystemMessage kind={systemKind} />
-                      ) : message.role === "user" ? (
-                        <UserMessage />
-                      ) : (
-                        <AssistantMessage
-                          showThinking={showThinking}
-                          showToolCalls={showToolCalls}
-                          showUsage={showUsage}
-                        />
-                      )}
-                    </>
-                  );
-                }}
-              </ThreadPrimitive.Messages>
-
-              {compacting ? (
-                <ChatThreadNotice>
-                  <OperationNotice
-                    tone="progress"
-                    title="Compacting context"
-                    description="Selecting history and writing a durable summary…"
-                  />
-                </ChatThreadNotice>
-              ) : compactionError ? (
-                <ChatThreadNotice>
-                  <OperationNotice
-                    tone="failed"
-                    title="Context compaction failed"
-                    description={compactionError}
-                    onRetry={onCompact}
-                  />
-                </ChatThreadNotice>
-              ) : compactionNotice ? (
-                <ChatThreadNotice>
-                  <OperationNotice
-                    tone="neutral"
-                    title="Context was not compacted"
-                    description={compactionNotice}
-                  />
-                </ChatThreadNotice>
-              ) : null}
-              <ChatTurnSpacer />
-            </ChatColumn>
-
-            <ThreadPrimitive.ViewportFooter asChild>
-              <ChatViewportFooter alert={error}>
-                <ScrollToLatest />
-                <SessionWorkflowInputRequests />
-                <ComposerPrimitive.Root
-                  onSubmit={(event) => {
-                    if (composerAction === "message") {
-                      return;
+    <ChatAttachmentDropZone
+      disabled={attachingDisabled}
+      onFiles={(files) => {
+        attachments?.add(files);
+      }}
+    >
+      <ThreadPrimitive.Root asChild>
+        <ChatThread>
+          <ThreadPrimitive.Viewport ref={viewportRef} autoScroll asChild>
+            <ChatViewport>
+              <ChatColumn ref={contentRef}>
+                {hasMoreHistory || historyError ? (
+                  <ChatHistoryControls
+                    // Once history shows, the divider below it carries this explanation.
+                    explanation={
+                      activeContextStartMessageId === null ? OUT_OF_CONTEXT_HISTORY : null
                     }
-                    event.preventDefault();
-                    if (composerAction === "compact" && readyForInput) {
-                      void onCompact();
+                    hasMore={hasMoreHistory}
+                    loading={historyLoading}
+                    error={historyError}
+                    onLoadMore={() => void loadOlderHistory()}
+                  />
+                ) : null}
+
+                <ThreadPrimitive.Messages>
+                  {({ message }) => {
+                    const systemKind =
+                      message.role === "system"
+                        ? (
+                            message.metadata.custom as
+                              | PiCompactionMessageMetadata
+                              | PiNotificationMessageMetadata
+                              | PiNotificationRequestMessageMetadata
+                              | PiResetMessageMetadata
+                          ).kind
+                        : null;
+                    // A context that starts at a reset needs one boundary, not the reset's marker too.
+                    if (message.id === activeContextStartMessageId && systemKind === "reset") {
+                      return <ChatBoundaryDivider>{CLEARED_HISTORY}</ChatBoundaryDivider>;
                     }
-                  }}
-                  asChild
-                >
-                  <ChatComposer disabled={disabled}>
-                    <ComposerPrimitive.Queue>
-                      {({ queueItem }) => (
-                        <ChatComposerQueueItem label={queueLabels.get(queueItem.id)}>
-                          <QueueItemPrimitive.Text />
-                        </ChatComposerQueueItem>
-                      )}
-                    </ComposerPrimitive.Queue>
-                    <ComposerPrimitive.Input
-                      disabled={writingDisabled}
-                      submitMode="enter"
-                      placeholder={
-                        disabled
-                          ? disabledReason
-                          : composerAction === "compact"
-                            ? "Tell Pi what the compaction summary must preserve"
-                            : composerAction === "clear"
-                              ? "Clear starts Pi on a new, empty context"
-                              : running
-                                ? "Steer Pi; it reads this after the current step"
-                                : "Message Pi"
-                      }
-                      rows={1}
-                      className={chatComposerInputClassName}
-                    />
-                    <ChatComposerToolbar
-                      start={
-                        <>
-                          {model}
-                          <ContextUsageMeter
-                            tokens={contextUsage.tokens}
-                            contextWindow={contextUsage.window}
+                    return (
+                      <>
+                        {message.id === activeContextStartMessageId ? (
+                          <ChatBoundaryDivider>{COMPACTED_HISTORY}</ChatBoundaryDivider>
+                        ) : null}
+                        {systemKind !== null ? (
+                          <SystemMessage kind={systemKind} />
+                        ) : message.role === "user" ? (
+                          <UserMessage />
+                        ) : (
+                          <AssistantMessage
+                            showThinking={showThinking}
+                            showToolCalls={showToolCalls}
+                            showUsage={showUsage}
                           />
-                          {disabled ? (
-                            <ChatComposerStatus working={false}>
-                              {disabledReason}
-                            </ChatComposerStatus>
-                          ) : running ? (
-                            <ChatComposerStatus working>
-                              {statusText ?? "Working…"}
-                            </ChatComposerStatus>
-                          ) : null}
-                        </>
-                      }
-                      end={
-                        <>
-                          {dictation ? <DictationButton disabled={writingDisabled} /> : null}
-                          {needsNudge ? (
-                            <Button variant="ghost" onClick={() => void onContinue()}>
-                              Continue
-                            </Button>
-                          ) : null}
-                          {running ? (
-                            <>
-                              <ChatComposerButton
-                                tone="neutral"
-                                joined={false}
-                                onClick={() => void onStop()}
-                              >
-                                Stop
-                              </ChatComposerButton>
-                              {compacting ? null : (
-                                <ComposerPrimitive.Send disabled={disabled} asChild>
-                                  <ChatComposerButton tone="accent" joined={false}>
-                                    Steer
-                                  </ChatComposerButton>
-                                </ComposerPrimitive.Send>
-                              )}
-                            </>
-                          ) : (
-                            <ChatComposerSplit>
-                              {composerAction === "compact" ? (
-                                <ChatComposerButton
-                                  tone="accent"
-                                  joined
-                                  disabled={disabled || !readyForInput}
-                                  onClick={() => void onCompact()}
-                                >
-                                  Compact
-                                </ChatComposerButton>
-                              ) : composerAction === "clear" ? (
-                                <ChatComposerButton
-                                  tone="accent"
-                                  joined
-                                  // An empty active context, as right after a reset, has nothing to clear.
-                                  disabled={disabled || !readyForInput || contextUsage.tokens === 0}
-                                  onClick={() => void onClear()}
-                                >
-                                  Clear
-                                </ChatComposerButton>
-                              ) : (
-                                <SendOrResume
-                                  disabled={disabled}
-                                  paused={paused}
-                                  onResume={onResume}
-                                />
-                              )}
-                              <RadioMenu
-                                label="Choose composer action"
-                                heading="Composer action"
-                                trigger={{ kind: "accent" }}
-                                side="top"
-                                disabled={disabled}
-                                value={composerAction}
-                                options={composerActionOptions(readyForInput)}
-                                onValueChange={onComposerActionChange}
-                              />
-                            </ChatComposerSplit>
-                          )}
-                        </>
-                      }
+                        )}
+                      </>
+                    );
+                  }}
+                </ThreadPrimitive.Messages>
+
+                {compacting ? (
+                  <ChatThreadNotice>
+                    <OperationNotice
+                      tone="progress"
+                      title="Compacting context"
+                      description="Selecting history and writing a durable summary…"
                     />
-                  </ChatComposer>
-                </ComposerPrimitive.Root>
-              </ChatViewportFooter>
-            </ThreadPrimitive.ViewportFooter>
-          </ChatViewport>
-        </ThreadPrimitive.Viewport>
-      </ChatThread>
-    </ThreadPrimitive.Root>
+                  </ChatThreadNotice>
+                ) : compactionError ? (
+                  <ChatThreadNotice>
+                    <OperationNotice
+                      tone="failed"
+                      title="Context compaction failed"
+                      description={compactionError}
+                      onRetry={onCompact}
+                    />
+                  </ChatThreadNotice>
+                ) : compactionNotice ? (
+                  <ChatThreadNotice>
+                    <OperationNotice
+                      tone="neutral"
+                      title="Context was not compacted"
+                      description={compactionNotice}
+                    />
+                  </ChatThreadNotice>
+                ) : null}
+                <ChatTurnSpacer />
+              </ChatColumn>
+
+              <ThreadPrimitive.ViewportFooter asChild>
+                <ChatViewportFooter alert={error}>
+                  <ScrollToLatest />
+                  <SessionWorkflowInputRequests />
+                  <ComposerPrimitive.Root
+                    onSubmit={(event) => {
+                      if (composerAction === "message") {
+                        return;
+                      }
+                      event.preventDefault();
+                      if (composerAction === "compact" && readyForInput) {
+                        void onCompact();
+                      }
+                    }}
+                    asChild
+                  >
+                    <ChatComposer disabled={disabled}>
+                      <ComposerPrimitive.Queue>
+                        {({ queueItem }) => (
+                          <ChatComposerQueueItem label={queueLabels.get(queueItem.id)}>
+                            <QueueItemPrimitive.Text />
+                          </ChatComposerQueueItem>
+                        )}
+                      </ComposerPrimitive.Queue>
+                      {attachments === null ? null : (
+                        <ChatComposerAttachments attachments={attachments.items} />
+                      )}
+                      <ComposerPrimitive.Input
+                        disabled={writingDisabled}
+                        submitMode="enter"
+                        placeholder={
+                          disabled
+                            ? disabledReason
+                            : composerAction === "compact"
+                              ? "Tell Pi what the compaction summary must preserve"
+                              : composerAction === "clear"
+                                ? "Clear starts Pi on a new, empty context"
+                                : running
+                                  ? "Steer Pi; it reads this after the current step"
+                                  : "Message Pi"
+                        }
+                        rows={1}
+                        className={chatComposerInputClassName}
+                      />
+                      <ChatComposerToolbar
+                        start={
+                          <>
+                            {attachments === null ? null : (
+                              <ChatComposerAttachButton
+                                disabled={attachingDisabled}
+                                onFiles={attachments.add}
+                              />
+                            )}
+                            {model}
+                            <ContextUsageMeter
+                              tokens={contextUsage.tokens}
+                              contextWindow={contextUsage.window}
+                            />
+                            {disabled ? (
+                              <ChatComposerStatus working={false}>
+                                {disabledReason}
+                              </ChatComposerStatus>
+                            ) : running ? (
+                              <ChatComposerStatus working>
+                                {statusText ?? "Working…"}
+                              </ChatComposerStatus>
+                            ) : attachments?.sending ? (
+                              <ChatComposerStatus working>Uploading files…</ChatComposerStatus>
+                            ) : null}
+                          </>
+                        }
+                        end={
+                          <>
+                            {dictation ? <DictationButton disabled={writingDisabled} /> : null}
+                            {needsNudge ? (
+                              <Button variant="ghost" onClick={() => void onContinue()}>
+                                Continue
+                              </Button>
+                            ) : null}
+                            {running ? (
+                              <>
+                                <ChatComposerButton
+                                  tone="neutral"
+                                  joined={false}
+                                  onClick={() => void onStop()}
+                                >
+                                  Stop
+                                </ChatComposerButton>
+                                {compacting ? null : (
+                                  <SendButton
+                                    label="Steer"
+                                    joined={false}
+                                    disabled={disabled}
+                                    sendFiles={sendFiles}
+                                  />
+                                )}
+                              </>
+                            ) : (
+                              <ChatComposerSplit>
+                                {composerAction === "compact" ? (
+                                  <ChatComposerButton
+                                    tone="accent"
+                                    joined
+                                    disabled={disabled || !readyForInput}
+                                    onClick={() => void onCompact()}
+                                  >
+                                    Compact
+                                  </ChatComposerButton>
+                                ) : composerAction === "clear" ? (
+                                  <ChatComposerButton
+                                    tone="accent"
+                                    joined
+                                    // An empty active context, as right after a reset, has nothing to clear.
+                                    disabled={
+                                      disabled || !readyForInput || contextUsage.tokens === 0
+                                    }
+                                    onClick={() => void onClear()}
+                                  >
+                                    Clear
+                                  </ChatComposerButton>
+                                ) : (
+                                  <SendOrResume
+                                    disabled={disabled}
+                                    paused={paused}
+                                    onResume={onResume}
+                                    sendFiles={sendFiles}
+                                  />
+                                )}
+                                <RadioMenu
+                                  label="Choose composer action"
+                                  heading="Composer action"
+                                  trigger={{ kind: "accent" }}
+                                  side="top"
+                                  disabled={disabled}
+                                  value={composerAction}
+                                  options={composerActionOptions(readyForInput)}
+                                  onValueChange={onComposerActionChange}
+                                />
+                              </ChatComposerSplit>
+                            )}
+                          </>
+                        }
+                      />
+                    </ChatComposer>
+                  </ComposerPrimitive.Root>
+                </ChatViewportFooter>
+              </ThreadPrimitive.ViewportFooter>
+            </ChatViewport>
+          </ThreadPrimitive.Viewport>
+        </ChatThread>
+      </ThreadPrimitive.Root>
+    </ChatAttachmentDropZone>
   );
 }
 
