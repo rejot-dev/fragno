@@ -3835,6 +3835,45 @@
     ]
   },
   {
+    "command": "pi.prompt.get",
+    "summary": "pi.prompt.get tells where a prompt submitted with a request ID stands.",
+    "options": [
+      {
+        "name": "agent",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "agent-name",
+        "description": "Agent name"
+      },
+      {
+        "name": "request-id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "request-id",
+        "description": "The request ID the prompt was submitted with"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "pi.agent.stop",
     "summary": "pi.agent.stop aborts an agent's work and pauses its queue.",
     "options": [

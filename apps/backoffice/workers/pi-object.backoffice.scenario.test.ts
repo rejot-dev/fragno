@@ -405,6 +405,20 @@ test("agents and users read another agent's messages and export its whole conver
             /^\(earlier messages: --before \d+\)\n\n\[assistant · \S+\]\nThe notes say: Durable marker\.\n$/u,
           );
 
+          const prompted = await bash.exec(
+            "pi.prompt.get --agent researcher --request-id research --format json",
+          );
+          assert.equal(prompted.exitCode, 0, prompted.stderr);
+          expect(JSON.parse(prompted.stdout)).toEqual({
+            requestId: "research",
+            status: "completed",
+          });
+          const neverSent = await bash.exec(
+            "pi.prompt.get --agent researcher --request-id never-sent --format json",
+          );
+          assert.equal(neverSent.exitCode, 0, neverSent.stderr);
+          expect(JSON.parse(neverSent.stdout)).toBeNull();
+
           const misspelled = await bash.exec("pi.agent.messages --agent asistant --last 1");
           assert(misspelled.exitCode === 1);
           expect(misspelled.stderr).toContain("No agent in this scope is named 'asistant'");

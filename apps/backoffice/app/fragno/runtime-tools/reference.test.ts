@@ -327,6 +327,16 @@ describe("runtime tool reference generation", () => {
           bashOptions: ["agent", "content", "request-id", "when-busy", "billing-organization-id"],
         },
         {
+          id: "pi.prompt.get",
+          namespace: "pi",
+          codemodeProvider: "pi",
+          codemodeTool: "getPrompt",
+          inputType: "PiGetPromptInput",
+          outputType: "PiGetPromptOutput",
+          bashCommand: "pi.prompt.get",
+          bashOptions: ["agent", "request-id"],
+        },
+        {
           id: "pi.agent.stop",
           namespace: "pi",
           codemodeProvider: "pi",

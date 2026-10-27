@@ -71,6 +71,7 @@ const createPiRuntime = (): PiManagerRuntime => {
     updateAgent: async (definition) => ({ ...definition, steward: { kind: "members" } }),
     deleteAgent: async () => undefined,
     submitPrompt: async () => ({ requestId: "request-1", status: "queued" }),
+    getPrompt: async () => null,
     notifyAgent: async () => undefined,
     stopAgent: async () => undefined,
     backfillAgentEvents: async () => ({ agents: [] }),
