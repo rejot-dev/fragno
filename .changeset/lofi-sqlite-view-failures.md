@@ -9,6 +9,11 @@ takes `fail`, which reports a failed run. A SQL or read view whose first run fai
 again after later batches, and reports its data once it succeeds, instead of failing until the page
 asks for it again.
 
+fix: a replica worker that fails to open the replica, for example on a failed `GET /_internal`,
+tries again after `retryDelayMs` instead of giving up, so a brief outage while the leading tab
+closes no longer leaves every tab without a leader. Pages connect meanwhile, with the error in their
+status. Only a backend replaced since the page loaded still rejects `connectLofiSqlite`.
+
 feat: a replica's new `adapterIdentity` option names the backend the page expects. Tabs share a
 leader only with tabs that expect the same backend, and the replica refuses to open on a backend
 that reports another identity.

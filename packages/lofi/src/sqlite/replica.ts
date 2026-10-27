@@ -96,6 +96,12 @@ type ReplicaMessage =
   | { type: "status"; status: LofiSqliteReplicaStatus }
   | { type: "status-request" };
 
+/**
+ * The backend reports another identity than the page expects. Unlike a failed request, this does
+ * not pass: only a page loaded since can replicate the new backend.
+ */
+export class LofiSqliteBackendReplacedError extends Error {}
+
 /** Names the replica's outbox cursor, `<endpoint>::outbox`, in its `lofi_meta` table. */
 export const LOFI_SQLITE_ENDPOINT_NAME = "lofi-sqlite";
 
@@ -117,7 +123,7 @@ export async function openLofiSqliteReplicaOn(
     fetch: options.fetch,
   });
   if (options.adapterIdentity !== undefined && options.adapterIdentity !== adapterIdentity) {
-    throw new Error(
+    throw new LofiSqliteBackendReplacedError(
       `The backend at ${urls.baseUrl} was replaced since the page loaded: it is now "${adapterIdentity}", not "${options.adapterIdentity}". Reload the page to replicate it.`,
     );
   }

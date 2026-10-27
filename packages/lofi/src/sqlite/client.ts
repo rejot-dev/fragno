@@ -53,7 +53,8 @@ export type LofiSqliteClient = {
 
 /**
  * Connects to the replica through `port`, to a worker serving `serveLofiSqlite`, once a tab has
- * opened the replica; rejects if it fails to open. `schemas` are the worker replica's `schemas` and
+ * opened the replica or failed to and tries again, whose error the status then holds. Rejects if
+ * the backend was replaced since the page loaded. `schemas` are the worker replica's `schemas` and
  * `localSchemas`.
  */
 export function connectLofiSqlite(options: {
@@ -120,22 +121,36 @@ export function connectLofiSqlite(options: {
       view: (kind, query) => view(kind, query, (data) => data as never),
     };
 
+    const updateStatus = (next: LofiSqliteReplicaStatus) => {
+      const opening = status === null;
+      status = next;
+      if (opening) {
+        resolve(client);
+      }
+      for (const listener of statusListeners) {
+        listener();
+      }
+    };
     options.port.onmessage = (event: MessageEvent<LofiSqliteResponse>) => {
       const response = event.data;
       switch (response.type) {
-        case "status": {
-          const opening = status === null;
-          status = response.status;
-          if (opening) {
-            resolve(client);
-          }
-          for (const listener of statusListeners) {
-            listener();
+        case "status":
+          updateStatus(response.status);
+          break;
+        case "failed":
+          if (status === null) {
+            reject(new Error(response.message));
+          } else {
+            updateStatus({ ...status, error: response.message });
           }
           break;
-        }
-        case "failed":
-          reject(new Error(response.message));
+        case "unavailable":
+          // Until a tab opens the replica, nothing says how far it caught up.
+          updateStatus(
+            status === null
+              ? { phase: "catching-up", fraction: null, error: response.message }
+              : { ...status, error: response.message },
+          );
           break;
         case "data":
         case "error":

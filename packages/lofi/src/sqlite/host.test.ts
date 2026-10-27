@@ -182,6 +182,9 @@ type ScenarioStep =
       write: (uow: TypedUnitOfWork<typeof appSchema>, vars: ScenarioContext["vars"]) => void;
     }
   | { type: "waitForResult"; tab: string; view: string; result: unknown }
+  | { type: "waitForStatus"; tab: string; status: unknown }
+  /** Whether the backend answers; while it does not, every request fails with a 503. */
+  | { type: "backend"; available: boolean }
   | { type: "waitForLeader"; tab: string }
   | { type: "check"; check: (ctx: ScenarioContext) => void };
 
@@ -224,6 +227,14 @@ const waitForError = (tab: string, view: string, message: string): ScenarioStep 
   view,
   result: { status: "error", message: expect.stringContaining(message) },
 });
+/** Waits until the tab's replica status matches `status`, compared like `toMatchObject`. */
+const waitForStatus = (tab: string, status: unknown): ScenarioStep => ({
+  type: "waitForStatus",
+  tab,
+  status,
+});
+const backendDown = (): ScenarioStep => ({ type: "backend", available: false });
+const backendUp = (): ScenarioStep => ({ type: "backend", available: true });
 const waitForLeader = (tab: string): ScenarioStep => ({ type: "waitForLeader", tab });
 const check = (check: (ctx: ScenarioContext) => void): ScenarioStep => ({ type: "check", check });
 
@@ -253,7 +264,11 @@ async function runScenario(steps: ScenarioStep[]): Promise<ScenarioContext> {
     .withOptions({ databaseAdapter: adapter, outbox: { enabled: true } })
     .build();
   await migrate(fragment);
+  let backendAvailable = true;
   const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (!backendAvailable) {
+      return new Response(null, { status: 503, statusText: "Service Unavailable" });
+    }
     const url = new URL(input instanceof Request ? input.url : input.toString());
     return await fragment.callRouteRaw(
       "GET",
@@ -349,6 +364,14 @@ async function runScenario(steps: ScenarioStep[]): Promise<ScenarioContext> {
             timeout: 2_000,
           })
           .toMatchObject(step.result as object);
+        break;
+      case "waitForStatus":
+        await expect
+          .poll(() => ctx.tabs.get(step.tab)!.client.getStatus(), { timeout: 2_000 })
+          .toMatchObject(step.status as object);
+        break;
+      case "backend":
+        backendAvailable = step.available;
         break;
       case "waitForLeader":
         await ctx.tabs.get(step.tab)!.host.leading;
@@ -733,6 +756,37 @@ describe("Lofi SQLite host", () => {
       }),
     ]);
     expect(ctx.errors).toEqual([]);
+  });
+
+  it("keeps trying to open the replica while the backend is down", async () => {
+    const unavailable = { error: "Fragno internal request failed: 503 Service Unavailable" };
+    const ctx = await runScenario([
+      openTab("a"),
+      openTab("b"),
+      watch("b", "users", usersView),
+      waitForView("b", "users", []),
+
+      // The leader closes while the backend is down, so tab b cannot open the replica in its place.
+      backendDown(),
+      closeTab("a"),
+      waitForStatus("b", { phase: "caught-up", ...unavailable }),
+      // A tab opened meanwhile connects, and its status says why it has no data.
+      openTab("c"),
+      waitForStatus("c", { phase: "catching-up", ...unavailable }),
+      watch("c", "users", usersView),
+
+      backendUp(),
+      write("ada", (uow) => {
+        uow.create("users", { email: "ada@example.com", active: true });
+      }),
+      waitForView("b", "users", [{ email: "ada@example.com" }]),
+      waitForView("c", "users", [{ email: "ada@example.com" }]),
+      waitForStatus("b", { phase: "caught-up", error: null }),
+      waitForStatus("c", { phase: "caught-up", error: null }),
+    ]);
+    expect(ctx.errors.length).toBeGreaterThan(0);
+    expect(new Set(ctx.errors.map(String))).toEqual(new Set([`Error: ${unavailable.error}`]));
+    ctx.errors.length = 0;
   });
 
   it("shares a leader only with tabs that expect the same backend", async () => {
