@@ -1,5 +1,9 @@
 import { assert, expect, test, vi } from "vitest";
 
+import {
+  createAppActionVerifier,
+  type VerifiedAppActionRequest,
+} from "@fragno-dev/backoffice-api/v0/app-actions";
 import type { PiAgentConfig, PiManagerAgentDirectory } from "@fragno-dev/backoffice-api/v0/pi";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
@@ -50,6 +54,7 @@ import {
 import type { InMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
+import { createInstalledAppExecution } from "@/fragno/app-installations/authority";
 import { issueBackofficeTokenResultSchema } from "@/fragno/auth/contracts";
 import type { CodemodeWorkflowParams } from "@/fragno/automation/engine/codemode-invocation";
 import { createRouteBackedAutomationRouterRuntime } from "@/fragno/automation/routing-route-runtime";
@@ -68,6 +73,7 @@ import { BackofficePostHogContext, captureBackofficeServerException } from "@/po
 import { fetchPiManagerAgent, submitPiManagerPrompt } from "@/routes/backoffice/agents/data";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
+import { AppInstallationsObject } from "./app-installations-object";
 import { shutdownCloudflarePostHog } from "./lib/cloudflare-posthog";
 import { createScriptedPiAgentDependencies } from "./pi-durable-scenario.test-support";
 import { PiObject } from "./pi-object";
@@ -1591,6 +1597,157 @@ test("durable Pi scoped codemode handles prompt the selected scope's agent", asy
             .commands.getTrackers(query);
           expect(organizationUsage.trackers).toEqual([]);
         }),
+      ],
+    }),
+  );
+});
+
+test("an agent an app's installation prompts calls the app's actions as the installation", async () => {
+  const org = { kind: "org", orgId: "org-1", jurisdiction: null } as const;
+  const endpointUrl = "https://ledger.example/backoffice/actions";
+  const received: VerifiedAppActionRequest[] = [];
+  let verify: ((request: Request) => Promise<VerifiedAppActionRequest>) | null = null;
+  let appId = "";
+  const asInstallation = () =>
+    createInstalledAppExecution({
+      scope: org,
+      actor: { kind: "installation" },
+      installation: {
+        appId,
+        activation: 1,
+        externalAccount: { id: "ledger-org-7", label: "Acme Books" },
+      },
+    });
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "durable Pi turns prompted by an app installation",
+      options: { drain: false },
+      objects: {
+        ...scenarioObjects,
+        APP_INSTALLATIONS: (options) =>
+          new AppInstallationsObject({
+            ...options,
+            fetch: async (input, init) => {
+              verify ??= createAppActionVerifier({
+                backofficeOrigin: "https://backoffice.test",
+                endpointUrl,
+                fetch: async (jwksInput, jwksInit) =>
+                  await options.runtime.objects.auth
+                    .singleton()
+                    .http.fetch(new Request(jwksInput, jwksInit)),
+              });
+              const verified = await verify(new Request(input, init));
+              received.push(verified);
+              return verified.request.type === "ping"
+                ? Response.json({ ok: true })
+                : Response.json({ count: 3 });
+            },
+          }),
+        ...scriptedAgents([
+          fauxAssistantMessage(
+            [
+              fauxToolCall("codemode", {
+                code: `async () => await integrations.execute({ connectionId: "app#ledger", actionId: "invoices.count", input: {} })`,
+              }),
+            ],
+            { stopReason: "toolUse" },
+          ),
+          (context) => {
+            const result = toolResults(context).at(-1);
+            assert.equal(result?.isError, false, JSON.stringify(result));
+            return fauxAssistantMessage("Counted the invoices.");
+          },
+        ]),
+      },
+      piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+      setup: ({ given }) => [
+        given.auth.user({ id: "global-admin", role: "admin" }),
+        given.auth.user({ id: "owner" }),
+        given.auth.organization({ id: org.orgId, ownerUserId: "owner" }),
+      ],
+      steps: ({ then }) => [
+        then.assert("the owner installs Ledger, which links the installation", async (ctx) => {
+          const client = await ctx.runtime.objects.auth
+            .singleton()
+            .commands.createAdminOAuthClient({
+              administratorUserId: "global-admin",
+              name: "Ledger",
+              redirectUris: ["https://ledger.example/callback"],
+              scopes: ["openid", "backoffice"],
+            });
+          const permissions = [
+            BACKOFFICE_PERMISSION.pi.manage,
+            BACKOFFICE_PERMISSION.pi.modify,
+            BACKOFFICE_PERMISSION.pi.read,
+            BACKOFFICE_PERMISSION.integrations.execute,
+          ];
+          const registered = await ctx.runtime.objects.apps.singleton().commands.registerApp({
+            actions: {
+              kind: "endpoint",
+              endpointUrl,
+              changeApproval: "automatic",
+              actions: [
+                {
+                  id: "invoices.count",
+                  label: "Count invoices",
+                  description: "Count the invoices.",
+                  inputSchema: { type: "object" },
+                  outputSchema: { type: "object" },
+                },
+              ],
+            },
+            trust: { kind: "third-party" },
+            slug: "ledger",
+            oauthClientId: client.clientId,
+            requestedPermissions: permissions,
+          });
+          assert(registered.ok);
+          appId = registered.value.appId;
+          const installations = ctx.runtime.objects.appInstallations.for(org).commands;
+          assert(
+            (
+              await installations.installApp({
+                actionsRevision: 1,
+                appId,
+                grantedPermissions: permissions,
+                installedByUserId: "owner",
+                resourceScope: { kind: "owner" },
+              })
+            ).ok,
+          );
+          assert(
+            (
+              await installations.claimInstallation({
+                appId,
+                activation: 1,
+                externalAccount: { id: "ledger-org-7", label: "Acme Books" },
+              })
+            ).ok,
+          );
+        }),
+        then.assert(
+          "Ledger defines an agent and prompts it, and the agent's call reaches Ledger as the installation",
+          async ({ runtime }) => {
+            const defined = await request(runtime, asInstallation(), "/agents", {
+              agentName: "counter",
+              description: "Counts invoices.",
+              model: null,
+              permissions: ["integrations.execute"],
+              instructions: "",
+            });
+            assert.equal(defined.status, 201, await defined.clone().text());
+            await prompt(runtime, asInstallation(), { agentName: "counter", requestId: "count" });
+            await runtime.drain();
+            expect(await submission(runtime, asInstallation(), "count", "counter")).toMatchObject({
+              status: "done",
+            });
+            expect(
+              received
+                .filter(({ request }) => request.type === "action")
+                .map(({ claims }) => claims),
+            ).toMatchObject([{ actor: { kind: "installation" }, scopeRestriction: org }]);
+          },
+        ),
       ],
     }),
   );
