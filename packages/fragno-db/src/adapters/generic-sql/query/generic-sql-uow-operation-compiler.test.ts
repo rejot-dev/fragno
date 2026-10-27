@@ -9,6 +9,7 @@ import {
   CloudflareDurableObjectsDriverConfig,
   MySQL2DriverConfig,
   NodePostgresDriverConfig,
+  type DriverConfig,
 } from "../driver-config";
 import { GenericSQLUOWOperationCompiler } from "./generic-sql-uow-operation-compiler";
 
@@ -1277,27 +1278,37 @@ describe("GenericSQLUOWOperationCompiler", () => {
       expect(result!.parameters).toEqual(["%@example.com%", 10]);
     });
 
-    test("should compile find with starts with operator", () => {
-      const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
+    test("compiles starts with to range bounds under each dialect's binary collation", () => {
+      const compileWhere = (dialectDriverConfig: DriverConfig, prefix: string) => {
+        const result = new GenericSQLUOWOperationCompiler(dialectDriverConfig).compileFind({
+          type: "find",
+          schema: testSchema,
+          table: testSchema.tables.users,
+          indexName: "primary",
+          options: {
+            useIndex: "primary",
+            select: ["name"],
+            where: (eb) => eb("name", "starts with", prefix),
+            pageSize: 10,
+          },
+        });
+        return `${result!.sql.split(" where ")[1]} ${JSON.stringify(result!.parameters)}`;
+      };
 
-      const result = compiler.compileFind({
-        type: "find",
-        schema: testSchema,
-        table: testSchema.tables.users,
-        indexName: "primary",
-        options: {
-          useIndex: "primary",
-          select: true,
-          where: (eb) => eb("name", "starts with", "John"),
-          pageSize: 10,
-        },
-      });
-
-      expect(result).not.toBeNull();
-      expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "users"."name" like ? limit ?"`,
+      // `%` and `_` are no wildcards; the upper bound follows the prefix's last code point.
+      expect(compileWhere(new BetterSQLite3DriverConfig(), "Jo%_")).toMatchInlineSnapshot(
+        `"("users"."name" >= ? and "users"."name" < ?) limit ? ["Jo%_","Jo%\`",10]"`,
       );
-      expect(result!.parameters).toEqual(["John%", 10]);
+      expect(compileWhere(new NodePostgresDriverConfig(), "Jo")).toMatchInlineSnapshot(
+        `"("users"."name" collate "C" >= $1 and "users"."name" collate "C" < $2) limit $3 ["Jo","Jp",10]"`,
+      );
+      expect(compileWhere(new MySQL2DriverConfig(), "Jo")).toMatchInlineSnapshot(
+        `"(\`users\`.\`name\` collate utf8mb4_0900_bin >= ? and \`users\`.\`name\` collate utf8mb4_0900_bin < ?) limit ? ["Jo","Jp",10]"`,
+      );
+      // No string starting with U+10FFFF has an upper bound.
+      expect(compileWhere(new BetterSQLite3DriverConfig(), "\u{10ffff}")).toMatchInlineSnapshot(
+        `""users"."name" >= ? limit ? ["􏿿",10]"`,
+      );
     });
   });
 

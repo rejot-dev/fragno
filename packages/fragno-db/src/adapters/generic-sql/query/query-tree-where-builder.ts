@@ -14,6 +14,7 @@ import { buildDbNowSql } from "./db-now-sql";
 import type { AnyExpressionBuilder, AnyExpressionWrapper } from "./sql-query-compiler";
 import {
   buildReferenceArrayWhere,
+  buildStartsWithWhere,
   constantWhere,
   fullSQLName,
   serializeReferenceFilterValue,
@@ -143,6 +144,19 @@ export function buildQueryTreeWhere(
           ? rightValue.map((item) => serializer.serialize(resolveFragnoIdValue(item, left), left))
           : serializer.serialize(resolveFragnoIdValue(rightValue, left), left);
       }
+    }
+
+    if (
+      (condition.operator === "starts with" || condition.operator === "not starts with") &&
+      typeof rightValue === "string"
+    ) {
+      const startsWith = buildStartsWithWhere(
+        eb,
+        getColumnSqlName(left, resolver, childTable, childAlias),
+        rightValue,
+        driverConfig,
+      );
+      return condition.operator === "starts with" ? startsWith : eb.not(startsWith);
     }
 
     let operator: BinaryOperator;

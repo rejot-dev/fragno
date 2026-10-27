@@ -2184,6 +2184,63 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
       }
     });
 
+    it("matches starts with by literal, case-sensitive prefix", async () => {
+      const { adapter, close } = await createContext();
+      try {
+        const names = [
+          "pre_fix/a",
+          "preXfix/b",
+          "PRE_FIX/c",
+          "pre_fix",
+          "pre_fiy",
+          "􏿿z",
+          "pre",
+          "pre ",
+          "pre x",
+        ];
+        const create = createSuiteUnitOfWork(adapter, "create-starts-with-data");
+        for (const [index, name] of names.entries()) {
+          create.create("users", {
+            id: `starts-with-${index}`,
+            name,
+            email: `starts-with-${index}@example.com`,
+            age: index,
+          });
+        }
+        await create.executeMutations();
+
+        const [underscore, notUnderscore, maxCodePoint, space, notSpace] =
+          await createSuiteUnitOfWork(adapter, "read-starts-with-data")
+            .find("users", (b) =>
+              b.whereIndex("users_name_idx", (eb) => eb("name", "starts with", "pre_fix")),
+            )
+            .find("users", (b) =>
+              b.whereIndex("users_name_idx", (eb) => eb("name", "not starts with", "pre_fix")),
+            )
+            .find("users", (b) =>
+              b.whereIndex("users_name_idx", (eb) => eb("name", "starts with", "\u{10ffff}")),
+            )
+            .find("users", (b) =>
+              b.whereIndex("users_name_idx", (eb) => eb("name", "starts with", "pre ")),
+            )
+            .find("users", (b) =>
+              b.whereIndex("users_name_idx", (eb) => eb("name", "not starts with", "pre ")),
+            )
+            .executeRetrieve();
+
+        expect(underscore.map((user) => user.name).sort()).toEqual(["pre_fix", "pre_fix/a"]);
+        expect(notUnderscore.map((user) => user.name).sort()).toEqual(
+          ["PRE_FIX/c", "preXfix/b", "pre_fiy", "\u{10ffff}z", "pre", "pre ", "pre x"].sort(),
+        );
+        expect(maxCodePoint.map((user) => user.name)).toEqual(["\u{10ffff}z"]);
+        // A trailing space is part of the prefix, though MySQL's PAD SPACE collations ignore it.
+        expect(space.map((user) => user.name).sort()).toEqual(["pre ", "pre x"]);
+        expect(notSpace.map((user) => user.name)).toContain("pre");
+      } finally {
+        await close?.();
+      }
+    });
+
     it("matches no rows for an empty in list and every row for an empty not in list", async () => {
       const { adapter, close } = await createContext();
       try {
