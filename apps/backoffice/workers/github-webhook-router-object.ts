@@ -1,10 +1,13 @@
 import {
-  type BackofficeOrganizationContextScope,
+  backofficeContextScopesEqual,
   backofficeJurisdictionSchema,
+  backofficeRootOwnerSchema,
+  backofficeScopePathSegment,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
 import { type BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
+import type { GitHubInstallationOwner } from "@/fragno/github";
 import { bytesToHex } from "@/lib/crypto";
 
 import { maskSecret, resolveGitHubConfig, resolveWebhookUrl } from "./github.shared";
@@ -26,7 +29,7 @@ export type AdminConfigResponse = {
 
 type StoredUserState = {
   userId: string;
-  orgId: string;
+  owner: GitHubInstallationOwner;
   createdAt: number;
   expiresAt: number;
 };
@@ -74,7 +77,7 @@ export type ResolveInstallStateInput = {
 export type StoreInstallationClaimStateInput = {
   state: string;
   userId: string;
-  orgId: string;
+  owner: GitHubInstallationOwner;
   returnTo: string;
   expiresAt: number;
 };
@@ -88,7 +91,7 @@ export type StoreInstallationClaimCompletionInput = {
 export type InstallStateResolutionResult =
   | {
       ok: true;
-      orgId: string;
+      owner: GitHubInstallationOwner;
       repositoryRequest: GitHubRepositoryInstallRequest | null;
     }
   | {
@@ -100,7 +103,7 @@ export type InstallStateResolutionResult =
 export type InstallationClaimStateResolutionResult =
   | {
       ok: true;
-      orgId: string;
+      owner: GitHubInstallationOwner;
       returnTo: string;
       completion: unknown;
     }
@@ -114,7 +117,7 @@ export type ConsumeInstallStateResult =
   | {
       ok: true;
       installationId: string;
-      orgId: string;
+      owner: GitHubInstallationOwner;
       repositoryRequest: GitHubRepositoryInstallRequest | null;
     }
   | {
@@ -123,38 +126,45 @@ export type ConsumeInstallStateResult =
       message: string;
     };
 
-const INSTALL_STATE_KEY_PREFIX = "github-install-state:";
-const INSTALLATION_CLAIM_STATE_KEY_PREFIX = "github-installation-claim-state:";
+// States name their workspace since personal workspaces could install GitHub. The `v2` prefixes
+// leave states that named only an organization unread, so their links fail and are started again.
+const INSTALL_STATE_KEY_PREFIX = "github-install-state-v2:";
+const INSTALLATION_CLAIM_STATE_KEY_PREFIX = "github-installation-claim-state-v2:";
 const INSTALL_STATE_TTL_MS = 10 * 60 * 1000;
-/** Points at a user's newest repository install per organization and account, so setup resumes it. */
-const INSTALL_PENDING_KEY_PREFIX = "github-install-pending:";
-const installPendingKey = (orgId: string, userId: string, owner: string) =>
-  `${INSTALL_PENDING_KEY_PREFIX}${orgId}:${userId}:${owner}`;
+/** Points at a user's newest repository install per workspace and account, so setup resumes it. */
+const INSTALL_PENDING_KEY_PREFIX = "github-install-pending-v2:";
+const installPendingKey = (owner: GitHubInstallationOwner, userId: string, account: string) =>
+  `${INSTALL_PENDING_KEY_PREFIX}${backofficeScopePathSegment(owner)}:${userId}:${account}`;
 const installUrl = (appSlug: string, state: string) =>
   `https://github.com/apps/${appSlug}/installations/new?state=${encodeURIComponent(state)}`;
-const INSTALLATION_ORG_KEY_PREFIX = "github-installation-org:";
+// The key predates personal workspaces, when only organizations owned installations.
+const INSTALLATION_OWNER_KEY_PREFIX = "github-installation-org:";
 
 /**
- * Mappings name the organization's scope, so webhooks reach its objects without asking Auth where
- * they are kept. Mappings stored by ID alone predate jurisdictions, as did their organizations.
+ * Mappings name the owner's scope, so webhooks reach its objects without asking Auth where they
+ * are kept. Mappings without a kind predate personal workspaces, and mappings stored by ID alone
+ * predate jurisdictions, as did their organizations.
  */
-const storedInstallationOrganizationSchema = z.union([
+const storedInstallationOwnerSchema = z.union([
+  backofficeRootOwnerSchema,
   z
     .string()
     .trim()
     .min(1)
-    .transform((orgId) => ({ orgId, jurisdiction: null })),
-  z.object({ orgId: z.string().min(1), jurisdiction: backofficeJurisdictionSchema.nullable() }),
+    .transform((orgId) => ({ kind: "org" as const, orgId, jurisdiction: null })),
+  z
+    .object({ orgId: z.string().min(1), jurisdiction: backofficeJurisdictionSchema.nullable() })
+    .transform((organization) => ({ kind: "org" as const, ...organization })),
 ]);
 
-function readInstallationOrganization(stored: unknown): BackofficeOrganizationContextScope | null {
-  const parsed = storedInstallationOrganizationSchema.safeParse(stored);
-  return parsed.success ? { kind: "org", ...parsed.data } : null;
+function readInstallationOwner(stored: unknown): GitHubInstallationOwner | null {
+  const parsed = storedInstallationOwnerSchema.safeParse(stored);
+  return parsed.success ? parsed.data : null;
 }
 
 type GitHubWebhookRouterInstallationMapping = {
   installationId: string;
-  orgId: string;
+  owner: GitHubInstallationOwner;
 };
 
 type GitHubWebhookRouterPendingWebhook = {
@@ -169,7 +179,7 @@ type GitHubWebhookRouterPendingWebhook = {
 type GitHubWebhookRouterInstallState = {
   statePreview: string;
   userId: string;
-  orgId: string;
+  owner: GitHubInstallationOwner;
   createdAt: number;
   expiresAt: number;
 };
@@ -392,8 +402,8 @@ export class GitHubWebhookRouterObject {
         );
       }
 
-      const organization = await this.getInstallationOrg(installationId);
-      if (!organization) {
+      const owner = await this.getInstallationOwner(installationId);
+      if (!owner) {
         console.warn("GitHub webhook rejected because installation mapping was not found", {
           ...webhookMeta,
           installationId,
@@ -403,27 +413,25 @@ export class GitHubWebhookRouterObject {
         return githubWebhookJsonResponse(
           {
             message:
-              "No organization mapping found for installation id. Complete installation from backoffice first.",
-            code: "INSTALLATION_ORG_MAPPING_NOT_FOUND",
+              "No workspace mapping found for installation id. Complete installation from backoffice first.",
+            code: "INSTALLATION_OWNER_MAPPING_NOT_FOUND",
             installationId,
           },
           404,
         );
       }
 
-      const { orgId } = organization;
-      const githubObject = this.#runtime.objects.github.for(organization);
-      await githubObject.commands.ensureAdminConfig(orgId);
+      const githubObject = this.#runtime.objects.github.for(owner);
+      await githubObject.commands.ensureAdminConfig();
 
       const url = new URL(request.url);
       url.pathname = "/api/github/webhooks";
-      url.searchParams.set("orgId", orgId);
       const response = await githubObject.http.fetch(new Request(url.toString(), request));
       if (!response.ok) {
         console.warn("Forwarded GitHub webhook returned non-success status", {
           ...webhookMeta,
           installationId,
-          orgId,
+          owner: backofficeScopePathSegment(owner),
           status: response.status,
           statusText: response.statusText,
         });
@@ -491,24 +499,27 @@ export class GitHubWebhookRouterObject {
     return resolveGitHubConfig(this.#env).ok;
   }
 
-  async createInstallStatefulUrl(userId: string, orgId: string): Promise<CreateInstallUrlResult> {
-    return await this.#storeInstallState(userId, orgId, null);
+  async createInstallStatefulUrl(
+    userId: string,
+    owner: GitHubInstallationOwner,
+  ): Promise<CreateInstallUrlResult> {
+    return await this.#storeInstallState(userId, owner, null);
   }
 
   /**
    * Returns an install link whose callback links the repository. The user's pending link for the
-   * same organization and account is reused, so repeated setup calls resume one GitHub consent.
+   * same workspace and account is reused, so repeated setup calls resume one GitHub consent.
    */
   async requestRepositoryInstall(
     userId: string,
-    orgId: string,
+    owner: GitHubInstallationOwner,
     repositoryFullName: string,
   ): Promise<CreateInstallUrlResult> {
-    const owner = repositoryFullName.slice(0, repositoryFullName.indexOf("/"));
-    const pending = await this.#readPendingInstallState(userId.trim(), orgId.trim(), owner);
+    const account = repositoryFullName.slice(0, repositoryFullName.indexOf("/"));
+    const pending = await this.#readPendingInstallState(userId.trim(), owner, account);
     if (pending === null) {
-      return await this.#storeInstallState(userId, orgId, {
-        owner,
+      return await this.#storeInstallState(userId, owner, {
+        owner: account,
         repositories: [repositoryFullName],
       });
     }
@@ -516,7 +527,7 @@ export class GitHubWebhookRouterObject {
     if (!repositories.includes(repositoryFullName)) {
       await this.#state.storage.put(`${INSTALL_STATE_KEY_PREFIX}${pending.state}`, {
         ...pending.record,
-        repositoryRequest: { owner, repositories: [...repositories, repositoryFullName] },
+        repositoryRequest: { owner: account, repositories: [...repositories, repositoryFullName] },
       } satisfies StoredInstallState);
     }
     return { ok: true, installUrl: pending.installUrl, expiresAt: pending.record.expiresAt };
@@ -525,17 +536,17 @@ export class GitHubWebhookRouterObject {
   /** The user's unused install link for one account and the repositories it will link. */
   async getPendingInstall(
     userId: string,
-    orgId: string,
-    owner: string,
+    owner: GitHubInstallationOwner,
+    account: string,
   ): Promise<{ installUrl: string; repositories: string[] } | null> {
-    const pending = await this.#readPendingInstallState(userId, orgId, owner);
+    const pending = await this.#readPendingInstallState(userId, owner, account);
     return (
       pending && { installUrl: pending.installUrl, repositories: pending.request.repositories }
     );
   }
 
-  async #readPendingInstallState(userId: string, orgId: string, owner: string) {
-    const state = await this.#state.storage.get<string>(installPendingKey(orgId, userId, owner));
+  async #readPendingInstallState(userId: string, owner: GitHubInstallationOwner, account: string) {
+    const state = await this.#state.storage.get<string>(installPendingKey(owner, userId, account));
     if (!state) {
       return null;
     }
@@ -556,21 +567,14 @@ export class GitHubWebhookRouterObject {
 
   async #storeInstallState(
     userId: string,
-    orgId: string,
+    owner: GitHubInstallationOwner,
     repositoryRequest: GitHubRepositoryInstallRequest | null,
   ): Promise<CreateInstallUrlResult> {
     const normalizedUserId = userId.trim();
-    const normalizedOrgId = orgId.trim();
     if (!normalizedUserId) {
       return {
         ok: false,
         message: "Missing user id.",
-      };
-    }
-    if (!normalizedOrgId) {
-      return {
-        ok: false,
-        message: "Missing organization id.",
       };
     }
 
@@ -589,7 +593,7 @@ export class GitHubWebhookRouterObject {
     const expiresAt = now + INSTALL_STATE_TTL_MS;
     const record: StoredInstallState = {
       userId: normalizedUserId,
-      orgId: normalizedOrgId,
+      owner,
       createdAt: now,
       expiresAt,
       repositoryRequest,
@@ -598,7 +602,7 @@ export class GitHubWebhookRouterObject {
     await this.#state.storage.put(`${INSTALL_STATE_KEY_PREFIX}${state}`, record);
     if (repositoryRequest !== null) {
       await this.#state.storage.put(
-        installPendingKey(normalizedOrgId, normalizedUserId, repositoryRequest.owner),
+        installPendingKey(owner, normalizedUserId, repositoryRequest.owner),
         state,
       );
     }
@@ -651,18 +655,9 @@ export class GitHubWebhookRouterObject {
       };
     }
 
-    if (!record.orgId || record.orgId.trim().length === 0) {
-      await this.#state.storage.delete(storageKey);
-      return {
-        ok: false,
-        code: "INVALID_STATE",
-        message: "Installation state is missing organization context.",
-      };
-    }
-
     return {
       ok: true,
-      orgId: record.orgId.trim(),
+      owner: record.owner,
       repositoryRequest: record.repositoryRequest,
     };
   }
@@ -690,7 +685,7 @@ export class GitHubWebhookRouterObject {
     await this.#state.storage.delete(`${INSTALL_STATE_KEY_PREFIX}${state}`);
     if (resolved.repositoryRequest !== null) {
       const pendingKey = installPendingKey(
-        resolved.orgId,
+        resolved.owner,
         input.userId.trim(),
         resolved.repositoryRequest.owner,
       );
@@ -701,7 +696,7 @@ export class GitHubWebhookRouterObject {
     return {
       ok: true,
       installationId,
-      orgId: resolved.orgId,
+      owner: resolved.owner,
       repositoryRequest: resolved.repositoryRequest,
     };
   }
@@ -711,14 +706,13 @@ export class GitHubWebhookRouterObject {
   ): Promise<{ ok: true }> {
     const state = input.state.trim();
     const userId = input.userId.trim();
-    const orgId = input.orgId.trim();
-    if (!state || !userId || !orgId) {
-      throw new Error("Missing installation claim state, user id, or organization id.");
+    if (!state || !userId) {
+      throw new Error("Missing installation claim state or user id.");
     }
 
     await this.#state.storage.put(`${INSTALLATION_CLAIM_STATE_KEY_PREFIX}${state}`, {
       userId,
-      orgId,
+      owner: input.owner,
       returnTo: input.returnTo.trim(),
       createdAt: Date.now(),
       expiresAt: input.expiresAt,
@@ -755,7 +749,7 @@ export class GitHubWebhookRouterObject {
 
     return {
       ok: true,
-      orgId: record.orgId,
+      owner: record.owner,
       returnTo: record.returnTo,
       completion: record.completion ?? null,
     };
@@ -790,55 +784,48 @@ export class GitHubWebhookRouterObject {
     return { ok: true };
   }
 
-  async setInstallationOrg(
+  async setInstallationOwner(
     installationId: string,
-    organization: BackofficeOrganizationContextScope,
+    owner: GitHubInstallationOwner,
   ): Promise<
     | { ok: true }
     | {
         ok: false;
+        code: "MISSING_INSTALLATION_ID" | "INSTALLATION_OWNER_CONFLICT";
         message: string;
-        code?: "INSTALLATION_ORG_CONFLICT";
-        existingOrgId?: string;
       }
   > {
     const normalizedInstallationId = installationId.trim();
     if (!normalizedInstallationId) {
-      return { ok: false, message: "Missing installation id." };
+      return { ok: false, code: "MISSING_INSTALLATION_ID", message: "Missing installation id." };
     }
 
-    const mappingKey = `${INSTALLATION_ORG_KEY_PREFIX}${normalizedInstallationId}`;
-    const existing = readInstallationOrganization(await this.#state.storage.get(mappingKey));
+    const mappingKey = `${INSTALLATION_OWNER_KEY_PREFIX}${normalizedInstallationId}`;
+    const existing = readInstallationOwner(await this.#state.storage.get(mappingKey));
 
-    if (existing && existing.orgId !== organization.orgId) {
+    if (existing && !backofficeContextScopesEqual(existing, owner)) {
       return {
         ok: false,
-        code: "INSTALLATION_ORG_CONFLICT",
-        existingOrgId: existing.orgId,
-        message: "Installation is already mapped to a different organization.",
+        code: "INSTALLATION_OWNER_CONFLICT",
+        message: `Installation is already mapped to ${backofficeScopePathSegment(existing)}.`,
       };
     }
 
     if (!existing) {
-      await this.#state.storage.put(mappingKey, {
-        orgId: organization.orgId,
-        jurisdiction: organization.jurisdiction,
-      });
+      await this.#state.storage.put(mappingKey, owner);
     }
 
     return { ok: true };
   }
 
-  async getInstallationOrg(
-    installationId: string,
-  ): Promise<BackofficeOrganizationContextScope | null> {
+  async getInstallationOwner(installationId: string): Promise<GitHubInstallationOwner | null> {
     const normalizedInstallationId = installationId.trim();
     if (!normalizedInstallationId) {
       return null;
     }
 
-    return readInstallationOrganization(
-      await this.#state.storage.get(`${INSTALLATION_ORG_KEY_PREFIX}${normalizedInstallationId}`),
+    return readInstallationOwner(
+      await this.#state.storage.get(`${INSTALLATION_OWNER_KEY_PREFIX}${normalizedInstallationId}`),
     );
   }
 
@@ -856,8 +843,8 @@ export class GitHubWebhookRouterObject {
       };
     }
 
-    const mappingKey = `${INSTALLATION_ORG_KEY_PREFIX}${normalizedInstallationId}`;
-    const existingMapping = readInstallationOrganization(await this.#state.storage.get(mappingKey));
+    const mappingKey = `${INSTALLATION_OWNER_KEY_PREFIX}${normalizedInstallationId}`;
+    const existingMapping = readInstallationOwner(await this.#state.storage.get(mappingKey));
     await this.#state.storage.delete(mappingKey);
 
     return {
@@ -869,16 +856,16 @@ export class GitHubWebhookRouterObject {
 
   async getWebhookRouterSnapshot(): Promise<GitHubWebhookRouterSnapshot> {
     const installationMappingsList = await this.#state.storage.list({
-      prefix: INSTALLATION_ORG_KEY_PREFIX,
+      prefix: INSTALLATION_OWNER_KEY_PREFIX,
     });
     const installationMappings: GitHubWebhookRouterInstallationMapping[] = [];
     for (const [key, value] of installationMappingsList.entries()) {
-      const installationId = key.slice(INSTALLATION_ORG_KEY_PREFIX.length).trim();
-      const organization = readInstallationOrganization(value);
-      if (!installationId || !organization) {
+      const installationId = key.slice(INSTALLATION_OWNER_KEY_PREFIX.length).trim();
+      const owner = readInstallationOwner(value);
+      if (!installationId || !owner) {
         continue;
       }
-      installationMappings.push({ installationId, orgId: organization.orgId });
+      installationMappings.push({ installationId, owner });
     }
     installationMappings.sort((a, b) => a.installationId.localeCompare(b.installationId));
     const pendingWebhooks: GitHubWebhookRouterPendingWebhook[] = [];
@@ -892,7 +879,7 @@ export class GitHubWebhookRouterObject {
       activeInstallStates.push({
         statePreview: toStateTokenPreview(stateToken),
         userId: record.userId,
-        orgId: record.orgId,
+        owner: record.owner,
         createdAt: record.createdAt,
         expiresAt: record.expiresAt,
       });

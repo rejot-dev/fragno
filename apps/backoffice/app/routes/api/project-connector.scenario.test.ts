@@ -26,6 +26,8 @@ import { AuthObject } from "../../../workers/auth-object";
 import { AutomationsObject } from "../../../workers/automations-object";
 import { CodemodeObject } from "../../../workers/codemode-object";
 import { FormsObject } from "../../../workers/forms-object";
+import { GitHubObject } from "../../../workers/github-object";
+import { GitHubWebhookRouterObject } from "../../../workers/github-webhook-router-object";
 import { McpObject } from "../../../workers/mcp-object";
 import { OtpObject } from "../../../workers/otp-object";
 import { ProjectConnectorObject } from "../../../workers/project-connector-object";
@@ -41,6 +43,8 @@ const scenarioObjects = {
   AUTOMATIONS: (input) => new AutomationsObject(input),
   CODEMODE: (input) => new CodemodeObject(input),
   FORMS: (input) => new FormsObject(input),
+  GITHUB: (input) => new GitHubObject(input),
+  GITHUB_WEBHOOK_ROUTER: (input) => new GitHubWebhookRouterObject(input),
   MCP: (input) => new McpObject(input),
   OTP: (input) => new OtpObject(input),
   PROJECT_CONNECTOR: (input) => new ProjectConnectorObject(input),

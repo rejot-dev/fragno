@@ -26,7 +26,7 @@ These are all the native Backoffice integrations:
 | -------- | --------------------- | -------------------------------------------------- | ------------------------------------- |
 | Telegram | `backoffice#telegram` | every scope, each with its own bot                 | bot messages, `message.received`      |
 | Resend   | `backoffice#resend`   | organization; system is the platform email account | email threads and replies             |
-| GitHub   | `github#owner/repo`   | organization, one connection per repository        | repository API through the GitHub App |
+| GitHub   | `github#owner/repo`   | organization or user, one per repository           | repository API through the GitHub App |
 
 Receiving a provider's webhooks is not a rung but its own source: `webhook#<endpointId>`, owned by
 an organization, user, or project. It needs no outbound connection; when a provider is used in both

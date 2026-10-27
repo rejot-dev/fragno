@@ -13,6 +13,8 @@ import {
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { useLoaderData } from "react-router";
 
+import { backofficeRouteScopePath } from "@/backoffice-runtime/route-scope";
+import type { GitHubInstallationOwner } from "@/fragno/github";
 import { getBackofficeShellRequest } from "@/layouts/backoffice-shell-request.server";
 import {
   BACKOFFICE_ADMIN_OBJECT_NAME,
@@ -39,7 +41,7 @@ type GitHubAdminConfigState = {
 type GitHubWebhookRouterSnapshot = {
   installationMappings: Array<{
     installationId: string;
-    orgId: string;
+    owner: GitHubInstallationOwner;
   }>;
   pendingWebhooks: Array<{
     key: string;
@@ -52,7 +54,7 @@ type GitHubWebhookRouterSnapshot = {
   activeInstallStates: Array<{
     statePreview: string;
     userId: string;
-    orgId: string;
+    owner: GitHubInstallationOwner;
     createdAt: number;
     expiresAt: number;
   }>;
@@ -70,11 +72,36 @@ type LoaderData = {
   snapshotError: string | null;
   setupUrl: string;
   organizationSlugs: Record<string, string>;
+  viewerUserId: string;
 };
+
+/** Names an installation's workspace by its organization's slug when the viewer is a member. */
+function workspaceLabel(owner: GitHubInstallationOwner, organizationSlugs: Record<string, string>) {
+  return owner.kind === "org"
+    ? (organizationSlugs[owner.orgId] ?? owner.orgId)
+    : `user:${owner.userId}`;
+}
+
+/** The workspace's GitHub configuration page, or null when the viewer cannot enter it. */
+function workspaceConfigurationPath(
+  owner: GitHubInstallationOwner,
+  organizationSlugs: Record<string, string>,
+  viewerUserId: string,
+) {
+  if (owner.kind === "user") {
+    return owner.userId === viewerUserId
+      ? `/backoffice/integrations/${backofficeRouteScopePath({ kind: "user", userId: owner.userId })}/github/configuration`
+      : null;
+  }
+  const orgSlug = organizationSlugs[owner.orgId];
+  return orgSlug
+    ? `/backoffice/integrations/${backofficeRouteScopePath({ kind: "org", orgSlug })}/github/configuration`
+    : null;
+}
 
 const MAPPING_COLUMNS: SurfaceTableColumn[] = [
   { label: "Installation", align: "start" },
-  { label: "Organization", align: "start" },
+  { label: "Workspace", align: "start" },
   { label: "Configuration", align: "end" },
 ];
 
@@ -89,7 +116,7 @@ const WEBHOOK_COLUMNS: SurfaceTableColumn[] = [
 const INSTALL_STATE_COLUMNS: SurfaceTableColumn[] = [
   { label: "State", align: "start" },
   { label: "User", align: "start" },
-  { label: "Organization", align: "start" },
+  { label: "Workspace", align: "start" },
   { label: "Created", align: "start" },
   { label: "Expires", align: "start" },
 ];
@@ -153,12 +180,20 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     snapshotError,
     setupUrl,
     organizationSlugs,
+    viewerUserId: me.user.id,
   } satisfies LoaderData;
 }
 
 export default function BackofficeInternalsGitHub() {
-  const { configState, configError, snapshot, snapshotError, setupUrl, organizationSlugs } =
-    useLoaderData<typeof loader>();
+  const {
+    configState,
+    configError,
+    snapshot,
+    snapshotError,
+    setupUrl,
+    organizationSlugs,
+    viewerUserId,
+  } = useLoaderData<typeof loader>();
 
   return (
     <>
@@ -264,31 +299,31 @@ export default function BackofficeInternalsGitHub() {
             {snapshot.installationMappings.length === 0 ? (
               <BackofficeSystemState
                 tone="empty"
-                title="No installations are linked to an organization yet."
-                description="Installing the GitHub App from an organization links the installation here."
+                title="No installations are linked to a workspace yet."
+                description="Installing the GitHub App from an organization or personal workspace links the installation here."
                 flush
               />
             ) : (
               <SurfaceTable columns={MAPPING_COLUMNS}>
                 {snapshot.installationMappings.map((mapping) => {
-                  const orgSlug = organizationSlugs[mapping.orgId];
+                  const configurationPath = workspaceConfigurationPath(
+                    mapping.owner,
+                    organizationSlugs,
+                    viewerUserId,
+                  );
                   return (
                     <SurfaceTableRow
-                      key={`${mapping.installationId}:${mapping.orgId}`}
+                      key={mapping.installationId}
                       columns={MAPPING_COLUMNS}
                       cells={[
                         <span key="installation" className="font-mono text-[var(--bo-fg)]">
                           {mapping.installationId}
                         </span>,
-                        <span key="org" className="font-mono">
-                          {orgSlug ?? mapping.orgId}
+                        <span key="workspace" className="font-mono">
+                          {workspaceLabel(mapping.owner, organizationSlugs)}
                         </span>,
-                        orgSlug ? (
-                          <ButtonLink
-                            key="open"
-                            to={`/backoffice/connections/github/${encodeURIComponent(orgSlug)}/configuration`}
-                            variant="secondary"
-                          >
+                        configurationPath ? (
+                          <ButtonLink key="open" to={configurationPath} variant="secondary">
                             Open
                           </ButtonLink>
                         ) : (
@@ -312,7 +347,7 @@ export default function BackofficeInternalsGitHub() {
               <BackofficeSystemState
                 tone="empty"
                 title="No webhooks are waiting to be routed."
-                description="Webhooks wait here while their installation has no organization."
+                description="Webhooks wait here while their installation has no workspace."
                 flush
               />
             ) : (
@@ -355,7 +390,7 @@ export default function BackofficeInternalsGitHub() {
               <SurfaceTable columns={INSTALL_STATE_COLUMNS}>
                 {snapshot.activeInstallStates.map((state) => (
                   <SurfaceTableRow
-                    key={`${state.statePreview}:${state.userId}:${state.orgId}:${state.createdAt}`}
+                    key={`${state.statePreview}:${state.userId}:${state.createdAt}`}
                     columns={INSTALL_STATE_COLUMNS}
                     cells={[
                       <span key="state" className="font-mono text-[var(--bo-fg)]">
@@ -364,8 +399,8 @@ export default function BackofficeInternalsGitHub() {
                       <span key="user" className="font-mono">
                         {state.userId}
                       </span>,
-                      <span key="org" className="font-mono">
-                        {organizationSlugs[state.orgId] ?? state.orgId}
+                      <span key="workspace" className="font-mono">
+                        {workspaceLabel(state.owner, organizationSlugs)}
                       </span>,
                       <span key="created" className="whitespace-nowrap">
                         {formatTimestamp(state.createdAt)}

@@ -16,7 +16,7 @@ import type { GitHubRepositoryAccess } from "@fragno-dev/github-app-fragment";
 import { authorizedBackofficeObjectHttp } from "@/backoffice-runtime/authorized-object-http";
 import { BackofficeUnavailableError } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
-import type { GitHubFragment } from "@/fragno/github";
+import type { GitHubFragment, GitHubInstallationOwner } from "@/fragno/github";
 
 import { isSuccessStatus, throwOnRouteRuntimeError } from "../../runtime-errors";
 import { connectionStateOfInspection } from "./integration-events";
@@ -41,7 +41,7 @@ const githubRepositoryFullNameSchema = z
     "GitHub address must be github#owner/repo.",
   );
 const githubLinkInputSchema = z.strictObject({
-  link: z.literal(true).describe("Link this repository to the organization."),
+  link: z.literal(true).describe("Link this repository to the workspace."),
 });
 const githubPullsListInputSchema = z.strictObject({
   state: z.enum(["open", "closed", "all"]).nullable().describe("Null lists open pull requests."),
@@ -118,7 +118,7 @@ const githubDeliveryGetActionDefinition = checkedIntegrationActionDefinition({
   id: "delivery.get",
   label: "Read webhook delivery",
   description:
-    "Read a GitHub webhook delivery this organization received, with the body GitHub sent. Stored github.webhook.received events omit it. Deliveries are kept for a week after they are processed.",
+    "Read a GitHub webhook delivery this workspace received, with the body GitHub sent. Stored github.webhook.received events omit it. Deliveries are kept for a week after they are processed.",
   input: githubDeliveryGetInputSchema,
   output: githubDeliveryOutputSchema,
 });
@@ -188,20 +188,22 @@ export function createGitHubIntegration({
   runtime: Pick<BackofficeRuntimeServices, "objects" | "config">;
   nowEpochMs: () => number;
 }): IntegrationImplementation {
-  function isGitHubAvailable(context: IntegrationContext) {
-    return (
-      context.execution.scope.kind === "org" &&
-      runtime.config.bindings.github &&
-      runtime.config.bindings.githubWebhookRouter
-    );
+  /** GitHub App installations belong to organizations and personal workspaces. */
+  function installationOwner(context: IntegrationContext): GitHubInstallationOwner | null {
+    const scope = context.execution.scope;
+    return scope.kind === "org" || scope.kind === "user" ? scope : null;
+  }
+
+  function isGitHubAvailable() {
+    return runtime.config.bindings.github && runtime.config.bindings.githubWebhookRouter;
   }
 
   /** Why GitHub cannot serve this scope, or null; a missing app configuration is not an error. */
   async function unavailableReason(context: IntegrationContext): Promise<string | null> {
-    if (context.execution.scope.kind !== "org") {
-      return "GitHub repositories are organization-owned.";
+    if (!installationOwner(context)) {
+      return "GitHub repositories belong to organizations and personal workspaces.";
     }
-    if (!isGitHubAvailable(context)) {
+    if (!isGitHubAvailable()) {
       return "The GitHub object bindings are unavailable.";
     }
     if (!(await runtime.objects.githubWebhookRouter.singleton().commands.isAppConfigured())) {
@@ -211,21 +213,22 @@ export function createGitHubIntegration({
   }
 
   function createGitHubAccess(context: IntegrationContext) {
-    const scope = context.execution.scope;
-    if (scope.kind !== "org" || !isGitHubAvailable(context)) {
+    const scopeOwner = installationOwner(context);
+    if (!scopeOwner || !isGitHubAvailable()) {
       throw new BackofficeUnavailableError(
-        "GitHub integration requires an organization with the GitHub App bindings.",
+        "GitHub integration requires an organization or personal workspace with the GitHub App bindings.",
       );
     }
-    const orgId = scope.orgId;
-    const object = context.kernel.scoped("GITHUB", scope, runtime.objects.github);
+    // The function declarations below do not see the check's narrowing.
+    const owner = scopeOwner;
+    const object = context.kernel.scoped("GITHUB", owner, runtime.objects.github);
     const transport = authorizedBackofficeObjectHttp(object.http, context.execution);
     const callRoute = createRouteCaller<GitHubFragment>({
       baseUrl: "https://github.do",
       mountRoute: "/api/github",
       fetch: async (request) => {
         // The fragment is configured lazily from environment secrets on first use.
-        await object.commands.ensureAdminConfig(orgId);
+        await object.commands.ensureAdminConfig();
         return await transport.fetch(request);
       },
     });
@@ -334,10 +337,10 @@ export function createGitHubIntegration({
     }
 
     /** Install state is bound to the user who must complete GitHub's callback. */
-    async function pendingInstall(userId: string, owner: string) {
+    async function pendingInstall(userId: string, account: string) {
       const router = runtime.objects.githubWebhookRouter.singleton();
-      return await invoke(BACKOFFICE_PERMISSION.connections.manage, { owner }, () =>
-        router.commands.getPendingInstall(userId, orgId, owner),
+      return await invoke(BACKOFFICE_PERMISSION.connections.manage, { owner: account }, () =>
+        router.commands.getPendingInstall(userId, owner, account),
       );
     }
 
@@ -347,7 +350,7 @@ export function createGitHubIntegration({
       const requested = await invoke(
         BACKOFFICE_PERMISSION.connections.manage,
         { repository: fullName },
-        () => router.commands.requestRepositoryInstall(userId, orgId, fullName),
+        () => router.commands.requestRepositoryInstall(userId, owner, fullName),
       );
       if (!requested.ok) {
         throw new BackofficeUnavailableError(requested.message);
@@ -375,7 +378,7 @@ export function createGitHubIntegration({
       const access = await repositoryAccess(fullName);
       if (access.status !== "reachable" || !access.repository.linked) {
         throw new BackofficeUnavailableError(
-          `${fullName} is not linked to this organization. Run integrations.setup first.`,
+          `${fullName} is not linked to this workspace. Run integrations.setup first.`,
         );
       }
       const repoId = access.repository.id;
@@ -469,7 +472,7 @@ export function createGitHubIntegration({
           return {
             status: "needs-input",
             connectionId,
-            instructions: `The GitHub App can reach ${fullName}. Submit { "link": true } to link it to this organization.`,
+            instructions: `The GitHub App can reach ${fullName}. Submit { "link": true } to link it to this workspace.`,
             inputSchema: z.toJSONSchema(githubLinkInputSchema, { io: "input" }),
             secretFields: [],
           };
@@ -493,7 +496,7 @@ export function createGitHubIntegration({
             connectionId,
             instructions:
               access.status === "not-installed"
-                ? `The GitHub App is not installed on ${owner} for this organization. Submit { "link": true } to get a GitHub install link; returning from GitHub links ${fullName}.`
+                ? `The GitHub App is not installed on ${owner} for this workspace. Submit { "link": true } to get a GitHub install link; returning from GitHub links ${fullName}.`
                 : `The GitHub App installation on ${owner} cannot reach ${fullName}. Submit { "link": true } to get a GitHub link where the user adds it; returning from GitHub links it.`,
             inputSchema: z.toJSONSchema(githubLinkInputSchema, { io: "input" }),
             secretFields: [],
@@ -537,7 +540,7 @@ export function createGitHubIntegration({
           id: GITHUB_INTEGRATION_ID,
           label: "GitHub",
           description:
-            "GitHub repositories reached through this organization's GitHub App installations. Each linked repository is one connection, addressed as github#owner/repo.",
+            "GitHub repositories reached through this workspace's GitHub App installations. Each linked repository is one connection, addressed as github#owner/repo.",
           connectionCardinality: "multiple",
           availability:
             unavailable === null

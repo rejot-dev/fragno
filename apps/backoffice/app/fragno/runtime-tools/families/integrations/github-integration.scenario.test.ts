@@ -31,7 +31,7 @@ import {
   type BackofficeScenarioContext,
   type BackofficeScenarioDefinitionInput,
 } from "@/fragno/automation/scenario";
-import type { GitHubFragment } from "@/fragno/github";
+import type { GitHubFragment, GitHubInstallationOwner } from "@/fragno/github";
 import { completeGitHubInstallCallback } from "@/fragno/github-install-callback";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
@@ -72,6 +72,7 @@ const scenarioObjects = {
 
 const scope = { kind: "org", orgId: "github-org", jurisdiction: null } as const;
 const ownerUserId = "github-owner";
+const personalScope = { kind: "user", userId: ownerUserId, jurisdiction: null } as const;
 const installationId = "4242";
 const webhookSecret = "github-integration-webhook-secret";
 const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
@@ -260,11 +261,15 @@ async function deliverGitHubWebhook(
   return deliveryId;
 }
 
-/** Runs the setup callback's completion as the member who returns from GitHub. */
-async function completeInstall(ctx: BackofficeScenarioContext, state: string) {
-  const execution = createBackofficeUserExecution({ scope, userId: ownerUserId });
+/** Runs the setup callback's completion as the user who returns from GitHub to the workspace. */
+async function completeInstall(
+  ctx: BackofficeScenarioContext,
+  owner: GitHubInstallationOwner,
+  state: string,
+) {
+  const execution = createBackofficeUserExecution({ scope: owner, userId: ownerUserId });
   const kernel = new BackofficeKernel(ctx.runtime.services);
-  const github = kernel.scoped("GITHUB", scope, ctx.runtime.objects.github);
+  const github = kernel.scoped("GITHUB", owner, ctx.runtime.objects.github);
   const transport = authorizedBackofficeObjectHttp(github.http, execution);
   return await completeGitHubInstallCallback({
     router: ctx.runtime.objects.githubWebhookRouter.singleton().commands,
@@ -273,12 +278,12 @@ async function completeInstall(ctx: BackofficeScenarioContext, state: string) {
       baseUrl: "https://github.do",
       mountRoute: "/api/github",
       fetch: async (request) => {
-        await github.commands.ensureAdminConfig(scope.orgId);
+        await github.commands.ensureAdminConfig();
         return await transport.fetch(request);
       },
     }),
     userId: ownerUserId,
-    organization: scope,
+    owner,
     state,
     installationId,
   });
@@ -347,7 +352,7 @@ test("a repository becomes a connection after the GitHub App is installed, linke
           const state = installUrl.searchParams.get("state");
           assert(state);
           // GitHub returns to the setup callback after the user selects acme/project.
-          assert((await completeInstall(ctx, state)) === "installed_synced");
+          assert((await completeInstall(ctx, scope, state)) === "installed_synced");
           expect(github.requests).toEqual([
             `GET /app/installations/${installationId}`,
             `POST /app/installations/${installationId}/access_tokens`,
@@ -355,12 +360,12 @@ test("a repository becomes a connection after the GitHub App is installed, linke
           ]);
           // The callback used acme's link, so setup no longer offers it; octo's link is untouched.
           const router = ctx.runtime.objects.githubWebhookRouter.singleton().commands;
-          expect(await router.getPendingInstall(ownerUserId, scope.orgId, "acme")).toBeNull();
+          expect(await router.getPendingInstall(ownerUserId, scope, "acme")).toBeNull();
           expect(await user.json(setup("github#octo/tools"))).toEqual(octoAuthorization);
           // Choosing acme again on GitHub's page for octo's link is reported, not silently dropped.
           const octoState = new URL(octoAuthorization.authorizationUrl).searchParams.get("state");
           assert(octoState);
-          assert((await completeInstall(ctx, octoState)) === "installed_other_account");
+          assert((await completeInstall(ctx, scope, octoState)) === "installed_other_account");
           expect(await user.json(setup("github#octo/tools"))).toMatchObject({
             status: "needs-input",
             connectionId: "github#octo/tools",
@@ -576,6 +581,56 @@ test("a repository becomes a connection after the GitHub App is installed, linke
         scope,
         where: { source: "integrations", eventType: "connection.disconnected" },
         expected: { subject: { service: "github", connectionId: "github#acme/project" } },
+      }),
+    ],
+  }));
+});
+
+test("a personal workspace connects a repository and receives its webhooks", async () => {
+  await runGitHubIntegrationScenario(() => ({
+    name: "GitHub repository connections in a personal workspace",
+    setup: ({ given }) => [
+      given.auth.user({ id: ownerUserId, email: "owner@example.test" }),
+      given.organization.exists({ id: scope.orgId, name: "GitHub Org" }),
+    ],
+    steps: ({ then, runner }) => [
+      then.assert("setup's install link returns to the personal workspace", async (ctx) => {
+        const user = await createTerminal(
+          ctx,
+          createBackofficeUserExecution({ scope: personalScope, userId: ownerUserId }),
+        );
+        expect(await user.json("integrations.discover")).toContainEqual(
+          expect.objectContaining({ id: "github", availability: { status: "available" } }),
+        );
+        const authorization = await user.json(setup("github#acme/project", { link: true }));
+        expect(authorization).toMatchObject({ status: "needs-authorization" });
+        const state = new URL(authorization.authorizationUrl).searchParams.get("state");
+        assert(state);
+        assert((await completeInstall(ctx, personalScope, state)) === "installed_synced");
+        expect(await user.json(setup("github#acme/project"))).toEqual({
+          status: "ready",
+          connectionId: "github#acme/project",
+        });
+        const organization = await createTerminal(ctx, createBackofficeSystemExecution(scope));
+        expect((await organization.json("integrations.list")).connections).toEqual([]);
+        await deliverGitHubWebhook(ctx, "pull_request", pullRequestOpened);
+      }),
+      runner.drain(),
+      then.automation.event({
+        scope: personalScope,
+        where: { source: "integrations", eventType: "connection.ready" },
+        expected: { subject: { service: "github", connectionId: "github#acme/project" } },
+      }),
+      then.automation.event({
+        scope: personalScope,
+        where: { source: "github", eventType: "webhook.received" },
+        expected: {
+          subject: {
+            scope: personalScope,
+            connectionId: "github#acme/project",
+            pullRequestNumber: "7",
+          },
+        },
       }),
     ],
   }));

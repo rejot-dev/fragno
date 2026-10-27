@@ -6,12 +6,15 @@ import {
   gitHubRepositoriesRouteAvailable,
 } from "./data";
 
-/** GitHub is configured once its app is set up and the organization has linked repositories. */
+/**
+ * GitHub is configured once its app is set up and the organization or personal workspace has
+ * linked repositories.
+ */
 export const gitHubConnection = defineIntegrationConnection({
-  scopeKinds: ["org"],
+  scopeKinds: ["org", "user"],
   basePath: (scope) => integrationBasePath(scope, "github"),
   async loadConfiguration({ request, context, scope }) {
-    const config = await fetchGitHubAdminConfig(context, scope.orgId, new URL(request.url).origin);
+    const config = await fetchGitHubAdminConfig(context, new URL(request.url).origin);
     const linkedRepositories = config.configState?.configured
       ? await fetchGitHubLinkedRepositories(request, context, scope)
       : null;

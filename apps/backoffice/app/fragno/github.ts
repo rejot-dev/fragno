@@ -1,6 +1,9 @@
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
-import type { BackofficeOrganizationContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import type {
+  BackofficeRootOwner,
+  BackofficeScopeIdNames,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import {
   createGitHubAppFragment,
@@ -93,6 +96,12 @@ export function createGitHubServer(
 
 export type GitHubFragment = ReturnType<typeof createGitHubServer>;
 
+/**
+ * The organization or personal workspace a GitHub App installation is connected to. Its GitHub
+ * object keeps the installation's repositories, and its webhooks arrive there.
+ */
+export type GitHubInstallationOwner = BackofficeRootOwner<BackofficeScopeIdNames>;
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
@@ -136,7 +145,7 @@ const githubActor = (payload: Record<string, unknown>, installationId: string) =
 };
 
 const githubSubject = (
-  scope: BackofficeOrganizationContextScope,
+  scope: GitHubInstallationOwner,
   payload: Record<string, unknown>,
   meta: GitHubAppWebhookMeta,
 ) => {
@@ -172,7 +181,7 @@ export const buildGitHubAutomationEvent = ({
   event,
   meta,
 }: {
-  scope: BackofficeOrganizationContextScope;
+  scope: GitHubInstallationOwner;
   event: { name: string; payload: unknown };
   meta: GitHubAppWebhookMeta;
 }): AutomationEvent => {

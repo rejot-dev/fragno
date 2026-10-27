@@ -1,11 +1,14 @@
-import type { BackofficeOrganizationContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  backofficeContextScopesEqual,
+  backofficeScopePathSegment,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { createRouteCaller } from "@fragno-dev/core/api";
 
 import type {
   GitHubCommands,
   GitHubWebhookRouterCommands,
 } from "@/backoffice-runtime/object-registry";
-import type { GitHubFragment } from "@/fragno/github";
+import type { GitHubFragment, GitHubInstallationOwner } from "@/fragno/github";
 import { isSuccessStatus } from "@/fragno/runtime-tools/runtime-errors";
 
 type GitHubCallRoute = ReturnType<typeof createRouteCaller<GitHubFragment>>;
@@ -21,7 +24,7 @@ type GitHubInstallCallbackOutcome =
   | "callback_error";
 
 /**
- * Completes GitHub's install redirect: binds the installation to the organization, syncs its
+ * Completes GitHub's install redirect: binds the installation to the workspace, syncs its
  * repositories, and links the repositories that integration setup requested with this install.
  */
 export async function completeGitHubInstallCallback({
@@ -29,23 +32,23 @@ export async function completeGitHubInstallCallback({
   github,
   callRoute,
   userId,
-  organization,
+  owner,
   state,
   installationId,
 }: {
-  router: Pick<GitHubWebhookRouterCommands, "consumeInstallState" | "setInstallationOrg">;
+  router: Pick<GitHubWebhookRouterCommands, "consumeInstallState" | "setInstallationOwner">;
   github: Pick<GitHubCommands, "redeliverFailedInstallationWebhooks">;
   callRoute: GitHubCallRoute;
   userId: string;
-  organization: BackofficeOrganizationContextScope;
+  owner: GitHubInstallationOwner;
   state: string;
   installationId: string;
 }): Promise<GitHubInstallCallbackOutcome> {
-  const organizationId = organization.orgId;
+  const ownerSegment = backofficeScopePathSegment(owner);
   const consumed = await router.consumeInstallState({ state, userId, installationId });
   if (!consumed.ok) {
     console.warn("GitHub install callback state validation failed", {
-      organizationId,
+      owner: ownerSegment,
       installationId,
       userId,
       code: consumed.code,
@@ -64,24 +67,23 @@ export async function completeGitHubInstallCallback({
         });
     }
   }
-  if (consumed.orgId !== organizationId) {
-    console.warn("GitHub install callback resolved to a different organization", {
-      requestedOrgId: organizationId,
-      resolvedOrgId: consumed.orgId,
+  if (!backofficeContextScopesEqual(consumed.owner, owner)) {
+    console.warn("GitHub install callback resolved to a different workspace", {
+      requestedOwner: ownerSegment,
+      resolvedOwner: backofficeScopePathSegment(consumed.owner),
       installationId,
       userId,
     });
     return "callback_error";
   }
 
-  const mapping = await router.setInstallationOrg(installationId, organization);
+  const mapping = await router.setInstallationOwner(installationId, owner);
   if (!mapping.ok) {
-    console.error("GitHub install callback failed to map installation to organization", {
-      organizationId,
+    console.error("GitHub install callback failed to map installation to workspace", {
+      owner: ownerSegment,
       installationId,
       userId,
       code: mapping.code,
-      existingOrgId: mapping.existingOrgId,
       error: mapping.message,
     });
     return "callback_error";
@@ -98,7 +100,7 @@ export async function completeGitHubInstallCallback({
   );
   if (synced !== null) {
     console.warn("GitHub install callback mapped installation but sync failed", {
-      organizationId,
+      owner: ownerSegment,
       installationId,
       error: synced,
     });
@@ -123,7 +125,7 @@ export async function completeGitHubInstallCallback({
   // repositories, and setup offers a fresh link for the requested account.
   if (account !== null && account !== request.owner) {
     console.warn("GitHub install callback installed a different account than setup requested", {
-      organizationId,
+      owner: ownerSegment,
       installationId,
       requestedAccount: request.owner,
       installedAccount: account,
@@ -147,7 +149,7 @@ export async function completeGitHubInstallCallback({
     // or a failed link, leaves only that repository for setup to report as not granted.
     if (linked !== null) {
       console.warn("GitHub install callback could not link a requested repository", {
-        organizationId,
+        owner: ownerSegment,
         installationId,
         repository: fullName,
         error: linked,

@@ -121,7 +121,11 @@ test("GitHub's install return lands on the organization's GitHub page or reports
             const { cookie, userId } = await signInToOrganization(ctx);
             const install = await ctx.runtime.objects.githubWebhookRouter
               .singleton()
-              .commands.createInstallStatefulUrl(userId, orgId);
+              .commands.createInstallStatefulUrl(userId, {
+                kind: "org",
+                orgId,
+                jurisdiction: null,
+              });
             assert(install.ok);
             const state = new URL(install.installUrl).searchParams.get("state");
             assert(state);

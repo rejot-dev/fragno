@@ -1,4 +1,4 @@
-import { backofficeOrganizationScopeSchema } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import { backofficeRootOwnerSchema } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
 import type { BackofficeCapability } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
@@ -65,7 +65,7 @@ const githubActorSchema = z.union([
 ]);
 
 const githubSubjectSchema = z.object({
-  scope: backofficeOrganizationScopeSchema,
+  scope: backofficeRootOwnerSchema,
   installationId: z.string().min(1),
   accountId: z.string().optional(),
   accountLogin: z.string().optional(),
@@ -148,7 +148,7 @@ export const githubCapability: BackofficeCapability = {
         eventType: GITHUB_AUTOMATION_EVENT_WEBHOOK_RECEIVED,
         label: "GitHub webhook received",
         description:
-          "Fires when a GitHub App webhook is received for an organization. Routes see the whole delivery; the stored event keeps only deliveryId, githubEvent, action, installationId, and the number and title of issue and pullRequest. Read the delivery with a GitHub connection's delivery.get action while GitHub's retention keeps it.",
+          "Fires when a GitHub App webhook is received for an organization or personal workspace. Routes see the whole delivery; the stored event keeps only deliveryId, githubEvent, action, installationId, and the number and title of issue and pullRequest. Read the delivery with a GitHub connection's delivery.get action while GitHub's retention keeps it.",
         payloadSchema: githubPayloadSchema,
         storedPayload: storedGitHubPayload,
         actorSchema: githubActorSchema,

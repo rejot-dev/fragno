@@ -2,7 +2,9 @@ import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { FormContainer } from "@fragno-private/design-system/form-container";
 import { Form, redirect, useActionData, useLoaderData, useNavigation } from "react-router";
 
-import { backofficeOrganizationContextScope } from "@/backoffice-runtime/resolved-scope";
+import { BackofficeForbiddenError } from "@/backoffice-runtime/kernel";
+import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
+import type { GitHubInstallationOwner } from "@/fragno/github";
 import { getBackofficeShellRequest } from "@/layouts/backoffice-shell-request.server";
 import {
   getGitHubDurableObject,
@@ -38,13 +40,28 @@ type LoaderData =
   | {
       ok: true;
       state: string;
-      orgId: string;
       returnTo: string;
       claim: GitHubOAuthComplete;
     }
   | { ok: false; message: string; returnTo: string };
 
 type ActionData = { ok: false; message: string };
+
+/** A claim restores into a workspace the user may still act in; others are not found. */
+async function requireClaimWorkspace(
+  request: Request,
+  context: Route.LoaderArgs["context"],
+  owner: GitHubInstallationOwner,
+) {
+  try {
+    await requireBackofficeContext(request, context, owner);
+  } catch (error) {
+    if (error instanceof BackofficeForbiddenError) {
+      throw new Response("Not Found", { status: 404 });
+    }
+    throw error;
+  }
+}
 
 const isCompletedOAuth = (value: unknown): value is GitHubOAuthComplete => {
   if (!value || typeof value !== "object") {
@@ -96,10 +113,7 @@ export async function loader({
     return { ok: false, message: resolved.message, returnTo: UNKNOWN_RETURN_TO };
   }
 
-  const memberEntry = me.organizations.find((entry) => entry.organization.id === resolved.orgId);
-  if (!memberEntry) {
-    throw new Response("Not Found", { status: 404 });
-  }
+  await requireClaimWorkspace(request, context, resolved.owner);
 
   if (completed) {
     if (!isCompletedOAuth(resolved.completion)) {
@@ -113,22 +127,16 @@ export async function loader({
     return {
       ok: true,
       state,
-      orgId: resolved.orgId,
       returnTo: resolved.returnTo,
       claim: resolved.completion,
     };
   }
 
-  const claim = await completeGitHubOAuth(
-    request,
-    context,
-    backofficeOrganizationContextScope(memberEntry.organization),
-    {
-      subjectId: me.user.id,
-      state,
-      code,
-    },
-  );
+  const claim = await completeGitHubOAuth(request, context, resolved.owner, {
+    subjectId: me.user.id,
+    state,
+    code,
+  });
   if (claim.error || !claim.result) {
     return {
       ok: false,
@@ -171,10 +179,8 @@ export async function action({
     return { ok: false, message: resolved.message };
   }
 
-  const memberEntry = me.organizations.find((entry) => entry.organization.id === resolved.orgId);
-  if (!memberEntry) {
-    throw new Response("Not Found", { status: 404 });
-  }
+  const owner = resolved.owner;
+  await requireClaimWorkspace(request, context, owner);
 
   if (!isCompletedOAuth(resolved.completion)) {
     return { ok: false, message: "GitHub OAuth flow has not been completed." };
@@ -189,27 +195,26 @@ export async function action({
     };
   }
 
-  const organization = backofficeOrganizationContextScope(memberEntry.organization);
-  const mappingResult = await githubWebhookRouterDo.commands.setInstallationOrg(
+  const mappingResult = await githubWebhookRouterDo.commands.setInstallationOwner(
     installationId,
-    organization,
+    owner,
   );
   if (!mappingResult.ok) {
     return {
       ok: false,
       message:
-        mappingResult.code === "INSTALLATION_ORG_CONFLICT"
-          ? "That GitHub installation is already linked to a different organization."
+        mappingResult.code === "INSTALLATION_OWNER_CONFLICT"
+          ? "That GitHub installation is already linked to a different workspace."
           : mappingResult.message,
     };
   }
 
-  const sync = await syncGitHubInstallation(request, context, organization, installationId);
+  const sync = await syncGitHubInstallation(request, context, owner, installationId);
   if (sync.error || !sync.result) {
     return { ok: false, message: sync.error ?? "Failed to sync installation." };
   }
 
-  const githubDo = getGitHubDurableObject(context, organization);
+  const githubDo = getGitHubDurableObject(context, owner);
   await githubDo.commands.redeliverFailedInstallationWebhooks(installationId);
   await githubWebhookRouterDo.commands.consumeInstallationClaimState({ state, userId: me.user.id });
 
@@ -258,7 +263,7 @@ export default function BackofficeGitHubOAuthCallback() {
     <FormContainer
       title="Restore GitHub installation"
       eyebrow="Verified GitHub access"
-      description="Choose the installation to restore for this Backoffice organization."
+      description="Choose the installation to restore for this Backoffice workspace."
     >
       <p className="text-sm text-[var(--bo-muted)]">
         Signed in to GitHub as{" "}

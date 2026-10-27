@@ -1,3 +1,4 @@
+import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { FormContainer } from "@fragno-private/design-system/form-container";
 import { useEffect } from "react";
@@ -37,7 +38,7 @@ const INSTALL_FLOW_QUERY = "installFlow";
 const INSTALL_FLOW_MESSAGES = {
   installed: {
     tone: "success",
-    message: "GitHub installation callback validated and linked to this organization.",
+    message: "GitHub installation callback validated and linked to this workspace.",
   },
   installed_pending_webhook: {
     tone: "warning",
@@ -46,12 +47,12 @@ const INSTALL_FLOW_MESSAGES = {
   },
   installed_synced: {
     tone: "success",
-    message: "GitHub installation callback validated, linked to this organization, and synced.",
+    message: "GitHub installation callback validated, linked to this workspace, and synced.",
   },
   installed_other_account: {
     tone: "warning",
     message:
-      "GitHub installation was linked to this organization, but on a different account than integration setup requested. Run setup again for a link to the requested account.",
+      "GitHub installation was linked to this workspace, but on a different account than integration setup requested. Run setup again for a link to the requested account.",
   },
   install_requested: {
     tone: "warning",
@@ -166,8 +167,8 @@ const readInstallNotice = (requestUrl: URL): InstallFlowNotice => {
 
 export async function loader({ request, context, url }: Route.LoaderArgs) {
   const connection = gitHubConnection.require({ request, context });
-  const organization = connection.scope;
-  const organizationId = organization.orgId;
+  const owner = connection.scope;
+  const ownerSegment = backofficeScopePathSegment(owner);
 
   const requestUrl = url;
   const callbackState = requestUrl.searchParams.get("state")?.trim() ?? "";
@@ -181,7 +182,7 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
   if (callbackState || callbackInstallationId || setupAction) {
     if (!callbackState || !callbackInstallationId) {
       console.warn("GitHub install callback missing required parameters", {
-        organizationId: organizationId,
+        owner: ownerSegment,
         setupAction,
         hasState: Boolean(callbackState),
         hasInstallationId: Boolean(callbackInstallationId),
@@ -191,7 +192,7 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
 
     if (!isValidInstallationId(callbackInstallationId)) {
       console.warn("GitHub install callback provided invalid installation id", {
-        organizationId: organizationId,
+        owner: ownerSegment,
         installationId: callbackInstallationId,
         state: toStatePreview(callbackState),
       });
@@ -203,17 +204,17 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
     try {
       const outcome = await completeGitHubInstallCallback({
         router: getGitHubWebhookRouterDurableObject(context).commands,
-        github: getGitHubDurableObject(context, organization).commands,
-        callRoute: createGitHubRouteCaller(request, context, organization),
+        github: getGitHubDurableObject(context, owner).commands,
+        callRoute: createGitHubRouteCaller(request, context, owner),
         userId: me.user.id,
-        organization,
+        owner,
         state: callbackState,
         installationId: callbackInstallationId,
       });
       return redirect(buildConfigurationRedirect(requestUrl, outcome));
     } catch (error) {
       console.error("GitHub install callback processing threw", {
-        organizationId: organizationId,
+        owner: ownerSegment,
         installationId: callbackInstallationId,
         state: toStatePreview(callbackState),
         error,
@@ -247,7 +248,7 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
   const { installations, installationsError } = await fetchGitHubInstallations(
     request,
     context,
-    organization,
+    owner,
     "active",
   );
   if (installationsError) {
@@ -265,7 +266,7 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
       const reposResult = await fetchGitHubInstallationRepos(
         request,
         context,
-        organization,
+        owner,
         installation.id,
       );
 
@@ -293,8 +294,8 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
 }
 
 export async function action({ request, context, url }: Route.ActionArgs) {
-  const organization = gitHubConnection.require({ request, context }).scope;
-  const organizationId = organization.orgId;
+  const owner = gitHubConnection.require({ request, context }).scope;
+  const ownerSegment = backofficeScopePathSegment(owner);
   const { me } = getBackofficeShellRequest(context);
 
   const formData = await request.formData();
@@ -304,11 +305,11 @@ export async function action({ request, context, url }: Route.ActionArgs) {
     const githubWebhookRouterDo = getGitHubWebhookRouterDurableObject(context);
     const install = await githubWebhookRouterDo.commands.createInstallStatefulUrl(
       me.user.id,
-      organizationId,
+      owner,
     );
     if (!install.ok) {
       console.error("Failed to create GitHub install stateful URL", {
-        organizationId: organizationId,
+        owner: ownerSegment,
         userId: me.user.id,
         message: install.message,
         missing: install.missing,
@@ -327,7 +328,7 @@ export async function action({ request, context, url }: Route.ActionArgs) {
 
   if (intent === "connect-existing-installation") {
     const returnTo = `${url.pathname}${url.search}`;
-    const claim = await startGitHubOAuth(request, context, organization, {
+    const claim = await startGitHubOAuth(request, context, owner, {
       subjectId: me.user.id,
       returnTo,
     });
@@ -343,13 +344,13 @@ export async function action({ request, context, url }: Route.ActionArgs) {
       await githubWebhookRouterDo.commands.storeInstallationClaimState({
         state: claim.result.state,
         userId: me.user.id,
-        orgId: organizationId,
+        owner,
         returnTo,
         expiresAt: new Date(claim.result.expiresAt).getTime(),
       });
     } catch (error) {
       console.warn("Failed to store GitHub installation claim state", {
-        organizationId: organizationId,
+        owner: ownerSegment,
         userId: me.user.id,
         state: toStatePreview(claim.result.state),
         error,
@@ -373,13 +374,13 @@ export async function action({ request, context, url }: Route.ActionArgs) {
       } satisfies GitHubConfigurationActionData;
     }
 
-    const result = await linkGitHubRepository(request, context, organization, {
+    const result = await linkGitHubRepository(request, context, owner, {
       installationId,
       repoId,
     });
     if (result.error || !result.result) {
       console.warn("Failed to link GitHub repository", {
-        organizationId: organizationId,
+        owner: ownerSegment,
         installationId,
         repoId,
         error: result.error ?? "Failed to link repository.",
@@ -405,12 +406,12 @@ export async function action({ request, context, url }: Route.ActionArgs) {
       } satisfies GitHubConfigurationActionData;
     }
 
-    const result = await unlinkGitHubRepository(request, context, organization, {
+    const result = await unlinkGitHubRepository(request, context, owner, {
       repoId,
     });
     if (result.error || !result.ok) {
       console.warn("Failed to unlink GitHub repository", {
-        organizationId: organizationId,
+        owner: ownerSegment,
         repoId,
         error: result.error ?? "Failed to unlink repository.",
       });
@@ -495,15 +496,15 @@ export default function BackofficeOrganizationGitHubConfiguration() {
             eyebrow="Installation"
             description={
               hasActiveInstallation
-                ? "Manage the GitHub App installation linked to this organization."
+                ? "Manage the GitHub App installation linked to this workspace."
                 : "Install the app for the first time, or reconnect an installation that already exists in GitHub."
             }
           >
             {hasActiveInstallation && githubInstallationUrl ? (
               <>
                 <p className="text-sm text-[var(--bo-muted)]">
-                  Installation is configured for this organization. Open GitHub to manage
-                  installation settings or review app authorizations for your GitHub account.
+                  Installation is configured for this workspace. Open GitHub to manage installation
+                  settings or review app authorizations for your GitHub account.
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <a

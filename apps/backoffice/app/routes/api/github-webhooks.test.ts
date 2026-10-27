@@ -31,11 +31,11 @@ const runtimes: InMemoryBackofficeRuntime[] = [];
 
 class RecordingGitHubObject {
   readonly objectNames: string[] = [];
-  readonly configuredOrgIds: string[] = [];
+  configurations = 0;
   readonly requests: Request[] = [];
 
-  async ensureAdminConfig(orgId: string) {
-    this.configuredOrgIds.push(orgId);
+  async ensureAdminConfig() {
+    this.configurations += 1;
     return { configured: true };
   }
 
@@ -142,7 +142,7 @@ describe("GitHub webhook route", () => {
     const runtime = await createRuntime(githubObject);
     await runtime.objects.githubWebhookRouter
       .singleton()
-      .commands.setInstallationOrg(INSTALLATION_ID, {
+      .commands.setInstallationOwner(INSTALLATION_ID, {
         kind: "org",
         orgId: ORG_ID,
         jurisdiction: "eu",
@@ -153,12 +153,11 @@ describe("GitHub webhook route", () => {
 
     assert(response.status === 202);
     expect(githubObject.objectNames).toEqual(["GITHUB:v1:org:org-1@eu"]);
-    expect(githubObject.configuredOrgIds).toEqual([ORG_ID]);
+    assert(githubObject.configurations === 1);
     expect(githubObject.requests).toHaveLength(1);
     const forwardedRequest = githubObject.requests[0];
     const forwardedUrl = new URL(forwardedRequest.url);
     assert(forwardedUrl.pathname === "/api/github/webhooks");
-    assert(forwardedUrl.searchParams.get("orgId") === ORG_ID);
     assert(forwardedRequest.headers.get("x-github-delivery") === "delivery-1");
     assert((await forwardedRequest.text()) === body);
   });
@@ -181,7 +180,7 @@ describe("GitHub webhook route", () => {
     });
     runtimes.push(runtime);
     // Touching the router creates it, and the mapping is stored the way it was before.
-    await runtime.objects.githubWebhookRouter.singleton().commands.getInstallationOrg("0");
+    await runtime.objects.githubWebhookRouter.singleton().commands.getInstallationOwner("0");
     await routerState!.storage.put(`github-installation-org:${INSTALLATION_ID}`, ORG_ID);
     const { request } = await createWebhookRequest();
 

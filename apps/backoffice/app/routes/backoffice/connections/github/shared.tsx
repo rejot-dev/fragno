@@ -2,12 +2,8 @@ import { BackofficePageHeader } from "@fragno-private/design-system/page-header"
 import type { Dispatch, SetStateAction } from "react";
 import { isRouteErrorResponse } from "react-router";
 
-import type { BackofficeMeData } from "@/fragno/auth/contracts";
-
 import { AutomationSubpageTabs } from "../../automations/shared";
 import { getRouteErrorMessage, getBackofficeOrganizationNotFound } from "../../route-errors";
-
-type BackofficeOrganization = BackofficeMeData["organizations"][number]["organization"];
 
 export type GitHubAdminConfigState = {
   configured: boolean;
@@ -26,7 +22,6 @@ export type GitHubAdminConfigState = {
 
 export type GitHubLayoutContext = {
   origin: string;
-  organization: BackofficeOrganization | null;
   basePath: string;
   integrationsPath: string;
   configState: GitHubAdminConfigState | null;

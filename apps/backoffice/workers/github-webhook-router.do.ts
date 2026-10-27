@@ -1,5 +1,6 @@
-import type { BackofficeOrganizationContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { DurableObject } from "cloudflare:workers";
+
+import type { GitHubInstallationOwner } from "@/fragno/github";
 
 import type {
   GitHubWebhookRouterObject,
@@ -45,24 +46,27 @@ export class GitHubWebhookRouter extends DurableObject<CloudflareEnv> {
     return await this.#object.isAppConfigured();
   }
 
-  async createInstallStatefulUrl(userId: string, orgId: string): Promise<CreateInstallUrlResult> {
-    return await this.#object.createInstallStatefulUrl(userId, orgId);
+  async createInstallStatefulUrl(
+    userId: string,
+    owner: GitHubInstallationOwner,
+  ): Promise<CreateInstallUrlResult> {
+    return await this.#object.createInstallStatefulUrl(userId, owner);
   }
 
   async requestRepositoryInstall(
     userId: string,
-    orgId: string,
+    owner: GitHubInstallationOwner,
     repositoryFullName: string,
   ): Promise<CreateInstallUrlResult> {
-    return await this.#object.requestRepositoryInstall(userId, orgId, repositoryFullName);
+    return await this.#object.requestRepositoryInstall(userId, owner, repositoryFullName);
   }
 
   async getPendingInstall(
     userId: string,
-    orgId: string,
-    owner: string,
+    owner: GitHubInstallationOwner,
+    account: string,
   ): Promise<{ installUrl: string; repositories: string[] } | null> {
-    return await this.#object.getPendingInstall(userId, orgId, owner);
+    return await this.#object.getPendingInstall(userId, owner, account);
   }
 
   async resolveInstallState(
@@ -97,25 +101,15 @@ export class GitHubWebhookRouter extends DurableObject<CloudflareEnv> {
     return await this.#object.consumeInstallationClaimState(input);
   }
 
-  async setInstallationOrg(
+  async setInstallationOwner(
     installationId: string,
-    organization: BackofficeOrganizationContextScope,
-  ): Promise<
-    | { ok: true }
-    | {
-        ok: false;
-        message: string;
-        code?: "INSTALLATION_ORG_CONFLICT";
-        existingOrgId?: string;
-      }
-  > {
-    return await this.#object.setInstallationOrg(installationId, organization);
+    owner: GitHubInstallationOwner,
+  ): ReturnType<GitHubWebhookRouterObject["setInstallationOwner"]> {
+    return await this.#object.setInstallationOwner(installationId, owner);
   }
 
-  async getInstallationOrg(
-    installationId: string,
-  ): Promise<BackofficeOrganizationContextScope | null> {
-    return await this.#object.getInstallationOrg(installationId);
+  async getInstallationOwner(installationId: string): Promise<GitHubInstallationOwner | null> {
+    return await this.#object.getInstallationOwner(installationId);
   }
 
   async clearInstallationRouting(installationId: string): Promise<{

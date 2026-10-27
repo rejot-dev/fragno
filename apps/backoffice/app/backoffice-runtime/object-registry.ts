@@ -38,7 +38,6 @@ import type { DirectoryPageInput } from "@fragno-dev/backoffice-api/v0/shared/pa
 import {
   type BackofficeContextScope,
   type BackofficeJurisdiction,
-  type BackofficeOrganizationContextScope,
   type BackofficeRootOwner,
   type BackofficeRoutableScope,
   type BackofficeScopeIdNames,
@@ -152,6 +151,7 @@ import type {
   DurableHookQueueOptions,
   DurableHookQueueResponse,
 } from "@/fragno/durable-hooks";
+import type { GitHubInstallationOwner } from "@/fragno/github";
 import type {
   MarketplaceAddDraftVersionInput,
   MarketplaceArchiveListingInput,
@@ -849,7 +849,7 @@ export type UploadCommands = WarmableCommands & DurableHookCommands;
 export type CloudflareCommands = Record<never, never>;
 export type FormsCommands = DurableHookCommands;
 export type GitHubCommands = DurableHookCommands & {
-  ensureAdminConfig(orgId: string): Promise<AwaitedMethodReturn<GitHub, "ensureAdminConfig">>;
+  ensureAdminConfig(): Promise<AwaitedMethodReturn<GitHub, "ensureAdminConfig">>;
   redeliverFailedInstallationWebhooks(installationId: string): Promise<void>;
 };
 
@@ -889,17 +889,17 @@ export type GitHubWebhookRouterCommands = {
   isAppConfigured(): Promise<boolean>;
   createInstallStatefulUrl(
     userId: string,
-    orgId: string,
+    owner: GitHubInstallationOwner,
   ): Promise<AwaitedMethodReturn<GitHubWebhookRouter, "createInstallStatefulUrl">>;
   requestRepositoryInstall(
     userId: string,
-    orgId: string,
+    owner: GitHubInstallationOwner,
     repositoryFullName: string,
   ): Promise<AwaitedMethodReturn<GitHubWebhookRouter, "requestRepositoryInstall">>;
   getPendingInstall(
     userId: string,
-    orgId: string,
-    owner: string,
+    owner: GitHubInstallationOwner,
+    account: string,
   ): Promise<AwaitedMethodReturn<GitHubWebhookRouter, "getPendingInstall">>;
   resolveInstallState(
     input: unknown,
@@ -919,13 +919,13 @@ export type GitHubWebhookRouterCommands = {
   consumeInstallationClaimState(
     input: unknown,
   ): Promise<AwaitedMethodReturn<GitHubWebhookRouter, "consumeInstallationClaimState">>;
-  setInstallationOrg(
+  setInstallationOwner(
     installationId: string,
-    organization: BackofficeOrganizationContextScope,
-  ): Promise<AwaitedMethodReturn<GitHubWebhookRouter, "setInstallationOrg">>;
-  getInstallationOrg(
+    owner: GitHubInstallationOwner,
+  ): Promise<AwaitedMethodReturn<GitHubWebhookRouter, "setInstallationOwner">>;
+  getInstallationOwner(
     installationId: string,
-  ): Promise<AwaitedMethodReturn<GitHubWebhookRouter, "getInstallationOrg">>;
+  ): Promise<AwaitedMethodReturn<GitHubWebhookRouter, "getInstallationOwner">>;
   clearInstallationRouting(
     installationId: string,
   ): Promise<AwaitedMethodReturn<GitHubWebhookRouter, "clearInstallationRouting">>;
@@ -994,7 +994,7 @@ export const backofficeObjectScopePolicy = {
   MCP: ["org", "user", "project"],
   PROJECT_CONNECTOR: ["user"],
   UPLOAD: ["org", "named", "user", "app", "project"],
-  GITHUB: ["org"],
+  GITHUB: ["org", "user"],
 
   GITHUB_WEBHOOK_ROUTER: ["singleton"],
   CLOUDFLARE: ["singleton"],

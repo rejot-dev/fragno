@@ -20,9 +20,7 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
 
   return {
     ...integration,
-    organizationId: connection.scope.orgId,
     origin: url.origin,
-    organization: connection.resolvedScope.organization,
     configState,
     configError,
     repositoriesEnabled: linkedRepositories
@@ -32,7 +30,7 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
 }
 
 export function meta({ loaderData }: Route.MetaArgs) {
-  const label = loaderData?.label ?? "organization";
+  const label = loaderData?.label ?? "workspace";
   return [{ title: `GitHub Setup · ${label}` }];
 }
 
@@ -45,9 +43,7 @@ export default function BackofficeOrganizationGitHubLayout({
   matches,
 }: Route.ComponentProps) {
   const {
-    organizationId,
     origin,
-    organization,
     uiScope,
     basePath,
     integrationsPath,
@@ -90,9 +86,7 @@ export default function BackofficeOrganizationGitHubLayout({
       />
       <Outlet
         context={{
-          organizationId,
           origin,
-          organization,
           basePath,
           integrationsPath,
           configState,

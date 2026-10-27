@@ -1,8 +1,3 @@
-import type {
-  BackofficeContextScope,
-  BackofficeOrganizationContextScope,
-} from "@fragno-dev/backoffice-api/v0/shared/scope";
-
 import {
   getGitHubAppFromFragment,
   GITHUB_APP_FALLBACK_LINK_KEY,
@@ -23,6 +18,7 @@ import {
   buildGitHubAutomationEvent,
   createGitHubServer,
   type GitHubFragment,
+  type GitHubInstallationOwner,
 } from "@/fragno/github";
 import { encodeGitHubRepositoryConnectionId } from "@/fragno/runtime-tools/families/integrations/github-integration";
 import { recordIntegrationConnectionState } from "@/fragno/runtime-tools/families/integrations/integration-events";
@@ -40,7 +36,7 @@ import type {
 import type { BackofficeObjectImplementation } from "./lib/backoffice-object-implementation";
 
 type StoredGitHubConfig = {
-  scope: Extract<BackofficeContextScope, { kind: "org" }>;
+  scope: GitHubInstallationOwner;
   source: GitHubAppEnvironmentConfig;
 };
 
@@ -63,7 +59,7 @@ function connectionStateOfLink(status: GitHubRepositoryLinkStatus) {
 }
 
 export class GitHubObject implements GitHubCommands {
-  readonly #scope: BackofficeOrganizationContextScope;
+  readonly #scope: GitHubInstallationOwner;
   readonly #httpTransport: ReturnType<typeof createBackofficeFragmentHttpTransport>;
   readonly #state: BackofficeObjectState;
   readonly #runtimeServices: BackofficeRuntimeServices;
@@ -91,8 +87,8 @@ export class GitHubObject implements GitHubCommands {
     fetch?: typeof fetch;
   }) {
     const scope = requireBackofficeContextScopeFromDurableObjectId(state.id, "GITHUB");
-    if (scope.kind !== "org") {
-      throw new Error("GitHub Durable Objects belong to organizations.");
+    if (scope.kind !== "org" && scope.kind !== "user") {
+      throw new Error("GitHub Durable Objects belong to organizations and personal workspaces.");
     }
     this.#scope = scope;
     this.#httpTransport = createBackofficeFragmentHttpTransport({
@@ -179,11 +175,7 @@ export class GitHubObject implements GitHubCommands {
     });
   }
 
-  async ensureAdminConfig(orgId: string) {
-    const normalizedOrgId = orgId.trim();
-    if (!normalizedOrgId) {
-      throw new Error("GitHub configuration requires an organization id.");
-    }
+  async ensureAdminConfig() {
     if (!this.#configResolution.ok) {
       throw new Error(
         this.#configResolution.error ?? "GitHub is not configured for this environment.",
@@ -192,11 +184,8 @@ export class GitHubObject implements GitHubCommands {
 
     const source = extractFragmentConfig(this.#configResolution.config);
     const existing = await this.#host.loadStored();
-    // The object's own name says where it is kept; the caller only confirms its organization.
+    // The object's own name says where it is kept.
     const scope = this.#scope;
-    if (scope.orgId !== normalizedOrgId) {
-      throw new Error("GitHub Durable Object is bound to a different organization.");
-    }
     this.#host.assertSameScope(existing, scope);
     if (existing && configsEqual(existing.source, source)) {
       return;

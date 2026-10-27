@@ -119,8 +119,23 @@ describe("durable hook selectors", () => {
         objectId: "api",
       }),
     ).map((option) => option.id);
-    expect(userObjects).toEqual(["api", "automations", "telegram", "mcp", "upload", "workflows"]);
-    expect(projectObjects).toEqual(userObjects);
+    expect(userObjects).toEqual([
+      "api",
+      "automations",
+      "telegram",
+      "mcp",
+      "upload",
+      "github",
+      "workflows",
+    ]);
+    expect(projectObjects).toEqual([
+      "api",
+      "automations",
+      "telegram",
+      "mcp",
+      "upload",
+      "workflows",
+    ]);
   });
 });
 

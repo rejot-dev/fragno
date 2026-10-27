@@ -15,6 +15,7 @@ import type {
   OtpCommands,
   UploadCommands,
 } from "@/backoffice-runtime/object-registry";
+import type { GitHubInstallationOwner } from "@/fragno/github";
 
 import { BackofficeWorkerContext } from "./router-context";
 
@@ -58,8 +59,8 @@ export const getFormsDurableObject = (
 
 export const getGitHubDurableObject = (
   context: Readonly<RouterContextProvider>,
-  organization: BackofficeOrganizationContextScope,
-): BackofficeObjectHandle<GitHubCommands> => getBackofficeObjects(context).github.for(organization);
+  owner: GitHubInstallationOwner,
+): BackofficeObjectHandle<GitHubCommands> => getBackofficeObjects(context).github.for(owner);
 
 export const getGitHubWebhookRouterDurableObject = (
   context: Readonly<RouterContextProvider>,
