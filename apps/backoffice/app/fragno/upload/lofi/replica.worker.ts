@@ -1,4 +1,3 @@
-import { zqlViewEngine } from "@fragno-dev/lofi-zql/worker";
 import { serveLofiSqliteWorker } from "@fragno-dev/lofi/sqlite/worker";
 
 import { backofficeFetch } from "@/fragno/auth/browser-auth.client";
@@ -26,5 +25,5 @@ serveLofiSqliteWorker({
     },
     retryDelayMs: RETRY_DELAY_MS,
   },
-  engines: [zqlViewEngine],
+  engines: [],
 });

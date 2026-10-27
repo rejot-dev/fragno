@@ -21,7 +21,8 @@ identity its server last reported (`worker-replica-target.ts`): a tab loaded aft
 replaced does not join an older tab's leader, and its replica fails to open if the backend changed
 again since its server looked. Pages connect with `@fragno-dev/lofi/sqlite` and read live views:
 
-- Upload's are ZQL views (`@fragno-dev/lofi-zql`), which the leader updates incrementally.
+- Upload's is a SQL view of the ready files, which the leader runs again after a batch that wrote
+  the `file` table.
 - Automations' are read views: named functions in `../automation/lofi/replica-host.ts` that the
   leader runs again after a batch that wrote a table their last run read, with the database locked,
   so all of a read's queries see one state. It sends a view's result only when it changed.
@@ -214,8 +215,8 @@ VFS in Node, in the median of 5 runs after catch-up:
 
 Before the list was summarized in the worker, its result was 2.4 MB, 98% of it origins' payloads,
 mostly GitHub webhook bodies, and copying it took 3.8 ms each time it was sent. With reads this
-cheap, maintaining the list incrementally, with a projection that keeps a summary per origin and a
-ZQL view of it, would save the leader about 5 ms per batch while the Events tab is open; as a
+cheap, maintaining the list incrementally, with a projection that keeps a summary per origin, which
+the list reads, would save the leader about 5 ms per batch while the Events tab is open; as a
 rebuildable projection, changing its summary would rebuild it from the stored events rather than
 download the outbox again.
 

@@ -2,15 +2,15 @@ import {
   type BackofficeRoutableScope,
   backofficeScopePathSegment,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import type {
-  LofiSqliteClient,
-  LofiSqliteView,
-  LofiSqliteViewResult,
+import {
+  lofiSqliteTableName,
+  quoteSqliteIdentifier,
+  type LofiSqliteClient,
+  type LofiSqliteView,
+  type LofiSqliteViewResult,
 } from "@fragno-dev/lofi/sqlite";
 import { uploadSchema } from "@fragno-dev/upload/schema";
 import { useMemo } from "react";
-
-import { lofiZql } from "@fragno-dev/lofi-zql";
 
 import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
 import { getWorkerReplica } from "@/fragno/lofi/browser-replica";
@@ -44,11 +44,33 @@ export function getUploadReplica(source: UploadReplicaSource): Promise<LofiSqlit
   });
 }
 
+const { columns } = uploadSchema.tables.file;
+const READY_FILE_COLUMNS = {
+  provider: columns.provider,
+  key: columns.key,
+  status: columns.status,
+  uploaderId: columns.uploaderId,
+  // A bigint column, which file records hold as a number.
+  sizeBytes: "integer",
+  filename: columns.filename,
+  contentType: columns.contentType,
+  checksum: columns.checksum,
+  tags: columns.tags,
+  metadata: columns.metadata,
+  visibility: columns.visibility,
+  createdAt: columns.createdAt,
+  updatedAt: columns.updatedAt,
+  deletedAt: columns.deletedAt,
+} as const;
+const READY_FILES_SQL = `SELECT ${Object.keys(READY_FILE_COLUMNS).map(quoteSqliteIdentifier).join(", ")} FROM ${quoteSqliteIdentifier(lofiSqliteTableName({ schema: uploadSchema }, "file"))} WHERE "status" = 'ready'`;
+
 /** A live view of the files that finished uploading and were not deleted, of one provider or all. */
 export function readyUploadFilesView(replica: LofiSqliteClient, provider: string | null) {
-  const upload = lofiZql(replica, uploadSchema);
-  const ready = upload.query.file.where("status", "ready");
-  return upload.store(provider === null ? ready : ready.where("provider", provider));
+  return replica.sql({
+    sql: provider === null ? READY_FILES_SQL : `${READY_FILES_SQL} AND "provider" = ?1`,
+    params: provider === null ? [] : [provider],
+    columns: READY_FILE_COLUMNS,
+  });
 }
 
 type ReadyUploadFileRow =
@@ -56,7 +78,6 @@ type ReadyUploadFileRow =
     ? TRow
     : never;
 
-/** Replica rows hold timestamps as epoch milliseconds. */
 export function toUploadFileRecord(row: ReadyUploadFileRow): UploadFileRecord {
   return {
     provider: row.provider,
@@ -67,12 +88,12 @@ export function toUploadFileRecord(row: ReadyUploadFileRow): UploadFileRecord {
     filename: row.filename,
     contentType: row.contentType,
     checksum: row.checksum,
-    tags: row.tags === null ? undefined : [...row.tags],
+    tags: row.tags ?? undefined,
     metadata: row.metadata,
     visibility: row.visibility,
-    createdAt: new Date(row.createdAt),
-    updatedAt: new Date(row.updatedAt),
-    deletedAt: row.deletedAt === null ? null : new Date(row.deletedAt),
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    deletedAt: row.deletedAt,
   };
 }
 
