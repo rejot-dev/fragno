@@ -1,10 +1,7 @@
 import System from "typebox/system";
 import * as serverBuild from "virtual:react-router/server-build";
 
-import {
-  backofficeApiRouter,
-  isBackofficeApiPath,
-} from "../app/backoffice-api/backoffice-api-router";
+import { isBackofficeApiPath } from "../app/backoffice-api/api-path";
 import { BackofficeKernel } from "../app/backoffice-runtime/kernel";
 import { createCloudflareBackofficeRuntimeServices } from "../app/backoffice-runtime/runtime-services";
 import { BackofficePostHogContext, captureBackofficeServerException } from "../app/posthog.server";
@@ -15,6 +12,9 @@ import { createCloudflarePostHog, shutdownCloudflarePostHog } from "./lib/cloudf
 System.Settings.Set({ useAcceleration: false });
 
 const requestHandler = createLazyRequestHandler(serverBuild, import.meta.env.MODE);
+// Imported on the first API request, so a cold Worker serving pages does not compile the API.
+const loadBackofficeApiRouter = async () =>
+  (await import("../app/backoffice-api/backoffice-api-router")).backofficeApiRouter;
 
 export default {
   async fetch(request, env, ctx) {
@@ -54,7 +54,7 @@ export default {
 
       try {
         const response = isBackofficeApiPath(new URL(request.url).pathname)
-          ? await backofficeApiRouter.fetch(request, { runtime, kernel })
+          ? await (await loadBackofficeApiRouter()).fetch(request, { runtime, kernel })
           : await requestHandler(request, context);
         statusCode = response.status;
         // A socket travels only with the response that accepted it, so it cannot be rebuilt.

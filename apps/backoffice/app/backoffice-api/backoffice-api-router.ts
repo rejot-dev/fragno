@@ -255,7 +255,3 @@ export const backofficeApiRouter = new Hono<{ Bindings: BackofficeApiBindings }>
     ),
   )
   .notFound(() => apiError("not_found", "Not found."));
-
-export function isBackofficeApiPath(pathname: string): boolean {
-  return /^\/api\/v\d+(?:\/|$)/u.test(pathname);
-}

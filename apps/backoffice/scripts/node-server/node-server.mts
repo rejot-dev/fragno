@@ -7,10 +7,8 @@ import type { ServerBuild } from "react-router";
 import { getRequestListener } from "@hono/node-server";
 import { createRequestHandler } from "@react-router/express";
 
-import {
-  backofficeApiRouter,
-  isBackofficeApiPath,
-} from "../../app/backoffice-api/backoffice-api-router";
+import { isBackofficeApiPath } from "../../app/backoffice-api/api-path";
+import { backofficeApiRouter } from "../../app/backoffice-api/backoffice-api-router";
 import { allLocalObjects } from "../../app/backoffice-runtime/all-local-objects";
 import { BackofficeKernel } from "../../app/backoffice-runtime/kernel";
 import { createLocalBackofficeRuntime } from "../../app/backoffice-runtime/node/local-runtime";
