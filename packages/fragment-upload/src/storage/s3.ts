@@ -51,6 +51,14 @@ export type S3CompatibleStorageAdapterOptions = {
   maxMultipartParts?: number;
   maxStorageKeyLengthBytes?: number;
   maxMetadataBytes?: number;
+  /** Sends the signed storage requests; defaults to the global `fetch`. */
+  fetch?: typeof fetch;
+  /**
+   * How finalizing checks the stored object against the upload's declared size. `"maximum"` accepts
+   * any size up to it, for uploaders that cannot know the size before sending the bytes; presigned
+   * PUTs do not sign the length, so storage holds whatever was sent. Defaults to `"exact"`.
+   */
+  declaredSize?: "exact" | "maximum";
 };
 
 const normalizePrefix = (prefix: string): string => {
@@ -340,6 +348,8 @@ export function createS3CompatibleStorageAdapter(
   const multipartThresholdBytes = options.multipartThresholdBytes ?? maxSingleUploadBytes;
   const multipartPartSizeBytes =
     options.multipartPartSizeBytes ?? DEFAULT_MULTIPART_PART_SIZE_BYTES;
+  // Read per request, so a `fetch` replaced after the adapter is created is still used.
+  const send: typeof fetch = (input, init) => (options.fetch ?? fetch)(input, init);
 
   assertExpiresInSeconds(uploadExpiresInSeconds);
   assertExpiresInSeconds(signedUrlExpiresInSeconds);
@@ -472,7 +482,7 @@ export function createS3CompatibleStorageAdapter(
           },
         });
 
-        const response = await fetch(signed.url, {
+        const response = await send(signed.url, {
           method: "POST",
           headers: signed.headers,
         });
@@ -561,7 +571,7 @@ export function createS3CompatibleStorageAdapter(
         body,
       });
 
-      const response = await fetch(signed.url, {
+      const response = await send(signed.url, {
         method: "POST",
         headers: signed.headers,
         body,
@@ -581,7 +591,7 @@ export function createS3CompatibleStorageAdapter(
         url: url.toString(),
       });
 
-      const response = await fetch(signed.url, {
+      const response = await send(signed.url, {
         method: "DELETE",
         headers: signed.headers,
       });
@@ -598,7 +608,7 @@ export function createS3CompatibleStorageAdapter(
         url: url.toString(),
       });
 
-      const response = await fetch(signed.url, {
+      const response = await send(signed.url, {
         method: "HEAD",
         headers: signed.headers,
       });
@@ -612,7 +622,11 @@ export function createS3CompatibleStorageAdapter(
       if (sizeBytes === null) {
         throw new Error("STORAGE_ERROR");
       }
-      if (sizeBytes !== expectedSizeBytes) {
+      if (
+        options.declaredSize === "maximum"
+          ? sizeBytes > expectedSizeBytes
+          : sizeBytes !== expectedSizeBytes
+      ) {
         throw new UploadStorageError(
           "INVALID_CHECKSUM",
           "The uploaded object size does not match the expected size.",
@@ -635,7 +649,7 @@ export function createS3CompatibleStorageAdapter(
               method: "GET",
               url: buildUrl(storageKey).toString(),
             });
-            const getResponse = await fetch(signedGet.url, {
+            const getResponse = await send(signedGet.url, {
               method: "GET",
               headers: signedGet.headers,
             });
@@ -665,7 +679,7 @@ export function createS3CompatibleStorageAdapter(
               method: "GET",
               url: buildUrl(storageKey).toString(),
             });
-            const getResponse = await fetch(signedGet.url, {
+            const getResponse = await send(signedGet.url, {
               method: "GET",
               headers: signedGet.headers,
             });
@@ -693,7 +707,7 @@ export function createS3CompatibleStorageAdapter(
         url: url.toString(),
       });
 
-      const response = await fetch(signed.url, {
+      const response = await send(signed.url, {
         method: "DELETE",
         headers: signed.headers,
       });
