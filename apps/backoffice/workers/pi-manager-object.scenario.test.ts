@@ -25,6 +25,7 @@ import {
   fauxToolCall,
   type FauxResponseStep,
 } from "@earendil-works/pi-ai/providers/faux";
+import { getCurrentSystemPrompt } from "@earendil-works/pi-ai/utils/transcript";
 
 import { Type } from "@earendil-works/pi-ai";
 import {
@@ -567,16 +568,10 @@ test("a busy agent queues other principals' prompts, lets its own turn be steere
 
 test("queued prompts each run a turn of their own, in arrival order, under the definition current when they run", async () => {
   const scope: BackofficeContextScope = { kind: "org", orgId: "queue-org", jurisdiction: null };
-  const instructions: string[] = [];
+  const systemPrompts: string[] = [];
   function answer(text: string): FauxResponseStep {
     return (context) => {
-      // Pi carries the definition's instructions as the `agent` section of system messages.
-      const sections = context.messages.flatMap((message) =>
-        "sections" in message && typeof message.sections === "object" && message.sections
-          ? [message.sections]
-          : [],
-      );
-      instructions.push(sections.filter((section) => "agent" in section).at(-1)?.agent ?? "none");
+      systemPrompts.push(getCurrentSystemPrompt(context.messages));
       return fauxAssistantMessage([fauxText(text)]);
     };
   }
@@ -659,7 +654,14 @@ test("queued prompts each run a turn of their own, in arrival order, under the d
               "Third.",
             ]);
             // Prompts that waited run under the definition as it is when their turn starts.
-            expect(instructions).toEqual(["Version one.", "Version two.", "Version two."]);
+            expect(systemPrompts).toEqual([
+              expect.stringContaining("Version one."),
+              expect.stringContaining("Version two."),
+              expect.stringContaining("Version two."),
+            ]);
+            expect(systemPrompts[0]).not.toContain("Version two.");
+            expect(systemPrompts[1]).not.toContain("Version one.");
+            expect(systemPrompts[2]).not.toContain("Version one.");
             expect(
               await (
                 await managerRequest(runtime, scope, "/agents/clerk/submissions/third")

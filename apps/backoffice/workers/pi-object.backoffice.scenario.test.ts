@@ -29,6 +29,7 @@ import {
   fauxToolCall,
   type FauxResponseStep,
 } from "@earendil-works/pi-ai/providers/faux";
+import { getCurrentSystemPrompt } from "@earendil-works/pi-ai/utils/transcript";
 import { SqliteStorage } from "@earendil-works/pi-durable/storage/sqlite";
 import {
   openNodeSqliteDatabase,
@@ -199,6 +200,8 @@ test("durable Pi runs a workspace agent with its instructions, scoped skills, Ba
   const respond: FauxResponseStep = (context) => {
     const system = JSON.stringify(context.messages.filter((message) => message.role === "system"));
     const lastUser = lastUserText(context);
+    expect(system).toContain("Workspace instructions from `/workspace/AGENTS.md`");
+    expect(system).toContain("Follow the shared workspace guidance.");
     if (lastUser === "First other-agent prompt") {
       return fauxAssistantMessage("First other-agent answer.");
     }
@@ -262,6 +265,11 @@ test("durable Pi runs a workspace agent with its instructions, scoped skills, Ba
         given.organization.exists({ id: "org-1" }),
         given.codemode.writeFile({
           orgId: "org-1",
+          path: "/workspace/AGENTS.md",
+          content: "Follow the shared workspace guidance.",
+        }),
+        given.codemode.writeFile({
+          orgId: "org-1",
           path: "/workspace/skills/durable/SKILL.md",
           content:
             "---\nname: scoped-durable\ndescription: Scoped durable skill\n---\nRead the scoped notes before acting.",
@@ -299,6 +307,75 @@ test("durable Pi runs a workspace agent with its instructions, scoped skills, Ba
           text: "executed through Backoffice",
         }),
       ],
+    }),
+  );
+});
+
+test("durable Pi refreshes workspace guidance between turns without leaking another scope's instructions", async () => {
+  const execution = createBackofficeServiceExecution({
+    scope: { kind: "org", orgId: "org-1", jurisdiction: null },
+    service: { type: "automation", id: "workspace-guidance-scenario" },
+  });
+  const observedPrompts: string[] = [];
+  const respond: FauxResponseStep = (context) => {
+    observedPrompts.push(getCurrentSystemPrompt(context.messages));
+    return fauxAssistantMessage("Workspace guidance checked.");
+  };
+  const revisions = [null, "Prefer short answers.", "Prefer detailed answers.", "", null];
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "durable Pi workspace guidance lifecycle",
+      options: { drain: false },
+      objects: { ...scenarioObjects, ...scriptedAgents(revisions.map(() => respond)) },
+      piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+      setup: ({ given }) => [
+        given.organization.exists({ id: "org-1" }),
+        given.organization.exists({ id: "org-2" }),
+        given.codemode.writeFile({
+          orgId: "org-2",
+          path: "/workspace/AGENTS.md",
+          content: "Private instructions for another organization.",
+        }),
+      ],
+      steps: ({ then }) =>
+        revisions.map((instructions, index) =>
+          then.assert(`prompt with workspace guidance revision ${index}`, async ({ runtime }) => {
+            const context = createRouteBackedRuntimeContext({
+              emitter: { kind: "caller" },
+              runtime: runtime.services,
+              kernel: new BackofficeKernel(runtime.services),
+              execution,
+            });
+            assert(context.stateBackend);
+            if (instructions === null) {
+              await context.stateBackend.rm("/workspace/AGENTS.md", { force: true });
+            } else {
+              await context.stateBackend.writeFile("/workspace/AGENTS.md", instructions);
+            }
+            await prompt(runtime, execution, { requestId: `workspace-guidance-${index}` });
+            await runtime.drain();
+            expect(observedPrompts).toHaveLength(index + 1);
+            const system = observedPrompts[index];
+            expect(system).toContain("# Backoffice System Guidance");
+            expect(system).not.toContain("Private instructions for another organization.");
+            if (instructions) {
+              expect(system).toContain("Workspace instructions from `/workspace/AGENTS.md`");
+              expect(system).toContain(instructions);
+            } else {
+              expect(system).not.toContain("Workspace instructions from `/workspace/AGENTS.md`");
+            }
+            for (const previous of revisions.slice(0, index)) {
+              if (previous && previous !== instructions) {
+                expect(system).not.toContain(previous);
+              }
+            }
+            expect(
+              await submission(runtime, execution, `workspace-guidance-${index}`),
+            ).toMatchObject({
+              status: "done",
+            });
+          }),
+        ),
     }),
   );
 });
