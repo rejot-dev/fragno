@@ -2,6 +2,9 @@ import { automationEventListInputSchema } from "@fragno-dev/backoffice-api/v0/ev
 
 import { decodeCursor, type Cursor, type DatabaseServiceContext } from "@fragno-dev/db";
 
+import { PI_AUTOMATION_SOURCE } from "@/fragno/backoffice-capabilities/capabilities/pi";
+import { INTEGRATIONS_EVENT_SOURCE } from "@/fragno/runtime-tools/families/integrations/integration-events";
+
 import { automationFragmentSchema } from "./schema";
 
 type AutomationEventServiceContext = DatabaseServiceContext<Record<string, never>>;
@@ -10,6 +13,16 @@ const EVENTS_OF_TYPE_INDEX = "idx_automation_event_source_type_occurredAt";
 const EVENTS_OF_TYPE_PAGE_SIZE = 100;
 /** Cursors of `listEvents` name the index their page was read from. */
 export const EVENTS_BY_TIME_INDEX = "idx_automation_event_occurredAt_id";
+
+/**
+ * Sources whose whole history the dashboard folds into current agents and connections. The
+ * Automations replica's projections (`lofi/views.ts`) fold each event as it arrives, and rebuild by
+ * folding the stored ones again, so browsers agree only while these events are never deleted.
+ */
+const FOLDED_EVENT_SOURCES: ReadonlySet<string> = new Set([
+  PI_AUTOMATION_SOURCE,
+  INTEGRATIONS_EVENT_SOURCE,
+]);
 
 /** More than a page of arrivals, and few enough rows to stay below Durable Object SQLite's limits. */
 const EVENTS_DELETED_PER_PASS = 50;
@@ -109,6 +122,11 @@ export const createAutomationEventServices = (
      * the event from its hook and settles through its dispatch record.
      */
     deleteEventsOfType(input: EventDeletionPass) {
+      if (FOLDED_EVENT_SOURCES.has(input.source)) {
+        throw new Error(
+          `Events from ${input.source} hold current agent or connection state and cannot be deleted.`,
+        );
+      }
       const cursor =
         input.cursor === null
           ? null

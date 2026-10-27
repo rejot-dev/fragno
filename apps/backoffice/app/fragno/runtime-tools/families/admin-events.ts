@@ -1,7 +1,6 @@
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { z } from "zod";
 
-import { PI_AUTOMATION_SOURCE } from "@/fragno/backoffice-capabilities/capabilities/pi";
 import { defineCliArgsParser } from "@/fragno/runtime-tools/bash-cli";
 
 import {
@@ -10,19 +9,8 @@ import {
   type BackofficeToolContext,
 } from "../runtime-tools";
 import type { AdminRuntime } from "./admin";
-import { INTEGRATIONS_EVENT_SOURCE } from "./integrations/integration-events";
 
 type AdminEventsToolContext = BackofficeToolContext<Partial<{ admin: AdminRuntime }>>;
-
-/**
- * Sources whose whole history the dashboard folds into current agents and connections. The
- * Automations replica's projections (`automation/lofi/views.ts`) fold each event as it arrives, so
- * they stay correct only while these events are never deleted.
- */
-const FOLDED_EVENT_SOURCES: ReadonlySet<string> = new Set([
-  PI_AUTOMATION_SOURCE,
-  INTEGRATIONS_EVENT_SOURCE,
-]);
 
 /**
  * Completed ingestion hooks are kept for seven days, and a redelivered event recreated under a
@@ -35,14 +23,7 @@ const DANGER_REQUIRED = "Deleting events is permanent; pass --danger to confirm.
 
 const deleteEventsInputSchema = z.strictObject({
   organizationSlug: z.string().trim().min(1),
-  source: z
-    .string()
-    .trim()
-    .min(1)
-    .refine(
-      (source) => !FOLDED_EVENT_SOURCES.has(source),
-      `Events from ${[...FOLDED_EVENT_SOURCES].join(" or ")} hold current agent or connection state and cannot be deleted.`,
-    ),
+  source: z.string().trim().min(1),
   eventType: z.string().trim().min(1),
   occurredBefore: z
     .union([z.iso.datetime({ offset: true }), z.iso.date()])
