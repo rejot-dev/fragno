@@ -2184,6 +2184,56 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
       }
     });
 
+    it("returns binary values from joined rows as bytes", async () => {
+      const { adapter, close } = await createContext();
+      try {
+        const create = createSuiteUnitOfWork(adapter, "create-binary-join-data");
+        create.create("users", {
+          id: "binary-join-user",
+          name: "Binary Join",
+          email: "binary-join@example.com",
+          age: 1,
+        });
+        for (const [name, bytes] of [
+          ["bytes", new Uint8Array([0, 1, 254, 255])],
+          ["empty", new Uint8Array([])],
+          ["missing", null],
+        ] as const) {
+          create.create("events", {
+            id: `event-${name}`,
+            user_id: "binary-join-user",
+            name,
+            happened_on: new Date("2026-09-24T00:00:00.000Z"),
+            payload: {},
+            big_score: BigInt(1),
+            binary_payload: bytes,
+          });
+        }
+        await create.executeMutations();
+
+        const [users] = await createSuiteUnitOfWork(adapter, "read-binary-join-data")
+          .find("users", (b) =>
+            b
+              .whereIndex("primary", (eb) => eb("id", "=", "binary-join-user"))
+              .joinMany("events", "events", (events) =>
+                events
+                  .onIndex("events_user_idx", (eb) => eb("user_id", "=", eb.parent("id")))
+                  .select(["name", "binary_payload"])
+                  .orderByIndex("events_name_idx", "asc"),
+              ),
+          )
+          .executeRetrieve();
+
+        expect(users[0]?.events).toEqual([
+          { name: "bytes", binary_payload: new Uint8Array([0, 1, 254, 255]) },
+          { name: "empty", binary_payload: new Uint8Array([]) },
+          { name: "missing", binary_payload: null },
+        ]);
+      } finally {
+        await close?.();
+      }
+    });
+
     it("returns empty arrays for empty joinMany relations and null for filtered-out joinOne relations", async () => {
       const { adapter, close } = await createContext();
       try {

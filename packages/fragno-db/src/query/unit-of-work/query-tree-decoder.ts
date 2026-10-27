@@ -41,6 +41,17 @@ const decodeJsonProjectedColumnValue = (
   ) {
     return decodeSQLiteJsonBlobValue(value);
   }
+  if (
+    (driverConfig.databaseType === "postgresql" || driverConfig.databaseType === "mysql") &&
+    column.type === "binary" &&
+    typeof value === "string"
+  ) {
+    // Projected as hex, since JSON has no binary values.
+    if (!/^(?:[0-9a-f]{2})*$/i.test(value)) {
+      throw new Error("A joined binary value is not hexadecimal.");
+    }
+    return Uint8Array.from(value.match(/../g) ?? [], (byte) => Number.parseInt(byte, 16));
+  }
   return value;
 };
 
