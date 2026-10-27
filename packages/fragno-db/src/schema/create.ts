@@ -1190,7 +1190,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
   readonly #name: string;
   #tables: TTables;
   #version: number = 0;
-  #operations: SchemaOperation[] = [];
+  readonly #operations: SchemaOperation[] = [];
   readonly #tableNames: Set<string> = new Set();
   readonly #indexNames: Set<string> = new Set();
 
@@ -1232,50 +1232,6 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
     this.#version++;
     this.#operations.push({ type: "no-op", reason });
     return this;
-  }
-
-  /**
-   * Add an existing schema to this builder.
-   * Merges tables and operations from the provided schema.
-   *
-   * @example
-   * ```ts
-   * const builder = new SchemaBuilder("combined")
-   *   .add(userSchema)
-   *   .add(postSchema)
-   *   .addTable("comments", ...);
-   * ```
-   */
-  mergeWithExistingSchema<TNewTables extends Record<string, AnyTable>>(
-    schema: Schema<TNewTables>,
-  ): SchemaBuilder<TTables & TNewTables> {
-    for (const table of Object.values(schema.tables)) {
-      if (this.#tableNames.has(table.name)) {
-        throw new Error(
-          `Duplicate table name "${table.name}" in schema "${this.#name}" when merging.`,
-        );
-      }
-      for (const index of Object.values(table.indexes)) {
-        if (this.#indexNames.has(index.name)) {
-          throw new Error(
-            `Duplicate index name "${index.name}" in schema "${this.#name}" when merging (conflict on "${table.name}").`,
-          );
-        }
-      }
-    }
-
-    this.#tables = { ...this.#tables, ...schema.tables };
-    this.#operations = [...this.#operations, ...schema.operations];
-    this.#version += schema.version;
-
-    for (const table of Object.values(schema.tables)) {
-      this.#tableNames.add(table.name);
-      for (const index of Object.values(table.indexes)) {
-        this.#indexNames.add(index.name);
-      }
-    }
-
-    return this as unknown as SchemaBuilder<TTables & TNewTables>;
   }
 
   /**
