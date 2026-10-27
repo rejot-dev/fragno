@@ -8,7 +8,7 @@ const { fetchAuthorizedMock, fetchMock } = vi.hoisted(() => ({
   fetchMock: vi.fn(),
 }));
 
-import { lookupAutomationProject } from "./data.server";
+import { lookupAutomationProject } from "./project-lookup.server";
 
 const scope = { kind: "org" as const, orgId: "org-1", jurisdiction: null };
 

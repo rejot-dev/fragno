@@ -10,9 +10,9 @@ const workers = vi.hoisted(() => ({
 vi.mock("cloudflare:workers", () => workers);
 
 // Observes project lookups so the scenario can count them per request.
-vi.mock("@/routes/backoffice/automations/data.server", async (importOriginal) => {
+vi.mock("@/routes/backoffice/automations/project-lookup.server", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("@/routes/backoffice/automations/data.server")>();
+    await importOriginal<typeof import("@/routes/backoffice/automations/project-lookup.server")>();
   return { ...actual, lookupAutomationProject: vi.fn(actual.lookupAutomationProject) };
 });
 
@@ -23,7 +23,7 @@ import {
   runBackofficeScenario,
   type BackofficeScenarioContext,
 } from "@/fragno/automation/scenario";
-import { lookupAutomationProject } from "@/routes/backoffice/automations/data.server";
+import { lookupAutomationProject } from "@/routes/backoffice/automations/project-lookup.server";
 import { loader as computersScopeLoader } from "@/routes/backoffice/computers/scope-layout";
 import { loader as dashboardLoader } from "@/routes/backoffice/dashboard/dashboard";
 import { loader as filesScopeLoader } from "@/routes/backoffice/files/scope-layout";

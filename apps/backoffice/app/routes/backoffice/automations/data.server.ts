@@ -73,50 +73,6 @@ export async function loadAutomationScriptSource({
   }
 }
 
-type AutomationProjectLookupResult =
-  | { status: "found"; project: AutomationProjectRecord }
-  | { status: "not-found" }
-  | { status: "error"; message: string };
-
-/** Looks up one project only when a server boundary must validate a project-scoped request. */
-export async function lookupAutomationProject(
-  context: Readonly<RouterContextProvider>,
-  owner: BackofficeProjectOwner<BackofficeScopeIdNames>,
-  project: { projectId: string } | { slug: string },
-): Promise<AutomationProjectLookupResult> {
-  try {
-    // Projects are stored with their owner.
-    const callRoute = createAutomationsRouteCaller({
-      object: getScopedAutomationsObject(context, owner),
-    });
-    const response =
-      "slug" in project
-        ? await callRoute("GET", "/projects/by-slug/:slug", { pathParams: { slug: project.slug } })
-        : await callRoute("GET", "/projects/:projectId", {
-            pathParams: { projectId: project.projectId },
-          });
-
-    if (response.type === "json" && isSuccessStatus(response.status)) {
-      return { status: "found", project: response.data as AutomationProjectRecord };
-    }
-    if (response.status === 404) {
-      return { status: "not-found" };
-    }
-    if (response.type === "error") {
-      return { status: "error", message: response.error.message };
-    }
-    return {
-      status: "error",
-      message: `Failed to look up automation project (${response.status}).`,
-    };
-  } catch (error) {
-    return {
-      status: "error",
-      message: formatErrorMessage(error, "Failed to look up automation project."),
-    };
-  }
-}
-
 export async function createAutomationProject(
   context: Readonly<RouterContextProvider>,
   owner: BackofficeProjectOwner<BackofficeScopeIdNames>,

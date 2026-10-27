@@ -37,7 +37,8 @@ import type {
 } from "@/fragno/auth/contracts";
 import { requireBackofficePrincipal } from "@/fragno/auth/request-auth.server";
 import { recordBackofficeRequestScope } from "@/posthog.server";
-import { lookupAutomationProject, toExternalId } from "@/routes/backoffice/automations/data.server";
+import { toExternalId } from "@/routes/backoffice/automations/data";
+import { lookupAutomationProject } from "@/routes/backoffice/automations/project-lookup.server";
 import {
   BACKOFFICE_ONBOARDING_PATH,
   opensBeforeOnboarding,

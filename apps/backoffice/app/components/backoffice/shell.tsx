@@ -2,7 +2,8 @@ import {
   backofficeContextScopesEqual,
   type BackofficeContextScope,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { ClientOnly } from "@fragno-private/design-system/client-only";
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 
 import {
   backofficeRuntimeScopeFromResolvedScope,
@@ -20,9 +21,13 @@ import { CurrentBackofficeProvider } from "./current-context";
 import type { CurrentBackofficeContext } from "./current-context-state";
 import { GlobalHotkeysProvider, useGlobalHotkey } from "./global-hotkeys";
 import { MemberWorkspaceBanner } from "./member-workspace-banner";
-import { QuakeTerminal } from "./quake-terminal";
 import { BackofficeSidebarNav } from "./sidebar-nav";
 import { BackofficeTopBar } from "./top-bar";
+
+// The terminal renders only in browsers, so the server imports none of it.
+const QuakeTerminal = lazy(async () => ({
+  default: (await import("./quake-terminal")).QuakeTerminal,
+}));
 
 type BackofficeShellResolvedScope = BackofficeResolvedScope<
   BackofficeMeData["organizations"][number]["organization"],
@@ -257,7 +262,13 @@ function BackofficeShellFrame({
           setAgentDrawerOpen(false);
         }}
       />
-      {terminalScope ? <QuakeTerminal pageScope={terminalScope} me={me} /> : null}
+      {terminalScope ? (
+        <ClientOnly>
+          <Suspense fallback={null}>
+            <QuakeTerminal pageScope={terminalScope} me={me} />
+          </Suspense>
+        </ClientOnly>
+      ) : null}
     </div>
   );
 }

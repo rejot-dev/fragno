@@ -60,7 +60,7 @@ describe("BackofficeShell resolved scope", () => {
     topBarMock.mockClear();
   });
 
-  test("keeps shell navigation scoped when Automations synchronization is unavailable", () => {
+  test("keeps shell navigation scoped when Automations synchronization is unavailable", async () => {
     const resolvedScope = {
       kind: "project" as const,
       owner: { kind: "org" as const, organization },
@@ -88,13 +88,16 @@ describe("BackofficeShell resolved scope", () => {
     expect(sidebarMock).toHaveBeenCalledWith(
       expect.objectContaining({ currentScope: resolvedScope }),
     );
-    expect(terminalMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        pageScope: {
-          ...resolvedScope,
-          label: "Acme / Project One",
-        },
-      }),
-    );
+    // The terminal is imported once the shell has mounted.
+    await vi.waitFor(() => {
+      expect(terminalMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          pageScope: {
+            ...resolvedScope,
+            label: "Acme / Project One",
+          },
+        }),
+      );
+    });
   });
 });
