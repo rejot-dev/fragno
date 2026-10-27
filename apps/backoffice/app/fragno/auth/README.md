@@ -163,7 +163,9 @@ restrict the credential's scope. Protected pages call it on the server: without 
 token, or when the URL names another of the user's organizations, the page reopens itself with a new
 one (`app/fragno/auth/browser-credential.server.ts`). The Better Auth session's
 `activeOrganizationId` remembers the organization of the last token, so a replacement keeps it; a
-`preferred` exchange uses it and a `required` exchange moves it.
+`preferred` exchange uses it and a `required` exchange moves it. Without a session the page sends
+the browser to sign in and drops its access token, which would otherwise send sign-in straight back
+while it lasts.
 
 Owners and admins of an organization act in its members' personal workspaces. Tokens do not record
 this: when a request names another user's personal scope, its execution boundary asks Auth once
