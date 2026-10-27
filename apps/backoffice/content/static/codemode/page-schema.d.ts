@@ -30,8 +30,10 @@ type PageSqlBoolean = 0 | 1;
 type PageSqlJson = string;
 
 /**
- * The relations page queries read, by name, with their columns as SQL reads them. Queries read
- * nothing else; their SQL calls only these functions:
+ * The relations page queries read, by name, with their columns as SQL reads them. A synchronized
+ * table's position grows in the order its rows were created: rows created together, such as a run's
+ * steps, share their createdAt, so order them by createdAt, position. Queries read nothing else;
+ * their SQL calls only these functions:
  * abs, char, coalesce, concat, concat_ws, format, glob, hex, iif, if, ifnull, instr, length, like,
  * likely, lower, ltrim, max, min, nullif, octet_length, printf, quote, replace, round, rtrim, sign,
  * substr, substring, trim, typeof, unhex, unicode, unlikely, upper, acos, asin, atan, atan2, ceil,
@@ -60,6 +62,7 @@ type PageRelations = {
     errorName: string | null;
     errorMessage: string | null;
     interruptedTicks: number;
+    position: number;
   };
   /** Steps of workflow runs; runId is the run's id. */
   steps: {
@@ -83,6 +86,7 @@ type PageRelations = {
     errorMessage: string | null;
     createdAt: PageSqlTime;
     updatedAt: PageSqlTime;
+    position: number;
   };
   /** Events delivered to workflow runs; runId is the run's id. */
   workflow_events: {
@@ -94,6 +98,7 @@ type PageRelations = {
     createdAt: PageSqlTime;
     deliveredAt: PageSqlTime | null;
     consumedByStepKey: string | null;
+    position: number;
   };
   /** Automation events. payload, actors, and subject are JSON; read fields with ->> such as payload ->> '$.action'. */
   events: {
@@ -110,6 +115,7 @@ type PageRelations = {
     causation: PageSqlJson | null;
     rootEventId: string | null;
     routesMatched: PageSqlBoolean;
+    position: number;
   };
   /** The sources events come from. */
   event_sources: {
@@ -120,6 +126,7 @@ type PageRelations = {
     category: PageSqlJson;
     createdAt: PageSqlTime;
     updatedAt: PageSqlTime;
+    position: number;
   };
   /** The event types sources define. */
   event_definitions: {
@@ -136,6 +143,7 @@ type PageRelations = {
     createdAt: PageSqlTime;
     updatedAt: PageSqlTime;
     steward: PageSqlJson | null;
+    position: number;
   };
   /** Automation routes. trigger and action are JSON, such as trigger ->> '$.kind'; route_schedules holds a scheduled route's next occurrence by the same id. */
   routes: {
@@ -149,12 +157,14 @@ type PageRelations = {
     createdAt: PageSqlTime;
     updatedAt: PageSqlTime;
     metadata: PageSqlJson | null;
+    position: number;
   };
   /** When each scheduled route next fires, by the route's id. */
   route_schedules: {
     id: string;
     initializationAt: PageSqlTime | null;
     nextOccurrenceAt: PageSqlTime | null;
+    position: number;
   };
   /** Each time a route led an event to its action. */
   route_dispatches: {
@@ -168,6 +178,7 @@ type PageRelations = {
     status: string;
     failedAttempts: number;
     error: string | null;
+    position: number;
   };
   /** The scope's projects. */
   projects: {
@@ -179,6 +190,7 @@ type PageRelations = {
     createdByUserId: string;
     createdAt: PageSqlTime;
     updatedAt: PageSqlTime;
+    position: number;
   };
   /** Values stored with the store provider. */
   kv_store: {
@@ -189,6 +201,7 @@ type PageRelations = {
     category: PageSqlJson | null;
     createdAt: PageSqlTime;
     updatedAt: PageSqlTime;
+    position: number;
   };
   /** Integration connections as their latest state change reports them, disconnected ones included; name and authMethod are null until a change carries a label. displayName is what people call the connection and kindLabel its kind, such as MCP. */
   connections: {

@@ -55,8 +55,10 @@ type PageSqlBoolean = 0 | 1;
 type PageSqlJson = string;
 
 /**
- * The relations page queries read, by name, with their columns as SQL reads them. Queries read
- * nothing else; their SQL calls only these functions:
+ * The relations page queries read, by name, with their columns as SQL reads them. A synchronized
+ * table's position grows in the order its rows were created: rows created together, such as a run's
+ * steps, share their createdAt, so order them by createdAt, position. Queries read nothing else;
+ * their SQL calls only these functions:
 ${functions}
  */
 type PageRelations = {
