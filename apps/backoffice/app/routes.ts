@@ -322,7 +322,6 @@ export default [
     route("telegram/:scopeSegment/*", "routes/api/telegram.ts"),
     route("otp/:orgSlug/*", "routes/api/otp.ts"),
     route("github/webhooks", "routes/api/github-webhooks.ts"),
-    route("github/:orgSlug/*", "routes/api/github.ts"),
     route("upload/:orgSlug/*", "routes/api/upload.ts"),
     route("files-scoped/:scopeKind/:scopeId/workspace", "routes/api/files-scoped-workspace.ts"),
     route("file-links/:scopeKind/:scopeId/:provider/*", "routes/api/file-links.ts"),
