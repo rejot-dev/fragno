@@ -11,6 +11,7 @@ import {
   type BackofficeResolvedScope,
 } from "@/backoffice-runtime/resolved-scope";
 import {
+  PI_AGENT_MAX_ATTACHMENTS,
   piAgentAttachmentsFolder,
   type PiAgentAttachment,
 } from "@/fragno/pi/agent/pi-agent-attachments";
@@ -53,6 +54,8 @@ export type AgentAttachments = {
   take: () => Promise<{ paths: string[]; failed: string[] }>;
   /** A taken set of files is still uploading. */
   sending: boolean;
+  /** Which added files were left out for exceeding the limit, until files are added or taken. */
+  refusal: string | null;
 };
 
 /** Where `agentName` can receive files, or null when it cannot read them. */
@@ -99,6 +102,7 @@ async function deleteAttachment(scope: BackofficeRoutableScope, path: string) {
 export function useAgentAttachments(target: AgentAttachmentTarget | null): AgentAttachments | null {
   const [attachments, setAttachments] = useState<readonly Attachment[]>([]);
   const [sending, setSending] = useState(false);
+  const [refusal, setRefusal] = useState<string | null>(null);
   // `take` runs from event handlers, after the attachments it takes have rendered.
   const latest = useRef(attachments);
   useEffect(() => {
@@ -159,7 +163,15 @@ export function useAgentAttachments(target: AgentAttachmentTarget | null): Agent
 
   const add = useCallback(
     (files: File[]) => {
-      const added = files.map((file) => ({
+      // A message carrying more files than it may would be refused only once they all uploaded.
+      const room = Math.max(0, PI_AGENT_MAX_ATTACHMENTS - latest.current.length);
+      const left = files.slice(room);
+      setRefusal(
+        left.length === 0
+          ? null
+          : `A message carries at most ${PI_AGENT_MAX_ATTACHMENTS} files. Not added: ${left.map(({ name }) => name).join(", ")}.`,
+      );
+      const added = files.slice(0, room).map((file) => ({
         id: crypto.randomUUID(),
         file,
         previewUrl: file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
@@ -194,6 +206,7 @@ export function useAgentAttachments(target: AgentAttachmentTarget | null): Agent
       return { paths: [], failed: [] };
     }
     setAttachments([]);
+    setRefusal(null);
     setSending(true);
     const results = await Promise.all(
       taken.map(async ({ id, file }) => ({
@@ -240,7 +253,7 @@ export function useAgentAttachments(target: AgentAttachmentTarget | null): Agent
       },
     }),
   );
-  return target === null ? null : { items, add, take, sending };
+  return target === null ? null : { items, add, take, sending, refusal };
 }
 
 /** A sent message's files, each opening in Files; images show through the preview route. */

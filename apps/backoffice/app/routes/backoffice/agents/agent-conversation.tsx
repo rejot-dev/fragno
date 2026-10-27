@@ -535,7 +535,8 @@ function AgentConversationThread({
     messages: assistantMessages,
     convertMessage: (message) => message,
     isRunning: running,
-    isSendDisabled: submitting,
+    // A message waiting for its uploads would otherwise be overtaken by the next one.
+    isSendDisabled: submitting || attachments?.sending === true,
     onNew: handleSend,
     queue,
     adapters: { dictation },
@@ -594,7 +595,7 @@ function AgentConversationThread({
             }
       }
       disabledReason={null}
-      error={attachmentError ?? sendError}
+      error={attachments?.refusal ?? attachmentError ?? sendError}
       queueLabels={conversationQueue.labels}
       paused={agentQueue.paused && agentQueue.items.length > 0}
       onResume={handleResume}

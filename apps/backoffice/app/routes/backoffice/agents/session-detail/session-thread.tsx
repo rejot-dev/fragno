@@ -269,8 +269,11 @@ export function SessionThread({
   const writingDisabled = disabled || composerAction === "clear";
   // Compaction instructions and clearing say nothing to the agent, so carry no files.
   const attachingDisabled = disabled || composerAction !== "message" || attachments === null;
+  // Files added while a message waits for its uploads go with the next message, after it.
   const sendFiles =
-    attachments !== null && attachments.items.length > 0 ? attachments.sendFiles : null;
+    attachments !== null && attachments.items.length > 0 && !attachments.sending
+      ? attachments.sendFiles
+      : null;
   const viewportRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   // While older history loads, the reader's distance from the bottom stays fixed, so content

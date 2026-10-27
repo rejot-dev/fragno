@@ -128,6 +128,8 @@ export default function BackofficeOrganizationPiAgentDetail({
           options={null}
         />
         <AgentStartComposer
+          // Files uploaded for one agent cannot go to another.
+          key={agentPath}
           action={agentPath}
           agentName={agent.agentName}
           builtIn={agent.steward.kind === "backoffice"}
