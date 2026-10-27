@@ -165,6 +165,18 @@ export const piPromptReceiptOutputSchema = z.lazy(() =>
 );
 export type PiPromptReceipt = z.infer<typeof piPromptReceiptOutputSchema>;
 
+/**
+ * Where a submitted prompt stands. `running` is in a turn; `completed` was answered; `failed` will
+ * never be answered, e.g. its turn failed or was aborted, or it was dropped from the queue.
+ */
+export const piPromptStatusSchema = z.lazy(() =>
+  z.discriminatedUnion("status", [
+    z.object({ requestId: z.string(), status: z.enum(["queued", "running", "completed"]) }),
+    z.object({ requestId: z.string(), status: z.literal("failed"), reason: z.string() }),
+  ]),
+);
+export type PiPromptStatus = z.infer<typeof piPromptStatusSchema>;
+
 /** An item waiting in an agent's queue, as its viewers see it. */
 export type PiAgentQueueEntry =
   | { type: "prompt"; requestId: string; content: string }
@@ -329,6 +341,15 @@ export const piOperations = {
     permissions: [BACKOFFICE_PERMISSION.pi.modify],
     input: promptSubmitInputSchema,
     output: piPromptReceiptOutputSchema,
+  },
+  "pi.prompt.get": {
+    description:
+      "Where a prompt submitted with a request ID stands: queued, running, completed, or failed with the reason it will not be answered. Null when the agent never received the request.",
+    permissions: [BACKOFFICE_PERMISSION.pi.read],
+    input: z.lazy(() =>
+      agentInputSchema._zod.innerType.extend({ requestId: z.string().trim().min(1) }),
+    ),
+    output: z.lazy(() => piPromptStatusSchema.nullable()),
   },
   "pi.agent.stop": {
     description:

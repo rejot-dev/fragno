@@ -41,6 +41,11 @@ type PiCodemodeProvider = {
    */
   submitPrompt(input: PiSubmitPromptInput): Promise<PiSubmitPromptOutput>;
   /**
+   * Where a prompt submitted with a request ID stands: queued, running, completed, or failed with the reason it will not be answered. Null when the agent never received the request.
+   * Requires `pi.read`.
+   */
+  getPrompt(input: PiGetPromptInput): Promise<PiGetPromptOutput>;
+  /**
    * Stop an agent: abort its running turn and background work, and pause its queue. Queued and new prompts wait until someone resumes the agent in Backoffice.
    * Requires `pi.modify`.
    */
@@ -174,6 +179,21 @@ type PiSubmitPromptOutput = {
   requestId: string;
   status: "steered" | "queued";
 };
+type PiGetPromptInput = {
+  agentName: string;
+  requestId: string;
+};
+type PiGetPromptOutput =
+  | {
+      requestId: string;
+      status: "queued" | "running" | "completed";
+    }
+  | {
+      requestId: string;
+      status: "failed";
+      reason: string;
+    }
+  | null;
 type PiStopAgentInput = {
   agentName: string;
 };

@@ -339,11 +339,11 @@ execution scope and actors and restore them after suspension, retries, and objec
 carry no independent billing choice. See [usage attribution](../billing/README.md).
 
 Runtime tools target the scoped manager directly: `pi.listAgents`, `pi.getAgent`, `pi.listMessages`,
-`pi.exportConversation`, `pi.submitPrompt`, `pi.stopAgent`, and `pi.backfillAgentEvents`. Scoped
-context handles rebuild this runtime for the selected scope. No tool waits for a turn; its turn
-events report how it ended. Prompt request IDs are stable within durable tool invocations. Manager
-failures throw `PiManagerRuntimeRequestError` with stable `status` and `code` fields, which codemode
-preserves for workflow recovery decisions.
+`pi.exportConversation`, `pi.submitPrompt`, `pi.getPrompt`, `pi.stopAgent`, and
+`pi.backfillAgentEvents`. Scoped context handles rebuild this runtime for the selected scope. No
+tool waits for a turn; its turn events report how it ended. Prompt request IDs are stable within
+durable tool invocations. Manager failures throw `PiManagerRuntimeRequestError` with stable `status`
+and `code` fields, which codemode preserves for workflow recovery decisions.
 
 ## Reading conversations
 

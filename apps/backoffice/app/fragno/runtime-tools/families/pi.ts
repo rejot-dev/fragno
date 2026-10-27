@@ -8,6 +8,7 @@ import {
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 import type {
   PiManagerAgentInput,
+  PiManagerPromptInput,
   PiManagerRuntime,
   PiManagerSubmitPromptInput,
 } from "@/fragno/pi/manager/pi-manager-runtime";
@@ -51,6 +52,10 @@ const parsePromptSubmit = defineCliArgsParser<PiManagerSubmitPromptInput>("pi.pr
   content: { required: true },
   requestId: { option: "request-id" },
   whenBusy: { option: "when-busy" },
+});
+const parsePromptGet = defineCliArgsParser<PiManagerPromptInput>("pi.prompt.get", {
+  agentName: { option: "agent", required: true },
+  requestId: { option: "request-id", required: true },
 });
 const parseAgentStop = defineCliArgsParser<PiManagerAgentInput>("pi.agent.stop", {
   agentName: { option: "agent", required: true },
@@ -264,6 +269,41 @@ const promptSubmitTool = defineBackofficeRuntimeTool({
         examples: ['pi.prompt.submit --agent assistant --content "Investigate the failure"'],
       },
       parse: parsePromptSubmit,
+      format: (data) => ({ data }),
+    },
+  },
+});
+
+const promptGetTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("pi.prompt.get"),
+  namespace: "pi",
+  name: "getPrompt",
+  execute: async (input, context: PiToolContext) =>
+    await requirePiManagerRuntime(context.runtimes.pi).getPrompt(input),
+  adapters: {
+    bash: {
+      command: "pi.prompt.get",
+      help: {
+        summary: "pi.prompt.get tells where a prompt submitted with a request ID stands.",
+        options: [
+          {
+            name: "agent",
+            required: true,
+            valueRequired: true,
+            valueName: "agent-name",
+            description: "Agent name",
+          },
+          {
+            name: "request-id",
+            required: true,
+            valueRequired: true,
+            valueName: "request-id",
+            description: "The request ID the prompt was submitted with",
+          },
+        ],
+        examples: ["pi.prompt.get --agent assistant --request-id triage-42"],
+      },
+      parse: parsePromptGet,
       format: (data) => ({ data }),
     },
   },
@@ -500,6 +540,7 @@ export const piRuntimeTools = [
   agentUpdateTool,
   agentDeleteTool,
   promptSubmitTool,
+  promptGetTool,
   agentStopTool,
   agentBackfillEventsTool,
 ] as const;

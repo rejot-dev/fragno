@@ -7,12 +7,14 @@ import {
   type PiAgentMessagePage,
   type PiManagerAgentDirectory,
   type PiPromptReceipt,
+  type PiPromptStatus,
   type piPromptWhenBusySchema,
 } from "@fragno-dev/backoffice-api/v0/pi";
 import { piAgentNameSchema } from "@fragno-dev/backoffice-api/v0/shared/pi-agent-name";
 import type { z } from "zod";
 
 import type { Context } from "@earendil-works/chord";
+import type { SubmissionRecord } from "@earendil-works/pi-durable";
 
 import {
   backofficeExecutionScopeRestriction,
@@ -28,11 +30,15 @@ import {
   backofficeOperationErrorKindForStatus,
 } from "@/backoffice-runtime/operation-error";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
-import type { PiAgentNotification } from "@/fragno/pi/agent/pi-agent-contract";
+import type {
+  PiAgentNotification,
+  PiAgentQueueSubmission,
+} from "@/fragno/pi/agent/pi-agent-contract";
 
 import { backfillPiAgentEvents, type PiAgentBackfilledEvent } from "./pi-agent-change-events";
 
 export type PiManagerAgentInput = { agentName: string };
+export type PiManagerPromptInput = { agentName: string; requestId: string };
 export type PiManagerSubmitPromptInput = {
   agentName: string;
   content: string;
@@ -90,6 +96,28 @@ function piManagerRuntimeRequestError(status: number, responseText: string) {
   );
 }
 
+/**
+ * A submission as the manager answers for it, Pi's own once a turn took it, and where it stands in
+ * public terms.
+ */
+function promptStatusOf(
+  requestId: string,
+  submission: PiAgentQueueSubmission | SubmissionRecord,
+): PiPromptStatus {
+  switch (submission.status) {
+    case "queued":
+      return { requestId, status: "queued" };
+    case "placed":
+      return { requestId, status: "running" };
+    case "done":
+      return { requestId, status: "completed" };
+    case "unanswered":
+    case "dropped":
+      return { requestId, status: "failed", reason: submission.reason };
+  }
+  throw new Error("Unsupported Pi submission status.");
+}
+
 /** Durable Pi operations map directly to the scoped manager and agent contracts. */
 export type PiManagerRuntime = {
   listAgents(): Promise<PiManagerAgentDirectory>;
@@ -98,6 +126,8 @@ export type PiManagerRuntime = {
   updateAgent(input: PiAgentDefinitionCreate): Promise<PiAgentDefinition>;
   deleteAgent(input: PiManagerAgentInput): Promise<void>;
   submitPrompt(input: PiManagerSubmitPromptInput): Promise<PiPromptReceipt>;
+  /** Where a submitted prompt stands; null when the agent never received it. */
+  getPrompt(input: PiManagerPromptInput): Promise<PiPromptStatus | null>;
   /** Writes an event into a started agent's conversation and asks it to handle the event. */
   notifyAgent(input: PiManagerNotifyAgentInput): Promise<void>;
   /** Aborts the agent's work and pauses its queue until someone resumes it. */
@@ -215,6 +245,22 @@ export function createPiManagerRuntime(input: {
         content: normalizedContent,
         ...(whenBusy ? { whenBusy } : {}),
       });
+    },
+    async getPrompt({ agentName, requestId }) {
+      let submission: PiAgentQueueSubmission | SubmissionRecord;
+      try {
+        submission = await request(
+          `${agentRoute(agentName)}/submissions/${encodeURIComponent(requestId)}`,
+          null,
+        );
+      } catch (error) {
+        // The agent has no such request, or no turns at all.
+        if (error instanceof PiManagerRuntimeRequestError && error.status === 404) {
+          return null;
+        }
+        throw error;
+      }
+      return promptStatusOf(requestId, submission);
     },
     async notifyAgent({ agentName, ...notification }) {
       await request(`${agentRoute(agentName)}/notifications`, notification);
