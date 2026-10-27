@@ -1,3 +1,5 @@
+export type UploadChecksum = { algo: "sha256" | "md5"; value: string };
+
 export type FileVisibility = "private" | "public" | "unlisted";
 
 export type FileStatus = "ready" | "deleted";
@@ -17,16 +19,13 @@ export type UploadStatus =
 
 export type UploadPublicationMode = "immediate" | "batch";
 
-export type UploadStrategy = "direct-single" | "direct-multipart" | "proxy";
-
 export type PreparedFileWrite = {
   uploadId: string;
   provider: string;
   fileKey: string;
-  objectKey: string;
   sizeBytes: number;
   contentType: string;
-  checksum: { algo: "sha256" | "md5"; value: string } | null;
+  checksum: UploadChecksum | null;
   expiresAt: string;
 };
 
@@ -55,7 +54,7 @@ export type FileMetadata = {
   filename: string;
   sizeBytes: number;
   contentType: string;
-  checksum: { algo: "sha256" | "md5"; value: string } | null;
+  checksum: UploadChecksum | null;
   visibility: FileVisibility;
   tags: string[] | null;
   metadata: Record<string, unknown> | null;

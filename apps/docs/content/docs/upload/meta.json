@@ -12,6 +12,6 @@
     "routes",
     "client",
     "key-system",
-    "adapters"
+    "storage"
   ]
 }

@@ -402,19 +402,9 @@ export class MemoryUploadObject implements FetchCommands {
       uploadId,
       fileKey: body.fileKey,
       status: "created",
-      strategy: "proxy",
       publicationMode: "batch",
       expiresAt,
       provider: "database",
-      upload: {
-        mode: "single",
-        transport: "proxy",
-        statusEndpoint: `/uploads/${uploadId}`,
-        progressEndpoint: `/uploads/${uploadId}/progress`,
-        completeEndpoint: `/uploads/${uploadId}/complete`,
-        abortEndpoint: `/uploads/${uploadId}/abort`,
-        contentEndpoint: `/uploads/${uploadId}/content`,
-      },
     });
   }
 
@@ -434,7 +424,6 @@ export class MemoryUploadObject implements FetchCommands {
         uploadId,
         provider: "database",
         fileKey: upload.fileKey,
-        objectKey: `prepared/${uploadId}`,
         sizeBytes: upload.content.byteLength,
         contentType: upload.contentType,
         checksum: null,
@@ -547,6 +536,7 @@ export class MemoryUploadObject implements FetchCommands {
         key: record.fileKey,
         positions: [0],
         count: 1,
+        byteLength: record.content.byteLength,
       })),
       candidateFiles: page.length,
       excludedTerms: [],

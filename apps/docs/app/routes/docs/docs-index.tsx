@@ -116,7 +116,7 @@ export default function DocsIndexPage() {
             href="/docs/upload"
             icon={<Upload className="size-6 text-gray-700 dark:text-gray-300" />}
             title="Upload Fragment"
-            description="Direct, multipart, and proxy file uploads"
+            description="Database-backed files, uploads, and search"
           />
           <DocCard
             href="/docs/auth"

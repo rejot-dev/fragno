@@ -1,7 +1,5 @@
 import { afterAll, assert, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { promises as fs } from "node:fs";
-import os from "node:os";
 import path from "node:path";
 
 import { packTar, unpackTar, type TarEntry } from "modern-tar";
@@ -11,13 +9,11 @@ import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
 import { uploadFragmentDefinition } from "../definition";
 import type { FileLinksConfig } from "../file-links";
-import { createFilesystemStorageAdapter } from "../storage/fs";
+import { uploadSchema } from "../schema";
 import { uploadRoutes } from "./index";
 
 describe("file links", async () => {
-  const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "fragno-upload-file-links-"));
-  const storage = createFilesystemStorageAdapter({ rootDir });
-  const provider = storage.name;
+  const provider = "workspace";
   const fileLinks: FileLinksConfig = {
     secret: "file-link-test-secret",
     audience: "workspace-a",
@@ -27,11 +23,20 @@ describe("file links", async () => {
   };
   const testSetup = await buildDatabaseFragmentsTest()
     .withTestAdapter({ type: "kysely-sqlite" })
-    .withDbRoundtripGuard({ maxRoundtrips: 3 })
+    .withDbRoundtripGuard({
+      maxRoundtrips: 1,
+      // An archive download reads its files' content one at a time, so it never holds a page.
+      routes: [
+        { method: "POST", path: "/file-links" },
+        { method: "GET", path: "/file-links/:token" },
+        { method: "PUT", path: "/file-links/:token" },
+        { method: "PUT", path: "/file-links/:token/archive.tar" },
+      ],
+    })
     .withFragment(
       "upload",
       instantiate(uploadFragmentDefinition)
-        .withConfig({ storage, fileLinks, maxSingleUploadBytes: 20 })
+        .withConfig({ fileLinks, maxFileBytes: 20 })
         .withRoutes(uploadRoutes),
     )
     .build();
@@ -41,7 +46,7 @@ describe("file links", async () => {
     .withFragment(
       "upload",
       instantiate(uploadFragmentDefinition)
-        .withConfig({ storage, fileLinks: { ...fileLinks, audience: "workspace-b" } })
+        .withConfig({ maxFileBytes: 20, fileLinks: { ...fileLinks, audience: "workspace-b" } })
         .withRoutes(uploadRoutes),
     )
     .build();
@@ -118,14 +123,11 @@ describe("file links", async () => {
   beforeEach(async () => {
     vi.useRealTimers();
     await testSetup.test.resetDatabase();
-    await fs.rm(rootDir, { recursive: true, force: true });
-    await fs.mkdir(rootDir, { recursive: true });
   });
 
   afterAll(async () => {
     await testSetup.test.cleanup();
     await otherAudienceSetup.test.cleanup();
-    await fs.rm(rootDir, { recursive: true, force: true });
   });
 
   it("moves a folder out as an archive and a sandbox's output back in as one batch", async () => {
@@ -170,33 +172,6 @@ describe("file links", async () => {
       status: "ready",
     });
     await expect(readFile("data/sub/b.csv")).resolves.toBe("x,y");
-  });
-
-  it("reads a folder archive no faster than the downloader consumes it", async () => {
-    // Larger than the archive stream's 8 MiB buffer, so an unread download must stall the reads.
-    const fileBytes = 5 * 1024 * 1024;
-    for (const name of ["one", "two", "three"]) {
-      await writeFile(`large/${name}.bin`, "x".repeat(fileBytes));
-    }
-    const reads = vi.spyOn(storage, "getDownloadStream");
-    try {
-      const readToken = await createLink("read", { kind: "glob", glob: "large/**" });
-      const archive = await send(fragment, `/file-links/${readToken}/archive.tar`);
-      assert(archive.status === 200);
-
-      await vi.waitFor(() => expect(reads).toHaveBeenCalled());
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      expect(reads.mock.calls.length).toBeLessThan(3);
-
-      const entries = await unpackTar(new Uint8Array(await archive.arrayBuffer()));
-      expect(entries.map(({ header, data }) => [header.name, data?.byteLength])).toEqual([
-        ["one.bin", fileBytes],
-        ["three.bin", fileBytes],
-        ["two.bin", fileBytes],
-      ]);
-    } finally {
-      reads.mockRestore();
-    }
   });
 
   it("rejects a whole archive that escapes the link's glob, exceeds its limits, or is not a whole tar", async () => {
@@ -293,8 +268,15 @@ describe("file links", async () => {
     });
     assert(listed.type === "json");
     expect(listed.data.files.map((file) => file.fileKey)).toEqual(["out/kept.txt"]);
-    const storedObjects = await fs.readdir(rootDir, { recursive: true, withFileTypes: true });
-    expect(storedObjects.filter((entry) => entry.isFile())).toHaveLength(1);
+    const storedObjects = await fragment.inContext(function () {
+      return this.handlerTx()
+        .retrieve(({ forSchema }) =>
+          forSchema(uploadSchema).find("storage_object", (b) => b.whereIndex("primary")),
+        )
+        .transformRetrieve(([objects]) => objects)
+        .execute();
+    });
+    expect(storedObjects).toHaveLength(1);
   });
 
   it("reads and replaces one file, and grants nothing beyond its file, access, audience, or lifetime", async () => {

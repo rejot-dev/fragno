@@ -1,14 +1,7 @@
 import { afterAll, assert, beforeAll, beforeEach, describe, expect, test } from "vitest";
 
-import { createDatabaseStorageAdapter } from "@fragno-dev/upload/storage/db";
-
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
-import {
-  createUploadFragment,
-  uploadFragmentDefinition,
-  uploadSchema,
-  type StorageAdapter,
-} from "@fragno-dev/upload";
+import { createUploadFragment, uploadFragmentDefinition, uploadSchema } from "@fragno-dev/upload";
 
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import { seedReadyUploadFiles } from "@/file-collection/ready-upload-files.test-support";
@@ -50,22 +43,7 @@ const files: PackageSeedFile[] = [
   createFile("3.0.0/private.txt", "text/plain", "unpublished"),
 ];
 
-const schemaExtractionStorage: StorageAdapter = {
-  name: "database",
-  capabilities: {
-    directUpload: false,
-    multipartUpload: false,
-    signedDownload: false,
-    proxyUpload: true,
-  },
-  resolveStorageKey: ({ provider, fileKey }) => `${provider}/${fileKey}`,
-  initUpload: async ({ provider, fileKey }) => ({
-    strategy: "proxy",
-    storageKey: `${provider}/${fileKey}`,
-    expiresAt: new Date("2027-01-01T00:01:00.000Z"),
-  }),
-  deleteObject: async () => {},
-};
+const uploadConfig = { maxFileBytes: 1024 * 1024 };
 
 const buildUploadTest = () =>
   buildDatabaseFragmentsTest()
@@ -75,16 +53,8 @@ const buildUploadTest = () =>
       "upload",
       uploadFragmentDefinition,
       ({ adapter }) =>
-        createUploadFragment(
-          {
-            storage: createDatabaseStorageAdapter({
-              databaseAdapter: adapter,
-              providerName: "database",
-            }),
-          },
-          { databaseAdapter: adapter, mountRoute: "/api/upload" },
-        ),
-      { config: { storage: schemaExtractionStorage } },
+        createUploadFragment(uploadConfig, { databaseAdapter: adapter, mountRoute: "/api/upload" }),
+      { config: uploadConfig },
     )
     .build();
 

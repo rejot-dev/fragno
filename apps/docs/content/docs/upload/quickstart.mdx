@@ -12,13 +12,12 @@ pnpm add @fragno-dev/upload
 ## Server setup
 
 ```ts
-import { createUploadFragment, createFilesystemStorageAdapter } from "@fragno-dev/upload";
+import { createUploadFragment } from "@fragno-dev/upload";
 import { migrate } from "@fragno-dev/db";
 
-const storage = createFilesystemStorageAdapter({ rootDir: "./uploads" });
-
 const fragment = createUploadFragment(
-  { storage },
+  // The largest file the fragment stores; content lives in your database.
+  { maxFileBytes: 10 * 1024 * 1024 },
   {
     // Provide your database adapter (Kysely/Drizzle) here
     databaseAdapter,
@@ -46,7 +45,7 @@ const { useUploadHelpers } = uploadClient;
 
 const helpers = useUploadHelpers();
 await helpers.createUploadAndTransfer(file, {
-  provider: "filesystem",
+  provider: "avatars",
   fileKey: `users/${userId}/avatar`,
   onProgress: (progress) => {
     console.log(progress.bytesUploaded, progress.totalBytes);

@@ -7,13 +7,17 @@ import {
   objectScopeToContextScope,
   type BlobsCommands,
 } from "@/backoffice-runtime/object-registry";
-import { createBlobsServer, type BlobsFragment, type BlobsR2Buckets } from "@/fragno/blobs-server";
+import {
+  createBlobsServer,
+  scopeStorageKeyPrefix,
+  type BlobsFragment,
+  type BlobsR2Buckets,
+} from "@/fragno/blobs-server";
 import {
   loadDurableHook,
   loadDurableHookQueue,
   type DurableHookQueueOptions,
 } from "@/fragno/durable-hooks";
-import { scopeStorageKeyPrefix } from "@/fragno/upload";
 
 import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
 import type { BackofficeObjectImplementation } from "./lib/backoffice-object-implementation";

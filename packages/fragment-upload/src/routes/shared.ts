@@ -95,7 +95,6 @@ export const preparedFileWriteSchema = z.object({
   uploadId: z.string(),
   provider: providerNamespaceSchema,
   fileKey: z.string(),
-  objectKey: z.string(),
   sizeBytes: z.number().int().nonnegative(),
   contentType: z.string(),
   checksum: checksumValueSchema.nullable(),

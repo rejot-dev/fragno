@@ -6,7 +6,7 @@ import { createBlobsFragment, createS3BlobStorage, type S3Signer } from "@fragno
 
 import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
 import type { BackofficeFragmentRuntimeOptions } from "@/backoffice-runtime/fragment-runtime";
-import type { FetchCommands } from "@/backoffice-runtime/object-registry";
+import type { BackofficeObjectScope, FetchCommands } from "@/backoffice-runtime/object-registry";
 
 /** An R2 bucket whose blobs scopes share, each under its own prefix, reached through R2's S3 API. */
 export type BlobsR2Bucket = {
@@ -132,6 +132,33 @@ function createR2Signer(bucket: BlobsR2Bucket): S3Signer {
       return { url: request.url, headers: Object.fromEntries(request.headers) };
     },
   };
+}
+
+function storagePrefixSegment(value: string): string {
+  const segment = value
+    .replace(/[^A-Za-z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  if (!segment || segment === "." || segment === "..") {
+    throw new Error(`'${value}' cannot be converted into a storage key prefix.`);
+  }
+  return segment;
+}
+
+/**
+ * Prefixes every object key a scope's Blobs object writes, so scopes sharing a bucket never address
+ * each other's objects. Organizations are named by their id; every other scope by its encoded
+ * object name.
+ */
+export function scopeStorageKeyPrefix(
+  scope: Exclude<BackofficeObjectScope, { kind: "singleton" }>,
+  objectName: string,
+): string {
+  if (scope.kind === "org") {
+    return `org/${storagePrefixSegment(scope.orgId)}`;
+  }
+  const name = scope.kind === "named" ? scope.name : objectName;
+  return `named/${name.split("/").map(storagePrefixSegment).join("/")}`;
 }
 
 export function createBlobsServer({

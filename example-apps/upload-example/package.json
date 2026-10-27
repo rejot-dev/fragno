@@ -20,10 +20,6 @@
     "lint:fix:package": "node ../../scripts/run-package-quality.mjs lint:fix"
   },
   "dependencies": {
-    "@aws-sdk/hash-node": "^3.374.0",
-    "@aws-sdk/protocol-http": "^3.374.0",
-    "@aws-sdk/signature-v4": "^3.374.0",
-    "@aws-sdk/util-format-url": "^3.374.0",
     "@electric-sql/pglite": "^0.3.11",
     "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",

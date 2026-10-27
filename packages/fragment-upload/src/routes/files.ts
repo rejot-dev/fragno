@@ -2,20 +2,17 @@ import type { TableToColumnValues } from "@fragno-dev/db/query";
 import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
+import type { TypedUnitOfWork } from "@fragno-dev/db";
 
-import { resolveUploadFragmentConfig } from "../config";
 import { uploadFragmentDefinition } from "../definition";
-import {
-  applyFileEditOperation,
-  diffContent,
-  FileEditError,
-  type FileEditOperation,
-} from "../file-edits";
+import type { FileEditOperation } from "../file-edits";
 import { uploadSchema } from "../schema";
+import { assertFileSize } from "../services/content";
 import { UploadServiceError } from "../services/errors";
+import { MAX_FILE_EDIT_TEXT_BYTES } from "../services/files";
 import { resolveFileKeyInput } from "../services/helpers";
+import { chunkQueryValues } from "../services/query-chunks";
 import { MAX_PREPARED_FILE_BATCH_ENTRIES } from "../services/uploads";
-import { buildStorageObjectVersionSegment } from "../storage/object-key";
 import {
   extractTextIndexTerms,
   getStaticGlobPrefix,
@@ -23,7 +20,6 @@ import {
   searchTextContent,
   selectSearchCandidateTerm,
 } from "../text-index";
-import type { PreparedFileBatchEntry } from "../types";
 import {
   checksumSchema,
   fileMetadataSchema,
@@ -37,7 +33,10 @@ import {
   visibilitySchema,
 } from "./shared";
 import { handleUploadServiceError as handleServiceError } from "./uploads-errors";
-import { mapStorageOperationError } from "./uploads-storage";
+
+type IndexedDocumentRow = TableToColumnValues<typeof uploadSchema.tables.file_text_document> & {
+  object: { body: Uint8Array } | null;
+};
 
 const legacyFileKeyPartsSchema = z.array(z.union([z.string(), z.number().int()]));
 
@@ -98,9 +97,7 @@ const commitPreparedFilesSchema = z.object({
 
 const MAX_FILE_EDIT_OPERATIONS = 10;
 const MAX_FILE_EDIT_FILES = 10;
-const MAX_FILE_EDIT_TEXT_BYTES = 10 * 1024 * 1024;
 const MAX_FILE_EDIT_PATTERN_LENGTH = 16 * 1024;
-const FILE_EDIT_STORAGE_CONCURRENCY = 4;
 
 const fileEditSearchOptionsSchema = z.object({
   caseSensitive: z.boolean().optional(),
@@ -147,45 +144,6 @@ const applyFileEditsResultSchema = z.object({
   totalChanged: z.number().int().nonnegative(),
 });
 
-type FileRow = TableToColumnValues<typeof uploadSchema.tables.file>;
-
-type EvaluatedFile = {
-  fileKey: string;
-  original: FileRow | null;
-  content: string;
-  contentType: string;
-  filename: string;
-};
-
-const mapWithConcurrency = async <Input, Output>(
-  values: readonly Input[],
-  concurrency: number,
-  operation: (value: Input) => Promise<Output>,
-): Promise<Output[]> => {
-  const results = Array.from<Output>({ length: values.length });
-  let nextIndex = 0;
-  let failure: unknown;
-  await Promise.all(
-    Array.from({ length: Math.min(concurrency, values.length) }, async () => {
-      while (failure === undefined) {
-        const index = nextIndex++;
-        if (index >= values.length) {
-          return;
-        }
-        try {
-          results[index] = await operation(values[index]);
-        } catch (cause) {
-          failure = cause;
-        }
-      }
-    }),
-  );
-  if (failure !== undefined) {
-    throw failure instanceof Error ? failure : new Error(String(failure));
-  }
-  return results;
-};
-
 const updateFileSchema = z.object({
   filename: z.string().min(1).optional(),
   visibility: visibilitySchema.optional(),
@@ -227,6 +185,8 @@ const searchFileCandidateSchema = z.object({
   key: z.string(),
   positions: z.array(z.number()),
   count: z.number(),
+  /** The indexed content's size, so callers can hydrate as many candidates as their budget scans. */
+  byteLength: z.number(),
 });
 
 const MAX_SEARCH_HYDRATION_BYTES = 30 * 1024 * 1024;
@@ -256,19 +216,15 @@ const stateTextMatchSchema = z.object({
 
 const errorCodes = [
   "UPLOAD_NOT_FOUND",
-  "UPLOAD_ALREADY_ACTIVE",
-  "FILE_ALREADY_EXISTS",
   "FILE_PRECONDITION_FAILED",
   "FILE_NOT_FOUND",
   "FILE_DELETED",
+  "FILE_TOO_LARGE",
   "UPLOAD_EXPIRED",
   "UPLOAD_INVALID_STATE",
-  "SIGNED_URL_UNSUPPORTED",
-  "STORAGE_ERROR",
   "INVALID_FILE_KEY",
   "INVALID_CHECKSUM",
   "INVALID_REQUEST",
-  "PROVIDER_MISMATCH",
   "TEXT_INDEX_DISABLED",
   "TEXT_SEARCH_REGEX_UNSUPPORTED",
 ] as const;
@@ -308,13 +264,6 @@ const parseMetadata = (value: FormDataEntryValue | null): Record<string, unknown
     return parsed as Record<string, unknown>;
   }
   return undefined;
-};
-
-const assertFileAvailable = <T extends { status: string }>(file: T) => {
-  if (file.status === "deleted") {
-    throw new UploadServiceError("FILE_DELETED", "The file has been deleted.");
-  }
-  return file;
 };
 
 const toSearchPositions = (value: unknown): number[] => {
@@ -382,8 +331,6 @@ const buildDelimitedFileList = (
 
 export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
   ({ services, defineRoute, config }) => {
-    const getResolvedConfig = () => resolveUploadFragmentConfig(config);
-
     const parseListQuery = (query: URLSearchParams) => {
       const result = listQuerySchema.safeParse({
         provider: query.has("provider") ? query.get("provider") : undefined,
@@ -434,7 +381,6 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
         outputSchema: fileMutationResultSchema,
         errorCodes,
         handler: async function (context, { json, error }) {
-          const resolvedConfig = getResolvedConfig();
           const form = context.formData();
           const file = form.get("file");
           if (!(file instanceof Blob)) {
@@ -492,21 +438,14 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
             return handleServiceError(err, error);
           }
 
-          const checksumForStorage = checksumResult.data ?? null;
-          const checksumForRecord = checksumResult.data ?? undefined;
-
-          let storageInit;
-
           const uploaderIdValue = form.get("uploaderId");
-          const uploaderId = typeof uploaderIdValue === "string" ? uploaderIdValue : undefined;
           const visibilityValue = form.get("visibility");
-          const parsedVisibility =
-            typeof visibilityValue === "string" ? visibilityValue : undefined;
-          const visibilityResult = visibilitySchema.optional().safeParse(parsedVisibility);
+          const visibilityResult = visibilitySchema
+            .optional()
+            .safeParse(typeof visibilityValue === "string" ? visibilityValue : undefined);
           if (!visibilityResult.success) {
             return error({ message: "Invalid request", code: "INVALID_REQUEST" }, 400);
           }
-          const visibility = visibilityResult.data;
           const filenameValue = form.get("filename");
           const filename =
             typeof filenameValue === "string" && filenameValue
@@ -514,134 +453,32 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
               : file instanceof File && file.name
                 ? file.name
                 : "upload";
-          const contentType = file.type || "application/octet-stream";
-
-          const objectKeyVersionSegment = buildStorageObjectVersionSegment();
-
-          const createInput = {
-            provider,
-            fileKey: resolvedKey.fileKey,
-            keyParts: resolvedKey.fileKeyParts,
-            filename,
-            sizeBytes: file.size,
-            contentType,
-            checksum: checksumForRecord,
-            tags,
-            visibility,
-            uploaderId,
-            metadata,
-          };
 
           try {
-            storageInit = await resolvedConfig.storage.initUpload({
-              provider,
-              fileKey: resolvedKey.fileKey,
-              sizeBytes: BigInt(file.size),
-              contentType,
-              checksum: checksumForStorage,
-              metadata: metadata ?? null,
-              objectKeyVersionSegment,
-            });
-          } catch (cause) {
-            return handleServiceError(mapStorageOperationError(cause), error);
-          }
-
-          if (storageInit.strategy === "direct-multipart") {
-            if (resolvedConfig.storage.abortMultipartUpload && storageInit.storageUploadId) {
-              try {
-                await resolvedConfig.storage.abortMultipartUpload({
-                  storageKey: storageInit.storageKey,
-                  storageUploadId: storageInit.storageUploadId,
-                });
-              } catch {
-                // Ignore abort failures; the request is still invalid for this endpoint.
-              }
-            }
-
-            return error({ message: "Upload invalid state", code: "UPLOAD_INVALID_STATE" }, 409);
-          }
-
-          try {
-            if (storageInit.strategy === "proxy") {
-              if (!resolvedConfig.storage.writeStream) {
-                throw new UploadServiceError("STORAGE_ERROR", "Proxy uploads are not supported.");
-              }
-              await resolvedConfig.storage.writeStream({
-                storageKey: storageInit.storageKey,
-                body: file.stream(),
-                contentType,
-                sizeBytes: BigInt(file.size),
-              });
-            } else if (storageInit.strategy === "direct-single") {
-              if (!storageInit.uploadUrl) {
-                throw new UploadServiceError(
-                  "STORAGE_ERROR",
-                  "The storage adapter did not provide an upload URL.",
-                );
-              }
-              const response = await fetch(storageInit.uploadUrl, {
-                method: "PUT",
-                headers: storageInit.uploadHeaders,
-                body: file,
-              });
-              if (!response.ok) {
-                throw new UploadServiceError("STORAGE_ERROR", "The direct upload request failed.");
-              }
-            } else {
-              return error(
-                {
-                  message: "Upload invalid state",
-                  code: "UPLOAD_INVALID_STATE",
-                },
-                409,
-              );
-            }
-
-            if (resolvedConfig.storage.finalizeUpload) {
-              await resolvedConfig.storage.finalizeUpload({
-                storageKey: storageInit.storageKey,
-                expectedSizeBytes: BigInt(file.size),
-                checksum: checksumResult.data ?? null,
-              });
-            }
-          } catch (cause) {
-            const storageError =
-              cause instanceof UploadServiceError ? cause : mapStorageOperationError(cause);
-            await this.handlerTx()
+            assertFileSize(file.size, config.maxFileBytes, `File '${resolvedKey.fileKey}'`);
+            const content = new Uint8Array(await file.arrayBuffer());
+            const [written] = await this.handlerTx()
               .withServiceCalls(() => [
-                services.createFailedUpload({
-                  ...createInput,
-                  storageInit,
-                  errorCode: storageError.code,
-                  errorMessage: storageError.message,
-                }),
-              ])
-              .execute();
-            return handleServiceError(storageError, error);
-          }
-
-          try {
-            const completed = await this.handlerTx()
-              .withServiceCalls(() => [
-                services.createCompletedUpload({
-                  ...createInput,
-                  storageInit,
-                  completedSizeBytes: BigInt(file.size),
-                  precondition,
-                }),
+                services.writeFiles(provider, [
+                  {
+                    fileKey: resolvedKey.fileKey,
+                    content,
+                    filename,
+                    contentType: file.type || "application/octet-stream",
+                    checksum: checksumResult.data ?? null,
+                    visibility: visibilityResult.data ?? "private",
+                    tags: tags ?? null,
+                    metadata: metadata ?? null,
+                    uploaderId: typeof uploaderIdValue === "string" ? uploaderIdValue : null,
+                    precondition: precondition ?? null,
+                  },
+                ]),
               ])
               .transform(({ serviceResult: [result] }) => result)
               .execute();
 
-            return json(toFileMutationResult(completed.file));
+            return json(toFileMutationResult(written));
           } catch (err) {
-            try {
-              await resolvedConfig.storage.deleteObject({
-                storageKey: storageInit.storageKey,
-              });
-            } catch (cause) {
-              return handleServiceError(mapStorageOperationError(cause), error);
-            }
             return handleServiceError(err, error);
           }
         },
@@ -655,354 +492,23 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
         errorCodes,
         handler: async function ({ input }, { json, error }) {
           const payload = await input.valid();
-          const resolvedConfig = getResolvedConfig();
-          if (payload.provider !== resolvedConfig.storage.name) {
-            return handleServiceError(
-              new UploadServiceError(
-                "PROVIDER_MISMATCH",
-                "The edit provider does not match the active storage provider.",
-              ),
-              error,
-            );
-          }
-
-          let edits: FileEditOperation[];
           try {
-            edits = payload.edits.map((edit) => ({
+            const edits = payload.edits.map((edit) => ({
               ...edit,
               fileKey: resolveFileKeyInput({ fileKey: edit.fileKey }).fileKey,
             })) as FileEditOperation[];
-          } catch (cause) {
-            return handleServiceError(cause, error);
-          }
-
-          const fileKeys = Array.from(new Set(edits.map((edit) => edit.fileKey)));
-          if (fileKeys.length > MAX_FILE_EDIT_FILES) {
-            return handleServiceError(
-              new UploadServiceError(
+            if (new Set(edits.map((edit) => edit.fileKey)).size > MAX_FILE_EDIT_FILES) {
+              throw new UploadServiceError(
                 "INVALID_REQUEST",
                 `File edits may address at most ${MAX_FILE_EDIT_FILES} unique files.`,
-              ),
-              error,
-            );
-          }
-
-          try {
-            const snapshots = (await this.handlerTx()
-              .withServiceCalls(() => [
-                services.findFilesByKeys({ provider: payload.provider, fileKeys }),
-              ])
-              .transform(({ serviceResult: [files] }) => files)
-              .execute()) as FileRow[];
-            const snapshotsByKey = new Map(snapshots.map((file) => [file.key, file]));
-            const firstEditByKey = new Map<string, FileEditOperation>();
-            for (const edit of edits) {
-              if (!firstEditByKey.has(edit.fileKey)) {
-                firstEditByKey.set(edit.fileKey, edit);
-              }
-            }
-            const filesRequiringInitialContent = snapshots.filter(
-              (file) => file.status === "ready" && firstEditByKey.get(file.key)?.kind === "replace",
-            );
-            const expectedDownloadBytes = filesRequiringInitialContent.reduce(
-              (total, file) => total + file.sizeBytes,
-              0n,
-            );
-            if (expectedDownloadBytes > BigInt(MAX_FILE_EDIT_TEXT_BYTES)) {
-              throw new UploadServiceError(
-                "INVALID_REQUEST",
-                `File edits may read at most ${MAX_FILE_EDIT_TEXT_BYTES} bytes.`,
-              );
-            }
-            if (
-              filesRequiringInitialContent.length > 0 &&
-              !resolvedConfig.storage.getDownloadStream
-            ) {
-              throw new UploadServiceError(
-                "STORAGE_ERROR",
-                "The storage adapter does not support server-side file reads.",
               );
             }
 
-            let downloadedBytes = 0;
-            const downloaded = await mapWithConcurrency(
-              filesRequiringInitialContent,
-              FILE_EDIT_STORAGE_CONCURRENCY,
-              async (file) => {
-                let response: Response;
-                try {
-                  response = await resolvedConfig.storage.getDownloadStream!({
-                    storageKey: file.objectKey,
-                  });
-                } catch (cause) {
-                  throw mapStorageOperationError(cause);
-                }
-                if (!response.ok) {
-                  throw new UploadServiceError(
-                    "STORAGE_ERROR",
-                    "The storage adapter could not read an edited file.",
-                    { provider: file.provider, fileKey: file.key },
-                  );
-                }
-                let bytes: Uint8Array;
-                try {
-                  bytes = new Uint8Array(await response.arrayBuffer());
-                } catch (cause) {
-                  throw mapStorageOperationError(cause);
-                }
-                downloadedBytes += bytes.byteLength;
-                if (downloadedBytes > MAX_FILE_EDIT_TEXT_BYTES) {
-                  throw new UploadServiceError(
-                    "INVALID_REQUEST",
-                    `File edits may read at most ${MAX_FILE_EDIT_TEXT_BYTES} bytes.`,
-                  );
-                }
-                try {
-                  return [
-                    file.key,
-                    new TextDecoder("utf-8", { fatal: true }).decode(bytes),
-                  ] as const;
-                } catch (cause) {
-                  throw new UploadServiceError(
-                    "INVALID_REQUEST",
-                    "Edited files must contain valid UTF-8 text.",
-                    { provider: file.provider, fileKey: file.key },
-                    { cause },
-                  );
-                }
-              },
-            );
-            const initialContents = new Map(downloaded);
-            const currentContents = new Map<string, string | null>(
-              fileKeys.map((fileKey) => [fileKey, initialContents.get(fileKey) ?? null]),
-            );
-            const operationResults = [];
-            let generatedBytes = 0;
-
-            for (const edit of edits) {
-              const previous = currentContents.get(edit.fileKey) ?? null;
-              let content: string;
-              try {
-                content = applyFileEditOperation(previous, edit);
-              } catch (cause) {
-                if (cause instanceof FileEditError) {
-                  if (previous === null && edit.kind === "replace") {
-                    throw new UploadServiceError("FILE_NOT_FOUND", cause.message, {
-                      provider: payload.provider,
-                      fileKey: edit.fileKey,
-                    });
-                  }
-                  throw new UploadServiceError("INVALID_REQUEST", cause.message, {
-                    provider: payload.provider,
-                    fileKey: edit.fileKey,
-                  });
-                }
-                throw cause;
-              }
-              generatedBytes += new TextEncoder().encode(content).byteLength;
-              if (generatedBytes > MAX_FILE_EDIT_TEXT_BYTES) {
-                throw new UploadServiceError(
-                  "INVALID_REQUEST",
-                  `File edits may generate at most ${MAX_FILE_EDIT_TEXT_BYTES} bytes.`,
-                );
-              }
-              let diff: string;
-              try {
-                diff = diffContent(
-                  previous ?? "",
-                  content,
-                  `a/${edit.fileKey}`,
-                  `b/${edit.fileKey}`,
-                );
-              } catch (cause) {
-                if (cause instanceof FileEditError) {
-                  throw new UploadServiceError("INVALID_REQUEST", cause.message, {
-                    provider: payload.provider,
-                    fileKey: edit.fileKey,
-                  });
-                }
-                throw cause;
-              }
-              operationResults.push({
-                fileKey: edit.fileKey,
-                changed: previous !== content,
-                content,
-                diff,
-              });
-              currentContents.set(edit.fileKey, content);
-            }
-
-            const changedFiles: EvaluatedFile[] = fileKeys.flatMap((fileKey) => {
-              const snapshot = snapshotsByKey.get(fileKey) ?? null;
-              const original = snapshot?.status === "ready" ? snapshot : null;
-              const originalContent = initialContents.get(fileKey) ?? null;
-              const content = currentContents.get(fileKey);
-              if (content === null || content === undefined || content === originalContent) {
-                return [];
-              }
-              const lastOperation = edits.findLast((edit) => edit.fileKey === fileKey)!;
-              // TODO: Track publication metadata from the latest write/writeJson operation per
-              // file. A later replace only transforms content and must not change a new JSON
-              // file's content type back to text/plain.
-              return [
-                {
-                  fileKey,
-                  original,
-                  content,
-                  contentType:
-                    original?.contentType ??
-                    (lastOperation.kind === "writeJson" ? "application/json" : "text/plain"),
-                  filename: original?.filename ?? fileKey.split("/").at(-1)!,
-                },
-              ];
-            });
-
-            if (changedFiles.length > 0 && !resolvedConfig.storage.writeStream) {
-              throw new UploadServiceError(
-                "STORAGE_ERROR",
-                "The storage adapter does not support server-side file writes.",
-              );
-            }
-
-            const stagedObjects: Array<{
-              file: EvaluatedFile;
-              bytes: Uint8Array;
-              storageInit: Awaited<ReturnType<typeof resolvedConfig.storage.initUpload>>;
-            }> = [];
-            const initializedStorageWrites: typeof stagedObjects = [];
-            try {
-              const staged = await mapWithConcurrency(
-                changedFiles,
-                FILE_EDIT_STORAGE_CONCURRENCY,
-                async (file) => {
-                  const bytes = new TextEncoder().encode(file.content);
-                  let storageInit;
-                  try {
-                    storageInit = await resolvedConfig.storage.initUpload({
-                      provider: payload.provider,
-                      fileKey: resolveFileKeyInput({ fileKey: file.fileKey }).fileKey,
-                      sizeBytes: BigInt(bytes.byteLength),
-                      contentType: file.contentType,
-                      checksum: null,
-                      metadata: file.original?.metadata ?? null,
-                      objectKeyVersionSegment: buildStorageObjectVersionSegment(),
-                    });
-                    if (storageInit.strategy !== "proxy") {
-                      if (
-                        storageInit.strategy === "direct-multipart" &&
-                        storageInit.storageUploadId &&
-                        resolvedConfig.storage.abortMultipartUpload
-                      ) {
-                        try {
-                          await resolvedConfig.storage.abortMultipartUpload({
-                            storageKey: storageInit.storageKey,
-                            storageUploadId: storageInit.storageUploadId,
-                          });
-                        } catch {
-                          // The edit request is invalid for this strategy even when abort fails.
-                        }
-                      }
-                      throw new UploadServiceError(
-                        "STORAGE_ERROR",
-                        "Server-side file edits require the proxy upload strategy.",
-                      );
-                    }
-                    const stagedObject = { file, bytes, storageInit };
-                    initializedStorageWrites.push(stagedObject);
-                    await resolvedConfig.storage.writeStream!({
-                      storageKey: storageInit.storageKey,
-                      body: new Blob([bytes]).stream(),
-                      contentType: file.contentType,
-                      sizeBytes: BigInt(bytes.byteLength),
-                    });
-                    if (resolvedConfig.storage.finalizeUpload) {
-                      await resolvedConfig.storage.finalizeUpload({
-                        storageKey: storageInit.storageKey,
-                        expectedSizeBytes: BigInt(bytes.byteLength),
-                        checksum: null,
-                      });
-                    }
-                  } catch (cause) {
-                    throw mapStorageOperationError(cause);
-                  }
-                  return { file, bytes, storageInit };
-                },
-              );
-              stagedObjects.push(...staged);
-            } catch (cause) {
-              await Promise.allSettled(
-                initializedStorageWrites.map(({ storageInit }) =>
-                  resolvedConfig.storage.deleteObject({ storageKey: storageInit.storageKey }),
-                ),
-              );
-              throw cause;
-            }
-
-            let prepared: Array<{ uploadId: string }> = [];
-            if (stagedObjects.length > 0) {
-              // TODO: Reconcile staged object keys against prepared-upload rows so objects can be
-              // deleted after a known rollback while preserving them after an ambiguous commit.
-              // Until then, retain staged objects on database errors because the commit may have
-              // succeeded even when its acknowledgement was lost.
-              prepared = await this.handlerTx()
-                .withServiceCalls(() => [
-                  services.createPreparedFileUploads(
-                    stagedObjects.map(({ file, bytes, storageInit }) => ({
-                      provider: payload.provider,
-                      fileKey: file.fileKey,
-                      filename: file.filename,
-                      sizeBytes: bytes.byteLength,
-                      contentType: file.contentType,
-                      checksum: null,
-                      tags: file.original?.tags ?? undefined,
-                      visibility: file.original?.visibility as
-                        | "private"
-                        | "public"
-                        | "unlisted"
-                        | undefined,
-                      uploaderId: file.original?.uploaderId ?? undefined,
-                      metadata: file.original?.metadata ?? undefined,
-                      publicationMode: "batch",
-                      storageInit,
-                      completedSizeBytes: BigInt(bytes.byteLength),
-                    })),
-                  ),
-                ])
-                .transform(({ serviceResult: [uploads] }) => uploads)
-                .execute();
-            }
-
-            const preparedByKey = new Map(
-              prepared.map((upload, index) => [changedFiles[index].fileKey, upload]),
-            );
-            const changedKeys = new Set(changedFiles.map((file) => file.fileKey));
-            const entries: PreparedFileBatchEntry[] = fileKeys.map((fileKey) => {
-              const original = snapshotsByKey.get(fileKey);
-              const precondition =
-                original?.status === "ready"
-                  ? { kind: "revision" as const, revision: original.id.version }
-                  : { kind: "absent" as const };
-              const preparedUpload = preparedByKey.get(fileKey);
-              return changedKeys.has(fileKey) && preparedUpload
-                ? { kind: "write" as const, uploadId: preparedUpload.uploadId, precondition }
-                : {
-                    kind: "assert" as const,
-                    provider: payload.provider,
-                    fileKey,
-                    precondition,
-                  };
-            });
-
-            await this.handlerTx()
-              .withServiceCalls(() => [
-                services.commitPreparedFileWrites({
-                  entries,
-                  activeProvider: payload.provider,
-                }),
-              ])
+            const result = await this.handlerTx()
+              .withServiceCalls(() => [services.applyFileEdits(payload.provider, edits)])
+              .transform(({ serviceResult: [applied] }) => applied)
               .execute();
-
-            return json({ edits: operationResults, totalChanged: changedFiles.length });
+            return json(result);
           } catch (cause) {
             return handleServiceError(cause, error);
           }
@@ -1017,7 +523,6 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
         errorCodes,
         handler: async function ({ input }, { json, error }) {
           const payload = await input.valid();
-          const activeProvider = getResolvedConfig().storage.name;
           try {
             const entries = payload.entries.map((entry) =>
               entry.kind === "write"
@@ -1028,9 +533,7 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
                   },
             );
             const result = await this.handlerTx()
-              .withServiceCalls(() => [
-                services.commitPreparedFileWrites({ entries, activeProvider }),
-              ])
+              .withServiceCalls(() => [services.commitPreparedFileWrites(entries)])
               .transform(({ serviceResult: [committed] }) => committed)
               .execute();
 
@@ -1161,11 +664,10 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
         }),
         errorCodes,
         handler: async function ({ input }, { json, error }) {
-          const resolvedConfig = getResolvedConfig();
           const payload = await input.valid();
           const options = payload.options ?? {};
 
-          if (!resolvedConfig.textIndex?.enabled) {
+          if (!config.textIndex?.enabled) {
             return handleServiceError(
               new UploadServiceError("TEXT_INDEX_DISABLED", "The text index is disabled."),
               error,
@@ -1183,7 +685,7 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
           }
 
           const candidateTerms = payload.keywords.map((keyword) =>
-            selectSearchCandidateTerm(keyword, resolvedConfig.textIndex),
+            selectSearchCandidateTerm(keyword, config.textIndex),
           );
           // A keyword without an indexable term can occur in any file, so one full-document pass
           // then covers every keyword.
@@ -1239,6 +741,7 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
                         key: document.key,
                         positions: toSearchPositions(candidate.positions),
                         count: candidate.count,
+                        byteLength: Number(document.byteLength),
                       },
                     ];
                   }),
@@ -1267,7 +770,14 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
                 return {
                   candidates: page.items.flatMap((document) =>
                     globPattern.test(document.key)
-                      ? [{ key: document.key, positions: [], count: 0 }]
+                      ? [
+                          {
+                            key: document.key,
+                            positions: [],
+                            count: 0,
+                            byteLength: Number(document.byteLength),
+                          },
+                        ]
                       : [],
                   ),
                   cursor: page.cursor?.encode(),
@@ -1317,12 +827,11 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
         }),
         errorCodes,
         handler: async function ({ input }, { json, error }) {
-          const resolvedConfig = getResolvedConfig();
           const payload = await input.valid();
           const options = payload.options ?? {};
           const maxMatches = options.maxMatches ?? 50;
 
-          if (!resolvedConfig.textIndex?.enabled) {
+          if (!config.textIndex?.enabled) {
             return handleServiceError(
               new UploadServiceError("TEXT_INDEX_DISABLED", "The text index is disabled."),
               error,
@@ -1339,34 +848,39 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
             );
           }
 
-          if (!resolvedConfig.storage.getDownloadStream) {
-            return handleServiceError(
-              new UploadServiceError("STORAGE_ERROR", "File downloads are not supported."),
-              error,
-            );
-          }
-
-          const [documents] = await this.handlerTx()
-            .retrieve(({ forSchema }) =>
-              forSchema(uploadSchema).find("file_text_document", (b) =>
-                b.whereIndex("idx_file_text_document_provider_key", (eb) =>
-                  eb.and(
-                    eb("provider", "=", payload.provider),
-                    eb("key", "in", payload.candidateKeys),
-                  ),
-                ),
-              ),
-            )
+          // Reads every candidate's content along with its document, so callers hydrate only as
+          // many candidates as their byte budget scans.
+          const documents = await this.handlerTx()
+            .retrieve(({ forSchema }) => {
+              const uow = forSchema(uploadSchema);
+              for (const candidateKeys of chunkQueryValues(payload.candidateKeys)) {
+                uow.find("file_text_document", (b) =>
+                  b
+                    .whereIndex("idx_file_text_document_provider_key", (eb) =>
+                      eb.and(eb("provider", "=", payload.provider), eb("key", "in", candidateKeys)),
+                    )
+                    .joinOne("object", "storage_object", (object) =>
+                      object
+                        .onIndex("idx_storage_object_key", (eb) =>
+                          eb("storageKey", "=", eb.parent("objectKey")),
+                        )
+                        .select(["body"]),
+                    ),
+                );
+              }
+              return uow as unknown as TypedUnitOfWork<typeof uploadSchema, IndexedDocumentRow[][]>;
+            })
+            .transformRetrieve((chunks) => chunks.flat())
             .execute();
 
           const documentsByKey = new Map(documents.map((document) => [document.key, document]));
+          const maxBytes = BigInt(payload.maxBytes);
           const excludedTerms = new Set(payload.excludedTerms);
           const matches = [];
           const skippedCandidates: Array<{
             key: string;
             reason: "not_found" | "too_large";
           }> = [];
-          const maxBytes = BigInt(payload.maxBytes);
           let scannedFiles = 0;
           let scannedBytes = 0n;
           let consumedCandidates = 0;
@@ -1400,25 +914,21 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
               nextSearchOffset = currentCandidateSearchOffset;
               break;
             }
-
-            const response = await resolvedConfig.storage.getDownloadStream({
-              storageKey: document.objectKey,
-            });
-            if (!response.ok) {
-              return handleServiceError(
-                new UploadServiceError("STORAGE_ERROR", "The file download failed."),
-                error,
-              );
+            // A replaced file's document names the content its write deleted, until reindexing.
+            const content = document.object?.body;
+            if (!content) {
+              skippedCandidates.push({ key: candidateKey, reason: "not_found" });
+              consumedCandidates += 1;
+              currentCandidateSearchOffset = 0;
+              continue;
             }
 
             scannedFiles += 1;
             scannedBytes += document.byteLength;
-            const text = await response.text();
+            const text = new TextDecoder().decode(content);
             if (
               excludedTerms.size > 0 &&
-              extractTextIndexTerms(text, resolvedConfig.textIndex).some((term) =>
-                excludedTerms.has(term),
-              )
+              extractTextIndexTerms(text, config.textIndex).some((term) => excludedTerms.has(term))
             ) {
               consumedCandidates += 1;
               currentCandidateSearchOffset = 0;
@@ -1546,98 +1056,23 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
 
       defineRoute({
         method: "GET",
-        path: "/files/by-key/download-url",
-        queryParameters: ["provider", "key"],
-        outputSchema: z.object({
-          url: z.string(),
-          headers: z.record(z.string(), z.string()).optional(),
-          expiresAt: z.date(),
-        }),
-        errorCodes,
-        handler: async function ({ query }, { json, error }) {
-          const resolvedConfig = getResolvedConfig();
-          let byKey;
-          try {
-            byKey = parseByKeyQuery(query);
-          } catch (err) {
-            return handleServiceError(err, error);
-          }
-
-          if (!resolvedConfig.storage.getDownloadUrl) {
-            return error(
-              {
-                message: "Signed URLs are not supported",
-                code: "SIGNED_URL_UNSUPPORTED",
-              },
-              400,
-            );
-          }
-
-          try {
-            const file = assertFileAvailable(
-              await this.handlerTx()
-                .withServiceCalls(() => [services.getFileByKey(byKey)])
-                .transform(({ serviceResult: [result] }) => result)
-                .execute(),
-            );
-
-            let result;
-            try {
-              result = await resolvedConfig.storage.getDownloadUrl({
-                storageKey: file.objectKey,
-                expiresInSeconds: resolvedConfig.signedUrlExpiresInSeconds,
-                contentType: file.contentType ?? undefined,
-              });
-            } catch {
-              return error({ message: "Storage error", code: "STORAGE_ERROR" }, 502);
-            }
-
-            return json(result);
-          } catch (err) {
-            return handleServiceError(err, error);
-          }
-        },
-      }),
-
-      defineRoute({
-        method: "GET",
         path: "/files/by-key/content",
         queryParameters: ["provider", "key"],
         errorCodes,
         handler: async function ({ query }, { error }) {
-          const resolvedConfig = getResolvedConfig();
-          let byKey;
           try {
-            byKey = parseByKeyQuery(query);
-          } catch (err) {
-            return handleServiceError(err, error);
-          }
+            const byKey = parseByKeyQuery(query);
+            const { file, body } = await this.handlerTx()
+              .withServiceCalls(() => [services.getFileContent(byKey)])
+              .transform(({ serviceResult: [result] }) => result)
+              .execute();
 
-          if (!resolvedConfig.storage.getDownloadStream) {
-            return error(
-              {
-                message: "Download streaming unsupported",
-                code: "SIGNED_URL_UNSUPPORTED",
+            return new Response(body.slice(), {
+              headers: {
+                "Content-Type": file.contentType,
+                "Content-Length": String(body.byteLength),
               },
-              400,
-            );
-          }
-
-          try {
-            const file = assertFileAvailable(
-              await this.handlerTx()
-                .withServiceCalls(() => [services.getFileByKey(byKey)])
-                .transform(({ serviceResult: [result] }) => result)
-                .execute(),
-            );
-
-            try {
-              return await resolvedConfig.storage.getDownloadStream({
-                storageKey: file.objectKey,
-              });
-            } catch {
-              return error({ message: "Storage error", code: "STORAGE_ERROR" }, 502);
-            }
+            });
           } catch (err) {
             return handleServiceError(err, error);
           }

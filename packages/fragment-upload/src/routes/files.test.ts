@@ -1,7 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it, assert, vi } from "vitest";
 
-import { promises as fs } from "node:fs";
-import os from "node:os";
 import path from "node:path";
 
 import { instantiate } from "@fragno-dev/core";
@@ -11,38 +9,30 @@ import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test"
 import { uploadFragmentDefinition } from "../definition";
 import { uploadRoutes } from "../index";
 import { uploadSchema } from "../schema";
-import { createFilesystemStorageAdapter } from "../storage/fs";
-import type { StorageAdapter } from "../storage/types";
 import type { FileMutationResult, UploadFileWritePrecondition } from "../types";
 
 describe("upload file routes", async () => {
-  const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "fragno-upload-routes-"));
-  const storage = createFilesystemStorageAdapter({ rootDir });
-  const provider = storage.name;
+  const provider = "workspace";
 
   const { fragments, test: testContext } = await buildDatabaseFragmentsTest()
     .withTestAdapter({ type: "kysely-sqlite" })
-    .withDbRoundtripGuard({ maxRoundtrips: 2 })
+    .withDbRoundtripGuard(true)
     .withFragment(
       "upload",
-      instantiate(uploadFragmentDefinition).withConfig({ storage }).withRoutes(uploadRoutes),
+      instantiate(uploadFragmentDefinition)
+        .withConfig({ maxFileBytes: 1024 * 1024 })
+        .withRoutes(uploadRoutes),
     )
     .build();
 
   const { fragment, db } = fragments["upload"];
 
-  const resetStorage = async () => {
-    await fs.rm(rootDir, { recursive: true, force: true });
-    await fs.mkdir(rootDir, { recursive: true });
-  };
-
   beforeEach(async () => {
     await testContext.resetDatabase();
-    await resetStorage();
   });
 
   afterAll(async () => {
-    await fs.rm(rootDir, { recursive: true, force: true });
+    await testContext.cleanup();
   });
 
   const createFileForm = (input: {
@@ -70,6 +60,18 @@ describe("upload file routes", async () => {
     expect(result).not.toHaveProperty("completedAt");
     expect(result).not.toHaveProperty("deletedAt");
   };
+
+  const listStoredContents = async () =>
+    await fragment.inContext(function () {
+      return this.handlerTx()
+        .retrieve(({ forSchema }) =>
+          forSchema(uploadSchema).find("storage_object", (b) => b.whereIndex("primary")),
+        )
+        .transformRetrieve(([objects]) =>
+          objects.map((object) => new TextDecoder().decode(object.body)),
+        )
+        .execute();
+    });
 
   const listUploadHooks = async () => {
     const internalFragment = getInternalFragment(testContext.adapter);
@@ -525,7 +527,7 @@ describe("upload file routes", async () => {
     assert((await content.text()) === "committed");
   });
 
-  it("queues cleanup and ready effects only when prepared replacements commit", async () => {
+  it("replaces content and queues ready effects only when prepared replacements commit", async () => {
     const fileKeys = ["prepared/hooks-a.txt", "prepared/hooks-b.txt"];
     for (const fileKey of fileKeys) {
       const created = await fragment.callRoute("POST", "/files", {
@@ -544,7 +546,7 @@ describe("upload file routes", async () => {
     );
     const baselineHooks = await listUploadHooks();
     const baselineEffectCount = baselineHooks.filter((hook) =>
-      ["cleanupStorageObject", "onFileReady", "onFileTextIndexRequested"].includes(hook.hookName),
+      ["onFileReady", "onFileTextIndexRequested"].includes(hook.hookName),
     ).length;
 
     const prepared = await Promise.all(
@@ -553,9 +555,10 @@ describe("upload file routes", async () => {
     const afterPrepareHooks = await listUploadHooks();
     expect(
       afterPrepareHooks.filter((hook) =>
-        ["cleanupStorageObject", "onFileReady", "onFileTextIndexRequested"].includes(hook.hookName),
+        ["onFileReady", "onFileTextIndexRequested"].includes(hook.hookName),
       ),
     ).toHaveLength(baselineEffectCount);
+    expect((await listStoredContents()).toSorted()).toEqual(["new-0", "new-1", "old", "old"]);
 
     const committed = await fragment.callRoute("POST", "/files/commit-prepared", {
       body: {
@@ -573,9 +576,7 @@ describe("upload file routes", async () => {
 
     const committedHooks = await listUploadHooks();
     const newlyQueuedHooks = committedHooks.slice(baselineHooks.length);
-    expect(
-      newlyQueuedHooks.filter((hook) => hook.hookName === "cleanupStorageObject"),
-    ).toHaveLength(2);
+    expect((await listStoredContents()).toSorted()).toEqual(["new-0", "new-1"]);
     expect(newlyQueuedHooks.filter((hook) => hook.hookName === "onFileReady")).toHaveLength(2);
     expect(
       newlyQueuedHooks.filter((hook) => hook.hookName === "onFileTextIndexRequested"),
@@ -766,7 +767,7 @@ describe("upload file routes", async () => {
     assert((await contentResponse.text()) === "hello");
   });
 
-  it("accepts provider namespaces that differ from the storage adapter name", async () => {
+  it("keeps files under any provider namespace", async () => {
     const providerAlias = "customer-assets";
     const form = new FormData();
     const file = new File([Buffer.from("aliased")], "aliased.txt", {
@@ -797,12 +798,6 @@ describe("upload file routes", async () => {
     assert(updateResponse.data.filename === "renamed.txt");
     expectMutationResultWithoutTimestamps(updateResponse.data);
 
-    const downloadResponse = await fragment.callRoute("GET", "/files/by-key/download-url", {
-      query: { provider: providerAlias, key: fileKey },
-    });
-    assert(downloadResponse.type === "error");
-    assert(downloadResponse.error.code === "SIGNED_URL_UNSUPPORTED");
-
     const contentResponse = await fragment.callRouteRaw("GET", "/files/by-key/content", {
       query: { provider: providerAlias, key: fileKey },
     });
@@ -816,7 +811,7 @@ describe("upload file routes", async () => {
     expect(deleteResponse.data).toEqual({ ok: true });
   });
 
-  it("enforces absent and revision preconditions and cleans up rejected objects", async () => {
+  it("enforces absent and revision preconditions and stores nothing for rejected writes", async () => {
     const fileKey = "workspace/conditional.txt";
     const initialResponse = await fragment.callRoute("POST", "/files", {
       body: createFileForm({
@@ -850,23 +845,18 @@ describe("upload file routes", async () => {
     assert(replacementSnapshot.type === "json");
     assert(replacementSnapshot.data.revision === 1);
 
-    const deleteObject = vi.spyOn(storage, "deleteObject");
-    try {
-      const staleResponse = await fragment.callRoute("POST", "/files", {
-        body: createFileForm({
-          content: "stale overwrite",
-          filename: "conditional.txt",
-          fileKey,
-          precondition: { kind: "revision", revision: initialSnapshot.data.revision },
-        }),
-      });
-      assert(staleResponse.type === "error");
-      assert(staleResponse.status === 412);
-      assert(staleResponse.error.code === "FILE_PRECONDITION_FAILED");
-      expect(deleteObject).toHaveBeenCalledOnce();
-    } finally {
-      deleteObject.mockRestore();
-    }
+    const staleResponse = await fragment.callRoute("POST", "/files", {
+      body: createFileForm({
+        content: "stale overwrite",
+        filename: "conditional.txt",
+        fileKey,
+        precondition: { kind: "revision", revision: initialSnapshot.data.revision },
+      }),
+    });
+    assert(staleResponse.type === "error");
+    assert(staleResponse.status === 412);
+    assert(staleResponse.error.code === "FILE_PRECONDITION_FAILED");
+    expect(await listStoredContents()).toEqual(["replacement"]);
 
     const contentResponse = await fragment.callRouteRaw("GET", "/files/by-key/content", {
       query: { provider, key: fileKey },
@@ -875,14 +865,13 @@ describe("upload file routes", async () => {
     assert((await contentResponse.text()) === "replacement");
   });
 
-  it("keeps the successful object when concurrent writes begin in the same millisecond", async () => {
+  it("keeps only the winning content when concurrent writes begin in the same millisecond", async () => {
     const fileKey = "workspace/concurrent.txt";
     const attempts = [
       { content: "first", filename: "concurrent.txt" },
       { content: "second", filename: "concurrent.txt" },
     ];
     const now = vi.spyOn(Date, "now").mockReturnValue(1_750_000_000_000);
-    const deleteObject = vi.spyOn(storage, "deleteObject");
 
     try {
       const responses = await Promise.all(
@@ -904,7 +893,6 @@ describe("upload file routes", async () => {
       assert(rejected[0]?.type === "error");
       assert(rejected[0].status === 412);
       assert(rejected[0].error.code === "FILE_PRECONDITION_FAILED");
-      expect(deleteObject).toHaveBeenCalledOnce();
 
       const contentResponse = await fragment.callRouteRaw("GET", "/files/by-key/content", {
         query: { provider, key: fileKey },
@@ -912,13 +900,8 @@ describe("upload file routes", async () => {
       assert(contentResponse.status === 200);
       assert((await contentResponse.text()) === attempts[successfulIndex]?.content);
 
-      const physicalVersions = await fs.readdir(path.join(rootDir, provider, fileKey));
-      expect(physicalVersions).toHaveLength(1);
-      expect(physicalVersions[0]).toMatch(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
-      );
+      expect(await listStoredContents()).toEqual([attempts[successfulIndex]?.content]);
     } finally {
-      deleteObject.mockRestore();
       now.mockRestore();
     }
   });
@@ -981,54 +964,23 @@ describe("upload file routes", async () => {
     assert(contentResponse.error.code === "FILE_DELETED");
   });
 
-  it("DELETE /files/by-key deletes storage through durable hooks", async () => {
+  it("DELETE /files/by-key deletes the file's content with it", async () => {
     const form = new FormData();
-    const file = new File([Buffer.from("hook delete")], "hook-delete.txt", {
-      type: "text/plain",
-    });
+    const file = new File([Buffer.from("deleted")], "deleted.txt", { type: "text/plain" });
     form.set("file", file);
     form.set("provider", provider);
-    form.set("keyParts", JSON.stringify(["users", 10, "hook-delete"]));
+    form.set("keyParts", JSON.stringify(["users", 10, "deleted"]));
 
-    const createResponse = await fragment.callRoute("POST", "/files", {
-      body: form,
-    });
+    const createResponse = await fragment.callRoute("POST", "/files", { body: form });
     assert(createResponse.type === "json");
-    const { fileKey } = createResponse.data;
-    const storedFile = await (async () => {
-      const uow = db
-        .createUnitOfWork("read")
-        .forSchema(uploadSchema)
-        .findFirst("file", (b) =>
-          b.whereIndex("idx_file_provider_key", (eb) =>
-            eb.and(eb("provider", "=", provider), eb("key", "=", fileKey)),
-          ),
-        );
-      await uow.executeRetrieve();
-      return (await uow.retrievalPhase)[0];
-    })();
-    expect(storedFile?.objectKey).toBeDefined();
-    if (!storedFile?.objectKey) {
-      throw new Error("Stored file missing objectKey");
-    }
-    const storagePath = path.join(rootDir, ...storedFile.objectKey.split("/"));
-
-    assert((await fs.readFile(storagePath, "utf8")) === "hook delete");
+    expect(await listStoredContents()).toEqual(["deleted"]);
 
     const deleteResponse = await fragment.callRoute("DELETE", "/files/by-key", {
-      query: { provider, key: fileKey },
+      query: { provider, key: createResponse.data.fileKey },
     });
     assert(deleteResponse.type === "json");
     expect(deleteResponse.data).toEqual({ ok: true });
-
-    // The delete route now performs a logical delete only; bytes are removed by the durable hook.
-    assert((await fs.readFile(storagePath, "utf8")) === "hook delete");
-
-    await drainDurableHooks(fragment);
-
-    await expect(fs.readFile(storagePath, "utf8")).rejects.toMatchObject({
-      code: "ENOENT",
-    });
+    expect(await listStoredContents()).toEqual([]);
   });
 
   it("POST /files allows re-uploading a deleted path without deleting the replacement bytes", async () => {
@@ -1335,152 +1287,5 @@ describe("upload file routes", async () => {
     assert(response.type === "error");
     assert(response.status === 400);
     assert(response.error.code === "INVALID_REQUEST");
-  });
-
-  it("GET /files/by-key/download-url uses the latest authoritative objectKey after overwrite", async () => {
-    const getDownloadUrl = vi.fn(
-      async ({
-        storageKey,
-        expiresInSeconds,
-      }: Parameters<NonNullable<StorageAdapter["getDownloadUrl"]>>[0]) => ({
-        url: `https://download.local/${encodeURIComponent(storageKey)}`,
-        expiresAt: new Date(Date.now() + expiresInSeconds * 1_000),
-      }),
-    );
-    const writeStream = vi.fn(
-      async ({ body }: Parameters<NonNullable<StorageAdapter["writeStream"]>>[0]) => {
-        await new Response(body).arrayBuffer();
-        return {};
-      },
-    );
-    const storage = {
-      name: "signed-proxy-test",
-      capabilities: {
-        directUpload: false,
-        multipartUpload: false,
-        signedDownload: true,
-        proxyUpload: true,
-      },
-      resolveStorageKey: ({ provider, fileKey }) => `signed/${provider}/${fileKey}`,
-      initUpload: async ({ provider, fileKey, objectKeyVersionSegment }) => ({
-        strategy: "proxy" as const,
-        storageKey: `signed/${provider}/${fileKey}/${objectKeyVersionSegment}`,
-        expiresAt: new Date(Date.now() + 60_000),
-      }),
-      writeStream,
-      deleteObject: async () => undefined,
-      getDownloadUrl,
-    } satisfies StorageAdapter;
-    const build = await buildDatabaseFragmentsTest()
-      .withTestAdapter({ type: "kysely-sqlite" })
-      .withDbRoundtripGuard({ maxRoundtrips: 2 })
-      .withFragment(
-        "upload",
-        instantiate(uploadFragmentDefinition).withConfig({ storage }).withRoutes(uploadRoutes),
-      )
-      .build();
-
-    try {
-      const { fragment, db } = build.fragments.upload;
-
-      const firstForm = new FormData();
-      firstForm.set("file", new File([Buffer.from("first")], "first.txt", { type: "text/plain" }));
-      firstForm.set("provider", storage.name);
-      firstForm.set("keyParts", JSON.stringify(["users", 12, "downloadable"]));
-
-      const firstCreate = await fragment.callRoute("POST", "/files", {
-        body: firstForm,
-      });
-      assert(firstCreate.type === "json");
-
-      const firstFile = await (async () => {
-        const uow = db
-          .createUnitOfWork("read")
-          .forSchema(uploadSchema)
-          .findFirst("file", (b) =>
-            b.whereIndex("idx_file_provider_key", (eb) =>
-              eb.and(eb("provider", "=", storage.name), eb("key", "=", firstCreate.data.fileKey)),
-            ),
-          );
-        await uow.executeRetrieve();
-        return (await uow.retrievalPhase)[0];
-      })();
-      expect(firstFile?.objectKey).toBeDefined();
-      if (!firstFile?.objectKey) {
-        throw new Error("First file row missing objectKey");
-      }
-
-      const secondForm = new FormData();
-      secondForm.set(
-        "file",
-        new File([Buffer.from("second")], "second.txt", { type: "text/plain" }),
-      );
-      secondForm.set("provider", storage.name);
-      secondForm.set("fileKey", firstCreate.data.fileKey);
-
-      const secondCreate = await fragment.callRoute("POST", "/files", {
-        body: secondForm,
-      });
-      assert(secondCreate.type === "json");
-
-      const currentFile = await (async () => {
-        const uow = db
-          .createUnitOfWork("read")
-          .forSchema(uploadSchema)
-          .findFirst("file", (b) =>
-            b.whereIndex("idx_file_provider_key", (eb) =>
-              eb.and(eb("provider", "=", storage.name), eb("key", "=", firstCreate.data.fileKey)),
-            ),
-          );
-        await uow.executeRetrieve();
-        return (await uow.retrievalPhase)[0];
-      })();
-      expect(currentFile?.objectKey).toBeDefined();
-      expect(currentFile?.objectKey).not.toBe(firstFile.objectKey);
-      if (!currentFile?.objectKey) {
-        throw new Error("Current file row missing objectKey");
-      }
-
-      const downloadResponse = await fragment.callRoute("GET", "/files/by-key/download-url", {
-        query: { provider: storage.name, key: firstCreate.data.fileKey },
-      });
-      assert(downloadResponse.type === "json");
-      expect(downloadResponse.data.url).toBe(
-        `https://download.local/${encodeURIComponent(currentFile.objectKey)}`,
-      );
-      expect(getDownloadUrl).toHaveBeenCalledTimes(1);
-      expect(getDownloadUrl).toHaveBeenCalledWith(
-        expect.objectContaining({
-          storageKey: currentFile.objectKey,
-        }),
-      );
-      expect(getDownloadUrl).not.toHaveBeenCalledWith(
-        expect.objectContaining({
-          storageKey: firstFile.objectKey,
-        }),
-      );
-    } finally {
-      await build.test.cleanup();
-    }
-  });
-
-  it("GET /files/by-key/download-url returns unsupported for filesystem adapter", async () => {
-    const form = new FormData();
-    const file = new File([Buffer.from("hello")], "hello.txt", {
-      type: "text/plain",
-    });
-    form.set("file", file);
-    form.set("provider", provider);
-    form.set("keyParts", JSON.stringify(["users", 3, "avatar"]));
-
-    const response = await fragment.callRoute("POST", "/files", { body: form });
-    assert(response.type === "json");
-    const { fileKey } = response.data;
-
-    const downloadResponse = await fragment.callRoute("GET", "/files/by-key/download-url", {
-      query: { provider, key: fileKey },
-    });
-    assert(downloadResponse.type === "error");
-    assert(downloadResponse.error.code === "SIGNED_URL_UNSUPPORTED");
   });
 });

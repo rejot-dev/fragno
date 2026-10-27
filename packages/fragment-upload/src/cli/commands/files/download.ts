@@ -19,7 +19,7 @@ export const filesDownloadCommand = define({
     ...baseArgs,
     provider: {
       type: "string",
-      description: "Storage provider",
+      description: "File provider namespace",
     },
     "file-key": {
       type: "string",
@@ -50,27 +50,7 @@ export const filesDownloadCommand = define({
 
     const client = createClientFromContext(ctx);
 
-    let response: Response;
-    try {
-      const download = (await client.getDownloadUrl(provider, resolvedKey.fileKey)) as {
-        url: string;
-        headers?: Record<string, string>;
-      };
-      response = await fetch(download.url, {
-        method: "GET",
-        headers: download.headers,
-      });
-      if (!response.ok) {
-        throw new Error(`Download failed (${response.status})`);
-      }
-    } catch (error) {
-      const code = error instanceof Error ? (error as Error & { code?: string }).code : undefined;
-      if (code !== "SIGNED_URL_UNSUPPORTED") {
-        throw error;
-      }
-      response = await client.downloadContent(provider, resolvedKey.fileKey);
-    }
-
+    const response = await client.downloadContent(provider, resolvedKey.fileKey);
     if (!response.body) {
       throw new Error("Response has no body");
     }

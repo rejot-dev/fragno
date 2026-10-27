@@ -11,7 +11,6 @@ const {
   useFile,
   useCreateUpload,
   useUploadStatus,
-  useCompleteUpload,
   useAbortUpload,
   useUpdateFile,
   useDeleteFile,
@@ -28,7 +27,7 @@ const { useUploadHelpers } = uploadClient;
 const helpers = useUploadHelpers();
 
 await helpers.createUploadAndTransfer(file, {
-  provider: "r2-binding",
+  provider: "teams",
   fileKey: `teams/${teamId}/logo`,
   onProgress: ({ bytesUploaded, totalBytes }) => {
     console.log(bytesUploaded, totalBytes);
@@ -39,23 +38,15 @@ await helpers.createUploadAndTransfer(file, {
 ### `createUploadAndTransfer`
 
 - Creates an upload.
-- Chooses direct single, direct multipart, or server-streamed (proxy) uploads based on the server
-  response.
-- Tracks progress for multipart and server-streamed (proxy) uploads.
+- Streams the file's content to `PUT /uploads/:uploadId/content`, reporting progress, and falls back
+  to a buffered request when the browser cannot stream request bodies.
+- Returns the published file, or the prepared write for a `batch` upload.
 
 ### `downloadFile`
 
 ```ts
-const response = await helpers.downloadFile(`teams/${teamId}/logo`, {
-  provider: "r2-binding",
-  method: "signed-url", // or "content"
-});
+const response = await helpers.downloadFile(`teams/${teamId}/logo`, { provider: "teams" });
 const blob = await response.blob();
 ```
 
-Download method selection is explicit:
-
-- `method: "signed-url"` calls `GET /files/by-key/download-url?provider=...&key=...`.
-- `method: "content"` calls `GET /files/by-key/content?provider=...&key=...`.
-
-No automatic fallback happens between methods.
+It reads `GET /files/by-key/content?provider=...&key=...`.

@@ -25,18 +25,6 @@ export function createUploadFragmentClients(config: FragnoPublicClientConfig = {
       invalidate("GET", "/files", {});
       invalidate("GET", "/files/by-key", {});
     }),
-    useCompleteUpload: builder.createMutator(
-      "POST",
-      "/uploads/:uploadId/complete",
-      (invalidate, params) => {
-        const uploadId = params.pathParams.uploadId;
-        if (!uploadId) {
-          return;
-        }
-        invalidate("GET", "/uploads/:uploadId", { pathParams: { uploadId } });
-        invalidate("GET", "/files", {});
-      },
-    ),
     useAbortUpload: builder.createMutator(
       "POST",
       "/uploads/:uploadId/abort",

@@ -1,1048 +1,366 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, assert, vi } from "vitest";
-
-import { promises as fs } from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import { afterAll, assert, beforeEach, describe, expect, it } from "vitest";
 
 import { instantiate } from "@fragno-dev/core";
-import type { AnyFragnoInstantiatedFragment } from "@fragno-dev/core";
+import { getInternalFragment } from "@fragno-dev/db";
 import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 
 import { uploadFragmentDefinition } from "../definition";
-import { uploadRoutes } from "../index";
-import { UploadStorageError } from "../storage/errors";
-import { createFilesystemStorageAdapter } from "../storage/fs";
-import type { StorageAdapter } from "../storage/types";
+import { uploadSchema } from "../schema";
+import { uploadRoutes } from "./index";
 
-describe("upload routes", () => {
-  let rootDir: string;
-  let storage: ReturnType<typeof createFilesystemStorageAdapter>;
-  let provider: string;
-  let testContext: { resetDatabase: () => Promise<void> };
-  let fragment: UploadFragmentCaller;
+const MAX_FILE_BYTES = 64;
 
-  type UploadFragmentCaller = {
-    callRoute: (...args: unknown[]) => Promise<unknown>;
-    callRouteRaw: (...args: unknown[]) => Promise<Response>;
-  };
-
-  type JsonResponse<T extends Record<string, unknown> = Record<string, unknown>> = {
-    type: "json";
-    data: T;
-  };
-
-  type ErrorResponse = {
-    type: "error";
-    status: number;
-    error: { code: string };
-  };
-
-  const asObject = (
-    value: unknown,
-  ): value is {
-    type?: unknown;
-    status?: unknown;
-    error?: unknown;
-    data?: unknown;
-  } => typeof value === "object" && value !== null;
-
-  const asJsonResponse = <T extends Record<string, unknown>>(value: unknown): JsonResponse<T> => {
-    assert(asObject(value));
-    assert(value.type === "json");
-    assert("data" in value);
-    return value as JsonResponse<T>;
-  };
-
-  const asErrorResponse = (value: unknown): ErrorResponse => {
-    assert(asObject(value));
-    assert(value.type === "error");
-    assert(typeof value.status === "number");
-    const errorPayload = value.error as { code?: unknown };
-    assert(typeof errorPayload?.code === "string");
-    return value as ErrorResponse;
-  };
-
-  beforeAll(async () => {
-    rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "fragno-upload-routes-"));
-    storage = createFilesystemStorageAdapter({ rootDir });
-    provider = storage.name;
-
-    const build = await buildDatabaseFragmentsTest()
-      .withTestAdapter({ type: "drizzle-pglite" })
-      .withDbRoundtripGuard({ maxRoundtrips: 2 })
-      .withFragment(
-        "upload",
-        instantiate(uploadFragmentDefinition).withConfig({ storage }).withRoutes(uploadRoutes),
-      )
-      .build();
-
-    testContext = build.test;
-    fragment = build.fragments.upload.fragment as unknown as UploadFragmentCaller;
-  });
-
-  const resetStorage = async () => {
-    await fs.rm(rootDir, { recursive: true, force: true });
-    await fs.mkdir(rootDir, { recursive: true });
-  };
+describe("upload sessions", async () => {
+  const provider = "workspace";
+  const { fragments, test: testContext } = await buildDatabaseFragmentsTest()
+    .withTestAdapter({ type: "drizzle-pglite" })
+    .withDbRoundtripGuard(true)
+    .withFragment(
+      "upload",
+      instantiate(uploadFragmentDefinition)
+        .withConfig({ maxFileBytes: MAX_FILE_BYTES, textIndex: { enabled: true } })
+        .withRoutes(uploadRoutes),
+    )
+    .build();
+  const { fragment } = fragments.upload;
 
   beforeEach(async () => {
     await testContext.resetDatabase();
-    await resetStorage();
   });
 
   afterAll(async () => {
-    await fs.rm(rootDir, { recursive: true, force: true });
+    await testContext.cleanup();
   });
 
-  const buildUploadRoutePath = (uploadId: string, suffix = "", activeProvider = provider) =>
-    `/uploads/${uploadId}${suffix}?${new URLSearchParams({ provider: activeProvider }).toString()}`;
-
-  it("POST /uploads and GET /uploads/:uploadId return provider-sticky operation URLs", async () => {
-    const createResponse = asJsonResponse<{
-      uploadId: string;
-      fileKey: string;
-      provider: string;
-      status: string;
-      upload: {
-        statusEndpoint: string;
-        progressEndpoint: string;
-        completeEndpoint: string;
-        abortEndpoint: string;
-        contentEndpoint?: string;
-      };
-    }>(
-      await fragment.callRoute("POST", "/uploads", {
-        body: {
-          provider,
-          keyParts: ["users", 0, "avatar"],
-          filename: "sticky.txt",
-          sizeBytes: 6,
-          contentType: "text/plain",
-        },
-      }),
-    );
-
-    assert(createResponse.type === "json");
-    expect(createResponse.data.provider).toBe(provider);
-    expect(createResponse.data.upload.statusEndpoint).toBe(
-      buildUploadRoutePath(createResponse.data.uploadId),
-    );
-    expect(createResponse.data.upload.progressEndpoint).toBe(
-      buildUploadRoutePath(createResponse.data.uploadId, "/progress"),
-    );
-    expect(createResponse.data.upload.completeEndpoint).toBe(
-      buildUploadRoutePath(createResponse.data.uploadId, "/complete"),
-    );
-    expect(createResponse.data.upload.abortEndpoint).toBe(
-      buildUploadRoutePath(createResponse.data.uploadId, "/abort"),
-    );
-    expect(createResponse.data.upload.contentEndpoint).toBe(
-      buildUploadRoutePath(createResponse.data.uploadId, "/content"),
-    );
-
-    const statusResponse = asJsonResponse<{
-      provider: string;
-      upload: {
-        statusEndpoint: string;
-        progressEndpoint: string;
-        completeEndpoint: string;
-        abortEndpoint: string;
-        contentEndpoint?: string;
-      };
-    }>(
-      await fragment.callRoute("GET", "/uploads/:uploadId", {
-        pathParams: { uploadId: createResponse.data.uploadId },
-      }),
-    );
-
-    assert(statusResponse.type === "json");
-    expect(statusResponse.data.provider).toBe(provider);
-    expect(statusResponse.data.upload.statusEndpoint).toBe(
-      buildUploadRoutePath(createResponse.data.uploadId),
-    );
-    expect(statusResponse.data.upload.progressEndpoint).toBe(
-      buildUploadRoutePath(createResponse.data.uploadId, "/progress"),
-    );
-    expect(statusResponse.data.upload.completeEndpoint).toBe(
-      buildUploadRoutePath(createResponse.data.uploadId, "/complete"),
-    );
-    expect(statusResponse.data.upload.abortEndpoint).toBe(
-      buildUploadRoutePath(createResponse.data.uploadId, "/abort"),
-    );
-    expect(statusResponse.data.upload.contentEndpoint).toBe(
-      buildUploadRoutePath(createResponse.data.uploadId, "/content"),
-    );
-  });
-
-  it("POST /uploads accepts provider namespaces that differ from the storage adapter name", async () => {
-    const providerAlias = "customer-assets";
-    const createResponse = asJsonResponse<{
-      uploadId: string;
-      fileKey: string;
-      provider: string;
-      upload: {
-        statusEndpoint: string;
-        progressEndpoint: string;
-        completeEndpoint: string;
-        abortEndpoint: string;
-        contentEndpoint?: string;
-      };
-    }>(
-      await fragment.callRoute("POST", "/uploads", {
-        body: {
-          provider: providerAlias,
-          keyParts: ["users", 12, "avatar"],
-          filename: "alias.txt",
-          sizeBytes: 5,
-          contentType: "text/plain",
-        },
-      }),
-    );
-
-    assert(createResponse.type === "json");
-    expect(createResponse.data.provider).toBe(providerAlias);
-    expect(createResponse.data.upload.statusEndpoint).toBe(
-      buildUploadRoutePath(createResponse.data.uploadId, "", providerAlias),
-    );
-    expect(createResponse.data.upload.progressEndpoint).toBe(
-      buildUploadRoutePath(createResponse.data.uploadId, "/progress", providerAlias),
-    );
-    expect(createResponse.data.upload.completeEndpoint).toBe(
-      buildUploadRoutePath(createResponse.data.uploadId, "/complete", providerAlias),
-    );
-    expect(createResponse.data.upload.abortEndpoint).toBe(
-      buildUploadRoutePath(createResponse.data.uploadId, "/abort", providerAlias),
-    );
-    expect(createResponse.data.upload.contentEndpoint).toBe(
-      buildUploadRoutePath(createResponse.data.uploadId, "/content", providerAlias),
-    );
-
-    const statusResponse = asJsonResponse<{ provider: string }>(
-      await fragment.callRoute("GET", "/uploads/:uploadId", {
-        pathParams: { uploadId: createResponse.data.uploadId },
-      }),
-    );
-
-    assert(statusResponse.type === "json");
-    expect(statusResponse.data.provider).toBe(providerAlias);
-  });
-
-  it("PUT /uploads/:uploadId/content streams proxy uploads and records bytes", async () => {
-    const createResponse = asJsonResponse<{
-      uploadId: string;
-      fileKey: string;
-    }>(
-      await fragment.callRoute("POST", "/uploads", {
-        body: {
-          provider,
-          keyParts: ["users", 1, "avatar"],
-          filename: "hello.txt",
-          sizeBytes: 5,
-          contentType: "text/plain",
-        },
-      }),
-    );
-
-    assert(createResponse.type === "json");
-    const { uploadId, fileKey } = createResponse.data;
-
-    const stream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(new TextEncoder().encode("hello"));
-        controller.close();
+  async function createUpload(
+    fileKey: string,
+    content: string,
+    options: {
+      publicationMode?: "immediate" | "batch";
+      replaceActiveUpload?: boolean;
+      checksum?: { algo: "sha256"; value: string };
+    } = {},
+  ) {
+    return await fragment.callRoute("POST", "/uploads", {
+      body: {
+        provider,
+        fileKey,
+        filename: fileKey.split("/").at(-1)!,
+        sizeBytes: new TextEncoder().encode(content).byteLength,
+        contentType: "text/plain",
+        ...options,
       },
     });
+  }
 
-    const uploadResponse = asJsonResponse<{
-      kind: "published";
-      file: { fileKey: string; status: string; sizeBytes: number };
-    }>(
-      await fragment.callRoute("PUT", "/uploads/:uploadId/content", {
-        pathParams: { uploadId },
-        body: stream,
-      }),
-    );
+  async function putContent(uploadId: string, content: string) {
+    return await fragment.callRoute("PUT", "/uploads/:uploadId/content", {
+      pathParams: { uploadId },
+      body: new Blob([content]).stream(),
+    });
+  }
 
-    assert(uploadResponse.type === "json");
-    expect(uploadResponse.data.file.fileKey).toBe(fileKey);
-    assert(uploadResponse.data.file.status === "ready");
-    assert(uploadResponse.data.file.sizeBytes === 5);
+  async function readFile(fileKey: string) {
+    const response = await fragment.callRouteRaw("GET", "/files/by-key/content", {
+      query: { provider, key: fileKey },
+    });
+    return response.status === 200 ? await response.text() : response.status;
+  }
 
-    const statusResponse = asJsonResponse<{
-      status: string;
-      bytesUploaded: number;
-    }>(
-      await fragment.callRoute("GET", "/uploads/:uploadId", {
-        pathParams: { uploadId },
-      }),
-    );
+  async function listStoredContents() {
+    return await fragment.inContext(function () {
+      return this.handlerTx()
+        .retrieve(({ forSchema }) =>
+          forSchema(uploadSchema).find("storage_object", (b) => b.whereIndex("primary")),
+        )
+        .transformRetrieve(([objects]) =>
+          objects.map((object) => new TextDecoder().decode(object.body)).toSorted(),
+        )
+        .execute();
+    });
+  }
 
-    assert(statusResponse.type === "json");
-    assert(statusResponse.data.status === "completed");
-    assert(statusResponse.data.bytesUploaded === 5);
-  });
+  /** Makes every scheduled upload timeout due, as if every session had expired. */
+  async function expireUploads() {
+    const longAgo = new Date(Date.now() - 60_000);
+    const internalFragment = getInternalFragment(testContext.adapter);
+    const hooks = await internalFragment.inContext(async function () {
+      return await this.handlerTx()
+        .withServiceCalls(
+          () => [internalFragment.services.hookService.getHooksByNamespace("upload")] as const,
+        )
+        .transform(({ serviceResult: [result] }) => result)
+        .execute();
+    });
+    await fragment.inContext(async function () {
+      await this.handlerTx()
+        .retrieve(({ forSchema }) =>
+          forSchema(uploadSchema).find("upload", (b) => b.whereIndex("primary")),
+        )
+        .mutate(({ forSchema, retrieveResult: [uploads] }) => {
+          for (const upload of uploads) {
+            forSchema(uploadSchema).update("upload", upload.id, (b) =>
+              b.set({ expiresAt: longAgo }),
+            );
+          }
+        })
+        .execute();
+    });
+    await internalFragment.inContext(async function () {
+      await this.handlerTx()
+        .mutate(({ forSchema }) => {
+          for (const hook of hooks) {
+            if (hook.hookName === "onUploadTimeout" && hook.status === "pending") {
+              forSchema(internalFragment.$internal.deps.schema).update(
+                "fragno_hooks",
+                hook.id,
+                (b) => b.set({ nextRetryAt: longAgo }),
+              );
+            }
+          }
+        })
+        .execute();
+    });
+  }
 
-  it("GET /uploads/:uploadId/content streams prepared upload bytes before publication", async () => {
-    const createResponse = asJsonResponse<{ uploadId: string }>(
-      await fragment.callRoute("POST", "/uploads", {
-        body: {
-          provider,
-          fileKey: "generated-ui/prepared.txt",
-          filename: "prepared.txt",
-          sizeBytes: 8,
-          contentType: "text/plain",
-          publicationMode: "batch",
-        },
-      }),
-    );
+  it("publishes an upload's content in the transaction that stores it", async () => {
+    const created = await createUpload("notes/today.txt", "first draft");
+    assert(created.type === "json");
+    expect(created.data).toMatchObject({ status: "created", publicationMode: "immediate" });
 
-    const stream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(new TextEncoder().encode("prepared"));
-        controller.close();
+    const stored = await putContent(created.data.uploadId, "first draft");
+    assert(stored.type === "json");
+    assert(stored.data.kind === "published");
+    expect(stored.data.file).toMatchObject({ fileKey: "notes/today.txt", sizeBytes: 11 });
+    assert((await readFile("notes/today.txt")) === "first draft");
+
+    const status = await fragment.callRoute("GET", "/uploads/:uploadId", {
+      pathParams: { uploadId: created.data.uploadId },
+    });
+    assert(status.type === "json");
+    expect(status.data).toMatchObject({ status: "completed", bytesUploaded: 11 });
+
+    // A completed session takes no more content.
+    const again = await putContent(created.data.uploadId, "first draft");
+    assert(again.type === "error");
+    assert(again.error.code === "UPLOAD_INVALID_STATE");
+
+    // A second upload replaces the file and the content it published.
+    const replacement = await createUpload("notes/today.txt", "final");
+    assert(replacement.type === "json");
+    assert((await putContent(replacement.data.uploadId, "final")).type === "json");
+    assert((await readFile("notes/today.txt")) === "final");
+    expect(await listStoredContents()).toEqual(["final"]);
+
+    // The text index reads the published content.
+    await drainDurableHooks(fragment);
+    const search = await fragment.callRoute("POST", "/files/search", {
+      body: { provider, glob: "notes/*", keywords: ["final"] },
+    });
+    assert(search.type === "json");
+    expect(search.data.candidates.map((candidate) => candidate.key)).toEqual(["notes/today.txt"]);
+    const hydrated = await fragment.callRoute("POST", "/files/search/hydrate", {
+      body: {
+        provider,
+        candidateKeys: ["notes/today.txt"],
+        keywords: ["final"],
+        excludedTerms: [],
+        maxBytes: 1024,
       },
     });
-    const uploadResponse = asJsonResponse<{ kind: string }>(
-      await fragment.callRoute("PUT", "/uploads/:uploadId/content", {
-        pathParams: { uploadId: createResponse.data.uploadId },
-        body: stream,
-      }),
-    );
-    assert(uploadResponse.data.kind === "prepared");
-
-    const response = await fragment.callRouteRaw("GET", "/uploads/:uploadId/content", {
-      pathParams: { uploadId: createResponse.data.uploadId },
-    });
-
-    assert(response.status === 200);
-    assert((await response.text()) === "prepared");
+    assert(hydrated.type === "json");
+    expect(hydrated.data.matches.map((match) => match.lineText)).toEqual(["final"]);
   });
 
-  it("POST /uploads supports overwriting an existing file on the same path", async () => {
-    const firstUpload = asJsonResponse<{ uploadId: string; fileKey: string }>(
-      await fragment.callRoute("POST", "/uploads", {
-        body: {
-          provider,
-          keyParts: ["users", 1, "overwrite"],
-          filename: "first.txt",
-          sizeBytes: 5,
-          contentType: "text/plain",
-        },
-      }),
-    );
-
-    const firstStream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(new TextEncoder().encode("first"));
-        controller.close();
-      },
+  it("keeps batch content prepared until its commit, and discards it when the batch never commits", async () => {
+    const committed = await createUpload("batch/committed.txt", "committed", {
+      publicationMode: "batch",
     });
-
-    asJsonResponse(
-      await fragment.callRoute("PUT", "/uploads/:uploadId/content", {
-        pathParams: { uploadId: firstUpload.data.uploadId },
-        body: firstStream,
-      }),
-    );
-
-    const secondUpload = asJsonResponse<{ uploadId: string; fileKey: string }>(
-      await fragment.callRoute("POST", "/uploads", {
-        body: {
-          provider,
-          fileKey: firstUpload.data.fileKey,
-          filename: "second.txt",
-          sizeBytes: 6,
-          contentType: "text/plain",
-        },
-      }),
-    );
-
-    const secondStream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(new TextEncoder().encode("second"));
-        controller.close();
-      },
+    const aborted = await createUpload("batch/aborted.txt", "aborted", {
+      publicationMode: "batch",
     });
-
-    const secondResponse = asJsonResponse<{
-      kind: "published";
-      file: { status: string; filename: string };
-    }>(
-      await fragment.callRoute("PUT", "/uploads/:uploadId/content", {
-        pathParams: { uploadId: secondUpload.data.uploadId },
-        body: secondStream,
-      }),
-    );
-
-    assert(secondResponse.data.file.status === "ready");
-    assert(secondResponse.data.file.filename === "second.txt");
-
-    const beforeDrain = await fragment.callRouteRaw("GET", "/files/by-key/content", {
-      query: { provider, key: firstUpload.data.fileKey },
+    const expired = await createUpload("batch/expired.txt", "expired", {
+      publicationMode: "batch",
     });
-    assert(beforeDrain.status === 200);
-    assert((await beforeDrain.text()) === "second");
+    assert(committed.type === "json" && aborted.type === "json" && expired.type === "json");
+    for (const [upload, content] of [
+      [committed, "committed"],
+      [aborted, "aborted"],
+      [expired, "expired"],
+    ] as const) {
+      const prepared = await putContent(upload.data.uploadId, content);
+      assert(prepared.type === "json");
+      assert(prepared.data.kind === "prepared");
+    }
 
-    await drainDurableHooks(fragment as unknown as AnyFragnoInstantiatedFragment);
-
-    const afterDrain = await fragment.callRouteRaw("GET", "/files/by-key/content", {
-      query: { provider, key: firstUpload.data.fileKey },
+    // A retried transfer finds its content already prepared.
+    const retried = await putContent(committed.data.uploadId, "committed");
+    assert(retried.type === "json");
+    assert(retried.data.kind === "prepared");
+    const preparedContent = await fragment.callRouteRaw("GET", "/uploads/:uploadId/content", {
+      pathParams: { uploadId: committed.data.uploadId },
     });
-    assert(afterDrain.status === 200);
-    assert((await afterDrain.text()) === "second");
+    assert((await preparedContent.text()) === "committed");
+    assert((await readFile("batch/committed.txt")) === 404);
+
+    const commit = await fragment.callRoute("POST", "/files/commit-prepared", {
+      body: { entries: [{ kind: "write", uploadId: committed.data.uploadId }] },
+    });
+    assert(commit.type === "json");
+    assert((await readFile("batch/committed.txt")) === "committed");
+
+    const abort = await fragment.callRoute("POST", "/uploads/:uploadId/abort", {
+      pathParams: { uploadId: aborted.data.uploadId },
+    });
+    assert(abort.type === "json");
+    expect(await listStoredContents()).toEqual(["committed", "expired"]);
+
+    await expireUploads();
+    await drainDurableHooks(fragment);
+    expect(await listStoredContents()).toEqual(["committed"]);
+    const expiredStatus = await fragment.callRoute("GET", "/uploads/:uploadId", {
+      pathParams: { uploadId: expired.data.uploadId },
+    });
+    assert(expiredStatus.type === "json");
+    assert(expiredStatus.data.status === "expired");
+    const committedStatus = await fragment.callRoute("GET", "/uploads/:uploadId", {
+      pathParams: { uploadId: committed.data.uploadId },
+    });
+    assert(committedStatus.type === "json");
+    assert(committedStatus.data.status === "completed");
   });
 
-  it("marks uploads as failed when proxy streaming errors", async () => {
-    const originalWriteStream = storage.writeStream;
-    storage.writeStream = async () => {
-      throw new Error("write failed");
-    };
+  it("lets one unfinished upload per file run, unless a new one replaces it", async () => {
+    const checksum = { algo: "sha256" as const, value: "deadbeef" };
+    const first = await createUpload("shared/report.txt", "report", { checksum });
+    assert(first.type === "json");
 
-    try {
-      const createResponse = asJsonResponse<{
-        uploadId: string;
-        fileKey: string;
-      }>(
-        await fragment.callRoute("POST", "/uploads", {
-          body: {
-            provider,
-            keyParts: ["users", 2, "avatar"],
-            filename: "boom.txt",
-            sizeBytes: 4,
+    // Retrying the same upload resumes it.
+    const resumed = await createUpload("shared/report.txt", "report", { checksum });
+    assert(resumed.type === "json");
+    expect(resumed.data.uploadId).toBe(first.data.uploadId);
+
+    const conflicting = await createUpload("shared/report.txt", "other report");
+    assert(conflicting.type === "error");
+    assert(conflicting.error.code === "UPLOAD_ALREADY_ACTIVE");
+
+    const replacing = await createUpload("shared/report.txt", "newest", {
+      replaceActiveUpload: true,
+    });
+    assert(replacing.type === "json");
+    const replaced = await putContent(first.data.uploadId, "report");
+    assert(replaced.type === "error");
+    assert(replaced.error.code === "UPLOAD_INVALID_STATE");
+    assert((await putContent(replacing.data.uploadId, "newest")).type === "json");
+    assert((await readFile("shared/report.txt")) === "newest");
+  });
+
+  it("rejects files larger than the largest file without storing them", async () => {
+    const declared = await createUpload("large/declared.txt", "x".repeat(MAX_FILE_BYTES + 1));
+    assert(declared.type === "error");
+    assert(declared.error.code === "FILE_TOO_LARGE");
+
+    // The session declared a small file, but the request sends more.
+    const understated = await createUpload("large/understated.txt", "small");
+    assert(understated.type === "json");
+    const sent = await putContent(understated.data.uploadId, "x".repeat(MAX_FILE_BYTES + 1));
+    assert(sent.type === "error");
+    assert(sent.error.code === "FILE_TOO_LARGE");
+    expect(await listStoredContents()).toEqual([]);
+  });
+
+  it("completes an upload whose content an earlier attempt stored without completing it", async () => {
+    const created = await createUpload("legacy/retried.txt", "retried");
+    assert(created.type === "json");
+    // Uploads stored content in its own transaction before completing, so one could fail between.
+    await fragment.inContext(async function () {
+      await this.handlerTx()
+        .retrieve(({ forSchema }) =>
+          forSchema(uploadSchema).findFirst("upload", (b) =>
+            b.whereIndex("primary", (eb) => eb("id", "=", created.data.uploadId)),
+          ),
+        )
+        .mutate(({ forSchema, retrieveResult: [upload] }) => {
+          forSchema(uploadSchema).create("storage_object", {
+            storageKey: upload!.objectKey,
+            body: new TextEncoder().encode("partial"),
             contentType: "text/plain",
-          },
-        }),
-      );
+            sizeBytes: 7n,
+          });
+        })
+        .execute();
+    });
 
-      assert(createResponse.type === "json");
-      const { uploadId, fileKey } = createResponse.data;
-
-      const stream = new ReadableStream<Uint8Array>({
-        start(controller) {
-          controller.enqueue(new TextEncoder().encode("boom"));
-          controller.close();
-        },
-      });
-
-      const uploadResponse = asErrorResponse(
-        await fragment.callRoute("PUT", "/uploads/:uploadId/content", {
-          pathParams: { uploadId },
-          body: stream,
-        }),
-      );
-
-      assert(uploadResponse.type === "error");
-      assert(uploadResponse.status === 502);
-      assert(uploadResponse.error.code === "STORAGE_ERROR");
-
-      const statusResponse = asJsonResponse<{
-        status: string;
-        errorCode: string;
-      }>(
-        await fragment.callRoute("GET", "/uploads/:uploadId", {
-          pathParams: { uploadId },
-        }),
-      );
-
-      assert(statusResponse.type === "json");
-      assert(statusResponse.data.status === "failed");
-      assert(statusResponse.data.errorCode === "STORAGE_ERROR");
-
-      const fileResponse = asErrorResponse(
-        await fragment.callRoute("GET", "/files/by-key", {
-          query: { provider, key: fileKey },
-        }),
-      );
-
-      assert(fileResponse.type === "error");
-      assert(fileResponse.status === 404);
-      assert(fileResponse.error.code === "FILE_NOT_FOUND");
-    } finally {
-      storage.writeStream = originalWriteStream;
-    }
+    assert((await putContent(created.data.uploadId, "retried")).type === "json");
+    assert((await readFile("legacy/retried.txt")) === "retried");
+    expect(await listStoredContents()).toEqual(["retried"]);
   });
 
-  it("preserves typed checksum failures from proxy storage", async () => {
-    const originalWriteStream = storage.writeStream;
-    storage.writeStream = async () => {
-      throw new UploadStorageError("INVALID_CHECKSUM", "Checksum mismatch.");
-    };
+  it("deletes content named by cleanup events queued before writes deleted it themselves", async () => {
+    const created = await createUpload("legacy/file.txt", "superseded");
+    assert(created.type === "json");
+    assert((await putContent(created.data.uploadId, "superseded")).type === "json");
+    const objectKey = await fragment.inContext(function () {
+      return this.handlerTx()
+        .retrieve(({ forSchema }) =>
+          forSchema(uploadSchema).find("storage_object", (b) => b.whereIndex("primary")),
+        )
+        .transformRetrieve(([[object]]) => object!.storageKey)
+        .execute();
+    });
 
-    try {
-      const createResponse = asJsonResponse<{ uploadId: string }>(
-        await fragment.callRoute("POST", "/uploads", {
-          body: {
+    await fragment.inContext(async function () {
+      await this.handlerTx()
+        .mutate(({ forSchema }) => {
+          forSchema(uploadSchema).triggerHook("cleanupStorageObject", {
             provider,
-            fileKey: "proxy/checksum.txt",
-            filename: "checksum.txt",
-            sizeBytes: 4,
+            fileKey: "legacy/file.txt",
+            objectKey,
+            sizeBytes: 10,
             contentType: "text/plain",
-          },
-        }),
-      );
-
-      const stream = new ReadableStream<Uint8Array>({
-        start(controller) {
-          controller.enqueue(new TextEncoder().encode("test"));
-          controller.close();
-        },
-      });
-      const uploadResponse = asErrorResponse(
-        await fragment.callRoute("PUT", "/uploads/:uploadId/content", {
-          pathParams: { uploadId: createResponse.data.uploadId },
-          body: stream,
-        }),
-      );
-
-      assert(uploadResponse.status === 400);
-      assert(uploadResponse.error.code === "INVALID_CHECKSUM");
-
-      const statusResponse = asJsonResponse<{ status: string; errorCode: string }>(
-        await fragment.callRoute("GET", "/uploads/:uploadId", {
-          pathParams: { uploadId: createResponse.data.uploadId },
-        }),
-      );
-      assert(statusResponse.data.status === "failed");
-      assert(statusResponse.data.errorCode === "INVALID_CHECKSUM");
-    } finally {
-      storage.writeStream = originalWriteStream;
-    }
-  });
-
-  it("POST /uploads/:uploadId/progress records client-reported progress", async () => {
-    const createResponse = asJsonResponse<{ uploadId: string }>(
-      await fragment.callRoute("POST", "/uploads", {
-        body: {
-          provider,
-          keyParts: ["teams", 9, "logo"],
-          filename: "logo.png",
-          sizeBytes: 10,
-          contentType: "image/png",
-        },
-      }),
-    );
-
-    assert(createResponse.type === "json");
-    const { uploadId } = createResponse.data;
-
-    const progressResponse = asJsonResponse<{
-      bytesUploaded: number;
-      partsUploaded: number;
-    }>(
-      await fragment.callRoute("POST", "/uploads/:uploadId/progress", {
-        pathParams: { uploadId },
-        body: { bytesUploaded: 2, partsUploaded: 1 },
-      }),
-    );
-
-    assert(progressResponse.type === "json");
-    assert(progressResponse.data.bytesUploaded === 2);
-    assert(progressResponse.data.partsUploaded === 1);
-
-    const smallerProgressResponse = asJsonResponse<{
-      bytesUploaded: number;
-      partsUploaded: number;
-    }>(
-      await fragment.callRoute("POST", "/uploads/:uploadId/progress", {
-        pathParams: { uploadId },
-        body: { bytesUploaded: 1, partsUploaded: 0 },
-      }),
-    );
-
-    assert(smallerProgressResponse.type === "json");
-    assert(smallerProgressResponse.data.bytesUploaded === 2);
-    assert(smallerProgressResponse.data.partsUploaded === 1);
-
-    const statusResponse = asJsonResponse<{
-      status: string;
-      bytesUploaded: number;
-      partsUploaded: number;
-    }>(
-      await fragment.callRoute("GET", "/uploads/:uploadId", {
-        pathParams: { uploadId },
-      }),
-    );
-
-    assert(statusResponse.type === "json");
-    assert(statusResponse.data.status === "in_progress");
-    assert(statusResponse.data.bytesUploaded === 2);
-    assert(statusResponse.data.partsUploaded === 1);
-  });
-
-  it("POST /uploads/:uploadId/abort does not create a file", async () => {
-    const createResponse = asJsonResponse<{
-      uploadId: string;
-      fileKey: string;
-    }>(
-      await fragment.callRoute("POST", "/uploads", {
-        body: {
-          provider,
-          keyParts: ["users", 3, "avatar"],
-          filename: "abort.txt",
-          sizeBytes: 4,
-          contentType: "text/plain",
-        },
-      }),
-    );
-
-    assert(createResponse.type === "json");
-    const { uploadId, fileKey } = createResponse.data;
-
-    const abortResponse = asJsonResponse<{ ok: boolean }>(
-      await fragment.callRoute("POST", "/uploads/:uploadId/abort", {
-        pathParams: { uploadId },
-      }),
-    );
-
-    assert(abortResponse.type === "json");
-    assert(abortResponse.data.ok);
-
-    const statusResponse = asJsonResponse<{ status: string }>(
-      await fragment.callRoute("GET", "/uploads/:uploadId", {
-        pathParams: { uploadId },
-      }),
-    );
-
-    assert(statusResponse.type === "json");
-    assert(statusResponse.data.status === "aborted");
-
-    const fileResponse = asErrorResponse(
-      await fragment.callRoute("GET", "/files/by-key", {
-        query: { provider, key: fileKey },
-      }),
-    );
-
-    assert(fileResponse.type === "error");
-    assert(fileResponse.status === 404);
-    assert(fileResponse.error.code === "FILE_NOT_FOUND");
-  });
-
-  it("allows retry after failed proxy upload", async () => {
-    const originalWriteStream = storage.writeStream;
-    storage.writeStream = async () => {
-      throw new Error("write failed");
-    };
-
-    const createResponse = asJsonResponse<{
-      uploadId: string;
-      fileKey: string;
-    }>(
-      await fragment.callRoute("POST", "/uploads", {
-        body: {
-          provider,
-          keyParts: ["users", 4, "avatar"],
-          filename: "retry.txt",
-          sizeBytes: 5,
-          contentType: "text/plain",
-        },
-      }),
-    );
-
-    assert(createResponse.type === "json");
-
-    const stream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(new TextEncoder().encode("retry"));
-        controller.close();
-      },
+          });
+          forSchema(uploadSchema).triggerHook("cleanupUnfinishedUpload", {
+            objectKey: "legacy/never-stored",
+            storageUploadId: null,
+          });
+        })
+        .execute();
     });
+    await drainDurableHooks(fragment);
+    expect(await listStoredContents()).toEqual([]);
+  });
 
-    const firstUpload = asErrorResponse(
-      await fragment.callRoute("PUT", "/uploads/:uploadId/content", {
-        pathParams: { uploadId: createResponse.data.uploadId },
-        body: stream,
-      }),
-    );
+  it("deletes the content of files whose deletion was queued before deletes deleted it themselves", async () => {
+    const created = await createUpload("legacy/deleted.txt", "orphaned");
+    assert(created.type === "json");
+    assert((await putContent(created.data.uploadId, "orphaned")).type === "json");
 
-    assert(firstUpload.type === "error");
-    assert(firstUpload.status === 502);
-
-    storage.writeStream = originalWriteStream;
-
-    const retryResponse = asJsonResponse<{ uploadId: string; fileKey: string }>(
-      await fragment.callRoute("POST", "/uploads", {
-        body: {
-          provider,
-          keyParts: ["users", 4, "avatar"],
-          filename: "retry.txt",
-          sizeBytes: 5,
-          contentType: "text/plain",
-        },
-      }),
-    );
-
-    assert(retryResponse.type === "json");
-    expect(retryResponse.data.fileKey).toBe(createResponse.data.fileKey);
-
-    const retryStream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(new TextEncoder().encode("retry"));
-        controller.close();
-      },
+    // Deletes only marked the file deleted, and left its content to the hook they queued.
+    await fragment.inContext(async function () {
+      await this.handlerTx()
+        .retrieve(({ forSchema }) =>
+          forSchema(uploadSchema).findFirst("file", (b) =>
+            b.whereIndex("idx_file_provider_key", (eb) =>
+              eb.and(eb("provider", "=", provider), eb("key", "=", "legacy/deleted.txt")),
+            ),
+          ),
+        )
+        .mutate(({ forSchema, retrieveResult: [file] }) => {
+          const uow = forSchema(uploadSchema);
+          uow.update("file", file!.id, (b) =>
+            b.set({ status: "deleted", deletedAt: uow.now(), updatedAt: uow.now() }),
+          );
+          uow.triggerHook("onFileDeleted", {
+            provider,
+            fileKey: file!.key,
+            objectKey: file!.objectKey,
+            sizeBytes: 8,
+            contentType: "text/plain",
+          });
+        })
+        .execute();
     });
-
-    const retryUpload = asJsonResponse<{
-      kind: "published";
-      file: { status: string };
-    }>(
-      await fragment.callRoute("PUT", "/uploads/:uploadId/content", {
-        pathParams: { uploadId: retryResponse.data.uploadId },
-        body: retryStream,
-      }),
-    );
-
-    assert(retryUpload.type === "json");
-    assert(retryUpload.data.file.status === "ready");
-  });
-});
-
-const createMultiStrategyStorageAdapter = (name: string) => {
-  const initUpload = vi.fn<StorageAdapter["initUpload"]>(async ({ provider, fileKey }) => {
-    const expiresAt = new Date(Date.now() + 60_000);
-    const storageKey = `store/${provider}/${fileKey}`;
-
-    if (fileKey.includes("multipart")) {
-      return {
-        strategy: "direct-multipart" as const,
-        storageKey,
-        storageUploadId: `upload-${name}`,
-        partSizeBytes: 3,
-        expiresAt,
-      };
-    }
-
-    if (fileKey.includes("proxy")) {
-      return {
-        strategy: "proxy" as const,
-        storageKey,
-        expiresAt,
-      };
-    }
-
-    return {
-      strategy: "direct-single" as const,
-      storageKey,
-      uploadUrl: `https://${name}.storage/upload`,
-      uploadHeaders: { "Content-Type": "text/plain" },
-      expiresAt,
-    };
-  });
-
-  const getPartUploadUrls = vi.fn(async ({ partNumbers }: { partNumbers: number[] }) =>
-    partNumbers.map((partNumber) => ({
-      partNumber,
-      url: `https://${name}.storage/part/${partNumber}`,
-    })),
-  );
-  const completeMultipartUpload = vi.fn(async () => ({ etag: `etag-${name}` }));
-  const abortMultipartUpload = vi.fn(async () => undefined);
-  const finalizeUpload = vi.fn(async () => ({ etag: `etag-${name}` }));
-  const writeStream = vi.fn(async () => ({ sizeBytes: 5n }));
-
-  const adapter: StorageAdapter = {
-    name,
-    capabilities: {
-      directUpload: true,
-      multipartUpload: true,
-      signedDownload: false,
-      proxyUpload: true,
-    },
-    resolveStorageKey: ({ provider, fileKey }) => `store/${provider}/${fileKey}`,
-    initUpload,
-    getPartUploadUrls,
-    completeMultipartUpload,
-    abortMultipartUpload,
-    finalizeUpload,
-    writeStream,
-    deleteObject: async () => {},
-  };
-
-  return {
-    adapter,
-    initUpload,
-    getPartUploadUrls,
-    completeMultipartUpload,
-    abortMultipartUpload,
-    finalizeUpload,
-    writeStream,
-  };
-};
-
-describe("upload route provider mismatch guards", () => {
-  type UploadFragmentCaller = {
-    callRoute: (...args: unknown[]) => Promise<unknown>;
-  };
-
-  type JsonResponse<T extends Record<string, unknown> = Record<string, unknown>> = {
-    type: "json";
-    data: T;
-  };
-
-  type ErrorResponse = {
-    type: "error";
-    status: number;
-    error: { code: string };
-  };
-
-  const asObject = (
-    value: unknown,
-  ): value is {
-    type?: unknown;
-    status?: unknown;
-    error?: unknown;
-    data?: unknown;
-  } => typeof value === "object" && value !== null;
-
-  const asJsonResponse = <T extends Record<string, unknown>>(value: unknown): JsonResponse<T> => {
-    assert(asObject(value));
-    assert(value.type === "json");
-    assert("data" in value);
-    return value as JsonResponse<T>;
-  };
-
-  const asErrorResponse = (value: unknown): ErrorResponse => {
-    assert(asObject(value));
-    assert(value.type === "error");
-    assert(typeof value.status === "number");
-    const errorPayload = value.error as { code?: unknown };
-    assert(typeof errorPayload?.code === "string");
-    return value as ErrorResponse;
-  };
-
-  const primaryStorage = createMultiStrategyStorageAdapter("provider-a");
-  const secondaryStorage = createMultiStrategyStorageAdapter("provider-b");
-  let testContext: { resetDatabase: () => Promise<void> };
-  let cleanup: (() => Promise<void>) | undefined;
-  let primaryFragment: UploadFragmentCaller;
-  let secondaryFragment: UploadFragmentCaller;
-
-  beforeAll(async () => {
-    const build = await buildDatabaseFragmentsTest()
-      .withTestAdapter({ type: "drizzle-pglite" })
-      .withDbRoundtripGuard({ maxRoundtrips: 2 })
-      .withFragment(
-        "upload",
-        instantiate(uploadFragmentDefinition)
-          .withConfig({ storage: primaryStorage.adapter })
-          .withRoutes(uploadRoutes),
-      )
-      .build();
-
-    const secondary = instantiate(uploadFragmentDefinition)
-      .withConfig({ storage: secondaryStorage.adapter })
-      .withRoutes(uploadRoutes)
-      .withOptions({
-        databaseAdapter: build.test.adapter,
-      })
-      .build();
-
-    testContext = build.test;
-    cleanup = async () => {
-      await build.test.cleanup();
-    };
-    primaryFragment = build.fragments.upload.fragment as unknown as UploadFragmentCaller;
-    secondaryFragment = secondary as unknown as UploadFragmentCaller;
-  });
-
-  beforeEach(async () => {
-    await testContext.resetDatabase();
-    vi.clearAllMocks();
-  });
-
-  afterAll(async () => {
-    await cleanup?.();
-  });
-
-  it("rejects wrong-provider multipart part URL requests before storage I/O", async () => {
-    const createResponse = asJsonResponse<{ uploadId: string }>(
-      await primaryFragment.callRoute("POST", "/uploads", {
-        body: {
-          provider: primaryStorage.adapter.name,
-          fileKey: "files.multipart.guard",
-          filename: "movie.mp4",
-          sizeBytes: 8,
-          contentType: "video/mp4",
-        },
-      }),
-    );
-
-    const response = asErrorResponse(
-      await secondaryFragment.callRoute("POST", "/uploads/:uploadId/parts", {
-        pathParams: { uploadId: createResponse.data.uploadId },
-        body: { partNumbers: [1, 2] },
-      }),
-    );
-
-    assert(response.status === 409);
-    assert(response.error.code === "PROVIDER_MISMATCH");
-    expect(secondaryStorage.getPartUploadUrls).not.toHaveBeenCalled();
-  });
-
-  it("rejects wrong-provider multipart completion before storage I/O", async () => {
-    const createResponse = asJsonResponse<{ uploadId: string }>(
-      await primaryFragment.callRoute("POST", "/uploads", {
-        body: {
-          provider: primaryStorage.adapter.name,
-          fileKey: "files.multipart.complete-guard",
-          filename: "movie.mp4",
-          sizeBytes: 8,
-          contentType: "video/mp4",
-        },
-      }),
-    );
-
-    const response = asErrorResponse(
-      await secondaryFragment.callRoute("POST", "/uploads/:uploadId/complete", {
-        pathParams: { uploadId: createResponse.data.uploadId },
-        body: {
-          parts: [
-            { partNumber: 1, etag: "etag-1" },
-            { partNumber: 2, etag: "etag-2" },
-          ],
-        },
-      }),
-    );
-
-    assert(response.status === 409);
-    assert(response.error.code === "PROVIDER_MISMATCH");
-    expect(secondaryStorage.completeMultipartUpload).not.toHaveBeenCalled();
-    expect(secondaryStorage.finalizeUpload).not.toHaveBeenCalled();
-  });
-
-  it("rejects wrong-provider abort requests before storage I/O", async () => {
-    const createResponse = asJsonResponse<{ uploadId: string }>(
-      await primaryFragment.callRoute("POST", "/uploads", {
-        body: {
-          provider: primaryStorage.adapter.name,
-          fileKey: "files.multipart.abort-guard",
-          filename: "movie.mp4",
-          sizeBytes: 8,
-          contentType: "video/mp4",
-        },
-      }),
-    );
-
-    const response = asErrorResponse(
-      await secondaryFragment.callRoute("POST", "/uploads/:uploadId/abort", {
-        pathParams: { uploadId: createResponse.data.uploadId },
-      }),
-    );
-
-    assert(response.status === 409);
-    assert(response.error.code === "PROVIDER_MISMATCH");
-    expect(secondaryStorage.abortMultipartUpload).not.toHaveBeenCalled();
-  });
-
-  it("rejects wrong-provider proxy uploads before storage writes", async () => {
-    const createResponse = asJsonResponse<{ uploadId: string }>(
-      await primaryFragment.callRoute("POST", "/uploads", {
-        body: {
-          provider: primaryStorage.adapter.name,
-          fileKey: "files.proxy.guard",
-          filename: "hello.txt",
-          sizeBytes: 5,
-          contentType: "text/plain",
-        },
-      }),
-    );
-
-    const stream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(new TextEncoder().encode("hello"));
-        controller.close();
-      },
-    });
-
-    const response = asErrorResponse(
-      await secondaryFragment.callRoute("PUT", "/uploads/:uploadId/content", {
-        pathParams: { uploadId: createResponse.data.uploadId },
-        body: stream,
-      }),
-    );
-
-    assert(response.status === 409);
-    assert(response.error.code === "PROVIDER_MISMATCH");
-    expect(secondaryStorage.writeStream).not.toHaveBeenCalled();
-  });
-
-  it("rejects wrong-provider finalize-only completion before storage I/O", async () => {
-    const createResponse = asJsonResponse<{ uploadId: string }>(
-      await primaryFragment.callRoute("POST", "/uploads", {
-        body: {
-          provider: primaryStorage.adapter.name,
-          fileKey: "files.single.guard",
-          filename: "hello.txt",
-          sizeBytes: 5,
-          contentType: "text/plain",
-        },
-      }),
-    );
-
-    const response = asErrorResponse(
-      await secondaryFragment.callRoute("POST", "/uploads/:uploadId/complete", {
-        pathParams: { uploadId: createResponse.data.uploadId },
-        body: {},
-      }),
-    );
-
-    assert(response.status === 409);
-    assert(response.error.code === "PROVIDER_MISMATCH");
-    expect(secondaryStorage.finalizeUpload).not.toHaveBeenCalled();
-  });
-
-  it("rejects wrong-provider prepared batch commits", async () => {
-    const fileKey = "files.proxy.prepared-commit-guard";
-    const created = asJsonResponse<{ uploadId: string }>(
-      await primaryFragment.callRoute("POST", "/uploads", {
-        body: {
-          provider: primaryStorage.adapter.name,
-          fileKey,
-          filename: "hello.txt",
-          sizeBytes: 5,
-          contentType: "text/plain",
-          publicationMode: "batch",
-        },
-      }),
-    );
-
-    const stream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(new TextEncoder().encode("hello"));
-        controller.close();
-      },
-    });
-    const prepared = asJsonResponse<{ kind: string; write: { uploadId: string } }>(
-      await primaryFragment.callRoute("PUT", "/uploads/:uploadId/content", {
-        pathParams: { uploadId: created.data.uploadId },
-        body: stream,
-      }),
-    );
-    assert(prepared.data.kind === "prepared");
-
-    const response = asErrorResponse(
-      await secondaryFragment.callRoute("POST", "/files/commit-prepared", {
-        body: {
-          entries: [
-            {
-              kind: "write",
-              uploadId: prepared.data.write.uploadId,
-              precondition: { kind: "absent" },
-            },
-          ],
-        },
-      }),
-    );
-
-    assert(response.status === 409);
-    assert(response.error.code === "PROVIDER_MISMATCH");
-
-    const missing = asErrorResponse(
-      await primaryFragment.callRoute("GET", "/files/by-key", {
-        query: { provider: primaryStorage.adapter.name, key: fileKey },
-      }),
-    );
-    assert(missing.status === 404);
-    assert(missing.error.code === "FILE_NOT_FOUND");
-    expect(secondaryStorage.writeStream).not.toHaveBeenCalled();
+    await drainDurableHooks(fragment);
+    expect(await listStoredContents()).toEqual([]);
   });
 });

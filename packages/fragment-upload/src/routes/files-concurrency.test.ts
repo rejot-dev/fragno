@@ -1,7 +1,5 @@
-import { afterEach, assert, describe, expect, it, vi } from "vitest";
+import { afterEach, assert, describe, expect, it } from "vitest";
 
-import { promises as fs } from "node:fs";
-import os from "node:os";
 import path from "node:path";
 
 import type { UOWInstrumentation, UOWInstrumentationContext } from "@fragno-dev/db/unit-of-work";
@@ -13,7 +11,6 @@ import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test"
 import { uploadFragmentDefinition } from "../definition";
 import { uploadRoutes } from "../index";
 import { uploadSchema } from "../schema";
-import { createFilesystemStorageAdapter } from "../storage/fs";
 
 const pendingCleanups: Array<() => Promise<void>> = [];
 
@@ -21,52 +18,57 @@ afterEach(async () => {
   await Promise.all(pendingCleanups.splice(0).map(async (cleanup) => await cleanup()));
 });
 
-const uploadRetrievalOperations = (context: UOWInstrumentationContext) =>
-  context.uow
-    .getRetrievalOperations()
-    .filter((operation) => operation.type === "find" && operation.table.name === "upload");
-
-const operationHasJoins = (
-  operation: ReturnType<typeof uploadRetrievalOperations>[number],
-): boolean =>
-  ("joins" in operation.options &&
-    Array.isArray(operation.options.joins) &&
-    operation.options.joins.length > 0) ||
-  ("queryTree" in operation.options &&
-    operation.options.queryTree !== undefined &&
-    operation.options.queryTree.children.length > 0);
+/** The tables each retrieval of the unit of work reads, with the tables its rows join. */
+const retrievedTables = (context: UOWInstrumentationContext) =>
+  context.uow.getRetrievalOperations().flatMap((operation) =>
+    operation.type === "find"
+      ? [
+          {
+            table: operation.table.name,
+            joins:
+              "queryTree" in operation.options && operation.options.queryTree
+                ? operation.options.queryTree.children.map((child) => child.table.name)
+                : [],
+          },
+        ]
+      : [],
+  );
 
 const isPreparedBatchRetrieval = (context: UOWInstrumentationContext): boolean => {
-  const operations = uploadRetrievalOperations(context);
-  return operations.length === 2 && operations.some(operationHasJoins);
+  const operations = retrievedTables(context).filter(({ table }) => table === "upload");
+  return operations.length === 2 && operations.some(({ joins }) => joins.includes("file"));
 };
 
 const isUploadTimeoutRetrieval = (context: UOWInstrumentationContext): boolean => {
-  const operations = uploadRetrievalOperations(context);
-  return operations.length === 2 && operations.every((operation) => !operationHasJoins(operation));
+  const operations = retrievedTables(context).filter(({ table }) => table === "upload");
+  return (
+    operations.length === 2 && operations.some(({ joins }) => joins.includes("storage_object"))
+  );
 };
 
-const buildUploadRoutesTest = async (instrumentation?: UOWInstrumentation, maxRoundtrips = 2) => {
-  const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "fragno-upload-concurrency-"));
-  const filesystemStorage = createFilesystemStorageAdapter({ rootDir });
-  const deleteObject = vi.fn(filesystemStorage.deleteObject.bind(filesystemStorage));
-  const storage = { ...filesystemStorage, deleteObject };
+const isFileEditRetrieval = (context: UOWInstrumentationContext): boolean => {
+  const operations = retrievedTables(context);
+  return operations.length === 2 && operations.every(({ table }) => table === "file");
+};
+
+const buildUploadRoutesTest = async (instrumentation?: UOWInstrumentation) => {
   const build = await buildDatabaseFragmentsTest()
     .withTestAdapter({ type: "kysely-sqlite", uowConfig: { instrumentation } })
-    .withDbRoundtripGuard({ maxRoundtrips })
+    .withDbRoundtripGuard(true)
     .withFragment(
       "upload",
-      instantiate(uploadFragmentDefinition).withConfig({ storage }).withRoutes(uploadRoutes),
+      instantiate(uploadFragmentDefinition)
+        .withConfig({ maxFileBytes: 1024 })
+        .withRoutes(uploadRoutes),
     )
     .build();
 
   await build.test.resetDatabase();
   pendingCleanups.push(async () => {
     await build.test.cleanup();
-    await fs.rm(rootDir, { recursive: true, force: true });
   });
 
-  return { ...build, deleteObject, provider: storage.name };
+  return { ...build, provider: "workspace" };
 };
 
 const prepareProxyFile = async (
@@ -153,8 +155,7 @@ describe("prepared file commit concurrency", () => {
         }
       },
     };
-    const { fragments, test, deleteObject, provider } =
-      await buildUploadRoutesTest(instrumentation);
+    const { fragments, test, provider } = await buildUploadRoutesTest(instrumentation);
     const { fragment, db } = fragments.upload;
     const prepared = await prepareProxyFile(
       fragment,
@@ -227,7 +228,6 @@ describe("prepared file commit concurrency", () => {
     });
     assert(upload.type === "json");
     assert(upload.data.status === "completed");
-    expect(deleteObject).not.toHaveBeenCalledWith({ storageKey: prepared.objectKey });
 
     const content = await fragment.callRouteRaw("GET", "/files/by-key/content", {
       query: { provider, key: prepared.fileKey },
@@ -377,26 +377,26 @@ describe("prepared file commit concurrency", () => {
     assert((await assertedContent.text()) === "concurrent");
   });
 
-  it("rejects all server-side edits when one source changes before atomic publication", async () => {
-    const batchRetrieved = Promise.withResolvers<void>();
-    const releaseBatchMutation = Promise.withResolvers<void>();
-    let pauseBatch = false;
-    let batchPaused = false;
+  it("applies server-side edits to the content a concurrent write published", async () => {
+    const editRetrieved = Promise.withResolvers<void>();
+    const releaseEditMutation = Promise.withResolvers<void>();
+    let pauseEdit = false;
+    let editPaused = false;
     const instrumentation: UOWInstrumentation = {
       async afterRetrieve(context) {
-        if (pauseBatch && !batchPaused && isPreparedBatchRetrieval(context)) {
-          batchPaused = true;
-          batchRetrieved.resolve();
-          await releaseBatchMutation.promise;
+        if (pauseEdit && !editPaused && isFileEditRetrieval(context)) {
+          editPaused = true;
+          editRetrieved.resolve();
+          await releaseEditMutation.promise;
         }
       },
     };
-    const { fragments, provider, test } = await buildUploadRoutesTest(instrumentation, 3);
+    const { fragments, provider } = await buildUploadRoutesTest(instrumentation);
     const { fragment } = fragments.upload;
     await replaceFile(fragment, provider, "edits/first.txt", "first-v1");
     await replaceFile(fragment, provider, "edits/second.txt", "second-v1");
 
-    pauseBatch = true;
+    pauseEdit = true;
     const editRequest = fragment.callRoute("POST", "/files/apply-edits", {
       body: {
         provider,
@@ -404,60 +404,38 @@ describe("prepared file commit concurrency", () => {
           {
             kind: "replace",
             fileKey: "edits/first.txt",
-            search: "v1",
-            replacement: "from-batch",
+            search: "-v",
+            replacement: "-edited-v",
           },
           {
             kind: "replace",
             fileKey: "edits/second.txt",
-            search: "v1",
-            replacement: "from-batch",
+            search: "-v",
+            replacement: "-edited-v",
           },
         ],
       },
     });
-    await batchRetrieved.promise;
+    await editRetrieved.promise;
 
-    await replaceFile(fragment, provider, "edits/first.txt", "first-concurrent");
-    releaseBatchMutation.resolve();
+    await replaceFile(fragment, provider, "edits/first.txt", "first-v2");
+    releaseEditMutation.resolve();
 
-    const rejected = await editRequest;
-    assert(rejected.type === "error");
-    assert(rejected.status === 412);
-    assert(rejected.error.code === "FILE_PRECONDITION_FAILED");
-
-    const firstContent = await fragment.callRouteRaw("GET", "/files/by-key/content", {
-      query: { provider, key: "edits/first.txt" },
-    });
-    const secondContent = await fragment.callRouteRaw("GET", "/files/by-key/content", {
-      query: { provider, key: "edits/second.txt" },
-    });
-    assert((await firstContent.text()) === "first-concurrent");
-    assert((await secondContent.text()) === "second-v1");
-
-    const internalFragment = getInternalFragment(test.adapter);
-    const hooks = await internalFragment.inContext(async function () {
-      return await this.handlerTx()
-        .withServiceCalls(
-          () => [internalFragment.services.hookService.getHooksByNamespace("upload")] as const,
-        )
-        .transform(({ serviceResult: [result] }) => result)
-        .execute();
-    });
-    const editUploadIds = hooks.flatMap((hook) => {
-      const payload = hook.payload as { uploadId?: string; fileKey?: string } | null;
-      return hook.hookName === "onUploadTimeout" && payload?.fileKey?.startsWith("edits/")
-        ? [payload.uploadId]
-        : [];
-    });
-    expect(editUploadIds).toHaveLength(2);
-    for (const uploadId of editUploadIds) {
-      assert(uploadId);
-      const upload = await fragment.callRoute("GET", "/uploads/:uploadId", {
-        pathParams: { uploadId },
+    // The edit read v1 of the first file, so it retries against v2 instead of overwriting it.
+    const applied = await editRequest;
+    assert(applied.type === "json");
+    expect(applied.data.edits.map((edit) => edit.content)).toEqual([
+      "first-edited-v2",
+      "second-edited-v1",
+    ]);
+    for (const [key, text] of [
+      ["edits/first.txt", "first-edited-v2"],
+      ["edits/second.txt", "second-edited-v1"],
+    ]) {
+      const content = await fragment.callRouteRaw("GET", "/files/by-key/content", {
+        query: { provider, key },
       });
-      assert(upload.type === "json");
-      assert(upload.data.status === "prepared");
+      expect(await content.text()).toBe(text);
     }
   });
 

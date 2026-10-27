@@ -1,0 +1,45 @@
+---
+title: Storage
+description: Where the Upload fragment keeps file content, and what to use for large files.
+---
+
+## Content lives in your database
+
+The fragment stores every file's bytes in its own `storage_object` table, next to the `file` and
+`upload` records. Each write stores the new content, points the file at it, and deletes the content
+it replaces in one transaction, so readers never see a file without its content and replaced content
+never lingers.
+
+`maxFileBytes` bounds every write. Pick it within your database's row limits; Cloudflare Durable
+Object SQLite, for example, rejects values larger than 2 MB.
+
+```ts
+const fragment = createUploadFragment(
+  { maxFileBytes: 1_900_000 },
+  { databaseAdapter, mountRoute: "/api/uploads" },
+);
+```
+
+## Large files
+
+Recordings, videos, archives, and other files too large for database rows belong in object storage.
+The `@fragno-dev/blobs` fragment keeps them in an S3-compatible bucket such as R2 and hands out
+presigned URLs, so their bytes never pass through your server.
+
+```ts
+import { createBlobsFragment, createS3BlobStorage } from "@fragno-dev/blobs";
+
+const blobs = createBlobsFragment(
+  {
+    storage: createS3BlobStorage({
+      endpoint: "https://<account>.r2.cloudflarestorage.com",
+      bucket: "blobs",
+      pathStyle: true,
+      signer, // SigV4 signing, e.g. with aws4fetch
+      fetch,
+    }),
+    storageKeyPrefix: "",
+  },
+  { databaseAdapter, mountRoute: "/api/blobs" },
+);
+```
