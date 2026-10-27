@@ -4495,28 +4495,27 @@ const createFakeObjectOverrides = async (fakes: ScenarioFakes): Promise<LocalBac
               const { turns } = fakePi;
               async function settled(config: PiAgentConfig, requestId: string) {
                 const answered = turns.find((call) => call.requestId === requestId);
-                if (answered && runtime.config.bindings.automations) {
-                  const agent = createBackofficeAgentContext({
-                    config,
-                    runtime,
-                    readActiveTurn: async () => answered.turn,
-                  });
+                const ended = answered
+                  ? piAgentTurnCompletedEvent(
+                      config,
+                      createBackofficeAgentContext({
+                        config,
+                        runtime,
+                        readActiveTurn: async () => answered.turn,
+                      }),
+                      { requestId, turn: answered.turn },
+                      answered.answerEntryId,
+                      new Date(nowEpochMs()),
+                    )
+                  : null;
+                if (ended && runtime.config.bindings.automations) {
                   await runtime.objects.automations
                     .for(config.scope)
-                    .commands.ingestEvent(
-                      piAgentTurnCompletedEvent(
-                        config,
-                        agent,
-                        { requestId, turn: answered.turn },
-                        answered.answerEntryId,
-                        new Date(nowEpochMs()),
-                      ),
-                      { propagationContext: null },
-                    );
+                    .commands.ingestEvent(ended, { propagationContext: null });
                 }
                 await runtime.objects.piManager
                   .for(config.scope)
-                  .commands.reportSettledTurn({ agentName: config.agentName, requestId });
+                  .commands.reportSettledTurn({ agentName: config.agentName, requestId, ended });
               }
               return {
                 ...fakePi.agent,

@@ -51,6 +51,9 @@ async function piManager() {
             throw new Error("Package agent tests bill nothing.");
           },
           automations: null,
+          notifyAgent: async () => {
+            throw new Error("Package agent tests notify no agents.");
+          },
         })
         .withRoutes([piManagerDirectoryRoutes]),
     )

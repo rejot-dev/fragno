@@ -45,6 +45,7 @@ import type { BackofficeRootOwnerReference } from "@/backoffice-runtime/resolved
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { readSavedWorkflowProgram } from "@/fragno/codemode/workflow-program";
 import { piAgentActor } from "@/fragno/pi/agent/pi-agent-actor";
+import { piAgentNotificationEvent } from "@/fragno/pi/agent/pi-agent-contract";
 import { createPiManagerRuntime } from "@/fragno/pi/manager/pi-manager-runtime";
 
 import {
@@ -478,15 +479,15 @@ const handleNotifyAgentRouteAction = async ({
     await commitDispatch({ kind: "skipped", reason: "caused_by_notified_agent" }, null);
     return;
   }
-  const { id, source, eventType, occurredAt, subject, payload } = acting.event;
   await createPiManagerRuntime({
     runtime,
     kernel: new BackofficeKernel(runtime),
     execution: acting.execution,
+    caller: null,
   }).notifyAgent({
     agentName: action.agentName,
     routeId: route.id,
-    event: { id, source, eventType, occurredAt, subject: subject ?? null, payload },
+    event: piAgentNotificationEvent(acting.event),
   });
   // The agent's queue lives in the Pi manager's object, so this commit cannot include the
   // notification. A failure here replays the notification, as any failed route does.

@@ -29,6 +29,7 @@ import { usageBillingForScope, type UsageBilling } from "@/fragno/billing/usage-
 import {
   type PiAgent,
   type PiAgentAddress,
+  type PiAgentSettledTurn,
   type PiAgentViewerAuthorization,
   type PiAvailableModel,
 } from "@/fragno/pi/agent/pi-agent-contract";
@@ -53,6 +54,7 @@ import {
   createPiManagerFragment,
   reportPiAgentTurnSettled,
 } from "@/fragno/pi/manager/pi-manager-fragment";
+import { createPiManagerRuntime } from "@/fragno/pi/manager/pi-manager-runtime";
 import { base64ToBytes } from "@/lib/base64";
 
 import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
@@ -77,7 +79,10 @@ export class PiManagerObject extends RpcTarget implements PiManagerCommands {
   readonly #scoped: ScopedFragmentDurableObjectRuntime<PiManagerFragment>;
   readonly #env: Pick<BackofficeRuntimeEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">;
   readonly #nowEpochMs: () => number;
-  readonly #config: Pick<PiManagerConfig, "agent" | "supportedAvailableModels" | "billing">;
+  readonly #config: Pick<
+    PiManagerConfig,
+    "agent" | "supportedAvailableModels" | "billing" | "notifyAgent"
+  >;
   readonly #runtime: BackofficeRuntimeServices;
   readonly #kernel: BackofficeKernel;
   readonly #classifier: PiClassifier | null;
@@ -117,13 +122,21 @@ export class PiManagerObject extends RpcTarget implements PiManagerCommands {
     this.#classifier = classifier;
     this.#imageGenerator = imageGenerator;
     this.#extractor = extractor;
+    const kernel = new BackofficeKernel(runtime);
+    this.#kernel = kernel;
     this.#config = {
       agent,
       supportedAvailableModels,
       billing: (scope) => usageBillingForScope(runtime, scope),
+      notifyAgent: async ({ agent: { scope, agentName }, provenance, event }) => {
+        await createPiManagerRuntime({
+          runtime,
+          kernel,
+          execution: { kind: "deferred", scope, ...provenance },
+          caller: null,
+        }).notifyAgent({ agentName, routeId: null, event });
+      },
     };
-    const kernel = new BackofficeKernel(runtime);
-    this.#kernel = kernel;
     this.#host = implementation.createFragmentHost({
       name: "PiManager",
       createRuntime: (scope) =>
@@ -189,7 +202,7 @@ export class PiManagerObject extends RpcTarget implements PiManagerCommands {
     }
   }
 
-  async reportSettledTurn(input: { agentName: string; requestId: string }): Promise<void> {
+  async reportSettledTurn(input: PiAgentSettledTurn): Promise<void> {
     await reportPiAgentTurnSettled(
       await this.#scoped.getRuntime(),
       { ...this.#config, scope: this.#scoped.requireOwnerScope() },

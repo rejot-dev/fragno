@@ -2,7 +2,11 @@ import { DurableObject } from "cloudflare:workers";
 
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { BackofficeMeData } from "@/fragno/auth/contracts";
-import { piAgentObjectName, type PiAgent } from "@/fragno/pi/agent/pi-agent-contract";
+import {
+  piAgentObjectName,
+  type PiAgent,
+  type PiAgentSettledTurn,
+} from "@/fragno/pi/agent/pi-agent-contract";
 
 import { AuthObject } from "./auth-object";
 import { Auth } from "./auth.do";
@@ -47,7 +51,7 @@ export class PiScenarioManager extends DurableObject<CloudflareEnv> {
     return await this.#object.fetch(request);
   }
 
-  async reportSettledTurn(input: { agentName: string; requestId: string }): Promise<void> {
+  async reportSettledTurn(input: PiAgentSettledTurn): Promise<void> {
     await this.#object.reportSettledTurn(input);
   }
 

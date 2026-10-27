@@ -183,6 +183,7 @@ export const createAutomationsRuntime = (
         scopeRestriction: params.execution.scopeRestriction,
         actors: params.execution.actors,
       },
+      caller: null,
     }).notifyAgent({ agentName, routeId: null, event });
   }
 

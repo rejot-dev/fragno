@@ -324,7 +324,14 @@ describe("runtime tool reference generation", () => {
           inputType: "PiSubmitPromptInput",
           outputType: "PiSubmitPromptOutput",
           bashCommand: "pi.prompt.submit",
-          bashOptions: ["agent", "content", "request-id", "when-busy", "billing-organization-id"],
+          bashOptions: [
+            "agent",
+            "content",
+            "request-id",
+            "when-busy",
+            "notify-when-done",
+            "billing-organization-id",
+          ],
         },
         {
           id: "pi.prompt.get",

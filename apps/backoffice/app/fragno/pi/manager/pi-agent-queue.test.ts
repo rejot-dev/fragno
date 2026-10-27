@@ -1,5 +1,6 @@
 import { assert, expect, onTestFinished, test } from "vitest";
 
+import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
@@ -9,6 +10,8 @@ import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test"
 import type { SubmissionRecord } from "@earendil-works/pi-durable";
 
 import { createBackofficeServiceExecution } from "@/backoffice-runtime/context";
+import { appendAutomationDelegate } from "@/fragno/automation/authority";
+import { piAgentActor } from "@/fragno/pi/agent/pi-agent-actor";
 import type {
   PiAgent,
   PiAgentAddress,
@@ -21,7 +24,7 @@ import type {
 import { piNotificationRequestId } from "@/fragno/pi/agent/pi-agent-notification-entry";
 
 import { piManagerConversationRoutes } from "./pi-manager-conversation-routes";
-import { piManagerDefinition } from "./pi-manager-definition";
+import { piManagerDefinition, type PiManagerConfig } from "./pi-manager-definition";
 import { piManagerDirectoryRoutes } from "./pi-manager-directory-routes";
 import { reportPiAgentTurnSettled } from "./pi-manager-fragment";
 import { piManagerTurnRoutes } from "./pi-manager-turn-routes";
@@ -40,10 +43,16 @@ const AVAILABLE_MODELS = [
 type PromptInput = {
   requestId: string;
   sender?: string;
+  /** The agent whose turn sends the prompt for the sender. */
+  sendingAgent?: PiAgentConfig;
+  replyTo?: PiAgentConfig;
   whenBusy?: "followUp" | "steer" | "reject";
   whenPaused?: "wait" | "resume";
   agentName?: string;
 };
+
+/** What the manager delivered to an agent a prompt replies to, and as whom. */
+type Reply = { agent: PiAgentConfig; delegation: string[]; event: Record<string, unknown> };
 
 type NotificationInput = {
   eventId: string;
@@ -78,6 +87,7 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
   const failing = { handovers: 0, publications: 0 };
   // The latest queue each agent was shown, as the agent object keeps it.
   const published = new Map<string, PiAgentWaitingQueue>();
+  const replies: Reply[] = [];
   function receive(handover: Handover) {
     if (failing.handovers > 0) {
       failing.handovers -= 1;
@@ -154,6 +164,14 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
       throw new Error("Queue tests classify nothing.");
     },
     automations: null,
+    notifyAgent: async ({
+      agent,
+      provenance,
+      event,
+    }: Parameters<PiManagerConfig["notifyAgent"]>[0]) => {
+      const delegation = provenance.actors.delegation.map(({ id }) => id);
+      replies.push({ agent, delegation, event });
+    },
   };
   const { fragments, test: database } = await buildDatabaseFragmentsTest()
     .withTestAdapter({ type: "kysely-sqlite" })
@@ -169,21 +187,44 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
   });
   const { fragment } = fragments.piManager;
 
-  function provenance(sender: string) {
-    const { actors } = createBackofficeServiceExecution({
+  function provenance(sender: string, sendingAgent?: PiAgentConfig) {
+    const execution = createBackofficeServiceExecution({
       scope,
       service: { type: "automation", id: sender },
     });
+    const { actors } = sendingAgent
+      ? appendAutomationDelegate({
+          execution,
+          delegate: piAgentActor(sendingAgent.scope, sendingAgent.agentName),
+        })
+      : execution;
     return { actors, scopeRestriction: null };
+  }
+
+  /** The event a real agent records for an answered turn and reports with its settlement. */
+  function completedTurn(agentName: string, requestId: string): AutomationEvent {
+    return {
+      id: `pi:${agentName}:ended:${requestId}`,
+      scope,
+      scopeRestriction: null,
+      source: "pi",
+      eventType: "turn.completed",
+      payload: { answerEntryId: 7 },
+      occurredAt: "2026-01-01T00:00:00.000Z",
+      actors: provenance("ada").actors,
+      subject: { scope, agentName, requestId },
+      causation: { kind: "origin" },
+    };
   }
 
   return {
     fragment,
     provenance,
     handovers,
+    replies,
     failing,
     async prompt(input: PromptInput) {
-      const { agentName = "assistant", sender = "ada", ...prompt } = input;
+      const { agentName = "assistant", sender = "ada", sendingAgent, ...prompt } = input;
       return await fragment.callRoute("POST", "/agents/:agentName/prompts", {
         pathParams: { agentName },
         body: {
@@ -192,7 +233,8 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
           whenBusy: prompt.whenBusy ?? "followUp",
           whenPaused: prompt.whenPaused ?? "wait",
           model: null,
-          provenance: provenance(sender),
+          replyTo: prompt.replyTo ?? null,
+          provenance: provenance(sender, sendingAgent),
         },
       });
     },
@@ -246,7 +288,11 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
       ];
     },
     async settle(requestId: string, agentName = "assistant") {
-      await reportPiAgentTurnSettled(fragment, config, { agentName, requestId });
+      await reportPiAgentTurnSettled(fragment, config, {
+        agentName,
+        requestId,
+        ended: completedTurn(agentName, requestId),
+      });
     },
     async submission(requestId: string, agentName = "assistant") {
       const response = await fragment.callRoute(
@@ -404,6 +450,80 @@ test("waiting prompts run under the definition as it is when their turn starts, 
     requestId: "third",
     reason: "Pi agent 'clerk' is not defined.",
   });
+});
+
+test("an agent of another scope hears how the prompts it asked about end, settled or dropped", async () => {
+  const queue = await piManagerQueue();
+  const planner: PiAgentConfig = {
+    scope: { kind: "user", userId: "ada", jurisdiction: null },
+    agentName: "planner",
+  };
+  const created = await queue.fragment.callRoute("POST", "/agents", {
+    body: {
+      agentName: "clerk",
+      description: "Answers in turn.",
+      model: null,
+      permissions: ["*"],
+      instructions: "Answer.",
+      provenance: queue.provenance("ada"),
+    },
+  });
+  assert(created.type === "json");
+
+  // Only the agent's own turn names it; anyone else asking for its reply is refused.
+  const forged = await queue.prompt({ requestId: "forged", agentName: "clerk", replyTo: planner });
+  assert(forged.type === "error" && forged.error.code === "REPLY_NOT_ALLOWED");
+  // An agent is not told of its own prompts; one of the same name in another scope is.
+  const clerk = { scope: ORG_SCOPE, agentName: "clerk" };
+  const namesake = { scope: planner.scope, agentName: "clerk" };
+  const own = await queue.prompt({
+    requestId: "own",
+    agentName: "clerk",
+    sendingAgent: clerk,
+    replyTo: clerk,
+  });
+  assert(own.type === "error" && own.error.code === "REPLY_NOT_ALLOWED");
+
+  for (const [requestId, sendingAgent, replyTo] of [
+    ["asked", planner, planner],
+    ["unasked", planner, undefined],
+    ["doomed", namesake, namesake],
+  ] as const) {
+    await queue.receipt({ requestId, agentName: "clerk", sendingAgent, replyTo });
+  }
+  const deleted = await queue.fragment.callRoute("DELETE", "/agents/:agentName", {
+    pathParams: { agentName: "clerk" },
+    body: { provenance: queue.provenance("ada") },
+  });
+  assert(deleted.type === "empty");
+  // The answered turn replies, and its settlement drops the prompts waiting behind it.
+  await queue.settle("asked", "clerk");
+  await drainDurableHooks(queue.fragment);
+
+  expect(queue.replies).toEqual([
+    {
+      agent: planner,
+      delegation: [piAgentActor(planner.scope, planner.agentName).id],
+      event: {
+        id: expect.any(String),
+        source: "pi",
+        eventType: "turn.completed",
+        occurredAt: "2026-01-01T00:00:00.000Z",
+        subject: { scope: ORG_SCOPE, agentName: "clerk", requestId: "asked" },
+        payload: { answerEntryId: 7 },
+      },
+    },
+    {
+      agent: namesake,
+      delegation: [piAgentActor(namesake.scope, namesake.agentName).id],
+      event: expect.objectContaining({
+        source: "pi",
+        eventType: "queue.dropped",
+        subject: { scope: ORG_SCOPE, agentName: "clerk", requestId: "doomed" },
+        payload: { reason: "Pi agent 'clerk' is not defined." },
+      }),
+    },
+  ]);
 });
 
 test("stopping pauses the queue until someone sends a message, which joins its end", async () => {

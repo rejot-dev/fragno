@@ -1,6 +1,6 @@
 import type { Op } from "@earendil-works/chord/delta";
 import { automationActorsSchema } from "@fragno-dev/backoffice-api/v0/automation";
-import { automationEventSchema } from "@fragno-dev/backoffice-api/v0/events";
+import { automationEventSchema, type AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import type {
   PiAgentConfig,
   PiAgentMessagePage,
@@ -98,6 +98,22 @@ export const piAgentNotificationSchema = z.lazy(() =>
   }),
 );
 export type PiAgentNotification = z.infer<typeof piAgentNotificationSchema>;
+
+/** What a notification delivers of a recorded event; its actors and scope stay behind. */
+export function piAgentNotificationEvent(event: AutomationEvent): PiAgentNotification["event"] {
+  const { id, source, eventType, occurredAt, subject, payload } = event;
+  return { id, source, eventType, occurredAt, subject: subject ?? null, payload };
+}
+
+/**
+ * A turn the agent settled, by its request ID, and the `turn.*` event recording how it ended; null
+ * for settlements that record none.
+ */
+export type PiAgentSettledTurn = {
+  agentName: string;
+  requestId: string;
+  ended: AutomationEvent | null;
+};
 
 /**
  * What a dispatched turn asks the agent for: one prompt, or the notifications it handles together,

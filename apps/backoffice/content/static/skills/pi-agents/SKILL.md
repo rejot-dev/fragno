@@ -68,7 +68,13 @@ definition's narrowing.
 Use `pi.submitPrompt` with `agentName`; it returns once the prompt is queued. The prompt's `pi`
 events report how it ended: `turn.completed`, whose payload's `answerEntryId` names the answer,
 `turn.failed`, `turn.aborted`, or `queue.dropped`, each with the receipt's `requestId` in its
-subject. A workflow waits for them as `/static/skills/workflows/SKILL.md` shows. To look instead,
+subject. A workflow waits for them as `/static/skills/workflows/SKILL.md` shows. An agent hears back
+by passing `notifyWhenDone: true`, also to an agent of another scope through `context.org(...)` or
+`context.user(...)`: the event arrives as a notification that starts a later turn of yours, so end
+your turn instead of polling. You cannot be notified of prompts to yourself: check your own
+`agentName` and scope before asking another agent, since `assistant` exists in every scope. Read the
+answer in the prompted agent's scope with
+`pi.listMessages({ agentName, last: 1, before: answerEntryId + 1 })`. To look at a prompt once,
 `pi.getPrompt({ agentName, requestId })` says whether it is `queued`, `running`, `completed`, or
 `failed` with a reason, or null when the agent never received it. Prompts wait in the agent's queue
 and run one turn each, in arrival order (`whenBusy: "followUp"`, the default), under the agent's

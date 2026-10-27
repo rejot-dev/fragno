@@ -188,6 +188,7 @@ import type { OnboardingAnswer, UserOnboardingState } from "@/fragno/onboarding/
 import type { PiExtractionRequest } from "@/fragno/pi/agent/openai-extraction";
 import type {
   PiAgentAddress,
+  PiAgentSettledTurn,
   PiAgentViewerAuthorization,
 } from "@/fragno/pi/agent/pi-agent-contract";
 import type {
@@ -550,8 +551,11 @@ export type WarmableCommands = {
 export type ApiCommands = WarmableCommands & DurableHookCommands;
 
 export type PiManagerCommands = WarmableCommands & {
-  /** An agent reports each settled turn, so its queue can hand the agent its next item. */
-  reportSettledTurn(input: { agentName: string; requestId: string }): Promise<void>;
+  /**
+   * An agent reports each settled turn, so its queue can hand the agent its next item, with the
+   * event recording how it ended, which the agent its prompt replies to receives.
+   */
+  reportSettledTurn(input: PiAgentSettledTurn): Promise<void>;
   /**
    * Whether the execution may watch the agent's conversation, which needs `pi.read`, and if so what
    * waits in its queue; an agent asks when a viewer connects to its view socket.

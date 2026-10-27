@@ -226,7 +226,8 @@ export async function submitPiManagerPrompt(
   const response = await callRoute("POST", "/agents/:agentName/prompts", {
     pathParams: { agentName },
     // Middleware overwrites the provenance with the authenticated caller's before validation.
-    body: { ...input, provenance: callerProvenance(execution) },
+    // People are not agents, so nothing replies to them.
+    body: { ...input, replyTo: null, provenance: callerProvenance(execution) },
   });
   if (response.type === "json") {
     captureBackofficeServerEvent(context, {

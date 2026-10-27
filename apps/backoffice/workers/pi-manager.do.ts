@@ -2,7 +2,7 @@ import type { AutomationActors } from "@fragno-dev/backoffice-api/v0/automation"
 import { DurableObject } from "cloudflare:workers";
 
 import type { PiManagerCommands } from "@/backoffice-runtime/object-registry";
-import type { PiAgent } from "@/fragno/pi/agent/pi-agent-contract";
+import type { PiAgent, PiAgentSettledTurn } from "@/fragno/pi/agent/pi-agent-contract";
 import type { PackageAgentsInput } from "@/fragno/pi/manager/package-agents";
 
 import type { PiManagerObject } from "./pi-manager-object";
@@ -49,7 +49,7 @@ export class PiManager extends DurableObject<CloudflareEnv> implements PiManager
     return await this.#object.fetch(request);
   }
 
-  async reportSettledTurn(input: { agentName: string; requestId: string }): Promise<void> {
+  async reportSettledTurn(input: PiAgentSettledTurn): Promise<void> {
     await this.#object.reportSettledTurn(input);
   }
 

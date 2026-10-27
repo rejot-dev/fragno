@@ -217,12 +217,27 @@ the agent with a `workflows` `instance.completed` event carrying its status, out
 workflows middleware accepts a codemode run's `replyTo` agent only from that agent's own turn, which
 it recognizes by the agent's delegate actor.
 
-A notification is a queue item whose sender is the route's or the workflow run's execution, so the
-request to handle it waits its turn like a prompt (see Queue). Its request ID is
-`route:<routeId>:<eventId>`, or `reply:<eventId>` without a route, so redelivering an event through
-one route, or to the agent directly, places nothing new, even after it was handled. Notifications
-never provision an agent: a person must start the conversation first. An agent with no turns answers
-`404 AGENT_NOT_STARTED`.
+An agent's turn hears how a prompt it sends ends by passing `notifyWhenDone` to `pi.submitPrompt`,
+also when the prompted agent is in another scope. The runtime names the calling agent as the
+prompt's `replyTo`, which the prompted agent's manager accepts only when the requester's actors
+include that agent's delegate actor. That actor's ID names the agent's scope, so the check holds
+across scopes. It refuses a `replyTo` naming the prompted agent itself: prompting yourself only
+queues another turn of your own conversation, and its reply could wake you again and again. The
+queue item keeps `replyTo`. When the item's turn settles, the agent reports the `turn.*` event that
+records how it ended with the settlement, and the manager forwards it; when the queue drops the
+item, it sends a `queue.dropped` event. The `replyToAgent` durable hook delivers either event
+through the calling agent's manager, with no route, as the prompt's sender, so the calling agent
+handles it with its own turn's authority. The reply carries the hook's ID as its event ID: the
+calling agent's queue deduplicates replies by it, and same-named agents of two scopes record the
+same turn event IDs for the same request ID. The prompted agent's `pi` events carry the calling
+agent's delegate actor, so no route delivers them to it; `replyTo` is how it hears back.
+
+A notification is a queue item whose sender is the route's, the workflow run's, or the replying
+prompt's execution, so the request to handle it waits its turn like a prompt (see Queue). Its
+request ID is `route:<routeId>:<eventId>`, or `reply:<eventId>` without a route, so redelivering an
+event through one route, or to the agent directly, places nothing new, even after it was handled.
+Notifications never provision an agent: a person must start the conversation first. An agent with no
+turns answers `404 AGENT_NOT_STARTED`.
 
 The event itself is written as it arrives, into the root conversation as a `backoffice.notification`
 entry with request ID `<requestId>:event`. Pi places a write at a busy conversation's next boundary,
@@ -253,12 +268,14 @@ All paths below are mounted at `/api/pi-manager` inside the manager object:
 - `POST /agents`: creates a definition, answering it with `resolvedModel`, the model it runs: its
   `model`, the first available model for null, or null when that model is unavailable.
 - `GET /agents/:agentName`: one definition and whether it is provisioned.
-- `POST /agents/:agentName/prompts`: `{ requestId, content, whenBusy, whenPaused, model }`,
+- `POST /agents/:agentName/prompts`: `{ requestId, content, whenBusy, whenPaused, model, replyTo }`,
   answering `{ requestId, status }` or `409 AGENT_BUSY` for a refused `reject`; see Queue. `model`
   is `{ provider, modelId, thinkingLevel }` or `null`; only built-in agents choose one, and others
-  answer `400 MODEL_NOT_CHOOSABLE`; see Agent definitions. The first prompt provisions the agent.
-  Usage belongs to its scope's root owner, an organization or a user. System work has no customer.
-  Reusing a request ID reuses the submission rather than generating another answer.
+  answer `400 MODEL_NOT_CHOOSABLE`; see Agent definitions. `replyTo` is `{ scope, agentName }` or
+  `null`; naming an agent the requester does not act through answers `400 REPLY_NOT_ALLOWED`; see
+  Notifications. The first prompt provisions the agent. Usage belongs to its scope's root owner, an
+  organization or a user. System work has no customer. Reusing a request ID reuses the submission
+  rather than generating another answer.
 - `POST /agents/:agentName/notifications`: `{ routeId, event }`, answering `204` or
   `404 AGENT_NOT_STARTED`. Automations routes and workflow replies, whose `routeId` is `null`, call
   it; see Notifications.
