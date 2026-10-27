@@ -97,6 +97,16 @@ export function projectJsonSelectedColumnValue(
       )} || hex(${columnReference}) end`;
     }
   }
+  if (column.type === "binary") {
+    // JSON has no binary values: PostgreSQL renders bytea as escaped text, and MySQL as a
+    // base64 string with a type tag. Plain hex decodes the same way from both.
+    if (driverConfig.databaseType === "postgresql") {
+      return sql<string>`encode(${columnReference}, 'hex')`;
+    }
+    if (driverConfig.databaseType === "mysql") {
+      return sql<string>`hex(${columnReference})`;
+    }
+  }
   return projectSelectedColumnValue(column, reference, driverConfig);
 }
 
