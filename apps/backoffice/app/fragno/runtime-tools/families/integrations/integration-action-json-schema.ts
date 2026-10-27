@@ -1,4 +1,10 @@
-import { Validator, dereference, type Schema, type SchemaDraft } from "@cfworker/json-schema";
+import {
+  Validator,
+  dereference,
+  type OutputUnit,
+  type Schema,
+  type SchemaDraft,
+} from "@cfworker/json-schema";
 
 import { jsonSchema202012ValidationSchema } from "@/lib/json-schema/validation";
 
@@ -72,4 +78,37 @@ export function compileIntegrationActionSchema(schema: Record<string, unknown>):
     // Malformed schemas and invalid patterns are unsupported contracts, not runtime failures.
     return null;
   }
+}
+
+// These only report that a nested value failed; the nested value's own errors say how.
+const NESTING_KEYWORDS = new Set([
+  "properties",
+  "patternProperties",
+  "items",
+  "prefixItems",
+  "false",
+  "$ref",
+  "allOf",
+]);
+const MAX_REPORTED_VIOLATIONS = 10;
+
+/**
+ * Why a value failed its schema, as `validate(...).errors` reports it, for whoever calls the action
+ * to correct their input, e.g. `#/document: String does not match format "uuid".`.
+ */
+export function describeSchemaViolations(errors: OutputUnit[]): string {
+  const reasons = [
+    ...new Set(
+      errors
+        .filter(({ keyword }) => !NESTING_KEYWORDS.has(keyword))
+        .map(({ instanceLocation, error }) =>
+          instanceLocation === "#" ? error : `${instanceLocation}: ${error}`,
+        ),
+    ),
+  ];
+  const omitted = reasons.length - MAX_REPORTED_VIOLATIONS;
+  return [
+    ...reasons.slice(0, MAX_REPORTED_VIOLATIONS),
+    ...(omitted > 0 ? [`(${omitted} more)`] : []),
+  ].join(" ");
 }

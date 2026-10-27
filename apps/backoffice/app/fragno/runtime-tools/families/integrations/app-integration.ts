@@ -17,7 +17,10 @@ import {
 } from "@/fragno/app-installations/contracts";
 import { requireBackofficeAppOperationValue } from "@/fragno/apps/errors";
 
-import { compileIntegrationActionSchema } from "./integration-action-json-schema";
+import {
+  compileIntegrationActionSchema,
+  describeSchemaViolations,
+} from "./integration-action-json-schema";
 import { connectionStateOfInspection, type IntegrationConnectionState } from "./integration-events";
 import type {
   IntegrationActionImplementation,
@@ -326,10 +329,17 @@ export function createAppIntegration({
                 outputSchema: action.outputSchema,
               },
               async invoke(value) {
-                if (!input?.validate(value).valid) {
+                if (!input) {
                   throw new BackofficeOperationError(
                     "invalid_request",
                     `App action '${action.id}' input failed its declared JSON Schema.`,
+                  );
+                }
+                const validation = input.validate(value);
+                if (!validation.valid) {
+                  throw new BackofficeOperationError(
+                    "invalid_request",
+                    `App action '${action.id}' input failed its declared JSON Schema: ${describeSchemaViolations(validation.errors)}`,
                   );
                 }
                 const response = await call({ type: "action", actionId: action.id, input: value });

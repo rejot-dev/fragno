@@ -37,7 +37,10 @@ import {
   throwOnRouteRuntimeError,
 } from "../../runtime-errors";
 import { resolveRuntimePublicScopePathSegment } from "../../runtime-public-scope";
-import { compileIntegrationActionSchema } from "./integration-action-json-schema";
+import {
+  compileIntegrationActionSchema,
+  describeSchemaViolations,
+} from "./integration-action-json-schema";
 import { connectionStateOfInspection } from "./integration-events";
 import {
   authMethodOfFragmentAuthMode,
@@ -797,8 +800,13 @@ export function createMcpIntegration({
               },
               async invoke(value) {
                 const args = z.record(z.string(), jsonValueSchema).parse(value);
-                if (contract.kind === "checked" && !contract.input.validate(args).valid) {
-                  throw new Error("MCP integration tool input failed its published JSON Schema.");
+                if (contract.kind === "checked") {
+                  const validation = contract.input.validate(args);
+                  if (!validation.valid) {
+                    throw new Error(
+                      `MCP integration tool input failed its published JSON Schema: ${describeSchemaViolations(validation.errors)}`,
+                    );
+                  }
                 }
                 const result = mcpToolCallResultSchema.safeParse(
                   await access.callTool(localId, tool.name, args),
