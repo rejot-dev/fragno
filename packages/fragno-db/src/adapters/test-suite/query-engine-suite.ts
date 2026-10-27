@@ -2184,6 +2184,47 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
       }
     });
 
+    it("matches no rows for an empty in list and every row for an empty not in list", async () => {
+      const { adapter, close } = await createContext();
+      try {
+        const create = createSuiteUnitOfWork(adapter, "create-empty-in-data");
+        create.create("users", {
+          id: "empty-in-user",
+          name: "Empty In",
+          email: "empty-in@example.com",
+          age: 1,
+        });
+        create.create("events", {
+          id: "empty-in-event",
+          user_id: "empty-in-user",
+          name: "joined",
+          happened_on: new Date("2026-09-24T00:00:00.000Z"),
+          payload: {},
+          big_score: BigInt(1),
+          binary_payload: null,
+        });
+        await create.executeMutations();
+
+        const [none, all] = await createSuiteUnitOfWork(adapter, "read-empty-in-data")
+          .find("users", (b) => b.whereIndex("users_name_idx", (eb) => eb("name", "in", [])))
+          .find("users", (b) =>
+            b
+              .whereIndex("users_name_idx", (eb) => eb("name", "not in", []))
+              .joinMany("events", "events", (events) =>
+                events.onIndex("events_user_idx", (eb) => eb("user_id", "in", [])).select(["name"]),
+              ),
+          )
+          .executeRetrieve();
+
+        expect(none).toEqual([]);
+        expect(all.map((user) => ({ name: user.name, events: user.events }))).toEqual([
+          { name: "Empty In", events: [] },
+        ]);
+      } finally {
+        await close?.();
+      }
+    });
+
     it("returns binary values from joined rows as bytes", async () => {
       const { adapter, close } = await createContext();
       try {
