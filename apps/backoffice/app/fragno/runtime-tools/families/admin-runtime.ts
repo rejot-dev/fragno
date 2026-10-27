@@ -10,7 +10,6 @@ import type {
 import { backofficeOrganizationContextScope } from "@/backoffice-runtime/resolved-scope";
 import type { BackofficeAppsCommands } from "@/fragno/apps/contracts";
 import { requireBackofficeAppOperationValue } from "@/fragno/apps/errors";
-import { buildSignUpInvitationEmail } from "@/transactional-emails/sign-up-invitation";
 
 import type { AdminRuntime } from "./admin";
 import { compileIntegrationActionSchema } from "./integrations/integration-action-json-schema";
@@ -174,6 +173,9 @@ export function createAdminRuntime({
         ...input,
         publicBaseUrl,
       });
+      // Imported on use, so starting the Worker does not load the email renderer.
+      const { buildSignUpInvitationEmail } =
+        await import("@/transactional-emails/sign-up-invitation");
       await resend.queueEmail(
         await buildSignUpInvitationEmail({
           email: invitation.email,

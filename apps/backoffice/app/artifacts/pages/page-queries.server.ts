@@ -2,12 +2,7 @@ import { SqliteLofiAdapter, type LofiSqliteGuardedResult } from "@fragno-dev/lof
 import { wrapWaSqliteDatabase, type LofiSqliteViews } from "@fragno-dev/lofi/sqlite/worker";
 import type { PageDefinition } from "@fragno-private/backoffice-ui/pages/definition";
 import { pageQueryParams } from "@fragno-private/backoffice-ui/pages/rows";
-import SQLiteESMFactory from "@journeyapps/wa-sqlite/dist/wa-sqlite.mjs";
 
-import * as SQLite from "@journeyapps/wa-sqlite";
-
-// By its aliased path, which Node builds and tests resolve to a module that compiles the file.
-import { loadWaSqliteWasm } from "@/artifacts/pages/wa-sqlite-wasm.server";
 import {
   AUTOMATION_PAGE_FUNCTIONS,
   AUTOMATION_PAGE_RELATIONS,
@@ -69,6 +64,13 @@ export async function pageQueriesError(definition: PageDefinition): Promise<stri
 }
 
 async function openCheckingViews(): Promise<LofiSqliteViews> {
+  // Imported on first check, so starting the Worker does not load SQLite.
+  const [{ default: SQLiteESMFactory }, SQLite, { loadWaSqliteWasm }] = await Promise.all([
+    import("@journeyapps/wa-sqlite/dist/wa-sqlite.mjs"),
+    import("@journeyapps/wa-sqlite"),
+    // By its aliased path, which Node builds and tests resolve to a module that compiles the file.
+    import("@/artifacts/pages/wa-sqlite-wasm.server"),
+  ]);
   const wasm = await loadWaSqliteWasm();
   const module = await SQLiteESMFactory({
     instantiateWasm(

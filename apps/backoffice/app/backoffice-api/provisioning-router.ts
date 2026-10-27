@@ -29,7 +29,6 @@ import {
   PROVISIONING_AUTOMATION_EVENTS,
   PROVISIONING_AUTOMATION_SOURCE,
 } from "@/fragno/backoffice-capabilities/capabilities/auth";
-import { buildAppInvitationEmail } from "@/transactional-emails/app-invitation";
 
 import { apiError } from "./api-error";
 
@@ -264,6 +263,8 @@ async function sendInvitation(
       error: { code: "conflict", message: "The invitation is no longer pending." },
     };
   }
+  // Imported on use, so starting the Worker does not load the email renderer.
+  const { buildAppInvitationEmail } = await import("@/transactional-emails/app-invitation");
   await runtime.objects.resend.singleton().commands.queueEmail(
     await buildAppInvitationEmail({
       email: invitation.email,
