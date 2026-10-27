@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 
 import { reactRouter } from "@react-router/dev/vite";
@@ -42,6 +43,30 @@ function emitWorkerLocalDevVarsPlugin(): Plugin {
       } else {
         this.emitFile({ type: "asset", fileName: ".dev.vars", source: localDevVars });
       }
+    },
+  };
+}
+
+// `react-dom/server.edge` also loads the legacy renderer behind `renderToString`, about 200 KB the
+// Workers never call but would evaluate at startup. Their production builds take the streaming
+// renderer alone, so `renderToString` and `renderToStaticMarkup` are missing there.
+function reactDomStreamingRendererOnlyPlugin(): Plugin {
+  const reactDomDirectory = path.dirname(
+    createRequire(path.join(__dirname, "package.json")).resolve("react-dom/package.json"),
+  );
+  const streamingRenderer = path.join(reactDomDirectory, "cjs/react-dom-server.edge.production.js");
+
+  return {
+    name: "react-dom-streaming-renderer-only",
+    apply: "build",
+    enforce: "pre",
+    resolveId(source) {
+      if (this.environment.config.consumer !== "server") {
+        return null;
+      }
+      return source === "react-dom/server" || source === "react-dom/server.edge"
+        ? streamingRenderer
+        : null;
     },
   };
 }
@@ -119,6 +144,7 @@ export default defineConfig(({ command }) => {
       reactRouter(),
       devtoolsJson(),
       emitWaSqliteWasmAssetPlugin(),
+      reactDomStreamingRendererOnlyPlugin(),
       emitWorkerLocalDevVarsPlugin(),
       previewServerUrlShortcutPlugin(),
     ],
