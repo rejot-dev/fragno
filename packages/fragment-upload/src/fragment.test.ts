@@ -447,6 +447,97 @@ describe("upload fragment direct single flows", () => {
     expect(initUpload).toHaveBeenCalledTimes(2);
   });
 
+  it("replaces an active upload of the same key when asked", async () => {
+    const { fragment } = build.fragments.upload;
+    const payload = {
+      keyParts: ["files", "direct", "replaced"],
+      filename: "hello.txt",
+      sizeBytes: 5,
+      contentType: "text/plain",
+    };
+
+    const first = await fragment.callRoute("POST", "/uploads", { body: payload });
+    assert(first.type === "json");
+
+    const second = await fragment.callRoute("POST", "/uploads", {
+      body: { ...payload, replaceActiveUpload: true },
+    });
+    assert(second.type === "json");
+    expect(second.data.uploadId).not.toBe(first.data.uploadId);
+
+    const replaced = await fragment.callRoute("GET", "/uploads/:uploadId", {
+      pathParams: { uploadId: first.data.uploadId },
+    });
+    assert(replaced.type === "json");
+    expect(replaced.data).toMatchObject({ status: "aborted", errorCode: "UPLOAD_REPLACED" });
+  });
+
+  it("removes a replaced upload's bytes once its URL can no longer write them", async () => {
+    const stored = new Set<string>();
+    const { adapter, initUpload } = createDirectAdapter("direct-single");
+    const storage = {
+      ...adapter,
+      deleteObject: async ({ storageKey }) => {
+        stored.delete(storageKey);
+      },
+    } satisfies StorageAdapter;
+
+    await withUploadBuild({ storage }, async (replacementBuild) => {
+      const { fragment } = replacementBuild.fragments.upload;
+      const body = {
+        fileKey: "files/direct/replaced-late.txt",
+        filename: "replaced-late.txt",
+        sizeBytes: 5,
+        contentType: "text/plain",
+      };
+      const replaced = await fragment.callRoute("POST", "/uploads", { body });
+      assert(replaced.type === "json");
+      const { storageKey } = await initUpload.mock.results[0].value;
+      const replacement = await fragment.callRoute("POST", "/uploads", {
+        body: { ...body, replaceActiveUpload: true },
+      });
+      assert(replacement.type === "json");
+      await drainDurableHooks(fragment);
+
+      // The replaced upload's URL still works, so a late PUT lands after the immediate cleanup.
+      stored.add(storageKey);
+      await expireUpload(replacementBuild, replaced.data.uploadId);
+      await drainDurableHooks(fragment);
+
+      expect([...stored]).toEqual([]);
+    });
+  });
+
+  it("aborts the multipart session of a replaced upload", async () => {
+    const { adapter, initUpload } = createDirectAdapter("direct-multipart");
+    const abortMultipartUpload = vi.fn(async () => undefined);
+
+    await withUploadBuild(
+      { storage: { ...adapter, abortMultipartUpload } },
+      async ({ fragments }) => {
+        const { fragment } = fragments.upload;
+        const body = {
+          fileKey: "files/direct/replaced-multipart.bin",
+          filename: "replaced-multipart.bin",
+          sizeBytes: 9,
+          contentType: "application/octet-stream",
+        };
+        assert((await fragment.callRoute("POST", "/uploads", { body })).type === "json");
+        const { storageKey } = await initUpload.mock.results[0].value;
+        const replacement = await fragment.callRoute("POST", "/uploads", {
+          body: { ...body, replaceActiveUpload: true },
+        });
+        assert(replacement.type === "json");
+        await drainDurableHooks(fragment);
+
+        expect(abortMultipartUpload).toHaveBeenCalledWith({
+          storageKey,
+          storageUploadId: "upload-123",
+        });
+      },
+    );
+  });
+
   it("rejects creating a second upload when checksum is missing", async () => {
     const { fragment } = build.fragments.upload;
     const first = await fragment.callRoute("POST", "/uploads", {
