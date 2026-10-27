@@ -10,11 +10,13 @@ export type LofiSqliteRequest =
 
 /**
  * What the worker tells the page. It sends `status` once a tab has opened the replica and whenever
- * the status changes, or `failed` if the replica could not open.
+ * the status changes. A tab that could not open it sends `failed` if it never will, because the
+ * backend was replaced, or `unavailable` if it tries again, as after a failed request.
  */
 export type LofiSqliteResponse =
   | { type: "status"; status: LofiSqliteReplicaStatus }
   | { type: "failed"; message: string }
+  | { type: "unavailable"; message: string }
   | LofiSqliteViewResponse;
 
 export type LofiSqliteViewResponse =
@@ -34,6 +36,7 @@ export type LofiSqliteTabMessage =
   | { type: "hello" }
   | { type: "status"; status: LofiSqliteReplicaStatus }
   | { type: "failed"; message: string }
+  | { type: "unavailable"; message: string }
   | (LofiSqliteRequest & { tab: string });
 
 /** A `MessagePort`, a `Worker`, or a dedicated worker's global scope. */

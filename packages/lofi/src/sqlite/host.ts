@@ -10,6 +10,7 @@ import type {
 } from "./protocol";
 import { registrationsNamingReplica } from "./rebuild";
 import {
+  LofiSqliteBackendReplacedError,
   openLofiSqliteReplicaOn,
   type LofiSqliteReplica,
   type LofiSqliteReplicaOptions,
@@ -39,8 +40,11 @@ export type LofiSqliteHost = {
 
 type SubscribeRequest = Extract<LofiSqliteRequest, { type: "subscribe" }>;
 
-/** How a tab's turn at the leader lock ended: `timed out` if the leader went silent. */
-type Turn = "ended" | "failed" | "timed out";
+/**
+ * How a tab's turn at the leader lock ended: `timed out` if the leader went silent, `unavailable`
+ * if the tab could not open the replica but may later, and `failed` if it never will.
+ */
+type Turn = "ended" | "unavailable" | "failed" | "timed out";
 
 /** The leader's side: one replica, and one instance of each engine for the views of every tab. */
 type Leader = {
@@ -127,6 +131,7 @@ export function serveLofiSqlite(options: LofiSqliteHostOptions): LofiSqliteHost 
     switch (message.type) {
       case "status":
       case "failed":
+      case "unavailable":
         postToPage(message);
         break;
       case "leader":
@@ -161,6 +166,10 @@ export function serveLofiSqlite(options: LofiSqliteHostOptions): LofiSqliteHost 
     tell({ type: "hello" });
     let turn: Turn = "ended";
     while (!lifetime.signal.aborted && turn !== "failed") {
+      if (turn === "unavailable") {
+        // Another tab may take the lead meanwhile.
+        await sleep(options.replica.retryDelayMs, lifetime.signal);
+      }
       leaderHeardAt = Date.now();
       turn = await takeTurn(turn === "timed out");
     }
@@ -223,11 +232,18 @@ export function serveLofiSqlite(options: LofiSqliteHostOptions): LofiSqliteHost 
           signal: term,
         });
       } catch (error) {
-        // Releases the lock and stops competing, so another tab tries.
+        // Either way the tab releases the lock, so another tab tries.
         const message = errorMessage(error);
-        postToPage({ type: "failed", message });
-        tell({ type: "failed", message });
-        return "failed";
+        if (error instanceof LofiSqliteBackendReplacedError) {
+          postToPage({ type: "failed", message });
+          tell({ type: "failed", message });
+          return "failed";
+        }
+        // A failed request, or a database a frozen tab still holds, may pass.
+        options.replica.onError(error);
+        postToPage({ type: "unavailable", message });
+        tell({ type: "unavailable", message });
+        return "unavailable";
       }
       if (!term.aborted) {
         leader = opened;
@@ -425,7 +441,8 @@ async function openLeader(
         case "heartbeat":
         case "status":
         case "failed":
-          // Only a leader sends these.
+        case "unavailable":
+          // Only a leader, or a tab that tried to lead, sends these.
           break;
       }
     },
@@ -511,6 +528,16 @@ function whenAborted(signal: AbortSignal): Promise<void> {
       },
       { once: true },
     );
+  });
+}
+
+function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    void whenAborted(signal).then(() => {
+      clearTimeout(timer);
+      resolve();
+    });
   });
 }
 

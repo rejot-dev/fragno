@@ -22,8 +22,8 @@ export function getWorkerReplica(options: {
   if (existing) {
     return existing;
   }
-  // A failed open stays cached: Suspense needs the same promise on every render, and the error
-  // boundary offers the reload.
+  // It rejects only for a backend replaced since the page loaded, and stays cached: Suspense needs
+  // the same promise on every render, and the error boundary offers the reload.
   const replica = connectLofiSqlite({
     port: options.startWorker(name),
     schemas: options.schemas,

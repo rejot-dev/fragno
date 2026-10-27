@@ -868,7 +868,8 @@ has listeners:
 import { connectLofiSqlite } from "@fragno-dev/lofi/sqlite";
 
 const worker = new Worker(new URL("./replica.worker.ts", import.meta.url), { type: "module" });
-// Rejects if the replica fails to open in the tab that tried.
+// Rejects if the backend was replaced since the page loaded. A failed request instead connects
+// with the error in `getStatus()`, and the replica opens once the backend answers.
 const replica = await connectLofiSqlite({ port: worker, schemas: [{ schema: appSchema }] });
 
 const { users } = appSchema.tables;
@@ -1025,8 +1026,11 @@ only to the tab that shows it.
 - **A silent leader.** The leader sends a heartbeat every second from the moment it holds the lock.
   A tab waiting for the lock that hears nothing for 10 seconds steals it, and the deposed leader
   closes its replica once it runs again, sends its views to the new leader, and waits its turn.
-- **A failed open.** A tab that fails to open the replica tells every tab, releases the lock, and
-  stops competing; pages that had not connected yet reject. The next tab tries again.
+- **A failed open.** A tab that fails to open the replica, for example because `GET /_internal`
+  failed, tells every tab, whose status then holds the error, releases the lock so the next tab
+  tries, and competes again after `retryDelayMs`. Pages that had not connected yet connect with the
+  error. A backend replaced since the page loaded is the exception: the tab stops competing, and
+  pages that had not connected yet reject.
 - **Unknown kinds.** Tabs share a leader whatever engines they pass, since two leaders on one
   database would both open it. A view of a kind the leader's worker has no engine for fails.
 - **Another backend.** Tabs that pass different `adapterIdentity` options lead separately, so a tab
