@@ -827,7 +827,11 @@ describe("dashboard", () => {
             path: "/workspace/automations/approve-refund.workflow.js",
             event: event("trigger-refund-1", "shop", "refund.requested", start + 60_000),
             execution: agentExecution("assistant"),
-            replyTo: { kind: "agent", agentName: "assistant" },
+            replyTo: {
+              kind: "agent",
+              scope: { kind: "org", orgId, jurisdiction: null },
+              agentName: "assistant",
+            },
           }),
           then.assert(
             "the sync that completed clears the failure, and the form leads to the agent that started it",

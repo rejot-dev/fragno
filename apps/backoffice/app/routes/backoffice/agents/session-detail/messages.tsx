@@ -1,3 +1,4 @@
+import { backofficeContextScopesEqual } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { parseBackofficeUiResult } from "@fragno-private/backoffice-ui/result";
 import {
   ChatActivity,
@@ -24,7 +25,9 @@ import { WorkingIndicator } from "@fragno-private/design-system/working-indicato
 
 import { MessagePrimitive, useAuiState } from "@assistant-ui/react";
 
-import { useFileScope } from "@/components/backoffice/file-scope";
+import { backofficeRuntimeScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
+import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
+import { FileScopeProvider, useFileScope } from "@/components/backoffice/file-scope";
 import { workflowCompletionFromNotification } from "@/fragno/automation/workflow-reply";
 
 import { sentAttachmentItems } from "../agent-attachments";
@@ -369,12 +372,21 @@ export function NotificationMessage() {
   const data = useAuiState((state) =>
     state.message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n"),
   );
-  const completion = workflowCompletionFromNotification(notification.event);
-  const run = useSessionRun(completion?.instanceId ?? null);
+  const { resolvedScope, resolveScope } = useCurrentBackofficeContext();
+  const agentScope = backofficeRuntimeScopeFromResolvedScope(resolvedScope);
+  const completion = workflowCompletionFromNotification(notification.event, agentScope);
+  // The conversation's runs are the agent's scope's; a run elsewhere may share an instance ID.
+  const local = completion !== null && backofficeContextScopesEqual(completion.scope, agentScope);
+  const run = useSessionRun(local ? completion.instanceId : null);
   const completionUi = completion === null ? null : parseBackofficeUiResult(completion.output);
   const output =
     completion !== null && completionUi !== null && completionUi.kind !== "ordinary"
-      ? { parsed: completionUi, value: completion.output }
+      ? {
+          parsed: completionUi,
+          value: completion.output,
+          // The run's files are in the scope it ran in.
+          fileScope: resolveScope(completion.scope),
+        }
       : null;
   const title = `${notification.event.source} · ${notification.event.eventType}`;
 
@@ -410,9 +422,11 @@ export function NotificationMessage() {
         time={createdAt ?? null}
       >
         {output !== null ? (
-          <ResultContent parsedValue={output.parsed} showRawValue={false} value={output.value}>
-            {null}
-          </ResultContent>
+          <FileScopeProvider scope={output.fileScope}>
+            <ResultContent parsedValue={output.parsed} showRawValue={false} value={output.value}>
+              {null}
+            </ResultContent>
+          </FileScopeProvider>
         ) : (
           <>
             <p className="mb-2 text-[10px] text-[var(--bo-muted-2)]">

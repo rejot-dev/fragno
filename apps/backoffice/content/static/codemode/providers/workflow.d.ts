@@ -39,6 +39,8 @@ type WorkflowCreateInstanceInput = {
   payload?: {
     [key: string]: unknown;
   };
+  /** Only from an agent's turn: notify you, the calling agent, with a workflows instance.completed event carrying the run's status, output, and error when it ends. Works for runs in other scopes too. */
+  notifyWhenDone?: boolean;
 };
 type WorkflowCreateInstanceOutput = {
   instanceId: string;

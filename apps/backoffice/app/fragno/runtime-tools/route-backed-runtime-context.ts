@@ -35,7 +35,10 @@ import {
 import { createRouteBackedAutomationIdentityRuntime } from "@/fragno/automation/external-identities-route-runtime";
 import { readBackofficeAutomationSource } from "@/fragno/automation/read-backoffice-automation-source";
 import { createRouteBackedAutomationRouterRuntime } from "@/fragno/automation/routing-route-runtime";
-import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
+import {
+  AutomationWorkflowRuntimeRequestError,
+  createRouteBackedAutomationWorkflowRuntime,
+} from "@/fragno/automation/workflow-route-runtime";
 import { usageBillingForScope } from "@/fragno/billing/usage-billing";
 import type { CodemodeRun, CodemodeRunContext } from "@/fragno/codemode/codemode-fragment";
 import { codemodeRunnerFor } from "@/fragno/codemode/codemode-object-execute";
@@ -45,6 +48,7 @@ import {
   type BackofficeStateBackend,
 } from "@/fragno/codemode/state-backend";
 import { readSavedWorkflowProgram } from "@/fragno/codemode/workflow-program";
+import type { PiAgentAddress } from "@/fragno/pi/agent/pi-agent-contract";
 import {
   createPiManagerRuntime,
   type PiManagerRuntime,
@@ -221,16 +225,36 @@ const unavailableObject = <T>(resolve: () => T): T | null => {
   }
 };
 
-export const createRouteBackedRuntimeContext = ({
+/** Tools outside an agent's turn; nothing they start can notify them. */
+export function createRouteBackedRuntimeContext(
+  options: RouteBackedRuntimeContextOptions,
+): InteractiveRuntimeToolContext {
+  return createRuntimeContext({ ...options, callingAgent: null });
+}
+
+/**
+ * Tools of an agent's turn. Prompts and workflows they start may notify the calling agent when
+ * they end, whichever scope a scoped context addresses.
+ */
+export function createAgentRouteBackedRuntimeContext(
+  options: RouteBackedRuntimeContextOptions & { callingAgent: PiAgentAddress },
+): InteractiveRuntimeToolContext {
+  return createRuntimeContext(options);
+}
+
+const createRuntimeContext = ({
   runtime,
   kernel,
   execution,
   emitter,
   emittedEventActors,
   emittedEventSource,
+  callingAgent,
   pi,
   workflowSourceReader,
-}: RouteBackedRuntimeContextOptions): InteractiveRuntimeToolContext => {
+}: RouteBackedRuntimeContextOptions & {
+  callingAgent: PiAgentAddress | null;
+}): InteractiveRuntimeToolContext => {
   const org = ownerOrgScope(execution);
   const selectedOrg = selectedOrgScope(execution);
   // Installations are managed where they belong: in their organization or personal scope.
@@ -339,7 +363,7 @@ export const createRouteBackedRuntimeContext = ({
       await runtime.objects.auth.singleton().commands.findRootOwnerScope(owner),
     createBackofficeScopedContext: (scope) => {
       kernel.assertScopedContextAccess(execution, scope);
-      return createRouteBackedRuntimeContext({
+      return createRuntimeContext({
         runtime,
         kernel,
         execution: {
@@ -349,6 +373,7 @@ export const createRouteBackedRuntimeContext = ({
         emitter,
         emittedEventActors,
         emittedEventSource,
+        callingAgent,
         pi,
         workflowSourceReader: backofficeContextScopesEqual(execution.scope, scope)
           ? workflowSourceReader
@@ -473,7 +498,15 @@ export const createRouteBackedRuntimeContext = ({
       runtime: createRouteBackedAutomationWorkflowRuntime({
         object: automationsObject,
         execution,
-        prepareSavedWorkflowInstance: async ({ path, instanceId, payload }) => {
+        prepareSavedWorkflowInstance: async ({ path, instanceId, payload, notifyWhenDone }) => {
+          if (notifyWhenDone && !callingAgent) {
+            throw new AutomationWorkflowRuntimeRequestError(
+              400,
+              "WORKFLOW_REPLY_NOT_ALLOWED",
+              "Only an agent's turn can be notified when a workflow ends.",
+              null,
+            );
+          }
           const sourceReader =
             workflowSourceReader ??
             (({ path: sourcePath }) =>
@@ -493,7 +526,7 @@ export const createRouteBackedRuntimeContext = ({
             prepared,
             trigger: { type: "manual", payload: payload ?? {} },
             execution,
-            replyTo: null,
+            replyTo: notifyWhenDone && callingAgent ? { kind: "agent", ...callingAgent } : null,
           });
         },
       }),
@@ -552,7 +585,7 @@ export const createRouteBackedRuntimeContext = ({
         runtime,
         kernel,
         execution,
-        caller: null,
+        caller: callingAgent,
       }),
     },
     integrations: {

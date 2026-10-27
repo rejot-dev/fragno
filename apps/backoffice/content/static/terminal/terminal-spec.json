@@ -2533,6 +2533,10 @@
         "description": "Optional domain payload delivered directly to the authored workflow event."
       },
       {
+        "name": "notify-when-done",
+        "description": "From an agent's turn: notify the calling agent with the run's status and output when it ends"
+      },
+      {
         "name": "help",
         "description": "Show this help text",
         "valueRequired": false,

@@ -10,6 +10,7 @@ import {
   automationEventSchema,
 } from "@fragno-dev/backoffice-api/v0/events";
 import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import { piAgentNameSchema } from "@fragno-dev/backoffice-api/v0/shared/pi-agent-name";
 import {
   backofficeContextScopeSchema,
   backofficeContextScopesEqual,
@@ -110,25 +111,39 @@ const legacyCodemodeWorkflowProgramSchema = z
     };
   });
 
-export const codemodeWorkflowParamsSchema: z.ZodType<CodemodeWorkflowParams> = z.object({
-  program: z.union([codemodeWorkflowProgramSchema, legacyCodemodeWorkflowProgramSchema]),
-  trigger: z.discriminatedUnion("type", [
-    z.strictObject({ type: z.literal("event"), event: automationEventSchema }),
-    z.strictObject({
-      type: z.literal("manual"),
-      payload: z.record(z.string(), z.unknown()),
-    }),
-  ]),
-  // Persisted snapshots may still carry the removed billing selection; ownership now decides.
-  execution: z.object({
-    scope: backofficeContextScopeSchema,
-    scopeRestriction: backofficeContextScopeSchema.nullable(),
-    actors: automationActorsSchema,
-    capabilityGrants: z.array(codemodeCapabilityGrantSchema),
-  }),
-  // Existing workflow snapshots predate replies and report to no one.
-  replyTo: workflowReplyToSchema.nullable().default(null),
+/** Runs started before agent replies named a scope reply to an agent of their own scope. */
+const legacyAgentReplyToSchema = z.strictObject({
+  kind: z.literal("agent"),
+  agentName: piAgentNameSchema,
 });
+
+export const codemodeWorkflowParamsSchema: z.ZodType<CodemodeWorkflowParams> = z
+  .object({
+    program: z.union([codemodeWorkflowProgramSchema, legacyCodemodeWorkflowProgramSchema]),
+    trigger: z.discriminatedUnion("type", [
+      z.strictObject({ type: z.literal("event"), event: automationEventSchema }),
+      z.strictObject({
+        type: z.literal("manual"),
+        payload: z.record(z.string(), z.unknown()),
+      }),
+    ]),
+    // Persisted snapshots may still carry the removed billing selection; ownership now decides.
+    execution: z.object({
+      scope: backofficeContextScopeSchema,
+      scopeRestriction: backofficeContextScopeSchema.nullable(),
+      actors: automationActorsSchema,
+      capabilityGrants: z.array(codemodeCapabilityGrantSchema),
+    }),
+    // Existing workflow snapshots predate replies and report to no one.
+    replyTo: z.union([workflowReplyToSchema, legacyAgentReplyToSchema]).nullable().default(null),
+  })
+  .transform(({ replyTo, ...params }) => ({
+    ...params,
+    replyTo:
+      replyTo?.kind === "agent" && !("scope" in replyTo)
+        ? { ...replyTo, scope: params.execution.scope }
+        : replyTo,
+  }));
 
 export const assertCodemodeCapabilityGrantsBelongToExecution = ({
   execution,

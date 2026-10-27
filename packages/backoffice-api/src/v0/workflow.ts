@@ -80,6 +80,12 @@ export const workflowOperations = {
         path: z.string().trim().min(1),
         instanceId: z.string().trim().min(1),
         payload: z.record(z.string(), z.unknown()).optional(),
+        notifyWhenDone: z
+          .boolean()
+          .optional()
+          .describe(
+            "Only from an agent's turn: notify you, the calling agent, with a workflows instance.completed event carrying the run's status, output, and error when it ends. Works for runs in other scopes too.",
+          ),
       }),
     ),
     output: workflowCreateInstanceResultSchema,
