@@ -1,7 +1,7 @@
 import { createContext, useContext, type ReactNode } from "react";
 
 import type { CurrentBackofficeContext } from "./current-context-state";
-import { FileImageScopeProvider } from "./file-image";
+import { FileScopeProvider } from "./file-scope";
 
 const CurrentBackofficeReactContext = createContext<CurrentBackofficeContext | null>(null);
 
@@ -14,7 +14,7 @@ export function CurrentBackofficeProvider({
 }) {
   return (
     <CurrentBackofficeReactContext.Provider value={value}>
-      <FileImageScopeProvider scope={value.resolvedScope}>{children}</FileImageScopeProvider>
+      <FileScopeProvider scope={value.resolvedScope}>{children}</FileScopeProvider>
     </CurrentBackofficeReactContext.Provider>
   );
 }

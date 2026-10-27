@@ -5,6 +5,7 @@ import { Icon } from "@fragno-private/design-system/icon";
 import { ImagePreview } from "@fragno-private/design-system/image-preview";
 import { ImagePreviewCard } from "@fragno-private/design-system/image-preview-card";
 import { createContext, useContext, type ReactNode } from "react";
+import { Link } from "react-router";
 
 import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import {
@@ -13,9 +14,10 @@ import {
   filesScopeBasePath,
 } from "@/routes/backoffice/files/scope";
 
-const FileImageScopeContext = createContext<BackofficeResolvedScope | null>(null);
+const FileScopeContext = createContext<BackofficeResolvedScope | null>(null);
 
-export function FileImageScopeProvider({
+/** Resolves file paths in rendered content against a scope's files. */
+export function FileScopeProvider({
   scope,
   children,
 }: {
@@ -23,15 +25,15 @@ export function FileImageScopeProvider({
   children: ReactNode;
 }) {
   return (
-    <FileImageScopeContext.Provider value={scope}>
+    <FileScopeContext.Provider value={scope}>
       <FileImageProvider component={FileImage}>{children}</FileImageProvider>
-    </FileImageScopeContext.Provider>
+    </FileScopeContext.Provider>
   );
 }
 
-/** The scope workspace paths below a FileImageScopeProvider belong to; null outside one. */
+/** The scope workspace paths below a FileScopeProvider belong to; null outside one. */
 export function useFileScope(): BackofficeResolvedScope | null {
-  return useContext(FileImageScopeContext);
+  return useContext(FileScopeContext);
 }
 
 export function FileImage({ path, alt }: { path: string; alt: string }) {
@@ -59,5 +61,18 @@ export function FileImage({ path, alt }: { path: string; alt: string }) {
         </ButtonLink>
       }
     />
+  );
+}
+
+/** Opens a file in the scope's Files explorer; outside a scope, the mention stays plain content. */
+export function FileLink({ path, children }: { path: string; children: ReactNode }) {
+  const scope = useFileScope();
+  if (!scope) {
+    return children;
+  }
+  return (
+    <Link to={filesExplorerPathFromScopePath(filesScopeBasePath(scope), path)} title={path}>
+      {children}
+    </Link>
   );
 }

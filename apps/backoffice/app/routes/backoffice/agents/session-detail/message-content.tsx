@@ -1,22 +1,20 @@
 import { ImagePreview } from "@fragno-private/design-system/image-preview";
-import type { ComponentProps } from "react";
+import type { ComponentProps, ComponentType } from "react";
 import { Streamdown } from "streamdown";
 
-import { FileImage } from "@/components/backoffice/file-image";
+import { FileImage, FileLink } from "@/components/backoffice/file-scope";
 
-const markdownComponents = { img: MarkdownImage };
+import { rehypePlugins, remarkPlugins } from "./file-path-links";
+
+const markdownComponents = {
+  img: MarkdownImage,
+  // Only rehypeFileDestinations creates these elements, and only with a validated path.
+  "file-link": FileLink as ComponentType,
+  "file-image": FileImage as ComponentType,
+  "unavailable-image": MarkdownImage,
+};
 
 function MarkdownImage({ src, alt = "" }: ComponentProps<"img">) {
-  // Markdown destinations are URI-encoded; collection keys are literal file paths.
-  if (typeof src === "string" && /^\/(?:workspace|static|system)\//.test(src)) {
-    let path: string;
-    try {
-      path = decodeURIComponent(src);
-    } catch {
-      return <ImagePreview src={null} alt={alt} />;
-    }
-    return <FileImage path={path} alt={alt} />;
-  }
   return <ImagePreview src={typeof src === "string" && src ? src : null} alt={alt} />;
 }
 
@@ -27,6 +25,8 @@ export function MarkdownText({ text, className = "" }: { text: string; className
       className={`bo-session-markdown text-pretty ${className}`}
       controls={{ code: true, table: true }}
       components={markdownComponents}
+      remarkPlugins={remarkPlugins}
+      rehypePlugins={rehypePlugins}
       skipHtml
     >
       {text}

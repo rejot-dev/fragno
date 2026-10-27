@@ -24,7 +24,7 @@ import { WorkingIndicator } from "@fragno-private/design-system/working-indicato
 
 import { MessagePrimitive, useAuiState } from "@assistant-ui/react";
 
-import { useFileScope } from "@/components/backoffice/file-image";
+import { useFileScope } from "@/components/backoffice/file-scope";
 import { workflowCompletionFromNotification } from "@/fragno/automation/workflow-reply";
 
 import { sentAttachmentItems } from "../agent-attachments";

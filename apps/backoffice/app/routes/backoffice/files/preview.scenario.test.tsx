@@ -15,7 +15,7 @@ import { MemoryRouter } from "react-router";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scope";
-import { FileImageScopeProvider } from "@/components/backoffice/file-image";
+import { FileScopeProvider } from "@/components/backoffice/file-scope";
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
 import { behindBackofficeLayout } from "@/layouts/backoffice-layout.test-support";
 import { action as uploadWorkspaceFile } from "@/routes/api/files-scoped-workspace";
@@ -89,7 +89,7 @@ function imageSource(markup: string): string {
   return source.replaceAll("&amp;", "&");
 }
 
-test("private workspace images flow through session Markdown and generated UI without exposing other scopes or active content", async () => {
+test("private workspace files flow through session Markdown and generated UI without exposing other scopes or active content", async () => {
   await runBackofficeScenario(
     defineBackofficeScenario({
       objects: scenarioObjects,
@@ -191,20 +191,20 @@ test("private workspace images flow through session Markdown and generated UI wi
           async (ctx) => {
             const markdown = renderToStaticMarkup(
               <MemoryRouter>
-                <FileImageScopeProvider scope={scope}>
+                <FileScopeProvider scope={scope}>
                   <MarkdownText
                     text={`Here is the result:\n\n![Dashboard preview](${encodeURI(imagePath).replaceAll("#", "%23")})`}
                   />
-                </FileImageScopeProvider>
+                </FileScopeProvider>
               </MemoryRouter>,
             );
             const generated = generatedImage(imagePath);
             assert(generated.kind === "valid", JSON.stringify(generated));
             const interfaceMarkup = renderToStaticMarkup(
               <MemoryRouter>
-                <FileImageScopeProvider scope={scope}>
+                <FileScopeProvider scope={scope}>
                   <BackofficeUiRenderer ui={generated.value.$ui} />
-                </FileImageScopeProvider>
+                </FileScopeProvider>
               </MemoryRouter>,
             );
             const kernel = new BackofficeKernel(ctx.runtime.services);
@@ -278,15 +278,111 @@ test("private workspace images flow through session Markdown and generated UI wi
             const unsafe = generatedImage("https://external.example/tracking.png");
             assert(unsafe.kind === "valid", JSON.stringify(unsafe));
             const unsafeMarkup = renderToStaticMarkup(
-              <FileImageScopeProvider scope={scope}>
+              <FileScopeProvider scope={scope}>
                 <BackofficeUiRenderer ui={unsafe.value.$ui} />
-              </FileImageScopeProvider>,
+              </FileScopeProvider>,
             );
             // A path read from state is checked as the image renders, before it can become a source.
             assert.include(unsafeMarkup, "Image cannot show its data");
             assert.notInclude(unsafeMarkup, "<img");
           },
         ),
+        then.assert("link the file paths an agent mentions to the Files explorer", async (ctx) => {
+          const message = [
+            `Saved the [screenshot](${encodeURI(imagePath).replaceAll("#", "%23")}).`,
+            "The notes are in `/workspace/notes/plan.md`, see /workspace/notes/plan.md:12 and `/workspace/notes/plan.md:3`.",
+            "Ignore https://external.example/workspace/notes/plan.md and /workspace/../secret.md.",
+            "Read the [docs](https://external.example/docs).",
+            "```sh\ncat /workspace/notes/script.md\n```",
+          ].join("\n\n");
+          const markup = renderToStaticMarkup(
+            <MemoryRouter>
+              <FileScopeProvider scope={scope}>
+                <MarkdownText text={message} />
+              </FileScopeProvider>
+            </MemoryRouter>,
+          );
+          const links = [...markup.matchAll(/<a [^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/g)].map(
+            ([, href, content]) => ({ href, content }),
+          );
+          expect(links).toEqual([
+            {
+              href: "/backoffice/files/org/image-team/workspace/screenshots/dashboard%20%231.png",
+              content: "screenshot",
+            },
+            {
+              href: "/backoffice/files/org/image-team/workspace/notes/plan.md",
+              content: expect.stringContaining(">/workspace/notes/plan.md</code>"),
+            },
+            {
+              href: "/backoffice/files/org/image-team/workspace/notes/plan.md",
+              content: "/workspace/notes/plan.md:12",
+            },
+            {
+              href: "/backoffice/files/org/image-team/workspace/notes/plan.md",
+              content: expect.stringContaining(">/workspace/notes/plan.md:3</code>"),
+            },
+          ]);
+          // External links keep Streamdown's confirmation before leaving Backoffice.
+          assert.include(markup, 'data-streamdown="link"');
+          assert.include(markup, "cat /workspace/notes/script.md");
+
+          const fileUrl = new URL(links[0]!.href, "https://backoffice.example");
+          const request = new Request(fileUrl, { headers: { cookie: ctx.vars.cookie as string } });
+          const explorer = await exploreFile({
+            request,
+            url: fileUrl,
+            pattern: "/backoffice/files/:scopeKind/:scopeId/*",
+            params: {
+              scopeKind: "org",
+              scopeId: "image-team",
+              "*": decodeURIComponent(fileUrl.pathname.split("/").slice(5).join("/")),
+            },
+            context: createBackofficeRouterContextProvider(request, {
+              runtime: ctx.runtime.services,
+              kernel: new BackofficeKernel(ctx.runtime.services),
+              env: ctx.runtime.env as unknown as CloudflareEnv,
+              ctx: {} as ExecutionContext,
+            }),
+          });
+          assert(!(explorer instanceof Response));
+          assert.equal(explorer.selectedPath, imagePath);
+
+          // A file destination resolves only as a valid path in the scope, whatever wraps it.
+          const destinations = renderToStaticMarkup(
+            <MemoryRouter>
+              <FileScopeProvider scope={scope}>
+                <MarkdownText
+                  text={[
+                    `[![Preview](${encodeURI(imagePath).replaceAll("#", "%23")})](/workspace/notes/plan.md)`,
+                    '<file-link path="/workspace/../../logout">Raw tag</file-link>',
+                    "[Traversal](/workspace/../logout)",
+                    "![Traversal](/workspace/../logout) ![Malformed](/workspace/bad%FF.png)",
+                  ].join("\n\n")}
+                />
+              </FileScopeProvider>
+            </MemoryRouter>,
+          );
+          assert.include(
+            destinations,
+            `src="${filesPreviewPath(scope, imagePath).replaceAll("&", "&amp;")}"`,
+          );
+          assert.include(
+            destinations,
+            'href="/backoffice/files/org/image-team/workspace/notes/plan.md"',
+          );
+          assert.include(destinations, "Raw tag");
+          assert.notInclude(destinations, "logout");
+          assert.notInclude(destinations, "bad%FF");
+          assert.notInclude(destinations, "blocked");
+          assert.equal(destinations.match(/<img/g)?.length, 1);
+          assert.equal(destinations.match(/Image unavailable/g)?.length, 2);
+
+          // Without a scope there is no Files explorer to open, so mentions stay plain.
+          const unscoped = renderToStaticMarkup(<MarkdownText text={message} />);
+          assert.notInclude(unscoped, "/backoffice/files");
+          assert.include(unscoped, "/workspace/notes/plan.md:12");
+        }),
         then.assert(
           "sandbox declared SVGs and deny anonymous and cross-scope reads, traversal, and other markup",
           async (ctx) => {

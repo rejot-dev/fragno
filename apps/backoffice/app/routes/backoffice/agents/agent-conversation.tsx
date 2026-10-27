@@ -16,7 +16,7 @@ import {
 import type { ConversationView, EntryRecord } from "@earendil-works/pi-durable";
 
 import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scope";
-import { FileImageScopeProvider } from "@/components/backoffice/file-image";
+import { FileScopeProvider } from "@/components/backoffice/file-scope";
 import type {
   PiAgentCompactionStatus,
   PiAvailableModel,
@@ -631,7 +631,7 @@ function AgentConversationThread({
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <FileImageScopeProvider scope={resolvedScope}>
+      <FileScopeProvider scope={resolvedScope}>
         <SessionWorkflowsProvider>
           <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
             <h2 className="sr-only">{formatPiAgentName(agent.agentName)}</h2>
@@ -659,7 +659,7 @@ function AgentConversationThread({
             )}
           </div>
         </SessionWorkflowsProvider>
-      </FileImageScopeProvider>
+      </FileScopeProvider>
     </AssistantRuntimeProvider>
   );
 }

@@ -6,7 +6,7 @@ import {
 import { backofficeRuntimeScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import { sendBackofficeWorkflowEvent } from "@/backoffice-ui/workflow-events.client";
-import { FileImageScopeProvider } from "@/components/backoffice/file-image";
+import { FileScopeProvider } from "@/components/backoffice/file-scope";
 import {
   currentWorkflowWaitingEventTypes,
   type WorkflowRunEvent,
@@ -51,9 +51,9 @@ type WorkflowRunGeneratedInterfaceProps = {
 export function WorkflowRunGeneratedInterface(props: WorkflowRunGeneratedInterfaceProps) {
   // Images resolve against the run's scope, which differs from the page's in the global drawer.
   return (
-    <FileImageScopeProvider scope={props.resolvedScope}>
+    <FileScopeProvider scope={props.resolvedScope}>
       <GeneratedInterfaceContent {...props} />
-    </FileImageScopeProvider>
+    </FileScopeProvider>
   );
 }
 
