@@ -831,6 +831,7 @@ const createScopedMcpRuntimeServices = (
         mcp: true,
         projectConnector: false,
         upload: false,
+        blobs: false,
         github: false,
         githubWebhookRouter: false,
         piManager: false,

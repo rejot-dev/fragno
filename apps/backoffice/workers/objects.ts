@@ -6,6 +6,7 @@ import { Apps } from "./apps.do";
 import { Auth } from "./auth.do";
 import { Automations } from "./automations.do";
 import { Billing } from "./billing.do";
+import { Blobs } from "./blobs.do";
 import { Cloudflare } from "./cloudflare.do";
 import { Codemode } from "./codemode.do";
 import { Forms } from "./forms.do";
@@ -43,6 +44,7 @@ export {
   Auth,
   Automations,
   Billing,
+  Blobs,
   Cloudflare,
   Codemode,
   Forms,

@@ -149,6 +149,44 @@ not a durable audit log. Development builds and runtimes without a deployment to
 The wizard created the **Analytics basics (wizard)** dashboard in EU PostHog project `296980`,
 dashboard `1003657`. It will populate after the configured Cloudflare frontend is deployed and used.
 
+## Blobs (Cloudflare only)
+
+The `blobs.*` runtime tools keep large files in R2 and move their bytes through presigned S3 API
+URLs, never through the Worker. All scopes share one bucket per jurisdiction, each under its own
+prefix. An R2 bucket's jurisdiction is fixed when it is created, so a deployment needs three buckets
+with the same name: one without a jurisdiction, for owners that chose none, and one in each of `eu`
+and `us`. Locally, Miniflare serves a single bucket and needs none of this.
+
+Before the first release with blobs:
+
+1. Create the buckets:
+
+   ```bash
+   cd apps/backoffice
+   pnpm exec wrangler r2 bucket create rejot-backoffice-blobs
+   pnpm exec wrangler r2 bucket create rejot-backoffice-blobs --jurisdiction eu
+   pnpm exec wrangler r2 bucket create rejot-backoffice-blobs --jurisdiction us
+   ```
+
+2. In the Cloudflare dashboard, under **R2 > Manage API tokens**, create an API token with **Object
+   Read & Write** on all three buckets. Note its access key ID and secret access key.
+3. Set the object Worker's secrets. The endpoint is the account's, without a jurisdiction;
+   Backoffice derives `https://<account-id>.eu.r2.cloudflarestorage.com` and the `us` endpoint from
+   it.
+
+   ```bash
+   pnpm exec wrangler secret put BLOBS_R2_ENDPOINT # https://<account-id>.r2.cloudflarestorage.com
+   pnpm exec wrangler secret put BLOBS_R2_ACCESS_KEY_ID
+   pnpm exec wrangler secret put BLOBS_R2_SECRET_ACCESS_KEY
+   ```
+
+4. Release with `deploy:bootstrap` (see [Release](#release)), as blobs add the `Blobs` Durable
+   Object class.
+
+`BLOBS_R2_BUCKET` is set in `wrangler.jsonc`. Clients reach the presigned URLs with `curl` and other
+non-browser tools, which need no CORS policy; a browser that moves blobs directly does, on each of
+the three buckets (`wrangler r2 bucket cors set ... --jurisdiction ...`).
+
 ## Run on Node with file-backed SQLite
 
 For a file-backed Node instance without Cloudflare bindings, create `apps/backoffice/.dev.vars` from

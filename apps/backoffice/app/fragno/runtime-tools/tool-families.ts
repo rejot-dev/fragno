@@ -34,6 +34,8 @@ import {
   backofficeCapabilitiesToolFamily,
   type BackofficeCapabilitiesRuntime,
 } from "./families/backoffice-capabilities";
+import { blobsToolFamily } from "./families/blobs";
+import type { BlobsRuntime } from "./families/blobs-runtime";
 import { cloudflareToolFamily, type CloudflareRuntime } from "./families/cloudflare";
 import {
   eventFireToolFamily,
@@ -80,6 +82,7 @@ export type CoreBackofficeRuntimeMap = {
   imageViewer?: ImageViewer;
   fileLinks?: FileLinkRuntime;
   fileShares?: FileShareRuntime;
+  blobs?: BlobsRuntime;
   account?: AccountRuntime;
   admin?: AdminRuntime;
   org?: OrganizationRuntime;
@@ -113,6 +116,7 @@ export type CoreBackofficeToolContext = BackofficeToolContext<Partial<CoreBackof
 export const runtimeToolFamilies = [
   codemodeStateToolFamily,
   imageViewerToolFamily,
+  blobsToolFamily,
   accountToolFamily,
   adminToolFamily,
   adminEventsToolFamily,

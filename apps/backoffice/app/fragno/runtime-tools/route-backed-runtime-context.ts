@@ -57,6 +57,7 @@ import { createAccountRuntime } from "@/fragno/runtime-tools/families/account-ru
 import { createAdminRuntime } from "@/fragno/runtime-tools/families/admin-runtime";
 import { createAppsRuntime } from "@/fragno/runtime-tools/families/apps-runtime";
 import { createBackofficeCapabilitiesRuntime } from "@/fragno/runtime-tools/families/backoffice-capabilities";
+import { createBlobsRuntime } from "@/fragno/runtime-tools/families/blobs-runtime";
 import { createCloudflareRuntime } from "@/fragno/runtime-tools/families/cloudflare-runtime";
 import { createEventCatalogRuntime } from "@/fragno/runtime-tools/families/event-catalog";
 import {
@@ -317,6 +318,15 @@ const createRuntimeContext = ({
                 kernel.scoped("AUTOMATIONS", scope, runtime.objects.automations).commands,
               resolveRootOwner: async (owner) =>
                 await runtime.objects.auth.singleton().commands.findRootOwnerScope(owner),
+            }),
+          }
+        : null,
+    blobs:
+      runtime.config.bindings.blobs &&
+      isBackofficeObjectAvailableInContext("BLOBS", execution.scope)
+        ? {
+            runtime: createBlobsRuntime({
+              object: () => kernel.scoped("BLOBS", execution.scope, runtime.objects.blobs).http,
             }),
           }
         : null,

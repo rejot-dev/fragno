@@ -96,6 +96,7 @@ const config: BackofficeRuntimeConfig = {
     mcp: false,
     projectConnector: false,
     upload: false,
+    blobs: false,
     github: false,
     githubWebhookRouter: false,
     piManager: false,

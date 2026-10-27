@@ -62,6 +62,7 @@ const createRuntime = (): BackofficeRuntimeServices => {
         mcp: false,
         projectConnector: false,
         upload: false,
+        blobs: false,
         github: false,
         githubWebhookRouter: false,
         piManager: false,

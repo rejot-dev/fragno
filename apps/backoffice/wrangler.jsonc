@@ -63,6 +63,8 @@
     "GITHUB_APP_DEFAULT_LINK_KEY": "",
     "GITHUB_APP_TOKEN_CACHE_TTL_SECONDS": "",
     "GITHUB_APP_WEBHOOK_DEBUG": "",
+    // The bucket of BLOBS_BUCKET below.
+    "BLOBS_R2_BUCKET": "rejot-backoffice-blobs",
   },
   "secrets": {
     "required": [
@@ -83,8 +85,26 @@
       "CLOUDFLARE_WORKERS_ACCOUNT_ID",
       "CLOUDFLARE_WORKERS_API_TOKEN",
       "RESON8_API_KEY",
+      // Blobs reach their bucket through R2's S3 API, so they can hand out presigned URLs.
+      "BLOBS_R2_ENDPOINT",
+      "BLOBS_R2_ACCESS_KEY_ID",
+      "BLOBS_R2_SECRET_ACCESS_KEY",
     ],
   },
+  // Blobs use the S3 API, never this binding; it declares the bucket. Locally, the credentials make
+  // Miniflare serve the bucket's S3 API under /cdn-cgi/local/r2/s3, which .dev.vars points blobs at.
+  "r2_buckets": [
+    {
+      "binding": "BLOBS_BUCKET",
+      "bucket_name": "rejot-backoffice-blobs",
+      "local_dev": {
+        "experimental_s3_credentials": {
+          "accessKeyId": "local-blobs",
+          "secretAccessKey": "local-blobs",
+        },
+      },
+    },
+  ],
   // Tags telemetry with the deployed version, so errors and metrics can be compared per release.
   "version_metadata": { "binding": "CF_VERSION_METADATA" },
   // Codemode guests compile and run in the bridge, one request each; Backoffice loads none itself.
@@ -154,6 +174,10 @@
       {
         "name": "UPLOAD",
         "class_name": "Upload",
+      },
+      {
+        "name": "BLOBS",
+        "class_name": "Blobs",
       },
       // Sandbox containers belong to the bridge, which deploys their application and image.
       {
@@ -228,6 +252,7 @@
     "ProjectConnectorDurableObject": { "type": "durable-object", "storage": "sqlite" },
     "Otp": { "type": "durable-object", "storage": "sqlite" },
     "Upload": { "type": "durable-object", "storage": "sqlite" },
+    "Blobs": { "type": "durable-object", "storage": "sqlite" },
     // SANDBOX binds the bridge's Sandbox; this Worker's own copy and its namespace are gone.
     "Sandbox": { "type": "durable-object", "state": "deleted" },
     "SandboxManager": { "type": "durable-object", "storage": "sqlite" },

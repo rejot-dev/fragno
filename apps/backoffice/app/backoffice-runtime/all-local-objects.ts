@@ -1,3 +1,4 @@
+import { blobsR2BucketsFromEnv } from "@/fragno/blobs-server";
 import { createPiAgentDependencies } from "@/fragno/pi/agent/pi-agent-harness";
 import {
   createPiClassifier,
@@ -13,6 +14,7 @@ import { AppsObject } from "../../workers/apps-object";
 import { AuthObject } from "../../workers/auth-object";
 import { AutomationsObject } from "../../workers/automations-object";
 import { BillingObject } from "../../workers/billing-object";
+import { BlobsObject } from "../../workers/blobs-object";
 import { CloudflareObject } from "../../workers/cloudflare-object";
 import { CodemodeObject } from "../../workers/codemode-object";
 import { FormsObject } from "../../workers/forms-object";
@@ -174,6 +176,11 @@ export const allLocalObjects = {
   PROJECT_CONNECTOR: (input) => new ProjectConnectorObject(input),
   OTP: (input) => new OtpObject(input),
   UPLOAD: (input) => new UploadObject(input),
+  BLOBS: (input) => {
+    // Local objects are not kept in jurisdictions, so neither are their blobs.
+    const buckets = blobsR2BucketsFromEnv(input.env, "local");
+    return new BlobsObject({ ...input, storage: buckets ? { buckets, fetch } : null });
+  },
   SANDBOX: () => new UnavailableLocalDurableObject(),
   SANDBOX_MANAGER: (input) =>
     new SandboxManagerObject({

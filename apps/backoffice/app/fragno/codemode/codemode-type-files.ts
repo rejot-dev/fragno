@@ -41,6 +41,8 @@ const CODEMODE_AUTHORED_REFERENCES = [
 const CODEMODE_PROVIDER_SUMMARIES: Record<string, string> = {
   state:
     "Files in /workspace and /static, and links that share them. Read for file work beyond searching, reading, and writing, or to share or move files.",
+  blobs:
+    "Large files kept outside /workspace, uploaded and downloaded through presigned storage URLs. Read to store or share a file too large for the workspace.",
   account:
     "Your own account: profile, organizations, invitations, authorized apps. Read when the user asks about themselves.",
   admin:

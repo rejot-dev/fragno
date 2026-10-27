@@ -846,6 +846,7 @@ export type McpCommands = DurableHookCommands;
 /** Connector has HTTP operations only; provider tokens stay upstream. */
 export type ProjectConnectorCommands = Record<never, never>;
 export type UploadCommands = WarmableCommands & DurableHookCommands;
+export type BlobsCommands = WarmableCommands & DurableHookCommands;
 export type CloudflareCommands = Record<never, never>;
 export type FormsCommands = DurableHookCommands;
 export type GitHubCommands = DurableHookCommands & {
@@ -951,6 +952,7 @@ export type BackofficeObjectBindingName =
   | "MCP"
   | "PROJECT_CONNECTOR"
   | "UPLOAD"
+  | "BLOBS"
   | "GITHUB"
   | "GITHUB_WEBHOOK_ROUTER"
   | "CLOUDFLARE"
@@ -994,6 +996,7 @@ export const backofficeObjectScopePolicy = {
   MCP: ["org", "user", "project"],
   PROJECT_CONNECTOR: ["user"],
   UPLOAD: ["org", "named", "user", "app", "project"],
+  BLOBS: ["org", "user", "app", "project"],
   GITHUB: ["org", "user"],
 
   GITHUB_WEBHOOK_ROUTER: ["singleton"],
@@ -1194,6 +1197,7 @@ export const createBackofficeObjectRegistry = (factory: BackofficeObjectFactory)
   mcp: scoped(factory, binding<McpCommands>("MCP")),
   projectConnector: scoped(factory, binding<ProjectConnectorCommands>("PROJECT_CONNECTOR")),
   upload: scoped(factory, binding<UploadCommands>("UPLOAD")),
+  blobs: scoped(factory, binding<BlobsCommands>("BLOBS")),
   github: scoped(factory, binding<GitHubCommands>("GITHUB")),
 
   githubWebhookRouter: scoped(
