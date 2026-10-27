@@ -1,4 +1,3 @@
-import { createRequestHandler } from "react-router";
 import System from "typebox/system";
 import * as serverBuild from "virtual:react-router/server-build";
 
@@ -10,11 +9,12 @@ import { BackofficeKernel } from "../app/backoffice-runtime/kernel";
 import { createCloudflareBackofficeRuntimeServices } from "../app/backoffice-runtime/runtime-services";
 import { BackofficePostHogContext, captureBackofficeServerException } from "../app/posthog.server";
 import { createBackofficeRouterContextProvider } from "../app/worker-runtime/router-context-provider.server";
+import { createLazyRequestHandler } from "./lazy-request-handler";
 import { createCloudflarePostHog, shutdownCloudflarePostHog } from "./lib/cloudflare-posthog";
 
 System.Settings.Set({ useAcceleration: false });
 
-const requestHandler = createRequestHandler(serverBuild, import.meta.env.MODE);
+const requestHandler = createLazyRequestHandler(serverBuild, import.meta.env.MODE);
 
 export default {
   async fetch(request, env, ctx) {

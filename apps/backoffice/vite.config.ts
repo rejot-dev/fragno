@@ -71,6 +71,36 @@ function reactDomStreamingRendererOnlyPlugin(): Plugin {
   };
 }
 
+// The server build React Router generates imports every route module, so a cold Worker compiled
+// all of them, about 47 ms per MB, whichever route it served. Production builds import each
+// route module but root's on first use instead; `workers/lazy-request-handler.ts` loads those a
+// request matches.
+function lazyServerRouteModulesPlugin(): Plugin {
+  return {
+    name: "lazy-server-route-modules",
+    apply: "build",
+    transform(code, id) {
+      if (
+        this.environment.config.consumer !== "server" ||
+        !id.includes("virtual:react-router/server-build")
+      ) {
+        return null;
+      }
+      const rootModule = /"root": \{[^}]*module: (route\d+)/.exec(code)?.[1];
+      if (!rootModule) {
+        throw new Error("The React Router server build has no root route.");
+      }
+      return code.replace(
+        /import \* as (route\d+) from ("[^"]+");/g,
+        (statement, name: string, source: string) =>
+          name === rootModule
+            ? statement
+            : `const ${name} = { __backofficeLoadRouteModule: () => import(${source}) };`,
+      );
+    },
+  };
+}
+
 // Vite's dev server has a `u` shortcut, but its preview server does not. Shortcuts bound here merge
 // with the ones Vite's CLI binds after startup.
 function previewServerUrlShortcutPlugin(): Plugin {
@@ -145,6 +175,7 @@ export default defineConfig(({ command }) => {
       devtoolsJson(),
       emitWaSqliteWasmAssetPlugin(),
       reactDomStreamingRendererOnlyPlugin(),
+      lazyServerRouteModulesPlugin(),
       emitWorkerLocalDevVarsPlugin(),
       previewServerUrlShortcutPlugin(),
     ],
