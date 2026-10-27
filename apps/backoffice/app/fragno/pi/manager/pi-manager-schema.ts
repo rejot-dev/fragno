@@ -1,5 +1,5 @@
 import type { AutomationSteward } from "@fragno-dev/backoffice-api/v0/automation";
-import type { PiAgentDefinition } from "@fragno-dev/backoffice-api/v0/pi";
+import type { PiAgentConfig, PiAgentDefinition } from "@fragno-dev/backoffice-api/v0/pi";
 import { column, idColumn, schema, type Column } from "@fragno-dev/db/schema";
 
 import type {
@@ -94,6 +94,10 @@ export const piAgentDirectorySchema = schema("pi_manager", (s) =>
     // Null for definitions written before stewardship, which belong to members; writes set it.
     .alterTable("agent_definition", (t) =>
       t.addColumn("steward", jsonColumn<AutomationSteward>().nullable()),
+    )
+    // The agent whose turn sent a prompt and asked to hear how it ends; null asks for nothing.
+    .alterTable("agent_queue_item", (t) =>
+      t.addColumn("replyTo", jsonColumn<PiAgentConfig>().nullable()),
     ),
 );
 

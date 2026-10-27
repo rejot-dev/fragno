@@ -1293,7 +1293,7 @@ function heardEvents(context: Context) {
       return [];
     }
     const data = JSON.parse(match[2]) as {
-      subject: { workflowName: string; instanceId: string };
+      subject: Record<string, unknown>;
       payload: Record<string, unknown>;
     };
     return [{ attributes: match[1], ...data }];
@@ -1748,6 +1748,116 @@ test("an agent an app's installation prompts calls the app's actions as the inst
             ).toMatchObject([{ actor: { kind: "installation" }, scopeRestriction: org }]);
           },
         ),
+      ],
+    }),
+  );
+});
+
+test("an agent hears back from same-named agents it prompts in two scopes and reads their answers", async () => {
+  const execution = createBackofficeServiceExecution({
+    scope: { kind: "org", orgId: "org-1", jurisdiction: null },
+    service: { type: "automation", id: "agent-reply-scenario" },
+  });
+  const orgScope = execution.scope;
+  const userScope: BackofficeContextScope = { kind: "user", userId: "org-1", jurisdiction: null };
+  let heard: Array<ReturnType<typeof heardEvents>[number]> = [];
+  // Every agent object runs its own copy of this script: the planner and both assistants.
+  const respond: FauxResponseStep = (context) => {
+    const request = lastUserText(context);
+    if (request.startsWith("Hello from the planner")) {
+      return fauxAssistantMessage(
+        `The ${request.includes("personal") ? "personal" : "organization"} assistant answered.`,
+      );
+    }
+    const answered = context.messages.at(-1)?.role === "toolResult";
+    if (request === "Ask both assistants.") {
+      // Request IDs are unique only per conversation, so both prompts may use the same one.
+      return answered
+        ? fauxAssistantMessage("Waiting for both assistants.")
+        : fauxAssistantMessage(
+            [
+              fauxToolCall("codemode", {
+                code: `async () => [
+                  await context.current.pi.submitPrompt({
+                    agentName: "assistant",
+                    content: "Hello from the planner (organization).",
+                    requestId: "task-1",
+                    notifyWhenDone: true,
+                  }),
+                  await context.user("org-1").pi.submitPrompt({
+                    agentName: "assistant",
+                    content: "Hello from the planner (personal).",
+                    requestId: "task-1",
+                    notifyWhenDone: true,
+                  }),
+                ]`,
+              }),
+            ],
+            { stopReason: "toolUse" },
+          );
+    }
+    if (answered) {
+      const result = toolResults(context).at(-1);
+      expect(result?.isError, JSON.stringify(result)).toBe(false);
+      return fauxAssistantMessage(`Read: ${JSON.stringify(result?.details)}`);
+    }
+    heard = heardEvents(context);
+    const reads = heard.map(({ subject, payload }) => {
+      const scope = subject.scope as BackofficeContextScope;
+      const handle = scope.kind === "user" ? `context.user("org-1")` : "context.current";
+      return `${handle}.pi.listMessages({ agentName: "assistant", last: 1, before: ${Number(payload.answerEntryId) + 1} })`;
+    });
+    return fauxAssistantMessage(
+      [
+        fauxToolCall("codemode", {
+          code: `async () => (await Promise.all([${reads.join(", ")}])).map((page) => page.messages[0].text)`,
+        }),
+      ],
+      { stopReason: "toolUse" },
+    );
+  };
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "durable Pi agent replies across scopes",
+      options: { drain: false },
+      // Codemode reaches a user by ID only when Auth knows them.
+      setup: ({ given }) => [given.auth.user({ id: "org-1" })],
+      objects: { ...scenarioObjects, ...scriptedAgents(Array.from({ length: 8 }, () => respond)) },
+      piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+      steps: ({ then }) => [
+        then.assert("the planner reads both answers once notified", async ({ runtime }) => {
+          const defined = await request(runtime, execution, "/agents", {
+            agentName: "planner",
+            description: "Delegates to the assistants.",
+            model: null,
+            permissions: ["*"],
+            instructions: "",
+          });
+          assert.equal(defined.status, 201, await defined.clone().text());
+          await prompt(runtime, execution, {
+            agentName: "planner",
+            content: "Ask both assistants.",
+          });
+          await runtime.drain();
+          const transcript = JSON.stringify((await view(runtime, execution, "planner")).entries);
+          expect(transcript).toContain("The organization assistant answered.");
+          expect(transcript).toContain("The personal assistant answered.");
+        }),
+        then.assert("each notification is one prompted turn's completion", () => {
+          // The two managers reply independently, so either may arrive first.
+          expect(heard).toHaveLength(2);
+          expect(heard).toEqual(
+            expect.arrayContaining(
+              [orgScope, userScope].map((scope) => ({
+                attributes: expect.stringMatching(
+                  /^id="[^"]+" source="pi" type="turn.completed" /u,
+                ),
+                subject: { scope, agentName: "assistant", requestId: "task-1" },
+                payload: { answerEntryId: expect.any(Number) },
+              })),
+            ),
+          );
+        }),
       ],
     }),
   );

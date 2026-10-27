@@ -139,28 +139,30 @@ export function startReportingPiAgentTurns(input: {
   const { config, agent, harness, storage, automations, manager } = input;
   let reporting = Promise.resolve();
 
-  async function recordTurnEvents(reportable: ReportablePiAgentTurn) {
-    const { started, settlement } = reportable;
-    const ended = settlement ? settledTurnEventOf(settlement) : null;
-    for (const event of [...(started ? [STARTED_TURN_EVENT] : []), ...(ended ? [ended] : [])]) {
-      // The commits carry no time; their listener reports right after them.
-      await automations?.ingestEvent(
-        piAgentTurnEvent(config, agent, reportable, event, new Date(input.nowEpochMs())),
-        { propagationContext: null },
-      );
+  // The commits carry no time; their listener reports right after them.
+  function turnEvent(reportable: ReportablePiAgentTurn, event: PiTurnEvent) {
+    return piAgentTurnEvent(config, agent, reportable, event, new Date(input.nowEpochMs()));
+  }
+
+  async function recordTurnEvents(events: readonly AutomationEvent[]) {
+    for (const event of events) {
+      await automations?.ingestEvent(event, { propagationContext: null });
     }
   }
 
   async function reportTurn(reportable: ReportablePiAgentTurn, context: Context) {
-    const { requestId, settlement } = reportable;
+    const { requestId, started, settlement } = reportable;
+    const startedEvent = started ? turnEvent(reportable, STARTED_TURN_EVENT) : null;
     if (!settlement) {
-      await recordTurnEvents(reportable);
+      await recordTurnEvents(startedEvent ? [startedEvent] : []);
       return;
     }
+    const endedTurn = settledTurnEventOf(settlement);
+    const ended = endedTurn ? turnEvent(reportable, endedTurn) : null;
     // Both reports are idempotent, and an unrecordable event must not stop the agent's queue.
     const [recorded, advanced] = await Promise.allSettled([
-      recordTurnEvents(reportable),
-      manager.reportSettledTurn({ agentName: config.agentName, requestId }),
+      recordTurnEvents([...(startedEvent ? [startedEvent] : []), ...(ended ? [ended] : [])]),
+      manager.reportSettledTurn({ agentName: config.agentName, requestId, ended }),
     ]);
     for (const report of [recorded, advanced]) {
       if (report.status === "rejected") {

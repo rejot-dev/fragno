@@ -31,6 +31,7 @@ import {
 } from "@/backoffice-runtime/operation-error";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type {
+  PiAgentAddress,
   PiAgentNotification,
   PiAgentQueueSubmission,
 } from "@/fragno/pi/agent/pi-agent-contract";
@@ -44,6 +45,8 @@ export type PiManagerSubmitPromptInput = {
   content: string;
   requestId?: string;
   whenBusy?: z.infer<typeof piPromptWhenBusySchema>;
+  /** Notifies the calling agent of how the prompt ends; see `caller`. */
+  notifyWhenDone?: boolean;
 };
 export type PiManagerNotifyAgentInput = { agentName: string } & PiAgentNotification;
 export type PiManagerListMessagesInput = {
@@ -145,6 +148,8 @@ export function createPiManagerRuntime(input: {
   runtime: BackofficeRuntimeServices;
   kernel: BackofficeKernel;
   execution: BackofficeExecutionContext;
+  /** The agent whose turn calls, which prompts may notify; null outside an agent's turn. */
+  caller: PiAgentAddress | null;
   createPromptRequestId?: () => string;
   context?: Context;
 }): PiManagerRuntime {
@@ -235,15 +240,23 @@ export function createPiManagerRuntime(input: {
     async deleteAgent({ agentName }) {
       await request(agentRoute(agentName), null, "DELETE");
     },
-    async submitPrompt({ agentName, content, requestId, whenBusy }) {
+    async submitPrompt({ agentName, content, requestId, whenBusy, notifyWhenDone }) {
       const normalizedContent = content.trim();
       if (!normalizedContent) {
         throw new Error("PI_MANAGER_PROMPT_CONTENT_REQUIRED");
+      }
+      if (notifyWhenDone && !input.caller) {
+        throw new PiManagerRuntimeRequestError(
+          400,
+          "REPLY_NOT_ALLOWED",
+          "Only an agent's turn can be notified when a prompt ends.",
+        );
       }
       return await request<PiPromptReceipt>(`${agentRoute(agentName)}/prompts`, {
         requestId: requestId?.trim() || createPromptRequestId(),
         content: normalizedContent,
         ...(whenBusy ? { whenBusy } : {}),
+        replyTo: notifyWhenDone ? input.caller : null,
       });
     },
     async getPrompt({ agentName, requestId }) {

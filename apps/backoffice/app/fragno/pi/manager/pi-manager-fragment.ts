@@ -11,7 +11,9 @@ import {
 import { BackofficeForbiddenError, type BackofficeKernel } from "@/backoffice-runtime/kernel";
 import {
   piAgentCompactionSchema,
+  piAgentNotificationEvent,
   piAgentNotificationSchema,
+  type PiAgentSettledTurn,
 } from "@/fragno/pi/agent/pi-agent-contract";
 
 import { handOverPiAgentWork, publishPiAgentQueue } from "./pi-agent-queue";
@@ -149,13 +151,14 @@ export function createPiManagerFragment(
 export async function reportPiAgentTurnSettled(
   fragment: ReturnType<typeof createPiManagerFragment>,
   config: Pick<PiManagerConfig, "scope" | "agent" | "supportedAvailableModels">,
-  input: { agentName: string; requestId: string },
+  input: PiAgentSettledTurn,
 ): Promise<void> {
   const availableModels = await config.supportedAvailableModels();
   const advanced = await fragment.callServices(() =>
     fragment.services.advanceAgentQueue({
       agentName: input.agentName,
       settledRequestId: input.requestId,
+      ended: input.ended && piAgentNotificationEvent(input.ended),
       availableModels,
     }),
   );

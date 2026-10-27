@@ -56,6 +56,19 @@ export type PiAgentQueueChange = {
   | { kind: "dropped"; reason: string }
 );
 
+/**
+ * How a prompt ended, for the agent whose turn sent it and asked to hear: the `turn.*` event its
+ * agent recorded, or that the queue dropped it. The reply carries the prompt's provenance, so the
+ * agent handles it with its own turn's authority.
+ */
+export type PiAgentReply = {
+  replyTo: PiAgentConfig;
+  provenance: PiAgentTurnProvenance;
+  ending:
+    | { type: "settled"; event: PiAgentNotification["event"] }
+    | { type: "dropped"; agentName: string; requestId: string; reason: string };
+};
+
 /** Work the manager's requests leave for durable delivery. */
 export type PiManagerHooks = {
   /** Records the change as a `pi` Automations event; the hook's id makes it idempotent. */
@@ -66,6 +79,8 @@ export type PiManagerHooks = {
   redispatchAgentQueue: HookFn<{ agentName: string }>;
   /** Writes notifications that arrived into the conversation again, as above. */
   writeNotificationCards: HookFn<{ agent: PiAgentConfig; notifications: PiAgentNotification[] }>;
+  /** Notifies the agent a prompt replies to of how it ended, possibly in another scope. */
+  replyToAgent: HookFn<PiAgentReply>;
   /** Bills a model call; the event's id makes repeated deliveries idempotent. */
   deliverModelUsage: HookFn<PiModelUsage>;
 };
@@ -179,13 +194,26 @@ function findAgentQueue(uow: PiAgentQueueUow, agentName: string) {
     );
 }
 
+/** Who sent an item, and the agent it replies to once it ends. */
+type PiAgentQueueSender = { provenance: PiAgentTurnProvenance; replyTo: PiAgentConfig | null };
+
 /** An item this change records, which has no row yet. */
-type PiAgentArrivingItem = PiAgentQueueItem & {
-  agentName: string;
-  position: number;
-  provenance: PiAgentTurnProvenance;
-};
-type PiAgentQueueRow = PiAgentQueueItem & { id: FragnoId; provenance: PiAgentTurnProvenance };
+type PiAgentArrivingItem = PiAgentQueueItem &
+  PiAgentQueueSender & {
+    agentName: string;
+    position: number;
+  };
+type PiAgentQueueRow = PiAgentQueueItem & PiAgentQueueSender & { id: FragnoId };
+
+function replyIfAsked(
+  uow: PiAgentQueueUow,
+  item: PiAgentQueueSender,
+  ending: PiAgentReply["ending"],
+) {
+  if (item.replyTo) {
+    uow.triggerHook("replyToAgent", { replyTo: item.replyTo, provenance: item.provenance, ending });
+  }
+}
 
 /**
  * Only work that waits is recorded: queued items, and steers, which wait in Pi's inbox for the
@@ -253,6 +281,12 @@ function startNextTurn(
           reason: step.reason,
         });
       }
+      replyIfAsked(uow, candidate, {
+        type: "dropped",
+        agentName: agent.agentName,
+        requestId: candidate.requestId,
+        reason: step.reason,
+      });
     }
     return { handover: null, waiting: [] };
   }
@@ -296,7 +330,7 @@ function placeQueueItem(
     agent: PiAgentConfig;
     revision: number;
     paused: boolean;
-    item: PiAgentQueueItem & { provenance: PiAgentTurnProvenance };
+    item: PiAgentQueueItem & PiAgentQueueSender;
     turn: PiAgentTurn;
     steering: PiAgentPrompt | null;
     definition: PiAgentDefinition | null;
@@ -380,7 +414,8 @@ export function piAgentQueueServices(
      * Admits a prompt and places it. The first prompt provisions the agent. A request ID the queue
      * has seen keeps its first placement and never runs twice. `whenPaused: "resume"` resumes a
      * paused queue, which then starts with its oldest item. `model` is the built-in agent's choice
-     * for the prompt's turn; null keeps the conversation's.
+     * for the prompt's turn; null keeps the conversation's. `replyTo`, an agent whose turn sent the
+     * prompt, hears how it ends.
      */
     submitPrompt: function (input: {
       agentName: string;
@@ -389,6 +424,7 @@ export function piAgentQueueServices(
       whenBusy: "followUp" | "steer" | "reject";
       whenPaused: "wait" | "resume";
       provenance: PiAgentTurnProvenance;
+      replyTo: PiAgentConfig | null;
       availableModels: readonly PiAvailableModel[];
     }) {
       const { agentName, prompt } = input;
@@ -461,6 +497,7 @@ export function piAgentQueueServices(
                 requestId: prompt.requestId,
                 input: { type: "prompt", content: prompt.content, model },
                 provenance: input.provenance,
+                replyTo: input.replyTo,
               },
               turn: admitted.turn,
               // The stopped turn may still be settling, and a steer never joins it.
@@ -534,6 +571,7 @@ export function piAgentQueueServices(
                 requestId,
                 input: { type: "notification", notification },
                 provenance: input.provenance,
+                replyTo: null,
               },
               turn: admitted.turn,
               steering: null,
@@ -549,11 +587,13 @@ export function piAgentQueueServices(
     },
     /**
      * Records a settled turn. When it was the dispatched turn, every item it handled settles, and
-     * unless the queue is paused the next turn starts. Null when the turn was not the queue's.
+     * unless the queue is paused the next turn starts. `ended` is the event recording how the turn
+     * ended, which its prompt's `replyTo` hears. Null when the turn was not the queue's.
      */
     advanceAgentQueue: function (input: {
       agentName: string;
       settledRequestId: string;
+      ended: PiAgentNotification["event"] | null;
       availableModels: readonly PiAvailableModel[];
     }) {
       const { agentName } = input;
@@ -577,6 +617,9 @@ export function piAgentQueueServices(
               return null;
             }
             const revision = changeAgentQueue(uow, agent, agent.paused);
+            if (input.ended) {
+              replyIfAsked(uow, settled, { type: "settled", event: input.ended });
+            }
             // A steer settles with the turn it joined, which moves the queue when it settles.
             if (settled.state.status === "steered") {
               uow.update("agent_queue_item", settled.id, (b) =>

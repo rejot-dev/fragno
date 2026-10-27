@@ -52,6 +52,7 @@ const parsePromptSubmit = defineCliArgsParser<PiManagerSubmitPromptInput>("pi.pr
   content: { required: true },
   requestId: { option: "request-id" },
   whenBusy: { option: "when-busy" },
+  notifyWhenDone: { option: "notify-when-done", kind: "boolean" },
 });
 const parsePromptGet = defineCliArgsParser<PiManagerPromptInput>("pi.prompt.get", {
   agentName: { option: "agent", required: true },
@@ -257,6 +258,11 @@ const promptSubmitTool = defineBackofficeRuntimeTool({
             valueName: "mode",
             description:
               "followUp (default) waits for the current turn, steer joins it, reject refuses",
+          },
+          {
+            name: "notify-when-done",
+            description:
+              "From an agent's turn: notify the calling agent with the event recording how the prompt ended",
           },
           {
             name: "billing-organization-id",

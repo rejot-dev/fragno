@@ -552,6 +552,7 @@ export const createRouteBackedRuntimeContext = ({
         runtime,
         kernel,
         execution,
+        caller: null,
       }),
     },
     integrations: {

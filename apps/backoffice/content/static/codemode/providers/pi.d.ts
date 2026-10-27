@@ -36,7 +36,7 @@ type PiCodemodeProvider = {
    */
   deleteAgent(input: PiDeleteAgentInput): Promise<PiDeleteAgentOutput>;
   /**
-   * Durably queue a prompt for an agent, or steer its running turn, and return a receipt saying which. A request ID still queued is not queued twice. The prompt's outcome is recorded as a pi turn.completed event naming the answer's entry, or turn.failed, turn.aborted, or queue.dropped, each with the request ID in its subject. The turn runs with the caller's current permissions, narrowed by the agent's definition. Usage belongs to the agent scope's root owner, independently of the caller or their active organization.
+   * Durably queue a prompt for an agent, or steer its running turn, and return a receipt saying which. A request ID still queued is not queued twice. The prompt's outcome is recorded as a pi turn.completed event naming the answer's entry, or turn.failed, turn.aborted, or queue.dropped, each with the request ID in its subject. With `notifyWhenDone`, that event is also delivered to the calling agent as a notification; read the answer with `pi.listMessages` in the prompted agent's scope, passing `before` one past the answer's entry ID. The turn runs with the caller's current permissions, narrowed by the agent's definition. Usage belongs to the agent scope's root owner, independently of the caller or their active organization.
    * Requires `pi.modify`.
    */
   submitPrompt(input: PiSubmitPromptInput): Promise<PiSubmitPromptOutput>;
@@ -174,6 +174,8 @@ type PiSubmitPromptInput = {
   content: string;
   requestId?: string;
   whenBusy?: "followUp" | "steer" | "reject";
+  /** Only from an agent's turn, prompting another agent: notify you, the calling agent, with the event recording how the prompt ended. Works for agents in other scopes too. */
+  notifyWhenDone?: boolean;
 };
 type PiSubmitPromptOutput = {
   requestId: string;

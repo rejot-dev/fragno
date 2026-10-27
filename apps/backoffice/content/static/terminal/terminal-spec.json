@@ -3808,6 +3808,10 @@
         "description": "followUp (default) waits for the current turn, steer joins it, reject refuses"
       },
       {
+        "name": "notify-when-done",
+        "description": "From an agent's turn: notify the calling agent with the event recording how the prompt ended"
+      },
+      {
         "name": "billing-organization-id",
         "valueRequired": true,
         "valueName": "organization-id",

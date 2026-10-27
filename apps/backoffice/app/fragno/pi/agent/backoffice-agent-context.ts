@@ -118,6 +118,8 @@ export function createBackofficeAgentContext(input: {
             runtime,
             kernel,
             execution: scopedExecution,
+            // Whichever scope the tool addresses, replies come back to this agent.
+            caller: { scope: config.scope, agentName: config.agentName },
             createPromptRequestId,
             context,
           }),

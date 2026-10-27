@@ -1,14 +1,18 @@
+import { automationEntityRefsEqual } from "@fragno-dev/backoffice-api/v0/automation";
 import {
+  piAgentConfigSchema,
   piPromptReceiptOutputSchema,
   piPromptWhenBusySchema,
   type PiAgentDefinition,
 } from "@fragno-dev/backoffice-api/v0/pi";
+import { backofficeContextScopesEqual } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
 import type { HookHandlerTx } from "@fragno-dev/db";
 
 import { admitPiAgentTurn } from "@/fragno/pi/agent/agent-definitions";
+import { piAgentActor } from "@/fragno/pi/agent/pi-agent-actor";
 import {
   piAgentCompactionSchema,
   piAgentModelChoiceSchema,
@@ -35,13 +39,29 @@ export const promptRequestSchema = z.object({
   whenPaused: promptWhenPausedSchema.default("wait"),
   // A built-in agent's model for this prompt's turn; null keeps the conversation's.
   model: piAgentModelChoiceSchema.nullable().default(null),
+  // The agent, in any scope, whose turn sends the prompt and is notified of how it ends.
+  replyTo: piAgentConfigSchema.nullable().default(null),
 });
 const promptSchema = piAgentPromptSchema.extend({
   whenBusy: piPromptWhenBusySchema,
   whenPaused: promptWhenPausedSchema,
   model: piAgentModelChoiceSchema.nullable(),
+  replyTo: piAgentConfigSchema.nullable(),
   provenance: turnProvenanceSchema,
 });
+
+/**
+ * Only an agent's own turn, or work it persisted, acts with its delegate actor, so a reply is
+ * always news of that agent's own work. The actor names the agent's scope, so this holds across
+ * scopes.
+ */
+function repliesToSendingAgent(
+  replyTo: z.infer<typeof piAgentConfigSchema>,
+  provenance: PiAgentTurnProvenance,
+) {
+  const agent = piAgentActor(replyTo.scope, replyTo.agentName);
+  return provenance.actors.delegation.some((actor) => automationEntityRefsEqual(actor, agent));
+}
 const compactionSchema = piAgentCompactionSchema.extend({ provenance: turnProvenanceSchema });
 const notificationSchema = z.lazy(() =>
   piAgentNotificationSchema._zod.innerType.extend({ provenance: turnProvenanceSchema }),
@@ -102,10 +122,40 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
         path: "/agents/:agentName/prompts",
         inputSchema: promptSchema,
         outputSchema: piPromptReceiptOutputSchema,
-        errorCodes: ["AGENT_NOT_FOUND", "MODEL_UNAVAILABLE", "MODEL_NOT_CHOOSABLE", "AGENT_BUSY"],
+        errorCodes: [
+          "AGENT_NOT_FOUND",
+          "MODEL_UNAVAILABLE",
+          "MODEL_NOT_CHOOSABLE",
+          "AGENT_BUSY",
+          "REPLY_NOT_ALLOWED",
+        ],
         handler: async function ({ pathParams, input }, { json, error }) {
-          const { provenance, whenBusy, whenPaused, model, ...prompt } = await input.valid();
+          const { provenance, whenBusy, whenPaused, model, replyTo, ...prompt } =
+            await input.valid();
           const { agentName } = pathParams;
+          if (replyTo && !repliesToSendingAgent(replyTo, provenance)) {
+            return error(
+              {
+                code: "REPLY_NOT_ALLOWED",
+                message: "A prompt can notify only the agent whose turn sends it.",
+              },
+              400,
+            );
+          }
+          // An agent prompting itself only queues another turn of its own conversation, and a
+          // reply to it could wake it again and again.
+          if (
+            replyTo?.agentName === agentName &&
+            backofficeContextScopesEqual(replyTo.scope, config.scope)
+          ) {
+            return error(
+              {
+                code: "REPLY_NOT_ALLOWED",
+                message: `An agent cannot be notified of its own prompts: you are "${agentName}" in this scope. Prompt another agent, or drop notifyWhenDone.`,
+              },
+              400,
+            );
+          }
           const availableModels = await config.supportedAvailableModels();
           const submitted = await this.handlerTx()
             .withServiceCalls(
@@ -118,6 +168,7 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
                     whenBusy,
                     whenPaused,
                     provenance,
+                    replyTo,
                     availableModels,
                   }),
                 ] as const,
