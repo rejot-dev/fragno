@@ -27,6 +27,20 @@ test("a new address signs in, gives its name, and has no access until invited", 
   });
 });
 
+test("signing in to Bookkeeping and to Backoffice on the same host do not undo each other", async () => {
+  await runBookkeepingScenario(async (scenario) => {
+    scenario.backoffice.addUser({ email: "grace@example.test", name: "Grace Hopper" });
+    const grace = scenario.browser();
+    // Backoffice also uses Better Auth's cookies, by these names on an HTTPS origin.
+    grace.setCookie("__Secure-better-auth.session_token", "backoffice-session");
+    expect(await grace.signIn("grace@example.test")).toMatchObject({ path: "/start" });
+    expect(grace.cookie).toContain("__Secure-better-auth.session_token=backoffice-session");
+
+    grace.setCookie("__Secure-better-auth.session_token", "another-backoffice-session");
+    expect(await grace.navigate("/start")).toMatchObject({ path: "/start", status: 200 });
+  });
+});
+
 test("signing in returns to the page that asked for it, and only to Bookkeeping's own pages", async () => {
   await runBookkeepingScenario(async (scenario) => {
     await scenario.practice();

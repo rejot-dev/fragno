@@ -83,6 +83,11 @@ export class ScenarioBrowser {
     return [...this.#cookies].map(([name, value]) => `${name}=${value}`).join("; ");
   }
 
+  /** A cookie another app on Bookkeeping's host sets: cookies ignore ports. */
+  setCookie(name: string, value: string): void {
+    this.#cookies.set(name, value);
+  }
+
   /**
    * Starts signing in where `returnTo` will continue, completes Backoffice's sign-in page as
    * `email`, which creates the Backoffice account the first time, and opens where Bookkeeping

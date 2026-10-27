@@ -72,6 +72,8 @@ export class Auth extends DurableObject<CloudflareEnv> {
       // Provider tokens are used only by Bookkeeping's server; never return them to browsers.
       account: { encryptOAuthTokens: true },
       disabledPaths: ["/get-access-token", "/refresh-token"],
+      // Cookies ignore ports, so on one host Backoffice's Better Auth cookies would replace ours.
+      advanced: { cookiePrefix: "bookkeeping" },
       plugins: [
         genericOAuth({
           config: [
