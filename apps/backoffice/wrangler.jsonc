@@ -14,6 +14,9 @@
     // Pi keeps cache-eviction timers only where `unref()` exists; nodejs_compat's global timers
     // expose a no-op `unref()`, so those timers would keep Pi's Durable Object from being evicted.
     "no_nodejs_global_timers",
+    // Compiles each module on first import instead of at startup, so a cold isolate only pays for
+    // the object implementations it wakes.
+    "new_module_registry",
   ],
   "main": "./workers/objects.ts",
   "observability": {

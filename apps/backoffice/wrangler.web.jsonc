@@ -7,6 +7,8 @@
     "global_fetch_strictly_public",
     "enable_request_signal",
     "request_signal_passthrough",
+    // Compiles each module on first import instead of at startup, to shorten cold starts.
+    "new_module_registry",
   ],
   "main": "./workers/app.ts",
   "observability": {

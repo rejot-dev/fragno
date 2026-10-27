@@ -10,6 +10,8 @@
     // Pi keeps cache-eviction timers only where `unref()` exists; nodejs_compat's global timers
     // expose a no-op `unref()`, so those timers would keep Pi's Durable Object from being evicted.
     "no_nodejs_global_timers",
+    // Matches the deployed Workers, which load modules through the new registry.
+    "new_module_registry",
   ],
   "main": "../workers/vitest-env.ts",
   "vars": {
