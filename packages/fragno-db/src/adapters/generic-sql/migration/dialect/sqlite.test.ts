@@ -247,7 +247,7 @@ describe("SQLiteSQLGenerator", () => {
       };
 
       const sql = compileOne(operation);
-      expect(sql).toMatchInlineSnapshot(`"drop table "to_drop""`);
+      expect(sql).toMatchInlineSnapshot(`"drop table if exists "to_drop""`);
     });
   });
 

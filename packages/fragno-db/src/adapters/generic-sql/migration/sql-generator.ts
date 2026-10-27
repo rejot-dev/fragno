@@ -308,7 +308,8 @@ export abstract class SQLGenerator {
   ): CompiledQuery | CompiledQuery[];
 
   /**
-   * Compile a drop-table operation.
+   * Compile a drop-table operation. A schema may drop a table whose `addTable` an earlier release
+   * replaced with `noOp`, which only databases created before that release hold.
    */
   protected compileDropTable(
     operation: Extract<MigrationOperation, { type: "drop-table" }>,
@@ -316,6 +317,7 @@ export abstract class SQLGenerator {
   ): CompiledQuery {
     return this.getSchemaBuilder(resolver)
       .dropTable(this.getTableName(operation.name, resolver))
+      .ifExists()
       .compile();
   }
 
