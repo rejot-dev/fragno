@@ -28,6 +28,7 @@ import { GENERAL_SKILL_CONTENT } from "@/files/content/skills";
 import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
 import {
   assertAutomationProjectionsRebuild,
+  queryAutomationReplica,
   readAutomationPageQuery,
   readAutomationReplica,
 } from "@/fragno/automation/lofi/testing";
@@ -143,6 +144,23 @@ const workflows = {
   await step.waitForEvent("shipment", { type: "shipped", timeout: "7 days" });
 });`,
 };
+
+/** Asks six questions in one go, then waits for the answers to the last. */
+const SURVEY_WORKFLOW = `export default defineWorkflow({ name: "survey" }, async (event, step) => {
+  for (const question of [1, 2, 3, 4, 5, 6]) {
+    await step.do(\`question \${question}\`, async () => ({
+      $ui: {
+        version: 1,
+        state: {},
+        spec: {
+          root: "question",
+          elements: { question: { type: "Text", props: { text: \`Question \${question}\` }, children: [] } },
+        },
+      },
+    }));
+  }
+  await step.waitForEvent("answers", { type: "survey-answered", timeout: "7 days" });
+});`;
 
 /** Events carry the time they happened, so the scenario stamps them against its own clock. */
 function event(
@@ -571,13 +589,9 @@ async function readReplicaReads(ctx: BackofficeScenarioContext) {
   const handle = ctx.lofi.automations.forOrg(orgId);
   await handle.drain();
   const { replica } = handle;
-  // Steps created in the same millisecond tie on time, so they are listed by name.
   const runLine = (run: AutomationWorkflowRun) =>
     `${run.remoteWorkflowName ?? run.workflowName} ${run.status}: ${
-      run.workflowSteps
-        .map(({ name, status }) => `${name} ${status}`)
-        .sort()
-        .join(", ") || "no steps"
+      run.workflowSteps.map(({ name, status }) => `${name} ${status}`).join(", ") || "no steps"
     }; ${run.workflowEvents.length} events, ${run.workflowStepEmissions.length} emissions`;
 
   const records = await readAutomationReplica(replica, "orchestrationRecords", undefined);
@@ -758,7 +772,7 @@ describe("dashboard", () => {
             async (ctx) => {
               const waitingRuns = [
                 "await-shipment waiting: shipment waiting; 0 events, 0 emissions",
-                "approve-refund waiting: approval waiting, ask for approval completed; 0 events, 0 emissions",
+                "approve-refund waiting: ask for approval completed, approval waiting; 0 events, 0 emissions",
               ];
               assert.deepEqual(await readReplicaReads(ctx), {
                 routes: [
@@ -851,6 +865,58 @@ describe("dashboard", () => {
             });
             await assertHomePageMatchesDashboard(ctx);
           }),
+        ],
+      }),
+    );
+  });
+
+  test("a run's steps keep the order it created them in, also within one transaction", async () => {
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        objects: scenarioObjects,
+        name: "a survey asks six questions in one tick and waits at the last",
+        files: backofficeFiles.custom({
+          workspace: { "automations/survey.workflow.js": SURVEY_WORKFLOW },
+        }),
+        setup: ({ given }) => [given.organization.exists({ id: orgId, name: "Ada Labs" })],
+        steps: ({ when, then }) => [
+          when.workflow.createInstance({
+            orgId,
+            instanceId: "survey-1",
+            path: "/workspace/automations/survey.workflow.js",
+            event: event("trigger-survey-1", "shop", "survey.requested", Date.now()),
+          }),
+          then.assert(
+            "the run lists its steps in order and asks at the last question",
+            async (ctx) => {
+              const handle = ctx.lofi.automations.forOrg(orgId);
+              await handle.drain();
+              const [run] = await readAutomationReplica(handle.replica, "workflowRuns", {
+                type: "waiting",
+              });
+              const steps = [1, 2, 3, 4, 5, 6]
+                .map((question) => `question ${question}`)
+                .concat("answers");
+              assert.deepEqual(
+                run?.workflowSteps.map(({ name }) => name),
+                steps,
+              );
+              assert.deepEqual(
+                await queryAutomationReplica(
+                  handle,
+                  `SELECT "name" FROM steps ORDER BY "createdAt", "position"`,
+                ),
+                steps.map((name) => ({ name })),
+              );
+              assert.deepEqual(
+                await queryAutomationReplica(
+                  handle,
+                  `SELECT "eventType", "interfaceStepKey" FROM workflow_waits`,
+                ),
+                [{ eventType: "survey-answered", interfaceStepKey: "do:question 6" }],
+              );
+            },
+          ),
         ],
       }),
     );

@@ -146,11 +146,13 @@ page's interface.
 
 - **Relations.** Temporary views on the leader's connection give pages the synchronized tables under
   short names, such as `runs`, `steps`, and `events`, with `id` the row's id, references as the
-  referenced row's id (`steps.runId`), and the replica's bookkeeping columns left out. `connections`
-  and `agent_turns` are views of the projections. `agents` and `workflow_waits` are derived in the
-  worker with `readPiAgents` and `currentWorkflowWaits`, the functions the dashboard uses, so a page
-  repeats none of their logic; they are computed again only after a batch wrote what they read.
-  `page-schema.d.ts`, which agents read, is generated from the same list.
+  referenced row's id (`steps.runId`), and `position` the replica's internal id, which orders rows
+  as the backend created them; its other bookkeeping columns are left out. A run's steps from one
+  tick share their `createdAt` and order by `position`. `connections` and `agent_turns` are views of
+  the projections. `agents` and `workflow_waits` are derived in the worker with `readPiAgents` and
+  `currentWorkflowWaits`, the functions the dashboard uses, so a page repeats none of their logic;
+  they are computed again only after a batch wrote what they read. `page-schema.d.ts`, which agents
+  read, is generated from the same list.
 - **Guard.** Pages read only those relations, call only the functions listed there, cannot write,
   and stop at 500 rows, 4 MB of text, and 25 million operations, which take about 200 ms. A page's
   query that cannot run shows its error in place of the page.
@@ -262,8 +264,8 @@ download the outbox again.
   what the deleted events did, so the same browser could show different agents before and after one.
 - **Ties break by outbox order.** Of two changes to a connection in the same millisecond, the
   projection keeps the first it applies. Origins that occurred in the same millisecond list newest
-  ID first. Steps created in the same millisecond order by their random ID, which decides which of
-  them is a run's latest interface.
+  ID first. A run's steps, events, and emissions with the same `createdAt` order by the replica's
+  internal id, which follows the order the backend wrote them in.
 - **Busy tables rerun most views.** A batch reruns, in the leader and for every tab, each open view
   that reads a table it wrote. Most batches write `automation_event` or the workflow tables, which
   the overview's ten queries, the graph's three, an opened run's four, the Events list's four and

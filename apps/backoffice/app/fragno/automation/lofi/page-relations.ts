@@ -56,7 +56,8 @@ type TableRelation = {
 
 /**
  * The synchronized tables pages read, each as a view of its columns: `id` is the row's id, a
- * reference holds the referenced row's id, and the replica's bookkeeping columns are left out.
+ * reference holds the referenced row's id, and `position` orders rows as the backend created them.
+ * The replica's other bookkeeping columns are left out.
  */
 const TABLE_RELATIONS: TableRelation[] = [
   {
@@ -163,6 +164,8 @@ function columnType(column: AnyColumn): PageRelationColumnType {
   }
 }
 
+const POSITION_COLUMN = "position";
+
 function tableView(relation: TableRelation): { sql: string; columns: PageRelationColumn[] } {
   const registration = { schema: relation.schema };
   const table = relation.schema.tables[relation.table as never] as AnyTable;
@@ -197,6 +200,12 @@ function tableView(relation: TableRelation): { sql: string; columns: PageRelatio
       ...(relation.values?.[name] ? { values: relation.values[name] } : {}),
     });
   }
+  // The replica's internal id follows outbox order. Rows one transaction creates share their
+  // `createdAt`, and their ids are random, so only this orders them.
+  selected.push(
+    `"row".${quoteSqliteIdentifier(table.getInternalIdColumn().name)} AS ${quoteSqliteIdentifier(POSITION_COLUMN)}`,
+  );
+  columns.push({ name: POSITION_COLUMN, type: "integer", nullable: false });
   return {
     sql: `SELECT ${selected.join(", ")} FROM ${quoteSqliteIdentifier(lofiSqliteTableName(registration, relation.table))} AS "row" ${joins.join(" ")}`.trim(),
     columns,

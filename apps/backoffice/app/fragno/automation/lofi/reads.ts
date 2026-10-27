@@ -1,4 +1,5 @@
 import type { AutomationRouteDefinition } from "@fragno-dev/backoffice-api/v0/automation";
+import type { AnyTable } from "@fragno-dev/db/schema";
 import { lofiSqliteTableName, type LofiSqliteReader } from "@fragno-dev/lofi/sqlite";
 import { workflowsSchema } from "@fragno-dev/workflows/schema";
 
@@ -124,6 +125,9 @@ function selectedRuns(selector: WorkflowRunRecordSelector): { where: string; par
 /**
  * The selected runs in full, most recently updated first, as `workflowRunRecordsQuery` reads them:
  * each with its steps, events, and step emissions in the order they were recorded.
+ *
+ * Rows a run's tick writes share one `createdAt`, so ties break by the replica's internal ID, which
+ * follows the order the backend wrote them in. Their own IDs are random.
  */
 export function readWorkflowRuns(
   reader: LofiSqliteReader,
@@ -137,6 +141,7 @@ export function readWorkflowRuns(
   const emission = workflow_step_emission.columns;
   // Rows reference a run by its internal ID.
   const internalId = `"${workflow_instance.getInternalIdColumn().name}"`;
+  const writeOrder = (table: AnyTable) => `"${table.getInternalIdColumn().name}"`;
   const { where, params } = selectedRuns(selector);
   const selected = `SELECT ${internalId} FROM ${workflowTable("workflow_instance")} WHERE ${where}`;
 
@@ -171,7 +176,7 @@ export function readWorkflowRuns(
               "result", "errorName", "errorMessage", "createdAt", "updatedAt"
             FROM ${workflowTable("workflow_step")}
             WHERE "instanceRef" IN (${selected})
-            ORDER BY "createdAt", "id"`,
+            ORDER BY "createdAt", ${writeOrder(workflow_step)}`,
     params,
     columns: {
       ref: "integer",
@@ -197,7 +202,7 @@ export function readWorkflowRuns(
               "deliveredAt", "consumedByStepKey"
             FROM ${workflowTable("workflow_event")}
             WHERE "instanceRef" IN (${selected})
-            ORDER BY "createdAt", "id"`,
+            ORDER BY "createdAt", ${writeOrder(workflow_event)}`,
     params,
     columns: {
       ref: "integer",
@@ -215,7 +220,7 @@ export function readWorkflowRuns(
               "sequence", "payload", "createdAt"
             FROM ${workflowTable("workflow_step_emission")}
             WHERE "instanceRef" IN (${selected})
-            ORDER BY "createdAt", "sequence", "id"`,
+            ORDER BY "createdAt", "sequence", ${writeOrder(workflow_step_emission)}`,
     params,
     columns: {
       ref: "integer",
