@@ -281,6 +281,25 @@ describe("s3 storage adapter", () => {
     ).rejects.toMatchObject({ code: "INVALID_CHECKSUM" });
   });
 
+  test("finalizeUpload accepts any size up to a declared maximum", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 200, headers: { "Content-Length": "4" } })),
+    );
+
+    const { adapter } = createAdapter({ declaredSize: "maximum" });
+    if (!adapter.finalizeUpload) {
+      throw new Error("Expected finalizeUpload");
+    }
+
+    await expect(
+      adapter.finalizeUpload({ storageKey: "fragno/s~a", expectedSizeBytes: 5n, checksum: null }),
+    ).resolves.toMatchObject({ sizeBytes: 4n });
+    await expect(
+      adapter.finalizeUpload({ storageKey: "fragno/s~a", expectedSizeBytes: 3n, checksum: null }),
+    ).rejects.toMatchObject({ code: "INVALID_CHECKSUM" });
+  });
+
   test("rejects presigned expirations beyond seven days", async () => {
     expect(() =>
       createS3CompatibleStorageAdapter({
