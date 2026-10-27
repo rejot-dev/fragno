@@ -317,7 +317,10 @@ test("an installed app's declared actions run on its server, signed per call and
             });
             const delivered = ledger.received.length;
             expect(await fails(owner, execute("invoices.count", { year: "2025" }))).toContain(
-              "App action 'invoices.count' input failed its declared JSON Schema.",
+              'App action \'invoices.count\' input failed its declared JSON Schema: #/year: Instance type "string" is invalid. Expected "integer".',
+            );
+            expect(await fails(owner, execute("invoices.count", { fiscal_year: 2025 }))).toContain(
+              'Instance does not have required property "year". Property "fiscal_year" does not match additional properties schema.',
             );
             expect(ledger.received).toHaveLength(delivered);
             expect(await fails(owner, execute("invoices.broken", { year: 2025 }))).toContain(

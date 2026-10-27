@@ -32,7 +32,10 @@ import {
   decodeConnectorConnectionLocalId,
   encodeConnectorConnectionId,
 } from "./connector-connection-id";
-import { compileIntegrationActionSchema } from "./integration-action-json-schema";
+import {
+  compileIntegrationActionSchema,
+  describeSchemaViolations,
+} from "./integration-action-json-schema";
 import { connectionStateOfInspection } from "./integration-events";
 import type { IntegrationContext, IntegrationImplementation } from "./integration-implementation";
 
@@ -501,9 +504,10 @@ export function createConnectorIntegration({
                   );
                 }
                 const values = z.record(z.string(), jsonValueSchema).parse(input);
-                if (!inputValidator.validate(values).valid) {
+                const validation = inputValidator.validate(values);
+                if (!validation.valid) {
                   throw new Error(
-                    "Connector integration action input failed its published JSON Schema.",
+                    `Connector integration action input failed its published JSON Schema: ${describeSchemaViolations(validation.errors)}`,
                   );
                 }
                 const result = await access.invoke(
