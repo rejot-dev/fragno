@@ -694,6 +694,47 @@ describe("Lofi SQLite host", () => {
     ctx.errors.length = 0;
   });
 
+  it("builds a view whose first run fails once a later batch lets it run", async () => {
+    const ctx = await runScenario([
+      openTab("a"),
+      write("post", (uow) => {
+        uow.create("posts", { title: "Hello" });
+      }),
+      watch("a", "posts", postCountView),
+      waitForView("a", "posts", [{ count: 1 }]),
+      watch("a", "ada", (client) => appReadViews(client, "ada", undefined)),
+      watch("a", "json", (client) =>
+        client.sql({
+          sql: `SELECT json("title") AS "title" FROM ${table("posts")}`,
+          params: [],
+          columns: { title: "text" },
+        }),
+      ),
+      waitForError("a", "ada", "Ada is gone."),
+      waitForError("a", "json", "malformed JSON"),
+
+      write("ada", (uow) => {
+        uow.create("users", { email: "ada@example.com", active: true });
+      }),
+      waitForView("a", "ada", { email: "ada@example.com" }),
+      write("no post", (uow, vars) => {
+        uow.delete("posts", vars["post"]![0]!);
+      }),
+      waitForView("a", "json", []),
+      check((ctx) => {
+        // The SQL view reads only posts, so writing users did not run it again.
+        for (const view of ["a/ada", "a/json"]) {
+          expect(ctx.views.get(view)!.results.map(({ status }) => status)).toEqual([
+            "loading",
+            "error",
+            "ready",
+          ]);
+        }
+      }),
+    ]);
+    expect(ctx.errors).toEqual([]);
+  });
+
   it("shares a leader only with tabs that expect the same backend", async () => {
     const ctx = await runScenario([
       openTab("a", "backend"),

@@ -915,9 +915,10 @@ gets the tables again with the next batch's.
 A view engine maintains one kind of view. In the worker,
 `engine.open({ connection, registrations })` starts it on the leader's synchronous connection, and
 returns the engine's `materialize(id, query, listener, fail)`, `destroy(id)`, and
-`refresh(changed)`. A view that fails to build throws from `materialize`; one that fails to refresh
-reports it to `fail`, and calls `listener` again once it succeeds. The leader calls them only while
-it holds a lock on the database, after every batch in the case of `refresh`, so they read
+`refresh(changed)`. A query that can never run, such as SQL that does not parse, throws from
+`materialize`. A run that fails, when the view is built or refreshed, reports it to `fail`, and the
+view runs again after later batches and calls `listener` once it succeeds. The leader calls them
+only while it holds a lock on the database, after every batch in the case of `refresh`, so they read
 synchronously. Engines must not write the replica's tables: only the replica does. On the page,
 `replica.view(kind, query)` asks the leader's engine of `kind` for a view; `query` must survive
 `postMessage`.
@@ -1059,9 +1060,6 @@ only to the tab that shows it.
 - **Views refresh by table.** A view refreshes after any batch that wrote a table it reads, even
   when the batch touched none of its rows, and a read's whole result is compared with the last one
   sent.
-- **A view that fails to build stays failed.** Only refreshes recover; a read that throws when its
-  view is first built, for example because the replica has not caught up yet, fails until the page
-  asks for the view again.
 - **Queries can depend on the layout.** A query that reads the replica's tables by name, not through
   the relations, breaks when the layout or a schema changes.
 - **Derived relations hold all their rows.** A derived relation's rows are recomputed in full, and
