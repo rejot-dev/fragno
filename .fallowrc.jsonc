@@ -5,22 +5,19 @@
   // @fragno-apps/* so @fragno-dev/* can stay public to Fallow.
   "publicPackages": ["@fragno-dev/*", "@fragno-example/*"],
 
-  // False positive: docs snippets intentionally reference a fictional package name.
+  // Tooling config: Prettier resolves these plugins by name at runtime.
   "ignoreDependencies": [
-    "my-fragment",
     "prettier-plugin-astro",
     "prettier-plugin-sql",
     "prettier-plugin-svelte",
     "prettier-plugin-tailwindcss",
-
-    // Backoffice Vite/Vitest aliases redirect this package to a local shim; it is not imported
-    // directly from source.
-    "undici",
   ],
 
   // Tooling config: Prettier plugin names are resolved dynamically by Prettier. Backoffice content
   // and shims are loaded through runtime registries and build aliases rather than static imports.
   "ignorePatterns": [
+    // .pi/extensions are workspaces; Fallow skips hidden directories unless they are re-included.
+    "!.pi/**",
     "prettier.unsupported.config.mjs",
     "apps/backoffice/content/**",
     "apps/backoffice/shims/**",
@@ -28,7 +25,6 @@
     "apps/backoffice/vitest.node.config.ts",
     "apps/backoffice/vitest.shared.ts",
     "apps/backoffice/workers/app.ts",
-    "apps/backoffice/workers/sandbox.do.ts",
     "apps/backoffice/workers/vitest-env.ts",
   ],
 
