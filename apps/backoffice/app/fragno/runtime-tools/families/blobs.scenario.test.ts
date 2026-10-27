@@ -60,13 +60,22 @@ function bucketUrl(bucket: BlobsR2Bucket) {
   return `${bucket.endpoint.replace(/\/$/, "")}/${bucket.bucket}/`;
 }
 
+/** The tag the fake R2 gives these bytes, as Blobs reports it. */
+async function etagOf(bytes: Uint8Array<ArrayBuffer>) {
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+  return Buffer.from(digest).toString("hex").slice(0, 32);
+}
+
 /**
  * R2's S3 API for the given buckets. Backoffice reaches it with signed requests; callers holding a
  * presigned URL reach it with the signature in the query, and no credentials of their own.
  */
 function createFakeR2(buckets: BlobsR2Buckets) {
   // Keyed by the object's URL, which names its bucket.
-  const objects = new Map<string, { bytes: Uint8Array<ArrayBuffer>; contentType: string }>();
+  const objects = new Map<
+    string,
+    { bytes: Uint8Array<ArrayBuffer>; contentType: string; etag: string }
+  >();
 
   const fetch: typeof globalThis.fetch = async (input, init) => {
     const request = new Request(input, init);
@@ -86,12 +95,16 @@ function createFakeR2(buckets: BlobsR2Buckets) {
     const object = objects.get(objectUrl);
 
     switch (request.method) {
-      case "PUT":
+      case "PUT": {
+        const bytes = new Uint8Array(await request.arrayBuffer());
+        const etag = `"${await etagOf(bytes)}"`;
         objects.set(objectUrl, {
-          bytes: new Uint8Array(await request.arrayBuffer()),
+          bytes,
           contentType: request.headers.get("content-type") ?? "application/octet-stream",
+          etag,
         });
-        return new Response(null, { status: 200, headers: { etag: '"etag"' } });
+        return new Response(null, { status: 200, headers: { etag } });
+      }
       case "HEAD":
       case "GET":
         if (!object) {
@@ -101,7 +114,7 @@ function createFakeR2(buckets: BlobsR2Buckets) {
           headers: {
             "content-length": String(object.bytes.byteLength),
             "content-type": object.contentType,
-            etag: '"etag"',
+            etag: object.etag,
           },
         });
       case "DELETE":
@@ -190,9 +203,7 @@ test("a scope stores a large file as a blob through presigned URLs, apart from o
             // The URL names the hosting URL, and Acme's bytes go under Acme's prefix of the bucket.
             expect(url.origin).toBe(new URL(hostingUrl).origin);
             expect(url.pathname).toMatch(
-              new RegExp(
-                `^${new URL(localBucketUrl).pathname}org/acme/r2/calls/monday\\.wav/[^/]+$`,
-              ),
+              new RegExp(`^${new URL(localBucketUrl).pathname}org/acme/calls/monday\\.wav/[^/]+$`),
             );
             assert(url.searchParams.has("X-Amz-Signature"));
             await expect(completeUpload(abandoned.uploadId)).rejects.toThrow("Blobs returned");
@@ -205,6 +216,7 @@ test("a scope stores a large file as a blob through presigned URLs, apart from o
               key: "calls/monday.wav",
               sizeBytes: recording.byteLength,
               contentType: "audio/wav",
+              etag: await etagOf(recording),
             });
           },
         ),
@@ -213,6 +225,7 @@ test("a scope stores a large file as a blob through presigned URLs, apart from o
             key: "calls/monday.wav",
             sizeBytes: recording.byteLength,
             contentType: "audio/wav",
+            etag: await etagOf(recording),
           };
           await expect(
             runCodemode(
@@ -251,7 +264,10 @@ test("a scope stores a large file as a blob through presigned URLs, apart from o
               acme,
               `async () => await blobs.completeUpload({ uploadId: ${JSON.stringify(upload.uploadId)} })`,
             ),
-          ).resolves.toMatchObject({ sizeBytes: rerecording.byteLength });
+          ).resolves.toMatchObject({
+            sizeBytes: rerecording.byteLength,
+            etag: await etagOf(rerecording),
+          });
         }),
         runner.drain(),
         then.assert("only the replacement's bytes stay in storage", async (ctx) => {

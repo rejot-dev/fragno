@@ -276,6 +276,9 @@ importers:
       '@fragno-dev/backoffice-api':
         specifier: workspace:*
         version: link:../../packages/backoffice-api
+      '@fragno-dev/blobs':
+        specifier: workspace:*
+        version: link:../../packages/fragment-blobs
       '@fragno-dev/cloudflare-fragment':
         specifier: workspace:*
         version: link:../../packages/cloudflare-fragment
