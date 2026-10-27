@@ -1,0 +1,54 @@
+{
+  "name": "@fragno-dev/blobs",
+  "version": "0.0.0",
+  "description": "Fragno fragment for large files kept in S3-compatible object storage",
+  "keywords": [
+    "fragno",
+    "typescript"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "packages/fragment-blobs"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "types:check": "tsc --noEmit",
+    "build": "tsdown",
+    "test": "vitest run",
+    "test:watch": "vitest --watch",
+    "format:package": "node ../../scripts/run-package-quality.mjs format",
+    "format:check:package": "node ../../scripts/run-package-quality.mjs format:check",
+    "lint:package": "node ../../scripts/run-package-quality.mjs lint",
+    "lint:fix:package": "node ../../scripts/run-package-quality.mjs lint:fix"
+  },
+  "dependencies": {
+    "@fragno-dev/core": "workspace:*",
+    "@fragno-dev/db": "workspace:*",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@fragno-dev/test": "workspace:*",
+    "@fragno-dev/unplugin-fragno": "workspace:*",
+    "@fragno-private/vitest-config": "workspace:*",
+    "@types/node": "^24",
+    "@vitest/coverage-istanbul": "^4.1.0",
+    "tsdown": "^0.22.4",
+    "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "typescript": "catalog:"
+  }
+}
