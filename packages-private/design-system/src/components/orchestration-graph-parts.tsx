@@ -8,21 +8,8 @@ export type OrchestrationPulse = { id: string; eventId: string; routeIds: readon
 
 export type ActionKind = OrchestrationRouteAction["kind"];
 
-export const ACTION_EDGE_CLASS_NAME: Record<ActionKind, string> = {
-  start_workflow: "stroke-rose-800/70 dark:stroke-rose-300/70",
-  send_workflow_event: "stroke-sky-600/80 dark:stroke-sky-300/80",
-  forward_event: "stroke-violet-600/75 dark:stroke-violet-300/75",
-  notify_agent: "stroke-amber-600/80 dark:stroke-amber-300/80",
-  reclassify_event: "stroke-lime-600/80 dark:stroke-lime-300/80",
-};
-
-const ACTION_MARKER_CLASS_NAME: Record<ActionKind, string> = {
-  start_workflow: "fill-rose-800/80 dark:fill-rose-300/80",
-  send_workflow_event: "fill-sky-600 dark:fill-sky-300",
-  forward_event: "fill-violet-600 dark:fill-violet-300",
-  notify_agent: "fill-amber-600 dark:fill-amber-300",
-  reclassify_event: "fill-lime-600 dark:fill-lime-300",
-};
+// Every route is drawn in ink; its dash tells the kinds of action apart.
+export const ROUTE_EDGE_CLASS_NAME = "stroke-[var(--bo-fg)]";
 
 // Messages to a running workflow are dashed: they do not create anything, they wake something up.
 export const ACTION_EDGE_DASH: Record<ActionKind, string | undefined> = {
@@ -83,28 +70,25 @@ export function routeActionLabel(action: OrchestrationRouteAction): string {
     : ACTION_LABEL[action.kind];
 }
 
-export function actionMarkerUrl(idPrefix: string, kind: ActionKind): string {
-  return `url(#${idPrefix}-${kind})`;
+export function routeMarkerUrl(idPrefix: string): string {
+  return `url(#${idPrefix}-route)`;
 }
 
-/** Arrowheads coloured per action kind; markers cannot inherit the colour of the edge using them. */
-export function ActionMarkerDefs({ idPrefix }: { idPrefix: string }) {
+/** The arrowhead every route ends in; a marker cannot inherit the colour of the edge using it. */
+export function RouteMarkerDefs({ idPrefix }: { idPrefix: string }) {
   return (
     <defs>
-      {(Object.keys(ACTION_MARKER_CLASS_NAME) as ActionKind[]).map((kind) => (
-        <marker
-          key={kind}
-          id={`${idPrefix}-${kind}`}
-          viewBox="0 0 10 10"
-          refX="8"
-          refY="5"
-          markerWidth="7"
-          markerHeight="7"
-          orient="auto-start-reverse"
-        >
-          <path d="M 0 1 L 9 5 L 0 9 z" className={ACTION_MARKER_CLASS_NAME[kind]} />
-        </marker>
-      ))}
+      <marker
+        id={`${idPrefix}-route`}
+        viewBox="0 0 10 10"
+        refX="8"
+        refY="5"
+        markerWidth="7"
+        markerHeight="7"
+        orient="auto-start-reverse"
+      >
+        <path d="M 0 1 L 9 5 L 0 9 z" className="fill-[var(--bo-fg)]" />
+      </marker>
     </defs>
   );
 }

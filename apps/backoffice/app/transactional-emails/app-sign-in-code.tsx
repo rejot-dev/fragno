@@ -50,7 +50,7 @@ AppSignInCodeEmail.PreviewProps = {
   branding: {
     displayName: "Bookkeeping",
     logoUrl: "https://bookkeeping.example/logo.svg",
-    accentColor: "#1e2fb0",
+    accentColor: "#c2560a",
     homeUrl: "https://bookkeeping.example",
     supportUrl: "https://bookkeeping.example/help",
   },

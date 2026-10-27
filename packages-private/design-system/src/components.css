@@ -435,3 +435,78 @@
   color: transparent;
   animation: bo-shimmer 2.4s linear infinite;
 }
+
+/* Loopp wordmark (loopp-wordmark.tsx). */
+
+/* The second "o" opens into the loop: it starts as round as the first, then its straight sides grow
+   while the rest of the word slides out with its right half. Both move by the same easing, so the
+   loop stays closed throughout; the overshoot lets it stretch a touch past its length and settle. */
+.loopp-wordmark-animated .loopp-wordmark-sides {
+  transform-box: fill-box;
+  transform-origin: left;
+  animation: loopp-wordmark-sides 900ms cubic-bezier(0.34, 1.3, 0.64, 1) 300ms backwards;
+}
+
+.loopp-wordmark-animated .loopp-wordmark-tail {
+  animation: loopp-wordmark-tail 900ms cubic-bezier(0.34, 1.3, 0.64, 1) 300ms backwards;
+}
+
+@keyframes loopp-wordmark-sides {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+/* The loop's length in the wordmark's units; transforms on SVG elements use user units. */
+@keyframes loopp-wordmark-tail {
+  from {
+    transform: translateX(-200px);
+  }
+}
+
+/* What follows the animated wordmark, such as its byline, fades in once the loop has opened. */
+.loopp-wordmark-after {
+  animation: loopp-wordmark-after 400ms ease-out 1100ms backwards;
+}
+
+@keyframes loopp-wordmark-after {
+  from {
+    opacity: 0;
+  }
+}
+
+/* A segment of a streak of light running round the loop, turned to face the way it travels and
+   trailing the streak's head by its lag. Each one sets its own size, speed, start and lag inline;
+   the page around the loop may set its color. */
+.loopp-loop-particle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-radius: 9999px;
+  background: var(--loopp-loop-particle, #fff);
+  box-shadow: 0 0 8px 1px color-mix(in srgb, var(--loopp-loop-particle, #fff) 25%, transparent);
+  offset-rotate: auto;
+  animation: loopp-loop-particle linear infinite;
+}
+
+/* The path is closed, so a distance below zero wraps round to its end. */
+@keyframes loopp-loop-particle {
+  from {
+    offset-distance: calc(0% - var(--loopp-loop-lag, 0px));
+  }
+  to {
+    offset-distance: calc(100% - var(--loopp-loop-lag, 0px));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loopp-wordmark-animated .loopp-wordmark-sides,
+  .loopp-wordmark-animated .loopp-wordmark-tail,
+  .loopp-wordmark-after {
+    animation: none;
+  }
+
+  .loopp-loop-particle {
+    display: none;
+  }
+}

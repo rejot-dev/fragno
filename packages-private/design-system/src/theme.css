@@ -116,28 +116,29 @@
   --radius: 0.75rem;
   --spacing: 0.2rem;
 
-  /* Light theme: warm paper + deep ink, with a Klein ultramarine primary. The primary is the one brand hue;
-     it stays clear of the green/amber/red status colours so actions never read as run states. */
+  /* Light theme: warm paper + navy ink, with a bright orange primary. The primary is the one brand hue,
+     with navy text on it; the deeper burnt orange rings focus, and the navy is the ink and the dark
+     surfaces. */
   --background: #fbf9f8;
-  --foreground: oklch(0.2 0.04 265);
+  --foreground: #111827;
   --card: oklch(0.995 0.006 255);
-  --card-foreground: oklch(0.2 0.04 265);
+  --card-foreground: #111827;
   --popover: oklch(0.995 0.006 255);
-  --popover-foreground: oklch(0.2 0.04 265);
+  --popover-foreground: #111827;
 
-  --primary: #1e2fb0;
-  --primary-foreground: #ffffff;
+  --primary: #f58a1f;
+  --primary-foreground: #111827;
   --secondary: oklch(0.965 0.01 255);
   --secondary-foreground: oklch(0.23 0.04 265);
   --muted: oklch(0.965 0.01 255);
   --muted-foreground: oklch(0.54 0.04 265);
-  --accent: oklch(0.955 0.03 200);
-  --accent-foreground: oklch(0.22 0.04 265);
+  --accent: #fff0e0;
+  --accent-foreground: #111827;
 
   --destructive: oklch(0.6 0.23 25);
   --border: #ece9e6;
   --input: #ece9e6;
-  --ring: oklch(0.7 0.1 264);
+  --ring: #c2560a;
 
   /* Charts: slightly more vibrant (still accessible on light bg) */
   --chart-1: oklch(0.62 0.23 40);
@@ -148,37 +149,37 @@
 
   /* Sidebar: a tiny contrast step to feel “layered” */
   --sidebar: oklch(0.985 0.008 255);
-  --sidebar-foreground: oklch(0.2 0.04 265);
+  --sidebar-foreground: #111827;
   --sidebar-primary: var(--primary);
   --sidebar-primary-foreground: var(--primary-foreground);
-  --sidebar-accent: oklch(0.955 0.03 200);
-  --sidebar-accent-foreground: oklch(0.22 0.04 265);
+  --sidebar-accent: #fff0e0;
+  --sidebar-accent-foreground: #111827;
   --sidebar-border: #ece9e6;
-  --sidebar-ring: oklch(0.7 0.1 264);
+  --sidebar-ring: #c2560a;
 }
 
 .dark {
-  /* Dark theme: deep navy with a luminous ultramarine primary + teal accents */
-  --background: oklch(0.16 0.03 265);
+  /* Dark theme: the footer's navy with a bright orange primary */
+  --background: #0b111d;
   --foreground: oklch(0.97 0.01 255);
-  --card: oklch(0.2 0.03 265);
+  --card: #111827;
   --card-foreground: oklch(0.97 0.01 255);
-  --popover: oklch(0.2 0.03 265);
+  --popover: #111827;
   --popover-foreground: oklch(0.97 0.01 255);
 
-  --primary: #9aa6ff;
-  --primary-foreground: #0b0f3a;
+  --primary: #f58a1f;
+  --primary-foreground: #111827;
   --secondary: oklch(0.26 0.03 265);
   --secondary-foreground: oklch(0.97 0.01 255);
   --muted: oklch(0.26 0.03 265);
   --muted-foreground: oklch(0.75 0.02 255);
-  --accent: oklch(0.3 0.05 200);
+  --accent: #3a1f0a;
   --accent-foreground: oklch(0.97 0.01 255);
 
   --destructive: oklch(0.72 0.2 25);
   --border: oklch(1 0 0 / 12%);
   --input: oklch(1 0 0 / 16%);
-  --ring: oklch(0.75 0.12 264);
+  --ring: #f58a1f;
 
   --chart-1: oklch(0.7 0.2 264);
   --chart-2: oklch(0.78 0.16 165);
@@ -186,14 +187,14 @@
   --chart-4: oklch(0.74 0.22 310);
   --chart-5: oklch(0.76 0.2 15);
 
-  --sidebar: oklch(0.18 0.03 265);
+  --sidebar: #0b111d;
   --sidebar-foreground: oklch(0.97 0.01 255);
   --sidebar-primary: var(--primary);
   --sidebar-primary-foreground: var(--primary-foreground);
-  --sidebar-accent: oklch(0.3 0.05 200);
+  --sidebar-accent: #3a1f0a;
   --sidebar-accent-foreground: oklch(0.97 0.01 255);
   --sidebar-border: oklch(1 0 0 / 12%);
-  --sidebar-ring: oklch(0.75 0.12 264);
+  --sidebar-ring: #f58a1f;
 }
 
 /* Backoffice + landing palette. Both surfaces render inside [data-backoffice-root];
@@ -210,21 +211,22 @@
   --bo-panel: #ffffff;
   --bo-panel-2: #fbf9f8;
   --bo-header-bg: #f8f5f2;
-  --bo-fg: #25211c;
+  --bo-fg: #111827;
   --bo-muted: #56647a;
   --bo-muted-2: #7a889d;
   --bo-border: #ece9e6;
   --bo-border-strong: #ece9e6;
   --bo-accent: var(--primary);
-  --bo-accent-strong: #141f7a;
-  --bo-accent-bg: #e4e6ff;
-  --bo-accent-fg: #141f7a;
+  --bo-accent-strong: #8a3a05;
+  --bo-accent-bg: #fff0e0;
+  --bo-accent-fg: #8a3a05;
   /* rgba() needs channels, so this mirrors --primary and must change with it. */
-  --bo-accent-rgb: 30, 47, 176;
-  /* The call-to-action button is the brand primary; hover deepens it toward the strong accent. */
-  --bo-btn-bg: var(--primary);
-  --bo-btn-bg-hover: var(--bo-accent-strong);
-  --bo-btn-fg: var(--primary-foreground);
+  --bo-accent-rgb: 245, 138, 31;
+  /* Buttons are the brighter orange from the landing hero, with navy labels for contrast; the deeper
+     primary stays for text and links. Hover deepens the orange. */
+  --bo-btn-bg: #e8730f;
+  --bo-btn-bg-hover: #d4650c;
+  --bo-btn-fg: #111827;
   --bo-blue-1: #1f4ecc;
   --bo-blue-2: #2b5ce6;
   --bo-blue-3: #6f91ed;
@@ -249,23 +251,25 @@
 }
 
 .dark [data-backoffice-root] {
-  --bo-bg: #070b12;
-  --bo-sidebar-bg: #070b12;
-  --bo-selected-bg: #0d1422;
-  --bo-selected-border: #2b3a52;
+  --bo-bg: #0b111d;
+  --bo-sidebar-bg: #0b111d;
+  --bo-selected-bg: #111827;
+  --bo-selected-border: #273145;
   --bo-selected-shadow: 2px 2px 0 0 rgba(0, 0, 0, 0.35);
-  --bo-panel: #0d1422;
-  --bo-panel-2: #0a101b;
-  --bo-header-bg: #0d1422;
+  --bo-panel: #111827;
+  --bo-panel-2: #0e1522;
+  --bo-header-bg: #111827;
   --bo-fg: #f8fbff;
   --bo-muted: #c1ccdc;
   --bo-muted-2: #8f9bb2;
-  --bo-border: #2b3a52;
-  --bo-border-strong: #5e79ad;
-  --bo-accent-strong: #c2c9ff;
-  --bo-accent-bg: #171a45;
-  --bo-accent-fg: #f4f5ff;
-  --bo-accent-rgb: 154, 166, 255;
+  --bo-border: #273145;
+  --bo-border-strong: #4a5a78;
+  --bo-accent-strong: #ffc58f;
+  --bo-accent-bg: #3a1f0a;
+  --bo-accent-fg: #ffe0c2;
+  --bo-accent-rgb: 245, 138, 31;
+  --bo-btn-bg: #f58a1f;
+  --bo-btn-bg-hover: #ffa040;
   --bo-blue-1: #6e9cff;
   --bo-blue-2: #8eb2ff;
   --bo-blue-3: #abc7ff;

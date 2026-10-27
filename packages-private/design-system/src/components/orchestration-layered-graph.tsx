@@ -22,10 +22,10 @@ import {
   type OrchestrationRoute,
 } from "./orchestration-graph-model";
 import {
-  ACTION_EDGE_CLASS_NAME,
   ACTION_EDGE_DASH,
-  ActionMarkerDefs,
-  actionMarkerUrl,
+  ROUTE_EDGE_CLASS_NAME,
+  RouteMarkerDefs,
+  routeMarkerUrl,
   DISABLED_EDGE_DASH,
   OrchestrationPulseAnimation,
   routeActionLabel,
@@ -56,7 +56,7 @@ const HEADER_HEIGHT = 34;
 const FOLD_ROW_HEIGHT = 30;
 const STICKY_HEADER_HEIGHT = HEADER_HEIGHT - 8;
 const FOLD_ROW_CLASS_NAME =
-  "flex items-center gap-1.5 rounded-[4px] border border-dashed border-[var(--bo-border-strong)] px-2.5 text-xs text-[var(--bo-muted-2)] transition-colors hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none";
+  "flex items-center gap-1.5 rounded-[4px] border border-dashed border-[var(--bo-border-strong)] px-2.5 text-xs text-[var(--bo-muted-2)] transition-colors hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-fg)]/25 focus-visible:outline-none";
 
 function countLabel(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? "" : "s"}`;
@@ -388,7 +388,7 @@ export function OrchestrationLayeredGraph({
             height={layout.height + 8}
             aria-hidden="true"
           >
-            <ActionMarkerDefs idPrefix={markerIdPrefix} />
+            <RouteMarkerDefs idPrefix={markerIdPrefix} />
             {lanes.map(({ route, y }) => {
               const onward = onwardPath(route, y);
               const dash = route.enabled ? ACTION_EDGE_DASH[route.action.kind] : DISABLED_EDGE_DASH;
@@ -399,28 +399,23 @@ export function OrchestrationLayeredGraph({
                   opacity={opacityOf({ kind: "route", id: route.id }) * (route.enabled ? 1 : 0.6)}
                   className="transition-opacity duration-200"
                 >
-                  <circle
-                    cx={eventRight}
-                    cy={y}
-                    r={3}
-                    className="fill-[rgba(var(--bo-accent-rgb),0.6)]"
-                  />
+                  <circle cx={eventRight} cy={y} r={3} className="fill-[var(--bo-fg)]" />
                   <line
                     x1={eventRight}
                     y1={y}
                     x2={laneEnd}
                     y2={y}
-                    className={ACTION_EDGE_CLASS_NAME[route.action.kind]}
+                    className={ROUTE_EDGE_CLASS_NAME}
                     strokeWidth={strokeWidth}
                     strokeDasharray={dash}
                   />
                   {onward ? (
                     <path
                       d={onward}
-                      className={cn("fill-none", ACTION_EDGE_CLASS_NAME[route.action.kind])}
+                      className={cn("fill-none", ROUTE_EDGE_CLASS_NAME)}
                       strokeWidth={strokeWidth}
                       strokeDasharray={dash}
-                      markerEnd={actionMarkerUrl(markerIdPrefix, route.action.kind)}
+                      markerEnd={routeMarkerUrl(markerIdPrefix)}
                     />
                   ) : null}
                 </g>
@@ -463,8 +458,8 @@ export function OrchestrationLayeredGraph({
                     {...interactions(sourceItem)}
                     aria-label={`${block.source.label} source`}
                     className={cn(
-                      "absolute flex flex-col items-start rounded-[4px] bg-lime-500/12 p-2.5 text-left transition-[opacity,background-color] duration-200 hover:bg-lime-500/20 focus-visible:ring-2 focus-visible:ring-lime-600/35 focus-visible:outline-none dark:bg-lime-300/10",
-                      isSelected(sourceItem) && "ring-2 ring-lime-600/35",
+                      "absolute flex flex-col items-start rounded-[4px] bg-[color-mix(in_srgb,var(--bo-fg)_7%,transparent)] p-2.5 text-left transition-[opacity,background-color] duration-200 hover:bg-[color-mix(in_srgb,var(--bo-fg)_11%,transparent)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-fg)]/25 focus-visible:outline-none",
+                      isSelected(sourceItem) && "ring-2 ring-[color:var(--bo-fg)]/25",
                     )}
                     style={{
                       left: 0,
@@ -482,14 +477,14 @@ export function OrchestrationLayeredGraph({
                       <span className="flex min-w-0 items-center gap-2">
                         <Icon
                           name={block.source.icon}
-                          className="h-3.5 w-3.5 shrink-0 text-lime-800 dark:text-lime-200"
+                          className="h-3.5 w-3.5 shrink-0 text-[var(--bo-muted)]"
                           strokeWidth={1.8}
                         />
-                        <span className="truncate text-sm font-semibold text-lime-950 dark:text-lime-50">
+                        <span className="truncate text-sm font-semibold text-[var(--bo-fg)]">
                           <Highlighted text={block.source.label} terms={terms} />
                         </span>
                       </span>
-                      <span className="text-[11px] text-lime-900/70 tabular-nums dark:text-lime-100/70">
+                      <span className="text-[11px] text-[var(--bo-muted-2)] tabular-nums">
                         {countLabel(sourceTotals.get(block.source.id)?.events ?? 0, "event")} ·{" "}
                         {countLabel(sourceTotals.get(block.source.id)?.routes ?? 0, "route")}
                       </span>
@@ -535,11 +530,11 @@ export function OrchestrationLayeredGraph({
                         aria-label={`${row.event.sourceId}.${row.event.eventType} event`}
                         title={row.event.label}
                         className={cn(
-                          "absolute flex min-w-0 flex-col justify-center rounded-[4px] border px-2.5 text-left transition-[opacity,background-color] duration-200 focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none",
+                          "absolute flex min-w-0 flex-col justify-center rounded-[4px] border px-2.5 text-left transition-[opacity,background-color] duration-200 focus-visible:ring-2 focus-visible:ring-[color:var(--bo-fg)]/25 focus-visible:outline-none",
                           row.routed
-                            ? "border-transparent bg-[var(--bo-accent-bg)] hover:bg-[color-mix(in_srgb,var(--bo-accent-bg)_80%,var(--bo-accent))]"
-                            : "border-[var(--bo-border)] bg-[var(--bo-panel)] hover:bg-[var(--bo-accent-bg)]",
-                          isSelected(eventItem) && "ring-2 ring-[color:var(--bo-accent)]/40",
+                            ? "border-transparent bg-[color-mix(in_srgb,var(--bo-fg)_7%,transparent)] hover:bg-[color-mix(in_srgb,var(--bo-fg)_11%,transparent)]"
+                            : "border-[var(--bo-border)] bg-[var(--bo-panel)] hover:bg-[color-mix(in_srgb,var(--bo-fg)_11%,transparent)]",
+                          isSelected(eventItem) && "ring-2 ring-[color:var(--bo-fg)]/25",
                         )}
                         style={{
                           left: eventLeft,
@@ -554,15 +549,15 @@ export function OrchestrationLayeredGraph({
                             className={cn(
                               "min-w-0 flex-1 truncate font-mono text-[12px]",
                               row.routed
-                                ? "font-semibold text-[var(--bo-accent-strong)]"
+                                ? "font-semibold text-[var(--bo-fg)]"
                                 : "text-[var(--bo-muted)]",
                             )}
                           >
                             <Highlighted text={row.event.eventType} terms={terms} />
                           </span>
                           {row.event.recentCount > 0 ? (
-                            <span className="flex shrink-0 items-center gap-1 text-[10px] text-[var(--bo-live)] tabular-nums">
-                              <span className="h-1.5 w-1.5 rounded-full bg-[var(--bo-live)]" />
+                            <span className="flex shrink-0 items-center gap-1 text-[10px] text-[var(--bo-fg)] tabular-nums">
+                              <span className="h-1.5 w-1.5 rounded-full bg-[var(--bo-fg)]" />
                               {row.event.recentCount} recent
                             </span>
                           ) : null}
@@ -589,9 +584,9 @@ export function OrchestrationLayeredGraph({
                   aria-label={`${route.label} route, priority ${route.priority}, ${routeActionLabel(route.action)}`}
                   title={route.matcher ? `${route.label} · ${route.matcher}` : route.label}
                   className={cn(
-                    "absolute flex items-center gap-1.5 rounded-[3px] px-1 text-left text-[11.5px] leading-none transition-opacity duration-200 focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none",
+                    "absolute flex items-center gap-1.5 rounded-[3px] px-1 text-left text-[11.5px] leading-none transition-opacity duration-200 focus-visible:ring-2 focus-visible:ring-[color:var(--bo-fg)]/25 focus-visible:outline-none",
                     route.enabled ? "text-[var(--bo-fg)]" : "text-[var(--bo-muted-2)]",
-                    isSelected(routeItem) && "bg-[var(--bo-accent-bg)]",
+                    isSelected(routeItem) && "bg-[color-mix(in_srgb,var(--bo-fg)_7%,transparent)]",
                   )}
                   style={{
                     left: eventRight + 8,
@@ -601,7 +596,7 @@ export function OrchestrationLayeredGraph({
                     opacity: opacityOf(routeItem),
                   }}
                 >
-                  <span className="shrink-0 text-[9.5px] font-semibold tracking-[0.12em] text-[var(--bo-accent-strong)]">
+                  <span className="shrink-0 text-[9.5px] font-semibold tracking-[0.12em] text-[var(--bo-fg)]">
                     P{route.priority}
                   </span>
                   <span className={cn("truncate", !route.enabled && "line-through")}>
@@ -628,7 +623,7 @@ export function OrchestrationLayeredGraph({
                   {...interactions(targetItem)}
                   aria-label={`${node.target.label} ${node.target.kind}`}
                   className={cn(
-                    "absolute flex items-center gap-2.5 rounded-[4px] border border-[var(--bo-border)] bg-[var(--bo-panel)] px-2.5 text-left shadow-[0_1px_2px_rgb(0_0_0/0.04)] transition-[opacity,box-shadow] duration-200 hover:shadow-[0_4px_14px_rgb(0_0_0/0.06)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none",
+                    "absolute flex items-center gap-2.5 rounded-[4px] border border-[var(--bo-border)] bg-[var(--bo-panel)] px-2.5 text-left shadow-[0_1px_2px_rgb(0_0_0/0.04)] transition-[opacity,box-shadow] duration-200 hover:shadow-[0_4px_14px_rgb(0_0_0/0.06)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-fg)]/25 focus-visible:outline-none",
                     isSelected(targetItem) && presentation.ringClassName,
                   )}
                   style={{
@@ -655,7 +650,7 @@ export function OrchestrationLayeredGraph({
                       className={cn(
                         "block truncate text-[11px] tabular-nums",
                         node.target.activeCount > 0
-                          ? "text-[var(--bo-live)]"
+                          ? "text-[var(--bo-fg)]"
                           : "text-[var(--bo-muted-2)]",
                       )}
                     >

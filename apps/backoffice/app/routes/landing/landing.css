@@ -1,0 +1,92 @@
+/* The hero is lit from its top left corner: a broad white gradient washes over its amber
+   from there, and a deeper brown settles in the opposite corner, so the flat color gains depth. */
+.landing-hero-lights {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.landing-hero-lights::before,
+.landing-hero-lights::after {
+  position: absolute;
+  content: "";
+}
+
+.landing-hero-lights::before {
+  inset: 0;
+  transform-origin: 0 0;
+  background: radial-gradient(
+    ellipse 90% 120% at 0 0,
+    rgb(255 255 255 / 0.6),
+    rgb(255 255 255 / 0.25) 35%,
+    rgb(255 255 255 / 0) 80%
+  );
+  animation: landing-hero-light-breathe 7s ease-in-out infinite alternate;
+}
+
+.landing-hero-lights::after {
+  right: -20%;
+  bottom: -60%;
+  width: min(1000px, 75vw);
+  aspect-ratio: 1;
+  background: radial-gradient(closest-side, rgb(110 40 0 / 0.35), rgb(110 40 0 / 0));
+  animation: landing-hero-light-drift 23s ease-in-out infinite alternate;
+}
+
+@keyframes landing-hero-light-breathe {
+  from {
+    opacity: 0.75;
+  }
+  to {
+    opacity: 1;
+    scale: 1.06;
+  }
+}
+
+@keyframes landing-hero-light-drift {
+  to {
+    translate: -6vw -5vh;
+    scale: 1.15;
+  }
+}
+
+/* Scrolling hands the hero over to the product: the copy and the connections carousel fade while
+   the dashboard rises over them, faster than the page scrolls, and grows a little as it comes up.
+   All of it follows the scroll position; without scroll-driven animations, everything stays put. */
+@supports (animation-timeline: scroll()) {
+  .landing-hero-copy {
+    animation: landing-hero-copy-fade linear both;
+    animation-timeline: scroll(root);
+    animation-range: 0 40vh;
+  }
+
+  .landing-hero-device {
+    transform-origin: top center;
+    animation: landing-hero-device-rise linear both;
+    animation-timeline: scroll(root);
+    animation-range: 0 60vh;
+  }
+}
+
+@keyframes landing-hero-copy-fade {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes landing-hero-device-rise {
+  to {
+    translate: 0 -14vh;
+    scale: 1.08;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-hero-lights::before,
+  .landing-hero-lights::after,
+  .landing-hero-copy,
+  .landing-hero-device {
+    animation: none;
+  }
+}

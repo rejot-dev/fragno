@@ -13,8 +13,9 @@ const BASE =
   "inline-flex min-h-11 items-center justify-center gap-2 rounded-[4px] px-3 text-sm font-semibold transition-[background-color,box-shadow,color,scale] duration-150 ease-out focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100";
 
 const VARIANTS: Record<ButtonVariant, string> = {
+  // The brand's filled button, like solid.
   accent:
-    "bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)] shadow-[var(--bo-selected-shadow)] hover:bg-[color-mix(in_srgb,var(--bo-accent-bg)_82%,var(--bo-accent))]",
+    "bg-[var(--bo-btn-bg)] text-[var(--bo-btn-fg)] shadow-[var(--bo-selected-shadow)] hover:bg-[var(--bo-btn-bg-hover)]",
   secondary:
     "bg-[var(--bo-selected-bg)] text-[var(--bo-fg)] shadow-[var(--bo-selected-shadow)] hover:bg-[var(--bo-panel-2)]",
   ghost: "text-[var(--bo-fg)] hover:bg-[var(--bo-panel-2)]",
