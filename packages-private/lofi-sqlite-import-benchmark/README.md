@@ -6,7 +6,7 @@ import. The Vite dev server acts as the backend: it serves `GET /fixture/_intern
 from `apps/backoffice/app/fragno/automation/schema.ts`.
 
 ```bash
-OUTBOX_JSONL=~/dev/fragno-fixtures/outbox-dl-2026-10-23/outbox.jsonl pnpm -C packages-private/lofi-sqlite-import-benchmark dev
+OUTBOX_JSONL=~/dev/fragno-fixtures/outbox-dl-2026-10-23/outbox.jsonl pnpm -C packages-private/lofi-sqlite-import-benchmark replay
 ```
 
 Open http://localhost:5544 in Chrome.
@@ -29,7 +29,7 @@ second tab, the first tab's worker keeps maintaining the views of both. `window.
 each view's updates and latest result.
 
 ```bash
-OUTBOX_JSONL=~/dev/fragno-fixtures/upload-outbox-2026-10-24/outbox.jsonl pnpm -C packages-private/lofi-sqlite-import-benchmark dev
+OUTBOX_JSONL=~/dev/fragno-fixtures/upload-outbox-2026-10-24/outbox.jsonl pnpm -C packages-private/lofi-sqlite-import-benchmark replay
 ```
 
 ## Production build and headless runs
