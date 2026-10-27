@@ -14,9 +14,10 @@ import {
   projectConnectorConnectionStateSchema,
   type projectConnectorConnectInputSchema,
   projectConnectorExecutionSchema,
+  projectConnectorGatewayProviderConfigsSchema,
   projectConnectorHttpUrlSchema,
   projectConnectorProfileSchema,
-  projectConnectorProviderConfigsSchema,
+  projectConnectorProviderCatalogSchema,
   type ProjectConnectorConnectionState,
 } from "./project-connector-contracts";
 
@@ -36,13 +37,7 @@ const projectConnectorConnectionRequestSchema = z
 const projectConnectorCallOptions = { retries: 0 } satisfies ProjectCallOptions;
 const projectConnectorDiscoveryEnvelopeSchema = z.object({
   success: z.literal(true),
-  data: projectConnectorProviderConfigsSchema.safeExtend({
-    providerConfigs: z.array(
-      projectConnectorProviderConfigsSchema.shape.providerConfigs.element.extend({
-        actionIds: z.array(z.string().min(1)),
-      }),
-    ),
-  }),
+  data: projectConnectorGatewayProviderConfigsSchema,
 });
 
 const projectConnectorAccountDeletionEnvelopeSchema = z.object({
@@ -55,6 +50,15 @@ const projectConnectorCatalogActionSchema = projectConnectorActionSchema.extend(
     .string()
     .nullish()
     .transform((description) => description ?? null),
+});
+
+// The gateway also returns a description the SDK's ProviderMetadata type omits.
+const projectConnectorCatalogProviderSchema = projectConnectorProviderCatalogSchema.extend({
+  service: z.string().min(1),
+  description: z
+    .string()
+    .nullish()
+    .transform((description) => description || null),
 });
 
 type ProjectConnectorSdk = Pick<
@@ -257,6 +261,17 @@ export function createProjectConnectorClient(
   return {
     async listProviderConfigs() {
       const discovery = await fetchProjectConnectorProviderConfigs({ apiKey, baseUrl });
+      const services = [...new Set(discovery.providerConfigs.map((config) => config.service))];
+      const catalogByService = new Map(
+        catalog && services.length > 0
+          ? parseProjectConnectorResponse(
+              z.array(projectConnectorCatalogProviderSchema),
+              await callProjectConnector(() =>
+                catalog.providers({ service: services }, projectConnectorCallOptions),
+              ),
+            ).map(({ service, ...entry }) => [service, entry])
+          : [],
+      );
       return {
         projectId: discovery.projectId,
         providerConfigs: discovery.providerConfigs.map((config) => ({
@@ -266,6 +281,7 @@ export function createProjectConnectorClient(
           callbackUrl: config.callbackUrl,
           effectiveScopes: config.effectiveScopes,
           proxyAvailable: config.proxyAvailable,
+          catalog: catalogByService.get(config.service) ?? null,
         })),
       };
     },

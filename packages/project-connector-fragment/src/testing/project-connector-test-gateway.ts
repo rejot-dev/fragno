@@ -5,12 +5,12 @@ import { z } from "zod";
 
 import type {
   projectConnectorActionSchema,
-  projectConnectorProviderConfigsSchema,
+  projectConnectorGatewayProviderConfigsSchema,
 } from "../project-connector-contracts";
 
 type GatewayProviderConfig = z.infer<
-  typeof projectConnectorProviderConfigsSchema
->["providerConfigs"][number] & { actionIds: string[] };
+  typeof projectConnectorGatewayProviderConfigsSchema
+>["providerConfigs"][number];
 
 const connectSchema = z.object({
   userId: z.string(),
@@ -107,6 +107,25 @@ export async function startProjectConnectorTestGateway() {
       },
     ],
   ]);
+  // Ordered most specific first, as the gateway's catalog orders them.
+  const catalogProviders = new Map([
+    [
+      "gmail",
+      {
+        service: "gmail",
+        displayName: "Gmail",
+        description: "Email conversations, labels, drafts, and mailbox management",
+        searchAliases: ["google mail"],
+        iconUrl: "https://static.example/logo/Gmail.svg",
+        homepageUrl: "https://workspace.google.com/gmail/",
+        categories: [
+          { id: "communication", displayName: "Communication" },
+          { id: "productivity", displayName: "Productivity" },
+        ],
+        authTypes: ["oauth2"],
+      },
+    ],
+  ]);
   const executions: {
     externalUserId: string;
     providerConfigId: string;
@@ -138,6 +157,7 @@ export async function startProjectConnectorTestGateway() {
       | null;
     discoveryReads: number;
     catalogReads: string[];
+    providerCatalogReads: string[][];
     catalogFailure: "wrong-service" | "redirect" | null;
     redirectReads: number;
   } = {
@@ -149,6 +169,7 @@ export async function startProjectConnectorTestGateway() {
     discoveryFailure: null,
     discoveryReads: 0,
     catalogReads: [],
+    providerCatalogReads: [],
     catalogFailure: null,
     redirectReads: 0,
   };
@@ -191,6 +212,21 @@ export async function startProjectConnectorTestGateway() {
             description: action.description ?? undefined,
             clientSecret: "test-catalog-key",
           })),
+      });
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/v1/providers") {
+      if (req.headers.authorization !== "Bearer test-catalog-key") {
+        res.writeHead(401).end("Unauthorized test-catalog-key");
+        return;
+      }
+      const services = url.searchParams.getAll("service");
+      control.providerCatalogReads.push(services);
+      json({
+        success: true,
+        data: [...catalogProviders.values()].filter(
+          (provider) => services.length === 0 || services.includes(provider.service),
+        ),
       });
       return;
     }
@@ -419,6 +455,7 @@ export async function startProjectConnectorTestGateway() {
     accounts,
     providerConfigs,
     catalogActions,
+    catalogProviders,
     executions,
     deletions,
     control,

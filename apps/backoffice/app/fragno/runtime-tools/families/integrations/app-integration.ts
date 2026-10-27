@@ -21,6 +21,7 @@ import {
   compileIntegrationActionSchema,
   describeSchemaViolations,
 } from "./integration-action-json-schema";
+import { INTEGRATION_CATEGORY } from "./integration-categories";
 import { connectionStateOfInspection, type IntegrationConnectionState } from "./integration-events";
 import type {
   IntegrationActionImplementation,
@@ -225,6 +226,8 @@ export function createAppIntegration({
           label: "Installed apps",
           description:
             "Actions that installed apps declare and serve on their own servers. Each installed app with actions is one connection, addressed as app#<slug> with the slug apps.get shows; installing the app is its setup.",
+          iconUrl: null,
+          categories: [INTEGRATION_CATEGORY.productivity],
           connectionCardinality: "multiple",
           availability: available
             ? { status: "available" }
