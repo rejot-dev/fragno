@@ -1,9 +1,8 @@
-import { BLOB_MAX_SIZE_BYTES } from "@fragno-dev/backoffice-api/v0/blobs";
 import type { BackofficeJurisdiction } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { createRouteCaller, type RouteCallerForFragment } from "@fragno-dev/core/api";
 import { AwsClient } from "aws4fetch";
 
-import { createR2StorageAdapter, createUploadFragment, type S3Signer } from "@fragno-dev/upload";
+import { createBlobsFragment, createS3BlobStorage, type S3Signer } from "@fragno-dev/blobs";
 
 import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
 import type { BackofficeFragmentRuntimeOptions } from "@/backoffice-runtime/fragment-runtime";
@@ -118,15 +117,13 @@ function createR2Signer(bucket: BlobsR2Bucket): S3Signer {
   });
 
   return {
-    sign: async ({ url, method, headers }) => {
-      const request = await client.sign(url, { method, headers });
+    sign: async ({ url, method }) => {
+      const request = await client.sign(url, { method });
       return { url: request.url, headers: Object.fromEntries(request.headers) };
     },
     presign: async ({ url, method, headers, expiresInSeconds }) => {
       const presignedUrl = new URL(url);
-      if (expiresInSeconds !== undefined) {
-        presignedUrl.searchParams.set("X-Amz-Expires", String(Math.floor(expiresInSeconds)));
-      }
+      presignedUrl.searchParams.set("X-Amz-Expires", String(Math.floor(expiresInSeconds)));
       const request = await client.sign(presignedUrl.toString(), {
         method,
         headers,
@@ -137,9 +134,6 @@ function createR2Signer(bucket: BlobsR2Bucket): S3Signer {
   };
 }
 
-/** `createR2StorageAdapter`'s name, which Upload records as every blob's provider. */
-export const BLOBS_PROVIDER = "r2";
-
 export function createBlobsServer({
   storage,
   storageKeyPrefix,
@@ -148,25 +142,19 @@ export function createBlobsServer({
   storage: BlobsR2Storage;
   storageKeyPrefix: string;
   runtime: BackofficeFragmentRuntimeOptions;
-}): ReturnType<typeof createUploadFragment> {
+}): ReturnType<typeof createBlobsFragment> {
   const databaseAdapter = runtime.adapters.createAdapter({ kind: "blobs" });
 
-  return createUploadFragment(
+  return createBlobsFragment(
     {
-      storage: createR2StorageAdapter({
+      storage: createS3BlobStorage({
         endpoint: storage.bucket.endpoint,
         bucket: storage.bucket.bucket,
         pathStyle: true,
         signer: createR2Signer(storage.bucket),
         fetch: storage.fetch,
-        storageKeyPrefix,
-        // Uploads declare the maximum size, which uploaders need not know in advance.
-        declaredSize: "maximum",
-        // Every blob uploads in one presigned PUT, so none may reach the multipart threshold.
-        maxSingleUploadBytes: BLOB_MAX_SIZE_BYTES,
-        maxMultipartUploadBytes: BLOB_MAX_SIZE_BYTES,
-        multipartThresholdBytes: BLOB_MAX_SIZE_BYTES + 1,
       }),
+      storageKeyPrefix,
     },
     { databaseAdapter, mountRoute: "/api/blobs" },
   );

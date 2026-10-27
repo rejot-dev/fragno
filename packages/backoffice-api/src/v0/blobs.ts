@@ -23,6 +23,11 @@ const blobSchema = z.lazy(() =>
     key: z.string(),
     sizeBytes: z.number(),
     contentType: z.string(),
+    etag: z
+      .string()
+      .describe(
+        "Storage's tag for the blob's bytes; it changes whenever they do, so equal tags mean the same upload's bytes.",
+      ),
   }),
 );
 

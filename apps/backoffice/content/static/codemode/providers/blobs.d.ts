@@ -58,6 +58,8 @@ type BlobsCompleteUploadOutput = {
   key: string;
   sizeBytes: number;
   contentType: string;
+  /** Storage's tag for the blob's bytes; it changes whenever they do, so equal tags mean the same upload's bytes. */
+  etag: string;
 };
 type BlobsGetInput = {
   /** The blob's name within the scope, e.g. recordings/2026-10-26.mp4. Slash-separated segments, none empty, '.' or '..'. */
@@ -67,6 +69,8 @@ type BlobsGetOutput = {
   key: string;
   sizeBytes: number;
   contentType: string;
+  /** Storage's tag for the blob's bytes; it changes whenever they do, so equal tags mean the same upload's bytes. */
+  etag: string;
 } | null;
 type BlobsListInput = {
   prefix?: string;
@@ -77,6 +81,8 @@ type BlobsListOutput = {
     key: string;
     sizeBytes: number;
     contentType: string;
+    /** Storage's tag for the blob's bytes; it changes whenever they do, so equal tags mean the same upload's bytes. */
+    etag: string;
   }[];
   /** Pass to blobs.list for the next page; null at the end. */
   cursor: string | null;
