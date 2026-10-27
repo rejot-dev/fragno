@@ -312,40 +312,6 @@ describe("where-builder", () => {
         });
       });
 
-      it("should build starts with operator", () => {
-        const condition = {
-          type: "compare" as const,
-          a: usersTable.columns.email,
-          operator: "starts with" as const,
-          b: "admin",
-        };
-
-        const result = buildWhere(condition, createMockEB(), new NodePostgresDriverConfig());
-        expect(result).toEqual({
-          type: "compare",
-          col: "users.email",
-          op: "like",
-          val: "admin%",
-        });
-      });
-
-      it("should build not starts with operator", () => {
-        const condition = {
-          type: "compare" as const,
-          a: usersTable.columns.email,
-          operator: "not starts with" as const,
-          b: "test",
-        };
-
-        const result = buildWhere(condition, createMockEB(), new NodePostgresDriverConfig());
-        expect(result).toEqual({
-          type: "compare",
-          col: "users.email",
-          op: "not like",
-          val: "test%",
-        });
-      });
-
       it("should build ends with operator", () => {
         const condition = {
           type: "compare" as const,

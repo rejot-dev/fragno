@@ -7,7 +7,7 @@ import { evaluateCondition } from "./condition-evaluator";
 import { createNamespaceStore } from "./store";
 
 describe("in-memory condition evaluator", () => {
-  it("evaluates SQLite-normalized comparisons and LIKE semantics", () => {
+  it("evaluates SQLite-normalized comparisons and string operator semantics", () => {
     const testSchema = schema("test", (s) =>
       s.addTable("events", (t) =>
         t
@@ -67,8 +67,16 @@ describe("in-memory condition evaluator", () => {
         row,
       ),
     );
+    // `starts with` compiles to range bounds, so unlike LIKE it matches case.
     assert(
       evaluateCondition(
+        buildCondition(table.columns, (eb) => eb("name", "starts with", "Test")),
+        table,
+        row,
+      ),
+    );
+    assert(
+      !evaluateCondition(
         buildCondition(table.columns, (eb) => eb("name", "starts with", "TEST")),
         table,
         row,

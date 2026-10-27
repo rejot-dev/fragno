@@ -111,6 +111,45 @@ export function serializeReferenceFilterValue(
   return serializer.serialize(resolveFragnoIdValue(value, column), column);
 }
 
+/** The smallest string greater, in code point order, than every string starting with `prefix`. */
+function prefixUpperBound(prefix: string): string | null {
+  const characters = Array.from(prefix);
+  for (let index = characters.length - 1; index >= 0; index -= 1) {
+    const codePoint = characters[index].codePointAt(0)!;
+    if (codePoint === 0x10ffff) {
+      continue;
+    }
+    // Skips the surrogate range, which no well-formed string contains.
+    const next = codePoint === 0xd7ff ? 0xe000 : codePoint + 1;
+    return characters.slice(0, index).join("") + String.fromCodePoint(next);
+  }
+  return null;
+}
+
+/**
+ * Matches the column's values that start with `prefix`, by range bounds rather than `LIKE`: its `%`
+ * and `_` are wildcards, SQLite's ignores ASCII case, and Durable Object SQLite caps its patterns
+ * at 50 bytes. The bounds hold in code point order, so the column compares by binary collation.
+ * On MySQL that is `utf8mb4_0900_bin`: `utf8mb4_bin` pads with spaces, so `"pre"` would fall
+ * within the bounds of the prefix `"pre "`.
+ */
+export function buildStartsWithWhere(
+  eb: AnyExpressionBuilder,
+  columnSqlName: string,
+  prefix: string,
+  driverConfig: DriverConfig,
+): AnyExpressionWrapper {
+  const column =
+    driverConfig.databaseType === "postgresql"
+      ? sql`${sql.ref(columnSqlName)} collate "C"`
+      : driverConfig.databaseType === "mysql"
+        ? sql`${sql.ref(columnSqlName)} collate utf8mb4_0900_bin`
+        : sql.ref(columnSqlName);
+  const upperBound = prefixUpperBound(prefix);
+  const atLeastPrefix = eb(column, ">=", prefix);
+  return upperBound === null ? atLeastPrefix : eb.and([atLeastPrefix, eb(column, "<", upperBound)]);
+}
+
 export function constantWhere(eb: AnyExpressionBuilder, value: boolean): AnyExpressionWrapper {
   return value ? eb(sql`1`, "=", sql`1`) : eb(sql`1`, "=", sql`0`);
 }
@@ -234,6 +273,16 @@ export function buildWhere(
           ? val.map((item) => serializer.serialize(resolveFragnoIdValue(item, left), left))
           : serializer.serialize(resolveFragnoIdValue(val, left), left);
       }
+    }
+
+    if ((op === "starts with" || op === "not starts with") && typeof val === "string") {
+      const startsWith = buildStartsWithWhere(
+        eb,
+        fullSQLNameWithAlias(left, resolver, table, tableAlias),
+        val,
+        driverConfig,
+      );
+      return op === "starts with" ? startsWith : eb.not(startsWith);
     }
 
     let v: BinaryOperator;

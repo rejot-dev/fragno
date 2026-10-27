@@ -545,7 +545,8 @@ const evaluateCondition = async (
     if (op.includes("contains")) {
       matches = leftText.includes(rightText);
     } else if (op.includes("starts with")) {
-      matches = leftText.startsWith(rightText);
+      // Like SQL `starts with`, unlike its LIKE-based `contains` and `ends with`, case matters.
+      matches = leftLike.startsWith(rightLike);
     } else {
       matches = leftText.endsWith(rightText);
     }
@@ -1179,7 +1180,8 @@ const evaluateQueryTreeCondition = async (options: {
     if (op.includes("contains")) {
       matches = leftText.includes(rightText);
     } else if (op.includes("starts with")) {
-      matches = leftText.startsWith(rightText);
+      // Like SQL `starts with`, unlike its LIKE-based `contains` and `ends with`, case matters.
+      matches = leftLike.startsWith(rightLike);
     } else {
       matches = leftText.endsWith(rightText);
     }

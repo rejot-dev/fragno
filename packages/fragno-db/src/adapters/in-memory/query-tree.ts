@@ -277,14 +277,18 @@ export const evaluateQueryTreeCondition = (
     op === "not starts with" ||
     op === "not ends with"
   ) {
-    const leftText = String(normalizeIndexValue(leftValue, leftColumn) ?? "").toLowerCase();
-    const rightText = String(normalizeIndexValue(rightValue, rightColumn) ?? "").toLowerCase();
+    const leftValueText = String(normalizeIndexValue(leftValue, leftColumn) ?? "");
+    const rightValueText = String(normalizeIndexValue(rightValue, rightColumn) ?? "");
+    // `contains` and `ends with` compile to LIKE, which SQLite matches ignoring ASCII case;
+    // `starts with` compiles to case-sensitive range bounds.
+    const leftText = leftValueText.toLowerCase();
+    const rightText = rightValueText.toLowerCase();
 
     let matches = false;
     if (op.includes("contains")) {
       matches = leftText.includes(rightText);
     } else if (op.includes("starts with")) {
-      matches = leftText.startsWith(rightText);
+      matches = leftValueText.startsWith(rightValueText);
     } else {
       matches = leftText.endsWith(rightText);
     }

@@ -237,6 +237,8 @@ export const evaluateCondition = (
       return false;
     }
 
+    // `contains` and `ends with` compile to LIKE, which SQLite matches ignoring ASCII case;
+    // `starts with` compiles to case-sensitive range bounds.
     const leftText = leftLike.toLowerCase();
     const rightText = rightLike.toLowerCase();
     let matches = false;
@@ -244,7 +246,7 @@ export const evaluateCondition = (
     if (op.includes("contains")) {
       matches = leftText.includes(rightText);
     } else if (op.includes("starts with")) {
-      matches = leftText.startsWith(rightText);
+      matches = leftLike.startsWith(rightLike);
     } else {
       matches = leftText.endsWith(rightText);
     }
