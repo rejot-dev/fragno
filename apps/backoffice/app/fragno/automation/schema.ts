@@ -57,7 +57,33 @@ export const automationFragmentSchema = schema("automations", (s) => {
           )
           .createIndex("idx_project_slug", ["slug"], { unique: true });
       })
-      .noOp("Removed sandbox_instance table")
+      // Dropped below. Releases that replaced this with a noOp left it out of databases they created.
+      .addTable("sandbox_instance", (t) => {
+        return t
+          .addColumn("id", idColumn())
+          .addColumn("provider", column("string"))
+          .addColumn("status", column("string"))
+          .addColumn("workflowInstanceId", column("string").nullable())
+          .addColumn("keepAlive", column("bool"))
+          .addColumn("sleepAfter", column("json").nullable())
+          .addColumn("startupCommand", column("text"))
+          .addColumn("startupTimeoutMs", column("integer").nullable())
+          .addColumn("startedAt", column("timestamp").nullable())
+          .addColumn("expectedStopAt", column("timestamp").nullable())
+          .addColumn("stoppedAt", column("timestamp").nullable())
+          .addColumn("lastError", column("text").nullable())
+          .addColumn(
+            "createdAt",
+            column("timestamp").defaultTo((b) => b.now()),
+          )
+          .addColumn(
+            "updatedAt",
+            column("timestamp").defaultTo((b) => b.now()),
+          )
+          .createIndex("idx_sandbox_instance_provider", ["provider"])
+          .createIndex("idx_sandbox_instance_status", ["status"])
+          .createIndex("idx_sandbox_instance_workflowInstanceId", ["workflowInstanceId"]);
+      })
       .addTable("automation_route", (t) => {
         return t
           .addColumn("id", idColumn())
@@ -142,7 +168,16 @@ export const automationFragmentSchema = schema("automations", (s) => {
             unique: true,
           });
       })
-      .noOp("Removed marketplace_ingestion table; installations use marketplace-lock.json")
+      // Dropped below. Releases that replaced this with a noOp left it out of databases they created.
+      .addTable("marketplace_ingestion", (t) => {
+        // `targetScopeKey` is the indexable encoding of the org, project, or user destination scope.
+        return t
+          .addColumn("id", idColumn())
+          .addColumn("targetScopeKey", column("string"))
+          .addColumn("listingId", column("string"))
+          .addColumn("version", column("string"))
+          .createIndex("idx_marketplace_ingestion_targetScopeKey_id", ["targetScopeKey", "id"]);
+      })
       .addTable("external_identity_binding", (t) => {
         return t
           .addColumn("id", idColumn())
@@ -270,5 +305,9 @@ export const automationFragmentSchema = schema("automations", (s) => {
       .alterTable("package_installation", (t) =>
         t.addColumn("operation", column("string").defaultTo("")),
       )
+      // Sandboxes moved to the SandboxManager object.
+      .dropTable("sandbox_instance")
+      // Installations are recorded in marketplace-lock.json.
+      .dropTable("marketplace_ingestion")
   );
 });
