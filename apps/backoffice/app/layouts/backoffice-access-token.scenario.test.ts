@@ -14,6 +14,7 @@ import {
   runBackofficeScenario,
   type BackofficeScenarioContext,
 } from "@/fragno/automation/scenario";
+import { loader as loginLoader } from "@/routes/backoffice/login";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
 import { ApiObject } from "../../workers/api-object";
@@ -52,17 +53,21 @@ type PageVisit = { redirect: string } | { page: { tokenOrganization: string | nu
  */
 type Navigation = "document" | "client";
 
-/** Opens a dashboard page through both Backoffice middlewares, keeping the cookies it sets. */
-async function openDashboard(ctx: Ctx, path: string, navigation: Navigation): Promise<PageVisit> {
-  const url = new URL(path, origin);
-  const requestUrl = navigation === "document" ? url : new URL(`${path}.data`, origin);
-  const request = new Request(requestUrl, { headers: { cookie: ctx.vars.browser } });
-  const context = createBackofficeRouterContextProvider(request, {
+function routerContext(ctx: Ctx, request: Request) {
+  return createBackofficeRouterContextProvider(request, {
     runtime: ctx.runtime.services,
     kernel: new BackofficeKernel(ctx.runtime.services),
     env: ctx.runtime.env as unknown as CloudflareEnv,
     ctx: {} as ExecutionContext,
   });
+}
+
+/** Opens a dashboard page through both Backoffice middlewares, keeping the cookies it sets. */
+async function openDashboard(ctx: Ctx, path: string, navigation: Navigation): Promise<PageVisit> {
+  const url = new URL(path, origin);
+  const requestUrl = navigation === "document" ? url : new URL(`${path}.data`, origin);
+  const request = new Request(requestUrl, { headers: { cookie: ctx.vars.browser } });
+  const context = routerContext(ctx, request);
   const [scopeKind, scopeId] = path.split("/").slice(3);
   const args = { request, context, url, params: { scopeKind, scopeId } };
   try {
@@ -79,6 +84,19 @@ async function openDashboard(ctx: Ctx, path: string, navigation: Navigation): Pr
   }
   const { principal } = getBackofficeShellRequest(context);
   return { page: { tokenOrganization: principal.auth.organization?.slug ?? null } };
+}
+
+/** Opens the sign-in page: it sends a signed-in browser on, and shows others its form. */
+async function openLogin(ctx: Ctx, path: string): Promise<"form" | { redirect: string }> {
+  const url = new URL(path, origin);
+  const request = new Request(url, { headers: { cookie: ctx.vars.browser } });
+  const result = await loginLoader({
+    request,
+    url,
+    context: routerContext(ctx, request),
+    params: {},
+  } as unknown as Parameters<typeof loginLoader>[0]);
+  return result instanceof Response ? { redirect: result.headers.get("location")! } : "form";
 }
 
 /** Opens a page and follows redirects the way a browser does. */
@@ -173,6 +191,21 @@ test("pages mint the browser's access token in the organization it last opened",
             { page: { tokenOrganization: "alpha" } },
           ]);
         }),
+        then.assert(
+          "a token whose session ended signs in again instead of reopening the page",
+          async (ctx) => {
+            // E.g. signed out in another tab, or the session cookie replaced by another app's.
+            ctx.vars.browser = ctx.vars.browser
+              .split("; ")
+              .filter((cookie) => !cookie.includes("session_token="))
+              .join("; ");
+            const signIn = "/backoffice/login?returnTo=%2Fbackoffice%2Fdashboard%2Forg%2Fbeta";
+            expect(await browse(ctx, "/backoffice/dashboard/org/beta")).toEqual([
+              { redirect: signIn },
+            ]);
+            assert.equal(await openLogin(ctx, signIn), "form");
+          },
+        ),
         then.assert("an expired token is replaced in the organization last opened", async (ctx) => {
           ctx.vars.browser = ctx.vars.session;
           expect(await browse(ctx, "/backoffice/dashboard")).toEqual([
