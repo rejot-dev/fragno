@@ -3,7 +3,7 @@ import {
   type BackofficeContextScope,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
-import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 import {
   backofficeRuntimeScopeFromResolvedScope,
@@ -21,6 +21,7 @@ import { CurrentBackofficeProvider } from "./current-context";
 import type { CurrentBackofficeContext } from "./current-context-state";
 import { GlobalHotkeysProvider, useGlobalHotkey } from "./global-hotkeys";
 import { MemberWorkspaceBanner } from "./member-workspace-banner";
+import { OpenAgentDrawerContext } from "./open-agent-drawer";
 import { BackofficePhoneChrome } from "./phone-chrome";
 import { BackofficeSidebarNav, useBackofficeSections } from "./sidebar-nav";
 import { BackofficeTopBar } from "./top-bar";
@@ -156,6 +157,9 @@ function BackofficeShellFrame({
 }: BackofficeShellProps) {
   const [agentDrawerOpen, setAgentDrawerOpen] = useState(false);
   const sections = useBackofficeSections(resolvedScope, me);
+  const openAgentDrawer = useCallback(() => {
+    setAgentDrawerOpen(true);
+  }, []);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const sidebarRestoredRef = useRef(false);
   const [sidebarRestoring, setSidebarRestoring] = useState(true);
@@ -261,7 +265,9 @@ function BackofficeShellFrame({
               resolvedScope={resolvedScope}
               administeredMember={administeredMember}
             />
-            <div className="flex min-w-0 flex-1 flex-col">{children}</div>
+            <OpenAgentDrawerContext value={openAgentDrawer}>
+              <div className="flex min-w-0 flex-1 flex-col">{children}</div>
+            </OpenAgentDrawerContext>
           </main>
         </div>
       </div>
