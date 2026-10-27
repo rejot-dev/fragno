@@ -24,6 +24,7 @@ import {
   runBackofficeScenario,
 } from "@/fragno/automation/scenario";
 import { piAgentAttachmentsFolder } from "@/fragno/pi/agent/pi-agent-attachments";
+import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
 import { behindBackofficeLayout } from "@/layouts/backoffice-layout.test-support";
 import {
   action as uploadScopedAction,
@@ -189,7 +190,10 @@ test("files attached in the chat reach the agent by path and show beside the mes
         then.assert("the composer uploads a receipt into the agent's folder", async (ctx) => {
           const result = await browserUploads(ctx).createUploadAndTransfer(
             new File([RECEIPT], "receipt.png", { type: "image/png" }),
-            { fileKey: `${folder.slice("/workspace/".length)}first/receipt.png` },
+            {
+              provider: UPLOAD_PROVIDER_DATABASE,
+              fileKey: `${folder.slice("/workspace/".length)}first/receipt.png`,
+            },
           );
           assert.equal(result.kind, "published");
         }),

@@ -1,5 +1,5 @@
 import { defineFragment } from "@fragno-dev/core";
-import { withDatabase } from "@fragno-dev/db";
+import { withDatabase, type DatabaseHandlerTx } from "@fragno-dev/db";
 
 import type {
   FileHookPayload,
@@ -7,106 +7,59 @@ import type {
   UploadFragmentConfig,
   UploadTimeoutPayload,
 } from "./config";
-import { resolveUploadFragmentConfig } from "./config";
 import { uploadSchema } from "./schema";
-import { createFileServices, createUploadServices } from "./services";
+import { createFileServices } from "./services/files";
+import { createUploadServices } from "./services/uploads";
 import { buildTextIndex, shouldIndexContentType } from "./text-index";
 import type { UploadStatus } from "./types";
 
-const buildMissingDeletedFileObjectKeyError = (input: { provider: string; fileKey: string }) =>
-  `Missing persisted objectKey for deleted file '${input.provider}:${input.fileKey}'. Refusing to reconstruct storage key from provider/fileKey.`;
-
-const buildMissingCleanupObjectKeyError = (input: { provider: string; fileKey: string }) =>
-  `Missing storage cleanup objectKey for '${input.provider}:${input.fileKey}'. Refusing to reconstruct storage key from provider/fileKey.`;
-
-// Storage checks a presigned URL's expiry when a request starts, so a PUT that began just before its
-// URL expired may still be landing afterwards.
-const UNFINISHED_UPLOAD_CLEANUP_GRACE_MS = 60 * 60 * 1000;
+/**
+ * Deletes content its file or upload no longer needs. Writes delete the content they replace in
+ * their own transaction; the hooks using this serve events queued before they did.
+ */
+async function deleteStoredObject(handlerTx: DatabaseHandlerTx, objectKey: string | undefined) {
+  if (!objectKey) {
+    return;
+  }
+  await handlerTx()
+    .retrieve(({ forSchema }) =>
+      forSchema(uploadSchema).findFirst("storage_object", (b) =>
+        b
+          .whereIndex("idx_storage_object_key", (eb) => eb("storageKey", "=", objectKey))
+          .select(["id"]),
+      ),
+    )
+    .mutate(({ forSchema, retrieveResult: [object] }) => {
+      if (object) {
+        forSchema(uploadSchema).delete("storage_object", object.id);
+      }
+    })
+    .execute();
+}
 
 export const uploadFragmentDefinition = defineFragment<UploadFragmentConfig>("upload")
   .extend(withDatabase(uploadSchema))
-  .withDependencies(({ config }) => ({
-    resolvedConfig: resolveUploadFragmentConfig(config),
-  }))
   .provideHooks(({ defineHook, config }) => {
-    const resolvedConfig = resolveUploadFragmentConfig(config);
-
     return {
       onFileReady: defineHook(async function (payload: FileHookPayload) {
         await config.onFileReady?.(payload, this.idempotencyKey);
       }),
       onFileTextIndexRequested: defineHook(async function (payload: FileHookPayload) {
-        if (!resolvedConfig.textIndex?.enabled) {
+        if (!config.textIndex?.enabled || !payload.objectKey) {
           return;
         }
-
-        const objectKey =
-          typeof payload.objectKey === "string" && payload.objectKey.length > 0
-            ? payload.objectKey
-            : null;
-
-        if (!objectKey) {
-          return;
-        }
-
-        if (!shouldIndexContentType(payload.contentType)) {
-          await this.handlerTx()
-            .retrieve(({ forSchema }) => {
-              const uow = forSchema(uploadSchema);
-              return uow
-                .findFirst("file", (b) =>
-                  b.whereIndex("idx_file_provider_key", (eb) =>
-                    eb.and(eb("provider", "=", payload.provider), eb("key", "=", payload.fileKey)),
-                  ),
-                )
-                .findFirst("file_text_document", (b) =>
-                  b
-                    .whereIndex("idx_file_text_document_provider_key", (eb) =>
-                      eb.and(
-                        eb("provider", "=", payload.provider),
-                        eb("key", "=", payload.fileKey),
-                      ),
-                    )
-                    .joinMany("terms", "file_text_term", (term) =>
-                      term.onIndex("idx_file_text_term_document", (eb) =>
-                        eb("documentId", "=", eb.parent("id")),
-                      ),
-                    ),
-                );
-            })
-            .mutate(({ forSchema, retrieveResult: [file, document] }) => {
-              if (file?.status !== "ready" || file.objectKey !== objectKey || !document) {
-                return;
-              }
-
-              const uow = forSchema(uploadSchema);
-              for (const term of document.terms) {
-                uow.delete("file_text_term", term.id);
-              }
-              uow.delete("file_text_document", document.id);
-            })
-            .execute();
-          return;
-        }
-
-        const response = await resolvedConfig.storage.getDownloadStream?.({
-          storageKey: objectKey,
-        });
-        if (!response?.ok) {
-          return;
-        }
-
-        const bytes = new Uint8Array(await response.arrayBuffer());
-        const index = buildTextIndex(bytes, resolvedConfig.textIndex);
+        const objectKey = payload.objectKey;
 
         await this.handlerTx()
-          .retrieve(({ forSchema }) => {
-            const uow = forSchema(uploadSchema);
-            return uow
+          .retrieve(({ forSchema }) =>
+            forSchema(uploadSchema)
               .findFirst("file", (b) =>
                 b.whereIndex("idx_file_provider_key", (eb) =>
                   eb.and(eb("provider", "=", payload.provider), eb("key", "=", payload.fileKey)),
                 ),
+              )
+              .findFirst("storage_object", (b) =>
+                b.whereIndex("idx_storage_object_key", (eb) => eb("storageKey", "=", objectKey)),
               )
               .findFirst("file_text_document", (b) =>
                 b
@@ -118,18 +71,30 @@ export const uploadFragmentDefinition = defineFragment<UploadFragmentConfig>("up
                       eb("documentId", "=", eb.parent("id")),
                     ),
                   ),
-              );
-          })
-          .mutate(({ forSchema, retrieveResult: [file, document] }) => {
+              ),
+          )
+          .mutate(({ forSchema, retrieveResult: [file, object, document] }) => {
+            // A later write publishes other content, and indexes it itself.
             if (file?.status !== "ready" || file.objectKey !== objectKey) {
               return;
             }
 
+            const uow = forSchema(uploadSchema);
+            if (!object || !shouldIndexContentType(file.contentType)) {
+              if (document) {
+                for (const term of document.terms) {
+                  uow.delete("file_text_term", term.id);
+                }
+                uow.delete("file_text_document", document.id);
+              }
+              return;
+            }
+
+            const index = buildTextIndex(object.body, config.textIndex);
             if (document?.contentHash === index.contentHash) {
               return;
             }
 
-            const uow = forSchema(uploadSchema);
             const now = uow.now();
             const documentId = document
               ? document.id
@@ -177,76 +142,17 @@ export const uploadFragmentDefinition = defineFragment<UploadFragmentConfig>("up
       onUploadFailed: defineHook(async function (payload: FileHookPayload) {
         await config.onUploadFailed?.(payload, this.idempotencyKey);
       }),
-      cleanupStorageObject: defineHook(async function (payload: FileHookPayload) {
-        const objectKey =
-          typeof payload.objectKey === "string" && payload.objectKey.length > 0
-            ? payload.objectKey
-            : null;
-
-        if (!objectKey) {
-          throw new Error(
-            buildMissingCleanupObjectKeyError({
-              provider: payload.provider,
-              fileKey: payload.fileKey,
-            }),
-          );
-        }
-
-        await resolvedConfig.storage.deleteObject({ storageKey: objectKey });
+      cleanupStorageObject: defineHook(async function ({ objectKey }: FileHookPayload) {
+        await deleteStoredObject((options) => this.handlerTx(options), objectKey);
       }),
-      cleanupUnfinishedUpload: defineHook(async function ({
-        objectKey,
-        storageUploadId,
-      }: UnfinishedUploadPayload) {
-        // A multipart session keeps its parts until it is aborted; S3 never expires them itself.
-        if (storageUploadId && resolvedConfig.storage.abortMultipartUpload) {
-          await resolvedConfig.storage.abortMultipartUpload({
-            storageKey: objectKey,
-            storageUploadId,
-          });
-        }
-        await resolvedConfig.storage.deleteObject({ storageKey: objectKey });
+      cleanupUnfinishedUpload: defineHook(async function ({ objectKey }: UnfinishedUploadPayload) {
+        await deleteStoredObject((options) => this.handlerTx(options), objectKey);
       }),
       onFileDeleted: defineHook(async function (payload: FileHookPayload) {
-        const payloadObjectKey =
-          typeof payload.objectKey === "string" && payload.objectKey.length > 0
-            ? payload.objectKey
-            : undefined;
-        const resolvePersistedObjectKey = (
-          file: { status: string; objectKey?: string | null } | null | undefined,
-        ) => {
-          if (payloadObjectKey) {
-            return payloadObjectKey;
-          }
-
-          if (
-            file?.status === "deleted" &&
-            typeof file.objectKey === "string" &&
-            file.objectKey.length > 0
-          ) {
-            return file.objectKey;
-          }
-
-          return null;
-        };
-
-        const missingPersistedObjectKeyError = () =>
-          new Error(
-            buildMissingDeletedFileObjectKeyError({
-              provider: payload.provider,
-              fileKey: payload.fileKey,
-            }),
-          );
-
-        const { persistedObjectKey } = await this.handlerTx()
-          .retrieve(({ forSchema }) => {
-            const uow = forSchema(uploadSchema);
-            return uow
-              .findFirst("file", (b) =>
-                b.whereIndex("idx_file_provider_key", (eb) =>
-                  eb.and(eb("provider", "=", payload.provider), eb("key", "=", payload.fileKey)),
-                ),
-              )
+        const objectKey = payload.objectKey ?? "";
+        await this.handlerTx()
+          .retrieve(({ forSchema }) =>
+            forSchema(uploadSchema)
               .findFirst("file_text_document", (b) =>
                 b
                   .whereIndex("idx_file_text_document_provider_key", (eb) =>
@@ -257,52 +163,46 @@ export const uploadFragmentDefinition = defineFragment<UploadFragmentConfig>("up
                       eb("documentId", "=", eb.parent("id")),
                     ),
                   ),
-              );
-          })
-          .afterRetrieve(async (_uow, [file]) => {
-            const persistedObjectKey = resolvePersistedObjectKey(file);
-            if (!persistedObjectKey) {
-              throw missingPersistedObjectKeyError();
+              )
+              .findFirst("storage_object", (b) =>
+                b
+                  .whereIndex("idx_storage_object_key", (eb) => eb("storageKey", "=", objectKey))
+                  .select(["id"]),
+              ),
+          )
+          .mutate(({ forSchema, retrieveResult: [document, object] }) => {
+            const uow = forSchema(uploadSchema);
+            // Deletes delete their content themselves, but this hook deleted it for deletes
+            // queued before they did.
+            if (object) {
+              uow.delete("storage_object", object.id);
             }
-
-            await resolvedConfig.storage.deleteObject({ storageKey: persistedObjectKey });
-          })
-          .mutate(({ forSchema, retrieveResult: [file, document] }) => {
-            const persistedObjectKey = resolvePersistedObjectKey(file);
-            if (!persistedObjectKey) {
-              throw missingPersistedObjectKeyError();
+            if (!document || document.objectKey !== payload.objectKey) {
+              return;
             }
-
-            if (document?.objectKey === persistedObjectKey) {
-              const uow = forSchema(uploadSchema);
-              for (const term of document.terms) {
-                uow.delete("file_text_term", term.id);
-              }
-              uow.delete("file_text_document", document.id);
+            for (const term of document.terms) {
+              uow.delete("file_text_term", term.id);
             }
-
-            return { persistedObjectKey };
+            uow.delete("file_text_document", document.id);
           })
           .execute();
 
-        await config.onFileDeleted?.(
-          {
-            ...payload,
-            objectKey: persistedObjectKey,
-          },
-          this.idempotencyKey,
-        );
+        await config.onFileDeleted?.(payload, this.idempotencyKey);
       }),
       onUploadTimeout: defineHook(async function (payload: UploadTimeoutPayload) {
-        if (!payload.uploadId) {
-          return;
-        }
-
         const result = await this.handlerTx()
           .retrieve(({ forSchema }) =>
             forSchema(uploadSchema)
               .findFirst("upload", (b) =>
-                b.whereIndex("primary", (eb) => eb("id", "=", payload.uploadId)),
+                b
+                  .whereIndex("primary", (eb) => eb("id", "=", payload.uploadId))
+                  .joinOne("object", "storage_object", (object) =>
+                    object
+                      .onIndex("idx_storage_object_key", (eb) =>
+                        eb("storageKey", "=", eb.parent("objectKey")),
+                      )
+                      .select(["id"]),
+                  ),
               )
               .findFirst("upload", (b) =>
                 b.whereIndex("idx_upload_id_expiresAt", (eb) =>
@@ -312,26 +212,22 @@ export const uploadFragmentDefinition = defineFragment<UploadFragmentConfig>("up
           )
           .mutate(({ forSchema, retrieveResult: [upload, expiredUpload] }) => {
             const status = upload?.status as UploadStatus | undefined;
-            if (!upload || !expiredUpload || status === "completed") {
+            if (
+              !upload ||
+              !expiredUpload ||
+              status === "completed" ||
+              status === "aborted" ||
+              status === "failed" ||
+              status === "expired"
+            ) {
               return { shouldNotify: false as const };
             }
 
             const uow = forSchema(uploadSchema);
-            // Whoever holds the upload's URL could PUT until it expired, even after the upload was
-            // aborted or replaced, so what storage holds for the upload is final only after that.
-            uow.triggerHook(
-              "cleanupUnfinishedUpload",
-              { objectKey: upload.objectKey, storageUploadId: upload.storageUploadId },
-              {
-                processAt: new Date(
-                  upload.expiresAt.getTime() + UNFINISHED_UPLOAD_CLEANUP_GRACE_MS,
-                ),
-              },
-            );
-            if (status === "aborted" || status === "failed" || status === "expired") {
-              return { shouldNotify: false as const };
+            // Prepared content never published once its batch can no longer commit.
+            if (upload.object) {
+              uow.delete("storage_object", upload.object.id);
             }
-
             uow.update("upload", upload.id, (b) =>
               b
                 .set({
@@ -365,10 +261,10 @@ export const uploadFragmentDefinition = defineFragment<UploadFragmentConfig>("up
       }),
     };
   })
-  .providesBaseService(({ defineService, deps }) => {
+  .providesBaseService(({ defineService, config }) => {
     return defineService({
-      ...createUploadServices(),
-      ...createFileServices(deps.resolvedConfig),
+      ...createUploadServices(config),
+      ...createFileServices(config),
     });
   })
   .build();

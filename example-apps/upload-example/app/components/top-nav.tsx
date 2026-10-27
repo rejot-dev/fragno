@@ -1,10 +1,6 @@
 import { NavLink, type NavLinkRenderProps } from "react-router";
 
-const navItems = [
-  { to: "/", label: "Home", end: true },
-  { to: "/direct", label: "S3-backed storage" },
-  { to: "/proxy", label: "File storage" },
-];
+const navItems = [{ to: "/", label: "Uploads", end: true }];
 
 export function TopNav() {
   return (

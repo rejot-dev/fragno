@@ -33,6 +33,7 @@ export async function uploadGeneratedUiFile({
 }): Promise<GeneratedUiUploadedFile> {
   const fileKey = `${runUploadsFolder(instanceId)}${crypto.randomUUID()}/${workspaceFileName(file.name)}`;
   const result = await createScopedUploadHelpers(scope).createUploadAndTransfer(file, {
+    provider: UPLOAD_PROVIDER_DATABASE,
     fileKey,
     onProgress,
   });

@@ -254,10 +254,11 @@ Docs:
 
 ### Upload (`@fragno-dev/upload`)
 
-Definition: Full-stack uploads with a normalized file model, S3/R2 or filesystem storage adapters,
-and client helpers for direct or server-streamed uploads.
+Definition: Full-stack files stored in the database: uploads with progress, atomic batch
+publication, text search, and server-side edits.
 
-Use when: you need file uploads with progress tracking and storage-backed file metadata.
+Use when: you need files within database row limits. For large files in S3/R2, use
+`@fragno-dev/blobs`.
 
 Reference: `./references/first-party-fragments/upload.md`.
 
@@ -337,5 +338,5 @@ relative to this skill file.
 | `first-party-fragments/resend.md`            | Resend fragment one-pager (outbound/inbound email, threads, hooks, migrations)                  |
 | `first-party-fragments/stripe.md`            | Stripe fragment one-pager (subscriptions, webhooks, admin hooks)                                |
 | `first-party-fragments/telegram.md`          | Telegram fragment one-pager (webhook, commands, chats/messages, hooks, migrations)              |
-| `first-party-fragments/upload.md`            | Upload fragment one-pager (storage adapters, helpers, routes)                                   |
+| `first-party-fragments/upload.md`            | Upload fragment one-pager (config, helpers, routes)                                             |
 | `first-party-fragments/workflows.md`         | Workflows fragment integration boundary and current docs                                        |

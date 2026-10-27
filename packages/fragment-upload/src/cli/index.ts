@@ -8,21 +8,15 @@ import { cli, define } from "gunshi";
 import type { Command } from "gunshi";
 
 import { filesDeleteCommand } from "./commands/files/delete.js";
-import { filesDownloadUrlCommand } from "./commands/files/download-url.js";
 import { filesDownloadCommand } from "./commands/files/download.js";
 import { filesGetCommand } from "./commands/files/get.js";
 import { filesListCommand } from "./commands/files/list.js";
 import { filesUpdateCommand } from "./commands/files/update.js";
 import { filesUploadCommand } from "./commands/files/upload.js";
 import { uploadsAbortCommand } from "./commands/uploads/abort.js";
-import { uploadsCompleteCommand } from "./commands/uploads/complete.js";
 import { uploadsContentCommand } from "./commands/uploads/content.js";
 import { uploadsCreateCommand } from "./commands/uploads/create.js";
 import { uploadsGetCommand } from "./commands/uploads/get.js";
-import { uploadsPartsCompleteCommand } from "./commands/uploads/parts-complete.js";
-import { uploadsPartsListCommand } from "./commands/uploads/parts-list.js";
-import { uploadsPartsUrlsCommand } from "./commands/uploads/parts-urls.js";
-import { uploadsProgressCommand } from "./commands/uploads/progress.js";
 import { uploadsTransferCommand } from "./commands/uploads/transfer.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -42,11 +36,6 @@ export const filesCommand = define({
 const uploadsSubCommands: Map<string, Command> = new Map();
 uploadsSubCommands.set("create", uploadsCreateCommand as Command);
 uploadsSubCommands.set("get", uploadsGetCommand as Command);
-uploadsSubCommands.set("progress", uploadsProgressCommand as Command);
-uploadsSubCommands.set("parts-urls", uploadsPartsUrlsCommand as Command);
-uploadsSubCommands.set("parts-list", uploadsPartsListCommand as Command);
-uploadsSubCommands.set("parts-complete", uploadsPartsCompleteCommand as Command);
-uploadsSubCommands.set("complete", uploadsCompleteCommand as Command);
 uploadsSubCommands.set("abort", uploadsAbortCommand as Command);
 uploadsSubCommands.set("content", uploadsContentCommand as Command);
 uploadsSubCommands.set("transfer", uploadsTransferCommand as Command);
@@ -57,7 +46,6 @@ filesSubCommands.set("list", filesListCommand as Command);
 filesSubCommands.set("get", filesGetCommand as Command);
 filesSubCommands.set("update", filesUpdateCommand as Command);
 filesSubCommands.set("delete", filesDeleteCommand as Command);
-filesSubCommands.set("download-url", filesDownloadUrlCommand as Command);
 filesSubCommands.set("download", filesDownloadCommand as Command);
 
 const printMainHelp = () => {
@@ -107,13 +95,8 @@ const printUploadsHelp = () => {
   console.log("COMMANDS:");
   console.log("  create              Create an upload session");
   console.log("  get                 Get upload status");
-  console.log("  progress            Record upload progress");
-  console.log("  parts-urls          Get signed URLs for multipart upload");
-  console.log("  parts-list          List uploaded parts");
-  console.log("  parts-complete      Record completed parts");
-  console.log("  complete            Complete an upload");
   console.log("  abort               Abort an upload");
-  console.log("  content             Upload file bytes via proxy upload");
+  console.log("  content             Upload the session's file bytes");
   console.log("  transfer            Create an upload and transfer a file");
   console.log("");
   console.log("EXAMPLES:");
@@ -138,7 +121,6 @@ const printFilesHelp = () => {
   console.log("  get                 Get file metadata");
   console.log("  update              Update file metadata");
   console.log("  delete              Delete a file");
-  console.log("  download-url        Get a signed download URL");
   console.log("  download            Download file contents");
   console.log("");
   console.log("EXAMPLES:");
@@ -234,11 +216,6 @@ if (import.meta.main) {
 export {
   uploadsCreateCommand,
   uploadsGetCommand,
-  uploadsProgressCommand,
-  uploadsPartsUrlsCommand,
-  uploadsPartsListCommand,
-  uploadsPartsCompleteCommand,
-  uploadsCompleteCommand,
   uploadsAbortCommand,
   uploadsContentCommand,
   uploadsTransferCommand,
@@ -247,6 +224,5 @@ export {
   filesGetCommand,
   filesUpdateCommand,
   filesDeleteCommand,
-  filesDownloadUrlCommand,
   filesDownloadCommand,
 };

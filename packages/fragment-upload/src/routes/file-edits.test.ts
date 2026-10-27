@@ -1,39 +1,25 @@
-import { afterAll, assert, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, assert, beforeEach, describe, expect, it } from "vitest";
 
-import { promises as fs } from "node:fs";
-import os from "node:os";
 import path from "node:path";
-
-import type { UOWInstrumentation } from "@fragno-dev/db/unit-of-work";
 
 import { instantiate } from "@fragno-dev/core";
 import { getInternalFragment } from "@fragno-dev/db";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
 import { uploadFragmentDefinition } from "../definition";
-import { createFilesystemStorageAdapter } from "../storage/fs";
-import type { StorageAdapter } from "../storage/types";
+import { uploadSchema } from "../schema";
 import { uploadRoutes } from "./index";
 
 describe("POST /files/apply-edits", async () => {
-  const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "fragno-upload-file-edit-routes-"));
-  const filesystemStorage = createFilesystemStorageAdapter({ rootDir });
-  const getDownloadStream = vi.fn(filesystemStorage.getDownloadStream!.bind(filesystemStorage));
-  const writeStream = vi.fn(filesystemStorage.writeStream!.bind(filesystemStorage));
-  const deleteObject = vi.fn(filesystemStorage.deleteObject.bind(filesystemStorage));
-  const storage: StorageAdapter = {
-    ...filesystemStorage,
-    getDownloadStream,
-    writeStream,
-    deleteObject,
-  };
-  const provider = storage.name;
+  const provider = "workspace";
   const testSetup = await buildDatabaseFragmentsTest()
     .withTestAdapter({ type: "kysely-sqlite" })
-    .withDbRoundtripGuard({ maxRoundtrips: 3 })
+    .withDbRoundtripGuard(true)
     .withFragment(
       "upload",
-      instantiate(uploadFragmentDefinition).withConfig({ storage }).withRoutes(uploadRoutes),
+      instantiate(uploadFragmentDefinition)
+        .withConfig({ maxFileBytes: 1024 * 1024 })
+        .withRoutes(uploadRoutes),
     )
     .build();
   const { fragment } = testSetup.fragments.upload;
@@ -106,23 +92,15 @@ describe("POST /files/apply-edits", async () => {
 
   beforeEach(async () => {
     await testSetup.test.resetDatabase();
-    await fs.rm(rootDir, { recursive: true, force: true });
-    await fs.mkdir(rootDir, { recursive: true });
-    getDownloadStream.mockClear();
-    writeStream.mockClear();
-    deleteObject.mockClear();
   });
 
   afterAll(async () => {
     await testSetup.test.cleanup();
-    await fs.rm(rootDir, { recursive: true, force: true });
   });
 
   it("applies sequential operations to one file with one logical revision", async () => {
     await createFile("sequential/file.txt", "one two");
     const before = await getFile("sequential/file.txt");
-    getDownloadStream.mockClear();
-    writeStream.mockClear();
 
     const response = await fragment.callRoute("POST", "/files/apply-edits", {
       body: {
@@ -148,16 +126,12 @@ describe("POST /files/apply-edits", async () => {
     assert(response.data.totalChanged === 1);
     expect(response.data.edits.map((edit) => edit.content)).toEqual(["first two", "first second"]);
     assert((await getFile("sequential/file.txt")).revision === before.revision + 1);
-    expect(getDownloadStream).toHaveBeenCalledTimes(1);
-    expect(writeStream).toHaveBeenCalledTimes(1);
     assert((await readFile("sequential/file.txt")) === "first second");
   });
 
-  it("does not stage or revise a file when a replacement is a no-op", async () => {
+  it("does not revise a file when a replacement is a no-op", async () => {
     await createFile("unchanged/file.txt", "unchanged");
     const before = await getFile("unchanged/file.txt");
-    getDownloadStream.mockClear();
-    writeStream.mockClear();
 
     const response = await fragment.callRoute("POST", "/files/apply-edits", {
       body: {
@@ -179,27 +153,6 @@ describe("POST /files/apply-edits", async () => {
       { fileKey: "unchanged/file.txt", changed: false, content: "unchanged", diff: "" },
     ]);
     assert((await getFile("unchanged/file.txt")).revision === before.revision);
-    expect(getDownloadStream).toHaveBeenCalledTimes(1);
-    expect(writeStream).not.toHaveBeenCalled();
-  });
-
-  it("does not download old content when a leading write replaces it", async () => {
-    await createFile("overwrite/file.txt", "old");
-    getDownloadStream.mockClear();
-    writeStream.mockClear();
-
-    const response = await fragment.callRoute("POST", "/files/apply-edits", {
-      body: {
-        provider,
-        edits: [{ kind: "write", fileKey: "overwrite/file.txt", content: "new" }],
-      },
-    });
-
-    assert(response.type === "json");
-    assert(response.data.totalChanged === 1);
-    expect(getDownloadStream).not.toHaveBeenCalled();
-    expect(writeStream).toHaveBeenCalledTimes(1);
-    assert((await readFile("overwrite/file.txt")) === "new");
   });
 
   it("preserves existing publication metadata", async () => {
@@ -270,7 +223,7 @@ describe("POST /files/apply-edits", async () => {
     assert((await readFile("deleted/recreated.txt")) === "new");
   });
 
-  it("queues prepared-upload, publication, indexing, and superseded-object hooks", async () => {
+  it("replaces the file's content and queues publication and indexing hooks", async () => {
     await createFile("hooks/file.txt", "before");
     const existingHookIds = new Set((await listUploadHooks()).map((hook) => hook.id.toString()));
 
@@ -292,17 +245,19 @@ describe("POST /files/apply-edits", async () => {
     const newHookNames = (await listUploadHooks())
       .filter((hook) => !existingHookIds.has(hook.id.toString()))
       .map((hook) => hook.hookName);
-    expect(newHookNames).toEqual(
-      expect.arrayContaining([
-        "onUploadTimeout",
-        "onFileReady",
-        "onFileTextIndexRequested",
-        "cleanupStorageObject",
-      ]),
-    );
+    expect(newHookNames.toSorted()).toEqual(["onFileReady", "onFileTextIndexRequested"]);
+    const storedObjects = await fragment.inContext(function () {
+      return this.handlerTx()
+        .retrieve(({ forSchema }) =>
+          forSchema(uploadSchema).find("storage_object", (b) => b.whereIndex("primary")),
+        )
+        .transformRetrieve(([objects]) => objects)
+        .execute();
+    });
+    expect(storedObjects.map((object) => new TextDecoder().decode(object.body))).toEqual(["after"]);
   });
 
-  it("rejects replacement of a missing file before staging storage", async () => {
+  it("rejects replacement of a missing file", async () => {
     const response = await fragment.callRoute("POST", "/files/apply-edits", {
       body: {
         provider,
@@ -320,21 +275,32 @@ describe("POST /files/apply-edits", async () => {
     assert(response.type === "error");
     assert(response.status === 404);
     assert(response.error.code === "FILE_NOT_FOUND");
-    expect(writeStream).not.toHaveBeenCalled();
   });
 
-  it("rejects a provider other than the configured storage provider", async () => {
+  it("rejects an edit that grows a file past the largest file size", async () => {
+    const content = `${"x".repeat(1024 * 1024 - 6)}before`;
+    await createFile("limit/near-max.txt", content);
+
     const response = await fragment.callRoute("POST", "/files/apply-edits", {
       body: {
-        provider: "other-provider",
-        edits: [{ kind: "write", fileKey: "file.txt", content: "content" }],
+        provider,
+        edits: [
+          {
+            kind: "replace",
+            fileKey: "limit/near-max.txt",
+            search: "before",
+            replacement: "after, longer",
+          },
+        ],
       },
     });
 
     assert(response.type === "error");
-    assert(response.status === 409);
-    assert(response.error.code === "PROVIDER_MISMATCH");
-    expect(writeStream).not.toHaveBeenCalled();
+    assert(response.error.code === "FILE_TOO_LARGE");
+    expect(await getFile("limit/near-max.txt")).toMatchObject({
+      revision: 0,
+      sizeBytes: content.length,
+    });
   });
 
   it("rejects more than ten edit operations", async () => {
@@ -351,7 +317,6 @@ describe("POST /files/apply-edits", async () => {
 
     assert(response.type === "error");
     assert(response.status === 400);
-    expect(writeStream).not.toHaveBeenCalled();
   });
 
   it("maps diff line-limit failures to an invalid request", async () => {
@@ -371,180 +336,5 @@ describe("POST /files/apply-edits", async () => {
     assert(response.type === "error");
     assert(response.status === 400);
     assert(response.error.code === "INVALID_REQUEST");
-    expect(writeStream).not.toHaveBeenCalled();
-  });
-
-  it("maps download body failures to storage errors", async () => {
-    await createFile("failures/read.txt", "before");
-    getDownloadStream.mockImplementationOnce(
-      async () =>
-        new Response(
-          new ReadableStream({
-            start(controller) {
-              controller.error(new Error("injected body failure"));
-            },
-          }),
-        ),
-    );
-    writeStream.mockClear();
-
-    const response = await fragment.callRoute("POST", "/files/apply-edits", {
-      body: {
-        provider,
-        edits: [
-          {
-            kind: "replace",
-            fileKey: "failures/read.txt",
-            search: "before",
-            replacement: "after",
-          },
-        ],
-      },
-    });
-
-    assert(response.type === "error");
-    assert(response.status === 502);
-    assert(response.error.code === "STORAGE_ERROR");
-    expect(writeStream).not.toHaveBeenCalled();
-  });
-});
-
-describe("file edit storage failures", () => {
-  it("retains staged objects when prepared-upload persistence has an ambiguous outcome", async () => {
-    const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "fragno-upload-file-edit-ambiguous-"));
-    const filesystemStorage = createFilesystemStorageAdapter({ rootDir });
-    const deleteObject = vi.fn(filesystemStorage.deleteObject.bind(filesystemStorage));
-    const storage: StorageAdapter = { ...filesystemStorage, deleteObject };
-    let injectAcknowledgementFailure = false;
-    const instrumentation: UOWInstrumentation = {
-      afterMutate(context) {
-        if (injectAcknowledgementFailure && context.mutationOpsCount > 0) {
-          injectAcknowledgementFailure = false;
-          return { type: "error", error: new Error("injected lost commit acknowledgement") };
-        }
-        return undefined;
-      },
-    };
-    const testSetup = await buildDatabaseFragmentsTest()
-      .withTestAdapter({ type: "kysely-sqlite", uowConfig: { instrumentation } })
-      .withDbRoundtripGuard({ maxRoundtrips: 3 })
-      .withFragment(
-        "upload",
-        instantiate(uploadFragmentDefinition).withConfig({ storage }).withRoutes(uploadRoutes),
-      )
-      .build();
-
-    try {
-      await testSetup.test.resetDatabase();
-      injectAcknowledgementFailure = true;
-      const response = await testSetup.fragments.upload.fragment.callRoute(
-        "POST",
-        "/files/apply-edits",
-        {
-          body: {
-            provider: storage.name,
-            edits: [{ kind: "write", fileKey: "ambiguous/file.txt", content: "content" }],
-          },
-        },
-      );
-      assert(response.type === "error");
-      assert(response.status === 500);
-      expect(deleteObject).not.toHaveBeenCalled();
-    } finally {
-      await testSetup.test.cleanup();
-      await fs.rm(rootDir, { recursive: true, force: true });
-    }
-  });
-
-  it("rejects and aborts a direct multipart strategy before writing edited content", async () => {
-    const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "fragno-upload-file-edit-strategy-"));
-    const filesystemStorage = createFilesystemStorageAdapter({ rootDir });
-    const writeStream = vi.fn(filesystemStorage.writeStream!.bind(filesystemStorage));
-    const abortMultipartUpload = vi.fn(async () => undefined);
-    const storage: StorageAdapter = {
-      ...filesystemStorage,
-      writeStream,
-      abortMultipartUpload,
-      initUpload: async (input) => ({
-        ...(await filesystemStorage.initUpload(input)),
-        strategy: "direct-multipart",
-        storageUploadId: "multipart-upload",
-      }),
-    };
-    const testSetup = await buildDatabaseFragmentsTest()
-      .withTestAdapter({ type: "kysely-sqlite" })
-      .withDbRoundtripGuard({ maxRoundtrips: 3 })
-      .withFragment(
-        "upload",
-        instantiate(uploadFragmentDefinition).withConfig({ storage }).withRoutes(uploadRoutes),
-      )
-      .build();
-
-    try {
-      await testSetup.test.resetDatabase();
-      const response = await testSetup.fragments.upload.fragment.callRoute(
-        "POST",
-        "/files/apply-edits",
-        {
-          body: {
-            provider: storage.name,
-            edits: [{ kind: "write", fileKey: "strategy/file.txt", content: "content" }],
-          },
-        },
-      );
-
-      assert(response.type === "error");
-      assert(response.status === 502);
-      assert(response.error.code === "STORAGE_ERROR");
-      expect(abortMultipartUpload).toHaveBeenCalledTimes(1);
-      expect(writeStream).not.toHaveBeenCalled();
-    } finally {
-      await testSetup.test.cleanup();
-      await fs.rm(rootDir, { recursive: true, force: true });
-    }
-  });
-
-  it("deletes an initialized object when its server-side write fails", async () => {
-    const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "fragno-upload-file-edit-failure-"));
-    const filesystemStorage = createFilesystemStorageAdapter({ rootDir });
-    const deleteObject = vi.fn(filesystemStorage.deleteObject.bind(filesystemStorage));
-    const storage: StorageAdapter = {
-      ...filesystemStorage,
-      deleteObject,
-      writeStream: async (input) => {
-        await filesystemStorage.writeStream!(input);
-        throw new Error("injected write failure");
-      },
-    };
-    const testSetup = await buildDatabaseFragmentsTest()
-      .withTestAdapter({ type: "kysely-sqlite" })
-      .withDbRoundtripGuard({ maxRoundtrips: 3 })
-      .withFragment(
-        "upload",
-        instantiate(uploadFragmentDefinition).withConfig({ storage }).withRoutes(uploadRoutes),
-      )
-      .build();
-
-    try {
-      await testSetup.test.resetDatabase();
-      const response = await testSetup.fragments.upload.fragment.callRoute(
-        "POST",
-        "/files/apply-edits",
-        {
-          body: {
-            provider: storage.name,
-            edits: [{ kind: "write", fileKey: "failed/file.txt", content: "content" }],
-          },
-        },
-      );
-
-      assert(response.type === "error");
-      assert(response.status === 502);
-      assert(response.error.code === "STORAGE_ERROR");
-      expect(deleteObject).toHaveBeenCalledTimes(1);
-    } finally {
-      await testSetup.test.cleanup();
-      await fs.rm(rootDir, { recursive: true, force: true });
-    }
   });
 });

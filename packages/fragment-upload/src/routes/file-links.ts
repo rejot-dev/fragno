@@ -2,9 +2,7 @@ import { createTarDecoder, createTarPacker, type ParsedTarEntry } from "modern-t
 import { z } from "zod";
 
 import { defineRoutes, type FragnoRouteConfig } from "@fragno-dev/core";
-import type { DatabaseHandlerTx } from "@fragno-dev/db";
 
-import { resolveUploadFragmentConfig } from "../config";
 import { uploadFragmentDefinition } from "../definition";
 import {
   fileLinkGlobBase,
@@ -17,15 +15,13 @@ import {
   type FileLinkGrant,
   type FileLinksConfig,
 } from "../file-links";
+import { assertFileSize, readContent } from "../services/content";
 import { UploadServiceError } from "../services/errors";
+import type { FileContentWrite } from "../services/files";
 import { resolveFileKeyInput } from "../services/helpers";
-import type { InitializedUpload } from "../services/upload-model";
 import { MAX_PREPARED_FILE_BATCH_ENTRIES } from "../services/uploads";
-import { buildStorageObjectVersionSegment } from "../storage/object-key";
-import type { StorageAdapter } from "../storage/types";
 import { providerNamespaceSchema } from "./shared";
 import { handleUploadServiceError } from "./uploads-errors";
-import { mapStorageOperationError } from "./uploads-storage";
 
 const MAX_FILE_LINK_LIFETIME_SECONDS = 60 * 60;
 // A downloaded archive is one listing page, so each request reads a bounded number of files.
@@ -39,16 +35,10 @@ const fileLinkErrorCodes = [
   "FILE_LINK_FORBIDDEN",
   "FILE_NOT_FOUND",
   "FILE_DELETED",
-  "FILE_ALREADY_EXISTS",
   "FILE_PRECONDITION_FAILED",
-  "UPLOAD_NOT_FOUND",
-  "UPLOAD_EXPIRED",
-  "UPLOAD_INVALID_STATE",
-  "PROVIDER_MISMATCH",
+  "FILE_TOO_LARGE",
   "INVALID_FILE_KEY",
-  "INVALID_CHECKSUM",
   "INVALID_REQUEST",
-  "STORAGE_ERROR",
 ] as const;
 
 type FileLinkErrorCode = (typeof fileLinkErrorCodes)[number];
@@ -85,12 +75,6 @@ const publishedLinkWritesSchema = z.object({
 });
 
 type LinkWrite = { fileKey: string; sizeBytes: number; body: ReadableStream<Uint8Array> };
-type StagedLinkWrite = {
-  fileKey: string;
-  sizeBytes: number;
-  contentType: string;
-  storageInit: InitializedUpload;
-};
 
 function requireFileLinks(config: FileLinksConfig | undefined): FileLinksConfig {
   if (!config) {
@@ -105,7 +89,6 @@ function requireFileLinks(config: FileLinksConfig | undefined): FileLinksConfig 
 
 async function authorizeFileLink(
   config: FileLinksConfig | undefined,
-  storage: StorageAdapter,
   token: string,
   access: FileLinkAccess,
 ): Promise<{ grant: FileLinkGrant; links: FileLinksConfig }> {
@@ -114,7 +97,7 @@ async function authorizeFileLink(
   if (verification.status === "expired") {
     throw new FileLinkRequestError("FILE_LINK_EXPIRED", "The file link has expired.", 410);
   }
-  if (verification.status === "invalid" || verification.grant.provider !== storage.name) {
+  if (verification.status === "invalid") {
     throw new FileLinkRequestError("FILE_LINK_INVALID", "The file link is invalid.", 403);
   }
   if (verification.grant.access !== access) {
@@ -149,85 +132,30 @@ function requireGlobTarget(grant: FileLinkGrant): string {
   return grant.target.glob;
 }
 
-async function stageLinkWrite(
-  storage: StorageAdapter,
+/** Reads every write's content first, so a rejected archive publishes none of its files. */
+async function readLinkWrites(
   links: FileLinksConfig,
-  maxFileBytes: number | undefined,
-  write: LinkWrite,
-): Promise<StagedLinkWrite> {
-  // Storage adapters reject oversized objects only as generic storage failures.
-  if (maxFileBytes !== undefined && write.sizeBytes > maxFileBytes) {
-    throw new FileLinkRequestError(
-      "INVALID_REQUEST",
-      `File '${write.fileKey}' is ${write.sizeBytes} bytes; files may be at most ${maxFileBytes} bytes.`,
-      413,
-    );
-  }
-  const contentType = links.contentTypeForKey(write.fileKey);
-  let storageInit: InitializedUpload | null = null;
-  try {
-    storageInit = await storage.initUpload({
-      provider: storage.name,
-      fileKey: write.fileKey,
-      sizeBytes: BigInt(write.sizeBytes),
-      contentType,
-      checksum: null,
-      metadata: null,
-      objectKeyVersionSegment: buildStorageObjectVersionSegment(),
-    });
-    if (storageInit.strategy !== "proxy" || !storage.writeStream) {
-      if (storageInit.storageUploadId && storage.abortMultipartUpload) {
-        await storage.abortMultipartUpload({
-          storageKey: storageInit.storageKey,
-          storageUploadId: storageInit.storageUploadId,
-        });
-      }
-      throw new UploadServiceError("STORAGE_ERROR", "File links require proxy upload storage.");
-    }
-    await storage.writeStream({
-      storageKey: storageInit.storageKey,
-      body: write.body,
-      contentType,
-      sizeBytes: BigInt(write.sizeBytes),
-    });
-    if (storage.finalizeUpload) {
-      await storage.finalizeUpload({
-        storageKey: storageInit.storageKey,
-        expectedSizeBytes: BigInt(write.sizeBytes),
-        checksum: null,
-      });
-    }
-    return { fileKey: write.fileKey, sizeBytes: write.sizeBytes, contentType, storageInit };
-  } catch (cause) {
-    // No upload record tracks this object yet, so nothing else would delete it.
-    if (storageInit) {
-      const storageKey = storageInit.storageKey;
-      await Promise.allSettled([storage.deleteObject({ storageKey })]);
-    }
-    // A malformed request body surfaces while storage reads it, but is not a storage failure.
-    throw cause instanceof FileLinkRequestError ? cause : mapStorageOperationError(cause);
-  }
-}
-
-/** Stages every write in storage first, so a rejected archive publishes none of its files. */
-async function stageLinkWrites(
-  storage: StorageAdapter,
-  links: FileLinksConfig,
-  maxFileBytes: number | undefined,
+  maxFileBytes: number,
   writes: AsyncIterable<LinkWrite>,
-): Promise<StagedLinkWrite[]> {
-  const staged: StagedLinkWrite[] = [];
-  try {
-    for await (const write of writes) {
-      staged.push(await stageLinkWrite(storage, links, maxFileBytes, write));
-    }
-    return staged;
-  } catch (cause) {
-    await Promise.allSettled(
-      staged.map(({ storageInit }) => storage.deleteObject({ storageKey: storageInit.storageKey })),
-    );
-    throw cause;
+): Promise<FileContentWrite[]> {
+  const contents: FileContentWrite[] = [];
+  for await (const write of writes) {
+    const name = `File '${write.fileKey}'`;
+    assertFileSize(write.sizeBytes, maxFileBytes, name);
+    contents.push({
+      fileKey: write.fileKey,
+      content: await readContent(write.body, maxFileBytes, name),
+      filename: write.fileKey.split("/").at(-1)!,
+      contentType: links.contentTypeForKey(write.fileKey),
+      checksum: null,
+      visibility: "private",
+      tags: null,
+      metadata: null,
+      uploaderId: null,
+      precondition: null,
+    });
   }
+  return contents;
 }
 
 function normalizeArchiveEntryPath(name: string): string | null {
@@ -235,7 +163,7 @@ function normalizeArchiveEntryPath(name: string): string | null {
   return path.length === 0 || path.startsWith("/") ? null : path;
 }
 
-/** Reports a truncated or corrupt entry body as a client error rather than a storage failure. */
+/** Reports a truncated or corrupt entry body as a client error rather than a server failure. */
 function rejectUnreadableEntry(
   body: ReadableStream<Uint8Array>,
   name: string,
@@ -380,8 +308,6 @@ function requireContentLength(headers: Headers): number {
 
 export const fileLinkRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
   ({ services, defineRoute, config }) => {
-    const getResolvedConfig = () => resolveUploadFragmentConfig(config);
-
     function toErrorResponse(cause: unknown, error: FileLinkRouteError): Response {
       if (cause instanceof FileLinkRequestError) {
         return error({ message: cause.message, code: cause.code }, cause.status);
@@ -392,48 +318,11 @@ export const fileLinkRoutesFactory = defineRoutes(uploadFragmentDefinition).crea
       throw cause;
     }
 
-    /** Publishes staged writes as one batch, replacing any files at their keys. */
-    async function publishLinkWrites(
-      handlerTx: DatabaseHandlerTx,
-      provider: string,
-      staged: StagedLinkWrite[],
-    ) {
-      const published = {
-        fileCount: staged.length,
-        sizeBytes: staged.reduce((total, write) => total + write.sizeBytes, 0),
+    function summarizeLinkWrites(writes: FileContentWrite[]) {
+      return {
+        fileCount: writes.length,
+        sizeBytes: writes.reduce((total, write) => total + write.content.byteLength, 0),
       };
-      if (staged.length === 0) {
-        return published;
-      }
-      // TODO: Like file edits, staged objects survive database errors because the commit may have
-      // succeeded even when its acknowledgement was lost.
-      const prepared = await handlerTx()
-        .withServiceCalls(() => [
-          services.createPreparedFileUploads(
-            staged.map((write) => ({
-              provider,
-              fileKey: write.fileKey,
-              filename: write.fileKey.split("/").at(-1)!,
-              sizeBytes: write.sizeBytes,
-              contentType: write.contentType,
-              checksum: null,
-              publicationMode: "batch",
-              storageInit: write.storageInit,
-              completedSizeBytes: BigInt(write.sizeBytes),
-            })),
-          ),
-        ])
-        .transform(({ serviceResult: [uploads] }) => uploads)
-        .execute();
-      await handlerTx()
-        .withServiceCalls(() => [
-          services.commitPreparedFileWrites({
-            entries: prepared.map((upload) => ({ kind: "write", uploadId: upload.uploadId })),
-            activeProvider: provider,
-          }),
-        ])
-        .execute();
-      return published;
     }
 
     return [
@@ -445,15 +334,8 @@ export const fileLinkRoutesFactory = defineRoutes(uploadFragmentDefinition).crea
         errorCodes: fileLinkErrorCodes,
         handler: async function createFileLink({ input }, { json, error }) {
           const payload = await input.valid();
-          const resolvedConfig = getResolvedConfig();
           try {
-            const links = requireFileLinks(resolvedConfig.fileLinks);
-            if (payload.provider !== resolvedConfig.storage.name) {
-              throw new UploadServiceError(
-                "PROVIDER_MISMATCH",
-                "The link provider does not match the active storage provider.",
-              );
-            }
+            const links = requireFileLinks(config.fileLinks);
             if (payload.target.kind === "glob" && !isFileLinkGlob(payload.target.glob)) {
               throw new FileLinkRequestError(
                 "INVALID_REQUEST",
@@ -487,31 +369,25 @@ export const fileLinkRoutesFactory = defineRoutes(uploadFragmentDefinition).crea
         path: "/file-links/:token",
         errorCodes: fileLinkErrorCodes,
         handler: async function readLinkedFile({ pathParams }, { error }) {
-          const { storage, fileLinks } = getResolvedConfig();
           try {
-            const { grant } = await authorizeFileLink(fileLinks, storage, pathParams.token, "read");
-            const file = await this.handlerTx()
+            const { grant } = await authorizeFileLink(config.fileLinks, pathParams.token, "read");
+            const { file, body } = await this.handlerTx()
               .withServiceCalls(() => [
-                services.getFileByKey({
+                services.getFileContent({
                   provider: grant.provider,
                   fileKey: requireFileTarget(grant),
                 }),
               ])
               .transform(({ serviceResult: [result] }) => result)
               .execute();
-            if (file.status === "deleted") {
-              throw new UploadServiceError("FILE_DELETED", "The file has been deleted.");
-            }
-            if (!storage.getDownloadStream) {
-              throw new UploadServiceError("STORAGE_ERROR", "Download streaming unsupported.");
-            }
-            let content: Response;
-            try {
-              content = await storage.getDownloadStream({ storageKey: file.objectKey });
-            } catch (cause) {
-              throw mapStorageOperationError(cause);
-            }
-            return linkedDownload(content.body, new Headers(content.headers), file.filename);
+            return linkedDownload(
+              body.slice(),
+              new Headers({
+                "Content-Type": file.contentType,
+                "Content-Length": String(body.byteLength),
+              }),
+              file.filename,
+            );
           } catch (cause) {
             return toErrorResponse(cause, error);
           }
@@ -525,27 +401,25 @@ export const fileLinkRoutesFactory = defineRoutes(uploadFragmentDefinition).crea
         outputSchema: publishedLinkWritesSchema,
         errorCodes: fileLinkErrorCodes,
         handler: async function writeLinkedFile(context, { json, error }) {
-          const { storage, fileLinks, maxSingleUploadBytes } = getResolvedConfig();
           try {
             const { grant, links } = await authorizeFileLink(
-              fileLinks,
-              storage,
+              config.fileLinks,
               context.pathParams.token,
               "write",
             );
-            const staged = await stageLinkWrites(
-              storage,
+            const writes = await readLinkWrites(
               links,
-              maxSingleUploadBytes,
+              config.maxFileBytes,
               singleWrite({
                 fileKey: requireFileTarget(grant),
                 sizeBytes: requireContentLength(context.headers),
                 body: context.bodyStream(),
               }),
             );
-            return json(
-              await publishLinkWrites((options) => this.handlerTx(options), grant.provider, staged),
-            );
+            await this.handlerTx()
+              .withServiceCalls(() => [services.writeFiles(grant.provider, writes)])
+              .execute();
+            return json(summarizeLinkWrites(writes));
           } catch (cause) {
             return toErrorResponse(cause, error);
           }
@@ -558,14 +432,9 @@ export const fileLinkRoutesFactory = defineRoutes(uploadFragmentDefinition).crea
         queryParameters: ["cursor"],
         errorCodes: fileLinkErrorCodes,
         handler: async function readLinkedArchive({ pathParams, query }, { error }) {
-          const { storage, fileLinks } = getResolvedConfig();
           try {
-            const { grant } = await authorizeFileLink(fileLinks, storage, pathParams.token, "read");
+            const { grant } = await authorizeFileLink(config.fileLinks, pathParams.token, "read");
             const glob = requireGlobTarget(grant);
-            const getDownloadStream = storage.getDownloadStream?.bind(storage);
-            if (!getDownloadStream) {
-              throw new UploadServiceError("STORAGE_ERROR", "Download streaming unsupported.");
-            }
             const base = fileLinkGlobBase(glob);
             const page = await this.handlerTx()
               .withServiceCalls(() => [
@@ -583,19 +452,22 @@ export const fileLinkRoutesFactory = defineRoutes(uploadFragmentDefinition).crea
 
             const { readable, controller } = createTarPacker();
             void (async () => {
+              // One read per file, as the downloader consumes the archive, so the archive never
+              // holds a page of files in memory.
               for (const file of files) {
-                const content = await getDownloadStream({ storageKey: file.objectKey });
-                if (!content.ok || !content.body) {
-                  throw new Error(`Storage could not read '${file.key}' (${content.status}).`);
-                }
-                await content.body.pipeTo(
-                  controller.add({
-                    name: file.key.slice(base.length),
-                    size: Number(file.sizeBytes),
-                    type: "file",
-                    mtime: file.updatedAt,
-                  }),
-                );
+                const content = await this.handlerTx()
+                  .withServiceCalls(() => [
+                    services.getFileContent({ provider: grant.provider, fileKey: file.key }),
+                  ])
+                  .transform(({ serviceResult: [result] }) => result)
+                  .execute();
+                const entry = controller.add({
+                  name: file.key.slice(base.length),
+                  size: content.body.byteLength,
+                  type: "file",
+                  mtime: content.file.updatedAt,
+                });
+                await new Blob([content.body.slice()]).stream().pipeTo(entry);
               }
               controller.finalize();
             })().catch((cause: unknown) => {
@@ -622,23 +494,23 @@ export const fileLinkRoutesFactory = defineRoutes(uploadFragmentDefinition).crea
         outputSchema: publishedLinkWritesSchema,
         errorCodes: fileLinkErrorCodes,
         handler: async function writeLinkedArchive(context, { json, error }) {
-          const { storage, fileLinks, maxSingleUploadBytes } = getResolvedConfig();
           try {
             const { grant, links } = await authorizeFileLink(
-              fileLinks,
-              storage,
+              config.fileLinks,
               context.pathParams.token,
               "write",
             );
-            const staged = await stageLinkWrites(
-              storage,
+            const writes = await readLinkWrites(
               links,
-              maxSingleUploadBytes,
+              config.maxFileBytes,
               archiveWrites(context.bodyStream(), requireGlobTarget(grant), links),
             );
-            return json(
-              await publishLinkWrites((options) => this.handlerTx(options), grant.provider, staged),
-            );
+            if (writes.length > 0) {
+              await this.handlerTx()
+                .withServiceCalls(() => [services.writeFiles(grant.provider, writes)])
+                .execute();
+            }
+            return json(summarizeLinkWrites(writes));
           } catch (cause) {
             return toErrorResponse(cause, error);
           }

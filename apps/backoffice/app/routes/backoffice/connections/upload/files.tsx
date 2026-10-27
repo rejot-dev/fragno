@@ -1125,7 +1125,6 @@ function useUploadFilesViewState({
     try {
       const response = await uploadHelpers.downloadFile(selectedFile.fileKey, {
         provider: selectedFile.provider,
-        method: "content",
       });
       const blob = await response.blob();
       downloadBlob(blob, selectedFile.filename || "download");

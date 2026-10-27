@@ -98,6 +98,7 @@ export async function searchUploadFiles(input: {
         candidateKeys: selectHydrationBatch(
           candidatePage.candidates.slice(position.candidateOffset),
           remainingMatches,
+          MAX_HYDRATION_BYTES,
         ),
         excludedTerms: candidatePage.excludedTerms,
         searchOffset: position.searchOffset,
@@ -136,19 +137,29 @@ export async function searchUploadFiles(input: {
   }
 }
 
+/**
+ * The candidates one hydration should scan: about as many as fill the remaining matches, and no
+ * more than its byte budget scans, since hydration reads the content of every candidate it gets.
+ */
 function selectHydrationBatch(
-  candidates: readonly { key: string; count: number }[],
+  candidates: readonly { key: string; count: number; byteLength: number }[],
   maxMatches: number,
+  maxBytes: number,
 ): string[] {
   const batch: string[] = [];
   let estimatedMatches = 0;
+  let bytes = 0;
   for (const candidate of candidates) {
     const candidateEstimate = Math.max(1, candidate.count);
-    if (batch.length > 0 && estimatedMatches + candidateEstimate > maxMatches) {
+    if (
+      batch.length > 0 &&
+      (estimatedMatches + candidateEstimate > maxMatches || bytes + candidate.byteLength > maxBytes)
+    ) {
       break;
     }
     batch.push(candidate.key);
     estimatedMatches += candidateEstimate;
+    bytes += candidate.byteLength;
     if (estimatedMatches >= maxMatches) {
       break;
     }

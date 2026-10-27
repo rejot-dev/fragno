@@ -1,9 +1,7 @@
 import type { TableToColumnValues } from "@fragno-dev/db/query";
 
-import type { UploadFragmentResolvedConfig } from "../config";
 import { uploadSchema } from "../schema";
-import type { UploadChecksum } from "../storage/types";
-import type { FileVisibility, UploadPublicationMode, UploadStatus, UploadStrategy } from "../types";
+import type { FileVisibility, UploadChecksum, UploadPublicationMode, UploadStatus } from "../types";
 import { UploadServiceError } from "./errors";
 
 export type CreateUploadInput = {
@@ -22,24 +20,10 @@ export type CreateUploadInput = {
   replaceActiveUpload?: boolean;
 };
 
-export type UploadProgressInput = {
-  bytesUploaded?: number;
-  partsUploaded?: number;
-};
-
-export type CompletePartsInput = {
-  parts: { partNumber: number; etag: string; sizeBytes: number }[];
-};
-
-export type InitializedUpload = Awaited<
-  ReturnType<UploadFragmentResolvedConfig["storage"]["initUpload"]>
->;
-
 type UploadRow = TableToColumnValues<typeof uploadSchema.tables.upload>;
 
-export type UploadSnapshot = Omit<UploadRow, "status" | "strategy" | "publicationMode"> & {
+export type UploadSnapshot = Omit<UploadRow, "status" | "publicationMode"> & {
   status: UploadStatus;
-  strategy: UploadStrategy;
   publicationMode: UploadPublicationMode;
 };
 
@@ -49,16 +33,7 @@ export type ActiveUploadSnapshot = Omit<UploadSnapshot, "status"> & {
 
 export type UploadSessionSnapshot = Pick<
   ActiveUploadSnapshot,
-  | "id"
-  | "key"
-  | "provider"
-  | "status"
-  | "strategy"
-  | "publicationMode"
-  | "expiresAt"
-  | "uploadUrl"
-  | "uploadHeaders"
-  | "partSizeBytes"
+  "id" | "key" | "provider" | "status" | "publicationMode" | "expiresAt"
 >;
 
 export type NormalizedUploadInput = {
@@ -132,15 +107,6 @@ export function ensureActiveUpload(upload: UploadSnapshot): void {
     throw new UploadServiceError(
       "UPLOAD_INVALID_STATE",
       `Uploads in the '${upload.status}' state are not active.`,
-    );
-  }
-}
-
-export function ensureMultipartUpload(upload: UploadSnapshot): void {
-  if (upload.strategy !== "direct-multipart" || !upload.storageUploadId || !upload.partSizeBytes) {
-    throw new UploadServiceError(
-      "UPLOAD_INVALID_STATE",
-      "The upload has no active multipart storage session.",
     );
   }
 }

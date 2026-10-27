@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
 
+import type { UploadProgress } from "@fragno-dev/upload";
+
 import type { UploadClient } from "~/uploads/upload-client";
 
 import {
@@ -7,13 +9,6 @@ import {
   buildUploadKeyPrefix,
   validateUploadKeySegment,
 } from "./upload-panel-state";
-
-type UploadProgress = {
-  bytesUploaded: number;
-  totalBytes: number;
-  partsUploaded: number;
-  totalParts?: number;
-};
 
 type FileListItem = {
   fileKey: string;
@@ -126,10 +121,7 @@ export function UploadPanel({
 
   const handleDownload = async (input: { provider: string; fileKey: string; filename: string }) => {
     try {
-      const response = await helpers.downloadFile(input.fileKey, {
-        provider: input.provider,
-        method: "content",
-      });
+      const response = await helpers.downloadFile(input.fileKey, { provider: input.provider });
       if (!response.ok) {
         const text = await response.text();
         let message = `Download failed (${response.status})`;

@@ -64,8 +64,8 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
   if (created.type === "error") {
     return Response.json(created.error, { status: created.status });
   }
-  if (created.type !== "json" || created.data.strategy !== "proxy") {
-    throw new Error("Workspace upload requires a proxy upload session.");
+  if (created.type !== "json") {
+    throw new Error("Workspace upload did not create an upload session.");
   }
   const written = await routes("PUT", "/uploads/:uploadId/content", {
     pathParams: { uploadId: created.data.uploadId },

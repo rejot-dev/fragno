@@ -54,6 +54,48 @@ async function writeFile(
   assert(response.ok, await response.clone().text());
 }
 
+/** Sends a file through an upload session; a batch upload waits for its commit to publish. */
+async function uploadFile(
+  ctx: BackofficeScenarioContext,
+  file: { key: string; content: string; publicationMode: "immediate" | "batch" },
+) {
+  const upload = uploadObject(ctx).http;
+  const created = await upload.fetch(
+    new Request("https://backoffice.example/api/upload/uploads", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        provider: UPLOAD_PROVIDER_DATABASE,
+        fileKey: file.key,
+        filename: file.key.split("/").at(-1)!,
+        sizeBytes: new TextEncoder().encode(file.content).byteLength,
+        contentType: "text/markdown",
+        publicationMode: file.publicationMode,
+      }),
+    }),
+  );
+  assert(created.ok, await created.clone().text());
+  const { uploadId } = (await created.json()) as { uploadId: string };
+  const stored = await upload.fetch(
+    new Request(`https://backoffice.example/api/upload/uploads/${uploadId}/content`, {
+      method: "PUT",
+      headers: { "content-type": "application/octet-stream" },
+      body: file.content,
+    }),
+  );
+  assert(stored.ok, await stored.clone().text());
+  if (file.publicationMode === "batch") {
+    const committed = await upload.fetch(
+      new Request("https://backoffice.example/api/upload/files/commit-prepared", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ entries: [{ kind: "write", uploadId }] }),
+      }),
+    );
+    assert(committed.ok, await committed.clone().text());
+  }
+}
+
 async function deleteFile(ctx: BackofficeScenarioContext, key: string) {
   const url = new URL("https://backoffice.example/api/upload/files/by-key");
   url.searchParams.set("provider", UPLOAD_PROVIDER_DATABASE);
@@ -131,6 +173,31 @@ test("the Files explorer lists the ready files and folders of the Upload replica
             path: "notes/next.md",
             sizeBytes: 4,
           });
+        }),
+        then.assert("the replica follows a file that uploads replace", async (ctx) => {
+          const planSize = async () =>
+            (await readExplorerTree(ctx)).find((entry) => entry.path === "notes/plan.md")
+              ?.sizeBytes;
+          await uploadFile(ctx, {
+            key: "notes/plan.md",
+            content: "# Plan, v2",
+            publicationMode: "immediate",
+          });
+          assert((await planSize()) === 10);
+          await uploadFile(ctx, {
+            key: "notes/plan.md",
+            content: "# Plan, v3!",
+            publicationMode: "immediate",
+          });
+          assert((await planSize()) === 11);
+          await uploadFile(ctx, {
+            key: "notes/plan.md",
+            content: "# Plan, committed",
+            publicationMode: "batch",
+          });
+          assert((await planSize()) === 17);
+          await deleteFile(ctx, "notes/plan.md");
+          expect(await planSize()).toBeUndefined();
         }),
       ],
     }),

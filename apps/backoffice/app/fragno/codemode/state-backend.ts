@@ -1115,12 +1115,6 @@ class UploadStaticStateBackend implements BackofficeStateBackend {
         `Unable to prepare '${destination.absolutePath}': Upload returned ${created.type}.`,
       );
     }
-    if (created.data.strategy !== "proxy") {
-      throw new Error(
-        `Unable to prepare '${destination.absolutePath}': Upload returned unsupported ${created.data.strategy} transfer strategy.`,
-      );
-    }
-
     const prepared = await this.#upload.routes("PUT", "/uploads/:uploadId/content", {
       pathParams: { uploadId: created.data.uploadId },
       headers: { "content-type": "application/octet-stream" },

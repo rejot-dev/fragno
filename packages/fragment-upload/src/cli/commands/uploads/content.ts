@@ -9,7 +9,7 @@ const DEFAULT_CONTENT_TYPE = "application/octet-stream";
 
 export const uploadsContentCommand = define({
   name: "content",
-  description: "Upload file bytes via proxy upload",
+  description: "Upload the session's file bytes",
   args: {
     ...baseArgs,
     "upload-id": {

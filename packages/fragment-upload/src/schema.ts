@@ -1,6 +1,6 @@
 import { column, idColumn, referenceColumn, schema, type Column } from "@fragno-dev/db/schema";
 
-import type { UploadChecksum } from "./storage/types";
+import type { UploadChecksum } from "./types";
 
 const jsonColumn = <T>() => column("json") as Column<"json", T, T>;
 

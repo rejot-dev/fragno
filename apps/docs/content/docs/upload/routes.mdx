@@ -5,54 +5,46 @@ description: HTTP endpoints for uploads and files.
 
 ## Uploads
 
-- `POST /uploads` — create an upload session and receive strategy details.
-- `GET /uploads/:uploadId` — read upload status and progress.
-- `POST /uploads/:uploadId/progress` — record client-side progress (direct uploads).
-- `POST /uploads/:uploadId/parts` — get signed URLs for multipart uploads.
-- `POST /uploads/:uploadId/parts/complete` — record uploaded parts.
-- `POST /uploads/:uploadId/complete` — finalize upload and mark file ready.
+- `POST /uploads` — create an upload session.
+- `GET /uploads/:uploadId` — read upload status.
+- `PUT /uploads/:uploadId/content` — send the upload's content. It publishes the file, or prepares
+  it when the upload's `publicationMode` is `batch`.
+- `GET /uploads/:uploadId/content` — read a prepared upload's content before its batch commits.
 - `POST /uploads/:uploadId/abort` — abort an upload.
-- `PUT /uploads/:uploadId/content` — server-stream (proxy) bytes to storage.
 
 Notes:
 
 - `POST /uploads` is idempotent only when a checksum is provided; if metadata matches, the existing
-  upload is returned to support resume without creating a new storage session.
-- `POST /uploads` and `GET /uploads/:uploadId` return the resolved `provider` plus canonical
-  provider-sticky follow-up URLs (`statusEndpoint`, `progressEndpoint`, `completeEndpoint`,
-  `abortEndpoint`, and the strategy-specific upload endpoints).
-- If a file already exists for the key, `POST /uploads` and `POST /uploads/:uploadId/complete`
-  return `FILE_ALREADY_EXISTS`.
-- Storage-touching follow-up routes return `PROVIDER_MISMATCH` before storage I/O if a request lands
-  on the wrong provider fragment.
+  upload is returned to support resume.
+- `replaceActiveUpload: true` aborts unfinished uploads of the same file key instead of failing with
+  `UPLOAD_ALREADY_ACTIVE`.
 
 ## Files
 
+- `POST /files` — upload and publish a file in one multipart request, optionally with a
+  `precondition`.
+- `POST /files/commit-prepared` — atomically publish prepared uploads, delete files, and assert file
+  revisions.
+- `POST /files/apply-edits` — apply text edits to files atomically.
 - `GET /files` — list files with cursor pagination and optional `provider` + `prefix` filters.
+- `POST /files/snapshots` — read many files' metadata and revisions at once.
+- `POST /files/search` and `POST /files/search/hydrate` — search the text index.
 - `GET /files/by-key?provider=<provider>&key=<fileKey>` — fetch file metadata.
 - `PATCH /files/by-key?provider=<provider>&key=<fileKey>` — update file metadata.
-- `DELETE /files/by-key?provider=<provider>&key=<fileKey>` — delete a file (idempotent).
-- `GET /files/by-key/download-url?provider=<provider>&key=<fileKey>` — signed download URL (if
-  supported).
-- `GET /files/by-key/content?provider=<provider>&key=<fileKey>` — server-stream (proxy) downloads
-  (if supported).
-
-Notes:
-
-- `POST /files` does not implement idempotent matching; active uploads and existing files return
-  `UPLOAD_ALREADY_ACTIVE` or `FILE_ALREADY_EXISTS`.
+- `DELETE /files/by-key?provider=<provider>&key=<fileKey>` — delete a file and its content
+  (idempotent).
+- `GET /files/by-key/content?provider=<provider>&key=<fileKey>` — download a file's content.
 
 ## Error codes
 
 - `UPLOAD_NOT_FOUND`
 - `UPLOAD_ALREADY_ACTIVE`
-- `UPLOAD_METADATA_MISMATCH`
-- `FILE_NOT_FOUND`
-- `FILE_ALREADY_EXISTS`
 - `UPLOAD_EXPIRED`
 - `UPLOAD_INVALID_STATE`
-- `PROVIDER_MISMATCH`
-- `SIGNED_URL_UNSUPPORTED`
-- `STORAGE_ERROR`
+- `FILE_NOT_FOUND`
+- `FILE_DELETED`
+- `FILE_PRECONDITION_FAILED`
+- `FILE_TOO_LARGE`
 - `INVALID_FILE_KEY`
 - `INVALID_CHECKSUM`
+- `INVALID_REQUEST`

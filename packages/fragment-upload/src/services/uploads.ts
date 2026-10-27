@@ -1,31 +1,27 @@
-import type { TableToInsertValues } from "@fragno-dev/db/query";
+import type { TypedUnitOfWork } from "@fragno-dev/db";
 
-import type { DatabaseServiceContext, HookFn, TypedUnitOfWork } from "@fragno-dev/db";
-
-import type { FileHookPayload, UnfinishedUploadPayload, UploadTimeoutPayload } from "../config";
+import { uploadExpiresInSeconds, type UploadFragmentConfig } from "../config";
 import { uploadSchema } from "../schema";
-import type { PreparedFileBatchEntry, UploadFileWritePrecondition } from "../types";
+import type { PreparedFileBatchEntry } from "../types";
+import { assertFileSize, newObjectKey } from "./content";
+import type { UploadHooks, UploadMutationUnitOfWork, UploadServiceContext } from "./context";
 import { UploadServiceError } from "./errors";
 import {
   assertFileWritePrecondition,
-  buildFileHookPayload,
   buildUploadHookPayload,
-  type FileRow,
-  planFilePublication,
+  deleteFileContent,
+  publishFileContent,
+  type StoredFileRow,
   toPreparedFileWrite,
 } from "./file-publication";
 import { resolveFileKeyInput } from "./helpers";
+import { chunkQueryValues } from "./query-chunks";
 import {
-  type CompletePartsInput,
   type CreateUploadInput,
   ensureActiveUpload,
-  ensureMultipartUpload,
-  type InitializedUpload,
   isTerminalUploadStatus,
   normalizeUploadInput,
   pickActiveUpload,
-  toBigInt,
-  type UploadProgressInput,
   type UploadSessionSnapshot,
   type UploadSnapshot,
   toUploadSnapshot,
@@ -33,58 +29,21 @@ import {
 } from "./upload-model";
 
 export const MAX_PREPARED_FILE_BATCH_ENTRIES = 5_000;
-// Durable Object SQLite binds at most 100 parameters per statement; each chunked lookup adds one or
-// two fixed parameters to its `in` list.
-const BATCH_QUERY_CHUNK_SIZE = 90;
+// Uploads record how their bytes reached storage; the database is the only storage left.
+const UPLOAD_STRATEGY = "proxy";
 
-type UploadWithFile = UploadSnapshot & { file: FileRow | null };
-type UploadInsert = TableToInsertValues<typeof uploadSchema.tables.upload>;
-
-export type StagedPreparedFileUpload = CreateUploadInput & {
-  storageInit: InitializedUpload;
-  completedSizeBytes: bigint;
-};
-
-type UploadHooks = {
-  onFileReady: HookFn<FileHookPayload>;
-  onFileTextIndexRequested: HookFn<FileHookPayload>;
-  onUploadFailed: HookFn<FileHookPayload>;
-  onFileDeleted: HookFn<FileHookPayload>;
-  cleanupStorageObject: HookFn<FileHookPayload>;
-  cleanupUnfinishedUpload: HookFn<UnfinishedUploadPayload>;
-  onUploadTimeout: HookFn<UploadTimeoutPayload>;
-};
-
-type UploadServiceContext = DatabaseServiceContext<UploadHooks>;
-type UploadMutationUnitOfWork = TypedUnitOfWork<
-  typeof uploadSchema,
-  unknown[],
-  unknown,
-  UploadHooks
->;
+type UploadWithFile = UploadSnapshot & { file: StoredFileRow | null };
 
 const batchFileAddress = (provider: string, fileKey: string) => `${provider}\0${fileKey}`;
 
-const chunkBatchValues = <T>(values: T[]): T[][] => {
-  const chunks: T[][] = [];
-  for (let index = 0; index < values.length; index += BATCH_QUERY_CHUNK_SIZE) {
-    chunks.push(values.slice(index, index + BATCH_QUERY_CHUNK_SIZE));
-  }
-  return chunks;
-};
-
-export const createUploadServices = () => {
+export const createUploadServices = (config: UploadFragmentConfig) => {
   return {
-    createUploadRecord: function (
-      this: UploadServiceContext,
-      input: CreateUploadInput & {
-        storageInit: InitializedUpload;
-        allowIdempotentReuse: boolean;
-      },
-    ) {
+    createUploadSession: function (this: UploadServiceContext, input: CreateUploadInput) {
       const resolved = resolveFileKeyInput(input);
       const normalized = normalizeUploadInput(input);
-      const hasChecksum = normalized.checksum !== null;
+      assertFileSize(normalized.sizeBytes, config.maxFileBytes, `File '${resolved.fileKey}'`);
+      const objectKey = newObjectKey(normalized.provider, resolved.fileKey);
+      const expiresAt = new Date(Date.now() + uploadExpiresInSeconds(config) * 1000);
 
       return this.serviceTx(uploadSchema)
         .retrieve((uow) =>
@@ -99,16 +58,12 @@ export const createUploadServices = () => {
             ),
           ),
         )
-        .mutate(({ uow, retrieveResult: [uploadRows] }) => {
+        .mutate(({ uow, retrieveResult: [uploadRows] }): UploadSessionSnapshot => {
           const activeUploads = uploadRows.map(toUploadSnapshot);
           const activeUpload = pickActiveUpload(activeUploads);
           if (activeUpload) {
-            if (
-              input.allowIdempotentReuse &&
-              hasChecksum &&
-              uploadMetadataMatches(activeUpload, normalized)
-            ) {
-              return { reused: true as const, upload: activeUpload };
+            if (normalized.checksum !== null && uploadMetadataMatches(activeUpload, normalized)) {
+              return activeUpload;
             }
 
             if (!input.replaceActiveUpload) {
@@ -118,8 +73,7 @@ export const createUploadServices = () => {
               );
             }
 
-            // Frees what the replaced uploads already stored. Their URLs work until they expire, so
-            // their timeouts clean up again after that.
+            // Active uploads hold no content yet: storing it completes or prepares them.
             for (const replaced of activeUploads) {
               uow.update("upload", replaced.id, (b) =>
                 b
@@ -131,17 +85,12 @@ export const createUploadServices = () => {
                   })
                   .check(),
               );
-              uow.triggerHook("cleanupUnfinishedUpload", {
-                objectKey: replaced.objectKey,
-                storageUploadId: replaced.storageUploadId,
-              });
               uow.triggerHook("onUploadFailed", buildUploadHookPayload(replaced));
             }
           }
 
-          const storageInit = input.storageInit;
           const databaseNow = uow.now();
-          const uploadRecord: UploadInsert = {
+          const uploadId = uow.create("upload", {
             key: resolved.fileKey,
             provider: normalized.provider,
             uploaderId: normalized.uploaderId,
@@ -154,22 +103,21 @@ export const createUploadServices = () => {
             metadata: normalized.metadata,
             status: "created",
             publicationMode: normalized.publicationMode,
-            strategy: storageInit.strategy,
-            objectKey: storageInit.storageKey,
-            storageUploadId: storageInit.storageUploadId ?? null,
-            uploadUrl: storageInit.uploadUrl ?? null,
-            uploadHeaders: storageInit.uploadHeaders ?? null,
+            strategy: UPLOAD_STRATEGY,
+            objectKey,
+            storageUploadId: null,
+            uploadUrl: null,
+            uploadHeaders: null,
             bytesUploaded: 0n,
             partsUploaded: 0,
-            partSizeBytes: storageInit.partSizeBytes ?? null,
-            expiresAt: storageInit.expiresAt,
+            partSizeBytes: null,
+            expiresAt,
             createdAt: databaseNow,
             updatedAt: databaseNow,
             completedAt: null,
             errorCode: null,
             errorMessage: null,
-          };
-          const uploadId = uow.create("upload", uploadRecord);
+          });
 
           uow.triggerHook(
             "onUploadTimeout",
@@ -178,275 +126,120 @@ export const createUploadServices = () => {
               provider: normalized.provider,
               fileKey: resolved.fileKey,
             },
-            { processAt: storageInit.expiresAt },
+            { processAt: expiresAt },
           );
 
-          const upload: UploadSessionSnapshot = {
+          return {
             id: uploadId,
             key: resolved.fileKey,
             provider: normalized.provider,
             status: "created",
-            strategy: storageInit.strategy,
             publicationMode: normalized.publicationMode,
-            expiresAt: storageInit.expiresAt,
-            uploadUrl: storageInit.uploadUrl ?? null,
-            uploadHeaders: storageInit.uploadHeaders ?? null,
-            partSizeBytes: storageInit.partSizeBytes ?? null,
+            expiresAt,
           };
-
-          return { reused: false as const, upload };
         })
         .build();
     },
 
-    createPreparedFileUploads: function (
+    /**
+     * Stores the upload's content and, unless the upload is part of a batch, publishes it as the
+     * file in the same transaction.
+     */
+    storeUploadContent: function (
       this: UploadServiceContext,
-      inputs: StagedPreparedFileUpload[],
+      uploadId: string,
+      content: Uint8Array,
     ) {
-      if (inputs.length === 0 || inputs.length > MAX_PREPARED_FILE_BATCH_ENTRIES) {
-        throw new UploadServiceError(
-          "INVALID_REQUEST",
-          `Prepared upload batches must contain between 1 and ${MAX_PREPARED_FILE_BATCH_ENTRIES} files.`,
-        );
-      }
-
-      const prepared = inputs.map((input) => ({
-        resolved: resolveFileKeyInput(input),
-        normalized: normalizeUploadInput({ ...input, publicationMode: "batch" }),
-        storageInit: input.storageInit,
-        completedSizeBytes: input.completedSizeBytes,
-      }));
-
-      return this.serviceTx(uploadSchema)
-        .mutate(({ uow }) => {
-          const databaseNow = uow.now();
-          return prepared.map(({ resolved, normalized, storageInit, completedSizeBytes }) => {
-            const uploadId = uow.create("upload", {
-              key: resolved.fileKey,
-              provider: normalized.provider,
-              uploaderId: normalized.uploaderId,
-              filename: normalized.filename,
-              expectedSizeBytes: normalized.expectedSizeBytes,
-              contentType: normalized.contentType,
-              checksum: normalized.checksum,
-              visibility: normalized.visibility,
-              tags: normalized.tags,
-              metadata: normalized.metadata,
-              status: "prepared",
-              publicationMode: "batch",
-              strategy: storageInit.strategy,
-              objectKey: storageInit.storageKey,
-              storageUploadId: storageInit.storageUploadId ?? null,
-              uploadUrl: storageInit.uploadUrl ?? null,
-              uploadHeaders: storageInit.uploadHeaders ?? null,
-              bytesUploaded: completedSizeBytes,
-              partsUploaded: 0,
-              partSizeBytes: storageInit.partSizeBytes ?? null,
-              expiresAt: storageInit.expiresAt,
-              createdAt: databaseNow,
-              updatedAt: databaseNow,
-              completedAt: databaseNow,
-              errorCode: null,
-              errorMessage: null,
-            });
-
-            uow.triggerHook(
-              "onUploadTimeout",
-              {
-                uploadId: uploadId.toString(),
-                provider: normalized.provider,
-                fileKey: resolved.fileKey,
-              },
-              { processAt: storageInit.expiresAt },
-            );
-
-            return {
-              uploadId: uploadId.toString(),
-              provider: normalized.provider,
-              fileKey: resolved.fileKey,
-              objectKey: storageInit.storageKey,
-              sizeBytes: Number(completedSizeBytes),
-              contentType: normalized.contentType,
-              checksum: normalized.checksum,
-              expiresAt: storageInit.expiresAt.toISOString(),
-            };
-          });
-        })
-        .build();
-    },
-
-    createCompletedUpload: function (
-      this: UploadServiceContext,
-      input: CreateUploadInput & {
-        storageInit: InitializedUpload;
-        completedSizeBytes: bigint;
-        precondition?: UploadFileWritePrecondition;
-      },
-    ) {
-      const resolved = resolveFileKeyInput(input);
-      const normalized = normalizeUploadInput(input);
-      const storageInit = input.storageInit;
-
       return this.serviceTx(uploadSchema)
         .retrieve((uow) =>
-          uow.findFirst("file", (b) =>
-            b.whereIndex("idx_file_provider_key", (eb) =>
-              eb.and(eb("provider", "=", normalized.provider), eb("key", "=", resolved.fileKey)),
+          uow
+            .findFirst("upload", (b) =>
+              b
+                .whereIndex("primary", (eb) => eb("id", "=", uploadId))
+                .joinOne("file", "file", (file) =>
+                  file
+                    .onIndex("idx_file_provider_key", (eb) =>
+                      eb.and(
+                        eb("provider", "=", eb.parent("provider")),
+                        eb("key", "=", eb.parent("key")),
+                      ),
+                    )
+                    .joinOne("object", "storage_object", (object) =>
+                      object
+                        .onIndex("idx_storage_object_key", (eb) =>
+                          eb("storageKey", "=", eb.parent("objectKey")),
+                        )
+                        .select(["id"]),
+                    ),
+                )
+                .joinOne("object", "storage_object", (object) =>
+                  object
+                    .onIndex("idx_storage_object_key", (eb) =>
+                      eb("storageKey", "=", eb.parent("objectKey")),
+                    )
+                    .select(["id"]),
+                ),
+            )
+            .findFirst("upload", (b) =>
+              b.whereIndex("idx_upload_id_expiresAt", (eb) =>
+                eb.and(eb("id", "=", uploadId), eb("expiresAt", ">", eb.now())),
+              ),
             ),
-          ),
         )
-        .mutate(({ uow, retrieveResult: [existingFile] }) => {
-          const databaseNow = uow.now();
-          assertFileWritePrecondition(existingFile, input.precondition, {
-            provider: normalized.provider,
-            fileKey: resolved.fileKey,
-          });
-
-          if (existingFile?.objectKey === storageInit.storageKey) {
-            throw new UploadServiceError(
-              "STORAGE_ERROR",
-              "A replacement upload must use a distinct storage object.",
-            );
+        .mutate(({ uow, retrieveResult: [uploadRow, unexpiredUpload] }) => {
+          if (!uploadRow) {
+            throw new UploadServiceError("UPLOAD_NOT_FOUND", "The upload does not exist.");
+          }
+          const { file, object, ...row } = uploadRow;
+          const upload = toUploadSnapshot(row);
+          // A retried request finds its content already prepared.
+          if (upload.status === "prepared" && upload.publicationMode === "batch") {
+            return { kind: "prepared" as const, write: toPreparedFileWrite(upload) };
+          }
+          ensureActiveUpload(upload);
+          if (!unexpiredUpload) {
+            throw new UploadServiceError("UPLOAD_EXPIRED", "The upload has expired.");
           }
 
-          const finalSizeBytes = input.completedSizeBytes;
-          const uploadRecord: UploadInsert = {
-            key: resolved.fileKey,
-            provider: normalized.provider,
-            uploaderId: normalized.uploaderId,
-            filename: normalized.filename,
-            expectedSizeBytes: normalized.expectedSizeBytes,
-            contentType: normalized.contentType,
-            checksum: normalized.checksum,
-            visibility: normalized.visibility,
-            tags: normalized.tags,
-            metadata: normalized.metadata,
-            status: "completed",
-            publicationMode: normalized.publicationMode,
-            strategy: storageInit.strategy,
-            objectKey: storageInit.storageKey,
-            storageUploadId: storageInit.storageUploadId ?? null,
-            uploadUrl: storageInit.uploadUrl ?? null,
-            uploadHeaders: storageInit.uploadHeaders ?? null,
-            bytesUploaded: finalSizeBytes,
-            partsUploaded: 0,
-            partSizeBytes: storageInit.partSizeBytes ?? null,
-            expiresAt: storageInit.expiresAt,
-            createdAt: databaseNow,
-            updatedAt: databaseNow,
-            completedAt: databaseNow,
-            errorCode: null,
-            errorMessage: null,
-          };
-          const uploadId = uow.create("upload", uploadRecord);
-          const publication = planFilePublication(
-            {
-              id: uploadId,
-              key: resolved.fileKey,
-              provider: normalized.provider,
-              uploaderId: normalized.uploaderId,
-              filename: normalized.filename,
-              expectedSizeBytes: normalized.expectedSizeBytes,
-              contentType: normalized.contentType,
-              checksum: normalized.checksum,
-              visibility: normalized.visibility,
-              tags: normalized.tags,
-              metadata: normalized.metadata,
-              objectKey: storageInit.storageKey,
-            },
-            existingFile,
-            finalSizeBytes,
-          );
-          const persistedFileRecord = {
-            ...publication.fileRecord,
-            createdAt: databaseNow,
+          const sizeBytes = BigInt(content.byteLength);
+          const databaseNow = uow.now();
+          const stored = { body: content, contentType: upload.contentType, sizeBytes };
+          // Uploads stored their content apart from completing until storage moved into this
+          // transaction, so an unfinished upload may already hold content from a failed attempt.
+          if (object) {
+            uow.update("storage_object", object.id, (b) =>
+              b.set({ ...stored, updatedAt: databaseNow }).check(),
+            );
+          } else {
+            uow.create("storage_object", { ...stored, storageKey: upload.objectKey });
+          }
+          const finished = {
+            bytesUploaded: sizeBytes,
             updatedAt: databaseNow,
             completedAt: databaseNow,
           };
 
-          uow.triggerHook("onFileReady", publication.readyHookPayload);
-          uow.triggerHook("onFileTextIndexRequested", publication.readyHookPayload);
-
-          if (existingFile) {
-            uow.update("file", existingFile.id, (b) => b.set(persistedFileRecord).check());
-            if (publication.supersededObjectHookPayload) {
-              uow.triggerHook("cleanupStorageObject", publication.supersededObjectHookPayload);
-            }
+          if (upload.publicationMode === "batch") {
+            uow.update("upload", upload.id, (b) =>
+              b.set({ ...finished, status: "prepared" }).check(),
+            );
             return {
-              file: {
-                id: existingFile.id,
-                ...publication.fileRecord,
-                revision: existingFile.id.version + 1,
-              },
+              kind: "prepared" as const,
+              write: toPreparedFileWrite({ ...upload, bytesUploaded: sizeBytes }),
             };
           }
 
-          const fileId = uow.create("file", persistedFileRecord, {
-            retryOnUniqueConflict: ({ error }) => error.kind === "unique",
-          });
+          uow.update("upload", upload.id, (b) =>
+            b.set({ ...finished, status: "completed" }).check(),
+          );
           return {
-            file: { id: fileId, ...publication.fileRecord, revision: fileId.version },
+            kind: "published" as const,
+            file: publishFileContent(uow as UploadMutationUnitOfWork, file, {
+              ...upload,
+              sizeBytes,
+              uploadId: upload.id.toString(),
+            }),
           };
-        })
-        .build();
-    },
-
-    createFailedUpload: function (
-      this: UploadServiceContext,
-      input: CreateUploadInput & {
-        storageInit: InitializedUpload;
-        errorCode: string;
-        errorMessage?: string | null;
-      },
-    ) {
-      const resolved = resolveFileKeyInput(input);
-      const normalized = normalizeUploadInput(input);
-      const storageInit = input.storageInit;
-
-      return this.serviceTx(uploadSchema)
-        .mutate(({ uow }) => {
-          const databaseNow = uow.now();
-          const uploadRecord: UploadInsert = {
-            key: resolved.fileKey,
-            provider: normalized.provider,
-            uploaderId: normalized.uploaderId,
-            filename: normalized.filename,
-            expectedSizeBytes: normalized.expectedSizeBytes,
-            contentType: normalized.contentType,
-            checksum: normalized.checksum,
-            visibility: normalized.visibility,
-            tags: normalized.tags,
-            metadata: normalized.metadata,
-            status: "failed",
-            publicationMode: normalized.publicationMode,
-            strategy: storageInit.strategy,
-            objectKey: storageInit.storageKey,
-            storageUploadId: storageInit.storageUploadId ?? null,
-            uploadUrl: storageInit.uploadUrl ?? null,
-            uploadHeaders: storageInit.uploadHeaders ?? null,
-            bytesUploaded: 0n,
-            partsUploaded: 0,
-            partSizeBytes: storageInit.partSizeBytes ?? null,
-            expiresAt: storageInit.expiresAt,
-            createdAt: databaseNow,
-            updatedAt: databaseNow,
-            completedAt: null,
-            errorCode: input.errorCode,
-            errorMessage: input.errorMessage ?? null,
-          };
-          const uploadId = uow.create("upload", uploadRecord);
-
-          uow.triggerHook("onUploadFailed", {
-            provider: normalized.provider,
-            fileKey: resolved.fileKey,
-            objectKey: storageInit.storageKey,
-            uploadId: uploadId.toString(),
-            uploaderId: normalized.uploaderId,
-            sizeBytes: normalized.sizeBytes,
-            contentType: normalized.contentType,
-          });
-
-          return { uploadId };
         })
         .build();
     },
@@ -465,298 +258,62 @@ export const createUploadServices = () => {
         .build();
     },
 
-    getUploadParts: function (this: UploadServiceContext, uploadId: string) {
+    getPreparedUploadContent: function (this: UploadServiceContext, uploadId: string) {
       return this.serviceTx(uploadSchema)
         .retrieve((uow) =>
-          uow.find("upload_part", (b) =>
-            b.whereIndex("idx_upload_part_upload", (eb) => eb("uploadId", "=", uploadId)),
-          ),
-        )
-        .transformRetrieve(([parts]) => parts)
-        .build();
-    },
-
-    recordUploadProgress: function (
-      this: UploadServiceContext,
-      uploadId: string,
-      input: UploadProgressInput,
-    ) {
-      return this.serviceTx(uploadSchema)
-        .retrieve((uow) =>
-          uow
-            .findFirst("upload", (b) => b.whereIndex("primary", (eb) => eb("id", "=", uploadId)))
-            .findFirst("upload", (b) =>
-              b.whereIndex("idx_upload_id_expiresAt", (eb) =>
-                eb.and(eb("id", "=", uploadId), eb("expiresAt", ">", eb.now())),
-              ),
-            ),
-        )
-        .mutate(({ uow, retrieveResult: [uploadRow, unexpiredUpload] }) => {
-          if (!uploadRow) {
-            throw new UploadServiceError("UPLOAD_NOT_FOUND", "The upload does not exist.");
-          }
-
-          const upload = toUploadSnapshot(uploadRow);
-          ensureActiveUpload(upload);
-          if (!unexpiredUpload) {
-            throw new UploadServiceError("UPLOAD_EXPIRED", "The upload has expired.");
-          }
-
-          const nextBytes =
-            input.bytesUploaded !== undefined
-              ? (() => {
-                  const inputBigInt = BigInt(input.bytesUploaded);
-                  return upload.bytesUploaded > inputBigInt ? upload.bytesUploaded : inputBigInt;
-                })()
-              : upload.bytesUploaded;
-          const nextParts =
-            input.partsUploaded !== undefined
-              ? Math.max(upload.partsUploaded, input.partsUploaded)
-              : upload.partsUploaded;
-
-          uow.update("upload", upload.id, (b) =>
+          uow.findFirst("upload", (b) =>
             b
-              .set({
-                bytesUploaded: nextBytes,
-                partsUploaded: nextParts,
-                status: "in_progress",
-                updatedAt: uow.now(),
-              })
-              .check(),
-          );
-
-          return { bytesUploaded: nextBytes, partsUploaded: nextParts };
-        })
-        .build();
-    },
-
-    recordUploadParts: function (
-      this: UploadServiceContext,
-      uploadId: string,
-      input: CompletePartsInput,
-    ) {
-      return this.serviceTx(uploadSchema)
-        .retrieve((uow) =>
-          uow
-            .findFirst("upload", (b) => b.whereIndex("primary", (eb) => eb("id", "=", uploadId)))
-            .findFirst("upload", (b) =>
-              b.whereIndex("idx_upload_id_expiresAt", (eb) =>
-                eb.and(eb("id", "=", uploadId), eb("expiresAt", ">", eb.now())),
-              ),
-            )
-            .find("upload_part", (b) =>
-              b.whereIndex("idx_upload_part_upload", (eb) => eb("uploadId", "=", uploadId)),
-            ),
-        )
-        .mutate(({ uow, retrieveResult: [uploadRow, unexpiredUpload, parts] }) => {
-          if (!uploadRow) {
-            throw new UploadServiceError("UPLOAD_NOT_FOUND", "The upload does not exist.");
-          }
-
-          const upload = toUploadSnapshot(uploadRow);
-          ensureActiveUpload(upload);
-          if (!unexpiredUpload) {
-            throw new UploadServiceError("UPLOAD_EXPIRED", "The upload has expired.");
-          }
-          ensureMultipartUpload(upload);
-
-          const databaseNow = uow.now();
-          const existing = new Set(parts.map((part) => part.partNumber));
-          const existingBytes = parts.reduce((sum, part) => sum + toBigInt(part.sizeBytes), 0n);
-          let addedParts = 0;
-          let addedBytes = 0n;
-
-          for (const part of input.parts) {
-            if (existing.has(part.partNumber)) {
-              continue;
-            }
-            existing.add(part.partNumber);
-            addedParts += 1;
-            addedBytes += toBigInt(part.sizeBytes);
-
-            uow.create("upload_part", {
-              uploadId: upload.id,
-              partNumber: part.partNumber,
-              etag: part.etag,
-              sizeBytes: toBigInt(part.sizeBytes),
-              createdAt: databaseNow,
-            });
-          }
-
-          const totalParts = existing.size;
-          const totalBytes = existingBytes + addedBytes;
-          const nextParts = Math.max(upload.partsUploaded, totalParts);
-          const nextBytes = upload.bytesUploaded > totalBytes ? upload.bytesUploaded : totalBytes;
-
-          if (addedParts > 0) {
-            uow.update("upload", upload.id, (b) =>
-              b
-                .set({
-                  partsUploaded: nextParts,
-                  bytesUploaded: nextBytes,
-                  status: "in_progress",
-                  updatedAt: databaseNow,
-                })
-                .check(),
-            );
-          }
-
-          return {
-            partsUploaded: nextParts,
-            bytesUploaded: nextBytes,
-          };
-        })
-        .build();
-    },
-
-    completeUploadPublicationFromSnapshot: function (
-      this: UploadServiceContext,
-      upload: UploadSnapshot,
-      options?: { sizeBytes?: bigint },
-    ) {
-      const finalSizeBytes = options?.sizeBytes ?? upload.expectedSizeBytes;
-
-      if (upload.publicationMode === "batch") {
-        return this.serviceTx(uploadSchema)
-          .retrieve((uow) =>
-            uow
-              .findFirst("upload", (b) =>
-                b.whereIndex("primary", (eb) => eb("id", "=", upload.id.toString())),
-              )
-              .findFirst("upload", (b) =>
-                b.whereIndex("idx_upload_id_expiresAt", (eb) =>
-                  eb.and(eb("id", "=", upload.id.toString()), eb("expiresAt", ">", eb.now())),
+              .whereIndex("primary", (eb) => eb("id", "=", uploadId))
+              .joinOne("object", "storage_object", (object) =>
+                object.onIndex("idx_storage_object_key", (eb) =>
+                  eb("storageKey", "=", eb.parent("objectKey")),
                 ),
               ),
-          )
-          .mutate(({ uow, retrieveResult: [currentUploadRow, unexpiredUpload] }) => {
-            if (!currentUploadRow) {
-              throw new UploadServiceError("UPLOAD_NOT_FOUND", "The upload does not exist.");
-            }
-
-            const currentUpload = toUploadSnapshot(currentUploadRow);
-            ensureActiveUpload(currentUpload);
-            if (!unexpiredUpload) {
-              throw new UploadServiceError("UPLOAD_EXPIRED", "The upload has expired.");
-            }
-
-            const databaseNow = uow.now();
-            uow.update("upload", currentUpload.id, (b) =>
-              b
-                .set({
-                  status: "prepared",
-                  bytesUploaded: finalSizeBytes,
-                  updatedAt: databaseNow,
-                  completedAt: databaseNow,
-                })
-                .check(),
-            );
-
-            return {
-              kind: "prepared" as const,
-              write: toPreparedFileWrite(currentUpload, finalSizeBytes),
-            };
-          })
-          .build();
-      }
-
-      return this.serviceTx(uploadSchema)
-        .retrieve((uow) =>
-          uow
-            .findFirst("upload", (b) =>
-              b.whereIndex("primary", (eb) => eb("id", "=", upload.id.toString())),
-            )
-            .findFirst("upload", (b) =>
-              b.whereIndex("idx_upload_id_expiresAt", (eb) =>
-                eb.and(eb("id", "=", upload.id.toString()), eb("expiresAt", ">", eb.now())),
-              ),
-            )
-            .findFirst("file", (b) =>
-              b.whereIndex("idx_file_provider_key", (eb) =>
-                eb.and(eb("provider", "=", upload.provider), eb("key", "=", upload.key)),
-              ),
-            ),
+          ),
         )
-        .mutate(({ uow, retrieveResult: [currentUploadRow, unexpiredUpload, existingFile] }) => {
-          if (!currentUploadRow) {
+        .transformRetrieve(([uploadRow]) => {
+          if (!uploadRow) {
             throw new UploadServiceError("UPLOAD_NOT_FOUND", "The upload does not exist.");
           }
-
-          const currentUpload = toUploadSnapshot(currentUploadRow);
-          ensureActiveUpload(currentUpload);
-          if (!unexpiredUpload) {
+          const { object, ...row } = uploadRow;
+          const upload = toUploadSnapshot(row);
+          if (upload.status !== "prepared" || upload.publicationMode !== "batch") {
+            throw new UploadServiceError(
+              "UPLOAD_INVALID_STATE",
+              "Only prepared batch uploads expose their content.",
+            );
+          }
+          if (upload.expiresAt.getTime() <= Date.now()) {
             throw new UploadServiceError("UPLOAD_EXPIRED", "The upload has expired.");
           }
-
-          const databaseNow = uow.now();
-          const publication = planFilePublication(currentUpload, existingFile, finalSizeBytes);
-          const persistedFileRecord = {
-            ...publication.fileRecord,
-            createdAt: databaseNow,
-            updatedAt: databaseNow,
-            completedAt: databaseNow,
-          };
-
-          uow.update("upload", currentUpload.id, (b) =>
-            b
-              .set({
-                status: "completed",
-                updatedAt: databaseNow,
-                completedAt: databaseNow,
-                bytesUploaded: finalSizeBytes,
-              })
-              .check(),
-          );
-
-          uow.triggerHook("onFileReady", publication.readyHookPayload);
-          uow.triggerHook("onFileTextIndexRequested", publication.readyHookPayload);
-
-          if (existingFile) {
-            uow.update("file", existingFile.id, (b) => b.set(persistedFileRecord).check());
-            if (publication.supersededObjectHookPayload) {
-              uow.triggerHook("cleanupStorageObject", publication.supersededObjectHookPayload);
-            }
-            return {
-              kind: "published" as const,
-              file: {
-                id: existingFile.id,
-                ...publication.fileRecord,
-                revision: existingFile.id.version + 1,
-              },
-            };
+          if (!object) {
+            throw new Error(`Prepared upload ${uploadId} has no stored content.`);
           }
-
-          const fileId = uow.create("file", persistedFileRecord, {
-            retryOnUniqueConflict: ({ error }) => error.kind === "unique",
-          });
-          return {
-            kind: "published" as const,
-            file: { id: fileId, ...publication.fileRecord, revision: fileId.version },
-          };
+          return { contentType: object.contentType, body: object.body };
         })
         .build();
     },
 
     commitPreparedFileWrites: function (
       this: UploadServiceContext,
-      input: { entries: PreparedFileBatchEntry[]; activeProvider: string },
+      entries: PreparedFileBatchEntry[],
     ) {
-      if (input.entries.length === 0 || input.entries.length > MAX_PREPARED_FILE_BATCH_ENTRIES) {
+      if (entries.length === 0 || entries.length > MAX_PREPARED_FILE_BATCH_ENTRIES) {
         throw new UploadServiceError(
           "INVALID_REQUEST",
           `Prepared file batches must contain between 1 and ${MAX_PREPARED_FILE_BATCH_ENTRIES} entries.`,
         );
       }
 
-      const writes = input.entries.filter(
+      const writes = entries.filter(
         (entry): entry is Extract<PreparedFileBatchEntry, { kind: "write" }> =>
           entry.kind === "write",
       );
-      const deletions = input.entries.filter(
+      const deletions = entries.filter(
         (entry): entry is Extract<PreparedFileBatchEntry, { kind: "delete" }> =>
           entry.kind === "delete",
       );
-      const assertions = input.entries.filter(
+      const assertions = entries.filter(
         (entry): entry is Extract<PreparedFileBatchEntry, { kind: "assert" }> =>
           entry.kind === "assert",
       );
@@ -770,20 +327,13 @@ export const createUploadServices = () => {
 
       const fileQueryGroups = new Map<string, string[]>();
       for (const entry of [...deletions, ...assertions]) {
-        if (entry.provider !== input.activeProvider) {
-          throw new UploadServiceError(
-            "PROVIDER_MISMATCH",
-            "A prepared batch entry belongs to a different provider.",
-            { provider: entry.provider, fileKey: entry.fileKey },
-          );
-        }
         const keys = fileQueryGroups.get(entry.provider) ?? [];
         keys.push(entry.fileKey);
         fileQueryGroups.set(entry.provider, keys);
       }
-      const uploadIdChunks = chunkBatchValues(uploadIds);
+      const uploadIdChunks = chunkQueryValues(uploadIds);
       const fileQueries = Array.from(fileQueryGroups, ([provider, keys]) =>
-        chunkBatchValues(Array.from(new Set(keys))).map((fileKeys) => ({ provider, fileKeys })),
+        chunkQueryValues(Array.from(new Set(keys))).map((fileKeys) => ({ provider, fileKeys })),
       ).flat();
 
       return this.serviceTx(uploadSchema)
@@ -794,12 +344,20 @@ export const createUploadServices = () => {
               b
                 .whereIndex("primary", (eb) => eb("id", "in", ids))
                 .joinOne("file", "file", (file) =>
-                  file.onIndex("idx_file_provider_key", (eb) =>
-                    eb.and(
-                      eb("provider", "=", eb.parent("provider")),
-                      eb("key", "=", eb.parent("key")),
+                  file
+                    .onIndex("idx_file_provider_key", (eb) =>
+                      eb.and(
+                        eb("provider", "=", eb.parent("provider")),
+                        eb("key", "=", eb.parent("key")),
+                      ),
+                    )
+                    .joinOne("object", "storage_object", (object) =>
+                      object
+                        .onIndex("idx_storage_object_key", (eb) =>
+                          eb("storageKey", "=", eb.parent("objectKey")),
+                        )
+                        .select(["id"]),
                     ),
-                  ),
                 ),
             );
           }
@@ -812,19 +370,28 @@ export const createUploadServices = () => {
           }
           for (const query of fileQueries) {
             retrieval.find("file", (b) =>
-              b.whereIndex("idx_file_provider_key", (eb) =>
-                eb.and(eb("provider", "=", query.provider), eb("key", "in", query.fileKeys)),
-              ),
+              b
+                .whereIndex("idx_file_provider_key", (eb) =>
+                  eb.and(eb("provider", "=", query.provider), eb("key", "in", query.fileKeys)),
+                )
+                .joinOne("object", "storage_object", (object) =>
+                  object
+                    .onIndex("idx_storage_object_key", (eb) =>
+                      eb("storageKey", "=", eb.parent("objectKey")),
+                    )
+                    .select(["id"]),
+                ),
             );
           }
           return retrieval as TypedUnitOfWork<
             typeof uploadSchema,
-            Array<UploadWithFile[] | UploadSnapshot[] | FileRow[]>,
+            Array<UploadWithFile[] | UploadSnapshot[] | StoredFileRow[]>,
             unknown,
             UploadHooks
           >;
         })
         .mutate(({ uow, retrieveResult }) => {
+          const mutation = uow as UploadMutationUnitOfWork;
           const uploadResults = retrieveResult.slice(
             0,
             uploadIdChunks.length,
@@ -835,7 +402,7 @@ export const createUploadServices = () => {
             unexpiredResultsStart,
             fileResultsStart,
           ) as UploadSnapshot[][];
-          const fileResults = retrieveResult.slice(fileResultsStart) as FileRow[][];
+          const fileResults = retrieveResult.slice(fileResultsStart) as StoredFileRow[][];
           const unexpiredUploadIds = new Set(
             unexpiredUploadResults.flat().map((upload) => upload.id.toString()),
           );
@@ -871,18 +438,6 @@ export const createUploadServices = () => {
               );
             }
 
-            if (upload.provider !== input.activeProvider) {
-              throw new UploadServiceError(
-                "PROVIDER_MISMATCH",
-                "The prepared upload belongs to a different provider.",
-                {
-                  uploadId: entry.uploadId,
-                  provider: upload.provider,
-                  fileKey: upload.key,
-                },
-              );
-            }
-
             const address = batchFileAddress(upload.provider, upload.key);
             if (mutationDestinations.has(address)) {
               throw new UploadServiceError(
@@ -902,7 +457,7 @@ export const createUploadServices = () => {
               if (file?.status !== "ready" || file.objectKey !== upload.objectKey) {
                 throw new UploadServiceError(
                   "UPLOAD_INVALID_STATE",
-                  "The completed upload no longer publishes its expected storage object.",
+                  "The completed upload no longer publishes its expected content.",
                   {
                     uploadId: entry.uploadId,
                     provider: upload.provider,
@@ -910,7 +465,7 @@ export const createUploadServices = () => {
                   },
                 );
               }
-              return { entry, upload, file, alreadyCommitted: true as const };
+              return { upload, file, alreadyCommitted: true as const };
             }
             if (upload.status === "expired" || !unexpiredUploadIds.has(entry.uploadId)) {
               throw new UploadServiceError("UPLOAD_EXPIRED", "The prepared upload has expired.", {
@@ -936,8 +491,7 @@ export const createUploadServices = () => {
               provider: upload.provider,
               fileKey: upload.key,
             });
-            const publication = planFilePublication(upload, file, upload.bytesUploaded);
-            return { entry, upload, file, publication, alreadyCommitted: false as const };
+            return { upload, file, alreadyCommitted: false as const };
           });
 
           const deletionPlans = deletions.map((entry) => {
@@ -953,14 +507,14 @@ export const createUploadServices = () => {
 
             const file = filesByAddress.get(address) ?? null;
             if (file?.status === "deleted" && file.id.version === entry.precondition.revision + 1) {
-              return { entry, file, alreadyDeleted: true as const };
+              return { file, alreadyDeleted: true as const };
             }
 
             assertFileWritePrecondition(file, entry.precondition, {
               provider: entry.provider,
               fileKey: entry.fileKey,
             });
-            return { entry, file, alreadyDeleted: false as const };
+            return { file: file as StoredFileRow, alreadyDeleted: false as const };
           });
 
           for (const assertion of assertions) {
@@ -970,90 +524,41 @@ export const createUploadServices = () => {
               provider: assertion.provider,
               fileKey: assertion.fileKey,
             });
-          }
-
-          for (const assertion of assertions) {
-            const file = filesByAddress.get(
-              batchFileAddress(assertion.provider, assertion.fileKey),
-            );
             if (file) {
-              uow.check("file", file.id);
+              mutation.check("file", file.id);
             } else {
-              uow.checkAbsent("file", "idx_file_provider_key", {
+              mutation.checkAbsent("file", "idx_file_provider_key", {
                 provider: assertion.provider,
                 key: assertion.fileKey,
               });
             }
           }
 
-          const databaseNow = uow.now();
+          const databaseNow = mutation.now();
           const writtenFiles = plans.map((plan) => {
             if (plan.alreadyCommitted) {
-              uow.check("upload", plan.upload.id);
-              uow.check("file", plan.file.id);
-              return { ...plan.file, revision: plan.file.id.version };
+              mutation.check("upload", plan.upload.id);
+              mutation.check("file", plan.file.id);
+              const { object: _object, ...file } = plan.file;
+              return { ...file, revision: plan.file.id.version };
             }
 
-            uow.update("upload", plan.upload.id, (b) =>
+            mutation.update("upload", plan.upload.id, (b) =>
               b.set({ status: "completed", updatedAt: databaseNow }).check(),
             );
-
-            uow.triggerHook("onFileReady", plan.publication.readyHookPayload);
-            uow.triggerHook("onFileTextIndexRequested", plan.publication.readyHookPayload);
-
-            const persistedFileRecord = {
-              ...plan.publication.fileRecord,
-              createdAt: databaseNow,
-              updatedAt: databaseNow,
-              completedAt: databaseNow,
-            };
-
-            if (plan.file) {
-              uow.update("file", plan.file.id, (b) => b.set(persistedFileRecord).check());
-              if (plan.publication.supersededObjectHookPayload) {
-                uow.triggerHook(
-                  "cleanupStorageObject",
-                  plan.publication.supersededObjectHookPayload,
-                );
-              }
-              return {
-                id: plan.file.id,
-                ...plan.publication.fileRecord,
-                revision: plan.file.id.version + 1,
-              };
-            }
-
-            const fileId = uow.create("file", persistedFileRecord, {
-              // Retrying the whole service transaction rechecks every batch precondition.
-              retryOnUniqueConflict: ({ error }) => error.kind === "unique",
+            return publishFileContent(mutation, plan.file, {
+              ...plan.upload,
+              sizeBytes: plan.upload.bytesUploaded,
+              uploadId: plan.upload.id.toString(),
             });
-            return {
-              id: fileId,
-              ...plan.publication.fileRecord,
-              revision: fileId.version,
-            };
           });
           const deletedFiles = deletionPlans.map((plan) => {
             if (plan.alreadyDeleted) {
-              uow.check("file", plan.file.id);
-              return { ...plan.file, revision: plan.file.id.version };
+              mutation.check("file", plan.file.id);
+              const { object: _object, ...file } = plan.file;
+              return { ...file, revision: plan.file.id.version };
             }
-
-            uow.update("file", plan.file.id, (b) =>
-              b
-                .set({
-                  status: "deleted",
-                  updatedAt: databaseNow,
-                  deletedAt: databaseNow,
-                })
-                .check(),
-            );
-            uow.triggerHook("onFileDeleted", buildFileHookPayload(plan.file));
-            return {
-              ...plan.file,
-              status: "deleted" as const,
-              revision: plan.file.id.version + 1,
-            };
+            return deleteFileContent(mutation, plan.file);
           });
 
           return { files: [...writtenFiles, ...deletedFiles] };
@@ -1061,58 +566,28 @@ export const createUploadServices = () => {
         .build();
     },
 
-    markUploadFailed: function (
-      this: UploadServiceContext,
-      uploadId: string,
-      errorCode: string,
-      errorMessage?: string | null,
-    ) {
-      return this.serviceTx(uploadSchema)
-        .retrieve((uow) =>
-          uow.findFirst("upload", (b) => b.whereIndex("primary", (eb) => eb("id", "=", uploadId))),
-        )
-        .mutate(({ uow, retrieveResult: [uploadRow] }) => {
-          if (!uploadRow) {
-            throw new UploadServiceError("UPLOAD_NOT_FOUND", "The upload does not exist.");
-          }
-
-          const upload = toUploadSnapshot(uploadRow);
-          if (isTerminalUploadStatus(upload.status)) {
-            throw new UploadServiceError(
-              "UPLOAD_INVALID_STATE",
-              `Uploads in the '${upload.status}' state cannot fail.`,
-            );
-          }
-
-          uow.update("upload", upload.id, (b) =>
-            b
-              .set({
-                status: "failed",
-                updatedAt: uow.now(),
-                errorCode,
-                errorMessage: errorMessage ?? null,
-              })
-              .check(),
-          );
-
-          uow.triggerHook("onUploadFailed", buildUploadHookPayload(upload));
-
-          return { status: "failed" as const };
-        })
-        .build();
-    },
-
     markUploadAborted: function (this: UploadServiceContext, uploadId: string) {
       return this.serviceTx(uploadSchema)
         .retrieve((uow) =>
-          uow.findFirst("upload", (b) => b.whereIndex("primary", (eb) => eb("id", "=", uploadId))),
+          uow.findFirst("upload", (b) =>
+            b
+              .whereIndex("primary", (eb) => eb("id", "=", uploadId))
+              .joinOne("object", "storage_object", (object) =>
+                object
+                  .onIndex("idx_storage_object_key", (eb) =>
+                    eb("storageKey", "=", eb.parent("objectKey")),
+                  )
+                  .select(["id"]),
+              ),
+          ),
         )
         .mutate(({ uow, retrieveResult: [uploadRow] }) => {
           if (!uploadRow) {
             throw new UploadServiceError("UPLOAD_NOT_FOUND", "The upload does not exist.");
           }
 
-          const upload = toUploadSnapshot(uploadRow);
+          const { object, ...row } = uploadRow;
+          const upload = toUploadSnapshot(row);
           if (isTerminalUploadStatus(upload.status)) {
             throw new UploadServiceError(
               "UPLOAD_INVALID_STATE",
@@ -1129,9 +604,9 @@ export const createUploadServices = () => {
               })
               .check(),
           );
-
-          if (upload.status === "prepared") {
-            uow.triggerHook("cleanupStorageObject", buildUploadHookPayload(upload));
+          // Only prepared uploads hold content.
+          if (object) {
+            uow.delete("storage_object", object.id);
           }
           uow.triggerHook("onUploadFailed", buildUploadHookPayload(upload));
 

@@ -3,57 +3,29 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, assert } from "v
 import { instantiate } from "@fragno-dev/core";
 import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 
-import { uploadFragmentDefinition } from "../../definition";
-import { uploadRoutes } from "../../routes";
-import { uploadSchema } from "../../schema";
-import { MAX_SEARCH_LINE_TEXT_LENGTH } from "../../text-index";
-import { createDatabaseStorageAdapter } from "../db";
-import type { StorageAdapter } from "../types";
+import { uploadFragmentDefinition } from "../definition";
+import { uploadSchema } from "../schema";
+import { MAX_SEARCH_LINE_TEXT_LENGTH } from "../text-index";
+import { uploadRoutes } from "./index";
 
-const schemaExtractionStorage: StorageAdapter = {
-  name: "schema-extraction",
-  capabilities: {
-    directUpload: false,
-    multipartUpload: false,
-    signedDownload: false,
-    proxyUpload: true,
-  },
-  resolveStorageKey: ({ provider, fileKey }) => `${provider}/${fileKey}`,
-  initUpload: async ({ provider, fileKey }) => ({
-    strategy: "proxy",
-    storageKey: `${provider}/${fileKey}`,
-    expiresAt: new Date(Date.now() + 60_000),
-  }),
-  deleteObject: async () => {},
-};
-
-const createDatabaseStorageTestBuild = (setStorage: (storage: StorageAdapter) => void) => {
-  return buildDatabaseFragmentsTest()
+const createSearchTestBuild = () =>
+  buildDatabaseFragmentsTest()
     .withTestAdapter({ type: "drizzle-pglite" })
-    .withDbRoundtripGuard({ maxRoundtrips: 2 })
-    .withFragmentFactory(
+    .withDbRoundtripGuard(true)
+    .withFragment(
       "upload",
-      uploadFragmentDefinition,
-      ({ adapter }) => {
-        const storage = createDatabaseStorageAdapter({ databaseAdapter: adapter });
-        setStorage(storage);
-        return instantiate(uploadFragmentDefinition)
-          .withConfig({ storage, textIndex: { enabled: true } })
-          .withRoutes(uploadRoutes);
-      },
-      { config: { storage: schemaExtractionStorage, textIndex: { enabled: true } } },
+      instantiate(uploadFragmentDefinition)
+        .withConfig({ maxFileBytes: 1024 * 1024, textIndex: { enabled: true } })
+        .withRoutes(uploadRoutes),
     )
     .build();
-};
 
-describe("database storage adapter", () => {
-  let build!: Awaited<ReturnType<typeof createDatabaseStorageTestBuild>>;
-  let storage!: StorageAdapter;
+describe("text index search", () => {
+  const provider = "database";
+  let build!: Awaited<ReturnType<typeof createSearchTestBuild>>;
 
   beforeAll(async () => {
-    build = await createDatabaseStorageTestBuild((createdStorage) => {
-      storage = createdStorage;
-    });
+    build = await createSearchTestBuild();
   });
 
   beforeEach(async () => {
@@ -73,7 +45,7 @@ describe("database storage adapter", () => {
     const contentType = input.contentType ?? "text/plain";
     const created = await fragment.callRoute("POST", "/uploads", {
       body: {
-        provider: storage.name,
+        provider,
         fileKey: input.fileKey,
         filename: input.fileKey.split("/").at(-1) ?? "file.txt",
         sizeBytes: Buffer.byteLength(input.content),
@@ -103,7 +75,7 @@ describe("database storage adapter", () => {
   const searchCandidateKeys = async (input: { glob: string; query: string }) => {
     const response = await build.fragments.upload.fragment.callRoute("POST", "/files/search", {
       body: {
-        provider: storage.name,
+        provider,
         glob: input.glob,
         keywords: [input.query],
       },
@@ -115,7 +87,7 @@ describe("database storage adapter", () => {
   it("stores POST /files content in the upload database", async () => {
     const { fragment, db } = build.fragments.upload;
     const form = new FormData();
-    form.set("provider", storage.name);
+    form.set("provider", provider);
     form.set("fileKey", "reports/q1.txt");
     form.set("file", new File(["database bytes"], "q1.txt", { type: "text/plain" }));
 
@@ -124,7 +96,7 @@ describe("database storage adapter", () => {
     assert(uploadResponse.data.status === "ready");
 
     const contentResponse = await fragment.callRouteRaw("GET", "/files/by-key/content", {
-      query: { provider: storage.name, key: "reports/q1.txt" },
+      query: { provider, key: "reports/q1.txt" },
     });
     assert(contentResponse.status === 200);
     assert(contentResponse.headers.get("Content-Type") === "text/plain");
@@ -135,7 +107,7 @@ describe("database storage adapter", () => {
       .forSchema(uploadSchema)
       .findFirst("file", (b) =>
         b.whereIndex("idx_file_provider_key", (eb) =>
-          eb.and(eb("provider", "=", storage.name), eb("key", "=", "reports/q1.txt")),
+          eb.and(eb("provider", "=", provider), eb("key", "=", "reports/q1.txt")),
         ),
       );
     await fileUow.executeRetrieve();
@@ -160,7 +132,7 @@ describe("database storage adapter", () => {
 
     const uploadTextFile = async (fileKey: string, content: string, contentType = "text/plain") => {
       const form = new FormData();
-      form.set("provider", storage.name);
+      form.set("provider", provider);
       form.set("fileKey", fileKey);
       form.set(
         "file",
@@ -195,7 +167,7 @@ describe("database storage adapter", () => {
 
     const searchResponse = await fragment.callRoute("POST", "/files/search", {
       body: {
-        provider: storage.name,
+        provider,
         glob: "/workspace/**/*.ts",
         keywords: ["createWorkflow"],
         options: {
@@ -213,6 +185,7 @@ describe("database storage adapter", () => {
         "candidateFiles": 1,
         "candidates": [
           {
+            "byteLength": 103,
             "count": 2,
             "key": "workspace/src/workflows.ts",
             "positions": [
@@ -229,7 +202,7 @@ describe("database storage adapter", () => {
 
     const hydrateResponse = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
-        provider: storage.name,
+        provider,
         candidateKeys: searchResponse.data.candidates.map((candidate) => candidate.key),
         keywords: ["createWorkflow"],
         excludedTerms: [],
@@ -289,7 +262,7 @@ describe("database storage adapter", () => {
     const { fragment } = build.fragments.upload;
     const content = "export const transform = (value) => value => value;";
     const form = new FormData();
-    form.set("provider", storage.name);
+    form.set("provider", provider);
     form.set("fileKey", "workspace/src/operator.ts");
     form.set("file", new File([content], "operator.ts", { type: "application/typescript" }));
     const uploadResponse = await fragment.callRoute("POST", "/files", { body: form });
@@ -298,7 +271,7 @@ describe("database storage adapter", () => {
 
     const candidateResponse = await fragment.callRoute("POST", "/files/search", {
       body: {
-        provider: storage.name,
+        provider,
         glob: "/workspace/**/*.ts",
         keywords: ["=>"],
       },
@@ -310,12 +283,13 @@ describe("database storage adapter", () => {
         key: "workspace/src/operator.ts",
         positions: [],
         count: 0,
+        byteLength: new TextEncoder().encode(content).byteLength,
       },
     ]);
 
     const hydrateResponse = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
-        provider: storage.name,
+        provider,
         candidateKeys: candidateResponse.data.candidates.map((candidate) => candidate.key),
         keywords: ["=>"],
         excludedTerms: [],
@@ -412,7 +386,7 @@ describe("database storage adapter", () => {
     const { fragment } = build.fragments.upload;
     const fileKey = "batch/search/replaced-document.txt";
     const form = new FormData();
-    form.set("provider", storage.name);
+    form.set("provider", provider);
     form.set("fileKey", fileKey);
     form.set(
       "file",
@@ -421,7 +395,7 @@ describe("database storage adapter", () => {
     const initial = await fragment.callRoute("POST", "/files", { body: form });
     assert(initial.type === "json");
     const initialSnapshot = await fragment.callRoute("GET", "/files/by-key", {
-      query: { provider: storage.name, key: fileKey },
+      query: { provider, key: fileKey },
     });
     assert(initialSnapshot.type === "json");
     await drainDurableHooks(fragment);
@@ -461,12 +435,51 @@ describe("database storage adapter", () => {
     ).toEqual([fileKey]);
   });
 
+  it("scans the next candidate when an earlier one was replaced before reindexing", async () => {
+    const { fragment } = build.fragments.upload;
+    const writeFiles = async (files: Record<string, string>) => {
+      const response = await fragment.callRoute("POST", "/files/apply-edits", {
+        body: {
+          provider,
+          edits: Object.entries(files).map(([fileKey, content]) => ({
+            kind: "write" as const,
+            fileKey,
+            content,
+          })),
+        },
+      });
+      assert(response.type === "json");
+    };
+    await writeFiles({ "notes/first.txt": "needle", "notes/second.txt": "needle" });
+    await drainDurableHooks(fragment);
+    // Deletes the content the first file's index document names, until its reindexing runs.
+    await writeFiles({ "notes/first.txt": "needle, rewritten" });
+
+    const hydrated = await fragment.callRoute("POST", "/files/search/hydrate", {
+      body: {
+        provider,
+        candidateKeys: ["notes/first.txt", "notes/second.txt"],
+        keywords: ["needle"],
+        excludedTerms: [],
+        maxBytes: 6,
+      },
+    });
+
+    assert(hydrated.type === "json");
+    expect(hydrated.data).toMatchObject({
+      matches: [{ path: "notes/second.txt", text: "needle" }],
+      skippedCandidates: [{ key: "notes/first.txt", reason: "not_found" }],
+      consumedCandidates: 2,
+      truncated: false,
+    });
+  });
+
   it("limits text search candidate files before downloading file contents", async () => {
     const { fragment } = build.fragments.upload;
 
     for (const fileKey of ["workspace/src/a.ts", "workspace/src/b.ts", "workspace/src/c.ts"]) {
       const form = new FormData();
-      form.set("provider", storage.name);
+      form.set("provider", provider);
       form.set("fileKey", fileKey);
       form.set(
         "file",
@@ -482,7 +495,7 @@ describe("database storage adapter", () => {
 
     const searchResponse = await fragment.callRoute("POST", "/files/search", {
       body: {
-        provider: storage.name,
+        provider,
         glob: "workspace/**/*.ts",
         keywords: ["createWorkflow"],
         maxCandidateFiles: 2,
@@ -495,6 +508,7 @@ describe("database storage adapter", () => {
         "candidateFiles": 2,
         "candidates": [
           {
+            "byteLength": 52,
             "count": 1,
             "key": "workspace/src/a.ts",
             "positions": [
@@ -502,6 +516,7 @@ describe("database storage adapter", () => {
             ],
           },
           {
+            "byteLength": 52,
             "count": 1,
             "key": "workspace/src/b.ts",
             "positions": [
@@ -524,7 +539,7 @@ describe("database storage adapter", () => {
 
     const nextSearchResponse = await fragment.callRoute("POST", "/files/search", {
       body: {
-        provider: storage.name,
+        provider,
         glob: "workspace/**/*.ts",
         keywords: ["createWorkflow"],
         maxCandidateFiles: 2,
@@ -538,6 +553,7 @@ describe("database storage adapter", () => {
         "candidateFiles": 1,
         "candidates": [
           {
+            "byteLength": 52,
             "count": 1,
             "key": "workspace/src/c.ts",
             "positions": [
@@ -553,7 +569,7 @@ describe("database storage adapter", () => {
 
     const hydrateResponse = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
-        provider: storage.name,
+        provider,
         candidateKeys: searchResponse.data.candidates.map((candidate) => candidate.key),
         keywords: ["createWorkflow"],
         excludedTerms: [],
@@ -598,7 +614,7 @@ describe("database storage adapter", () => {
 
     const nextHydrateResponse = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
-        provider: storage.name,
+        provider,
         candidateKeys: nextSearchResponse.data.candidates.map((candidate) => candidate.key),
         keywords: ["createWorkflow"],
         excludedTerms: [],
@@ -640,7 +656,7 @@ describe("database storage adapter", () => {
     };
     for (const [fileKey, content] of Object.entries(files)) {
       const form = new FormData();
-      form.set("provider", storage.name);
+      form.set("provider", provider);
       form.set("fileKey", fileKey);
       form.set(
         "file",
@@ -656,12 +672,12 @@ describe("database storage adapter", () => {
     let cursor: { pass: number; indexCursor?: string } | undefined;
     do {
       const candidatePage = await fragment.callRoute("POST", "/files/search", {
-        body: { provider: storage.name, glob: "workspace/**/*.ts", keywords, cursor },
+        body: { provider, glob: "workspace/**/*.ts", keywords, cursor },
       });
       assert(candidatePage.type === "json");
       const hydrated = await fragment.callRoute("POST", "/files/search/hydrate", {
         body: {
-          provider: storage.name,
+          provider,
           candidateKeys: candidatePage.data.candidates.map((candidate) => candidate.key),
           keywords,
           excludedTerms: candidatePage.data.excludedTerms,
@@ -686,7 +702,7 @@ describe("database storage adapter", () => {
     const fileKey = "workspace/src/repeated.txt";
     const content = "needle needle needle needle needle";
     const form = new FormData();
-    form.set("provider", storage.name);
+    form.set("provider", provider);
     form.set("fileKey", fileKey);
     form.set("file", new File([content], "repeated.txt", { type: "text/plain" }));
     const uploadResponse = await fragment.callRoute("POST", "/files", { body: form });
@@ -695,7 +711,7 @@ describe("database storage adapter", () => {
 
     const firstPage = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
-        provider: storage.name,
+        provider,
         candidateKeys: [fileKey],
         keywords: ["needle"],
         excludedTerms: [],
@@ -714,7 +730,7 @@ describe("database storage adapter", () => {
 
     const secondPage = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
-        provider: storage.name,
+        provider,
         candidateKeys: [fileKey],
         keywords: ["needle"],
         excludedTerms: [],
@@ -742,7 +758,7 @@ describe("database storage adapter", () => {
 
     for (const file of files) {
       const form = new FormData();
-      form.set("provider", storage.name);
+      form.set("provider", provider);
       form.set("fileKey", file.key);
       form.set("file", new File([file.content], file.key, { type: "text/plain" }));
       const uploadResponse = await fragment.callRoute("POST", "/files", { body: form });
@@ -752,7 +768,7 @@ describe("database storage adapter", () => {
 
     const hydrateResponse = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
-        provider: storage.name,
+        provider,
         candidateKeys: files.map((file) => file.key),
         keywords: ["needle"],
         excludedTerms: [],
@@ -784,7 +800,7 @@ describe("database storage adapter", () => {
     const fileKey = "workspace/src/replaced-between-pages.txt";
     const uploadFile = async (content: string) => {
       const form = new FormData();
-      form.set("provider", storage.name);
+      form.set("provider", provider);
       form.set("fileKey", fileKey);
       form.set("file", new File([content], "replaced-between-pages.txt", { type: "text/plain" }));
       const response = await fragment.callRoute("POST", "/files", { body: form });
@@ -795,7 +811,7 @@ describe("database storage adapter", () => {
     await uploadFile("needle needle needle");
     const firstPage = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
-        provider: storage.name,
+        provider,
         candidateKeys: [fileKey],
         keywords: ["needle"],
         excludedTerms: [],
@@ -809,7 +825,7 @@ describe("database storage adapter", () => {
     await uploadFile("prefix needle needle");
     const nextPage = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
-        provider: storage.name,
+        provider,
         candidateKeys: [fileKey],
         keywords: ["needle"],
         excludedTerms: [],
@@ -829,7 +845,7 @@ describe("database storage adapter", () => {
     const fileKey = "workspace/src/large-line.txt";
     const content = `${"a".repeat(10_000)}${" needle".repeat(500)}${"b".repeat(10_000)}`;
     const form = new FormData();
-    form.set("provider", storage.name);
+    form.set("provider", provider);
     form.set("fileKey", fileKey);
     form.set("file", new File([content], "large-line.txt", { type: "text/plain" }));
     const uploadResponse = await fragment.callRoute("POST", "/files", { body: form });
@@ -838,7 +854,7 @@ describe("database storage adapter", () => {
 
     const hydrateResponse = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
-        provider: storage.name,
+        provider,
         candidateKeys: [fileKey],
         keywords: ["needle"],
         excludedTerms: [],
@@ -877,7 +893,7 @@ describe("database storage adapter", () => {
 
     for (const file of files) {
       const form = new FormData();
-      form.set("provider", storage.name);
+      form.set("provider", provider);
       form.set("fileKey", file.key);
       form.set(
         "file",
@@ -893,7 +909,7 @@ describe("database storage adapter", () => {
 
     const firstPage = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
-        provider: storage.name,
+        provider,
         candidateKeys: [files[0]!.key, files[2]!.key],
         keywords: ["createWorkflow"],
         excludedTerms: [],
@@ -913,7 +929,7 @@ describe("database storage adapter", () => {
 
     const remainingPage = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
-        provider: storage.name,
+        provider,
         candidateKeys: [files[2]!.key],
         keywords: ["createWorkflow"],
         excludedTerms: [],
@@ -930,7 +946,7 @@ describe("database storage adapter", () => {
     const fileKey = "workspace/src/large.ts";
     const content = "export const createWorkflow = 'larger than the budget';\n";
     const form = new FormData();
-    form.set("provider", storage.name);
+    form.set("provider", provider);
     form.set("fileKey", fileKey);
     form.set("file", new File([content], "large.ts", { type: "application/typescript" }));
     const uploadResponse = await fragment.callRoute("POST", "/files", { body: form });
@@ -939,7 +955,7 @@ describe("database storage adapter", () => {
 
     const hydrateResponse = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
-        provider: storage.name,
+        provider,
         candidateKeys: [fileKey],
         keywords: ["createWorkflow"],
         excludedTerms: [],
@@ -962,7 +978,7 @@ describe("database storage adapter", () => {
     const { fragment } = build.fragments.upload;
     const uploadTextFile = async (content: string) => {
       const form = new FormData();
-      form.set("provider", storage.name);
+      form.set("provider", provider);
       form.set("fileKey", "workspace/src/stale.ts");
       form.set("file", new File([content], "stale.ts", { type: "application/typescript" }));
       const response = await fragment.callRoute("POST", "/files", { body: form });
@@ -974,7 +990,7 @@ describe("database storage adapter", () => {
 
     const before = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
-        provider: storage.name,
+        provider,
         candidateKeys: ["workspace/src/stale.ts"],
         keywords: ["createWorkflow"],
         excludedTerms: [],
@@ -1010,7 +1026,7 @@ describe("database storage adapter", () => {
 
     const after = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
-        provider: storage.name,
+        provider,
         candidateKeys: ["workspace/src/stale.ts"],
         keywords: ["createWorkflow"],
         excludedTerms: [],
@@ -1034,7 +1050,7 @@ describe("database storage adapter", () => {
     const { fragment } = build.fragments.upload;
     const uploadFile = async (content: string, contentType: string) => {
       const form = new FormData();
-      form.set("provider", storage.name);
+      form.set("provider", provider);
       form.set("fileKey", "workspace/src/replaced.ts");
       form.set("file", new File([content], "replaced.ts", { type: contentType }));
       const response = await fragment.callRoute("POST", "/files", { body: form });
@@ -1049,7 +1065,7 @@ describe("database storage adapter", () => {
 
     const searchResponse = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
-        provider: storage.name,
+        provider,
         candidateKeys: ["workspace/src/replaced.ts"],
         keywords: ["createWorkflow"],
         excludedTerms: [],
@@ -1071,7 +1087,7 @@ describe("database storage adapter", () => {
   it("clears the text index idempotently when a file is deleted", async () => {
     const { fragment, db } = build.fragments.upload;
     const form = new FormData();
-    form.set("provider", storage.name);
+    form.set("provider", provider);
     form.set("fileKey", "workspace/src/deleted.ts");
     form.set(
       "file",
@@ -1089,7 +1105,7 @@ describe("database storage adapter", () => {
       .forSchema(uploadSchema)
       .findFirst("file", (b) =>
         b.whereIndex("idx_file_provider_key", (eb) =>
-          eb.and(eb("provider", "=", storage.name), eb("key", "=", "workspace/src/deleted.ts")),
+          eb.and(eb("provider", "=", provider), eb("key", "=", "workspace/src/deleted.ts")),
         ),
       );
     await fileUow.executeRetrieve();
@@ -1097,14 +1113,14 @@ describe("database storage adapter", () => {
     assert(fileBeforeDelete?.objectKey);
 
     const deleteResponse = await fragment.callRoute("DELETE", "/files/by-key", {
-      query: { provider: storage.name, key: "workspace/src/deleted.ts" },
+      query: { provider, key: "workspace/src/deleted.ts" },
     });
     assert(deleteResponse.type === "json");
     await drainDurableHooks(fragment);
 
     const searchResponse = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
-        provider: storage.name,
+        provider,
         candidateKeys: ["workspace/src/deleted.ts"],
         keywords: ["createWorkflow"],
         excludedTerms: [],
@@ -1126,7 +1142,7 @@ describe("database storage adapter", () => {
       await this.handlerTx()
         .mutate(({ forSchema }) => {
           forSchema(uploadSchema).triggerHook("onFileDeleted", {
-            provider: storage.name,
+            provider,
             fileKey: "workspace/src/deleted.ts",
             objectKey: fileBeforeDelete.objectKey,
             sizeBytes: Number(fileBeforeDelete.sizeBytes),
@@ -1139,7 +1155,7 @@ describe("database storage adapter", () => {
 
     const repeatedSearchResponse = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
-        provider: storage.name,
+        provider,
         candidateKeys: ["workspace/src/deleted.ts"],
         keywords: ["createWorkflow"],
         excludedTerms: [],
@@ -1156,33 +1172,5 @@ describe("database storage adapter", () => {
       skippedCandidates: [{ key: "workspace/src/deleted.ts", reason: "not_found" }],
       truncated: false,
     });
-  });
-
-  it("removes database bytes when the file deletion hook runs", async () => {
-    const { fragment, db } = build.fragments.upload;
-    const form = new FormData();
-    form.set("provider", storage.name);
-    form.set("fileKey", "reports/delete-me.txt");
-    form.set("file", new File(["delete me"], "delete-me.txt", { type: "text/plain" }));
-
-    const uploadResponse = await fragment.callRoute("POST", "/files", { body: form });
-    assert(uploadResponse.type === "json");
-
-    const deleteResponse = await fragment.callRoute("DELETE", "/files/by-key", {
-      query: { provider: storage.name, key: "reports/delete-me.txt" },
-    });
-    assert(deleteResponse.type === "json");
-
-    await drainDurableHooks(fragment);
-
-    const objectUow = db
-      .createUnitOfWork("read-object")
-      .forSchema(uploadSchema)
-      .find("storage_object", (b) =>
-        b.whereIndex("idx_storage_object_key", (eb) => eb("storageKey", "starts with", "")),
-      );
-    await objectUow.executeRetrieve();
-    const objects = (await objectUow.retrievalPhase)[0];
-    expect(objects).toEqual([]);
   });
 });

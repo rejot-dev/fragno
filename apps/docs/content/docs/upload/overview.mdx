@@ -6,38 +6,34 @@ description: What the Upload fragment provides out of the box.
 ## What you get
 
 - **File + upload data model**: Separate file and upload records with statuses, metadata, and
-  lifecycle timestamps. Uploads are ephemeral; files are created only after a successful completion.
-- **Multiple upload strategies**: direct single/multipart to S3-backed storage, or server-streamed
-  (proxy) uploads to file storage, depending on adapter capabilities and file size.
-- **Storage adapters**: S3-backed adapters (AWS S3 / R2) and a Node filesystem adapter.
+  lifecycle timestamps. Uploads are sessions; a file exists once its content is published.
+- **Content in your database**: File content lives in the fragment's own table. A write stores the
+  content and publishes the file in one transaction. See [Storage](/docs/upload/storage).
+- **Batch publication**: Prepare several uploads, then publish, delete, and check files together in
+  one atomic commit with revision preconditions.
+- **Search and edits**: An optional text index, server-side text edits, and signed file links.
 - **Hooks for lifecycle events**: `onFileReady`, `onUploadFailed`, and `onFileDeleted`.
-- **Client helpers**: A higher-level API for direct and server-streamed (proxy) uploads with
-  progress reporting.
+- **Client helpers**: Upload with progress reporting, download, edit, and search.
 
 ## Typical flow
 
 1. Create an upload with `POST /uploads`.
-2. Transfer file bytes (direct single, direct multipart, or server-streamed proxy).
-3. Complete the upload and create the file record in `ready`.
-4. Fetch metadata or download the file when needed.
+2. Send its content with `PUT /uploads/:uploadId/content`, which publishes the file, or prepares it
+   when the upload belongs to a batch.
+3. Fetch metadata or download the file when needed.
+
+`POST /files` does both steps in one multipart request.
 
 ## Retry + idempotency
 
-- `POST /uploads` is idempotent **only when a checksum is provided**. If a matching, non-terminal
-  upload already exists, the server returns the existing upload so clients can resume without
-  creating new storage sessions.
-- If a checksum is missing, concurrent uploads for the same `fileKey` are rejected with
-  `UPLOAD_ALREADY_ACTIVE`.
-- Upload metadata is immutable and treated as the canonical source until the file is created.
-
-## When to use server-streamed vs direct
-
-- **Direct (S3-backed)**: Best for large files and reducing server bandwidth. Requires a signed
-  URL-capable storage adapter.
-- **Server-streamed (file storage)**: Best for smaller files or when storage credentials cannot be
-  exposed to clients. The server proxies bytes to storage.
+- `POST /uploads` is idempotent **only when a checksum is provided**. If a matching, unfinished
+  upload already exists, the server returns it so clients can resume.
+- Without a checksum, a second upload of the same `fileKey` is rejected with
+  `UPLOAD_ALREADY_ACTIVE`, unless it sets `replaceActiveUpload`.
+- Sending content to a prepared batch upload again returns the same prepared write.
 
 ## Retention
 
 - Completed uploads are retained for auditing and retries.
-- The fragment does not ship a built-in TTL cleanup job for terminal uploads.
+- Uploads that expire before their content arrives, or prepared uploads whose batch never commits,
+  are marked `expired` and lose any content they held.

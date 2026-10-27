@@ -26,7 +26,7 @@ export const uploadsTransferCommand = define({
     },
     provider: {
       type: "string",
-      description: "Storage provider",
+      description: "File provider namespace",
     },
     "file-key": {
       type: "string",
@@ -106,110 +106,7 @@ export const uploadsTransferCommand = define({
       uploaderId: ctx.values["uploader-id"],
       metadata,
       publicationMode,
-    })) as {
-      uploadId: string;
-      strategy: "direct-single" | "direct-multipart" | "proxy";
-      upload: {
-        partSizeBytes?: number;
-        maxParts?: number;
-        uploadUrl?: string;
-        uploadHeaders?: Record<string, string>;
-      };
-    };
-
-    if (upload.strategy === "direct-single") {
-      if (!upload.upload.uploadUrl) {
-        throw new Error("Missing upload URL for direct upload");
-      }
-
-      const headers = new Headers(upload.upload.uploadHeaders ?? {});
-      headers.set("Content-Length", String(sizeBytes));
-      const init: RequestInit & { duplex?: "half" } = {
-        method: "PUT",
-        headers,
-        body: Readable.toWeb(createReadStream(filePath)) as BodyInit,
-        duplex: "half",
-      };
-      const response = await fetch(upload.upload.uploadUrl, init);
-
-      if (!response.ok) {
-        throw new Error(`Direct upload failed (${response.status})`);
-      }
-
-      await client.reportProgress(upload.uploadId, {
-        bytesUploaded: sizeBytes,
-        partsUploaded: 1,
-      });
-
-      const file = await client.completeUpload(upload.uploadId, []);
-      console.log(JSON.stringify({ upload, file }, null, 2));
-      return;
-    }
-
-    if (upload.strategy === "direct-multipart") {
-      const partSizeBytes = upload.upload.partSizeBytes;
-      if (!partSizeBytes) {
-        throw new Error("Missing multipart part size from server");
-      }
-
-      const totalParts = Math.ceil(sizeBytes / partSizeBytes);
-      if (upload.upload.maxParts && totalParts > upload.upload.maxParts) {
-        throw new Error("Multipart upload exceeds maximum parts");
-      }
-
-      const partNumbers = Array.from({ length: totalParts }, (_, index) => index + 1);
-      const partUrls = (await client.getPartUrls(upload.uploadId, partNumbers)) as {
-        parts: { partNumber: number; url: string; headers?: Record<string, string> }[];
-      };
-      const orderedParts = partUrls.parts.sort((a, b) => a.partNumber - b.partNumber);
-
-      const completedParts: { partNumber: number; etag: string; sizeBytes: number }[] = [];
-      const completionParts: { partNumber: number; etag: string }[] = [];
-
-      let bytesUploaded = 0;
-      let partsUploaded = 0;
-
-      for (const part of orderedParts) {
-        const start = (part.partNumber - 1) * partSizeBytes;
-        const length = Math.min(partSizeBytes, sizeBytes - start);
-        const end = start + length - 1;
-
-        const headers = new Headers(part.headers ?? {});
-        headers.set("Content-Length", String(length));
-        const init: RequestInit & { duplex?: "half" } = {
-          method: "PUT",
-          headers,
-          body: Readable.toWeb(createReadStream(filePath, { start, end })) as BodyInit,
-          duplex: "half",
-        };
-
-        const response = await fetch(part.url, init);
-
-        if (!response.ok) {
-          throw new Error(`Multipart upload failed (${response.status})`);
-        }
-
-        const etag = response.headers.get("etag") ?? response.headers.get("ETag");
-        if (!etag) {
-          throw new Error("Missing ETag for uploaded part");
-        }
-
-        completedParts.push({ partNumber: part.partNumber, etag, sizeBytes: length });
-        completionParts.push({ partNumber: part.partNumber, etag });
-
-        bytesUploaded += length;
-        partsUploaded += 1;
-        await client.reportProgress(upload.uploadId, {
-          bytesUploaded,
-          partsUploaded,
-        });
-      }
-
-      await client.completeParts(upload.uploadId, completedParts);
-      const file = await client.completeUpload(upload.uploadId, completionParts);
-      console.log(JSON.stringify({ upload, file }, null, 2));
-      return;
-    }
+    })) as { uploadId: string };
 
     const response = await client.uploadContent(
       upload.uploadId,

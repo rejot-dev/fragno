@@ -220,29 +220,6 @@ export function createClient(config: ClientConfig) {
     createUpload: (payload: Record<string, unknown>) =>
       requestJson(config, "/uploads", { method: "POST", body: payload }),
     getUpload: (uploadId: string) => requestJson(config, `/uploads/${uploadId}`),
-    reportProgress: (
-      uploadId: string,
-      payload: { bytesUploaded?: number; partsUploaded?: number },
-    ) => requestJson(config, `/uploads/${uploadId}/progress`, { method: "POST", body: payload }),
-    getPartUrls: (uploadId: string, partNumbers: number[]) =>
-      requestJson(config, `/uploads/${uploadId}/parts`, {
-        method: "POST",
-        body: { partNumbers },
-      }),
-    listParts: (uploadId: string) => requestJson(config, `/uploads/${uploadId}/parts`),
-    completeParts: (
-      uploadId: string,
-      parts: { partNumber: number; etag: string; sizeBytes: number }[],
-    ) =>
-      requestJson(config, `/uploads/${uploadId}/parts/complete`, {
-        method: "POST",
-        body: { parts },
-      }),
-    completeUpload: (uploadId: string, parts?: { partNumber: number; etag: string }[]) =>
-      requestJson(config, `/uploads/${uploadId}/complete`, {
-        method: "POST",
-        body: parts && parts.length > 0 ? { parts } : {},
-      }),
     abortUpload: (uploadId: string) =>
       requestJson(config, `/uploads/${uploadId}/abort`, { method: "POST" }),
     uploadContent: async (uploadId: string, body: BodyInit, contentType: string) => {
@@ -278,11 +255,6 @@ export function createClient(config: ClientConfig) {
     deleteFile: (provider: string, fileKey: string) =>
       requestJson(config, "/files/by-key", {
         method: "DELETE",
-        query: buildByKeyQuery(provider, fileKey),
-      }),
-    getDownloadUrl: (provider: string, fileKey: string) =>
-      requestJson(config, "/files/by-key/download-url", {
-        method: "GET",
         query: buildByKeyQuery(provider, fileKey),
       }),
     downloadContent: (provider: string, fileKey: string) =>

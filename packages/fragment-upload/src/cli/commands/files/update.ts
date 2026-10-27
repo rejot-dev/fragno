@@ -15,7 +15,7 @@ export const filesUpdateCommand = define({
     ...baseArgs,
     provider: {
       type: "string",
-      description: "Storage provider",
+      description: "File provider namespace",
     },
     "file-key": {
       type: "string",

@@ -40,8 +40,8 @@ Fragno has a number of first-party Fragments that help builders get started quic
 - [Forms](https://github.com/fragno-dev/forms) - Forms with validation and submission.
 - [Workflows](https://github.com/fragno-dev/workflows) - [ALPHA] Workflows with steps, timers,
   events, and retries.
-- [Upload](https://github.com/fragno-dev/upload) - File upload handling with storage adapters for
-  S3, R2, and filesystem.
+- [Upload](https://github.com/fragno-dev/upload) - Database-backed files with atomic writes, search,
+  and upload progress.
 
 To get started with any of these, install the Agent Skill:
 

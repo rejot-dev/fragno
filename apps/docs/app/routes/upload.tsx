@@ -1,5 +1,5 @@
-import { ArrowRight, Database, FolderUp, Server, Terminal, Upload } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { Database, FolderUp, Search, Terminal, Upload } from "lucide-react";
+import type { ReactNode } from "react";
 import { Link } from "react-router";
 
 import { FragmentSubnav } from "@/components/fragment-subnav";
@@ -11,7 +11,7 @@ export function meta() {
     {
       name: "description",
       content:
-        "Direct and proxy uploads with storage adapters, file metadata, and progress tracking.",
+        "Database-backed file storage with atomic writes, batch publication, search, and progress tracking.",
     },
   ];
 }
@@ -29,13 +29,6 @@ type Step = {
   code: string;
 };
 
-type Adapter = {
-  id: string;
-  label: string;
-  description: string;
-  code: string;
-};
-
 const features: Feature[] = [
   {
     title: "File + upload model",
@@ -43,14 +36,14 @@ const features: Feature[] = [
     icon: <Database className="size-5" />,
   },
   {
-    title: "Multiple upload strategies",
-    description: "Direct single/multipart or server-streamed proxy uploads.",
+    title: "Atomic writes",
+    description: "A file's content and metadata commit in the same database transaction.",
     icon: <Upload className="size-5" />,
   },
   {
-    title: "Storage adapters",
-    description: "S3/R2-compatible storage and Node filesystem adapters.",
-    icon: <Server className="size-5" />,
+    title: "Search and edits",
+    description: "Text search, server-side edits, and signed file links over stored files.",
+    icon: <Search className="size-5" />,
   },
 ];
 
@@ -63,15 +56,13 @@ const setupSteps: Step[] = [
   },
   {
     title: "2. Create the fragment server",
-    description: "Choose a storage adapter and mount the routes.",
+    description: "Set the largest file and mount the routes.",
     lang: "ts",
-    code: `import { createUploadFragment, createFilesystemStorageAdapter } from "@fragno-dev/upload";
+    code: `import { createUploadFragment } from "@fragno-dev/upload";
 import { migrate } from "@fragno-dev/db";
 
-const storage = createFilesystemStorageAdapter({ rootDir: "./uploads" });
-
 const fragment = createUploadFragment(
-  { storage },
+  { maxFileBytes: 10 * 1024 * 1024 },
   {
     databaseAdapter,
     mountRoute: "/api/uploads",
@@ -82,7 +73,7 @@ await migrate(fragment);`,
   },
   {
     title: "3. Create a client",
-    description: "Generate typed helpers for direct and proxy uploads.",
+    description: "Generate typed hooks and upload helpers.",
     lang: "ts",
     code: `import { createUploadFragmentClient } from "@fragno-dev/upload/react";
 
@@ -92,48 +83,12 @@ export const uploadClient = createUploadFragmentClient({
   },
 ];
 
-const storageAdapters: Adapter[] = [
-  {
-    id: "s3",
-    label: "S3-compatible",
-    description: "Works with AWS S3 and compatible providers like R2.",
-    code: `import { createS3CompatibleStorageAdapter } from "@fragno-dev/upload";
-
-const storage = createS3CompatibleStorageAdapter({
-  bucket: process.env.UPLOAD_S3_BUCKET!,
-  endpoint: process.env.UPLOAD_S3_ENDPOINT!,
-  signer,
-});`,
-  },
-  {
-    id: "r2",
-    label: "Cloudflare R2",
-    description: "R2 defaults on top of the S3-compatible signer.",
-    code: `import { createR2StorageAdapter } from "@fragno-dev/upload";
-
-const storage = createR2StorageAdapter({
-  bucket: process.env.R2_BUCKET!,
-  endpoint: process.env.R2_ENDPOINT!,
-  signer,
-});`,
-  },
-  {
-    id: "fs",
-    label: "Filesystem",
-    description: "Great for local dev or small deployments.",
-    code: `import { createFilesystemStorageAdapter } from "@fragno-dev/upload";
-
-const storage = createFilesystemStorageAdapter({
-  rootDir: "./uploads",
-});`,
-  },
-];
-
 const usageSnippet = `const { useUploadHelpers } = uploadClient;
 
 const helpers = useUploadHelpers();
 await helpers.createUploadAndTransfer(file, {
-  keyParts: ["users", userId, "avatar"],
+  provider: "avatars",
+  fileKey: \`users/\${userId}/avatar.png\`,
   onProgress: (progress) => {
     console.log(progress.bytesUploaded, progress.totalBytes);
   },
@@ -154,20 +109,16 @@ const useCases = [
     description: "Upload user images with a predictable file key and progress tracking.",
   },
   {
-    title: "Large assets",
-    description: "Use multipart uploads for big files with resumable transfers.",
+    title: "Agent workspaces",
+    description: "Let agents search, edit, and atomically rewrite sets of files.",
   },
   {
-    title: "Multi-tenant storage",
-    description: "Store files in R2 or S3 with keys that map to orgs or projects.",
+    title: "Multi-tenant files",
+    description: "Keep each tenant's files under its own provider namespace or key prefix.",
   },
 ];
 
 export default function UploadPage() {
-  const [activeAdapter, setActiveAdapter] = useState(storageAdapters[0].id);
-  const selectedAdapter =
-    storageAdapters.find((adapter) => adapter.id === activeAdapter) ?? storageAdapters[0];
-
   return (
     <main className="relative min-h-screen">
       <div className="mx-auto max-w-7xl space-y-14 px-4 py-16 md:px-8">
@@ -178,7 +129,7 @@ export default function UploadPage() {
               File Uploads
             </h1>
             <p className="text-fd-muted-foreground max-w-xl text-lg md:text-xl">
-              Direct and proxy uploads with storage adapters, metadata, and progress tracking.
+              Files stored in your database, with atomic writes, batch publication, and search.
             </p>
             <div className="flex flex-col gap-3 sm:flex-row">
               <Link
@@ -199,7 +150,7 @@ export default function UploadPage() {
                 className="rounded-xl"
               />
               <p className="text-fd-muted-foreground text-xs">
-                Requires a Fragno database adapter to store upload and file records.
+                Requires a Fragno database adapter, which stores files and their content.
               </p>
             </div>
           </div>
@@ -211,24 +162,24 @@ export default function UploadPage() {
               </span>
               <div>
                 <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-                  Upload modes
+                  Publishing files
                 </h2>
                 <p className="text-fd-muted-foreground text-sm">
-                  Pick direct or server-streamed based on security needs.
+                  Publish each upload on its own, or several together.
                 </p>
               </div>
             </div>
             <div className="mt-6 grid gap-4">
               <div className="rounded-xl border border-black/5 p-4 dark:border-white/10">
-                <p className="text-sm font-semibold text-slate-900 dark:text-white">Direct</p>
+                <p className="text-sm font-semibold text-slate-900 dark:text-white">Immediate</p>
                 <p className="text-fd-muted-foreground text-sm">
-                  Signed URLs to S3/R2 for large files and efficient transfers.
+                  Storing an upload's content publishes the file in the same transaction.
                 </p>
               </div>
               <div className="rounded-xl border border-black/5 p-4 dark:border-white/10">
-                <p className="text-sm font-semibold text-slate-900 dark:text-white">Proxy</p>
+                <p className="text-sm font-semibold text-slate-900 dark:text-white">Batch</p>
                 <p className="text-fd-muted-foreground text-sm">
-                  Server-streamed uploads for private storage or small files.
+                  Prepare several uploads, then publish them all in one commit.
                 </p>
               </div>
             </div>
@@ -266,7 +217,7 @@ export default function UploadPage() {
                 Setup blueprint
               </h2>
               <p className="text-fd-muted-foreground text-sm">
-                Configure storage, mount routes, and ship upload flows.
+                Mount the routes and ship upload flows.
               </p>
             </div>
           </div>
@@ -298,7 +249,7 @@ export default function UploadPage() {
               <div className="rounded-2xl border border-black/5 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-950/60">
                 <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Use it</h3>
                 <p className="text-fd-muted-foreground mt-1 text-sm">
-                  The client helper picks direct or server-streamed uploads automatically.
+                  The client helper creates the upload, streams its content, and reports progress.
                 </p>
                 <div className="mt-4">
                   <FragnoCodeBlock lang="ts" code={usageSnippet} allowCopy className="rounded-xl" />
@@ -307,50 +258,13 @@ export default function UploadPage() {
 
               <div className="rounded-2xl border border-black/5 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-950/60">
                 <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-                  Storage adapters
+                  Large files
                 </h3>
                 <p className="text-fd-muted-foreground mt-1 text-sm">
-                  Switch adapters without changing fragment APIs.
+                  Files live in database rows, so keep them within your database's limits. Keep
+                  recordings, videos, and other large files in S3-compatible object storage with the{" "}
+                  <code>@fragno-dev/blobs</code> fragment instead.
                 </p>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {storageAdapters.map((adapter) => {
-                    const isActive = adapter.id === selectedAdapter.id;
-                    return (
-                      <button
-                        key={adapter.id}
-                        type="button"
-                        onClick={() => {
-                          setActiveAdapter(adapter.id);
-                        }}
-                        className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
-                          isActive
-                            ? "border-cyan-400/40 text-cyan-700 dark:text-cyan-200"
-                            : "border-slate-200 text-slate-600 dark:border-white/10 dark:text-slate-300"
-                        }`}
-                      >
-                        {adapter.label}
-                      </button>
-                    );
-                  })}
-                </div>
-                <p className="text-fd-muted-foreground mt-3 text-sm">
-                  {selectedAdapter.description}
-                </p>
-                <div className="mt-4">
-                  <FragnoCodeBlock
-                    lang="ts"
-                    code={selectedAdapter.code}
-                    allowCopy
-                    className="rounded-xl"
-                  />
-                </div>
-                <Link
-                  to="/docs/upload/adapters"
-                  className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-cyan-600 hover:text-cyan-700 dark:text-cyan-300 dark:hover:text-cyan-200"
-                >
-                  Adapter docs
-                  <ArrowRight className="size-4" />
-                </Link>
               </div>
             </div>
           </div>

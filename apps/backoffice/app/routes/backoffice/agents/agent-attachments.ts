@@ -76,6 +76,7 @@ async function uploadAttachment(
 ): Promise<string> {
   const folder = piAgentAttachmentsFolder(agentName).slice("/workspace/".length);
   const result = await createScopedUploadHelpers(scope).createUploadAndTransfer(file, {
+    provider: UPLOAD_PROVIDER_DATABASE,
     fileKey: `${folder}${crypto.randomUUID()}/${workspaceFileName(file.name)}`,
     onProgress: ({ bytesUploaded, totalBytes }) => {
       onProgress(totalBytes > 0 ? bytesUploaded / totalBytes : null);

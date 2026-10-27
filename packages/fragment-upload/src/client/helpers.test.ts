@@ -44,125 +44,15 @@ const getHeaderValue = (headers: HeadersInit | undefined, name: string): string 
   return undefined;
 };
 
-const TEST_PROVIDER = "filesystem";
-
-const byKeyDownloadUrlPath = (provider: string, fileKey: string) =>
-  `/files/by-key/download-url?${new URLSearchParams({ provider, key: fileKey }).toString()}`;
+const TEST_PROVIDER = "workspace";
 
 const byKeyContentPath = (provider: string, fileKey: string) =>
   `/files/by-key/content?${new URLSearchParams({ provider, key: fileKey }).toString()}`;
 
-const uploadRoutePath = (uploadId: string, suffix = "") =>
-  `/uploads/${uploadId}${suffix}?${new URLSearchParams({ provider: TEST_PROVIDER }).toString()}`;
+const uploadContentPath = (uploadId: string) => `/uploads/${uploadId}/content`;
 
 describe("upload client helpers", () => {
-  it("splits multipart uploads, tracks progress, and completes", async () => {
-    const progress: number[] = [];
-    const calls: string[] = [];
-
-    const fetcher = async (input: RequestInfo | URL, _init?: RequestInit) => {
-      const url = typeof input === "string" ? input : input.toString();
-      calls.push(`${_init?.method ?? "GET"} ${url}`);
-
-      if (url.endsWith("/uploads")) {
-        const body = JSON.parse(_init?.body as string);
-        expect(body.provider).toBe(TEST_PROVIDER);
-        assert(body.fileKey === "files.users.1.avatar");
-        return jsonResponse({
-          uploadId: "123",
-          fileKey: "files.users.1.avatar",
-          provider: TEST_PROVIDER,
-          status: "created",
-          strategy: "direct-multipart",
-          expiresAt: new Date().toISOString(),
-          upload: {
-            mode: "multipart",
-            transport: "direct",
-            partSizeBytes: 4,
-            maxParts: 10,
-            statusEndpoint: uploadRoutePath("123"),
-            progressEndpoint: uploadRoutePath("123", "/progress"),
-            partsEndpoint: uploadRoutePath("123", "/parts"),
-            partsCompleteEndpoint: uploadRoutePath("123", "/parts/complete"),
-            completeEndpoint: uploadRoutePath("123", "/complete"),
-            abortEndpoint: uploadRoutePath("123", "/abort"),
-          },
-        });
-      }
-
-      if (url.endsWith(uploadRoutePath("123", "/parts"))) {
-        const body = JSON.parse(_init?.body as string);
-        expect(body.partNumbers).toEqual([1, 2, 3]);
-        return jsonResponse({
-          parts: [
-            { partNumber: 1, url: "https://storage.local/part-1" },
-            { partNumber: 2, url: "https://storage.local/part-2" },
-            { partNumber: 3, url: "https://storage.local/part-3" },
-          ],
-        });
-      }
-
-      if (url.endsWith(uploadRoutePath("123", "/progress"))) {
-        return jsonResponse({ bytesUploaded: 0, partsUploaded: 0 });
-      }
-
-      if (url.endsWith(uploadRoutePath("123", "/parts/complete"))) {
-        const body = JSON.parse(_init?.body as string);
-        expect(body.parts).toEqual([
-          { partNumber: 1, etag: "etag-1", sizeBytes: 4 },
-          { partNumber: 2, etag: "etag-2", sizeBytes: 4 },
-          { partNumber: 3, etag: "etag-3", sizeBytes: 2 },
-        ]);
-        return jsonResponse({ bytesUploaded: 10, partsUploaded: 3 });
-      }
-
-      if (url.endsWith(uploadRoutePath("123", "/complete"))) {
-        const body = JSON.parse(_init?.body as string);
-        expect(body.parts).toEqual([
-          { partNumber: 1, etag: "etag-1" },
-          { partNumber: 2, etag: "etag-2" },
-          { partNumber: 3, etag: "etag-3" },
-        ]);
-        return jsonResponse({
-          kind: "published",
-          file: { fileKey: "files.users.1.avatar", status: "ready" },
-        });
-      }
-
-      if (url.startsWith("https://storage.local/part-")) {
-        const partNumber = Number(url.split("-").pop());
-        return new Response(null, {
-          status: 200,
-          headers: { ETag: `etag-${partNumber}` },
-        });
-      }
-
-      return new Response(null, { status: 404 });
-    };
-
-    const helpers = createUploadHelpers({
-      buildUrl: (path) => `http://local${path}`,
-      fetcher: fetcher as typeof fetch,
-    });
-
-    const file = new Blob(["abcdefghij"], { type: "text/plain" });
-
-    const result = await helpers.createUploadAndTransfer(file, {
-      provider: TEST_PROVIDER,
-      fileKey: "files.users.1.avatar",
-      onProgress: (value) => progress.push(value.bytesUploaded),
-    });
-
-    assert(result.kind === "published");
-    assert(result.file.fileKey === "files.users.1.avatar");
-    expect(progress).toEqual([4, 8, 10]);
-    expect(calls).toContain(`POST http://local${uploadRoutePath("123", "/progress")}`);
-    expect(calls).toContain(`POST http://local${uploadRoutePath("123", "/parts")}`);
-    expect(calls).toContain(`POST http://local${uploadRoutePath("123", "/parts/complete")}`);
-    expect(calls).toContain(`POST http://local${uploadRoutePath("123", "/complete")}`);
-  });
-
-  it("streams proxy uploads and reports progress", async () => {
+  it("streams upload content and reports progress", async () => {
     const progress: number[] = [];
 
     const fetcher = async (input: RequestInfo | URL, _init?: RequestInit) => {
@@ -178,21 +68,11 @@ describe("upload client helpers", () => {
           fileKey: "files.assets.banner",
           provider: TEST_PROVIDER,
           status: "created",
-          strategy: "proxy",
           expiresAt: new Date().toISOString(),
-          upload: {
-            mode: "single",
-            transport: "proxy",
-            statusEndpoint: uploadRoutePath("proxy-1"),
-            progressEndpoint: uploadRoutePath("proxy-1", "/progress"),
-            completeEndpoint: uploadRoutePath("proxy-1", "/complete"),
-            abortEndpoint: uploadRoutePath("proxy-1", "/abort"),
-            contentEndpoint: uploadRoutePath("proxy-1", "/content"),
-          },
         });
       }
 
-      if (url.endsWith(uploadRoutePath("proxy-1", "/content"))) {
+      if (url.endsWith(uploadContentPath("proxy-1"))) {
         const init = _init as (RequestInit & { duplex?: string }) | undefined;
         assert(init?.duplex === "half");
         assert(getHeaderValue(init?.headers, "content-type") === "application/octet-stream");
@@ -234,35 +114,23 @@ describe("upload client helpers", () => {
       if (url.endsWith("/uploads")) {
         const body = JSON.parse(init?.body as string);
         assert(body.publicationMode === "batch");
-        assert(body.provider === undefined);
         return jsonResponse({
           uploadId: "prepared-proxy",
           fileKey: "files/prepared.txt",
           provider: TEST_PROVIDER,
           status: "created",
-          strategy: "proxy",
           publicationMode: "batch",
           expiresAt,
-          upload: {
-            mode: "single",
-            transport: "proxy",
-            statusEndpoint: uploadRoutePath("prepared-proxy"),
-            progressEndpoint: uploadRoutePath("prepared-proxy", "/progress"),
-            completeEndpoint: uploadRoutePath("prepared-proxy", "/complete"),
-            abortEndpoint: uploadRoutePath("prepared-proxy", "/abort"),
-            contentEndpoint: uploadRoutePath("prepared-proxy", "/content"),
-          },
         });
       }
 
-      if (url.endsWith(uploadRoutePath("prepared-proxy", "/content"))) {
+      if (url.endsWith(uploadContentPath("prepared-proxy"))) {
         return jsonResponse({
           kind: "prepared",
           write: {
             uploadId: "prepared-proxy",
             provider: TEST_PROVIDER,
             fileKey: "files/prepared.txt",
-            objectKey: "objects/files/prepared.txt/version-1",
             sizeBytes: 8,
             contentType: "text/plain",
             checksum: null,
@@ -280,6 +148,7 @@ describe("upload client helpers", () => {
     });
 
     const result = await helpers.createUploadAndTransfer(new Blob(["prepared"]), {
+      provider: TEST_PROVIDER,
       fileKey: "files/prepared.txt",
       publicationMode: "batch",
     });
@@ -291,90 +160,7 @@ describe("upload client helpers", () => {
     });
   });
 
-  it("omits lifecycle timestamps from upload mutation results", async () => {
-    const calls: string[] = [];
-
-    const fetcher = async (input: RequestInfo | URL, _init?: RequestInit) => {
-      const url = typeof input === "string" ? input : input.toString();
-      calls.push(`${_init?.method ?? "GET"} ${url}`);
-
-      if (url.endsWith("/uploads")) {
-        const body = JSON.parse(_init?.body as string);
-        expect(body.provider).toBe(TEST_PROVIDER);
-        assert(body.fileKey === "files.sample.date");
-        return jsonResponse({
-          uploadId: "single-1",
-          fileKey: "files.sample.date",
-          provider: TEST_PROVIDER,
-          status: "created",
-          strategy: "direct-single",
-          expiresAt: new Date().toISOString(),
-          upload: {
-            mode: "single",
-            transport: "direct",
-            uploadUrl: "https://storage.local/upload",
-            statusEndpoint: uploadRoutePath("single-1"),
-            progressEndpoint: uploadRoutePath("single-1", "/progress"),
-            completeEndpoint: uploadRoutePath("single-1", "/complete"),
-            abortEndpoint: uploadRoutePath("single-1", "/abort"),
-          },
-        });
-      }
-
-      if (url === "https://storage.local/upload") {
-        return new Response(null, { status: 200 });
-      }
-
-      if (url.endsWith(uploadRoutePath("single-1", "/progress"))) {
-        return jsonResponse({ bytesUploaded: 0, partsUploaded: 0 });
-      }
-
-      if (url.endsWith(uploadRoutePath("single-1", "/complete"))) {
-        return jsonResponse({
-          kind: "published",
-          file: {
-            fileKey: "files.sample.date",
-            uploaderId: null,
-            filename: "sample.txt",
-            sizeBytes: 3,
-            contentType: "text/plain",
-            checksum: null,
-            visibility: "private",
-            tags: null,
-            metadata: null,
-            status: "ready",
-            provider: TEST_PROVIDER,
-            errorCode: null,
-            errorMessage: null,
-          },
-        });
-      }
-
-      return new Response(null, { status: 404 });
-    };
-
-    const helpers = createUploadHelpers({
-      buildUrl: (path) => `http://local${path}`,
-      fetcher: fetcher as typeof fetch,
-    });
-
-    const file = new Blob(["hey"], { type: "text/plain" });
-
-    const result = await helpers.createUploadAndTransfer(file, {
-      provider: TEST_PROVIDER,
-      fileKey: "files.sample.date",
-    });
-
-    assert(result.kind === "published");
-    expect(result.file).not.toHaveProperty("createdAt");
-    expect(result.file).not.toHaveProperty("updatedAt");
-    expect(result.file).not.toHaveProperty("completedAt");
-    expect(result.file).not.toHaveProperty("deletedAt");
-    expect(calls).toContain(`POST http://local${uploadRoutePath("single-1", "/progress")}`);
-    expect(calls).toContain(`POST http://local${uploadRoutePath("single-1", "/complete")}`);
-  });
-
-  it("falls back to buffered proxy uploads when streaming fails", async () => {
+  it("falls back to buffered uploads when streaming fails", async () => {
     const progress: number[] = [];
     let attempts = 0;
 
@@ -390,21 +176,11 @@ describe("upload client helpers", () => {
           fileKey: "files.assets.logo",
           provider: TEST_PROVIDER,
           status: "created",
-          strategy: "proxy",
           expiresAt: new Date().toISOString(),
-          upload: {
-            mode: "single",
-            transport: "proxy",
-            statusEndpoint: uploadRoutePath("proxy-2"),
-            progressEndpoint: uploadRoutePath("proxy-2", "/progress"),
-            completeEndpoint: uploadRoutePath("proxy-2", "/complete"),
-            abortEndpoint: uploadRoutePath("proxy-2", "/abort"),
-            contentEndpoint: uploadRoutePath("proxy-2", "/content"),
-          },
         });
       }
 
-      if (url.endsWith(uploadRoutePath("proxy-2", "/content"))) {
+      if (url.endsWith(uploadContentPath("proxy-2"))) {
         attempts += 1;
         if (attempts === 1) {
           throw new TypeError("Failed to fetch");
@@ -439,7 +215,7 @@ describe("upload client helpers", () => {
     assert(progress[progress.length - 1] === 5);
   });
 
-  it("throws actionable guidance when proxy transport fails for both attempts", async () => {
+  it("throws actionable guidance when content transport fails for both attempts", async () => {
     const fetcher = async (input: RequestInfo | URL, _init?: RequestInit) => {
       const url = typeof input === "string" ? input : input.toString();
 
@@ -452,21 +228,11 @@ describe("upload client helpers", () => {
           fileKey: "files.assets.fail",
           provider: TEST_PROVIDER,
           status: "created",
-          strategy: "proxy",
           expiresAt: new Date().toISOString(),
-          upload: {
-            mode: "single",
-            transport: "proxy",
-            statusEndpoint: uploadRoutePath("proxy-3"),
-            progressEndpoint: uploadRoutePath("proxy-3", "/progress"),
-            completeEndpoint: uploadRoutePath("proxy-3", "/complete"),
-            abortEndpoint: uploadRoutePath("proxy-3", "/abort"),
-            contentEndpoint: uploadRoutePath("proxy-3", "/content"),
-          },
         });
       }
 
-      if (url.endsWith(uploadRoutePath("proxy-3", "/content"))) {
+      if (url.endsWith(uploadContentPath("proxy-3"))) {
         throw new TypeError("ALPN negotiation failed");
       }
 
@@ -485,7 +251,7 @@ describe("upload client helpers", () => {
         provider: TEST_PROVIDER,
         fileKey: "files.assets.fail",
       }),
-    ).rejects.toThrow(/Server selected proxy upload strategy/);
+    ).rejects.toThrow(/Upload to '.*' failed/);
 
     await expect(
       helpers.createUploadAndTransfer(file, {
@@ -495,7 +261,7 @@ describe("upload client helpers", () => {
     ).rejects.toThrow(/\/uploads\/:uploadId\/content/);
   });
 
-  it("fails fast when proxy endpoint uses an unsupported protocol", async () => {
+  it("fails fast when the content endpoint uses an unsupported protocol", async () => {
     let contentEndpointCalled = false;
 
     const fetcher = async (input: RequestInfo | URL, _init?: RequestInit) => {
@@ -510,21 +276,11 @@ describe("upload client helpers", () => {
           fileKey: "files.assets.protocol",
           provider: TEST_PROVIDER,
           status: "created",
-          strategy: "proxy",
           expiresAt: new Date().toISOString(),
-          upload: {
-            mode: "single",
-            transport: "proxy",
-            statusEndpoint: uploadRoutePath("proxy-4"),
-            progressEndpoint: uploadRoutePath("proxy-4", "/progress"),
-            completeEndpoint: uploadRoutePath("proxy-4", "/complete"),
-            abortEndpoint: uploadRoutePath("proxy-4", "/abort"),
-            contentEndpoint: uploadRoutePath("proxy-4", "/content"),
-          },
         });
       }
 
-      if (url.endsWith(uploadRoutePath("proxy-4", "/content"))) {
+      if (url.endsWith(uploadContentPath("proxy-4"))) {
         contentEndpointCalled = true;
       }
 
@@ -548,109 +304,6 @@ describe("upload client helpers", () => {
     assert(!contentEndpointCalled);
   });
 
-  it("downloads through /content when content method is selected", async () => {
-    const fileKey = "files.sample.download";
-    const downloadUrlPath = byKeyDownloadUrlPath(TEST_PROVIDER, fileKey);
-    const contentPath = byKeyContentPath(TEST_PROVIDER, fileKey);
-    const calls: string[] = [];
-    const fetcher = async (input: RequestInfo | URL, _init?: RequestInit) => {
-      const url = typeof input === "string" ? input : input.toString();
-      calls.push(url);
-
-      if (url.endsWith(downloadUrlPath)) {
-        return jsonResponse(
-          {
-            message: "Signed URLs are not supported",
-            code: "SIGNED_URL_UNSUPPORTED",
-          },
-          { status: 400 },
-        );
-      }
-
-      if (url.endsWith(contentPath)) {
-        return new Response("payload", { status: 200 });
-      }
-
-      return new Response(null, { status: 404 });
-    };
-
-    const helpers = createUploadHelpers({
-      buildUrl: (path) => `http://local${path}`,
-      fetcher: fetcher as typeof fetch,
-    });
-
-    const response = await helpers.downloadFile(fileKey, {
-      provider: TEST_PROVIDER,
-      method: "content",
-    });
-    assert((await response.text()) === "payload");
-    assert(!calls.some((url) => url.endsWith(downloadUrlPath)));
-  });
-
-  it("throws programming guidance when signed-url method is unsupported", async () => {
-    const fileKey = "files.sample.download-mismatch";
-    const downloadUrlPath = byKeyDownloadUrlPath(TEST_PROVIDER, fileKey);
-    const fetcher = async (input: RequestInfo | URL, _init?: RequestInit) => {
-      const url = typeof input === "string" ? input : input.toString();
-
-      if (url.endsWith(downloadUrlPath)) {
-        return jsonResponse(
-          {
-            message: "Signed URLs are not supported",
-            code: "SIGNED_URL_UNSUPPORTED",
-          },
-          { status: 400 },
-        );
-      }
-
-      return new Response(null, { status: 404 });
-    };
-
-    const helpers = createUploadHelpers({
-      buildUrl: (path) => `https://local${path}`,
-      fetcher: fetcher as typeof fetch,
-    });
-
-    await expect(
-      helpers.downloadFile(fileKey, {
-        provider: TEST_PROVIDER,
-        method: "signed-url",
-      }),
-    ).rejects.toThrow(/programming error/i);
-  });
-
-  it("throws content-specific fallback guidance when content download is unsupported", async () => {
-    const fileKey = "files.sample.content-mismatch";
-    const contentPath = byKeyContentPath(TEST_PROVIDER, fileKey);
-    const fetcher = async (input: RequestInfo | URL, _init?: RequestInit) => {
-      const url = typeof input === "string" ? input : input.toString();
-
-      if (url.endsWith(contentPath)) {
-        return jsonResponse(
-          {
-            message: "Download streaming unsupported",
-            code: "SIGNED_URL_UNSUPPORTED",
-          },
-          { status: 400 },
-        );
-      }
-
-      return new Response(null, { status: 404 });
-    };
-
-    const helpers = createUploadHelpers({
-      buildUrl: (path) => `https://local${path}`,
-      fetcher: fetcher as typeof fetch,
-    });
-
-    await expect(
-      helpers.downloadFile(fileKey, {
-        provider: TEST_PROVIDER,
-        method: "content",
-      }),
-    ).rejects.toThrow(/The 'content' download endpoint is unsupported.*Use method 'signed-url'/i);
-  });
-
   it("throws actionable context when content download request fails", async () => {
     const fileKey = "files.sample.download-fail";
     const contentPath = byKeyContentPath(TEST_PROVIDER, fileKey);
@@ -672,106 +325,8 @@ describe("upload client helpers", () => {
     await expect(
       helpers.downloadFile(fileKey, {
         provider: TEST_PROVIDER,
-        method: "content",
       }),
     ).rejects.toThrow(/\/files\/by-key\/content/);
-  });
-
-  it("throws actionable context when signed URL download request fails", async () => {
-    const fileKey = "files.sample.download-url";
-    const downloadUrlPath = byKeyDownloadUrlPath(TEST_PROVIDER, fileKey);
-    const signedUrl = "https://storage.example.com/object?token=secret&X-Amz-Signature=abc123";
-    const fetcher = async (input: RequestInfo | URL, _init?: RequestInit) => {
-      const url = typeof input === "string" ? input : input.toString();
-
-      if (url.endsWith(downloadUrlPath)) {
-        return jsonResponse({
-          url: signedUrl,
-        });
-      }
-
-      if (url === signedUrl) {
-        throw new TypeError("Network dropped");
-      }
-
-      return new Response(null, { status: 404 });
-    };
-
-    const helpers = createUploadHelpers({
-      buildUrl: (path) => `https://local${path}`,
-      fetcher: fetcher as typeof fetch,
-    });
-
-    let thrown: Error | null = null;
-    try {
-      await helpers.downloadFile(fileKey, {
-        provider: TEST_PROVIDER,
-        method: "signed-url",
-      });
-    } catch (error) {
-      thrown = error as Error;
-    }
-
-    expect(thrown).toBeInstanceOf(Error);
-    expect(thrown?.message).toContain("https://storage.example.com/object");
-    expect(thrown?.message).not.toContain("token=secret");
-    expect(thrown?.message).not.toContain("X-Amz-Signature=abc123");
-  });
-
-  it("redacts signed URL query params when the download response is not ok", async () => {
-    const fileKey = "files.sample.download-url-status";
-    const downloadUrlPath = byKeyDownloadUrlPath(TEST_PROVIDER, fileKey);
-    const signedUrl = "https://storage.example.com/object?token=secret&X-Amz-Signature=abc123";
-    const fetcher = async (input: RequestInfo | URL, _init?: RequestInit) => {
-      const url = typeof input === "string" ? input : input.toString();
-
-      if (url.endsWith(downloadUrlPath)) {
-        return jsonResponse({
-          url: signedUrl,
-        });
-      }
-
-      if (url === signedUrl) {
-        return jsonResponse({ message: "Request expired" }, { status: 403 });
-      }
-
-      return new Response(null, { status: 404 });
-    };
-
-    const helpers = createUploadHelpers({
-      buildUrl: (path) => `https://local${path}`,
-      fetcher: fetcher as typeof fetch,
-    });
-
-    let thrown: Error | null = null;
-    try {
-      await helpers.downloadFile(fileKey, {
-        provider: TEST_PROVIDER,
-        method: "signed-url",
-      });
-    } catch (error) {
-      thrown = error as Error;
-    }
-
-    expect(thrown).toBeInstanceOf(Error);
-    expect(thrown?.message).toContain("https://storage.example.com/object");
-    expect(thrown?.message).toContain("response status 403");
-    expect(thrown?.message).toContain("message: Request expired");
-    expect(thrown?.message).not.toContain("token=secret");
-    expect(thrown?.message).not.toContain("X-Amz-Signature=abc123");
-  });
-
-  it("requires callers to specify an explicit download method", async () => {
-    const helpers = createUploadHelpers({
-      buildUrl: (path) => `https://local${path}`,
-      fetcher: (async () => new Response(null, { status: 500 })) as typeof fetch,
-    });
-
-    await expect(
-      helpers.downloadFile("files.sample.download-missing", {
-        provider: TEST_PROVIDER,
-      } as never),
-    ).rejects.toThrow(/Download method is required/);
   });
 
   it("requires callers to specify an explicit download provider", async () => {
@@ -781,9 +336,7 @@ describe("upload client helpers", () => {
     });
 
     await expect(
-      helpers.downloadFile("files.sample.download-missing-provider", {
-        method: "content",
-      } as never),
+      helpers.downloadFile("files.sample.download-missing-provider", {} as never),
     ).rejects.toThrow(/Download provider is required/);
   });
 
