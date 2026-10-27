@@ -1,12 +1,12 @@
 import "@fragno-private/design-system/components.css";
 
 import { ClientOnly } from "@fragno-private/design-system/client-only";
-import { BackofficeJsonForm } from "@fragno-private/design-system/forms/backoffice-json-form";
 import { useState } from "react";
 
 import type { UISchemaElement } from "@jsonforms/core";
 
 import { backofficeContextScopeFromRouteParams } from "@/backoffice-runtime/scope-codec";
+import { BackofficeJsonForm } from "@/components/backoffice-json-form.client";
 import { formsClient } from "@/fragno/forms-client";
 
 import { LandingFooter } from "../landing/landing-footer";

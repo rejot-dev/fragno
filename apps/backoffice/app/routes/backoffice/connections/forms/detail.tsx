@@ -1,5 +1,5 @@
 import { Button, ButtonLink } from "@fragno-private/design-system/button";
-import { BackofficeJsonForm } from "@fragno-private/design-system/forms/backoffice-json-form";
+import { ClientOnly } from "@fragno-private/design-system/client-only";
 import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
 import { useEffect, useState } from "react";
 
@@ -8,6 +8,7 @@ import type { FormResponse } from "@fragno-dev/forms";
 import type { UISchemaElement } from "@jsonforms/core";
 
 import { backofficeRouteScopePath } from "@/backoffice-runtime/route-scope";
+import { BackofficeJsonForm } from "@/components/backoffice-json-form.client";
 import { formsClient } from "@/fragno/forms-client";
 
 import type { Route } from "./+types/detail";
@@ -137,11 +138,15 @@ function BackofficeFormDetailPage({ params }: Route.ComponentProps) {
             </p>
           </div>
           <div className="mx-auto mt-5 max-w-2xl">
-            <BackofficeJsonForm
-              key={`${form.id}:${form.version}`}
-              schema={form.dataSchema}
-              uiSchema={form.uiSchema as UISchemaElement | null | undefined}
-            />
+            <ClientOnly
+              fallback={<p className="text-sm text-[var(--bo-muted-2)]">Loading preview…</p>}
+            >
+              <BackofficeJsonForm
+                key={`${form.id}:${form.version}`}
+                schema={form.dataSchema}
+                uiSchema={form.uiSchema as UISchemaElement | null | undefined}
+              />
+            </ClientOnly>
           </div>
         </section>
 
