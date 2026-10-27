@@ -1,9 +1,10 @@
 # Lofi SQLite import benchmark
 
-Replays a recorded outbox stream into `@fragno-dev/lofi/sqlite` in the browser and measures the
-import. The Vite dev server acts as the backend: it serves `GET /fixture/_internal` and
-`GET /fixture/_internal/outbox/stream` from the recording. The page mirrors the automations schema
-from `apps/backoffice/app/fragno/automation/schema.ts`.
+Replays a recorded outbox stream into a lofi SQLite replica worker
+(`@fragno-dev/lofi/sqlite/worker`) in the browser and measures the import. The Vite dev server acts
+as the backend: it serves `GET /fixture/_internal` and `GET /fixture/_internal/outbox/stream` from
+the recording. The page mirrors the automations schema from
+`apps/backoffice/app/fragno/automation/schema.ts`.
 
 ```bash
 OUTBOX_JSONL=~/dev/fragno-fixtures/outbox-dl-2026-10-23/outbox.jsonl pnpm -C packages-private/lofi-sqlite-import-benchmark replay
@@ -11,12 +12,12 @@ OUTBOX_JSONL=~/dev/fragno-fixtures/outbox-dl-2026-10-23/outbox.jsonl pnpm -C pac
 
 Open http://localhost:5544 in Chrome.
 
-- **Import** opens the replica and samples its outbox cursor every 500 ms until it reaches the last
-  entry, then counts the rows per table. It reports open time, entries per second, how long reads
-  wait while the writer imports, and origin storage usage. The replica is
-  `window.lofiSqliteReplica`.
+- **Import** starts a replica worker, which opens the replica, and samples its outbox cursor every
+  500 ms with a read view until it reaches the last entry, then counts the rows per table. It
+  reports open time, entries per second, how long a view waits while the worker imports, which runs
+  views between batches, and origin storage usage.
 - **Download only** reads and parses the whole stream without SQLite, as a baseline.
-- **Delete OPFS data** closes the replica and empties this origin's OPFS, so the next import starts
+- **Delete OPFS data** stops the worker and empties this origin's OPFS, so the next import starts
   from scratch. Reloading without deleting resumes from the stored cursor.
 - **Copy results JSON** copies the fixture, user agent, and both runs with their samples.
 

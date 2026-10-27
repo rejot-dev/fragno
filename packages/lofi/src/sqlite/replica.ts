@@ -111,7 +111,7 @@ const CAUGHT_UP_META_KEY = `caught-up:${LOFI_SQLITE_ENDPOINT_NAME}`;
 /**
  * Opens a SQLite replica of one Fragno backend's outbox in this tab, on the database
  * `dependencies` opens. Every tab reads through its own connection; one tab at a time, elected
- * with a Web Lock, streams the outbox and writes. `openLofiSqliteReplica` opens it in OPFS.
+ * with a Web Lock, streams the outbox and writes. A replica worker's leading tab opens it in OPFS.
  */
 export async function openLofiSqliteReplicaOn(
   options: LofiSqliteReplicaOptions,

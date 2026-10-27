@@ -9,7 +9,5 @@ wrote a table they read, which statements report as `statement.tables`. The sync
 prepares one statement at a time and adds `guarded(guard, run)`, which authorizes what statements
 read and limits their work and string length. `guardedSqlViewEngine` maintains views of SQL that
 people or agents write over its views and derived relations: they cannot write or call functions
-whose result changes on their own, and stop at row, byte, and operation limits. Replica workers no
-longer bundle the OPFS worker of `@tanstack/browser-db-sqlite-persistence`, which only
-`openLofiSqliteReplica` opens. `quoteSqliteIdentifier` is exported, to build SQL over the replica's
-table names.
+whose result changes on their own, and stop at row, byte, and operation limits.
+`quoteSqliteIdentifier` is exported, to build SQL over the replica's table names.

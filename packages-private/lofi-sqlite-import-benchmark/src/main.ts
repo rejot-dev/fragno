@@ -1,18 +1,16 @@
-import { lofiSqliteTableName, type LofiSqliteReplica } from "@fragno-dev/lofi/sqlite";
-import { openLofiSqliteReplica } from "@fragno-dev/lofi/sqlite/browser";
+import {
+  connectLofiSqlite,
+  lofiSqliteReadViews,
+  lofiSqliteTableName,
+  type LofiSqliteClient,
+  type LofiSqliteView,
+} from "@fragno-dev/lofi/sqlite";
 
-import { openBrowserWASQLiteOPFSDatabase } from "@tanstack/browser-db-sqlite-persistence";
-
-import { automationFragmentSchema } from "../../../apps/backoffice/app/fragno/automation/schema";
-import { uploadSchema } from "../../../packages/fragment-upload/src/schema";
-import { backofficeViews } from "./backoffice-views";
-import { instrumentDatabase, type DatabaseMeasurements } from "./instrumented-database";
+import { IMPORT_READS, importReplica, type ImportTarget, type importReads } from "./import-replica";
 import { FIXTURE_BASE_PATH, FIXTURE_INFO_PATH, type OutboxFixtureInfo } from "./outbox-fixture";
 
 declare global {
   interface Window {
-    /** The open replica, for running SQL from the browser console. */
-    lofiSqliteReplica?: LofiSqliteReplica;
     /** What "Copy results JSON" copies, for `measure.ts`. */
     lofiSqliteBenchmarkResults: typeof results;
   }
@@ -20,20 +18,16 @@ declare global {
 
 /** The fixture's schema, from the page URL: `?schema=upload` replays an Upload outbox. */
 const UPLOAD = new URLSearchParams(location.search).get("schema") === "upload";
-const REGISTRATION = { schema: UPLOAD ? uploadSchema : automationFragmentSchema };
-// Older outbox entries still write these tables, which the schema removed with `noOp`, and the
-// replica rejects unknown tables of a registered schema.
-const REMOVED_TABLES = UPLOAD ? [] : ["sandbox_instance", "marketplace_ingestion"];
-// `openLofiSqliteReplica` runs its `LofiClient` with endpoint name "lofi-sqlite".
-const CURSOR_META_KEY = "lofi-sqlite::outbox";
 const SAMPLE_INTERVAL_MS = 500;
-/** Connection settings to try, from the page URL: `?pragma=journal_mode=TRUNCATE&pragma=…`. */
-const PRAGMAS = new URLSearchParams(location.search).getAll("pragma");
+const readView = lofiSqliteReadViews<typeof importReads>(IMPORT_READS);
 
 type Sample = {
   ms: number;
   applied: number;
-  /** Latency of a read issued while the writer imports. */
+  /**
+   * How long a read view took to answer while the worker imports. The leading worker runs views
+   * between the batches it applies.
+   */
   readMs: number;
 };
 
@@ -42,14 +36,12 @@ type ImportRun = {
   views: boolean;
   /** Entries the replica held before this run, e.g. after a reload. */
   startApplied: number;
+  /** Until a worker opened the replica. */
   openMs: number;
-  firstChangeMs: number | null;
   doneMs: number | null;
   samples: Sample[];
-  tableCounts: Array<{ table: string; rows: number; ms: number }>;
+  tableCounts: Array<{ table: string; rows: number }>;
   storageUsageBytes: number | null;
-  /** Taken when the import is done, before the table counts. */
-  database: DatabaseMeasurements | null;
 };
 
 type DownloadRun = { ms: number; bytes: number; entries: number };
@@ -70,14 +62,15 @@ const elements = {
 };
 
 const fixture = (await (await fetch(FIXTURE_INFO_PATH)).json()) as OutboxFixtureInfo;
-let replica: LofiSqliteReplica | null = null;
+let importing: { worker: Worker; client: LofiSqliteClient } | null = null;
 let importRun: ImportRun | null = null;
 let downloadRun: DownloadRun | null = null;
 
+const [registration] = importReplica({ upload: UPLOAD, views: false }).schemas;
 elements.fixture.textContent = `${fixture.path}: ${fixture.versionstamps.length} entries, ${formatMb(fixture.bytes)}`;
 elements.sql.value = UPLOAD
-  ? `SELECT "provider", "status", count(*) AS "count" FROM "${lofiSqliteTableName(REGISTRATION, "file")}" GROUP BY 1, 2 ORDER BY 3 DESC`
-  : `SELECT "source", "eventType", count(*) AS "count" FROM "${lofiSqliteTableName(REGISTRATION, "automation_event")}" GROUP BY 1, 2 ORDER BY 3 DESC`;
+  ? `SELECT "provider", "status", count(*) AS "count" FROM "${lofiSqliteTableName(registration, "file")}" GROUP BY 1, 2 ORDER BY 3 DESC`
+  : `SELECT "source", "eventType", count(*) AS "count" FROM "${lofiSqliteTableName(registration, "automation_event")}" GROUP BY 1, 2 ORDER BY 3 DESC`;
 for (const button of [elements.importButton, elements.downloadButton, elements.resetButton]) {
   button.disabled = false;
 }
@@ -89,7 +82,11 @@ elements.importButton.addEventListener("click", () => {
   elements.views.disabled = true;
   elements.resetButton.disabled = true;
   void runImport()
-    .catch(reportError)
+    .catch((error: unknown) => {
+      reportError(error);
+      elements.importButton.disabled = false;
+      elements.views.disabled = false;
+    })
     .finally(() => {
       elements.resetButton.disabled = false;
     });
@@ -120,108 +117,120 @@ elements.runButton.addEventListener("click", () => {
 });
 
 /**
- * Opens the replica, which starts streaming the fixture, and samples the persisted cursor until it
- * reaches the last entry. The end time is the last change notification, not the sample that saw it.
+ * Starts a replica worker, which opens the replica and streams the fixture, and samples the
+ * replica's cursor until it reaches the last entry. On an empty database, the end time is when the
+ * replica reported it caught up, not the sample that saw it. Stops the worker at the replica's
+ * first error.
  */
 async function runImport(): Promise<void> {
-  const views = elements.views.checked;
-  const local = views ? backofficeViews : { localSchemas: [], projections: [] };
-  let measureDatabase: (() => Promise<DatabaseMeasurements>) | null = null;
+  const target: ImportTarget = { upload: UPLOAD, views: elements.views.checked };
   const startedAt = performance.now();
-  const opened = await openLofiSqliteReplica(
-    {
-      baseUrl: FIXTURE_BASE_PATH,
-      fetch: fetch.bind(globalThis),
-      schemas: [REGISTRATION],
-      localSchemas: local.localSchemas,
-      projections: local.projections,
-      ephemeralTables: REMOVED_TABLES.map((table) => ({
-        schema: REGISTRATION.schema.name,
-        table,
-      })),
-      onError: reportError,
-      retryDelayMs: 5_000,
-    },
-    {
-      openDatabase: async ({ databaseName }) => {
-        const database = await openBrowserWASQLiteOPFSDatabase({ databaseName });
-        for (const pragma of PRAGMAS) {
-          await database.execute(`PRAGMA ${pragma}`);
-        }
-        const instrumented = instrumentDatabase(database);
-        measureDatabase = () => instrumented.measure();
-        return instrumented.database;
-      },
-    },
-  );
-  const openMs = performance.now() - startedAt;
-  replica = opened;
-  window.lofiSqliteReplica = opened;
+  const worker = new Worker(new URL("./import.worker.ts", import.meta.url), {
+    type: "module",
+    name: JSON.stringify(target),
+  });
+  try {
+    await importWith(worker, target, startedAt);
+  } catch (error) {
+    worker.terminate();
+    if (importing?.worker === worker) {
+      importing = null;
+      elements.runButton.disabled = true;
+    }
+    throw error;
+  }
+}
+
+async function importWith(worker: Worker, target: ImportTarget, startedAt: number): Promise<void> {
+  const replica = importReplica(target);
+  const client = await connectLofiSqlite({
+    port: worker,
+    schemas: [...replica.schemas, ...replica.localSchemas],
+  });
+  const current = { worker, client };
+  importing = current;
   elements.runButton.disabled = false;
 
-  let lastChangeMs: number | null = null;
+  // The worker keeps retrying a replica it cannot open, or a stream that failed, while views wait
+  // for it; an error also spoils the timing, so the run stops instead.
+  const failed = new Promise<never>((_resolve, reject) => {
+    const rejectOnError = () => {
+      const { error } = client.getStatus();
+      if (error !== null) {
+        reject(new Error(error));
+      }
+    };
+    rejectOnError();
+    client.subscribeStatus(rejectOnError);
+  });
+  const unlessFailed = <T>(promise: Promise<T>) => Promise.race([promise, failed]);
+
+  let caughtUpMs: number | null = null;
+  const wasCatchingUp = client.getStatus().phase === "catching-up";
+  client.subscribeStatus(() => {
+    if (client.getStatus().phase === "caught-up" && wasCatchingUp) {
+      caughtUpMs ??= performance.now() - startedAt;
+    }
+  });
+
   const run: ImportRun = {
-    views,
-    startApplied: (await readApplied(opened)).applied,
-    openMs,
-    firstChangeMs: null,
+    views: target.views,
+    startApplied: (await unlessFailed(readApplied(client))).applied,
+    openMs: performance.now() - startedAt,
     doneMs: null,
     samples: [],
     tableCounts: [],
     storageUsageBytes: null,
-    database: null,
   };
   importRun = run;
-  opened.subscribe(() => {
-    lastChangeMs = performance.now() - startedAt;
-    run.firstChangeMs ??= lastChangeMs;
-  });
 
-  while (replica === opened) {
-    const { applied, readMs } = await readApplied(opened);
-    run.samples.push({ ms: performance.now() - startedAt, applied, readMs });
+  while (importing === current) {
+    const { applied, readMs } = await unlessFailed(readApplied(client));
+    const ms = performance.now() - startedAt;
+    run.samples.push({ ms, applied, readMs });
     if (applied === fixture.versionstamps.length) {
-      run.doneMs = lastChangeMs ?? performance.now() - startedAt;
+      run.doneMs = caughtUpMs ?? ms;
       break;
     }
     renderStats();
-    await new Promise((resolve) => {
-      setTimeout(resolve, SAMPLE_INTERVAL_MS);
-    });
+    await unlessFailed(
+      new Promise((resolve) => {
+        setTimeout(resolve, SAMPLE_INTERVAL_MS);
+      }),
+    );
   }
-  if (replica !== opened) {
+  if (importing !== current) {
     return;
   }
-  run.database = await measureDatabase!();
-
-  for (const registration of [REGISTRATION, ...local.localSchemas]) {
-    for (const table of Object.keys(registration.schema.tables)) {
-      const name = lofiSqliteTableName(registration, table);
-      const countStartedAt = performance.now();
-      const [row] = await opened.execute(`SELECT count(*) AS "rows" FROM "${name}"`);
-      run.tableCounts.push({
-        table: name,
-        rows: Number(row?.["rows"]),
-        ms: performance.now() - countStartedAt,
-      });
-    }
-  }
+  run.tableCounts = await unlessFailed(readOnce(readView(client, "tableCounts", target)));
   run.storageUsageBytes = (await navigator.storage.estimate()).usage ?? null;
   renderStats();
   elements.copyButton.disabled = false;
 }
 
-/** Entries at or before the persisted cursor, which the writer advances after each entry. */
-async function readApplied(
-  opened: LofiSqliteReplica,
-): Promise<{ applied: number; readMs: number }> {
+/** Entries at or before the replica's cursor, which the worker advances after each batch. */
+async function readApplied(client: LofiSqliteClient): Promise<{ applied: number; readMs: number }> {
   const startedAt = performance.now();
-  const [row] = await opened.execute(`SELECT "value" FROM "lofi_meta" WHERE "key" = ?`, [
-    CURSOR_META_KEY,
-  ]);
+  const cursor = await readOnce(readView(client, "cursor", undefined));
   const readMs = performance.now() - startedAt;
-  const cursor = row ? String(row["value"]) : null;
   return { applied: cursor === null ? 0 : entriesThrough(cursor), readMs };
+}
+
+/** A view's first data, after which the view closes. */
+function readOnce<TData>(view: LofiSqliteView<TData>): Promise<TData> {
+  return new Promise((resolve, reject) => {
+    const unlisten = view.listen((result) => {
+      if (result.status === "loading") {
+        return;
+      }
+      unlisten();
+      if (result.status === "ready") {
+        resolve(result.data);
+      } else {
+        reject(new Error(result.message));
+      }
+    });
+  });
 }
 
 function entriesThrough(versionstamp: string): number {
@@ -275,14 +284,12 @@ async function runDownload(): Promise<void> {
   }
 }
 
-/** Closes the replica and removes everything this origin stored in OPFS. */
+/** Stops the replica's worker and removes everything this origin stored in OPFS. */
 async function deleteOpfsData(): Promise<void> {
-  const closing = replica;
-  replica = null;
+  importing?.worker.terminate();
+  importing = null;
   importRun = null;
-  delete window.lofiSqliteReplica;
   elements.runButton.disabled = true;
-  await closing?.close();
   const root = await navigator.storage.getDirectory();
   for await (const name of root.keys()) {
     await root.removeEntry(name, { recursive: true });
@@ -291,11 +298,17 @@ async function deleteOpfsData(): Promise<void> {
 }
 
 async function runSql(): Promise<void> {
-  if (!replica) {
+  if (!importing) {
     return;
   }
   const startedAt = performance.now();
-  const rows = await replica.execute(elements.sql.value);
+  // A raw SQL view: its rows as SQLite returns them.
+  const rows = await readOnce(
+    importing.client.view<Array<Record<string, unknown>>>("sql", {
+      sql: elements.sql.value,
+      params: [],
+    }),
+  );
   elements.sqlTiming.textContent = `${rows.length} rows in ${formatMs(performance.now() - startedAt)}`;
   elements.sqlResult.textContent = JSON.stringify(
     rows.slice(0, 200),
@@ -323,7 +336,6 @@ function renderStats(): void {
     rows.push(
       ["Backoffice views", run.views ? "projected" : "not projected"],
       ["Open replica", formatMs(run.openMs)],
-      ["First change", run.firstChangeMs === null ? "–" : formatMs(run.firstChangeMs)],
       [
         "Applied",
         `${applied} / ${total} (${((applied / total) * 100).toFixed(1)}%), ${run.startApplied} before this run`,
@@ -346,11 +358,8 @@ function renderStats(): void {
       ]);
     }
     rows.push(["Done", run.doneMs === null ? "no" : `in ${formatMs(run.doneMs)}`]);
-    if (run.database) {
-      rows.push(...databaseRows(run.database, run.doneMs! - run.openMs));
-    }
-    for (const { table, rows: count, ms } of run.tableCounts) {
-      rows.push([table, `${count} rows (count in ${formatMs(ms)})`]);
+    for (const { table, rows: count } of run.tableCounts) {
+      rows.push([table, `${count} rows`]);
     }
     if (run.storageUsageBytes !== null) {
       rows.push(["Origin storage usage", formatMb(run.storageUsageBytes)]);
@@ -371,44 +380,6 @@ function renderStats(): void {
       return row;
     }),
   );
-}
-
-/** Where the import's time went, from the instrumented connection. */
-function databaseRows(database: DatabaseMeasurements, importMs: number): Array<[string, string]> {
-  const percent = (ms: number) => `${Math.round((ms / importMs) * 100)}%`;
-  const commit = database.statements.find(({ statement }) => statement === "COMMIT");
-  return [
-    [
-      "Waiting on the database",
-      `${formatMs(database.busyMs)} (${percent(database.busyMs)} of the import), ${database.transactions} transactions`,
-    ],
-    [
-      "Outside the database",
-      `${formatMs(importMs - database.busyMs)} (${percent(importMs - database.busyMs)})`,
-    ],
-    ...database.statements
-      .slice(0, 8)
-      .map(({ statement, count, totalMs, maxMs }): [string, string] => [
-        statement,
-        `${count}×, ${formatMs(totalMs)} (${percent(totalMs)}), avg ${(totalMs / count).toFixed(2)} ms, max ${formatMs(maxMs)}`,
-      ]),
-    ...database.tenths.map(
-      ({ avgMs, avgCommitMs, avgStatements, avgParamKb }, index): [string, string] => [
-        `Transactions ${index * 10}–${(index + 1) * 10}%`,
-        `avg ${avgMs.toFixed(2)} ms, commit ${avgCommitMs.toFixed(2)} ms, ${avgStatements.toFixed(1)} statements, ${avgParamKb.toFixed(1)} kB params`,
-      ],
-    ),
-    ["Probe: SELECT 1 round trip", `${database.probes.selectOneMedianMs.toFixed(2)} ms median`],
-    [
-      "Probe: 200 rows",
-      `${formatMs(database.probes.rowsPerTransaction1Ms)} in 200 transactions, ${formatMs(database.probes.rowsPerTransaction200Ms)} in one`,
-    ],
-    ["PRAGMAs", JSON.stringify(database.pragmas)],
-    [
-      "Commits",
-      commit ? `${commit.count}, avg ${(commit.totalMs / commit.count).toFixed(2)} ms` : "–",
-    ],
-  ];
 }
 
 function results() {

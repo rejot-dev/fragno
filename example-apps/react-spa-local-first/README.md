@@ -42,10 +42,10 @@ The Tables panel also includes a local schema:
 ## SQLite replica
 
 The **SQLite replica** tab mirrors the outbox of the first enabled endpoint into an OPFS SQLite
-database with `@fragno-dev/lofi/sqlite`, including the `local_project_usage` projection. Pick a
-table to query it, or write SQL; the result re-runs whenever any tab applies outbox entries. The
-open replica is also available as `window.lofiSqliteReplica` in the browser console.
+database in a replica worker (`@fragno-dev/lofi/sqlite/worker`), including the `local_project_usage`
+projection. Pick a table to query it, or write SQL; the result re-runs after any tab applies outbox
+entries to a table it reads.
 
 To check the multi-tab behaviour, open the tab in two browser tabs and create a comment (for example
 with `example-apps/fragno-db-usage-drizzle/scripts/create-comment.sh`). Both tabs update; closing
-the tab that writes hands writing to the other one within about a second.
+the leading tab hands the replica to the other one within about a second.

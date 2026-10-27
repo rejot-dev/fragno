@@ -12,7 +12,6 @@ export {
 export {
   type LofiSqliteReplica,
   type LofiSqliteReplicaChange,
-  type LofiSqliteReplicaDependencies,
   type LofiSqliteReplicaOptions,
   type LofiSqliteReplicaStatus,
 } from "./sqlite/replica";

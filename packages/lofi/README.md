@@ -565,56 +565,23 @@ IndexedDB work to keep transactions active. If local schema or projection code c
 whole IndexedDB database and sync again. The SQLite replica can rebuild a projection from the rows
 it stores instead; see "Rebuildable projections" below.
 
-## SQLite replica (browser)
+## SQLite replica
 
-`openLofiSqliteReplica` from `@fragno-dev/lofi/sqlite/browser` mirrors one backend's outbox into a
-SQLite database in the browser's Origin Private File System (OPFS), using the same wa-sqlite setup
-as `@fragno-dev/tanstack-db-adapter`. Tables are laid out like the backend's SQLite tables, so you
-read them with plain SQL. Local projections run in the same transaction as the outbox entry. The
-replica only receives server state: it has no query engine, no optimistic writes, and no submit.
+`@fragno-dev/lofi/sqlite/worker` mirrors one backend's outbox into a SQLite database in the
+browser's Origin Private File System (OPFS), in a dedicated worker. Tables are laid out like the
+backend's SQLite tables, so you read them with plain SQL. Local projections run in the same
+transaction as the outbox entry. The replica only receives server state: it has no query engine, no
+optimistic writes, and no submit. Every tab starts a worker; the tabs' workers elect one that opens
+the replica, and pages read it through live views. "Replica worker and live views" below shows how
+to set it up.
 
 ```bash
-pnpm add @tanstack/browser-db-sqlite-persistence @journeyapps/wa-sqlite
+pnpm add @journeyapps/wa-sqlite
 ```
 
-```ts
-import { openLofiSqliteReplica } from "@fragno-dev/lofi/sqlite/browser";
-
-const replica = await openLofiSqliteReplica({
-  baseUrl: "https://example.com/api/my-fragment", // serves /_internal
-  fetch: fetch.bind(globalThis),
-  schemas: [{ schema: appSchema }],
-  // Projections work as in "Local schemas / materialized views" below.
-  localSchemas: [],
-  projections: [],
-  ephemeralTables: [],
-  onError: (error) => console.error(error),
-  retryDelayMs: 5_000,
-});
-
-const { users } = appSchema.tables;
-const load = () =>
-  // Each result column decodes like the schema column it names, or as a plain integer or text.
-  replica.query({
-    sql: `SELECT "id", "email", "joinedAt", count(*) OVER () AS "total"
-          FROM "users_app" WHERE "age" >= ?1 ORDER BY "age"`,
-    params: [21],
-    columns: {
-      id: "text",
-      email: users.columns.email,
-      joinedAt: users.columns.joinedAt,
-      total: "integer",
-    },
-  });
-
-const unsubscribe = replica.subscribe(() => void load());
-// On teardown:
-unsubscribe();
-await replica.close();
-```
-
-`replica.getStatus()` says whether the replica holds the data the backend had when synchronization
-started, so views can wait for it instead of showing a partial history:
+A page's connection to its worker (`connectLofiSqlite`, below) reports whether the replica holds the
+data the backend had when synchronization started, so views can wait for it instead of showing a
+partial history:
 
 ```ts
 const stopWatching = replica.subscribeStatus(() => {
@@ -622,10 +589,8 @@ const stopWatching = replica.subscribeStatus(() => {
   if (status.phase === "catching-up") {
     // `fraction` is null until the server names how much there is to replay.
     showProgress(status.fraction === null ? null : Math.floor(status.fraction * 100));
-  } else {
-    void load();
   }
-  // The last synchronization failure, if any; the writing tab retries on its own.
+  // The last synchronization failure, if any; the leading tab retries on its own.
   showError(status.error);
 });
 ```
@@ -647,9 +612,9 @@ const stopWatching = replica.subscribeStatus(() => {
 - **Indexes** have the backend's names. All of them are non-unique: a row the server deleted with
   `omitOutbox()` and no truncate notification stays in the replica, and a new row may reuse its
   unique values. There are no foreign keys, because a replica may mirror only some schemas.
-- `replica.query({ sql, params, columns })` decodes each result column like the schema column it
-  names (a `Date`, boolean, parsed JSON, or bigint), or as a plain `"integer"` or `"text"`, which
-  must not be NULL. A declared column missing from the result throws.
+- A SQL view, `replica.sql({ sql, params, columns })`, decodes each result column like the schema
+  column it names (a `Date`, boolean, parsed JSON, or bigint), or as a plain `"integer"` or
+  `"text"`, which must not be NULL. A declared column missing from the result throws.
   `decodeLofiSqliteRow(table, row)` restores a whole row in the record shape of a Fragno query: a
   `FragnoId` for `id`, a `FragnoReference` for references, and decoded values.
 - **Parameters**: whole numbers bind as 64-bit integers. wa-sqlite would bind a number outside the
@@ -731,43 +696,26 @@ other adapters ignore `rebuild` except for checking what it writes.
 projections on a second connection and returns their tables before and after, so a test can check
 that a projection rebuilds to the rows the outbox built.
 
-### Tabs
+### Writing
 
-Every tab opens its own connection and reads through it. One tab at a time holds a Web Lock named
-after the database. That tab streams the outbox (`GET /_internal/outbox/stream`) and writes. It
-releases the lock only after its last transaction has finished, so two tabs never write at once.
-When it closes, the next tab acquires the lock and resumes from the cursor in `lofi_meta`. If its
-synchronization stops on an error, for example an HTTP error from the stream, it reports the error
-to `onError`, releases the lock so another tab can try, and competes again after `retryDelayMs`.
+The leading tab's worker holds a Web Lock named after the database while it writes. It streams the
+outbox (`GET /_internal/outbox/stream`) and releases the lock only after its last transaction has
+finished, so a deposed leader still finishing a batch and its successor never write at once. The
+next leader resumes from the cursor in `lofi_meta`. If synchronization stops on an error, for
+example an HTTP error from the stream, the replica reports it to `onError` and in its status, and
+tries again after `retryDelayMs`.
 
-The writing tab applies the entries that have arrived, up to 50 at a time, in one transaction that
-also writes the cursor once, so a catch-up commits once per batch instead of once per entry. An
-entry that fails, for example because a projection throws, rolls back its whole batch, and the next
-attempt starts from the batch's first entry.
+The writer applies the entries that have arrived, up to 50 at a time, in one transaction that also
+writes the cursor once, so a catch-up commits once per batch instead of once per entry. An entry
+that fails, for example because a projection throws, rolls back its whole batch, and the next
+attempt starts from the batch's first entry. Statements go to the database one at a time, in the
+order they were made: the database steps through a statement asynchronously, so a projection's read
+issued while a write still ran could otherwise miss it.
 
-Every call to the database is a round trip to its worker, which in a busy page cost more than the
-statements themselves. Inside a transaction, statements that return no rows queue with their
-parameters written in as SQL literals, and go to the worker in one call together with the next read
-or the `COMMIT`; `BEGIN` goes with the first one. A batch takes two calls: one that begins it and
-reads the applied-through watermark, and one with its writes and the commit. A value whose literal
-SQLite could read back differently, such as a fraction or a number beyond 32 bits that is not a
-bigint, sends its statement on its own. Calls go to the database one at a time, in the order they
-were made: the worker starts each call as it arrives, so a projection's second read, sent while the
-call carrying the queued writes was still running, could otherwise miss them. Replaying a
-6,559-entry Upload outbox took 273 calls instead of about 7,250, and 0.49 s instead of 0.72 s in
-headless Chrome.
+Once a batch commits, the replica tells its listeners which tables it wrote; see "Which views
+refresh" below.
 
-On wa-sqlite 1.x, two database workers that start at once can race to delete the temporary
-directories that closed workers left in OPFS, and the loser fails to open. A page that opens several
-replicas, or a replica and a TanStack DB database, hits this on reloads, so the replica retries a
-failed open twice. wa-sqlite 2.x ignores the directory that is already gone.
-
-The writing tab tells the other tabs over a `BroadcastChannel` once a batch commits; `subscribe`
-fires in every tab. `execute` waits for the tab's pending replication writes, so a read never sees
-half of a batch.
-
-The writing tab also shares its status over the channel, and a tab that opens asks for it. The
-stream starts by naming the last entry that existed when it opened and marks when it has sent
+The stream starts by naming the last entry that existed when it opened and marks when it has sent
 everything up to it. The writer estimates progress from the versionstamps it applied in between, and
 reports `caught-up` after the marker, once every entry before it has committed. A replica stays
 `caught-up` from then on, and remembers it in `lofi_meta`, so later sessions open `caught-up` too:
@@ -776,29 +724,13 @@ changed since. A reconnect or a new writer catches up again without sending view
 
 ### Risks and follow-ups
 
-- **The OPFS path has no automated test.** The scenario tests run the whole replica in Node against
-  fragno-db's SQLite backend, with wa-sqlite's in-memory VFS standing in for OPFS and Node's own Web
-  Locks and `BroadcastChannel`. That VFS does not lock, so the tests do not show how tabs contend
-  for the file. The real OPFS path was checked by hand in Chrome 130 through the SQLite replica tab
-  of `example-apps/react-spa-local-first`: catch-up, live updates in two tabs, takeover when the
-  writing tab closes, persistence across a reload, and projections. Chrome can grant a Web Lock
-  request after its signal aborted; the replica handles that, and a scenario simulates it.
-- **No offline start.** `openLofiSqliteReplica` fetches `GET /_internal` before opening the
-  database, because the database name depends on the backend's `adapterIdentity`. While the backend
-  is unreachable, opening fails even when the data is already in OPFS. Remembering the last database
+- **No offline start.** Opening the replica fetches `GET /_internal` before opening the database,
+  because the database name depends on the backend's `adapterIdentity`. While the backend is
+  unreachable, opening fails even when the data is already in OPFS. Remembering the last database
   name per base URL would let a tab open the existing replica and start synchronizing once the
   backend is back.
-- **Reads in other tabs during heavy writes.** OPFSCoopSyncVFS hands file access between
-  connections, so reading tabs can stall while the writing tab catches up. The replica worker below
-  avoids this: only its leader opens the database.
-- **Catch-up speed.** A batch takes two worker calls, so the statements themselves and their parsing
-  are now most of the cost. Statements are not prepared once and reused, because the worker takes
-  only SQL text.
-- **`openLofiSqliteReplica` needs wa-sqlite 1.x.** It opens its database through
-  `@tanstack/browser-db-sqlite-persistence`, which accepts only wa-sqlite `^1.4.1`, so apps that use
-  it stay on 1.7.2 and keep the startup race: the retry covers the replica's own open, but a
-  TanStack DB database that loses the race to a replica's worker still fails. Replica workers
-  (`@fragno-dev/lofi/sqlite/worker`) run on wa-sqlite 2.x, which does not race.
+- **Catch-up speed.** Statements are not prepared once and reused: the replica sends SQL text, which
+  SQLite parses again each time.
 - **Projection changes.** A projection without `rebuild` keeps the rows its old code wrote until a
   registered schema's version changes. A rebuildable one that computes something new without a
   version bump does the same.
@@ -812,20 +744,13 @@ changed since. A reconnect or a new writer catches up again without sending view
   cannot verify; the replica does not.
 - **Dangling references.** A reference to a row the replica does not hold, for example in a table
   you did not register, is stored as NULL and is not filled in if the row arrives later.
-- **Errors that never clear.** A schema mismatch fails on every attempt, so each tab retries every
-  `retryDelayMs` and reports the same error each time. The entries before the failing one in its
-  batch are not applied either.
-- **No snapshot across queries.** Each `execute` or `query` waits for pending writes, but the
-  writing tab can apply an entry between two of a reader's queries, so a view built from several
-  queries can mix states. The next change notification reads again. A read transaction would need
-  its own connection, because replication writes share the tab's.
+- **Errors that never clear.** A schema mismatch fails on every attempt, so the leading tab retries
+  every `retryDelayMs` and reports the same error each time. The entries before the failing one in
+  its batch are not applied either.
 - **No indicator for a returning replica.** A replica that caught up in an earlier session shows its
   older state at once, and nothing says how far behind it is while the stream replays the gap.
 - **Estimated progress.** `fraction` is the share of entries replayed, counted by the transaction
   versions in their versionstamps. Entries differ in size, so it does not track the time left.
-- **Coarse refresh.** `subscribe` reports which tables a batch wrote, not which rows, so a reader
-  runs a query again after any write to a table it reads. A writing tab on a lofi that does not
-  report tables sends null, which refreshes everything.
 - **JSON `null`.** A JSON column holding `null` is stored as SQL `NULL`, the same as a missing
   value.
 
@@ -839,7 +764,7 @@ incrementally.
 
 The worker opens the replica in OPFS through wa-sqlite's OPFSCoopSyncVFS, with a synchronous
 connection that view engines read, so it needs only `@journeyapps/wa-sqlite`. Each tab starts a
-worker, with the same replica options as `openLofiSqliteReplica`:
+worker with the replica's options:
 
 ```ts
 // replica.worker.ts
@@ -883,22 +808,21 @@ $adults.subscribe((result) => {
 });
 ```
 
-`replica.getStatus()` and `replica.subscribeStatus()` report the replica's status, as
-`LofiSqliteReplica`'s do, so a page can wait for the catch-up before showing views.
+`replica.getStatus()` and `replica.subscribeStatus()` report the replica's status, as shown under
+"SQLite replica" above, so a page can wait for the catch-up before showing views.
 
-A SQL view's rows decode like `replica.query`'s (see Layout above). The worker runs the query again
-after every batch that wrote a table it reads, and sends the rows only when they changed. The query
-is one statement: SQL after it other than whitespace and comments is refused, as is a statement that
-would write, since a write would bypass the replica.
+A SQL view's rows decode as Layout above describes. The worker runs the query again after every
+batch that wrote a table it reads, and sends the rows only when they changed. The query is one
+statement: SQL after it other than whitespace and comments is refused, as is a statement that would
+write, since a write would bypass the replica.
 
 ### Which views refresh
 
 The replica records the tables each batch writes, by SQL name: the rows of the outbox's mutations,
-what projections write, and the tables a rebuild recreates. `replica.subscribe` passes them to its
-listeners as `{ tables }`, and tabs that write tell the others; `tables` is null when a writing tab
-runs a lofi that does not say. The leader adds up the tables of the batches since its last refresh
-and passes them to every engine's `refresh(changed)`. SQLite's authorizer reports the tables a
-statement reads while preparing it, as `statement.tables`, including the tables behind a view, so:
+what projections write, and the tables a rebuild recreates. The leader adds up the tables of the
+batches since its last refresh and passes them to every engine's `refresh(changed)`. SQLite's
+authorizer reports the tables a statement reads while preparing it, as `statement.tables`, including
+the tables behind a view, so:
 
 - a SQL view refreshes after a batch that wrote one of its statement's tables;
 - a read view refreshes after a batch that wrote a table its last run read, since a read reads other
@@ -978,7 +902,7 @@ cannot run, and runs that fail, report why to the page that asked rather than to
 
 A read view runs a function of several queries, for results one SQL statement cannot shape, such as
 rows parsed and folded by the app's own code. `readViewEngine` runs named reads in the worker; each
-gets a `LofiSqliteReader`, whose `query` decodes rows like `replica.query` but synchronously, and
+gets a `LofiSqliteReader`, whose `query` decodes rows like a SQL view's, but synchronously, and
 returns data that survives `postMessage`. The leader runs a view's read again after every batch,
 with the database locked, so all of its queries see one state, and sends the result only when it
 changed. Reads must not write.
@@ -1123,9 +1047,6 @@ export const schema = schema("app", (s) =>
 - `IndexedDbAdapter` - IndexedDB-backed `LofiAdapter` and query engine.
 - `InMemoryLofiAdapter` - in-memory `LofiAdapter` for optimistic overlays/tests.
 - `StackedLofiAdapter` - merges base + overlay adapters for optimistic reads.
-- `@fragno-dev/lofi/sqlite/browser`: `openLofiSqliteReplica` - the browser SQLite replica, opened in
-  the tab through `@tanstack/browser-db-sqlite-persistence`. It is an entry of its own so apps that
-  only use replica workers do not bundle that package's OPFS worker.
 - `@fragno-dev/lofi/sqlite`: `SqliteLofiAdapter`, `decodeLofiSqliteRow`, `lofiSqliteTableName`,
   `quoteSqliteIdentifier`, and the replica's types.
 - `@fragno-dev/lofi/sqlite/testing`: `openLofiSqliteMemoryFiles` opens replicas in Node on
