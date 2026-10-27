@@ -137,7 +137,19 @@ describe("Project Connector connection scenarios", () => {
     assert(scenario.gateway.control.discoveryReads === 0);
     const [workConfig] = scenario.gateway.providerConfigs;
     assert(workConfig);
-    const { actionIds, ...workOverview } = workConfig;
+    const { actionIds, ...workConfigFields } = workConfig;
+    const workOverview = {
+      ...workConfigFields,
+      catalog: {
+        displayName: "Gmail",
+        description: "Email conversations, labels, drafts, and mailbox management",
+        iconUrl: "https://static.example/logo/Gmail.svg",
+        categories: [
+          { id: "communication", displayName: "Communication" },
+          { id: "productivity", displayName: "Productivity" },
+        ],
+      },
+    };
     scenario.gateway.providerConfigs.push({
       ...workConfig,
       id: "gmail-personal",
@@ -170,6 +182,9 @@ describe("Project Connector connection scenarios", () => {
           ],
         });
       expect(JSON.stringify(providerStore.get().data)).not.toContain("test-project-key");
+      expect(JSON.stringify(providerStore.get().data)).not.toContain("test-catalog-key");
+      // Configurations of one service share its catalog entry, read once per discovery.
+      expect(scenario.gateway.control.providerCatalogReads.at(-1)).toEqual(["gmail"]);
       assert(scenario.gateway.requests.size === 0);
       expect((await scenario.call("alice", "GET", "/accounts")).data).toEqual({
         accounts: [],

@@ -33,6 +33,7 @@ import { apiPublicAddress, apiWebhookPublicUrl } from "@/fragno/scoped-public-fr
 
 import { isSuccessStatus, throwOnRouteRuntimeError } from "../../runtime-errors";
 import { resolveRuntimePublicScopePathSegment } from "../../runtime-public-scope";
+import { INTEGRATION_CATEGORY } from "./integration-categories";
 import type { IntegrationConnectionState } from "./integration-events";
 import {
   checkedIntegrationActionDefinition,
@@ -524,6 +525,8 @@ export function createWebhookIntegration({
           label: "Inbound webhook",
           description:
             "A public URL that accepts a provider's webhook deliveries and records each one as an api.webhook.received event. Choose an address webhook#<endpointId>; the endpoint ID also names the event source that reclassified deliveries use.",
+          iconUrl: null,
+          categories: [INTEGRATION_CATEGORY.developerTools],
           connectionCardinality: "multiple",
           availability: !runtime.config.bindings.api
             ? { status: "unavailable", reason: "The API object binding is unavailable." }

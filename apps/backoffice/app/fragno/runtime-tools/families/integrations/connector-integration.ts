@@ -521,11 +521,18 @@ export function createConnectorIntegration({
           throw cause;
         }
       }
-      const services = [...new Set(discovery.providerConfigs.map((provider) => provider.service))];
-      return services.map((service) => ({
+      // Every configuration of a service carries the same catalog entry.
+      const catalogByService = new Map(
+        discovery.providerConfigs.map((provider) => [provider.service, provider.catalog]),
+      );
+      return [...catalogByService].map(([service, catalog]) => ({
         id: service,
-        label: service,
-        description: `OAuth connections for ${service} using this user's configured project providers. Targets name the default connection and every name already started; to connect another account, submit { start: true, connectionName } to a target's setup.`,
+        label: catalog?.displayName ?? service,
+        // The catalog's own description leads, so short previews show what the service is.
+        description: `${catalog?.description ?? `OAuth connections for ${service} using this user's configured project providers.`} Targets name the default connection and every name already started; to connect another account, submit { start: true, connectionName } to a target's setup.`,
+        iconUrl: catalog?.iconUrl ?? null,
+        categories:
+          catalog?.categories.map(({ id, displayName }) => ({ id, label: displayName })) ?? [],
         connectionCardinality: "multiple",
         availability: { status: "available" },
         // This preassigned source name makes a concrete setup target available before OAuth assigns an account ID.
