@@ -68,7 +68,9 @@ export function AgentStartComposer({
   const sending = fetcher.state !== "idle" || attachments?.sending === true;
   const submissionDisabled = sending || (!draftPrompt.trim() && !attached);
   const sendError =
-    attachmentError ?? (fetcher.data && !fetcher.data.ok ? (fetcher.data.error ?? null) : null);
+    attachments?.refusal ??
+    attachmentError ??
+    (fetcher.data && !fetcher.data.ok ? (fetcher.data.error ?? null) : null);
   const started = fetcher.data?.ok === true;
   const displayName = formatPiAgentName(agentName);
 
