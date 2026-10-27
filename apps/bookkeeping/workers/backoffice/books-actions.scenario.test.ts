@@ -249,7 +249,7 @@ test("people's agents keep the books through Backoffice, within what the person 
       status: 403,
       body: {
         message:
-          "Automations without a person behind them read the books; only people change them.",
+          "Automations without a person behind them read the books and propose documents' entries; only people change the books.",
       },
     });
   });

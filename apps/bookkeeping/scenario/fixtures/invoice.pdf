@@ -1,0 +1,108 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >>
+endobj
+4 0 obj
+<< /Length 3780 >>
+stream
+0.13 0.29 0.43 rg 0 834 595 8 re f
+BT /F2 18 Tf 0.05 g 50.00 780.00 Td (Babbage Instruments B.V.) Tj ET
+BT /F1 9 Tf 0.35 g 50.00 762.00 Td (Keizersgracht 123) Tj ET
+BT /F1 9 Tf 0.35 g 50.00 750.00 Td (1015 CJ Amsterdam) Tj ET
+BT /F1 9 Tf 0.35 g 50.00 738.00 Td (The Netherlands) Tj ET
+BT /F1 9 Tf 0.35 g 50.00 726.00 Td (billing@babbage-instruments.example) Tj ET
+BT /F2 26 Tf 0.05 g 438.09 776.00 Td (INVOICE) Tj ET
+BT /F1 9 Tf 0.45 g 335.00 744.00 Td (Invoice number) Tj ET
+BT /F2 9 Tf 0.1 g 483.97 744.00 Td (INV-2026-0042) Tj ET
+BT /F1 9 Tf 0.45 g 335.00 730.00 Td (Invoice date) Tj ET
+BT /F2 9 Tf 0.1 g 488.47 730.00 Td (2 March 2026) Tj ET
+BT /F1 9 Tf 0.45 g 335.00 716.00 Td (Due date) Tj ET
+BT /F2 9 Tf 0.1 g 494.47 716.00 Td (1 April 2026) Tj ET
+BT /F1 9 Tf 0.45 g 335.00 702.00 Td (Your reference) Tj ET
+BT /F2 9 Tf 0.1 g 509.48 702.00 Td (PO 1843) Tj ET
+BT /F2 8 Tf 0.45 g 50.00 668.00 Td (BILL TO) Tj ET
+BT /F2 11 Tf 0.1 g 50.00 652.00 Td (Analytical Engines) Tj ET
+BT /F1 9 Tf 0.3 g 50.00 638.00 Td (Attn. Ada Lovelace) Tj ET
+BT /F1 9 Tf 0.3 g 50.00 626.00 Td (Herengracht 456) Tj ET
+BT /F1 9 Tf 0.3 g 50.00 614.00 Td (1017 CA Amsterdam) Tj ET
+BT /F1 9 Tf 0.3 g 50.00 602.00 Td (The Netherlands) Tj ET
+0.13 0.29 0.43 rg 50 553 495 22 re f
+BT /F2 8.5 Tf 1 g 60.00 560.00 Td (DESCRIPTION) Tj ET
+BT /F2 8.5 Tf 1 g 322.52 560.00 Td (QTY) Tj ET
+BT /F2 8.5 Tf 1 g 371.83 560.00 Td (UNIT PRICE) Tj ET
+BT /F2 8.5 Tf 1 g 468.00 560.00 Td (VAT) Tj ET
+BT /F2 8.5 Tf 1 g 497.70 560.00 Td (AMOUNT) Tj ET
+BT /F1 9 Tf 0.1 g 60.00 532.00 Td (Brass gear wheel, 40 teeth) Tj ET
+BT /F1 9 Tf 0.1 g 313.49 532.00 Td (12 pcs) Tj ET
+BT /F1 9 Tf 0.1 g 389.98 532.00 Td (\200 18.50) Tj ET
+BT /F1 9 Tf 0.1 g 466.99 532.00 Td (21%) Tj ET
+BT /F2 9 Tf 0.1 g 499.97 532.00 Td (\200 222.00) Tj ET
+0.96 0.97 0.98 rg 50 500 495 24 re f
+BT /F1 9 Tf 0.1 g 60.00 508.00 Td (Precision axle, hardened steel) Tj ET
+BT /F1 9 Tf 0.1 g 318.49 508.00 Td (4 pcs) Tj ET
+BT /F1 9 Tf 0.1 g 389.98 508.00 Td (\200 42.75) Tj ET
+BT /F1 9 Tf 0.1 g 466.99 508.00 Td (21%) Tj ET
+BT /F2 9 Tf 0.1 g 499.97 508.00 Td (\200 171.00) Tj ET
+BT /F1 9 Tf 0.1 g 60.00 484.00 Td (Assembly and calibration) Tj ET
+BT /F1 9 Tf 0.1 g 312.49 484.00 Td (3.5 hrs) Tj ET
+BT /F1 9 Tf 0.1 g 389.98 484.00 Td (\200 65.00) Tj ET
+BT /F1 9 Tf 0.1 g 466.99 484.00 Td (21%) Tj ET
+BT /F2 9 Tf 0.1 g 499.97 484.00 Td (\200 227.50) Tj ET
+0.96 0.97 0.98 rg 50 452 495 24 re f
+BT /F1 9 Tf 0.1 g 60.00 460.00 Td (Technical manual, printed) Tj ET
+BT /F1 9 Tf 0.1 g 318.49 460.00 Td (1 pcs) Tj ET
+BT /F1 9 Tf 0.1 g 389.98 460.00 Td (\200 24.00) Tj ET
+BT /F1 9 Tf 0.1 g 472.00 460.00 Td (9%) Tj ET
+BT /F2 9 Tf 0.1 g 504.98 460.00 Td (\200 24.00) Tj ET
+0.8 G 0.5 w 50 446 m 545 446 l S
+BT /F1 9 Tf 0.4 g 325.00 422.00 Td (Subtotal) Tj ET
+BT /F1 9 Tf 0.1 g 499.97 422.00 Td (\200 644.50) Tj ET
+BT /F1 9 Tf 0.4 g 325.00 406.00 Td (VAT 21% of \200 620.50) Tj ET
+BT /F1 9 Tf 0.1 g 499.97 406.00 Td (\200 130.31) Tj ET
+BT /F1 9 Tf 0.4 g 325.00 390.00 Td (VAT 9% of \200 24.00) Tj ET
+BT /F1 9 Tf 0.1 g 509.98 390.00 Td (\200 2.16) Tj ET
+0.93 0.95 0.97 rg 315 361 230 26 re f
+BT /F2 11 Tf 0.1 g 325.00 372.00 Td (Total due) Tj ET
+BT /F2 11 Tf 0.1 g 492.19 372.00 Td (\200 776.97) Tj ET
+0.8 G 0.5 w 50 172 m 545 172 l S
+BT /F2 8 Tf 0.45 g 50.00 150.00 Td (PAYMENT) Tj ET
+BT /F1 9 Tf 0.1 g 50.00 134.00 Td (Please transfer \200 776.97 by 1 April 2026) Tj ET
+BT /F1 9 Tf 0.1 g 50.00 120.00 Td (to IBAN NL91 ABNA 0417 1643 00, quoting INV-2026-0042.) Tj ET
+BT /F2 8 Tf 0.45 g 330.00 150.00 Td (COMPANY) Tj ET
+BT /F1 9 Tf 0.1 g 330.00 134.00 Td (VAT NL861234567B01) Tj ET
+BT /F1 9 Tf 0.1 g 330.00 120.00 Td (Chamber of Commerce 71234567) Tj ET
+BT /F1 9 Tf 0.45 g 50.00 60.00 Td (Thank you for your business.) Tj ET
+BT /F1 8 Tf 0.45 g 504.08 60.00 Td (Page 1 of 1) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+6 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>
+endobj
+7 0 obj
+<< /Title (Invoice INV-2026-0042) /Author (Babbage Instruments B.V.) >>
+endobj
+xref
+0 8
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000121 00000 n 
+0000000257 00000 n 
+0000004089 00000 n 
+0000004186 00000 n 
+0000004288 00000 n 
+trailer
+<< /Size 8 /Root 1 0 R /Info 7 0 R >>
+startxref
+4375
+%%EOF

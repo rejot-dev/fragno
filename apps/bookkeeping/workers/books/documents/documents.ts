@@ -2,7 +2,7 @@ import { defineFragment, instantiate } from "@fragno-dev/core";
 import { withDatabase, type FragnoPublicConfigWithDatabase, type TxResult } from "@fragno-dev/db";
 import type { createLedgerFragment } from "@fragno-dev/ledger";
 
-import { documentsSchema, type Dismissal, type DocumentMediaType } from "./schema";
+import { documentsSchema, type Dismissal, type DocumentMediaType, type Review } from "./schema";
 
 type LedgerServices = ReturnType<typeof createLedgerFragment>["services"];
 type PostEntryInput = Parameters<LedgerServices["postEntry"]>[0];
@@ -58,6 +58,7 @@ export type DocumentState =
 
 export type DocumentView = NewDocument & {
   uploadedAt: Date;
+  review: Review | null;
   /** The ledger's source document, once an entry recorded it, with every entry recording it. */
   source: SourceDocument | null;
   state: DocumentState;
@@ -117,6 +118,7 @@ function toRow(document: {
   uploadedAt: Date;
   uploadedBy: string;
   dismissal: Dismissal | null;
+  review: Review | null;
 }): DocumentRow {
   return {
     id: document.id.valueOf(),
@@ -128,6 +130,7 @@ function toRow(document: {
     uploadedAt: document.uploadedAt,
     uploadedBy: document.uploadedBy,
     dismissal: document.dismissal,
+    review: document.review,
   };
 }
 
@@ -157,7 +160,7 @@ const documentsFragmentDefinition = defineFragment("documents")
             }
             uow.create(
               "document",
-              { ...document, uploadedAt: uow.now(), bookings: 0, dismissal: null },
+              { ...document, uploadedAt: uow.now(), bookings: 0, dismissal: null, review: null },
               // A concurrent upload recorded it: retrying reads it and compares the files. Its ID is
               // the table's only unique key.
               { retryOnUniqueConflict: () => true },
@@ -273,6 +276,42 @@ const documentsFragmentDefinition = defineFragment("documents")
             );
           })
           .transform(({ serviceResult: [, reversed] }) => reversed)
+          .build();
+      },
+
+      /**
+       * Records the bookkeeping agent's review of a document to book: that it was asked, or its
+       * answer. Asking again replaces an earlier answer, and recording a request again does nothing;
+       * with `first`, so does a request for a document that has a review. Returns the review in
+       * effect.
+       */
+      reviewDocument: function (input: { documentId: string; review: Review; first?: boolean }) {
+        const { documentId, review, first = false } = input;
+        return this.serviceTx(documentsSchema)
+          .withServiceCalls(
+            () => [serviceDeps.ledger.getSourceDocuments({ ids: [documentId] })] as const,
+          )
+          .retrieve((uow) =>
+            uow.findFirst("document", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", documentId)),
+            ),
+          )
+          .mutate(({ uow, retrieveResult: [document], serviceIntermediateResult: [sources] }) => {
+            if (!document) {
+              throw new DocumentError("DOCUMENT_NOT_FOUND");
+            }
+            assertToBook(documentState(document.dismissal, sources[0] ?? null));
+            const current = document.review;
+            if (
+              review.status === "requested" &&
+              current !== null &&
+              (first || (current.status === "requested" && current.requestId === review.requestId))
+            ) {
+              return current;
+            }
+            uow.update("document", document.id, (b) => b.set({ review }).check());
+            return review;
+          })
           .build();
       },
 

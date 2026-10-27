@@ -12,6 +12,7 @@ import {
   type AppActionTokenClaims,
 } from "@fragno-dev/backoffice-api/v0/app-actions";
 import type { OrganizationMembershipRecord } from "@fragno-dev/backoffice-api/v0/organization";
+import type { PiAgentDefinitionCreate, PiPromptStatus } from "@fragno-dev/backoffice-api/v0/pi";
 import { backofficeProvisioningOperations } from "@fragno-dev/backoffice-api/v0/provisioning";
 import {
   backofficeContextScopeSchema,
@@ -51,6 +52,15 @@ type Invitation = {
   status: "pending" | "accepted";
   expiresAt: string;
   createdAt: string;
+};
+/** A prompt an agent received, and how far the agent got with it. */
+type Prompt = {
+  scope: string;
+  agentName: string;
+  requestId: string;
+  content: string;
+  prompter: Principal;
+  status: PiPromptStatus;
 };
 /** Who a credential acts as: a user who authorized Bookkeeping, or Bookkeeping itself. */
 type Principal = { kind: "user"; userId: string } | { kind: "app" };
@@ -112,9 +122,17 @@ export class FakeBackoffice {
   >();
   /** Workspace files by scope and path, e.g. those Bookkeeping stores in a project. */
   readonly #files = new Map<string, Uint8Array>();
+  /** Agents defined in each workspace, by scope and name. */
+  readonly #agents = new Map<string, PiAgentDefinitionCreate>();
+  /** Prompts agents received, in the order they arrived. */
+  readonly #prompts: Prompt[] = [];
   #reachable = true;
   /** Provisioning operations whose next response is lost after Backoffice did the work. */
   readonly #failNextResponse = new Set<string>();
+  /** Operations whose next request is lost before it reaches Backoffice. */
+  readonly #failNextRequest = new Set<string>();
+  /** What happens elsewhere while Backoffice works on the next request for an operation. */
+  readonly #beforeNextAnswer = new Map<string, () => Promise<void>>();
 
   constructor({ origin, bookkeepingOrigin }: { origin: string; bookkeepingOrigin: string }) {
     this.origin = origin;
@@ -207,6 +225,64 @@ export class FakeBackoffice {
   /** Backoffice does the next `operationId` it is asked to, but Bookkeeping never hears the answer. */
   failNextResponse(operationId: string): void {
     this.#failNextResponse.add(operationId);
+  }
+
+  /** The next request for `operationId` fails as a network failure does, before Backoffice sees it. */
+  failNextRequest(operationId: string): void {
+    this.#failNextRequest.add(operationId);
+  }
+
+  /**
+   * `happen` runs while Backoffice works on the next request for `operationId`, before it answers,
+   * e.g. an agent answering while Bookkeeping asks how far it got.
+   */
+  beforeNextAnswer(operationId: string, happen: () => Promise<void>): void {
+    this.#beforeNextAnswer.set(operationId, happen);
+  }
+
+  /** The agents defined in the workspace of one of the organization's projects. */
+  agents(slug: string, project: string): PiAgentDefinitionCreate[] {
+    const prefix = this.#projectFileKey(slug, project, "");
+    return [...this.#agents].flatMap(([key, agent]) => (key.startsWith(prefix) ? [agent] : []));
+  }
+
+  /** The prompts the agents of one of the organization's projects received, oldest first. */
+  prompts(
+    slug: string,
+    project: string,
+  ): {
+    agentName: string;
+    requestId: string;
+    content: string;
+    /** The email of the user who prompted, or `installation` for Bookkeeping itself. */
+    prompter: string;
+    status: string;
+  }[] {
+    const scope = this.#projectFileKey(slug, project, "");
+    return this.#prompts
+      .filter((prompt) => prompt.scope === scope)
+      .map((prompt) => ({
+        agentName: prompt.agentName,
+        requestId: prompt.requestId,
+        content: prompt.content,
+        prompter:
+          prompt.prompter.kind === "user"
+            ? this.#users.get(prompt.prompter.userId)!.email
+            : "installation",
+        status: prompt.status.status,
+      }));
+  }
+
+  /** The agent gets as far as `status` with the prompt submitted as `requestId`. */
+  settlePrompt(
+    requestId: string,
+    status: { status: "running" | "completed" } | { status: "failed"; reason: string },
+  ): void {
+    const prompt = this.#prompts.find((candidate) => candidate.requestId === requestId);
+    if (!prompt) {
+      throw new Error(`No agent received prompt ${requestId}.`);
+    }
+    prompt.status = { requestId, ...status };
   }
 
   organizationCount(): number {
@@ -392,6 +468,12 @@ export class FakeBackoffice {
       }
       const operation = /^\/api\/v0\/scopes\/([^/]+)\/([^/]+)$/u.exec(url.pathname);
       if (operation) {
+        if (this.#failNextRequest.delete(operation[2])) {
+          throw new TypeError("fetch failed");
+        }
+        const happen = this.#beforeNextAnswer.get(operation[2]);
+        this.#beforeNextAnswer.delete(operation[2]);
+        await happen?.();
         return await this.#operate(request, operation[1], operation[2]);
       }
       throw new ApiError("not_found", `Backoffice does not serve ${url.pathname}.`);
@@ -528,15 +610,17 @@ export class FakeBackoffice {
     if (organization.installation !== "active") {
       throw new ApiError("authentication_failed", "The installation is no longer active.");
     }
+    const { principal } = credential;
+    const member =
+      principal.kind === "user" ? organization.members.get(principal.userId) : undefined;
+    const body = request.headers.get("content-type") ? await request.json() : undefined;
+    // The installation works in the projects it was installed for, as a member does.
+    if (scope.kind === "project" && (member || principal.kind === "app")) {
+      return this.#operateInWorkspace(scope, operationId, body, principal);
+    }
     // Organization operations act as a user; Backoffice offers them only to a user's credential.
-    const userId = credential.principal.kind === "user" ? credential.principal.userId : null;
-    const member = userId === null ? undefined : organization.members.get(userId);
     if (!member) {
       throw new ApiError("not_found", `Operation '${operationId}' is not available here.`);
-    }
-    const body = request.headers.get("content-type") ? await request.json() : undefined;
-    if (scope.kind === "project") {
-      return this.#operateInWorkspace(scope, operationId, body);
     }
     switch (operationId) {
       case "org.get":
@@ -569,10 +653,58 @@ export class FakeBackoffice {
     }
   }
 
-  /** The workspace operations Bookkeeping calls in a project, as the person. */
-  #operateInWorkspace(scope: BackofficeContextScope, operationId: string, body: unknown): Response {
+  /** The workspace operations Bookkeeping calls in a project, as the person or as itself. */
+  #operateInWorkspace(
+    scope: BackofficeContextScope,
+    operationId: string,
+    body: unknown,
+    principal: Principal,
+  ): Response {
     const key = (path: string) => `${backofficeScopePathSegment(scope)} ${path}`;
     switch (operationId) {
+      case "pi.agent.create":
+        return respond("pi.agent.create", body, (definition) => {
+          if (this.#agents.has(key(definition.agentName))) {
+            throw new ApiError("conflict", `Pi agent '${definition.agentName}' already exists.`);
+          }
+          this.#agents.set(key(definition.agentName), definition);
+          return {
+            ...definition,
+            steward: { kind: "members" },
+            resolvedModel: "openai/gpt-6-luna",
+          };
+        });
+      case "pi.prompt.submit":
+        return respond("pi.prompt.submit", body, ({ agentName, requestId, content }) => {
+          if (!this.#agents.has(key(agentName))) {
+            throw new ApiError("not_found", `No agent in this scope is named '${agentName}'.`);
+          }
+          const id = requestId ?? crypto.randomUUID();
+          // A request ID is queued once.
+          if (!this.#prompts.some((prompt) => prompt.requestId === id)) {
+            this.#prompts.push({
+              scope: key(""),
+              agentName,
+              requestId: id,
+              content,
+              prompter: principal,
+              status: { requestId: id, status: "queued" },
+            });
+          }
+          return { requestId: id, status: "queued" as const };
+        });
+      case "pi.prompt.get":
+        return respond(
+          "pi.prompt.get",
+          body,
+          ({ agentName, requestId }) =>
+            this.#prompts.find(
+              (prompt) =>
+                prompt.scope === key("") &&
+                prompt.agentName === agentName &&
+                prompt.requestId === requestId,
+            )?.status ?? null,
+        );
       case "state.writeFileBytes":
         return respond("state.writeFileBytes", body, ({ path, content }) => {
           const bytes = new Uint8Array(Buffer.from(content, "base64"));

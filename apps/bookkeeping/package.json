@@ -11,6 +11,7 @@
     "types:check": "pnpm run types:generate && tsc --noEmit",
     "test": "vitest run",
     "backoffice:connect": "tsx scripts/connect-backoffice.ts",
+    "fixtures:generate": "tsx scripts/generate-fixtures.ts",
     "format:package": "node ../../scripts/run-package-quality.mjs format",
     "format:check:package": "node ../../scripts/run-package-quality.mjs format:check",
     "lint:package": "node ../../scripts/run-package-quality.mjs lint",
