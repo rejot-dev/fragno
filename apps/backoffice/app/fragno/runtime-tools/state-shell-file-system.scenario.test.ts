@@ -156,7 +156,7 @@ describe("shared state shell scenarios", () => {
               await state.writeFile("/workspace/keep.txt", "keep");
               const roots = await bash.exec("ls /", { cwd: "/" });
               expect(roots.exitCode, roots.stderr).toBe(0);
-              expect(roots.stdout.trim().split(/\s+/u)).toEqual(["static", "workspace"]);
+              expect(roots.stdout.trim().split(/\s+/u)).toEqual(["shared", "static", "workspace"]);
 
               for (const command of [
                 "chmod 000 /workspace/keep.txt",

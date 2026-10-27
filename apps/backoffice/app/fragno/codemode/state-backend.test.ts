@@ -4,7 +4,11 @@ import { createStaticFileCollection } from "@/file-collection/create-static-file
 import { createCodemodeStateRuntime } from "@/fragno/runtime-tools/codemode-state-runtime";
 import { createTrustedSystemBackofficeToolContext } from "@/fragno/runtime-tools/runtime-tools";
 
-import { createBackofficeSystemStateBackend } from "./state-backend";
+import {
+  createBackofficeSystemStateBackend,
+  createWorkspaceFileCollection,
+  type SharedFolders,
+} from "./state-backend";
 import { MemoryUploadObject, createTestStateBackend } from "./state-backend.test-utils";
 
 const UNIQUE_SEARCH_TEXT = "state-backend-unique-telegram-token";
@@ -1604,6 +1608,59 @@ describe("BackofficeStateBackend", () => {
         "/workspace/file.txt",
       ]);
       assert(staticResolutionCount === 0);
+    });
+  });
+
+  describe("shared folders", () => {
+    /** Shares of `source`'s `docs/` folder, counting how often each is found and opened. */
+    const sharedDocs = (source: MemoryUploadObject, names: string[]) => {
+      const calls: string[] = [];
+      const folder = (name: string) => ({
+        name,
+        async open() {
+          calls.push(`open ${name}`);
+          return createWorkspaceFileCollection(source, "docs/");
+        },
+      });
+      const folders: SharedFolders = {
+        async list() {
+          calls.push("list");
+          return names.map(folder);
+        },
+        async find(name) {
+          calls.push(`find ${name}`);
+          return names.includes(name) ? folder(name) : null;
+        },
+      };
+      return { folders, calls };
+    };
+
+    test("reading a shared file opens its share once and lists no tree", async () => {
+      const source = new MemoryUploadObject({ "docs/a.txt": "a", "docs/b.txt": "b" });
+      const { folders, calls } = sharedDocs(source, ["client"]);
+      const state = createTestStateBackend({ sharedFolders: folders });
+
+      await expect(state.readFile("/shared/client/a.txt")).resolves.toBe("a");
+      await expect(state.readFile("/shared/client/b.txt")).resolves.toBe("b");
+
+      expect(calls).toEqual(["find client", "open client"]);
+      assert.equal(countUploadTreeRequests(source), 0);
+    });
+
+    test("listing shares opens each from the list, without finding it again", async () => {
+      const source = new MemoryUploadObject({ "docs/a.txt": "a" });
+      const { folders, calls } = sharedDocs(source, ["client", "other"]);
+      const state = createTestStateBackend({ sharedFolders: folders });
+
+      await expect(state.readdir("/shared")).resolves.toEqual(["client", "other"]);
+      await expect(state.glob("/shared/*/a.txt")).resolves.toEqual([
+        "/shared/client/a.txt",
+        "/shared/other/a.txt",
+      ]);
+      await expect(state.readFile("/shared/client/a.txt")).resolves.toBe("a");
+
+      expect(calls).toEqual(["list", "open client", "open other", "list"]);
+      assert.equal(countUploadTreeRequests(source), 2);
     });
   });
 

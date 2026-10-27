@@ -71,6 +71,7 @@ import { sandboxToolFamily } from "./families/sandbox";
 import type { SandboxRuntime } from "./families/sandbox-runtime";
 import { webToolFamily, type WebRuntime } from "./families/web";
 import type { FileLinkRuntime } from "./file-links-runtime";
+import type { FileShareRuntime } from "./file-shares-runtime";
 import { type BackofficeRuntimeToolFamily, type BackofficeToolContext } from "./runtime-tools";
 
 export type CoreBackofficeRuntimeMap = {
@@ -78,6 +79,7 @@ export type CoreBackofficeRuntimeMap = {
   /** Only an agent's codemode call has one: its images go to the model. */
   imageViewer?: ImageViewer;
   fileLinks?: FileLinkRuntime;
+  fileShares?: FileShareRuntime;
   account?: AccountRuntime;
   admin?: AdminRuntime;
   org?: OrganizationRuntime;

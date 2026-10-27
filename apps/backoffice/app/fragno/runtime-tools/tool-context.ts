@@ -8,6 +8,7 @@ export const createBackofficeToolContext = (
   const runtimes = {
     state: context.stateBackend,
     fileLinks: context.fileLinks?.runtime,
+    fileShares: context.fileShares?.runtime,
     account: context.account?.runtime,
     admin: context.admin?.runtime,
     org: context.org?.runtime,

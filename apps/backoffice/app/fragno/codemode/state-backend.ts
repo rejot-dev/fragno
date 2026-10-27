@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { posix } from "node:path";
 
 import type { JsonValue } from "@fragno-dev/backoffice-api/v0/shared/json";
+import { SHARED_MOUNT_POINT } from "@fragno-dev/backoffice-api/v0/state";
 import {
   findTextLineIndex,
   getStaticGlobPrefix,
@@ -68,6 +69,7 @@ type UploadWritePrecondition = { kind: "absent" } | { kind: "revision"; revision
 type StateFileSearchOptions = {
   upload?: StateMountSearchOptions;
   static?: StateMountSearchOptions;
+  shared?: StateMountSearchOptions;
 };
 
 type StateTextMatch = {
@@ -104,6 +106,8 @@ type StateMountSearchPage = {
 type StateFileSearchPage = {
   upload: StateMountSearchPage;
   static: StateMountSearchPage;
+  /** Only when the pattern names a share. */
+  shared?: StateMountSearchPage;
 };
 
 type StateMount = {
@@ -124,9 +128,40 @@ type ResolvedStatePath = {
   relativePath: string;
 };
 
+/** A path below /shared: the mount itself when `name` is null, else a path in that share. */
+type ResolvedSharedPath = {
+  kind: "shared";
+  absolutePath: string;
+  name: string | null;
+  relativePath: string;
+};
+
+/**
+ * The folders other scopes shared with this one and it accepted, read-only at /shared/<name>/
+ * under the names it accepted them as. Each share is opened through its sharing scope, which can
+ * revoke it at any time.
+ */
+export type SharedFolders = {
+  /** The accepted shares, including those revoked since. */
+  list(): Promise<SharedFolder[]>;
+  /** The share this scope accepted as `name`, or null when it accepted none. */
+  find(name: string): Promise<SharedFolder | null>;
+};
+
+/** An accepted share; opening it asks the sharing scope whether it still stands. */
+export type SharedFolder = {
+  name: string;
+  /** The shared folder, or null when the sharing scope revoked the share. */
+  open(): Promise<FileCollection | null>;
+};
+
+/** A standing share, whose tree is listed only when a call needs more than one file. */
+type OpenedShare = { collection: FileCollection; tree(): Promise<FileTree> };
+
 type StateBackendMounts = {
   upload: UploadStateMount;
   static: StateMount;
+  shared: SharedFolders | null;
 };
 
 export interface BackofficeStateBackend {
@@ -164,38 +199,46 @@ export interface BackofficeStateBackend {
   hashFile(path: string, algorithm: "md5" | "sha1" | "sha256"): Promise<string>;
 }
 
+/** A scope's workspace files, or those below `prefix`, a folder key such as `reports/`. */
+export function createWorkspaceFileCollection(
+  uploadObject: FetchCommands,
+  prefix?: string,
+): FileCollection {
+  return createUploadFileCollection({
+    routes: createUploadRouteCaller(uploadObject),
+    provider: UPLOAD_PROVIDER_DATABASE,
+    ...(prefix ? { prefix } : {}),
+    maxPages: UPLOAD_TREE_MAX_PAGES,
+    getFileResponse: ({ provider: fileProvider, fileKey }) =>
+      uploadObject.fetch(
+        new Request(
+          `https://upload.internal/api/upload/files/by-key/content?${new URLSearchParams({
+            provider: fileProvider,
+            key: fileKey,
+          })}`,
+        ),
+      ),
+  });
+}
+
 export const createBackofficeStateBackend = (input: {
   uploadObject: FetchCommands;
   staticFileCollection: FileCollection;
-}): BackofficeStateBackend => {
-  const routes = createUploadRouteCaller(input.uploadObject);
-
-  return new UploadStaticStateBackend({
+  sharedFolders?: SharedFolders;
+}): BackofficeStateBackend =>
+  new UploadStaticStateBackend({
     upload: {
       mountPoint: UPLOAD_MOUNT_POINT,
-      routes,
+      routes: createUploadRouteCaller(input.uploadObject),
       provider: UPLOAD_PROVIDER_DATABASE,
-      collection: createUploadFileCollection({
-        routes,
-        provider: UPLOAD_PROVIDER_DATABASE,
-        maxPages: UPLOAD_TREE_MAX_PAGES,
-        getFileResponse: ({ provider: fileProvider, fileKey }) =>
-          input.uploadObject.fetch(
-            new Request(
-              `https://upload.internal/api/upload/files/by-key/content?${new URLSearchParams({
-                provider: fileProvider,
-                key: fileKey,
-              })}`,
-            ),
-          ),
-      }),
+      collection: createWorkspaceFileCollection(input.uploadObject),
     },
     static: {
       mountPoint: STATIC_MOUNT_POINT,
       collection: input.staticFileCollection,
     },
+    shared: input.sharedFolders ?? null,
   });
-};
 
 export const createBackofficeSystemStateBackend = (input: {
   staticFileCollection: FileCollection;
@@ -517,14 +560,19 @@ class SystemStaticStateBackend implements BackofficeStateBackend {
 class UploadStaticStateBackend implements BackofficeStateBackend {
   refreshMetadata(): void {
     this.#uploadTreePromise = undefined;
+    this.#openedShares.clear();
   }
   readonly #upload: UploadStateMount;
   readonly #static: StateMount;
+  readonly #shared: SharedFolders | null;
   #uploadTreePromise: Promise<FileTree> | undefined;
+  // Each share is checked with its sharing scope once per execution, and its tree read once.
+  readonly #openedShares = new Map<string, Promise<OpenedShare | null>>();
 
   constructor(options: StateBackendMounts) {
     this.#upload = options.upload;
     this.#static = options.static;
+    this.#shared = options.shared;
   }
 
   async readFile(path: string): Promise<string> {
@@ -631,7 +679,7 @@ class UploadStaticStateBackend implements BackofficeStateBackend {
 
   async readdirWithFileTypes(path: string): Promise<StateDirent[]> {
     if (isStateRoot(path)) {
-      return [this.#upload.mountPoint, this.#static.mountPoint]
+      return this.#mountPoints()
         .map((mountPoint) => ({
           name: posix.basename(mountPoint),
           type: "directory" as const,
@@ -639,7 +687,14 @@ class UploadStaticStateBackend implements BackofficeStateBackend {
         .sort((left, right) => left.name.localeCompare(right.name));
     }
     const resolved = this.#resolvePath(path);
-    const tree = await this.#getTree(resolved.kind);
+    if (resolved.kind === "shared" && resolved.name === null) {
+      return (await this.#standingShareNames())
+        .map((name) => ({ name, type: "directory" as const }))
+        .sort((left, right) => left.name.localeCompare(right.name));
+    }
+    const tree = await (resolved.kind === "shared"
+      ? (await this.#requireShare(resolved, "readdir")).tree()
+      : this.#getTree(resolved.kind));
     const entry = resolved.relativePath
       ? tree.entries.find((candidate) => candidate.path === resolved.relativePath)
       : { kind: "directory" as const };
@@ -802,19 +857,20 @@ class UploadStaticStateBackend implements BackofficeStateBackend {
           }).then((files) => createUploadFileTree(files, { provider: this.#upload.provider }))
         : this.#getUploadTree()
       : null;
-    const [uploadTree, staticTree] = await Promise.all([
+    const [uploadTree, staticTree, sharedPaths] = await Promise.all([
       uploadTreePromise,
       patternCanMatchMount(absolutePattern, this.#static.mountPoint)
         ? this.#static.collection.getTree()
         : null,
+      this.#globSharedPaths(absolutePattern),
     ]);
 
     return [
-      this.#upload.mountPoint,
-      this.#static.mountPoint,
+      ...this.#mountPoints(),
       ...(uploadTree?.entries.map((entry) => this.#toUploadAbsolutePath(entry.path)) ?? []),
       ...(staticTree?.entries.map((entry) => joinMountPath(this.#static.mountPoint, entry.path)) ??
         []),
+      ...sharedPaths,
     ]
       .filter((path) => expression.test(path.replace(/^\/+/, "")))
       .sort();
@@ -916,6 +972,23 @@ class UploadStaticStateBackend implements BackofficeStateBackend {
       };
     };
 
+    const name = namedShare(pattern);
+    if (name !== null && this.#shared) {
+      const share = await this.#openShare(name);
+      const emptyPage = { results: [], hasMore: false };
+      return {
+        upload: emptyPage,
+        static: emptyPage,
+        shared: share
+          ? await searchMount(
+              { mountPoint: sharedMountPath(name), collection: share.collection },
+              options?.shared,
+              true,
+            )
+          : emptyPage,
+      };
+    }
+
     const hasMountSelection = options?.upload !== undefined || options?.static !== undefined;
     const [upload, staticFiles] = await Promise.all([
       searchMount(
@@ -946,7 +1019,11 @@ class UploadStaticStateBackend implements BackofficeStateBackend {
       throw stateError("EISDIR", "read", resolved.absolutePath);
     }
 
-    const content = await this.#collectionFor(resolved.kind).getFile(resolved.relativePath);
+    const collection =
+      resolved.kind === "shared"
+        ? (await this.#requireShare(resolved, "read")).collection
+        : this.#collectionFor(resolved.kind);
+    const content = await collection.getFile(resolved.relativePath);
     if (content) {
       return content;
     }
@@ -1122,14 +1199,28 @@ class UploadStaticStateBackend implements BackofficeStateBackend {
     this.#invalidateUploadTree();
   }
 
-  async #getEntry(resolved: ResolvedStatePath): Promise<FileTreeEntry | null> {
+  async #getEntry(resolved: ResolvedStatePath | ResolvedSharedPath): Promise<FileTreeEntry | null> {
+    const directory: FileTreeEntry = {
+      kind: "directory",
+      path: "",
+      updatedAt: null,
+      metadata: null,
+    };
+    if (resolved.kind === "shared") {
+      if (resolved.name === null) {
+        return directory;
+      }
+      const share = await this.#openShare(resolved.name);
+      if (!share) {
+        return null;
+      }
+      return resolved.relativePath
+        ? ((await share.tree()).entries.find((entry) => entry.path === resolved.relativePath) ??
+            null)
+        : directory;
+    }
     if (!resolved.relativePath) {
-      return {
-        kind: "directory",
-        path: "",
-        updatedAt: null,
-        metadata: null,
-      };
+      return directory;
     }
     if (resolved.kind === "upload") {
       const file = await this.#getUploadFileEntry(resolved.relativePath);
@@ -1194,13 +1285,13 @@ class UploadStaticStateBackend implements BackofficeStateBackend {
 
   #resolveWritableUploadPath(path: string, operation: string): ResolvedStatePath {
     const resolved = this.#resolvePath(path);
-    if (resolved.kind === "static") {
+    if (resolved.kind !== "upload") {
       throw stateError("EROFS", operation, resolved.absolutePath);
     }
     return resolved;
   }
 
-  #resolvePath(path: string): ResolvedStatePath {
+  #resolvePath(path: string): ResolvedStatePath | ResolvedSharedPath {
     const absolutePath = path.startsWith("/")
       ? posix.resolve("/", path)
       : posix.resolve(this.#upload.mountPoint, path);
@@ -1215,12 +1306,104 @@ class UploadStaticStateBackend implements BackofficeStateBackend {
       return { kind: "static", absolutePath, relativePath: staticRelativePath };
     }
 
+    const sharedRelativePath = this.#shared
+      ? relativePathWithinMount(absolutePath, SHARED_MOUNT_POINT)
+      : null;
+    if (sharedRelativePath !== null) {
+      const [name = "", ...rest] = sharedRelativePath.split("/");
+      return {
+        kind: "shared",
+        absolutePath,
+        name: name || null,
+        relativePath: rest.join("/"),
+      };
+    }
+
+    const mounts = this.#mountPoints().map((mountPoint) => `'${mountPoint}'`);
     throw Object.assign(
       new Error(
-        `State path '${path}' is outside '${this.#upload.mountPoint}' and '${this.#static.mountPoint}'.`,
+        `State path '${path}' is outside ${mounts.slice(0, -1).join(", ")}${mounts.length > 2 ? "," : ""} and ${mounts.at(-1)}.`,
       ),
       { code: "ENOENT" },
     );
+  }
+
+  #mountPoints(): string[] {
+    return [
+      this.#upload.mountPoint,
+      this.#static.mountPoint,
+      ...(this.#shared ? [SHARED_MOUNT_POINT] : []),
+    ];
+  }
+
+  #openShare(name: string): Promise<OpenedShare | null> {
+    return this.#openFolder(name, async () => (await this.#shared?.find(name)) ?? null);
+  }
+
+  /** Opens each share once per execution; `folder` finds it unless it is already open. */
+  #openFolder(
+    name: string,
+    folder: () => Promise<SharedFolder | null>,
+  ): Promise<OpenedShare | null> {
+    let opened = this.#openedShares.get(name);
+    if (!opened) {
+      opened = (async () => {
+        const collection = await (await folder())?.open();
+        if (!collection) {
+          return null;
+        }
+        let tree: Promise<FileTree> | undefined;
+        return { collection, tree: () => (tree ??= collection.getTree()) };
+      })();
+      this.#openedShares.set(name, opened);
+    }
+    return opened;
+  }
+
+  async #requireShare(resolved: ResolvedSharedPath, operation: string) {
+    const share = resolved.name === null ? null : await this.#openShare(resolved.name);
+    if (!share) {
+      throw stateError("ENOENT", operation, resolved.absolutePath);
+    }
+    return share;
+  }
+
+  /** Accepted shares the sharing scope has not revoked. */
+  async #standingShareNames(): Promise<string[]> {
+    const folders = (await this.#shared?.list()) ?? [];
+    const standing = await Promise.all(
+      folders.map(async (folder) =>
+        (await this.#openFolder(folder.name, async () => folder)) ? folder.name : null,
+      ),
+    );
+    return standing.filter((name) => name !== null);
+  }
+
+  /**
+   * Shared files match only patterns that start in /shared, so a pattern such as `**` never reads
+   * every share, and nothing another scope shares is found by a search that did not ask for it.
+   */
+  async #globSharedPaths(absolutePattern: string): Promise<string[]> {
+    if (!this.#shared || !absolutePattern.startsWith(`${SHARED_MOUNT_POINT}/`)) {
+      return [];
+    }
+    // A wildcard in the share's segment, as in /shared/*/report.pdf, may match any share.
+    const named = namedShare(absolutePattern);
+    const names = named === null ? await this.#standingShareNames() : [named];
+    const paths = await Promise.all(
+      names.map(async (name) => {
+        const share = await this.#openShare(name);
+        return share
+          ? [
+              sharedMountPath(name),
+              ...(await share.tree()).entries.map((entry) =>
+                joinMountPath(sharedMountPath(name), entry.path),
+              ),
+            ]
+          : [];
+      }),
+    );
+    return paths.flat();
   }
 
   #toUploadKey(relativePath: string): string {
@@ -1301,6 +1484,15 @@ const requireUploadMutation = (
   if (response.type !== "json") {
     throw new Error(`Unable to ${operation}: Upload returned ${response.type}.`);
   }
+};
+
+const sharedMountPath = (name: string): string => `${SHARED_MOUNT_POINT}/${name}`;
+
+/** The share a search pattern names, as in /shared/<name>/**; null for other patterns. */
+const namedShare = (pattern: string): string | null => {
+  const sharedRelativePath = relativePathWithinMount(pattern, SHARED_MOUNT_POINT);
+  const name = sharedRelativePath?.split("/")[0];
+  return name && !/[*?[\]{}]/u.test(name) ? name : null;
 };
 
 const patternCanMatchMount = (pattern: string, mountPoint: string): boolean =>

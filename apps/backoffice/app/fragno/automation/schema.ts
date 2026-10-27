@@ -10,6 +10,7 @@ import type {
 } from "@fragno-dev/backoffice-api/v0/events";
 import type { MarketplaceScope } from "@fragno-dev/backoffice-api/v0/marketplace";
 import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import type { BackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { column, idColumn, schema, type Column } from "@fragno-dev/db/schema";
 
 import type { AutomationEventSource } from "./event-sources";
@@ -309,5 +310,36 @@ export const automationFragmentSchema = schema("automations", (s) => {
       .dropTable("sandbox_instance")
       // Installations are recorded in marketplace-lock.json.
       .dropTable("marketplace_ingestion")
+      // A /workspace folder this scope shares with another; deleting it revokes the share. The
+      // share's ID is the row's. Written and read only through `file-shares-storage-runtime`.
+      .addTable("file_share", (t) =>
+        t
+          .addColumn("id", idColumn())
+          .addColumn("path", column("string"))
+          .addColumn("target", jsonColumn<BackofficeRoutableScope>())
+          .addColumn(
+            "createdAt",
+            column("timestamp").defaultTo((b) => b.now()),
+          ),
+      )
+      // A share another scope offered and this one accepted, under the share's ID. The sharing
+      // scope's `file_share` row stays the authority: this row only says where to look.
+      .addTable("accepted_file_share", (t) =>
+        t
+          .addColumn("id", idColumn())
+          .addColumn("source", jsonColumn<BackofficeRoutableScope>())
+          .addColumn("path", column("string"))
+          .addColumn(
+            "createdAt",
+            column("timestamp").defaultTo((b) => b.now()),
+          ),
+      )
+      // Where this scope mounts the share, /shared/<name>/, which it chose on accepting; the share's
+      // ID unless it named it. Empty only for shares accepted before they had names.
+      .alterTable("accepted_file_share", (t) =>
+        t
+          .addColumn("name", column("string").defaultTo(""))
+          .createIndex("idx_accepted_file_share_name", ["name"], { unique: true }),
+      )
   );
 });

@@ -323,7 +323,7 @@ describe("project automation event routing", () => {
         userId: "user-1",
       }),
     );
-    await expect(fs.readdir("/")).resolves.toEqual(["static", "workspace"]);
+    await expect(fs.readdir("/")).resolves.toEqual(["shared", "static", "workspace"]);
     await fs.writeFile("/workspace/notes.txt", "org notes");
 
     const projectFs = createScopedTestFileSystem(
@@ -333,7 +333,7 @@ describe("project automation event routing", () => {
         userId: "user-1",
       }),
     );
-    await expect(projectFs.readdir("/")).resolves.toEqual(["static", "workspace"]);
+    await expect(projectFs.readdir("/")).resolves.toEqual(["shared", "static", "workspace"]);
     await expect(projectFs.readdir("/workspace")).resolves.toEqual([]);
     await projectFs.writeFile("/workspace/notes.txt", "project notes");
     await expect(projectFs.readFile("/workspace/notes.txt")).resolves.toBe("project notes");

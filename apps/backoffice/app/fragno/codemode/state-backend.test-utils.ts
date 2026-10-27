@@ -7,20 +7,27 @@ import { createStaticFileCollection } from "@/file-collection/create-static-file
 import type { FileCollection } from "@/file-collection/file-collection";
 import { STATIC_FILE_CONTENT } from "@/files/content/static";
 
-import { createBackofficeStateBackend, type BackofficeStateBackend } from "./state-backend";
+import {
+  createBackofficeStateBackend,
+  type BackofficeStateBackend,
+  type SharedFolders,
+} from "./state-backend";
 
 export const createTestStateBackend = ({
   upload = new MemoryUploadObject(),
   staticFiles = {},
   onResolveStaticFiles,
+  sharedFolders,
 }: {
   upload?: MemoryUploadObject;
   staticFiles?: Record<string, string | Uint8Array>;
   onResolveStaticFiles?: () => void;
+  sharedFolders?: SharedFolders;
 } = {}): BackofficeStateBackend =>
   createBackofficeStateBackend({
     uploadObject: upload,
     staticFileCollection: createTestStaticFileCollection(staticFiles, onResolveStaticFiles),
+    ...(sharedFolders ? { sharedFolders } : {}),
   });
 
 function createTestStaticFileCollection(
