@@ -32,17 +32,9 @@ type PageSqlJson = string;
 /**
  * The relations page queries read, by name, with their columns as SQL reads them. A synchronized
  * table's position grows in the order its rows were created: rows created together, such as a run's
- * steps, share their createdAt, so order them by createdAt, position. Queries read nothing else;
- * their SQL calls only these functions:
- * abs, char, coalesce, concat, concat_ws, format, glob, hex, iif, if, ifnull, instr, length, like,
- * likely, lower, ltrim, max, min, nullif, octet_length, printf, quote, replace, round, rtrim, sign,
- * substr, substring, trim, typeof, unhex, unicode, unlikely, upper, acos, asin, atan, atan2, ceil,
- * ceiling, cos, degrees, exp, floor, ln, log, log10, log2, mod, pi, pow, power, radians, sin, sqrt,
- * tan, trunc, avg, count, group_concat, string_agg, sum, total, cume_dist, dense_rank, first_value,
- * lag, last_value, lead, nth_value, ntile, percent_rank, rank, row_number, date, datetime,
- * julianday, strftime, time, timediff, unixepoch, ->, ->>, json, json_array, json_array_length,
- * json_extract, json_group_array, json_group_object, json_insert, json_object, json_patch,
- * json_quote, json_remove, json_replace, json_set, json_type, json_valid
+ * steps, share their createdAt, so order them by createdAt, position. Queries call SQLite's
+ * functions, except random(), randomblob(), and those reporting on the connection. Read the time
+ * from the builder's now, not date('now'): a query runs again only when what it reads changes.
  */
 type PageRelations = {
   /** Workflow runs. workflowName is the runner's internal name, and remoteWorkflowName the workflow's own name, or null. */

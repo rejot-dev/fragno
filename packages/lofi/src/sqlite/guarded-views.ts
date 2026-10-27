@@ -27,15 +27,12 @@ export type LofiSqliteDerivedRelation = {
 export type LofiSqliteGuardedViewsOptions = {
   kind: string;
   /**
-   * The views queries read, by name, each the SELECT it runs over the replica's tables. Queries
-   * read the replica only through these and `derived`, so its table names and bookkeeping columns
-   * can change under them.
+   * The views queries read, by name, each the SELECT it runs over the replica's tables. They are a
+   * convenience, not a boundary: queries can read the replica's tables too.
    */
   views: Readonly<Record<string, string>>;
   /** Relations computed from the replica, by name. */
   derived: Readonly<Record<string, LofiSqliteDerivedRelation>>;
-  /** The SQL functions queries may call, such as `count` or `json_extract`, in any case. */
-  functions: readonly string[];
   limits: LofiSqliteGuardedLimits;
 };
 
@@ -68,50 +65,41 @@ const SQLITE_READ = 20;
 const SQLITE_SELECT = 21;
 const SQLITE_FUNCTION = 31;
 const SQLITE_RECURSIVE = 33;
-// Table-valued functions, which SQLite reports as tables of the main database.
-const TABLE_FUNCTIONS = new Set(["json_each", "json_tree"]);
+// A view runs again only after a batch wrote a table it reads, so a function whose result the
+// replica's rows do not determine would leave it stale. date('now') reads the clock too, but
+// through date(), which queries need; they take the time as a parameter instead.
+const UNREPEATABLE_FUNCTIONS = new Set([
+  "random",
+  "randomblob",
+  "changes",
+  "total_changes",
+  "last_insert_rowid",
+]);
 
 /**
  * Maintains views of queries that people or agents write, such as a page's, which the replica must
- * survive: a query reads only the engine's relations, calls only its functions, cannot write or
- * change settings, and stops when it takes too much work or returns too much data. Each runs again
- * after a batch that wrote a table it reads, and reports its rows only when they changed.
+ * survive: a query cannot write or change settings, calls no function whose result changes on its
+ * own, and stops when it takes too much work or returns too much data. Each runs again after a
+ * batch that wrote a table it reads, and reports its rows only when they changed.
  *
- * The relations are temporary views and tables on the leader's connection. The guard keeps
- * queries off the replica's own tables with two exceptions SQLite's authorizer cannot tell apart:
- * a CTE named like a view, since reads inside a CTE are reported as made through it, and
- * `count(*)` of a table, which reads none of its columns.
+ * The relations are temporary views and tables on the leader's connection, which give queries
+ * shorter names and app-computed rows. Queries can read the replica's own tables too: the replica
+ * holds only what its backend already sent the page, so the guard protects the leader, not data.
  */
 export function guardedSqlViewEngine(options: LofiSqliteGuardedViewsOptions): LofiSqliteViewEngine {
   const relations = [...Object.keys(options.views), ...Object.keys(options.derived)];
   if (new Set(relations).size !== relations.length) {
     throw new Error("A guarded view and a derived relation share a name.");
   }
-  const viewNames = new Set(Object.keys(options.views));
-  const relationNames = new Set(relations);
-  const functions = new Set(options.functions.map((name) => name.toLowerCase()));
   const guard: LofiSqliteGuard = {
     authorize: (access) => {
       switch (access.action) {
         case SQLITE_SELECT:
+        case SQLITE_READ:
         case SQLITE_RECURSIVE:
           return true;
-        case SQLITE_READ: {
-          const [table, column] = access.details;
-          if (access.database === "main") {
-            return (
-              (access.source !== null && viewNames.has(access.source)) ||
-              TABLE_FUNCTIONS.has(table ?? "")
-            );
-          }
-          if (access.database === "temp") {
-            return table !== null && relationNames.has(table);
-          }
-          // count(*) reads a table without its columns, of whatever its FROM names.
-          return column === null;
-        }
         case SQLITE_FUNCTION:
-          return functions.has(access.details[1]?.toLowerCase() ?? "");
+          return !UNREPEATABLE_FUNCTIONS.has(access.details[1]?.toLowerCase() ?? "");
         default:
           return false;
       }
@@ -347,15 +335,17 @@ function createDerivedRelations(
 
 function describeError(error: unknown, relations: readonly string[]): string {
   if (error instanceof LofiSqliteAccessError) {
-    return describeAccess(error.access, relations);
+    return describeAccess(error.access);
   }
-  return error instanceof Error ? error.message.replace(/^SQLite error \d+: /, "") : String(error);
+  const message =
+    error instanceof Error ? error.message.replace(/^SQLite error \d+: /, "") : String(error);
+  return message.startsWith("no such table:")
+    ? `${message}. Read one of: ${relations.join(", ")}.`
+    : message;
 }
 
-function describeAccess({ action, details }: LofiSqliteAccess, relations: readonly string[]) {
+function describeAccess({ action, details }: LofiSqliteAccess) {
   switch (action) {
-    case SQLITE_READ:
-      return `"${details[0]}" is not a relation queries can read. Read one of: ${relations.join(", ")}.`;
     case SQLITE_FUNCTION:
       return `Queries cannot call ${details[1]}().`;
     default:

@@ -154,9 +154,10 @@ page's interface.
   `currentWorkflowWaits`, the functions the dashboard uses, so a page repeats none of their logic;
   they are computed again only after a batch wrote what they read. `page-schema.d.ts`, which agents
   read, is generated from the same list.
-- **Guard.** Pages read only those relations, call only the functions listed there, cannot write,
-  and stop at 500 rows, 4 MB of text, and 25 million operations, which take about 200 ms. A page's
-  query that cannot run shows its error in place of the page.
+- **Guard.** Pages cannot write or call `random()` and the like, and stop at 500 rows, 4 MB of text,
+  and 25 million operations, which take about 200 ms. A page's query that cannot run shows its error
+  in place of the page. Pages could read the replica's own tables, which hold nothing the page
+  cannot already read; `page-schema.d.ts` describes only the relations, so pages use those.
 - **Build.** The build runs each query once on wa-sqlite in the server, on an empty in-memory
   database with the replica's tables and the same relations and guard
   (`../../artifacts/pages/page-queries.server.ts`), and fails with the query's error, such as a

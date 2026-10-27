@@ -2,7 +2,7 @@
 // The page builder. page.define records live SQL queries over the scope's relations and binds
 // their rows to a ui interface. Default-export it from a /workspace/**/<name>.page.js file; the
 // system builds it when it opens. page-schema.d.ts declares the relations, their columns, the
-// functions queries call, and PageLimits.
+// functions queries cannot call, and PageLimits.
 
 declare const pageSqlText: unique symbol;
 declare const pageTimeValue: unique symbol;

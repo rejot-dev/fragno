@@ -39,7 +39,6 @@ async function openEngine({
     kind: "guarded",
     views: { visible: `SELECT "id", "status" FROM "runs"` },
     derived: { derived: { columns: ["value"], compute } },
-    functions: ["count", "char", "printf", "replace"],
     limits,
   }).open({ connection: database.connection, registrations: [] });
 
