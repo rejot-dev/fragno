@@ -41,6 +41,7 @@ import { CurrentBackofficeProvider } from "./current-context";
 import type { CurrentBackofficeContext } from "./current-context-state";
 import { GlobalHotkeysProvider, useGlobalHotkey } from "./global-hotkeys";
 import { MemberWorkspaceBanner } from "./member-workspace-banner";
+import { OpenAgentDrawerContext } from "./open-agent-drawer";
 import { BackofficePhoneHeader, BackofficePhoneTabBar } from "./phone-chrome";
 import type { ScopeProbe } from "./scope-probe";
 import { BackofficeSidebarNav, useBackofficeSections } from "./sidebar-nav";
@@ -283,6 +284,9 @@ function BackofficeShellFrame({
     [agentsPath, showAgent],
   );
   const sections = useBackofficeSections(resolvedScope, me);
+  const openAgentDrawer = useCallback(() => {
+    setAgentDrawerOpen(true);
+  }, []);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const sidebarRail = useMediaQuery(SIDEBAR_RAIL_QUERY);
   const agentBesidePhone = useMediaQuery(AGENT_BESIDE_PHONE_QUERY);
@@ -429,13 +433,15 @@ function BackofficeShellFrame({
               resolvedScope={resolvedScope}
               administeredMember={administeredMember}
             />
-            <div className="flex min-w-0 flex-1 flex-col">
-              <AskAgentContext.Provider value={askAgent}>
-                <ShowAgentBesideContext.Provider value={agentBesidePhone ? showAgent : null}>
-                  {children}
-                </ShowAgentBesideContext.Provider>
-              </AskAgentContext.Provider>
-            </div>
+            <OpenAgentDrawerContext value={openAgentDrawer}>
+              <div className="flex min-w-0 flex-1 flex-col">
+                <AskAgentContext.Provider value={askAgent}>
+                  <ShowAgentBesideContext.Provider value={agentBesidePhone ? showAgent : null}>
+                    {children}
+                  </ShowAgentBesideContext.Provider>
+                </AskAgentContext.Provider>
+              </div>
+            </OpenAgentDrawerContext>
           </main>
         </div>
         <BackofficePhoneTabBar
