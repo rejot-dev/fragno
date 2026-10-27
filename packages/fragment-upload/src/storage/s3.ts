@@ -586,7 +586,8 @@ export function createS3CompatibleStorageAdapter(
         headers: signed.headers,
       });
 
-      if (!response.ok) {
+      // A session already completed or aborted has nothing left to abort.
+      if (!response.ok && response.status !== 404) {
         throw new Error(`Failed to abort multipart upload (${response.status})`);
       }
     },

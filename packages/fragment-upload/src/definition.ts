@@ -1,7 +1,12 @@
 import { defineFragment } from "@fragno-dev/core";
 import { withDatabase } from "@fragno-dev/db";
 
-import type { FileHookPayload, UploadFragmentConfig, UploadTimeoutPayload } from "./config";
+import type {
+  FileHookPayload,
+  UnfinishedUploadPayload,
+  UploadFragmentConfig,
+  UploadTimeoutPayload,
+} from "./config";
 import { resolveUploadFragmentConfig } from "./config";
 import { uploadSchema } from "./schema";
 import { createFileServices, createUploadServices } from "./services";
@@ -13,6 +18,10 @@ const buildMissingDeletedFileObjectKeyError = (input: { provider: string; fileKe
 
 const buildMissingCleanupObjectKeyError = (input: { provider: string; fileKey: string }) =>
   `Missing storage cleanup objectKey for '${input.provider}:${input.fileKey}'. Refusing to reconstruct storage key from provider/fileKey.`;
+
+// Storage checks a presigned URL's expiry when a request starts, so a PUT that began just before its
+// URL expired may still be landing afterwards.
+const UNFINISHED_UPLOAD_CLEANUP_GRACE_MS = 60 * 60 * 1000;
 
 export const uploadFragmentDefinition = defineFragment<UploadFragmentConfig>("upload")
   .extend(withDatabase(uploadSchema))
@@ -185,6 +194,19 @@ export const uploadFragmentDefinition = defineFragment<UploadFragmentConfig>("up
 
         await resolvedConfig.storage.deleteObject({ storageKey: objectKey });
       }),
+      cleanupUnfinishedUpload: defineHook(async function ({
+        objectKey,
+        storageUploadId,
+      }: UnfinishedUploadPayload) {
+        // A multipart session keeps its parts until it is aborted; S3 never expires them itself.
+        if (storageUploadId && resolvedConfig.storage.abortMultipartUpload) {
+          await resolvedConfig.storage.abortMultipartUpload({
+            storageKey: objectKey,
+            storageUploadId,
+          });
+        }
+        await resolvedConfig.storage.deleteObject({ storageKey: objectKey });
+      }),
       onFileDeleted: defineHook(async function (payload: FileHookPayload) {
         const payloadObjectKey =
           typeof payload.objectKey === "string" && payload.objectKey.length > 0
@@ -289,25 +311,27 @@ export const uploadFragmentDefinition = defineFragment<UploadFragmentConfig>("up
               ),
           )
           .mutate(({ forSchema, retrieveResult: [upload, expiredUpload] }) => {
-            if (!upload) {
-              return { shouldNotify: false as const };
-            }
-
-            const status = upload.status as UploadStatus;
-            if (
-              status === "completed" ||
-              status === "aborted" ||
-              status === "failed" ||
-              status === "expired"
-            ) {
-              return { shouldNotify: false as const };
-            }
-
-            if (!expiredUpload) {
+            const status = upload?.status as UploadStatus | undefined;
+            if (!upload || !expiredUpload || status === "completed") {
               return { shouldNotify: false as const };
             }
 
             const uow = forSchema(uploadSchema);
+            // Whoever holds the upload's URL could PUT until it expired, even after the upload was
+            // aborted or replaced, so what storage holds for the upload is final only after that.
+            uow.triggerHook(
+              "cleanupUnfinishedUpload",
+              { objectKey: upload.objectKey, storageUploadId: upload.storageUploadId },
+              {
+                processAt: new Date(
+                  upload.expiresAt.getTime() + UNFINISHED_UPLOAD_CLEANUP_GRACE_MS,
+                ),
+              },
+            );
+            if (status === "aborted" || status === "failed" || status === "expired") {
+              return { shouldNotify: false as const };
+            }
+
             uow.update("upload", upload.id, (b) =>
               b
                 .set({
@@ -318,17 +342,6 @@ export const uploadFragmentDefinition = defineFragment<UploadFragmentConfig>("up
                 })
                 .check(),
             );
-            if (status === "prepared") {
-              uow.triggerHook("cleanupStorageObject", {
-                provider: upload.provider,
-                fileKey: upload.key,
-                objectKey: upload.objectKey,
-                uploadId: payload.uploadId,
-                uploaderId: upload.uploaderId,
-                sizeBytes: Number(upload.bytesUploaded),
-                contentType: upload.contentType,
-              });
-            }
 
             return {
               shouldNotify: true as const,

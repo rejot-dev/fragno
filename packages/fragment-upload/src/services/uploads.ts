@@ -2,7 +2,7 @@ import type { TableToInsertValues } from "@fragno-dev/db/query";
 
 import type { DatabaseServiceContext, HookFn, TypedUnitOfWork } from "@fragno-dev/db";
 
-import type { FileHookPayload, UploadTimeoutPayload } from "../config";
+import type { FileHookPayload, UnfinishedUploadPayload, UploadTimeoutPayload } from "../config";
 import { uploadSchema } from "../schema";
 import type { PreparedFileBatchEntry, UploadFileWritePrecondition } from "../types";
 import { UploadServiceError } from "./errors";
@@ -51,6 +51,7 @@ type UploadHooks = {
   onUploadFailed: HookFn<FileHookPayload>;
   onFileDeleted: HookFn<FileHookPayload>;
   cleanupStorageObject: HookFn<FileHookPayload>;
+  cleanupUnfinishedUpload: HookFn<UnfinishedUploadPayload>;
   onUploadTimeout: HookFn<UploadTimeoutPayload>;
 };
 

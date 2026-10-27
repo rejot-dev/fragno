@@ -111,6 +111,43 @@ const withUploadBuild = async (
   }
 };
 
+/**
+ * Moves an upload past its URL's expiry, and past the grace for PUTs still landing after it, and
+ * makes its timeout due.
+ */
+async function expireUpload({ fragments, test }: UploadBuild, uploadId: string) {
+  const longAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+  const uploadUow = fragments.upload.db.createUnitOfWork("write").forSchema(uploadSchema);
+  uploadUow.update("upload", uploadId, (b) => b.set({ expiresAt: longAgo }));
+  assert((await uploadUow.executeMutations()).success);
+
+  const internalFragment = getInternalFragment(test.adapter);
+  const hooks = await internalFragment.inContext(async function () {
+    return await this.handlerTx()
+      .withServiceCalls(
+        () => [internalFragment.services.hookService.getHooksByNamespace("upload")] as const,
+      )
+      .transform(({ serviceResult: [result] }) => result)
+      .execute();
+  });
+  const timeoutHook = hooks.find((hook) => {
+    const payload = hook.payload as { uploadId?: string } | null;
+    return hook.hookName === "onUploadTimeout" && payload?.uploadId === uploadId;
+  });
+  assert(timeoutHook);
+  await internalFragment.inContext(async function () {
+    await this.handlerTx()
+      .mutate(({ forSchema }) => {
+        forSchema(internalFragment.$internal.deps.schema).update(
+          "fragno_hooks",
+          timeoutHook.id,
+          (b) => b.set({ nextRetryAt: longAgo }),
+        );
+      })
+      .execute();
+  });
+}
+
 describe("upload fragment direct single flows", () => {
   const { adapter, finalizeUpload, initUpload, deleteObject } =
     createDirectAdapter("direct-single");
@@ -293,7 +330,7 @@ describe("upload fragment direct single flows", () => {
     );
 
     await withUploadBuild({ storage: expiringAdapter }, async ({ fragments, test }) => {
-      const { fragment, db } = fragments.upload;
+      const { fragment } = fragments.upload;
       const created = await fragment.callRoute("POST", "/uploads", {
         body: {
           fileKey: "files/direct/expire-prepared.txt",
@@ -311,37 +348,7 @@ describe("upload fragment direct single flows", () => {
       assert(prepared.type === "json");
       assert(prepared.data.kind === "prepared");
 
-      const uploadUow = db.createUnitOfWork("write").forSchema(uploadSchema);
-      uploadUow.update("upload", created.data.uploadId, (b) =>
-        b.set({ expiresAt: new Date(Date.now() - 1_000) }),
-      );
-      assert((await uploadUow.executeMutations()).success);
-
-      const internalFragment = getInternalFragment(test.adapter);
-      const hooks = await internalFragment.inContext(async function () {
-        return await this.handlerTx()
-          .withServiceCalls(
-            () => [internalFragment.services.hookService.getHooksByNamespace("upload")] as const,
-          )
-          .transform(({ serviceResult: [result] }) => result)
-          .execute();
-      });
-      const timeoutHook = hooks.find((hook) => {
-        const payload = hook.payload as { uploadId?: string } | null;
-        return hook.hookName === "onUploadTimeout" && payload?.uploadId === created.data.uploadId;
-      });
-      assert(timeoutHook);
-      await internalFragment.inContext(async function () {
-        await this.handlerTx()
-          .mutate(({ forSchema }) => {
-            forSchema(internalFragment.$internal.deps.schema).update(
-              "fragno_hooks",
-              timeoutHook.id,
-              (b) => b.set({ nextRetryAt: new Date(Date.now() - 1_000) }),
-            );
-          })
-          .execute();
-      });
+      await expireUpload({ fragments, test }, created.data.uploadId);
 
       await drainDurableHooks(fragment);
       expect(deleteExpiredObject).toHaveBeenCalledWith({
