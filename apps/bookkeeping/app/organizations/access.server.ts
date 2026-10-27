@@ -12,7 +12,11 @@ import { env } from "cloudflare:workers";
 import { redirect } from "react-router";
 
 import type { SessionUser } from "../../workers/auth/auth";
-import { exchangeForScope, isBackofficeUnavailable } from "../../workers/backoffice/client";
+import {
+  exchangeForScope,
+  isBackofficeUnavailable,
+  requestAppToken,
+} from "../../workers/backoffice/client";
 import type { Organization, OrganizationKind } from "../../workers/directory/directory";
 import { MEMBERSHIP_CONFIRMATION_LIFETIME_MS } from "../../workers/directory/membership";
 import { currentPath, requireSessionUser } from "../auth/session.server";
@@ -90,6 +94,24 @@ export async function connectAsUser(
   );
   if (credential.status === "unauthorized") {
     throw reauthorize(request);
+  }
+  return credential.status === "issued" ? credential.client : null;
+}
+
+/**
+ * Backoffice's API as Bookkeeping's installation, in one scope, so what it starts, such as an
+ * agent's turn, acts as Bookkeeping and not as a person; null when Bookkeeping is not installed
+ * there. Throws `BackofficeUnavailableError` when Backoffice cannot be reached.
+ */
+export async function connectAsInstallation(
+  scope: BackofficeContextScope,
+): Promise<BackofficeApiClient | null> {
+  const credential = await exchangeForScope(env, {
+    oauthAccessToken: await requestAppToken(env),
+    scope,
+  });
+  if (credential.status === "unauthorized") {
+    throw new Error("Backoffice refused Bookkeeping's own token. Check its OAuth client.");
   }
   return credential.status === "issued" ? credential.client : null;
 }

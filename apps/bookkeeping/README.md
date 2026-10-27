@@ -134,9 +134,11 @@ pnpm --dir apps/bookkeeping backoffice:connect
 
 The script signs in through the Backoffice CLI, creates Bookkeeping's OAuth client (or repairs the
 one in `.dev.vars`: callback URL, scopes, and client credentials), registers the app with
-`org.read`, `upload.read` and `upload.modify` (for [documents](#documents)), and the actions
-declared in `workers/backoffice/actions.ts`, and writes the client ID, secret, and both origins to
-`.dev.vars`. It then finds or creates the operator organization (slug `bookkeeping-operators`; pass
+`org.read`; `upload.read` and `upload.modify` (for [documents](#documents)); `pi.manage`,
+`pi.modify`, `pi.read`, `models.extract`, `integrations.read`, and `integrations.execute` (for the
+[bookkeeping agent](#the-bookkeeping-agent)); and the actions declared in
+`workers/backoffice/actions.ts`, and writes the client ID, secret, and both origins to `.dev.vars`.
+It then finds or creates the operator organization (slug `bookkeeping-operators`; pass
 `--operators-slug` to choose another) with the signed-in administrator as owner, installs
 Bookkeeping there, and writes its ID to `BOOKKEEPING_OPERATOR_ORGANIZATION_ID`. Bookkeeping is
 registered as a first-party app with every provisioning permission: Backoffice skips its consent
@@ -228,20 +230,22 @@ administration's Backoffice project: the signed project, never the input, picks 
 in any other scope are refused. Inputs name accounts, journals, customers, suppliers, and dimensions
 by code and amounts as decimals; `books.describe` lists them.
 
-| Access                      | Actions                                                                                                                                                          |
-| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Anyone Backoffice signs for | `books.describe`, `entries.list`, `entries.get`, `accounts.lines`, `reports.trial-balance`, `parties.open-items`                                                 |
-| Members                     | `entries.post`, `entries.reverse`, `parties.create`, `settlements.create`, `settlements.reverse`                                                                 |
-| Owners and admins           | `accounts.create`, `accounts.update`, `journals.create`, `dimensions.create`, `dimension-values.create`, `currencies.add`, `fiscal-years.open`, `periods.reopen` |
+| Access                       | Actions                                                                                                                                                          |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Anyone Backoffice signs for  | `books.describe`, `entries.list`, `entries.get`, `accounts.lines`, `reports.trial-balance`, `parties.open-items`, `documents.get`                                |
+| Members and the installation | `documents.propose`, `documents.decline`                                                                                                                         |
+| Members                      | `entries.post`, `entries.reverse`, `parties.create`, `settlements.create`, `settlements.reverse`                                                                 |
+| Owners and admins            | `accounts.create`, `accounts.update`, `journals.create`, `dimensions.create`, `dimension-values.create`, `currencies.add`, `fiscal-years.open`, `periods.reopen` |
 
 Only people close and lock periods, on the settings page. Changing the books needs a person: calls
-Backoffice makes as the installation, for automations, only read. The person must have signed in to
-Bookkeeping, which names them on the entries and settlements their agent makes ("Ada Lovelace via
-Backoffice"). Their roles are confirmed as the pages confirm them: a membership Backoffice confirmed
-within the last minute is trusted, otherwise Bookkeeping asks Backoffice again with their stored
-authorization. An entry's reference, such as an invoice number, is unique in its journal, so an
-agent posting again after a lost answer cannot post twice. The ledger's refusals answer HTTP 422
-with its message, which Backoffice passes to the agent.
+Backoffice makes as the installation, for automations such as the
+[bookkeeping agent](#the-bookkeeping-agent), only read and answer documents' reviews, which posts
+nothing. The person must have signed in to Bookkeeping, which names them on the entries and
+settlements their agent makes ("Ada Lovelace via Backoffice"). Their roles are confirmed as the
+pages confirm them: a membership Backoffice confirmed within the last minute is trusted, otherwise
+Bookkeeping asks Backoffice again with their stored authorization. An entry's reference, such as an
+invoice number, is unique in its journal, so an agent posting again after a lost answer cannot post
+twice. The ledger's refusals answer HTTP 422 with its message, which Backoffice passes to the agent.
 
 After changing the actions, run `pnpm backoffice:connect` to register them.
 
@@ -272,16 +276,16 @@ entries balance and are final once posted, periods must be open, lines on receiv
 accounts belong to a customer or supplier. The pages under `/w/:slug/a/:administration` show its
 refusals as form errors:
 
-| Path                                   | What                                                                                             |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| the books' own path                    | A journal's entries, newest first; `?journal=` picks the journal                                 |
-| `/entries/:journal/:entryNumber`       | One entry, named by its journal's code, e.g. `/entries/SAL/3`, and reversing it                  |
-| `/entries/new`                         | Posting an entry: its lines, with a customer or supplier, currency, and dimension values         |
-| `/documents`, `/documents/:documentId` | Uploading documents and listing them; one document, booking it, or dismissing it                 |
-| `/accounts`, `/accounts/:accountId`    | The chart of accounts and adding to it; an account's lines, and renaming or deactivating it      |
-| `/trial-balance`                       | Each account's totals for the fiscal year through a period; `?period=` picks it                  |
-| `/parties`, `/parties/:partyAccountId` | Customers and suppliers; one's open items, settling them against each other, and undoing that    |
-| `/settings`                            | Fiscal years, and closing, reopening, or locking their periods; journals, dimensions, currencies |
+| Path                                   | What                                                                                              |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| the books' own path                    | A journal's entries, newest first; `?journal=` picks the journal                                  |
+| `/entries/:journal/:entryNumber`       | One entry, named by its journal's code, e.g. `/entries/SAL/3`, and reversing it                   |
+| `/entries/new`                         | Posting an entry: its lines, with a customer or supplier, currency, and dimension values          |
+| `/documents`, `/documents/:documentId` | Uploading documents and listing them; one document, its proposed entry, booking it, or dismissing |
+| `/accounts`, `/accounts/:accountId`    | The chart of accounts and adding to it; an account's lines, and renaming or deactivating it       |
+| `/trial-balance`                       | Each account's totals for the fiscal year through a period; `?period=` picks it                   |
+| `/parties`, `/parties/:partyAccountId` | Customers and suppliers; one's open items, settling them against each other, and undoing that     |
+| `/settings`                            | Fiscal years, and closing, reopening, or locking their periods; journals, dimensions, currencies  |
 
 The client's sidebar lists these pages under the administration's name while its books are open.
 Everyone in the client's workspace keeps the books: posting and reversing entries, adding customers
@@ -294,8 +298,9 @@ as decimals with a dot or a comma and no thousands separators.
 
 Members upload the books' documents, such as invoices and receipts, at `/documents`, and book each
 from its page: **Book** opens the new-entry form beside the document, with the document's date to
-fill in. Booking posts the entry and records the document as its source document in the ledger, in
-one transaction (`workers/books/documents`, a Fragno fragment that uses the ledger's services). A
+fill in. Uploading also asks the [bookkeeping agent](#the-bookkeeping-agent) to propose the entry.
+Booking posts the entry and records the document as its source document in the ledger, in one
+transaction (`workers/books/documents`, a Fragno fragment that uses the ledger's services). A
 document is booked once: reversing its entry makes it to book again, and booking it again keeps the
 date it was first booked with. Reversing that reversal books the document again too, so it is
 refused unless the document is to book. A document that is not to be booked, such as a duplicate, is
@@ -312,6 +317,39 @@ when it was shown, and the file is stored before the document is recorded, so up
 a failure records the document once. Backoffice's writes have no precondition, so the path names the
 file's hash: another file sent with the same form is stored beside the document's, never over it.
 The upload's body is read only up to the largest upload, so a larger one is refused unread.
+
+#### The bookkeeping agent
+
+Uploading a document asks the `bookkeeper` agent, a Backoffice agent in the administration's
+project, to propose the entry booking it. Bookkeeping asks it as its installation, not as the
+person, so the agent's calls to Bookkeeping arrive as the installation's: they read the books and
+answer reviews (`documents.propose` and `documents.decline`), and every other change is refused, as
+for any automation, whatever a document tells the agent. Bookkeeping defines the agent there when
+the project has none, granting it `upload.read`, `models.extract`, `integrations.read` (to read the
+actions' input schemas), and `integrations.execute`; a definition members changed in Backoffice is
+left as it is. So is one Bookkeeping defined before its definition changed: members update or delete
+it to get the new one. It then submits the prompt with `pi.prompt.submit`, and Backoffice bills the
+turn to the client.
+
+The agent reads the document with `documents.get` and `models.extract`, the books with
+`books.describe` and `entries.list`, and answers with `documents.propose`, an entry as
+`entries.post` takes it that must balance, or with `documents.decline` and why. It cannot post:
+people review proposals. The document's page shows the proposal and the agent's note, and **Review
+and book** opens the new-entry form filled in from it; the documents list marks documents with a
+proposal. A proposal is checked against the books when made, and again by the ledger when booked.
+
+Each document records its review: asked, under a request ID; the proposed entry; or the reason it
+proposes none. The request is recorded before the agent is set up and asked, so one that never
+reached it shows. While it is unanswered the document's page asks Backoffice where it stands with
+`pi.prompt.get`: waiting, running, failed with the reason, finished without an answer, or never
+received; or that Backoffice cannot say, e.g. while it cannot be reached. The agent answers before
+its turn ends, so the page reads the document again before showing a finished turn without an
+answer. While waiting or running, the page asks again every 5 seconds while it is in view, since
+nothing tells Bookkeeping when the agent's turn ends. Any but the first two offer **Ask again**,
+which sends a new request; a later answer replaces an earlier one. The upload asks under one request
+ID, and only while the document has no review, so sending it again, even twice at once, asks once
+and never undoes an answer. Booking or dismissing a document ends its review: the agent's actions
+refuse documents that are not to book.
 
 Bookkeeping is not live, so its storage keeps no compatibility: books are set up only when their
 administration is created, and administrations from before a storage change do not open. Delete
@@ -366,6 +404,11 @@ Scenario tests (`*.scenario.test.ts`) run Bookkeeping's pages and Durable Object
   layout loaders, actions, and redirects behave as in production.
 - `practice()` sets up an operator, a firm whose owner accepted the invitation, and its first
   client; `advanceTime()` moves the clock.
+- `scenario/fixtures/invoice.pdf` is a realistic one-page purchase invoice to Analytical Engines,
+  with four lines at 21% and 9% VAT, to upload in scenarios or by hand.
+  `scenario/fixtures/invoice.ts` renders it and exports `INVOICE`, what it says, to compare an
+  extraction with; after changing it, `pnpm fixtures:generate` writes the PDF again, byte for byte
+  the same when nothing changed.
 
 ## Deployment
 

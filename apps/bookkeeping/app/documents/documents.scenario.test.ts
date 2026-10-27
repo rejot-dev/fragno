@@ -1,6 +1,7 @@
 import { assert, expect, test } from "vitest";
 
 import { Buffer } from "node:buffer";
+import { readFileSync } from "node:fs";
 
 import {
   runBookkeepingScenario,
@@ -8,6 +9,7 @@ import {
   type ScenarioBrowser,
   type ScenarioPage,
 } from "../../scenario/bookkeeping-scenario";
+import { INVOICE } from "../../scenario/fixtures/invoice";
 import type { DocumentView } from "../../workers/books/documents/documents";
 import type { BooksOutletContext } from "../books/layout";
 
@@ -437,5 +439,262 @@ test("an upload body larger than any document is refused without being read whol
     ).toMatchObject({ actionData: { error: "Upload files of at most 1.9 MB." } });
     expect(sent).toBeLessThan(2 * 1024 * 1024);
     expect(await listDocuments(ada)).toEqual([]);
+  });
+});
+
+/** The document page's view of how far the bookkeeping agent got with its request. */
+async function readProgress(browser: ScenarioBrowser, id: string) {
+  const page = await browser.navigate(`${BOOKS}/documents/${id}`);
+  return (page.loaderData["documents/document"] as { progress: unknown }).progress;
+}
+
+/** A line of a proposed entry, as agents pass it: accounts by code and amounts as decimals. */
+function proposedLine(account: string, side: "debit" | "credit", amount: string) {
+  return {
+    account,
+    side,
+    amount,
+    currency: null,
+    functionalAmount: null,
+    description: "",
+    party: null,
+    dueDate: null,
+    dimensions: {},
+  };
+}
+
+/** Babbage Instruments' invoice, a PDF as people upload them; see `scenario/fixtures`. */
+const invoiceFixture: Upload = {
+  name: `${INVOICE.number}.pdf`,
+  type: "application/pdf",
+  bytes: new Uint8Array(
+    readFileSync(new URL("../../scenario/fixtures/invoice.pdf", import.meta.url)),
+  ),
+};
+
+const INVOICE_TOTAL = (INVOICE.totalCents / 100).toFixed(2);
+
+/** The fixture invoice's entry, as the agent proposes it, with these amounts. */
+function proposal(id: string, debit: string, credit: string) {
+  return {
+    document: id,
+    documentDate: INVOICE.invoiceDate,
+    entry: {
+      journal: "PUR",
+      postingDate: `${YEAR}-03-02`,
+      reference: INVOICE.number,
+      description: `${INVOICE.supplier.name}, invoice ${INVOICE.number}`,
+      lines: [proposedLine("4000", "debit", debit), proposedLine("1000", "credit", credit)],
+    },
+    note: "A purchase of engine parts, paid from the bank as earlier ones were.",
+  };
+}
+
+test("uploading asks the bookkeeping agent, whose proposed entry a member reviews and books", async () => {
+  await runBookkeepingScenario(async (scenario) => {
+    const { ada } = await openBooks(scenario);
+    const invoice = invoiceFixture;
+    // Sending the upload twice at once, as a double click does, asks once.
+    const id = await uploadFormId(ada);
+    await Promise.all([upload(ada, invoice, id), upload(ada, invoice, id)]);
+
+    expect(scenario.backoffice.agents(CLIENT, ADMINISTRATION)).toMatchObject([
+      {
+        agentName: "bookkeeper",
+        permissions: ["upload.read", "models.extract", "integrations.read", "integrations.execute"],
+      },
+    ]);
+    const [prompt, ...more] = scenario.backoffice.prompts(CLIENT, ADMINISTRATION);
+    expect(more).toEqual([]);
+    expect(prompt).toMatchObject({
+      agentName: "bookkeeper",
+      requestId: `document:${id}:upload`,
+      prompter: "installation",
+      status: "queued",
+    });
+    expect(prompt.content).toContain(id);
+    expect(await readDocument(ada, id)).toMatchObject({
+      review: { status: "requested", requestId: prompt.requestId, by: "Ada Lovelace" },
+    });
+    expect(await readProgress(ada, id)).toEqual({ requestId: prompt.requestId, status: "queued" });
+    scenario.backoffice.settlePrompt(prompt.requestId, { status: "running" });
+    expect(await readProgress(ada, id)).toEqual({ requestId: prompt.requestId, status: "running" });
+
+    // Bookkeeping prompts the agent as its installation, so its calls change nothing but reviews,
+    // whatever a document tells it.
+    const agent = scenario.agent("installation", {
+      organization: CLIENT,
+      project: ADMINISTRATION,
+    });
+    expect(
+      await agent.call("entries.post", proposal(id, INVOICE_TOTAL, INVOICE_TOTAL).entry),
+    ).toEqual({
+      status: 403,
+      body: {
+        message:
+          "Automations without a person behind them read the books and propose documents' entries; only people change the books.",
+      },
+    });
+    expect(await agent.call("documents.get", { document: id })).toEqual({
+      status: 200,
+      body: expect.objectContaining({
+        path: `/workspace/documents/${id}/${await sha256(invoice.bytes)}/${INVOICE.number}.pdf`,
+        mediaType: "application/pdf",
+        status: "to-book",
+        bookedIn: null,
+        review: "requested",
+      }),
+    });
+    expect(await agent.call("documents.propose", proposal(id, INVOICE_TOTAL, "776.00"))).toEqual({
+      status: 422,
+      body: {
+        message: `The entry does not balance: debits ${INVOICE_TOTAL} and credits 776.00 EUR.`,
+      },
+    });
+    // The agent answers, and its turn ends, while the page asks how far it got.
+    scenario.backoffice.beforeNextAnswer("pi.prompt.get", async () => {
+      expect(
+        await agent.call("documents.propose", proposal(id, INVOICE_TOTAL, INVOICE_TOTAL)),
+      ).toEqual({
+        status: 200,
+        body: { document: id, review: "proposed" },
+      });
+      scenario.backoffice.settlePrompt(prompt.requestId, { status: "completed" });
+    });
+    const answered = await ada.navigate(`${BOOKS}/documents/${id}`);
+    expect(answered.loaderData["documents/document"]).toMatchObject({
+      document: { review: { status: "proposed" } },
+      progress: null,
+    });
+    // Uploading again does not ask again, nor undo the answer.
+    await upload(ada, invoice, id);
+    expect(scenario.backoffice.prompts(CLIENT, ADMINISTRATION)).toHaveLength(1);
+
+    const { books } = await readBooks(ada);
+    const document = await readDocument(ada, id);
+    expect(document.review).toEqual({
+      status: "proposed",
+      entry: {
+        journalId: find(books.journals, "PUR").id,
+        postingDate: `${YEAR}-03-02`,
+        documentDate: INVOICE.invoiceDate,
+        reference: INVOICE.number,
+        description: `${INVOICE.supplier.name}, invoice ${INVOICE.number}`,
+        lines: [
+          expect.objectContaining({ accountId: find(books.accounts, "4000").id, side: "debit" }),
+          expect.objectContaining({ accountId: find(books.accounts, "1000").id, side: "credit" }),
+        ],
+      },
+      note: "A purchase of engine parts, paid from the bank as earlier ones were.",
+      by: "the bookkeeping agent",
+      at: expect.any(String),
+    });
+    expect(await readProgress(ada, id)).toBeNull();
+    // The new-entry form starts from the proposal, and Ada books it as proposed.
+    const form = await ada.navigate(`${BOOKS}/entries/new?document=${id}`);
+    expect(form.loaderData["books/new-entry"]).toMatchObject({
+      document: { review: { status: "proposed" } },
+    });
+    assert(document.review?.status === "proposed");
+    const { entry } = document.review;
+    const booked = await book(ada, id, {
+      journalId: entry.journalId,
+      postingDate: entry.postingDate,
+      documentDate: entry.documentDate,
+      reference: entry.reference ?? "",
+      description: entry.description,
+      ...Object.fromEntries(
+        entry.lines.flatMap((line, row) => [
+          [`lines.${row}.accountId`, line.accountId],
+          [`lines.${row}.description`, line.description],
+          [`lines.${row}.${line.side}`, line.amount],
+          [`lines.${row}.currency`, line.currency],
+          [`lines.${row}.partyAccountId`, line.partyAccountId ?? ""],
+        ]),
+      ),
+    });
+    expect(booked.path).toBe(`${BOOKS}/documents/${id}`);
+    expect(await readDocument(ada, id)).toMatchObject({
+      state: { status: "booked" },
+      source: { documentDate: INVOICE.invoiceDate, entries: [{ entryNumber: 1 }] },
+    });
+    // A booked document takes no more proposals.
+    expect(
+      await agent.call("documents.propose", proposal(id, INVOICE_TOTAL, INVOICE_TOTAL)),
+    ).toEqual({
+      status: 422,
+      body: { message: "This document is booked. Reverse its entry first." },
+    });
+  });
+});
+
+test("a request the agent never received, or failed, is asked again from the document's page", async () => {
+  await runBookkeepingScenario(async (scenario) => {
+    const { ada } = await openBooks(scenario);
+    // Backoffice could not set the agent up, so it was never asked; the page says so.
+    scenario.backoffice.failNextRequest("pi.agent.create");
+    const id = await uploaded(ada, pdf("Babbage Instruments, invoice 10"));
+    expect(scenario.backoffice.agents(CLIENT, ADMINISTRATION)).toEqual([]);
+    expect(scenario.backoffice.prompts(CLIENT, ADMINISTRATION)).toEqual([]);
+    const { review } = await readDocument(ada, id);
+    assert(review?.status === "requested");
+    expect(await readProgress(ada, id)).toEqual({ status: "lost" });
+    // While Backoffice cannot be reached, the page shows the document and that it cannot say.
+    scenario.backoffice.setReachable(false);
+    expect(await readProgress(ada, id)).toEqual({
+      status: "unknown",
+      message: "Backoffice could not be reached.",
+    });
+    expect(await ada.submit(`${BOOKS}/documents/${id}`, { intent: "ask" })).toMatchObject({
+      actionData: {
+        intent: "ask",
+        error: "Backoffice did not ask the agent: Backoffice could not be reached.",
+      },
+    });
+    scenario.backoffice.setReachable(true);
+
+    const ask = { intent: "ask" };
+    expect(await ada.submit(`${BOOKS}/documents/${id}`, ask)).toMatchObject({
+      actionData: { intent: "ask", error: null },
+    });
+    const [first, ...more] = scenario.backoffice.prompts(CLIENT, ADMINISTRATION);
+    expect(more).toEqual([]);
+    expect(first.requestId).not.toBe(review.requestId);
+    scenario.backoffice.settlePrompt(first.requestId, {
+      status: "failed",
+      reason: "The model is unavailable.",
+    });
+    expect(await readProgress(ada, id)).toEqual({
+      requestId: first.requestId,
+      status: "failed",
+      reason: "The model is unavailable.",
+    });
+
+    await ada.submit(`${BOOKS}/documents/${id}`, ask);
+    const second = scenario.backoffice.prompts(CLIENT, ADMINISTRATION).at(-1)!;
+    expect(second.requestId).not.toBe(first.requestId);
+    // The agent stays as Bookkeeping defined it the first time.
+    expect(scenario.backoffice.agents(CLIENT, ADMINISTRATION)).toHaveLength(1);
+    const agent = scenario.agent("installation", {
+      organization: CLIENT,
+      project: ADMINISTRATION,
+    });
+    expect(
+      await agent.call("documents.decline", { document: id, reason: "This is a price list." }),
+    ).toEqual({ status: 200, body: { document: id, review: "declined" } });
+    expect(await readDocument(ada, id)).toMatchObject({
+      review: { status: "declined", reason: "This is a price list." },
+    });
+
+    // A dismissed document is not proposed for, nor asked about.
+    await ada.submit(`${BOOKS}/documents/${id}`, { intent: "dismiss", resultIntent: "dismiss" });
+    expect(await agent.call("documents.propose", proposal(id, "1.00", "1.00"))).toEqual({
+      status: 422,
+      body: { message: "This document was dismissed." },
+    });
+    expect(await ada.submit(`${BOOKS}/documents/${id}`, ask)).toMatchObject({
+      actionData: { intent: "ask", error: "This document was dismissed." },
+    });
+    expect(scenario.backoffice.prompts(CLIENT, ADMINISTRATION)).toHaveLength(2);
   });
 });

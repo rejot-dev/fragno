@@ -5,7 +5,7 @@ import type { DocumentView } from "../../workers/books/documents/documents";
 import { entryPath, indexBooks } from "../books/books";
 import type { BooksOutletContext } from "../books/layout";
 
-type Document = Pick<DocumentView, "source" | "state">;
+type Document = Pick<DocumentView, "source" | "state" | "review">;
 
 /** The entries recording a document, named by their journal's code, e.g. `PUR 3`. */
 export function documentEntries(document: Document, context: BooksOutletContext) {
@@ -21,7 +21,10 @@ export function documentEntries(document: Document, context: BooksOutletContext)
   });
 }
 
-/** Whether a document is to book, booked by an entry it links to, or dismissed. */
+/**
+ * Whether a document is to book, with an entry the bookkeeping agent proposes or not; booked by an
+ * entry it links to; or dismissed.
+ */
 export function DocumentStatus({
   document,
   context,
@@ -30,6 +33,9 @@ export function DocumentStatus({
   context: BooksOutletContext;
 }) {
   const { state } = document;
+  if (state.status === "to-book" && document.review?.status === "proposed") {
+    return <BackofficeStatusLight tone="info">Entry proposed</BackofficeStatusLight>;
+  }
   if (state.status === "to-book") {
     return <BackofficeStatusLight tone="waiting">To book</BackofficeStatusLight>;
   }

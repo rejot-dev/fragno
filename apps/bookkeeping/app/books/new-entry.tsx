@@ -11,6 +11,7 @@ import { Form, redirect, useNavigation, useOutletContext } from "react-router";
 import { z } from "zod";
 
 import type { Books } from "../../workers/books/books";
+import type { ProposedEntry } from "../../workers/books/documents/schema";
 import { today } from "../../workers/books/fiscal-years";
 import { formatAmount, parseAmount } from "../../workers/books/money";
 import { DocumentPreview } from "../documents/preview";
@@ -203,7 +204,10 @@ export async function action({ request, params }: Route.ActionArgs): Promise<For
   throw redirect(documentPath(booksPath(params), document.id));
 }
 
-/** What the form tracks of a line to show its totals and the fields its account needs. */
+/**
+ * What the form tracks of a line to show its totals and the fields its account needs, and what
+ * its other fields start with.
+ */
 type LineState = {
   key: number;
   accountId: string;
@@ -211,12 +215,38 @@ type LineState = {
   debit: string;
   credit: string;
   functionalAmount: string;
+  initial: {
+    description: string;
+    partyAccountId: string | null;
+    dueDate: string;
+    dimensionValueIds: string[];
+  };
 };
+
+/** The form's lines, filled in from the bookkeeping agent's proposal. */
+function linesFromProposal(proposal: ProposedEntry, functionalCurrency: string): LineState[] {
+  return proposal.lines.map((line, key) => ({
+    key,
+    accountId: line.accountId,
+    currency: line.currency,
+    debit: line.side === "debit" ? line.amount : "",
+    credit: line.side === "credit" ? line.amount : "",
+    functionalAmount: line.currency === functionalCurrency ? "" : line.functionalAmount,
+    initial: {
+      description: line.description,
+      partyAccountId: line.partyAccountId,
+      dueDate: line.dueDate ?? "",
+      dimensionValueIds: line.dimensionValueIds,
+    },
+  }));
+}
 
 export default function NewEntryPage({ loaderData, actionData }: Route.ComponentProps) {
   const { books, base } = useOutletContext<BooksOutletContext>();
   const navigation = useNavigation();
   const { document } = loaderData;
+  // Booking a document the bookkeeping agent proposed an entry for starts from its proposal.
+  const proposal = document?.review?.status === "proposed" ? document.review.entry : null;
   const index = indexBooks(books);
   const blank = (key: number): LineState => ({
     key,
@@ -225,8 +255,13 @@ export default function NewEntryPage({ loaderData, actionData }: Route.Component
     debit: "",
     credit: "",
     functionalAmount: "",
+    initial: { description: "", partyAccountId: null, dueDate: "", dimensionValueIds: [] },
   });
-  const [lines, setLines] = useState<LineState[]>(() => [blank(0), blank(1)]);
+  const [lines, setLines] = useState<LineState[]>(() =>
+    proposal === null
+      ? [blank(0), blank(1)]
+      : linesFromProposal(proposal, books.functionalCurrency),
+  );
   const update = (key: number, change: Partial<LineState>) => {
     setLines((current) =>
       current.map((line) => (line.key === key ? { ...line, ...change } : line)),
@@ -252,9 +287,21 @@ export default function NewEntryPage({ loaderData, actionData }: Route.Component
           {document === null ? null : (
             <div className="mb-4 grid gap-4 md:grid-cols-[11rem_1fr]">
               <input type="hidden" name="documentId" value={document.id} />
+              {proposal === null ? null : (
+                <p className="text-sm text-pretty text-[var(--bo-muted)] md:col-span-2">
+                  Filled in from the bookkeeping agent&apos;s proposal. Check it against the
+                  document before posting.
+                </p>
+              )}
               {document.source === null ? (
                 <Field label="Document date">
-                  <Input className="w-full" type="date" name="documentDate" required />
+                  <Input
+                    className="w-full"
+                    type="date"
+                    name="documentDate"
+                    defaultValue={proposal?.documentDate}
+                    required
+                  />
                 </Field>
               ) : (
                 <p className="text-sm text-pretty text-[var(--bo-muted)] md:col-span-2">
@@ -271,7 +318,9 @@ export default function NewEntryPage({ loaderData, actionData }: Route.Component
                   label: `${journal.code} · ${journal.name}`,
                   value: journal.id,
                 }))}
-                defaultValue={loaderData.journalId ?? books.journals[0]?.id ?? null}
+                defaultValue={
+                  proposal?.journalId ?? loaderData.journalId ?? books.journals[0]?.id ?? null
+                }
                 required
               />
             </Field>
@@ -280,15 +329,25 @@ export default function NewEntryPage({ loaderData, actionData }: Route.Component
                 className="w-full"
                 type="date"
                 name="postingDate"
-                defaultValue={loaderData.today}
+                defaultValue={proposal?.postingDate ?? loaderData.today}
                 required
               />
             </Field>
             <Field label="Reference">
-              <Input className="w-full" name="reference" placeholder="Invoice number" />
+              <Input
+                className="w-full"
+                name="reference"
+                placeholder="Invoice number"
+                defaultValue={proposal?.reference ?? undefined}
+              />
             </Field>
             <Field label="Description">
-              <Input className="w-full" name="description" required />
+              <Input
+                className="w-full"
+                name="description"
+                defaultValue={proposal?.description}
+                required
+              />
             </Field>
           </div>
         </SurfacePanelBody>
@@ -339,6 +398,7 @@ export default function NewEntryPage({ loaderData, actionData }: Route.Component
                     aria-label={`${label} description`}
                     name={`lines.${line.key}.description`}
                     placeholder="Optional"
+                    defaultValue={line.initial.description}
                   />
                   <Input
                     aria-label={`${label} debit`}
@@ -379,6 +439,7 @@ export default function NewEntryPage({ loaderData, actionData }: Route.Component
                             aria-label={`${label} ${account.role === "receivable" ? "customer" : "supplier"}`}
                             name={`lines.${line.key}.partyAccountId`}
                             density="compact"
+                            defaultValue={line.initial.partyAccountId}
                             options={partyAccounts.map((partyAccount) => ({
                               label: `${partyAccount.code} · ${partyAccount.party.name}`,
                               value: partyAccount.id,
@@ -396,6 +457,7 @@ export default function NewEntryPage({ loaderData, actionData }: Route.Component
                             aria-label={`${label} due date`}
                             name={`lines.${line.key}.dueDate`}
                             density="compact"
+                            defaultValue={line.initial.dueDate}
                             type="date"
                           />
                         </label>
@@ -438,6 +500,11 @@ export default function NewEntryPage({ loaderData, actionData }: Route.Component
                           aria-label={`${label} ${dimension.name}`}
                           name={`lines.${line.key}.dimension.${dimension.id}`}
                           density="compact"
+                          defaultValue={
+                            dimension.values.find((value) =>
+                              line.initial.dimensionValueIds.includes(value.id),
+                            )?.id ?? null
+                          }
                           options={[
                             { label: `No ${dimension.name.toLowerCase()}`, value: "none" },
                             ...dimension.values.map((value) => ({

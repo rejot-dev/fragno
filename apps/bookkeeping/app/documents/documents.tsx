@@ -18,6 +18,7 @@ import { requireBooks, requireBooksSubmission, type FormResult } from "../books/
 import { FormError } from "../books/forms";
 import type { BooksOutletContext } from "../books/layout";
 import type { Route } from "./+types/documents";
+import { askBookkeeper } from "./bookkeeper.server";
 import { readUploadForm, uploadDocument } from "./documents.server";
 import { DocumentStatus } from "./status";
 
@@ -51,7 +52,10 @@ const uploadSchema = z.object({
   file: z.instanceof(File, { message: "Choose a file to upload." }),
 });
 
-/** Uploads a document, then opens it to book it. */
+/**
+ * Uploads a document, asks the bookkeeping agent to propose its entry, then opens it to book it.
+ * The document's page shows a request that failed, to ask again, so asking never fails the upload.
+ */
 export async function action({ request, params }: Route.ActionArgs): Promise<FormResult> {
   const context = await requireBooksSubmission(request, params, "keep");
   const form = await readUploadForm(request);
@@ -67,6 +71,8 @@ export async function action({ request, params }: Route.ActionArgs): Promise<For
   if (!uploaded.ok) {
     return { intent: UPLOAD, error: uploaded.error };
   }
+  // A request that was not sent shows on the document's page, to ask again.
+  await askBookkeeper(context, (await context.books.getDocument(documentId))!, "first");
   throw redirect(documentPath(booksPath(params), documentId));
 }
 

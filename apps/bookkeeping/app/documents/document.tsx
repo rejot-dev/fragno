@@ -11,6 +11,7 @@ import {
 import { Link, useOutletContext } from "react-router";
 import { z } from "zod";
 
+import type { DocumentView } from "../../workers/books/documents/documents";
 import { formatDate } from "../books/books";
 import {
   formResult,
@@ -22,7 +23,13 @@ import {
 import { FormDialog } from "../books/forms";
 import type { BooksOutletContext } from "../books/layout";
 import type { Route } from "./+types/document";
+import {
+  askBookkeeper,
+  readBookkeeperProgress,
+  type BookkeeperProgress,
+} from "./bookkeeper.server";
 import { DocumentPreview } from "./preview";
+import { ASK, BookkeeperReview } from "./review";
 import { documentEntries, DocumentStatus } from "./status";
 
 export function meta({ loaderData }: Route.MetaArgs) {
@@ -40,10 +47,31 @@ async function requireDocument(
   return document;
 }
 
+/** The document, and how far the bookkeeping agent got with a request still unanswered. */
+async function documentWithProgress(
+  context: Awaited<ReturnType<typeof requireBooks>>,
+  documentId: string,
+): Promise<{ document: DocumentView; progress: BookkeeperProgress | null }> {
+  const document = await requireDocument(context, documentId);
+  const { review } = document;
+  if (document.state.status !== "to-book" || review?.status !== "requested") {
+    return { document, progress: null };
+  }
+  const progress = await readBookkeeperProgress(context, review.requestId);
+  if (["queued", "running", "unknown"].includes(progress.status)) {
+    return { document, progress };
+  }
+  // The agent answers before its turn ends, so a turn that ended may have answered since.
+  const reread = await requireDocument(context, documentId);
+  if (reread.review?.status === "requested" && reread.review.requestId === review.requestId) {
+    return { document: reread, progress };
+  }
+  return await documentWithProgress(context, documentId);
+}
+
 export async function loader({ request, params }: Route.LoaderArgs) {
-  return {
-    document: await requireDocument(await requireBooks(request, params), params.documentId),
-  };
+  const context = await requireBooks(request, params);
+  return await documentWithProgress(context, params.documentId);
 }
 
 export function headers() {
@@ -52,12 +80,23 @@ export function headers() {
 
 const DISMISS = "dismiss";
 
-/** Dismisses the document, such as a duplicate, so it no longer waits to be booked. */
+/**
+ * Dismisses the document, such as a duplicate, so it no longer waits to be booked; or asks the
+ * bookkeeping agent, again, to propose its entry.
+ */
 export async function action({ request, params }: Route.ActionArgs): Promise<FormResult> {
   const context = await requireBooksSubmission(request, params, "keep");
-  const parsed = await parseForm(request, z.object({ intent: z.literal(DISMISS) }));
+  const parsed = await parseForm(request, z.object({ intent: z.enum([DISMISS, ASK]) }));
   if ("refusal" in parsed) {
     return parsed.refusal;
+  }
+  if (parsed.data.intent === ASK) {
+    const asked = await askBookkeeper(
+      context,
+      await requireDocument(context, params.documentId),
+      "again",
+    );
+    return { intent: ASK, error: asked.ok ? null : asked.error };
   }
   return formResult(
     DISMISS,
@@ -84,7 +123,7 @@ const MEDIA_TYPE_LABELS: Record<string, string> = {
 export default function DocumentPage({ loaderData, actionData }: Route.ComponentProps) {
   const context = useOutletContext<BooksOutletContext>();
   const { base } = context;
-  const { document } = loaderData;
+  const { document, progress } = loaderData;
   const { state } = document;
   const entries = documentEntries(document, context);
   const entryNames = new Map(entries.map((entry) => [entry.id, entry.name]));
@@ -114,7 +153,11 @@ export default function DocumentPage({ loaderData, actionData }: Route.Component
                 {null}
               </FormDialog>
               <ButtonLink variant="solid" to={`${base}/entries/new?document=${document.id}`}>
-                {entries.length === 0 ? "Book" : "Book again"}
+                {document.review?.status === "proposed"
+                  ? "Review and book"
+                  : entries.length === 0
+                    ? "Book"
+                    : "Book again"}
               </ButtonLink>
             </>
           ) : null
@@ -196,6 +239,14 @@ export default function DocumentPage({ loaderData, actionData }: Route.Component
           </SurfaceTable>
         </SurfaceSection>
       )}
+      {state.status === "to-book" ? (
+        <BookkeeperReview
+          document={document}
+          progress={progress}
+          context={context}
+          result={actionData}
+        />
+      ) : null}
       <DocumentPreview base={base} document={document} />
     </>
   );

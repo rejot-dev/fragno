@@ -9,6 +9,7 @@ import { accountTypes, dimensionRequirements, partyRoles, sides } from "@fragno-
 import { z } from "zod";
 
 import type { Books, Outcome } from "../books/books";
+import { DOCUMENT_MEDIA_TYPES } from "../books/documents/schema";
 import { dayAfter, PERIOD_LENGTHS, periodEndDates } from "../books/fiscal-years";
 import { decimalAmount, parseAmount } from "../books/money";
 import { CONTROL_ROLES, usualControlAccount } from "../books/parties";
@@ -27,6 +28,12 @@ type Described = Awaited<ReturnType<Books["describe"]>>;
 
 /** The person an action that changes the books acts for. */
 type Person = { name: string };
+
+/**
+ * Who answers a document's review when Bookkeeping's installation calls: the bookkeeping agent,
+ * which Bookkeeping prompts as its installation so that it can answer reviews and nothing else.
+ */
+const BOOKKEEPING_AGENT: Person = { name: "the bookkeeping agent" };
 
 /** Answers the action with `status` and a message Backoffice shows the agent. */
 class ActionFailure extends Error {
@@ -50,10 +57,16 @@ function settled<T>(outcome: Outcome<T>): T {
   return outcome.value;
 }
 
+/**
+ * Who may run an action: `read` anyone Backoffice signs for; `review`, which proposes and posts
+ * nothing, people and Bookkeeping's installation; `keep` people; and `set-up` owners and admins.
+ */
+type ChangeAccess = "review" | "keep" | "set-up";
+
 type BooksAction = { declaration: AppAction } & (
   | { access: "read"; run(books: BooksStub, input: unknown): Promise<unknown> }
   | {
-      access: "keep" | "set-up";
+      access: ChangeAccess;
       run(books: BooksStub, input: unknown, person: Person): Promise<unknown>;
     }
 );
@@ -98,7 +111,7 @@ function readAction<TInput extends z.ZodType, TOutput extends z.ZodType>(
 }
 
 function writeAction<TInput extends z.ZodType, TOutput extends z.ZodType>(
-  access: "keep" | "set-up",
+  access: ChangeAccess,
   definition: ActionDefinition<TInput, TOutput> & {
     run(books: BooksStub, input: z.output<TInput>, person: Person): Promise<z.input<TOutput>>;
   },
@@ -253,6 +266,119 @@ function entryOutputOf(
       ),
     })),
   };
+}
+
+const entryInput = z.strictObject({
+  journal: z.string().trim().min(1).max(20).describe("The journal's code."),
+  postingDate: z.iso.date().describe("Must fall in an open period."),
+  reference: z
+    .string()
+    .trim()
+    .min(1)
+    .max(100)
+    .nullable()
+    .describe("Unique in the journal, e.g. an invoice number; null for none."),
+  description: z.string().trim().min(1).max(500),
+  lines: z
+    .array(
+      z.strictObject({
+        account: z.string().trim().min(1).max(20).describe("The account's code."),
+        side: z.enum(sides),
+        amount: decimal.describe("In the line's currency."),
+        currency: z.string().nullable().describe("Null for the books' functional currency."),
+        functionalAmount: decimal
+          .nullable()
+          .describe(
+            "The amount in the functional currency, for lines in another currency; null otherwise.",
+          ),
+        description: z.string().trim().max(500),
+        party: z
+          .string()
+          .trim()
+          .min(1)
+          .max(20)
+          .nullable()
+          .describe(
+            "On receivable and payable accounts, the code of the customer or supplier; null on other accounts.",
+          ),
+        dueDate: z.iso
+          .date()
+          .nullable()
+          .describe("When a customer's or supplier's line falls due; null for the posting date."),
+        dimensions: z
+          .record(z.string(), z.string())
+          .describe("Value codes by dimension code, as the account's dimension rules ask."),
+      }),
+    )
+    .min(2),
+});
+
+type PostingLine = Parameters<Books["postEntry"]>[0]["lines"][number];
+
+/**
+ * The ledger's lines for an entry that names the books' records by code, refusing codes the books
+ * lack and amounts that do not fit their currency. A control-account line without a party has no
+ * open item; the ledger refuses posting it with its own message.
+ */
+function ledgerLinesOf(
+  input: z.output<typeof entryInput>,
+  index: Index,
+  described: Described,
+): PostingLine[] {
+  const functionalDigits = index.minorUnitDigits(described.functionalCurrency);
+  return input.lines.map((line, position) => {
+    const label = `Line ${position + 1}`;
+    const account = index.account(line.account);
+    const currency = line.currency ?? described.functionalCurrency;
+    const amountMinor = minorUnits(
+      line.amount,
+      index.minorUnitDigits(currency),
+      `${label}'s amount`,
+    );
+    const foreign = currency !== described.functionalCurrency;
+    if (foreign !== (line.functionalAmount !== null)) {
+      refuse(
+        foreign
+          ? `${label} is in ${currency}: give its functional amount in ${described.functionalCurrency}.`
+          : `${label} is in the functional currency: its functional amount is null.`,
+      );
+    }
+    const partyRole =
+      account.role === "receivable" ? "customer" : account.role === "payable" ? "supplier" : null;
+    if (partyRole === null && line.party !== null) {
+      refuse(`${label}: account ${account.code} is not a customer or supplier account.`);
+    }
+    return {
+      accountId: account.id,
+      side: line.side,
+      currency,
+      amountMinor,
+      functionalAmountMinor:
+        line.functionalAmount === null
+          ? amountMinor
+          : minorUnits(line.functionalAmount, functionalDigits, `${label}'s functional amount`),
+      description: line.description,
+      dimensionValueIds: Object.entries(line.dimensions).map(([dimensionCode, valueCode]) => {
+        const dimension = index.dimension(dimensionCode);
+        return (
+          dimension.values.find((value) => value.code === valueCode)?.id ??
+          refuse(`Dimension ${dimension.code} has no value ${valueCode}.`)
+        );
+      }),
+      openItem:
+        partyRole === null || line.party === null
+          ? null
+          : {
+              partyAccountId: index.partyAccount(partyRole, line.party).id,
+              dueDate: line.dueDate ?? input.postingDate,
+            },
+    };
+  });
+}
+
+/** The document `id`, or the refusal an agent can act on. */
+async function requireDocument(books: BooksStub, id: string) {
+  return (await books.getDocument(id)) ?? refuse(`The books have no document ${id}.`);
 }
 
 const BOOKS_ACTION_LIST: BooksAction[] = [
@@ -567,116 +693,73 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
     },
   }),
 
+  readAction({
+    id: "documents.get",
+    label: "Describe a document",
+    description:
+      "A document uploaded to the books, such as an invoice or receipt: where its file is in this project's workspace, to read with models.extract, and whether it is to book, booked, or dismissed.",
+    input: z.strictObject({ document: z.uuid().describe("The document's ID.") }),
+    output: z.object({
+      id: z.string(),
+      filename: z.string(),
+      path: z.string().describe("The file's path in this project's workspace."),
+      mediaType: z.enum(DOCUMENT_MEDIA_TYPES),
+      uploadedAt: z.string().describe("When it was uploaded, as an ISO timestamp."),
+      uploadedBy: z.string(),
+      status: z.enum(["to-book", "booked", "dismissed"]),
+      bookedIn: z
+        .object({ journal: z.string(), number: z.number().int() })
+        .nullable()
+        .describe("The entry booking it, while it is booked."),
+      documentDate: z.iso
+        .date()
+        .nullable()
+        .describe("The date it was first booked with, which booking it again keeps."),
+      review: z
+        .enum(["requested", "proposed", "declined"])
+        .nullable()
+        .describe(
+          "Whether the bookkeeping agent was asked about it, proposed an entry, or proposed none.",
+        ),
+    }),
+    async run(books, input) {
+      const document = await requireDocument(books, input.document);
+      const { state, source } = document;
+      const index = indexBooks(await books.describe());
+      const booking =
+        state.status === "booked"
+          ? source!.entries.find((entry) => entry.id === state.entryId)!
+          : null;
+      return {
+        id: document.id,
+        filename: document.filename,
+        path: document.storageKey,
+        mediaType: document.mediaType,
+        uploadedAt: document.uploadedAt.toISOString(),
+        uploadedBy: document.uploadedBy,
+        status: state.status,
+        bookedIn: booking && {
+          journal: index.journalCode(booking.journalId),
+          number: booking.entryNumber,
+        },
+        documentDate: source?.documentDate ?? null,
+        review: document.review?.status ?? null,
+      };
+    },
+  }),
+
   writeAction("keep", {
     id: "entries.post",
     label: "Post an entry",
     description:
       "Posts a balanced entry to a journal. Posted entries are final: correct one with entries.reverse. Lines on a receivable or payable account name the customer or supplier they belong to. Give the entry a reference, such as the invoice number, when it has one: a journal refuses a reference it already has, so posting again after a lost answer cannot post twice.",
-    input: z.strictObject({
-      journal: z.string().trim().min(1).max(20).describe("The journal's code."),
-      postingDate: z.iso.date().describe("Must fall in an open period."),
-      reference: z
-        .string()
-        .trim()
-        .min(1)
-        .max(100)
-        .nullable()
-        .describe("Unique in the journal, e.g. an invoice number; null for none."),
-      description: z.string().trim().min(1).max(500),
-      lines: z
-        .array(
-          z.strictObject({
-            account: z.string().trim().min(1).max(20).describe("The account's code."),
-            side: z.enum(sides),
-            amount: decimal.describe("In the line's currency."),
-            currency: z.string().nullable().describe("Null for the books' functional currency."),
-            functionalAmount: decimal
-              .nullable()
-              .describe(
-                "The amount in the functional currency, for lines in another currency; null otherwise.",
-              ),
-            description: z.string().trim().max(500),
-            party: z
-              .string()
-              .trim()
-              .min(1)
-              .max(20)
-              .nullable()
-              .describe(
-                "On receivable and payable accounts, the code of the customer or supplier; null on other accounts.",
-              ),
-            dueDate: z.iso
-              .date()
-              .nullable()
-              .describe(
-                "When a customer's or supplier's line falls due; null for the posting date.",
-              ),
-            dimensions: z
-              .record(z.string(), z.string())
-              .describe("Value codes by dimension code, as the account's dimension rules ask."),
-          }),
-        )
-        .min(2),
-    }),
+    input: entryInput,
     output: z.object({ journal: z.string(), number: z.number().int() }),
     async run(books, input, person) {
       const described = await books.describe();
       const index = indexBooks(described);
       const journal = index.journal(input.journal);
-      const functionalDigits = index.minorUnitDigits(described.functionalCurrency);
-      const lines = input.lines.map((line, position) => {
-        const label = `Line ${position + 1}`;
-        const account = index.account(line.account);
-        const currency = line.currency ?? described.functionalCurrency;
-        const amountMinor = minorUnits(
-          line.amount,
-          index.minorUnitDigits(currency),
-          `${label}'s amount`,
-        );
-        const foreign = currency !== described.functionalCurrency;
-        if (foreign !== (line.functionalAmount !== null)) {
-          refuse(
-            foreign
-              ? `${label} is in ${currency}: give its functional amount in ${described.functionalCurrency}.`
-              : `${label} is in the functional currency: its functional amount is null.`,
-          );
-        }
-        const partyRole =
-          account.role === "receivable"
-            ? "customer"
-            : account.role === "payable"
-              ? "supplier"
-              : null;
-        if (partyRole === null && line.party !== null) {
-          refuse(`${label}: account ${account.code} is not a customer or supplier account.`);
-        }
-        return {
-          accountId: account.id,
-          side: line.side,
-          currency,
-          amountMinor,
-          functionalAmountMinor:
-            line.functionalAmount === null
-              ? amountMinor
-              : minorUnits(line.functionalAmount, functionalDigits, `${label}'s functional amount`),
-          description: line.description,
-          dimensionValueIds: Object.entries(line.dimensions).map(([dimensionCode, valueCode]) => {
-            const dimension = index.dimension(dimensionCode);
-            return (
-              dimension.values.find((value) => value.code === valueCode)?.id ??
-              refuse(`Dimension ${dimension.code} has no value ${valueCode}.`)
-            );
-          }),
-          // The ledger refuses a control-account line without a party with its own message.
-          openItem:
-            partyRole === null || line.party === null
-              ? null
-              : {
-                  partyAccountId: index.partyAccount(partyRole, line.party).id,
-                  dueDate: line.dueDate ?? input.postingDate,
-                },
-        };
-      });
+      const lines = ledgerLinesOf(input, index, described);
       const posted = settled(
         await books.postEntry({
           journalId: journal.id,
@@ -847,6 +930,106 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
         await books.reverseAllocation({ allocationId: input.settlement, reversedBy: person.name }),
       );
       return {};
+    },
+  }),
+
+  writeAction("review", {
+    id: "documents.propose",
+    label: "Propose a document's entry",
+    description:
+      "Proposes the entry that books a document to book, for a person to review and book: it posts nothing. The entry is as entries.post takes it, except that a customer's or supplier's line may leave its party null when the books lack them. It must balance in the functional currency. Proposing again, or after declining, replaces the earlier answer.",
+    input: z.strictObject({
+      document: z.uuid().describe("The document's ID."),
+      documentDate: z.iso
+        .date()
+        .describe("The date printed on the document, e.g. its invoice date."),
+      entry: entryInput,
+      note: z
+        .string()
+        .trim()
+        .min(1)
+        .max(2000)
+        .describe(
+          "For the person reviewing: what the document is, how you chose the accounts, and what to check, such as a supplier the books lack.",
+        ),
+    }),
+    output: z.object({ document: z.string(), review: z.literal("proposed") }),
+    async run(books, input, person) {
+      const described = await books.describe();
+      const index = indexBooks(described);
+      const journal = index.journal(input.entry.journal);
+      const lines = ledgerLinesOf(input.entry, index, described);
+      const inactive = input.entry.lines.find((line) => !index.account(line.account).active);
+      if (inactive) {
+        refuse(`Account ${inactive.account} is inactive and takes no new lines.`);
+      }
+      const functionalDigits = index.minorUnitDigits(described.functionalCurrency);
+      const total = (side: "debit" | "credit") =>
+        lines
+          .filter((line) => line.side === side)
+          .reduce((sum, line) => sum + line.functionalAmountMinor, 0n);
+      if (total("debit") !== total("credit")) {
+        refuse(
+          `The entry does not balance: debits ${decimalAmount(total("debit"), functionalDigits)} and credits ${decimalAmount(total("credit"), functionalDigits)} ${described.functionalCurrency}.`,
+        );
+      }
+      settled(
+        await books.reviewDocument({
+          documentId: input.document,
+          review: {
+            status: "proposed",
+            entry: {
+              journalId: journal.id,
+              postingDate: input.entry.postingDate,
+              documentDate: input.documentDate,
+              reference: input.entry.reference,
+              description: input.entry.description,
+              lines: lines.map((line, position) => ({
+                accountId: line.accountId,
+                description: line.description,
+                side: line.side,
+                amount: decimalAmount(line.amountMinor, index.minorUnitDigits(line.currency)),
+                currency: line.currency,
+                functionalAmount: decimalAmount(line.functionalAmountMinor, functionalDigits),
+                partyAccountId: line.openItem?.partyAccountId ?? null,
+                dueDate: input.entry.lines[position].dueDate,
+                dimensionValueIds: line.dimensionValueIds,
+              })),
+            },
+            note: input.note,
+            by: person.name,
+            at: new Date().toISOString(),
+          },
+        }),
+      );
+      return { document: input.document, review: "proposed" as const };
+    },
+  }),
+
+  writeAction("review", {
+    id: "documents.decline",
+    label: "Propose no entry for a document",
+    description:
+      "Says why you propose no entry for a document to book, such as a file that is no invoice or receipt, or one you cannot read, so a person books it themselves. Proposing later replaces this.",
+    input: z.strictObject({
+      document: z.uuid().describe("The document's ID."),
+      reason: z.string().trim().min(1).max(2000).describe("Why, for the person who books it."),
+    }),
+    output: z.object({ document: z.string(), review: z.literal("declined") }),
+    async run(books, input, person) {
+      await requireDocument(books, input.document);
+      settled(
+        await books.reviewDocument({
+          documentId: input.document,
+          review: {
+            status: "declined",
+            reason: input.reason,
+            by: person.name,
+            at: new Date().toISOString(),
+          },
+        }),
+      );
+      return { document: input.document, review: "declined" as const };
     },
   }),
 
@@ -1050,8 +1233,9 @@ export function isBooksAction(actionId: string): boolean {
 
 /**
  * Runs a books action Backoffice signed. It acts on the books of the administration whose project
- * the call runs in. Reads are for anyone Backoffice signs for; changing the books is for people
- * whose membership Bookkeeping confirms, and setting them up for owners and admins.
+ * the call runs in. Reads are for anyone Backoffice signs for; answering a document's review also
+ * for Bookkeeping's installation, which the bookkeeping agent calls as; changing the books is for
+ * people whose membership Bookkeeping confirms, and setting them up for owners and admins.
  */
 export async function runBooksAction(
   env: CloudflareEnv,
@@ -1079,10 +1263,13 @@ export async function runBooksAction(
     if (action.access === "read") {
       return Response.json(await action.run(books, input));
     }
+    if (action.access === "review" && claims.actor.kind === "installation") {
+      return Response.json(await action.run(books, input, BOOKKEEPING_AGENT));
+    }
     if (claims.actor.kind !== "user") {
       throw new ActionFailure(
         403,
-        "Automations without a person behind them read the books; only people change them.",
+        "Automations without a person behind them read the books and propose documents' entries; only people change the books.",
       );
     }
     const person = await confirmPerson(env, scope.owner.orgId, claims.actor.userId);
