@@ -24,6 +24,7 @@ import { CurrentBackofficeProvider } from "./current-context";
 import type { CurrentBackofficeContext } from "./current-context-state";
 import { GlobalHotkeysProvider, useGlobalHotkey } from "./global-hotkeys";
 import { MemberWorkspaceBanner } from "./member-workspace-banner";
+import { OpenAgentDrawerContext } from "./open-agent-drawer";
 import { BackofficePhoneChrome } from "./phone-chrome";
 import { BackofficeSidebarNav, useBackofficeSections } from "./sidebar-nav";
 import { BackofficeTopBar } from "./top-bar";
@@ -175,6 +176,9 @@ function BackofficeShellFrame({
     [agentsPath],
   );
   const sections = useBackofficeSections(resolvedScope, me);
+  const openAgentDrawer = useCallback(() => {
+    setAgentDrawerOpen(true);
+  }, []);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const sidebarRestoredRef = useRef(false);
   const [sidebarRestoring, setSidebarRestoring] = useState(true);
@@ -280,9 +284,11 @@ function BackofficeShellFrame({
               resolvedScope={resolvedScope}
               administeredMember={administeredMember}
             />
-            <div className="flex min-w-0 flex-1 flex-col">
-              <AskAgentContext.Provider value={askAgent}>{children}</AskAgentContext.Provider>
-            </div>
+            <OpenAgentDrawerContext value={openAgentDrawer}>
+              <div className="flex min-w-0 flex-1 flex-col">
+                <AskAgentContext.Provider value={askAgent}>{children}</AskAgentContext.Provider>
+              </div>
+            </OpenAgentDrawerContext>
           </main>
         </div>
       </div>

@@ -10,6 +10,10 @@ import {
 export const integrationsScopeBasePath = (scope: BackofficeResolvedScope): string =>
   `/backoffice/integrations/${backofficeRouteScopePath(backofficeRouteScopeFromResolvedScope(scope))}`;
 
+/** The wizard that connects a new source and optionally automates it. */
+export const integrationsConnectPath = (scope: BackofficeResolvedScope): string =>
+  `${integrationsScopeBasePath(scope)}/connect`;
+
 export const integrationBasePath = (scope: BackofficeResolvedScope, integration: string) =>
   `${integrationsScopeBasePath(scope)}/${integration}`;
 

@@ -257,6 +257,10 @@ export default [
           ),
         ],
       ),
+      route(
+        "integrations/:scopeKind/:scopeId/connect",
+        "routes/backoffice/integrations/connect.tsx",
+      ),
       route("integrations/:scopeKind/:scopeId", "routes/backoffice/integrations/scope-layout.tsx", [
         route(":connectionId", "routes/backoffice/integrations/connection-detail.tsx"),
       ]),
