@@ -183,22 +183,15 @@ errors of SQL that cannot run. `automation/scenario-starter-router.test.ts` and
 `automation/scenario-event-causation.bridge.scenario.test.ts` (run by `pnpm test:bridge`) check
 traces as the Events tab reads them.
 
-## Measurements (Upload)
+## Measurements (catch-up)
 
-These were taken while the replica still ran on the page, reaching a database worker through one
-message per call. In its own worker, its statements run without a round trip.
-
-A scope with 50 files rewritten 120 times has 6,559 outbox entries (6.9 MB of stream). In Chrome, in
-a background tab, with only the Upload replica empty:
-
-- The server sends the whole stream in 0.35–0.45 s.
-- With one call to the database worker per statement, the download showed for 3.1–4.1 s: 7,253 calls
-  at 0.35–0.45 ms each, about 4× what the same calls cost on the benchmark page in the same tab.
-- With a batch's statements in two calls, it shows for 0.8–1.5 s: 270 calls, of which the 130 that
-  carry a batch's writes take about 8 ms each. The panel appears 1.3–2 s after navigation; the
-  server's tree shows until then.
-- The replay benchmark (`packages-private/lofi-sqlite-import-benchmark`, `?schema=upload`) imports
-  the same stream in 0.49 s in headless Chrome with two calls per batch, from 0.72 s before.
+Replaying the recorded outboxes into the replica on wa-sqlite's in-memory VFS in Node, without
+projections, in the median of 3 runs: Upload's 6,559 entries (6.9 MB) take 0.25 s, and Automations'
+16,104 entries of Oct 23 take 3.4 s. In a replica worker on OPFS, in VS Code's browser, the import
+benchmark (`packages-private/lofi-sqlite-import-benchmark`, `?schema=upload`) replays Upload's in
+1.5 s after the replica opens, in the median of 9 runs. Sending a transaction's writes in one
+statement batch, as the replica did while it ran on the page, made no difference there, and was 12%
+slower in Node.
 
 ## Measurements (Automations)
 

@@ -1282,7 +1282,7 @@ describe("SQLite replica", () => {
     });
   });
 
-  it("applies each transaction in at most two database calls, one for its reads and one for its writes", async () => {
+  it("applies entries that arrive together in one transaction, which reads its metadata once", async () => {
     const entries = 120;
 
     await runReplicaScenario({
@@ -1294,7 +1294,7 @@ describe("SQLite replica", () => {
             uow.create("users", user(`user-${index}@example.com`));
           }),
         ),
-        // Checking whether the projection needs a rebuild takes no call of its own.
+        // Checking whether the projection needs a rebuild takes no statement of its own.
         openTab(
           "a",
           replica({
@@ -1309,11 +1309,11 @@ describe("SQLite replica", () => {
           const transactions: string[][] = [];
           let current: string[] | null = null;
           for (const sql of databaseCalls) {
-            if (sql.startsWith("BEGIN IMMEDIATE")) {
+            if (sql === "BEGIN IMMEDIATE") {
               current = [];
             }
             current?.push(sql);
-            if (current && sql.endsWith("COMMIT")) {
+            if (current && sql === "COMMIT") {
               transactions.push(current);
               current = null;
             }
@@ -1321,7 +1321,7 @@ describe("SQLite replica", () => {
           expect(current).toBeNull();
           // The first opens the replica and builds the projection.
           for (const calls of transactions.slice(1)) {
-            expect(calls.length).toBeLessThanOrEqual(2);
+            expect(calls.filter((sql) => sql.includes(`FROM "lofi_meta"`))).toHaveLength(1);
           }
           const inserts = databaseCalls.join("\n").split(`INSERT INTO "users_app"`).length - 1;
           expect(inserts).toBe(entries);

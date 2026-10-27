@@ -12,8 +12,6 @@ const { values: options } = parseArgs({
     machine: { type: "string" },
     fixture: { type: "string" },
     runs: { type: "string", default: "views" },
-    // Applied to the replica's connection before the import, e.g. `--pragma synchronous=NORMAL`.
-    pragma: { type: "string", multiple: true, default: [] },
   },
 });
 if (!options.machine || !options.fixture) {
@@ -79,7 +77,7 @@ i=0
 for views in ${runs.join(" ")}; do
   i=$((i + 1))
   echo "Run $i: $views" >&2
-  node measure.ts "$(command -v google-chrome)" '${pageUrl()}' "$views" > "result-$i-$views.json"
+  node measure.ts "$(command -v google-chrome)" 'http://localhost:5544/' "$views" > "result-$i-$views.json"
 done`);
 
 const resultsDirectory = join(
@@ -96,32 +94,6 @@ for (const [index, views] of runs.entries()) {
   results.push(JSON.parse(await readFile(join(resultsDirectory, file), "utf8")) as Results);
 }
 console.table(results.map(summarize));
-for (const [index, { import: run }] of results.entries()) {
-  const importMs = run.doneMs - run.openMs;
-  console.log(`\nRun ${index + 1}: statements, by time spent waiting on them`);
-  console.table(
-    run.database.statements.map(({ statement, count, totalMs, maxMs }) => ({
-      statement,
-      count,
-      "total ms": Math.round(totalMs),
-      "% of import": Math.round((totalMs / importMs) * 100),
-      "avg ms": Number((totalMs / count).toFixed(3)),
-      "max ms": Math.round(maxMs),
-    })),
-  );
-  console.log(`Run ${index + 1}: transactions by tenth of the import`);
-  console.table(
-    run.database.tenths.map(({ avgMs, avgCommitMs, avgStatements, avgParamKb }, tenth) => ({
-      tenth: `${tenth * 10}-${(tenth + 1) * 10}%`,
-      "avg ms": Number(avgMs.toFixed(2)),
-      "avg commit ms": Number(avgCommitMs.toFixed(2)),
-      statements: Number(avgStatements.toFixed(1)),
-      "params kB": Number(avgParamKb.toFixed(1)),
-    })),
-  );
-  console.log(`Run ${index + 1}: PRAGMAs ${JSON.stringify(run.database.pragmas)}`);
-}
-
 /** The parts of the page's results JSON the summary reads. */
 type Results = {
   browser: string;
@@ -133,23 +105,6 @@ type Results = {
     samples: Array<{ ms: number; applied: number; readMs: number }>;
     tableCounts: Array<{ table: string; rows: number }>;
     storageUsageBytes: number;
-    database: {
-      busyMs: number;
-      transactions: number;
-      statements: Array<{ statement: string; count: number; totalMs: number; maxMs: number }>;
-      tenths: Array<{
-        avgMs: number;
-        avgCommitMs: number;
-        avgStatements: number;
-        avgParamKb: number;
-      }>;
-      pragmas: Record<string, unknown>;
-      probes: {
-        selectOneMedianMs: number;
-        rowsPerTransaction1Ms: number;
-        rowsPerTransaction200Ms: number;
-      };
-    };
   };
 };
 
@@ -172,22 +127,7 @@ function summarize({ browser, fixture: { entries }, import: run }: Results) {
     "90-100%/s": rate(0.9, 1),
     "max read ms": Math.round(Math.max(...run.samples.map(({ readMs }) => readMs))),
     "storage MB": Math.round(run.storageUsageBytes / 1e6),
-    "db wait %": Math.round((run.database.busyMs / (run.doneMs - run.openMs)) * 100),
-    "SELECT 1 ms": Number(run.database.probes.selectOneMedianMs.toFixed(2)),
-    "200 tx ms": Math.round(run.database.probes.rowsPerTransaction1Ms),
-    "1 tx ms": Math.round(run.database.probes.rowsPerTransaction200Ms),
   };
-}
-
-function pageUrl(): string {
-  const url = new URL("http://localhost:5544/");
-  for (const pragma of options.pragma) {
-    if (!/^\w+\s*=\s*\w+$/u.test(pragma)) {
-      throw new Error(`--pragma takes name=value, not ${pragma}`);
-    }
-    url.searchParams.append("pragma", pragma);
-  }
-  return url.toString();
 }
 
 function step(message: string): void {
