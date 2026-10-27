@@ -7,9 +7,9 @@ import type { BackofficeRoutableResolvedScope } from "@/backoffice-runtime/resol
 import type { ResolvedWorkflowRuntimeToolCall } from "@/fragno/runtime-tools/workflow-catalog";
 
 import { GraphBadge } from "./graph-badge";
-import type { WorkflowGraphDetailMode } from "./script-view-mode";
 import { SourceLocationButton } from "./source-location-button";
 import type { WorkflowEventSender } from "./workflow-generated-ui";
+import type { WorkflowGraphDetailMode } from "./workflow-graph-presentation";
 import { hasVisibleWorkflowOutput } from "./workflow-output";
 import { WorkflowOutputDisclosure } from "./workflow-output-data";
 import type { WorkflowRunEvent, WorkflowStepRunState } from "./workflow-run-presentation";

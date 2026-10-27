@@ -4,7 +4,7 @@ import type {
   WorkflowVisualizationSnapshot,
 } from "@fragno-dev/workflow-visualizer-tokens";
 
-import type { WorkflowGraphDetailMode } from "./script-view-mode";
+export type WorkflowGraphDetailMode = "simple" | "verbose" | "ui";
 
 interface WorkflowGraphPresentation {
   childrenByParent: Map<string, WorkflowChildNode[]>;

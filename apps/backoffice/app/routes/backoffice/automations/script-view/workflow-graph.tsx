@@ -20,12 +20,12 @@ import type { ResolvedWorkflowRuntimeToolCall } from "@/fragno/runtime-tools/wor
 
 import { GraphBadge } from "./graph-badge";
 import type { LinkedScrollViewport } from "./linked-scroll";
-import type { WorkflowGraphDetailMode } from "./script-view-mode";
 import { SourceLocationButton } from "./source-location-button";
 import { WorkflowGeneratedUi, type WorkflowEventSender } from "./workflow-generated-ui";
 import {
   createWorkflowGraphPresentation,
   workflowTerminalDetails,
+  type WorkflowGraphDetailMode,
 } from "./workflow-graph-presentation";
 import { hasVisibleWorkflowOutput } from "./workflow-output";
 import { WorkflowOutputDisclosure } from "./workflow-output-data";
