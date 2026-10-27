@@ -41,13 +41,6 @@ export type RuntimeToolFamilyReference = {
   tools: RuntimeToolReference[];
 };
 
-export type RuntimeToolFamilyReferenceTarget = "bash" | "codemode" | "dashboard";
-
-export type DashboardCommandGroup = {
-  namespace: string;
-  commands: string[];
-};
-
 const pascalCase = (value: string) =>
   value
     .split(/[^a-zA-Z0-9]+|(?=[A-Z])/)
@@ -62,8 +55,6 @@ const typeNameFor = (tool: AnyBackofficeRuntimeTool, suffix: "Input" | "Output")
       : tool.reference?.codemode?.outputTypeName;
   return override ?? `${pascalCase(tool.namespace)}${pascalCase(tool.name)}${suffix}`;
 };
-
-const firstLine = (value: string) => value.trim().split("\n")[0]?.trim() ?? "";
 
 // Route and workflow grants name these permissions, so agents read the grants a call needs here.
 function describeCodemodeTool(tool: AnyBackofficeRuntimeTool) {
@@ -155,52 +146,6 @@ export const createRuntimeToolReferences = ({
   return tools.map(toRuntimeToolReference);
 };
 
-const optionUsage = (option: AutomationCommandOptionSpec) => {
-  const value = option.valueRequired ? ` <${option.valueName ?? "value"}>` : "";
-  const usage = `--${option.name}${value}`;
-  return option.required ? usage : `[${usage}]`;
-};
-
-const renderBashCommandReferenceMarkdown = (references: readonly RuntimeToolReference[]) => {
-  const byNamespace = new Map<string, RuntimeToolReference[]>();
-  for (const reference of references) {
-    if (!reference.bash) {
-      continue;
-    }
-    byNamespace.set(reference.namespace, [
-      ...(byNamespace.get(reference.namespace) ?? []),
-      reference,
-    ]);
-  }
-
-  return [...byNamespace.entries()]
-    .map(([namespace, namespaceReferences]) => {
-      const commands = namespaceReferences.flatMap((reference) => {
-        const bash = reference.bash;
-        if (!bash) {
-          return [];
-        }
-        const usage = bash.options.map(optionUsage).join(" ");
-        const optionLines = bash.options.map(
-          (option) => `  - --${option.name}: ${option.description}`,
-        );
-        const exampleLines = bash.examples.length
-          ? ["  - Examples:", ...bash.examples.map((example) => `    - \`${example}\``)]
-          : [];
-
-        return [
-          `- ${bash.command}${usage ? ` ${usage}` : ""}`,
-          `  - ${firstLine(bash.summary)}`,
-          ...optionLines,
-          ...exampleLines,
-        ].join("\n");
-      });
-
-      return [`### ${namespace}.*`, "", ...commands].join("\n");
-    })
-    .join("\n\n");
-};
-
 const sanitizeComment = (value: string) => value.replace(/\*\//g, "*\\/").trim();
 
 const renderJSDoc = (value: string, spaces = 0) => {
@@ -228,27 +173,14 @@ const INLINE_CODEMODE_TYPES = new Set([
 
 const shouldInlineCodemodeType = (type: string): boolean => INLINE_CODEMODE_TYPES.has(type.trim());
 
-const groupReferencesByNamespace = (references: readonly RuntimeToolReference[]) => {
-  const byNamespace = new Map<string, RuntimeToolReference[]>();
-  for (const reference of references) {
-    byNamespace.set(reference.namespace, [
-      ...(byNamespace.get(reference.namespace) ?? []),
-      reference,
-    ]);
-  }
-  return byNamespace;
-};
-
-const renderCodemodeProviderSection = ({
+export const renderCodemodeProviderNamespaceTypes = ({
   namespace,
   summary,
   references,
-  renderedSharedTypeDeclarations,
 }: {
   namespace: string;
   summary: string;
   references: readonly RuntimeToolReference[];
-  renderedSharedTypeDeclarations?: Set<string>;
 }) => {
   const sharedTypeDeclarations = [
     ...new Set(
@@ -257,16 +189,7 @@ const renderCodemodeProviderSection = ({
         ...(reference.codemode.outputTypeDeclarations ?? []),
       ]),
     ),
-  ].filter((declaration) => {
-    if (!renderedSharedTypeDeclarations) {
-      return true;
-    }
-    if (renderedSharedTypeDeclarations.has(declaration)) {
-      return false;
-    }
-    renderedSharedTypeDeclarations.add(declaration);
-    return true;
-  });
+  ];
   const typeDeclarations = [
     ...sharedTypeDeclarations,
     ...references.flatMap((reference) => {
@@ -305,16 +228,6 @@ const renderCodemodeProviderSection = ({
   ].join("\n");
 };
 
-export const renderCodemodeProviderNamespaceTypes = ({
-  namespace,
-  summary,
-  references,
-}: {
-  namespace: string;
-  summary: string;
-  references: readonly RuntimeToolReference[];
-}) => renderCodemodeProviderSection({ namespace, summary, references });
-
 export const renderCodemodeScopedContextTypes = (namespaces: readonly string[]) => {
   const scopedProviderEntries = namespaces.map(
     (namespace) => `  ${namespace}: ${pascalCase(namespace)}CodemodeProvider;`,
@@ -345,65 +258,4 @@ export const renderCodemodeScopedContextTypes = (namespaces: readonly string[]) 
     "  project(projectId: string): BackofficeCodemodeScopedProviders;",
     "};",
   ].join("\n");
-};
-
-function renderCodemodeProviderSections(references: readonly RuntimeToolReference[]) {
-  const byNamespace = groupReferencesByNamespace(references);
-  const renderedSharedTypeDeclarations = new Set<string>();
-  const providerSections = [...byNamespace.entries()].map(([namespace, namespaceReferences]) =>
-    renderCodemodeProviderSection({
-      namespace,
-      summary: `${namespace} tools`,
-      references: namespaceReferences,
-      renderedSharedTypeDeclarations,
-    }),
-  );
-  return { namespaces: [...byNamespace.keys()], providerSections };
-}
-
-export const renderCodemodeProviderTypes = (references: readonly RuntimeToolReference[]) => {
-  const { namespaces, providerSections } = renderCodemodeProviderSections(references);
-  return [
-    "// ── Backoffice domain tool providers ───────────────────────────────────",
-    ...providerSections,
-    renderCodemodeScopedContextTypes(namespaces),
-  ].join("\n\n");
-};
-
-export const renderDashboardCommandGroups = (
-  references: readonly RuntimeToolReference[],
-): DashboardCommandGroup[] => {
-  const groups = new Map<string, string[]>();
-  for (const reference of references) {
-    if (!reference.bash) {
-      continue;
-    }
-    groups.set(reference.namespace, [
-      ...(groups.get(reference.namespace) ?? []),
-      reference.bash.command,
-    ]);
-  }
-  return [...groups.entries()].map(([namespace, commands]) => ({
-    namespace,
-    commands,
-  }));
-};
-
-export const stringifyRuntimeToolFamilyReference = ({
-  reference,
-  target,
-}: {
-  reference: RuntimeToolFamilyReference;
-  target: RuntimeToolFamilyReferenceTarget;
-}): string => {
-  switch (target) {
-    case "bash":
-      return renderBashCommandReferenceMarkdown(reference.tools);
-    case "codemode":
-      return renderCodemodeProviderTypes(reference.tools);
-    case "dashboard":
-      return JSON.stringify(renderDashboardCommandGroups(reference.tools), null, 2);
-  }
-
-  throw new Error("Unsupported runtime tool family reference target.");
 };

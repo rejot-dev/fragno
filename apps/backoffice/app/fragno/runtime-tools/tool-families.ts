@@ -71,11 +71,7 @@ import { sandboxToolFamily } from "./families/sandbox";
 import type { SandboxRuntime } from "./families/sandbox-runtime";
 import { webToolFamily, type WebRuntime } from "./families/web";
 import type { FileLinkRuntime } from "./file-links-runtime";
-import {
-  getAvailableRuntimeTools,
-  type BackofficeRuntimeToolFamily,
-  type BackofficeToolContext,
-} from "./runtime-tools";
+import { type BackofficeRuntimeToolFamily, type BackofficeToolContext } from "./runtime-tools";
 
 export type CoreBackofficeRuntimeMap = {
   state?: BackofficeStateBackend;
@@ -151,6 +147,3 @@ export const runtimeToolFamilies = [
   packagesToolFamily,
   internalWorkspaceToolFamily,
 ] as const satisfies readonly BackofficeRuntimeToolFamily[];
-
-export const getAvailableBackofficeRuntimeTools = (context: BackofficeToolContext) =>
-  getAvailableRuntimeTools({ families: runtimeToolFamilies, context });

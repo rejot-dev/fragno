@@ -76,8 +76,6 @@ export const marketplaceStaticEntryIdentitySchema = z.object({
   version: marketplaceVersionSchema,
 });
 
-export type MarketplaceStaticEntryIdentity = z.infer<typeof marketplaceStaticEntryIdentitySchema>;
-
 export const marketplaceInsertStaticEntriesResultSchema = z.object({
   inserted: z.array(marketplaceStaticEntryIdentitySchema),
   skipped: z.array(marketplaceStaticEntryIdentitySchema),
@@ -239,16 +237,12 @@ export const marketplaceOwnedListingSchema = z.lazy(() =>
   }),
 );
 
-export type MarketplaceOwnedListing = z.infer<typeof marketplaceOwnedListingSchema>;
-
 export const marketplaceOwnedVersionSchema = z.object({
   version: marketplaceVersionSchema,
   status: marketplaceVersionStatusSchema,
   createdAt: z.string(),
   publishedAt: z.string().nullable(),
 });
-
-export type MarketplaceOwnedVersion = z.infer<typeof marketplaceOwnedVersionSchema>;
 
 export const marketplaceOwnedListingDetailSchema = z.object({
   listing: marketplaceOwnedListingSchema,

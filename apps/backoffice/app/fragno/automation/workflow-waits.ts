@@ -16,20 +16,6 @@ export type WorkflowWaitRecord = {
   interfaceStepKey: string | null;
 };
 
-export type WaitingRun = {
-  id: string;
-  output: unknown;
-  steps: {
-    stepKey: string;
-    parentStepKey: string | null;
-    type: string;
-    // The workflow schema stores statuses as strings; the runner persists only its own states.
-    status: "waiting" | "completed" | "errored";
-    waitEventType: string | null;
-    result: unknown;
-  }[];
-};
-
 /** What waiting runs wait for, from their output and steps in the order they were created. */
 export function currentWorkflowWaits(
   runs: readonly {

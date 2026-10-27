@@ -8,7 +8,7 @@ import { createRouteCaller } from "@fragno-dev/core/api";
 import type { RouterContextProvider } from "react-router";
 import type { z } from "zod";
 
-import type { ConversationView, EntryRecord, SubmissionRecord } from "@earendil-works/pi-durable";
+import type { ConversationView, EntryRecord } from "@earendil-works/pi-durable";
 
 import {
   backofficeExecutionScopeRestriction,
@@ -247,32 +247,6 @@ export async function submitPiManagerPrompt(
     return { receipt: null, error: response.error.message };
   }
   return { receipt: null, error: `Failed to send message (${response.status}).` };
-}
-
-export async function fetchPiManagerSubmission(
-  request: Request,
-  context: Readonly<RouterContextProvider>,
-  scope: BackofficeContextScope,
-  agentName: string,
-  requestId: string,
-): Promise<SubmissionRecord | null> {
-  const { callRoute } = await createPiManagerRouteCaller(request, context, scope);
-  const response = await callRoute("GET", "/agents/:agentName/submissions/:requestId", {
-    pathParams: { agentName, requestId },
-  });
-  if (response.type === "json") {
-    return response.data as SubmissionRecord;
-  }
-  if (response.type === "error") {
-    throwPiManagerAuthorizationFailure(response);
-    if (response.status === 404) {
-      return null;
-    }
-    throw Response.json(response.error, { status: response.status });
-  }
-  throw new Response(`Failed to fetch submission (${response.status}).`, {
-    status: response.status,
-  });
 }
 
 export async function fetchPiManagerEntryPage(

@@ -52,8 +52,6 @@ export const signUpInvitationPayloadSchema = z.object({
   ttlDays: z.number().int().positive(),
 });
 
-export type EmailVerificationOtpPayload = z.infer<typeof emailVerificationPayloadSchema>;
-
 export const buildEmailVerificationUrl = (publicBaseUrl: string, userId: string, code: string) => {
   const url = new URL("/backoffice/verify-email", publicBaseUrl);
   url.searchParams.set("userId", userId);

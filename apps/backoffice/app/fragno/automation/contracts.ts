@@ -1,6 +1,4 @@
-import type { AutomationExternalEntityRef } from "@fragno-dev/backoffice-api/v0/automation";
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import {
   AUTOMATION_SOURCES,
@@ -48,21 +46,4 @@ export type AutomationKnownEvent<S extends AutomationSource = AutomationSource> 
 > & {
   source: S;
   eventType: AutomationEventTypeForSource<S>;
-};
-
-export type AutomationCreateIdentityClaimInput = {
-  scope: BackofficeContextScope;
-  actor: AutomationExternalEntityRef;
-  ttlMinutes?: number;
-  event: AutomationEvent;
-  idempotencyKey: string;
-};
-
-export type AutomationCreateIdentityClaimResult = {
-  url: string;
-  externalId: string;
-  code: string;
-  actor: AutomationExternalEntityRef;
-  type?: string;
-  expiresAt?: string;
 };

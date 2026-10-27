@@ -66,8 +66,6 @@ export const buildTelegramAttachmentPathForBase = (
   return `${basePath.replace(/\/+$/u, "")}/attachment-download?${params.toString()}`;
 };
 
-export const buildTelegramAttachmentPath = buildTelegramAttachmentPathForBase;
-
 export const buildTelegramAttachmentDownloadPath = (
   basePath: string,
   attachment: TelegramAttachment,

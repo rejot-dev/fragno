@@ -10,7 +10,6 @@ import { STANDARD_COMMAND_OPTIONS } from "@/fragno/runtime-tools/bash-cli";
 import {
   createRuntimeToolReferenceContext,
   createRuntimeToolReferences,
-  renderDashboardCommandGroups,
   type RuntimeToolReference,
 } from "@/fragno/runtime-tools/reference";
 import type { BackofficeToolContext } from "@/fragno/runtime-tools/runtime-tools";
@@ -23,14 +22,6 @@ const COMMAND_REFERENCES = createRuntimeToolReferences({
   families: runtimeToolFamilies,
   context: createRuntimeToolReferenceContext(),
 });
-
-const VISIBLE_COMMAND_REFERENCES = createRuntimeToolReferences({
-  families: runtimeToolFamilies.filter((family) => !family.hidden),
-  context: createRuntimeToolReferenceContext(),
-});
-
-/** Grouped, human-readable command reference (rendered in the dashboard sidebar). */
-export const PI_TERMINAL_COMMAND_GROUPS = renderDashboardCommandGroups(VISIBLE_COMMAND_REFERENCES);
 
 const SHELL_COMMAND_SPECS = [
   ...BACKOFFICE_TERMINAL_SHELL_COMMAND_SPECS,

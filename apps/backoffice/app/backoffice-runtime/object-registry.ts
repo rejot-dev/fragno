@@ -3,7 +3,7 @@ import type {
   AccountProfile,
   OAuthConsentPage,
 } from "@fragno-dev/backoffice-api/v0/account";
-import type { AutomationActor, AutomationActors } from "@fragno-dev/backoffice-api/v0/automation";
+import type { AutomationActors } from "@fragno-dev/backoffice-api/v0/automation";
 import type {
   AutomationEvent,
   AutomationEventDefinition,
@@ -1101,15 +1101,6 @@ export const encodeBackofficeObjectAddress = ({ scope }: BackofficeObjectAddress
   // A context scope's object is named by the scope's canonical path segment.
   return `v1:${backofficeScopePathSegment(scope)}`;
 };
-
-export const objectAddressToActor = (
-  address: BackofficeObjectAddress,
-): AutomationActor<"delegate"> => ({
-  scope: "internal",
-  type: "object",
-  id: `${address.binding}/${encodeBackofficeObjectAddress(address)}`,
-  role: "delegate",
-});
 
 export function backofficeObjectScopeFromContextScope(
   scope: BackofficeContextScope,

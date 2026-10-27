@@ -179,14 +179,6 @@ export const issueBackofficeTokenResultSchema = z.object({
     .nullable(),
 }) satisfies z.ZodType<IssueBackofficeTokenResult>;
 
-export const backofficeCliOAuthConfigSchema = z.object({
-  clientId: z.string().min(1),
-  scope: z.string().min(1),
-  deviceAuthorizationEndpoint: z.url(),
-  tokenEndpoint: z.url(),
-  verificationUri: z.url(),
-}) satisfies z.ZodType<BackofficeCliOAuthConfig>;
-
 export const backofficeSignOutResultSchema = z.object({
   sessionRevoked: z.literal(true),
   credentialsCleared: z.literal(true),

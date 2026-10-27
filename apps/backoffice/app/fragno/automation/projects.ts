@@ -52,7 +52,6 @@ export type AutomationProjectExecutionTarget = {
   name: string;
 };
 
-export type AutomationProject = z.infer<typeof automationProjectSchema>;
 export type AutomationProjectCreateInput = z.infer<typeof automationProjectCreateInputSchema>;
 export type AutomationProjectUpdateInput = z.infer<typeof automationProjectUpdateInputSchema>;
 export type AutomationProjectLookupInput = z.infer<typeof automationProjectLookupInputSchema>;

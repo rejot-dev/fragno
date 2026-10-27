@@ -1,7 +1,7 @@
 import type { AutomationRouteDefinition } from "@fragno-dev/backoffice-api/v0/automation";
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 
-import type { DatabaseServiceContext, HookFn, TypedUnitOfWork } from "@fragno-dev/db";
+import type { HookFn, TypedUnitOfWork } from "@fragno-dev/db";
 
 import type { AutomationEventIdentity } from "./contracts";
 import { automationFragmentSchema } from "./schema";
@@ -47,8 +47,6 @@ export type AutomationInternalHooks = {
   internalDispatchRoute: HookFn<AutomationRouteDispatchPayload>;
   internalDispatchRouteSchedule: HookFn<AutomationRouteScheduleDispatchPayload>;
 };
-
-export type AutomationHookServiceContext = DatabaseServiceContext<AutomationInternalHooks>;
 
 export type AutomationHookUnitOfWork = TypedUnitOfWork<
   typeof automationFragmentSchema,
