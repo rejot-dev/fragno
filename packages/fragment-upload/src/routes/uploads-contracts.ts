@@ -37,6 +37,11 @@ export const createUploadInputSchema = z.object({
   uploaderId: z.string().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
   publicationMode: uploadPublicationModeSchema.optional(),
+  /**
+   * Aborts unfinished uploads of the same file key instead of rejecting this one with
+   * `UPLOAD_ALREADY_ACTIVE`, so the newest upload wins.
+   */
+  replaceActiveUpload: z.boolean().optional(),
 });
 
 export const createUploadOutputSchema = uploadRouteDataSchema.extend({

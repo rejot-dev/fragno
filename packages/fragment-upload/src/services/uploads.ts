@@ -100,7 +100,8 @@ export const createUploadServices = () => {
           ),
         )
         .mutate(({ uow, retrieveResult: [uploadRows] }) => {
-          const activeUpload = pickActiveUpload(uploadRows.map(toUploadSnapshot));
+          const activeUploads = uploadRows.map(toUploadSnapshot);
+          const activeUpload = pickActiveUpload(activeUploads);
           if (activeUpload) {
             if (
               input.allowIdempotentReuse &&
@@ -110,10 +111,32 @@ export const createUploadServices = () => {
               return { reused: true as const, upload: activeUpload };
             }
 
-            throw new UploadServiceError(
-              "UPLOAD_ALREADY_ACTIVE",
-              "An active upload already exists for this provider and file key.",
-            );
+            if (!input.replaceActiveUpload) {
+              throw new UploadServiceError(
+                "UPLOAD_ALREADY_ACTIVE",
+                "An active upload already exists for this provider and file key.",
+              );
+            }
+
+            // Frees what the replaced uploads already stored. Their URLs work until they expire, so
+            // their timeouts clean up again after that.
+            for (const replaced of activeUploads) {
+              uow.update("upload", replaced.id, (b) =>
+                b
+                  .set({
+                    status: "aborted",
+                    updatedAt: uow.now(),
+                    errorCode: "UPLOAD_REPLACED",
+                    errorMessage: "A newer upload of the same file replaced this one.",
+                  })
+                  .check(),
+              );
+              uow.triggerHook("cleanupUnfinishedUpload", {
+                objectKey: replaced.objectKey,
+                storageUploadId: replaced.storageUploadId,
+              });
+              uow.triggerHook("onUploadFailed", buildUploadHookPayload(replaced));
+            }
           }
 
           const storageInit = input.storageInit;

@@ -19,6 +19,7 @@ export type CreateUploadInput = {
   uploaderId?: string;
   metadata?: Record<string, unknown>;
   publicationMode?: UploadPublicationMode;
+  replaceActiveUpload?: boolean;
 };
 
 export type UploadProgressInput = {
