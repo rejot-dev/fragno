@@ -120,8 +120,9 @@ Backoffice's own functions:
   (`../runtime-tools/families/integrations/integration-connections.ts`).
 
 Both readers (`readPiAgentEvent`, `readIntegrationConnectionStateChange`) validate each event once,
-when it arrives. Folding events as they arrive relies on nothing deleting them:
-`admin.events.delete` refuses `pi` and `integrations` events, so the projections never see one go.
+when it arrives. Folding events as they arrive relies on nothing deleting them: `deleteEventsOfType`
+(`../automation/events-storage-runtime.ts`), which `admin.events.delete` calls, refuses `pi` and
+`integrations` events, so the projections never see one go.
 
 Both projections are rebuildable: they list the tables they write and replay the stored
 `automation_event` rows, so `automation_views` does not name the replica's database. Changing one of
@@ -258,7 +259,7 @@ download the outbox again.
   `integrations` ones, once per stale projection: 1.6 s in Node for both on the production fixture,
   likely more in a browser. A filter on the replayed rows, such as by `source`, would skip the rest,
   but would state again which events each projection folds.
-- **The projections assume folded events are never deleted.** If `admin.events.delete` ever allows
+- **The projections assume folded events are never deleted.** If `deleteEventsOfType` ever allows
   `pi` or `integrations` events, a replica would keep what deleted events did, and one that
   downloads the outbox afterwards would not, since their history goes too. A rebuild would then drop
   what the deleted events did, so the same browser could show different agents before and after one.

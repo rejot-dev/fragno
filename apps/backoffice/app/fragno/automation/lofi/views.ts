@@ -190,7 +190,7 @@ type EntryEvents = {
 const entryEvents = new WeakMap<LofiMutationMatcher, EntryEvents>();
 
 /**
- * What the entry's events mean to these views. Neither kind is ever deleted: `admin.events.delete`
+ * What the entry's events mean to these views. Neither kind is ever deleted: `deleteEventsOfType`
  * refuses `pi` and `integrations` events, which is what lets the projections fold them as they
  * arrive, and rebuild by folding the stored ones again, instead of deriving rows from the events
  * that remain.
