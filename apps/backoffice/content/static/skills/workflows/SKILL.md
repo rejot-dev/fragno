@@ -109,10 +109,13 @@ idempotency keys.
 
 Read "/static/codemode/providers/workflow.d.ts" for exact inputs:
 
-- `workflow.createInstance({ path, instanceId, payload })` starts a saved `.workflow.js` file.
-  Supply a stable `instanceId` and copy it for later calls. Inline `defineWorkflow` runs do not need
-  this call. They notify the agent that defined them with a `workflows` `instance.completed` event
-  when they end.
+- `workflow.createInstance({ path, instanceId, payload, notifyWhenDone })` starts a saved
+  `.workflow.js` file. Supply a stable `instanceId` and copy it for later calls. With
+  `notifyWhenDone: true`, an agent hears a `workflows` `instance.completed` event, carrying the
+  run's status, output, and error, when it ends, also for a run started in another scope through
+  `context.org(...)` or `context.user(...)`; end your turn instead of polling. The event's subject
+  names the run's `scope`, `workflowName`, and `instanceId`: read or retry the run in that scope.
+  Inline `defineWorkflow` runs do not need this call, and always notify the agent that defined them.
 - `workflow.listInstances({ status, pageSize, cursor })` lists codemode workflow instances.
 - `workflow.getInstance({ instanceId })` reads status, output, error, and source path.
 - `workflow.getHistory({ instanceId })` exposes steps, events, and emissions for diagnosis.

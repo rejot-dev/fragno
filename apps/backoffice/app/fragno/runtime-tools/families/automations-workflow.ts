@@ -19,6 +19,8 @@ export type WorkflowCreateInstanceArgs = {
   path: string;
   instanceId: string;
   payload?: Record<string, unknown>;
+  /** Notifies the calling agent when the run ends; only an agent's turn may ask. */
+  notifyWhenDone?: boolean;
 };
 
 export type WorkflowCreateInstanceResult = {
@@ -181,6 +183,7 @@ const parseWorkflowCreateInstanceArgs = defineCliArgsParser<WorkflowCreateInstan
     path: { required: true },
     instanceId: { required: true },
     payload: { kind: "json", option: "payload-json" },
+    notifyWhenDone: { option: "notify-when-done", kind: "boolean" },
   },
 );
 
@@ -270,6 +273,11 @@ const workflowInstanceCreateTool = defineAutomationWorkflowTool({
             valueName: "json",
             description:
               "Optional domain payload delivered directly to the authored workflow event.",
+          },
+          {
+            name: "notify-when-done",
+            description:
+              "From an agent's turn: notify the calling agent with the run's status and output when it ends",
           },
         ],
         examples: [

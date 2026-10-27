@@ -211,11 +211,19 @@ it follows, so a rerun records nothing new.
 ## Notifications
 
 A `notify_agent` Automations route delivers an event to an agent of the route's scope through
-`POST /agents/:agentName/notifications`. A workflow an agent starts with `codemode` replies through
-the same route, with no route ID and the run's execution: when the run ends, Automations notifies
-the agent with a `workflows` `instance.completed` event carrying its status, output, and error. The
-workflows middleware accepts a codemode run's `replyTo` agent only from that agent's own turn, which
-it recognizes by the agent's delegate actor.
+`POST /agents/:agentName/notifications`. A workflow an agent starts replies through the same route,
+with no route ID and the run's execution: when the run ends, Automations notifies the agent with a
+`workflows` `instance.completed` event carrying its status, output, and error, and naming the run's
+scope, workflow, and instance ID. The chat shows the output's file images and links from the run's
+scope, resolved from the page's scope, the viewer's organizations, or a personal scope; a scope it
+cannot resolve, such as another owner's project, leaves images as placeholders and paths unlinked
+rather than showing another scope's files. Inline `codemode` workflows always reply; a saved one
+started with `workflow.createInstance` replies when the call passes `notifyWhenDone`, also when the
+run is in another scope. A run's `replyTo` agent names its scope, where the reply is delivered; runs
+stored before it did reply to their own scope. The workflows middleware accepts a `replyTo` agent
+only from that agent's own turn, which it recognizes by the agent's delegate actor, whose ID names
+the agent's scope. Only `createAgentRouteBackedRuntimeContext`, which a turn's tools use, knows a
+calling agent; other callers asking for a reply get `WORKFLOW_REPLY_NOT_ALLOWED`.
 
 An agent's turn hears how a prompt it sends ends by passing `notifyWhenDone` to `pi.submitPrompt`,
 also when the prompted agent is in another scope. The runtime names the calling agent as the

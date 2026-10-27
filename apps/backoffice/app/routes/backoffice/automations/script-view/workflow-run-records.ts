@@ -1,3 +1,7 @@
+import {
+  backofficeContextScopeSchema,
+  backofficeContextScopesEqual,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
 import type { AutomationWorkflowRun } from "./workflow-run-presentation";
@@ -20,14 +24,32 @@ const codemodeWorkflowRunParamsSchema = z.object({
     }),
     z.object({ type: z.literal("manual") }),
   ]),
-  // Runs from before runs reported where they end carry no `replyTo`.
+  execution: z.object({ scope: backofficeContextScopeSchema }),
+  // Runs from before runs reported where they end carry no `replyTo`, and from before agents of
+  // other scopes could start them, no agent scope.
   replyTo: z
     .discriminatedUnion("kind", [
-      z.object({ kind: z.literal("agent"), agentName: z.string() }),
+      z.object({
+        kind: z.literal("agent"),
+        scope: backofficeContextScopeSchema.optional(),
+        agentName: z.string(),
+      }),
       z.object({ kind: z.literal("workflow") }),
     ])
     .nullish(),
 });
+
+/** The agent whose conversation started the run, when that conversation is in the run's scope. */
+function startingAgentName({
+  execution,
+  replyTo,
+}: z.infer<typeof codemodeWorkflowRunParamsSchema>) {
+  if (replyTo?.kind !== "agent") {
+    return null;
+  }
+  const local = !replyTo.scope || backofficeContextScopesEqual(replyTo.scope, execution.scope);
+  return local ? replyTo.agentName : null;
+}
 
 export type WorkflowRunRecordSelector =
   | { type: "active-codemode" }
@@ -63,10 +85,7 @@ export function automationWorkflowRunsFromRecords(
                       eventType: codemodeParams.data.trigger.event.eventType,
                     }
                   : { type: "manual" },
-              agentName:
-                codemodeParams.data.replyTo?.kind === "agent"
-                  ? codemodeParams.data.replyTo.agentName
-                  : null,
+              agentName: startingAgentName(codemodeParams.data),
             }
           : null,
     };

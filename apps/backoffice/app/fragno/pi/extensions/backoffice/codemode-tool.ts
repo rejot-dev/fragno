@@ -211,7 +211,7 @@ export function createCodemodeTool(agent: BackofficeAgentContext) {
               prepared,
               trigger: { type: "manual", payload: {} },
               execution: turn.execution,
-              replyTo: { kind: "agent", agentName: agent.agentName },
+              replyTo: { kind: "agent", scope: agent.scope, agentName: agent.agentName },
             });
             const created = await workflowScheduler.createInternalInstance(workflowInput);
             runHandle = { instanceId: created.instanceId };

@@ -16,12 +16,16 @@ import {
 
 const FileScopeContext = createContext<BackofficeResolvedScope | null>(null);
 
-/** Resolves file paths in rendered content against a scope's files. */
+/**
+ * Resolves file paths in rendered content against a scope's files. Null leaves images as
+ * placeholders and paths unlinked, for content from a scope the page cannot link to: a path names
+ * a file only within its own scope.
+ */
 export function FileScopeProvider({
   scope,
   children,
 }: {
-  scope: BackofficeResolvedScope;
+  scope: BackofficeResolvedScope | null;
   children: ReactNode;
 }) {
   return (

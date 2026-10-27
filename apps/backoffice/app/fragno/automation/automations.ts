@@ -44,7 +44,7 @@ import { defineCodemodeWorkflow } from "@/fragno/automation/engine/codemode-work
 import { listAutomationEventDescriptors } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import { defineOnboardingWorkflow } from "@/fragno/onboarding/onboarding-workflow";
 import { piAgentActor } from "@/fragno/pi/agent/pi-agent-actor";
-import type { PiAgentNotification } from "@/fragno/pi/agent/pi-agent-contract";
+import type { PiAgentAddress, PiAgentNotification } from "@/fragno/pi/agent/pi-agent-contract";
 import { createPiManagerRuntime } from "@/fragno/pi/manager/pi-manager-runtime";
 
 import { isMarketplaceInstallationWorkflowInstanceId } from "./marketplace-package-install-identity";
@@ -165,10 +165,13 @@ export const createAutomationsRuntime = (
   let automationFragment: AutomationFragmentWithExecutionContext | undefined;
   const fragnoRuntime = config.runtime?.fragnoRuntime ?? defaultFragnoRuntime;
 
-  /** A reply carries the run's authority, so the agent admits it as a turn of the run's actors. */
+  /**
+   * A reply carries the run's authority, so the agent admits it as a turn of the run's actors. The
+   * agent may be in another scope than the run, which is where its manager is.
+   */
   async function notifyReplyAgent(
     params: CodemodeWorkflowParams,
-    agentName: string,
+    { scope, agentName }: PiAgentAddress,
     event: PiAgentNotification["event"],
   ) {
     if (!config.runtime) {
@@ -179,7 +182,7 @@ export const createAutomationsRuntime = (
       kernel: config.kernel,
       execution: {
         kind: "deferred",
-        scope: params.execution.scope,
+        scope,
         scopeRestriction: params.execution.scopeRestriction,
         actors: params.execution.actors,
       },
@@ -250,9 +253,10 @@ export const createAutomationsRuntime = (
           if (replyTo.kind === "agent") {
             await notifyReplyAgent(
               params,
-              replyTo.agentName,
+              replyTo,
               workflowCompletedNotificationEvent({
                 terminal: payload,
+                scope: params.execution.scope,
                 workflowName: params.program.workflowName,
                 occurredAt: fragnoRuntime.time.now(),
               }),
@@ -351,10 +355,10 @@ export const createAutomationsRuntime = (
       if (workflowName === CODEMODE_WORKFLOW && (params.replyTo ?? null) !== null) {
         const replyTo = workflowReplyToSchema.safeParse(params.replyTo).data;
         // A reply to a workflow sends it an event unauthorized, so only internal services set one.
-        // A reply to an agent is always news of that agent's own work.
-        // The run is created in its agent's scope, which is where the reply is delivered.
+        // A reply to an agent is always news of that agent's own work. The agent's actor names its
+        // scope, so this holds for an agent starting a run in another scope.
         const startingAgent =
-          replyTo?.kind === "agent" ? piAgentActor(requestContext.scope, replyTo.agentName) : null;
+          replyTo?.kind === "agent" ? piAgentActor(replyTo.scope, replyTo.agentName) : null;
         const repliesToStartingAgent =
           startingAgent !== null &&
           requestContext.actors.delegation.some((actor) =>

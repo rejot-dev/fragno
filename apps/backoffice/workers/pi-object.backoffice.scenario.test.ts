@@ -1372,7 +1372,7 @@ test("an agent hears back from the workflow it starts when it ends", async () =>
           expect(heard).toEqual([
             {
               attributes: expect.stringMatching(/source="workflows" type="instance.completed"/),
-              subject: { workflowName: "approval-checker", instanceId },
+              subject: { scope: execution.scope, workflowName: "approval-checker", instanceId },
               payload: { status: "complete", output: { approved: true }, error: null },
             },
           ]);
@@ -1857,6 +1857,83 @@ test("an agent hears back from same-named agents it prompts in two scopes and re
               })),
             ),
           );
+        }),
+      ],
+    }),
+  );
+});
+
+test("an agent hears back from the saved workflow it starts in another scope", async () => {
+  const execution = createBackofficeServiceExecution({
+    scope: { kind: "org", orgId: "org-1", jurisdiction: null },
+    service: { type: "automation", id: "saved-workflow-reply-scenario" },
+  });
+  const heard: Array<ReturnType<typeof heardEvents>[number]> = [];
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "durable Pi saved workflow replies across scopes",
+      options: { drain: false },
+      // Codemode reaches a user by ID only when Auth knows them.
+      setup: ({ given }) => [given.auth.user({ id: "org-1" })],
+      objects: {
+        ...scenarioObjects,
+        ...scriptedAgents([
+          fauxAssistantMessage(
+            [
+              fauxToolCall("codemode", {
+                code: `async () => {
+                  const personal = context.user("org-1");
+                  const path = "/workspace/automations/greeter.workflow.js";
+                  await personal.state.writeFile({
+                    path,
+                    content: 'export default defineWorkflow({ name: "greeter" }, async (event) => ({ greeting: "Hello, " + event.payload.name }));',
+                  });
+                  return await personal.workflow.createInstance({
+                    path,
+                    instanceId: "greet-1",
+                    payload: { name: "Ada" },
+                    notifyWhenDone: true,
+                  });
+                }`,
+              }),
+            ],
+            { stopReason: "toolUse" },
+          ),
+          (context) => {
+            const result = toolResults(context).at(-1);
+            expect(result?.isError, JSON.stringify(result)).toBe(false);
+            return fauxAssistantMessage("The greeter is running.");
+          },
+          (context) => {
+            const completed = heardEvents(context).at(-1);
+            assert(completed);
+            heard.push(completed);
+            return fauxAssistantMessage("The greeter finished.");
+          },
+        ]),
+      },
+      piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+      steps: ({ then }) => [
+        then.assert("the agent hears the run end in its own conversation", async ({ runtime }) => {
+          await prompt(runtime, execution, { content: "Greet Ada in my personal scope." });
+          await runtime.drain();
+          expect(JSON.stringify((await view(runtime, execution)).entries)).toContain(
+            "The greeter finished.",
+          );
+        }),
+        then.assert("the notification carries the run's output", () => {
+          expect(heard).toEqual([
+            {
+              attributes: expect.stringMatching(/source="workflows" type="instance.completed"/u),
+              // The run is in the personal scope, where the agent follows up on it.
+              subject: {
+                scope: { kind: "user", userId: "org-1", jurisdiction: null },
+                workflowName: "greeter",
+                instanceId: "greet-1",
+              },
+              payload: { status: "complete", output: { greeting: "Hello, Ada" }, error: null },
+            },
+          ]);
         }),
       ],
     }),

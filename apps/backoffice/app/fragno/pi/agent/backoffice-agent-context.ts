@@ -20,7 +20,7 @@ import type {
   RegisteredAutomationsRuntime,
 } from "@/fragno/runtime-tools/bash-host";
 import type { OtpRuntime } from "@/fragno/runtime-tools/families/otp-runtime";
-import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
+import { createAgentRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
 import { piAgentActor } from "./pi-agent-actor";
 import type { PiAgentTurn } from "./pi-agent-contract";
@@ -107,19 +107,21 @@ export function createBackofficeAgentContext(input: {
     function toolContext(invocationId: string, context: Context): PiRuntimeToolContext {
       let promptIndex = 0;
       const createPromptRequestId = () => `${invocationId}:${promptIndex++}`;
-      return createRouteBackedRuntimeContext({
+      // Whichever scope a tool addresses, prompts and workflows it starts reply to this agent.
+      const callingAgent = { scope: config.scope, agentName: config.agentName };
+      return createAgentRouteBackedRuntimeContext({
         emitter: { kind: "caller" },
         runtime,
         kernel,
         execution,
+        callingAgent,
         // A factory follows scope changes; a fixed runtime would leak the parent directory into child contexts.
         pi: (scopedExecution) => ({
           runtime: createPiManagerRuntime({
             runtime,
             kernel,
             execution: scopedExecution,
-            // Whichever scope the tool addresses, replies come back to this agent.
-            caller: { scope: config.scope, agentName: config.agentName },
+            caller: callingAgent,
             createPromptRequestId,
             context,
           }),

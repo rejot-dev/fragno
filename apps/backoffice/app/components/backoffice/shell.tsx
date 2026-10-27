@@ -1,6 +1,11 @@
+import {
+  backofficeContextScopesEqual,
+  type BackofficeContextScope,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import {
+  backofficeRuntimeScopeFromResolvedScope,
   type BackofficeNamedProject,
   type BackofficeResolvedScope,
   type BackofficeScopeSelection,
@@ -72,6 +77,36 @@ function backofficeTerminalScopeSelection(
   throw new Error("Backoffice terminal scope selection received an unsupported scope kind.");
 }
 
+/** The scopes this page can link to; see `CurrentBackofficeContext.resolveScope`. */
+function resolveScopeFor(
+  me: BackofficeMeData | null,
+  current: BackofficeShellResolvedScope,
+): CurrentBackofficeContext["resolveScope"] {
+  return (scope: BackofficeContextScope) => {
+    if (backofficeContextScopesEqual(scope, backofficeRuntimeScopeFromResolvedScope(current))) {
+      return current;
+    }
+    switch (scope.kind) {
+      case "org": {
+        const membership = me?.organizations.find(
+          ({ organization }) => organization.id === scope.orgId,
+        );
+        return membership ? { kind: "org", organization: membership.organization } : null;
+      }
+      case "user":
+        // Personal scopes are named by user ID, which the scope carries.
+        return scope;
+      // Their pages name them by slugs, or another owner's, which this page does not know.
+      case "project":
+      case "app":
+      case "system":
+        return null;
+    }
+    scope satisfies never;
+    throw new Error("Backoffice scope resolution received an unsupported scope kind.");
+  };
+}
+
 export function BackofficeShell(props: BackofficeShellProps) {
   const shell = (
     <GlobalHotkeysProvider>
@@ -83,6 +118,7 @@ export function BackofficeShell(props: BackofficeShellProps) {
       ? {
           resolvedScope: props.resolvedScope,
           automationReplicaSource: props.automationReplicaSource,
+          resolveScope: resolveScopeFor(props.me, props.resolvedScope),
         }
       : null;
   return currentContext ? (
