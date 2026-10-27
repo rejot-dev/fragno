@@ -417,6 +417,7 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
         mcp: this.#isConfigured("MCP"),
         projectConnector: this.#isConfigured("PROJECT_CONNECTOR"),
         upload: this.#isConfigured("UPLOAD"),
+        blobs: this.#isConfigured("BLOBS"),
         github: this.#isConfigured("GITHUB"),
         githubWebhookRouter: this.#isConfigured("GITHUB_WEBHOOK_ROUTER"),
         cloudflare: this.#isConfigured("CLOUDFLARE"),

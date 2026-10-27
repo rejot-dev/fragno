@@ -29,4 +29,8 @@ export type BackofficeRuntimeEnv = {
   ANTHROPIC_API_KEY?: string;
   GEMINI_API_KEY?: string;
   RESON8_API_KEY?: string;
+  BLOBS_R2_ENDPOINT?: string;
+  BLOBS_R2_BUCKET?: string;
+  BLOBS_R2_ACCESS_KEY_ID?: string;
+  BLOBS_R2_SECRET_ACCESS_KEY?: string;
 };

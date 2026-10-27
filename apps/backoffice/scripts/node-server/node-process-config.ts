@@ -76,6 +76,10 @@ export async function createNodeBackofficeProcessConfig(): Promise<NodeBackoffic
       ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
       GEMINI_API_KEY: process.env.GEMINI_API_KEY,
       RESON8_API_KEY: process.env.RESON8_API_KEY,
+      BLOBS_R2_ENDPOINT: process.env.BLOBS_R2_ENDPOINT,
+      BLOBS_R2_BUCKET: process.env.BLOBS_R2_BUCKET,
+      BLOBS_R2_ACCESS_KEY_ID: process.env.BLOBS_R2_ACCESS_KEY_ID,
+      BLOBS_R2_SECRET_ACCESS_KEY: process.env.BLOBS_R2_SECRET_ACCESS_KEY,
     },
   });
 

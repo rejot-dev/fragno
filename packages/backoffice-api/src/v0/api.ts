@@ -3,6 +3,7 @@ import { accountOperations } from "./account";
 import { appsOperations } from "./apps";
 import { artifactsOperations } from "./artifacts";
 import { automationRouterOperations } from "./automation";
+import { blobsOperations } from "./blobs";
 import { eventsOperations } from "./events";
 import { formsOperations } from "./forms";
 import { hooksOperations } from "./hooks";
@@ -31,6 +32,7 @@ export const backofficeApiV0 = {
     ...appsOperations,
     ...artifactsOperations,
     ...automationRouterOperations,
+    ...blobsOperations,
     ...eventsOperations,
     ...formsOperations,
     ...hooksOperations,

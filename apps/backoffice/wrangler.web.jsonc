@@ -96,6 +96,11 @@
         "script_name": "rejot-backoffice",
       },
       {
+        "name": "BLOBS",
+        "class_name": "Blobs",
+        "script_name": "rejot-backoffice",
+      },
+      {
         "name": "SANDBOX",
         "class_name": "Sandbox",
         "script_name": "cf-sandbox-bridge",

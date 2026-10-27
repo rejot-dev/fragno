@@ -75,6 +75,18 @@ GEMINI_API_KEY=
 # Platform Reson8 key for speech-to-text: chat dictation and the reson8 runtime tools
 RESON8_API_KEY=
 
+# Blobs, the blobs.* runtime tools' large files, live in R2 and are reached through its S3 API.
+# Locally that is the bucket Miniflare serves at /cdn-cgi/local/r2/s3, with the credentials of
+# `local_dev` in wrangler.jsonc. A path resolves against DOCS_PUBLIC_BASE_URL, so blob URLs reach
+# sandboxes and other machines when that is a tunnel. Deployments use
+# https://<account-id>.r2.cloudflarestorage.com and an R2 API token that reads and writes the
+# bucket. Each jurisdiction keeps its blobs in a bucket of the same name created in it, so create
+# BLOBS_R2_BUCKET without a jurisdiction and in each of "eu" and "us", and let the token reach all
+# three; their CORS policies must allow PUT and GET from the origins that move blobs.
+BLOBS_R2_ENDPOINT=/cdn-cgi/local/r2/s3
+BLOBS_R2_ACCESS_KEY_ID=local-blobs
+BLOBS_R2_SECRET_ACCESS_KEY=local-blobs
+
 # For the singleton Cloudflare fragment and Browser Run Quick Actions
 CLOUDFLARE_WORKERS_ACCOUNT_ID=example-account-id
 CLOUDFLARE_WORKERS_API_TOKEN=example-api-token

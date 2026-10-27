@@ -25,6 +25,7 @@ import type { AutomationIdentityRuntime } from "./families/automations-identitie
 import type { AutomationRouterRuntime } from "./families/automations-routing";
 import type { AutomationWorkflowRuntime } from "./families/automations-workflow";
 import type { BackofficeCapabilitiesRuntime } from "./families/backoffice-capabilities";
+import type { BlobsRuntime } from "./families/blobs-runtime";
 import type { CloudflareRuntime } from "./families/cloudflare-runtime";
 import type { EventRuntime } from "./families/event";
 import type { EventCatalogRuntime } from "./families/event-catalog";
@@ -61,6 +62,7 @@ export type BashHostContext = {
   stateBackend?: BackofficeStateBackend;
   fileLinks?: { runtime: FileLinkRuntime } | null;
   fileShares?: { runtime: FileShareRuntime } | null;
+  blobs?: { runtime: BlobsRuntime } | null;
   createBackofficeScopedContext(scope: BackofficeContextScope): BashHostContext;
   resolveRootOwner: BackofficeRootOwnerResolver;
   account?: { runtime: AccountRuntime } | null;
