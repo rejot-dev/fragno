@@ -111,7 +111,7 @@ export function serializeReferenceFilterValue(
   return serializer.serialize(resolveFragnoIdValue(value, column), column);
 }
 
-function constantWhere(eb: AnyExpressionBuilder, value: boolean): AnyExpressionWrapper {
+export function constantWhere(eb: AnyExpressionBuilder, value: boolean): AnyExpressionWrapper {
   return value ? eb(sql`1`, "=", sql`1`) : eb(sql`1`, "=", sql`0`);
 }
 
@@ -201,6 +201,11 @@ export function buildWhere(
     const left = condition.a;
     const op = condition.operator;
     let val = condition.b;
+
+    // `IN ()` is a syntax error outside SQLite.
+    if ((op === "in" || op === "not in") && Array.isArray(val) && val.length === 0) {
+      return constantWhere(eb, op === "not in");
+    }
 
     if (!(val instanceof Column)) {
       if (isDbNow(val)) {

@@ -14,6 +14,7 @@ import { buildDbNowSql } from "./db-now-sql";
 import type { AnyExpressionBuilder, AnyExpressionWrapper } from "./sql-query-compiler";
 import {
   buildReferenceArrayWhere,
+  constantWhere,
   fullSQLName,
   serializeReferenceFilterValue,
 } from "./where-builder";
@@ -94,6 +95,15 @@ export function buildQueryTreeWhere(
         condition.operator as BinaryOperator,
         eb.ref(getColumnSqlName(parentColumn, parentResolver, parentTable, parentAlias)),
       );
+    }
+
+    // `IN ()` is a syntax error outside SQLite.
+    if (
+      (condition.operator === "in" || condition.operator === "not in") &&
+      Array.isArray(rightValue) &&
+      rightValue.length === 0
+    ) {
+      return constantWhere(eb, condition.operator === "not in");
     }
 
     if (!(rightValue instanceof Column)) {
