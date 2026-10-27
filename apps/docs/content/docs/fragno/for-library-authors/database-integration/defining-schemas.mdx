@@ -201,8 +201,8 @@ const mySchema = schema((s) => {
 // mySchema.version === 3        // Three operations = version 3
 ```
 
-Each operation (`.addTable()`, `.alterTable()`, `.noOp()`) increments the version by 1. The CLI uses
-this to generate migrations for users upgrading from older versions.
+Each operation (`.addTable()`, `.alterTable()`, `.dropTable()`, `.noOp()`) increments the version
+by 1. The CLI uses this to generate migrations for users upgrading from older versions.
 
 ### Using alterTable()
 
@@ -264,6 +264,23 @@ rewriting them. For example, add a column with a default that is right for every
 Integrators who generate Drizzle or Prisma schemas and run migrations with their own tools see a
 rename as a dropped column and an added one, which loses the column's data. Tell them in your
 release notes to apply it as a rename.
+
+### Dropping tables
+
+`dropTable()` drops a table and its rows. Keep its `addTable()` and every `alterTable()` of it in
+place, so the history still says what the table was:
+
+```typescript
+.dropTable("draft")
+```
+
+- No other table may reference the dropped table.
+- Its name stays taken. Clients that replay the outbox, such as Lofi, still receive the dropped
+  table's old rows, and skip them because the schema says the table was dropped. A new table under
+  that name would receive them instead.
+- The migration drops the table only if it exists. If an earlier release removed the table by
+  replacing its `addTable()` with `noOp()`, put the `addTable()` back and drop the table. Databases
+  created after that release never held it.
 
 ## System Columns
 

@@ -223,6 +223,8 @@ function buildTableStates(schema: AnySchema, version: number): Map<string, Table
         continue;
       }
       applyTableSubOperations(state, op.operations);
+    } else if (op.type === "drop-table") {
+      tableStates.delete(op.tableName);
     }
   }
 
@@ -484,6 +486,9 @@ export function generateMigrationFromSchema(
         applyTableSubOperations(nextState, op.operations);
         tableStates.set(op.tableName, nextState);
       }
+    } else if (op.type === "drop-table") {
+      migrationOperations.push({ type: "drop-table", name: op.tableName });
+      tableStates.delete(op.tableName);
     }
   }
 

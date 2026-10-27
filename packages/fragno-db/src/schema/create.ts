@@ -57,6 +57,10 @@ export type SchemaOperation =
       operations: TableSubOperation[]; // Ordered list of sub-operations
     }
   | {
+      type: "drop-table";
+      tableName: string;
+    }
+  | {
       type: "no-op";
       reason?: string;
     };
@@ -1137,6 +1141,10 @@ type TableAlteration = Extract<
   { type: "rename-column" | "drop-index" | "drop-column" }
 >;
 
+type DropTable<TTables extends Record<string, AnyTable>, TTableName extends keyof TTables> = {
+  [K in keyof TTables as K extends TTableName ? never : K]: TTables[K];
+};
+
 type RenameColumn<
   TColumns extends Record<string, AnyColumn>,
   TFrom extends keyof TColumns,
@@ -1208,6 +1216,11 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
       this.#registerTableName(table.name);
       for (const index of Object.values(table.indexes)) {
         this.#registerIndexName(index.name, table.name);
+      }
+    }
+    for (const operation of this.#operations) {
+      if (operation.type === "drop-table") {
+        this.#registerTableName(operation.tableName);
       }
     }
   }
@@ -1494,6 +1507,46 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
     return this as unknown as SchemaBuilder<
       UpdateTable<TTables, TTableName, TNewColumns, TNewIndexes>
     >;
+  }
+
+  /**
+   * Drop a table and its rows. Increments the version counter. Its name stays taken: outbox
+   * history still holds its rows, which a table added under that name would receive.
+   *
+   * @example
+   * ```ts
+   * schema("blog", s => s
+   *   .addTable("drafts", t => t.addColumn("id", idColumn()))
+   *   .dropTable("drafts")
+   * )
+   * ```
+   */
+  dropTable<TTableName extends string & keyof TTables>(
+    tableName: TTableName,
+  ): SchemaBuilder<DropTable<TTables, TTableName>> {
+    const table = this.#tables[tableName];
+    if (!table) {
+      throw new Error(`Table ${tableName} not found in schema`);
+    }
+    for (const other of Object.values(this.#tables)) {
+      for (const column of Object.values(other.columns)) {
+        if (other.name !== tableName && column.referenceTableName === tableName) {
+          throw new Error(
+            `Table ${tableName} cannot be dropped: ${other.name}.${column.name} references it.`,
+          );
+        }
+      }
+    }
+
+    this.#version++;
+    this.#operations.push({ type: "drop-table", tableName });
+    const { [tableName]: _dropped, ...tables } = this.#tables;
+    this.#tables = tables as TTables;
+    for (const index of Object.values(table.indexes)) {
+      this.#indexNames.delete(index.name);
+    }
+
+    return this as unknown as SchemaBuilder<DropTable<TTables, TTableName>>;
   }
 
   #resolveTableForeignKeys(tables: Record<string, AnyTable>): void {

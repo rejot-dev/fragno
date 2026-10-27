@@ -8,7 +8,7 @@ import { PGlite } from "@electric-sql/pglite";
 
 import { DatabaseConstraintError } from "../../errors";
 import { createNamingResolver } from "../../naming/sql-naming";
-import { column, idColumn, schema } from "../../schema/create";
+import { column, idColumn, schema, type AnySchema } from "../../schema/create";
 import { BetterSQLite3DriverConfig, PGLiteDriverConfig } from "./driver-config";
 import { SqlAdapter } from "./generic-sql-adapter";
 import { createColdKysely } from "./migration/cold-kysely";
@@ -62,6 +62,8 @@ const databases = [
     },
     listIndexes: (table: string) =>
       sql`select name from sqlite_master where type = 'index' and tbl_name = ${table}`,
+    findTable: (table: string) =>
+      sql`select name from sqlite_master where type = 'table' and name = ${table}`,
     rejectsDuplicates: (promise: Promise<unknown>) =>
       expect(promise).rejects.toBeInstanceOf(DatabaseConstraintError),
   },
@@ -74,6 +76,8 @@ const databases = [
     },
     listIndexes: (table: string) =>
       sql`select indexname as name from pg_indexes where tablename = ${table}`,
+    findTable: (table: string) =>
+      sql`select tablename as name from pg_tables where tablename = ${table}`,
     // PGlite does not classify constraint errors.
     rejectsDuplicates: (promise: Promise<unknown>) => expect(promise).rejects.toThrow(),
   },
@@ -157,5 +161,108 @@ describe.each(databases)("evolving a table with rows on $name", (database) => {
         await adapter.close();
       }
     },
+  );
+});
+
+// Three releases of one fragment. The second removed the draft table by replacing its `addTable`
+// with `noOp`, so only databases from the first hold it; the third restores the history and drops
+// the table, which must leave every database without it.
+const releasedWithDrafts = schema("drafting", (s) =>
+  s
+    .addTable("draft", (t) =>
+      t
+        .addColumn("id", idColumn())
+        .addColumn("body", column("string"))
+        .createIndex("idx_draft_body", ["body"]),
+    )
+    .addTable("post", (t) => t.addColumn("id", idColumn()).addColumn("title", column("string"))),
+);
+const releasedWithoutDraftHistory = schema("drafting", (s) =>
+  s
+    .noOp("Removed draft table")
+    .addTable("post", (t) => t.addColumn("id", idColumn()).addColumn("title", column("string"))),
+);
+const releasedDroppingDrafts = schema("drafting", (s) =>
+  s
+    .addTable("draft", (t) =>
+      t
+        .addColumn("id", idColumn())
+        .addColumn("body", column("string"))
+        .createIndex("idx_draft_body", ["body"]),
+    )
+    .addTable("post", (t) => t.addColumn("id", idColumn()).addColumn("title", column("string")))
+    .dropTable("draft"),
+);
+
+describe.each(databases)("dropping a table on $name", (database) => {
+  it.each([null, "drafting"])(
+    "drops it from databases of every earlier release and keeps other tables' rows (namespace %s)",
+    async (namespace) => {
+      const migrateFrom = async (released: AnySchema | null) => {
+        const adapter = database.createAdapter();
+        const resolver = createNamingResolver(
+          releasedDroppingDrafts,
+          namespace,
+          adapter.namingStrategy,
+        );
+        const kysely = createColdKysely(database.database);
+        const run = async (query: RawBuilder<unknown>) =>
+          (await adapter.driver.executeQuery(query.compile(kysely))).rows;
+        const qualified = (table: string) => {
+          const schemaName = resolver.getSchemaName();
+          return sql.table(
+            schemaName
+              ? `${schemaName}.${resolver.getTableName(table)}`
+              : resolver.getTableName(table),
+          );
+        };
+        const tableExists = async (table: string) =>
+          (await run(database.findTable(resolver.getTableName(table)))).length > 0;
+        try {
+          if (released) {
+            await adapter
+              .prepareMigrations(released, namespace)
+              .executeWithDriver(adapter.driver, 0, 2, { updateVersionInMigration: false });
+            await run(
+              sql`insert into ${qualified("post")} (${sql.ref("id")}, ${sql.ref("title")}) values ('hello', 'Hello')`,
+            );
+          }
+          const draftsBefore = await tableExists("draft");
+          await adapter
+            .prepareMigrations(releasedDroppingDrafts, namespace)
+            .executeWithDriver(adapter.driver, released ? 2 : 0, 3, {
+              updateVersionInMigration: false,
+            });
+          return {
+            draftsBefore,
+            draftsAfter: await tableExists("draft"),
+            posts: (await run(sql`select ${sql.ref("id")} from ${qualified("post")}`)).map(
+              ({ id }) => id,
+            ),
+          };
+        } finally {
+          await adapter.close();
+        }
+      };
+
+      expect(await migrateFrom(releasedWithDrafts)).toEqual({
+        draftsBefore: true,
+        draftsAfter: false,
+        posts: ["hello"],
+      });
+      expect(await migrateFrom(releasedWithoutDraftHistory)).toEqual({
+        draftsBefore: false,
+        draftsAfter: false,
+        posts: ["hello"],
+      });
+      expect(await migrateFrom(null)).toEqual({
+        draftsBefore: false,
+        draftsAfter: false,
+        posts: [],
+      });
+      expect(Object.keys(releasedDroppingDrafts.tables)).toEqual(["post"]);
+    },
+    // Each case opens a database per release, which PGlite takes seconds for under a full run.
+    15_000,
   );
 });

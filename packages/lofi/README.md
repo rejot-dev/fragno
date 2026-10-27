@@ -660,8 +660,9 @@ const stopWatching = replica.subscribeStatus(() => {
   cursor can stay behind that while an ephemeral stream is open, and the entries after it then
   arrive again.
 
-Mutations for schemas you did not register are skipped. A mutation for an unknown table in a
-registered schema fails, because it means the client's schema is behind the server's. Rows of
+Mutations for schemas you did not register are skipped, as are the rows of tables a registered
+schema dropped (`dropTable`), which the outbox still holds. A mutation for any other unknown table
+in a registered schema fails, because it means the client's schema is behind the server's. Rows of
 `ephemeralTables` are skipped, not stored.
 
 ### Database name and schema changes

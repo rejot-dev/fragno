@@ -112,13 +112,20 @@ export const getKnownMutation = (options: {
   }
   const table = tableMap.get(schema.name)?.get(mutation.table);
   if (!table) {
-    if (ignoreUnknownSchemas) {
+    // The outbox keeps the history of a table the schema dropped since.
+    if (ignoreUnknownSchemas || wasTableDropped(schema, mutation.table)) {
       return undefined;
     }
     throw new Error(`${tableErrorPrefix}: ${mutation.schema}.${mutation.table}`);
   }
   return { mutation: { ...mutation, schema: schema.name }, schema, table };
 };
+
+function wasTableDropped(schema: AnySchema, table: string): boolean {
+  return schema.operations.some(
+    (operation) => operation.type === "drop-table" && operation.tableName === table,
+  );
+}
 
 export const matchMutation = <
   const TSchema extends AnySchema,

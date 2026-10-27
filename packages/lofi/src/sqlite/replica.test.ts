@@ -67,6 +67,16 @@ const appSchema = schema("app", (s) =>
 /** The same schema as the server's, but missing a table the server writes. */
 const appSchemaWithoutPosts = schema("app", (s) => s.addTable("users", addUsersTable));
 
+/** A later release of the server's schema, which dropped the table the outbox still holds rows of. */
+const appSchemaDroppingTyping = schema("app", (s) =>
+  s
+    .addTable("users", addUsersTable)
+    .addTable("typing", (t) =>
+      t.addColumn("id", idColumn()).addColumn("userEmail", column("string")),
+    )
+    .dropTable("typing"),
+);
+
 const otherSchema = schema("other", (s) =>
   s.addTable("notes", (t) => t.addColumn("id", idColumn()).addColumn("body", column("string"))),
 );
@@ -918,6 +928,35 @@ describe("SQLite replica", () => {
             { email: "ada@example.com" },
           ]);
           assert.strictEqual(await appliedEntries(server, tab), 1);
+        }),
+      ],
+    });
+  });
+
+  it("skips the history of a table its schema dropped since", async () => {
+    await runReplicaScenario({
+      serverSchemas: [appSchema],
+      statementDelayMs: 0,
+      steps: [
+        openTab("a", replica({ schemas: [{ schema: appSchemaDroppingTyping }] })),
+        write(appSchema, "before the drop", (uow) => {
+          uow.create("typing", { userEmail: "ada@example.com" });
+          uow.create("users", user("ada@example.com"));
+        }),
+        write(appSchema, "after the drop", (uow) => {
+          uow.create("users", user("grace@example.com"));
+        }),
+        waitForRows("a", `SELECT "email" FROM "users_app" ORDER BY "email"`, [
+          { email: "ada@example.com" },
+          { email: "grace@example.com" },
+        ]),
+        assertStep(async ({ server, tabs, errors }) => {
+          expect(errors).toEqual([]);
+          const tab = tabs.get("a")!;
+          expect(
+            await tab.execute(`SELECT "name" FROM sqlite_master WHERE "name" = 'typing_app'`),
+          ).toEqual([]);
+          assert.strictEqual(await appliedEntries(server, tab), 2);
         }),
       ],
     });
