@@ -26,6 +26,9 @@ const ACTION_MARKER_CLASS_NAME: Record<ActionKind, string> = {
   reclassify_event: "fill-lime-600 dark:fill-lime-300",
 };
 
+// The route graphs draw every route in ink; its dash tells the kinds of action apart.
+export const ROUTE_EDGE_CLASS_NAME = "stroke-[var(--bo-fg)]";
+
 // Messages to a running workflow are dashed: they do not create anything, they wake something up.
 export const ACTION_EDGE_DASH: Record<ActionKind, string | undefined> = {
   start_workflow: undefined,
@@ -126,6 +129,29 @@ export function ActionMarkerDefs({ idPrefix }: { idPrefix: string }) {
           <path d="M 0 1 L 9 5 L 0 9 z" className={ACTION_MARKER_CLASS_NAME[kind]} />
         </marker>
       ))}
+    </defs>
+  );
+}
+
+export function routeMarkerUrl(idPrefix: string): string {
+  return `url(#${idPrefix}-route)`;
+}
+
+/** The arrowhead every route ends in; a marker cannot inherit the colour of the edge using it. */
+export function RouteMarkerDefs({ idPrefix }: { idPrefix: string }) {
+  return (
+    <defs>
+      <marker
+        id={`${idPrefix}-route`}
+        viewBox="0 0 10 10"
+        refX="8"
+        refY="5"
+        markerWidth="7"
+        markerHeight="7"
+        orient="auto-start-reverse"
+      >
+        <path d="M 0 1 L 9 5 L 0 9 z" className="fill-[var(--bo-fg)]" />
+      </marker>
     </defs>
   );
 }

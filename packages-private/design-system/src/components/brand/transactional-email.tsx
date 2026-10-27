@@ -22,7 +22,7 @@ const PALETTE = {
   foreground: "#25211c",
   muted: "#56647a",
   muted2: "#7a889d",
-  primary: "#1e2fb0",
+  primary: "#c2560a",
   primaryForeground: "#ffffff",
   live: "#12856f",
   waiting: "#a7650c",

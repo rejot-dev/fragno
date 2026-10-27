@@ -12,10 +12,10 @@ import {
   type OrchestrationRoute,
 } from "./orchestration-graph-model";
 import {
-  ACTION_EDGE_CLASS_NAME,
   ACTION_EDGE_DASH,
-  ActionMarkerDefs,
-  actionMarkerUrl,
+  ROUTE_EDGE_CLASS_NAME,
+  RouteMarkerDefs,
+  routeMarkerUrl,
   DISABLED_EDGE_DASH,
   OrchestrationPulseAnimation,
   routeActionLabel,
@@ -314,7 +314,7 @@ export function OrchestrationRadialGraph({
         onSelect(null);
       }}
     >
-      <ActionMarkerDefs idPrefix={markerIdPrefix} />
+      <RouteMarkerDefs idPrefix={markerIdPrefix} />
 
       {/* Guide rings make the empty parts of the circle read as structure, not missing data. */}
       {[ROUTE_RADIUS, TARGET_RADIUS].map((radius) => (
@@ -343,7 +343,7 @@ export function OrchestrationRadialGraph({
                   y1={polar(angle, ACTIVITY_OUTER)[1]}
                   x2={polar(angle, ROUTE_RADIUS - pillReach(route.id))[0]}
                   y2={polar(angle, ROUTE_RADIUS - pillReach(route.id))[1]}
-                  className="stroke-[var(--bo-accent)]/45"
+                  className="stroke-[var(--bo-fg)]/45"
                   strokeWidth={1.5}
                   strokeDasharray={route.enabled ? undefined : DISABLED_EDGE_DASH}
                 />
@@ -351,12 +351,12 @@ export function OrchestrationRadialGraph({
               {edgePath ? (
                 <path
                   d={edgePath}
-                  className={cn("fill-none", ACTION_EDGE_CLASS_NAME[route.action.kind])}
+                  className={cn("fill-none", ROUTE_EDGE_CLASS_NAME)}
                   strokeWidth={isSelected(routeItem) ? 2.6 : 1.8}
                   strokeDasharray={
                     route.enabled ? ACTION_EDGE_DASH[route.action.kind] : DISABLED_EDGE_DASH
                   }
-                  markerEnd={actionMarkerUrl(markerIdPrefix, route.action.kind)}
+                  markerEnd={routeMarkerUrl(markerIdPrefix)}
                 />
               ) : null}
             </g>
@@ -390,8 +390,8 @@ export function OrchestrationRadialGraph({
             <path
               d={annularSector(startAngle, endAngle, SOURCE_INNER, SOURCE_OUTER)}
               className={cn(
-                "fill-lime-500/14 stroke-[var(--bo-bg)] transition-[fill] hover:fill-lime-500/24 dark:fill-lime-300/12",
-                isSelected(item) && "fill-lime-500/30 dark:fill-lime-300/25",
+                "fill-[color-mix(in_srgb,var(--bo-fg)_7%,transparent)] stroke-[var(--bo-bg)] transition-[fill] hover:fill-[color-mix(in_srgb,var(--bo-fg)_11%,transparent)]",
+                isSelected(item) && "fill-[color-mix(in_srgb,var(--bo-fg)_16%,transparent)]",
               )}
               strokeWidth={2}
             />
@@ -400,14 +400,14 @@ export function OrchestrationRadialGraph({
               x={iconX}
               y={iconY}
               size={15}
-              className="text-lime-800 dark:text-lime-200"
+              className="text-[var(--bo-muted)]"
             />
             {label ? (
               <>
                 <path id={labelPathId} d={labelPath} fill="none" />
                 <text
                   key={labelPath}
-                  className="fill-lime-900 text-[12px] font-semibold dark:fill-lime-100"
+                  className="fill-[var(--bo-fg)] text-[12px] font-semibold"
                   dominantBaseline="central"
                 >
                   <textPath href={`#${labelPathId}`} startOffset="50%" textAnchor="middle">
@@ -483,17 +483,16 @@ export function OrchestrationRadialGraph({
               className={cn(
                 "stroke-[var(--bo-bg)] transition-[fill]",
                 routed
-                  ? "fill-[var(--bo-accent-bg)] hover:fill-[color-mix(in_srgb,var(--bo-accent-bg)_80%,var(--bo-accent))]"
-                  : "fill-[color-mix(in_srgb,var(--bo-accent-bg)_35%,var(--bo-panel))] hover:fill-[var(--bo-accent-bg)]",
-                isSelected(item) &&
-                  "fill-[color-mix(in_srgb,var(--bo-accent-bg)_65%,var(--bo-accent))]",
+                  ? "fill-[color-mix(in_srgb,var(--bo-fg)_7%,transparent)] hover:fill-[color-mix(in_srgb,var(--bo-fg)_11%,transparent)]"
+                  : "fill-[var(--bo-panel)] hover:fill-[color-mix(in_srgb,var(--bo-fg)_7%,transparent)]",
+                isSelected(item) && "fill-[color-mix(in_srgb,var(--bo-fg)_16%,transparent)]",
               )}
               strokeWidth={2}
             />
             {event.recentCount > 0 ? (
               <path
                 d={annularSector(startAngle, activityEnd, EVENT_OUTER + 1, ACTIVITY_OUTER)}
-                className="fill-[var(--bo-live)]"
+                className="fill-[var(--bo-fg)]"
                 opacity={0.75}
               />
             ) : null}
@@ -504,7 +503,7 @@ export function OrchestrationRadialGraph({
                   key={labelPath}
                   className={cn(
                     "font-mono text-[11px]",
-                    routed ? "fill-[var(--bo-accent-strong)]" : "fill-[var(--bo-muted-2)]",
+                    routed ? "fill-[var(--bo-fg)]" : "fill-[var(--bo-muted-2)]",
                   )}
                   dominantBaseline="central"
                 >
@@ -522,7 +521,7 @@ export function OrchestrationRadialGraph({
                 dominantBaseline="central"
                 className={cn(
                   "font-mono text-[10.5px]",
-                  routed ? "fill-[var(--bo-accent-strong)]" : "fill-[var(--bo-muted-2)]",
+                  routed ? "fill-[var(--bo-fg)]" : "fill-[var(--bo-muted-2)]",
                 )}
               >
                 {radialLabel}
@@ -554,7 +553,7 @@ export function OrchestrationRadialGraph({
               rx={4}
               className={cn(
                 "fill-[var(--bo-panel)] stroke-[var(--bo-border-strong)] transition-[stroke]",
-                isSelected(item) ? "stroke-[var(--bo-accent)]" : "hover:stroke-[var(--bo-accent)]",
+                isSelected(item) ? "stroke-[var(--bo-fg)]" : "hover:stroke-[var(--bo-fg)]",
               )}
               strokeWidth={isSelected(item) ? 2 : 1}
               strokeDasharray={route.enabled ? undefined : "3 3"}
@@ -568,7 +567,7 @@ export function OrchestrationRadialGraph({
                 route.enabled ? "fill-[var(--bo-fg)]" : "fill-[var(--bo-muted-2)]",
               )}
             >
-              <tspan className="fill-[var(--bo-accent-strong)] text-[9.5px] font-semibold tracking-[0.12em]">
+              <tspan className="fill-[var(--bo-fg)] text-[9.5px] font-semibold tracking-[0.12em]">
                 {pill.priority}
               </tspan>
               {pill.label ? <tspan dx={6}>{pill.label}</tspan> : null}
@@ -607,7 +606,7 @@ export function OrchestrationRadialGraph({
                 cx={x}
                 cy={y}
                 r={TARGET_NODE_RADIUS + 5}
-                className="fill-none stroke-[var(--bo-live)]"
+                className="fill-none stroke-[var(--bo-fg)]"
                 strokeWidth={2}
                 strokeDasharray="4 3"
               />
@@ -641,7 +640,7 @@ export function OrchestrationRadialGraph({
                 <tspan
                   x={labelX}
                   dy={15}
-                  className="fill-[var(--bo-live)] text-[11px] font-medium tabular-nums"
+                  className="fill-[var(--bo-fg)] text-[11px] font-medium tabular-nums"
                 >
                   {target.activeCount} running
                 </tspan>
