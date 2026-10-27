@@ -297,9 +297,6 @@ importers:
       '@fragno-dev/lofi':
         specifier: workspace:*
         version: link:../../packages/lofi
-      '@fragno-dev/lofi-zql':
-        specifier: workspace:*
-        version: link:../../packages/lofi-zql
       '@fragno-dev/mcp-fragment':
         specifier: workspace:*
         version: link:../../packages/mcp-fragment

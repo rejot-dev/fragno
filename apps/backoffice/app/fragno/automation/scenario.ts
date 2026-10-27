@@ -22,7 +22,6 @@ import {
   backofficeScopeRootOwner,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { sanitizeToolName } from "@fragno-dev/codemode/runtime-api";
-import { zqlViewEngine } from "@fragno-dev/lofi-zql/worker";
 import { InMemoryFs, type IFileSystem } from "just-bash";
 
 import type { ResendSendEmailInput } from "@fragno-dev/resend-fragment";
@@ -1918,7 +1917,7 @@ const createScenarioLofi = (runtime: InMemoryBackofficeRuntime): BackofficeScena
     localSchemas: [],
     projections: [],
     ephemeralTables: [],
-    engines: [zqlViewEngine],
+    engines: [],
     drainRuntime: () => runtime.drain(),
     baseUrl: uploadScopedBaseUrl,
     createFetch: (scope) => createScenarioUploadFetch(runtime, scope),
